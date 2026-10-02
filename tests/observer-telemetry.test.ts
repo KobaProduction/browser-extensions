@@ -71,3 +71,23 @@ test('transport counter helper accumulates request and message events', async ()
   expect(counters.messagesReceived).toBe(1)
   expect(counters.lastEventAt).toBe(2)
 })
+
+test('redacts secret fields embedded inside SSE text', () => {
+  const sse =
+    'data: {"type":"resume_conversation_token","token":"header.payload.signature","verify":"secret-verify"}\n\n'
+  const preview = sanitizeBodyPreview(sse, 2048)
+
+  expect(preview).toBeDefined()
+  expect(preview).not.toContain('header.payload.signature')
+  expect(preview).not.toContain('secret-verify')
+  expect(preview).toContain('[REDACTED]')
+})
+
+test('redacts websocket verification query values', () => {
+  const value = sanitizeTransportUrl(
+    'wss://ws.chatgpt.com/ws/user/123456789012345678901234?verify=sensitive-value',
+  )
+
+  expect(value).not.toContain('sensitive-value')
+  expect(value).toContain('verify=%5BREDACTED%5D')
+})
