@@ -1,9 +1,20 @@
 import { resolve } from 'node:path'
 import vue from '@vitejs/plugin-vue'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
+import { finalizeUserscript } from './scripts/finalize-userscript.ts'
+
+function userscriptMetadataPlugin(): Plugin {
+  return {
+    name: 'chatgpt-booster-userscript-metadata',
+    apply: 'build',
+    async writeBundle() {
+      await finalizeUserscript()
+    },
+  }
+}
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [vue(), userscriptMetadataPlugin()],
   build: {
     outDir: 'dist',
     emptyOutDir: true,

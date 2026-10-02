@@ -1,4 +1,6 @@
-const outputPath = new URL('../dist/chatgpt-booster.user.js', import.meta.url)
+import { readFile, writeFile } from 'node:fs/promises'
+
+export const userscriptOutput = new URL('../dist/chatgpt-booster.user.js', import.meta.url)
 
 const metadata = [
   '// ==UserScript==',
@@ -14,19 +16,21 @@ const metadata = [
   '// ==/UserScript==',
 ].join('\n')
 
-const file = Bun.file(outputPath)
-if (!(await file.exists())) {
-  throw new Error('Userscript build output not found: ' + outputPath.pathname)
+export async function finalizeUserscript(outputPath = userscriptOutput): Promise<void> {
+  const bundled = await readFile(outputPath, 'utf8')
+  const payload = bundled.startsWith('// ==UserScript==') ? bundled : `${metadata}\n\n${bundled}`
+
+  await writeFile(outputPath, payload, 'utf8')
+
+  const finalized = await readFile(outputPath, 'utf8')
+  if (!finalized.startsWith('// ==UserScript==')) {
+    throw new Error('Userscript metadata header is missing after finalization')
+  }
+  if (!finalized.includes('// @match        https://chatgpt.com/*')) {
+    throw new Error('Userscript metadata does not target chatgpt.com')
+  }
 }
 
-const bundled = await file.text()
-const payload = bundled.startsWith('// ==UserScript==') ? bundled : metadata + '\n\n' + bundled
-await Bun.write(outputPath, payload)
-
-const finalized = await Bun.file(outputPath).text()
-if (!finalized.startsWith('// ==UserScript==')) {
-  throw new Error('Userscript metadata header is missing after finalization')
-}
-if (!finalized.includes('// @match        https://chatgpt.com/*')) {
-  throw new Error('Userscript metadata does not target chatgpt.com')
+if (import.meta.main) {
+  await finalizeUserscript()
 }
