@@ -1,8 +1,16 @@
-import type { BoosterModule } from '@chatgpt-booster/core'
-import { BoosterRuntime, isChatGptPage } from '@chatgpt-booster/core'
-import { ToolInspectorModule } from '@chatgpt-booster/features'
+import {
+  type BoosterModule,
+  BoosterRuntime,
+  createDiagnosticsStore,
+  isChatGptPage,
+} from '@chatgpt-booster/core'
+import { ToolInspectorModule, TransportObserverModule } from '@chatgpt-booster/features'
 import { type MountedBoosterUi, mountBoosterUi } from '@chatgpt-booster/ui'
 import { chromeSettings } from '../settings'
+import { chromeSecrets, createChromeTelemetry } from '../telemetry'
+
+const diagnostics = createDiagnosticsStore()
+const telemetry = createChromeTelemetry(chromeSettings)
 
 class OverlayModule implements BoosterModule {
   readonly id = 'overlay'
@@ -12,6 +20,8 @@ class OverlayModule implements BoosterModule {
     if (!isChatGptPage() || this.#mounted) return
     this.#mounted = mountBoosterUi({
       settingsAdapter: chromeSettings,
+      diagnosticsAdapter: diagnostics,
+      secretAdapter: chromeSecrets,
       target: 'extension',
     })
   }
@@ -22,6 +32,39 @@ class OverlayModule implements BoosterModule {
   }
 }
 
+function startRuntime() {
+  const runtime = new BoosterRuntime(
+    [
+      new OverlayModule(),
+      new TransportObserverModule({
+        settings: chromeSettings,
+        diagnostics,
+        telemetry,
+      }),
+      new ToolInspectorModule(chromeSettings),
+    ],
+    (module, error) => {
+      console.error('[ChatGPT Booster] Module failed:', module.id, error)
+      void telemetry
+        .emit({
+          scope: 'runtime',
+          name: 'module.error',
+          timestamp: Date.now(),
+          severity: 'ERROR',
+          attributes: {
+            'module.id': module.id,
+            'error.type': error instanceof Error ? error.name : 'unknown',
+          },
+          body: error instanceof Error ? error.message : 'Module failed',
+        })
+        .catch(() => undefined)
+    },
+  )
+
+  void runtime.start()
+}
+
 if (isChatGptPage()) {
-  void new BoosterRuntime([new OverlayModule(), new ToolInspectorModule(chromeSettings)]).start()
+  if (document.body) startRuntime()
+  else window.addEventListener('DOMContentLoaded', startRuntime, { once: true })
 }

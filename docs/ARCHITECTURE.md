@@ -98,3 +98,11 @@ CI currently covers the first two. Runtime acceptance remains a separate gate.
 ## Internationalization
 
 User-facing UI strings use the shared UI i18n layer. English and Russian are mandatory locales. The stored language preference is `auto`, `en`, or `ru`; `auto` resolves from browser language, preferring Russian for `ru*` locales and English otherwise. Feature modules must pass the resolved locale into isolated UI mounts rather than hard-coding copy.
+
+## Transport observation and telemetry
+
+Transport interception runs in the page MAIN world and is isolated in `@chatgpt-booster/observer`. It observes fetch, XHR, WebSocket and EventSource without blocking or replacing application semantics. Cross-world events use `window.postMessage` with a Booster channel marker.
+
+Credentials are never exposed to the page observer. Request headers/cookies are not captured. URL and body previews are redacted before leaving the page world, body capture is disabled by default, and previews are truncated.
+
+Telemetry is exported as OTLP/HTTP JSON through `@chatgpt-booster/telemetry`. Resource identity is `service.name=chatgpt-booster-extension`, `service.namespace=koba`, with instrumentation scopes `chatgpt-booster.runtime` and `chatgpt-booster.transport-observer`. Tampermonkey sends through `GM_xmlhttpRequest`; Chromium sends through the extension background worker. Bearer tokens are stored in target-specific secret storage and are never passed into the MAIN world.

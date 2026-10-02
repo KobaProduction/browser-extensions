@@ -354,3 +354,54 @@
 .booster-select:focus {
   box-shadow: 0 0 0 2px var(--ring);
 }
+
+.booster-stack-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background);
+}
+
+.booster-stack-card label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.booster-input {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+  color: var(--foreground);
+  font: 500 11px / 1 inherit;
+  outline: none;
+}
+
+.booster-input:focus {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.booster-counter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 12px;
+  margin-top: 8px;
+  color: var(--muted-foreground);
+}
+
+.booster-counter-grid span {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.booster-counter-grid b {
+  color: var(--foreground);
+}

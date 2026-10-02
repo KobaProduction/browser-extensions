@@ -1,3 +1,5 @@
 export * from './chatgpt'
+export * from './diagnostics'
 export * from './runtime'
 export * from './settings'
+export * from './version'

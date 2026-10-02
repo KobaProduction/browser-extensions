@@ -1,6 +1,6 @@
 {
   "name": "chatgpt-booster",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "packageManager": "bun@1.4.2",
   "workspaces": [
@@ -11,7 +11,8 @@
     "typecheck": "bun run --filter '@chatgpt-booster/*' typecheck",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "build": "bun run --filter @chatgpt-booster/extension build && bun run --filter @chatgpt-booster/userscript build"
+    "build": "bun run --filter @chatgpt-booster/extension build && bun run --filter @chatgpt-booster/userscript build",
+    "test": "bun test"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.2.4",

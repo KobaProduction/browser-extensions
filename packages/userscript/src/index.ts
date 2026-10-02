@@ -1,10 +1,12 @@
 import {
   type BoosterModule,
   BoosterRuntime,
+  createDiagnosticsStore,
   isChatGptPage,
   OPEN_SETTINGS_EVENT,
 } from '@chatgpt-booster/core'
-import { ToolInspectorModule } from '@chatgpt-booster/features'
+import { ToolInspectorModule, TransportObserverModule } from '@chatgpt-booster/features'
+import { installTransportObserver } from '@chatgpt-booster/observer'
 import {
   type MountedBoosterUi,
   mountBoosterUi,
@@ -12,7 +14,9 @@ import {
   translate,
 } from '@chatgpt-booster/ui'
 import { userscriptSettings } from './settings'
+import { createUserscriptTelemetry, userscriptSecrets } from './telemetry'
 
+declare const unsafeWindow: Window
 declare function GM_registerMenuCommand(
   name: string,
   callback: (event?: MouseEvent | KeyboardEvent) => void,
@@ -23,6 +27,9 @@ declare function GM_registerMenuCommand(
   },
 ): number | string
 
+const diagnostics = createDiagnosticsStore()
+const telemetry = createUserscriptTelemetry(userscriptSettings)
+
 class OverlayModule implements BoosterModule {
   readonly id = 'overlay'
   #mounted: MountedBoosterUi | undefined
@@ -31,6 +38,8 @@ class OverlayModule implements BoosterModule {
     if (!isChatGptPage() || this.#mounted) return
     this.#mounted = mountBoosterUi({
       settingsAdapter: userscriptSettings,
+      diagnosticsAdapter: diagnostics,
+      secretAdapter: userscriptSecrets,
       target: 'userscript',
     })
   }
@@ -58,10 +67,42 @@ async function registerUserscriptMenu() {
   )
 }
 
+function startRuntime() {
+  const runtime = new BoosterRuntime(
+    [
+      new OverlayModule(),
+      new TransportObserverModule({
+        settings: userscriptSettings,
+        diagnostics,
+        telemetry,
+      }),
+      new ToolInspectorModule(userscriptSettings),
+    ],
+    (module, error) => {
+      console.error('[ChatGPT Booster] Module failed:', module.id, error)
+      void telemetry
+        .emit({
+          scope: 'runtime',
+          name: 'module.error',
+          timestamp: Date.now(),
+          severity: 'ERROR',
+          attributes: {
+            'module.id': module.id,
+            'error.type': error instanceof Error ? error.name : 'unknown',
+          },
+          body: error instanceof Error ? error.message : 'Module failed',
+        })
+        .catch(() => undefined)
+    },
+  )
+
+  void runtime.start()
+}
+
 if (isChatGptPage()) {
+  installTransportObserver(unsafeWindow as Window & typeof globalThis)
   void registerUserscriptMenu()
-  void new BoosterRuntime([
-    new OverlayModule(),
-    new ToolInspectorModule(userscriptSettings),
-  ]).start()
+
+  if (document.body) startRuntime()
+  else window.addEventListener('DOMContentLoaded', startRuntime, { once: true })
 }

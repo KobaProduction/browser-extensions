@@ -1,6 +1,6 @@
 {
   "name": "@chatgpt-booster/features",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -12,7 +12,9 @@
   "dependencies": {
     "@chatgpt-booster/chatgpt": "workspace:*",
     "@chatgpt-booster/core": "workspace:*",
-    "@chatgpt-booster/ui": "workspace:*"
+    "@chatgpt-booster/ui": "workspace:*",
+    "@chatgpt-booster/observer": "workspace:*",
+    "@chatgpt-booster/telemetry": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.9.2"

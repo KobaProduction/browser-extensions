@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import { OPEN_SETTINGS_EVENT, type BoosterSettings, type SettingsAdapter } from '@chatgpt-booster/core'
+import {
+  OPEN_SETTINGS_EVENT,
+  type BoosterSettings,
+  type DiagnosticsAdapter,
+  type SecretAdapter,
+  type SettingsAdapter,
+} from '@chatgpt-booster/core'
 import { GripVertical } from 'lucide-vue-next'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import ControlCenterPanel from './ControlCenterPanel.vue'
@@ -7,6 +13,8 @@ import { resolveLocale, translate } from './i18n'
 
 const props = defineProps<{
   settingsAdapter: SettingsAdapter
+  diagnosticsAdapter?: DiagnosticsAdapter | undefined
+  secretAdapter?: SecretAdapter | undefined
   target: 'extension' | 'userscript'
 }>()
 
@@ -145,6 +153,8 @@ onBeforeUnmount(() => {
       <div class="booster-modal-surface">
         <ControlCenterPanel
           :settings-adapter="settingsAdapter"
+          :diagnostics-adapter="diagnosticsAdapter"
+          :secret-adapter="secretAdapter"
           :target="target"
           show-close
           @close="open = false"

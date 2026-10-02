@@ -1,5 +1,5 @@
 {
-  "name": "@chatgpt-booster/chatgpt",
+  "name": "@chatgpt-booster/observer",
   "version": "0.3.0",
   "private": true,
   "type": "module",
@@ -8,9 +8,6 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"
-  },
-  "dependencies": {
-    "@chatgpt-booster/core": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.9.2"

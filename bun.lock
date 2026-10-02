@@ -19,7 +19,7 @@
     },
     "packages/chatgpt": {
       "name": "@chatgpt-booster/chatgpt",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "dependencies": {
         "@chatgpt-booster/core": "workspace:*",
       },
@@ -29,28 +29,49 @@
     },
     "packages/core": {
       "name": "@chatgpt-booster/core",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "devDependencies": {
         "typescript": "^5.9.2",
       },
     },
     "packages/extension": {
       "name": "@chatgpt-booster/extension",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "dependencies": {
         "@chatgpt-booster/core": "workspace:*",
         "@chatgpt-booster/features": "workspace:*",
+        "@chatgpt-booster/observer": "workspace:*",
+        "@chatgpt-booster/telemetry": "workspace:*",
         "@chatgpt-booster/ui": "workspace:*",
         "vue": "^3.5.22",
       },
     },
     "packages/features": {
       "name": "@chatgpt-booster/features",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "dependencies": {
         "@chatgpt-booster/chatgpt": "workspace:*",
         "@chatgpt-booster/core": "workspace:*",
+        "@chatgpt-booster/observer": "workspace:*",
+        "@chatgpt-booster/telemetry": "workspace:*",
         "@chatgpt-booster/ui": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.9.2",
+      },
+    },
+    "packages/observer": {
+      "name": "@chatgpt-booster/observer",
+      "version": "0.3.0",
+      "devDependencies": {
+        "typescript": "^5.9.2",
+      },
+    },
+    "packages/telemetry": {
+      "name": "@chatgpt-booster/telemetry",
+      "version": "0.3.0",
+      "dependencies": {
+        "@chatgpt-booster/core": "workspace:*",
       },
       "devDependencies": {
         "typescript": "^5.9.2",
@@ -58,7 +79,7 @@
     },
     "packages/ui": {
       "name": "@chatgpt-booster/ui",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "dependencies": {
         "@chatgpt-booster/core": "workspace:*",
         "class-variance-authority": "^0.7.1",
@@ -72,10 +93,12 @@
     },
     "packages/userscript": {
       "name": "@chatgpt-booster/userscript",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "dependencies": {
         "@chatgpt-booster/core": "workspace:*",
         "@chatgpt-booster/features": "workspace:*",
+        "@chatgpt-booster/observer": "workspace:*",
+        "@chatgpt-booster/telemetry": "workspace:*",
         "@chatgpt-booster/ui": "workspace:*",
         "vue": "^3.5.22",
       },
@@ -119,6 +142,10 @@
     "@chatgpt-booster/extension": ["@chatgpt-booster/extension@workspace:packages/extension"],
 
     "@chatgpt-booster/features": ["@chatgpt-booster/features@workspace:packages/features"],
+
+    "@chatgpt-booster/observer": ["@chatgpt-booster/observer@workspace:packages/observer"],
+
+    "@chatgpt-booster/telemetry": ["@chatgpt-booster/telemetry@workspace:packages/telemetry"],
 
     "@chatgpt-booster/ui": ["@chatgpt-booster/ui@workspace:packages/ui"],
 
