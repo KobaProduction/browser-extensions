@@ -21,6 +21,8 @@ export type TelemetryHttpSender = (request: TelemetryHttpRequest) => Promise<voi
 
 const SECRET_PATTERN = /(Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi
 const QUERY_SECRET = /([?&](?:token|access_token|api_key|key|session|secret|auth)=)[^&#]*/gi
+const FLUSH_INTERVAL_MS = 2_000
+const MAX_BATCH_SIZE = 50
 
 function sanitizeText(value: string): string {
   return value
@@ -39,10 +41,7 @@ function stringAttribute(value: string | number | boolean): {
   return { stringValue: sanitizeText(String(value)) }
 }
 
-export function buildOtlpLogPayload(
-  event: TelemetryEvent,
-  serviceVersion: string,
-): Record<string, unknown> {
+function logRecord(event: TelemetryEvent): Record<string, unknown> {
   const attributes = Object.entries(event.attributes ?? {})
     .filter(([, value]) => value !== undefined && value !== null)
     .map(([key, value]) => ({
@@ -54,6 +53,27 @@ export function buildOtlpLogPayload(
   const timestampNanos = String(BigInt(event.timestamp) * 1_000_000n)
 
   return {
+    timeUnixNano: timestampNanos,
+    observedTimeUnixNano: timestampNanos,
+    severityNumber,
+    severityText: event.severity ?? 'INFO',
+    body: { stringValue: sanitizeText(event.body ?? event.name) },
+    attributes: [{ key: 'event.name', value: { stringValue: event.name } }, ...attributes],
+  }
+}
+
+export function buildOtlpLogBatchPayload(
+  events: readonly TelemetryEvent[],
+  serviceVersion: string,
+): Record<string, unknown> {
+  const scopes = new Map<TelemetryScope, TelemetryEvent[]>()
+  for (const event of events) {
+    const bucket = scopes.get(event.scope) ?? []
+    bucket.push(event)
+    scopes.set(event.scope, bucket)
+  }
+
+  return {
     resourceLogs: [
       {
         resource: {
@@ -63,30 +83,23 @@ export function buildOtlpLogPayload(
             { key: 'service.version', value: { stringValue: serviceVersion } },
           ],
         },
-        scopeLogs: [
-          {
-            scope: {
-              name: `chatgpt-booster.${event.scope}`,
-              version: serviceVersion,
-            },
-            logRecords: [
-              {
-                timeUnixNano: timestampNanos,
-                observedTimeUnixNano: timestampNanos,
-                severityNumber,
-                severityText: event.severity ?? 'INFO',
-                body: { stringValue: sanitizeText(event.body ?? event.name) },
-                attributes: [
-                  { key: 'event.name', value: { stringValue: event.name } },
-                  ...attributes,
-                ],
-              },
-            ],
+        scopeLogs: [...scopes.entries()].map(([scope, scopeEvents]) => ({
+          scope: {
+            name: `chatgpt-booster.${scope}`,
+            version: serviceVersion,
           },
-        ],
+          logRecords: scopeEvents.map(logRecord),
+        })),
       },
     ],
   }
+}
+
+export function buildOtlpLogPayload(
+  event: TelemetryEvent,
+  serviceVersion: string,
+): Record<string, unknown> {
+  return buildOtlpLogBatchPayload([event], serviceVersion)
 }
 
 export class OtlpTelemetryClient {
@@ -94,6 +107,9 @@ export class OtlpTelemetryClient {
   readonly #serviceVersion: string
   readonly #getSettings: () => Promise<TelemetrySettings>
   readonly #getToken: () => Promise<string>
+  #queue: TelemetryEvent[] = []
+  #flushTimer: ReturnType<typeof setTimeout> | undefined
+  #flushPromise: Promise<void> | undefined
 
   constructor(options: {
     sender: TelemetryHttpSender
@@ -108,21 +124,42 @@ export class OtlpTelemetryClient {
   }
 
   async emit(event: TelemetryEvent, options: { force?: boolean } = {}): Promise<void> {
-    const settings = await this.#getSettings()
-    if ((!settings.enabled && !options.force) || !settings.endpoint.trim()) return
-
-    const endpoint = settings.endpoint.trim().replace(/\/$/, '')
-    const token = await this.#getToken()
-    const headers: Record<string, string> = {
-      'content-type': 'application/json',
+    if (options.force) {
+      const settings = await this.#getSettings()
+      if (!settings.endpoint.trim()) return
+      await this.#sendBatch([event], settings)
+      return
     }
-    if (token) headers.authorization = `Bearer ${token}`
 
-    await this.#sender({
-      url: `${endpoint}/v1/logs`,
-      headers,
-      body: JSON.stringify(buildOtlpLogPayload(event, this.#serviceVersion)),
-    })
+    this.#queue.push(event)
+    if (this.#queue.length >= MAX_BATCH_SIZE) {
+      await this.flush()
+      return
+    }
+    this.#scheduleFlush()
+  }
+
+  async flush(): Promise<void> {
+    if (this.#flushTimer) {
+      clearTimeout(this.#flushTimer)
+      this.#flushTimer = undefined
+    }
+    if (this.#queue.length === 0) return
+    if (this.#flushPromise) return await this.#flushPromise
+
+    const batch = this.#queue.splice(0, MAX_BATCH_SIZE)
+    this.#flushPromise = (async () => {
+      const settings = await this.#getSettings()
+      if (!settings.enabled || !settings.endpoint.trim()) return
+      await this.#sendBatch(batch, settings)
+    })()
+
+    try {
+      await this.#flushPromise
+    } finally {
+      this.#flushPromise = undefined
+      if (this.#queue.length > 0) this.#scheduleFlush()
+    }
   }
 
   async test(): Promise<void> {
@@ -142,5 +179,29 @@ export class OtlpTelemetryClient {
       },
       { force: true },
     )
+  }
+
+  #scheduleFlush() {
+    if (this.#flushTimer) return
+    this.#flushTimer = setTimeout(() => {
+      void this.flush().catch((error) => {
+        console.warn('[ChatGPT Booster] Telemetry batch flush failed', error)
+      })
+    }, FLUSH_INTERVAL_MS)
+  }
+
+  async #sendBatch(events: readonly TelemetryEvent[], settings: TelemetrySettings): Promise<void> {
+    const endpoint = settings.endpoint.trim().replace(/\/$/, '')
+    const token = await this.#getToken()
+    const headers: Record<string, string> = {
+      'content-type': 'application/json',
+    }
+    if (token) headers.authorization = `Bearer ${token}`
+
+    await this.#sender({
+      url: `${endpoint}/v1/logs`,
+      headers,
+      body: JSON.stringify(buildOtlpLogBatchPayload(events, this.#serviceVersion)),
+    })
   }
 }
