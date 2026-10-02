@@ -1,0 +1,28 @@
+# AGENTS.md
+
+Repository map for ChatGPT Booster.
+
+## Start
+
+1. Read `README.md`.
+2. Read `docs/ARCHITECTURE.md` before structural changes.
+3. Use the universal workflow library routed by the account/project prompt.
+4. Keep the project browser-side unless a concrete feature requires a service.
+
+## Repository boundaries
+
+- `packages/core` — environment-neutral runtime contracts and settings.
+- `packages/ui` — Vue components and injected UI.
+- `packages/extension` — Chromium Manifest V3 target.
+- `packages/userscript` — Tampermonkey/userscript target.
+- `.github/workflows` — CI and release packaging.
+
+## Hard rules
+
+- ChatGPT page integration must be isolated behind small adapters/modules.
+- Injected UI must not depend on ChatGPT's CSS cascade; use Shadow DOM.
+- Do not call private ChatGPT APIs unless a feature explicitly requires it and the contract is documented.
+- Keep host access limited to ChatGPT.
+- Shared feature logic belongs in `core` or a feature module, not duplicated between extension and userscript targets.
+- Do not store chat content in telemetry.
+- A build passing is not equivalent to runtime validation in ChatGPT.

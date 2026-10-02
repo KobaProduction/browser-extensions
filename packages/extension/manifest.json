@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "ChatGPT Booster",
+  "version": "0.1.0",
+  "description": "Open-source browser extension adding UI improvements, productivity tools, exports, and extensible workflows to ChatGPT.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://chatgpt.com/*"],
+  "action": {
+    "default_title": "ChatGPT Booster",
+    "default_popup": "src/popup/index.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://chatgpt.com/*"],
+      "js": ["src/content/index.ts"],
+      "run_at": "document_idle"
+    }
+  ]
+}

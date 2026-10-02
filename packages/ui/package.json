@@ -1,0 +1,17 @@
+{
+  "name": "@chatgpt-booster/ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json",
+    "dev": "vite"
+  },
+  "dependencies": {
+    "@chatgpt-booster/core": "workspace:*",
+    "vue": "^3.5.22"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "chatgpt-booster",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "bun@1.4.2",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "check": "bun run typecheck && bun run lint",
+    "typecheck": "bun run --filter @chatgpt-booster/core typecheck && bun run --filter @chatgpt-booster/ui typecheck && bun run --filter @chatgpt-booster/extension typecheck && bun run --filter @chatgpt-booster/userscript typecheck",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "build": "bun run --filter @chatgpt-booster/extension build && bun run --filter @chatgpt-booster/userscript build"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.2.4",
+    "@types/chrome": "^0.1.3",
+    "@vitejs/plugin-vue": "^6.0.0",
+    "typescript": "^5.9.2",
+    "vite": "^8.0.0",
+    "vite-plugin-web-extension": "^4.5.1",
+    "vue": "^3.5.22",
+    "vue-tsc": "^3.0.7"
+  }
+}

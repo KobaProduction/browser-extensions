@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Check
+        run: bun run check
+
+      - name: Build
+        run: bun run build
+
+      - name: Upload extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: chatgpt-booster-extension
+          path: packages/extension/dist
+
+      - name: Upload userscript
+        uses: actions/upload-artifact@v4
+        with:
+          name: chatgpt-booster-userscript
+          path: packages/userscript/dist/chatgpt-booster.user.js
