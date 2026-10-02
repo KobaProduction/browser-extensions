@@ -5,7 +5,12 @@ import {
   OPEN_SETTINGS_EVENT,
 } from '@chatgpt-booster/core'
 import { ToolInspectorModule } from '@chatgpt-booster/features'
-import { type MountedBoosterUi, mountBoosterUi } from '@chatgpt-booster/ui'
+import {
+  type MountedBoosterUi,
+  mountBoosterUi,
+  resolveLocale,
+  translate,
+} from '@chatgpt-booster/ui'
 import { userscriptSettings } from './settings'
 
 declare function GM_registerMenuCommand(
@@ -36,22 +41,25 @@ class OverlayModule implements BoosterModule {
   }
 }
 
-function registerUserscriptMenu() {
+async function registerUserscriptMenu() {
   if (typeof GM_registerMenuCommand !== 'function') return
 
+  const settings = await userscriptSettings.get()
+  const locale = resolveLocale(settings.language)
+
   GM_registerMenuCommand(
-    'ChatGPT Booster: Open settings',
+    translate(locale, 'menu.openSettings'),
     () => window.dispatchEvent(new Event(OPEN_SETTINGS_EVENT)),
     {
       accessKey: 's',
       autoClose: true,
-      title: 'Open ChatGPT Booster Control Center',
+      title: translate(locale, 'menu.openSettingsTitle'),
     },
   )
 }
 
 if (isChatGptPage()) {
-  registerUserscriptMenu()
+  void registerUserscriptMenu()
   void new BoosterRuntime([
     new OverlayModule(),
     new ToolInspectorModule(userscriptSettings),

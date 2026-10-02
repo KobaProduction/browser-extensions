@@ -1,6 +1,6 @@
 import { findToolCallEvidence } from '@chatgpt-booster/chatgpt'
 import type { BoosterModule, SettingsAdapter } from '@chatgpt-booster/core'
-import { type MountedToolInspector, mountToolInspector } from '@chatgpt-booster/ui'
+import { type MountedToolInspector, mountToolInspector, resolveLocale } from '@chatgpt-booster/ui'
 
 export class ToolInspectorModule implements BoosterModule {
   readonly id = 'tool-inspector'
@@ -11,6 +11,7 @@ export class ToolInspectorModule implements BoosterModule {
   #unsubscribe: (() => void) | undefined
   #scanQueued = false
   #enabled = true
+  #language: 'auto' | 'en' | 'ru' = 'auto'
 
   constructor(settings: SettingsAdapter) {
     this.#settings = settings
@@ -19,6 +20,7 @@ export class ToolInspectorModule implements BoosterModule {
   async start() {
     const settings = await this.#settings.get()
     this.#enabled = settings.enabled && settings.features.toolInspector
+    this.#language = settings.language
 
     if (this.#enabled) this.#scan()
 
@@ -27,11 +29,18 @@ export class ToolInspectorModule implements BoosterModule {
 
     this.#unsubscribe = this.#settings.subscribe((next) => {
       const enabled = next.enabled && next.features.toolInspector
-      if (enabled === this.#enabled) return
+      const languageChanged = next.language !== this.#language
 
       this.#enabled = enabled
-      if (enabled) this.#scan()
-      else this.#clear()
+      this.#language = next.language
+
+      if (!enabled) {
+        this.#clear()
+        return
+      }
+
+      if (languageChanged) this.#clear()
+      this.#scan()
     })
   }
 
@@ -61,6 +70,7 @@ export class ToolInspectorModule implements BoosterModule {
         id: evidence.id,
         label: evidence.label,
         kind: evidence.kind,
+        locale: resolveLocale(this.#language),
         ...(evidence.timestamp ? { timestamp: evidence.timestamp } : {}),
         structuredPayloads: evidence.structuredPayloads,
         attributes: evidence.attributes,

@@ -12,6 +12,7 @@ Early foundation. The repository currently provides:
 - a Vue 3 + shadcn-vue injected UI mounted in Shadow DOM;
 - an initial Tool Inspector module for client-visible MCP/tool diagnostics;
 - one shared Control Center UI exposed through Tampermonkey, the extension popup, and a movable in-page launcher;
+- English/Russian i18n with automatic browser-language detection and manual override;
 - strict TypeScript and Biome checks;
 - CI build artifacts and tag-based GitHub Release packaging.
 

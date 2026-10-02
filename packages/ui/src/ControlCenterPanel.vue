@@ -1,9 +1,14 @@
 <script setup lang="ts">
-import type { BoosterSettings, SettingsAdapter } from '@chatgpt-booster/core'
-import { Check, ChevronRight, RotateCcw, Settings2, Wrench, X } from 'lucide-vue-next'
+import type {
+  BoosterSettings,
+  LanguagePreference,
+  SettingsAdapter,
+} from '@chatgpt-booster/core'
+import { Check, ChevronRight, Languages, RotateCcw, Settings2, Wrench, X } from 'lucide-vue-next'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Badge } from './components/ui/badge'
 import { Button } from './components/ui/button'
+import { resolveLocale, translate } from './i18n'
 
 const props = withDefaults(
   defineProps<{
@@ -22,6 +27,8 @@ const settings = ref<BoosterSettings>()
 let unsubscribe: (() => void) | undefined
 let savedTimer: number | undefined
 
+const locale = computed(() => resolveLocale(settings.value?.language ?? 'auto'))
+const t = (key: Parameters<typeof translate>[1]) => translate(locale.value, key)
 const targetLabel = computed(() => (props.target === 'userscript' ? 'Tampermonkey' : 'Extension'))
 
 onMounted(async () => {
@@ -52,6 +59,12 @@ async function persist() {
   }
 }
 
+async function setLanguage(event: Event) {
+  if (!settings.value) return
+  settings.value.language = (event.target as HTMLSelectElement).value as LanguagePreference
+  await persist()
+}
+
 async function reset() {
   if (!settings.value) return
   settings.value.enabled = true
@@ -61,30 +74,37 @@ async function reset() {
 </script>
 
 <template>
-  <section class="booster-control-center">
+  <section class="booster-control-center" :lang="locale">
     <header class="booster-control-header">
       <div>
         <div class="flex items-center gap-2">
-          <strong>ChatGPT Booster</strong>
+          <strong>{{ t('control.title') }}</strong>
           <Badge variant="outline">{{ targetLabel }}</Badge>
         </div>
-        <p>Control Center</p>
+        <p>{{ t('control.subtitle') }}</p>
       </div>
-      <Button v-if="showClose" variant="ghost" size="icon" class="size-8" title="Close" @click="emit('close')">
+      <Button
+        v-if="showClose"
+        variant="ghost"
+        size="icon"
+        class="size-8"
+        :title="t('common.close')"
+        @click="emit('close')"
+      >
         <X class="size-4" />
       </Button>
     </header>
 
-    <div v-if="!ready || !settings" class="booster-loading">Loading settings…</div>
+    <div v-if="!ready || !settings" class="booster-loading">{{ t('control.loading') }}</div>
 
     <div v-else class="booster-control-body">
       <section class="booster-setting-card">
         <div class="booster-setting-copy">
           <div class="flex items-center gap-2">
             <Settings2 class="size-4" />
-            <b>Booster</b>
+            <b>{{ t('control.booster') }}</b>
           </div>
-          <span>Master switch for page enhancements. Settings access always remains available.</span>
+          <span>{{ t('control.boosterDescription') }}</span>
         </div>
         <button
           type="button"
@@ -97,21 +117,38 @@ async function reset() {
         </button>
       </section>
 
-      <div class="booster-section-label">Modules</div>
+      <section class="booster-setting-card">
+        <div class="booster-setting-copy">
+          <div class="flex items-center gap-2">
+            <Languages class="size-4" />
+            <b>{{ t('control.language') }}</b>
+          </div>
+          <span>{{ t('control.languageDescription') }}</span>
+        </div>
+        <select
+          class="booster-select"
+          :value="settings.language"
+          :aria-label="t('control.language')"
+          @change="setLanguage"
+        >
+          <option value="auto">{{ t('common.auto') }}</option>
+          <option value="en">{{ t('language.english') }}</option>
+          <option value="ru">{{ t('language.russian') }}</option>
+        </select>
+      </section>
+
+      <div class="booster-section-label">{{ t('control.modules') }}</div>
 
       <section class="booster-setting-card" :class="{ 'booster-setting-disabled': !settings.enabled }">
         <div class="booster-setting-copy">
           <div class="flex items-center gap-2">
             <Wrench class="size-4" />
-            <b>Tool Inspector</b>
+            <b>{{ t('control.toolInspector') }}</b>
             <Badge :variant="settings.features.toolInspector && settings.enabled ? 'default' : 'secondary'">
-              {{ settings.features.toolInspector && settings.enabled ? 'On' : 'Off' }}
+              {{ settings.features.toolInspector && settings.enabled ? t('common.on') : t('common.off') }}
             </Badge>
           </div>
-          <span>
-            Adds an Inspect control beside detected MCP/tool activity and exposes client-visible
-            payloads, timestamps and DOM diagnostics.
-          </span>
+          <span>{{ t('control.toolInspectorDescription') }}</span>
         </div>
         <button
           type="button"
@@ -128,24 +165,24 @@ async function reset() {
       <section class="booster-info-card">
         <div class="flex items-center gap-2 font-medium">
           <ChevronRight class="size-4" />
-          Current behavior
+          {{ t('control.currentBehavior') }}
         </div>
         <ul>
-          <li>Runs only on chatgpt.com.</li>
-          <li>Settings are stored locally in the browser.</li>
-          <li>No chat content is sent by Booster.</li>
-          <li>Tool details appear only when the ChatGPT client exposes them.</li>
+          <li>{{ t('control.behaviorChatgpt') }}</li>
+          <li>{{ t('control.behaviorLocal') }}</li>
+          <li>{{ t('control.behaviorPrivacy') }}</li>
+          <li>{{ t('control.behaviorTool') }}</li>
         </ul>
       </section>
 
       <footer class="booster-control-footer">
         <Button variant="ghost" size="sm" class="gap-1.5" @click="reset">
           <RotateCcw class="size-3.5" />
-          Reset modules
+          {{ t('control.resetModules') }}
         </Button>
         <span class="booster-save-state">
           <Check v-if="saved" class="size-3.5" />
-          {{ saving ? 'Saving…' : saved ? 'Saved' : 'Settings apply live' }}
+          {{ saving ? t('control.saving') : saved ? t('control.saved') : t('control.live') }}
         </span>
       </footer>
     </div>

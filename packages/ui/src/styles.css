@@ -336,3 +336,21 @@
   min-width: 360px;
   background: var(--background);
 }
+
+.booster-select {
+  min-width: 92px;
+  height: 32px;
+  flex: 0 0 auto;
+  padding: 0 28px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+  color: var(--foreground);
+  font: 500 12px / 1 inherit;
+  cursor: pointer;
+  outline: none;
+}
+
+.booster-select:focus {
+  box-shadow: 0 0 0 2px var(--ring);
+}

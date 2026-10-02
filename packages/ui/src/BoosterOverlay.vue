@@ -3,6 +3,7 @@ import { OPEN_SETTINGS_EVENT, type BoosterSettings, type SettingsAdapter } from 
 import { GripVertical } from 'lucide-vue-next'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import ControlCenterPanel from './ControlCenterPanel.vue'
+import { resolveLocale, translate } from './i18n'
 
 const props = defineProps<{
   settingsAdapter: SettingsAdapter
@@ -28,6 +29,9 @@ let dragStart:
       moved: boolean
     }
   | undefined
+
+const locale = computed(() => resolveLocale(settings.value?.language ?? 'auto'))
+const t = (key: Parameters<typeof translate>[1]) => translate(locale.value, key)
 
 const launcherStyle = computed(() => ({
   left: `${position.value.x}px`,
@@ -153,7 +157,7 @@ onBeforeUnmount(() => {
       :class="{ 'booster-launcher-dragging': dragging }"
       :style="launcherStyle"
       type="button"
-      title="ChatGPT Booster — drag to move, click to open"
+      :title="t('launcher.title')"
       @pointerdown="onPointerDown"
       @pointermove="onPointerMove"
       @pointerup="onPointerUp"

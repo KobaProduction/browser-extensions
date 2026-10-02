@@ -6,7 +6,7 @@ const metadata = [
   '// ==UserScript==',
   '// @name         ChatGPT Booster',
   '// @namespace    https://github.com/KobaProduction/chatgpt-booster',
-  '// @version      0.1.3',
+  '// @version      0.2.0',
   '// @description  Open-source UI and productivity toolkit for ChatGPT.',
   '// @author       KobaProduction',
   '// @match        https://chatgpt.com/*',

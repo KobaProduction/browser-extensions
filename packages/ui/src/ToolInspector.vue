@@ -5,9 +5,11 @@ import type { ToolCallViewModel } from './tool-inspector'
 import { Badge } from './components/ui/badge'
 import { Button } from './components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './components/ui/collapsible'
+import { translate } from './i18n'
 
 const props = defineProps<{ model: ToolCallViewModel }>()
 const copied = ref(false)
+const t = (key: Parameters<typeof translate>[1]) => translate(props.model.locale, key)
 
 async function copyDiagnostics() {
   await navigator.clipboard.writeText(JSON.stringify(props.model, null, 2))
@@ -19,12 +21,12 @@ async function copyDiagnostics() {
 </script>
 
 <template>
-  <Collapsible class="booster-tool-inspector">
+  <Collapsible class="booster-tool-inspector" :lang="model.locale">
     <div class="flex items-center gap-1.5 py-1">
       <CollapsibleTrigger as-child>
         <Button variant="ghost" size="sm" class="h-7 gap-1.5 px-2 text-muted-foreground hover:text-foreground">
           <Wrench class="size-3.5" />
-          Inspect
+          {{ t('tool.inspect') }}
           <Badge variant="outline" class="ml-0.5 uppercase">{{ model.kind }}</Badge>
           <ChevronDown class="size-3.5 opacity-60" />
         </Button>
@@ -42,10 +44,16 @@ async function copyDiagnostics() {
           <div class="min-w-0">
             <div class="truncate text-xs font-semibold">{{ model.label }}</div>
             <div class="mt-1 text-[11px] text-muted-foreground">
-              Confidence {{ model.score }} · {{ model.signals.join(', ') }}
+              {{ t('tool.confidence') }} {{ model.score }} · {{ model.signals.join(', ') }}
             </div>
           </div>
-          <Button variant="ghost" size="icon" class="size-7 shrink-0" title="Copy diagnostics" @click="copyDiagnostics">
+          <Button
+            variant="ghost"
+            size="icon"
+            class="size-7 shrink-0"
+            :title="t('tool.copyDiagnostics')"
+            @click="copyDiagnostics"
+          >
             <Check v-if="copied" class="size-3.5" />
             <Clipboard v-else class="size-3.5" />
           </Button>
@@ -54,7 +62,7 @@ async function copyDiagnostics() {
         <div class="mt-3 grid gap-3">
           <div>
             <div class="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Client-visible payload
+              {{ t('tool.clientPayload') }}
             </div>
             <div v-if="model.structuredPayloads.length" class="grid gap-2">
               <pre
@@ -64,12 +72,14 @@ async function copyDiagnostics() {
               >{{ payload }}</pre>
             </div>
             <p v-else class="rounded-md border border-dashed border-border p-2 text-[11px] text-muted-foreground">
-              No structured arguments/result are exposed in this DOM block.
+              {{ t('tool.noPayload') }}
             </p>
           </div>
 
           <details v-if="Object.keys(model.attributes).length || model.visibleText" class="text-[11px]">
-            <summary class="cursor-pointer select-none font-medium text-muted-foreground">DOM evidence</summary>
+            <summary class="cursor-pointer select-none font-medium text-muted-foreground">
+              {{ t('tool.domEvidence') }}
+            </summary>
             <dl v-if="Object.keys(model.attributes).length" class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
               <template v-for="(value, key) in model.attributes" :key="key">
                 <dt class="font-mono text-muted-foreground">{{ key }}</dt>

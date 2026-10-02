@@ -94,3 +94,7 @@ The current foundation only depends on the page host and normal DOM capabilities
 - feature acceptance in current ChatGPT UI.
 
 CI currently covers the first two. Runtime acceptance remains a separate gate.
+
+## Internationalization
+
+User-facing UI strings use the shared UI i18n layer. English and Russian are mandatory locales. The stored language preference is `auto`, `en`, or `ru`; `auto` resolves from browser language, preferring Russian for `ru*` locales and English otherwise. Feature modules must pass the resolved locale into isolated UI mounts rather than hard-coding copy.

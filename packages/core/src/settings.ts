@@ -7,14 +7,18 @@ export interface LauncherSettings {
   y: number | null
 }
 
+export type LanguagePreference = 'auto' | 'en' | 'ru'
+
 export interface BoosterSettings {
   enabled: boolean
+  language: LanguagePreference
   features: FeatureSettings
   launcher: LauncherSettings
 }
 
 export const DEFAULT_SETTINGS: BoosterSettings = {
   enabled: true,
+  language: 'auto',
   features: {
     toolInspector: true,
   },
@@ -28,6 +32,7 @@ export function normalizeSettings(value?: Partial<BoosterSettings>): BoosterSett
   return {
     ...DEFAULT_SETTINGS,
     ...value,
+    language: value?.language ?? DEFAULT_SETTINGS.language,
     features: {
       ...DEFAULT_SETTINGS.features,
       ...value?.features,
