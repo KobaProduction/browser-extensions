@@ -73,11 +73,13 @@ function applyStoredPosition(next: BoosterSettings) {
 
 async function savePosition() {
   if (!settings.value) return
-  settings.value.launcher = {
-    x: Math.round(position.value.x),
-    y: Math.round(position.value.y),
-  }
-  await props.settingsAdapter.set(structuredClone(settings.value))
+  const persisted = await props.settingsAdapter.update({
+    launcher: {
+      x: Math.round(position.value.x),
+      y: Math.round(position.value.y),
+    },
+  })
+  settings.value = persisted
 }
 
 function onPointerDown(event: PointerEvent) {

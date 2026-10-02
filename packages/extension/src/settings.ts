@@ -1,10 +1,29 @@
 import {
   type BoosterSettings,
+  type BoosterSettingsPatch,
   normalizeSettings,
   type SettingsAdapter,
 } from '@chatgpt-booster/core'
 
 const STORAGE_KEY = 'settings'
+
+type SettingsResponse = {
+  ok: boolean
+  settings?: BoosterSettings
+  error?: string
+}
+
+async function sendSettingsMessage(message: {
+  type: 'chatgpt-booster:settings-set' | 'chatgpt-booster:settings-update'
+  settings?: BoosterSettings
+  patch?: BoosterSettingsPatch
+}): Promise<BoosterSettings> {
+  const response = (await chrome.runtime.sendMessage(message)) as SettingsResponse
+  if (!response?.ok || !response.settings) {
+    throw new Error(response?.error ?? 'Settings persistence failed')
+  }
+  return normalizeSettings(response.settings)
+}
 
 export const chromeSettings: SettingsAdapter = {
   async get() {
@@ -13,7 +32,17 @@ export const chromeSettings: SettingsAdapter = {
   },
 
   async set(settings) {
-    await chrome.storage.local.set({ [STORAGE_KEY]: settings })
+    await sendSettingsMessage({
+      type: 'chatgpt-booster:settings-set',
+      settings,
+    })
+  },
+
+  async update(patch) {
+    return await sendSettingsMessage({
+      type: 'chatgpt-booster:settings-update',
+      patch,
+    })
   },
 
   subscribe(listener) {

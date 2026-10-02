@@ -1,5 +1,6 @@
 import {
   type BoosterSettings,
+  mergeSettings,
   normalizeSettings,
   type SettingsAdapter,
 } from '@chatgpt-booster/core'
@@ -15,6 +16,11 @@ const devSettings: SettingsAdapter = {
   async set(settings) {
     current = structuredClone(settings)
     for (const listener of listeners) listener(structuredClone(current))
+  },
+  async update(patch) {
+    current = mergeSettings(current, patch)
+    for (const listener of listeners) listener(structuredClone(current))
+    return structuredClone(current)
   },
   subscribe(listener) {
     listeners.add(listener)

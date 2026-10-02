@@ -29,6 +29,15 @@ export interface BoosterSettings {
   telemetry: TelemetrySettings
 }
 
+export interface BoosterSettingsPatch {
+  enabled?: boolean
+  language?: LanguagePreference
+  features?: Partial<FeatureSettings>
+  launcher?: Partial<LauncherSettings>
+  observer?: Partial<ObserverSettings>
+  telemetry?: Partial<TelemetrySettings>
+}
+
 export const DEFAULT_SETTINGS: BoosterSettings = {
   enabled: true,
   language: 'auto',
@@ -74,6 +83,33 @@ export function normalizeSettings(value?: Partial<BoosterSettings>): BoosterSett
   }
 }
 
+export function mergeSettings(
+  current: Partial<BoosterSettings> | undefined,
+  patch: BoosterSettingsPatch,
+): BoosterSettings {
+  const normalized = normalizeSettings(current)
+  return normalizeSettings({
+    ...normalized,
+    ...patch,
+    features: {
+      ...normalized.features,
+      ...patch.features,
+    },
+    launcher: {
+      ...normalized.launcher,
+      ...patch.launcher,
+    },
+    observer: {
+      ...normalized.observer,
+      ...patch.observer,
+    },
+    telemetry: {
+      ...normalized.telemetry,
+      ...patch.telemetry,
+    },
+  })
+}
+
 export interface SecretAdapter {
   getTelemetryToken(): Promise<string>
   setTelemetryToken(token: string): Promise<void>
@@ -82,6 +118,7 @@ export interface SecretAdapter {
 export interface SettingsAdapter {
   get(): Promise<BoosterSettings>
   set(settings: BoosterSettings): Promise<void>
+  update(patch: BoosterSettingsPatch): Promise<BoosterSettings>
   subscribe(listener: (settings: BoosterSettings) => void): () => void
 }
 

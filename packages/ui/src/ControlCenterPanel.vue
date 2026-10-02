@@ -2,11 +2,13 @@
 import {
   EMPTY_TRANSPORT_COUNTERS,
   type BoosterSettings,
+  type BoosterSettingsPatch,
   type DiagnosticsAdapter,
   type LanguagePreference,
   type SecretAdapter,
   type SettingsAdapter,
   type TransportCounters,
+  mergeSettings,
 } from '@chatgpt-booster/core'
 import { Activity, Check, Languages, Radio, Settings2, ShieldCheck, Wrench, X } from 'lucide-vue-next'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -36,6 +38,8 @@ const settings = ref<BoosterSettings>()
 let unsubscribe: (() => void) | undefined
 let unsubscribeDiagnostics: (() => void) | undefined
 let savedTimer: number | undefined
+let localRevision = 0
+let pendingWrites = 0
 
 const locale = computed(() => resolveLocale(settings.value?.language ?? 'auto'))
 const t = (key: Parameters<typeof translate>[1]) => translate(locale.value, key)
@@ -44,7 +48,7 @@ const targetLabel = computed(() => (props.target === 'userscript' ? 'Tampermonke
 onMounted(async () => {
   settings.value = await props.settingsAdapter.get()
   unsubscribe = props.settingsAdapter.subscribe((next) => {
-    settings.value = structuredClone(next)
+    if (pendingWrites === 0) settings.value = structuredClone(next)
   })
   if (props.diagnosticsAdapter) {
     counters.value = props.diagnosticsAdapter.getTransportCounters()
@@ -62,23 +66,38 @@ onBeforeUnmount(() => {
   if (savedTimer) window.clearTimeout(savedTimer)
 })
 
-async function persist() {
+async function applyPatch(patch: BoosterSettingsPatch) {
   if (!settings.value) return
+
+  const revision = ++localRevision
+  pendingWrites += 1
+  settings.value = mergeSettings(settings.value, patch)
   saving.value = true
+
   try {
-    await props.settingsAdapter.set(structuredClone(settings.value))
+    const persisted = await props.settingsAdapter.update(patch)
+    if (revision === localRevision) settings.value = structuredClone(persisted)
     saved.value = true
     if (savedTimer) window.clearTimeout(savedTimer)
     savedTimer = window.setTimeout(() => (saved.value = false), 1200)
   } finally {
-    saving.value = false
+    pendingWrites -= 1
+    if (pendingWrites === 0) saving.value = false
   }
 }
 
 async function setLanguage(event: Event) {
-  if (!settings.value) return
-  settings.value.language = (event.target as HTMLSelectElement).value as LanguagePreference
-  await persist()
+  await applyPatch({
+    language: (event.target as HTMLSelectElement).value as LanguagePreference,
+  })
+}
+
+async function setTelemetryEndpoint(event: Event) {
+  await applyPatch({
+    telemetry: {
+      endpoint: (event.target as HTMLInputElement).value,
+    },
+  })
 }
 
 async function saveToken() {
@@ -113,7 +132,7 @@ async function saveToken() {
           <div class="flex items-center gap-2"><Settings2 class="size-4" /><b>{{ t('control.booster') }}</b></div>
           <span>{{ t('control.boosterDescription') }}</span>
         </div>
-        <button type="button" class="booster-switch" :class="{ 'booster-switch-on': settings.enabled }" :aria-pressed="settings.enabled" @click="settings.enabled = !settings.enabled; persist()"><span /></button>
+        <button type="button" class="booster-switch" :class="{ 'booster-switch-on': settings.enabled }" :aria-pressed="settings.enabled" @click="applyPatch({ enabled: !settings.enabled })"><span /></button>
       </section>
 
       <section class="booster-setting-card">
@@ -133,7 +152,7 @@ async function saveToken() {
           <div class="flex items-center gap-2"><Wrench class="size-4" /><b>{{ t('control.toolInspector') }}</b><Badge :variant="settings.features.toolInspector && settings.enabled ? 'default' : 'secondary'">{{ settings.features.toolInspector && settings.enabled ? t('common.on') : t('common.off') }}</Badge></div>
           <span>{{ t('control.toolInspectorDescription') }}</span>
         </div>
-        <button type="button" class="booster-switch" :class="{ 'booster-switch-on': settings.features.toolInspector }" :disabled="!settings.enabled" :aria-pressed="settings.features.toolInspector" @click="settings.features.toolInspector = !settings.features.toolInspector; persist()"><span /></button>
+        <button type="button" class="booster-switch" :class="{ 'booster-switch-on': settings.features.toolInspector }" :disabled="!settings.enabled" :aria-pressed="settings.features.toolInspector" @click="applyPatch({ features: { toolInspector: !settings.features.toolInspector } })"><span /></button>
       </section>
 
       <section class="booster-setting-card" :class="{ 'booster-setting-disabled': !settings.enabled }">
@@ -141,7 +160,7 @@ async function saveToken() {
           <div class="flex items-center gap-2"><Activity class="size-4" /><b>{{ t('control.observer') }}</b><Badge :variant="settings.observer.enabled && settings.enabled ? 'default' : 'secondary'">{{ settings.observer.enabled && settings.enabled ? t('common.on') : t('common.off') }}</Badge></div>
           <span>{{ t('control.observerDescription') }}</span>
         </div>
-        <button type="button" class="booster-switch" :class="{ 'booster-switch-on': settings.observer.enabled }" :disabled="!settings.enabled" :aria-pressed="settings.observer.enabled" @click="settings.observer.enabled = !settings.observer.enabled; persist()"><span /></button>
+        <button type="button" class="booster-switch" :class="{ 'booster-switch-on': settings.observer.enabled }" :disabled="!settings.enabled" :aria-pressed="settings.observer.enabled" @click="applyPatch({ observer: { enabled: !settings.observer.enabled } })"><span /></button>
       </section>
 
       <section class="booster-setting-card" :class="{ 'booster-setting-disabled': !settings.observer.enabled }">
@@ -149,7 +168,7 @@ async function saveToken() {
           <div class="flex items-center gap-2"><ShieldCheck class="size-4" /><b>{{ t('control.captureBodies') }}</b></div>
           <span>{{ t('control.captureBodiesDescription') }}</span>
         </div>
-        <button type="button" class="booster-switch" :class="{ 'booster-switch-on': settings.observer.captureBodies }" :disabled="!settings.observer.enabled" :aria-pressed="settings.observer.captureBodies" @click="settings.observer.captureBodies = !settings.observer.captureBodies; persist()"><span /></button>
+        <button type="button" class="booster-switch" :class="{ 'booster-switch-on': settings.observer.captureBodies }" :disabled="!settings.observer.enabled" :aria-pressed="settings.observer.captureBodies" @click="applyPatch({ observer: { captureBodies: !settings.observer.captureBodies } })"><span /></button>
       </section>
 
       <section v-if="diagnosticsAdapter" class="booster-info-card">
@@ -166,11 +185,11 @@ async function saveToken() {
       <div class="booster-section-label">{{ t('control.telemetry') }}</div>
       <section class="booster-setting-card">
         <div class="booster-setting-copy"><b>{{ t('control.telemetry') }}</b><span>{{ t('control.telemetryDescription') }}</span></div>
-        <button type="button" class="booster-switch" :class="{ 'booster-switch-on': settings.telemetry.enabled }" :aria-pressed="settings.telemetry.enabled" @click="settings.telemetry.enabled = !settings.telemetry.enabled; persist()"><span /></button>
+        <button type="button" class="booster-switch" :class="{ 'booster-switch-on': settings.telemetry.enabled }" :aria-pressed="settings.telemetry.enabled" @click="applyPatch({ telemetry: { enabled: !settings.telemetry.enabled } })"><span /></button>
       </section>
 
       <section class="booster-stack-card">
-        <label><span>{{ t('control.telemetryEndpoint') }}</span><input v-model="settings.telemetry.endpoint" class="booster-input" @change="persist" /></label>
+        <label><span>{{ t('control.telemetryEndpoint') }}</span><input :value="settings.telemetry.endpoint" class="booster-input" @change="setTelemetryEndpoint" /></label>
         <label v-if="secretAdapter">
           <span class="flex items-center justify-between gap-2">{{ t('control.telemetryToken') }}<Badge :variant="tokenConfigured ? 'default' : 'secondary'">{{ tokenConfigured ? t('control.tokenConfigured') : t('control.tokenMissing') }}</Badge></span>
           <div class="flex gap-2"><input v-model="tokenDraft" class="booster-input" type="password" autocomplete="off" /><Button variant="outline" size="sm" :disabled="!tokenDraft.trim()" @click="saveToken">{{ t('control.saveToken') }}</Button></div>

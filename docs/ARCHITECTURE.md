@@ -106,3 +106,7 @@ Transport interception runs in the page MAIN world and is isolated in `@chatgpt-
 Credentials are never exposed to the page observer. Request headers/cookies are not captured. URL and body previews are redacted before leaving the page world, body capture is disabled by default, and previews are truncated.
 
 Telemetry is exported as OTLP/HTTP JSON through `@chatgpt-booster/telemetry`. Resource identity is `service.name=chatgpt-booster-extension`, `service.namespace=koba`, with instrumentation scopes `chatgpt-booster.runtime` and `chatgpt-booster.transport-observer`. Tampermonkey sends through `GM_xmlhttpRequest`; Chromium sends through the extension background worker. Bearer tokens are stored in target-specific secret storage and are never passed into the MAIN world.
+
+## Settings persistence
+
+Settings changes are applied as atomic nested patches rather than replacing a potentially stale full settings object. Chromium writes are serialized by the background service worker so persistence survives action-popup teardown; storage changes remain the live notification path for page modules. Tampermonkey applies the same patch contract synchronously to local storage and emits the existing settings-change event.

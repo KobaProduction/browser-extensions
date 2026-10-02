@@ -1,5 +1,6 @@
 import {
   type BoosterSettings,
+  mergeSettings,
   normalizeSettings,
   type SettingsAdapter,
 } from '@chatgpt-booster/core'
@@ -16,14 +17,24 @@ function read(): BoosterSettings {
   }
 }
 
+function write(settings: BoosterSettings): BoosterSettings {
+  const normalized = normalizeSettings(settings)
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized))
+  window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: normalized }))
+  return normalized
+}
+
 export const userscriptSettings: SettingsAdapter = {
   async get() {
     return read()
   },
 
   async set(settings) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
-    window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: settings }))
+    write(settings)
+  },
+
+  async update(patch) {
+    return write(mergeSettings(read(), patch))
   },
 
   subscribe(listener) {
