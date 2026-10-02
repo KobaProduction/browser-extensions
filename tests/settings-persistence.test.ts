@@ -73,3 +73,17 @@ test('settings section state survives unrelated patches', () => {
   expect(changed.ui.activeSection).toBe('analytics')
   expect(changed.ui.telemetryExpanded).toBe(false)
 })
+
+test('aborted transport events do not increment the error counter', async () => {
+  const { applyTransportCounterEvent, EMPTY_TRANSPORT_COUNTERS } = await import(
+    '../packages/core/src/diagnostics'
+  )
+  const next = applyTransportCounterEvent(EMPTY_TRANSPORT_COUNTERS, {
+    direction: 'inbound',
+    phase: 'error',
+    timestamp: 1,
+    errorClass: 'aborted',
+  })
+
+  expect(next.errors).toBe(0)
+})
