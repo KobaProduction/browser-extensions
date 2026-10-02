@@ -50,3 +50,24 @@ describe('OTLP resource contract', () => {
     expect(payload).not.toContain('token=secret')
   })
 })
+
+test('transport counter helper accumulates request and message events', async () => {
+  const { EMPTY_TRANSPORT_COUNTERS, applyTransportCounterEvent } = await import(
+    '../packages/core/src/diagnostics'
+  )
+  let counters = { ...EMPTY_TRANSPORT_COUNTERS }
+  counters = applyTransportCounterEvent(counters, {
+    direction: 'outbound',
+    phase: 'request',
+    timestamp: 1,
+  })
+  counters = applyTransportCounterEvent(counters, {
+    direction: 'inbound',
+    phase: 'message',
+    timestamp: 2,
+  })
+
+  expect(counters.requestsSent).toBe(1)
+  expect(counters.messagesReceived).toBe(1)
+  expect(counters.lastEventAt).toBe(2)
+})

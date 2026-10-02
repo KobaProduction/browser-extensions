@@ -13,8 +13,13 @@ import {
   resolveLocale,
   translate,
 } from '@chatgpt-booster/ui'
+import { userscriptAnalytics } from './analytics'
 import { userscriptSettings } from './settings'
-import { createUserscriptTelemetry, userscriptSecrets } from './telemetry'
+import {
+  createUserscriptTelemetry,
+  createUserscriptTelemetryControl,
+  userscriptSecrets,
+} from './telemetry'
 
 declare const unsafeWindow: Window
 declare function GM_registerMenuCommand(
@@ -29,6 +34,7 @@ declare function GM_registerMenuCommand(
 
 const diagnostics = createDiagnosticsStore()
 const telemetry = createUserscriptTelemetry(userscriptSettings)
+const telemetryControl = createUserscriptTelemetryControl(telemetry)
 
 class OverlayModule implements BoosterModule {
   readonly id = 'overlay'
@@ -39,7 +45,9 @@ class OverlayModule implements BoosterModule {
     this.#mounted = mountBoosterUi({
       settingsAdapter: userscriptSettings,
       diagnosticsAdapter: diagnostics,
+      persistentDiagnosticsAdapter: userscriptAnalytics,
       secretAdapter: userscriptSecrets,
+      telemetryControlAdapter: telemetryControl,
       target: 'userscript',
     })
   }
@@ -74,6 +82,7 @@ function startRuntime() {
       new TransportObserverModule({
         settings: userscriptSettings,
         diagnostics,
+        persistentDiagnostics: userscriptAnalytics,
         telemetry,
       }),
       new ToolInspectorModule(userscriptSettings),

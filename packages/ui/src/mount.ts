@@ -1,4 +1,10 @@
-import type { DiagnosticsAdapter, SecretAdapter, SettingsAdapter } from '@chatgpt-booster/core'
+import type {
+  DiagnosticsAdapter,
+  PersistentDiagnosticsAdapter,
+  SecretAdapter,
+  SettingsAdapter,
+  TelemetryControlAdapter,
+} from '@chatgpt-booster/core'
 import { type App, createApp } from 'vue'
 import BoosterOverlay from './BoosterOverlay.vue'
 import ControlCenterPanel from './ControlCenterPanel.vue'
@@ -13,7 +19,9 @@ export interface MountedBoosterUi {
 export interface BoosterUiOptions {
   settingsAdapter: SettingsAdapter
   diagnosticsAdapter?: DiagnosticsAdapter | undefined
+  persistentDiagnosticsAdapter?: PersistentDiagnosticsAdapter | undefined
   secretAdapter?: SecretAdapter | undefined
+  telemetryControlAdapter?: TelemetryControlAdapter | undefined
   target: 'extension' | 'userscript'
 }
 

@@ -1,12 +1,17 @@
 import {
+  applyTransportCounterEvent,
   type BoosterSettings,
   type BoosterSettingsPatch,
+  EMPTY_TRANSPORT_COUNTERS,
   mergeSettings,
   normalizeSettings,
+  type TransportCounterEvent,
+  type TransportCounters,
 } from '@chatgpt-booster/core'
 
 const TOKEN_KEY = 'telemetryToken'
 const SETTINGS_KEY = 'settings'
+const ANALYTICS_KEY = 'analyticsTransportLifetime'
 
 interface TelemetryMessage {
   type: 'chatgpt-booster:telemetry-post'
@@ -24,13 +29,37 @@ interface SettingsUpdateMessage {
   patch: BoosterSettingsPatch
 }
 
-type BoosterMessage = TelemetryMessage | SettingsSetMessage | SettingsUpdateMessage
+interface AnalyticsRecordMessage {
+  type: 'chatgpt-booster:analytics-record'
+  event: TransportCounterEvent
+}
+
+interface AnalyticsGetMessage {
+  type: 'chatgpt-booster:analytics-get'
+}
+
+type BoosterMessage =
+  | TelemetryMessage
+  | SettingsSetMessage
+  | SettingsUpdateMessage
+  | AnalyticsRecordMessage
+  | AnalyticsGetMessage
 
 let settingsWriteQueue: Promise<void> = Promise.resolve()
+let analyticsWriteQueue: Promise<void> = Promise.resolve()
 
 function enqueueSettingsWrite<T>(work: () => Promise<T>): Promise<T> {
   const result = settingsWriteQueue.then(work, work)
   settingsWriteQueue = result.then(
+    () => undefined,
+    () => undefined,
+  )
+  return result
+}
+
+function enqueueAnalyticsWrite<T>(work: () => Promise<T>): Promise<T> {
+  const result = analyticsWriteQueue.then(work, work)
+  analyticsWriteQueue = result.then(
     () => undefined,
     () => undefined,
   )
@@ -54,10 +83,35 @@ async function updateSettings(patch: BoosterSettingsPatch): Promise<BoosterSetti
   })
 }
 
+async function readAnalytics(): Promise<TransportCounters> {
+  const stored = await chrome.storage.local.get(ANALYTICS_KEY)
+  return {
+    ...EMPTY_TRANSPORT_COUNTERS,
+    ...(stored[ANALYTICS_KEY] as Partial<TransportCounters> | undefined),
+  }
+}
+
+async function recordAnalytics(event: TransportCounterEvent): Promise<TransportCounters> {
+  return await enqueueAnalyticsWrite(async () => {
+    const next = applyTransportCounterEvent(await readAnalytics(), event)
+    await chrome.storage.local.set({ [ANALYTICS_KEY]: next })
+    return next
+  })
+}
+
 async function postTelemetry(message: TelemetryMessage): Promise<{ ok: true; status: number }> {
+  const settings = normalizeSettings(
+    (await chrome.storage.local.get(SETTINGS_KEY))[SETTINGS_KEY] as
+      | Partial<BoosterSettings>
+      | undefined,
+  )
+  const configuredEndpoint = settings.telemetry.endpoint.trim()
+  if (!configuredEndpoint) throw new Error('Telemetry endpoint is not configured')
+
   const parsed = new URL(message.url)
-  if (parsed.origin !== 'https://telemetry.koba-nexus.ru') {
-    throw new Error('Telemetry origin is not allowlisted')
+  const configured = new URL(configuredEndpoint)
+  if (parsed.protocol !== 'https:' || parsed.origin !== configured.origin) {
+    throw new Error('Telemetry origin does not match the configured endpoint')
   }
 
   const stored = await chrome.storage.local.get(TOKEN_KEY)
@@ -85,6 +139,7 @@ chrome.runtime.onMessage.addListener(
       ok: boolean
       status?: number
       settings?: BoosterSettings
+      counters?: TransportCounters
       error?: string
     }) => void,
   ) => {
@@ -98,6 +153,14 @@ chrome.runtime.onMessage.addListener(
         }
         if (message.type === 'chatgpt-booster:settings-update') {
           sendResponse({ ok: true, settings: await updateSettings(message.patch) })
+          return
+        }
+        if (message.type === 'chatgpt-booster:analytics-get') {
+          sendResponse({ ok: true, counters: await readAnalytics() })
+          return
+        }
+        if (message.type === 'chatgpt-booster:analytics-record') {
+          sendResponse({ ok: true, counters: await recordAnalytics(message.event) })
           return
         }
 

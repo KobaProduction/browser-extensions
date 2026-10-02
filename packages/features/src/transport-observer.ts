@@ -2,6 +2,7 @@ import type {
   BoosterModule,
   BoosterSettings,
   createDiagnosticsStore,
+  PersistentDiagnosticsAdapter,
   SettingsAdapter,
 } from '@chatgpt-booster/core'
 import {
@@ -20,6 +21,7 @@ export class TransportObserverModule implements BoosterModule {
   readonly #settings: SettingsAdapter
   readonly #diagnostics: DiagnosticsStore
   readonly #telemetry: OtlpTelemetryClient | undefined
+  readonly #persistentDiagnostics: PersistentDiagnosticsAdapter | undefined
   #current: BoosterSettings | undefined
   #unsubscribe: (() => void) | undefined
 
@@ -27,10 +29,12 @@ export class TransportObserverModule implements BoosterModule {
     settings: SettingsAdapter
     diagnostics: DiagnosticsStore
     telemetry?: OtlpTelemetryClient
+    persistentDiagnostics?: PersistentDiagnosticsAdapter
   }) {
     this.#settings = options.settings
     this.#diagnostics = options.diagnostics
     this.#telemetry = options.telemetry
+    this.#persistentDiagnostics = options.persistentDiagnostics
   }
 
   async start() {
@@ -56,8 +60,8 @@ export class TransportObserverModule implements BoosterModule {
         channel: TRANSPORT_CHANNEL,
         type: TRANSPORT_CONFIG_EVENT,
         detail: {
-          enabled: settings.enabled && settings.observer.enabled,
-          captureBodies: settings.observer.captureBodies,
+          captureBodies:
+            settings.enabled && settings.observer.enabled && settings.observer.captureBodies,
           maxBodyChars: settings.observer.maxBodyChars,
         },
       },
@@ -66,7 +70,7 @@ export class TransportObserverModule implements BoosterModule {
   }
 
   #onTransport = (event: MessageEvent) => {
-    if (event.source !== window) return
+    if (event.origin && event.origin !== window.location.origin) return
     const data = event.data as {
       channel?: string
       type?: string
@@ -78,6 +82,9 @@ export class TransportObserverModule implements BoosterModule {
     if (!detail || !this.#current?.enabled || !this.#current.observer.enabled) return
 
     this.#diagnostics.recordTransport(detail)
+    void this.#persistentDiagnostics?.recordTransport(detail).catch((error) => {
+      console.warn('[ChatGPT Booster] Analytics persistence failed', error)
+    })
 
     if (!this.#telemetry) return
     void this.#telemetry

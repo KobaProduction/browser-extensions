@@ -22,10 +22,33 @@ export interface DiagnosticsAdapter {
   resetTransport(): void
 }
 
+export interface PersistentDiagnosticsAdapter {
+  getLifetimeTransportCounters(): Promise<TransportCounters>
+  recordTransport(event: TransportCounterEvent): Promise<void>
+  subscribeLifetimeTransport(listener: (counters: TransportCounters) => void): () => void
+}
+
+export interface TelemetryControlAdapter {
+  test(): Promise<void>
+}
+
 export interface TransportCounterEvent {
   direction: 'outbound' | 'inbound'
   phase: 'request' | 'response' | 'message' | 'open' | 'close' | 'error'
   timestamp: number
+}
+
+export function applyTransportCounterEvent(
+  current: TransportCounters,
+  event: TransportCounterEvent,
+): TransportCounters {
+  const next = { ...current, lastEventAt: event.timestamp }
+  if (event.phase === 'error') next.errors += 1
+  if (event.phase === 'request') next.requestsSent += 1
+  if (event.phase === 'response') next.responsesReceived += 1
+  if (event.phase === 'message' && event.direction === 'outbound') next.messagesSent += 1
+  if (event.phase === 'message' && event.direction === 'inbound') next.messagesReceived += 1
+  return next
 }
 
 export function createDiagnosticsStore(): DiagnosticsAdapter & {
@@ -53,12 +76,7 @@ export function createDiagnosticsStore(): DiagnosticsAdapter & {
       publish()
     },
     recordTransport(event) {
-      counters.lastEventAt = event.timestamp
-      if (event.phase === 'error') counters.errors += 1
-      if (event.phase === 'request') counters.requestsSent += 1
-      if (event.phase === 'response') counters.responsesReceived += 1
-      if (event.phase === 'message' && event.direction === 'outbound') counters.messagesSent += 1
-      if (event.phase === 'message' && event.direction === 'inbound') counters.messagesReceived += 1
+      counters = applyTransportCounterEvent(counters, event)
       publish()
     },
   }

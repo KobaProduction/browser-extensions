@@ -7,7 +7,6 @@ export type TransportDirection = 'outbound' | 'inbound'
 export type TransportPhase = 'request' | 'response' | 'message' | 'open' | 'close' | 'error'
 
 export interface TransportObserverConfig {
-  enabled: boolean
   captureBodies: boolean
   maxBodyChars: number
 }
@@ -29,7 +28,6 @@ export interface TransportEventDetail {
 }
 
 const DEFAULT_CONFIG: TransportObserverConfig = {
-  enabled: true,
   captureBodies: false,
   maxBodyChars: 2048,
 }
@@ -198,7 +196,7 @@ export function installTransportObserver(
 
   let config = { ...DEFAULT_CONFIG }
   const onConfig = (event: MessageEvent) => {
-    if (event.source !== target) return
+    if (event.origin && event.origin !== target.location.origin) return
     const data = event.data as {
       channel?: string
       type?: string
@@ -208,7 +206,6 @@ export function installTransportObserver(
 
     const detail = data.detail
     config = {
-      enabled: detail?.enabled ?? config.enabled,
       captureBodies: detail?.captureBodies ?? config.captureBodies,
       maxBodyChars: Math.min(Math.max(detail?.maxBodyChars ?? config.maxBodyChars, 128), 16384),
     }
@@ -217,8 +214,6 @@ export function installTransportObserver(
 
   const originalFetch = target.fetch.bind(target)
   target.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-    if (!config.enabled) return originalFetch(input, init)
-
     const id = nextId('fetch')
     const started = performance.now()
     const request = input instanceof Request ? input : undefined
@@ -297,8 +292,6 @@ export function installTransportObserver(
   }
 
   OriginalXHR.prototype.send = function (body?: Document | XMLHttpRequestBodyInit | null) {
-    if (!config.enabled) return originalSend.call(this, body)
-
     const meta = xhrMeta.get(this)
     if (meta) {
       meta.started = performance.now()
@@ -364,8 +357,6 @@ export function installTransportObserver(
   ): WebSocket {
     const ws =
       protocols === undefined ? new OriginalWebSocket(url) : new OriginalWebSocket(url, protocols)
-    if (!config.enabled) return ws
-
     const id = nextId('websocket')
     const safe = sanitizeTransportUrl(String(url))
     const originalSendWs = ws.send.bind(ws)
@@ -442,8 +433,6 @@ export function installTransportObserver(
     eventSourceInitDict?: EventSourceInit,
   ): EventSource {
     const source = new OriginalEventSource(url, eventSourceInitDict)
-    if (!config.enabled) return source
-
     const id = nextId('eventsource')
     const safe = sanitizeTransportUrl(String(url))
     source.addEventListener('open', () =>

@@ -3,8 +3,10 @@ import {
   OPEN_SETTINGS_EVENT,
   type BoosterSettings,
   type DiagnosticsAdapter,
+  type PersistentDiagnosticsAdapter,
   type SecretAdapter,
   type SettingsAdapter,
+  type TelemetryControlAdapter,
   snapshotSettings,
 } from '@chatgpt-booster/core'
 import { GripVertical } from 'lucide-vue-next'
@@ -15,7 +17,9 @@ import { resolveLocale, translate } from './i18n'
 const props = defineProps<{
   settingsAdapter: SettingsAdapter
   diagnosticsAdapter?: DiagnosticsAdapter | undefined
+  persistentDiagnosticsAdapter?: PersistentDiagnosticsAdapter | undefined
   secretAdapter?: SecretAdapter | undefined
+  telemetryControlAdapter?: TelemetryControlAdapter | undefined
   target: 'extension' | 'userscript'
 }>()
 
@@ -157,7 +161,9 @@ onBeforeUnmount(() => {
         <ControlCenterPanel
           :settings-adapter="settingsAdapter"
           :diagnostics-adapter="diagnosticsAdapter"
+          :persistent-diagnostics-adapter="persistentDiagnosticsAdapter"
           :secret-adapter="secretAdapter"
+          :telemetry-control-adapter="telemetryControlAdapter"
           :target="target"
           show-close
           @close="open = false"

@@ -6,11 +6,13 @@ import {
 } from '@chatgpt-booster/core'
 import { ToolInspectorModule, TransportObserverModule } from '@chatgpt-booster/features'
 import { type MountedBoosterUi, mountBoosterUi } from '@chatgpt-booster/ui'
+import { chromeAnalytics } from '../analytics'
 import { chromeSettings } from '../settings'
-import { chromeSecrets, createChromeTelemetry } from '../telemetry'
+import { chromeSecrets, createChromeTelemetry, createChromeTelemetryControl } from '../telemetry'
 
 const diagnostics = createDiagnosticsStore()
 const telemetry = createChromeTelemetry(chromeSettings)
+const telemetryControl = createChromeTelemetryControl(telemetry)
 
 class OverlayModule implements BoosterModule {
   readonly id = 'overlay'
@@ -21,7 +23,9 @@ class OverlayModule implements BoosterModule {
     this.#mounted = mountBoosterUi({
       settingsAdapter: chromeSettings,
       diagnosticsAdapter: diagnostics,
+      persistentDiagnosticsAdapter: chromeAnalytics,
       secretAdapter: chromeSecrets,
+      telemetryControlAdapter: telemetryControl,
       target: 'extension',
     })
   }
@@ -39,6 +43,7 @@ function startRuntime() {
       new TransportObserverModule({
         settings: chromeSettings,
         diagnostics,
+        persistentDiagnostics: chromeAnalytics,
         telemetry,
       }),
       new ToolInspectorModule(chromeSettings),

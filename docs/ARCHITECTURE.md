@@ -114,3 +114,9 @@ Settings changes are applied as atomic nested patches rather than replacing a po
 ## Development builds
 
 While the project is in the 0.x development phase, browser bundles are intentionally emitted without JavaScript minification. The userscript additionally carries an inline sourcemap so Tampermonkey/DevTools stack traces retain useful function names and source mappings. Production minification can be re-enabled once browser-runtime behavior stabilizes.
+
+## Analytics persistence
+
+Transport hooks are installed for the lifetime of the page runtime. The observer enable switch controls whether events are consumed, counted, or exported; disabling it does not remove the underlying fetch/XHR/WebSocket/EventSource wrappers. Current-tab counters remain in memory. All-time counters use a separate persistent diagnostics adapter (`chrome.storage.local` through the Chromium background worker, local storage for the userscript) and are displayed in the Analytics settings section.
+
+The settings UI stores its active section and disclosure state alongside other settings. Telemetry endpoint configuration is user-provided; there is no project-specific default endpoint.

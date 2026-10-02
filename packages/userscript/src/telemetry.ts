@@ -1,4 +1,9 @@
-import { BOOSTER_VERSION, type SecretAdapter, type SettingsAdapter } from '@chatgpt-booster/core'
+import {
+  BOOSTER_VERSION,
+  type SecretAdapter,
+  type SettingsAdapter,
+  type TelemetryControlAdapter,
+} from '@chatgpt-booster/core'
 import { OtlpTelemetryClient } from '@chatgpt-booster/telemetry'
 
 declare function GM_getValue<T>(key: string, defaultValue: T): Promise<T> | T
@@ -48,4 +53,14 @@ export function createUserscriptTelemetry(settings: SettingsAdapter): OtlpTeleme
       })
     },
   })
+}
+
+export function createUserscriptTelemetryControl(
+  telemetry: OtlpTelemetryClient,
+): TelemetryControlAdapter {
+  return {
+    async test() {
+      await telemetry.test()
+    },
+  }
 }

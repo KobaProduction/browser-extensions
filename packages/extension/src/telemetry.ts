@@ -1,4 +1,9 @@
-import { BOOSTER_VERSION, type SecretAdapter, type SettingsAdapter } from '@chatgpt-booster/core'
+import {
+  BOOSTER_VERSION,
+  type SecretAdapter,
+  type SettingsAdapter,
+  type TelemetryControlAdapter,
+} from '@chatgpt-booster/core'
 import { OtlpTelemetryClient } from '@chatgpt-booster/telemetry'
 
 const TOKEN_KEY = 'telemetryToken'
@@ -29,4 +34,14 @@ export function createChromeTelemetry(settings: SettingsAdapter): OtlpTelemetryC
       if (!response?.ok) throw new Error(response?.error ?? 'Telemetry background request failed')
     },
   })
+}
+
+export function createChromeTelemetryControl(
+  telemetry: OtlpTelemetryClient,
+): TelemetryControlAdapter {
+  return {
+    async test() {
+      await telemetry.test()
+    },
+  }
 }

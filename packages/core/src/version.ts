@@ -1,1 +1,1 @@
-export const BOOSTER_VERSION = '0.3.2'
+export const BOOSTER_VERSION = '0.4.0'

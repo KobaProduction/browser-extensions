@@ -8,6 +8,7 @@ export interface LauncherSettings {
 }
 
 export type LanguagePreference = 'auto' | 'en' | 'ru'
+export type SettingsSection = 'modules' | 'analytics' | 'other'
 
 export interface ObserverSettings {
   enabled: boolean
@@ -20,25 +21,37 @@ export interface TelemetrySettings {
   endpoint: string
 }
 
+export interface UiSettings {
+  activeSection: SettingsSection
+  telemetryExpanded: boolean
+}
+
 export interface BoosterSettings {
+  schemaVersion: number
   enabled: boolean
   language: LanguagePreference
   features: FeatureSettings
   launcher: LauncherSettings
   observer: ObserverSettings
   telemetry: TelemetrySettings
+  ui: UiSettings
 }
 
 export interface BoosterSettingsPatch {
+  schemaVersion?: number
   enabled?: boolean
   language?: LanguagePreference
   features?: Partial<FeatureSettings>
   launcher?: Partial<LauncherSettings>
   observer?: Partial<ObserverSettings>
   telemetry?: Partial<TelemetrySettings>
+  ui?: Partial<UiSettings>
 }
 
+export const SETTINGS_SCHEMA_VERSION = 2
+
 export const DEFAULT_SETTINGS: BoosterSettings = {
+  schemaVersion: SETTINGS_SCHEMA_VERSION,
   enabled: true,
   language: 'auto',
   features: {
@@ -55,14 +68,20 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
   },
   telemetry: {
     enabled: false,
-    endpoint: 'https://telemetry.koba-nexus.ru',
+    endpoint: '',
+  },
+  ui: {
+    activeSection: 'modules',
+    telemetryExpanded: true,
   },
 }
 
 export function normalizeSettings(value?: Partial<BoosterSettings>): BoosterSettings {
+  const incomingSchema = value?.schemaVersion ?? 0
   return {
     ...DEFAULT_SETTINGS,
     ...value,
+    schemaVersion: SETTINGS_SCHEMA_VERSION,
     language: value?.language ?? DEFAULT_SETTINGS.language,
     features: {
       ...DEFAULT_SETTINGS.features,
@@ -79,6 +98,14 @@ export function normalizeSettings(value?: Partial<BoosterSettings>): BoosterSett
     telemetry: {
       ...DEFAULT_SETTINGS.telemetry,
       ...value?.telemetry,
+      endpoint:
+        incomingSchema < SETTINGS_SCHEMA_VERSION
+          ? DEFAULT_SETTINGS.telemetry.endpoint
+          : (value?.telemetry?.endpoint ?? DEFAULT_SETTINGS.telemetry.endpoint),
+    },
+    ui: {
+      ...DEFAULT_SETTINGS.ui,
+      ...value?.ui,
     },
   }
 }
@@ -88,6 +115,7 @@ export function snapshotSettings(
 ): BoosterSettings {
   const normalized = normalizeSettings(value)
   return {
+    schemaVersion: SETTINGS_SCHEMA_VERSION,
     enabled: normalized.enabled,
     language: normalized.language,
     features: {
@@ -105,6 +133,10 @@ export function snapshotSettings(
     telemetry: {
       enabled: normalized.telemetry.enabled,
       endpoint: normalized.telemetry.endpoint,
+    },
+    ui: {
+      activeSection: normalized.ui.activeSection,
+      telemetryExpanded: normalized.ui.telemetryExpanded,
     },
   }
 }
@@ -132,6 +164,10 @@ export function mergeSettings(
     telemetry: {
       ...normalized.telemetry,
       ...patch.telemetry,
+    },
+    ui: {
+      ...normalized.ui,
+      ...patch.ui,
     },
   })
 }

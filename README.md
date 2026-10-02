@@ -13,7 +13,8 @@ Early foundation. The repository currently provides:
 - an initial Tool Inspector module for client-visible MCP/tool diagnostics;
 - one shared Control Center UI exposed through Tampermonkey, the extension popup, and a movable in-page launcher;
 - English/Russian i18n with automatic browser-language detection and manual override;
-- passive transport observer for fetch/XHR/WebSocket/EventSource with local session counters;
+- passive transport observer for fetch/XHR/WebSocket/EventSource with current-tab and persisted all-time counters;
+- categorized Control Center sections for modules, analytics, and other settings with persisted UI state;
 - optional OTLP/HTTP telemetry export through a target-specific secure transport path;
 - strict TypeScript and Biome checks;
 - CI build artifacts and tag-based GitHub Release packaging.

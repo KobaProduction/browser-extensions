@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
   "name": "ChatGPT Booster",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "Open-source browser extension adding UI improvements, productivity tools, exports, and extensible workflows to ChatGPT.",
   "permissions": ["storage"],
-  "host_permissions": ["https://chatgpt.com/*", "https://telemetry.koba-nexus.ru/*"],
+  "host_permissions": ["https://chatgpt.com/*", "https://*/*"],
   "action": {
     "default_title": "ChatGPT Booster",
     "default_popup": "src/popup/index.html"

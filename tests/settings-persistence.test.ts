@@ -14,7 +14,7 @@ describe('settings patch persistence', () => {
     expect(boosterOff.enabled).toBe(false)
     expect(boosterOff.features.toolInspector).toBe(false)
     expect(boosterOff.observer.enabled).toBe(true)
-    expect(boosterOff.telemetry.endpoint).toBe('https://telemetry.koba-nexus.ru')
+    expect(boosterOff.telemetry.endpoint).toBe('')
   })
 
   test('nested patches do not reset unrelated observer fields', () => {
@@ -48,4 +48,28 @@ test('snapshotSettings converts proxy-backed settings into plain serializable da
   expect(snapshot.enabled).toBe(false)
   expect(snapshot.features.toolInspector).toBe(false)
   expect(JSON.parse(JSON.stringify(snapshot))).toEqual(snapshot)
+})
+
+test('legacy telemetry endpoint is cleared during schema migration', () => {
+  const migrated = normalizeSettings({
+    telemetry: {
+      enabled: true,
+      endpoint: 'https://legacy-collector.example.test',
+    },
+  } as Partial<import('../packages/core/src/settings').BoosterSettings>)
+
+  expect(migrated.telemetry.endpoint).toBe('')
+  expect(migrated.schemaVersion).toBe(2)
+})
+
+test('settings section state survives unrelated patches', () => {
+  const analytics = mergeSettings(normalizeSettings(), {
+    ui: { activeSection: 'analytics', telemetryExpanded: false },
+  })
+  const changed = mergeSettings(analytics, {
+    features: { toolInspector: false },
+  })
+
+  expect(changed.ui.activeSection).toBe('analytics')
+  expect(changed.ui.telemetryExpanded).toBe(false)
 })

@@ -113,7 +113,7 @@
 }
 
 .booster-control-center {
-  width: min(390px, calc(100vw - 32px));
+  width: min(760px, calc(100vw - 32px));
   margin-bottom: 10px;
   overflow: hidden;
   border: 1px solid var(--border);
@@ -322,7 +322,7 @@
 }
 
 .booster-modal-surface {
-  width: min(420px, calc(100vw - 32px));
+  width: min(760px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   overflow: auto;
 }
@@ -404,4 +404,185 @@
 
 .booster-counter-grid b {
   color: var(--foreground);
+}
+
+.booster-header-copy {
+  min-width: 0;
+}
+
+.booster-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.booster-header-toggle-label {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.booster-settings-layout {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  min-height: 360px;
+}
+
+.booster-settings-nav {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: 12px 8px;
+  border-right: 1px solid var(--border);
+  background: color-mix(in oklab, var(--muted) 58%, transparent);
+}
+
+.booster-settings-nav button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  font: 600 11px / 1.2 inherit;
+  text-align: left;
+}
+
+.booster-settings-nav button:hover,
+.booster-settings-nav button.active {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.booster-settings-content {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.booster-setting-card-flat {
+  padding: 0 0 10px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+}
+
+.booster-analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.booster-counter-card {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background);
+}
+
+.booster-counter-title {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.booster-disclosure {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  cursor: pointer;
+  text-align: left;
+}
+
+.booster-disclosure > span {
+  display: grid;
+  gap: 3px;
+}
+
+.booster-disclosure b {
+  font-size: 12px;
+}
+
+.booster-disclosure small {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.rotate-180 {
+  transform: rotate(180deg);
+}
+
+.booster-telemetry-body {
+  display: grid;
+  gap: 10px;
+  padding-top: 10px;
+}
+
+.booster-field {
+  display: grid;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.booster-telemetry-test-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.booster-test-success {
+  color: oklch(0.62 0.17 145);
+  font-size: 11px;
+}
+
+.booster-test-error {
+  min-width: 0;
+  overflow: hidden;
+  color: oklch(0.63 0.2 25);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.booster-modal-surface {
+  width: min(760px, calc(100vw - 32px));
+}
+
+@media (max-width: 620px) {
+  .booster-control-center,
+  .booster-modal-surface {
+    width: calc(100vw - 20px);
+  }
+
+  .booster-settings-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .booster-settings-nav {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .booster-settings-nav button {
+    justify-content: center;
+  }
+
+  .booster-analytics-grid {
+    grid-template-columns: 1fr;
+  }
 }

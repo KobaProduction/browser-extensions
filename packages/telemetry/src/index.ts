@@ -107,9 +107,9 @@ export class OtlpTelemetryClient {
     this.#getToken = options.getToken
   }
 
-  async emit(event: TelemetryEvent): Promise<void> {
+  async emit(event: TelemetryEvent, options: { force?: boolean } = {}): Promise<void> {
     const settings = await this.#getSettings()
-    if (!settings.enabled || !settings.endpoint.trim()) return
+    if ((!settings.enabled && !options.force) || !settings.endpoint.trim()) return
 
     const endpoint = settings.endpoint.trim().replace(/\/$/, '')
     const token = await this.#getToken()
@@ -123,5 +123,24 @@ export class OtlpTelemetryClient {
       headers,
       body: JSON.stringify(buildOtlpLogPayload(event, this.#serviceVersion)),
     })
+  }
+
+  async test(): Promise<void> {
+    const settings = await this.#getSettings()
+    if (!settings.endpoint.trim()) throw new Error('Telemetry endpoint is not configured')
+
+    await this.emit(
+      {
+        scope: 'runtime',
+        name: 'telemetry.test',
+        timestamp: Date.now(),
+        severity: 'INFO',
+        attributes: {
+          'telemetry.test': true,
+        },
+        body: 'ChatGPT Booster telemetry test',
+      },
+      { force: true },
+    )
   }
 }
