@@ -36,6 +36,7 @@ export interface TransportCounterEvent {
   direction: 'outbound' | 'inbound'
   phase: 'request' | 'response' | 'message' | 'open' | 'close' | 'error'
   timestamp: number
+  errorClass?: 'aborted' | 'network' | 'stream' | 'socket' | undefined
 }
 
 export function applyTransportCounterEvent(
@@ -43,7 +44,7 @@ export function applyTransportCounterEvent(
   event: TransportCounterEvent,
 ): TransportCounters {
   const next = { ...current, lastEventAt: event.timestamp }
-  if (event.phase === 'error') next.errors += 1
+  if (event.phase === 'error' && event.errorClass !== 'aborted') next.errors += 1
   if (event.phase === 'request') next.requestsSent += 1
   if (event.phase === 'response') next.responsesReceived += 1
   if (event.phase === 'message' && event.direction === 'outbound') next.messagesSent += 1
