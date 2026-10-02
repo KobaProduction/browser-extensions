@@ -15,6 +15,10 @@ function userscriptMetadataPlugin(): Plugin {
 }
 
 export default defineConfig({
+  define: {
+    'process.env.NODE_ENV': JSON.stringify('production'),
+    'process.env': '{}',
+  },
   plugins: [vue(), tailwindcss(), userscriptMetadataPlugin()],
   build: {
     outDir: 'dist',

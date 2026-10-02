@@ -6,7 +6,7 @@ const metadata = [
   '// ==UserScript==',
   '// @name         ChatGPT Booster',
   '// @namespace    https://github.com/KobaProduction/chatgpt-booster',
-  '// @version      0.1.2',
+  '// @version      0.1.3',
   '// @description  Open-source UI and productivity toolkit for ChatGPT.',
   '// @author       KobaProduction',
   '// @match        https://chatgpt.com/*',
@@ -29,6 +29,9 @@ export async function finalizeUserscript(outputPath = userscriptOutput): Promise
   }
   if (!finalized.includes('// @match        https://chatgpt.com/*')) {
     throw new Error('Userscript metadata does not target chatgpt.com')
+  }
+  if (/\bprocess\.env\b/.test(finalized)) {
+    throw new Error('Userscript bundle contains unresolved Node process.env references')
   }
 }
 

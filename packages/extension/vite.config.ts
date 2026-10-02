@@ -5,6 +5,10 @@ import webExtension from 'vite-plugin-web-extension'
 import manifest from './manifest.json' with { type: 'json' }
 
 export default defineConfig({
+  define: {
+    'process.env.NODE_ENV': JSON.stringify('production'),
+    'process.env': '{}',
+  },
   plugins: [
     vue(),
     tailwindcss(),
