@@ -23,7 +23,8 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
-    sourcemap: false,
+    sourcemap: 'inline',
+    minify: false,
     lib: {
       entry: resolve(import.meta.dirname, 'src/index.ts'),
       name: 'ChatGptBooster',

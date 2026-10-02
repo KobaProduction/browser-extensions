@@ -83,6 +83,32 @@ export function normalizeSettings(value?: Partial<BoosterSettings>): BoosterSett
   }
 }
 
+export function snapshotSettings(
+  value: Partial<BoosterSettings> | BoosterSettings,
+): BoosterSettings {
+  const normalized = normalizeSettings(value)
+  return {
+    enabled: normalized.enabled,
+    language: normalized.language,
+    features: {
+      toolInspector: normalized.features.toolInspector,
+    },
+    launcher: {
+      x: normalized.launcher.x,
+      y: normalized.launcher.y,
+    },
+    observer: {
+      enabled: normalized.observer.enabled,
+      captureBodies: normalized.observer.captureBodies,
+      maxBodyChars: normalized.observer.maxBodyChars,
+    },
+    telemetry: {
+      enabled: normalized.telemetry.enabled,
+      endpoint: normalized.telemetry.endpoint,
+    },
+  }
+}
+
 export function mergeSettings(
   current: Partial<BoosterSettings> | undefined,
   patch: BoosterSettingsPatch,

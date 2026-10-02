@@ -3,6 +3,7 @@ import {
   mergeSettings,
   normalizeSettings,
   type SettingsAdapter,
+  snapshotSettings,
 } from '@chatgpt-booster/core'
 import { mountBoosterUi } from './mount'
 
@@ -11,16 +12,16 @@ const listeners = new Set<(settings: BoosterSettings) => void>()
 
 const devSettings: SettingsAdapter = {
   async get() {
-    return structuredClone(current)
+    return snapshotSettings(current)
   },
   async set(settings) {
-    current = structuredClone(settings)
-    for (const listener of listeners) listener(structuredClone(current))
+    current = snapshotSettings(settings)
+    for (const listener of listeners) listener(snapshotSettings(current))
   },
   async update(patch) {
     current = mergeSettings(current, patch)
-    for (const listener of listeners) listener(structuredClone(current))
-    return structuredClone(current)
+    for (const listener of listeners) listener(snapshotSettings(current))
+    return snapshotSettings(current)
   },
   subscribe(listener) {
     listeners.add(listener)

@@ -5,6 +5,7 @@ import {
   type DiagnosticsAdapter,
   type SecretAdapter,
   type SettingsAdapter,
+  snapshotSettings,
 } from '@chatgpt-booster/core'
 import { GripVertical } from 'lucide-vue-next'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -134,7 +135,7 @@ onMounted(async () => {
   applyStoredPosition(settings.value)
 
   unsubscribe = props.settingsAdapter.subscribe((next) => {
-    settings.value = structuredClone(next)
+    settings.value = snapshotSettings(next)
     if (!dragging.value) applyStoredPosition(next)
   })
 

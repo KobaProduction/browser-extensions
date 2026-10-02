@@ -33,3 +33,19 @@ describe('settings patch persistence', () => {
     expect(disabled.observer.maxBodyChars).toBe(4096)
   })
 })
+
+test('snapshotSettings converts proxy-backed settings into plain serializable data', () => {
+  const source = normalizeSettings()
+  source.enabled = false
+  source.features.toolInspector = false
+
+  const proxy = new Proxy(source, {})
+  const { snapshotSettings } =
+    require('../packages/core/src/settings') as typeof import('../packages/core/src/settings')
+  const snapshot = snapshotSettings(proxy)
+
+  expect(snapshot).not.toBe(proxy)
+  expect(snapshot.enabled).toBe(false)
+  expect(snapshot.features.toolInspector).toBe(false)
+  expect(JSON.parse(JSON.stringify(snapshot))).toEqual(snapshot)
+})

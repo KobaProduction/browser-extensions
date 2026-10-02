@@ -9,6 +9,7 @@ import {
   type SettingsAdapter,
   type TransportCounters,
   mergeSettings,
+  snapshotSettings,
 } from '@chatgpt-booster/core'
 import { Activity, Check, Languages, Radio, Settings2, ShieldCheck, Wrench, X } from 'lucide-vue-next'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -48,7 +49,7 @@ const targetLabel = computed(() => (props.target === 'userscript' ? 'Tampermonke
 onMounted(async () => {
   settings.value = await props.settingsAdapter.get()
   unsubscribe = props.settingsAdapter.subscribe((next) => {
-    if (pendingWrites === 0) settings.value = structuredClone(next)
+    if (pendingWrites === 0) settings.value = snapshotSettings(next)
   })
   if (props.diagnosticsAdapter) {
     counters.value = props.diagnosticsAdapter.getTransportCounters()
@@ -76,10 +77,15 @@ async function applyPatch(patch: BoosterSettingsPatch) {
 
   try {
     const persisted = await props.settingsAdapter.update(patch)
-    if (revision === localRevision) settings.value = structuredClone(persisted)
+    if (revision === localRevision) settings.value = snapshotSettings(persisted)
     saved.value = true
     if (savedTimer) window.clearTimeout(savedTimer)
     savedTimer = window.setTimeout(() => (saved.value = false), 1200)
+  } catch (error) {
+    console.error('[ChatGPT Booster] Failed to persist settings', error)
+    if (revision === localRevision) {
+      settings.value = snapshotSettings(await props.settingsAdapter.get())
+    }
   } finally {
     pendingWrites -= 1
     if (pendingWrites === 0) saving.value = false

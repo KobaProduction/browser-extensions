@@ -3,6 +3,7 @@ import {
   mergeSettings,
   normalizeSettings,
   type SettingsAdapter,
+  snapshotSettings,
 } from '@chatgpt-booster/core'
 
 const STORAGE_KEY = 'chatgpt-booster:settings'
@@ -18,7 +19,7 @@ function read(): BoosterSettings {
 }
 
 function write(settings: BoosterSettings): BoosterSettings {
-  const normalized = normalizeSettings(settings)
+  const normalized = snapshotSettings(settings)
   localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized))
   window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: normalized }))
   return normalized

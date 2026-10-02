@@ -110,3 +110,7 @@ Telemetry is exported as OTLP/HTTP JSON through `@chatgpt-booster/telemetry`. Re
 ## Settings persistence
 
 Settings changes are applied as atomic nested patches rather than replacing a potentially stale full settings object. Chromium writes are serialized by the background service worker so persistence survives action-popup teardown; storage changes remain the live notification path for page modules. Tampermonkey applies the same patch contract synchronously to local storage and emits the existing settings-change event.
+
+## Development builds
+
+While the project is in the 0.x development phase, browser bundles are intentionally emitted without JavaScript minification. The userscript additionally carries an inline sourcemap so Tampermonkey/DevTools stack traces retain useful function names and source mappings. Production minification can be re-enabled once browser-runtime behavior stabilizes.
