@@ -1,159 +1,166 @@
 <script setup lang="ts">
-import type { BoosterSettings, SettingsAdapter } from '@chatgpt-booster/core'
-import { Check, ChevronRight, RotateCcw, Settings2, Wrench, X } from 'lucide-vue-next'
+import { OPEN_SETTINGS_EVENT, type BoosterSettings, type SettingsAdapter } from '@chatgpt-booster/core'
+import { GripVertical } from 'lucide-vue-next'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { Badge } from './components/ui/badge'
-import { Button } from './components/ui/button'
+import ControlCenterPanel from './ControlCenterPanel.vue'
 
 const props = defineProps<{
   settingsAdapter: SettingsAdapter
   target: 'extension' | 'userscript'
 }>()
 
-const open = ref(false)
-const ready = ref(false)
-const saving = ref(false)
-const saved = ref(false)
-const settings = ref<BoosterSettings>()
-let unsubscribe: (() => void) | undefined
-let savedTimer: number | undefined
+const BUTTON_SIZE = 46
+const VIEWPORT_MARGIN = 12
+const DRAG_THRESHOLD = 4
 
-const targetLabel = computed(() => (props.target === 'userscript' ? 'Tampermonkey' : 'Extension'))
+const open = ref(false)
+const settings = ref<BoosterSettings>()
+const position = ref({ x: 0, y: 0 })
+const dragging = ref(false)
+let unsubscribe: (() => void) | undefined
+let dragStart:
+  | {
+      pointerId: number
+      clientX: number
+      clientY: number
+      x: number
+      y: number
+      moved: boolean
+    }
+  | undefined
+
+const launcherStyle = computed(() => ({
+  left: `${position.value.x}px`,
+  top: `${position.value.y}px`,
+}))
+
+function defaultPosition() {
+  return {
+    x: Math.max(VIEWPORT_MARGIN, window.innerWidth - BUTTON_SIZE - 20),
+    y: Math.max(VIEWPORT_MARGIN, window.innerHeight - BUTTON_SIZE - 20),
+  }
+}
+
+function clampPosition(x: number, y: number) {
+  const maxX = Math.max(VIEWPORT_MARGIN, window.innerWidth - BUTTON_SIZE - VIEWPORT_MARGIN)
+  const maxY = Math.max(VIEWPORT_MARGIN, window.innerHeight - BUTTON_SIZE - VIEWPORT_MARGIN)
+
+  return {
+    x: Math.min(Math.max(VIEWPORT_MARGIN, x), maxX),
+    y: Math.min(Math.max(VIEWPORT_MARGIN, y), maxY),
+  }
+}
+
+function applyStoredPosition(next: BoosterSettings) {
+  const stored = next.launcher
+  position.value =
+    stored.x === null || stored.y === null
+      ? defaultPosition()
+      : clampPosition(stored.x, stored.y)
+}
+
+async function savePosition() {
+  if (!settings.value) return
+  settings.value.launcher = {
+    x: Math.round(position.value.x),
+    y: Math.round(position.value.y),
+  }
+  await props.settingsAdapter.set(structuredClone(settings.value))
+}
+
+function onPointerDown(event: PointerEvent) {
+  if (event.button !== 0) return
+
+  dragStart = {
+    pointerId: event.pointerId,
+    clientX: event.clientX,
+    clientY: event.clientY,
+    x: position.value.x,
+    y: position.value.y,
+    moved: false,
+  }
+  dragging.value = true
+  ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+}
+
+function onPointerMove(event: PointerEvent) {
+  if (!dragStart || dragStart.pointerId !== event.pointerId) return
+
+  const dx = event.clientX - dragStart.clientX
+  const dy = event.clientY - dragStart.clientY
+  if (Math.hypot(dx, dy) >= DRAG_THRESHOLD) dragStart.moved = true
+
+  position.value = clampPosition(dragStart.x + dx, dragStart.y + dy)
+}
+
+async function onPointerUp(event: PointerEvent) {
+  if (!dragStart || dragStart.pointerId !== event.pointerId) return
+
+  const moved = dragStart.moved
+  dragStart = undefined
+  dragging.value = false
+
+  if (moved) await savePosition()
+  else open.value = !open.value
+}
+
+function onResize() {
+  const next = clampPosition(position.value.x, position.value.y)
+  if (next.x === position.value.x && next.y === position.value.y) return
+  position.value = next
+  void savePosition()
+}
+
+function onOpenSettings() {
+  open.value = true
+}
 
 onMounted(async () => {
   settings.value = await props.settingsAdapter.get()
+  applyStoredPosition(settings.value)
+
   unsubscribe = props.settingsAdapter.subscribe((next) => {
     settings.value = structuredClone(next)
+    if (!dragging.value) applyStoredPosition(next)
   })
-  ready.value = true
+
+  window.addEventListener('resize', onResize)
+  window.addEventListener(OPEN_SETTINGS_EVENT, onOpenSettings)
 })
 
 onBeforeUnmount(() => {
   unsubscribe?.()
-  if (savedTimer) window.clearTimeout(savedTimer)
+  window.removeEventListener('resize', onResize)
+  window.removeEventListener(OPEN_SETTINGS_EVENT, onOpenSettings)
 })
-
-async function persist() {
-  if (!settings.value) return
-
-  saving.value = true
-  try {
-    await props.settingsAdapter.set(structuredClone(settings.value))
-    saved.value = true
-    if (savedTimer) window.clearTimeout(savedTimer)
-    savedTimer = window.setTimeout(() => {
-      saved.value = false
-    }, 1200)
-  } finally {
-    saving.value = false
-  }
-}
-
-async function reset() {
-  settings.value = {
-    enabled: true,
-    features: {
-      toolInspector: true,
-    },
-  }
-  await persist()
-}
 </script>
 
 <template>
-  <div class="booster-shell">
-    <div v-if="open" class="booster-control-center">
-      <header class="booster-control-header">
-        <div>
-          <div class="flex items-center gap-2">
-            <strong>ChatGPT Booster</strong>
-            <Badge variant="outline">{{ targetLabel }}</Badge>
-          </div>
-          <p>Control Center</p>
-        </div>
-        <Button variant="ghost" size="icon" class="size-8" title="Close" @click="open = false">
-          <X class="size-4" />
-        </Button>
-      </header>
-
-      <div v-if="!ready || !settings" class="booster-loading">Loading settings…</div>
-
-      <div v-else class="booster-control-body">
-        <section class="booster-setting-card">
-          <div class="booster-setting-copy">
-            <div class="flex items-center gap-2">
-              <Settings2 class="size-4" />
-              <b>Booster</b>
-            </div>
-            <span>Master switch for page enhancements. The control center stays available.</span>
-          </div>
-          <button
-            type="button"
-            class="booster-switch"
-            :class="{ 'booster-switch-on': settings.enabled }"
-            :aria-pressed="settings.enabled"
-            @click="settings.enabled = !settings.enabled; persist()"
-          >
-            <span />
-          </button>
-        </section>
-
-        <div class="booster-section-label">Modules</div>
-
-        <section class="booster-setting-card" :class="{ 'booster-setting-disabled': !settings.enabled }">
-          <div class="booster-setting-copy">
-            <div class="flex items-center gap-2">
-              <Wrench class="size-4" />
-              <b>Tool Inspector</b>
-              <Badge :variant="settings.features.toolInspector && settings.enabled ? 'default' : 'secondary'">
-                {{ settings.features.toolInspector && settings.enabled ? 'On' : 'Off' }}
-              </Badge>
-            </div>
-            <span>
-              Adds an Inspect control beside detected MCP/tool activity and exposes client-visible
-              payloads, timestamps and DOM diagnostics.
-            </span>
-          </div>
-          <button
-            type="button"
-            class="booster-switch"
-            :class="{ 'booster-switch-on': settings.features.toolInspector }"
-            :disabled="!settings.enabled"
-            :aria-pressed="settings.features.toolInspector"
-            @click="settings.features.toolInspector = !settings.features.toolInspector; persist()"
-          >
-            <span />
-          </button>
-        </section>
-
-        <section class="booster-info-card">
-          <div class="flex items-center gap-2 font-medium">
-            <ChevronRight class="size-4" />
-            Current behavior
-          </div>
-          <ul>
-            <li>Runs only on chatgpt.com.</li>
-            <li>Settings are stored locally in the browser.</li>
-            <li>No chat content is sent by Booster.</li>
-            <li>Tool details are shown only when the ChatGPT client exposes them.</li>
-          </ul>
-        </section>
-
-        <footer class="booster-control-footer">
-          <Button variant="ghost" size="sm" class="gap-1.5" @click="reset">
-            <RotateCcw class="size-3.5" />
-            Reset
-          </Button>
-          <span class="booster-save-state">
-            <Check v-if="saved" class="size-3.5" />
-            {{ saving ? 'Saving…' : saved ? 'Saved' : 'Settings apply live' }}
-          </span>
-        </footer>
+  <div class="booster-overlay-root">
+    <div v-if="open" class="booster-modal-backdrop" @click.self="open = false">
+      <div class="booster-modal-surface">
+        <ControlCenterPanel
+          :settings-adapter="settingsAdapter"
+          :target="target"
+          show-close
+          @close="open = false"
+        />
       </div>
     </div>
 
-    <button class="booster-button" type="button" title="ChatGPT Booster" @click="open = !open">
-      B
+    <button
+      class="booster-launcher"
+      :class="{ 'booster-launcher-dragging': dragging }"
+      :style="launcherStyle"
+      type="button"
+      title="ChatGPT Booster — drag to move, click to open"
+      @pointerdown="onPointerDown"
+      @pointermove="onPointerMove"
+      @pointerup="onPointerUp"
+      @pointercancel="dragStart = undefined; dragging = false"
+    >
+      <GripVertical class="booster-launcher-grip" />
+      <span>B</span>
     </button>
   </div>
 </template>

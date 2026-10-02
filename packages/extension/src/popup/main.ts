@@ -1,4 +1,13 @@
-import { createApp } from 'vue'
-import PopupApp from './PopupApp.vue'
+import { mountControlCenter } from '@chatgpt-booster/ui'
+import { chromeSettings } from '../settings'
 
-createApp(PopupApp).mount('#app')
+document.body.style.margin = '0'
+document.body.style.minWidth = '380px'
+
+const host = document.getElementById('app')
+if (!host) throw new Error('Popup mount point is missing')
+
+mountControlCenter(host, {
+  settingsAdapter: chromeSettings,
+  target: 'extension',
+})

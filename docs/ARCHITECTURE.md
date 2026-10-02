@@ -59,6 +59,17 @@ Responsibilities:
 
 The userscript and extension use the same core/UI feature implementation.
 
+## Settings surface
+
+The Control Center is a single Vue component with multiple delivery entry points:
+
+- Tampermonkey menu command opens the in-page surface;
+- Chromium action popup mounts the same Control Center component;
+- a movable in-page launcher opens the same surface and persists its clamped viewport position.
+
+Entry points must not fork settings behavior or create separate settings components.
+
+
 ## Feature model
 
 Features register as small modules with explicit start/stop lifecycle. A feature should own only its injected DOM and subscriptions. Failure of one feature must not prevent unrelated features from starting.
