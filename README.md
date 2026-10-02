@@ -9,7 +9,8 @@ Early foundation. The repository currently provides:
 - a Chromium Manifest V3 extension target;
 - a Tampermonkey/userscript target;
 - shared typed runtime contracts;
-- a Vue 3 injected UI mounted in Shadow DOM;
+- a Vue 3 + shadcn-vue injected UI mounted in Shadow DOM;
+- an initial Tool Inspector module for client-visible MCP/tool diagnostics;
 - strict TypeScript and Biome checks;
 - CI build artifacts and tag-based GitHub Release packaging.
 
@@ -31,7 +32,7 @@ The browser integration is intentionally limited to `https://chatgpt.com/*`.
 
 ## Repository
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the package boundaries and extension/userscript relationship.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for package boundaries and [docs/CHATGPT_CLIENT_RESEARCH.md](docs/CHATGPT_CLIENT_RESEARCH.md) for verified client research.
 
 ## License
 

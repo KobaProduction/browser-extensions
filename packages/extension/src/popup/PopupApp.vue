@@ -1,36 +1,55 @@
 <script setup lang="ts">
+import type { BoosterSettings } from '@chatgpt-booster/core'
 import { onMounted, ref } from 'vue'
 import { chromeSettings } from '../settings'
 
-const enabled = ref(true)
+const settings = ref<BoosterSettings>()
 const ready = ref(false)
 
 onMounted(async () => {
-  enabled.value = (await chromeSettings.get()).enabled
+  settings.value = await chromeSettings.get()
   ready.value = true
 })
 
-async function updateEnabled() {
-  await chromeSettings.set({ enabled: enabled.value })
+async function persist() {
+  if (settings.value) await chromeSettings.set(settings.value)
 }
 </script>
 
 <template>
   <main>
     <header>
-      <strong>ChatGPT Booster</strong>
+      <div>
+        <strong>ChatGPT Booster</strong>
+        <small>Browser tools for ChatGPT</small>
+      </div>
       <span>0.1.0</span>
     </header>
 
-    <label v-if="ready">
-      <span>
-        <b>Page integration</b>
-        <small>Show Booster controls on ChatGPT.</small>
-      </span>
-      <input v-model="enabled" type="checkbox" @change="updateEnabled" />
-    </label>
+    <div v-if="ready && settings" class="settings">
+      <label>
+        <span>
+          <b>Page integration</b>
+          <small>Enable all Booster integrations on ChatGPT.</small>
+        </span>
+        <input v-model="settings.enabled" type="checkbox" @change="persist" />
+      </label>
 
-    <p>Open ChatGPT to use injected tools.</p>
+      <label :class="{ disabled: !settings.enabled }">
+        <span>
+          <b>Tool inspector</b>
+          <small>Reveal client-visible details for tool and MCP blocks.</small>
+        </span>
+        <input
+          v-model="settings.features.toolInspector"
+          type="checkbox"
+          :disabled="!settings.enabled"
+          @change="persist"
+        />
+      </label>
+    </div>
+
+    <p>Only runs on chatgpt.com. No chat content is sent anywhere.</p>
   </main>
 </template>
 
@@ -43,7 +62,7 @@ async function updateEnabled() {
 
 body {
   margin: 0;
-  min-width: 310px;
+  min-width: 340px;
   background: #18181b;
   color: #f4f4f5;
 }
@@ -64,11 +83,22 @@ header {
   margin-bottom: 16px;
 }
 
+header > div,
+label span {
+  display: grid;
+  gap: 3px;
+}
+
 header span,
 small,
 p {
   color: #a1a1aa;
   font-size: 12px;
+}
+
+.settings {
+  display: grid;
+  gap: 8px;
 }
 
 label {
@@ -77,12 +107,12 @@ label {
   border-radius: 12px;
 }
 
-label span {
-  display: grid;
-  gap: 3px;
+label.disabled {
+  opacity: 0.5;
 }
 
 p {
   margin: 14px 2px 0;
+  line-height: 1.4;
 }
 </style>

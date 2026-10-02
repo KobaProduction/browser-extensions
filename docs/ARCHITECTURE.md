@@ -23,6 +23,14 @@ Environment-neutral contracts:
 
 It must not depend on Chrome APIs or Tampermonkey APIs.
 
+### chatgpt
+
+DOM-facing adapters. This package is the only place where ChatGPT-specific selectors and extraction heuristics should live.
+
+### features
+
+Reusable feature modules shared by extension and userscript targets. Features depend on explicit adapters and UI mounts rather than querying ChatGPT DOM directly.
+
 ### ui
 
 Vue 3 UI used by the browser targets. It also has a standalone Vite dev page for UI work without loading the extension. Injected page UI is mounted into a Shadow DOM root so ChatGPT styles do not leak into Booster and Booster styles do not leak into ChatGPT.

@@ -11,6 +11,7 @@
   "dependencies": {
     "@chatgpt-booster/core": "workspace:*",
     "@chatgpt-booster/ui": "workspace:*",
-    "vue": "^3.5.22"
+    "vue": "^3.5.22",
+    "@chatgpt-booster/features": "workspace:*"
   }
 }

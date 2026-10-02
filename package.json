@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "check": "bun run typecheck && bun run lint",
-    "typecheck": "bun run --filter @chatgpt-booster/core typecheck && bun run --filter @chatgpt-booster/ui typecheck && bun run --filter @chatgpt-booster/extension typecheck && bun run --filter @chatgpt-booster/userscript typecheck",
+    "typecheck": "bun run --filter '@chatgpt-booster/*' typecheck",
     "lint": "biome check .",
     "format": "biome check --write .",
     "build": "bun run --filter @chatgpt-booster/extension build && bun run --filter @chatgpt-booster/userscript build"
@@ -21,6 +21,8 @@
     "vite": "^8.0.0",
     "vite-plugin-web-extension": "^4.5.1",
     "vue": "^3.5.22",
-    "vue-tsc": "^3.0.7"
+    "vue-tsc": "^3.0.7",
+    "@tailwindcss/vite": "^4.1.14",
+    "tailwindcss": "^4.1.14"
   }
 }

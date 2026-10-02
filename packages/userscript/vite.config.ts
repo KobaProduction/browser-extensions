@@ -1,4 +1,5 @@
 import { resolve } from 'node:path'
+import tailwindcss from '@tailwindcss/vite'
 import vue from '@vitejs/plugin-vue'
 import { defineConfig, type Plugin } from 'vite'
 import { finalizeUserscript } from './scripts/finalize-userscript.ts'
@@ -14,7 +15,7 @@ function userscriptMetadataPlugin(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [vue(), userscriptMetadataPlugin()],
+  plugins: [vue(), tailwindcss(), userscriptMetadataPlugin()],
   build: {
     outDir: 'dist',
     emptyOutDir: true,

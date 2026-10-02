@@ -1,4 +1,8 @@
-import { type BoosterSettings, DEFAULT_SETTINGS, type SettingsAdapter } from '@chatgpt-booster/core'
+import {
+  type BoosterSettings,
+  normalizeSettings,
+  type SettingsAdapter,
+} from '@chatgpt-booster/core'
 
 const STORAGE_KEY = 'chatgpt-booster:settings'
 const EVENT_NAME = 'chatgpt-booster:settings-changed'
@@ -6,11 +10,9 @@ const EVENT_NAME = 'chatgpt-booster:settings-changed'
 function read(): BoosterSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw
-      ? { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<BoosterSettings>) }
-      : DEFAULT_SETTINGS
+    return normalizeSettings(raw ? (JSON.parse(raw) as Partial<BoosterSettings>) : undefined)
   } catch {
-    return DEFAULT_SETTINGS
+    return normalizeSettings()
   }
 }
 

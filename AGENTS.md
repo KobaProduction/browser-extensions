@@ -12,7 +12,9 @@ Repository map for ChatGPT Booster.
 ## Repository boundaries
 
 - `packages/core` — environment-neutral runtime contracts and settings.
-- `packages/ui` — Vue components and injected UI.
+- `packages/chatgpt` — ChatGPT DOM adapters.
+- `packages/features` — reusable feature modules.
+- `packages/ui` — Vue/shadcn-vue components and injected UI.
 - `packages/extension` — Chromium Manifest V3 target.
 - `packages/userscript` — Tampermonkey/userscript target.
 - `.github/workflows` — CI and release packaging.

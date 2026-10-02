@@ -1,4 +1,6 @@
-import { type BoosterModule, BoosterRuntime, isChatGptPage } from '@chatgpt-booster/core'
+import type { BoosterModule } from '@chatgpt-booster/core'
+import { BoosterRuntime, isChatGptPage } from '@chatgpt-booster/core'
+import { ToolInspectorModule } from '@chatgpt-booster/features'
 import { type MountedBoosterUi, mountBoosterUi } from '@chatgpt-booster/ui'
 import { chromeSettings } from '../settings'
 
@@ -30,4 +32,6 @@ class OverlayModule implements BoosterModule {
   }
 }
 
-void new BoosterRuntime([new OverlayModule()]).start()
+if (isChatGptPage()) {
+  void new BoosterRuntime([new OverlayModule(), new ToolInspectorModule(chromeSettings)]).start()
+}
