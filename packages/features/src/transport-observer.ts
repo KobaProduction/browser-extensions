@@ -92,7 +92,14 @@ export class TransportObserverModule implements BoosterModule {
         scope: 'transport-observer',
         name: `transport.${detail.kind}.${detail.phase}`,
         timestamp: detail.timestamp,
-        severity: detail.phase === 'error' ? 'ERROR' : 'INFO',
+        severity:
+          detail.phase !== 'error'
+            ? 'INFO'
+            : detail.errorClass === 'aborted' ||
+                detail.errorClass === 'socket' ||
+                detail.errorClass === 'stream'
+              ? 'WARN'
+              : 'ERROR',
         attributes: {
           'network.transport': detail.kind,
           'network.direction': detail.direction,
@@ -103,6 +110,7 @@ export class TransportObserverModule implements BoosterModule {
           'http.response.body.size': detail.size,
           'http.response.header.content_type': detail.contentType,
           'chatgpt.body_preview': detail.bodyPreview,
+          'error.class': detail.errorClass,
         },
         body: detail.error ?? detail.bodyPreview ?? `${detail.kind} ${detail.phase}`,
       })
