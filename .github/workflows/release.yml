@@ -39,4 +39,4 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${GITHUB_REF_NAME}"             chatgpt-booster-extension.zip             packages/userscript/dist/chatgpt-booster.user.js             --generate-notes             --title "${GITHUB_REF_NAME}"
+          gh release create "${GITHUB_REF_NAME}"             chatgpt-booster-extension.zip             packages/userscript/dist/chatgpt-booster.user.js             packages/userscript/dist/chatgpt-booster.dev.user.js             --generate-notes             --title "${GITHUB_REF_NAME}"
