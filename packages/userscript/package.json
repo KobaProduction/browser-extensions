@@ -1,12 +1,14 @@
 {
   "name": "@chatgpt-booster/userscript",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build",
+    "build": "bun run build:prod && bun run build:dev",
     "dev": "vite build --watch",
-    "typecheck": "vue-tsc --noEmit -p tsconfig.json"
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json",
+    "build:prod": "CHATGPT_BOOSTER_VARIANT=prod vite build",
+    "build:dev": "CHATGPT_BOOSTER_VARIANT=dev vite build"
   },
   "dependencies": {
     "@chatgpt-booster/core": "workspace:*",
