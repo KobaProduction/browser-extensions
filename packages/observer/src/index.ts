@@ -25,6 +25,7 @@ export interface TransportEventDetail {
   bodyPreview?: string | undefined
   size?: number | undefined
   error?: string | undefined
+  errorClass?: 'aborted' | 'network' | 'stream' | 'socket' | undefined
 }
 
 const DEFAULT_CONFIG: TransportObserverConfig = {
@@ -33,7 +34,41 @@ const DEFAULT_CONFIG: TransportObserverConfig = {
 }
 
 const SECRET_KEY =
-  /(authorization|cookie|token|secret|password|passwd|api[-_]?key|session|credential)/i
+  /(authorization|cookie|token|secret|password|passwd|api[-_]?key|session|credential|verify|turnstile|proof|challenge)/i
+
+const JSON_SECRET_VALUE =
+  /("(?:authorization|cookie|token|secret|password|passwd|api[-_]?key|session|credential|verify|turnstile|proof|challenge)[^"]*"\s*:\s*")[^"]*(")/gi
+const QUERY_SECRET_TEXT =
+  /([?&](?:token|access_token|api_key|key|session|secret|auth|verify|turnstile|proof|challenge)=)[^&#\s"]*/gi
+const JWT_LIKE = /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g
+
+function redactTextSecrets(value: string): string {
+  return value
+    .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer [REDACTED]')
+    .replace(JSON_SECRET_VALUE, '$1[REDACTED]$2')
+    .replace(QUERY_SECRET_TEXT, '$1[REDACTED]')
+    .replace(JWT_LIKE, '[REDACTED_JWT]')
+}
+
+function classifyError(error: unknown): {
+  message: string
+  errorClass: 'aborted' | 'network' | 'stream'
+} {
+  const message =
+    error instanceof Error
+      ? error.message.slice(0, 300)
+      : String(error || 'transport failed').slice(0, 300)
+  const name = error instanceof Error ? error.name : ''
+  if (
+    name === 'AbortError' ||
+    /abort(ed|ing)?|signal is aborted|BodyStreamBuffer was aborted/i.test(message)
+  ) {
+    return { message, errorClass: 'aborted' }
+  }
+  if (/stream/i.test(message)) return { message, errorClass: 'stream' }
+  return { message, errorClass: 'network' }
+}
+
 const UUIDISH = /^[0-9a-f]{8}-[0-9a-f-]{27,}$/i
 const LONG_ID = /^[A-Za-z0-9_-]{24,}$/
 
@@ -108,7 +143,7 @@ export function sanitizeBodyPreview(value: unknown, maxChars: number): string | 
     }
   }
 
-  const redacted = text.replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer [REDACTED]')
+  const redacted = redactTextSecrets(text)
   return redacted.length > maxChars ? `${redacted.slice(0, maxChars)}…` : redacted
 }
 
@@ -163,6 +198,7 @@ function observeFetchResponseBody(
         })
       }
     } catch (error) {
+      const classified = classifyError(error)
       emit({
         id: context.id,
         kind: 'fetch',
@@ -171,7 +207,8 @@ function observeFetchResponseBody(
         timestamp: Date.now(),
         method: context.method,
         url: context.url,
-        error: error instanceof Error ? error.message.slice(0, 300) : 'response stream read failed',
+        error: classified.message,
+        errorClass: classified.errorClass,
       })
     } finally {
       reader.releaseLock()
@@ -252,6 +289,7 @@ export function installTransportObserver(
       })
       return response
     } catch (error) {
+      const classified = classifyError(error)
       emit({
         id,
         kind: 'fetch',
@@ -261,7 +299,8 @@ export function installTransportObserver(
         method,
         url,
         durationMs: Math.round((performance.now() - started) * 100) / 100,
-        error: error instanceof Error ? error.message.slice(0, 300) : 'fetch failed',
+        error: classified.message,
+        errorClass: classified.errorClass,
       })
       throw error
     }
@@ -418,6 +457,7 @@ export function installTransportObserver(
         phase: 'error',
         timestamp: Date.now(),
         url: safe,
+        errorClass: 'socket',
       }),
     )
     return ws
@@ -467,6 +507,7 @@ export function installTransportObserver(
         phase: 'error',
         timestamp: Date.now(),
         url: safe,
+        errorClass: 'stream',
       }),
     )
     return source
