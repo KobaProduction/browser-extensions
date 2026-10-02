@@ -23,12 +23,43 @@ const CANDIDATE_SELECTOR = [
   'details',
 ].join(',')
 
+const ASSISTANT_TURN_SELECTOR = [
+  '[data-message-author-role="assistant"]',
+  '[data-turn="assistant"]',
+  '[data-author="assistant"]',
+].join(',')
+
+const EXCLUDED_UI_SELECTOR = [
+  'nav',
+  'aside',
+  'header',
+  'footer',
+  'form',
+  '[data-testid*="sidebar" i]',
+  '[data-testid*="composer" i]',
+  '[aria-label*="sidebar" i]',
+  '[aria-label*="navigation" i]',
+].join(',')
+
 const TOOL_WORDS = /\b(tool|tools|mcp|connector|function|computer|browser|python|terminal)\b/i
 const TOOL_ACTIONS =
   /\b(called|calling|used|using|ran|running|searched|searching|executed|executing)\b/i
 
 function compact(value: string): string {
   return value.replace(/\s+/g, ' ').trim()
+}
+
+function assistantTurn(element: HTMLElement): HTMLElement | null {
+  return element.closest<HTMLElement>(ASSISTANT_TURN_SELECTOR)
+}
+
+function isInsideConversationAssistantTurn(element: HTMLElement): boolean {
+  const turn = assistantTurn(element)
+  if (!turn) return false
+  if (element.closest(EXCLUDED_UI_SELECTOR)) return false
+
+  const main = element.closest('main')
+  return Boolean(main || turn.closest('main'))
 }
 
 function relevantAttributes(element: HTMLElement): Record<string, string> {
@@ -39,8 +70,9 @@ function relevantAttributes(element: HTMLElement): Record<string, string> {
       attribute.name.startsWith('aria-') ||
       attribute.name === 'role' ||
       attribute.name === 'title'
-    )
+    ) {
       result[attribute.name] = attribute.value
+    }
   }
   return result
 }
@@ -52,7 +84,7 @@ function extractTimestamp(element: HTMLElement): string | undefined {
     if (value) return value
   }
 
-  const turn = element.closest('article, [data-message-author-role]')
+  const turn = assistantTurn(element)
   const turnTime = turn?.querySelector('time')
   if (turnTime) {
     const value = turnTime.getAttribute('datetime') ?? compact(turnTime.textContent ?? '')
@@ -83,8 +115,10 @@ function structuredPayloads(element: HTMLElement): string[] {
 }
 
 function scoreCandidate(element: HTMLElement): { score: number; signals: string[] } {
-  const signals: string[] = []
-  let score = 0
+  if (!isInsideConversationAssistantTurn(element)) return { score: 0, signals: [] }
+
+  const signals: string[] = ['assistant conversation turn']
+  let score = 2
   const text = compact(element.innerText || element.textContent || '').slice(0, 800)
   const metadata = [
     element.getAttribute('data-testid'),
@@ -112,22 +146,6 @@ function scoreCandidate(element: HTMLElement): { score: number; signals: string[
     score += 2
     signals.push('structured descendant')
   }
-  const inAssistantTurn = Boolean(
-    element.closest('[data-message-author-role="assistant"], article'),
-  )
-  const hasStructuredPayload = Boolean(
-    element.querySelector('pre, code, [data-json], [data-payload]'),
-  )
-  const isSpecificIntegration = /\b(mcp|connector)\b/i.test(metadata)
-
-  if (inAssistantTurn) {
-    score += 1
-    signals.push('assistant turn')
-  }
-
-  if (!inAssistantTurn && !hasStructuredPayload && !isSpecificIntegration) {
-    return { score: 0, signals: [] }
-  }
 
   return { score, signals }
 }
@@ -153,7 +171,7 @@ export function findToolCallEvidence(root: ParentNode = document): ToolCallEvide
   for (const element of candidates) {
     if (element.closest('#chatgpt-booster-root, [data-chatgpt-booster]')) continue
     const { score, signals } = scoreCandidate(element)
-    if (score < 4 || isNestedDuplicate(element, accepted)) continue
+    if (score < 5 || isNestedDuplicate(element, accepted)) continue
 
     const visibleText = compact(element.innerText || element.textContent || '').slice(0, 4000)
     if (!visibleText) continue
