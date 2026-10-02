@@ -23,7 +23,7 @@ async function persist() {
         <strong>ChatGPT Booster</strong>
         <small>Browser tools for ChatGPT</small>
       </div>
-      <span>0.1.0</span>
+      <span>0.1.1</span>
     </header>
 
     <div v-if="ready && settings" class="settings">

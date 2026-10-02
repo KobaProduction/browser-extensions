@@ -7,26 +7,16 @@ import { chromeSettings } from '../settings'
 class OverlayModule implements BoosterModule {
   readonly id = 'overlay'
   #mounted: MountedBoosterUi | undefined
-  #unsubscribe: (() => void) | undefined
 
-  async start() {
-    if (!isChatGptPage()) return
-
-    const apply = (enabled: boolean) => {
-      if (enabled && !this.#mounted) this.#mounted = mountBoosterUi()
-      if (!enabled && this.#mounted) {
-        this.#mounted.unmount()
-        this.#mounted = undefined
-      }
-    }
-
-    apply((await chromeSettings.get()).enabled)
-    this.#unsubscribe = chromeSettings.subscribe((settings) => apply(settings.enabled))
+  start() {
+    if (!isChatGptPage() || this.#mounted) return
+    this.#mounted = mountBoosterUi({
+      settingsAdapter: chromeSettings,
+      target: 'extension',
+    })
   }
 
   stop() {
-    this.#unsubscribe?.()
-    this.#unsubscribe = undefined
     this.#mounted?.unmount()
     this.#mounted = undefined
   }

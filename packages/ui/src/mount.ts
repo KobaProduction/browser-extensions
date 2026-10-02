@@ -1,3 +1,4 @@
+import type { SettingsAdapter } from '@chatgpt-booster/core'
 import { type App, createApp } from 'vue'
 import BoosterOverlay from './BoosterOverlay.vue'
 import styles from './styles.css?inline'
@@ -8,7 +9,12 @@ export interface MountedBoosterUi {
   unmount(): void
 }
 
-export function mountBoosterUi(): MountedBoosterUi {
+export interface BoosterUiOptions {
+  settingsAdapter: SettingsAdapter
+  target: 'extension' | 'userscript'
+}
+
+export function mountBoosterUi(options: BoosterUiOptions): MountedBoosterUi {
   document.getElementById(ROOT_ID)?.remove()
 
   const host = document.createElement('div')
@@ -23,7 +29,7 @@ export function mountBoosterUi(): MountedBoosterUi {
   const mountPoint = document.createElement('div')
   shadow.append(mountPoint)
 
-  const app: App = createApp(BoosterOverlay)
+  const app: App = createApp(BoosterOverlay, { ...options })
   app.mount(mountPoint)
 
   return {
