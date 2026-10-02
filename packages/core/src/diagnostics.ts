@@ -56,10 +56,20 @@ export function createDiagnosticsStore(): DiagnosticsAdapter & {
 } {
   let counters = { ...EMPTY_TRANSPORT_COUNTERS }
   const listeners = new Set<(value: TransportCounters) => void>()
+  let publishTimer: ReturnType<typeof setTimeout> | undefined
 
   const publish = () => {
+    if (publishTimer) {
+      clearTimeout(publishTimer)
+      publishTimer = undefined
+    }
     const snapshot = { ...counters }
     for (const listener of listeners) listener(snapshot)
+  }
+
+  const schedulePublish = () => {
+    if (publishTimer || listeners.size === 0) return
+    publishTimer = setTimeout(publish, 250)
   }
 
   return {
@@ -77,7 +87,7 @@ export function createDiagnosticsStore(): DiagnosticsAdapter & {
     },
     recordTransport(event) {
       counters = applyTransportCounterEvent(counters, event)
-      publish()
+      schedulePublish()
     },
   }
 }
