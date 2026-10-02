@@ -27,7 +27,7 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: !isDev,
-    sourcemap: isDev ? 'inline' : false,
+    sourcemap: isDev ? true : false,
     minify: !isDev,
     lib: {
       entry: resolve(import.meta.dirname, 'src/index.ts'),

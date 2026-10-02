@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 
 type UserscriptVariant = 'prod' | 'dev'
 
-const version = '0.4.4'
+const version = '0.4.5'
 
 function outputFor(variant: UserscriptVariant): URL {
   return new URL(
@@ -42,7 +42,13 @@ export async function finalizeUserscript(
   const outputPath = outputFor(variant)
   const bundled = await readFile(outputPath, 'utf8')
   const metadata = metadataFor(variant)
-  const payload = bundled.startsWith('// ==UserScript==') ? bundled : `${metadata}\n\n${bundled}`
+  let payload = bundled.startsWith('// ==UserScript==') ? bundled : `${metadata}\n\n${bundled}`
+  if (variant === 'dev') {
+    payload = payload.replace(
+      /\/\/# sourceMappingURL=.*$/m,
+      '//# sourceMappingURL=https://github.com/KobaProduction/chatgpt-booster/releases/latest/download/chatgpt-booster.dev.user.js.map',
+    )
+  }
 
   await writeFile(outputPath, payload, 'utf8')
 
