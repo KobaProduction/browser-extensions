@@ -20,7 +20,13 @@ export interface TelemetryHttpRequest {
 export type TelemetryHttpSender = (request: TelemetryHttpRequest) => Promise<void>
 
 const SECRET_PATTERN = /(Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi
-const QUERY_SECRET = /([?&](?:token|access_token|api_key|key|session|secret|auth)=)[^&#]*/gi
+
+const JSON_SECRET_VALUE =
+  /("(?:authorization|cookie|token|secret|password|passwd|api[-_]?key|session|credential|verify|turnstile|proof|challenge)[^"]*"\s*:\s*")[^"]*(")/gi
+const JWT_LIKE = /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g
+
+const QUERY_SECRET =
+  /([?&](?:token|access_token|api_key|key|session|secret|auth|verify|turnstile|proof|challenge)=)[^&#]*/gi
 const FLUSH_INTERVAL_MS = 2_000
 const MAX_BATCH_SIZE = 50
 
@@ -28,6 +34,8 @@ function sanitizeText(value: string): string {
   return value
     .replace(SECRET_PATTERN, '$1[REDACTED]')
     .replace(QUERY_SECRET, '$1[REDACTED]')
+    .replace(JSON_SECRET_VALUE, '$1[REDACTED]$2')
+    .replace(JWT_LIKE, '[REDACTED_JWT]')
     .slice(0, 8192)
 }
 
