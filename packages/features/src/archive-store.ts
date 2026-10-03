@@ -1,8 +1,13 @@
+import { buildArchiveThread } from '@chatgpt-booster/chatgpt'
+import { ARCHIVE_UPDATED_EVENT, serverTimeMs } from '@chatgpt-booster/core'
+import { historyCoverage } from './archive-coverage'
+
+export { ARCHIVE_UPDATED_EVENT } from '@chatgpt-booster/core'
+
 import type { ConversationArchiveEventDetail } from '@chatgpt-booster/observer'
 
 export const ARCHIVE_DB_NAME = 'chatgpt-booster-archive'
 export const ARCHIVE_DB_VERSION = 2
-export const ARCHIVE_UPDATED_EVENT = 'chatgpt-booster:archive-updated'
 
 export interface ArchivedConversation {
   conversationId: string
@@ -67,6 +72,10 @@ export interface ArchivedMessage {
 }
 
 export interface ArchivedConversationPage {
+  readId?: string | undefined
+  readStartedAt?: number | undefined
+  isInitial?: boolean | undefined
+  requestedBefore?: string | null | undefined
   pageKey: string
   conversationId: string
   startCursor: string | null
@@ -79,6 +88,13 @@ export interface ArchivedConversationPage {
 }
 
 export interface ConversationCoverage {
+  evidenceVersion?: number
+  readId?: string | null
+  readStartedAt?: number | null
+  verifiedAt?: number | null
+  historyPageCount?: number
+  visibleMessageCount?: number
+  internalRecordCount?: number
   conversationId: string
   oldestKnownMessageId: string | null
   newestKnownMessageId: string | null
@@ -103,6 +119,9 @@ export interface ArchiveIngestSummary {
   complete: boolean
   hasOlderServerHistory: boolean | null
   observedAt: number
+  pageKey?: string
+  readId?: string | undefined
+  readStartedAt?: number | undefined
 }
 
 type RawRecord = Record<string, unknown>
@@ -168,16 +187,8 @@ function openArchiveDatabase(): Promise<IDBDatabase> {
       const oldVersion = (event as IDBVersionChangeEvent).oldVersion
 
       if (oldVersion > 0 && oldVersion < 2) {
-        for (const name of [
-          'conversations',
-          'messages',
-          'conversationPages',
-          'conversationCoverage',
-          'projects',
-          'assets',
-        ]) {
-          if (db.objectStoreNames.contains(name)) db.deleteObjectStore(name)
-        }
+        open.transaction?.abort()
+        return // Explicit legacy migration/export is required; never erase existing data.
       }
 
       const conversations = db.objectStoreNames.contains('conversations')
@@ -234,7 +245,11 @@ function openArchiveDatabase(): Promise<IDBDatabase> {
         db.createObjectStore('assets', { keyPath: 'assetId' })
       }
     }
-    open.onsuccess = () => resolve(open.result)
+    open.onblocked = () => reject(new Error('Archive upgrade blocked by another tab'))
+    open.onsuccess = () => {
+      open.result.onversionchange = () => open.result.close()
+      resolve(open.result)
+    }
   })
 }
 
@@ -325,19 +340,19 @@ export class ConversationArchiveStore {
 
   async upsertProject(projectId: string, title: string | null): Promise<void> {
     const db = await this.#db()
-    const readTx = db.transaction('projects', 'readonly')
-    const previous = await request<ArchivedProject | undefined>(
-      readTx.objectStore('projects').get(projectId),
-    )
+    // One read/write transaction prevents a late null title from losing a known name.
+    const tx = db.transaction('projects', 'readwrite')
+    const done = transactionDone(tx)
+    const store = tx.objectStore('projects')
+    const previous = await request<ArchivedProject | undefined>(store.get(projectId))
     const now = Date.now()
-    const writeTx = db.transaction('projects', 'readwrite')
-    writeTx.objectStore('projects').put({
+    store.put({
       projectId,
-      title: title ?? previous?.title ?? null,
+      title: title?.trim() || previous?.title || null,
       firstSeenAt: previous?.firstSeenAt ?? now,
       lastSeenAt: now,
     } satisfies ArchivedProject)
-    await transactionDone(writeTx)
+    await done
   }
 
   async getCoverage(conversationId: string): Promise<ConversationCoverage | undefined> {
@@ -361,7 +376,7 @@ export class ConversationArchiveStore {
     const tx = db.transaction('conversations', 'readonly')
     const items = await request<ArchivedConversation[]>(tx.objectStore('conversations').getAll())
     return items.sort(
-      (a, b) => (b.updatedAt ?? b.lastSeenAt ?? 0) - (a.updatedAt ?? a.lastSeenAt ?? 0),
+      (a, b) => serverTimeMs(b.updatedAt, b.lastSeenAt) - serverTimeMs(a.updatedAt, a.lastSeenAt),
     )
   }
 
@@ -371,25 +386,49 @@ export class ConversationArchiveStore {
     const index = tx.objectStore('messages').index('conversationId')
     const items = await request<ArchivedMessage[]>(index.getAll(IDBKeyRange.only(conversationId)))
     return items.sort(
-      (a, b) => (a.createTime ?? a.firstSeenAt ?? 0) - (b.createTime ?? b.firstSeenAt ?? 0),
+      (a, b) =>
+        serverTimeMs(a.createTime, a.firstSeenAt) - serverTimeMs(b.createTime, b.firstSeenAt) ||
+        a.messageId.localeCompare(b.messageId),
     )
   }
 
-  async ingest(detail: ConversationArchiveEventDetail): Promise<ArchiveIngestSummary> {
+  async ingest(
+    detail: ConversationArchiveEventDetail,
+    canWrite: () => boolean = () => true,
+  ): Promise<ArchiveIngestSummary | undefined> {
+    if (!canWrite()) return undefined
     const payload = detail.payload
     const conversationId = stringOrNull(payload.conversation_id) ?? detail.conversationId
-    const rawMessages = Array.isArray(payload.messages)
+    const incomingMessages = Array.isArray(payload.messages)
       ? payload.messages.map(record).filter((value): value is RawRecord => Boolean(value))
       : []
+    // Stable record identity, including duplicate IDs within one server page.
+    const rawMessages = [
+      ...new Map(
+        incomingMessages
+          .filter((message) => typeof message.id === 'string')
+          .map((message) => [message.id, message]),
+      ).values(),
+    ]
     const pageInfo = record(payload.page_info)
     if (!conversationId || !pageInfo) throw new Error('Invalid conversation archive payload')
 
     const now = detail.timestamp
-    const projectId = normalizeProjectId(payload)
+    const incomingProjectId = normalizeProjectId(payload)
     const db = await this.#db()
+    if (!canWrite()) return undefined
 
-    const readTx = db.transaction(['conversations', 'messages', 'conversationCoverage'], 'readonly')
-    const readDone = transactionDone(readTx)
+    const readTx = db.transaction(
+      ['conversations', 'messages', 'conversationCoverage', 'conversationPages'],
+      'readwrite',
+    )
+    const writeDone = transactionDone(readTx)
+    const previousPagesPromise = request<ArchivedConversationPage[]>(
+      readTx.objectStore('conversationPages').index('conversationId').getAll(conversationId),
+    )
+    const allMessagesPromise = request<ArchivedMessage[]>(
+      readTx.objectStore('messages').index('conversationId').getAll(conversationId),
+    )
     const conversationPromise = request<ArchivedConversation | undefined>(
       readTx.objectStore('conversations').get(conversationId),
     )
@@ -405,13 +444,23 @@ export class ConversationArchiveStore {
           : Promise.resolve(undefined)
       }),
     )
-    const [oldConversation, oldCoverage, previousMessages] = await Promise.all([
-      conversationPromise,
-      coveragePromise,
-      previousMessagesPromise,
-    ])
-    await readDone
+    const [oldConversation, oldCoverage, previousMessages, previousPages, allMessages] =
+      await Promise.all([
+        conversationPromise,
+        coveragePromise,
+        previousMessagesPromise,
+        previousPagesPromise,
+        allMessagesPromise,
+      ])
 
+    // Consent can be revoked while database requests are in flight. No puts yet.
+    if (!canWrite()) {
+      await writeDone
+      return undefined
+    }
+
+    const projectId =
+      'gizmo_id' in payload ? incomingProjectId : (oldConversation?.projectId ?? null)
     let insertedMessages = 0
     let updatedMessages = 0
     let unchangedMessages = 0
@@ -433,12 +482,24 @@ export class ConversationArchiveStore {
     const hasNextPage = booleanOrNull(pageInfo.has_next_page)
     const startCursor = stringOrNull(pageInfo.start_cursor)
     const endCursor = stringOrNull(pageInfo.end_cursor)
-    const complete = hasPreviousPage === false || oldCoverage?.completeAtLastRead === true
+    const candidatePage = {
+      readId: detail.readId,
+      readStartedAt: detail.readStartedAt,
+      isInitial: detail.isInitial,
+      requestedBefore: detail.requestedBefore,
+      startCursor,
+      endCursor,
+      hasPreviousPage,
+      hasNextPage,
+      observedAt: now,
+    }
+    const evidence = historyCoverage([...previousPages, candidatePage])
+    const complete = evidence.verified
     const archiveState: ArchivedConversation['archiveState'] = complete ? 'complete' : 'partial'
 
     const conversation: ArchivedConversation = {
       conversationId,
-      projectId: projectId ?? oldConversation?.projectId ?? null,
+      projectId,
       title: stringOrNull(payload.title) ?? oldConversation?.title ?? null,
       conversationOrigin:
         stringOrNull(payload.conversation_origin) ?? oldConversation?.conversationOrigin ?? null,
@@ -481,14 +542,15 @@ export class ConversationArchiveStore {
       branchSourceTitle: branch.title ?? oldConversation?.branchSourceTitle ?? null,
       firstSeenAt: oldConversation?.firstSeenAt ?? now,
       lastSeenAt: now,
-      lastFullReadAt: hasPreviousPage === false ? now : (oldConversation?.lastFullReadAt ?? null),
+      lastFullReadAt: complete ? now : (oldConversation?.lastFullReadAt ?? null),
       archiveState,
       raw: { ...(oldConversation?.raw ?? {}), ...withoutMessages(payload) },
     }
 
     const messageIds = normalizedMessages.map((message) => message.messageId)
-    const pageKey = `${conversationId}:${startCursor ?? ''}:${endCursor ?? ''}`
+    const pageKey = `${conversationId}:${detail.readId ?? 'legacy'}:${startCursor ?? ''}:${endCursor ?? ''}`
     const page: ArchivedConversationPage = {
+      ...candidatePage,
       pageKey,
       conversationId,
       startCursor,
@@ -505,7 +567,17 @@ export class ConversationArchiveStore {
       .sort((a, b) => (a.createTime ?? 0) - (b.createTime ?? 0))
     const knownBranches = new Set(oldCoverage?.knownBranchConversationIds ?? [])
     for (const id of branch.knownBranches) knownBranches.add(id)
+    const mergedRecords = new Map(allMessages.map((message) => [message.messageKey, message]))
+    for (const message of normalizedMessages) mergedRecords.set(message.messageKey, message)
+    const counts = buildArchiveThread([...mergedRecords.values()])
     const coverage: ConversationCoverage = {
+      evidenceVersion: 1,
+      readId: evidence.readId,
+      readStartedAt: evidence.readStartedAt,
+      verifiedAt: complete ? evidence.observedAt : null,
+      historyPageCount: evidence.pageCount,
+      visibleMessageCount: counts.messageCount,
+      internalRecordCount: counts.detailCount,
       conversationId,
       oldestKnownMessageId:
         hasNextPage === true
@@ -525,24 +597,26 @@ export class ConversationArchiveStore {
         hasNextPage === true ? startCursor : (oldCoverage?.oldestKnownCursor ?? startCursor),
       newestKnownCursor:
         hasPreviousPage === true ? endCursor : (oldCoverage?.newestKnownCursor ?? endCursor),
-      hasOlderServerHistory:
-        hasPreviousPage === false ? false : (oldCoverage?.hasOlderServerHistory ?? hasPreviousPage),
-      hasNewerServerHistory: oldCoverage?.hasNewerServerHistory ?? hasNextPage,
-      knownMessageCount: (oldCoverage?.knownMessageCount ?? 0) + insertedMessages,
+      hasOlderServerHistory: evidence.startReached ? false : evidence.readId ? true : null,
+      hasNewerServerHistory: detail.isInitial
+        ? hasNextPage
+        : (oldCoverage?.hasNewerServerHistory ?? null),
+      knownMessageCount: counts.recordCount,
       knownBranchConversationIds: [...knownBranches],
       lastObservedAt: now,
-      lastFullReadAt: hasPreviousPage === false ? now : (oldCoverage?.lastFullReadAt ?? null),
+      lastFullReadAt: complete ? now : (oldCoverage?.lastFullReadAt ?? null),
       completeAtLastRead: complete,
     }
 
-    const writeTx = db.transaction(
-      ['conversations', 'messages', 'conversationPages', 'conversationCoverage'],
-      'readwrite',
-    )
-    const writeDone = transactionDone(writeTx)
+    const writeTx = readTx
     writeTx.objectStore('conversations').put(conversation)
     const writeMessages = writeTx.objectStore('messages')
     for (const message of normalizedMessages) writeMessages.put(message)
+    if (oldConversation && oldConversation.projectId !== projectId) {
+      const incomingKeys = new Set(normalizedMessages.map((message) => message.messageKey))
+      for (const previous of allMessages)
+        if (!incomingKeys.has(previous.messageKey)) writeMessages.put({ ...previous, projectId })
+    }
     writeTx.objectStore('conversationPages').put(page)
     writeTx.objectStore('conversationCoverage').put(coverage)
     await writeDone
@@ -557,13 +631,19 @@ export class ConversationArchiveStore {
       complete,
       hasOlderServerHistory: coverage.hasOlderServerHistory,
       observedAt: now,
+      pageKey,
+      readId: detail.readId,
+      readStartedAt: detail.readStartedAt,
     }
     window.dispatchEvent(new CustomEvent(ARCHIVE_UPDATED_EVENT, { detail: summary }))
     return summary
   }
 
   async #db(): Promise<IDBDatabase> {
-    this.#database ??= openArchiveDatabase()
+    this.#database ??= openArchiveDatabase().catch((error) => {
+      this.#database = undefined
+      throw error
+    })
     return await this.#database
   }
 }

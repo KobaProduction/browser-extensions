@@ -1,4 +1,7 @@
 import type {
+  ArchiveCurrentContext,
+  ArchiveExportOptions,
+  ArchiveThreadView,
   DiagnosticsAdapter,
   PersistentDiagnosticsAdapter,
   SecretAdapter,
@@ -46,6 +49,11 @@ export interface ArchiveMessageView {
 }
 
 export interface ArchiveCoverageView {
+  evidenceVersion?: number
+  verifiedAt?: number | null
+  historyPageCount?: number
+  visibleMessageCount?: number
+  internalRecordCount?: number
   conversationId: string
   knownMessageCount: number
   hasOlderServerHistory: boolean | null
@@ -54,7 +62,12 @@ export interface ArchiveCoverageView {
 }
 
 export interface ArchiveDataAdapter {
+  getCurrentContext(): Promise<ArchiveCurrentContext>
   currentConversationId(): string | null
+  currentProjectId(): string | null
+  getThread(conversationId: string): Promise<ArchiveThreadView>
+  collectCurrent(): Promise<void>
+  exportConversation(conversationId: string, options: ArchiveExportOptions): Promise<void>
   listProjects(): Promise<ArchiveProjectView[]>
   getConversation(conversationId: string): Promise<ArchiveConversationView | undefined>
   getCoverage(conversationId: string): Promise<ArchiveCoverageView | undefined>

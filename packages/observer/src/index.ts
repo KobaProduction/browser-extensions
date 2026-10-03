@@ -1,6 +1,72 @@
 export const TRANSPORT_EVENT = 'chatgpt-booster:transport-event'
 export const TRANSPORT_CONFIG_EVENT = 'chatgpt-booster:transport-config'
 export const TRANSPORT_CHANNEL = 'chatgpt-booster:transport'
+export const ARCHIVE_POLICY_EVENT = 'chatgpt-booster:archive-policy'
+export const ARCHIVE_NETWORK_EVENT = 'chatgpt-booster:archive-network'
+export interface ArchiveCapturePolicy {
+  enabled: boolean
+  defaultEnabled: boolean
+  projects: Record<string, boolean>
+  conversations: Record<string, boolean>
+  manualConversationId: string | null
+}
+const DENY_ARCHIVE: ArchiveCapturePolicy = {
+  enabled: false,
+  defaultEnabled: false,
+  projects: {},
+  conversations: {},
+  manualConversationId: null,
+}
+let archivePolicy = { ...DENY_ARCHIVE }
+const archiveProjects = new Map<string, string | null>()
+interface ArchiveReadContext {
+  readId: string
+  readStartedAt: number
+  isInitial: boolean
+  requestedBefore: string | null
+}
+const archiveReads = new Map<string, { readId: string; readStartedAt: number }>()
+function beginArchiveRequest(sourceUrl: string, requestId: string): ArchiveReadContext | undefined {
+  const id = conversationHistoryId(sourceUrl)
+  if (!id) return undefined
+  const url = new URL(sourceUrl, location.href)
+  const isInitial = !url.pathname.endsWith('/messages')
+  if (isInitial) archiveReads.set(id, { readId: requestId, readStartedAt: Date.now() })
+  const read = archiveReads.get(id) ?? { readId: requestId, readStartedAt: Date.now() }
+  if (archiveReads.size > 128) {
+    const oldest = archiveReads.keys().next().value
+    if (oldest) {
+      archiveReads.delete(oldest)
+      archiveProjects.delete(oldest)
+    }
+  }
+  return { ...read, isInitial, requestedBefore: url.searchParams.get('before') }
+}
+function captureAllowed(id: string, projectId: string | null): boolean {
+  return (
+    archivePolicy.manualConversationId === id ||
+    (archivePolicy.enabled &&
+      (archivePolicy.conversations[id] ??
+        (projectId ? archivePolicy.projects[projectId] : undefined) ??
+        archivePolicy.defaultEnabled))
+  )
+}
+function archiveNetwork(id: string, sourceUrl: string, phase: string, status?: number) {
+  const conversationId = conversationHistoryId(sourceUrl)
+  if (
+    !conversationId ||
+    !captureAllowed(conversationId, archiveProjects.get(conversationId) ?? null)
+  )
+    return
+  observerTarget?.postMessage(
+    {
+      channel: TRANSPORT_CHANNEL,
+      type: ARCHIVE_NETWORK_EVENT,
+      detail: { id, conversationId, phase, status, timestamp: Date.now() },
+    },
+    observerTarget.location.origin,
+  )
+}
 export const ARCHIVE_EVENT = 'chatgpt-booster:archive-event'
 
 export type TransportKind = 'fetch' | 'xhr' | 'websocket' | 'eventsource'
@@ -31,6 +97,10 @@ export interface TransportEventDetail {
 
 export interface ConversationArchiveEventDetail {
   kind: 'conversation-page'
+  readId?: string | undefined
+  readStartedAt?: number | undefined
+  isInitial?: boolean | undefined
+  requestedBefore?: string | null | undefined
   timestamp: number
   sourceUrl: string
   conversationId: string
@@ -190,10 +260,22 @@ function isConversationHistoryPayload(value: unknown): value is Record<string, u
   )
 }
 
-function observeConversationArchiveResponse(response: Response, sourceUrl: string) {
+function observeConversationArchiveResponse(
+  response: Response,
+  sourceUrl: string,
+  read: ArchiveReadContext | undefined,
+) {
   const conversationId = conversationHistoryId(sourceUrl)
-  if (!observerTarget || !response.ok || !conversationId) return
+  if (!observerTarget || !response.ok || !conversationId || !read) return
 
+  if (
+    !archivePolicy.manualConversationId &&
+    (!archivePolicy.enabled ||
+      (!archivePolicy.defaultEnabled &&
+        !Object.values(archivePolicy.projects).some(Boolean) &&
+        !Object.values(archivePolicy.conversations).some(Boolean)))
+  )
+    return
   const contentType = response.headers.get('content-type') ?? ''
   if (!/json/i.test(contentType)) return
 
@@ -205,12 +287,21 @@ function observeConversationArchiveResponse(response: Response, sourceUrl: strin
     .json()
     .then((payload: unknown) => {
       if (!observerTarget || !isConversationHistoryPayload(payload)) return
+      const incomingProject =
+        typeof payload.gizmo_id === 'string' && payload.gizmo_id.startsWith('g-p-')
+          ? payload.gizmo_id
+          : null
+      const projectId =
+        'gizmo_id' in payload ? incomingProject : (archiveProjects.get(conversationId) ?? null)
+      if (!captureAllowed(conversationId, projectId)) return
+      archiveProjects.set(conversationId, projectId)
       observerTarget.postMessage(
         {
           channel: TRANSPORT_CHANNEL,
           type: ARCHIVE_EVENT,
           detail: {
             kind: 'conversation-page',
+            ...read,
             timestamp: Date.now(),
             sourceUrl,
             conversationId,
@@ -293,6 +384,15 @@ export function installTransportObserver(
   tagged[marker] = true
   observerTarget = target
 
+  archivePolicy = { ...DENY_ARCHIVE }
+  const onArchivePolicy = (event: MessageEvent) => {
+    if (event.origin !== target.location.origin || event.source !== target) return
+    const data = event.data
+    if (data?.channel !== TRANSPORT_CHANNEL || data.type !== ARCHIVE_POLICY_EVENT || !data.detail)
+      return
+    archivePolicy = { ...DENY_ARCHIVE, ...data.detail }
+  }
+  target.addEventListener('message', onArchivePolicy)
   let config = { ...DEFAULT_CONFIG }
   const onConfig = (event: MessageEvent) => {
     if (event.origin && event.origin !== target.location.origin) return
@@ -334,9 +434,12 @@ export function installTransportObserver(
       ...(body ? { bodyPreview: body } : {}),
     })
 
+    const historyRead = beginArchiveRequest(rawUrl, id)
+    archiveNetwork(id, rawUrl, 'request')
     try {
       const response = await originalFetch(input, init)
-      observeConversationArchiveResponse(response, rawUrl)
+      archiveNetwork(id, rawUrl, response.ok ? 'response' : 'error', response.status)
+      observeConversationArchiveResponse(response, rawUrl, historyRead)
       observeFetchResponseBody(response, { id, method, url }, config)
       emit({
         id,
@@ -353,6 +456,7 @@ export function installTransportObserver(
       })
       return response
     } catch (error) {
+      archiveNetwork(id, rawUrl, 'error', 0)
       const classified = classifyError(error)
       emit({
         id,
@@ -582,6 +686,7 @@ export function installTransportObserver(
 
   return () => {
     target.removeEventListener('message', onConfig)
+    target.removeEventListener('message', onArchivePolicy)
     target.fetch = originalFetch
     OriginalXHR.prototype.open = originalOpen
     OriginalXHR.prototype.send = originalSend

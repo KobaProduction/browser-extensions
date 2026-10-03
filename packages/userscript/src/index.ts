@@ -6,6 +6,7 @@ import {
   OPEN_SETTINGS_EVENT,
 } from '@chatgpt-booster/core'
 import {
+  ArchiveScopeControlsModule,
   ConversationArchiveModule,
   ConversationArchiveStore,
   createArchiveUiAdapter,
@@ -41,7 +42,8 @@ declare function GM_registerMenuCommand(
 
 const diagnostics = createDiagnosticsStore()
 const archiveStore = new ConversationArchiveStore()
-const archiveUiAdapter = createArchiveUiAdapter(archiveStore)
+const archiveCapture = new ConversationArchiveModule(archiveStore, userscriptSettings)
+const archiveUiAdapter = createArchiveUiAdapter(archiveStore, archiveCapture)
 const telemetry = createUserscriptTelemetry(userscriptSettings)
 const telemetryControl = createUserscriptTelemetryControl(telemetry)
 
@@ -89,8 +91,9 @@ function startRuntime() {
   const runtime = new BoosterRuntime(
     [
       new OverlayModule(),
-      new ConversationArchiveModule(archiveStore),
-      new HistoryLoaderModule(archiveStore),
+      archiveCapture,
+      new ArchiveScopeControlsModule(userscriptSettings),
+      new HistoryLoaderModule(archiveStore, archiveCapture),
       new TransportObserverModule({
         settings: userscriptSettings,
         diagnostics,
@@ -121,6 +124,7 @@ function startRuntime() {
 }
 
 if (isChatGptPage()) {
+  void archiveCapture.start()
   installTransportObserver(unsafeWindow as Window & typeof globalThis)
   void registerUserscriptMenu()
 

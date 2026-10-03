@@ -5,6 +5,7 @@ import {
   isChatGptPage,
 } from '@chatgpt-booster/core'
 import {
+  ArchiveScopeControlsModule,
   ConversationArchiveModule,
   ConversationArchiveStore,
   createArchiveUiAdapter,
@@ -19,7 +20,8 @@ import { chromeSecrets, createChromeTelemetry, createChromeTelemetryControl } fr
 
 const diagnostics = createDiagnosticsStore()
 const archiveStore = new ConversationArchiveStore()
-const archiveUiAdapter = createArchiveUiAdapter(archiveStore)
+const archiveCapture = new ConversationArchiveModule(archiveStore, chromeSettings)
+const archiveUiAdapter = createArchiveUiAdapter(archiveStore, archiveCapture)
 const telemetry = createChromeTelemetry(chromeSettings)
 const telemetryControl = createChromeTelemetryControl(telemetry)
 
@@ -50,8 +52,9 @@ function startRuntime() {
   const runtime = new BoosterRuntime(
     [
       new OverlayModule(),
-      new ConversationArchiveModule(archiveStore),
-      new HistoryLoaderModule(archiveStore),
+      archiveCapture,
+      new ArchiveScopeControlsModule(chromeSettings),
+      new HistoryLoaderModule(archiveStore, archiveCapture),
       new TransportObserverModule({
         settings: chromeSettings,
         diagnostics,
@@ -82,6 +85,7 @@ function startRuntime() {
 }
 
 if (isChatGptPage()) {
+  void archiveCapture.start()
   if (document.body) startRuntime()
   else window.addEventListener('DOMContentLoaded', startRuntime, { once: true })
 }

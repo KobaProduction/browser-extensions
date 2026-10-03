@@ -34,4 +34,4 @@ Independent review is required before calling the overall task release-ready. Se
 
 ## Status
 
-Implementation in progress. No new release promised or published. Evidence and remaining gates will be updated before handoff.
+Implementation checkpoint: see `EXTENSION_2_CHECKLIST.md` and `EXTENSION_2_VALIDATION.md`. 38 unit tests and 13 synthetic browser scenarios passed, along with TypeScript/lint/build. Live ChatGPT pagination/injection, pending-attachment reload safety, full binaries and independent review remain open. No new release is published.

@@ -1,9 +1,11 @@
 import type { LanguagePreference } from '@chatgpt-booster/core'
+import { archiveMessages } from './archive'
 
 export type SupportedLocale = 'en' | 'ru'
 
 const messages = {
   en: {
+    ...archiveMessages.en,
     'common.on': 'On',
     'common.off': 'Off',
     'common.close': 'Close',
@@ -102,6 +104,7 @@ const messages = {
     'menu.openSettingsTitle': 'Open ChatGPT Booster Control Center',
   },
   ru: {
+    ...archiveMessages.ru,
     'common.on': 'Вкл.',
     'common.off': 'Выкл.',
     'common.close': 'Закрыть',

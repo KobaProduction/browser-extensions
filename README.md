@@ -19,6 +19,16 @@ Early foundation. The repository currently provides:
 - strict TypeScript and Biome checks;
 - CI build artifacts and tag-based GitHub Release packaging.
 
+## Active Extension 2 work
+
+The docked toolkit and selective-archive iteration is tracked in
+[the 102-item checklist](docs/tasks/EXTENSION_2_CHECKLIST.md),
+[the acceptance contract](docs/tasks/DOCKED_ARCHIVE_TOOLKIT.md), and
+[the validation report](docs/tasks/EXTENSION_2_VALIDATION.md).
+This working branch is not a new release: local-fixture acceptance is separate from
+live ChatGPT/userscript acceptance. Full attachment packaging and independent review
+remain open. The reproducible synthetic browser fixture is in `tests/browser/`.
+
 ## Development
 
 Requirements: Bun.

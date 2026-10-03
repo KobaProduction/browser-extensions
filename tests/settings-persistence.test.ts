@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test'
-import { mergeSettings, normalizeSettings } from '../packages/core/src/settings'
+import {
+  mergeSettings,
+  normalizeSettings,
+  SETTINGS_SCHEMA_VERSION,
+} from '../packages/core/src/settings'
 
 describe('settings patch persistence', () => {
   test('preserves sibling settings across sequential toggles', () => {
@@ -59,7 +63,7 @@ test('legacy telemetry endpoint is cleared during schema migration', () => {
   } as Partial<import('../packages/core/src/settings').BoosterSettings>)
 
   expect(migrated.telemetry.endpoint).toBe('')
-  expect(migrated.schemaVersion).toBe(2)
+  expect(migrated.schemaVersion).toBe(SETTINGS_SCHEMA_VERSION)
 })
 
 test('settings section state survives unrelated patches', () => {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   EMPTY_TRANSPORT_COUNTERS,
+  type ArchiveCaptureContext,
   type BoosterSettings,
   type BoosterSettingsPatch,
   type DiagnosticsAdapter,
@@ -30,10 +31,14 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Badge } from './components/ui/badge'
 import { Button } from './components/ui/button'
 import { resolveLocale, translate } from './i18n'
+import CaptureSettings from './CaptureSettings.vue'
+import type { ArchiveDataAdapter } from './mount'
 
 const props = withDefaults(
   defineProps<{
     settingsAdapter: SettingsAdapter
+    archiveAdapter?: ArchiveDataAdapter | undefined
+    captureContext?: ArchiveCaptureContext | undefined
     diagnosticsAdapter?: DiagnosticsAdapter | undefined
     persistentDiagnosticsAdapter?: PersistentDiagnosticsAdapter | undefined
     secretAdapter?: SecretAdapter | undefined
@@ -214,6 +219,7 @@ async function testTelemetry() {
 
     <div v-else class="booster-settings-layout">
       <nav class="booster-settings-nav">
+        <button :class="{ active: activeSection === 'archive' }" @click="setSection('archive')"><ShieldCheck class="size-4" />{{ t('capture.title') }}</button>
         <button
           :class="{ active: activeSection === 'modules' }"
           @click="setSection('modules')"
@@ -229,6 +235,7 @@ async function testTelemetry() {
       </nav>
 
       <main class="booster-settings-content">
+        <CaptureSettings v-if="activeSection === 'archive'" :settings-adapter="settingsAdapter" :archive-adapter="archiveAdapter" :context="captureContext" :locale="locale" />
         <template v-if="activeSection === 'modules'">
           <section class="booster-setting-card" :class="{ 'booster-setting-disabled': !settings.enabled }">
             <div class="booster-setting-copy">

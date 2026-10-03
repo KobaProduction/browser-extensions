@@ -127,3 +127,28 @@ The settings UI stores its active section and disclosure state alongside other s
 ## Conversation Archive
 
 The Conversation Archive is a local IndexedDB subsystem that records conversation/history data already fetched by the normal ChatGPT client. Lossless raw records are stored alongside normalized indexes for messages, turns, branches and coverage. The History Loader may drive normal UI scrolling to cause ChatGPT itself to load older pages, but it must not construct or send private history requests. See `docs/CONVERSATION_ARCHIVE.md` and `docs/CHATGPT_CLIENT_RESEARCH.md`.
+
+
+## Docked toolkit iteration (working branch)
+
+The launcher uses an edge (`left`/`right`) and a vertical fraction of available height,
+not saved screen pixels. Expansion keeps the toggle fixed and grows one integrated
+shell toward available space. It does not resize ChatGPT. Modal settings, archive and
+export surfaces remain Shadow-DOM isolated.
+
+`core/archive.ts` owns capture/export contracts. `chatgpt/archive-records.ts` derives
+visible replies, nested records and exchange grouping without changing raw identity.
+`features/archive-coverage.ts` requires a fresh initial read plus linked continuation
+cursors; reaching the top or retaining an old complete flag is insufficient.
+
+Automatic archive capture is opt-in by project/chat. A manual ticket temporarily enables
+only one current-tab conversation, retaining the user's selected record categories.
+Consent is rechecked after asynchronous database reads and before puts. Revoking a rule
+does not delete existing data. Project IDs remain relation keys, not display labels.
+Settings schema 3 is distinct from the unchanged archive IndexedDB version 2.
+
+JSON/Markdown export is a projection: basic mode must not serialize internal storage
+metadata or nested records. Configurable mode includes only selected categories; binary
+images/files are off by default. Full binary packaging is unavailable until attachment
+resolvers are verified. See the task validation report for remaining live-runtime gates,
+including preservation of pending attachments before a collection-triggered reload.
