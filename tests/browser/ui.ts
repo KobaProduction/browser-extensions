@@ -349,6 +349,129 @@ export async function runUiTests(
       return { before, after }
     })
 
+    await check(
+      'archive loading, empty, missing-current and error states are explicit',
+      async () => {
+        await close()
+        const originalContext = { ...context }
+        const originalListConversations = adapter.listConversations
+        const originalListProjects = adapter.listProjects
+        try {
+          Object.assign(context, {
+            conversationId: 'fixture-unsaved',
+            conversationTitle: 'Несохранённый чат',
+            projectId: null,
+            projectTitle: null,
+          })
+          button('.booster-dock-toggle').click()
+          await new Promise((resolve) => setTimeout(resolve, 1100))
+          button('.booster-dock-actions > button:nth-child(3)').click()
+          await delay()
+          assert(
+            shadow()
+              .querySelector('.booster-reader')
+              ?.textContent?.includes(translate('ru', 'reader.missing')),
+            'missing-current-chat state not shown',
+          )
+          await close()
+
+          let releaseList: (() => void) | undefined
+          const gate = new Promise<void>((resolve) => {
+            releaseList = resolve
+          })
+          adapter.listConversations = async () => {
+            await gate
+            return []
+          }
+          adapter.listProjects = async () => []
+          button('.booster-dock-toggle').click()
+          await delay()
+          button('.booster-dock-actions > button:nth-child(3)').click()
+          await new Promise((resolve) => setTimeout(resolve, 25))
+          assert(
+            shadow()
+              .querySelector('.booster-reader')
+              ?.textContent?.includes(translate('ru', 'reader.loading')),
+            'loading state missing',
+          )
+          releaseList?.()
+          await delay()
+          assert(
+            shadow()
+              .querySelector('.booster-reader')
+              ?.textContent?.includes(translate('ru', 'reader.empty')),
+            'empty state missing',
+          )
+          await close()
+
+          adapter.listConversations = async () => {
+            throw new Error('fixture read failure')
+          }
+          button('.booster-dock-toggle').click()
+          await delay()
+          button('.booster-dock-actions > button:nth-child(3)').click()
+          await delay()
+          assert(shadow().querySelector('.booster-reader .booster-error'), 'error state missing')
+          await close()
+        } finally {
+          adapter.listConversations = originalListConversations
+          adapter.listProjects = originalListProjects
+          Object.assign(context, originalContext)
+          await close()
+        }
+      },
+    )
+
+    await check('archive ignores a late thread result after fast chat switching', async () => {
+      await close()
+      button('.booster-dock-toggle').click()
+      await delay()
+      button('.booster-dock-actions > button:nth-child(3)').click()
+      await delay()
+      const reader = shadow().querySelector<HTMLElement>('.booster-reader')
+      assert(reader, 'archive missing')
+      const originalGetThread = adapter.getThread
+      let releaseOther: (() => void) | undefined
+      const gate = new Promise<void>((resolve) => {
+        releaseOther = resolve
+      })
+      adapter.getThread = async (id) => {
+        if (id === 'fixture-other') await gate
+        return await originalGetThread(id)
+      }
+      try {
+        const otherGroup = [
+          ...reader.querySelectorAll<HTMLButtonElement>('.booster-group-toggle'),
+        ].find((item) => item.textContent?.includes('Другой проект'))
+        assert(otherGroup, 'other project group missing')
+        if (otherGroup.getAttribute('aria-expanded') !== 'true') otherGroup.click()
+        await delay()
+        const otherChat = [
+          ...reader.querySelectorAll<HTMLButtonElement>('.booster-reader-chat-list button'),
+        ].find((item) => item.textContent?.includes('Другой диалог'))
+        const currentChat = [
+          ...reader.querySelectorAll<HTMLButtonElement>('.booster-reader-chat-list button'),
+        ].find((item) => item.textContent?.includes('Проверка панели и архива'))
+        assert(otherChat && currentChat, 'chat buttons missing')
+        otherChat.click()
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        currentChat.click()
+        await new Promise((resolve) => setTimeout(resolve, 100))
+        releaseOther?.()
+        await delay()
+        assert(
+          reader
+            .querySelector('.booster-reader-chat-header')
+            ?.textContent?.includes('Проверка панели и архива'),
+          'late other-chat result replaced current chat',
+        )
+      } finally {
+        releaseOther?.()
+        adapter.getThread = originalGetThread
+        await close()
+      }
+    })
+
     return result
   } finally {
     await close()
