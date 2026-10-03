@@ -99,7 +99,7 @@ const loaderActive = computed(() =>
   ['preparing', 'scrolling', 'waiting_for_load', 'backoff'].includes(loaderState.value.phase),
 )
 
-const currentConversationId = computed(() => props.archiveAdapter?.currentConversationId() ?? null)
+const currentConversationId = ref<string | null>(null)
 
 const coverageLabel = computed(() => {
   if (!currentConversationId.value) return t('quick.noConversation')
@@ -143,6 +143,7 @@ async function savePosition() {
 }
 
 async function refreshContext() {
+  currentConversationId.value = props.archiveAdapter?.currentConversationId() ?? null
   const id = currentConversationId.value
   currentConversation.value = undefined
   coverage.value = undefined
@@ -240,6 +241,7 @@ function onArchiveUpdated() {
 }
 
 onMounted(async () => {
+  currentConversationId.value = props.archiveAdapter?.currentConversationId() ?? null
   settings.value = await props.settingsAdapter.get()
   applyStoredPosition(settings.value)
 
