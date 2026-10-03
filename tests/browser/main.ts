@@ -1,4 +1,5 @@
 import { buildArchiveThread } from '../../packages/chatgpt/src/archive-records'
+import { mountArchiveScopeControls } from '../../packages/chatgpt/src/archive-scope-controls'
 import {
   type ArchiveExportOptions,
   type BoosterSettings,
@@ -356,6 +357,62 @@ async function runStorageTests() {
       await settings.set(previous)
     }
   })
+  await check(
+    'scope control injection is idempotent, inert to host navigation and cleans up',
+    async () => {
+      const href = location.href
+      const id = `${prefix}scope-control`
+      const nav = document.createElement('nav')
+      const row = document.createElement('li')
+      const link = document.createElement('a')
+      link.href = `/c/${id}`
+      link.textContent = 'Fixture scope chat'
+      row.append(link)
+      nav.append(row)
+      document.body.append(nav)
+      let opened = 0
+      try {
+        history.replaceState(null, '', `/c/${id}`)
+        const controls = mountArchiveScopeControls({
+          label: 'Fixture archive policy',
+          visible: () => true,
+          onOpen: () => {
+            opened++
+          },
+        })
+        const count = () => row.querySelectorAll('[data-chatgpt-booster="capture-control"]').length
+        assert(count() === 1, 'scope control was not injected exactly once')
+        controls.update({
+          label: 'Updated archive policy',
+          visible: () => true,
+          onOpen: () => {
+            opened++
+          },
+        })
+        controls.update({
+          label: 'Updated archive policy again',
+          visible: () => true,
+          onOpen: () => {
+            opened++
+          },
+        })
+        assert(count() === 1, 'scope control duplicated after update')
+        const host = row.querySelector<HTMLElement>('[data-chatgpt-booster="capture-control"]')
+        const button = host?.shadowRoot?.querySelector<HTMLButtonElement>('button')
+        assert(button, 'scope control button missing')
+        const before = location.href
+        button.click()
+        assert(opened === 1, 'scope control action did not fire once')
+        assert(location.href === before, 'scope control click navigated the host')
+        controls.stop()
+        assert(count() === 0, 'scope control was not removed on stop')
+      } finally {
+        nav.remove()
+        history.replaceState(null, '', href)
+      }
+    },
+  )
+
   await check('saved data survives policy changes and schema normalization', async () => {
     const id = prefix + 'preserved'
     await store.ingest(page(id, [raw('u', 'user', 'Keep me')]))

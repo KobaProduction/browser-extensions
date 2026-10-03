@@ -147,6 +147,48 @@ export async function runUiTests(
       },
     )
     await check(
+      'Escape restores toggle focus and touch pointer drag persists an edge',
+      async () => {
+        await close()
+        const toggle = button('.booster-dock-toggle')
+        toggle.click()
+        await delay()
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+        await delay()
+        assert(toggle.getAttribute('aria-expanded') === 'false', 'Escape did not close dock')
+        assert(shadow().activeElement === toggle, 'Escape did not restore toggle focus')
+
+        const before = bounds(toggle)
+        const targetY = (innerHeight - 44) * 0.72 + 22
+        for (const [type, x, y] of [
+          ['pointerdown', before.x + 22, before.y + 22],
+          ['pointermove', innerWidth - 22, targetY],
+          ['pointerup', innerWidth - 22, targetY],
+        ] as const)
+          toggle.dispatchEvent(
+            new PointerEvent(type, {
+              pointerId: 77,
+              pointerType: 'touch',
+              button: 0,
+              bubbles: true,
+              clientX: x,
+              clientY: y,
+            }),
+          )
+        toggle.click()
+        await delay()
+        const saved = (await settings.get()).launcher
+        assert(saved.side === 'right', 'touch drag did not snap to right edge')
+        assert(
+          Math.abs(saved.heightRatio - 0.72) < 0.01,
+          'touch drag height ratio was not persisted',
+        )
+        assert(toggle.getAttribute('aria-expanded') === 'false', 'touch drag toggled dock')
+        return { side: saved.side, ratio: saved.heightRatio }
+      },
+    )
+
+    await check(
       'archive opens current project only, nested records are lazy, no composer',
       async () => {
         await close()
@@ -348,6 +390,52 @@ export async function runUiTests(
       await close()
       return { before, after }
     })
+
+    await check(
+      'prepared JSON and Markdown exports contain the selected browser payload',
+      async () => {
+        await close()
+        button('.booster-dock-toggle').click()
+        await delay()
+        button('.booster-dock-actions > button:nth-child(1)').click()
+        await delay()
+        const dialog = shadow().querySelector<HTMLElement>('.booster-export-dialog')
+        assert(dialog, 'export dialog missing')
+        const exportDialog = dialog
+        const [format, level] = [...exportDialog.querySelectorAll<HTMLSelectElement>('select')]
+        assert(format && level, 'export selectors missing')
+        const formatSelect = format
+        level.value = 'conversation'
+        level.dispatchEvent(new Event('change', { bubbles: true }))
+
+        async function prepare(formatValue: 'json' | 'markdown') {
+          formatSelect.value = formatValue
+          formatSelect.dispatchEvent(new Event('change', { bubbles: true }))
+          await delay()
+          const prepareButton =
+            exportDialog.querySelector<HTMLButtonElement>('.booster-action-primary')
+          assert(prepareButton, 'prepare button missing')
+          prepareButton.click()
+          await delay()
+          const ready = exportDialog.querySelector<HTMLAnchorElement>('.booster-export-ready')
+          assert(ready, 'prepared download link missing')
+          const response = await fetch(ready.href)
+          assert(response.ok, 'prepared blob URL was unreadable in browser')
+          return { text: await response.text(), name: ready.download }
+        }
+
+        const json = await prepare('json')
+        const parsed = JSON.parse(json.text)
+        assert(parsed.schema === 'chatgpt-booster.export.v1', 'JSON export schema missing')
+        assert(json.name.endsWith('.json'), 'JSON download filename extension incorrect')
+
+        const markdown = await prepare('markdown')
+        assert(markdown.text.startsWith('# '), 'Markdown export body missing heading')
+        assert(markdown.name.endsWith('.md'), 'Markdown download filename extension incorrect')
+        await close()
+        return { jsonBytes: json.text.length, markdownBytes: markdown.text.length }
+      },
+    )
 
     await check(
       'archive loading, empty, missing-current and error states are explicit',
