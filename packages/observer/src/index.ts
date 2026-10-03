@@ -272,6 +272,21 @@ export function archiveFileResolverId(input: string): string | undefined {
   }
 }
 
+export function archiveAssetContentUrl(value: string, assetId: string): string | null {
+  try {
+    const url = new URL(value, 'https://chatgpt.com')
+    if (
+      url.origin === 'https://chatgpt.com' &&
+      url.pathname === '/backend-api/estuary/content' &&
+      url.searchParams.get('id') === assetId
+    )
+      return url.href
+  } catch {
+    // Invalid or non-ChatGPT URL.
+  }
+  return null
+}
+
 export function parseArchiveAssetResolution(
   value: unknown,
   assetId: string,
@@ -279,17 +294,12 @@ export function parseArchiveAssetResolution(
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
   const payload = value as Record<string, unknown>
   if (payload.status !== 'success' || typeof payload.download_url !== 'string') return undefined
+  const downloadUrl = archiveAssetContentUrl(payload.download_url, assetId)
+  if (!downloadUrl) return undefined
   try {
-    const download = new URL(payload.download_url, 'https://chatgpt.com')
-    if (
-      download.origin !== 'https://chatgpt.com' ||
-      download.pathname !== '/backend-api/estuary/content' ||
-      download.searchParams.get('id') !== assetId
-    )
-      return undefined
     return {
       assetId,
-      downloadUrl: download.href,
+      downloadUrl,
       fileName: typeof payload.file_name === 'string' ? payload.file_name : null,
       mimeType: typeof payload.mime_type === 'string' ? payload.mime_type : null,
       fileSizeBytes:

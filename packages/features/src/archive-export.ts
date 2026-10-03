@@ -105,32 +105,3 @@ export function serializeArchiveExport(
   }
   return { text: lines.join('\n'), mime: 'text/markdown', extension: 'md' }
 }
-export function archiveFilename(title: string | null) {
-  return (
-    [...(title ?? 'conversation')]
-      .map((char) => (char.charCodeAt(0) < 32 ? '-' : char))
-      .join('')
-      .replace(/[\\/:*?"<>|]/g, '-')
-      .slice(0, 100) || 'conversation'
-  )
-}
-
-export function downloadArchiveBlob(blob: Blob, title: string | null, extension: string) {
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.download = `${archiveFilename(title)}.${extension}`
-  link.href = url
-  link.click()
-  setTimeout(() => URL.revokeObjectURL(url), 30000)
-}
-
-export function downloadArchiveExport(
-  result: { text: string; mime: string; extension: string },
-  title: string | null,
-) {
-  downloadArchiveBlob(
-    new Blob([result.text], { type: `${result.mime};charset=utf-8` }),
-    title,
-    result.extension,
-  )
-}

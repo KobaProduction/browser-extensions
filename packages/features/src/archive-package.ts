@@ -4,6 +4,7 @@ import type {
   ArchiveExportOptions,
   ArchiveThreadView,
 } from '@chatgpt-booster/core'
+import { archiveAssetContentUrl } from '@chatgpt-booster/observer'
 import { serializeArchiveExport } from './archive-export'
 import type { ArchivedAsset, ArchivedConversation } from './archive-store'
 
@@ -182,22 +183,6 @@ function references(thread: ArchiveThreadView) {
   return [...result.values()]
 }
 
-function validDownloadUrl(assetId: string, value: string | null) {
-  if (!value) return null
-  try {
-    const url = new URL(value)
-    if (
-      url.origin === 'https://chatgpt.com' &&
-      url.pathname === '/backend-api/estuary/content' &&
-      url.searchParams.get('id') === assetId
-    )
-      return url.href
-  } catch {
-    // Ignore stale/malformed stored resolutions.
-  }
-  return null
-}
-
 async function sha256(value: Uint8Array) {
   const digest = await crypto.subtle.digest('SHA-256', asArrayBuffer(value))
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
@@ -227,7 +212,9 @@ export async function createArchivePackage(
   const manifestAssets: ArchivePackageManifestAsset[] = []
   for (const reference of requested) {
     const storedAsset = stored.get(reference.assetId)
-    const url = validDownloadUrl(reference.assetId, storedAsset?.downloadUrl ?? null)
+    const url = storedAsset?.downloadUrl
+      ? archiveAssetContentUrl(storedAsset.downloadUrl, reference.assetId)
+      : null
     if (!url) {
       manifestAssets.push({
         ...reference,

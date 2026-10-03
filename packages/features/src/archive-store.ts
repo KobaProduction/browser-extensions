@@ -8,9 +8,10 @@ import { historyCoverage } from './archive-coverage'
 
 export { ARCHIVE_UPDATED_EVENT } from '@chatgpt-booster/core'
 
-import type {
-  ArchiveAssetResolutionEventDetail,
-  ConversationArchiveEventDetail,
+import {
+  type ArchiveAssetResolutionEventDetail,
+  archiveAssetContentUrl,
+  type ConversationArchiveEventDetail,
 } from '@chatgpt-booster/observer'
 
 export const ARCHIVE_DB_NAME = 'chatgpt-booster-archive'
@@ -422,18 +423,8 @@ export class ConversationArchiveStore {
     detail: ArchiveAssetResolutionEventDetail,
     conversationId: string,
   ): Promise<boolean> {
-    let url: URL
-    try {
-      url = new URL(detail.downloadUrl)
-    } catch {
-      return false
-    }
-    if (
-      url.origin !== 'https://chatgpt.com' ||
-      url.pathname !== '/backend-api/estuary/content' ||
-      url.searchParams.get('id') !== detail.assetId
-    )
-      return false
+    const downloadUrl = archiveAssetContentUrl(detail.downloadUrl, detail.assetId)
+    if (!downloadUrl) return false
     const db = await this.#db()
     const tx = db.transaction(['assets', 'messages'], 'readwrite')
     const done = transactionDone(tx)
@@ -482,7 +473,7 @@ export class ConversationArchiveStore {
       fileName: detail.fileName ?? base.fileName,
       mimeType: detail.mimeType ?? base.mimeType,
       sizeBytes: detail.fileSizeBytes ?? base.sizeBytes,
-      downloadUrl: url.href,
+      downloadUrl,
       resolverObservedAt: detail.observedAt,
       lastSeenAt: now,
     } satisfies ArchivedAsset)
