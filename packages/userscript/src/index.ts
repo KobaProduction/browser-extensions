@@ -5,7 +5,12 @@ import {
   isChatGptPage,
   OPEN_SETTINGS_EVENT,
 } from '@chatgpt-booster/core'
-import { ToolInspectorModule, TransportObserverModule } from '@chatgpt-booster/features'
+import {
+  ConversationArchiveModule,
+  HistoryLoaderModule,
+  ToolInspectorModule,
+  TransportObserverModule,
+} from '@chatgpt-booster/features'
 import { installTransportObserver } from '@chatgpt-booster/observer'
 import {
   type MountedBoosterUi,
@@ -79,6 +84,8 @@ function startRuntime() {
   const runtime = new BoosterRuntime(
     [
       new OverlayModule(),
+      new ConversationArchiveModule(),
+      new HistoryLoaderModule(),
       new TransportObserverModule({
         settings: userscriptSettings,
         diagnostics,
