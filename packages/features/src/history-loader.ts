@@ -10,7 +10,11 @@ import {
 } from '@chatgpt-booster/core'
 import { ARCHIVE_NETWORK_EVENT, TRANSPORT_CHANNEL } from '@chatgpt-booster/observer'
 import type { ArchiveIngestSummary, ConversationArchiveStore } from './archive-store'
-import { type ConversationArchiveModule, collectionTicket } from './conversation-archive'
+import {
+  type CollectionTicket,
+  type ConversationArchiveModule,
+  collectionTicket,
+} from './conversation-archive'
 
 export type { HistoryLoaderState } from '@chatgpt-booster/core'
 export {
@@ -19,16 +23,22 @@ export {
   HISTORY_LOADER_STOP_EVENT,
 } from '@chatgpt-booster/core'
 
+export function historyBackoffMs(status: number, errors: number): number {
+  return status === 429 ? 12_000 : Math.min(8_000, 1_000 * 2 ** errors)
+}
+
 export function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
+    const abortReason = () =>
+      signal.reason instanceof Error ? signal.reason : new DOMException('Aborted', 'AbortError')
     if (signal.aborted) {
-      reject(new DOMException('Aborted', 'AbortError'))
+      reject(abortReason())
       return
     }
     const onAbort = () => {
       clearTimeout(timer)
       signal.removeEventListener('abort', onAbort)
-      reject(new DOMException('Aborted', 'AbortError'))
+      reject(abortReason())
     }
     const timer = setTimeout(() => {
       signal.removeEventListener('abort', onAbort)
@@ -42,6 +52,7 @@ export class HistoryLoaderModule implements BoosterModule {
   #abort: AbortController | undefined
   #pages = new Set<string>()
   #startedAt = 0
+  #ticket: CollectionTicket | undefined
   #network: { pending: boolean; error: number | null } = { pending: false, error: null }
   #state: HistoryLoaderState = {
     phase: 'idle',
@@ -102,13 +113,16 @@ export class HistoryLoaderModule implements BoosterModule {
       this.#network = { pending: false, error: data.detail.status ?? 0 }
   }
   #onStorageError = (event: Event) => {
-    if ((event as CustomEvent).detail?.conversationId === this.#state.conversationId)
-      this.#network = { pending: false, error: -1 }
+    if ((event as CustomEvent).detail?.conversationId !== this.#state.conversationId) return
+    const controller = this.#abort
+    if (!controller || controller.signal.aborted) return
+    controller.abort(new Error('archive.error.storage'))
   }
   #onStop = () => {
     const running = this.#abort && !this.#abort.signal.aborted
+    const ticket = this.#ticket
     this.#abort?.abort()
-    this.capture.finishCollection()
+    this.capture.finishCollection(ticket)
     if (running) this.#set({ phase: 'cancelled', message: undefined })
   }
   #onStart = () => {
@@ -117,6 +131,7 @@ export class HistoryLoaderModule implements BoosterModule {
     if (!ticket) return
     const controller = new AbortController()
     this.#abort = controller
+    this.#ticket = ticket
     this.#startedAt = ticket.startedAt
     this.#pages.clear()
     this.#network = { pending: false, error: null }
@@ -129,7 +144,12 @@ export class HistoryLoaderModule implements BoosterModule {
     })
     void this.#run(ticket.conversationId, ticket.startedAt, controller.signal).finally(() => {
       if (this.#abort === controller) this.#abort = undefined
-      this.capture.finishCollection()
+      if (
+        this.#ticket?.conversationId === ticket.conversationId &&
+        this.#ticket.startedAt === ticket.startedAt
+      )
+        this.#ticket = undefined
+      this.capture.finishCollection(ticket)
     })
   }
   async #run(id: string, startedAt: number, signal: AbortSignal) {
@@ -138,11 +158,11 @@ export class HistoryLoaderModule implements BoosterModule {
       previousPageCount = 0
     const requireCurrentCollection = () => {
       if (Date.now() - startedAt > 30 * 60_000) throw new Error('archive.error.timeout')
-      if (
-        signal.aborted ||
-        currentConversationId() !== id ||
-        collectionTicket()?.startedAt !== startedAt
-      )
+      if (signal.aborted)
+        throw signal.reason instanceof Error
+          ? signal.reason
+          : new DOMException('Aborted', 'AbortError')
+      if (currentConversationId() !== id || collectionTicket()?.startedAt !== startedAt)
         throw new DOMException('Aborted', 'AbortError')
     }
     try {
@@ -192,10 +212,7 @@ export class HistoryLoaderModule implements BoosterModule {
           noProgress++
           if (noProgress >= 4) throw new Error('archive.error.network')
           this.#set({ phase: 'backoff', consecutiveErrors: noProgress })
-          await abortableDelay(
-            status === 429 ? 12000 : Math.min(8000, 1000 * 2 ** noProgress),
-            signal,
-          )
+          await abortableDelay(historyBackoffMs(status, noProgress), signal)
           requireCurrentCollection()
           if (document.hidden) continue
           findConversationScrollContainer()?.scrollBy({ top: 120, behavior: 'instant' })
@@ -228,14 +245,17 @@ export class HistoryLoaderModule implements BoosterModule {
         await abortableDelay(420, signal)
       }
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'archive.error.unknown'
+      const fatalAbort = signal.aborted && message.startsWith('archive.error.')
       this.#set({
         phase:
-          signal.aborted ||
-          currentConversationId() !== id ||
-          (error instanceof DOMException && error.name === 'AbortError')
+          !fatalAbort &&
+          (signal.aborted ||
+            currentConversationId() !== id ||
+            (error instanceof DOMException && error.name === 'AbortError'))
             ? 'cancelled'
             : 'error',
-        message: error instanceof Error ? error.message : 'archive.error.unknown',
+        message,
       })
     }
   }

@@ -1,4 +1,5 @@
 import {
+  type ArchiveAttachmentView,
   type ArchiveItemView,
   type ArchiveRecordKind,
   type ArchiveRecordView,
@@ -44,6 +45,67 @@ export function archiveRecordKind(record: ArchiveRecordView): ArchiveRecordKind 
   }
   return 'internal'
 }
+function attachmentId(value: Record<string, unknown>): string | null {
+  const direct = [value.file_id, value.id].find(
+    (candidate) => typeof candidate === 'string' && candidate.startsWith('file_'),
+  )
+  if (typeof direct === 'string') return direct
+  if (typeof value.asset_pointer === 'string')
+    return value.asset_pointer.match(/^sediment:\/\/(file_[A-Za-z0-9_-]+)$/)?.[1] ?? null
+  return null
+}
+
+export function archiveRecordAttachments(record: ArchiveRecordView): ArchiveAttachmentView[] {
+  const content = asRecord(record.raw.content)
+  const metadata = asRecord(record.raw.metadata)
+  const candidates: Record<string, unknown>[] = []
+  if (Array.isArray(content?.parts))
+    for (const part of content.parts) {
+      const item = asRecord(part)
+      if (item && attachmentId(item)) candidates.push(item)
+    }
+  if (Array.isArray(metadata?.attachments))
+    for (const attachment of metadata.attachments) {
+      const item = asRecord(attachment)
+      if (item && attachmentId(item)) candidates.push(item)
+    }
+  const merged = new Map<string, ArchiveAttachmentView>()
+  for (const item of candidates) {
+    const assetId = attachmentId(item)
+    if (!assetId) continue
+    const mimeType =
+      typeof item.mime_type === 'string'
+        ? item.mime_type
+        : typeof item.mimeType === 'string'
+          ? item.mimeType
+          : null
+    const contentType = typeof item.content_type === 'string' ? item.content_type : ''
+    const previous = merged.get(assetId)
+    merged.set(assetId, {
+      assetId,
+      fileName:
+        (typeof item.name === 'string' && item.name) ||
+        (typeof item.filename === 'string' && item.filename) ||
+        previous?.fileName ||
+        null,
+      mimeType: mimeType ?? previous?.mimeType ?? null,
+      sizeBytes:
+        typeof item.size_bytes === 'number'
+          ? item.size_bytes
+          : typeof item.size === 'number'
+            ? item.size
+            : (previous?.sizeBytes ?? null),
+      width: typeof item.width === 'number' ? item.width : (previous?.width ?? null),
+      height: typeof item.height === 'number' ? item.height : (previous?.height ?? null),
+      kind:
+        mimeType?.startsWith('image/') || contentType.includes('image')
+          ? 'image'
+          : (previous?.kind ?? 'file'),
+    })
+  }
+  return [...merged.values()]
+}
+
 export function archiveRecordText(record: ArchiveRecordView): string {
   const content = asRecord(record.raw.content)
   if (!content) return ''

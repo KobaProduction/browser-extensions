@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { archiveFileResolverId, parseArchiveAssetResolution } from '../packages/observer/src'
 import { sanitizeBodyPreview, sanitizeTransportUrl } from '../packages/observer/src/index'
 import { buildOtlpLogPayload } from '../packages/telemetry/src/index'
 
@@ -90,4 +91,37 @@ test('redacts websocket verification query values', () => {
 
   expect(value).not.toContain('sensitive-value')
   expect(value).toContain('verify=%5BREDACTED%5D')
+})
+
+describe('archive attachment resolver sanitization', () => {
+  test('accepts only the observed download route and matching signed estuary content URL', () => {
+    const id = 'file_fixture_123'
+    expect(
+      archiveFileResolverId(
+        `https://chatgpt.com/backend-api/files/download/${id}?post_id=&inline=false&download_intent=false`,
+      ),
+    ).toBe(id)
+    expect(
+      archiveFileResolverId(`https://example.com/backend-api/files/download/${id}`),
+    ).toBeUndefined()
+    const resolution = parseArchiveAssetResolution(
+      {
+        status: 'success',
+        download_url: `https://chatgpt.com/backend-api/estuary/content?id=${id}&sig=signed`,
+        file_name: 'photo.jpg',
+        file_size_bytes: 123,
+      },
+      id,
+    )
+    expect(resolution).toMatchObject({ assetId: id, fileName: 'photo.jpg', fileSizeBytes: 123 })
+    expect(
+      parseArchiveAssetResolution(
+        {
+          status: 'success',
+          download_url: 'https://chatgpt.com/backend-api/estuary/content?id=file_other&sig=signed',
+        },
+        id,
+      ),
+    ).toBeUndefined()
+  })
 })

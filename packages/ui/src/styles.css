@@ -1400,6 +1400,7 @@
 .booster-action-primary {
   background: var(--primary);
   color: var(--primary-foreground);
+  text-decoration: none;
 }
 .booster-action-secondary {
   background: var(--secondary);

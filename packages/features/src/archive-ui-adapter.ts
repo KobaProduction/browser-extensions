@@ -1,12 +1,15 @@
 import {
+  archiveRecordAttachments,
   buildArchiveThread,
   currentConversationId,
   currentConversationTitle,
   currentProjectId,
   currentProjectTitle,
+  currentResolvedAssetUrls,
 } from '@chatgpt-booster/chatgpt'
 import type { ArchiveExportOptions } from '@chatgpt-booster/core'
-import { downloadArchiveExport, serializeArchiveExport } from './archive-export'
+import { serializeArchiveExport } from './archive-export'
+import { createArchivePackage } from './archive-package'
 import type { ConversationArchiveStore } from './archive-store'
 import type { ConversationArchiveModule } from './conversation-archive'
 
@@ -14,30 +17,37 @@ export function createArchiveUiAdapter(
   store: ConversationArchiveStore,
   capture: ConversationArchiveModule,
 ) {
+  async function observedProjectTitle(projectId: string, stored: string | null) {
+    const observed = currentProjectTitle(projectId)?.trim() || null
+    if (observed && observed !== stored) await store.upsertProject(projectId, observed)
+    return observed ?? stored
+  }
+
   return {
     getCurrentContext: async () => {
       const conversationId = currentConversationId() ?? null
       const conversation = conversationId ? await store.getConversation(conversationId) : undefined
       const projectId = currentProjectId() ?? conversation?.projectId ?? null
       const projects = projectId ? await store.listProjects() : []
+      const storedTitle = projectId
+        ? (projects.find((project) => project.projectId === projectId)?.title ?? null)
+        : null
       return {
         conversationId,
         conversationTitle: conversation?.title ?? currentConversationTitle() ?? null,
         projectId,
-        projectTitle: projectId
-          ? (currentProjectTitle(projectId) ??
-            projects.find((p) => p.projectId === projectId)?.title ??
-            null)
-          : null,
+        projectTitle: projectId ? await observedProjectTitle(projectId, storedTitle) : null,
       }
     },
     currentConversationId: () => currentConversationId() ?? null,
     currentProjectId: () => currentProjectId() ?? null,
     listProjects: async () =>
-      (await store.listProjects()).map((project) => ({
-        ...project,
-        title: currentProjectTitle(project.projectId) ?? project.title,
-      })),
+      await Promise.all(
+        (await store.listProjects()).map(async (project) => ({
+          ...project,
+          title: await observedProjectTitle(project.projectId, project.title),
+        })),
+      ),
     getConversation: (conversationId: string) => store.getConversation(conversationId),
     getCoverage: async (conversationId: string) => {
       const [coverage, records] = await Promise.all([
@@ -72,13 +82,49 @@ export function createArchiveUiAdapter(
         scope: 'observed history pages only; not all branches or attachment bytes',
         storedRecordCount: messages.length,
       }
-      const result = serializeArchiveExport(
-        conversation,
-        buildArchiveThread(messages),
-        options,
-        evidence,
+      const thread = buildArchiveThread(messages)
+      const packageRequested = options.level === 'full' || options.images || options.files
+      if (!packageRequested) {
+        const result = serializeArchiveExport(conversation, thread, options, evidence)
+        return {
+          packaged: false,
+          complete: true,
+          includedAssets: 0,
+          missingAssets: 0,
+          blob: new Blob([result.text], { type: `${result.mime};charset=utf-8` }),
+          extension: result.extension as 'json' | 'md',
+        }
+      }
+
+      await store.syncAssetMetadata(messages)
+      const assetIds = messages.flatMap((message) =>
+        archiveRecordAttachments(message).map((attachment) => attachment.assetId),
       )
-      downloadArchiveExport(result, conversation.title)
+      const assetIdSet = new Set(assetIds)
+      if (currentConversationId() === conversationId)
+        for (const resolution of currentResolvedAssetUrls()) {
+          if (!assetIdSet.has(resolution.assetId)) continue
+          await store.updateAssetResolution({
+            ...resolution,
+            fileName: null,
+            mimeType: null,
+            fileSizeBytes: null,
+            observedAt: Date.now(),
+          })
+        }
+      const assets = await store.getAssets(assetIds)
+      const result = await createArchivePackage(conversation, thread, options, evidence, assets)
+      const includedAssets = result.manifest.assets.filter(
+        (asset) => asset.status === 'included',
+      ).length
+      return {
+        packaged: true,
+        complete: result.manifest.complete,
+        includedAssets,
+        missingAssets: result.manifest.assets.length - includedAssets,
+        blob: result.blob,
+        extension: result.extension,
+      }
     },
   }
 }

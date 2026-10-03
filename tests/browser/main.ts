@@ -8,16 +8,17 @@ import {
   type SettingsAdapter,
   snapshotSettings,
 } from '../../packages/core/src'
-import {
-  downloadArchiveExport,
-  serializeArchiveExport,
-} from '../../packages/features/src/archive-export'
+import { serializeArchiveExport } from '../../packages/features/src/archive-export'
 import { ConversationArchiveStore } from '../../packages/features/src/archive-store'
-import { ConversationArchiveModule } from '../../packages/features/src/conversation-archive'
+import { createArchiveUiAdapter } from '../../packages/features/src/archive-ui-adapter'
+import {
+  ConversationArchiveModule,
+  collectionTicket,
+} from '../../packages/features/src/conversation-archive'
 import { HistoryLoaderModule } from '../../packages/features/src/history-loader'
 import { ARCHIVE_EVENT, TRANSPORT_CHANNEL } from '../../packages/observer/src'
 import { mountBoosterUi } from '../../packages/ui/src/mount'
-import { runLoaderCancellationTests, runLoaderScrollTest } from './loader'
+import { runLoaderCancellationTests, runLoaderIsolationTests, runLoaderScrollTest } from './loader'
 import { runUiTests } from './ui'
 
 const store = new ConversationArchiveStore()
@@ -45,7 +46,12 @@ const settings: SettingsAdapter = {
     return () => listeners.delete(listener)
   },
 }
-const context = {
+const context: {
+  conversationId: string
+  conversationTitle: string | null
+  projectId: string | null
+  projectTitle: string | null
+} = {
   conversationId: 'fixture-current',
   conversationTitle: 'Проверка панели и архива',
   projectId: projectA,
@@ -215,6 +221,139 @@ async function runStorageTests() {
       )
     },
   )
+  await check('attachment metadata and only verified signed resolution are persisted', async () => {
+    const id = `${prefix}asset`
+    const assetId = `file_${prefix.replace(/[^a-z0-9]/gi, '')}`
+    await store.ingest(
+      page(id, [
+        {
+          ...raw('attachment', 'user', 'Attachment'),
+          content: {
+            content_type: 'multimodal_text',
+            parts: [
+              {
+                content_type: 'image_asset_pointer',
+                asset_pointer: `sediment://${assetId}`,
+                mime_type: 'image/png',
+                size_bytes: 3,
+                width: 1,
+                height: 1,
+              },
+              'Attachment',
+            ],
+          },
+          metadata: { attachments: [{ id: assetId, name: 'fixture.png', size: 3 }] },
+        },
+      ]),
+    )
+    const initial = (await store.getAssets([assetId]))[0]
+    assert(
+      initial?.fileName === 'fixture.png' && initial.downloadUrl === null,
+      'asset placeholder missing',
+    )
+    assert(
+      (await store.updateAssetResolution({
+        assetId,
+        downloadUrl: `https://chatgpt.com/backend-api/estuary/content?id=${assetId}&sig=fixture`,
+        fileName: 'fixture.png',
+        mimeType: 'image/png',
+        fileSizeBytes: 3,
+        observedAt: Date.now(),
+      })) === true,
+      'valid signed URL was rejected',
+    )
+    assert(
+      (await store.getAssets([assetId]))[0]?.downloadUrl?.includes(`id=${assetId}`),
+      'resolution missing',
+    )
+    assert(
+      (await store.updateAssetResolution({
+        assetId,
+        downloadUrl: 'https://example.com/not-allowed',
+        fileName: null,
+        mimeType: null,
+        fileSizeBytes: null,
+        observedAt: Date.now(),
+      })) === false,
+      'foreign resolver URL accepted',
+    )
+  })
+  await check('saved data survives policy changes and schema normalization', async () => {
+    const id = prefix + 'preserved'
+    await store.ingest(page(id, [raw('u', 'user', 'Keep me')]))
+    await settings.update({
+      archive: { conversations: { [id]: { ...DEFAULT_CAPTURE_RULE, enabled: false } } },
+    })
+    const normalized = normalizeSettings(await settings.get())
+    assert(normalized.archive.conversations[id]?.enabled === false, 'policy did not persist')
+    assert((await store.getConversation(id))?.conversationId === id, 'conversation was deleted')
+    assert((await store.listMessages(id)).length === 1, 'records were deleted')
+  })
+  await check('manual ticket is tab/chat/time scoped', async () => {
+    const ticketKey = 'chatgpt-booster:manual-collection'
+    const href = location.href
+    const now = Date.now()
+    const id = prefix + 'ticket'
+    try {
+      history.replaceState(null, '', '/c/' + id)
+      sessionStorage.setItem(
+        ticketKey,
+        JSON.stringify({
+          conversationId: prefix + 'different',
+          startedAt: now,
+          expiresAt: now + 60_000,
+        }),
+      )
+      assert(!collectionTicket(), 'ticket leaked to another chat')
+      sessionStorage.setItem(
+        ticketKey,
+        JSON.stringify({
+          conversationId: id,
+          startedAt: now - 31 * 60_000,
+          expiresAt: now + 60_000,
+        }),
+      )
+      assert(!collectionTicket(), 'overlong ticket accepted')
+      sessionStorage.setItem(
+        ticketKey,
+        JSON.stringify({
+          conversationId: id,
+          startedAt: now,
+          expiresAt: now + 60_000,
+        }),
+      )
+      assert(collectionTicket()?.conversationId === id, 'valid ticket rejected')
+    } finally {
+      sessionStorage.removeItem(ticketKey)
+      history.replaceState(null, '', href)
+    }
+  })
+  await check('late project title discovery is persisted to the project store', async () => {
+    const href = location.href
+    const project = 'g-p-' + 'a'.repeat(32)
+    const chat = prefix + 'late-title'
+    const link = document.createElement('a')
+    link.href = '/g/' + project + '-late-title/project'
+    link.textContent = 'Late project title'
+    document.body.append(link)
+    try {
+      history.replaceState(null, '', '/g/' + project + '-late-title/c/' + chat)
+      await store.upsertProject(project, null)
+      const ui = createArchiveUiAdapter(store, {
+        collectCurrent: async () => undefined,
+      } as ConversationArchiveModule)
+      const current = await ui.getCurrentContext()
+      assert(current.projectTitle === 'Late project title', 'DOM title not observed')
+      assert(
+        (await store.listProjects()).find((item) => item.projectId === project)?.title ===
+          'Late project title',
+        'late title not persisted',
+      )
+    } finally {
+      link.remove()
+      history.replaceState(null, '', href)
+    }
+  })
   await check(
     'selective/manual capture and cancellation: local event fixture, no network',
     async () => {
@@ -313,6 +452,34 @@ async function seed() {
   )
 }
 const exports: { text: string; mime: string; extension: string }[] = []
+async function appendCurrentExchange() {
+  const suffix = String(Date.now())
+  await store.ingest(
+    page(
+      context.conversationId,
+      [
+        {
+          ...raw('runtime-user-' + suffix, 'user', 'Runtime refresh question'),
+          create_time: 1800000000,
+        },
+        {
+          ...raw(
+            'runtime-answer-' + suffix,
+            'assistant',
+            'Runtime refresh answer',
+            'runtime-user-' + suffix,
+          ),
+          create_time: 1800000001,
+        },
+      ],
+      {
+        title: context.conversationTitle,
+        gizmo_id: context.projectId,
+        gizmo_type: context.projectId ? 'snorlax' : null,
+      },
+    ),
+  )
+}
 const adapter = {
   getCurrentContext: async () => ({ ...context }),
   currentConversationId: () => context.conversationId,
@@ -336,7 +503,14 @@ const adapter = {
       { verified: false, fixture: true },
     )
     exports.push(result)
-    downloadArchiveExport(result, c.title)
+    return {
+      packaged: false,
+      complete: true,
+      includedAssets: 0,
+      missingAssets: 0,
+      blob: new Blob([result.text], { type: `${result.mime};charset=utf-8` }),
+      extension: result.extension as 'json' | 'md',
+    }
   },
 }
 await seed()
@@ -345,8 +519,9 @@ Object.assign(window, {
   extension2Harness: {
     ready: true,
     runStorageTests,
-    runUiTests: () => runUiTests(settings),
+    runUiTests: () => runUiTests(settings, adapter, context, appendCurrentExchange),
     runLoaderCancellationTests,
+    runLoaderIsolationTests,
     runLoaderScrollTest: () => runLoaderScrollTest(store),
     settings,
     context,

@@ -1,5 +1,6 @@
-import type { SettingsAdapter } from '../../packages/core/src'
+import type { ArchiveCurrentContext, SettingsAdapter } from '../../packages/core/src'
 import { translate } from '../../packages/ui/src/i18n'
+import type { ArchiveDataAdapter } from '../../packages/ui/src/mount'
 
 const delay = () => new Promise((resolve) => setTimeout(resolve, 100))
 function assert(value: unknown, message: string): asserts value {
@@ -22,7 +23,12 @@ function bounds(element: Element) {
 function same(a: unknown, b: unknown) {
   return JSON.stringify(a) === JSON.stringify(b)
 }
-export async function runUiTests(settings: SettingsAdapter) {
+export async function runUiTests(
+  settings: SettingsAdapter,
+  adapter: ArchiveDataAdapter,
+  context: ArchiveCurrentContext,
+  appendCurrentExchange: () => Promise<void>,
+) {
   const result: { name: string; pass: boolean; detail?: unknown }[] = []
   const previous = await settings.get()
   async function check(name: string, fn: () => Promise<unknown>) {
@@ -70,8 +76,10 @@ export async function runUiTests(settings: SettingsAdapter) {
           'panel outside viewport',
         )
         assert(!panel.textContent?.includes('g-p-1111'), 'raw project ID shown as name')
+        const currentThread = await adapter.getThread(context.conversationId ?? '')
         assert(
-          panel.textContent?.includes('110') && panel.textContent?.includes('55'),
+          panel.textContent?.includes(String(currentThread.messageCount)) &&
+            panel.textContent?.includes(String(currentThread.detailCount)),
           'reply/detail counts missing',
         )
         button('.booster-dock-toggle').click()
@@ -83,6 +91,7 @@ export async function runUiTests(settings: SettingsAdapter) {
     await check(
       'pointer handler drop snaps left and persists height ratio (synthetic pointer)',
       async () => {
+        await close()
         const toggle = button('.booster-dock-toggle'),
           before = bounds(toggle)
         const x = before.x + 22,
@@ -140,6 +149,7 @@ export async function runUiTests(settings: SettingsAdapter) {
     await check(
       'archive opens current project only, nested records are lazy, no composer',
       async () => {
+        await close()
         button('.booster-dock-toggle').click()
         await delay()
         button('.booster-dock-actions > button:nth-child(3)').click()
@@ -174,19 +184,171 @@ export async function runUiTests(settings: SettingsAdapter) {
         const buttons = [...reader.querySelectorAll<HTMLButtonElement>('button')]
         const more = buttons.find((b) => b.textContent?.trim() === translate('ru', 'reader.more'))
         assert(more, 'show more missing')
+        const expectedTurns = (await adapter.getThread(context.conversationId ?? '')).turns.length
         more.click()
         await delay()
         assert(
-          reader.querySelectorAll('.booster-exchange').length === 55,
+          reader.querySelectorAll('.booster-exchange').length === expectedTurns,
           'show more did not render remaining exchanges',
         )
         other.click()
         await delay()
         assert(other.getAttribute('aria-expanded') === 'true', 'other project cannot be expanded')
         await close()
-        return { initialExchanges: 40, expandedExchanges: 55, replyCount: 110, nestedCount: 55 }
+        const finalThread = await adapter.getThread(context.conversationId ?? '')
+        return {
+          initialExchanges: 40,
+          expandedExchanges: expectedTurns,
+          replyCount: finalThread.messageCount,
+          nestedCount: finalThread.detailCount,
+        }
       },
     )
+    await check('English locale and identifier copy work', async () => {
+      await close()
+      await settings.update({ language: 'en' })
+      await delay()
+      button('.booster-dock-toggle').click()
+      await delay()
+      const panel = shadow().querySelector<HTMLElement>('.booster-dock-shell')
+      assert(panel, 'panel missing')
+      assert(panel.textContent?.includes('Browse archive'), 'English labels missing')
+      const copy = panel.querySelector<HTMLButtonElement>('.booster-identity-copy')
+      assert(copy, 'copy control missing')
+      copy.focus()
+      assert(getComputedStyle(copy).opacity === '1', 'copy control hidden on focus')
+      let copied = ''
+      const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+      try {
+        Object.defineProperty(navigator, 'clipboard', {
+          configurable: true,
+          value: {
+            writeText: async (value: string) => {
+              copied = value
+            },
+          },
+        })
+        copy.click()
+        await delay()
+        assert(copied === context.conversationId, 'wrong identifier copied')
+      } finally {
+        if (original) Object.defineProperty(navigator, 'clipboard', original)
+        else Reflect.deleteProperty(navigator, 'clipboard')
+      }
+      await close()
+      return { copied: true, language: 'en' }
+    })
+
+    await check('SPA context refresh discards a late previous-chat response', async () => {
+      await close()
+      await settings.update({ language: 'ru' })
+      const originalContext = { ...context }
+      const originalGet = adapter.getCurrentContext
+      let release: (() => void) | undefined
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      try {
+        Object.assign(context, {
+          conversationId: 'fixture-slow',
+          conversationTitle: 'Медленный старый чат',
+          projectId: null,
+          projectTitle: null,
+        })
+        adapter.getCurrentContext = async () => {
+          const snapshot = { ...context }
+          if (snapshot.conversationId === 'fixture-slow') await gate
+          return snapshot
+        }
+        button('.booster-dock-toggle').click()
+        await new Promise((resolve) => setTimeout(resolve, 80))
+        Object.assign(context, {
+          conversationId: 'fixture-fast',
+          conversationTitle: 'Новый быстрый чат',
+          projectId: null,
+          projectTitle: null,
+        })
+        await new Promise((resolve) => setTimeout(resolve, 1200))
+        release?.()
+        await new Promise((resolve) => setTimeout(resolve, 180))
+        const text = shadow().querySelector('.booster-dock-shell')?.textContent ?? ''
+        assert(text.includes('Новый быстрый чат'), 'new SPA context not rendered')
+        assert(!text.includes('Медленный старый чат'), 'stale context overwrote new chat')
+      } finally {
+        release?.()
+        adapter.getCurrentContext = originalGet
+        Object.assign(context, originalContext)
+        await close()
+      }
+    })
+
+    await check('archive search, refresh and selected-chat export stay consistent', async () => {
+      await close()
+      button('.booster-dock-toggle').click()
+      await delay()
+      button('.booster-dock-actions > button:nth-child(3)').click()
+      await delay()
+      const reader = shadow().querySelector<HTMLElement>('.booster-reader')
+      assert(reader, 'archive missing')
+      const listSearch = reader.querySelector<HTMLInputElement>(
+        '.booster-reader-sidebar input[type="search"]',
+      )
+      assert(listSearch, 'list search missing')
+      listSearch.value = 'Другой проект'
+      listSearch.dispatchEvent(new Event('input', { bubbles: true }))
+      await delay()
+      assert(
+        reader.querySelectorAll('.booster-reader-group').length === 1,
+        'project/chat search failed',
+      )
+      listSearch.value = ''
+      listSearch.dispatchEvent(new Event('input', { bubbles: true }))
+      await delay()
+      const textSearch = reader.querySelector<HTMLInputElement>('.booster-reader-text-search')
+      assert(textSearch, 'message search missing')
+      textSearch.value = 'Вопрос 55'
+      textSearch.dispatchEvent(new Event('input', { bubbles: true }))
+      await delay()
+      assert(reader.querySelectorAll('.booster-exchange').length === 1, 'message search failed')
+      textSearch.value = ''
+      textSearch.dispatchEvent(new Event('input', { bubbles: true }))
+      await delay()
+      const before = Number(reader.querySelector('.booster-reader-summary b')?.textContent ?? '0')
+      await appendCurrentExchange()
+      const refresh = reader.querySelector<HTMLButtonElement>(
+        '.booster-section-header .booster-icon-button',
+      )
+      assert(refresh, 'refresh button missing')
+      refresh.click()
+      await new Promise((resolve) => setTimeout(resolve, 180))
+      const after = Number(reader.querySelector('.booster-reader-summary b')?.textContent ?? '0')
+      assert(after === before + 2, 'refresh did not reread open thread')
+      const exportButton = reader.querySelector<HTMLButtonElement>(
+        '.booster-reader-chat-header .booster-action-secondary',
+      )
+      assert(exportButton, 'archive export button missing')
+      exportButton.click()
+      await delay()
+      const dialog = shadow().querySelector<HTMLElement>('.booster-export-dialog')
+      assert(dialog, 'selected chat did not open export dialog')
+      assert(dialog.textContent?.includes(context.conversationTitle ?? ''), 'wrong export target')
+      const selectors = [...dialog.querySelectorAll<HTMLSelectElement>('select')]
+      const [formatSelect, levelSelect] = selectors
+      assert(formatSelect && levelSelect, 'format/level selectors missing')
+      levelSelect.value = 'full'
+      levelSelect.dispatchEvent(new Event('change', { bubbles: true }))
+      await delay()
+      assert(
+        dialog.querySelector<HTMLButtonElement>('.booster-action-primary')?.disabled === false,
+        'full package export remained disabled',
+      )
+      assert(formatSelect.isConnected, 'full mode removed format selector')
+      dialog.querySelector<HTMLButtonElement>('.booster-icon-button')?.click()
+      await delay()
+      await close()
+      return { before, after }
+    })
+
     return result
   } finally {
     await close()

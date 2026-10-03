@@ -24,6 +24,15 @@ export interface ArchiveRecordView {
   firstSeenAt?: number
   raw: Record<string, unknown>
 }
+export interface ArchiveAttachmentView {
+  assetId: string
+  fileName: string | null
+  mimeType: string | null
+  sizeBytes: number | null
+  width: number | null
+  height: number | null
+  kind: 'image' | 'file'
+}
 export interface ArchiveItemView {
   record: ArchiveRecordView
   kind: ArchiveRecordKind
@@ -51,6 +60,14 @@ export interface ArchiveSettings {
   defaultRule: CaptureRule
   projects: Record<string, CaptureRule>
   conversations: Record<string, CaptureRule>
+}
+export interface ArchiveExportOutcome {
+  packaged: boolean
+  complete: boolean
+  includedAssets: number
+  missingAssets: number
+  blob: Blob
+  extension: 'json' | 'md' | 'zip'
 }
 export interface ArchiveExportOptions {
   format: 'json' | 'markdown'

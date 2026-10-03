@@ -44,7 +44,7 @@ const autoCapture = computed(() => !!context.value.conversationId && settings.va
 const coverageKey = computed<TranslationKey>(() => !coverage.value ? 'dock.none' : coverage.value.evidenceVersion !== 1 ? 'dock.unverified' : coverage.value.completeAtLastRead ? 'dock.verified' : 'dock.partial')
 const safeError = (value: unknown): TranslationKey => {
   const message = value instanceof Error ? value.message : ''
-  return ['archive.error.noChat', 'archive.error.draft', 'archive.error.generating', 'archive.error.storage', 'archive.error.timeout', 'archive.error.noProgress', 'archive.error.auth', 'archive.error.network'].includes(message) ? message as TranslationKey : 'archive.error.unknown'
+  return ['archive.error.noChat', 'archive.error.draft', 'archive.error.attachments', 'archive.error.generating', 'archive.error.storage', 'archive.error.timeout', 'archive.error.noProgress', 'archive.error.auth', 'archive.error.network'].includes(message) ? message as TranslationKey : 'archive.error.unknown'
 }
 async function refreshContext() {
   const adapter = props.archiveAdapter

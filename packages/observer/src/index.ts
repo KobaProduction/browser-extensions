@@ -3,6 +3,7 @@ export const TRANSPORT_CONFIG_EVENT = 'chatgpt-booster:transport-config'
 export const TRANSPORT_CHANNEL = 'chatgpt-booster:transport'
 export const ARCHIVE_POLICY_EVENT = 'chatgpt-booster:archive-policy'
 export const ARCHIVE_NETWORK_EVENT = 'chatgpt-booster:archive-network'
+export const ARCHIVE_ASSET_EVENT = 'chatgpt-booster:archive-asset'
 export interface ArchiveCapturePolicy {
   enabled: boolean
   defaultEnabled: boolean
@@ -93,6 +94,15 @@ export interface TransportEventDetail {
   size?: number | undefined
   error?: string | undefined
   errorClass?: 'aborted' | 'network' | 'stream' | 'socket' | undefined
+}
+
+export interface ArchiveAssetResolutionEventDetail {
+  assetId: string
+  downloadUrl: string
+  fileName: string | null
+  mimeType: string | null
+  fileSizeBytes: number | null
+  observedAt: number
 }
 
 export interface ConversationArchiveEventDetail {
@@ -249,6 +259,68 @@ function conversationHistoryId(input: string): string | undefined {
   } catch {
     return undefined
   }
+}
+
+export function archiveFileResolverId(input: string): string | undefined {
+  try {
+    const url = new URL(input, 'https://chatgpt.com')
+    if (url.origin !== 'https://chatgpt.com') return undefined
+    const match = url.pathname.match(/^\/backend-api\/files\/download\/(file_[A-Za-z0-9_-]+)$/)
+    return match?.[1]
+  } catch {
+    return undefined
+  }
+}
+
+export function parseArchiveAssetResolution(
+  value: unknown,
+  assetId: string,
+): ArchiveAssetResolutionEventDetail | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const payload = value as Record<string, unknown>
+  if (payload.status !== 'success' || typeof payload.download_url !== 'string') return undefined
+  try {
+    const download = new URL(payload.download_url, 'https://chatgpt.com')
+    if (
+      download.origin !== 'https://chatgpt.com' ||
+      download.pathname !== '/backend-api/estuary/content' ||
+      download.searchParams.get('id') !== assetId
+    )
+      return undefined
+    return {
+      assetId,
+      downloadUrl: download.href,
+      fileName: typeof payload.file_name === 'string' ? payload.file_name : null,
+      mimeType: typeof payload.mime_type === 'string' ? payload.mime_type : null,
+      fileSizeBytes:
+        typeof payload.file_size_bytes === 'number' && Number.isFinite(payload.file_size_bytes)
+          ? payload.file_size_bytes
+          : null,
+      observedAt: Date.now(),
+    }
+  } catch {
+    return undefined
+  }
+}
+
+function publishAssetResolution(value: unknown, sourceUrl: string) {
+  const assetId = archiveFileResolverId(sourceUrl)
+  if (!observerTarget || !assetId) return
+  const detail = parseArchiveAssetResolution(value, assetId)
+  if (!detail) return
+  observerTarget.postMessage(
+    { channel: TRANSPORT_CHANNEL, type: ARCHIVE_ASSET_EVENT, detail },
+    observerTarget.location.origin,
+  )
+}
+
+function observeArchiveAssetResponse(response: Response, sourceUrl: string) {
+  if (!response.ok || !archiveFileResolverId(sourceUrl)) return
+  void response
+    .clone()
+    .json()
+    .then((value: unknown) => publishAssetResolution(value, sourceUrl))
+    .catch(() => undefined)
 }
 
 function isConversationHistoryPayload(value: unknown): value is Record<string, unknown> {
@@ -440,6 +512,7 @@ export function installTransportObserver(
       const response = await originalFetch(input, init)
       archiveNetwork(id, rawUrl, response.ok ? 'response' : 'error', response.status)
       observeConversationArchiveResponse(response, rawUrl, historyRead)
+      observeArchiveAssetResponse(response, rawUrl)
       observeFetchResponseBody(response, { id, method, url }, config)
       emit({
         id,
@@ -479,7 +552,7 @@ export function installTransportObserver(
   const originalSend = OriginalXHR.prototype.send
   const xhrMeta = new WeakMap<
     XMLHttpRequest,
-    { id: string; method: string; url: string; started: number }
+    { id: string; method: string; url: string; rawUrl: string; started: number }
   >()
 
   OriginalXHR.prototype.open = function (
@@ -493,6 +566,7 @@ export function installTransportObserver(
       id: nextId('xhr'),
       method,
       url: sanitizeTransportUrl(String(url)),
+      rawUrl: String(url),
       started: 0,
     })
     return originalOpen.call(this, method, url, asyncFlag, user ?? null, password ?? null)
@@ -529,6 +603,15 @@ export function installTransportObserver(
             durationMs: Math.round((performance.now() - meta.started) * 100) / 100,
             contentType: this.getResponseHeader('content-type') ?? undefined,
           })
+          if (this.status >= 200 && this.status < 300 && archiveFileResolverId(meta.rawUrl)) {
+            try {
+              const value =
+                this.responseType === 'json' ? this.response : JSON.parse(this.responseText)
+              publishAssetResolution(value, meta.rawUrl)
+            } catch {
+              // Resolver response was unavailable or not JSON.
+            }
+          }
           if (config.captureBodies) {
             try {
               const value = this.responseType === 'json' ? this.response : this.responseText

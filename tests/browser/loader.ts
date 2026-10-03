@@ -10,6 +10,24 @@ import type {
 } from '../../packages/features/src/archive-store'
 import { HistoryLoaderModule } from '../../packages/features/src/history-loader'
 
+type TicketRef = { conversationId: string; startedAt: number }
+function finishTicket(ticketKey: string, expected?: TicketRef) {
+  if (expected) {
+    try {
+      const stored = JSON.parse(sessionStorage.getItem(ticketKey) ?? 'null') as TicketRef | null
+      if (
+        stored &&
+        (stored.conversationId !== expected.conversationId ||
+          stored.startedAt !== expected.startedAt)
+      )
+        return
+    } catch {
+      // Invalid fixture state is cleared below.
+    }
+  }
+  sessionStorage.removeItem(ticketKey)
+}
+
 /** Browser-local delayed store responses exercise real async loader lifecycle without network. */
 export async function runLoaderCancellationTests() {
   const results: { name: string; pass: boolean; detail?: string }[] = []
@@ -29,9 +47,9 @@ export async function runLoaderCancellationTests() {
         }),
     }
     const capture = {
-      finishCollection: () => {
+      finishCollection: (expected?: TicketRef) => {
         finishes++
-        sessionStorage.removeItem(ticketKey)
+        finishTicket(ticketKey, expected)
       },
     }
     const state = (event: Event) =>
@@ -108,8 +126,8 @@ export async function runLoaderScrollTest(
     if ((event as CustomEvent).detail?.conversationId === id) opened = true
   }
   const capture = {
-    finishCollection: () => {
-      sessionStorage.removeItem(ticketKey)
+    finishCollection: (expected?: TicketRef) => {
+      finishTicket(ticketKey, expected)
     },
   }
   const loader = new HistoryLoaderModule(store, capture)
@@ -197,4 +215,159 @@ export async function runLoaderScrollTest(
     sessionStorage.removeItem(ticketKey)
     history.replaceState(null, '', href)
   }
+}
+
+export async function runLoaderIsolationTests() {
+  const results: { name: string; pass: boolean; detail?: string }[] = []
+  const ticketKey = 'chatgpt-booster:manual-collection'
+  const scroller = document.querySelector<HTMLElement>('[class~="group/scroll-root"]')
+
+  async function run(
+    name: string,
+    body: (context: {
+      id: string
+      states: HistoryLoaderState[]
+      setHidden(value: boolean): void
+      scroller: HTMLElement
+    }) => Promise<void>,
+  ) {
+    const href = location.href
+    const id = `loader-isolation-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const startedAt = Date.now()
+    const states: HistoryLoaderState[] = []
+    const hiddenDescriptor = Object.getOwnPropertyDescriptor(document, 'hidden')
+    let hidden = false
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden })
+    const store = {
+      async getCoverage(): Promise<ConversationCoverage> {
+        return {
+          evidenceVersion: 1,
+          conversationId: id,
+          readId: `${id}-read`,
+          readStartedAt: startedAt + 1,
+          verifiedAt: null,
+          historyPageCount: 1,
+          visibleMessageCount: 2,
+          internalRecordCount: 0,
+          oldestKnownMessageId: null,
+          newestKnownMessageId: null,
+          oldestKnownCursor: 'middle',
+          newestKnownCursor: 'end',
+          hasOlderServerHistory: true,
+          hasNewerServerHistory: false,
+          knownMessageCount: 2,
+          knownBranchConversationIds: [],
+          lastObservedAt: startedAt + 1,
+          lastFullReadAt: null,
+          completeAtLastRead: false,
+        }
+      },
+    }
+    const capture = {
+      finishCollection: (expected?: TicketRef) => finishTicket(ticketKey, expected),
+    }
+    const loader = new HistoryLoaderModule(store, capture)
+    const state = (event: Event) =>
+      states.push({ ...(event as CustomEvent<HistoryLoaderState>).detail })
+    try {
+      if (!scroller) throw new Error('fixture scroller missing')
+      history.replaceState(null, '', `/c/${id}`)
+      sessionStorage.setItem(
+        ticketKey,
+        JSON.stringify({ conversationId: id, startedAt, expiresAt: startedAt + 60_000 }),
+      )
+      window.addEventListener(HISTORY_LOADER_STATE_EVENT, state)
+      loader.start()
+      await body({
+        id,
+        states,
+        setHidden: (value) => {
+          hidden = value
+        },
+        scroller,
+      })
+      results.push({ name, pass: true })
+    } catch (error) {
+      results.push({
+        name,
+        pass: false,
+        detail: error instanceof Error ? error.message : String(error),
+      })
+    } finally {
+      loader.stop()
+      window.removeEventListener(HISTORY_LOADER_STATE_EVENT, state)
+      sessionStorage.removeItem(ticketKey)
+      history.replaceState(null, '', href)
+      if (hiddenDescriptor) Object.defineProperty(document, 'hidden', hiddenDescriptor)
+      else Reflect.deleteProperty(document, 'hidden')
+    }
+  }
+
+  await run(
+    'unrelated network errors are ignored; current auth errors are scoped',
+    async ({ id, states }) => {
+      const emit = (conversationId: string, status: number) =>
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            origin: location.origin,
+            source: window,
+            data: {
+              channel: 'chatgpt-booster:transport',
+              type: 'chatgpt-booster:archive-network',
+              detail: { conversationId, phase: 'error', status },
+            },
+          }),
+        )
+      emit('different-conversation', 401)
+      await new Promise((resolve) => setTimeout(resolve, 700))
+      if (states.some((item) => item.phase === 'error')) throw new Error('foreign error leaked')
+      emit(id, 401)
+      const started = Date.now()
+      while (!states.some((item) => item.phase === 'error') && Date.now() - started < 2500)
+        await new Promise((resolve) => setTimeout(resolve, 25))
+      const error = [...states].reverse().find((item) => item.phase === 'error')
+      if (error?.message !== 'archive.error.auth')
+        throw new Error(`wrong scoped error: ${error?.message}`)
+    },
+  )
+
+  await run(
+    'background tab pauses scrolling and resumes when visible',
+    async ({ states, setHidden, scroller }) => {
+      scroller.scrollTop = 900
+      setHidden(true)
+      const before = scroller.scrollTop
+      await new Promise((resolve) => setTimeout(resolve, 750))
+      if (scroller.scrollTop !== before) throw new Error('background tab scrolled')
+      setHidden(false)
+      const started = Date.now()
+      while (scroller.scrollTop >= before && Date.now() - started < 2000)
+        await new Promise((resolve) => setTimeout(resolve, 25))
+      if (scroller.scrollTop >= before) throw new Error('visible tab did not resume scrolling')
+      if (!states.some((item) => item.phase === 'scrolling'))
+        throw new Error('scrolling state missing')
+    },
+  )
+
+  await run('storage error is scoped to the active conversation', async ({ id, states }) => {
+    window.dispatchEvent(
+      new CustomEvent('chatgpt-booster:archive-storage-error', {
+        detail: { conversationId: 'different-conversation' },
+      }),
+    )
+    await new Promise((resolve) => setTimeout(resolve, 600))
+    if (states.some((item) => item.phase === 'error'))
+      throw new Error('foreign storage error leaked')
+    window.dispatchEvent(
+      new CustomEvent('chatgpt-booster:archive-storage-error', { detail: { conversationId: id } }),
+    )
+    const started = Date.now()
+    while (!states.some((item) => item.phase === 'error') && Date.now() - started < 2500)
+      await new Promise((resolve) => setTimeout(resolve, 25))
+    const error = [...states].reverse().find((item) => item.phase === 'error')
+    if (error?.message !== 'archive.error.storage')
+      throw new Error(`wrong storage error: ${error?.message}; states=${JSON.stringify(states)}`)
+  })
+
+  return results
 }

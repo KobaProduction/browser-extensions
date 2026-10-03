@@ -53,6 +53,26 @@ export function hasConversationDraft(root: ParentNode = document): boolean {
     : composer?.textContent?.trim())
 }
 
+export function hasPendingComposerAttachments(root: ParentNode = document): boolean {
+  const form = root.querySelector<HTMLFormElement>('main form')
+  if (!form) return false
+  const fileInput = form.querySelector<HTMLInputElement>('input[type="file"]')
+  if (fileInput?.files?.length) return true
+  for (const element of form.querySelectorAll<HTMLElement>(
+    '[data-testid], [data-state], img, a[download]',
+  )) {
+    const testId = element.dataset.testid?.toLowerCase() ?? ''
+    const state = element.dataset.state?.toLowerCase() ?? ''
+    if (/file-thumbnail|image-thumbnail|attachment/.test(testId)) return true
+    if (/uploading|pending/.test(state)) return true
+    if (element instanceof HTMLImageElement) {
+      const source = element.currentSrc || element.src
+      if (/^(blob:|data:)|\/backend-api\/(?:files|uploads)\//.test(source)) return true
+    }
+  }
+  return false
+}
+
 export function currentProjectTitle(
   projectId: string,
   root: ParentNode = document,
@@ -80,4 +100,27 @@ export function currentConversationTitle(root: Document = document): string | un
 }
 export function isConversationGenerating(root: ParentNode = document): boolean {
   return !!root.querySelector('[data-testid="stop-button"], [data-testid="stop-generation"]')
+}
+
+export function currentResolvedAssetUrls(root: ParentNode = document) {
+  const resolved = new Map<string, string>()
+  for (const element of root.querySelectorAll<HTMLImageElement | HTMLAnchorElement>(
+    'img[src*="/backend-api/estuary/content"], a[href*="/backend-api/estuary/content"]',
+  )) {
+    const value =
+      element instanceof HTMLImageElement ? element.currentSrc || element.src : element.href
+    try {
+      const url = new URL(value, location.href)
+      const assetId = url.searchParams.get('id')
+      if (
+        url.origin === 'https://chatgpt.com' &&
+        url.pathname === '/backend-api/estuary/content' &&
+        assetId?.startsWith('file_')
+      )
+        resolved.set(assetId, url.href)
+    } catch {
+      // Ignore malformed or non-ChatGPT URLs.
+    }
+  }
+  return [...resolved].map(([assetId, downloadUrl]) => ({ assetId, downloadUrl }))
 }

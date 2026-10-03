@@ -113,9 +113,18 @@ export function normalizeSettings(value?: Partial<BoosterSettings>): BoosterSett
     },
     launcher: {
       ...DEFAULT_SETTINGS.launcher,
-      ...value?.launcher,
-      side: value?.launcher?.side === 'left' ? 'left' : 'right',
-      heightRatio: clampRatio(value?.launcher?.heightRatio),
+      // Schema < 3 stored absolute viewport pixels. They are resolution-specific,
+      // so migration intentionally discards them instead of pretending they are portable.
+      x: null,
+      y: null,
+      side:
+        incomingSchema >= 3 && value?.launcher?.side === 'left'
+          ? 'left'
+          : DEFAULT_SETTINGS.launcher.side,
+      heightRatio:
+        incomingSchema >= 3
+          ? clampRatio(value?.launcher?.heightRatio)
+          : DEFAULT_SETTINGS.launcher.heightRatio,
     },
     observer: {
       ...DEFAULT_SETTINGS.observer,

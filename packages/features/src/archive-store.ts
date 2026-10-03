@@ -1,10 +1,17 @@
-import { buildArchiveThread } from '@chatgpt-booster/chatgpt'
-import { ARCHIVE_UPDATED_EVENT, serverTimeMs } from '@chatgpt-booster/core'
+import { archiveRecordAttachments, buildArchiveThread } from '@chatgpt-booster/chatgpt'
+import {
+  ARCHIVE_UPDATED_EVENT,
+  type ArchiveAttachmentView,
+  serverTimeMs,
+} from '@chatgpt-booster/core'
 import { historyCoverage } from './archive-coverage'
 
 export { ARCHIVE_UPDATED_EVENT } from '@chatgpt-booster/core'
 
-import type { ConversationArchiveEventDetail } from '@chatgpt-booster/observer'
+import type {
+  ArchiveAssetResolutionEventDetail,
+  ConversationArchiveEventDetail,
+} from '@chatgpt-booster/observer'
 
 export const ARCHIVE_DB_NAME = 'chatgpt-booster-archive'
 export const ARCHIVE_DB_VERSION = 2
@@ -39,6 +46,13 @@ export interface ArchivedConversation {
 export interface ArchivedProject {
   projectId: string
   title: string | null
+  firstSeenAt: number
+  lastSeenAt: number
+}
+
+export interface ArchivedAsset extends ArchiveAttachmentView {
+  downloadUrl: string | null
+  resolverObservedAt: number | null
   firstSeenAt: number
   lastSeenAt: number
 }
@@ -355,6 +369,132 @@ export class ConversationArchiveStore {
     await done
   }
 
+  async syncAssetMetadata(records: ArchivedMessage[]): Promise<ArchivedAsset[]> {
+    const metadata = new Map<string, ArchiveAttachmentView>()
+    for (const record of records)
+      for (const item of archiveRecordAttachments(record)) {
+        const previous = metadata.get(item.assetId)
+        metadata.set(item.assetId, {
+          ...previous,
+          ...item,
+          fileName: item.fileName ?? previous?.fileName ?? null,
+          mimeType: item.mimeType ?? previous?.mimeType ?? null,
+          sizeBytes: item.sizeBytes ?? previous?.sizeBytes ?? null,
+          width: item.width ?? previous?.width ?? null,
+          height: item.height ?? previous?.height ?? null,
+          kind: item.kind === 'image' || previous?.kind === 'image' ? 'image' : 'file',
+        })
+      }
+    if (!metadata.size) return []
+    const db = await this.#db()
+    const tx = db.transaction('assets', 'readwrite')
+    const done = transactionDone(tx)
+    const store = tx.objectStore('assets')
+    const previous = await Promise.all(
+      [...metadata.keys()].map((assetId) => request<ArchivedAsset | undefined>(store.get(assetId))),
+    )
+    const now = Date.now()
+    const results: ArchivedAsset[] = []
+    let index = 0
+    for (const item of metadata.values()) {
+      const old = previous[index++]
+      const next: ArchivedAsset = {
+        ...item,
+        fileName: item.fileName ?? old?.fileName ?? null,
+        mimeType: item.mimeType ?? old?.mimeType ?? null,
+        sizeBytes: item.sizeBytes ?? old?.sizeBytes ?? null,
+        width: item.width ?? old?.width ?? null,
+        height: item.height ?? old?.height ?? null,
+        kind: item.kind === 'image' || old?.kind === 'image' ? 'image' : 'file',
+        downloadUrl: old?.downloadUrl ?? null,
+        resolverObservedAt: old?.resolverObservedAt ?? null,
+        firstSeenAt: old?.firstSeenAt ?? now,
+        lastSeenAt: now,
+      }
+      store.put(next)
+      results.push(next)
+    }
+    await done
+    return results
+  }
+
+  async updateAssetResolution(detail: ArchiveAssetResolutionEventDetail): Promise<boolean> {
+    let url: URL
+    try {
+      url = new URL(detail.downloadUrl)
+    } catch {
+      return false
+    }
+    if (
+      url.origin !== 'https://chatgpt.com' ||
+      url.pathname !== '/backend-api/estuary/content' ||
+      url.searchParams.get('id') !== detail.assetId
+    )
+      return false
+    const db = await this.#db()
+    const tx = db.transaction(['assets', 'messages'], 'readwrite')
+    const done = transactionDone(tx)
+    const store = tx.objectStore('assets')
+    const [previous, messages] = await Promise.all([
+      request<ArchivedAsset | undefined>(store.get(detail.assetId)),
+      request<ArchivedMessage[]>(tx.objectStore('messages').getAll()),
+    ])
+    let metadata: ArchiveAttachmentView | undefined
+    if (!previous)
+      for (const message of messages) {
+        const candidate = archiveRecordAttachments(message).find(
+          (attachment) => attachment.assetId === detail.assetId,
+        )
+        if (!candidate) continue
+        metadata = metadata
+          ? {
+              ...metadata,
+              ...candidate,
+              fileName: candidate.fileName ?? metadata.fileName,
+              mimeType: candidate.mimeType ?? metadata.mimeType,
+              sizeBytes: candidate.sizeBytes ?? metadata.sizeBytes,
+              width: candidate.width ?? metadata.width,
+              height: candidate.height ?? metadata.height,
+              kind: candidate.kind === 'image' || metadata.kind === 'image' ? 'image' : 'file',
+            }
+          : candidate
+      }
+    if (!previous && !metadata) {
+      await done
+      return false
+    }
+    const now = Date.now()
+    const base: ArchivedAsset = previous ?? {
+      ...(metadata as ArchiveAttachmentView),
+      downloadUrl: null,
+      resolverObservedAt: null,
+      firstSeenAt: now,
+      lastSeenAt: now,
+    }
+    store.put({
+      ...base,
+      fileName: detail.fileName ?? base.fileName,
+      mimeType: detail.mimeType ?? base.mimeType,
+      sizeBytes: detail.fileSizeBytes ?? base.sizeBytes,
+      downloadUrl: url.href,
+      resolverObservedAt: detail.observedAt,
+      lastSeenAt: now,
+    } satisfies ArchivedAsset)
+    await done
+    return true
+  }
+
+  async getAssets(assetIds: string[]): Promise<ArchivedAsset[]> {
+    const ids = [...new Set(assetIds)]
+    if (!ids.length) return []
+    const db = await this.#db()
+    const tx = db.transaction('assets', 'readonly')
+    const store = tx.objectStore('assets')
+    return (
+      await Promise.all(ids.map((id) => request<ArchivedAsset | undefined>(store.get(id))))
+    ).filter((item): item is ArchivedAsset => Boolean(item))
+  }
+
   async getCoverage(conversationId: string): Promise<ConversationCoverage | undefined> {
     const db = await this.#db()
     const tx = db.transaction('conversationCoverage', 'readonly')
@@ -620,6 +760,9 @@ export class ConversationArchiveStore {
     writeTx.objectStore('conversationPages').put(page)
     writeTx.objectStore('conversationCoverage').put(coverage)
     await writeDone
+    // Asset metadata is ancillary to the conversation transaction. It can be rebuilt
+    // from raw records later, so a separate asset-store failure must not invalidate chat data.
+    await this.syncAssetMetadata(normalizedMessages).catch(() => [])
 
     const summary: ArchiveIngestSummary = {
       conversationId,

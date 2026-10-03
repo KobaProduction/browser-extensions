@@ -1,4 +1,4 @@
-import { asRecord } from '@chatgpt-booster/chatgpt'
+import { archiveRecordAttachments } from '@chatgpt-booster/chatgpt'
 import {
   type ArchiveExportOptions,
   type ArchiveItemView,
@@ -8,37 +8,11 @@ import {
 
 export function exportIncludes(item: ArchiveItemView, options: ArchiveExportOptions): boolean {
   if (item.kind === 'user' || item.kind === 'answer') return true
+  if (options.level === 'full') return true
   if (options.level === 'conversation') return false
   if (item.kind === 'reasoning') return options.reasoning
   if (item.kind === 'tool_call' || item.kind === 'tool_result') return options.tools
   return options.internal
-}
-function attachments(raw: Record<string, unknown>): unknown[] {
-  const content = asRecord(raw.content),
-    metadata = asRecord(raw.metadata)
-  const parts = Array.isArray(content?.parts)
-    ? content.parts.filter((part) => !!asRecord(part)?.asset_pointer || !!asRecord(part)?.file_id)
-    : []
-  const files = Array.isArray(metadata?.attachments) ? metadata.attachments : []
-  return [...parts, ...files].map((value) => {
-    const item = asRecord(value) ?? {}
-    return Object.fromEntries(
-      [
-        'id',
-        'file_id',
-        'asset_pointer',
-        'name',
-        'filename',
-        'content_type',
-        'mime_type',
-        'size_bytes',
-        'width',
-        'height',
-      ]
-        .filter((key) => key in item)
-        .map((key) => [key, item[key]]),
-    )
-  })
 }
 export function serializeArchiveExport(
   conversation: { conversationId: string; title: string | null; projectId: string | null },
@@ -46,8 +20,6 @@ export function serializeArchiveExport(
   options: ArchiveExportOptions,
   evidence: unknown,
 ) {
-  if (options.level === 'full' || options.images || options.files)
-    throw new Error('export.binaryUnavailable')
   const turns = thread.turns
     .map((turn) => ({
       id: turn.id,
@@ -79,16 +51,17 @@ export function serializeArchiveExport(
       createdAt:
         record.createTime === null ? null : new Date(serverTimeMs(record.createTime)).toISOString(),
       text: item.text,
-      attachments: attachments(record.raw),
-      ...(options.level === 'custom'
+      attachments: archiveRecordAttachments(record),
+      ...(options.level === 'custom' || options.level === 'full'
         ? {
             status: record.status,
             recipient: record.recipient,
             model: record.modelSlug,
             parentId: record.parentId,
             turnExchangeId: record.turnExchangeId,
-            // Only explicitly selected nested records retain their original payload.
-            ...(item.kind !== 'user' && item.kind !== 'answer'
+            // Custom mode retains raw payload only for explicitly selected nested records.
+            // Full mode is an explicit lossless export request and retains every raw record.
+            ...(options.level === 'full' || (item.kind !== 'user' && item.kind !== 'answer')
               ? { originalRecord: record.raw }
               : {}),
           }
@@ -132,20 +105,32 @@ export function serializeArchiveExport(
   }
   return { text: lines.join('\n'), mime: 'text/markdown', extension: 'md' }
 }
-export function downloadArchiveExport(
-  result: { text: string; mime: string; extension: string },
-  title: string | null,
-) {
-  const filename =
+export function archiveFilename(title: string | null) {
+  return (
     [...(title ?? 'conversation')]
       .map((char) => (char.charCodeAt(0) < 32 ? '-' : char))
       .join('')
       .replace(/[\\/:*?"<>|]/g, '-')
       .slice(0, 100) || 'conversation'
-  const url = URL.createObjectURL(new Blob([result.text], { type: `${result.mime};charset=utf-8` }))
+  )
+}
+
+export function downloadArchiveBlob(blob: Blob, title: string | null, extension: string) {
+  const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
-  link.download = `${filename}.${result.extension}`
+  link.download = `${archiveFilename(title)}.${extension}`
   link.href = url
   link.click()
   setTimeout(() => URL.revokeObjectURL(url), 30000)
+}
+
+export function downloadArchiveExport(
+  result: { text: string; mime: string; extension: string },
+  title: string | null,
+) {
+  downloadArchiveBlob(
+    new Blob([result.text], { type: `${result.mime};charset=utf-8` }),
+    title,
+    result.extension,
+  )
 }

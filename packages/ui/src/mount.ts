@@ -1,6 +1,7 @@
 import type {
   ArchiveCurrentContext,
   ArchiveExportOptions,
+  ArchiveExportOutcome,
   ArchiveThreadView,
   DiagnosticsAdapter,
   PersistentDiagnosticsAdapter,
@@ -67,7 +68,10 @@ export interface ArchiveDataAdapter {
   currentProjectId(): string | null
   getThread(conversationId: string): Promise<ArchiveThreadView>
   collectCurrent(): Promise<void>
-  exportConversation(conversationId: string, options: ArchiveExportOptions): Promise<void>
+  exportConversation(
+    conversationId: string,
+    options: ArchiveExportOptions,
+  ): Promise<ArchiveExportOutcome>
   listProjects(): Promise<ArchiveProjectView[]>
   getConversation(conversationId: string): Promise<ArchiveConversationView | undefined>
   getCoverage(conversationId: string): Promise<ArchiveCoverageView | undefined>

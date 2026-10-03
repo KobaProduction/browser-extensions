@@ -5,6 +5,7 @@ import {
   currentProjectId,
   currentProjectTitle,
   hasConversationDraft,
+  hasPendingComposerAttachments,
   isConversationGenerating,
 } from '@chatgpt-booster/chatgpt'
 import {
@@ -17,8 +18,10 @@ import {
   type SettingsAdapter,
 } from '@chatgpt-booster/core'
 import {
+  ARCHIVE_ASSET_EVENT,
   ARCHIVE_EVENT,
   ARCHIVE_POLICY_EVENT,
+  type ArchiveAssetResolutionEventDetail,
   type ConversationArchiveEventDetail,
   TRANSPORT_CHANNEL,
 } from '@chatgpt-booster/observer'
@@ -106,6 +109,7 @@ export class ConversationArchiveModule implements BoosterModule {
     const conversationId = currentConversationId()
     if (!conversationId) throw new Error('archive.error.noChat')
     if (hasConversationDraft()) throw new Error('archive.error.draft')
+    if (hasPendingComposerAttachments()) throw new Error('archive.error.attachments')
     if (isConversationGenerating()) throw new Error('archive.error.generating')
     const startedAt = Date.now()
     // One explicit manual operation, scoped to this tab/chat and time bounded.
@@ -116,7 +120,22 @@ export class ConversationArchiveModule implements BoosterModule {
     this.#publishPolicy()
     window.location.reload()
   }
-  finishCollection() {
+  finishCollection(expected?: Pick<CollectionTicket, 'conversationId' | 'startedAt'>) {
+    if (expected) {
+      try {
+        const stored = JSON.parse(
+          sessionStorage.getItem(TICKET_KEY) ?? 'null',
+        ) as CollectionTicket | null
+        if (
+          stored &&
+          (stored.conversationId !== expected.conversationId ||
+            stored.startedAt !== expected.startedAt)
+        )
+          return
+      } catch {
+        // Malformed ticket is never consent and can be cleared below.
+      }
+    }
     sessionStorage.removeItem(TICKET_KEY)
     this.#publishPolicy()
   }
@@ -147,12 +166,25 @@ export class ConversationArchiveModule implements BoosterModule {
   #onMessage = (event: MessageEvent) => {
     if (event.origin !== location.origin || event.source !== window) return
     const data = event.data
-    if (
-      data?.channel !== TRANSPORT_CHANNEL ||
-      data.type !== ARCHIVE_EVENT ||
-      data.detail?.kind !== 'conversation-page'
-    )
+    if (data?.channel !== TRANSPORT_CHANNEL) return
+    if (data.type === ARCHIVE_ASSET_EVENT) {
+      const detail = data.detail as ArchiveAssetResolutionEventDetail | undefined
+      if (!detail || typeof detail.assetId !== 'string' || typeof detail.downloadUrl !== 'string')
+        return
+      void this.store
+        .updateAssetResolution(detail)
+        .then((stored) => {
+          if (stored || !this.#active) return
+          // The normal resolver can finish just before the conversation page is committed.
+          // Retry once; unrelated assets still have no metadata row and remain discarded.
+          setTimeout(() => {
+            if (this.#active) void this.store.updateAssetResolution(detail).catch(() => undefined)
+          }, 750)
+        })
+        .catch(() => undefined)
       return
+    }
+    if (data.type !== ARCHIVE_EVENT || data.detail?.kind !== 'conversation-page') return
     const detail = data.detail as ConversationArchiveEventDetail
     this.#queue = this.#queue
       .then(async () => {

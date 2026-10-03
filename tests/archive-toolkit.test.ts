@@ -18,6 +18,8 @@ import {
   historyCoverage,
 } from '../packages/features/src/archive-coverage'
 import { serializeArchiveExport } from '../packages/features/src/archive-export'
+import { createArchivePackage } from '../packages/features/src/archive-package'
+import { historyBackoffMs } from '../packages/features/src/history-loader'
 
 function record(
   id: string,
@@ -90,6 +92,20 @@ describe('dock persistence and settings migration', () => {
     expect(saved.export.images).toBe(false)
   })
 })
+
+test('legacy pixel launcher geometry is discarded during schema 3 migration', () => {
+  const migrated = normalizeSettings({
+    schemaVersion: 2,
+    launcher: { x: 1730, y: 812 } as never,
+  })
+  expect(migrated.launcher).toEqual({
+    x: null,
+    y: null,
+    side: 'right',
+    heightRatio: 0.65,
+  })
+})
+
 describe('conversation vs nested records', () => {
   const records = [
     record('q', 'user'),
@@ -122,6 +138,29 @@ describe('conversation vs nested records', () => {
       ),
     ).toBe('internal')
   })
+  test('working-turn and turn-exchange IDs group records without using status', () => {
+    const records = [
+      record('user-a', 'user', 'text', { workingTurnId: 'work-a', turnExchangeId: 'turn-a' }),
+      record('detail-a', 'assistant', 'thoughts', {
+        workingTurnId: 'work-a',
+        status: 'in_progress',
+      }),
+      record('answer-a', 'assistant', 'text', {
+        turnExchangeId: 'turn-a',
+        status: 'finished_successfully',
+      }),
+      record('unlinked', 'system', 'text', { status: 'finished_successfully' }),
+    ]
+    const thread = buildArchiveThread(records)
+    const grouped = thread.turns.find((turn) => turn.id === 'user:user-a')
+    expect(grouped?.messages.map((item) => item.record.messageId).sort()).toEqual([
+      'answer-a',
+      'user-a',
+    ])
+    expect(grouped?.details.map((item) => item.record.messageId)).toEqual(['detail-a'])
+    expect(thread.turns.find((turn) => turn.id === 'unassigned')?.association).toBe('unassigned')
+  })
+
   test('handles parent cycles without recursion', () => {
     const thread = buildArchiveThread([
       record('a', 'tool', 'text', { parentId: 'b' }),
@@ -162,15 +201,95 @@ describe('conversation vs nested records', () => {
     expect(text).toContain('### reasoning')
     expect(text).not.toContain('### tool_result')
   })
-  test('does not pretend metadata is a complete binary backup', () => {
-    expect(() =>
-      serializeArchiveExport(
-        { conversationId: 'chat', title: 'Test', projectId: null },
-        buildArchiveThread(records),
-        { ...DEFAULT_EXPORT_OPTIONS, level: 'full' },
-        {},
-      ),
-    ).toThrow('export.binaryUnavailable')
+  test('full transcript retains raw records but package truthfully reports missing assets', async () => {
+    const attachment = record('attachment', 'user', 'multimodal_text', {
+      raw: {
+        id: 'attachment',
+        author: { role: 'user' },
+        content: {
+          content_type: 'multimodal_text',
+          parts: [
+            {
+              content_type: 'image_asset_pointer',
+              asset_pointer: 'sediment://file_fixture',
+              mime_type: 'image/png',
+              size_bytes: 3,
+              width: 1,
+              height: 1,
+            },
+            'caption',
+          ],
+        },
+        metadata: { attachments: [{ id: 'file_fixture', name: 'fixture.png' }] },
+      },
+    })
+    const thread = buildArchiveThread([attachment])
+    const full = { ...DEFAULT_EXPORT_OPTIONS, level: 'full' as const }
+    const transcript = serializeArchiveExport(
+      { conversationId: 'chat', title: 'Test', projectId: null },
+      thread,
+      full,
+      {},
+    ).text
+    expect(transcript).toContain('originalRecord')
+    const conversation = {
+      conversationId: 'chat',
+      projectId: null,
+      title: 'Test',
+    } as never
+    const missing = await createArchivePackage(conversation, thread, full, {}, [])
+    expect(missing.manifest.complete).toBe(false)
+    expect(missing.manifest.assets[0]?.status).toBe('missing_url')
+    expect(missing.blob.type).toBe('application/zip')
+  })
+
+  test('full package includes verified bytes and SHA-256 when a signed asset URL is available', async () => {
+    const attachment = record('attachment', 'user', 'multimodal_text', {
+      raw: {
+        id: 'attachment',
+        author: { role: 'user' },
+        content: {
+          content_type: 'multimodal_text',
+          parts: [
+            {
+              content_type: 'image_asset_pointer',
+              asset_pointer: 'sediment://file_fixture',
+              mime_type: 'image/png',
+              size_bytes: 3,
+            },
+          ],
+        },
+        metadata: { attachments: [{ id: 'file_fixture', name: 'fixture.png' }] },
+      },
+    })
+    const thread = buildArchiveThread([attachment])
+    const result = await createArchivePackage(
+      { conversationId: 'chat', projectId: null, title: 'Test' } as never,
+      thread,
+      { ...DEFAULT_EXPORT_OPTIONS, level: 'full' },
+      { verified: true },
+      [
+        {
+          assetId: 'file_fixture',
+          fileName: 'fixture.png',
+          mimeType: 'image/png',
+          sizeBytes: 3,
+          width: null,
+          height: null,
+          kind: 'image',
+          downloadUrl: 'https://chatgpt.com/backend-api/estuary/content?id=file_fixture&sig=test',
+          resolverObservedAt: 1,
+          firstSeenAt: 1,
+          lastSeenAt: 1,
+        },
+      ],
+      async () => new Response(new Uint8Array([1, 2, 3]), { status: 200 }),
+    )
+    expect(result.manifest.complete).toBe(true)
+    expect(result.manifest.assets[0]?.status).toBe('included')
+    expect(result.manifest.assets[0]?.sha256).toHaveLength(64)
+    const zip = new Uint8Array(await result.blob.arrayBuffer())
+    expect([...zip.slice(0, 4)]).toEqual([0x50, 0x4b, 0x03, 0x04])
   })
 })
 describe('fresh contiguous pagination evidence', () => {
@@ -270,6 +389,15 @@ describe('regressions: policy and read identity', () => {
     expect(result.verified).toBe(false)
     expect(result.readId).toBe('new')
     expect(result.readStartedAt).toBe(20)
+  })
+})
+
+describe('history loader retry policy', () => {
+  test('429 has a bounded longer delay while ordinary errors use capped exponential backoff', () => {
+    expect(historyBackoffMs(429, 1)).toBe(12_000)
+    expect(historyBackoffMs(0, 1)).toBe(2_000)
+    expect(historyBackoffMs(500, 3)).toBe(8_000)
+    expect(historyBackoffMs(500, 8)).toBe(8_000)
   })
 })
 

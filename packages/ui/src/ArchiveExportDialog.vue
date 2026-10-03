@@ -7,25 +7,37 @@ import type { ArchiveDataAdapter } from './mount'
 const props = defineProps<{ archiveAdapter: ArchiveDataAdapter; settingsAdapter: SettingsAdapter; conversationId: string; title?: string | null; locale: SupportedLocale }>()
 const emit = defineEmits<{ close: [] }>()
 const options = ref<ArchiveExportOptions>({ ...DEFAULT_EXPORT_OPTIONS })
-const busy = ref(false), ready = ref(false), error = ref(''), complete = ref(false)
+const busy = ref(false), ready = ref(false), error = ref(''), complete = ref(false), incomplete = ref(false)
+const preparedUrl = ref(''), preparedName = ref('')
 const t = (key: TranslationKey) => translate(props.locale, key)
 let queue: Promise<unknown> = Promise.resolve(), active = true
 onMounted(async () => { try { const s = await props.settingsAdapter.get(); if (active) { options.value = normalizeExportOptions(s.export); ready.value = true } } catch { error.value = 'common.saveError' } })
-onBeforeUnmount(() => { active = false })
+onBeforeUnmount(() => { active = false; if (preparedUrl.value) URL.revokeObjectURL(preparedUrl.value) })
+function clearPrepared() {
+  if (preparedUrl.value) URL.revokeObjectURL(preparedUrl.value)
+  preparedUrl.value = ''
+  preparedName.value = ''
+}
 function remember() {
   const next = { ...options.value }
-  error.value = ''; complete.value = false
+  clearPrepared()
+  error.value = ''; complete.value = false; incomplete.value = false
   queue = queue.then(() => props.settingsAdapter.update({ export: next })).catch(() => { error.value = 'common.saveError' })
 }
 async function download() {
   if (busy.value) return
-  busy.value = true; error.value = ''; complete.value = false
+  busy.value = true; error.value = ''; complete.value = false; incomplete.value = false
   try {
     await queue
     await props.settingsAdapter.update({ export: { ...options.value } })
-    await props.archiveAdapter.exportConversation(props.conversationId, { ...options.value })
+    const outcome = await props.archiveAdapter.exportConversation(props.conversationId, { ...options.value })
+    clearPrepared()
+    preparedUrl.value = URL.createObjectURL(outcome.blob)
+    const base = (props.title || 'conversation').replace(/[\/:*?"<>|]/g, '-').slice(0, 100) || 'conversation'
+    preparedName.value = `${base}.${outcome.extension}`
     complete.value = true
-  } catch (cause) { error.value = cause instanceof Error && cause.message === 'export.binaryUnavailable' ? cause.message : 'export.failed' }
+    incomplete.value = outcome.packaged && !outcome.complete
+  } catch { error.value = 'export.failed' }
   finally { busy.value = false }
 }
 </script>
@@ -39,13 +51,14 @@ async function download() {
         <label><input v-model="options.reasoning" type="checkbox" @change="remember" />{{ t('export.reasoning') }}</label>
         <label><input v-model="options.tools" type="checkbox" @change="remember" />{{ t('export.tools') }}</label>
         <label><input v-model="options.internal" type="checkbox" @change="remember" />{{ t('export.internal') }}</label>
-        <label><input v-model="options.images" type="checkbox" :disabled="!options.images" @change="remember" />{{ t('export.images') }}</label><label><input v-model="options.files" type="checkbox" :disabled="!options.files" @change="remember" />{{ t('export.files') }}</label>
+        <label><input v-model="options.images" type="checkbox" @change="remember" />{{ t('export.images') }}</label><label><input v-model="options.files" type="checkbox" @change="remember" />{{ t('export.files') }}</label>
       </fieldset>
       <p class="booster-note">{{ t('export.metadata') }}</p>
       <p v-if="options.level === 'full' || options.images || options.files" class="booster-notice">{{ t('export.binaryUnavailable') }}</p>
       <p class="booster-note">{{ t('export.remember') }}</p>
-      <p v-if="error" role="alert" class="booster-error">{{ t(error as TranslationKey) }}</p><p v-if="complete" role="status">{{ t('export.saved') }}</p>
-      <button class="booster-action-primary" type="button" :disabled="busy || options.level === 'full' || options.images || options.files" @click="download"><Download class="size-4" />{{ t(busy ? 'export.working' : 'export.download') }}</button>
+      <p v-if="error" role="alert" class="booster-error">{{ t(error as TranslationKey) }}</p><p v-if="complete" role="status">{{ t(incomplete ? 'export.savedPartial' : 'export.saved') }}</p>
+      <a v-if="preparedUrl" class="booster-action-primary booster-export-ready" :href="preparedUrl" :download="preparedName"><Download class="size-4" />{{ t('export.readyDownload') }}</a>
+      <button v-else class="booster-action-primary" type="button" :disabled="busy" @click="download"><Download class="size-4" />{{ t(busy ? 'export.working' : 'export.prepare') }}</button>
     </div><p v-else class="booster-note">{{ t(error ? 'common.saveError' : 'control.loading') }}</p>
   </section>
 </template>
