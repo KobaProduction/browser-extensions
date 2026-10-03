@@ -1,6 +1,7 @@
 export const TRANSPORT_EVENT = 'chatgpt-booster:transport-event'
 export const TRANSPORT_CONFIG_EVENT = 'chatgpt-booster:transport-config'
 export const TRANSPORT_CHANNEL = 'chatgpt-booster:transport'
+export const ARCHIVE_EVENT = 'chatgpt-booster:archive-event'
 
 export type TransportKind = 'fetch' | 'xhr' | 'websocket' | 'eventsource'
 export type TransportDirection = 'outbound' | 'inbound'
@@ -26,6 +27,14 @@ export interface TransportEventDetail {
   size?: number | undefined
   error?: string | undefined
   errorClass?: 'aborted' | 'network' | 'stream' | 'socket' | undefined
+}
+
+export interface ConversationArchiveEventDetail {
+  kind: 'conversation-page'
+  timestamp: number
+  sourceUrl: string
+  conversationId: string
+  payload: Record<string, unknown>
 }
 
 const DEFAULT_CONFIG: TransportObserverConfig = {
@@ -161,6 +170,59 @@ function emit(detail: TransportEventDetail) {
   )
 }
 
+function conversationHistoryId(input: string): string | undefined {
+  try {
+    const url = new URL(input, location.href)
+    if (url.origin !== 'https://chatgpt.com') return undefined
+    const match = url.pathname.match(/^\/backend-api\/conversations\/([^/]+)(?:\/messages)?$/)
+    return match?.[1] ? decodeURIComponent(match[1]) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function isConversationHistoryPayload(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const record = value as Record<string, unknown>
+  return (
+    Array.isArray(record.messages) &&
+    Boolean(record.page_info && typeof record.page_info === 'object')
+  )
+}
+
+function observeConversationArchiveResponse(response: Response, sourceUrl: string) {
+  const conversationId = conversationHistoryId(sourceUrl)
+  if (!observerTarget || !response.ok || !conversationId) return
+
+  const contentType = response.headers.get('content-type') ?? ''
+  if (!/json/i.test(contentType)) return
+
+  const declaredSize = Number(response.headers.get('content-length')) || 0
+  if (declaredSize > 32 * 1024 * 1024) return
+
+  void response
+    .clone()
+    .json()
+    .then((payload: unknown) => {
+      if (!observerTarget || !isConversationHistoryPayload(payload)) return
+      observerTarget.postMessage(
+        {
+          channel: TRANSPORT_CHANNEL,
+          type: ARCHIVE_EVENT,
+          detail: {
+            kind: 'conversation-page',
+            timestamp: Date.now(),
+            sourceUrl,
+            conversationId,
+            payload,
+          } satisfies ConversationArchiveEventDetail,
+        },
+        '*',
+      )
+    })
+    .catch(() => undefined)
+}
+
 function observeFetchResponseBody(
   response: Response,
   context: { id: string; method: string; url: string },
@@ -255,7 +317,8 @@ export function installTransportObserver(
     const started = performance.now()
     const request = input instanceof Request ? input : undefined
     const method = init?.method ?? request?.method ?? 'GET'
-    const url = sanitizeTransportUrl(request?.url ?? String(input))
+    const rawUrl = request?.url ?? String(input)
+    const url = sanitizeTransportUrl(rawUrl)
     const body = config.captureBodies
       ? sanitizeBodyPreview(init?.body, config.maxBodyChars)
       : undefined
@@ -273,6 +336,7 @@ export function installTransportObserver(
 
     try {
       const response = await originalFetch(input, init)
+      observeConversationArchiveResponse(response, rawUrl)
       observeFetchResponseBody(response, { id, method, url }, config)
       emit({
         id,
