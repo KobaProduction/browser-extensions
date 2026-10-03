@@ -54,6 +54,7 @@ export interface ArchiveCoverageView {
 }
 
 export interface ArchiveDataAdapter {
+  currentConversationId(): string | null
   listProjects(): Promise<ArchiveProjectView[]>
   getConversation(conversationId: string): Promise<ArchiveConversationView | undefined>
   getCoverage(conversationId: string): Promise<ArchiveCoverageView | undefined>

@@ -7,6 +7,7 @@ import {
 import {
   ConversationArchiveModule,
   ConversationArchiveStore,
+  createArchiveUiAdapter,
   HistoryLoaderModule,
   ToolInspectorModule,
   TransportObserverModule,
@@ -18,6 +19,7 @@ import { chromeSecrets, createChromeTelemetry, createChromeTelemetryControl } fr
 
 const diagnostics = createDiagnosticsStore()
 const archiveStore = new ConversationArchiveStore()
+const archiveUiAdapter = createArchiveUiAdapter(archiveStore)
 const telemetry = createChromeTelemetry(chromeSettings)
 const telemetryControl = createChromeTelemetryControl(telemetry)
 
@@ -33,7 +35,7 @@ class OverlayModule implements BoosterModule {
       persistentDiagnosticsAdapter: chromeAnalytics,
       secretAdapter: chromeSecrets,
       telemetryControlAdapter: telemetryControl,
-      archiveAdapter: archiveStore,
+      archiveAdapter: archiveUiAdapter,
       target: 'extension',
     })
   }

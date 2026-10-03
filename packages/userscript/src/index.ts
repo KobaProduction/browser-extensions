@@ -8,6 +8,7 @@ import {
 import {
   ConversationArchiveModule,
   ConversationArchiveStore,
+  createArchiveUiAdapter,
   HistoryLoaderModule,
   ToolInspectorModule,
   TransportObserverModule,
@@ -40,6 +41,7 @@ declare function GM_registerMenuCommand(
 
 const diagnostics = createDiagnosticsStore()
 const archiveStore = new ConversationArchiveStore()
+const archiveUiAdapter = createArchiveUiAdapter(archiveStore)
 const telemetry = createUserscriptTelemetry(userscriptSettings)
 const telemetryControl = createUserscriptTelemetryControl(telemetry)
 
@@ -55,7 +57,7 @@ class OverlayModule implements BoosterModule {
       persistentDiagnosticsAdapter: userscriptAnalytics,
       secretAdapter: userscriptSecrets,
       telemetryControlAdapter: telemetryControl,
-      archiveAdapter: archiveStore,
+      archiveAdapter: archiveUiAdapter,
       target: 'userscript',
     })
   }

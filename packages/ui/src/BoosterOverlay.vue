@@ -99,13 +99,7 @@ const loaderActive = computed(() =>
   ['preparing', 'scrolling', 'waiting_for_load', 'backoff'].includes(loaderState.value.phase),
 )
 
-const currentConversationId = computed(() => {
-  try {
-    return new URL(location.href).pathname.match(/(?:^|\/)c\/([^/?#]+)/)?.[1] ?? null
-  } catch {
-    return null
-  }
-})
+const currentConversationId = computed(() => props.archiveAdapter?.currentConversationId() ?? null)
 
 const coverageLabel = computed(() => {
   if (!currentConversationId.value) return t('quick.noConversation')

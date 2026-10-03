@@ -1,3 +1,4 @@
+import { currentProjectTitle } from '@chatgpt-booster/chatgpt'
 import type { BoosterModule } from '@chatgpt-booster/core'
 import {
   ARCHIVE_EVENT,
@@ -5,16 +6,6 @@ import {
   TRANSPORT_CHANNEL,
 } from '@chatgpt-booster/observer'
 import { ConversationArchiveStore } from './archive-store'
-
-function visibleProjectTitle(projectId: string): string | null {
-  for (const link of document.querySelectorAll<HTMLAnchorElement>('a[href*="/g/"]')) {
-    if (!link.href.includes(projectId)) continue
-    if (!new URL(link.href, location.href).pathname.endsWith('/project')) continue
-    const title = link.textContent?.trim()
-    if (title) return title
-  }
-  return null
-}
 
 export class ConversationArchiveModule implements BoosterModule {
   readonly id = 'conversation-archive'
@@ -47,7 +38,10 @@ export class ConversationArchiveModule implements BoosterModule {
       .ingest(detail)
       .then(async (summary) => {
         if (!summary.projectId) return
-        await this.store.upsertProject(summary.projectId, visibleProjectTitle(summary.projectId))
+        await this.store.upsertProject(
+          summary.projectId,
+          currentProjectTitle(summary.projectId) ?? null,
+        )
       })
       .catch((error) => {
         console.warn('[ChatGPT Booster] Conversation archive ingest failed', error)

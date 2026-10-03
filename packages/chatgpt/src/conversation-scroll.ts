@@ -36,3 +36,20 @@ export function findConversationScrollContainer(
 
   return best?.element
 }
+
+export function currentProjectTitle(
+  projectId: string,
+  root: ParentNode = document,
+): string | undefined {
+  for (const link of root.querySelectorAll<HTMLAnchorElement>('a[href*="/g/"]')) {
+    if (!link.href.includes(projectId)) continue
+    try {
+      if (!new URL(link.href, location.href).pathname.endsWith('/project')) continue
+    } catch {
+      continue
+    }
+    const title = link.textContent?.trim()
+    if (title) return title
+  }
+  return undefined
+}

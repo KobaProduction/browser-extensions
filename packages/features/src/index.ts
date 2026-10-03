@@ -1,4 +1,5 @@
 export * from './archive-store'
+export * from './archive-ui-adapter'
 export * from './conversation-archive'
 export * from './history-loader'
 export * from './tool-inspector'
