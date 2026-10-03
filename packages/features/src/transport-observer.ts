@@ -109,10 +109,9 @@ export class TransportObserverModule implements BoosterModule {
           'event.duration_ms': detail.durationMs,
           'http.response.body.size': detail.size,
           'http.response.header.content_type': detail.contentType,
-          'chatgpt.body_preview': detail.bodyPreview,
           'error.class': detail.errorClass,
         },
-        body: detail.error ?? detail.bodyPreview ?? `${detail.kind} ${detail.phase}`,
+        body: detail.error ?? `${detail.kind} ${detail.phase}`,
       })
       .catch((error) => {
         console.warn('[ChatGPT Booster] Telemetry export failed', error)

@@ -1,2 +1,5 @@
+export * from './archive-store'
+export * from './conversation-archive'
+export * from './history-loader'
 export * from './tool-inspector'
 export * from './transport-observer'
