@@ -4,7 +4,12 @@ import {
   createDiagnosticsStore,
   isChatGptPage,
 } from '@chatgpt-booster/core'
-import { ToolInspectorModule, TransportObserverModule } from '@chatgpt-booster/features'
+import {
+  ConversationArchiveModule,
+  HistoryLoaderModule,
+  ToolInspectorModule,
+  TransportObserverModule,
+} from '@chatgpt-booster/features'
 import { type MountedBoosterUi, mountBoosterUi } from '@chatgpt-booster/ui'
 import { chromeAnalytics } from '../analytics'
 import { chromeSettings } from '../settings'
@@ -40,6 +45,8 @@ function startRuntime() {
   const runtime = new BoosterRuntime(
     [
       new OverlayModule(),
+      new ConversationArchiveModule(),
+      new HistoryLoaderModule(),
       new TransportObserverModule({
         settings: chromeSettings,
         diagnostics,
