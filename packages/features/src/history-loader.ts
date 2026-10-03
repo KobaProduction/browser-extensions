@@ -11,6 +11,10 @@ export const HISTORY_LOADER_START_EVENT = 'chatgpt-booster:history-loader-start'
 export const HISTORY_LOADER_STOP_EVENT = 'chatgpt-booster:history-loader-stop'
 export const HISTORY_LOADER_STATE_EVENT = 'chatgpt-booster:history-loader-state'
 
+export interface HistoryLoaderStartDetail {
+  force?: boolean
+}
+
 export type HistoryLoaderPhase =
   | 'idle'
   | 'preparing'
@@ -83,15 +87,17 @@ export class HistoryLoaderModule implements BoosterModule {
     this.#abort = undefined
   }
 
-  #onStart = () => {
+  #onStart = (event: Event) => {
     if (this.#abort) return
+    const detail = (event as CustomEvent<HistoryLoaderStartDetail>).detail
+    const force = detail?.force === true
     const conversationId = currentConversationId()
     if (!conversationId) {
       this.#set({ phase: 'error', conversationId: null, message: 'No conversation is open.' })
       return
     }
     this.#abort = new AbortController()
-    void this.#run(conversationId, this.#abort.signal).finally(() => {
+    void this.#run(conversationId, this.#abort.signal, force).finally(() => {
       this.#abort = undefined
     })
   }
@@ -100,7 +106,7 @@ export class HistoryLoaderModule implements BoosterModule {
     this.#abort?.abort()
   }
 
-  async #run(conversationId: string, signal: AbortSignal) {
+  async #run(conversationId: string, signal: AbortSignal, force: boolean) {
     try {
       this.#set({
         phase: 'preparing',
@@ -112,7 +118,7 @@ export class HistoryLoaderModule implements BoosterModule {
 
       let coverage = await this.#store.getCoverage(conversationId)
       this.#applyCoverage(coverage)
-      if (coverage?.hasOlderServerHistory === false && coverage.completeAtLastRead) {
+      if (!force && coverage?.hasOlderServerHistory === false && coverage.completeAtLastRead) {
         this.#set({ phase: 'complete' })
         return
       }
@@ -124,7 +130,7 @@ export class HistoryLoaderModule implements BoosterModule {
 
         coverage = await this.#store.getCoverage(conversationId)
         this.#applyCoverage(coverage)
-        if (coverage?.hasOlderServerHistory === false) {
+        if (!force && coverage?.hasOlderServerHistory === false) {
           this.#set({ phase: 'complete', consecutiveErrors: 0 })
           return
         }
@@ -145,7 +151,7 @@ export class HistoryLoaderModule implements BoosterModule {
           const next = await this.#store.getCoverage(conversationId)
           this.#applyCoverage(next)
 
-          if (next?.hasOlderServerHistory === false) {
+          if (next?.hasOlderServerHistory === false && (progressed || !force)) {
             this.#set({ phase: 'complete', consecutiveErrors: 0 })
             return
           }
@@ -158,6 +164,11 @@ export class HistoryLoaderModule implements BoosterModule {
             })
             await delay(jitter(520, 1_150), signal)
             continue
+          }
+
+          if (force && before?.completeAtLastRead && container.scrollTop <= 96) {
+            this.#set({ phase: 'complete', consecutiveErrors: 0 })
+            return
           }
 
           errors += 1

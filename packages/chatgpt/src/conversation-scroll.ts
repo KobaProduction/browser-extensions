@@ -1,7 +1,7 @@
 export function currentConversationId(href = location.href): string | undefined {
   try {
     const url = new URL(href)
-    const match = url.pathname.match(/^\/c\/([^/?#]+)/)
+    const match = url.pathname.match(/(?:^|\/)c\/([^/?#]+)/)
     return match?.[1] ? decodeURIComponent(match[1]) : undefined
   } catch {
     return undefined

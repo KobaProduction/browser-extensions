@@ -6,6 +6,7 @@ import {
 } from '@chatgpt-booster/core'
 import {
   ConversationArchiveModule,
+  ConversationArchiveStore,
   HistoryLoaderModule,
   ToolInspectorModule,
   TransportObserverModule,
@@ -16,6 +17,7 @@ import { chromeSettings } from '../settings'
 import { chromeSecrets, createChromeTelemetry, createChromeTelemetryControl } from '../telemetry'
 
 const diagnostics = createDiagnosticsStore()
+const archiveStore = new ConversationArchiveStore()
 const telemetry = createChromeTelemetry(chromeSettings)
 const telemetryControl = createChromeTelemetryControl(telemetry)
 
@@ -31,6 +33,7 @@ class OverlayModule implements BoosterModule {
       persistentDiagnosticsAdapter: chromeAnalytics,
       secretAdapter: chromeSecrets,
       telemetryControlAdapter: telemetryControl,
+      archiveAdapter: archiveStore,
       target: 'extension',
     })
   }
@@ -45,8 +48,8 @@ function startRuntime() {
   const runtime = new BoosterRuntime(
     [
       new OverlayModule(),
-      new ConversationArchiveModule(),
-      new HistoryLoaderModule(),
+      new ConversationArchiveModule(archiveStore),
+      new HistoryLoaderModule(archiveStore),
       new TransportObserverModule({
         settings: chromeSettings,
         diagnostics,

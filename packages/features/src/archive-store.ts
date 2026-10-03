@@ -31,6 +31,13 @@ export interface ArchivedConversation {
   raw: Record<string, unknown>
 }
 
+export interface ArchivedProject {
+  projectId: string
+  title: string | null
+  firstSeenAt: number
+  lastSeenAt: number
+}
+
 export interface ArchivedMessage {
   messageKey: string
   messageId: string
@@ -309,6 +316,30 @@ function withoutMessages(payload: RawRecord): RawRecord {
 export class ConversationArchiveStore {
   #database: Promise<IDBDatabase> | undefined
 
+  async listProjects(): Promise<ArchivedProject[]> {
+    const db = await this.#db()
+    const tx = db.transaction('projects', 'readonly')
+    const items = await request<ArchivedProject[]>(tx.objectStore('projects').getAll())
+    return items.sort((a, b) => a.title?.localeCompare(b.title ?? '') ?? 0)
+  }
+
+  async upsertProject(projectId: string, title: string | null): Promise<void> {
+    const db = await this.#db()
+    const readTx = db.transaction('projects', 'readonly')
+    const previous = await request<ArchivedProject | undefined>(
+      readTx.objectStore('projects').get(projectId),
+    )
+    const now = Date.now()
+    const writeTx = db.transaction('projects', 'readwrite')
+    writeTx.objectStore('projects').put({
+      projectId,
+      title: title ?? previous?.title ?? null,
+      firstSeenAt: previous?.firstSeenAt ?? now,
+      lastSeenAt: now,
+    } satisfies ArchivedProject)
+    await transactionDone(writeTx)
+  }
+
   async getCoverage(conversationId: string): Promise<ConversationCoverage | undefined> {
     const db = await this.#db()
     const tx = db.transaction('conversationCoverage', 'readonly')
@@ -322,6 +353,25 @@ export class ConversationArchiveStore {
     const tx = db.transaction('conversations', 'readonly')
     return await request<ArchivedConversation | undefined>(
       tx.objectStore('conversations').get(conversationId),
+    )
+  }
+
+  async listConversations(): Promise<ArchivedConversation[]> {
+    const db = await this.#db()
+    const tx = db.transaction('conversations', 'readonly')
+    const items = await request<ArchivedConversation[]>(tx.objectStore('conversations').getAll())
+    return items.sort(
+      (a, b) => (b.updatedAt ?? b.lastSeenAt ?? 0) - (a.updatedAt ?? a.lastSeenAt ?? 0),
+    )
+  }
+
+  async listMessages(conversationId: string): Promise<ArchivedMessage[]> {
+    const db = await this.#db()
+    const tx = db.transaction('messages', 'readonly')
+    const index = tx.objectStore('messages').index('conversationId')
+    const items = await request<ArchivedMessage[]>(index.getAll(IDBKeyRange.only(conversationId)))
+    return items.sort(
+      (a, b) => (a.createTime ?? a.firstSeenAt ?? 0) - (b.createTime ?? b.firstSeenAt ?? 0),
     )
   }
 

@@ -59,15 +59,18 @@ Responsibilities:
 
 The userscript and extension use the same core/UI feature implementation.
 
-## Settings surface
+## Settings and in-page surfaces
 
-The Control Center is a single Vue component with multiple delivery entry points:
+The Control Center remains one Vue component with two direct settings entry points:
 
-- Tampermonkey menu command opens the in-page surface;
-- Chromium action popup mounts the same Control Center component;
-- a movable in-page launcher opens the same surface and persists its clamped viewport position.
+- Tampermonkey menu command opens the in-page settings surface;
+- Chromium action popup mounts the same Control Center component.
 
-Entry points must not fork settings behavior or create separate settings components.
+The movable in-page launcher is intentionally one level shallower. Clicking it opens a compact current-chat quick panel with archive coverage, History Loader controls, an Archive Browser entry point and a settings gear. The launcher position remains persisted and viewport-clamped.
+
+The Archive Browser is a separate read-only surface backed only by the local Conversation Archive IndexedDB. It can list persisted projects/conversations and render archived message records, including tool/reasoning/system records and expandable raw metadata. It must not expose composer, edit, delete or private-API mutation actions.
+
+Settings entry points must not fork Control Center behavior. Archive/quick surfaces may consume settings and archive adapters, but must not duplicate target-specific persistence logic.
 
 
 ## Feature model

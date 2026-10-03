@@ -6,6 +6,16 @@ import {
 } from '@chatgpt-booster/observer'
 import { ConversationArchiveStore } from './archive-store'
 
+function visibleProjectTitle(projectId: string): string | null {
+  for (const link of document.querySelectorAll<HTMLAnchorElement>('a[href*="/g/"]')) {
+    if (!link.href.includes(projectId)) continue
+    if (!new URL(link.href, location.href).pathname.endsWith('/project')) continue
+    const title = link.textContent?.trim()
+    if (title) return title
+  }
+  return null
+}
+
 export class ConversationArchiveModule implements BoosterModule {
   readonly id = 'conversation-archive'
   readonly store: ConversationArchiveStore
@@ -33,8 +43,14 @@ export class ConversationArchiveModule implements BoosterModule {
     const detail = data.detail
     if (detail?.kind !== 'conversation-page') return
 
-    void this.store.ingest(detail).catch((error) => {
-      console.warn('[ChatGPT Booster] Conversation archive ingest failed', error)
-    })
+    void this.store
+      .ingest(detail)
+      .then(async (summary) => {
+        if (!summary.projectId) return
+        await this.store.upsertProject(summary.projectId, visibleProjectTitle(summary.projectId))
+      })
+      .catch((error) => {
+        console.warn('[ChatGPT Booster] Conversation archive ingest failed', error)
+      })
   }
 }

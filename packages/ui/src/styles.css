@@ -586,3 +586,459 @@
     grid-template-columns: 1fr;
   }
 }
+
+.booster-launcher-icon {
+  width: 21px;
+  height: 21px;
+}
+
+.booster-launcher-open {
+  box-shadow:
+    0 14px 40px rgb(0 0 0 / 34%),
+    0 0 0 4px color-mix(in oklab, var(--primary) 24%, transparent);
+}
+
+.booster-quick-menu {
+  position: fixed;
+  z-index: 2147483647;
+  width: 330px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--card);
+  color: var(--card-foreground);
+  box-shadow: 0 22px 60px rgb(0 0 0 / 30%);
+  pointer-events: auto;
+}
+
+.booster-quick-header,
+.booster-loader-status,
+.booster-quick-actions,
+.booster-quick-context,
+.booster-quick-empty,
+.booster-loader-error {
+  padding: 12px 14px;
+}
+
+.booster-quick-header,
+.booster-loader-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.booster-quick-header {
+  border-bottom: 1px solid var(--border);
+}
+
+.booster-quick-header > div,
+.booster-loader-status > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.booster-quick-header strong,
+.booster-loader-status strong {
+  font-size: 13px;
+}
+
+.booster-quick-header span,
+.booster-loader-status span,
+.booster-quick-context code,
+.booster-quick-empty,
+.booster-loader-error {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.booster-icon-button {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  cursor: pointer;
+}
+
+.booster-icon-button:hover {
+  background: var(--accent);
+}
+
+.booster-quick-context {
+  display: grid;
+  gap: 7px;
+}
+
+.booster-quick-context > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.booster-quick-context code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.booster-quick-chips,
+.booster-archive-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.booster-quick-chips span,
+.booster-archive-meta span {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.booster-loader-status {
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in oklab, var(--secondary) 70%, transparent);
+}
+
+.booster-loader-error {
+  border-top: 1px solid var(--border);
+}
+
+.booster-spin {
+  animation: booster-spin 1.2s linear infinite;
+}
+
+@keyframes booster-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.booster-quick-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.booster-quick-primary,
+.booster-quick-secondary {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  cursor: pointer;
+  font: 600 11px / 1.2 inherit;
+}
+
+.booster-quick-primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.booster-quick-secondary {
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+}
+
+.booster-quick-primary:disabled,
+.booster-quick-secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.booster-archive-backdrop {
+  padding: 10px;
+}
+
+.booster-archive-surface {
+  width: min(1180px, calc(100vw - 20px));
+  height: min(820px, calc(100vh - 20px));
+  pointer-events: auto;
+}
+
+.booster-archive-browser {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--card);
+  color: var(--card-foreground);
+  box-shadow: 0 28px 80px rgb(0 0 0 / 38%);
+}
+
+.booster-archive-header {
+  display: flex;
+  min-height: 58px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.booster-archive-title,
+.booster-archive-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.booster-archive-title > div {
+  display: grid;
+  gap: 1px;
+}
+
+.booster-archive-title strong {
+  font-size: 14px;
+}
+
+.booster-archive-title span {
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+
+.booster-archive-layout {
+  display: grid;
+  min-height: 0;
+  grid-template-columns: 300px minmax(0, 1fr);
+}
+
+.booster-archive-sidebar {
+  overflow: auto;
+  padding: 10px;
+  border-right: 1px solid var(--border);
+  background: color-mix(in oklab, var(--secondary) 38%, var(--card));
+}
+
+.booster-archive-group {
+  margin-bottom: 12px;
+}
+
+.booster-archive-project {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 7px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.booster-archive-project span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.booster-archive-conversation {
+  display: grid;
+  width: 100%;
+  gap: 3px;
+  margin: 2px 0;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.booster-archive-conversation:hover,
+.booster-archive-conversation.active {
+  border-color: var(--border);
+  background: var(--card);
+}
+
+.booster-archive-conversation strong,
+.booster-archive-conversation span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.booster-archive-conversation strong {
+  font-size: 12px;
+}
+
+.booster-archive-conversation span {
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+
+.booster-archive-content {
+  min-width: 0;
+  overflow: auto;
+  background: var(--background);
+}
+
+.booster-archive-conversation-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in oklab, var(--card) 94%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.booster-archive-conversation-head > div:first-child {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 2px 8px;
+}
+
+.booster-archive-conversation-head strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.booster-archive-conversation-head span {
+  grid-column: 2;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.booster-archive-back {
+  display: inline-flex;
+  grid-row: 1 / span 2;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  cursor: pointer;
+}
+
+.booster-archive-messages {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px 40px;
+}
+
+.booster-archive-message {
+  max-width: 920px;
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+}
+
+.booster-archive-message.role-user {
+  margin-left: auto;
+  background: color-mix(in oklab, var(--secondary) 82%, var(--card));
+}
+
+.booster-archive-message.role-tool {
+  border-style: dashed;
+}
+
+.booster-archive-message-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  margin-bottom: 8px;
+  color: var(--muted-foreground);
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.booster-archive-message-head strong {
+  color: var(--foreground);
+}
+
+.booster-archive-message-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.booster-raw-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  font: 600 10px / 1 inherit;
+}
+
+.booster-archive-raw {
+  max-height: 360px;
+  overflow: auto;
+  margin: 9px 0 0;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--muted);
+  color: var(--foreground);
+  font:
+    10px / 1.45 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+  white-space: pre-wrap;
+}
+
+.booster-archive-empty,
+.booster-archive-error {
+  padding: 24px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.booster-archive-error {
+  color: #dc2626;
+}
+
+@media (max-width: 760px) {
+  .booster-archive-layout {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  .booster-quick-menu {
+    width: min(330px, calc(100vw - 24px));
+  }
+}

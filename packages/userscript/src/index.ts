@@ -7,6 +7,7 @@ import {
 } from '@chatgpt-booster/core'
 import {
   ConversationArchiveModule,
+  ConversationArchiveStore,
   HistoryLoaderModule,
   ToolInspectorModule,
   TransportObserverModule,
@@ -38,6 +39,7 @@ declare function GM_registerMenuCommand(
 ): number | string
 
 const diagnostics = createDiagnosticsStore()
+const archiveStore = new ConversationArchiveStore()
 const telemetry = createUserscriptTelemetry(userscriptSettings)
 const telemetryControl = createUserscriptTelemetryControl(telemetry)
 
@@ -53,6 +55,7 @@ class OverlayModule implements BoosterModule {
       persistentDiagnosticsAdapter: userscriptAnalytics,
       secretAdapter: userscriptSecrets,
       telemetryControlAdapter: telemetryControl,
+      archiveAdapter: archiveStore,
       target: 'userscript',
     })
   }
@@ -84,8 +87,8 @@ function startRuntime() {
   const runtime = new BoosterRuntime(
     [
       new OverlayModule(),
-      new ConversationArchiveModule(),
-      new HistoryLoaderModule(),
+      new ConversationArchiveModule(archiveStore),
+      new HistoryLoaderModule(archiveStore),
       new TransportObserverModule({
         settings: userscriptSettings,
         diagnostics,

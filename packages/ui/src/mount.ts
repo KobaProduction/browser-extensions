@@ -12,6 +12,55 @@ import styles from './styles.css?inline'
 
 const ROOT_ID = 'chatgpt-booster-root'
 
+export interface ArchiveProjectView {
+  projectId: string
+  title: string | null
+}
+
+export interface ArchiveConversationView {
+  conversationId: string
+  projectId: string | null
+  title: string | null
+  updatedAt: number | null
+  lastSeenAt: number
+  archiveState: 'unknown' | 'partial' | 'complete' | 'stale'
+  branchSourceConversationId: string | null
+  branchSourceTitle: string | null
+}
+
+export interface ArchiveMessageView {
+  messageKey: string
+  messageId: string
+  conversationId: string
+  role: string | null
+  channel: string | null
+  contentType: string | null
+  messageType: string | null
+  recipient: string | null
+  status: string | null
+  modelSlug: string | null
+  parentId: string | null
+  turnExchangeId: string | null
+  createTime: number | null
+  raw: Record<string, unknown>
+}
+
+export interface ArchiveCoverageView {
+  conversationId: string
+  knownMessageCount: number
+  hasOlderServerHistory: boolean | null
+  completeAtLastRead: boolean
+  lastFullReadAt: number | null
+}
+
+export interface ArchiveDataAdapter {
+  listProjects(): Promise<ArchiveProjectView[]>
+  getConversation(conversationId: string): Promise<ArchiveConversationView | undefined>
+  getCoverage(conversationId: string): Promise<ArchiveCoverageView | undefined>
+  listConversations(): Promise<ArchiveConversationView[]>
+  listMessages(conversationId: string): Promise<ArchiveMessageView[]>
+}
+
 export interface MountedBoosterUi {
   unmount(): void
 }
@@ -22,6 +71,7 @@ export interface BoosterUiOptions {
   persistentDiagnosticsAdapter?: PersistentDiagnosticsAdapter | undefined
   secretAdapter?: SecretAdapter | undefined
   telemetryControlAdapter?: TelemetryControlAdapter | undefined
+  archiveAdapter?: ArchiveDataAdapter | undefined
   target: 'extension' | 'userscript'
 }
 
