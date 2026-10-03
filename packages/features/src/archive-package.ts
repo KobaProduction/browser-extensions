@@ -5,7 +5,7 @@ import type {
   ArchiveThreadView,
 } from '@chatgpt-booster/core'
 import { archiveAssetContentUrl } from '@chatgpt-booster/observer'
-import { serializeArchiveExport } from './archive-export'
+import { exportIncludes, serializeArchiveExport } from './archive-export'
 import type { ArchivedAsset, ArchivedConversation } from './archive-store'
 
 export interface ArchivePackageManifestAsset extends ArchiveAttachmentView {
@@ -114,6 +114,7 @@ export function createStoredZip(entries: ZipEntry[]): Blob {
     local.setUint16(26, name.byteLength, true)
     local.setUint16(28, 0, true)
     const localBytes = concat([bytes(local), name, entry.bytes])
+    if (offset + localBytes.byteLength > 0xffffffff) throw new Error('export.packageTooLarge')
     locals.push(localBytes)
 
     const central = view(46)
@@ -138,6 +139,8 @@ export function createStoredZip(entries: ZipEntry[]): Blob {
     offset += localBytes.byteLength
   }
   const centralBytes = concat(centrals)
+  if (centralBytes.byteLength > 0xffffffff || offset + centralBytes.byteLength > 0xffffffff)
+    throw new Error('export.packageTooLarge')
   const end = view(22)
   end.setUint32(0, 0x06054b50, true)
   end.setUint16(4, 0, true)
@@ -163,10 +166,11 @@ function safeName(value: string) {
   )
 }
 
-function references(thread: ArchiveThreadView) {
+function references(thread: ArchiveThreadView, options: ArchiveExportOptions) {
   const result = new Map<string, ArchiveAttachmentView>()
   for (const turn of thread.turns)
-    for (const item of [...turn.messages, ...turn.details])
+    for (const item of [...turn.messages, ...turn.details]) {
+      if (!exportIncludes(item, options)) continue
       for (const attachment of archiveRecordAttachments(item.record)) {
         const previous = result.get(attachment.assetId)
         result.set(attachment.assetId, {
@@ -180,6 +184,7 @@ function references(thread: ArchiveThreadView) {
           kind: attachment.kind === 'image' || previous?.kind === 'image' ? 'image' : 'file',
         })
       }
+    }
   return [...result.values()]
 }
 
@@ -204,7 +209,7 @@ export async function createArchivePackage(
   const transcriptName = `conversation.${transcript.extension}`
   const entries: ZipEntry[] = [{ path: transcriptName, bytes: encoder.encode(transcript.text) }]
   const stored = new Map(assets.map((asset) => [asset.assetId, asset]))
-  const requested = references(thread).filter(
+  const requested = references(thread, transcriptOptions).filter(
     (attachment) =>
       options.level === 'full' || (attachment.kind === 'image' ? options.images : options.files),
   )

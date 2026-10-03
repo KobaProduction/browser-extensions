@@ -243,6 +243,64 @@ describe('conversation vs nested records', () => {
     expect(missing.blob.type).toBe('application/zip')
   })
 
+  test('custom binary package excludes attachments from unselected nested records', async () => {
+    const tool = record('tool-attachment', 'tool', 'text', {
+      raw: {
+        id: 'tool-attachment',
+        author: { role: 'tool', name: 'fixture.tool' },
+        content: {
+          content_type: 'multimodal_text',
+          parts: [
+            {
+              content_type: 'file_asset_pointer',
+              asset_pointer: 'sediment://file_tool_hidden',
+              mime_type: 'application/octet-stream',
+              size_bytes: 3,
+            },
+          ],
+        },
+        metadata: { attachments: [{ id: 'file_tool_hidden', name: 'hidden.bin' }] },
+      },
+    })
+    const thread = buildArchiveThread([
+      record('user-visible', 'user', 'text'),
+      tool,
+      record('answer-visible', 'assistant', 'text'),
+    ])
+    const result = await createArchivePackage(
+      { conversationId: 'chat', projectId: null, title: 'Test' } as never,
+      thread,
+      {
+        ...DEFAULT_EXPORT_OPTIONS,
+        level: 'custom',
+        tools: false,
+        internal: false,
+        reasoning: false,
+        files: true,
+      },
+      { verified: true },
+      [
+        {
+          assetId: 'file_tool_hidden',
+          fileName: 'hidden.bin',
+          mimeType: 'application/octet-stream',
+          sizeBytes: 3,
+          width: null,
+          height: null,
+          kind: 'file',
+          downloadUrl:
+            'https://chatgpt.com/backend-api/estuary/content?id=file_tool_hidden&sig=test',
+          resolverObservedAt: 1,
+          firstSeenAt: 1,
+          lastSeenAt: 1,
+        },
+      ],
+      async () => new Response(new Uint8Array([1, 2, 3]), { status: 200 }),
+    )
+    expect(result.manifest.assets).toEqual([])
+    expect(result.manifest.complete).toBe(true)
+  })
+
   test('full package includes verified bytes and SHA-256 when a signed asset URL is available', async () => {
     const attachment = record('attachment', 'user', 'multimodal_text', {
       raw: {
