@@ -76,9 +76,11 @@ export function createArchiveUiAdapter(
         store.getCoverage(conversationId),
       ])
       if (!conversation) throw new Error('archive.error.noChat')
+      const captureEvidence = await store.getCaptureEvidence(conversationId, coverage?.readId)
       const evidence = {
         verified: coverage?.evidenceVersion === 1 && coverage.completeAtLastRead,
         verifiedAt: coverage?.verifiedAt ?? null,
+        capture: captureEvidence,
         scope: 'observed history pages only; not all branches or attachment bytes',
         storedRecordCount: messages.length,
       }
@@ -88,7 +90,7 @@ export function createArchiveUiAdapter(
         const result = serializeArchiveExport(conversation, thread, options, evidence)
         return {
           packaged: false,
-          complete: true,
+          complete: evidence.verified && captureEvidence.verified,
           includedAssets: 0,
           missingAssets: 0,
           blob: new Blob([result.text], { type: `${result.mime};charset=utf-8` }),

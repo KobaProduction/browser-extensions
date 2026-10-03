@@ -278,7 +278,7 @@ describe('conversation vs nested records', () => {
         reasoning: false,
         files: true,
       },
-      { verified: true },
+      { verified: true, capture: { verified: true } },
       [
         {
           assetId: 'file_tool_hidden',
@@ -325,7 +325,7 @@ describe('conversation vs nested records', () => {
       { conversationId: 'chat', projectId: null, title: 'Test' } as never,
       thread,
       { ...DEFAULT_EXPORT_OPTIONS, level: 'full' },
-      { verified: true },
+      { verified: true, capture: { verified: true } },
       [
         {
           assetId: 'file_fixture',

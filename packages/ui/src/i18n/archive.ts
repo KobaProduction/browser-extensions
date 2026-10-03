@@ -106,7 +106,8 @@ export const archiveMessages = {
     'export.readyDownload': 'Download prepared file',
     'export.working': 'Preparing export…',
     'export.saved': 'Export created',
-    'export.savedPartial': 'Package created; manifest.json lists unresolved or unverified files.',
+    'export.savedPartial':
+      'Export created, but completeness evidence is partial. Check coverage and manifest.json for omissions.',
     'export.remember': 'Format and contents selection are remembered.',
     'export.failed': 'Export failed',
     'archive.error.noChat': 'No conversation is available.',

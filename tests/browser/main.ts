@@ -413,6 +413,42 @@ async function runStorageTests() {
     },
   )
 
+  await check('full-export capture evidence detects filtered and lossless reads', async () => {
+    const id = `${prefix}capture-evidence`
+    const legacy = page(id, [raw('u-legacy', 'user', 'Legacy')])
+    legacy.readId = `${id}-legacy`
+    await store.ingest(legacy)
+    const legacyEvidence = await store.getCaptureEvidence(id, legacy.readId)
+    assert(legacyEvidence.verified === false, 'legacy page without capture metadata was trusted')
+    assert(legacyEvidence.omittedRecordCount === null, 'legacy omission evidence should be unknown')
+
+    const filtered = page(id, [raw('u-filtered', 'user', 'Visible')])
+    filtered.readId = `${id}-filtered`
+    ;(filtered.payload as Record<string, unknown>).booster_capture = {
+      reasoning: false,
+      tools: false,
+      internal: false,
+      omittedRecords: 3,
+    }
+    await store.ingest(filtered)
+    const filteredEvidence = await store.getCaptureEvidence(id, filtered.readId)
+    assert(filteredEvidence.verified === false, 'filtered read was marked capture-complete')
+    assert(filteredEvidence.omittedRecordCount === 3, 'filtered omission count was lost')
+
+    const full = page(id, [raw('u-full', 'user', 'Visible again')])
+    full.readId = `${id}-full`
+    ;(full.payload as Record<string, unknown>).booster_capture = {
+      reasoning: true,
+      tools: true,
+      internal: true,
+      omittedRecords: 0,
+    }
+    await store.ingest(full)
+    const fullEvidence = await store.getCaptureEvidence(id, full.readId)
+    assert(fullEvidence.verified === true, 'lossless read was not capture-verified')
+    assert(fullEvidence.omittedRecordCount === 0, 'lossless omission count incorrect')
+  })
+
   await check('saved data survives policy changes and schema normalization', async () => {
     const id = prefix + 'preserved'
     await store.ingest(page(id, [raw('u', 'user', 'Keep me')]))

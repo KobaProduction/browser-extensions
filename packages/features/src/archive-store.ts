@@ -100,6 +100,18 @@ export interface ArchivedConversationPage {
   messageIds: string[]
   observedAt: number
   sourceUrl: string
+  captureReasoning?: boolean | null | undefined
+  captureTools?: boolean | null | undefined
+  captureInternal?: boolean | null | undefined
+  omittedRecordCount?: number | null | undefined
+}
+
+export interface CaptureEvidence {
+  conversationId: string
+  readId: string | null
+  pageCount: number
+  omittedRecordCount: number | null
+  verified: boolean
 }
 
 export interface ConversationCoverage {
@@ -492,6 +504,32 @@ export class ConversationArchiveStore {
     ).filter((item): item is ArchivedAsset => Boolean(item))
   }
 
+  async getCaptureEvidence(
+    conversationId: string,
+    readId: string | null | undefined,
+  ): Promise<CaptureEvidence> {
+    const db = await this.#db()
+    const tx = db.transaction('conversationPages', 'readonly')
+    const pages = await request<ArchivedConversationPage[]>(
+      tx.objectStore('conversationPages').index('conversationId').getAll(conversationId),
+    )
+    const selected = readId ? pages.filter((page) => page.readId === readId) : []
+    const known = selected.every(
+      (page) =>
+        typeof page.omittedRecordCount === 'number' && Number.isFinite(page.omittedRecordCount),
+    )
+    const omittedRecordCount = known
+      ? selected.reduce((sum, page) => sum + (page.omittedRecordCount ?? 0), 0)
+      : null
+    return {
+      conversationId,
+      readId: readId ?? null,
+      pageCount: selected.length,
+      omittedRecordCount,
+      verified: selected.length > 0 && known && omittedRecordCount === 0,
+    }
+  }
+
   async getCoverage(conversationId: string): Promise<ConversationCoverage | undefined> {
     const db = await this.#db()
     const tx = db.transaction('conversationCoverage', 'readonly')
@@ -549,6 +587,7 @@ export class ConversationArchiveStore {
     ]
     const pageInfo = record(payload.page_info)
     if (!conversationId || !pageInfo) throw new Error('Invalid conversation archive payload')
+    const capture = record(payload.booster_capture)
 
     const now = detail.timestamp
     const incomingProjectId = normalizeProjectId(payload)
@@ -629,6 +668,10 @@ export class ConversationArchiveStore {
       hasPreviousPage,
       hasNextPage,
       observedAt: now,
+      captureReasoning: booleanOrNull(capture?.reasoning),
+      captureTools: booleanOrNull(capture?.tools),
+      captureInternal: booleanOrNull(capture?.internal),
+      omittedRecordCount: numberOrNull(capture?.omittedRecords),
     }
     const evidence = historyCoverage([...previousPages, candidatePage])
     const complete = evidence.verified

@@ -24,6 +24,7 @@ export interface ArchivePackageResult {
     createdAt: string
     complete: boolean
     historyVerified: boolean
+    captureVerified: boolean
     assetsComplete: boolean
     historyCoverage: unknown
     transcript: string
@@ -267,12 +268,18 @@ export async function createArchivePackage(
     typeof evidence === 'object' &&
     !Array.isArray(evidence) &&
     (evidence as { verified?: unknown }).verified === true
+  const captureVerified =
+    Boolean(evidence) &&
+    typeof evidence === 'object' &&
+    !Array.isArray(evidence) &&
+    (evidence as { capture?: { verified?: unknown } }).capture?.verified === true
   const assetsComplete = manifestAssets.every((asset) => asset.status === 'included')
   const manifest = {
     schema: 'chatgpt-booster.package.v1' as const,
     createdAt: new Date().toISOString(),
-    complete: historyVerified && assetsComplete,
+    complete: historyVerified && captureVerified && assetsComplete,
     historyVerified,
+    captureVerified,
     assetsComplete,
     historyCoverage: evidence,
     transcript: transcriptName,

@@ -36,7 +36,7 @@ async function download() {
     const base = (props.title || 'conversation').replace(/[\/:*?"<>|]/g, '-').slice(0, 100) || 'conversation'
     preparedName.value = `${base}.${outcome.extension}`
     complete.value = true
-    incomplete.value = outcome.packaged && !outcome.complete
+    incomplete.value = !outcome.complete
   } catch { error.value = 'export.failed' }
   finally { busy.value = false }
 }

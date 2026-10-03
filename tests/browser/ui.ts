@@ -433,6 +433,21 @@ export async function runUiTests(
         assert(markdown.text.startsWith('# '), 'Markdown export body missing heading')
         assert(markdown.name.endsWith('.md'), 'Markdown download filename extension incorrect')
         await close()
+
+        button('.booster-dock-toggle').click()
+        await delay()
+        button('.booster-dock-actions > button:nth-child(1)').click()
+        await delay()
+        const reopened = shadow().querySelector<HTMLElement>('.booster-export-dialog')
+        assert(reopened, 'export dialog did not reopen')
+        const [rememberedFormat, rememberedLevel] = [
+          ...reopened.querySelectorAll<HTMLSelectElement>('select'),
+        ]
+        assert(
+          rememberedFormat?.value === 'markdown' && rememberedLevel?.value === 'conversation',
+          'last export format/level were not remembered',
+        )
+        await close()
         return { jsonBytes: json.text.length, markdownBytes: markdown.text.length }
       },
     )
