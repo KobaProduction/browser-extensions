@@ -83,7 +83,8 @@ The current foundation only depends on the page host and normal DOM capabilities
 - host scope is limited to `https://chatgpt.com/*`;
 - no remote code execution;
 - no chat content telemetry;
-- no private ChatGPT API interception in the foundation;
+- private ChatGPT traffic may be observed only for explicitly documented read-only features; Booster must not synthesize private history requests for the Conversation Archive;
+- archived chat content remains local in IndexedDB unless a future user-controlled export feature explicitly moves it;
 - extension permissions stay minimal and are added only for concrete features.
 
 ## Validation levels
@@ -113,10 +114,13 @@ Settings changes are applied as atomic nested patches rather than replacing a po
 
 ## Development builds
 
-While the project is in the 0.x development phase, browser bundles are intentionally emitted without JavaScript minification. The userscript additionally carries an inline sourcemap so Tampermonkey/DevTools stack traces retain useful function names and source mappings. Production minification can be re-enabled once browser-runtime behavior stabilizes.
+The production userscript is minified. The development userscript is emitted without JavaScript minification and references a separately published sourcemap so Tampermonkey's editor does not need to parse a large inline base64 map. Chromium extension builds keep sourcemaps for runtime debugging.
 
 ## Analytics persistence
 
 Transport hooks are installed for the lifetime of the page runtime. The observer enable switch controls whether events are consumed, counted, or exported; disabling it does not remove the underlying fetch/XHR/WebSocket/EventSource wrappers. Current-tab counters remain in memory. All-time counters use a separate persistent diagnostics adapter (`chrome.storage.local` through the Chromium background worker, local storage for the userscript) and are displayed in the Analytics settings section.
 
 The settings UI stores its active section and disclosure state alongside other settings. Telemetry endpoint configuration is user-provided; there is no project-specific default endpoint.
+## Conversation Archive
+
+The Conversation Archive is a local IndexedDB subsystem that records conversation/history data already fetched by the normal ChatGPT client. Lossless raw records are stored alongside normalized indexes for messages, turns, branches and coverage. The History Loader may drive normal UI scrolling to cause ChatGPT itself to load older pages, but it must not construct or send private history requests. See `docs/CONVERSATION_ARCHIVE.md` and `docs/CHATGPT_CLIENT_RESEARCH.md`.

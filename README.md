@@ -37,7 +37,7 @@ The browser integration is intentionally limited to `https://chatgpt.com/*`.
 
 ## Repository
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for package boundaries and [docs/CHATGPT_CLIENT_RESEARCH.md](docs/CHATGPT_CLIENT_RESEARCH.md) for verified client research.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for package boundaries, [docs/CHATGPT_CLIENT_RESEARCH.md](docs/CHATGPT_CLIENT_RESEARCH.md) for verified ChatGPT client contracts, and [docs/CONVERSATION_ARCHIVE.md](docs/CONVERSATION_ARCHIVE.md) for the local archive/history-loader design.
 
 ## License
 
