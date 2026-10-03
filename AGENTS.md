@@ -28,3 +28,7 @@ Repository map for ChatGPT Booster.
 - Shared feature logic belongs in `core` or a feature module, not duplicated between extension and userscript targets.
 - Do not store chat content in telemetry.
 - A build passing is not equivalent to runtime validation in ChatGPT.
+
+## Active archive/UI contract
+
+For archive/toolkit changes, read `docs/tasks/DOCKED_ARCHIVE_TOOLKIT.md`; its selective capture and evidence rules supersede the earlier unconditional capture behavior.
