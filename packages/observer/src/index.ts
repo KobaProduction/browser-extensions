@@ -4,6 +4,8 @@ export const TRANSPORT_CHANNEL = 'chatgpt-booster:transport'
 export const ARCHIVE_POLICY_EVENT = 'chatgpt-booster:archive-policy'
 export const ARCHIVE_NETWORK_EVENT = 'chatgpt-booster:archive-network'
 export const ARCHIVE_ASSET_EVENT = 'chatgpt-booster:archive-asset'
+export const ARCHIVE_ASSET_FETCH_REQUEST_EVENT = 'chatgpt-booster:archive-asset-fetch-request'
+export const ARCHIVE_ASSET_FETCH_RESULT_EVENT = 'chatgpt-booster:archive-asset-fetch-result'
 export interface ArchiveCapturePolicy {
   enabled: boolean
   defaultEnabled: boolean
@@ -287,6 +289,54 @@ export function archiveAssetContentUrl(value: string, assetId: string): string |
   return null
 }
 
+export async function fetchArchiveAssetBytes(
+  value: string,
+  assetId: string,
+  target: Window = window,
+): Promise<ArrayBuffer> {
+  const url = archiveAssetContentUrl(value, assetId)
+  if (!url) throw new Error('Invalid archive asset URL')
+  const requestId = `asset-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  return await new Promise<ArrayBuffer>((resolve, reject) => {
+    const cleanup = () => {
+      clearTimeout(timer)
+      target.removeEventListener('message', onMessage)
+    }
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== target.location.origin || event.source !== target) return
+      const data = event.data
+      if (
+        data?.channel !== TRANSPORT_CHANNEL ||
+        data.type !== ARCHIVE_ASSET_FETCH_RESULT_EVENT ||
+        data.detail?.requestId !== requestId ||
+        data.detail?.assetId !== assetId
+      )
+        return
+      cleanup()
+      if (data.detail.ok === true && data.detail.bytes instanceof ArrayBuffer) {
+        resolve(data.detail.bytes)
+        return
+      }
+      reject(
+        new Error(typeof data.detail.error === 'string' ? data.detail.error : 'Asset fetch failed'),
+      )
+    }
+    const timer = setTimeout(() => {
+      cleanup()
+      reject(new Error('Asset fetch timed out'))
+    }, 30_000)
+    target.addEventListener('message', onMessage)
+    target.postMessage(
+      {
+        channel: TRANSPORT_CHANNEL,
+        type: ARCHIVE_ASSET_FETCH_REQUEST_EVENT,
+        detail: { requestId, assetId, url },
+      },
+      target.location.origin,
+    )
+  })
+}
+
 export function parseArchiveAssetResolution(
   value: unknown,
   assetId: string,
@@ -494,6 +544,64 @@ export function installTransportObserver(
   target.addEventListener('message', onConfig)
 
   const originalFetch = target.fetch.bind(target)
+  const onArchiveAssetFetch = (event: MessageEvent) => {
+    if (event.origin !== target.location.origin || event.source !== target) return
+    const data = event.data
+    if (data?.channel !== TRANSPORT_CHANNEL || data.type !== ARCHIVE_ASSET_FETCH_REQUEST_EVENT)
+      return
+    const detail = data.detail as
+      | { requestId?: unknown; assetId?: unknown; url?: unknown }
+      | undefined
+    if (
+      typeof detail?.requestId !== 'string' ||
+      typeof detail.assetId !== 'string' ||
+      typeof detail.url !== 'string'
+    )
+      return
+    const safeUrl = archiveAssetContentUrl(detail.url, detail.assetId)
+    if (!safeUrl) return
+    void (async () => {
+      try {
+        const response = await originalFetch(safeUrl, { credentials: 'omit' })
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        const announced = Number(response.headers.get('content-length'))
+        if (Number.isFinite(announced) && announced > 512 * 1024 * 1024)
+          throw new Error('Asset exceeds 512 MiB export limit')
+        const buffer = await response.arrayBuffer()
+        if (buffer.byteLength > 512 * 1024 * 1024)
+          throw new Error('Asset exceeds 512 MiB export limit')
+        target.postMessage(
+          {
+            channel: TRANSPORT_CHANNEL,
+            type: ARCHIVE_ASSET_FETCH_RESULT_EVENT,
+            detail: {
+              requestId: detail.requestId,
+              assetId: detail.assetId,
+              ok: true,
+              bytes: buffer,
+            },
+          },
+          target.location.origin,
+          [buffer],
+        )
+      } catch (error) {
+        target.postMessage(
+          {
+            channel: TRANSPORT_CHANNEL,
+            type: ARCHIVE_ASSET_FETCH_RESULT_EVENT,
+            detail: {
+              requestId: detail.requestId,
+              assetId: detail.assetId,
+              ok: false,
+              error: error instanceof Error ? error.message : 'Asset fetch failed',
+            },
+          },
+          target.location.origin,
+        )
+      }
+    })()
+  }
+  target.addEventListener('message', onArchiveAssetFetch)
   target.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const id = nextId('fetch')
     const started = performance.now()
@@ -780,6 +888,7 @@ export function installTransportObserver(
   return () => {
     target.removeEventListener('message', onConfig)
     target.removeEventListener('message', onArchivePolicy)
+    target.removeEventListener('message', onArchiveAssetFetch)
     target.fetch = originalFetch
     OriginalXHR.prototype.open = originalOpen
     OriginalXHR.prototype.send = originalSend

@@ -295,7 +295,7 @@ describe('conversation vs nested records', () => {
           lastSeenAt: 1,
         },
       ],
-      async () => new Response(new Uint8Array([1, 2, 3]), { status: 200 }),
+      async () => new Uint8Array([1, 2, 3]).buffer,
     )
     expect(result.manifest.assets).toEqual([])
     expect(result.manifest.complete).toBe(true)
@@ -341,7 +341,7 @@ describe('conversation vs nested records', () => {
           lastSeenAt: 1,
         },
       ],
-      async () => new Response(new Uint8Array([1, 2, 3]), { status: 200 }),
+      async () => new Uint8Array([1, 2, 3]).buffer,
     )
     expect(result.manifest.complete).toBe(true)
     expect(result.manifest.assets[0]?.status).toBe('included')

@@ -4,7 +4,7 @@ import type {
   ArchiveExportOptions,
   ArchiveThreadView,
 } from '@chatgpt-booster/core'
-import { archiveAssetContentUrl } from '@chatgpt-booster/observer'
+import { archiveAssetContentUrl, fetchArchiveAssetBytes } from '@chatgpt-booster/observer'
 import { exportIncludes, serializeArchiveExport } from './archive-export'
 import type { ArchivedAsset, ArchivedConversation } from './archive-store'
 
@@ -194,13 +194,15 @@ async function sha256(value: Uint8Array) {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
+export type ArchiveAssetFetcher = (url: string, assetId: string) => Promise<ArrayBuffer>
+
 export async function createArchivePackage(
   conversation: ArchivedConversation,
   thread: ArchiveThreadView,
   options: ArchiveExportOptions,
   evidence: unknown,
   assets: ArchivedAsset[],
-  fetcher: typeof fetch = fetch,
+  fetcher: ArchiveAssetFetcher = fetchArchiveAssetBytes,
 ): Promise<ArchivePackageResult> {
   const transcriptOptions: ArchiveExportOptions =
     options.level === 'full'
@@ -233,9 +235,7 @@ export async function createArchivePackage(
       continue
     }
     try {
-      const response = await fetcher(url, { credentials: 'omit' })
-      if (!response.ok) throw new Error(`HTTP ${response.status}`)
-      const data = new Uint8Array(await response.arrayBuffer())
+      const data = new Uint8Array(await fetcher(url, reference.assetId))
       let name = safeName(reference.fileName ?? `${reference.assetId}.bin`)
       if (usedPaths.has(name)) name = safeName(`${reference.assetId}-${name}`)
       usedPaths.add(name)
