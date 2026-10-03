@@ -16,7 +16,7 @@ import {
   collectionTicket,
 } from '../../packages/features/src/conversation-archive'
 import { HistoryLoaderModule } from '../../packages/features/src/history-loader'
-import { ARCHIVE_EVENT, TRANSPORT_CHANNEL } from '../../packages/observer/src'
+import { ARCHIVE_ASSET_EVENT, ARCHIVE_EVENT, TRANSPORT_CHANNEL } from '../../packages/observer/src'
 import { mountBoosterUi } from '../../packages/ui/src/mount'
 import { runLoaderCancellationTests, runLoaderIsolationTests, runLoaderScrollTest } from './loader'
 import { runUiTests } from './ui'
@@ -252,14 +252,17 @@ async function runStorageTests() {
       'asset placeholder missing',
     )
     assert(
-      (await store.updateAssetResolution({
-        assetId,
-        downloadUrl: `https://chatgpt.com/backend-api/estuary/content?id=${assetId}&sig=fixture`,
-        fileName: 'fixture.png',
-        mimeType: 'image/png',
-        fileSizeBytes: 3,
-        observedAt: Date.now(),
-      })) === true,
+      (await store.updateAssetResolution(
+        {
+          assetId,
+          downloadUrl: `https://chatgpt.com/backend-api/estuary/content?id=${assetId}&sig=fixture`,
+          fileName: 'fixture.png',
+          mimeType: 'image/png',
+          fileSizeBytes: 3,
+          observedAt: Date.now(),
+        },
+        id,
+      )) === true,
       'valid signed URL was rejected',
     )
     assert(
@@ -267,16 +270,91 @@ async function runStorageTests() {
       'resolution missing',
     )
     assert(
-      (await store.updateAssetResolution({
-        assetId,
-        downloadUrl: 'https://example.com/not-allowed',
-        fileName: null,
-        mimeType: null,
-        fileSizeBytes: null,
-        observedAt: Date.now(),
-      })) === false,
+      (await store.updateAssetResolution(
+        {
+          assetId,
+          downloadUrl: `https://chatgpt.com/backend-api/estuary/content?id=${assetId}&sig=other-chat`,
+          fileName: null,
+          mimeType: null,
+          fileSizeBytes: null,
+          observedAt: Date.now(),
+        },
+        `${prefix}different`,
+      )) === false,
+      'resolver from an unrelated conversation updated a stored asset',
+    )
+    assert(
+      (await store.updateAssetResolution(
+        {
+          assetId,
+          downloadUrl: 'https://example.com/not-allowed',
+          fileName: null,
+          mimeType: null,
+          fileSizeBytes: null,
+          observedAt: Date.now(),
+        },
+        id,
+      )) === false,
       'foreign resolver URL accepted',
     )
+  })
+  await check('asset resolver events respect capture consent', async () => {
+    const id = `${prefix}asset-consent`
+    const assetId = `file_${prefix.replace(/[^a-z0-9]/gi, '')}consent`
+    const href = location.href
+    const previous = snapshotSettings(current)
+    await store.ingest(
+      page(id, [
+        {
+          ...raw('attachment-consent', 'user', 'Attachment'),
+          content: {
+            content_type: 'multimodal_text',
+            parts: [
+              {
+                content_type: 'image_asset_pointer',
+                asset_pointer: `sediment://${assetId}`,
+                mime_type: 'image/png',
+                size_bytes: 3,
+              },
+            ],
+          },
+          metadata: { attachments: [{ id: assetId, name: 'consent.png', size: 3 }] },
+        },
+      ]),
+    )
+    const capture = new ConversationArchiveModule(store, settings)
+    try {
+      history.replaceState(null, '', `/c/${id}`)
+      await settings.set(normalizeSettings())
+      await capture.start()
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          origin: location.origin,
+          source: window,
+          data: {
+            channel: TRANSPORT_CHANNEL,
+            type: ARCHIVE_ASSET_EVENT,
+            detail: {
+              assetId,
+              downloadUrl: `https://chatgpt.com/backend-api/estuary/content?id=${assetId}&sig=denied`,
+              fileName: 'consent.png',
+              mimeType: 'image/png',
+              fileSizeBytes: 3,
+              observedAt: Date.now(),
+            },
+          },
+        }),
+      )
+      await new Promise((resolve) => setTimeout(resolve, 120))
+      assert(
+        (await store.getAssets([assetId]))[0]?.downloadUrl === null,
+        'disabled capture wrote asset URL',
+      )
+    } finally {
+      capture.stop()
+      history.replaceState(null, '', href)
+      await settings.set(previous)
+    }
   })
   await check('saved data survives policy changes and schema normalization', async () => {
     const id = prefix + 'preserved'

@@ -104,13 +104,16 @@ export function createArchiveUiAdapter(
       if (currentConversationId() === conversationId)
         for (const resolution of currentResolvedAssetUrls()) {
           if (!assetIdSet.has(resolution.assetId)) continue
-          await store.updateAssetResolution({
-            ...resolution,
-            fileName: null,
-            mimeType: null,
-            fileSizeBytes: null,
-            observedAt: Date.now(),
-          })
+          await store.updateAssetResolution(
+            {
+              ...resolution,
+              fileName: null,
+              mimeType: null,
+              fileSizeBytes: null,
+              observedAt: Date.now(),
+            },
+            conversationId,
+          )
         }
       const assets = await store.getAssets(assetIds)
       const result = await createArchivePackage(conversation, thread, options, evidence, assets)

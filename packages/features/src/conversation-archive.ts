@@ -171,14 +171,29 @@ export class ConversationArchiveModule implements BoosterModule {
       const detail = data.detail as ArchiveAssetResolutionEventDetail | undefined
       if (!detail || typeof detail.assetId !== 'string' || typeof detail.downloadUrl !== 'string')
         return
+      const conversationId = currentConversationId()
+      if (!conversationId) return
       void this.store
-        .updateAssetResolution(detail)
-        .then((stored) => {
+        .getConversation(conversationId)
+        .then(async (conversation) => {
+          if (!this.#active) return
+          const projectId = currentProjectId() ?? conversation?.projectId ?? null
+          const permitted = () =>
+            captureRuleForOperation(
+              this.#settings.archive,
+              conversationId,
+              projectId,
+              collectionTicket()?.conversationId === conversationId,
+              this.#settings.enabled,
+            ).enabled
+          if (!permitted()) return
+          const stored = await this.store.updateAssetResolution(detail, conversationId)
           if (stored || !this.#active) return
           // The normal resolver can finish just before the conversation page is committed.
-          // Retry once; unrelated assets still have no metadata row and remain discarded.
+          // Retry once, but re-check consent before the delayed write.
           setTimeout(() => {
-            if (this.#active) void this.store.updateAssetResolution(detail).catch(() => undefined)
+            if (this.#active && permitted())
+              void this.store.updateAssetResolution(detail, conversationId).catch(() => undefined)
           }, 750)
         })
         .catch(() => undefined)

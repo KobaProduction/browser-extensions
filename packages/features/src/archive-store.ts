@@ -418,7 +418,10 @@ export class ConversationArchiveStore {
     return results
   }
 
-  async updateAssetResolution(detail: ArchiveAssetResolutionEventDetail): Promise<boolean> {
+  async updateAssetResolution(
+    detail: ArchiveAssetResolutionEventDetail,
+    conversationId: string,
+  ): Promise<boolean> {
     let url: URL
     try {
       url = new URL(detail.downloadUrl)
@@ -437,35 +440,38 @@ export class ConversationArchiveStore {
     const store = tx.objectStore('assets')
     const [previous, messages] = await Promise.all([
       request<ArchivedAsset | undefined>(store.get(detail.assetId)),
-      request<ArchivedMessage[]>(tx.objectStore('messages').getAll()),
+      request<ArchivedMessage[]>(
+        tx.objectStore('messages').index('conversationId').getAll(IDBKeyRange.only(conversationId)),
+      ),
     ])
     let metadata: ArchiveAttachmentView | undefined
-    if (!previous)
-      for (const message of messages) {
-        const candidate = archiveRecordAttachments(message).find(
-          (attachment) => attachment.assetId === detail.assetId,
-        )
-        if (!candidate) continue
-        metadata = metadata
-          ? {
-              ...metadata,
-              ...candidate,
-              fileName: candidate.fileName ?? metadata.fileName,
-              mimeType: candidate.mimeType ?? metadata.mimeType,
-              sizeBytes: candidate.sizeBytes ?? metadata.sizeBytes,
-              width: candidate.width ?? metadata.width,
-              height: candidate.height ?? metadata.height,
-              kind: candidate.kind === 'image' || metadata.kind === 'image' ? 'image' : 'file',
-            }
-          : candidate
-      }
-    if (!previous && !metadata) {
+    for (const message of messages) {
+      const candidate = archiveRecordAttachments(message).find(
+        (attachment) => attachment.assetId === detail.assetId,
+      )
+      if (!candidate) continue
+      metadata = metadata
+        ? {
+            ...metadata,
+            ...candidate,
+            fileName: candidate.fileName ?? metadata.fileName,
+            mimeType: candidate.mimeType ?? metadata.mimeType,
+            sizeBytes: candidate.sizeBytes ?? metadata.sizeBytes,
+            width: candidate.width ?? metadata.width,
+            height: candidate.height ?? metadata.height,
+            kind: candidate.kind === 'image' || metadata.kind === 'image' ? 'image' : 'file',
+          }
+        : candidate
+    }
+    // A resolver observed in one chat must never refresh an archived asset that is not
+    // referenced by that same conversation. This keeps signed URL writes scoped to consent.
+    if (!metadata) {
       await done
       return false
     }
     const now = Date.now()
     const base: ArchivedAsset = previous ?? {
-      ...(metadata as ArchiveAttachmentView),
+      ...metadata,
       downloadUrl: null,
       resolverObservedAt: null,
       firstSeenAt: now,
