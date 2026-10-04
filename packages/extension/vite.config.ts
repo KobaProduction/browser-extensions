@@ -4,16 +4,22 @@ import { defineConfig } from 'vite'
 import webExtension from 'vite-plugin-web-extension'
 import manifest from './manifest.json' with { type: 'json' }
 
+const buildSha = process.env.CHATGPT_BOOSTER_BUILD_SHA ?? ''
+
 export default defineConfig({
   define: {
     'process.env.NODE_ENV': JSON.stringify('production'),
+    __BOOSTER_BUILD_SHA__: JSON.stringify(buildSha),
     'process.env': '{}',
   },
   plugins: [
     vue(),
     tailwindcss(),
     webExtension({
-      manifest: () => manifest,
+      manifest: () => ({
+        ...manifest,
+        version_name: buildSha ? `${manifest.version}-g${buildSha.slice(0, 8)}` : manifest.version,
+      }),
     }),
   ],
   build: {

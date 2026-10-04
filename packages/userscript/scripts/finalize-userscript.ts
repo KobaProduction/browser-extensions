@@ -1,8 +1,14 @@
 import { readFile, writeFile } from 'node:fs/promises'
+import packageJson from '../package.json' with { type: 'json' }
 
 type UserscriptVariant = 'prod' | 'dev'
 
-const version = '0.6.1'
+const baseVersion = packageJson.version
+const buildSha = (process.env.CHATGPT_BOOSTER_BUILD_SHA ?? '').trim()
+const buildNumber = (process.env.CHATGPT_BOOSTER_BUILD_NUMBER ?? '').trim()
+const rolling = process.env.CHATGPT_BOOSTER_ROLLING === '1'
+const shortSha = buildSha ? buildSha.slice(0, 8) : ''
+const buildLabel = shortSha ? `${baseVersion}-g${shortSha}` : baseVersion
 
 function outputFor(variant: UserscriptVariant): URL {
   return new URL(
@@ -11,15 +17,28 @@ function outputFor(variant: UserscriptVariant): URL {
   )
 }
 
+function metadataVersion(variant: UserscriptVariant) {
+  if (variant === 'dev' && rolling && buildNumber) return `${baseVersion}.${buildNumber}`
+  return baseVersion
+}
+
+function assetBase(variant: UserscriptVariant) {
+  if (variant === 'dev' && rolling)
+    return 'https://github.com/KobaProduction/chatgpt-booster/releases/download/dev-latest'
+  return 'https://github.com/KobaProduction/chatgpt-booster/releases/latest/download'
+}
+
 function metadataFor(variant: UserscriptVariant): string {
   const isDev = variant === 'dev'
   const file = isDev ? 'chatgpt-booster.dev.user.js' : 'chatgpt-booster.user.js'
+  const base = assetBase(variant)
   return [
     '// ==UserScript==',
     `// @name         ChatGPT Booster${isDev ? ' Dev' : ''}`,
     '// @namespace    https://github.com/KobaProduction/chatgpt-booster',
-    `// @version      ${version}`,
-    `// @description  Open-source UI and productivity toolkit for ChatGPT.${isDev ? ' Debug build.' : ''}`,
+    `// @version      ${metadataVersion(variant)}`,
+    `// @description  Open-source UI and productivity toolkit for ChatGPT.${isDev ? ` Debug build ${buildLabel}.` : ''}`,
+    `// @booster-build ${buildLabel}`,
     '// @author       KobaProduction',
     '// @match        https://chatgpt.com/*',
     '// @run-at       document-start',
@@ -29,8 +48,8 @@ function metadataFor(variant: UserscriptVariant): string {
     '// @grant        GM_xmlhttpRequest',
     '// @grant        unsafeWindow',
     '// @connect      *',
-    `// @updateURL    https://github.com/KobaProduction/chatgpt-booster/releases/latest/download/${file}`,
-    `// @downloadURL  https://github.com/KobaProduction/chatgpt-booster/releases/latest/download/${file}`,
+    `// @updateURL    ${base}/${file}`,
+    `// @downloadURL  ${base}/${file}`,
     '// ==/UserScript==',
   ].join('\n')
 }
@@ -44,9 +63,10 @@ export async function finalizeUserscript(
   const metadata = metadataFor(variant)
   let payload = bundled.startsWith('// ==UserScript==') ? bundled : `${metadata}\n\n${bundled}`
   if (variant === 'dev') {
+    const mapBase = assetBase(variant)
     payload = payload.replace(
       /\/\/# sourceMappingURL=.*$/m,
-      '//# sourceMappingURL=https://github.com/KobaProduction/chatgpt-booster/releases/latest/download/chatgpt-booster.dev.user.js.map',
+      `//# sourceMappingURL=${mapBase}/chatgpt-booster.dev.user.js.map`,
     )
   }
 
