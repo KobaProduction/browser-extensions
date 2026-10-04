@@ -1,3 +1,5 @@
+import type { ArchiveRecordView, ToolInvocationView } from '@chatgpt-booster/core'
+
 export interface ToolCallEvidence {
   id: string
   element: HTMLElement
@@ -199,4 +201,201 @@ export function findToolCallEvidence(root: ParentNode = document): ToolCallEvide
     })
   }
   return result
+}
+
+function asObject(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined
+}
+
+function firstNonEmptyString(...values: unknown[]): string | null {
+  return (
+    values.find((value): value is string => typeof value === 'string' && value.trim().length > 0) ??
+    null
+  )
+}
+
+function safeHttpUrl(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value !== 'string') continue
+    try {
+      const url = new URL(value)
+      if (url.protocol === 'https:' || url.protocol === 'http:') return url.href
+    } catch {}
+  }
+  return null
+}
+
+function nestedToolName(value: unknown): string | null {
+  const seen = new Set<unknown>()
+  const visit = (input: unknown, depth: number): string | null => {
+    if (depth > 5 || seen.has(input)) return null
+    if (typeof input === 'string') {
+      const direct = input.match(/\btools\.([A-Za-z0-9_]+)\s*\(/)?.[1]
+      if (direct) return direct
+      return input.match(/\b(mcp__[A-Za-z0-9_]+__[A-Za-z0-9_]+)\b/)?.[1] ?? null
+    }
+    if (!input || typeof input !== 'object') return null
+    seen.add(input)
+    const values = Array.isArray(input) ? input : Object.values(input as Record<string, unknown>)
+    for (const item of values) {
+      const result = visit(item, depth + 1)
+      if (result) return result
+    }
+    return null
+  }
+  return visit(value, 0)
+}
+
+function cleanSegment(value: string) {
+  return value
+    .replace(/^mcp__/, '')
+    .replace(/^github_(?:agent|reviewer)_/, '')
+    .replace(/^gitlab_/, '')
+    .replace(/^browser_/, '')
+    .replace(/^devtools_/, '')
+    .replaceAll('__', ' · ')
+    .replaceAll('_', ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function splitToolName(raw: string): { provider: string | null; action: string | null } {
+  if (raw.startsWith('mcp__')) {
+    const value = raw.slice('mcp__'.length)
+    const split = value.indexOf('__')
+    if (split > 0)
+      return {
+        provider: cleanSegment(value.slice(0, split)),
+        action: cleanSegment(value.slice(split + 2)),
+      }
+  }
+  const parts = raw.split(/[./:]/).filter(Boolean)
+  if (parts.length > 1)
+    return {
+      provider: parts.slice(0, -1).map(cleanSegment).filter(Boolean).join(' · '),
+      action: cleanSegment(parts.at(-1) ?? ''),
+    }
+  return { provider: null, action: cleanSegment(raw) || null }
+}
+
+function observedToolIconUrl(value: unknown, depth = 0): string | null {
+  if (depth > 3) return null
+  if (typeof value === 'string') {
+    if (value.startsWith('data:image/')) return value
+    try {
+      const url = new URL(value)
+      const host = url.hostname.toLowerCase()
+      const trusted =
+        host === 'chatgpt.com' ||
+        host.endsWith('.chatgpt.com') ||
+        host === 'openai.com' ||
+        host.endsWith('.openai.com') ||
+        host === 'oaistatic.com' ||
+        host.endsWith('.oaistatic.com') ||
+        (host === 'www.google.com' && url.pathname === '/s2/favicons')
+      if (url.protocol === 'https:' && trusted) return url.href
+    } catch {}
+    return null
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const result = observedToolIconUrl(item, depth + 1)
+      if (result) return result
+    }
+    return null
+  }
+  const object = asObject(value)
+  if (!object) return null
+  for (const key of ['url', 'icon_url', 'iconUrl', 'src', 'light', 'dark', 'default']) {
+    const result = observedToolIconUrl(object[key], depth + 1)
+    if (result) return result
+  }
+  for (const item of Object.values(object)) {
+    const result = observedToolIconUrl(item, depth + 1)
+    if (result) return result
+  }
+  return null
+}
+
+function toolIconKey(value: unknown): string | null {
+  const first = Array.isArray(value) ? value[0] : value
+  return typeof first === 'string' && !first.includes('://') && !first.startsWith('data:')
+    ? first.toLowerCase()
+    : null
+}
+
+export function toolInvocationFromRecord(record: ArchiveRecordView): ToolInvocationView | null {
+  const metadata = asObject(record.raw.metadata)
+  const recipient = record.recipient?.trim() || null
+  const payload =
+    metadata?.arguments ??
+    metadata?.args ??
+    metadata?.input ??
+    record.raw.arguments ??
+    record.raw.args ??
+    record.raw.input ??
+    null
+  const rawName =
+    nestedToolName(payload ?? record.raw) ??
+    firstNonEmptyString(
+      metadata?.tool_title,
+      metadata?.tool_name,
+      metadata?.connector_name,
+      metadata?.app_name,
+      metadata?.name,
+      record.authorName,
+      recipient && recipient !== 'all' ? recipient : null,
+    )
+  if (!rawName && record.role !== 'tool') return null
+  const name = rawName ?? 'tool'
+  const parts = splitToolName(name)
+  const provider = parts.provider
+  const action = parts.action
+  const label = provider ? provider + ' · ' + (action ?? 'tool') : (action ?? 'Tool')
+  const icons = metadata?.tool_icons ?? metadata?.tool_icon
+  return {
+    kind: /^mcp__/.test(name) || /\bmcp\b/i.test(provider ?? '') ? 'mcp' : 'tool',
+    provider,
+    action,
+    label,
+    recipient,
+    timestamp: record.createTime ?? record.firstSeenAt ?? null,
+    payload,
+    link: safeHttpUrl(
+      metadata?.tool_url,
+      metadata?.connector_url,
+      metadata?.app_url,
+      metadata?.source_url,
+    ),
+    iconUrl: observedToolIconUrl(icons),
+    iconKey: toolIconKey(icons),
+  }
+}
+
+export function toolInvocationFromEvidence(evidence: ToolCallEvidence): ToolInvocationView {
+  const rawName =
+    nestedToolName(evidence.structuredPayloads) ??
+    evidence.attributes['data-tool-name'] ??
+    evidence.attributes['data-testid'] ??
+    evidence.label
+  const parts = splitToolName(rawName)
+  return {
+    kind: evidence.kind,
+    provider: parts.provider,
+    action: parts.action,
+    label: parts.provider
+      ? parts.provider + ' · ' + (parts.action ?? evidence.label)
+      : (parts.action ?? evidence.label),
+    recipient: null,
+    timestamp: evidence.timestamp ? Date.parse(evidence.timestamp) || null : null,
+    payload:
+      evidence.structuredPayloads.length === 1
+        ? evidence.structuredPayloads[0]
+        : evidence.structuredPayloads,
+    link: null,
+    iconUrl: null,
+    iconKey: null,
+  }
 }

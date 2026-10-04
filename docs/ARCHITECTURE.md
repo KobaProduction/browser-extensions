@@ -81,6 +81,15 @@ Features register as small modules with explicit start/stop lifecycle. A feature
 
 The current foundation only depends on the page host and normal DOM capabilities. Future DOM selectors must live behind a ChatGPT adapter instead of being scattered across feature code.
 
+Live ChatGPT UI augmentation follows the same passive-interception rule as transport observation:
+
+- `packages/chatgpt` owns DOM signatures, target discovery and MutationObserver slot detection only;
+- `packages/features` owns decorator lifecycle, settings/archive-preload joins, deduplication and cleanup;
+- `packages/ui` owns reusable Shadow-DOM badges, top-layer popovers and interactive detail surfaces;
+- extension/userscript targets only instantiate the shared feature modules.
+
+Conversation decorators append Booster-owned controls to existing ChatGPT action rows. They must not replace native handlers, move message content, synthesize native actions or make host navigation depend on Booster. DOM mutations are treated as invalidation signals: the adapter rescans the affected turn and the feature layer updates or reuses its existing mount rather than duplicating controls.
+
 ## Security and privacy
 
 - host scope is limited to `https://chatgpt.com/*`;

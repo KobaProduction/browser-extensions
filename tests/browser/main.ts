@@ -17,6 +17,7 @@ import {
   ConversationArchiveModule,
   collectionTicket,
 } from '../../packages/features/src/conversation-archive'
+import { ConversationDecoratorsModule } from '../../packages/features/src/conversation-decorators'
 import { HistoryLoaderModule } from '../../packages/features/src/history-loader'
 import { ARCHIVE_ASSET_EVENT, ARCHIVE_EVENT, TRANSPORT_CHANNEL } from '../../packages/observer/src'
 import { mountBoosterUi } from '../../packages/ui/src/mount'
@@ -374,37 +375,27 @@ async function runStorageTests() {
       let opened = 0
       try {
         history.replaceState(null, '', `/c/${id}`)
-        const controls = mountArchiveScopeControls({
-          label: () => 'Fixture archive policy',
-          enabled: () => false,
-          visible: () => true,
-          onOpen: () => {
-            opened++
-          },
-        })
-        const count = () => row.querySelectorAll('[data-chatgpt-booster="capture-control"]').length
+        const mount = (host: HTMLElement) => {
+          const shadow = host.attachShadow({ mode: 'open' })
+          const button = document.createElement('button')
+          button.type = 'button'
+          button.textContent = 'Archive status'
+          button.addEventListener('click', () => opened++)
+          shadow.append(button)
+          return { update() {}, unmount() {} }
+        }
+        const controls = mountArchiveScopeControls({ visible: () => true, mount })
+        const count = () =>
+          row.querySelectorAll('[data-chatgpt-booster="archive-scope-control"]').length
         assert(count() === 1, 'scope control was not injected exactly once')
-        controls.update({
-          label: () => 'Updated archive policy',
-          enabled: () => true,
-          visible: () => true,
-          onOpen: () => {
-            opened++
-          },
-        })
-        controls.update({
-          label: () => 'Updated archive policy again',
-          enabled: () => true,
-          visible: () => true,
-          onOpen: () => {
-            opened++
-          },
-        })
+        controls.update({ visible: () => true, mount })
+        controls.update({ visible: () => true, mount })
         assert(count() === 1, 'scope control duplicated after update')
-        const host = row.querySelector<HTMLElement>('[data-chatgpt-booster="capture-control"]')
+        const host = row.querySelector<HTMLElement>(
+          '[data-chatgpt-booster="archive-scope-control"]',
+        )
         const button = host?.shadowRoot?.querySelector<HTMLButtonElement>('button')
         assert(button, 'scope control button missing')
-        assert(button.dataset.enabled === 'true', 'scope control did not reflect enabled state')
         const before = location.href
         button.click()
         assert(opened === 1, 'scope control action did not fire once')
@@ -413,6 +404,189 @@ async function runStorageTests() {
         assert(count() === 0, 'scope control was not removed on stop')
       } finally {
         nav.remove()
+        history.replaceState(null, '', href)
+      }
+    },
+  )
+
+  await check(
+    'conversation decorators attach to native action rows, react to append changes and clean up',
+    async () => {
+      const href = location.href
+      const id = prefix + 'decorators'
+      const main = document.createElement('main')
+      const module = new ConversationDecoratorsModule(settings, store)
+      const turn = (messageId: string, role: 'user' | 'assistant') => {
+        const section = document.createElement('section')
+        section.dataset.testid = 'conversation-turn-' + messageId
+        const body = document.createElement('div')
+        body.dataset.messageId = messageId
+        body.dataset.messageAuthorRole = role
+        body.textContent = role === 'user' ? 'Fixture user' : 'Fixture assistant'
+        const actions = document.createElement('div')
+        const copy = document.createElement('button')
+        copy.dataset.testid = 'copy-turn-action-button'
+        copy.setAttribute('aria-label', role === 'user' ? 'Copy message' : 'Copy answer')
+        actions.append(copy)
+        section.append(body, actions)
+        return { section, body, actions }
+      }
+      try {
+        history.replaceState(null, '', '/c/' + id)
+        const first = turn('decorator-user', 'user')
+        main.append(first.section)
+        document.body.append(main)
+        await store.ingest(
+          page(id, [
+            {
+              ...raw('decorator-user', 'user', 'Fixture user'),
+              create_time: 1700000100,
+            },
+          ]),
+        )
+        await module.start()
+        await until(
+          async () =>
+            first.actions.querySelector('[data-chatgpt-booster="message-metadata"]') !== null,
+        )
+        assert(
+          first.actions.querySelectorAll('[data-chatgpt-booster="message-metadata"]').length === 1,
+          'initial message decorator duplicated',
+        )
+
+        const second = turn('decorator-answer', 'assistant')
+        await store.ingest(
+          page(id, [
+            {
+              ...raw('decorator-answer', 'assistant', 'Fixture assistant', 'decorator-user'),
+              create_time: 1700000101,
+              metadata: {
+                parent_id: 'decorator-user',
+                model_slug: 'gpt-5.6-sol',
+                reasoning_effort: 'high',
+              },
+            },
+          ]),
+        )
+        main.append(second.section)
+        await until(
+          async () =>
+            second.actions.querySelector('[data-chatgpt-booster="message-metadata"]') !== null,
+        )
+        const host = second.actions.querySelector<HTMLElement>(
+          '[data-chatgpt-booster="message-metadata"]',
+        )
+        assert(host?.shadowRoot, 'assistant metadata shadow root missing')
+        assert(
+          host.shadowRoot.querySelectorAll('.booster-meta-trigger').length === 2,
+          'assistant did not receive time and model metadata triggers',
+        )
+
+        second.body.append(document.createElement('span'))
+        await new Promise((resolve) => setTimeout(resolve, 220))
+        assert(
+          second.actions.querySelectorAll('[data-chatgpt-booster="message-metadata"]').length === 1,
+          'message mutation duplicated decorator',
+        )
+
+        module.stop()
+        assert(
+          main.querySelectorAll('[data-chatgpt-booster="message-metadata"]').length === 0,
+          'message decorators were not removed on stop',
+        )
+      } finally {
+        module.stop()
+        main.remove()
+        history.replaceState(null, '', href)
+      }
+    },
+  )
+
+  await check(
+    'late Booster start recovers current chat into transient cache without pretending it is persisted',
+    async () => {
+      const href = location.href
+      const id = prefix + 'late-bootstrap'
+      const main = document.createElement('main')
+      const displacedMains = [...document.querySelectorAll('main')].map((element) => {
+        const placeholder = document.createComment('late-bootstrap-main')
+        element.replaceWith(placeholder)
+        return { element, placeholder }
+      })
+      const module = new ConversationDecoratorsModule(settings, store)
+      const transientCapture = new ConversationArchiveModule(store, settings)
+      const transientAdapter = createArchiveUiAdapter(store, transientCapture)
+      const turn = (messageId: string, role: 'user' | 'assistant', text: string) => {
+        const section = document.createElement('section')
+        section.dataset.testid = 'conversation-turn-' + messageId
+        const body = document.createElement('div')
+        body.dataset.messageId = messageId
+        body.dataset.messageAuthorRole = role
+        body.textContent = text
+        const actions = document.createElement('div')
+        const copy = document.createElement('button')
+        copy.dataset.testid = 'copy-turn-action-button'
+        copy.setAttribute('aria-label', role === 'user' ? 'Copy message' : 'Copy answer')
+        actions.append(copy)
+        section.append(body, actions)
+        return section
+      }
+      try {
+        history.replaceState(null, '', '/c/' + id)
+        main.append(
+          turn('late-user', 'user', 'Already rendered before Booster'),
+          turn('late-answer', 'assistant', 'Already rendered answer'),
+        )
+        document.body.append(main)
+
+        assert(
+          !(await store.getConversation(id)),
+          'late-start fixture unexpectedly persisted already',
+        )
+        await module.start()
+        await until(async () => {
+          const ids = new Set(
+            store.getDomSnapshot(id)?.records.map((record) => record.messageId) ?? [],
+          )
+          return ids.has('late-user') && ids.has('late-answer')
+        })
+
+        assert(
+          (await store.listMessages(id)).length === 0,
+          'DOM fallback leaked into persistent archive messages',
+        )
+        assert(
+          (await transientAdapter.listConversations()).some(
+            (conversation) => conversation.conversationId === id,
+          ),
+          'DOM fallback did not surface current conversation in archive cache',
+        )
+        assert(
+          (await transientAdapter.getThread(id)).messageCount === 2,
+          'DOM fallback did not surface visible messages in current thread',
+        )
+        assert(
+          (await transientAdapter.getCoverage(id))?.completeAtLastRead === false,
+          'DOM fallback incorrectly claimed complete history',
+        )
+
+        const server = page(id, [
+          { ...raw('late-user', 'user', 'Server user'), create_time: 1700000200 },
+          {
+            ...raw('late-answer', 'assistant', 'Server answer', 'late-user'),
+            create_time: 1700000201,
+          },
+        ])
+        await store.ingestPreload(server)
+        await until(async () => store.getDomSnapshot(id) === undefined)
+        assert(
+          (await transientAdapter.getThread(id)).messageCount === 2,
+          'server preload did not replace DOM fallback cleanly',
+        )
+      } finally {
+        module.stop()
+        main.remove()
+        for (const { element, placeholder } of displacedMains) placeholder.replaceWith(element)
         history.replaceState(null, '', href)
       }
     },
@@ -907,6 +1081,7 @@ Object.assign(window, {
     store,
     HistoryLoaderModule,
     ConversationArchiveModule,
+    ConversationDecoratorsModule,
   },
 })
 const status = document.querySelector('#fixture-status')

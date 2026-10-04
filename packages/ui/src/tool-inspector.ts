@@ -1,3 +1,4 @@
+import type { ToolInvocationView } from '@chatgpt-booster/core'
 import { type App, createApp } from 'vue'
 import type { SupportedLocale } from './i18n'
 import styles from './styles.css?inline'
@@ -5,10 +6,8 @@ import ToolInspector from './ToolInspector.vue'
 
 export interface ToolCallViewModel {
   id: string
-  label: string
-  kind: 'mcp' | 'tool'
+  tool: ToolInvocationView
   locale: SupportedLocale
-  timestamp?: string
   structuredPayloads: string[]
   attributes: Record<string, string>
   visibleText: string

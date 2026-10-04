@@ -8,9 +8,9 @@ import {
   ArchiveScopeControlsModule,
   ConversationArchiveModule,
   ConversationArchiveStore,
+  ConversationDecoratorsModule,
   createArchiveUiAdapter,
   HistoryLoaderModule,
-  ToolInspectorModule,
   TransportObserverModule,
 } from '@chatgpt-booster/features'
 import { type MountedBoosterUi, mountBoosterUi } from '@chatgpt-booster/ui'
@@ -61,7 +61,7 @@ function startRuntime() {
         persistentDiagnostics: chromeAnalytics,
         telemetry,
       }),
-      new ToolInspectorModule(chromeSettings),
+      new ConversationDecoratorsModule(chromeSettings, archiveStore),
     ],
     (module, error) => {
       console.error('[ChatGPT Booster] Module failed:', module.id, error)

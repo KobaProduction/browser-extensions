@@ -438,29 +438,37 @@ export async function runUiTests(
           ].some((item) => item.textContent?.trim() === 'Run'),
           'obsolete Run control is still visible',
         )
-        assert(
-          restored.querySelector('.booster-record-answer .booster-record-info'),
-          'message timestamp/model info controls are missing',
-        )
         const firstAnswer = restored.querySelector<HTMLElement>('.booster-record-answer')
+        const metadataTriggers = [
+          ...(firstAnswer?.querySelectorAll<HTMLElement>('.booster-meta-trigger') ?? []),
+        ]
+        assert(metadataTriggers.length >= 2, 'message timestamp/model info controls are missing')
         assert(
-          firstAnswer?.querySelector('time')?.textContent?.trim(),
-          'visible message time is missing',
+          !firstAnswer?.querySelector('time'),
+          'message timestamp should stay icon-only until hover/focus',
         )
         assert(
           firstAnswer?.textContent?.includes(translate('ru', 'reader.editedShort')),
           'edited marker is missing',
         )
-        const infoTitles = [
-          ...(firstAnswer?.querySelectorAll<HTMLElement>('.booster-record-info') ?? []),
-        ]
-          .map((item) => item.dataset.tooltip ?? '')
-          .join('\n')
-        assert(infoTitles.includes('gpt-5.6-sol'), 'model/thinking tooltip is missing')
+        const metadataLabels = metadataTriggers
+          .map((item) => item.getAttribute('aria-label') ?? '')
+          .join('\\n')
+        assert(metadataLabels.includes('gpt-5.6-sol'), 'model/thinking popover metadata is missing')
         assert(
-          infoTitles.includes(translate('ru', 'reader.sentAt')),
-          'timestamp tooltip is missing',
+          metadataLabels.includes(translate('ru', 'reader.sentAt')),
+          'timestamp popover metadata is missing',
         )
+        metadataTriggers[0]?.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }))
+        await delay()
+        const popover = firstAnswer?.querySelector<HTMLElement>('.booster-floating-popover')
+        assert(popover, 'timestamp top-layer popover is missing')
+        assert(
+          popover.matches(':popover-open'),
+          'timestamp popover did not enter the browser top layer',
+        )
+        metadataTriggers[0]?.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }))
+        await delay()
         const raw = restored.querySelector<HTMLButtonElement>(
           '.booster-record-answer .booster-record-icon-button',
         )

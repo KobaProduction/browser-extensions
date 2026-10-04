@@ -1,4 +1,8 @@
-import { archiveRecordAttachments, buildArchiveThread } from '@chatgpt-booster/chatgpt'
+import {
+  archiveRecordAttachments,
+  buildArchiveThread,
+  type ConversationDomSnapshot,
+} from '@chatgpt-booster/chatgpt'
 import {
   ARCHIVE_UPDATED_EVENT,
   type ArchiveAttachmentView,
@@ -391,6 +395,23 @@ function preloadEvidence(page: PreloadedConversationPage) {
 }
 
 export class ConversationArchiveStore {
+  #domSnapshots = new Map<string, ConversationDomSnapshot>()
+
+  setDomSnapshot(snapshot: ConversationDomSnapshot | undefined): void {
+    if (!snapshot) return
+    const previous = this.#domSnapshots.get(snapshot.conversationId)
+    if (!previous || snapshot.observedAt >= previous.observedAt)
+      this.#domSnapshots.set(snapshot.conversationId, snapshot)
+  }
+
+  getDomSnapshot(conversationId: string): ConversationDomSnapshot | undefined {
+    return this.#domSnapshots.get(conversationId)
+  }
+
+  clearDomSnapshot(conversationId: string): void {
+    this.#domSnapshots.delete(conversationId)
+  }
+
   #database: Promise<IDBDatabase> | undefined
 
   async ingestPreload(detail: ConversationArchiveEventDetail): Promise<void> {

@@ -9,9 +9,9 @@ import {
   ArchiveScopeControlsModule,
   ConversationArchiveModule,
   ConversationArchiveStore,
+  ConversationDecoratorsModule,
   createArchiveUiAdapter,
   HistoryLoaderModule,
-  ToolInspectorModule,
   TransportObserverModule,
 } from '@chatgpt-booster/features'
 import { installTransportObserver } from '@chatgpt-booster/observer'
@@ -100,7 +100,7 @@ function startRuntime() {
         persistentDiagnostics: userscriptAnalytics,
         telemetry,
       }),
-      new ToolInspectorModule(userscriptSettings),
+      new ConversationDecoratorsModule(userscriptSettings, archiveStore),
     ],
     (module, error) => {
       console.error('[ChatGPT Booster] Module failed:', module.id, error)

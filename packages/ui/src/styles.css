@@ -2270,7 +2270,6 @@
   gap: 2px;
   margin-left: auto;
 }
-.booster-record-info,
 .booster-record-icon-button {
   display: inline-flex;
   width: 24px;
@@ -2283,42 +2282,6 @@
   border-radius: 6px;
   background: transparent;
   color: var(--muted-foreground);
-}
-.booster-record-info {
-  position: relative;
-  cursor: help;
-  outline: none;
-}
-.booster-record-info::after {
-  position: absolute;
-  z-index: 8;
-  top: calc(100% + 6px);
-  right: 0;
-  width: max-content;
-  max-width: 280px;
-  padding: 6px 8px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  background: var(--popover);
-  color: var(--popover-foreground);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 20%);
-  content: attr(data-tooltip);
-  font: 500 10px / 1.45 inherit;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(-2px);
-  transition:
-    opacity 100ms ease,
-    transform 100ms ease;
-  white-space: pre-line;
-}
-.booster-record-info:hover::after,
-.booster-record-info:focus-visible::after {
-  opacity: 1;
-  transform: translateY(0);
-}
-.booster-record-info:focus-visible {
-  box-shadow: 0 0 0 2px var(--ring);
 }
 .booster-record-icon-button {
   cursor: pointer;
@@ -2449,4 +2412,161 @@
   color: var(--muted-foreground);
   font-size: 9px;
   line-height: 1.35;
+}
+
+/* Shared top-layer metadata popovers for archive and live ChatGPT decorators. */
+.booster-meta-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.booster-meta-badges.compact {
+  gap: 0;
+}
+.booster-meta-trigger {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: var(--muted-foreground);
+  cursor: help;
+  outline: none;
+}
+.booster-meta-trigger.is-clickable {
+  cursor: pointer;
+}
+.booster-meta-trigger:hover,
+.booster-meta-trigger:focus-visible {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.booster-meta-trigger:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+.booster-floating-popover {
+  position: fixed;
+  z-index: 2147483647;
+  inset: auto;
+  width: max-content;
+  min-width: 190px;
+  max-width: min(340px, calc(100vw - 16px));
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: 0 14px 38px rgb(0 0 0 / 28%);
+  font: 500 11px / 1.45 inherit;
+  white-space: normal;
+  pointer-events: none;
+}
+.booster-floating-popover.is-interactive {
+  pointer-events: auto;
+}
+.booster-floating-popover:not(:popover-open):not(.is-open) {
+  display: none;
+}
+.booster-meta-lines {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 3px 10px;
+}
+.booster-meta-label {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 600;
+}
+.booster-meta-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--popover-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.booster-scope-popover {
+  display: grid;
+  min-width: 260px;
+  gap: 10px;
+}
+.booster-scope-popover > header {
+  display: grid;
+  gap: 1px;
+}
+.booster-scope-title {
+  max-width: 280px;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.booster-scope-kind {
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.booster-scope-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.booster-scope-actions button {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--background);
+  color: var(--foreground);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+}
+.booster-scope-actions button:hover {
+  background: var(--muted);
+}
+
+.booster-live-tool-row {
+  display: flex;
+  width: min(100%, 48rem);
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  color: var(--muted-foreground);
+}
+.booster-live-tool-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: baseline;
+  gap: 6px;
+}
+.booster-live-tool-name {
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 11px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.booster-live-tool-action-name {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.booster-live-tool-details {
+  margin-top: 4px;
+  width: min(100%, 48rem);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 10px;
+  color: var(--card-foreground);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
 }

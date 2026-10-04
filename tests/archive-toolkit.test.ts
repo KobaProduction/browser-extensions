@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'bun:test'
-import { archiveRecordKind, buildArchiveThread } from '../packages/chatgpt/src/archive-records'
+import {
+  archiveRecordKind,
+  archiveRecordMetadata,
+  buildArchiveThread,
+} from '../packages/chatgpt/src/archive-records'
+import { toolInvocationFromRecord } from '../packages/chatgpt/src/tool-calls'
 import {
   type ArchiveRecordView,
   captureRuleFor,
@@ -171,6 +176,45 @@ describe('conversation vs nested records', () => {
     expect(thread.turns.find((turn) => turn.id === 'unassigned')?.association).toBe('unassigned')
   })
 
+  test('normalizes message metadata and nested MCP tool identity once for archive and live UI', () => {
+    const thread = buildArchiveThread([
+      record('q-meta', 'user', 'text', {
+        createTime: 1700000000,
+        updateTime: 1700000010,
+        raw: {
+          content: { content_type: 'text', parts: ['question'] },
+          metadata: { edited: true },
+        },
+      }),
+      record('call-meta', 'assistant', 'text', {
+        parentId: 'q-meta',
+        recipient: 'functions.exec',
+        createTime: 1700000020,
+        modelSlug: 'gpt-5.6-sol',
+        raw: {
+          content: { content_type: 'text', parts: [''] },
+          input: {
+            code: 'await tools.mcp__Koba_GitHub__github_agent_get_file({ repository: "fixture/repo" })',
+          },
+          metadata: { reasoning_effort: 'high' },
+        },
+      }),
+    ])
+    const user = thread.turns
+      .flatMap((turn) => turn.messages)
+      .find((item) => item.record.messageId === 'q-meta')
+    const tool = thread.turns
+      .flatMap((turn) => turn.details)
+      .find((item) => item.record.messageId === 'call-meta')
+    expect(user?.metadata.edited).toBe(true)
+    expect(user?.metadata.sentAt).toBe(1700000000)
+    expect(tool?.metadata.model).toBe('gpt-5.6-sol')
+    expect(tool?.metadata.thinking).toBe('high')
+    expect(tool?.tool?.provider).toBe('Koba GitHub')
+    expect(tool?.tool?.action).toBe('get file')
+    expect(tool?.tool?.label).toBe('Koba GitHub · get file')
+  })
+
   test('handles parent cycles without recursion', () => {
     const thread = buildArchiveThread([
       record('a', 'tool', 'text', { parentId: 'b' }),
@@ -179,6 +223,50 @@ describe('conversation vs nested records', () => {
     expect(thread.recordCount).toBe(2)
     expect(thread.messageCount).toBe(0)
   })
+  test('message metadata preserves sent, edited, model and thinking facts', () => {
+    const item = record('meta', 'assistant', 'text', {
+      createTime: 1700000000,
+      updateTime: 1700000001,
+      modelSlug: 'gpt-test',
+      raw: {
+        content: { content_type: 'text', parts: ['answer'] },
+        metadata: {
+          is_edited: true,
+          reasoning_effort: 'high',
+          model_slug: 'ignored-fallback',
+        },
+      },
+    })
+    expect(archiveRecordMetadata(item)).toEqual({
+      sentAt: 1700000000,
+      editedAt: 1700000001,
+      edited: true,
+      model: 'gpt-test',
+      thinking: 'high',
+    })
+  })
+
+  test('tool metadata parser resolves nested MCP provider/action once for archive and live UI', () => {
+    const item = record('tool', 'assistant', 'text', {
+      recipient: 'functions.exec',
+      raw: {
+        content: { content_type: 'text', parts: [''] },
+        metadata: {
+          input: {
+            call: 'await tools.mcp__Koba_GitHub__github_agent_get_file({})',
+          },
+          tool_icons: ['github'],
+        },
+      },
+    })
+    const tool = toolInvocationFromRecord(item)
+    expect(tool?.kind).toBe('mcp')
+    expect(tool?.provider).toBe('Koba GitHub')
+    expect(tool?.action).toBe('get file')
+    expect(tool?.label).toBe('Koba GitHub · get file')
+    expect(tool?.iconKey).toBe('github')
+  })
+
   test('server seconds and observed milliseconds sort on the same scale', () => {
     expect(serverTimeMs(1700000000)).toBe(1700000000000)
     expect(serverTimeMs(null, 1700000001000)).toBe(1700000001000)

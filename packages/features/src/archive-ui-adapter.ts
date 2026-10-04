@@ -8,7 +8,7 @@ import {
   currentProjectTitle,
   currentResolvedAssetUrls,
 } from '@chatgpt-booster/chatgpt'
-import type { ArchiveExportOptions } from '@chatgpt-booster/core'
+import type { ArchiveExportOptions, ArchiveRecordView } from '@chatgpt-booster/core'
 import { type ArchiveExportPipeline, DEFAULT_ARCHIVE_EXPORT_PIPELINE } from './archive-export'
 import { createArchivePackage } from './archive-package'
 import type { ConversationArchiveStore } from './archive-store'
@@ -25,18 +25,48 @@ export function createArchiveUiAdapter(
     return observed ?? stored
   }
 
+  function domConversationView(conversationId: string) {
+    const snapshot = store.getDomSnapshot(conversationId)
+    if (!snapshot) return undefined
+    return {
+      conversationId: snapshot.conversationId,
+      projectId: snapshot.projectId,
+      title: snapshot.title,
+      updatedAt: null,
+      lastSeenAt: snapshot.observedAt,
+      archiveState: 'partial' as const,
+      branchSourceConversationId: null,
+      branchSourceTitle: null,
+    }
+  }
+
+  async function mergedRecords(conversationId: string) {
+    const [stored, preload] = await Promise.all([
+      store.listMessages(conversationId),
+      store.getPreloadSnapshot(conversationId),
+    ])
+    const merged = new Map<string, ArchiveRecordView>(
+      stored.map((record) => [record.messageKey, record]),
+    )
+    for (const record of preload?.records ?? []) merged.set(record.messageKey, record)
+    for (const record of store.getDomSnapshot(conversationId)?.records ?? [])
+      if (!merged.has(record.messageKey)) merged.set(record.messageKey, record)
+    return [...merged.values()]
+  }
+
   return {
     getCurrentContext: async () => {
       const conversationId = currentConversationId() ?? null
       const conversation = conversationId ? await store.getConversation(conversationId) : undefined
-      const projectId = currentProjectId() ?? conversation?.projectId ?? null
+      const dom = conversationId ? domConversationView(conversationId) : undefined
+      const projectId = currentProjectId() ?? conversation?.projectId ?? dom?.projectId ?? null
       const projects = projectId ? await store.listProjects() : []
       const storedTitle = projectId
         ? (projects.find((project) => project.projectId === projectId)?.title ?? null)
         : null
       return {
         conversationId,
-        conversationTitle: conversation?.title ?? currentConversationTitle() ?? null,
+        conversationTitle: conversation?.title ?? dom?.title ?? currentConversationTitle() ?? null,
         projectId,
         projectTitle: projectId ? await observedProjectTitle(projectId, storedTitle) : null,
       }
@@ -50,18 +80,38 @@ export function createArchiveUiAdapter(
           title: await observedProjectTitle(project.projectId, project.title),
         })),
       ),
-    getConversation: (conversationId: string) => store.getConversation(conversationId),
+    getConversation: async (conversationId: string) =>
+      (await store.getConversation(conversationId)) ?? domConversationView(conversationId),
     getCoverage: async (conversationId: string) => {
-      const [coverage, records, preload] = await Promise.all([
+      const [coverage, preload, records] = await Promise.all([
         store.getCoverage(conversationId),
-        store.listMessages(conversationId),
         store.getPreloadSnapshot(conversationId),
+        mergedRecords(conversationId),
       ])
-      const effective = coverage ?? preload?.coverage
+      const dom = store.getDomSnapshot(conversationId)
+      const effective =
+        coverage ??
+        preload?.coverage ??
+        (dom
+          ? {
+              conversationId,
+              knownMessageCount: dom.records.length,
+              oldestKnownMessageId: dom.records[0]?.messageId ?? null,
+              newestKnownMessageId: dom.records.at(-1)?.messageId ?? null,
+              oldestKnownVisibleMessageId: dom.records[0]?.messageId ?? null,
+              newestKnownVisibleMessageId: dom.records.at(-1)?.messageId ?? null,
+              oldestKnownCursor: null,
+              newestKnownCursor: null,
+              hasOlderServerHistory: null,
+              hasNewerServerHistory: null,
+              knownBranchConversationIds: [],
+              lastObservedAt: dom.observedAt,
+              lastFullReadAt: null,
+              completeAtLastRead: false,
+            }
+          : undefined)
       if (!effective) return undefined
-      const merged = new Map(records.map((record) => [record.messageKey, record]))
-      for (const record of preload?.records ?? []) merged.set(record.messageKey, record)
-      const thread = buildArchiveThread([...merged.values()])
+      const thread = buildArchiveThread(records)
       const liveCoverage =
         preload && preload.coverage.lastObservedAt >= effective.lastObservedAt
           ? preload.coverage
@@ -94,10 +144,17 @@ export function createArchiveUiAdapter(
             current.lastMessageId,
       }
     },
-    listConversations: () => store.listConversations(),
-    listMessages: (conversationId: string) => store.listMessages(conversationId),
+    listConversations: async () => {
+      const conversations = await store.listConversations()
+      const current = currentConversationId()
+      if (!current || conversations.some((item) => item.conversationId === current))
+        return conversations
+      const dom = domConversationView(current)
+      return dom ? [dom, ...conversations] : conversations
+    },
+    listMessages: (conversationId: string) => mergedRecords(conversationId),
     getThread: async (conversationId: string) =>
-      buildArchiveThread(await store.listMessages(conversationId)),
+      buildArchiveThread(await mergedRecords(conversationId)),
     collectCurrent: () => capture.collectCurrent(),
     listExportFormats: () => exportPipeline.listFormats(),
     exportConversation: async (

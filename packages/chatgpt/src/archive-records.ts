@@ -7,12 +7,48 @@ import {
   type ArchiveTurnView,
   serverTimeMs,
 } from '@chatgpt-booster/core'
+import { toolInvocationFromRecord } from './tool-calls'
 
 export function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined
 }
+export function archiveRecordMetadata(record: ArchiveRecordView) {
+  const metadata = asRecord(record.raw.metadata)
+  const edited =
+    metadata?.edited === true ||
+    metadata?.is_edited === true ||
+    metadata?.was_edited === true ||
+    metadata?.user_edited === true ||
+    metadata?.dictation_edited === true ||
+    (typeof metadata?.edit_count === 'number' && metadata.edit_count > 0) ||
+    typeof metadata?.original_message_id === 'string' ||
+    typeof metadata?.edit_source === 'string' ||
+    typeof record.raw.original_message_id === 'string'
+  const thinking =
+    [
+      metadata?.reasoning_effort,
+      metadata?.thinking_level,
+      metadata?.reasoning_status,
+      metadata?.reasoning_recap_type,
+    ].find((value): value is string => typeof value === 'string' && value.trim().length > 0) ?? null
+  return {
+    sentAt: record.createTime ?? record.firstSeenAt ?? null,
+    editedAt: record.updateTime ?? null,
+    edited,
+    model:
+      record.resolvedModelSlug ??
+      record.modelSlug ??
+      (typeof metadata?.resolved_model_slug === 'string'
+        ? metadata.resolved_model_slug
+        : typeof metadata?.model_slug === 'string'
+          ? metadata.model_slug
+          : null),
+    thinking,
+  }
+}
+
 export function archiveRecordKind(record: ArchiveRecordView): ArchiveRecordKind {
   const metadata = asRecord(record.raw.metadata)
   if (record.role === 'tool') return 'tool_result'
@@ -193,7 +229,16 @@ export function buildArchiveThread(records: ArchiveRecordView[]): ArchiveThreadV
       groups.set(id, group)
     }
     if (association === 'adjacency' || association === 'unassigned') group.association = association
-    const item: ArchiveItemView = { record, kind, text: archiveRecordText(record) }
+    const metadata = archiveRecordMetadata(record)
+    const tool =
+      kind === 'tool_call' || kind === 'tool_result' ? toolInvocationFromRecord(record) : null
+    const item: ArchiveItemView = {
+      record,
+      kind,
+      text: archiveRecordText(record),
+      metadata,
+      ...(tool ? { tool } : {}),
+    }
     if (kind === 'user' || kind === 'answer') group.messages.push(item)
     else group.details.push(item)
   }

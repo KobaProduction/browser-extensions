@@ -12,7 +12,11 @@ import {
   resolveCaptureRule,
   type SettingsAdapter,
 } from '@chatgpt-booster/core'
-import { resolveLocale, translate } from '@chatgpt-booster/ui'
+import {
+  mountScopeArchiveControl,
+  resolveLocale,
+  type ScopeArchiveControlModel,
+} from '@chatgpt-booster/ui'
 import type { ConversationArchiveStore } from './archive-store'
 
 export class ArchiveScopeControlsModule implements BoosterModule {
@@ -22,6 +26,8 @@ export class ArchiveScopeControlsModule implements BoosterModule {
   #active = false
   #latestSettings: BoosterSettings | undefined
   #conversationProjects = new Map<string, string | null>()
+  #archivedConversationIds = new Set<string>()
+  #projectArchivedCounts = new Map<string, number>()
 
   constructor(
     private settings: SettingsAdapter,
@@ -30,13 +36,13 @@ export class ArchiveScopeControlsModule implements BoosterModule {
 
   async start() {
     this.#active = true
-    const [settings] = await Promise.all([this.settings.get(), this.#refreshConversationProjects()])
+    const [settings] = await Promise.all([this.settings.get(), this.#refreshArchiveState()])
     if (!this.#active) return
     this.#latestSettings = settings
-    this.#apply(settings)
+    this.#apply()
     this.#unsubscribe = this.settings.subscribe((next) => {
       this.#latestSettings = next
-      this.#apply(next)
+      this.#apply()
     })
     window.addEventListener(ARCHIVE_UPDATED_EVENT, this.#onArchiveUpdated)
   }
@@ -50,12 +56,12 @@ export class ArchiveScopeControlsModule implements BoosterModule {
   }
 
   #onArchiveUpdated = () => {
-    void this.#refreshConversationProjects().then(() => {
-      if (this.#active && this.#latestSettings) this.#apply(this.#latestSettings)
+    void this.#refreshArchiveState().then(() => {
+      if (this.#active) this.#apply()
     })
   }
 
-  async #refreshConversationProjects() {
+  async #refreshArchiveState() {
     if (!this.store) return
     try {
       const conversations = await this.store.listConversations()
@@ -63,8 +69,20 @@ export class ArchiveScopeControlsModule implements BoosterModule {
       this.#conversationProjects = new Map(
         conversations.map((conversation) => [conversation.conversationId, conversation.projectId]),
       )
+      this.#archivedConversationIds = new Set(
+        conversations.map((conversation) => conversation.conversationId),
+      )
+      const projectCounts = new Map<string, number>()
+      for (const conversation of conversations) {
+        if (!conversation.projectId) continue
+        projectCounts.set(
+          conversation.projectId,
+          (projectCounts.get(conversation.projectId) ?? 0) + 1,
+        )
+      }
+      this.#projectArchivedCounts = projectCounts
     } catch {
-      // Sidebar controls remain usable; unknown project membership falls back to the default rule.
+      // Sidebar controls stay usable if local archive state is temporarily unavailable.
     }
   }
 
@@ -77,51 +95,95 @@ export class ArchiveScopeControlsModule implements BoosterModule {
     )
   }
 
-  #apply(settings: BoosterSettings) {
+  #model(context: ArchiveCaptureContext): ScopeArchiveControlModel {
+    const settings = this.#latestSettings
+    if (!settings) throw new Error('Archive scope settings unavailable')
+    const projectId = this.#projectId(context)
+    const resolved =
+      context.scope === 'project'
+        ? {
+            rule: settings.archive.projects[context.id] ?? settings.archive.defaultRule,
+            source: settings.archive.projects[context.id]
+              ? ('project' as const)
+              : ('default' as const),
+          }
+        : resolveCaptureRule(settings.archive, context.id, projectId)
+    const hasOverride =
+      context.scope === 'project'
+        ? settings.archive.projects[context.id] !== undefined
+        : settings.archive.conversations[context.id] !== undefined
+
+    return {
+      context: context.scope === 'conversation' ? { ...context, projectId } : context,
+      locale: resolveLocale(settings.language),
+      archivedCount:
+        context.scope === 'project'
+          ? (this.#projectArchivedCounts.get(context.id) ?? 0)
+          : this.#archivedConversationIds.has(context.id)
+            ? 1
+            : 0,
+      effectiveEnabled: settings.enabled && resolved.rule.enabled,
+      source: resolved.source,
+      hasOverride,
+      onSetEnabled: (enabled) => this.#setEnabled(context, enabled),
+      onInherit: () => this.#inherit(context),
+      onSettings: () => this.#openSettings(context),
+    }
+  }
+
+  async #setEnabled(context: ArchiveCaptureContext, enabled: boolean) {
+    const settings = this.#latestSettings ?? (await this.settings.get())
+    const projectId = this.#projectId(context)
+    if (context.scope === 'project') {
+      const base = settings.archive.projects[context.id] ?? settings.archive.defaultRule
+      await this.settings.update({
+        archive: { projects: { [context.id]: { ...base, enabled } } },
+      })
+      return
+    }
+    const base = resolveCaptureRule(settings.archive, context.id, projectId).rule
+    await this.settings.update({
+      archive: { conversations: { [context.id]: { ...base, enabled } } },
+    })
+  }
+
+  async #inherit(context: ArchiveCaptureContext) {
+    if (context.scope === 'project')
+      await this.settings.update({ archive: { projects: { [context.id]: null } } })
+    else await this.settings.update({ archive: { conversations: { [context.id]: null } } })
+  }
+
+  #openSettings(context: ArchiveCaptureContext) {
+    window.dispatchEvent(
+      new CustomEvent(OPEN_CAPTURE_SETTINGS_EVENT, {
+        detail:
+          context.scope === 'conversation'
+            ? { ...context, projectId: this.#projectId(context) }
+            : context,
+      }),
+    )
+  }
+
+  #apply() {
     if (!this.#active) return
-    if (!settings.enabled) {
+    const settings = this.#latestSettings
+    if (!settings?.enabled) {
       this.#controls?.stop()
       this.#controls = undefined
       return
     }
-    const locale = resolveLocale(settings.language)
-    const effective = (context: ArchiveCaptureContext) => {
-      if (context.scope === 'project') {
-        const rule = settings.archive.projects[context.id] ?? settings.archive.defaultRule
-        return settings.enabled && rule.enabled
-      }
-      return (
-        settings.enabled &&
-        resolveCaptureRule(settings.archive, context.id, this.#projectId(context)).rule.enabled
-      )
-    }
+
     const options: Parameters<typeof mountArchiveScopeControls>[0] = {
-      label: (context) =>
-        `${translate(
-          locale,
-          context.scope === 'project' ? 'capture.project' : 'capture.conversation',
-        )}: ${
-          context.title ||
-          translate(
-            locale,
-            context.scope === 'project' ? 'identity.unknownProject' : 'identity.untitled',
-          )
-        } · ${translate(locale, effective(context) ? 'dock.autoOn' : 'dock.autoOff')}`,
-      enabled: effective,
-      visible: (context) =>
-        context.scope === 'project' ||
-        context.id === currentConversationId() ||
-        settings.archive.conversations[context.id] !== undefined,
-      onOpen: (context) =>
-        window.dispatchEvent(
-          new CustomEvent(OPEN_CAPTURE_SETTINGS_EVENT, {
-            detail:
-              context.scope === 'conversation'
-                ? { ...context, projectId: this.#projectId(context) }
-                : context,
-          }),
-        ),
+      visible: () => true,
+      mount: (host, context) => {
+        const mounted = mountScopeArchiveControl(host, this.#model(context))
+        return {
+          update: (next) => mounted.update(this.#model(next)),
+          unmount: () => mounted.unmount(),
+        }
+      },
     }
+
     if (this.#controls) this.#controls.update(options)
     else this.#controls = mountArchiveScopeControls(options)
   }

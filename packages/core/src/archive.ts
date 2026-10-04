@@ -35,10 +35,31 @@ export interface ArchiveAttachmentView {
   height: number | null
   kind: 'image' | 'file'
 }
+export interface ConversationItemMetadataView {
+  sentAt: number | null
+  editedAt: number | null
+  edited: boolean
+  model: string | null
+  thinking: string | null
+}
+export interface ToolInvocationView {
+  kind: 'mcp' | 'tool'
+  provider: string | null
+  action: string | null
+  label: string
+  recipient: string | null
+  timestamp: number | null
+  payload: unknown
+  link: string | null
+  iconUrl: string | null
+  iconKey: string | null
+}
 export interface ArchiveItemView {
   record: ArchiveRecordView
   kind: ArchiveRecordKind
   text: string
+  metadata: ConversationItemMetadataView
+  tool?: ToolInvocationView | undefined
 }
 export interface ArchiveTurnView {
   id: string

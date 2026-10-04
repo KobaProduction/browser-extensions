@@ -433,3 +433,10 @@ Never export message text, reasoning text, tool arguments/results, attachment UR
 2. Collect attachment/image/file examples and document stable client-visible references.
 3. Verify edit/regenerate behavior and how message IDs/parent IDs/current node change.
 4. Verify whether loading another branch requires a separate conversation request or an in-conversation version request.
+
+
+## Verified live message decoration signatures (2026-10-04)
+
+Current ChatGPT conversation turns expose a stable outer `section[data-testid^="conversation-turn-"]`. The visible message node inside the turn carries both `data-message-id` and `data-message-author-role`. Native user/assistant action rows contain `data-testid="copy-turn-action-button"`; its parent is the preferred non-destructive insertion slot for Booster message metadata controls.
+
+Booster may observe append/replace/attribute mutations under the conversation root and decorate these slots, but it must leave ChatGPT buttons, navigation, message layout and event handlers intact. The selector/slot knowledge belongs in `packages/chatgpt`; feature modules consume normalized targets instead of querying these signatures directly.

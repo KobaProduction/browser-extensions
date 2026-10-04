@@ -1,3 +1,5 @@
 export * from './i18n'
+export * from './message-metadata'
 export * from './mount'
+export * from './scope-archive-control'
 export * from './tool-inspector'
