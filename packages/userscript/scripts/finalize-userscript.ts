@@ -5,10 +5,10 @@ type UserscriptVariant = 'prod' | 'dev'
 
 const baseVersion = packageJson.version
 const buildSha = (process.env.CHATGPT_BOOSTER_BUILD_SHA ?? '').trim()
-const buildNumber = (process.env.CHATGPT_BOOSTER_BUILD_NUMBER ?? '').trim()
 const rolling = process.env.CHATGPT_BOOSTER_ROLLING === '1'
 const shortSha = buildSha ? buildSha.slice(0, 8) : ''
-const buildLabel = shortSha ? `${baseVersion}-g${shortSha}` : baseVersion
+const displayBaseVersion = baseVersion.split('.').slice(0, 2).join('.')
+const buildLabel = shortSha ? `${displayBaseVersion}-${shortSha}` : displayBaseVersion
 
 function outputFor(variant: UserscriptVariant): URL {
   return new URL(
@@ -18,8 +18,7 @@ function outputFor(variant: UserscriptVariant): URL {
 }
 
 function metadataVersion(variant: UserscriptVariant) {
-  if (variant === 'dev' && rolling && buildNumber)
-    return `${baseVersion}.${buildNumber}${shortSha ? `-g${shortSha}` : ''}`
+  if (variant === 'dev' && rolling) return buildLabel
   return baseVersion
 }
 
