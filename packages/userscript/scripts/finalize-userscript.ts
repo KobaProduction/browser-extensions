@@ -63,11 +63,10 @@ export async function finalizeUserscript(
   const metadata = metadataFor(variant)
   let payload = bundled.startsWith('// ==UserScript==') ? bundled : `${metadata}\n\n${bundled}`
   if (variant === 'dev') {
-    const mapBase = assetBase(variant)
-    payload = payload.replace(
-      /\/\/# sourceMappingURL=.*$/m,
-      `//# sourceMappingURL=${mapBase}/chatgpt-booster.dev.user.js.map`,
-    )
+    // Keep the .map artifact for local/offline debugging, but do not make the
+    // userscript request it from GitHub while running inside chatgpt.com. The
+    // page CSP blocks that request and turns a harmless debug aid into console noise.
+    payload = payload.replace(/\n?\/\/# sourceMappingURL=.*$/m, '')
   }
 
   await writeFile(outputPath, payload, 'utf8')

@@ -1,4 +1,5 @@
 import {
+  BOOSTER_VERSION,
   type BoosterModule,
   BoosterRuntime,
   createDiagnosticsStore,
@@ -124,9 +125,25 @@ function startRuntime() {
 }
 
 if (isChatGptPage()) {
-  void archiveCapture.start()
-  installTransportObserver(unsafeWindow as Window & typeof globalThis)
-  void registerUserscriptMenu()
+  document.documentElement.dataset.chatgptBoosterUserscriptVersion = BOOSTER_VERSION
+
+  // Tampermonkey and the extension have different injection mechanics. A failure to
+  // acquire the page window for transport interception must not prevent the UI and
+  // DOM-based archive fallback from starting.
+  try {
+    installTransportObserver(unsafeWindow as Window & typeof globalThis)
+    document.documentElement.dataset.chatgptBoosterUserscriptObserver = 'installed'
+  } catch (error) {
+    document.documentElement.dataset.chatgptBoosterUserscriptObserver = 'failed'
+    console.error('[ChatGPT Booster] Tampermonkey transport observer failed', error)
+  }
+
+  void archiveCapture.start().catch((error) => {
+    console.error('[ChatGPT Booster] Early archive capture bootstrap failed', error)
+  })
+  void registerUserscriptMenu().catch((error) => {
+    console.error('[ChatGPT Booster] Tampermonkey menu registration failed', error)
+  })
 
   if (document.body) startRuntime()
   else window.addEventListener('DOMContentLoaded', startRuntime, { once: true })
