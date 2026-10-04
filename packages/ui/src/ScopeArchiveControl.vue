@@ -11,7 +11,7 @@ const t = (key: Parameters<typeof translate>[1]) => translate(props.model.locale
 <template>
   <FloatingInfoPopover
     mode="click"
-    :aria-label="
+    :label="
       (model.context.title || t(model.context.scope === 'project' ? 'identity.unknownProject' : 'identity.untitled')) +
       ' · ' +
       t(model.effectiveEnabled ? 'dock.autoOn' : 'dock.autoOff')

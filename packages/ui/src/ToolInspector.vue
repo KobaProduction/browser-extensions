@@ -41,7 +41,7 @@ async function copyDiagnostics() {
 
       <FloatingInfoPopover
         v-if="timestamp"
-        :aria-label="t('reader.sentAt') + ': ' + timestamp"
+        :label="t('reader.sentAt') + ': ' + timestamp"
       >
         <template #trigger><Clock3 class="size-3.5" /></template>
         <div class="booster-meta-lines">

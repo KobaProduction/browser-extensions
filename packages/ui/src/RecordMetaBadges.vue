@@ -44,7 +44,7 @@ const modelLabel = computed(() =>
 
 <template>
   <span class="booster-meta-badges" :class="{ compact }">
-    <FloatingInfoPopover :aria-label="timeLabel">
+    <FloatingInfoPopover :label="timeLabel">
       <template #trigger><Clock3 class="size-3.5" /></template>
       <div class="booster-meta-lines">
         <strong class="booster-meta-label">{{ t('reader.sentAt') }}</strong><span class="booster-meta-value">{{ sent || t('reader.timeUnknown') }}</span>
@@ -53,7 +53,7 @@ const modelLabel = computed(() =>
         </template>
       </div>
     </FloatingInfoPopover>
-    <FloatingInfoPopover v-if="showModel && modelLabel" :aria-label="modelLabel">
+    <FloatingInfoPopover v-if="showModel && modelLabel" :label="modelLabel">
       <template #trigger><BrainCircuit class="size-3.5" /></template>
       <div class="booster-meta-lines">
         <template v-if="metadata.model">

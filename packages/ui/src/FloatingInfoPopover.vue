@@ -4,7 +4,7 @@ import { nextTick, onBeforeUnmount, ref } from 'vue'
 const props = withDefaults(
   defineProps<{
     mode?: 'hover' | 'click'
-    ariaLabel: string
+    label: string
     align?: 'start' | 'end'
   }>(),
   { mode: 'hover', align: 'end' },
@@ -97,7 +97,7 @@ onBeforeUnmount(() => {
     :class="{ 'is-clickable': mode === 'click' }"
     tabindex="0"
     role="button"
-    :aria-label="ariaLabel"
+    :aria-label="label"
     @mouseenter="mode === 'hover' && show()"
     @mouseleave="mode === 'hover' && hide()"
     @focus="mode === 'hover' && show()"

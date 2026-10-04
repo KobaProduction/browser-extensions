@@ -101,7 +101,7 @@ const reasoningInfo = computed(() =>
         <span class="booster-record-kind">
           <FloatingInfoPopover
             v-if="reasoningInfo"
-            :aria-label="reasoningInfo"
+            :label="reasoningInfo"
             align="start"
           >
             <template #trigger><Brain class="size-4" /></template>
