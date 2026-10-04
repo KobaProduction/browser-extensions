@@ -1,33 +1,43 @@
 <script setup lang="ts">
-import { Archive, ArchiveX, Settings2 } from 'lucide-vue-next'
+import { Archive, Settings2 } from 'lucide-vue-next'
 import FloatingInfoPopover from './FloatingInfoPopover.vue'
 import type { ScopeArchiveControlModel } from './scope-archive-control'
 import { translate } from './i18n'
 
 const props = defineProps<{ model: ScopeArchiveControlModel }>()
 const t = (key: Parameters<typeof translate>[1]) => translate(props.model.locale, key)
+const label = () =>
+  (props.model.context.title ||
+    t(props.model.context.scope === 'project' ? 'identity.unknownProject' : 'identity.untitled')) +
+  ' · ' +
+  t(props.model.effectiveEnabled ? 'dock.autoOn' : 'dock.autoOff')
 </script>
 
 <template>
-  <FloatingInfoPopover
-    mode="click"
-    :label="
-      (model.context.title || t(model.context.scope === 'project' ? 'identity.unknownProject' : 'identity.untitled')) +
-      ' · ' +
-      t(model.effectiveEnabled ? 'dock.autoOn' : 'dock.autoOff')
-    "
-  >
+  <span
+    v-if="model.context.scope === 'conversation'"
+    class="booster-chat-save-marker"
+    :class="{ 'is-enabled': model.effectiveEnabled }"
+    :title="label()"
+    aria-hidden="true"
+  />
+
+  <FloatingInfoPopover v-else mode="click" :label="label()">
     <template #trigger>
-      <Archive v-if="model.archivedCount > 0" class="size-3.5" />
-      <ArchiveX v-else class="size-3.5" />
+      <span
+        class="booster-project-status-badge"
+        :class="model.effectiveEnabled ? 'is-enabled' : 'is-disabled'"
+      >
+        <Archive class="size-3.5" />
+      </span>
     </template>
 
     <section class="booster-scope-popover" @click.stop>
       <header>
         <strong class="booster-scope-title">
-          {{ model.context.title || t(model.context.scope === 'project' ? 'identity.unknownProject' : 'identity.untitled') }}
+          {{ model.context.title || t('identity.unknownProject') }}
         </strong>
-        <span class="booster-scope-kind">{{ t(model.context.scope === 'project' ? 'capture.project' : 'capture.conversation') }}</span>
+        <span class="booster-scope-kind">{{ t('capture.project') }}</span>
       </header>
 
       <div class="booster-meta-lines">
@@ -35,14 +45,18 @@ const t = (key: Parameters<typeof translate>[1]) => translate(props.model.locale
         <span class="booster-meta-value">
           {{
             model.archivedCount > 0
-              ? t('scope.archived') + (model.context.scope === 'project' ? ' · ' + model.archivedCount : '')
+              ? t('scope.archived') + ' · ' + model.archivedCount
               : t('scope.notArchived')
           }}
         </span>
         <strong class="booster-meta-label">{{ t('capture.policy') }}</strong>
-        <span class="booster-meta-value">{{ t(model.effectiveEnabled ? 'dock.autoOn' : 'dock.autoOff') }}</span>
+        <span class="booster-meta-value">{{
+          t(model.effectiveEnabled ? 'dock.autoOn' : 'dock.autoOff')
+        }}</span>
         <strong class="booster-meta-label">{{ t('scope.rule') }}</strong>
-        <span class="booster-meta-value">{{ t(('scope.source.' + model.source) as Parameters<typeof t>[0]) }}</span>
+        <span class="booster-meta-value">{{
+          t(('scope.source.' + model.source) as Parameters<typeof t>[0])
+        }}</span>
       </div>
 
       <div class="booster-scope-actions">

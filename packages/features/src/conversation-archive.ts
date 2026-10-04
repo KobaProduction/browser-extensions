@@ -1,6 +1,7 @@
 import {
   archiveRecordKind,
   asRecord,
+  currentConversationDomSnapshot,
   currentConversationId,
   currentProjectId,
   currentProjectTitle,
@@ -120,12 +121,13 @@ export class ConversationArchiveModule implements BoosterModule {
       JSON.stringify({ conversationId, startedAt, expiresAt: startedAt + 30 * 60_000 }),
     )
     this.#publishPolicy()
-    await this.#promotePreload(conversationId, startedAt)
+    const promotedPreload = await this.#promotePreload(conversationId, startedAt)
+    if (!promotedPreload) await this.#promoteDomSnapshot(conversationId, startedAt)
     window.dispatchEvent(new Event(HISTORY_LOADER_START_EVENT))
   }
-  async #promotePreload(conversationId: string, startedAt: number) {
+  async #promotePreload(conversationId: string, startedAt: number): Promise<boolean> {
     const pages = await this.store.listLatestPreloadPages(conversationId)
-    if (!pages.length) return
+    if (!pages.length) return false
     const project =
       currentProjectId() ??
       pages
@@ -143,7 +145,7 @@ export class ConversationArchiveModule implements BoosterModule {
       this.#active && collectionTicket()?.conversationId === conversationId
     const readId = `manual-${startedAt}`
     for (const page of pages) {
-      if (!stillPermitted()) return
+      if (!stillPermitted()) return false
       const rawMessages = Array.isArray(page.payload.messages) ? page.payload.messages : []
       const messages = rawMessages
         .map(asRecord)
@@ -173,6 +175,61 @@ export class ConversationArchiveModule implements BoosterModule {
         stillPermitted,
       )
     }
+    return true
+  }
+
+  async #promoteDomSnapshot(conversationId: string, startedAt: number): Promise<boolean> {
+    const snapshot = this.store.getDomSnapshot(conversationId) ?? currentConversationDomSnapshot()
+    if (!snapshot || snapshot.conversationId !== conversationId || !snapshot.records.length)
+      return false
+
+    const projectId = currentProjectId() ?? snapshot.projectId ?? null
+    const rule = captureRuleForOperation(
+      this.#settings.archive,
+      conversationId,
+      projectId,
+      true,
+      this.#settings.enabled,
+    )
+    const stillPermitted = () =>
+      this.#active && collectionTicket()?.conversationId === conversationId
+    const rawMessages = snapshot.records.map((record) => record.raw)
+    const messages = rawMessages.filter((raw) => keepCapturedRecord(raw, rule))
+    const readId = 'manual-' + startedAt
+
+    await this.store.ingest(
+      {
+        kind: 'conversation-page',
+        readId,
+        readStartedAt: startedAt,
+        isInitial: true,
+        requestedBefore: null,
+        timestamp: snapshot.observedAt,
+        sourceUrl: location.href + '#chatgpt-booster-dom-snapshot',
+        conversationId,
+        payload: {
+          conversation_id: conversationId,
+          title: snapshot.title,
+          gizmo_id: projectId,
+          messages,
+          page_info: {
+            start_cursor: null,
+            end_cursor: null,
+            has_previous_page: null,
+            has_next_page: null,
+          },
+          booster_capture: {
+            reasoning: rule.reasoning,
+            tools: rule.tools,
+            internal: rule.internal,
+            omittedRecords: rawMessages.length - messages.length,
+            domSnapshot: true,
+          },
+        },
+      },
+      stillPermitted,
+    )
+    return true
   }
 
   finishCollection(expected?: Pick<CollectionTicket, 'conversationId' | 'startedAt'>) {

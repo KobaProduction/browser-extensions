@@ -13,29 +13,93 @@ function isConversationScroller(element: HTMLElement): boolean {
     return false
   const main = document.querySelector('main')
   if (!main || (!main.contains(element) && !element.contains(main))) return false
-  const style = getComputedStyle(element)
-  return (
-    element.clientHeight > 0 &&
-    element.scrollHeight > element.clientHeight + 1 &&
-    /(auto|scroll)/.test(style.overflowY)
-  )
+  if (element.clientHeight < 80 || element.scrollHeight <= element.clientHeight + 4) return false
+  const overflowY = getComputedStyle(element).overflowY
+  return /(auto|scroll|hidden|clip)/.test(overflowY) || element.scrollTop > 0
 }
 
-/** Select the actual overflow ancestor of a conversation turn, never its movable content child. */
+function scrollCandidateScore(
+  element: HTMLElement,
+  message: HTMLElement | null,
+): number {
+  let score = 0
+  if (element.matches('[class~="group/scroll-root"]')) score += 50
+  if (element.matches('[data-scroll-root], [data-testid*="scroll" i]')) score += 24
+  if (message && element.contains(message)) score += 20
+  const style = getComputedStyle(element)
+  if (/(auto|scroll)/.test(style.overflowY)) score += 16
+  if (element.scrollTop > 0) score += 8
+  const rect = element.getBoundingClientRect()
+  if (rect.top <= innerHeight * 0.25 && rect.bottom >= innerHeight * 0.65) score += 6
+  score += Math.min(12, Math.round((element.clientHeight / Math.max(1, innerHeight)) * 12))
+  return score
+}
+
+/**
+ * Locate the actual conversation viewport. ChatGPT changes wrapper classes often, so the
+ * stable contract is "scrollable ancestor of a real turn", not one CSS class.
+ */
 export function findConversationScrollContainer(
   root: ParentNode = document,
 ): HTMLElement | undefined {
-  const known = root.querySelectorAll<HTMLElement>('[class~="group/scroll-root"]')
-  for (const candidate of known) if (isConversationScroller(candidate)) return candidate
   const message = root.querySelector<HTMLElement>(
-    'main [data-message-author-role], main [data-testid^="conversation-turn-"]',
+    'main [data-message-id][data-message-author-role], main [data-testid^="conversation-turn-"]',
   )
-  let candidate = message?.parentElement
-  while (candidate) {
-    if (isConversationScroller(candidate)) return candidate
-    candidate = candidate.parentElement
+  const candidates = new Set<HTMLElement>()
+
+  for (const known of root.querySelectorAll<HTMLElement>(
+    '[class~="group/scroll-root"], [data-scroll-root], [data-testid*="scroll" i]',
+  ))
+    candidates.add(known)
+
+  let ancestor = message?.parentElement ?? null
+  while (ancestor) {
+    candidates.add(ancestor)
+    ancestor = ancestor.parentElement
   }
+
+  const main = document.querySelector<HTMLElement>('main')
+  ancestor = main?.parentElement ?? null
+  while (ancestor) {
+    candidates.add(ancestor)
+    ancestor = ancestor.parentElement
+  }
+
+  const ranked = [...candidates]
+    .filter(isConversationScroller)
+    .sort((a, b) => scrollCandidateScore(b, message ?? null) - scrollCandidateScore(a, message ?? null))
+
+  if (ranked[0]) return ranked[0]
+
+  const scrolling = document.scrollingElement
+  if (scrolling instanceof HTMLElement && isConversationScroller(scrolling)) return scrolling
   return undefined
+}
+
+export function scrollConversationTowardStart(container: HTMLElement): {
+  moved: boolean
+  atStart: boolean
+  before: number
+  after: number
+} {
+  const before = container.scrollTop
+  if (before <= 1) return { moved: false, atStart: true, before, after: before }
+
+  const step = Math.min(
+    Math.max(420, Math.round(container.clientHeight * 0.85)),
+    Math.max(420, before),
+  )
+  const target = Math.max(0, before - step)
+  container.scrollTo({ top: target, behavior: 'instant' })
+  if (Math.abs(container.scrollTop - before) < 1) container.scrollTop = target
+
+  const after = container.scrollTop
+  return {
+    moved: after < before - 1,
+    atStart: after <= 1,
+    before,
+    after,
+  }
 }
 
 export function currentProjectId(href = location.href): string | undefined {

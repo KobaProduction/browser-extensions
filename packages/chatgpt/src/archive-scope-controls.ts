@@ -71,7 +71,7 @@ export function mountArchiveScopeControls(initial: ScopeControlOptions) {
         !context ||
         !options.visible(context) ||
         !item.host.isConnected ||
-        item.parent !== link.parentElement
+        item.host.parentElement !== item.parent
       ) {
         remove(link)
         continue
@@ -90,30 +90,38 @@ export function mountArchiveScopeControls(initial: ScopeControlOptions) {
 
       const host = document.createElement('span')
       host.dataset.chatgptBooster = 'archive-scope-control'
-      const isRow = parent.tagName === 'LI'
+      const conversationMarker = context.scope === 'conversation'
+      const insertionParent = conversationMarker ? link : parent
+      const isRow = !conversationMarker && parent.tagName === 'LI'
       const position = parent.style.position
       const changedPosition = isRow && getComputedStyle(parent).position === 'static'
       if (changedPosition) parent.style.position = 'relative'
-      host.style.cssText = isRow
-        ? 'position:absolute;right:62px;top:50%;transform:translateY(-50%);z-index:4;width:28px;height:28px;'
-        : 'display:inline-flex;vertical-align:middle;margin-inline:4px;width:28px;height:28px;'
 
-      host.addEventListener('pointerdown', (event) => {
-        event.preventDefault()
-        event.stopPropagation()
-      })
-      host.addEventListener('click', (event) => {
-        event.preventDefault()
-        event.stopPropagation()
-      })
+      host.style.cssText = conversationMarker
+        ? 'display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;width:10px;height:18px;margin-inline-end:5px;pointer-events:none;'
+        : isRow
+          ? 'position:absolute;right:62px;top:50%;transform:translateY(-50%);z-index:4;width:28px;height:28px;'
+          : 'display:inline-flex;vertical-align:middle;margin-inline:4px;width:28px;height:28px;'
+
+      if (!conversationMarker) {
+        host.addEventListener('pointerdown', (event) => {
+          event.preventDefault()
+          event.stopPropagation()
+        })
+        host.addEventListener('click', (event) => {
+          event.preventDefault()
+          event.stopPropagation()
+        })
+      }
 
       const mounted = options.mount(host, context)
-      parent.append(host)
+      if (conversationMarker) link.prepend(host)
+      else parent.append(host)
       owned.set(link, {
         host,
         mounted,
         context,
-        parent,
+        parent: insertionParent,
         position,
         changedPosition,
       })

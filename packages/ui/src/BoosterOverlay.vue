@@ -42,6 +42,10 @@ const growsUp = computed(() => position.value.y > (viewport.value.height - SIZE)
 const shellMaxHeight = computed(() => Math.max(SIZE, (growsUp.value ? position.value.y + SIZE : viewport.value.height - position.value.y) - 8))
 const opened = computed(() => expanded.value || view.value !== null)
 const active = computed(() => ['preparing', 'scrolling', 'waiting_for_load', 'backoff'].includes(loader.value.phase) && loader.value.conversationId === context.value.conversationId)
+const cachedMessageCount = computed(() =>
+  Math.max(coverage.value?.visibleMessageCount ?? 0, loader.value.knownMessageCount ?? 0),
+)
+const cachedDetailCount = computed(() => coverage.value?.internalRecordCount ?? 0)
 const captureResolution = computed(() =>
   context.value.conversationId
     ? resolveCaptureRule(
@@ -228,12 +232,12 @@ onBeforeUnmount(() => {
           <section class="booster-dock-context">
             <CopyIdentity :label="context.conversationTitle || t(context.conversationId ? 'identity.untitled' : 'dock.noChat')" :identifier="context.conversationId" :locale="locale" />
             <CopyIdentity v-if="context.projectId" :label="context.projectTitle || t('identity.unknownProject')" :identifier="context.projectId" :locale="locale" />
-            <div v-if="coverage" class="booster-dock-counts"><span>{{ t('dock.messages') }} <b>{{ coverage.visibleMessageCount ?? 0 }}</b></span><span>{{ t('dock.details') }} {{ coverage.internalRecordCount ?? 0 }}</span></div>
+            <div v-if="context.conversationId" class="booster-dock-counts"><span>{{ t('dock.messages') }} <b>{{ cachedMessageCount }}</b></span><span>{{ t('dock.details') }} {{ cachedDetailCount }}</span></div>
             <p v-if="coverage" class="booster-dock-history-state">{{ t(coverage.hasOlderServerHistory === true ? 'dock.olderAvailable' : coverage.hasOlderServerHistory === false ? 'dock.startReached' : 'dock.historyUnknown') }}</p>
             <p v-else-if="loading">{{ t('reader.loading') }}</p>
             <button class="booster-capture-shortcut" type="button" @click="openCapture(currentCaptureTarget)"><ShieldCheck class="size-3" />{{ t(captureStatusKey) }}</button>
           </section>
-          <div v-if="active" class="booster-dock-progress" role="status"><span>{{ t(`phase.${loader.phase}`) }} · {{ t('dock.pages') }}: {{ loader.pagesLoaded }}</span><button class="booster-icon-button" type="button" :aria-label="t('dock.stop')" @click="stop"><Square class="size-3" /></button></div>
+          <div v-if="active" class="booster-dock-progress" role="status"><span>{{ t(`phase.${loader.phase}`) }} · {{ t('dock.messages') }}: {{ loader.knownMessageCount }} · {{ t('dock.pages') }}: {{ loader.pagesLoaded }}</span><button class="booster-icon-button" type="button" :aria-label="t('dock.stop')" @click="stop"><Square class="size-3" /></button></div>
           <p v-if="loader.phase === 'error' && loader.conversationId === context.conversationId" role="alert" class="booster-error">{{ t(safeError(new Error(loader.message))) }}</p><p v-if="error" class="booster-error" role="alert">{{ t(error) }}</p>
           <nav class="booster-dock-actions" :aria-label="t('dock.title')">
             <button type="button" :disabled="!savedChat || !context.conversationId" @click="context.conversationId && openExport(context.conversationId, context.conversationTitle)"><Download class="size-4" />{{ t('dock.export') }}</button>

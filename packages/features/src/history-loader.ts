@@ -2,6 +2,7 @@ import {
   currentConversationId,
   currentConversationMessageBounds,
   findConversationScrollContainer,
+  scrollConversationTowardStart,
 } from '@chatgpt-booster/chatgpt'
 import {
   ARCHIVE_UPDATED_EVENT,
@@ -56,6 +57,7 @@ export class HistoryLoaderModule implements BoosterModule {
   #abort: AbortController | undefined
   #pages = new Set<string>()
   #startedAt = 0
+  #baselinePages = 0
   #ticket: CollectionTicket | undefined
   #network: { pending: boolean; error: number | null } = { pending: false, error: null }
   #state: HistoryLoaderState = {
@@ -67,7 +69,7 @@ export class HistoryLoaderModule implements BoosterModule {
     consecutiveErrors: 0,
   }
   constructor(
-    private store: Pick<ConversationArchiveStore, 'getCoverage'>,
+    private store: Pick<ConversationArchiveStore, 'getCoverage' | 'getPreloadSnapshot'>,
     private capture: Pick<ConversationArchiveModule, 'finishCollection'>,
   ) {}
   start() {
@@ -113,6 +115,7 @@ export class HistoryLoaderModule implements BoosterModule {
     )
       return
     if (data.detail.phase === 'request') this.#network = { pending: true, error: null }
+    if (data.detail.phase === 'response') this.#network.pending = false
     if (data.detail.phase === 'error')
       this.#network = { pending: false, error: data.detail.status ?? 0 }
   }
@@ -138,6 +141,7 @@ export class HistoryLoaderModule implements BoosterModule {
     this.#ticket = ticket
     this.#startedAt = ticket.startedAt
     this.#pages.clear()
+    this.#baselinePages = 0
     this.#network = { pending: false, error: null }
     this.#set({
       phase: 'preparing',
@@ -179,7 +183,10 @@ export class HistoryLoaderModule implements BoosterModule {
           continue
         }
 
-        const coverage = await this.store.getCoverage(id)
+        const [coverage, preload] = await Promise.all([
+          this.store.getCoverage(id),
+          this.store.getPreloadSnapshot(id),
+        ])
         requireCurrentCollection()
         if (document.hidden) {
           stalledAt = Date.now()
@@ -188,6 +195,15 @@ export class HistoryLoaderModule implements BoosterModule {
         const container = findConversationScrollContainer()
         const bounds = currentConversationMessageBounds()
         const fresh = coverage?.evidenceVersion === 1 && (coverage.readStartedAt ?? 0) >= startedAt
+        const displayCoverage =
+          preload && (!coverage || preload.coverage.lastObservedAt > coverage.lastObservedAt)
+            ? preload.coverage
+            : coverage
+        const observedBaseline = Math.max(
+          coverage?.historyPageCount ?? 0,
+          preload?.coverage.historyPageCount ?? 0,
+        )
+        if (this.#baselinePages === 0 && observedBaseline > 0) this.#baselinePages = observedBaseline
         const atStart = !container || container.scrollTop <= 1
         const startMatches =
           !!bounds.firstMessageId && coverage?.oldestKnownVisibleMessageId === bounds.firstMessageId
@@ -196,9 +212,16 @@ export class HistoryLoaderModule implements BoosterModule {
           coverage?.newestKnownVisibleMessageId === expectedLatestMessageId
 
         this.#set({
-          knownMessageCount: coverage?.visibleMessageCount ?? 0,
-          pagesLoaded: fresh ? (coverage?.historyPageCount ?? this.#pages.size) : this.#pages.size,
-          hasOlderServerHistory: coverage?.hasOlderServerHistory ?? null,
+          knownMessageCount: Math.max(
+            coverage?.visibleMessageCount ?? 0,
+            preload?.coverage.visibleMessageCount ?? 0,
+          ),
+          pagesLoaded: Math.max(
+            observedBaseline,
+            this.#baselinePages + this.#pages.size,
+          ),
+          hasOlderServerHistory:
+            coverage?.hasOlderServerHistory ?? displayCoverage?.hasOlderServerHistory ?? null,
         })
 
         if (fresh && coverage?.completeAtLastRead && atStart && startMatches && latestMatches) {
@@ -231,12 +254,8 @@ export class HistoryLoaderModule implements BoosterModule {
         if (this.#network.pending) {
           this.#set({ phase: 'waiting_for_load' })
         } else if (container) {
-          const before = container.scrollTop
-          container.scrollBy({
-            top: -Math.min(260, Math.max(120, container.clientHeight * 0.4)),
-            behavior: 'instant',
-          })
-          if (container.scrollTop < before - 1) {
+          const scroll = scrollConversationTowardStart(container)
+          if (scroll.moved) {
             this.#set({ phase: 'scrolling' })
             stalledAt = Date.now()
           } else {
