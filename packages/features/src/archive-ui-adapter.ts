@@ -9,7 +9,7 @@ import {
   currentResolvedAssetUrls,
 } from '@chatgpt-booster/chatgpt'
 import type { ArchiveExportOptions } from '@chatgpt-booster/core'
-import { serializeArchiveExport } from './archive-export'
+import { type ArchiveExportPipeline, DEFAULT_ARCHIVE_EXPORT_PIPELINE } from './archive-export'
 import { createArchivePackage } from './archive-package'
 import type { ConversationArchiveStore } from './archive-store'
 import type { ConversationArchiveModule } from './conversation-archive'
@@ -17,6 +17,7 @@ import type { ConversationArchiveModule } from './conversation-archive'
 export function createArchiveUiAdapter(
   store: ConversationArchiveStore,
   capture: ConversationArchiveModule,
+  exportPipeline: ArchiveExportPipeline = DEFAULT_ARCHIVE_EXPORT_PIPELINE,
 ) {
   async function observedProjectTitle(projectId: string, stored: string | null) {
     const observed = currentProjectTitle(projectId)?.trim() || null
@@ -98,6 +99,7 @@ export function createArchiveUiAdapter(
     getThread: async (conversationId: string) =>
       buildArchiveThread(await store.listMessages(conversationId)),
     collectCurrent: () => capture.collectCurrent(),
+    listExportFormats: () => exportPipeline.listFormats(),
     exportConversation: async (
       conversationId: string,
       options: ArchiveExportOptions,
@@ -120,14 +122,14 @@ export function createArchiveUiAdapter(
       const thread = buildArchiveThread(messages)
       const packageRequested = options.level === 'full' || options.images || options.files
       if (!packageRequested) {
-        const result = serializeArchiveExport(conversation, thread, options, evidence)
+        const result = exportPipeline.serialize(conversation, thread, options, evidence)
         return {
           packaged: false,
           complete: evidence.verified && captureEvidence.verified,
           includedAssets: 0,
           missingAssets: 0,
           blob: new Blob([result.text], { type: `${result.mime};charset=utf-8` }),
-          extension: result.extension as 'json' | 'md',
+          extension: result.extension,
         }
       }
 
@@ -159,6 +161,7 @@ export function createArchiveUiAdapter(
         assets,
         undefined,
         signal,
+        exportPipeline,
       )
       const includedAssets = result.manifest.assets.filter(
         (asset) => asset.status === 'included',

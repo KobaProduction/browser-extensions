@@ -17,7 +17,11 @@ import {
   type HistoryPageEvidence,
   historyCoverage,
 } from '../packages/features/src/archive-coverage'
-import { serializeArchiveExport } from '../packages/features/src/archive-export'
+import {
+  ArchiveExportPipeline,
+  createArchiveExportPipeline,
+  serializeArchiveExport,
+} from '../packages/features/src/archive-export'
 import { createArchivePackage } from '../packages/features/src/archive-package'
 import { historyBackoffMs } from '../packages/features/src/history-loader'
 
@@ -90,6 +94,12 @@ describe('dock persistence and settings migration', () => {
     expect(captureRuleFor(saved.archive, 'c1', 'p1').enabled).toBe(false)
     expect(saved.export.format).toBe('markdown')
     expect(saved.export.images).toBe(false)
+    expect(
+      normalizeSettings({
+        ...saved,
+        export: { ...saved.export, format: 'third-party.text' },
+      }).export.format,
+    ).toBe('third-party.text')
   })
 })
 
@@ -185,6 +195,103 @@ describe('conversation vs nested records', () => {
     expect(json.includes('finished_successfully')).toBe(false)
     expect(exported.binaryAttachmentsIncluded).toBe(false)
   })
+  test('export format registry accepts external providers and falls back when a saved format is unavailable', () => {
+    const pipeline = new ArchiveExportPipeline(
+      [
+        {
+          descriptor: {
+            id: 'plain',
+            label: 'Plain text',
+            mimeType: 'text/plain',
+            fileExtension: 'txt',
+          },
+          serialize(document) {
+            return {
+              text: document.selection.format + ':' + document.conversation.title,
+              mime: 'text/plain',
+              extension: 'txt',
+            }
+          },
+        },
+      ],
+      'plain',
+    )
+    expect(pipeline.listFormats()).toEqual([
+      {
+        id: 'plain',
+        label: 'Plain text',
+        mimeType: 'text/plain',
+        fileExtension: 'txt',
+        isDefault: true,
+      },
+    ])
+    const result = pipeline.serialize(
+      { conversationId: 'chat', title: 'Test', projectId: null },
+      buildArchiveThread(records),
+      { ...DEFAULT_EXPORT_OPTIONS, format: 'removed-format' },
+      {},
+    )
+    expect(result.extension).toBe('txt')
+    expect(result.text).toBe('plain:Test')
+  })
+
+  test('pipeline factory extends built-ins without changing UI or package code', () => {
+    const pipeline = createArchiveExportPipeline([
+      {
+        descriptor: {
+          id: 'html',
+          label: 'HTML',
+          mimeType: 'text/html',
+          fileExtension: 'html',
+        },
+        serialize(document) {
+          return {
+            text: '<h1>' + document.conversation.title + '</h1>',
+            mime: 'text/html',
+            extension: 'html',
+          }
+        },
+      },
+    ])
+    expect(pipeline.listFormats().map((format) => format.id)).toEqual(['json', 'markdown', 'html'])
+  })
+
+  test('ZIP transcript uses the same injected format pipeline', async () => {
+    const pipeline = new ArchiveExportPipeline(
+      [
+        {
+          descriptor: {
+            id: 'plain',
+            label: 'Plain text',
+            mimeType: 'text/plain',
+            fileExtension: 'txt',
+          },
+          serialize(document) {
+            return {
+              text: 'plain:' + document.conversation.title,
+              mime: 'text/plain',
+              extension: 'txt',
+            }
+          },
+        },
+      ],
+      'plain',
+    )
+    const result = await createArchivePackage(
+      { conversationId: 'chat', projectId: null, title: 'Test' } as never,
+      buildArchiveThread(records),
+      { ...DEFAULT_EXPORT_OPTIONS, level: 'full', format: 'plain' },
+      { verified: true, capture: { verified: true } },
+      [],
+      undefined,
+      undefined,
+      pipeline,
+    )
+    const zip = new TextDecoder().decode(await result.blob.arrayBuffer())
+    expect(zip).toContain('conversation.txt')
+    expect(zip).toContain('plain:Test')
+  })
+
   test('custom Markdown includes only selected reasoning, not tool outputs', () => {
     const text = serializeArchiveExport(
       { conversationId: 'chat', title: 'Test', projectId: null },

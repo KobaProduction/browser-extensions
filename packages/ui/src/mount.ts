@@ -1,5 +1,6 @@
 import type {
   ArchiveCurrentContext,
+  ArchiveExportFormatDescriptor,
   ArchiveExportOptions,
   ArchiveExportOutcome,
   ArchiveThreadView,
@@ -74,6 +75,7 @@ export interface ArchiveDataAdapter {
   currentProjectId(): string | null
   getThread(conversationId: string): Promise<ArchiveThreadView>
   collectCurrent(): Promise<void>
+  listExportFormats(): ArchiveExportFormatDescriptor[]
   exportConversation(
     conversationId: string,
     options: ArchiveExportOptions,

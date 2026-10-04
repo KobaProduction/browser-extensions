@@ -5,7 +5,11 @@ import type {
   ArchiveThreadView,
 } from '@chatgpt-booster/core'
 import { archiveAssetContentUrl, fetchArchiveAssetBytes } from '@chatgpt-booster/observer'
-import { exportIncludes, serializeArchiveExport } from './archive-export'
+import {
+  type ArchiveExportPipeline,
+  DEFAULT_ARCHIVE_EXPORT_PIPELINE,
+  exportIncludes,
+} from './archive-export'
 import type { ArchivedAsset, ArchivedConversation } from './archive-store'
 
 export interface ArchivePackageManifestAsset extends ArchiveAttachmentView {
@@ -206,12 +210,13 @@ export async function createArchivePackage(
   assets: ArchivedAsset[],
   fetcher: ArchiveAssetFetcher = fetchArchiveAssetBytes,
   signal?: AbortSignal,
+  exportPipeline: ArchiveExportPipeline = DEFAULT_ARCHIVE_EXPORT_PIPELINE,
 ): Promise<ArchivePackageResult> {
   const transcriptOptions: ArchiveExportOptions =
     options.level === 'full'
       ? { ...options, reasoning: true, tools: true, internal: true, images: true, files: true }
       : options
-  const transcript = serializeArchiveExport(conversation, thread, transcriptOptions, evidence)
+  const transcript = exportPipeline.serialize(conversation, thread, transcriptOptions, evidence)
   const transcriptName = `conversation.${transcript.extension}`
   const entries: ZipEntry[] = [{ path: transcriptName, bytes: encoder.encode(transcript.text) }]
   const stored = new Map(assets.map((asset) => [asset.assetId, asset]))

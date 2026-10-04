@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import { DEFAULT_EXPORT_OPTIONS, normalizeExportOptions, type ArchiveExportOptions, type SettingsAdapter } from '@chatgpt-booster/core'
+import {
+  DEFAULT_EXPORT_OPTIONS,
+  normalizeExportOptions,
+  type ArchiveExportFormatDescriptor,
+  type ArchiveExportOptions,
+  type SettingsAdapter,
+} from '@chatgpt-booster/core'
 import { ArrowUpToLine, CheckCircle2, Download, Info, X } from 'lucide-vue-next'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { translate, type SupportedLocale, type TranslationKey } from './i18n'
@@ -7,6 +13,7 @@ import type { ArchiveCoverageView, ArchiveDataAdapter } from './mount'
 const props = defineProps<{ archiveAdapter: ArchiveDataAdapter; settingsAdapter: SettingsAdapter; conversationId: string; title?: string | null; locale: SupportedLocale }>()
 const emit = defineEmits<{ close: [] }>()
 const options = ref<ArchiveExportOptions>({ ...DEFAULT_EXPORT_OPTIONS })
+const formats = ref<ArchiveExportFormatDescriptor[]>(props.archiveAdapter.listExportFormats())
 const busy = ref(false), ready = ref(false), error = ref(''), complete = ref(false), incomplete = ref(false)
 const coverage = ref<ArchiveCoverageView>()
 const refreshing = ref(false)
@@ -36,7 +43,14 @@ onMounted(async () => {
       props.archiveAdapter.getCoverage(props.conversationId),
     ])
     if (active) {
-      options.value = normalizeExportOptions(settings.export)
+      const normalized = normalizeExportOptions(settings.export)
+      formats.value = props.archiveAdapter.listExportFormats()
+      const selected = formats.value.find((format) => format.id === normalized.format)
+      const fallback = formats.value.find((format) => format.isDefault) ?? formats.value[0]
+      options.value = {
+        ...normalized,
+        format: selected?.id ?? fallback?.id ?? DEFAULT_EXPORT_OPTIONS.format,
+      }
       coverage.value = nextCoverage
       ready.value = true
     }
@@ -106,7 +120,7 @@ function cancelExport() {
         <div><strong>{{ t(statusKey) }}</strong><span v-if="coverage">{{ t('dock.messages') }}: {{ coverage.visibleMessageCount ?? 0 }} · {{ t('dock.details') }}: {{ coverage.internalRecordCount ?? 0 }}</span></div>
         <button v-if="updateRecommended" type="button" class="booster-action-secondary" :disabled="refreshing || busy" @click="refreshBeforeExport"><ArrowUpToLine class="size-4" />{{ t(refreshing ? 'export.refreshStarting' : 'export.refreshFirst') }}</button>
       </div>
-      <label>{{ t('export.format') }}<select v-model="options.format" :disabled="busy" @change="remember"><option value="json">JSON</option><option value="markdown">Markdown</option></select></label>
+      <label>{{ t('export.format') }}<select v-model="options.format" :disabled="busy" @change="remember"><option v-for="format in formats" :key="format.id" :value="format.id">{{ format.label }}</option></select></label>
       <label>{{ t('export.level') }}<select v-model="options.level" :disabled="busy" @change="remember"><option value="conversation">{{ t('export.conversation') }}</option><option value="custom">{{ t('export.custom') }}</option><option value="full">{{ t('export.full') }}</option></select></label>
       <fieldset v-if="options.level === 'custom'" :disabled="busy" class="booster-checkboxes">
         <label><input v-model="options.reasoning" type="checkbox" @change="remember" />{{ t('export.reasoning') }}</label>

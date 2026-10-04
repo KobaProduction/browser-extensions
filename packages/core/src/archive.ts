@@ -63,16 +63,23 @@ export interface ArchiveSettings {
   projects: Record<string, CaptureRule>
   conversations: Record<string, CaptureRule>
 }
+export interface ArchiveExportFormatDescriptor {
+  id: string
+  label: string
+  mimeType: string
+  fileExtension: string
+  isDefault: boolean
+}
 export interface ArchiveExportOutcome {
   packaged: boolean
   complete: boolean
   includedAssets: number
   missingAssets: number
   blob: Blob
-  extension: 'json' | 'md' | 'zip'
+  extension: string
 }
 export interface ArchiveExportOptions {
-  format: 'json' | 'markdown'
+  format: string
   level: 'conversation' | 'custom' | 'full'
   reasoning: boolean
   tools: boolean
@@ -185,7 +192,10 @@ export function normalizeExportOptions(
   value?: Partial<ArchiveExportOptions>,
 ): ArchiveExportOptions {
   return {
-    format: value?.format === 'markdown' ? 'markdown' : 'json',
+    format:
+      typeof value?.format === 'string' && /^[a-z0-9][a-z0-9._-]{0,63}$/i.test(value.format.trim())
+        ? value.format.trim()
+        : DEFAULT_EXPORT_OPTIONS.format,
     level: value?.level === 'custom' || value?.level === 'full' ? value.level : 'conversation',
     reasoning: typeof value?.reasoning === 'boolean' ? value.reasoning : true,
     tools: typeof value?.tools === 'boolean' ? value.tools : true,

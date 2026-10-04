@@ -743,6 +743,12 @@ export async function runUiTests(
       const selectors = [...dialog.querySelectorAll<HTMLSelectElement>('select')]
       const [formatSelect, levelSelect] = selectors
       assert(formatSelect && levelSelect, 'format/level selectors missing')
+      const expectedFormats = adapter.listExportFormats()
+      assert(
+        JSON.stringify([...formatSelect.options].map((option) => option.value)) ===
+          JSON.stringify(expectedFormats.map((format) => format.id)),
+        'format selector is not driven by the export registry',
+      )
       levelSelect.value = 'full'
       levelSelect.dispatchEvent(new Event('change', { bubbles: true }))
       await delay()

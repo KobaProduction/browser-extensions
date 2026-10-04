@@ -855,6 +855,22 @@ const adapter = {
   collectCurrent: async () => {
     throw new Error('archive.error.noChat')
   },
+  listExportFormats: () => [
+    {
+      id: 'json',
+      label: 'JSON',
+      mimeType: 'application/json',
+      fileExtension: 'json',
+      isDefault: true,
+    },
+    {
+      id: 'markdown',
+      label: 'Markdown',
+      mimeType: 'text/markdown',
+      fileExtension: 'md',
+      isDefault: false,
+    },
+  ],
   exportConversation: async (id: string, options: ArchiveExportOptions) => {
     const c = await store.getConversation(id)
     if (!c) throw new Error('archive.error.noChat')
@@ -871,7 +887,7 @@ const adapter = {
       includedAssets: 0,
       missingAssets: 0,
       blob: new Blob([result.text], { type: `${result.mime};charset=utf-8` }),
-      extension: result.extension as 'json' | 'md',
+      extension: result.extension,
     }
   },
 }
