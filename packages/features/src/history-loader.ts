@@ -203,7 +203,8 @@ export class HistoryLoaderModule implements BoosterModule {
           coverage?.historyPageCount ?? 0,
           preload?.coverage.historyPageCount ?? 0,
         )
-        if (this.#baselinePages === 0 && observedBaseline > 0) this.#baselinePages = observedBaseline
+        if (this.#baselinePages === 0 && observedBaseline > 0)
+          this.#baselinePages = observedBaseline
         const atStart = !container || container.scrollTop <= 1
         const startMatches =
           !!bounds.firstMessageId && coverage?.oldestKnownVisibleMessageId === bounds.firstMessageId
@@ -216,10 +217,7 @@ export class HistoryLoaderModule implements BoosterModule {
             coverage?.visibleMessageCount ?? 0,
             preload?.coverage.visibleMessageCount ?? 0,
           ),
-          pagesLoaded: Math.max(
-            observedBaseline,
-            this.#baselinePages + this.#pages.size,
-          ),
+          pagesLoaded: Math.max(observedBaseline, this.#baselinePages + this.#pages.size),
           hasOlderServerHistory:
             coverage?.hasOlderServerHistory ?? displayCoverage?.hasOlderServerHistory ?? null,
         })

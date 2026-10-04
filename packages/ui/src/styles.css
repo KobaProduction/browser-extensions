@@ -2582,7 +2582,9 @@
 }
 .booster-chat-save-marker.is-enabled {
   background: #22c55e;
-  box-shadow: 0 0 0 1px rgb(34 197 94 / 25%), 0 0 6px rgb(34 197 94 / 38%);
+  box-shadow:
+    0 0 0 1px rgb(34 197 94 / 25%),
+    0 0 6px rgb(34 197 94 / 38%);
 }
 .booster-project-status-badge {
   display: inline-flex;

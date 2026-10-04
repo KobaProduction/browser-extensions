@@ -18,10 +18,7 @@ function isConversationScroller(element: HTMLElement): boolean {
   return /(auto|scroll|hidden|clip)/.test(overflowY) || element.scrollTop > 0
 }
 
-function scrollCandidateScore(
-  element: HTMLElement,
-  message: HTMLElement | null,
-): number {
+function scrollCandidateScore(element: HTMLElement, message: HTMLElement | null): number {
   let score = 0
   if (element.matches('[class~="group/scroll-root"]')) score += 50
   if (element.matches('[data-scroll-root], [data-testid*="scroll" i]')) score += 24
@@ -67,7 +64,9 @@ export function findConversationScrollContainer(
 
   const ranked = [...candidates]
     .filter(isConversationScroller)
-    .sort((a, b) => scrollCandidateScore(b, message ?? null) - scrollCandidateScore(a, message ?? null))
+    .sort(
+      (a, b) => scrollCandidateScore(b, message ?? null) - scrollCandidateScore(a, message ?? null),
+    )
 
   if (ranked[0]) return ranked[0]
 
