@@ -140,7 +140,11 @@ const toolGlyph = computed(() => {
   if (key.includes('git')) return GitBranch
   return Wrench
 })
-const hasText = computed(() => Boolean(props.item.text.trim()))
+const hasText = computed(() => {
+  const value = props.item.text.trim()
+  if (!value) return false
+  return !/^(?:the output of this plugin was (?:redacted|omitted)|output (?:redacted|omitted))\.?$/i.test(value)
+})
 const isReasoningExpanded = computed(() => props.expandReasoning || expanded.value)
 const preview = computed(() => {
   const text = props.item.text.trim()
