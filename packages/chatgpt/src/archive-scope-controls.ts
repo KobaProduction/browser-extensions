@@ -9,6 +9,7 @@ export interface MountedArchiveScopeSlot {
 interface ScopeControlOptions {
   visible(context: ArchiveCaptureContext): boolean
   mount(host: HTMLElement, context: ArchiveCaptureContext): MountedArchiveScopeSlot
+  resolveProjectContext?(title: string): ArchiveCaptureContext | undefined
 }
 
 /**
@@ -26,6 +27,15 @@ export function mountArchiveScopeControls(initial: ScopeControlOptions) {
       parent: HTMLElement
       position: string
       changedPosition: boolean
+    }
+  >()
+  const projectRows = new Map<
+    HTMLElement,
+    {
+      host: HTMLElement
+      mounted: MountedArchiveScopeSlot
+      context: ArchiveCaptureContext
+      parent: HTMLElement
     }
   >()
   let stopped = false
@@ -61,6 +71,39 @@ export function mountArchiveScopeControls(initial: ScopeControlOptions) {
     owned.delete(link)
   }
 
+  function removeProjectRow(row: HTMLElement) {
+    const item = projectRows.get(row)
+    if (!item) return
+    item.mounted.unmount()
+    item.host.remove()
+    projectRows.delete(row)
+  }
+
+  function projectRowTitle(row: HTMLElement): string | null {
+    const actions = row.querySelector<HTMLButtonElement>(
+      'button[aria-label][data-page-table-row-actions-focus-target="true"]',
+    )
+    const quoted = actions
+      ?.getAttribute('aria-label')
+      ?.match(/[«“"]([^»”"]+)[»”"]/)?.[1]
+      ?.trim()
+    if (quoted) return quoted
+
+    const folder = row.querySelector<HTMLElement>('[data-testid="project-folder-icon"]')
+    if (!folder) return null
+    const cell = folder.closest<HTMLElement>('[role="gridcell"]')
+    if (!cell) return null
+    const values = [...cell.querySelectorAll<HTMLElement>('div, span')]
+      .filter((element) => !element.querySelector('div, span'))
+      .map((element) => element.textContent?.trim() ?? '')
+      .filter(
+        (value) =>
+          value &&
+          !/^(?:today|yesterday|сегодня|вчера|\d+[\s\S]*(?:ago|назад|мин|ч|дн))$/i.test(value),
+      )
+    return values[0] ?? null
+  }
+
   function refresh() {
     if (stopped) return
     observer.disconnect()
@@ -78,6 +121,53 @@ export function mountArchiveScopeControls(initial: ScopeControlOptions) {
       }
       item.context = context
       item.mounted.update(context)
+    }
+
+    for (const [row, item] of projectRows) {
+      const title = row.isConnected ? projectRowTitle(row) : null
+      const context = title ? options.resolveProjectContext?.(title) : undefined
+      if (
+        !context ||
+        !options.visible(context) ||
+        !item.host.isConnected ||
+        item.host.parentElement !== item.parent
+      ) {
+        removeProjectRow(row)
+        continue
+      }
+      item.context = context
+      item.mounted.update(context)
+    }
+
+    for (const row of document.querySelectorAll<HTMLElement>(
+      'main [role="row"][data-page-table-selectable-row="true"]',
+    )) {
+      if (projectRows.has(row) || row.closest('[data-chatgpt-booster], #chatgpt-booster-root'))
+        continue
+      const title = projectRowTitle(row)
+      const context = title ? options.resolveProjectContext?.(title) : undefined
+      if (!context || !options.visible(context)) continue
+      const folder = row.querySelector<HTMLElement>('[data-testid="project-folder-icon"]')
+      const folderFrame = folder?.parentElement
+      const cell = folder?.closest<HTMLElement>('[role="gridcell"]')
+      if (!folder || !folderFrame || !cell) continue
+
+      const host = document.createElement('span')
+      host.dataset.chatgptBooster = 'archive-scope-control'
+      host.style.cssText =
+        'display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;width:28px;height:28px;'
+      host.addEventListener('pointerdown', (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+      })
+      host.addEventListener('click', (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+      })
+
+      const mounted = options.mount(host, context)
+      folderFrame.insertAdjacentElement('afterend', host)
+      projectRows.set(row, { host, mounted, context, parent: cell })
     }
 
     for (const link of document.querySelectorAll<HTMLAnchorElement>(
@@ -157,6 +247,7 @@ export function mountArchiveScopeControls(initial: ScopeControlOptions) {
       if (queued) clearTimeout(queued)
       queued = undefined
       for (const [link] of owned) remove(link)
+      for (const [row] of projectRows) removeProjectRow(row)
     },
   }
 }

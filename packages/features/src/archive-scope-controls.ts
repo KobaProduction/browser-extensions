@@ -28,10 +28,11 @@ export class ArchiveScopeControlsModule implements BoosterModule {
   #conversationProjects = new Map<string, string | null>()
   #archivedConversationIds = new Set<string>()
   #projectArchivedCounts = new Map<string, number>()
+  #projectIdsByTitle = new Map<string, string>()
 
   constructor(
     private settings: SettingsAdapter,
-    private store?: Pick<ConversationArchiveStore, 'listConversations'>,
+    private store?: Pick<ConversationArchiveStore, 'listConversations' | 'listProjects'>,
   ) {}
 
   async start() {
@@ -64,7 +65,10 @@ export class ArchiveScopeControlsModule implements BoosterModule {
   async #refreshArchiveState() {
     if (!this.store) return
     try {
-      const conversations = await this.store.listConversations()
+      const [conversations, projects] = await Promise.all([
+        this.store.listConversations(),
+        this.store.listProjects(),
+      ])
       if (!this.#active && this.#latestSettings) return
       this.#conversationProjects = new Map(
         conversations.map((conversation) => [conversation.conversationId, conversation.projectId]),
@@ -81,6 +85,12 @@ export class ArchiveScopeControlsModule implements BoosterModule {
         )
       }
       this.#projectArchivedCounts = projectCounts
+      this.#projectIdsByTitle = new Map(
+        projects.flatMap((project) => {
+          const title = project.title?.trim()
+          return title ? [[title.toLocaleLowerCase(), project.projectId] as const] : []
+        }),
+      )
     } catch {
       // Sidebar controls stay usable if local archive state is temporarily unavailable.
     }
@@ -175,6 +185,10 @@ export class ArchiveScopeControlsModule implements BoosterModule {
 
     const options: Parameters<typeof mountArchiveScopeControls>[0] = {
       visible: () => true,
+      resolveProjectContext: (title) => {
+        const id = this.#projectIdsByTitle.get(title.trim().toLocaleLowerCase())
+        return id ? { scope: 'project', id, title } : undefined
+      },
       mount: (host, context) => {
         const mounted = mountScopeArchiveControl(host, this.#model(context))
         return {
