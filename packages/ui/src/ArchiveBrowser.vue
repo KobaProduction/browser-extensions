@@ -1,21 +1,21 @@
 <script setup lang="ts">
 import type { ArchiveThreadView } from '@chatgpt-booster/core'
-import { ChevronDown, ChevronRight, Database, Download, RefreshCw, X, ArrowLeft } from 'lucide-vue-next'
+import { ArrowLeft, Brain, ChevronDown, ChevronRight, Database, Download, GripHorizontal, Minus, RefreshCw, X } from 'lucide-vue-next'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ArchiveRecord from './ArchiveRecord.vue'
 import CopyIdentity from './CopyIdentity.vue'
 import { translate, type SupportedLocale, type TranslationKey } from './i18n'
 import type { ArchiveConversationView, ArchiveProjectView, ArchiveCoverageView, ArchiveDataAdapter } from './mount'
-const props = defineProps<{ archiveAdapter: ArchiveDataAdapter; initialConversationId?: string | null; locale: SupportedLocale }>()
-const emit = defineEmits<{ close: []; export: [conversationId: string, title: string | null] }>()
+const props = defineProps<{ archiveAdapter: ArchiveDataAdapter; initialConversationId?: string | null; locale: SupportedLocale; windowed?: boolean }>()
+const emit = defineEmits<{ close: []; minimize: []; export: [conversationId: string, title: string | null] }>()
 const t = (key: TranslationKey) => translate(props.locale, key)
 const conversations = ref<ArchiveConversationView[]>([]), projects = ref<ArchiveProjectView[]>([])
 const selectedId = ref<string | null>(props.initialConversationId ?? null)
 const thread = ref<ArchiveThreadView>({ turns: [], messageCount: 0, recordCount: 0, detailCount: 0 })
 const coverage = ref<ArchiveCoverageView>()
 const listLoading = ref(false), threadLoading = ref(false), error = ref(false), mobileList = ref(!props.initialConversationId)
-const search = ref(''), textSearch = ref(''), visibleCount = ref(40), expanded = ref(new Set<string>()), details = ref(new Set<string>())
-let alive = true, listRevision = 0, threadRevision = 0, initialized = false
+const search = ref(''), textSearch = ref(''), visibleCount = ref(40), expanded = ref(new Set<string>()), reasoningExpanded = ref(false)
+let alive = true, listRevision = 0, threadRevision = 0, initialized = false, contextTimer: ReturnType<typeof setInterval> | undefined
 const NONE = '__outside_projects__'
 const selected = computed(() => conversations.value.find(c => c.conversationId === selectedId.value))
 const projectLabel = (id: string | null) => id ? projects.value.find(p => p.projectId === id)?.title || t('identity.unknownProject') : t('reader.noProject')
@@ -38,11 +38,10 @@ const archiveStatusKey = computed<TranslationKey>(() =>
 )
 watch(textSearch, () => { visibleCount.value = 40 })
 function toggleGroup(id: string) { const next = new Set(expanded.value); if (!next.delete(id)) next.add(id); expanded.value = next }
-function toggleDetails(event: Event, id: string) { const next = new Set(details.value); if ((event.target as HTMLDetailsElement).open) next.add(id); else next.delete(id); details.value = next }
 function date(value?: number | null) { return value ? new Date(value).toLocaleString(props.locale) : '' }
 async function loadThread(id: string | null) {
   const revision = ++threadRevision
-  thread.value = { turns: [], messageCount: 0, recordCount: 0, detailCount: 0 }; coverage.value = undefined; details.value = new Set(); visibleCount.value = 40
+  thread.value = { turns: [], messageCount: 0, recordCount: 0, detailCount: 0 }; coverage.value = undefined; visibleCount.value = 40
   if (!id) { threadLoading.value = false; return }
   threadLoading.value = true; error.value = false
   try {
@@ -69,12 +68,30 @@ async function refresh() {
   } catch { if (alive && revision === listRevision) error.value = true }
   finally { if (alive && revision === listRevision) listLoading.value = false }
 }
-onMounted(refresh)
-onBeforeUnmount(() => { alive = false; listRevision++; threadRevision++ })
+onMounted(async () => {
+  await refresh()
+  let current = props.archiveAdapter.currentConversationId()
+  contextTimer = setInterval(() => {
+    const next = props.archiveAdapter.currentConversationId()
+    if (!next || next === current) return
+    current = next
+    const conversation = conversations.value.find((item) => item.conversationId === next)
+    selectedId.value = next
+    if (conversation) expanded.value = new Set([conversation.projectId ?? NONE])
+    textSearch.value = ''
+    void loadThread(next)
+  }, 700)
+})
+onBeforeUnmount(() => {
+  alive = false
+  listRevision++
+  threadRevision++
+  if (contextTimer) clearInterval(contextTimer)
+})
 </script>
 <template>
   <div class="booster-reader" :lang="locale" :class="{ 'booster-reader-list-mode': mobileList }">
-    <header class="booster-section-header"><div class="booster-reader-heading"><Database class="size-5" /><div><strong>{{ t('reader.title') }}</strong><p>{{ t('reader.readonly') }}</p></div></div><div class="booster-header-actions"><button type="button" class="booster-icon-button" :disabled="listLoading" :title="t('reader.refresh')" :aria-label="t('reader.refresh')" @click="refresh"><RefreshCw class="size-4" /></button><button type="button" class="booster-icon-button" :aria-label="t('reader.close')" @click="emit('close')"><X class="size-4" /></button></div></header>
+    <header class="booster-section-header" :data-archive-drag-handle="windowed ? '' : undefined"><div class="booster-reader-heading"><GripHorizontal v-if="windowed" class="booster-archive-grip size-4" /><Database class="size-5" /><div><strong>{{ t('reader.title') }}</strong><p>{{ t('reader.readonly') }}</p></div></div><div class="booster-header-actions"><button type="button" class="booster-icon-button" :disabled="listLoading" :title="t('reader.refresh')" :aria-label="t('reader.refresh')" @click="refresh"><RefreshCw class="size-4" /></button><button v-if="windowed" type="button" class="booster-icon-button" :title="t('reader.minimize')" :aria-label="t('reader.minimize')" @click="emit('minimize')"><Minus class="size-4" /></button><button type="button" class="booster-icon-button" :aria-label="t('reader.close')" @click="emit('close')"><X class="size-4" /></button></div></header>
     <div class="booster-reader-layout">
       <aside class="booster-reader-sidebar">
         <input v-model="search" type="search" :aria-label="t('reader.search')" :placeholder="t('reader.search')" />
@@ -90,7 +107,7 @@ onBeforeUnmount(() => { alive = false; listRevision++; threadRevision++ })
         <button class="booster-mobile-back" type="button" @click="mobileList = true"><ArrowLeft class="size-4" />{{ t('reader.back') }}</button>
         <p v-if="error" class="booster-error" role="alert">{{ t('reader.error') }}</p>
         <template v-if="selected">
-          <header class="booster-reader-chat-header"><div><h2><CopyIdentity :label="selected.title || t('identity.untitled')" :identifier="selected.conversationId" :locale="locale" /></h2><CopyIdentity :label="projectLabel(selected.projectId)" :identifier="selected.projectId" :locale="locale" /><p v-if="selected.branchSourceConversationId" class="booster-note"><CopyIdentity :label="t('reader.branch') + ': ' + (selected.branchSourceTitle || t('identity.untitled'))" :identifier="selected.branchSourceConversationId" :locale="locale" /></p></div><button class="booster-action-secondary" type="button" :disabled="threadLoading" @click="emit('export', selected.conversationId, selected.title)"><Download class="size-4" />{{ t('reader.export') }}</button></header>
+          <header class="booster-reader-chat-header"><div><h2><CopyIdentity :label="selected.title || t('identity.untitled')" :identifier="selected.conversationId" :locale="locale" /></h2><CopyIdentity :label="projectLabel(selected.projectId)" :identifier="selected.projectId" :locale="locale" /><p v-if="selected.branchSourceConversationId" class="booster-note"><CopyIdentity :label="t('reader.branch') + ': ' + (selected.branchSourceTitle || t('identity.untitled'))" :identifier="selected.branchSourceConversationId" :locale="locale" /></p></div><div class="booster-reader-chat-actions"><button class="booster-action-secondary" type="button" @click="reasoningExpanded = !reasoningExpanded"><Brain class="size-4" />{{ t(reasoningExpanded ? 'reader.collapseReasoning' : 'reader.expandReasoning') }}</button><button class="booster-action-secondary booster-reader-export" type="button" :disabled="threadLoading" @click="emit('export', selected.conversationId, selected.title)"><Download class="size-4" />{{ t('reader.export') }}</button></div></header>
           <div class="booster-reader-summary"><span>{{ t('dock.messages') }}: <b>{{ thread.messageCount }}</b></span><span>{{ t('dock.details') }}: {{ thread.detailCount }}</span><span>{{ t(archiveStatusKey) }}</span><p v-if="coverage?.currentLastMessageId">{{ t(coverage.storedLatestMatchesCurrent ? 'reader.currentLatestSaved' : 'reader.currentNewer') }}</p><p v-if="coverage?.verifiedAt">{{ t('reader.lastRefreshCheck') }}: {{ date(coverage.verifiedAt) }}</p><p v-else>{{ t('reader.updateUnchecked') }}</p></div>
           <input v-model="textSearch" class="booster-reader-text-search" type="search" :placeholder="t('reader.searchMessages')" :aria-label="t('reader.searchMessages')" />
           <p v-if="threadLoading" class="booster-note" role="status">{{ t('reader.loading') }}</p>
@@ -98,9 +115,9 @@ onBeforeUnmount(() => { alive = false; listRevision++; threadRevision++ })
             <p v-if="!filteredTurns.length" class="booster-note">{{ t('reader.noResults') }}</p>
             <article v-for="turn in filteredTurns.slice(0, visibleCount)" :key="turn.id" class="booster-exchange">
               <p v-if="turn.association === 'unassigned'" class="booster-note">{{ t('reader.unassigned') }}</p><p v-else-if="turn.association === 'adjacency'" class="booster-note">{{ t('reader.adjacency') }}</p>
-              <ArchiveRecord v-for="item in turn.messages.filter(i => i.kind === 'user')" :key="item.record.messageKey" :item="item" :locale="locale" />
-              <details v-if="turn.details.length" class="booster-exchange-details" @toggle="toggleDetails($event, turn.id)"><summary>{{ t('reader.details') }} · {{ turn.details.length }}</summary><div v-if="details.has(turn.id)"><ArchiveRecord v-for="item in turn.details" :key="item.record.messageKey" :item="item" :locale="locale" /></div></details>
-              <ArchiveRecord v-for="item in turn.messages.filter(i => i.kind !== 'user')" :key="item.record.messageKey" :item="item" :locale="locale" />
+              <ArchiveRecord v-for="item in turn.messages.filter(i => i.kind === 'user')" :key="item.record.messageKey" :item="item" :locale="locale" :expand-reasoning="reasoningExpanded" />
+              <div v-if="turn.details.length" class="booster-exchange-details"><div class="booster-exchange-details-label">{{ t('reader.details') }} · {{ turn.details.length }}</div><ArchiveRecord v-for="item in turn.details" :key="item.record.messageKey" :item="item" :locale="locale" :expand-reasoning="reasoningExpanded" /></div>
+              <ArchiveRecord v-for="item in turn.messages.filter(i => i.kind !== 'user')" :key="item.record.messageKey" :item="item" :locale="locale" :expand-reasoning="reasoningExpanded" />
             </article>
             <button v-if="visibleCount < filteredTurns.length" class="booster-action-secondary" type="button" @click="visibleCount += 40">{{ t('reader.more') }}</button>
           </div>

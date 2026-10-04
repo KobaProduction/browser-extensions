@@ -7,9 +7,10 @@ import {
 } from '@chatgpt-booster/core'
 import { Archive, Download, Layers3, Settings, ShieldCheck, Square, X, ArrowUpToLine } from 'lucide-vue-next'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import ArchiveBrowser from './ArchiveBrowser.vue'
+import ArchiveWorkspace from './ArchiveWorkspace.vue'
 import ArchiveExportDialog from './ArchiveExportDialog.vue'
 import ControlCenterPanel from './ControlCenterPanel.vue'
+import CaptureSettingsSurface from './CaptureSettingsSurface.vue'
 import CopyIdentity from './CopyIdentity.vue'
 import ModalSurface from './ModalSurface.vue'
 import { resolveLocale, translate, type TranslationKey } from './i18n'
@@ -17,8 +18,8 @@ import type { ArchiveCoverageView, BoosterUiOptions } from './mount'
 const props = defineProps<BoosterUiOptions>()
 const SIZE = 44
 const settings = ref(normalizeSettings())
-const expanded = ref(false), dragging = ref(false), loading = ref(false), savedChat = ref(false)
-const view = ref<'archive' | 'settings' | 'export' | null>(null)
+const expanded = ref(false), dragging = ref(false), loading = ref(false), savedChat = ref(false), archiveOpen = ref(false)
+const view = ref<'settings' | 'capture' | 'export' | null>(null)
 const context = ref<ArchiveCurrentContext>({ conversationId: null, conversationTitle: null, projectId: null, projectTitle: null })
 const coverage = ref<ArchiveCoverageView>()
 const captureContext = ref<ArchiveCaptureContext>()
@@ -100,7 +101,7 @@ async function refreshContext() {
   } catch { if (alive && request === revision) error.value = 'archive.error.storage' }
   finally { if (alive && request === revision) loading.value = false }
 }
-function closeView() { view.value = exportTarget.value?.backToArchive && view.value === 'export' ? 'archive' : null }
+function closeView() { view.value = null }
 function toggle() {
   if (ignoreClick) { ignoreClick = false; return }
   if (view.value) { view.value = null; expanded.value = false; return }
@@ -134,14 +135,13 @@ async function pointerUp(event: PointerEvent) {
 }
 function cancelPointer() { pointer = undefined; dragging.value = false; dragPosition.value = undefined }
 function resize() { viewport.value = { width: window.innerWidth, height: window.innerHeight }; cancelPointer() }
-function openArchive(id = context.value.conversationId) { archiveInitial.value = id; view.value = 'archive'; expanded.value = false }
+function openArchive(id = context.value.conversationId) { archiveInitial.value = id; archiveOpen.value = true; expanded.value = false }
 function openExport(id: string, title: string | null, fromArchive = false) { exportTarget.value = { id, title, backToArchive: fromArchive }; archiveInitial.value = id; expanded.value = false; view.value = 'export' }
 function openSettings() { captureContext.value = undefined; expanded.value = false; view.value = 'settings' }
-async function openCapture(scope?: ArchiveCaptureContext) {
+function openCapture(scope?: ArchiveCaptureContext) {
   captureContext.value = scope
   expanded.value = false
-  try { settings.value = snapshotSettings(await props.settingsAdapter.update({ ui: { activeSection: 'archive' } })); view.value = 'settings' }
-  catch { error.value = 'common.saveError' }
+  view.value = 'capture'
 }
 async function collect() {
   error.value = null
@@ -161,7 +161,7 @@ function onState(event: Event) {
   if (next.conversationId === props.archiveAdapter?.currentConversationId() && next.phase === 'preparing') expanded.value = true
   if (changed && Date.now() - refreshAt > 700) void refreshContext()
 }
-function onArchive() { if (opened.value && Date.now() - refreshAt > 600) void refreshContext() }
+function onArchive() { if ((opened.value || archiveOpen.value) && Date.now() - refreshAt > 600) void refreshContext() }
 function onOpenArchive(event: Event) { const id = (event as CustomEvent<{ conversationId?: string }>).detail?.conversationId; openArchive(id ?? context.value.conversationId) }
 function onOpenCapture(event: Event) {
   const scope = (event as CustomEvent<ArchiveCaptureContext>).detail
@@ -197,8 +197,9 @@ onBeforeUnmount(() => {
 </script>
 <template>
   <div class="booster-overlay-root" :lang="locale">
-    <ModalSurface v-if="view === 'settings'" :label="t('dock.settings')" @close="view = null"><ControlCenterPanel v-bind="props" :capture-context="captureContext" show-close @close="view = null" /></ModalSurface>
-    <ModalSurface v-if="view === 'archive' && archiveAdapter" :label="t('reader.title')" wide @close="view = null"><ArchiveBrowser :archive-adapter="archiveAdapter" :initial-conversation-id="archiveInitial" :locale="locale" @close="view = null" @export="(id, title) => openExport(id, title, true)" /></ModalSurface>
+    <ArchiveWorkspace v-if="archiveOpen && archiveAdapter" :settings-adapter="settingsAdapter" :archive-adapter="archiveAdapter" :initial-conversation-id="archiveInitial" :locale="locale" @close="archiveOpen = false" @export="(id, title) => openExport(id, title, true)" />
+    <ModalSurface v-if="view === 'settings'" :label="t('dock.settings')" @close="view = null"><ControlCenterPanel v-bind="props" show-close @close="view = null" /></ModalSurface>
+    <ModalSurface v-if="view === 'capture'" :label="t('capture.title')" @close="view = null"><CaptureSettingsSurface :settings-adapter="settingsAdapter" :archive-adapter="archiveAdapter" :context="captureContext" :locale="locale" @close="view = null" /></ModalSurface>
     <ModalSurface v-if="view === 'export' && archiveAdapter && exportTarget" :label="t('export.title')" @close="closeView"><ArchiveExportDialog :archive-adapter="archiveAdapter" :settings-adapter="settingsAdapter" :conversation-id="exportTarget.id" :title="exportTarget.title" :locale="locale" @close="closeView" /></ModalSurface>
     <div class="booster-dock" :class="[side, growsUp ? 'grow-up' : 'grow-down', { dragging }]" :style="{ left: position.x + 'px', top: position.y + 'px' }">
       <div v-if="expanded && !dragging" class="booster-dock-shell" :style="{ maxHeight: shellMaxHeight + 'px' }">

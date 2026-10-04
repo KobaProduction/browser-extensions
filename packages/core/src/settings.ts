@@ -33,9 +33,19 @@ export interface TelemetrySettings {
   endpoint: string
 }
 
+export interface ArchiveWindowSettings {
+  xRatio: number
+  yRatio: number
+  widthRatio: number
+  heightRatio: number
+  minimizedSide: DockSide
+  minimizedHeightRatio: number
+}
+
 export interface UiSettings {
   activeSection: SettingsSection
   telemetryExpanded: boolean
+  archiveWindow: ArchiveWindowSettings
 }
 
 export interface BoosterSettings {
@@ -59,7 +69,9 @@ export interface BoosterSettingsPatch {
   launcher?: Partial<LauncherSettings>
   observer?: Partial<ObserverSettings>
   telemetry?: Partial<TelemetrySettings>
-  ui?: Partial<UiSettings>
+  ui?: Omit<Partial<UiSettings>, 'archiveWindow'> & {
+    archiveWindow?: Partial<ArchiveWindowSettings>
+  }
   archive?: {
     defaultRule?: Partial<CaptureRule>
     projects?: Record<string, CaptureRule | null>
@@ -68,7 +80,13 @@ export interface BoosterSettingsPatch {
   export?: Partial<ArchiveExportOptions>
 }
 
-export const SETTINGS_SCHEMA_VERSION = 3
+export const SETTINGS_SCHEMA_VERSION = 4
+
+function clampWindowRatio(value: unknown, fallback: number, min: number, max: number) {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.max(min, Math.min(max, value))
+    : fallback
+}
 
 export const DEFAULT_SETTINGS: BoosterSettings = {
   schemaVersion: SETTINGS_SCHEMA_VERSION,
@@ -97,6 +115,14 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
   ui: {
     activeSection: 'modules',
     telemetryExpanded: true,
+    archiveWindow: {
+      xRatio: 0.08,
+      yRatio: 0.08,
+      widthRatio: 0.72,
+      heightRatio: 0.82,
+      minimizedSide: 'right',
+      minimizedHeightRatio: 0.45,
+    },
   },
 }
 
@@ -147,6 +173,36 @@ export function normalizeSettings(value?: Partial<BoosterSettings>): BoosterSett
     ui: {
       ...DEFAULT_SETTINGS.ui,
       ...value?.ui,
+      archiveWindow: {
+        ...DEFAULT_SETTINGS.ui.archiveWindow,
+        ...value?.ui?.archiveWindow,
+        xRatio: clampWindowRatio(
+          value?.ui?.archiveWindow?.xRatio,
+          DEFAULT_SETTINGS.ui.archiveWindow.xRatio,
+          0,
+          0.95,
+        ),
+        yRatio: clampWindowRatio(
+          value?.ui?.archiveWindow?.yRatio,
+          DEFAULT_SETTINGS.ui.archiveWindow.yRatio,
+          0,
+          0.95,
+        ),
+        widthRatio: clampWindowRatio(
+          value?.ui?.archiveWindow?.widthRatio,
+          DEFAULT_SETTINGS.ui.archiveWindow.widthRatio,
+          0.32,
+          0.96,
+        ),
+        heightRatio: clampWindowRatio(
+          value?.ui?.archiveWindow?.heightRatio,
+          DEFAULT_SETTINGS.ui.archiveWindow.heightRatio,
+          0.4,
+          0.96,
+        ),
+        minimizedSide: value?.ui?.archiveWindow?.minimizedSide === 'left' ? 'left' : 'right',
+        minimizedHeightRatio: clampRatio(value?.ui?.archiveWindow?.minimizedHeightRatio),
+      },
     },
   }
 }
@@ -190,6 +246,7 @@ export function snapshotSettings(
     ui: {
       activeSection: normalized.ui.activeSection,
       telemetryExpanded: normalized.ui.telemetryExpanded,
+      archiveWindow: { ...normalized.ui.archiveWindow },
     },
   }
 }
@@ -230,6 +287,10 @@ export function mergeSettings(
     ui: {
       ...normalized.ui,
       ...patch.ui,
+      archiveWindow: {
+        ...normalized.ui.archiveWindow,
+        ...patch.ui?.archiveWindow,
+      },
     },
   })
 }

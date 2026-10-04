@@ -629,13 +629,49 @@ async function seed() {
   for (let i = 0; i < 55; i++) {
     const u = `user-${String(i).padStart(3, '0')}`
     messages.push({ ...raw(u, 'user', `Вопрос ${i + 1}`), create_time: 1700000000 + i * 2 })
+    if (i === 0) {
+      messages.push({
+        ...raw(
+          'reasoning-0',
+          'assistant',
+          '### План\n\n**Проверить** данные и затем сравнить результат.',
+          u,
+        ),
+        channel: 'analysis',
+        content: {
+          content_type: 'thoughts',
+          thoughts: ['### План\n\n**Проверить** данные и затем сравнить результат.'],
+        },
+        create_time: 1700000000.05,
+      })
+      messages.push({
+        ...raw('tool-call-0', 'assistant', '{"query":"fixture"}', u),
+        channel: 'analysis',
+        recipient: 'github.search',
+        content: { content_type: 'text', parts: ['{"query":"fixture"}'] },
+        metadata: {
+          parent_id: u,
+          tool_icons: [
+            'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"%3E%3Crect width="8" height="8" rx="2" fill="%23000"/%3E%3C/svg%3E',
+          ],
+        },
+        create_time: 1700000000.1,
+      })
+    }
     messages.push({
       ...raw(`tool-${i}`, 'tool', `Результат инструмента ${i + 1}`, u),
       create_time: 1700000000 + i * 2 + 0.2,
       author: { role: 'tool', name: 'fixture.lookup' },
     })
     messages.push({
-      ...raw(`answer-${i}`, 'assistant', `Ответ ${i + 1}: только тестовые данные.`, u),
+      ...raw(
+        `answer-${i}`,
+        'assistant',
+        i === 0
+          ? '## Ответ 1\n\nЭто **Markdown** с `code`.\n\n- первый пункт\n- второй пункт'
+          : `Ответ ${i + 1}: только тестовые данные.`,
+        u,
+      ),
       create_time: 1700000000 + i * 2 + 1,
     })
   }

@@ -44,6 +44,24 @@ export async function runUiTests(
     }
   }
   async function close() {
+    const minimizedArchive = shadow().querySelector<HTMLButtonElement>(
+      '.booster-archive-dock-button',
+    )
+    if (minimizedArchive) {
+      minimizedArchive.click()
+      await delay()
+    }
+    const archiveClose = shadow().querySelector<HTMLButtonElement>(
+      '.booster-reader > .booster-section-header .booster-header-actions button:last-child',
+    )
+    if (archiveClose) {
+      archiveClose.click()
+      await delay()
+    }
+    for (const dialog of [...shadow().querySelectorAll<HTMLElement>('.booster-dialog')].reverse()) {
+      dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      await delay()
+    }
     for (
       let i = 0;
       i < 2 && button('.booster-dock-toggle').getAttribute('aria-expanded') === 'true';
@@ -189,63 +207,370 @@ export async function runUiTests(
     )
 
     await check(
-      'archive opens current project only, nested records are lazy, no composer',
+      'archive is a movable/minimizable workspace with Markdown and compact internal records',
+      async () => {
+        await close()
+        const main = document.querySelector('main')
+        assert(main, 'main missing')
+        const hostBefore = bounds(main)
+        button('.booster-dock-toggle').click()
+        await delay()
+        button('.booster-dock-actions > button:nth-child(3)').click()
+        await delay()
+        const workspace = shadow().querySelector<HTMLElement>('.booster-archive-workspace')
+        const reader = shadow().querySelector<HTMLElement>('.booster-reader')
+        assert(workspace && reader, 'floating archive workspace missing')
+        assert(
+          !reader.closest('.booster-modal-backdrop'),
+          'archive still blocks the host as a modal',
+        )
+        assert(same(hostBefore, bounds(main)), 'archive workspace changed host layout')
+
+        const beforeWindow = bounds(workspace)
+        const dragHandle = reader.querySelector<HTMLElement>('[data-archive-drag-handle]')
+        assert(dragHandle, 'archive drag handle missing')
+        dragHandle.dispatchEvent(
+          new PointerEvent('pointerdown', {
+            pointerId: 301,
+            button: 0,
+            bubbles: true,
+            clientX: beforeWindow.x + 100,
+            clientY: beforeWindow.y + 20,
+          }),
+        )
+        dragHandle.dispatchEvent(
+          new PointerEvent('pointermove', {
+            pointerId: 301,
+            button: 0,
+            bubbles: true,
+            clientX: beforeWindow.x + 145,
+            clientY: beforeWindow.y + 55,
+          }),
+        )
+        dragHandle.dispatchEvent(
+          new PointerEvent('pointerup', {
+            pointerId: 301,
+            button: 0,
+            bubbles: true,
+            clientX: beforeWindow.x + 145,
+            clientY: beforeWindow.y + 55,
+          }),
+        )
+        await delay()
+        const movedWindow = bounds(workspace)
+        assert(
+          movedWindow.x !== beforeWindow.x || movedWindow.y !== beforeWindow.y,
+          'archive did not move',
+        )
+
+        const resize = workspace.querySelector<HTMLElement>('[data-archive-resize]')
+        assert(resize, 'archive resize handle missing')
+        resize.dispatchEvent(
+          new PointerEvent('pointerdown', {
+            pointerId: 302,
+            button: 0,
+            bubbles: true,
+            clientX: movedWindow.right - 2,
+            clientY: movedWindow.bottom - 2,
+          }),
+        )
+        resize.dispatchEvent(
+          new PointerEvent('pointermove', {
+            pointerId: 302,
+            button: 0,
+            bubbles: true,
+            clientX: movedWindow.right - 42,
+            clientY: movedWindow.bottom - 32,
+          }),
+        )
+        resize.dispatchEvent(
+          new PointerEvent('pointerup', {
+            pointerId: 302,
+            button: 0,
+            bubbles: true,
+            clientX: movedWindow.right - 42,
+            clientY: movedWindow.bottom - 32,
+          }),
+        )
+        await delay()
+        assert(
+          bounds(workspace).width < movedWindow.width ||
+            bounds(workspace).height < movedWindow.height,
+          'archive did not resize',
+        )
+
+        const minimize = reader.querySelector<HTMLButtonElement>('[aria-label="Свернуть архив"]')
+        assert(minimize, 'archive minimize control missing')
+        minimize.click()
+        await delay()
+        const docked = shadow().querySelector<HTMLButtonElement>('.booster-archive-dock-button')
+        assert(
+          docked && !shadow().querySelector('.booster-reader'),
+          'archive did not minimize into its own dock button',
+        )
+        const dockRect = bounds(docked)
+        docked.dispatchEvent(
+          new PointerEvent('pointerdown', {
+            pointerId: 303,
+            button: 0,
+            bubbles: true,
+            clientX: dockRect.x + 20,
+            clientY: dockRect.y + 20,
+          }),
+        )
+        docked.dispatchEvent(
+          new PointerEvent('pointermove', {
+            pointerId: 303,
+            button: 0,
+            bubbles: true,
+            clientX: 16,
+            clientY: innerHeight * 0.3,
+          }),
+        )
+        docked.dispatchEvent(
+          new PointerEvent('pointerup', {
+            pointerId: 303,
+            button: 0,
+            bubbles: true,
+            clientX: 16,
+            clientY: innerHeight * 0.3,
+          }),
+        )
+        await delay()
+        assert(bounds(docked).x === 0, 'minimized archive did not snap to left edge')
+        assert(
+          (await settings.get()).ui.archiveWindow.minimizedSide === 'left',
+          'minimized archive side was not persisted',
+        )
+        docked.click()
+        await delay()
+        assert(
+          !shadow().querySelector('.booster-reader'),
+          'drag release incorrectly restored archive',
+        )
+        docked.click()
+        await delay()
+        const restored = shadow().querySelector<HTMLElement>('.booster-reader')
+        assert(restored, 'archive did not restore from dock button')
+
+        const projects = [...restored.querySelectorAll<HTMLButtonElement>('.booster-group-toggle')]
+        const activeProject = projects.find((item) =>
+          item.textContent?.includes('Koba Infrastructure'),
+        )
+        const otherProject = projects.find((item) => item.textContent?.includes('Другой проект'))
+        assert(
+          activeProject?.getAttribute('aria-expanded') === 'true' &&
+            otherProject?.getAttribute('aria-expanded') === 'false',
+          'wrong expanded projects',
+        )
+        assert(
+          restored.querySelectorAll('.booster-exchange').length === 40,
+          'initial rendering is not bounded',
+        )
+        assert(
+          restored.querySelector('.booster-record-reasoning'),
+          'reasoning preview is not visible',
+        )
+        assert(
+          restored.querySelector('.booster-record-tool_call'),
+          'tool-call preview is not visible',
+        )
+        assert(
+          restored.querySelector('.booster-record-tool_result'),
+          'tool-result preview is not visible',
+        )
+        assert(
+          restored.querySelector('.booster-tool-icon:not(.booster-tool-icon-fallback)'),
+          'tool icon was not rendered',
+        )
+        assert(
+          restored.querySelector('.booster-record-answer .booster-markdown h2'),
+          'Markdown heading was not rendered',
+        )
+        assert(
+          restored.querySelector('.booster-record-answer .booster-markdown strong'),
+          'Markdown bold was not rendered',
+        )
+        assert(
+          restored.querySelector('.booster-record-answer .booster-markdown code'),
+          'Markdown inline code was not rendered',
+        )
+        assert(
+          restored.querySelector('.booster-record-answer .booster-markdown li'),
+          'Markdown list was not rendered',
+        )
+        assert(
+          !restored.querySelector('textarea,[contenteditable="true"],form'),
+          'reader contains a composer or edit form',
+        )
+
+        const reasoningToggle = [
+          ...restored.querySelectorAll<HTMLButtonElement>('.booster-reader-chat-actions button'),
+        ].find((item) => item.textContent?.includes('Развернуть размышления'))
+        assert(reasoningToggle, 'global reasoning toggle missing')
+        reasoningToggle.click()
+        await delay()
+        assert(
+          restored.querySelector('.booster-reasoning-preview.expanded'),
+          'reasoning did not expand globally',
+        )
+
+        const run = [
+          ...restored.querySelectorAll<HTMLButtonElement>('.booster-record-tool_call button'),
+        ].find((item) => item.textContent?.trim() === 'Run')
+        assert(run, 'Run control missing')
+        run.click()
+        await delay()
+        let dialog = shadow().querySelector<HTMLElement>('.booster-dialog')
+        assert(dialog, 'Run modal missing')
+        assert(
+          dialog.textContent?.includes('Архивный Run вызова') &&
+            dialog.querySelector('.booster-json-viewer'),
+          'Run modal payload missing',
+        )
+        dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+        await delay()
+        assert(!shadow().querySelector('.booster-dialog'), 'Escape did not close Run modal')
+
+        const raw = restored.querySelector<HTMLButtonElement>(
+          '.booster-record-answer .booster-record-meta-button',
+        )
+        assert(raw, 'raw metadata control missing')
+        raw.click()
+        await delay()
+        dialog = shadow().querySelector<HTMLElement>('.booster-dialog')
+        assert(dialog, 'raw JSON modal missing')
+        assert(
+          dialog.querySelector('.booster-json-viewer .booster-json-key'),
+          'syntax-highlighted JSON modal missing',
+        )
+        dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+        await delay()
+
+        const more = [...restored.querySelectorAll<HTMLButtonElement>('button')].find(
+          (item) => item.textContent?.trim() === translate('ru', 'reader.more'),
+        )
+        assert(more, 'show more missing')
+        const expectedTurns = (await adapter.getThread(context.conversationId ?? '')).turns.length
+        more.click()
+        await delay()
+        assert(
+          restored.querySelectorAll('.booster-exchange').length === expectedTurns,
+          'show more did not render remaining exchanges',
+        )
+        otherProject.click()
+        await delay()
+        assert(
+          otherProject.getAttribute('aria-expanded') === 'true',
+          'other project cannot be expanded',
+        )
+
+        const archiveClose = restored.querySelector<HTMLButtonElement>(
+          '.booster-header-actions button:last-child',
+        )
+        archiveClose?.click()
+        await delay()
+        assert(
+          !shadow().querySelector('.booster-archive-workspace'),
+          'archive close did not fully close workspace',
+        )
+        const finalThread = await adapter.getThread(context.conversationId ?? '')
+        return {
+          moved: movedWindow,
+          messages: finalThread.messageCount,
+          details: finalThread.detailCount,
+        }
+      },
+    )
+
+    await check(
+      'archive follows ChatGPT SPA conversation changes while it stays open',
       async () => {
         await close()
         button('.booster-dock-toggle').click()
         await delay()
         button('.booster-dock-actions > button:nth-child(3)').click()
         await delay()
-        const reader = shadow().querySelector('.booster-reader')
-        assert(reader, 'no archive')
-        const projects = [...reader.querySelectorAll<HTMLButtonElement>('.booster-group-toggle')]
-        const active = projects.find((p) => p.textContent?.includes('Koba Infrastructure'))
-        const other = projects.find((p) => p.textContent?.includes('Другой проект'))
+        const original = { ...context }
+        Object.assign(context, {
+          conversationId: 'fixture-other',
+          conversationTitle: 'Другой диалог',
+          projectId: 'g-p-22222222222222222222222222222222',
+          projectTitle: 'Другой проект · тест',
+        })
+        await new Promise((resolve) => setTimeout(resolve, 850))
         assert(
-          active?.getAttribute('aria-expanded') === 'true' &&
-            other?.getAttribute('aria-expanded') === 'false',
-          'wrong expanded projects',
+          shadow()
+            .querySelector('.booster-reader-chat-header')
+            ?.textContent?.includes('Другой диалог'),
+          'archive did not follow the new chat',
         )
+        Object.assign(context, original)
+        await new Promise((resolve) => setTimeout(resolve, 850))
         assert(
-          reader.querySelectorAll('.booster-exchange').length === 40,
-          'initial rendering is not bounded to 40 exchanges',
+          shadow()
+            .querySelector('.booster-reader-chat-header')
+            ?.textContent?.includes('Проверка панели и архива'),
+          'archive did not return to current chat',
         )
-        assert(
-          !reader.querySelector('.booster-record-tool_result'),
-          'nested details rendered before opening',
-        )
-        const disclosure = reader.querySelector<HTMLDetailsElement>('.booster-exchange-details')
-        assert(disclosure, 'no disclosure')
-        disclosure.open = true
-        await delay()
-        assert(reader.querySelector('.booster-record-tool_result'), 'nested tool record missing')
-        assert(
-          !reader.querySelector('textarea,[contenteditable="true"],form'),
-          'reader contains a composer or edit form',
-        )
-        const buttons = [...reader.querySelectorAll<HTMLButtonElement>('button')]
-        const more = buttons.find((b) => b.textContent?.trim() === translate('ru', 'reader.more'))
-        assert(more, 'show more missing')
-        const expectedTurns = (await adapter.getThread(context.conversationId ?? '')).turns.length
-        more.click()
-        await delay()
-        assert(
-          reader.querySelectorAll('.booster-exchange').length === expectedTurns,
-          'show more did not render remaining exchanges',
-        )
-        other.click()
-        await delay()
-        assert(other.getAttribute('aria-expanded') === 'true', 'other project cannot be expanded')
         await close()
-        const finalThread = await adapter.getThread(context.conversationId ?? '')
-        return {
-          initialExchanges: 40,
-          expandedExchanges: expectedTurns,
-          replyCount: finalThread.messageCount,
-          nestedCount: finalThread.detailCount,
-        }
       },
     )
+
+    await check(
+      'selective saving opens as a dedicated surface without unrelated settings',
+      async () => {
+        await close()
+        button('.booster-dock-toggle').click()
+        await delay()
+        button('.booster-capture-shortcut').click()
+        await delay()
+        const capture = shadow().querySelector<HTMLElement>('.booster-capture-surface')
+        assert(capture, 'dedicated capture surface missing')
+        assert(
+          !capture.querySelector('.booster-settings-nav'),
+          'capture surface still contains full settings navigation',
+        )
+        assert(
+          !capture.textContent?.includes('Телеметрия') && !capture.textContent?.includes('Язык'),
+          'unrelated settings leaked into capture surface',
+        )
+        capture
+          .querySelector<HTMLButtonElement>('.booster-section-header .booster-icon-button')
+          ?.click()
+        await delay()
+        await close()
+      },
+    )
+
+    await check('analytics renders as a compact activity dashboard', async () => {
+      await close()
+      button('.booster-dock-toggle').click()
+      await delay()
+      button('.booster-dock-actions > button:nth-child(4)').click()
+      await delay()
+      const center = shadow().querySelector<HTMLElement>('.booster-control-center')
+      assert(center, 'settings missing')
+      const analytics = [
+        ...center.querySelectorAll<HTMLButtonElement>('.booster-settings-nav button'),
+      ].find((item) => item.textContent?.includes('Аналитика'))
+      assert(analytics, 'analytics navigation missing')
+      analytics.click()
+      await delay()
+      assert(center.querySelector('.booster-analytics-dashboard'), 'analytics dashboard missing')
+      assert(
+        center.querySelectorAll('.booster-analytics-metrics article').length === 3,
+        'analytics summary metrics missing',
+      )
+      assert(
+        center.querySelectorAll('.booster-analytics-flow-card').length === 2,
+        'analytics flow cards missing',
+      )
+      center.querySelector<HTMLButtonElement>('.booster-header-actions .size-8')?.click()
+      await delay()
+      await close()
+    })
+
     await check('English locale and identifier copy work', async () => {
       await close()
       await settings.update({ language: 'en' })
@@ -366,7 +691,7 @@ export async function runUiTests(
       const after = Number(reader.querySelector('.booster-reader-summary b')?.textContent ?? '0')
       assert(after === before + 2, 'refresh did not reread open thread')
       const exportButton = reader.querySelector<HTMLButtonElement>(
-        '.booster-reader-chat-header .booster-action-secondary',
+        '.booster-reader-chat-header .booster-reader-export',
       )
       assert(exportButton, 'archive export button missing')
       exportButton.click()

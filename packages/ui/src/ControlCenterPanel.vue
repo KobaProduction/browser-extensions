@@ -17,10 +17,14 @@ import {
 } from '@chatgpt-booster/core'
 import {
   Activity,
+  AlertTriangle,
+  ArrowDownLeft,
+  ArrowUpRight,
   BarChart3,
   Check,
   ChevronDown,
   Languages,
+  RefreshCcw,
   Settings2,
   ShieldCheck,
   SlidersHorizontal,
@@ -72,6 +76,19 @@ const locale = computed(() => resolveLocale(settings.value?.language ?? 'auto'))
 const t = (key: Parameters<typeof translate>[1]) => translate(locale.value, key)
 const targetLabel = computed(() => (props.target === 'userscript' ? 'Tampermonkey' : 'Extension'))
 const activeSection = computed(() => settings.value?.ui.activeSection ?? 'modules')
+const currentRequestTotal = computed(() => counters.value.requestsSent + counters.value.responsesReceived)
+const lifetimeRequestTotal = computed(() => lifetimeCounters.value.requestsSent + lifetimeCounters.value.responsesReceived)
+const currentMessageTotal = computed(() => counters.value.messagesSent + counters.value.messagesReceived)
+const lifetimeMessageTotal = computed(() => lifetimeCounters.value.messagesSent + lifetimeCounters.value.messagesReceived)
+function bar(value: number, total: number) {
+  return `${total > 0 ? Math.max(3, Math.round((value / total) * 100)) : 0}%`
+}
+function activityTime(value: number | null) {
+  return value ? new Date(value).toLocaleTimeString(locale.value, { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : t('control.noActivity')
+}
+function resetCurrentAnalytics() {
+  props.diagnosticsAdapter?.resetTransport()
+}
 
 onMounted(async () => {
   settings.value = snapshotSettings(await props.settingsAdapter.get())
@@ -296,28 +313,35 @@ async function testTelemetry() {
         </template>
 
         <template v-else-if="activeSection === 'analytics'">
-          <section class="booster-analytics-grid">
-            <div v-if="diagnosticsAdapter" class="booster-counter-card">
-              <div class="booster-counter-title">{{ t('control.currentTab') }}</div>
-              <div class="booster-counter-grid">
-                <span>{{ t('control.requestsSent') }} <b>{{ counters.requestsSent }}</b></span>
-                <span>{{ t('control.responsesReceived') }} <b>{{ counters.responsesReceived }}</b></span>
-                <span>{{ t('control.messagesSent') }} <b>{{ counters.messagesSent }}</b></span>
-                <span>{{ t('control.messagesReceived') }} <b>{{ counters.messagesReceived }}</b></span>
-                <span>{{ t('control.errors') }} <b>{{ counters.errors }}</b></span>
-              </div>
+          <section class="booster-analytics-dashboard">
+            <header class="booster-analytics-header">
+              <div><strong>{{ t('control.analyticsOverview') }}</strong><span>{{ t('control.analyticsDescription') }}</span></div>
+              <button v-if="diagnosticsAdapter" type="button" class="booster-action-secondary booster-analytics-reset" @click="resetCurrentAnalytics"><RefreshCcw class="size-3.5" />{{ t('control.resetCurrent') }}</button>
+            </header>
+
+            <div class="booster-analytics-metrics">
+              <article><span>{{ t('control.requestTraffic') }}</span><strong>{{ currentRequestTotal }}</strong><small>{{ lifetimeRequestTotal }} · {{ t('control.allTime').toLocaleLowerCase() }}</small></article>
+              <article><span>{{ t('control.messageTraffic') }}</span><strong>{{ currentMessageTotal }}</strong><small>{{ lifetimeMessageTotal }} · {{ t('control.allTime').toLocaleLowerCase() }}</small></article>
+              <article :class="{ warning: counters.errors > 0 }"><span>{{ t('control.errors') }}</span><strong>{{ counters.errors }}</strong><small>{{ lifetimeCounters.errors }} · {{ t('control.allTime').toLocaleLowerCase() }}</small></article>
             </div>
 
-            <div class="booster-counter-card">
-              <div class="booster-counter-title">{{ t('control.allTime') }}</div>
-              <div class="booster-counter-grid">
-                <span>{{ t('control.requestsSent') }} <b>{{ lifetimeCounters.requestsSent }}</b></span>
-                <span>{{ t('control.responsesReceived') }} <b>{{ lifetimeCounters.responsesReceived }}</b></span>
-                <span>{{ t('control.messagesSent') }} <b>{{ lifetimeCounters.messagesSent }}</b></span>
-                <span>{{ t('control.messagesReceived') }} <b>{{ lifetimeCounters.messagesReceived }}</b></span>
-                <span>{{ t('control.errors') }} <b>{{ lifetimeCounters.errors }}</b></span>
-              </div>
+            <div class="booster-analytics-flow-grid">
+              <article class="booster-analytics-flow-card">
+                <header><span><ArrowUpRight class="size-4" />{{ t('control.outbound') }}</span><b>{{ counters.requestsSent + counters.messagesSent }}</b></header>
+                <div class="booster-analytics-flow-row"><span>{{ t('control.requestsSent') }}</span><div><i :style="{ width: bar(counters.requestsSent, counters.requestsSent + counters.messagesSent) }" /></div><b>{{ counters.requestsSent }}</b></div>
+                <div class="booster-analytics-flow-row"><span>{{ t('control.messagesSent') }}</span><div><i :style="{ width: bar(counters.messagesSent, counters.requestsSent + counters.messagesSent) }" /></div><b>{{ counters.messagesSent }}</b></div>
+              </article>
+              <article class="booster-analytics-flow-card">
+                <header><span><ArrowDownLeft class="size-4" />{{ t('control.inbound') }}</span><b>{{ counters.responsesReceived + counters.messagesReceived }}</b></header>
+                <div class="booster-analytics-flow-row"><span>{{ t('control.responsesReceived') }}</span><div><i :style="{ width: bar(counters.responsesReceived, counters.responsesReceived + counters.messagesReceived) }" /></div><b>{{ counters.responsesReceived }}</b></div>
+                <div class="booster-analytics-flow-row"><span>{{ t('control.messagesReceived') }}</span><div><i :style="{ width: bar(counters.messagesReceived, counters.responsesReceived + counters.messagesReceived) }" /></div><b>{{ counters.messagesReceived }}</b></div>
+              </article>
             </div>
+
+            <footer class="booster-analytics-footer">
+              <span><Activity class="size-4" />{{ t('control.lastActivity') }} <b>{{ activityTime(counters.lastEventAt) }}</b></span>
+              <span :class="{ warning: counters.errors > 0 }"><AlertTriangle class="size-4" />{{ t('control.errors') }} <b>{{ counters.errors }}</b></span>
+            </footer>
           </section>
         </template>
 
