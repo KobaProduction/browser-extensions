@@ -122,7 +122,8 @@ export const archiveMessages = {
     'export.statusMissing': 'No local copy is available yet',
     'export.statusPartial': 'Local copy exists, but the saved chain has not reached the beginning',
     'export.statusNewer': 'The open ChatGPT conversation has a newer message than the local copy',
-    'export.statusCurrent': 'The local copy reaches the beginning and includes the current latest message',
+    'export.statusCurrent':
+      'The local copy reaches the beginning and includes the current latest message',
     'export.statusSaved': 'The saved conversation chain reaches the beginning',
     'export.refreshFirst': 'Update before export',
     'export.refreshStarting': 'Starting update…',
@@ -287,7 +288,8 @@ export const archiveMessages = {
     'export.statusMissing': 'Локальной копии пока нет',
     'export.statusPartial': 'Локальная копия есть, но сохранённая цепочка ещё не дошла до начала',
     'export.statusNewer': 'В открытом ChatGPT есть сообщение новее локальной копии',
-    'export.statusCurrent': 'Локальная копия дошла до начала и содержит текущее последнее сообщение',
+    'export.statusCurrent':
+      'Локальная копия дошла до начала и содержит текущее последнее сообщение',
     'export.statusSaved': 'Сохранённая цепочка диалога дошла до начала',
     'export.refreshFirst': 'Обновить перед экспортом',
     'export.refreshStarting': 'Запуск обновления…',
