@@ -31,7 +31,7 @@ interface ArchiveReadContext {
   requestedBefore: string | null
 }
 const archiveReads = new Map<string, { readId: string; readStartedAt: number }>()
-let bufferedInitialPage: ConversationArchiveEventDetail | undefined
+const bufferedInitialPages = new Map<string, ConversationArchiveEventDetail>()
 
 function pageConversationId(pathname = location.pathname): string | undefined {
   const match = pathname.match(/(?:^|\/)c\/([^/?#]+)/)
@@ -455,9 +455,18 @@ function observeConversationArchiveResponse(
         conversationId,
         payload,
       } satisfies ConversationArchiveEventDetail
-      // Keep only the current chat's latest normal initial page in tab memory. This is not
-      // persisted until the user enables capture or explicitly starts a manual collection.
-      if (read.isInitial && pageConversationId() === conversationId) bufferedInitialPage = detail
+      // Keep a small per-chat initial-page buffer. ChatGPT can resolve a prefetched initial
+      // request just before SPA navigation commits the new /c/{id} URL. We still publish only
+      // when that conversation is actually current, so sidebar/background prefetches stay inert.
+      if (read.isInitial) {
+        bufferedInitialPages.delete(conversationId)
+        bufferedInitialPages.set(conversationId, detail)
+        while (bufferedInitialPages.size > 32) {
+          const oldest = bufferedInitialPages.keys().next().value
+          if (!oldest) break
+          bufferedInitialPages.delete(oldest)
+        }
+      }
       publishPreloadPage(detail)
       publishConversationPage(detail)
     })
@@ -542,7 +551,10 @@ export function installTransportObserver(
       return
     const previousManual = archivePolicy.manualConversationId
     archivePolicy = { ...DENY_ARCHIVE, ...data.detail }
-    if (bufferedInitialPage) publishPreloadPage(bufferedInitialPage)
+    const currentBuffered = pageConversationId()
+      ? bufferedInitialPages.get(pageConversationId() as string)
+      : undefined
+    if (currentBuffered) publishPreloadPage(currentBuffered)
     const manual = archivePolicy.manualConversationId
     if (manual && manual !== previousManual) {
       const readStartedAt =
@@ -552,9 +564,10 @@ export function installTransportObserver(
           : Date.now()
       const readId = `manual-${readStartedAt}`
       archiveReads.set(manual, { readId, readStartedAt })
-      if (bufferedInitialPage?.conversationId === manual)
+      const bufferedManual = bufferedInitialPages.get(manual)
+      if (bufferedManual)
         publishConversationPage({
-          ...bufferedInitialPage,
+          ...bufferedManual,
           readId,
           readStartedAt,
           isInitial: true,
@@ -933,7 +946,7 @@ export function installTransportObserver(
     OriginalXHR.prototype.send = originalSend
     target.WebSocket = OriginalWebSocket
     target.EventSource = OriginalEventSource
-    bufferedInitialPage = undefined
+    bufferedInitialPages.clear()
     delete tagged[marker]
   }
 }
