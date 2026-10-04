@@ -58,12 +58,6 @@ function fullDate(value: number | null | undefined) {
   const time = serverTime(value)
   return time ? new Date(time).toLocaleString(props.locale) : null
 }
-function shortTime(value: number | null | undefined) {
-  const time = serverTime(value)
-  return time
-    ? new Date(time).toLocaleTimeString(props.locale, { hour: '2-digit', minute: '2-digit' })
-    : null
-}
 function cleanToolSegment(value: string) {
   return value
     .replace(/^mcp__/, '')
@@ -267,7 +261,6 @@ const thinkingTitle = computed(() => {
     <template v-if="item.kind === 'user' || item.kind === 'answer'">
       <header class="booster-record-header">
         <strong>{{ t(`reader.${item.kind}`) }}</strong>
-        <time v-if="shortTime(item.record.createTime ?? item.record.firstSeenAt)" class="booster-record-time-text" :title="timeTitle">{{ shortTime(item.record.createTime ?? item.record.firstSeenAt) }}</time>
         <span v-if="edited" class="booster-record-edited">{{ t('reader.editedShort') }}</span>
         <span class="booster-record-header-tools">
           <span class="booster-record-info" tabindex="0" :aria-label="timeTitle" :data-tooltip="timeTitle"><Clock3 class="size-3.5" /></span>
