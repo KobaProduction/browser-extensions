@@ -2445,3 +2445,36 @@
 .booster-reader-main {
   overflow-x: hidden;
 }
+
+.booster-export-status {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--muted) 52%, var(--background));
+}
+.booster-export-status.warning {
+  border-color: color-mix(in oklab, #f59e0b 44%, var(--border));
+  background: color-mix(in oklab, #f59e0b 7%, var(--background));
+}
+.booster-export-status > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.booster-export-status strong {
+  font-size: 10px;
+  line-height: 1.4;
+}
+.booster-export-status span {
+  color: var(--muted-foreground);
+  font-size: 9px;
+}
+.booster-export-status .booster-action-secondary {
+  min-height: 30px;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
