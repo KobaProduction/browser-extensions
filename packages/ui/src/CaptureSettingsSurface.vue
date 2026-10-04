@@ -7,8 +7,8 @@ import type { ArchiveDataAdapter } from './mount'
 
 const props = defineProps<{
   settingsAdapter: SettingsAdapter
-  archiveAdapter?: ArchiveDataAdapter
-  context?: ArchiveCaptureContext
+  archiveAdapter?: ArchiveDataAdapter | undefined
+  context?: ArchiveCaptureContext | undefined
   locale: SupportedLocale
 }>()
 const emit = defineEmits<{ close: [] }>()

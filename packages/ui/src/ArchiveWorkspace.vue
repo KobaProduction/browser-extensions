@@ -9,7 +9,7 @@ import type { SupportedLocale } from './i18n'
 const props = defineProps<{
   settingsAdapter: SettingsAdapter
   archiveAdapter: ArchiveDataAdapter
-  initialConversationId?: string | null
+  initialConversationId?: string | null | undefined
   locale: SupportedLocale
 }>()
 const emit = defineEmits<{
