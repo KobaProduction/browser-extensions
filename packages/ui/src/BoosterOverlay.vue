@@ -220,6 +220,7 @@ onBeforeUnmount(() => {
             <CopyIdentity :label="context.conversationTitle || t(context.conversationId ? 'identity.untitled' : 'dock.noChat')" :identifier="context.conversationId" :locale="locale" />
             <CopyIdentity v-if="context.projectId" :label="context.projectTitle || t('identity.unknownProject')" :identifier="context.projectId" :locale="locale" />
             <div v-if="coverage" class="booster-dock-counts"><span>{{ t('dock.messages') }} <b>{{ coverage.visibleMessageCount ?? 0 }}</b></span><span>{{ t('dock.details') }} {{ coverage.internalRecordCount ?? 0 }}</span></div>
+            <p v-if="coverage" class="booster-dock-history-state">{{ t(coverage.hasOlderServerHistory === true ? 'dock.olderAvailable' : coverage.hasOlderServerHistory === false ? 'dock.startReached' : 'dock.historyUnknown') }}</p>
             <p v-else-if="loading">{{ t('reader.loading') }}</p>
             <button class="booster-capture-shortcut" type="button" @click="openCapture(currentCaptureTarget)"><ShieldCheck class="size-3" />{{ t(captureStatusKey) }}</button>
           </section>

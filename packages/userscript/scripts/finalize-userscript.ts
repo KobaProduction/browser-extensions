@@ -18,7 +18,8 @@ function outputFor(variant: UserscriptVariant): URL {
 }
 
 function metadataVersion(variant: UserscriptVariant) {
-  if (variant === 'dev' && rolling && buildNumber) return `${baseVersion}.${buildNumber}`
+  if (variant === 'dev' && rolling && buildNumber)
+    return `${baseVersion}.${buildNumber}${shortSha ? `-g${shortSha}` : ''}`
   return baseVersion
 }
 

@@ -382,6 +382,15 @@ export async function runUiTests(
           restored.querySelector('.booster-record-tool_call'),
           'tool-call preview is not visible',
         )
+        const toolCall = restored.querySelector<HTMLElement>('.booster-record-tool_call')
+        assert(
+          toolCall?.textContent?.includes('Koba GitHub') && toolCall.textContent.includes('get file'),
+          'nested MCP tool name was not resolved from functions.exec payload',
+        )
+        assert(
+          toolCall?.querySelector<HTMLAnchorElement>('.booster-tool-action[href*="github.com"]'),
+          'tool source link is missing',
+        )
         assert(
           restored.querySelector('.booster-record-tool_result'),
           'tool-result preview is not visible',
@@ -432,6 +441,16 @@ export async function runUiTests(
           restored.querySelector('.booster-record-answer .booster-record-info'),
           'message timestamp/model info controls are missing',
         )
+        const firstAnswer = restored.querySelector<HTMLElement>('.booster-record-answer')
+        assert(firstAnswer?.querySelector('time')?.textContent?.trim(), 'visible message time is missing')
+        assert(
+          firstAnswer?.textContent?.includes(translate('ru', 'reader.editedShort')),
+          'edited marker is missing',
+        )
+        const infoTitles = [...(firstAnswer?.querySelectorAll<HTMLElement>('.booster-record-info') ?? [])]
+          .map((item) => item.title)
+          .join('\n')
+        assert(infoTitles.includes('gpt-5.6-sol'), 'model/thinking tooltip is missing')
         const raw = restored.querySelector<HTMLButtonElement>(
           '.booster-record-answer .booster-record-icon-button',
         )
@@ -443,6 +462,17 @@ export async function runUiTests(
         assert(
           dialog.querySelector('.booster-json-viewer .booster-json-key'),
           'syntax-highlighted JSON modal missing',
+        )
+        const jsonModal = dialog.querySelector<HTMLElement>('.booster-json-modal')
+        const jsonViewer = dialog.querySelector<HTMLElement>('.booster-json-viewer')
+        assert(jsonModal && jsonViewer, 'JSON layout containers missing')
+        assert(
+          Math.abs(jsonModal.getBoundingClientRect().width - dialog.clientWidth) < 1,
+          'JSON modal does not fill dialog content width',
+        )
+        assert(
+          jsonViewer.clientWidth <= jsonModal.clientWidth && jsonViewer.scrollWidth >= jsonViewer.clientWidth,
+          'JSON viewer overflow escaped its modal',
         )
         dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
         await delay()

@@ -58,8 +58,76 @@ function fullDate(value: number | null | undefined) {
   const time = serverTime(value)
   return time ? new Date(time).toLocaleString(props.locale) : null
 }
+function shortTime(value: number | null | undefined) {
+  const time = serverTime(value)
+  return time
+    ? new Date(time).toLocaleTimeString(props.locale, { hour: '2-digit', minute: '2-digit' })
+    : null
+}
+function cleanToolSegment(value: string) {
+  return value
+    .replace(/^mcp__/, '')
+    .replace(/^github_(?:agent|reviewer)_/, '')
+    .replace(/^gitlab_/, '')
+    .replace(/^browser_/, '')
+    .replace(/^devtools_/, '')
+    .replaceAll('__', ' · ')
+    .replaceAll('_', ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+function nestedToolFromPayload(value: unknown): string | null {
+  const seen = new Set<unknown>()
+  const walk = (input: unknown, depth: number): string | null => {
+    if (depth > 5 || seen.has(input)) return null
+    if (typeof input === 'string') {
+      const direct = input.match(/\btools\.([A-Za-z0-9_]+)\s*\(/)?.[1]
+      if (direct) return direct
+      const mcp = input.match(/\b(mcp__[A-Za-z0-9_]+__[A-Za-z0-9_]+)\b/)?.[1]
+      return mcp ?? null
+    }
+    if (!input || typeof input !== 'object') return null
+    seen.add(input)
+    if (Array.isArray(input)) {
+      for (const item of input) {
+        const nested = walk(item, depth + 1)
+        if (nested) return nested
+      }
+      return null
+    }
+    for (const item of Object.values(input as Record<string, unknown>)) {
+      const nested = walk(item, depth + 1)
+      if (nested) return nested
+    }
+    return null
+  }
+  return walk(value, 0)
+}
+function humanToolName(value: string) {
+  if (value.startsWith('mcp__')) {
+    const raw = value.slice('mcp__'.length)
+    const split = raw.indexOf('__')
+    if (split > 0) {
+      const provider = raw.slice(0, split).replaceAll('_', ' ')
+      const action = cleanToolSegment(raw.slice(split + 2))
+      return `${provider} · ${action}`
+    }
+  }
+  const parts = value.split(/[./:]/).filter(Boolean)
+  if (parts.length > 1) return `${parts.slice(0, -1).join(' · ')} · ${cleanToolSegment(parts.at(-1) ?? value)}`
+  return cleanToolSegment(value) || value
+}
 const metadata = computed(() => object(props.item.record.raw.metadata))
 const recipient = computed(() => props.item.record.recipient?.trim() || null)
+const toolPayload = computed(() =>
+  metadata.value?.arguments ??
+  metadata.value?.args ??
+  metadata.value?.input ??
+  props.item.record.raw.arguments ??
+  props.item.record.raw.args ??
+  props.item.record.raw.input ??
+  null,
+)
 const rawToolName = computed(() =>
   firstString(
     metadata.value?.tool_title,
@@ -72,7 +140,12 @@ const rawToolName = computed(() =>
     'tool',
   ),
 )
-const toolName = computed(() => rawToolName.value ?? 'tool')
+const nestedToolName = computed(() => nestedToolFromPayload(toolPayload.value ?? props.item.record.raw))
+const effectiveToolName = computed(() => {
+  const raw = nestedToolName.value ?? rawToolName.value ?? 'tool'
+  return humanToolName(raw)
+})
+const toolName = computed(() => effectiveToolName.value)
 const toolLink = computed(() =>
   safeHttpUrl(
     metadata.value?.tool_url,
@@ -144,15 +217,6 @@ const hasText = computed(() => {
   if (!value) return false
   return !/^(?:the output of this plugin was (?:redacted|omitted)|output (?:redacted|omitted))\.?$/i.test(value)
 })
-const toolPayload = computed(() =>
-  metadata.value?.arguments ??
-  metadata.value?.args ??
-  metadata.value?.input ??
-  props.item.record.raw.arguments ??
-  props.item.record.raw.args ??
-  props.item.record.raw.input ??
-  null,
-)
 const hasToolDetails = computed(() => hasText.value || toolPayload.value !== null)
 const isReasoningExpanded = computed(() => props.expandReasoning || expanded.value)
 const preview = computed(() => {
@@ -201,6 +265,7 @@ const thinkingTitle = computed(() => {
     <template v-if="item.kind === 'user' || item.kind === 'answer'">
       <header class="booster-record-header">
         <strong>{{ t(`reader.${item.kind}`) }}</strong>
+        <time v-if="shortTime(item.record.createTime ?? item.record.firstSeenAt)" class="booster-record-time-text" :title="timeTitle">{{ shortTime(item.record.createTime ?? item.record.firstSeenAt) }}</time>
         <span v-if="edited" class="booster-record-edited">{{ t('reader.editedShort') }}</span>
         <span class="booster-record-header-tools">
           <span class="booster-record-info" :title="timeTitle"><Clock3 class="size-3.5" /></span>
@@ -234,7 +299,7 @@ const thinkingTitle = computed(() => {
         <span v-else class="booster-tool-icon booster-tool-icon-fallback"><component :is="toolGlyph" class="size-4" /></span>
         <div class="booster-tool-copy">
           <strong :title="toolName">{{ toolName }}</strong>
-          <span>{{ t(`reader.${item.kind}`) }}<template v-if="recipient && recipient !== toolName && recipient !== 'all'"> · {{ recipient }}</template></span>
+          <span>{{ t(`reader.${item.kind}`) }}<template v-if="recipient && recipient !== rawToolName && recipient !== 'all' && recipient !== 'functions.exec'"> · {{ recipient }}</template></span>
           <p v-if="preview">{{ preview }}</p>
         </div>
         <div class="booster-tool-actions" @click.stop>

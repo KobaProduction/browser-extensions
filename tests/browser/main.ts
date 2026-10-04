@@ -743,12 +743,25 @@ async function seed() {
         create_time: 1700000000.05,
       })
       messages.push({
-        ...raw('tool-call-0', 'assistant', '{"query":"fixture"}', u),
+        ...raw(
+          'tool-call-0',
+          'assistant',
+          'await tools.mcp__Koba_GitHub__github_agent_get_file({ repository: "fixture/repo" })',
+          u,
+        ),
         channel: 'analysis',
-        recipient: 'github.search',
-        content: { content_type: 'text', parts: ['{"query":"fixture"}'] },
+        recipient: 'functions.exec',
+        content: {
+          content_type: 'text',
+          parts: [
+            'await tools.mcp__Koba_GitHub__github_agent_get_file({ repository: "fixture/repo" })',
+          ],
+        },
         metadata: {
           parent_id: u,
+          reasoning_effort: 'high',
+          model_slug: 'gpt-5.6-sol',
+          tool_url: 'https://github.com/KobaProduction/chatgpt-booster',
           tool_icons: [
             'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"%3E%3Crect width="8" height="8" rx="2" fill="%23000"/%3E%3C/svg%3E',
           ],
@@ -771,6 +784,18 @@ async function seed() {
         u,
       ),
       create_time: 1700000000 + i * 2 + 1,
+      ...(i === 0
+        ? {
+            update_time: 1700000004,
+            metadata: {
+              parent_id: u,
+              model_slug: 'gpt-5.6-sol',
+              resolved_model_slug: 'gpt-5.6-sol',
+              reasoning_effort: 'high',
+              edited: true,
+            },
+          }
+        : {}),
     })
   }
   await store.ingest(
