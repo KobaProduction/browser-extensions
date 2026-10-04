@@ -1,6 +1,7 @@
 import {
   type BoosterModule,
   BoosterRuntime,
+  BOOSTER_VERSION,
   createDiagnosticsStore,
   isChatGptPage,
 } from '@chatgpt-booster/core'
@@ -48,7 +49,23 @@ class OverlayModule implements BoosterModule {
   }
 }
 
-function startRuntime() {
+const CONTENT_RUNTIME_MARKER = '__chatgptBoosterContentRuntime__'
+
+interface ContentRuntimeHandle {
+  version: string
+  runtime?: BoosterRuntime
+}
+
+const runtimeWindow = window as unknown as Window & Record<string, unknown>
+
+function cleanupStaleBoosterDom() {
+  for (const element of document.querySelectorAll(
+    '#chatgpt-booster-root, [data-chatgpt-booster]',
+  ))
+    element.remove()
+}
+
+async function startRuntime(handle: ContentRuntimeHandle) {
   const runtime = new BoosterRuntime(
     [
       new OverlayModule(),
@@ -80,12 +97,35 @@ function startRuntime() {
         .catch(() => undefined)
     },
   )
-
-  void runtime.start()
+  handle.runtime = runtime
+  await runtime.start()
 }
 
-if (isChatGptPage()) {
-  void archiveCapture.start()
-  if (document.body) startRuntime()
-  else window.addEventListener('DOMContentLoaded', startRuntime, { once: true })
+async function bootstrapContentRuntime() {
+  if (!isChatGptPage()) return
+  const existing = runtimeWindow[CONTENT_RUNTIME_MARKER] as ContentRuntimeHandle | undefined
+  if (existing?.version === BOOSTER_VERSION) return
+
+  if (existing?.runtime)
+    try {
+      await existing.runtime.stop()
+    } catch {
+      // A previous extension context may already be invalid after an update/reload.
+    }
+
+  cleanupStaleBoosterDom()
+  const handle: ContentRuntimeHandle = { version: BOOSTER_VERSION }
+  runtimeWindow[CONTENT_RUNTIME_MARKER] = handle
+
+  // Publish archive policy as early as possible, before the UI waits for document.body.
+  await archiveCapture.start()
+
+  const launch = () => {
+    if (runtimeWindow[CONTENT_RUNTIME_MARKER] !== handle) return
+    void startRuntime(handle)
+  }
+  if (document.body) launch()
+  else window.addEventListener('DOMContentLoaded', launch, { once: true })
 }
+
+void bootstrapContentRuntime()
