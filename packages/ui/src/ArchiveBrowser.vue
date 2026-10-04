@@ -6,7 +6,7 @@ import ArchiveRecord from './ArchiveRecord.vue'
 import CopyIdentity from './CopyIdentity.vue'
 import { translate, type SupportedLocale, type TranslationKey } from './i18n'
 import type { ArchiveConversationView, ArchiveProjectView, ArchiveCoverageView, ArchiveDataAdapter } from './mount'
-const props = defineProps<{ archiveAdapter: ArchiveDataAdapter; initialConversationId?: string | null; locale: SupportedLocale; windowed?: boolean }>()
+const props = defineProps<{ archiveAdapter: ArchiveDataAdapter; initialConversationId?: string | null | undefined; locale: SupportedLocale; windowed?: boolean }>()
 const emit = defineEmits<{ close: []; minimize: []; export: [conversationId: string, title: string | null] }>()
 const t = (key: TranslationKey) => translate(props.locale, key)
 const conversations = ref<ArchiveConversationView[]>([]), projects = ref<ArchiveProjectView[]>([])
