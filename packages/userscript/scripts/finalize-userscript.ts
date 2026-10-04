@@ -19,7 +19,7 @@ function outputFor(variant: UserscriptVariant): URL {
 
 function metadataVersion(variant: UserscriptVariant) {
   if (variant === 'dev' && rolling) return buildLabel
-  return baseVersion
+  return displayBaseVersion
 }
 
 function assetBase(variant: UserscriptVariant) {
