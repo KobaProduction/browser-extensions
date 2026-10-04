@@ -177,3 +177,42 @@ chrome.runtime.onMessage.addListener(
     return true
   },
 )
+
+const CHATGPT_MATCH = 'https://chatgpt.com/*'
+
+async function bootstrapExistingChatGptTabs(): Promise<void> {
+  const tabs = await chrome.tabs.query({ url: CHATGPT_MATCH })
+  await Promise.all(
+    tabs
+      .filter((tab): tab is chrome.tabs.Tab & { id: number } => typeof tab.id === 'number')
+      .map(async (tab) => {
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: ['src/observer/index.js'],
+            world: 'MAIN',
+            injectImmediately: true,
+          })
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: ['src/content/index.js'],
+            world: 'ISOLATED',
+            injectImmediately: true,
+          })
+        } catch {
+          // Tab may navigate or close between query and injection. Manifest scripts cover the next load.
+        }
+      }),
+  )
+}
+
+chrome.runtime.onInstalled.addListener(() => {
+  void bootstrapExistingChatGptTabs()
+})
+
+chrome.runtime.onStartup.addListener(() => {
+  void bootstrapExistingChatGptTabs()
+})
+
+// Unpacked extension reloads restart the worker without necessarily navigating existing tabs.
+void bootstrapExistingChatGptTabs()
