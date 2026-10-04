@@ -234,6 +234,7 @@ const edited = computed(() => {
       meta.is_edited === true ||
       meta.was_edited === true ||
       meta.user_edited === true ||
+      meta.dictation_edited === true ||
       numericCount > 0 ||
       firstString(meta.original_message_id, meta.edit_source, raw.original_message_id),
   )
