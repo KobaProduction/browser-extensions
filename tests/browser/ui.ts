@@ -384,7 +384,8 @@ export async function runUiTests(
         )
         const toolCall = restored.querySelector<HTMLElement>('.booster-record-tool_call')
         assert(
-          toolCall?.textContent?.includes('Koba GitHub') && toolCall.textContent.includes('get file'),
+          toolCall?.textContent?.includes('Koba GitHub') &&
+            toolCall.textContent.includes('get file'),
           'nested MCP tool name was not resolved from functions.exec payload',
         )
         assert(
@@ -442,12 +443,17 @@ export async function runUiTests(
           'message timestamp/model info controls are missing',
         )
         const firstAnswer = restored.querySelector<HTMLElement>('.booster-record-answer')
-        assert(firstAnswer?.querySelector('time')?.textContent?.trim(), 'visible message time is missing')
+        assert(
+          firstAnswer?.querySelector('time')?.textContent?.trim(),
+          'visible message time is missing',
+        )
         assert(
           firstAnswer?.textContent?.includes(translate('ru', 'reader.editedShort')),
           'edited marker is missing',
         )
-        const infoTitles = [...(firstAnswer?.querySelectorAll<HTMLElement>('.booster-record-info') ?? [])]
+        const infoTitles = [
+          ...(firstAnswer?.querySelectorAll<HTMLElement>('.booster-record-info') ?? []),
+        ]
           .map((item) => item.title)
           .join('\n')
         assert(infoTitles.includes('gpt-5.6-sol'), 'model/thinking tooltip is missing')
@@ -471,7 +477,8 @@ export async function runUiTests(
           'JSON modal does not fill dialog content width',
         )
         assert(
-          jsonViewer.clientWidth <= jsonModal.clientWidth && jsonViewer.scrollWidth >= jsonViewer.clientWidth,
+          jsonViewer.clientWidth <= jsonModal.clientWidth &&
+            jsonViewer.scrollWidth >= jsonViewer.clientWidth,
           'JSON viewer overflow escaped its modal',
         )
         dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
