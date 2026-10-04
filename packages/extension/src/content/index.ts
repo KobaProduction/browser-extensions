@@ -50,10 +50,15 @@ class OverlayModule implements BoosterModule {
 }
 
 const CONTENT_RUNTIME_MARKER = '__chatgptBoosterContentRuntime__'
+const CONTENT_RUNTIME_DATASET = 'chatgptBoosterRuntimeVersion'
+const CONTENT_RUNTIME_INSTANCE_DATASET = 'chatgptBoosterRuntimeInstance'
+const CONTENT_RUNTIME_CLAIM_EVENT = 'chatgpt-booster:content-runtime-claim'
 
 interface ContentRuntimeHandle {
   version: string
+  instanceId: string
   runtime?: BoosterRuntime
+  onClaim?: (event: Event) => void
 }
 
 const runtimeWindow = window as unknown as Window & Record<string, unknown>
@@ -63,6 +68,22 @@ function cleanupStaleBoosterDom() {
     '#chatgpt-booster-root, [data-chatgpt-booster]',
   ))
     element.remove()
+}
+
+async function stopRuntimeHandle(handle: ContentRuntimeHandle) {
+  if (handle.onClaim) window.removeEventListener(CONTENT_RUNTIME_CLAIM_EVENT, handle.onClaim)
+  if (!handle.runtime) return
+  try {
+    await handle.runtime.stop()
+  } catch {
+    // An extension update can invalidate APIs while the old isolated context is winding down.
+  }
+}
+
+function runtimeInstanceId() {
+  return typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : 'runtime-' + Date.now() + '-' + Math.random().toString(36).slice(2)
 }
 
 async function startRuntime(handle: ContentRuntimeHandle) {
@@ -103,25 +124,47 @@ async function startRuntime(handle: ContentRuntimeHandle) {
 
 async function bootstrapContentRuntime() {
   if (!isChatGptPage()) return
+
+  const domVersion = document.documentElement.dataset[CONTENT_RUNTIME_DATASET]
+  const existingRoot = document.querySelector('#chatgpt-booster-root')
+  if (domVersion === BOOSTER_VERSION && existingRoot) return
+
   const existing = runtimeWindow[CONTENT_RUNTIME_MARKER] as ContentRuntimeHandle | undefined
-  if (existing?.version === BOOSTER_VERSION) return
+  if (existing?.version === BOOSTER_VERSION && existingRoot) {
+    document.documentElement.dataset[CONTENT_RUNTIME_DATASET] = BOOSTER_VERSION
+    document.documentElement.dataset[CONTENT_RUNTIME_INSTANCE_DATASET] = existing.instanceId
+    return
+  }
 
-  if (existing?.runtime)
-    try {
-      await existing.runtime.stop()
-    } catch {
-      // A previous extension context may already be invalid after an update/reload.
-    }
+  if (existing) await stopRuntimeHandle(existing)
 
+  const instanceId = runtimeInstanceId()
+  document.documentElement.dataset[CONTENT_RUNTIME_DATASET] = BOOSTER_VERSION
+  document.documentElement.dataset[CONTENT_RUNTIME_INSTANCE_DATASET] = instanceId
+  window.dispatchEvent(
+    new CustomEvent(CONTENT_RUNTIME_CLAIM_EVENT, {
+      detail: { version: BOOSTER_VERSION, instanceId },
+    }),
+  )
+
+  // Give an older isolated-world runtime one turn to disconnect MutationObservers and UI mounts.
+  await new Promise<void>((resolve) => setTimeout(resolve, 0))
   cleanupStaleBoosterDom()
-  const handle: ContentRuntimeHandle = { version: BOOSTER_VERSION }
+
+  const handle: ContentRuntimeHandle = { version: BOOSTER_VERSION, instanceId }
+  handle.onClaim = (event: Event) => {
+    const detail = (event as CustomEvent<{ instanceId?: string }>).detail
+    if (!detail?.instanceId || detail.instanceId === instanceId) return
+    void stopRuntimeHandle(handle)
+  }
+  window.addEventListener(CONTENT_RUNTIME_CLAIM_EVENT, handle.onClaim)
   runtimeWindow[CONTENT_RUNTIME_MARKER] = handle
 
   // Publish archive policy as early as possible, before the UI waits for document.body.
   await archiveCapture.start()
 
   const launch = () => {
-    if (runtimeWindow[CONTENT_RUNTIME_MARKER] !== handle) return
+    if (document.documentElement.dataset[CONTENT_RUNTIME_INSTANCE_DATASET] !== instanceId) return
     void startRuntime(handle)
   }
   if (document.body) launch()

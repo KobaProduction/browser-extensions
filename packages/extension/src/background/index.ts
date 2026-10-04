@@ -187,6 +187,18 @@ async function bootstrapExistingChatGptTabs(): Promise<void> {
       .filter((tab): tab is chrome.tabs.Tab & { id: number } => typeof tab.id === 'number')
       .map(async (tab) => {
         try {
+          const [presence] = await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            world: 'ISOLATED',
+            injectImmediately: true,
+            func: () =>
+              Boolean(
+                document.documentElement.dataset.chatgptBoosterRuntimeVersion ||
+                  document.querySelector('#chatgpt-booster-root, [data-chatgpt-booster]'),
+              ),
+          })
+          if (presence?.result === true) return
+
           await chrome.scripting.executeScript({
             target: { tabId: tab.id },
             files: ['src/observer/index.js'],
