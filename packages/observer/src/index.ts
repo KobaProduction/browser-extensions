@@ -335,9 +335,7 @@ export async function fetchArchiveAssetBytes(
   const url = archiveAssetContentUrl(value, assetId)
   if (!url) throw new Error('Invalid archive asset URL')
   if (signal?.aborted)
-    throw signal.reason instanceof Error
-      ? signal.reason
-      : new DOMException('Aborted', 'AbortError')
+    throw signal.reason instanceof Error ? signal.reason : new DOMException('Aborted', 'AbortError')
   const requestId = `asset-${Date.now()}-${Math.random().toString(36).slice(2)}`
   return await new Promise<ArrayBuffer>((resolve, reject) => {
     const cleanup = () => {
@@ -356,9 +354,7 @@ export async function fetchArchiveAssetBytes(
         target.location.origin,
       )
       reject(
-        signal?.reason instanceof Error
-          ? signal.reason
-          : new DOMException('Aborted', 'AbortError'),
+        signal?.reason instanceof Error ? signal.reason : new DOMException('Aborted', 'AbortError'),
       )
     }
     const onMessage = (event: MessageEvent) => {
@@ -697,7 +693,8 @@ export function installTransportObserver(
   const onArchiveAssetFetchCancel = (event: MessageEvent) => {
     if (event.origin !== target.location.origin || event.source !== target) return
     const data = event.data
-    if (data?.channel !== TRANSPORT_CHANNEL || data.type !== ARCHIVE_ASSET_FETCH_CANCEL_EVENT) return
+    if (data?.channel !== TRANSPORT_CHANNEL || data.type !== ARCHIVE_ASSET_FETCH_CANCEL_EVENT)
+      return
     const requestId = data.detail?.requestId
     if (typeof requestId === 'string') archiveAssetFetches.get(requestId)?.abort()
   }

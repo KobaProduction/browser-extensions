@@ -437,8 +437,7 @@ describe('conversation vs nested records', () => {
             width: null,
             height: null,
             kind: 'file',
-            downloadUrl:
-              'https://chatgpt.com/backend-api/estuary/content?id=file_cancel&sig=test',
+            downloadUrl: 'https://chatgpt.com/backend-api/estuary/content?id=file_cancel&sig=test',
             resolverObservedAt: 1,
             firstSeenAt: 1,
             lastSeenAt: 1,

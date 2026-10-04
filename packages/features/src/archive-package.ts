@@ -291,7 +291,8 @@ export async function createArchivePackage(
           : null,
       })
     } catch (error) {
-      if (signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) throw error
+      if (signal?.aborted || (error instanceof DOMException && error.name === 'AbortError'))
+        throw error
       manifestAssets.push({
         ...reference,
         path: null,
