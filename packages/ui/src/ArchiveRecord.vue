@@ -58,23 +58,7 @@ function fullDate(value: number | null | undefined) {
   const time = serverTime(value)
   return time ? new Date(time).toLocaleString(props.locale) : null
 }
-function shortTime(value: number | null | undefined) {
-  const time = serverTime(value)
-  return time
-    ? new Date(time).toLocaleTimeString(props.locale, { hour: '2-digit', minute: '2-digit' })
-    : null
-}
-function humanTool(value: string) {
-  return value
-    .split(/[./:]/)
-    .filter(Boolean)
-    .at(-1)
-    ?.replaceAll('_', ' ')
-    .replaceAll('-', ' ') ?? value
-}
-
 const metadata = computed(() => object(props.item.record.raw.metadata))
-const content = computed(() => object(props.item.record.raw.content))
 const recipient = computed(() => props.item.record.recipient?.trim() || null)
 const rawToolName = computed(() =>
   firstString(
@@ -88,12 +72,7 @@ const rawToolName = computed(() =>
     'tool',
   ),
 )
-const toolName = computed(() => humanTool(rawToolName.value ?? 'tool'))
-const toolNamespace = computed(() => {
-  const value = recipient.value ?? rawToolName.value ?? ''
-  const parts = value.split(/[./:]/).filter(Boolean)
-  return parts.length > 1 ? parts.slice(0, -1).join(' · ') : null
-})
+const toolName = computed(() => rawToolName.value ?? 'tool')
 const toolLink = computed(() =>
   safeHttpUrl(
     metadata.value?.tool_url,
@@ -170,9 +149,17 @@ const preview = computed(() => {
 const created = computed(() => fullDate(props.item.record.createTime ?? props.item.record.firstSeenAt))
 const updated = computed(() => fullDate(props.item.record.updateTime))
 const edited = computed(() => {
-  const create = serverTime(props.item.record.createTime)
-  const update = serverTime(props.item.record.updateTime)
-  return Boolean(create && update && update - create > 1000)
+  const raw = props.item.record.raw
+  const meta = metadata.value ?? {}
+  const numericCount = typeof meta.edit_count === 'number' ? meta.edit_count : 0
+  return Boolean(
+    meta.edited === true ||
+      meta.is_edited === true ||
+      meta.was_edited === true ||
+      meta.user_edited === true ||
+      numericCount > 0 ||
+      firstString(meta.original_message_id, meta.edit_source, raw.original_message_id),
+  )
 })
 const timeTitle = computed(() => {
   const parts = created.value ? [`${t('reader.sentAt')}: ${created.value}`] : []
@@ -201,10 +188,10 @@ const thinkingTitle = computed(() => {
     <template v-if="item.kind === 'user' || item.kind === 'answer'">
       <header class="booster-record-header">
         <strong>{{ t(`reader.${item.kind}`) }}</strong>
-        <span v-if="shortTime(item.record.createTime ?? item.record.firstSeenAt)" class="booster-record-time-text">{{ shortTime(item.record.createTime ?? item.record.firstSeenAt) }}<template v-if="edited"> · {{ t('reader.editedShort') }}</template></span>
+        <span v-if="edited" class="booster-record-edited">{{ t('reader.editedShort') }}</span>
         <span class="booster-record-header-tools">
           <span class="booster-record-info" :title="timeTitle"><Clock3 class="size-3.5" /></span>
-          <span v-if="thinkingTitle" class="booster-record-info" :title="thinkingTitle"><BrainCircuit class="size-3.5" /></span>
+          <span v-if="item.kind === 'answer' && thinkingTitle" class="booster-record-info" :title="thinkingTitle"><BrainCircuit class="size-3.5" /></span>
           <button class="booster-record-icon-button" type="button" :title="t('reader.raw')" :aria-label="t('reader.raw')" @click="rawOpen = true"><FileJson2 class="size-3.5" /></button>
         </span>
       </header>
@@ -233,11 +220,12 @@ const thinkingTitle = computed(() => {
         <img v-if="toolIcon" class="booster-tool-icon" :src="toolIcon" alt="" loading="lazy" referrerpolicy="no-referrer" />
         <span v-else class="booster-tool-icon booster-tool-icon-fallback"><component :is="toolGlyph" class="size-4" /></span>
         <div class="booster-tool-copy">
-          <strong>{{ toolName }}</strong>
-          <span>{{ t(`reader.${item.kind}`) }}<template v-if="toolNamespace"> · {{ toolNamespace }}</template></span>
+          <strong :title="toolName">{{ toolName }}</strong>
+          <span>{{ t(`reader.${item.kind}`) }}<template v-if="recipient && recipient !== toolName && recipient !== 'all'"> · {{ recipient }}</template></span>
           <p v-if="preview">{{ preview }}</p>
         </div>
         <div class="booster-tool-actions" @click.stop>
+          <span v-if="thinkingTitle" class="booster-record-info" :title="thinkingTitle"><BrainCircuit class="size-3.5" /></span>
           <a v-if="toolLink" class="booster-tool-action" :href="toolLink" target="_blank" rel="noreferrer noopener" :title="t('reader.openTool')"><ExternalLink class="size-3.5" /></a>
           <button v-if="hasText" type="button" class="booster-tool-action" :title="t(expanded ? 'reader.hide' : 'reader.show')" @click="expanded = !expanded"><Code2 class="size-3.5" /></button>
           <button type="button" class="booster-tool-action" :title="t('reader.raw')" @click="rawOpen = true"><FileJson2 class="size-3.5" /></button>

@@ -2353,7 +2353,7 @@
   background: var(--muted);
   color: var(--foreground);
 }
-.booster-record-time-text {
+.booster-record-edited {
   color: var(--muted-foreground);
   font-size: 9px;
   white-space: nowrap;
