@@ -2054,6 +2054,13 @@
 .booster-tool-expanded .booster-markdown {
   font-size: 11px;
 }
+
+.booster-tool-expanded .booster-json-viewer {
+  max-height: 260px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 10px;
+}
 .booster-internal-row {
   display: grid;
   width: 100%;

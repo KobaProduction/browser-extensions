@@ -188,7 +188,7 @@ export class HistoryLoaderModule implements BoosterModule {
         const container = findConversationScrollContainer()
         const bounds = currentConversationMessageBounds()
         const fresh = coverage?.evidenceVersion === 1 && (coverage.readStartedAt ?? 0) >= startedAt
-        const atStart = !!container && container.scrollTop <= 1
+        const atStart = !container || container.scrollTop <= 1
         const startMatches =
           !!bounds.firstMessageId && coverage?.oldestKnownVisibleMessageId === bounds.firstMessageId
         const latestMatches =

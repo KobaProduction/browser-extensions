@@ -79,7 +79,6 @@ const toolLink = computed(() =>
     metadata.value?.connector_url,
     metadata.value?.app_url,
     metadata.value?.source_url,
-    metadata.value?.url,
   ),
 )
 
@@ -90,16 +89,16 @@ function iconUrl(value: unknown, depth = 0): string | null {
     try {
       const url = new URL(value)
       const host = url.hostname.toLowerCase()
-      if (
-        url.protocol === 'https:' &&
-        (host === 'chatgpt.com' ||
-          host.endsWith('.chatgpt.com') ||
-          host === 'openai.com' ||
-          host.endsWith('.openai.com') ||
-          host === 'oaistatic.com' ||
-          host.endsWith('.oaistatic.com'))
-      )
-        return url.href
+      const trustedOpenAiHost =
+        host === 'chatgpt.com' ||
+        host.endsWith('.chatgpt.com') ||
+        host === 'openai.com' ||
+        host.endsWith('.openai.com') ||
+        host === 'oaistatic.com' ||
+        host.endsWith('.oaistatic.com')
+      const observedFaviconService =
+        host === 'www.google.com' && url.pathname === '/s2/favicons'
+      if (url.protocol === 'https:' && (trustedOpenAiHost || observedFaviconService)) return url.href
     } catch {}
     return null
   }
@@ -145,6 +144,16 @@ const hasText = computed(() => {
   if (!value) return false
   return !/^(?:the output of this plugin was (?:redacted|omitted)|output (?:redacted|omitted))\.?$/i.test(value)
 })
+const toolPayload = computed(() =>
+  metadata.value?.arguments ??
+  metadata.value?.args ??
+  metadata.value?.input ??
+  props.item.record.raw.arguments ??
+  props.item.record.raw.args ??
+  props.item.record.raw.input ??
+  null,
+)
+const hasToolDetails = computed(() => hasText.value || toolPayload.value !== null)
 const isReasoningExpanded = computed(() => props.expandReasoning || expanded.value)
 const preview = computed(() => {
   const text = props.item.text.trim()
@@ -220,7 +229,7 @@ const thinkingTitle = computed(() => {
     </template>
 
     <template v-else-if="item.kind === 'tool_call' || item.kind === 'tool_result'">
-      <div class="booster-tool-row" :class="{ 'is-clickable': hasText }" @click="hasText && (expanded = !expanded)">
+      <div class="booster-tool-row" :class="{ 'is-clickable': hasToolDetails }" @click="hasToolDetails && (expanded = !expanded)">
         <img v-if="toolIcon" class="booster-tool-icon" :src="toolIcon" alt="" loading="lazy" referrerpolicy="no-referrer" />
         <span v-else class="booster-tool-icon booster-tool-icon-fallback"><component :is="toolGlyph" class="size-4" /></span>
         <div class="booster-tool-copy">
@@ -230,12 +239,12 @@ const thinkingTitle = computed(() => {
         </div>
         <div class="booster-tool-actions" @click.stop>
           <span v-if="thinkingTitle" class="booster-record-info" :title="thinkingTitle"><BrainCircuit class="size-3.5" /></span>
-          <a v-if="toolLink" class="booster-tool-action" :href="toolLink" target="_blank" rel="noreferrer noopener" :title="t('reader.openTool')"><ExternalLink class="size-3.5" /></a>
-          <button v-if="hasText" type="button" class="booster-tool-action" :title="t(expanded ? 'reader.hide' : 'reader.show')" @click="expanded = !expanded"><Code2 class="size-3.5" /></button>
+          <a v-if="toolLink" class="booster-tool-action" :href="toolLink" target="_blank" rel="noreferrer noopener" :title="`${t('reader.openTool')}: ${toolLink}`"><ExternalLink class="size-3.5" /></a>
+          <button v-if="hasToolDetails" type="button" class="booster-tool-action" :title="t(expanded ? 'reader.hide' : 'reader.show')" @click="expanded = !expanded"><Code2 class="size-3.5" /></button>
           <button type="button" class="booster-tool-action" :title="t('reader.raw')" @click="rawOpen = true"><FileJson2 class="size-3.5" /></button>
         </div>
       </div>
-      <div v-if="expanded && hasText" class="booster-tool-expanded"><MarkdownContent :text="item.text" /></div>
+      <div v-if="expanded && hasToolDetails" class="booster-tool-expanded"><MarkdownContent v-if="hasText" :text="item.text" /><JsonViewer v-else :value="toolPayload" /></div>
     </template>
 
     <template v-else>
