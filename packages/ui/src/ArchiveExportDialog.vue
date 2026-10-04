@@ -28,6 +28,7 @@ const statusKey = computed<TranslationKey>(() => {
   return 'export.statusSaved'
 })
 let queue: Promise<unknown> = Promise.resolve(), active = true
+let exportController: AbortController | undefined
 onMounted(async () => {
   try {
     const [settings, nextCoverage] = await Promise.all([
@@ -43,7 +44,7 @@ onMounted(async () => {
     error.value = 'common.saveError'
   }
 })
-onBeforeUnmount(() => { active = false; if (preparedUrl.value) URL.revokeObjectURL(preparedUrl.value) })
+onBeforeUnmount(() => { active = false; exportController?.abort(); if (preparedUrl.value) URL.revokeObjectURL(preparedUrl.value) })
 function clearPrepared() {
   if (preparedUrl.value) URL.revokeObjectURL(preparedUrl.value)
   preparedUrl.value = ''
@@ -70,19 +71,29 @@ async function refreshBeforeExport() {
 }
 async function download() {
   if (busy.value) return
+  const controller = new AbortController()
+  exportController = controller
   busy.value = true; error.value = ''; complete.value = false; incomplete.value = false
   try {
     await queue
     await props.settingsAdapter.update({ export: { ...options.value } })
-    const outcome = await props.archiveAdapter.exportConversation(props.conversationId, { ...options.value })
+    const outcome = await props.archiveAdapter.exportConversation(props.conversationId, { ...options.value }, controller.signal)
     clearPrepared()
     preparedUrl.value = URL.createObjectURL(outcome.blob)
     const base = (props.title || 'conversation').replace(/[\/:*?"<>|]/g, '-').slice(0, 100) || 'conversation'
     preparedName.value = `${base}.${outcome.extension}`
     complete.value = true
     incomplete.value = !outcome.complete
-  } catch { error.value = 'export.failed' }
-  finally { busy.value = false }
+  } catch (cause) {
+    if (!(cause instanceof DOMException && cause.name === 'AbortError')) error.value = 'export.failed'
+  }
+  finally {
+    if (exportController === controller) exportController = undefined
+    busy.value = false
+  }
+}
+function cancelExport() {
+  exportController?.abort()
 }
 </script>
 <template>
@@ -109,6 +120,7 @@ async function download() {
       <p v-if="error" role="alert" class="booster-error">{{ t(error as TranslationKey) }}</p><p v-if="complete" role="status">{{ t(incomplete ? 'export.savedPartial' : 'export.saved') }}</p>
       <a v-if="preparedUrl" class="booster-action-primary booster-export-ready" :href="preparedUrl" :download="preparedName"><Download class="size-4" />{{ t('export.readyDownload') }}</a>
       <button v-else class="booster-action-primary" type="button" :disabled="busy" @click="download"><Download class="size-4" />{{ t(busy ? 'export.working' : 'export.prepare') }}</button>
+      <button v-if="busy" class="booster-action-secondary" type="button" @click="cancelExport">{{ t('common.cancel') }}</button>
     </div><p v-else class="booster-note">{{ t(error ? 'common.saveError' : 'control.loading') }}</p>
   </section>
 </template>

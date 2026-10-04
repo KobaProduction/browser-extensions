@@ -77,6 +77,7 @@ export interface ArchiveDataAdapter {
   exportConversation(
     conversationId: string,
     options: ArchiveExportOptions,
+    signal?: AbortSignal,
   ): Promise<ArchiveExportOutcome>
   listProjects(): Promise<ArchiveProjectView[]>
   getConversation(conversationId: string): Promise<ArchiveConversationView | undefined>

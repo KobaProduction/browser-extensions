@@ -6,6 +6,7 @@ export const ARCHIVE_NETWORK_EVENT = 'chatgpt-booster:archive-network'
 export const ARCHIVE_ASSET_EVENT = 'chatgpt-booster:archive-asset'
 export const ARCHIVE_ASSET_FETCH_REQUEST_EVENT = 'chatgpt-booster:archive-asset-fetch-request'
 export const ARCHIVE_ASSET_FETCH_RESULT_EVENT = 'chatgpt-booster:archive-asset-fetch-result'
+export const ARCHIVE_ASSET_FETCH_CANCEL_EVENT = 'chatgpt-booster:archive-asset-fetch-cancel'
 export interface ArchiveCapturePolicy {
   enabled: boolean
   defaultEnabled: boolean
@@ -329,14 +330,36 @@ export async function fetchArchiveAssetBytes(
   value: string,
   assetId: string,
   target: Window = window,
+  signal?: AbortSignal,
 ): Promise<ArrayBuffer> {
   const url = archiveAssetContentUrl(value, assetId)
   if (!url) throw new Error('Invalid archive asset URL')
+  if (signal?.aborted)
+    throw signal.reason instanceof Error
+      ? signal.reason
+      : new DOMException('Aborted', 'AbortError')
   const requestId = `asset-${Date.now()}-${Math.random().toString(36).slice(2)}`
   return await new Promise<ArrayBuffer>((resolve, reject) => {
     const cleanup = () => {
       clearTimeout(timer)
       target.removeEventListener('message', onMessage)
+      signal?.removeEventListener('abort', onAbort)
+    }
+    const onAbort = () => {
+      cleanup()
+      target.postMessage(
+        {
+          channel: TRANSPORT_CHANNEL,
+          type: ARCHIVE_ASSET_FETCH_CANCEL_EVENT,
+          detail: { requestId, assetId },
+        },
+        target.location.origin,
+      )
+      reject(
+        signal?.reason instanceof Error
+          ? signal.reason
+          : new DOMException('Aborted', 'AbortError'),
+      )
     }
     const onMessage = (event: MessageEvent) => {
       if (event.origin !== target.location.origin || event.source !== target) return
@@ -359,9 +382,18 @@ export async function fetchArchiveAssetBytes(
     }
     const timer = setTimeout(() => {
       cleanup()
+      target.postMessage(
+        {
+          channel: TRANSPORT_CHANNEL,
+          type: ARCHIVE_ASSET_FETCH_CANCEL_EVENT,
+          detail: { requestId, assetId },
+        },
+        target.location.origin,
+      )
       reject(new Error('Asset fetch timed out'))
     }, 30_000)
     target.addEventListener('message', onMessage)
+    signal?.addEventListener('abort', onAbort, { once: true })
     target.postMessage(
       {
         channel: TRANSPORT_CHANNEL,
@@ -596,6 +628,7 @@ export function installTransportObserver(
   target.addEventListener('message', onConfig)
 
   const originalFetch = target.fetch.bind(target)
+  const archiveAssetFetches = new Map<string, AbortController>()
   const onArchiveAssetFetch = (event: MessageEvent) => {
     if (event.origin !== target.location.origin || event.source !== target) return
     const data = event.data
@@ -612,9 +645,14 @@ export function installTransportObserver(
       return
     const safeUrl = archiveAssetContentUrl(detail.url, detail.assetId)
     if (!safeUrl) return
+    const controller = new AbortController()
+    archiveAssetFetches.set(detail.requestId, controller)
     void (async () => {
       try {
-        const response = await originalFetch(safeUrl, { credentials: 'omit' })
+        const response = await originalFetch(safeUrl, {
+          credentials: 'omit',
+          signal: controller.signal,
+        })
         if (!response.ok) throw new Error(`HTTP ${response.status}`)
         const announced = Number(response.headers.get('content-length'))
         if (Number.isFinite(announced) && announced > 512 * 1024 * 1024)
@@ -637,6 +675,7 @@ export function installTransportObserver(
           [buffer],
         )
       } catch (error) {
+        if (controller.signal.aborted) return
         target.postMessage(
           {
             channel: TRANSPORT_CHANNEL,
@@ -650,10 +689,20 @@ export function installTransportObserver(
           },
           target.location.origin,
         )
+      } finally {
+        archiveAssetFetches.delete(detail.requestId as string)
       }
     })()
   }
+  const onArchiveAssetFetchCancel = (event: MessageEvent) => {
+    if (event.origin !== target.location.origin || event.source !== target) return
+    const data = event.data
+    if (data?.channel !== TRANSPORT_CHANNEL || data.type !== ARCHIVE_ASSET_FETCH_CANCEL_EVENT) return
+    const requestId = data.detail?.requestId
+    if (typeof requestId === 'string') archiveAssetFetches.get(requestId)?.abort()
+  }
   target.addEventListener('message', onArchiveAssetFetch)
+  target.addEventListener('message', onArchiveAssetFetchCancel)
   target.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const id = nextId('fetch')
     const started = performance.now()
@@ -941,6 +990,9 @@ export function installTransportObserver(
     target.removeEventListener('message', onConfig)
     target.removeEventListener('message', onArchivePolicy)
     target.removeEventListener('message', onArchiveAssetFetch)
+    target.removeEventListener('message', onArchiveAssetFetchCancel)
+    for (const controller of archiveAssetFetches.values()) controller.abort()
+    archiveAssetFetches.clear()
     target.fetch = originalFetch
     OriginalXHR.prototype.open = originalOpen
     OriginalXHR.prototype.send = originalSend

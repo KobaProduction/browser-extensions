@@ -349,6 +349,110 @@ describe('conversation vs nested records', () => {
     const zip = new Uint8Array(await result.blob.arrayBuffer())
     expect([...zip.slice(0, 4)]).toEqual([0x50, 0x4b, 0x03, 0x04])
   })
+
+  test('full package skips assets that would exceed the aggregate memory limit', async () => {
+    const attachment = record('limit-attachment', 'user', 'multimodal_text', {
+      raw: {
+        id: 'limit-attachment',
+        author: { role: 'user' },
+        content: {
+          content_type: 'multimodal_text',
+          parts: [
+            {
+              content_type: 'file_asset_pointer',
+              asset_pointer: 'sediment://file_limit',
+              mime_type: 'application/octet-stream',
+              size_bytes: 512 * 1024 * 1024 + 1,
+            },
+          ],
+        },
+        metadata: { attachments: [{ id: 'file_limit', name: 'too-large.bin' }] },
+      },
+    })
+    let fetches = 0
+    const result = await createArchivePackage(
+      { conversationId: 'chat', projectId: null, title: 'Test' } as never,
+      buildArchiveThread([attachment]),
+      { ...DEFAULT_EXPORT_OPTIONS, level: 'full' },
+      { verified: true, capture: { verified: true } },
+      [
+        {
+          assetId: 'file_limit',
+          fileName: 'too-large.bin',
+          mimeType: 'application/octet-stream',
+          sizeBytes: 512 * 1024 * 1024 + 1,
+          width: null,
+          height: null,
+          kind: 'file',
+          downloadUrl: 'https://chatgpt.com/backend-api/estuary/content?id=file_limit&sig=test',
+          resolverObservedAt: 1,
+          firstSeenAt: 1,
+          lastSeenAt: 1,
+        },
+      ],
+      async () => {
+        fetches += 1
+        return new ArrayBuffer(0)
+      },
+    )
+    expect(fetches).toBe(0)
+    expect(result.manifest.assets[0]?.status).toBe('package_limit')
+    expect(result.manifest.complete).toBe(false)
+  })
+
+  test('full package honors an aborted export before fetching assets', async () => {
+    const attachment = record('cancel-attachment', 'user', 'multimodal_text', {
+      raw: {
+        id: 'cancel-attachment',
+        author: { role: 'user' },
+        content: {
+          content_type: 'multimodal_text',
+          parts: [
+            {
+              content_type: 'file_asset_pointer',
+              asset_pointer: 'sediment://file_cancel',
+              mime_type: 'application/octet-stream',
+              size_bytes: 3,
+            },
+          ],
+        },
+        metadata: { attachments: [{ id: 'file_cancel', name: 'cancel.bin' }] },
+      },
+    })
+    const controller = new AbortController()
+    controller.abort(new DOMException('Aborted', 'AbortError'))
+    let fetches = 0
+    expect(
+      createArchivePackage(
+        { conversationId: 'chat', projectId: null, title: 'Test' } as never,
+        buildArchiveThread([attachment]),
+        { ...DEFAULT_EXPORT_OPTIONS, level: 'full' },
+        { verified: true, capture: { verified: true } },
+        [
+          {
+            assetId: 'file_cancel',
+            fileName: 'cancel.bin',
+            mimeType: 'application/octet-stream',
+            sizeBytes: 3,
+            width: null,
+            height: null,
+            kind: 'file',
+            downloadUrl:
+              'https://chatgpt.com/backend-api/estuary/content?id=file_cancel&sig=test',
+            resolverObservedAt: 1,
+            firstSeenAt: 1,
+            lastSeenAt: 1,
+          },
+        ],
+        async () => {
+          fetches += 1
+          return new Uint8Array([1, 2, 3]).buffer
+        },
+        controller.signal,
+      ),
+    ).rejects.toThrow('Aborted')
+    expect(fetches).toBe(0)
+  })
 })
 describe('fresh contiguous pagination evidence', () => {
   test('oldest page alone does not prove complete history', () => {

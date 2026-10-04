@@ -10,7 +10,7 @@ import type { ArchivedAsset, ArchivedConversation } from './archive-store'
 
 export interface ArchivePackageManifestAsset extends ArchiveAttachmentView {
   path: string | null
-  status: 'included' | 'missing_url' | 'fetch_failed' | 'size_mismatch'
+  status: 'included' | 'missing_url' | 'fetch_failed' | 'size_mismatch' | 'package_limit'
   actualSizeBytes: number | null
   sha256: string | null
   error: string | null
@@ -196,6 +196,8 @@ async function sha256(value: Uint8Array) {
 
 export type ArchiveAssetFetcher = (url: string, assetId: string) => Promise<ArrayBuffer>
 
+const MAX_ARCHIVE_PACKAGE_ASSET_BYTES = 512 * 1024 * 1024
+
 export async function createArchivePackage(
   conversation: ArchivedConversation,
   thread: ArchiveThreadView,
@@ -203,6 +205,7 @@ export async function createArchivePackage(
   evidence: unknown,
   assets: ArchivedAsset[],
   fetcher: ArchiveAssetFetcher = fetchArchiveAssetBytes,
+  signal?: AbortSignal,
 ): Promise<ArchivePackageResult> {
   const transcriptOptions: ArchiveExportOptions =
     options.level === 'full'
@@ -218,7 +221,12 @@ export async function createArchivePackage(
   )
   const usedPaths = new Set<string>()
   const manifestAssets: ArchivePackageManifestAsset[] = []
+  let includedAssetBytes = 0
   for (const reference of requested) {
+    if (signal?.aborted)
+      throw signal.reason instanceof Error
+        ? signal.reason
+        : new DOMException('Aborted', 'AbortError')
     const storedAsset = stored.get(reference.assetId)
     const url = storedAsset?.downloadUrl
       ? archiveAssetContentUrl(storedAsset.downloadUrl, reference.assetId)
@@ -234,13 +242,43 @@ export async function createArchivePackage(
       })
       continue
     }
+    if (
+      reference.sizeBytes !== null &&
+      includedAssetBytes + reference.sizeBytes > MAX_ARCHIVE_PACKAGE_ASSET_BYTES
+    ) {
+      manifestAssets.push({
+        ...reference,
+        path: null,
+        status: 'package_limit',
+        actualSizeBytes: null,
+        sha256: null,
+        error: 'Archive package attachment limit is 512 MiB.',
+      })
+      continue
+    }
     try {
-      const data = new Uint8Array(await fetcher(url, reference.assetId))
+      const data = new Uint8Array(
+        await (fetcher === fetchArchiveAssetBytes
+          ? fetchArchiveAssetBytes(url, reference.assetId, window, signal)
+          : fetcher(url, reference.assetId)),
+      )
+      if (includedAssetBytes + data.byteLength > MAX_ARCHIVE_PACKAGE_ASSET_BYTES) {
+        manifestAssets.push({
+          ...reference,
+          path: null,
+          status: 'package_limit',
+          actualSizeBytes: data.byteLength,
+          sha256: null,
+          error: 'Archive package attachment limit is 512 MiB.',
+        })
+        continue
+      }
       let name = safeName(reference.fileName ?? `${reference.assetId}.bin`)
       if (usedPaths.has(name)) name = safeName(`${reference.assetId}-${name}`)
       usedPaths.add(name)
       const path = `attachments/${name}`
       entries.push({ path, bytes: data })
+      includedAssetBytes += data.byteLength
       const sizeMismatch = reference.sizeBytes !== null && reference.sizeBytes !== data.byteLength
       manifestAssets.push({
         ...reference,
@@ -253,6 +291,7 @@ export async function createArchivePackage(
           : null,
       })
     } catch (error) {
+      if (signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) throw error
       manifestAssets.push({
         ...reference,
         path: null,

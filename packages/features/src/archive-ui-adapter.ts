@@ -98,7 +98,11 @@ export function createArchiveUiAdapter(
     getThread: async (conversationId: string) =>
       buildArchiveThread(await store.listMessages(conversationId)),
     collectCurrent: () => capture.collectCurrent(),
-    exportConversation: async (conversationId: string, options: ArchiveExportOptions) => {
+    exportConversation: async (
+      conversationId: string,
+      options: ArchiveExportOptions,
+      signal?: AbortSignal,
+    ) => {
       const [conversation, messages, coverage] = await Promise.all([
         store.getConversation(conversationId),
         store.listMessages(conversationId),
@@ -147,7 +151,15 @@ export function createArchiveUiAdapter(
           )
         }
       const assets = await store.getAssets(assetIds)
-      const result = await createArchivePackage(conversation, thread, options, evidence, assets)
+      const result = await createArchivePackage(
+        conversation,
+        thread,
+        options,
+        evidence,
+        assets,
+        undefined,
+        signal,
+      )
       const includedAssets = result.manifest.assets.filter(
         (asset) => asset.status === 'included',
       ).length
