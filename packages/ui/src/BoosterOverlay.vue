@@ -31,6 +31,7 @@ const dragPosition = ref<{ x: number; y: number }>()
 const loader = ref<HistoryLoaderState>({ phase: 'idle', conversationId: null, knownMessageCount: 0, hasOlderServerHistory: null, pagesLoaded: 0, consecutiveErrors: 0 })
 const toggleButton = ref<HTMLButtonElement>()
 let unsubscribe: (() => void) | undefined, timer: ReturnType<typeof setInterval> | undefined
+let archiveRefreshTimer: ReturnType<typeof setTimeout> | undefined
 let alive = true, revision = 0, ignoreClick = false, refreshAt = 0
 let pointer: { id: number; startX: number; startY: number; x: number; y: number; moved: boolean } | undefined
 const locale = computed(() => resolveLocale(settings.value.language))
@@ -161,7 +162,15 @@ function onState(event: Event) {
   if (next.conversationId === props.archiveAdapter?.currentConversationId() && next.phase === 'preparing') expanded.value = true
   if (changed && Date.now() - refreshAt > 700) void refreshContext()
 }
-function onArchive() { if ((opened.value || archiveOpen.value) && Date.now() - refreshAt > 600) void refreshContext() }
+function onArchive() {
+  if (!opened.value && !archiveOpen.value) return
+  clearTimeout(archiveRefreshTimer)
+  const wait = Math.max(0, 180 - (Date.now() - refreshAt))
+  archiveRefreshTimer = setTimeout(() => {
+    archiveRefreshTimer = undefined
+    void refreshContext()
+  }, wait)
+}
 function onOpenArchive(event: Event) { const id = (event as CustomEvent<{ conversationId?: string }>).detail?.conversationId; openArchive(id ?? context.value.conversationId) }
 function onOpenCapture(event: Event) {
   const scope = (event as CustomEvent<ArchiveCaptureContext>).detail
@@ -200,7 +209,7 @@ onMounted(async () => {
   }, 1000)
 })
 onBeforeUnmount(() => {
-  alive = false; revision++; unsubscribe?.(); clearInterval(timer)
+  alive = false; revision++; unsubscribe?.(); clearInterval(timer); clearTimeout(archiveRefreshTimer)
   window.removeEventListener('resize', resize); window.removeEventListener('keydown', key)
   window.removeEventListener(OPEN_SETTINGS_EVENT, openSettings); window.removeEventListener(OPEN_CAPTURE_SETTINGS_EVENT, onOpenCapture)
   window.removeEventListener(OPEN_ARCHIVE_EVENT, onOpenArchive); window.removeEventListener(ARCHIVE_UPDATED_EVENT, onArchive)
