@@ -1,7 +1,7 @@
 import {
+  BOOSTER_VERSION,
   type BoosterModule,
   BoosterRuntime,
-  BOOSTER_VERSION,
   createDiagnosticsStore,
   isChatGptPage,
 } from '@chatgpt-booster/core'
@@ -64,9 +64,7 @@ interface ContentRuntimeHandle {
 const runtimeWindow = window as unknown as Window & Record<string, unknown>
 
 function cleanupStaleBoosterDom() {
-  for (const element of document.querySelectorAll(
-    '#chatgpt-booster-root, [data-chatgpt-booster]',
-  ))
+  for (const element of document.querySelectorAll('#chatgpt-booster-root, [data-chatgpt-booster]'))
     element.remove()
 }
 
