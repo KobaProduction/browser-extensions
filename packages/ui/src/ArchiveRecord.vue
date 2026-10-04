@@ -135,6 +135,7 @@ const rawToolName = computed(() =>
     metadata.value?.connector_name,
     metadata.value?.app_name,
     metadata.value?.name,
+    metadata.value?.reasoning_title,
     props.item.record.authorName,
     recipient.value && recipient.value !== 'all' ? recipient.value : null,
     'tool',
