@@ -1114,34 +1114,49 @@
   overflow-y: auto;
   overscroll-behavior: contain;
 }
-.booster-dock-footer {
+.booster-dock-close-bar {
   position: absolute;
-  left: 0;
-  right: 0;
+  left: -1px;
+  right: -1px;
   height: 44px;
   display: flex;
   align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  padding: 0 12px;
+  border: 0;
   background: var(--primary);
   color: var(--primary-foreground);
-  font-size: 11px;
-  font-weight: 650;
+  font: 650 11px / 1 inherit;
   letter-spacing: 0.01em;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
 }
-.booster-dock.grow-up .booster-dock-footer {
-  bottom: 0;
+.booster-dock.grow-up .booster-dock-close-bar {
+  bottom: -1px;
   border-top: 1px solid color-mix(in oklab, var(--primary-foreground) 18%, transparent);
 }
-.booster-dock.grow-down .booster-dock-footer {
-  top: 0;
+.booster-dock.grow-down .booster-dock-close-bar {
+  top: -1px;
   border-bottom: 1px solid color-mix(in oklab, var(--primary-foreground) 18%, transparent);
 }
-.booster-dock.right .booster-dock-footer {
-  padding: 0 56px 0 14px;
+.booster-dock.right .booster-dock-close-bar {
+  padding-inline: 12px;
   justify-content: flex-start;
 }
-.booster-dock.left .booster-dock-footer {
-  padding: 0 14px 0 56px;
-  justify-content: flex-end;
+.booster-dock.left .booster-dock-close-bar {
+  padding-inline: 12px;
+  justify-content: flex-start;
+}
+.booster-dock-close-bar:hover {
+  filter: brightness(1.04);
+}
+.booster-dock-close-bar:active {
+  cursor: grabbing;
+}
+.booster-dock-close-bar svg {
+  flex: 0 0 auto;
 }
 .booster-dock-context {
   display: grid;
@@ -2296,4 +2311,130 @@
   .booster-analytics-header {
     flex-direction: column;
   }
+}
+
+/* v0.6 dev record polish */
+.booster-record {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.booster-record-header {
+  min-width: 0;
+}
+.booster-record-header-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+.booster-record-info,
+.booster-record-icon-button {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted-foreground);
+}
+.booster-record-info {
+  cursor: help;
+}
+.booster-record-icon-button {
+  cursor: pointer;
+}
+.booster-record-icon-button:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.booster-record-time-text {
+  color: var(--muted-foreground);
+  font-size: 9px;
+  white-space: nowrap;
+}
+.booster-record-raw-corner {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+}
+.booster-tool-row {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.booster-tool-row.is-clickable {
+  cursor: pointer;
+}
+.booster-tool-copy,
+.booster-tool-actions {
+  min-width: 0;
+}
+.booster-tool-actions {
+  flex: 0 0 auto;
+}
+.booster-tool-action {
+  flex: 0 0 auto;
+  text-decoration: none;
+}
+.booster-tool-expanded {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.booster-internal-row {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.booster-internal-row.disabled {
+  cursor: default;
+  opacity: 0.8;
+}
+.booster-internal-preview {
+  min-width: 0;
+  max-width: 100%;
+  padding-right: 2px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.booster-json-modal {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--background);
+}
+.booster-json-modal .booster-json-viewer {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  max-height: none;
+  flex: 1 1 auto;
+  box-sizing: border-box;
+  overflow: auto;
+}
+.booster-dialog-wide:has(.booster-json-modal) {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.booster-reader-main,
+.booster-reader-exchanges,
+.booster-exchange,
+.booster-exchange-details {
+  min-width: 0;
+  max-width: 100%;
+}
+.booster-reader-main {
+  overflow-x: hidden;
 }

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+  BOOSTER_VERSION,
   EMPTY_TRANSPORT_COUNTERS,
   type ArchiveCaptureContext,
   type BoosterSettings,
@@ -208,6 +209,7 @@ async function testTelemetry() {
         <div class="flex items-center gap-2">
           <strong>{{ t('control.title') }}</strong>
           <Badge variant="outline">{{ targetLabel }}</Badge>
+          <Badge variant="outline" :title="BOOSTER_VERSION">{{ BOOSTER_VERSION }}</Badge>
         </div>
         <p>{{ t('control.subtitle') }}</p>
       </div>

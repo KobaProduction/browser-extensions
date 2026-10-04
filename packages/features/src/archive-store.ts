@@ -15,7 +15,7 @@ import {
 } from '@chatgpt-booster/observer'
 
 export const ARCHIVE_DB_NAME = 'chatgpt-booster-archive'
-export const ARCHIVE_DB_VERSION = 2
+export const ARCHIVE_DB_VERSION = 3
 
 export interface ArchivedConversation {
   conversationId: string
@@ -84,6 +84,19 @@ export interface ArchivedMessage {
   lastSeenAt: number
   payloadHash: string
   raw: Record<string, unknown>
+}
+
+export interface PreloadedConversationPage {
+  pageKey: string
+  conversationId: string
+  readId: string | null
+  readStartedAt: number | null
+  isInitial: boolean
+  requestedBefore: string | null
+  observedAt: number
+  expiresAt: number
+  sourceUrl: string
+  payload: Record<string, unknown>
 }
 
 export interface ArchivedConversationPage {
@@ -273,6 +286,11 @@ function openArchiveDatabase(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains('assets')) {
         db.createObjectStore('assets', { keyPath: 'assetId' })
       }
+      if (!db.objectStoreNames.contains('preloadPages')) {
+        const preload = db.createObjectStore('preloadPages', { keyPath: 'pageKey' })
+        preload.createIndex('conversationId', 'conversationId')
+        preload.createIndex('expiresAt', 'expiresAt')
+      }
     }
     open.onblocked = () => reject(new Error('Archive upgrade blocked by another tab'))
     open.onsuccess = () => {
@@ -357,8 +375,162 @@ function withoutMessages(payload: RawRecord): RawRecord {
   return rest
 }
 
+function preloadEvidence(page: PreloadedConversationPage) {
+  const info = record(page.payload.page_info) ?? {}
+  return {
+    readId: page.readId ?? undefined,
+    readStartedAt: page.readStartedAt ?? undefined,
+    isInitial: page.isInitial,
+    requestedBefore: page.requestedBefore,
+    startCursor: stringOrNull(info.start_cursor),
+    endCursor: stringOrNull(info.end_cursor),
+    hasPreviousPage: booleanOrNull(info.has_previous_page),
+    hasNextPage: booleanOrNull(info.has_next_page),
+    observedAt: page.observedAt,
+  }
+}
+
 export class ConversationArchiveStore {
   #database: Promise<IDBDatabase> | undefined
+
+  async ingestPreload(detail: ConversationArchiveEventDetail): Promise<void> {
+    const payload = detail.payload
+    if (!payload || !Array.isArray(payload.messages)) return
+    if (payload.conversation_id && payload.conversation_id !== detail.conversationId) return
+    const pageInfo = record(payload.page_info) ?? {}
+    const startCursor = stringOrNull(pageInfo.start_cursor)
+    const endCursor = stringOrNull(pageInfo.end_cursor)
+    const pageKey = `${detail.conversationId}:${detail.readId ?? 'preload'}:${startCursor ?? ''}:${endCursor ?? ''}`
+    const now = Date.now()
+    const entry: PreloadedConversationPage = {
+      pageKey,
+      conversationId: detail.conversationId,
+      readId: detail.readId ?? null,
+      readStartedAt: detail.readStartedAt ?? null,
+      isInitial: detail.isInitial === true,
+      requestedBefore: detail.requestedBefore ?? null,
+      observedAt: detail.timestamp || now,
+      expiresAt: now + 24 * 60 * 60_000,
+      sourceUrl: detail.sourceUrl,
+      payload,
+    }
+    const db = await this.#db()
+    const tx = db.transaction('preloadPages', 'readwrite')
+    const done = transactionDone(tx)
+    const store = tx.objectStore('preloadPages')
+    store.put(entry)
+    const all = await request<PreloadedConversationPage[]>(store.getAll())
+    for (const page of all) if (page.expiresAt < now) store.delete(page.pageKey)
+    await done
+    window.dispatchEvent(
+      new CustomEvent(ARCHIVE_UPDATED_EVENT, {
+        detail: { conversationId: detail.conversationId, preload: true },
+      }),
+    )
+  }
+
+  async listPreloadPages(conversationId: string): Promise<PreloadedConversationPage[]> {
+    const db = await this.#db()
+    const tx = db.transaction('preloadPages', 'readonly')
+    const items = await request<PreloadedConversationPage[]>(
+      tx
+        .objectStore('preloadPages')
+        .index('conversationId')
+        .getAll(IDBKeyRange.only(conversationId)),
+    )
+    const now = Date.now()
+    const live = items.filter((item) => item.expiresAt >= now)
+    if (!live.length) return []
+    const latestInitial = live
+      .filter((item) => item.isInitial)
+      .sort(
+        (a, b) =>
+          (b.readStartedAt ?? b.observedAt) - (a.readStartedAt ?? a.observedAt) ||
+          b.observedAt - a.observedAt,
+      )[0]
+    const currentReadId =
+      latestInitial?.readId ?? live.sort((a, b) => b.observedAt - a.observedAt)[0]?.readId
+    return live
+      .filter((item) => (currentReadId ? item.readId === currentReadId : true))
+      .sort((a, b) => a.observedAt - b.observedAt)
+  }
+
+  async listLatestPreloadPages(conversationId: string): Promise<PreloadedConversationPage[]> {
+    const pages = await this.listPreloadPages(conversationId)
+    if (!pages.length) return []
+    const coverage = historyCoverage(pages.map(preloadEvidence))
+    const selectedReadId = coverage.readId ?? pages.at(-1)?.readId ?? null
+    if (!selectedReadId) {
+      const latest = pages.at(-1)
+      return latest ? [latest] : []
+    }
+    return pages.filter((page) => page.readId === selectedReadId)
+  }
+
+  async getPreloadSnapshot(
+    conversationId: string,
+  ): Promise<{ records: ArchivedMessage[]; coverage: ConversationCoverage } | undefined> {
+    const pages = await this.listLatestPreloadPages(conversationId)
+    if (!pages.length) return undefined
+    const byMessage = new Map<string, ArchivedMessage>()
+    const evidencePages = pages.map(preloadEvidence)
+    let projectId: string | null = null
+    for (const page of pages) {
+      projectId ??= normalizeProjectId(page.payload)
+      const rawMessages = Array.isArray(page.payload.messages) ? page.payload.messages : []
+      for (const raw of rawMessages.map(record)) {
+        if (!raw) continue
+        const previous = byMessage.get(`${conversationId}:${String(raw.id ?? '')}`)
+        const normalized = normalizeMessage(
+          raw,
+          conversationId,
+          projectId,
+          page.observedAt,
+          previous,
+        )
+        if (normalized) byMessage.set(normalized.messageKey, normalized)
+      }
+    }
+    const records = [...byMessage.values()]
+    const thread = buildArchiveThread(records)
+    const evidence = historyCoverage(evidencePages)
+    const orderedVisible = thread.turns
+      .flatMap((turn) => turn.messages.map((item) => item.record))
+      .sort(
+        (a, b) =>
+          serverTimeMs(a.createTime, a.firstSeenAt) - serverTimeMs(b.createTime, b.firstSeenAt),
+      )
+    const coverage: ConversationCoverage = {
+      evidenceVersion: 1,
+      readId: evidence.readId,
+      readStartedAt: evidence.readStartedAt,
+      verifiedAt: evidence.verified ? evidence.observedAt : null,
+      historyPageCount: evidence.pageCount,
+      visibleMessageCount: thread.messageCount,
+      internalRecordCount: thread.detailCount,
+      conversationId,
+      oldestKnownMessageId: records[0]?.messageId ?? null,
+      newestKnownMessageId: records.at(-1)?.messageId ?? null,
+      oldestKnownVisibleMessageId: orderedVisible[0]?.messageId ?? null,
+      newestKnownVisibleMessageId: orderedVisible.at(-1)?.messageId ?? null,
+      oldestKnownCursor: evidence.oldestCursor,
+      newestKnownCursor:
+        stringOrNull(
+          record(pages.filter((page) => page.isInitial).at(-1)?.payload.page_info)?.end_cursor,
+        ) ?? null,
+      hasOlderServerHistory: !evidence.verified,
+      hasNewerServerHistory:
+        booleanOrNull(
+          record(pages.filter((page) => page.isInitial).at(-1)?.payload.page_info)?.has_next_page,
+        ) ?? null,
+      knownMessageCount: records.length,
+      knownBranchConversationIds: [],
+      lastObservedAt: pages.at(-1)?.observedAt ?? Date.now(),
+      lastFullReadAt: evidence.verified ? evidence.observedAt : null,
+      completeAtLastRead: evidence.verified,
+    }
+    return { records, coverage }
+  }
 
   async listProjects(): Promise<ArchivedProject[]> {
     const db = await this.#db()

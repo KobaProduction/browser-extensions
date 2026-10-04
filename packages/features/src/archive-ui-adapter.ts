@@ -51,19 +51,33 @@ export function createArchiveUiAdapter(
       ),
     getConversation: (conversationId: string) => store.getConversation(conversationId),
     getCoverage: async (conversationId: string) => {
-      const [coverage, records] = await Promise.all([
+      const [coverage, records, preload] = await Promise.all([
         store.getCoverage(conversationId),
         store.listMessages(conversationId),
+        store.getPreloadSnapshot(conversationId),
       ])
-      if (!coverage) return undefined
-      const thread = buildArchiveThread(records)
+      const effective = coverage ?? preload?.coverage
+      if (!effective) return undefined
+      const merged = new Map(records.map((record) => [record.messageKey, record]))
+      for (const record of preload?.records ?? []) merged.set(record.messageKey, record)
+      const thread = buildArchiveThread([...merged.values()])
+      const liveCoverage =
+        preload && preload.coverage.lastObservedAt >= effective.lastObservedAt
+          ? preload.coverage
+          : effective
       const current =
         currentConversationId() === conversationId
           ? currentConversationMessageBounds()
           : { firstMessageId: null, lastMessageId: null }
       return {
-        ...coverage,
-        completeAtLastRead: coverage.evidenceVersion === 1 && coverage.completeAtLastRead,
+        ...effective,
+        hasOlderServerHistory: liveCoverage.hasOlderServerHistory,
+        hasNewerServerHistory: liveCoverage.hasNewerServerHistory,
+        oldestKnownVisibleMessageId:
+          liveCoverage.oldestKnownVisibleMessageId ?? effective.oldestKnownVisibleMessageId ?? null,
+        newestKnownVisibleMessageId:
+          liveCoverage.newestKnownVisibleMessageId ?? effective.newestKnownVisibleMessageId ?? null,
+        completeAtLastRead: coverage?.evidenceVersion === 1 && coverage.completeAtLastRead === true,
         visibleMessageCount: thread.messageCount,
         internalRecordCount: thread.detailCount,
         knownMessageCount: thread.recordCount,
@@ -71,9 +85,12 @@ export function createArchiveUiAdapter(
         currentLastMessageId: current.lastMessageId,
         storedStartMatchesCurrent:
           !!current.firstMessageId &&
-          coverage.oldestKnownVisibleMessageId === current.firstMessageId,
+          (liveCoverage.oldestKnownVisibleMessageId ?? effective.oldestKnownVisibleMessageId) ===
+            current.firstMessageId,
         storedLatestMatchesCurrent:
-          !!current.lastMessageId && coverage.newestKnownVisibleMessageId === current.lastMessageId,
+          !!current.lastMessageId &&
+          (liveCoverage.newestKnownVisibleMessageId ?? effective.newestKnownVisibleMessageId) ===
+            current.lastMessageId,
       }
     },
     listConversations: () => store.listConversations(),

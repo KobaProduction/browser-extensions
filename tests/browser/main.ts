@@ -481,6 +481,104 @@ async function runStorageTests() {
       await settings.set(previous)
     }
   })
+  await check(
+    'preload caches the current chat while autosave is off and manual collection promotes it',
+    async () => {
+      const previous = await settings.get()
+      const href = location.href
+      const id = `${prefix}preload`
+      const capture = new ConversationArchiveModule(store, settings)
+      const preload = page(
+        id,
+        [
+          raw('preload-user', 'user', 'Preloaded question'),
+          raw('preload-answer', 'assistant', 'Preloaded answer', 'preload-user'),
+        ],
+        {
+          title: 'Preload fixture',
+          page_info: {
+            start_cursor: 'preload-start',
+            end_cursor: 'preload-end',
+            has_previous_page: true,
+            has_next_page: false,
+          },
+        },
+      )
+      try {
+        history.replaceState(null, '', `/c/${id}`)
+        await settings.update({
+          enabled: true,
+          archive: { defaultRule: { ...DEFAULT_CAPTURE_RULE, enabled: false } },
+        })
+        await store.ingestPreload({
+          ...preload,
+          readId: 'fixture-read-old',
+          readStartedAt: preload.readStartedAt - 5000,
+          timestamp: preload.timestamp - 5000,
+          payload: {
+            ...preload.payload,
+            messages: [raw('stale-preload', 'user', 'Old preload must not leak')],
+          },
+        })
+        await store.ingestPreload(preload)
+        assert(
+          !(await store.getConversation(id)),
+          'preload incorrectly became a persistent archive',
+        )
+        const initialSnapshot = await store.getPreloadSnapshot(id)
+        assert(
+          initialSnapshot?.coverage.visibleMessageCount === 2,
+          'initial preload message count is wrong',
+        )
+        await store.ingestPreload({
+          ...preload,
+          isInitial: false,
+          requestedBefore: 'preload-start',
+          timestamp: preload.timestamp + 100,
+          payload: {
+            ...preload.payload,
+            messages: [
+              raw('preload-older-user', 'user', 'Older question'),
+              raw('preload-older-answer', 'assistant', 'Older answer', 'preload-older-user'),
+            ],
+            page_info: {
+              start_cursor: 'preload-oldest',
+              end_cursor: 'preload-before',
+              has_previous_page: false,
+              has_next_page: true,
+            },
+          },
+        })
+        const snapshot = await store.getPreloadSnapshot(id)
+        assert(
+          snapshot?.coverage.visibleMessageCount === 4,
+          'preload did not grow after continuation',
+        )
+        assert(
+          !snapshot?.records.some((record) => record.messageId === 'stale-preload'),
+          'older preload read contaminated the current snapshot',
+        )
+        const ui = createArchiveUiAdapter(store, capture)
+        assert(
+          (await ui.getCoverage(id))?.visibleMessageCount === 4,
+          'UI does not expose growing preload count',
+        )
+        await capture.start()
+        await capture.collectCurrent()
+        assert(
+          (await store.getConversation(id))?.conversationId === id,
+          'manual collection did not promote preload',
+        )
+        assert((await store.listMessages(id)).length === 4, 'promoted preload records are missing')
+        capture.finishCollection()
+      } finally {
+        capture.stop()
+        sessionStorage.removeItem('chatgpt-booster:manual-collection')
+        history.replaceState(null, '', href)
+        await settings.set(previous)
+      }
+    },
+  )
   await check('saved data survives policy changes and schema normalization', async () => {
     const id = prefix + 'preserved'
     await store.ingest(page(id, [raw('u', 'user', 'Keep me')]))

@@ -22,6 +22,7 @@ import {
   ARCHIVE_ASSET_EVENT,
   ARCHIVE_EVENT,
   ARCHIVE_POLICY_EVENT,
+  ARCHIVE_PRELOAD_EVENT,
   type ArchiveAssetResolutionEventDetail,
   type ConversationArchiveEventDetail,
   TRANSPORT_CHANNEL,
@@ -119,8 +120,61 @@ export class ConversationArchiveModule implements BoosterModule {
       JSON.stringify({ conversationId, startedAt, expiresAt: startedAt + 30 * 60_000 }),
     )
     this.#publishPolicy()
+    await this.#promotePreload(conversationId, startedAt)
     window.dispatchEvent(new Event(HISTORY_LOADER_START_EVENT))
   }
+  async #promotePreload(conversationId: string, startedAt: number) {
+    const pages = await this.store.listLatestPreloadPages(conversationId)
+    if (!pages.length) return
+    const project =
+      currentProjectId() ??
+      pages
+        .map((page) => page.payload.gizmo_id)
+        .find((value) => typeof value === 'string' && value.startsWith('g-p-')) ??
+      null
+    const rule = captureRuleForOperation(
+      this.#settings.archive,
+      conversationId,
+      typeof project === 'string' ? project : null,
+      true,
+      this.#settings.enabled,
+    )
+    const stillPermitted = () =>
+      this.#active && collectionTicket()?.conversationId === conversationId
+    const readId = `manual-${startedAt}`
+    for (const page of pages) {
+      if (!stillPermitted()) return
+      const rawMessages = Array.isArray(page.payload.messages) ? page.payload.messages : []
+      const messages = rawMessages
+        .map(asRecord)
+        .filter((raw): raw is Record<string, unknown> => !!raw)
+        .filter((raw) => keepCapturedRecord(raw, rule))
+      await this.store.ingest(
+        {
+          kind: 'conversation-page',
+          readId,
+          readStartedAt: startedAt,
+          isInitial: page.isInitial,
+          requestedBefore: page.requestedBefore,
+          timestamp: page.observedAt,
+          sourceUrl: page.sourceUrl,
+          conversationId,
+          payload: {
+            ...page.payload,
+            messages,
+            booster_capture: {
+              reasoning: rule.reasoning,
+              tools: rule.tools,
+              internal: rule.internal,
+              omittedRecords: rawMessages.length - messages.length,
+            },
+          },
+        },
+        stillPermitted,
+      )
+    }
+  }
+
   finishCollection(expected?: Pick<CollectionTicket, 'conversationId' | 'startedAt'>) {
     if (expected) {
       try {
@@ -155,6 +209,7 @@ export class ConversationArchiveModule implements BoosterModule {
         ]),
       ),
       manualConversationId: collectionTicket()?.conversationId ?? null,
+      manualStartedAt: collectionTicket()?.startedAt ?? null,
     }
     const json = JSON.stringify(detail)
     if (json === this.#lastPolicy) return
@@ -168,6 +223,13 @@ export class ConversationArchiveModule implements BoosterModule {
     if (event.origin !== location.origin || event.source !== window) return
     const data = event.data
     if (data?.channel !== TRANSPORT_CHANNEL) return
+    if (data.type === ARCHIVE_PRELOAD_EVENT && data.detail?.kind === 'conversation-page') {
+      const detail = data.detail as ConversationArchiveEventDetail
+      this.#queue = this.#queue
+        .then(() => (this.#active ? this.store.ingestPreload(detail) : undefined))
+        .catch(() => undefined)
+      return
+    }
     if (data.type === ARCHIVE_ASSET_EVENT) {
       const detail = data.detail as ArchiveAssetResolutionEventDetail | undefined
       if (!detail || typeof detail.assetId !== 'string' || typeof detail.downloadUrl !== 'string')

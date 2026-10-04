@@ -12,6 +12,7 @@ export interface ArchiveCapturePolicy {
   projects: Record<string, boolean>
   conversations: Record<string, boolean>
   manualConversationId: string | null
+  manualStartedAt: number | null
 }
 const DENY_ARCHIVE: ArchiveCapturePolicy = {
   enabled: false,
@@ -19,6 +20,7 @@ const DENY_ARCHIVE: ArchiveCapturePolicy = {
   projects: {},
   conversations: {},
   manualConversationId: null,
+  manualStartedAt: null,
 }
 let archivePolicy = { ...DENY_ARCHIVE }
 const archiveProjects = new Map<string, string | null>()
@@ -51,6 +53,13 @@ function publishConversationPage(detail: ConversationArchiveEventDetail) {
   archiveProjects.set(detail.conversationId, projectId)
   observerTarget.postMessage(
     { channel: TRANSPORT_CHANNEL, type: ARCHIVE_EVENT, detail },
+    observerTarget.location.origin,
+  )
+}
+function publishPreloadPage(detail: ConversationArchiveEventDetail) {
+  if (!observerTarget || pageConversationId() !== detail.conversationId) return
+  observerTarget.postMessage(
+    { channel: TRANSPORT_CHANNEL, type: ARCHIVE_PRELOAD_EVENT, detail },
     observerTarget.location.origin,
   )
 }
@@ -97,6 +106,7 @@ function archiveNetwork(id: string, sourceUrl: string, phase: string, status?: n
   )
 }
 export const ARCHIVE_EVENT = 'chatgpt-booster:archive-event'
+export const ARCHIVE_PRELOAD_EVENT = 'chatgpt-booster:archive-preload'
 
 export type TransportKind = 'fetch' | 'xhr' | 'websocket' | 'eventsource'
 export type TransportDirection = 'outbound' | 'inbound'
@@ -448,6 +458,7 @@ function observeConversationArchiveResponse(
       // Keep only the current chat's latest normal initial page in tab memory. This is not
       // persisted until the user enables capture or explicitly starts a manual collection.
       if (read.isInitial && pageConversationId() === conversationId) bufferedInitialPage = detail
+      publishPreloadPage(detail)
       publishConversationPage(detail)
     })
     .catch(() => undefined)
@@ -531,9 +542,14 @@ export function installTransportObserver(
       return
     const previousManual = archivePolicy.manualConversationId
     archivePolicy = { ...DENY_ARCHIVE, ...data.detail }
+    if (bufferedInitialPage) publishPreloadPage(bufferedInitialPage)
     const manual = archivePolicy.manualConversationId
     if (manual && manual !== previousManual) {
-      const readStartedAt = Date.now()
+      const readStartedAt =
+        typeof archivePolicy.manualStartedAt === 'number' &&
+        Number.isFinite(archivePolicy.manualStartedAt)
+          ? archivePolicy.manualStartedAt
+          : Date.now()
       const readId = `manual-${readStartedAt}`
       archiveReads.set(manual, { readId, readStartedAt })
       if (bufferedInitialPage?.conversationId === manual)

@@ -21,6 +21,8 @@ export interface ArchiveRecordView {
   workingTurnId?: string | null
   authorName?: string | null
   createTime: number | null
+  updateTime?: number | null
+  resolvedModelSlug?: string | null
   firstSeenAt?: number
   raw: Record<string, unknown>
 }

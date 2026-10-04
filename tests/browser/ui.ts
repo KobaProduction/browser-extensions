@@ -62,12 +62,9 @@ export async function runUiTests(
       dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
       await delay()
     }
-    for (
-      let i = 0;
-      i < 2 && button('.booster-dock-toggle').getAttribute('aria-expanded') === 'true';
-      i++
-    ) {
-      button('.booster-dock-toggle').click()
+    const closeBar = shadow().querySelector<HTMLButtonElement>('.booster-dock-close-bar')
+    if (closeBar) {
+      closeBar.click()
       await delay()
     }
   }
@@ -75,37 +72,43 @@ export async function runUiTests(
     await close()
     await settings.update({ launcher: { side: 'right', heightRatio: 0.65 }, language: 'ru' })
     await delay()
-    await check(
-      'right edge and stable toggle, no host layout shift, repeated click closes',
-      async () => {
-        const main = document.querySelector('main')
-        assert(main, 'main missing')
-        const hostBefore = bounds(main),
-          before = bounds(button('.booster-dock-toggle'))
-        assert(Math.abs(before.right - innerWidth) < 1, 'not flush with right edge')
-        button('.booster-dock-toggle').click()
-        await delay()
-        const panel = shadow().querySelector('.booster-dock-shell')
-        assert(panel, 'panel missing')
-        assert(same(before, bounds(button('.booster-dock-toggle'))), 'toggle moved on expand')
-        assert(same(hostBefore, bounds(main)), 'host main changed geometry')
-        assert(
-          bounds(panel).x >= 0 && bounds(panel).bottom <= innerHeight && bounds(panel).y >= 0,
-          'panel outside viewport',
-        )
-        assert(!panel.textContent?.includes('g-p-1111'), 'raw project ID shown as name')
-        const currentThread = await adapter.getThread(context.conversationId ?? '')
-        assert(
-          panel.textContent?.includes(String(currentThread.messageCount)) &&
-            panel.textContent?.includes(String(currentThread.detailCount)),
-          'reply/detail counts missing',
-        )
-        button('.booster-dock-toggle').click()
-        await delay()
-        assert(!shadow().querySelector('.booster-dock-shell'), 'repeat click did not close')
-        return { viewport: [innerWidth, innerHeight], anchor: before }
-      },
-    )
+    await check('right edge and unified close strip, no host layout shift', async () => {
+      const main = document.querySelector('main')
+      assert(main, 'main missing')
+      const hostBefore = bounds(main)
+      const collapsed = button('.booster-dock-toggle')
+      const before = bounds(collapsed)
+      assert(Math.abs(before.right - innerWidth) < 1, 'not flush with right edge')
+      collapsed.click()
+      await delay()
+      const panel = shadow().querySelector<HTMLElement>('.booster-dock-shell')
+      const closeBar = shadow().querySelector<HTMLButtonElement>('.booster-dock-close-bar')
+      assert(panel && closeBar, 'unified panel/close strip missing')
+      assert(same(hostBefore, bounds(main)), 'host main changed geometry')
+      const panelBounds = bounds(panel)
+      const closeBounds = bounds(closeBar)
+      assert(
+        Math.abs(closeBounds.x - panelBounds.x) < 1 &&
+          Math.abs(closeBounds.width - panelBounds.width) < 1,
+        'close strip does not span the dock shell',
+      )
+      assert(
+        panelBounds.x >= 0 && panelBounds.bottom <= innerHeight && panelBounds.y >= 0,
+        'panel outside viewport',
+      )
+      assert(!panel.textContent?.includes('g-p-1111'), 'raw project ID shown as name')
+      const currentThread = await adapter.getThread(context.conversationId ?? '')
+      assert(
+        panel.textContent?.includes(String(currentThread.messageCount)) &&
+          panel.textContent?.includes(String(currentThread.detailCount)),
+        'message/detail counts missing',
+      )
+      closeBar.click()
+      await delay()
+      assert(!shadow().querySelector('.booster-dock-shell'), 'close strip did not close dock')
+      assert(shadow().querySelector('.booster-dock-toggle'), 'collapsed toggle did not return')
+      return { viewport: [innerWidth, innerHeight], anchor: before }
+    })
     await check(
       'pointer handler drop snaps left and persists height ratio (synthetic pointer)',
       async () => {
@@ -173,17 +176,18 @@ export async function runUiTests(
         await delay()
         window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
         await delay()
-        assert(toggle.getAttribute('aria-expanded') === 'false', 'Escape did not close dock')
-        assert(shadow().activeElement === toggle, 'Escape did not restore toggle focus')
+        const collapsed = button('.booster-dock-toggle')
+        assert(collapsed.getAttribute('aria-expanded') === 'false', 'Escape did not close dock')
+        assert(shadow().activeElement === collapsed, 'Escape did not restore toggle focus')
 
-        const before = bounds(toggle)
+        const before = bounds(collapsed)
         const targetY = (innerHeight - 44) * 0.72 + 22
         for (const [type, x, y] of [
           ['pointerdown', before.x + 22, before.y + 22],
           ['pointermove', innerWidth - 22, targetY],
           ['pointerup', innerWidth - 22, targetY],
         ] as const)
-          toggle.dispatchEvent(
+          collapsed.dispatchEvent(
             new PointerEvent(type, {
               pointerId: 77,
               pointerType: 'touch',
@@ -193,7 +197,7 @@ export async function runUiTests(
               clientY: y,
             }),
           )
-        toggle.click()
+        collapsed.click()
         await delay()
         const saved = (await settings.get()).launcher
         assert(saved.side === 'right', 'touch drag did not snap to right edge')
@@ -201,7 +205,10 @@ export async function runUiTests(
           Math.abs(saved.heightRatio - 0.72) < 0.01,
           'touch drag height ratio was not persisted',
         )
-        assert(toggle.getAttribute('aria-expanded') === 'false', 'touch drag toggled dock')
+        assert(
+          button('.booster-dock-toggle').getAttribute('aria-expanded') === 'false',
+          'touch drag toggled dock',
+        )
         return { side: saved.side, ratio: saved.heightRatio }
       },
     )
@@ -415,30 +422,23 @@ export async function runUiTests(
           'reasoning did not expand globally',
         )
 
-        const run = [
-          ...restored.querySelectorAll<HTMLButtonElement>('.booster-record-tool_call button'),
-        ].find((item) => item.textContent?.trim() === 'Run')
-        assert(run, 'Run control missing')
-        run.click()
-        await delay()
-        let dialog = shadow().querySelector<HTMLElement>('.booster-dialog')
-        assert(dialog, 'Run modal missing')
         assert(
-          dialog.textContent?.includes('Архивный Run вызова') &&
-            dialog.querySelector('.booster-json-viewer'),
-          'Run modal payload missing',
+          ![
+            ...restored.querySelectorAll<HTMLButtonElement>('.booster-record-tool_call button'),
+          ].some((item) => item.textContent?.trim() === 'Run'),
+          'obsolete Run control is still visible',
         )
-        dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-        await delay()
-        assert(!shadow().querySelector('.booster-dialog'), 'Escape did not close Run modal')
-
+        assert(
+          restored.querySelector('.booster-record-answer .booster-record-info'),
+          'message timestamp/model info controls are missing',
+        )
         const raw = restored.querySelector<HTMLButtonElement>(
-          '.booster-record-answer .booster-record-meta-button',
+          '.booster-record-answer .booster-record-icon-button',
         )
         assert(raw, 'raw metadata control missing')
         raw.click()
         await delay()
-        dialog = shadow().querySelector<HTMLElement>('.booster-dialog')
+        const dialog = shadow().querySelector<HTMLElement>('.booster-dialog')
         assert(dialog, 'raw JSON modal missing')
         assert(
           dialog.querySelector('.booster-json-viewer .booster-json-key'),

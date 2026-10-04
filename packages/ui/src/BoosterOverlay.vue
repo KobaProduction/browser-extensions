@@ -6,7 +6,7 @@ import {
   snapshotSettings, type ArchiveCaptureContext, type ArchiveCurrentContext, type HistoryLoaderState,
 } from '@chatgpt-booster/core'
 import { Archive, Download, Layers3, Settings, ShieldCheck, Square, X, ArrowUpToLine } from 'lucide-vue-next'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import ArchiveWorkspace from './ArchiveWorkspace.vue'
 import ArchiveExportDialog from './ArchiveExportDialog.vue'
 import ControlCenterPanel from './ControlCenterPanel.vue'
@@ -167,7 +167,19 @@ function onOpenCapture(event: Event) {
   const scope = (event as CustomEvent<ArchiveCaptureContext>).detail
   if (scope && (scope.scope === 'project' || scope.scope === 'conversation') && typeof scope.id === 'string') void openCapture(scope)
 }
-function key(event: KeyboardEvent) { if (event.key === 'Escape' && expanded.value && !view.value) { expanded.value = false; toggleButton.value?.focus() } }
+function key(event: KeyboardEvent) {
+  if (event.key !== 'Escape' || !expanded.value || view.value) return
+  const root = toggleButton.value?.getRootNode() as ShadowRoot | undefined
+  expanded.value = false
+  void nextTick().then(() => {
+    const focusCollapsed = () => {
+      const collapsed = root?.querySelector<HTMLButtonElement>('.booster-dock-toggle')
+      ;(collapsed ?? toggleButton.value)?.focus({ preventScroll: true })
+    }
+    focusCollapsed()
+    requestAnimationFrame(focusCollapsed)
+  })
+}
 onMounted(async () => {
   window.addEventListener('resize', resize); window.addEventListener('keydown', key)
   window.addEventListener(OPEN_SETTINGS_EVENT, openSettings); window.addEventListener(OPEN_CAPTURE_SETTINGS_EVENT, onOpenCapture)
@@ -220,9 +232,9 @@ onBeforeUnmount(() => {
             <button type="button" @click="openSettings"><Settings class="size-4" />{{ t('dock.settings') }}</button>
           </nav>
         </div>
-        <footer class="booster-dock-footer">{{ t('dock.closeShort') }}</footer>
+        <button ref="toggleButton" class="booster-dock-close-bar" type="button" :aria-label="t('dock.close')" :title="t('dock.close') + ' · ' + t('dock.drag')" @click="toggle" @pointerdown="pointerDown" @pointermove="pointerMove" @pointerup="pointerUp" @pointercancel="cancelPointer"><X class="size-5" /><span>{{ t('dock.closeShort') }}</span></button>
       </div>
-      <button ref="toggleButton" class="booster-dock-toggle" type="button" :aria-label="t(opened ? 'dock.close' : 'dock.open')" :title="t(opened ? 'dock.close' : 'dock.open') + ' · ' + t('dock.drag')" :aria-expanded="opened" @click="toggle" @pointerdown="pointerDown" @pointermove="pointerMove" @pointerup="pointerUp" @pointercancel="cancelPointer"><X v-if="opened" class="size-5" /><Layers3 v-else class="size-5" /></button>
+      <button v-else ref="toggleButton" class="booster-dock-toggle" type="button" :aria-label="t(opened ? 'dock.close' : 'dock.open')" :title="t(opened ? 'dock.close' : 'dock.open') + ' · ' + t('dock.drag')" :aria-expanded="opened" @click="toggle" @pointerdown="pointerDown" @pointermove="pointerMove" @pointerup="pointerUp" @pointercancel="cancelPointer"><X v-if="opened" class="size-5" /><Layers3 v-else class="size-5" /></button>
     </div>
   </div>
 </template>
