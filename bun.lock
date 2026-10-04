@@ -19,7 +19,7 @@
     },
     "packages/chatgpt": {
       "name": "@chatgpt-booster/chatgpt",
-      "version": "0.6.0",
+      "version": "0.6.1",
       "dependencies": {
         "@chatgpt-booster/core": "workspace:*",
       },
@@ -29,14 +29,14 @@
     },
     "packages/core": {
       "name": "@chatgpt-booster/core",
-      "version": "0.6.0",
+      "version": "0.6.1",
       "devDependencies": {
         "typescript": "^5.9.2",
       },
     },
     "packages/extension": {
       "name": "@chatgpt-booster/extension",
-      "version": "0.6.0",
+      "version": "0.6.1",
       "dependencies": {
         "@chatgpt-booster/core": "workspace:*",
         "@chatgpt-booster/features": "workspace:*",
@@ -48,7 +48,7 @@
     },
     "packages/features": {
       "name": "@chatgpt-booster/features",
-      "version": "0.6.0",
+      "version": "0.6.1",
       "dependencies": {
         "@chatgpt-booster/chatgpt": "workspace:*",
         "@chatgpt-booster/core": "workspace:*",
@@ -62,14 +62,14 @@
     },
     "packages/observer": {
       "name": "@chatgpt-booster/observer",
-      "version": "0.6.0",
+      "version": "0.6.1",
       "devDependencies": {
         "typescript": "^5.9.2",
       },
     },
     "packages/telemetry": {
       "name": "@chatgpt-booster/telemetry",
-      "version": "0.6.0",
+      "version": "0.6.1",
       "dependencies": {
         "@chatgpt-booster/core": "workspace:*",
       },
@@ -79,7 +79,7 @@
     },
     "packages/ui": {
       "name": "@chatgpt-booster/ui",
-      "version": "0.6.0",
+      "version": "0.6.1",
       "dependencies": {
         "@chatgpt-booster/core": "workspace:*",
         "class-variance-authority": "^0.7.1",
@@ -93,7 +93,7 @@
     },
     "packages/userscript": {
       "name": "@chatgpt-booster/userscript",
-      "version": "0.6.0",
+      "version": "0.6.1",
       "dependencies": {
         "@chatgpt-booster/core": "workspace:*",
         "@chatgpt-booster/features": "workspace:*",

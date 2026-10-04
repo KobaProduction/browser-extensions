@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 
 type UserscriptVariant = 'prod' | 'dev'
 
-const version = '0.6.0'
+const version = '0.6.1'
 
 function outputFor(variant: UserscriptVariant): URL {
   return new URL(
