@@ -268,8 +268,8 @@ const thinkingTitle = computed(() => {
         <time v-if="shortTime(item.record.createTime ?? item.record.firstSeenAt)" class="booster-record-time-text" :title="timeTitle">{{ shortTime(item.record.createTime ?? item.record.firstSeenAt) }}</time>
         <span v-if="edited" class="booster-record-edited">{{ t('reader.editedShort') }}</span>
         <span class="booster-record-header-tools">
-          <span class="booster-record-info" :title="timeTitle"><Clock3 class="size-3.5" /></span>
-          <span v-if="item.kind === 'answer' && thinkingTitle" class="booster-record-info" :title="thinkingTitle"><BrainCircuit class="size-3.5" /></span>
+          <span class="booster-record-info" tabindex="0" :aria-label="timeTitle" :data-tooltip="timeTitle"><Clock3 class="size-3.5" /></span>
+          <span v-if="item.kind === 'answer' && thinkingTitle" class="booster-record-info" tabindex="0" :aria-label="thinkingTitle" :data-tooltip="thinkingTitle"><BrainCircuit class="size-3.5" /></span>
           <button class="booster-record-icon-button" type="button" :title="t('reader.raw')" :aria-label="t('reader.raw')" @click="rawOpen = true"><FileJson2 class="size-3.5" /></button>
         </span>
       </header>
@@ -280,7 +280,7 @@ const thinkingTitle = computed(() => {
       <header class="booster-record-header booster-record-internal-header">
         <span class="booster-record-kind"><Brain class="size-4" /><strong>{{ t('reader.reasoning') }}</strong></span>
         <span class="booster-record-header-tools">
-          <span v-if="thinkingTitle" class="booster-record-info" :title="thinkingTitle"><BrainCircuit class="size-3.5" /></span>
+          <span v-if="thinkingTitle" class="booster-record-info" tabindex="0" :aria-label="thinkingTitle" :data-tooltip="thinkingTitle"><BrainCircuit class="size-3.5" /></span>
           <button class="booster-record-icon-button" type="button" :title="t('reader.raw')" :aria-label="t('reader.raw')" @click="rawOpen = true"><FileJson2 class="size-3.5" /></button>
           <button v-if="hasText" class="booster-record-expand" type="button" @click="expanded = !expanded">
             <ChevronDown v-if="isReasoningExpanded" class="size-3.5" /><ChevronRight v-else class="size-3.5" />
@@ -303,7 +303,7 @@ const thinkingTitle = computed(() => {
           <p v-if="preview">{{ preview }}</p>
         </div>
         <div class="booster-tool-actions" @click.stop>
-          <span v-if="thinkingTitle" class="booster-record-info" :title="thinkingTitle"><BrainCircuit class="size-3.5" /></span>
+          <span v-if="thinkingTitle" class="booster-record-info" tabindex="0" :aria-label="thinkingTitle" :data-tooltip="thinkingTitle"><BrainCircuit class="size-3.5" /></span>
           <a v-if="toolLink" class="booster-tool-action" :href="toolLink" target="_blank" rel="noreferrer noopener" :title="`${t('reader.openTool')}: ${toolLink}`"><ExternalLink class="size-3.5" /></a>
           <button v-if="hasToolDetails" type="button" class="booster-tool-action" :title="t(expanded ? 'reader.hide' : 'reader.show')" @click="expanded = !expanded"><Code2 class="size-3.5" /></button>
           <button type="button" class="booster-tool-action" :title="t('reader.raw')" @click="rawOpen = true"><FileJson2 class="size-3.5" /></button>

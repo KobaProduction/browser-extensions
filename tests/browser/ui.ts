@@ -454,9 +454,10 @@ export async function runUiTests(
         const infoTitles = [
           ...(firstAnswer?.querySelectorAll<HTMLElement>('.booster-record-info') ?? []),
         ]
-          .map((item) => item.title)
+          .map((item) => item.dataset.tooltip ?? '')
           .join('\n')
         assert(infoTitles.includes('gpt-5.6-sol'), 'model/thinking tooltip is missing')
+        assert(infoTitles.includes(translate('ru', 'reader.sentAt')), 'timestamp tooltip is missing')
         const raw = restored.querySelector<HTMLButtonElement>(
           '.booster-record-answer .booster-record-icon-button',
         )
