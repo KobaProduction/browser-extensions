@@ -33,7 +33,9 @@ const filteredTurns = computed(() => {
   const q = textSearch.value.trim().toLocaleLowerCase()
   return q ? thread.value.turns.filter(turn => [...turn.messages, ...turn.details].some(item => `${item.text} ${item.record.recipient ?? ''}`.toLocaleLowerCase().includes(q))) : thread.value.turns
 })
-const coverageText = computed(() => !coverage.value ? 'dock.none' : coverage.value.evidenceVersion !== 1 ? 'dock.unverified' : coverage.value.completeAtLastRead ? 'dock.verified' : 'dock.partial')
+const archiveStatusKey = computed<TranslationKey>(() =>
+  coverage.value?.completeAtLastRead ? 'reader.savedToStart' : 'reader.savedPartial',
+)
 watch(textSearch, () => { visibleCount.value = 40 })
 function toggleGroup(id: string) { const next = new Set(expanded.value); if (!next.delete(id)) next.add(id); expanded.value = next }
 function toggleDetails(event: Event, id: string) { const next = new Set(details.value); if ((event.target as HTMLDetailsElement).open) next.add(id); else next.delete(id); details.value = next }
@@ -89,7 +91,7 @@ onBeforeUnmount(() => { alive = false; listRevision++; threadRevision++ })
         <p v-if="error" class="booster-error" role="alert">{{ t('reader.error') }}</p>
         <template v-if="selected">
           <header class="booster-reader-chat-header"><div><h2><CopyIdentity :label="selected.title || t('identity.untitled')" :identifier="selected.conversationId" :locale="locale" /></h2><CopyIdentity :label="projectLabel(selected.projectId)" :identifier="selected.projectId" :locale="locale" /><p v-if="selected.branchSourceConversationId" class="booster-note"><CopyIdentity :label="t('reader.branch') + ': ' + (selected.branchSourceTitle || t('identity.untitled'))" :identifier="selected.branchSourceConversationId" :locale="locale" /></p></div><button class="booster-action-secondary" type="button" :disabled="threadLoading" @click="emit('export', selected.conversationId, selected.title)"><Download class="size-4" />{{ t('reader.export') }}</button></header>
-          <div class="booster-reader-summary"><span>{{ t('dock.messages') }}: <b>{{ thread.messageCount }}</b></span><span>{{ t('dock.details') }}: {{ thread.detailCount }}</span><span>{{ t(coverageText) }}<template v-if="coverage?.verifiedAt"> · {{ date(coverage.verifiedAt) }}</template></span><p>{{ t('dock.coverageNote') }}</p></div>
+          <div class="booster-reader-summary"><span>{{ t('dock.messages') }}: <b>{{ thread.messageCount }}</b></span><span>{{ t('dock.details') }}: {{ thread.detailCount }}</span><span>{{ t(archiveStatusKey) }}</span><p v-if="coverage?.currentLastMessageId">{{ t(coverage.storedLatestMatchesCurrent ? 'reader.currentLatestSaved' : 'reader.currentNewer') }}</p><p v-if="coverage?.verifiedAt">{{ t('reader.lastRefreshCheck') }}: {{ date(coverage.verifiedAt) }}</p><p v-else>{{ t('reader.updateUnchecked') }}</p></div>
           <input v-model="textSearch" class="booster-reader-text-search" type="search" :placeholder="t('reader.searchMessages')" :aria-label="t('reader.searchMessages')" />
           <p v-if="threadLoading" class="booster-note" role="status">{{ t('reader.loading') }}</p>
           <div v-else class="booster-reader-exchanges">

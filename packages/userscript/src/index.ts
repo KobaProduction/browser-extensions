@@ -92,7 +92,7 @@ function startRuntime() {
     [
       new OverlayModule(),
       archiveCapture,
-      new ArchiveScopeControlsModule(userscriptSettings),
+      new ArchiveScopeControlsModule(userscriptSettings, archiveStore),
       new HistoryLoaderModule(archiveStore, archiveCapture),
       new TransportObserverModule({
         settings: userscriptSettings,

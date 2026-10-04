@@ -4,6 +4,7 @@ import {
   type ArchiveExportOptions,
   type BoosterSettings,
   DEFAULT_CAPTURE_RULE,
+  HISTORY_LOADER_START_EVENT,
   mergeSettings,
   normalizeSettings,
   type SettingsAdapter,
@@ -374,7 +375,8 @@ async function runStorageTests() {
       try {
         history.replaceState(null, '', `/c/${id}`)
         const controls = mountArchiveScopeControls({
-          label: 'Fixture archive policy',
+          label: () => 'Fixture archive policy',
+          enabled: () => false,
           visible: () => true,
           onOpen: () => {
             opened++
@@ -383,14 +385,16 @@ async function runStorageTests() {
         const count = () => row.querySelectorAll('[data-chatgpt-booster="capture-control"]').length
         assert(count() === 1, 'scope control was not injected exactly once')
         controls.update({
-          label: 'Updated archive policy',
+          label: () => 'Updated archive policy',
+          enabled: () => true,
           visible: () => true,
           onOpen: () => {
             opened++
           },
         })
         controls.update({
-          label: 'Updated archive policy again',
+          label: () => 'Updated archive policy again',
+          enabled: () => true,
           visible: () => true,
           onOpen: () => {
             opened++
@@ -400,6 +404,7 @@ async function runStorageTests() {
         const host = row.querySelector<HTMLElement>('[data-chatgpt-booster="capture-control"]')
         const button = host?.shadowRoot?.querySelector<HTMLButtonElement>('button')
         assert(button, 'scope control button missing')
+        assert(button.dataset.enabled === 'true', 'scope control did not reflect enabled state')
         const before = location.href
         button.click()
         assert(opened === 1, 'scope control action did not fire once')
@@ -449,6 +454,33 @@ async function runStorageTests() {
     assert(fullEvidence.omittedRecordCount === 0, 'lossless omission count incorrect')
   })
 
+  await check('manual collection starts in-place without reloading the tab', async () => {
+    const previous = await settings.get()
+    const href = location.href
+    const id = `${prefix}manual-no-reload`
+    const capture = new ConversationArchiveModule(store, settings)
+    let starts = 0
+    const onStart = () => starts++
+    try {
+      history.replaceState(null, '', `/c/${id}`)
+      await settings.update({ enabled: true })
+      await capture.start()
+      window.addEventListener(HISTORY_LOADER_START_EVENT, onStart)
+      const timeOrigin = performance.timeOrigin
+      await capture.collectCurrent()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      assert(performance.timeOrigin === timeOrigin, 'manual collection reloaded the document')
+      assert(starts === 1, 'history loader was not started directly')
+      assert(collectionTicket()?.conversationId === id, 'manual ticket was not scoped to this chat')
+      capture.finishCollection()
+    } finally {
+      window.removeEventListener(HISTORY_LOADER_START_EVENT, onStart)
+      capture.stop()
+      sessionStorage.removeItem('chatgpt-booster:manual-collection')
+      history.replaceState(null, '', href)
+      await settings.set(previous)
+    }
+  })
   await check('saved data survives policy changes and schema normalization', async () => {
     const id = prefix + 'preserved'
     await store.ingest(page(id, [raw('u', 'user', 'Keep me')]))

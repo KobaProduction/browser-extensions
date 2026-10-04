@@ -1,4 +1,8 @@
-import { currentConversationId, findConversationScrollContainer } from '@chatgpt-booster/chatgpt'
+import {
+  currentConversationId,
+  currentConversationMessageBounds,
+  findConversationScrollContainer,
+} from '@chatgpt-booster/chatgpt'
 import {
   ARCHIVE_UPDATED_EVENT,
   type BoosterModule,
@@ -153,9 +157,10 @@ export class HistoryLoaderModule implements BoosterModule {
     })
   }
   async #run(id: string, startedAt: number, signal: AbortSignal) {
-    let stalledAt = Date.now(),
-      noProgress = 0,
-      previousPageCount = 0
+    let stalledAt = Date.now()
+    let noProgress = 0
+    let previousPageCount = 0
+    const expectedLatestMessageId = currentConversationMessageBounds().lastMessageId
     const requireCurrentCollection = () => {
       if (Date.now() - startedAt > 30 * 60_000) throw new Error('archive.error.timeout')
       if (signal.aborted)
@@ -173,76 +178,84 @@ export class HistoryLoaderModule implements BoosterModule {
           stalledAt = Date.now()
           continue
         }
+
         const coverage = await this.store.getCoverage(id)
-        // A late read must not produce success or scroll another chat after cancellation.
         requireCurrentCollection()
-        if (document.hidden) continue
+        if (document.hidden) {
+          stalledAt = Date.now()
+          continue
+        }
+        const container = findConversationScrollContainer()
+        const bounds = currentConversationMessageBounds()
         const fresh = coverage?.evidenceVersion === 1 && (coverage.readStartedAt ?? 0) >= startedAt
+        const atStart = !!container && container.scrollTop <= 1
+        const startMatches =
+          !!bounds.firstMessageId && coverage?.oldestKnownVisibleMessageId === bounds.firstMessageId
+        const latestMatches =
+          !expectedLatestMessageId ||
+          coverage?.newestKnownVisibleMessageId === expectedLatestMessageId
+
         this.#set({
-          knownMessageCount: fresh ? (coverage.visibleMessageCount ?? 0) : 0,
-          // Include the initial page even if it was ingested before this module subscribed.
-          pagesLoaded: fresh ? (coverage.historyPageCount ?? this.#pages.size) : 0,
+          knownMessageCount: coverage?.visibleMessageCount ?? 0,
+          pagesLoaded: fresh ? (coverage?.historyPageCount ?? this.#pages.size) : this.#pages.size,
+          hasOlderServerHistory: coverage?.hasOlderServerHistory ?? null,
         })
-        if (
-          fresh &&
-          coverage.completeAtLastRead &&
-          coverage.verifiedAt &&
-          coverage.verifiedAt >= startedAt
-        ) {
+
+        if (fresh && coverage?.completeAtLastRead && atStart && startMatches && latestMatches) {
           this.#set({ phase: 'complete', hasOlderServerHistory: false })
           window.dispatchEvent(
             new CustomEvent(OPEN_ARCHIVE_EVENT, { detail: { conversationId: id } }),
           )
           return
         }
+
         if (this.#pages.size > previousPageCount) {
           previousPageCount = this.#pages.size
           stalledAt = Date.now()
           noProgress = 0
           this.#set({ consecutiveErrors: 0 })
-          await abortableDelay(550, signal)
-          requireCurrentCollection()
-          if (document.hidden) continue
         }
+
         if (this.#network.error !== null) {
           const status = this.#network.error
           this.#network.error = null
-          if (status === -1) throw new Error('archive.error.storage')
           if (status === 401 || status === 403) throw new Error('archive.error.auth')
           noProgress++
           if (noProgress >= 4) throw new Error('archive.error.network')
           this.#set({ phase: 'backoff', consecutiveErrors: noProgress })
           await abortableDelay(historyBackoffMs(status, noProgress), signal)
-          requireCurrentCollection()
-          if (document.hidden) continue
-          findConversationScrollContainer()?.scrollBy({ top: 120, behavior: 'instant' })
           stalledAt = Date.now()
+          continue
         }
-        if (this.#network.pending || !fresh) {
+
+        if (this.#network.pending) {
           this.#set({ phase: 'waiting_for_load' })
-        } else {
-          const container = findConversationScrollContainer()
-          if (container) {
-            const before = container.scrollTop
-            this.#set({ phase: 'scrolling', hasOlderServerHistory: coverage.hasOlderServerHistory })
-            container.scrollBy({
-              top: -Math.min(240, Math.max(100, container.clientHeight * 0.35)),
-              behavior: 'instant',
-            })
-            if (container.scrollTop < before - 1) stalledAt = Date.now()
-            else this.#set({ phase: 'waiting_for_load' })
+        } else if (container) {
+          const before = container.scrollTop
+          container.scrollBy({
+            top: -Math.min(260, Math.max(120, container.clientHeight * 0.4)),
+            behavior: 'instant',
+          })
+          if (container.scrollTop < before - 1) {
+            this.#set({ phase: 'scrolling' })
+            stalledAt = Date.now()
+          } else {
+            this.#set({ phase: 'waiting_for_load' })
           }
+        } else {
+          this.#set({ phase: 'waiting_for_load' })
         }
-        if (Date.now() - stalledAt > 12000) {
+
+        if (Date.now() - stalledAt > 12_000) {
           noProgress++
           if (noProgress >= 4) throw new Error('archive.error.noProgress')
           this.#set({ phase: 'backoff', consecutiveErrors: noProgress })
           this.#network.pending = false
-          findConversationScrollContainer()?.scrollBy({ top: 120, behavior: 'instant' })
-          await abortableDelay(Math.min(8000, 1000 * 2 ** noProgress), signal)
+          await abortableDelay(Math.min(8_000, 1_000 * 2 ** noProgress), signal)
           stalledAt = Date.now()
+          continue
         }
-        await abortableDelay(420, signal)
+        await abortableDelay(360, signal)
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'archive.error.unknown'

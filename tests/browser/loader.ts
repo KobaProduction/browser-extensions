@@ -118,6 +118,20 @@ export async function runLoaderScrollTest(
       pass: false,
       detail: 'fixture scroller missing',
     }
+  const firstMessageId = `${id}-first`
+  const lastMessageId = `${id}-last`
+  const firstVisible = document.createElement('div')
+  firstVisible.dataset.messageId = firstMessageId
+  firstVisible.dataset.messageAuthorRole = 'user'
+  firstVisible.textContent = 'First fixture message'
+  const lastVisible = document.createElement('div')
+  lastVisible.dataset.messageId = lastMessageId
+  lastVisible.dataset.messageAuthorRole = 'assistant'
+  lastVisible.textContent = 'Latest fixture message'
+  const surface = scroller.firstElementChild ?? scroller
+  surface.prepend(firstVisible)
+  surface.append(lastVisible)
+
   const states: HistoryLoaderState[] = []
   let opened = false
   const state = (event: Event) =>
@@ -144,7 +158,14 @@ export async function runLoaderScrollTest(
       conversation_id: id,
       title: id,
       gizmo_id: null,
-      messages: [],
+      messages: [
+        {
+          id: lastMessageId,
+          author: { role: 'assistant' },
+          content: { content_type: 'text', parts: ['Latest fixture message'] },
+          create_time: 2,
+        },
+      ],
       page_info: {
         start_cursor: 'middle',
         end_cursor: 'end',
@@ -176,6 +197,14 @@ export async function runLoaderScrollTest(
       requestedBefore: 'middle',
       payload: {
         ...detail.payload,
+        messages: [
+          {
+            id: firstMessageId,
+            author: { role: 'user' },
+            content: { content_type: 'text', parts: ['First fixture message'] },
+            create_time: 1,
+          },
+        ],
         page_info: {
           start_cursor: 'start',
           end_cursor: 'middle',
@@ -213,6 +242,8 @@ export async function runLoaderScrollTest(
     window.removeEventListener(HISTORY_LOADER_STATE_EVENT, state)
     window.removeEventListener(OPEN_ARCHIVE_EVENT, open)
     sessionStorage.removeItem(ticketKey)
+    firstVisible.remove()
+    lastVisible.remove()
     history.replaceState(null, '', href)
   }
 }

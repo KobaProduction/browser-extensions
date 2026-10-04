@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import {
-  ARCHIVE_UPDATED_EVENT, BOOSTER_VERSION, captureRuleFor, dockFromDrop, dockPosition,
+  ARCHIVE_UPDATED_EVENT, dockFromDrop, dockPosition,
   HISTORY_LOADER_STATE_EVENT, HISTORY_LOADER_STOP_EVENT, normalizeSettings,
-  OPEN_ARCHIVE_EVENT, OPEN_CAPTURE_SETTINGS_EVENT, OPEN_SETTINGS_EVENT,
+  OPEN_ARCHIVE_EVENT, OPEN_CAPTURE_SETTINGS_EVENT, OPEN_SETTINGS_EVENT, resolveCaptureRule,
   snapshotSettings, type ArchiveCaptureContext, type ArchiveCurrentContext, type HistoryLoaderState,
 } from '@chatgpt-booster/core'
 import { Archive, Download, Layers3, Settings, ShieldCheck, Square, X, ArrowUpToLine } from 'lucide-vue-next'
@@ -18,7 +18,7 @@ const props = defineProps<BoosterUiOptions>()
 const SIZE = 44
 const settings = ref(normalizeSettings())
 const expanded = ref(false), dragging = ref(false), loading = ref(false), savedChat = ref(false)
-const view = ref<'archive' | 'settings' | 'export' | 'collect' | null>(null)
+const view = ref<'archive' | 'settings' | 'export' | null>(null)
 const context = ref<ArchiveCurrentContext>({ conversationId: null, conversationTitle: null, projectId: null, projectTitle: null })
 const coverage = ref<ArchiveCoverageView>()
 const captureContext = ref<ArchiveCaptureContext>()
@@ -40,8 +40,44 @@ const growsUp = computed(() => position.value.y > (viewport.value.height - SIZE)
 const shellMaxHeight = computed(() => Math.max(SIZE, (growsUp.value ? position.value.y + SIZE : viewport.value.height - position.value.y) - 8))
 const opened = computed(() => expanded.value || view.value !== null)
 const active = computed(() => ['preparing', 'scrolling', 'waiting_for_load', 'backoff'].includes(loader.value.phase) && loader.value.conversationId === context.value.conversationId)
-const autoCapture = computed(() => !!context.value.conversationId && settings.value.enabled && captureRuleFor(settings.value.archive, context.value.conversationId, context.value.projectId).enabled)
-const coverageKey = computed<TranslationKey>(() => !coverage.value ? 'dock.none' : coverage.value.evidenceVersion !== 1 ? 'dock.unverified' : coverage.value.completeAtLastRead ? 'dock.verified' : 'dock.partial')
+const captureResolution = computed(() =>
+  context.value.conversationId
+    ? resolveCaptureRule(
+        settings.value.archive,
+        context.value.conversationId,
+        context.value.projectId,
+      )
+    : null,
+)
+const autoCapture = computed(
+  () => !!captureResolution.value && settings.value.enabled && captureResolution.value.rule.enabled,
+)
+const captureStatusKey = computed<TranslationKey>(() => {
+  if (!settings.value.enabled) return 'dock.autoMasterOff'
+  if (
+    context.value.conversationId &&
+    settings.value.archive.conversations[context.value.conversationId]
+  )
+    return autoCapture.value ? 'dock.autoChatOn' : 'dock.autoChatOff'
+  if (context.value.projectId)
+    return autoCapture.value ? 'dock.autoProjectOn' : 'dock.autoProjectOff'
+  return autoCapture.value ? 'dock.autoDefaultOn' : 'dock.autoDefaultOff'
+})
+const currentCaptureTarget = computed<ArchiveCaptureContext | undefined>(() => {
+  if (!context.value.conversationId) return undefined
+  if (captureResolution.value?.source !== 'conversation' && context.value.projectId)
+    return {
+      scope: 'project',
+      id: context.value.projectId,
+      title: context.value.projectTitle,
+    }
+  return {
+    scope: 'conversation',
+    id: context.value.conversationId,
+    title: context.value.conversationTitle,
+    projectId: context.value.projectId,
+  }
+})
 const safeError = (value: unknown): TranslationKey => {
   const message = value instanceof Error ? value.message : ''
   return ['archive.error.noChat', 'archive.error.draft', 'archive.error.attachments', 'archive.error.generating', 'archive.error.storage', 'archive.error.timeout', 'archive.error.noProgress', 'archive.error.auth', 'archive.error.network'].includes(message) ? message as TranslationKey : 'archive.error.unknown'
@@ -109,8 +145,12 @@ async function openCapture(scope?: ArchiveCaptureContext) {
 }
 async function collect() {
   error.value = null
-  try { await props.archiveAdapter?.collectCurrent() }
-  catch (cause) { error.value = safeError(cause) }
+  try {
+    await props.archiveAdapter?.collectCurrent()
+    expanded.value = true
+  } catch (cause) {
+    error.value = safeError(cause)
+  }
 }
 function stop() { window.dispatchEvent(new Event(HISTORY_LOADER_STOP_EVENT)) }
 function onState(event: Event) {
@@ -160,27 +200,26 @@ onBeforeUnmount(() => {
     <ModalSurface v-if="view === 'settings'" :label="t('dock.settings')" @close="view = null"><ControlCenterPanel v-bind="props" :capture-context="captureContext" show-close @close="view = null" /></ModalSurface>
     <ModalSurface v-if="view === 'archive' && archiveAdapter" :label="t('reader.title')" wide @close="view = null"><ArchiveBrowser :archive-adapter="archiveAdapter" :initial-conversation-id="archiveInitial" :locale="locale" @close="view = null" @export="(id, title) => openExport(id, title, true)" /></ModalSurface>
     <ModalSurface v-if="view === 'export' && archiveAdapter && exportTarget" :label="t('export.title')" @close="closeView"><ArchiveExportDialog :archive-adapter="archiveAdapter" :settings-adapter="settingsAdapter" :conversation-id="exportTarget.id" :title="exportTarget.title" :locale="locale" @close="closeView" /></ModalSurface>
-    <ModalSurface v-if="view === 'collect'" :label="t('dock.collectConfirm')" @close="view = null"><section class="booster-form-body"><h2>{{ t('dock.collectConfirm') }}</h2><p>{{ t('dock.collectNote') }}</p><p v-if="error" class="booster-error" role="alert">{{ t(error) }}</p><button type="button" class="booster-action-primary" @click="collect">{{ t('dock.proceed') }}</button><button type="button" class="booster-action-secondary" @click="view = null">{{ t('common.cancel') }}</button></section></ModalSurface>
     <div class="booster-dock" :class="[side, growsUp ? 'grow-up' : 'grow-down', { dragging }]" :style="{ left: position.x + 'px', top: position.y + 'px' }">
       <div v-if="expanded && !dragging" class="booster-dock-shell" :style="{ maxHeight: shellMaxHeight + 'px' }">
         <div class="booster-dock-content" :style="{ maxHeight: Math.max(0, shellMaxHeight - SIZE) + 'px' }">
           <section class="booster-dock-context">
             <CopyIdentity :label="context.conversationTitle || t(context.conversationId ? 'identity.untitled' : 'dock.noChat')" :identifier="context.conversationId" :locale="locale" />
             <CopyIdentity v-if="context.projectId" :label="context.projectTitle || t('identity.unknownProject')" :identifier="context.projectId" :locale="locale" />
-            <p :title="t('dock.coverageNote')">{{ t(loading && !coverage ? 'reader.loading' : coverageKey) }}<time v-if="coverage?.verifiedAt"> · {{ new Date(coverage.verifiedAt).toLocaleString(locale) }}</time></p>
             <div v-if="coverage" class="booster-dock-counts"><span>{{ t('dock.messages') }} <b>{{ coverage.visibleMessageCount ?? 0 }}</b></span><span>{{ t('dock.details') }} {{ coverage.internalRecordCount ?? 0 }}</span></div>
-            <button class="booster-capture-shortcut" type="button" @click="openCapture()"><ShieldCheck class="size-3" />{{ t(autoCapture ? 'dock.autoOn' : 'dock.autoOff') }}</button>
+            <p v-else-if="loading">{{ t('reader.loading') }}</p>
+            <button class="booster-capture-shortcut" type="button" @click="openCapture(currentCaptureTarget)"><ShieldCheck class="size-3" />{{ t(captureStatusKey) }}</button>
           </section>
           <div v-if="active" class="booster-dock-progress" role="status"><span>{{ t(`phase.${loader.phase}`) }} · {{ t('dock.pages') }}: {{ loader.pagesLoaded }}</span><button class="booster-icon-button" type="button" :aria-label="t('dock.stop')" @click="stop"><Square class="size-3" /></button></div>
           <p v-if="loader.phase === 'error' && loader.conversationId === context.conversationId" role="alert" class="booster-error">{{ t(safeError(new Error(loader.message))) }}</p><p v-if="error" class="booster-error" role="alert">{{ t(error) }}</p>
           <nav class="booster-dock-actions" :aria-label="t('dock.title')">
             <button type="button" :disabled="!savedChat || !context.conversationId" @click="context.conversationId && openExport(context.conversationId, context.conversationTitle)"><Download class="size-4" />{{ t('dock.export') }}</button>
-            <button type="button" :disabled="!context.conversationId || active" @click="error = null; view = 'collect'; expanded = false"><ArrowUpToLine class="size-4" />{{ t('dock.collect') }}</button>
+            <button type="button" :disabled="!context.conversationId || active" @click="collect"><ArrowUpToLine class="size-4" />{{ t('dock.collect') }}</button>
             <button type="button" :disabled="!archiveAdapter" @click="openArchive()"><Archive class="size-4" />{{ t('dock.archive') }}</button>
             <button type="button" @click="openSettings"><Settings class="size-4" />{{ t('dock.settings') }}</button>
           </nav>
         </div>
-        <footer class="booster-dock-footer">Booster <small>{{ BOOSTER_VERSION }}</small></footer>
+        <footer class="booster-dock-footer">{{ t('dock.closeShort') }}</footer>
       </div>
       <button ref="toggleButton" class="booster-dock-toggle" type="button" :aria-label="t(opened ? 'dock.close' : 'dock.open')" :title="t(opened ? 'dock.close' : 'dock.open') + ' · ' + t('dock.drag')" :aria-expanded="opened" @click="toggle" @pointerdown="pointerDown" @pointermove="pointerMove" @pointerup="pointerUp" @pointercancel="cancelPointer"><X v-if="opened" class="size-5" /><Layers3 v-else class="size-5" /></button>
     </div>

@@ -2,6 +2,7 @@ import {
   archiveRecordAttachments,
   buildArchiveThread,
   currentConversationId,
+  currentConversationMessageBounds,
   currentConversationTitle,
   currentProjectId,
   currentProjectTitle,
@@ -56,12 +57,23 @@ export function createArchiveUiAdapter(
       ])
       if (!coverage) return undefined
       const thread = buildArchiveThread(records)
+      const current =
+        currentConversationId() === conversationId
+          ? currentConversationMessageBounds()
+          : { firstMessageId: null, lastMessageId: null }
       return {
         ...coverage,
         completeAtLastRead: coverage.evidenceVersion === 1 && coverage.completeAtLastRead,
         visibleMessageCount: thread.messageCount,
         internalRecordCount: thread.detailCount,
         knownMessageCount: thread.recordCount,
+        currentFirstMessageId: current.firstMessageId,
+        currentLastMessageId: current.lastMessageId,
+        storedStartMatchesCurrent:
+          !!current.firstMessageId &&
+          coverage.oldestKnownVisibleMessageId === current.firstMessageId,
+        storedLatestMatchesCurrent:
+          !!current.lastMessageId && coverage.newestKnownVisibleMessageId === current.lastMessageId,
       }
     },
     listConversations: () => store.listConversations(),

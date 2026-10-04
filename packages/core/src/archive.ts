@@ -104,6 +104,18 @@ export function captureRuleFor(
     settings.defaultRule
   )
 }
+export type CaptureRuleSource = 'conversation' | 'project' | 'default'
+export function resolveCaptureRule(
+  settings: ArchiveSettings,
+  conversationId: string,
+  projectId: string | null,
+): { rule: CaptureRule; source: CaptureRuleSource } {
+  const conversation = settings.conversations[conversationId]
+  if (conversation) return { rule: conversation, source: 'conversation' }
+  const project = projectId ? settings.projects[projectId] : undefined
+  if (project) return { rule: project, source: 'project' }
+  return { rule: settings.defaultRule, source: 'default' }
+}
 /** Manual consent bypasses only automatic enablement, never the chosen record categories. */
 export function captureRuleForOperation(
   settings: ArchiveSettings,

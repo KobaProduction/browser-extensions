@@ -2,7 +2,8 @@ import type { ArchiveCaptureContext } from '@chatgpt-booster/core'
 import { currentConversationId, currentProjectId, currentProjectTitle } from './conversation-scroll'
 
 interface ScopeControlOptions {
-  label: string
+  label(context: ArchiveCaptureContext): string
+  enabled(context: ArchiveCaptureContext): boolean
   visible(context: ArchiveCaptureContext): boolean
   onOpen(context: ArchiveCaptureContext): void
 }
@@ -41,6 +42,17 @@ export function mountArchiveScopeControls(initial: ScopeControlOptions) {
       title: currentProjectTitle(projectId) ?? (link.innerText.trim() || null),
     }
   }
+  function renderButton(button: HTMLButtonElement, context: ArchiveCaptureContext) {
+    const enabled = options.enabled(context)
+    const label = options.label(context)
+    button.title = label
+    button.setAttribute('aria-label', label)
+    button.dataset.enabled = enabled ? 'true' : 'false'
+    button.innerHTML = enabled
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 20 7v5c0 5-8 9-8 9s-8-4-8-9V7z"/><path d="m8 12 3 3 5-6"/></svg>'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 20 7v5c0 5-8 9-8 9s-8-4-8-9V7z"/><path d="m8.5 8.5 7 7"/><path d="m15.5 8.5-7 7"/></svg>'
+  }
+
   function remove(link: HTMLAnchorElement) {
     const item = owned.get(link)
     if (!item) return
@@ -64,8 +76,7 @@ export function mountArchiveScopeControls(initial: ScopeControlOptions) {
         continue
       }
       item.context = context
-      item.button.title = options.label
-      item.button.setAttribute('aria-label', options.label)
+      renderButton(item.button, context)
     }
     for (const link of document.querySelectorAll<HTMLAnchorElement>(
       'nav a[href], header a[href]',
@@ -86,14 +97,10 @@ export function mountArchiveScopeControls(initial: ScopeControlOptions) {
       const shadow = host.attachShadow({ mode: 'open' })
       const style = document.createElement('style')
       style.textContent =
-        ':host{color-scheme:light dark}button{all:unset;box-sizing:border-box;display:flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;background:light-dark(#f4f4f5,#27272a);color:light-dark(#27272a,#fafafa);cursor:pointer;opacity:.65}button:hover,button:focus-visible{opacity:1;outline:1px solid currentColor}svg{width:14px;height:14px;pointer-events:none}'
+        ':host{color-scheme:light dark}button{all:unset;box-sizing:border-box;display:flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;background:light-dark(#f4f4f5,#27272a);color:light-dark(#27272a,#fafafa);cursor:pointer;opacity:.55}button[data-enabled="true"]{color:light-dark(#166534,#86efac);opacity:.9}button:hover,button:focus-visible{opacity:1;outline:1px solid currentColor}svg{width:14px;height:14px;pointer-events:none}'
       const button = document.createElement('button')
       button.type = 'button'
-      button.title = options.label
-      button.setAttribute('aria-label', options.label)
-      // Static local icon, never host/user HTML.
-      button.innerHTML =
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 20 7v5c0 5-8 9-8 9s-8-4-8-9V7z"/><path d="m8 12 3 3 5-6"/></svg>'
+      renderButton(button, context)
       shadow.append(style, button)
       const item = { host, button, context, parent, position, changedPosition }
       button.addEventListener('click', (event) => {

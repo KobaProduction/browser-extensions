@@ -53,7 +53,7 @@ function startRuntime() {
     [
       new OverlayModule(),
       archiveCapture,
-      new ArchiveScopeControlsModule(chromeSettings),
+      new ArchiveScopeControlsModule(chromeSettings, archiveStore),
       new HistoryLoaderModule(archiveStore, archiveCapture),
       new TransportObserverModule({
         settings: chromeSettings,

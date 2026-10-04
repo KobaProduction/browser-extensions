@@ -125,6 +125,8 @@ export interface ConversationCoverage {
   conversationId: string
   oldestKnownMessageId: string | null
   newestKnownMessageId: string | null
+  oldestKnownVisibleMessageId?: string | null
+  newestKnownVisibleMessageId?: string | null
   oldestKnownCursor: string | null
   newestKnownCursor: string | null
   hasOlderServerHistory: boolean | null
@@ -750,6 +752,12 @@ export class ConversationArchiveStore {
     const mergedRecords = new Map(allMessages.map((message) => [message.messageKey, message]))
     for (const message of normalizedMessages) mergedRecords.set(message.messageKey, message)
     const counts = buildArchiveThread([...mergedRecords.values()])
+    const visibleRecords = counts.turns
+      .flatMap((turn) => turn.messages.map((item) => item.record))
+      .sort(
+        (a, b) =>
+          serverTimeMs(a.createTime, a.firstSeenAt) - serverTimeMs(b.createTime, b.firstSeenAt),
+      )
     const coverage: ConversationCoverage = {
       evidenceVersion: 1,
       readId: evidence.readId,
@@ -773,6 +781,10 @@ export class ConversationArchiveStore {
             ordered.at(-1)?.messageId ??
             messageIds.at(-1) ??
             null),
+      oldestKnownVisibleMessageId:
+        visibleRecords[0]?.messageId ?? oldCoverage?.oldestKnownVisibleMessageId ?? null,
+      newestKnownVisibleMessageId:
+        visibleRecords.at(-1)?.messageId ?? oldCoverage?.newestKnownVisibleMessageId ?? null,
       oldestKnownCursor:
         hasNextPage === true ? startCursor : (oldCoverage?.oldestKnownCursor ?? startCursor),
       newestKnownCursor:

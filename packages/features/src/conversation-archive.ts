@@ -14,6 +14,7 @@ import {
   type BoosterSettings,
   type CaptureRule,
   captureRuleForOperation,
+  HISTORY_LOADER_START_EVENT,
   normalizeSettings,
   type SettingsAdapter,
 } from '@chatgpt-booster/core'
@@ -118,7 +119,7 @@ export class ConversationArchiveModule implements BoosterModule {
       JSON.stringify({ conversationId, startedAt, expiresAt: startedAt + 30 * 60_000 }),
     )
     this.#publishPolicy()
-    window.location.reload()
+    window.dispatchEvent(new Event(HISTORY_LOADER_START_EVENT))
   }
   finishCollection(expected?: Pick<CollectionTicket, 'conversationId' | 'startedAt'>) {
     if (expected) {

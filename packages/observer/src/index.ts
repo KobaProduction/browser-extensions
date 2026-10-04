@@ -29,12 +29,38 @@ interface ArchiveReadContext {
   requestedBefore: string | null
 }
 const archiveReads = new Map<string, { readId: string; readStartedAt: number }>()
+let bufferedInitialPage: ConversationArchiveEventDetail | undefined
+
+function pageConversationId(pathname = location.pathname): string | undefined {
+  const match = pathname.match(/(?:^|\/)c\/([^/?#]+)/)
+  return match?.[1] ? decodeURIComponent(match[1]) : undefined
+}
+
+function archiveProjectId(payload: Record<string, unknown>, conversationId: string) {
+  const incoming =
+    typeof payload.gizmo_id === 'string' && payload.gizmo_id.startsWith('g-p-')
+      ? payload.gizmo_id
+      : null
+  return 'gizmo_id' in payload ? incoming : (archiveProjects.get(conversationId) ?? null)
+}
+
+function publishConversationPage(detail: ConversationArchiveEventDetail) {
+  if (!observerTarget) return
+  const projectId = archiveProjectId(detail.payload, detail.conversationId)
+  if (!captureAllowed(detail.conversationId, projectId)) return
+  archiveProjects.set(detail.conversationId, projectId)
+  observerTarget.postMessage(
+    { channel: TRANSPORT_CHANNEL, type: ARCHIVE_EVENT, detail },
+    observerTarget.location.origin,
+  )
+}
 function beginArchiveRequest(sourceUrl: string, requestId: string): ArchiveReadContext | undefined {
   const id = conversationHistoryId(sourceUrl)
   if (!id) return undefined
   const url = new URL(sourceUrl, location.href)
   const isInitial = !url.pathname.endsWith('/messages')
-  if (isInitial) archiveReads.set(id, { readId: requestId, readStartedAt: Date.now() })
+  if (isInitial && archivePolicy.manualConversationId !== id)
+    archiveReads.set(id, { readId: requestId, readStartedAt: Date.now() })
   const read = archiveReads.get(id) ?? { readId: requestId, readStartedAt: Date.now() }
   if (archiveReads.size > 128) {
     const oldest = archiveReads.keys().next().value
@@ -400,14 +426,6 @@ function observeConversationArchiveResponse(
   const conversationId = conversationHistoryId(sourceUrl)
   if (!observerTarget || !response.ok || !conversationId || !read) return
 
-  if (
-    !archivePolicy.manualConversationId &&
-    (!archivePolicy.enabled ||
-      (!archivePolicy.defaultEnabled &&
-        !Object.values(archivePolicy.projects).some(Boolean) &&
-        !Object.values(archivePolicy.conversations).some(Boolean)))
-  )
-    return
   const contentType = response.headers.get('content-type') ?? ''
   if (!/json/i.test(contentType)) return
 
@@ -419,29 +437,18 @@ function observeConversationArchiveResponse(
     .json()
     .then((payload: unknown) => {
       if (!observerTarget || !isConversationHistoryPayload(payload)) return
-      const incomingProject =
-        typeof payload.gizmo_id === 'string' && payload.gizmo_id.startsWith('g-p-')
-          ? payload.gizmo_id
-          : null
-      const projectId =
-        'gizmo_id' in payload ? incomingProject : (archiveProjects.get(conversationId) ?? null)
-      if (!captureAllowed(conversationId, projectId)) return
-      archiveProjects.set(conversationId, projectId)
-      observerTarget.postMessage(
-        {
-          channel: TRANSPORT_CHANNEL,
-          type: ARCHIVE_EVENT,
-          detail: {
-            kind: 'conversation-page',
-            ...read,
-            timestamp: Date.now(),
-            sourceUrl,
-            conversationId,
-            payload,
-          } satisfies ConversationArchiveEventDetail,
-        },
-        '*',
-      )
+      const detail = {
+        kind: 'conversation-page',
+        ...read,
+        timestamp: Date.now(),
+        sourceUrl,
+        conversationId,
+        payload,
+      } satisfies ConversationArchiveEventDetail
+      // Keep only the current chat's latest normal initial page in tab memory. This is not
+      // persisted until the user enables capture or explicitly starts a manual collection.
+      if (read.isInitial && pageConversationId() === conversationId) bufferedInitialPage = detail
+      publishConversationPage(detail)
     })
     .catch(() => undefined)
 }
@@ -522,7 +529,23 @@ export function installTransportObserver(
     const data = event.data
     if (data?.channel !== TRANSPORT_CHANNEL || data.type !== ARCHIVE_POLICY_EVENT || !data.detail)
       return
+    const previousManual = archivePolicy.manualConversationId
     archivePolicy = { ...DENY_ARCHIVE, ...data.detail }
+    const manual = archivePolicy.manualConversationId
+    if (manual && manual !== previousManual) {
+      const readStartedAt = Date.now()
+      const readId = `manual-${readStartedAt}`
+      archiveReads.set(manual, { readId, readStartedAt })
+      if (bufferedInitialPage?.conversationId === manual)
+        publishConversationPage({
+          ...bufferedInitialPage,
+          readId,
+          readStartedAt,
+          isInitial: true,
+          requestedBefore: null,
+          timestamp: readStartedAt,
+        })
+    }
   }
   target.addEventListener('message', onArchivePolicy)
   let config = { ...DEFAULT_CONFIG }
@@ -894,6 +917,7 @@ export function installTransportObserver(
     OriginalXHR.prototype.send = originalSend
     target.WebSocket = OriginalWebSocket
     target.EventSource = OriginalEventSource
+    bufferedInitialPage = undefined
     delete tagged[marker]
   }
 }

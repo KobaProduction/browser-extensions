@@ -124,3 +124,20 @@ export function currentResolvedAssetUrls(root: ParentNode = document) {
   }
   return [...resolved].map(([assetId, downloadUrl]) => ({ assetId, downloadUrl }))
 }
+
+export function currentConversationMessageBounds(root: ParentNode = document): {
+  firstMessageId: string | null
+  lastMessageId: string | null
+} {
+  const ids = [
+    ...root.querySelectorAll<HTMLElement>(
+      'main [data-message-id][data-message-author-role="user"], main [data-message-id][data-message-author-role="assistant"]',
+    ),
+  ]
+    .map((element) => element.dataset.messageId?.trim() || '')
+    .filter(Boolean)
+  return {
+    firstMessageId: ids[0] ?? null,
+    lastMessageId: ids.at(-1) ?? null,
+  }
+}

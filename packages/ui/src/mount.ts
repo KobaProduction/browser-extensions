@@ -57,6 +57,12 @@ export interface ArchiveCoverageView {
   internalRecordCount?: number
   conversationId: string
   knownMessageCount: number
+  oldestKnownVisibleMessageId?: string | null
+  newestKnownVisibleMessageId?: string | null
+  currentFirstMessageId?: string | null
+  currentLastMessageId?: string | null
+  storedStartMatchesCurrent?: boolean
+  storedLatestMatchesCurrent?: boolean
   hasOlderServerHistory: boolean | null
   completeAtLastRead: boolean
   lastFullReadAt: number | null
