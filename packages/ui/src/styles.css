@@ -1986,6 +1986,23 @@
   align-items: center;
   gap: 2px;
 }
+.booster-json-viewer {
+  max-height: min(70vh, 620px);
+  overflow: auto;
+  margin: 0;
+  padding: 14px 16px 22px;
+  background: color-mix(in oklab, var(--background) 86%, #0f172a);
+  color: var(--foreground);
+  font:
+    11px / 1.55 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    monospace;
+  tab-size: 2;
+  white-space: pre;
+}
 .booster-tool-expanded {
   margin-top: 8px;
   padding-top: 8px;
@@ -2049,23 +2066,6 @@
   font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.booster-json-viewer {
-  max-height: min(70vh, 620px);
-  overflow: auto;
-  margin: 0;
-  padding: 14px 16px 22px;
-  background: color-mix(in oklab, var(--background) 86%, #0f172a);
-  color: var(--foreground);
-  font:
-    11px / 1.55 ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    Monaco,
-    Consolas,
-    monospace;
-  tab-size: 2;
-  white-space: pre;
 }
 .booster-json-key {
   color: #60a5fa;
@@ -2153,8 +2153,8 @@
   border-radius: 11px;
   background: color-mix(in oklab, var(--background) 82%, var(--muted));
 }
-.booster-analytics-metrics article > span,
-.booster-analytics-metrics small {
+.booster-analytics-metrics :where(article > span),
+.booster-analytics-metrics :where(small) {
   color: var(--muted-foreground);
   font-size: 9px;
   line-height: 1.35;
@@ -2189,13 +2189,13 @@
   gap: 8px;
   font-size: 11px;
 }
-.booster-analytics-flow-card > header > span {
+.booster-analytics-flow-card :where(header > span) {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   color: var(--muted-foreground);
 }
-.booster-analytics-flow-card > header b {
+.booster-analytics-flow-card :where(header b) {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
