@@ -21,6 +21,7 @@ import { ConversationDecoratorsModule } from '../../packages/features/src/conver
 import { HistoryLoaderModule } from '../../packages/features/src/history-loader'
 import { ARCHIVE_ASSET_EVENT, ARCHIVE_EVENT, TRANSPORT_CHANNEL } from '../../packages/observer/src'
 import { mountBoosterUi } from '../../packages/ui/src/mount'
+import { mountScopeArchiveControl } from '../../packages/ui/src/scope-archive-control'
 import { runLoaderCancellationTests, runLoaderIsolationTests, runLoaderScrollTest } from './loader'
 import { runUiTests } from './ui'
 
@@ -1193,6 +1194,47 @@ async function runPerformanceTests() {
       controls.stop()
       streamingNode.remove()
       nav.remove()
+    }
+  }
+
+  {
+    const chatHost = document.createElement('span')
+    document.body.append(chatHost)
+    const base = {
+      context: {
+        scope: 'conversation' as const,
+        id: 'perf-light-marker',
+        title: 'Performance chat',
+        projectId: null,
+      },
+      locale: 'en' as const,
+      archivedCount: 0,
+      effectiveEnabled: false,
+      source: 'default' as const,
+      hasOverride: false,
+      onSetEnabled() {},
+      onInherit() {},
+      onSettings() {},
+    }
+    const control = mountScopeArchiveControl(chatHost, base)
+    try {
+      const shadow = chatHost.shadowRoot
+      const styleBytes = [...(shadow?.querySelectorAll('style') ?? [])].reduce(
+        (sum, style) => sum + (style.textContent?.length ?? 0),
+        0,
+      )
+      const hasVueRoot = Boolean(shadow?.querySelector('[data-v-app]'))
+      control.update({ ...base, effectiveEnabled: true })
+      const marker = shadow?.querySelector<HTMLElement>('span')
+      results.push({
+        name: 'conversation scope marker avoids per-row Vue and full stylesheet',
+        pass: !hasVueRoot && styleBytes < 1024 && marker?.style.background === 'rgb(34, 197, 94)',
+        styleBytes,
+        hasVueRoot,
+      })
+    } finally {
+      control.unmount()
+      chatHost.remove()
     }
   }
 
