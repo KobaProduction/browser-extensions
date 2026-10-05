@@ -516,6 +516,8 @@ describe('conversation vs nested records', () => {
       },
     })
     const thread = buildArchiveThread([attachment])
+    const controller = new AbortController()
+    let receivedSignal: AbortSignal | undefined
     const result = await createArchivePackage(
       { conversationId: 'chat', projectId: null, title: 'Test' } as never,
       thread,
@@ -536,8 +538,13 @@ describe('conversation vs nested records', () => {
           lastSeenAt: 1,
         },
       ],
-      async () => new Uint8Array([1, 2, 3]).buffer,
+      async (_url, _assetId, signal) => {
+        receivedSignal = signal
+        return new Uint8Array([1, 2, 3]).buffer
+      },
+      controller.signal,
     )
+    expect(receivedSignal).toBe(controller.signal)
     expect(result.manifest.complete).toBe(true)
     expect(result.manifest.assets[0]?.status).toBe('included')
     expect(result.manifest.assets[0]?.sha256).toHaveLength(64)

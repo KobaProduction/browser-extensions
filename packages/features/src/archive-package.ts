@@ -198,7 +198,14 @@ async function sha256(value: Uint8Array) {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
-export type ArchiveAssetFetcher = (url: string, assetId: string) => Promise<ArrayBuffer>
+export type ArchiveAssetFetcher = (
+  url: string,
+  assetId: string,
+  signal?: AbortSignal,
+) => Promise<ArrayBuffer>
+
+const defaultArchiveAssetFetcher: ArchiveAssetFetcher = (url, assetId, signal) =>
+  fetchArchiveAssetBytes(url, assetId, window, signal)
 
 const MAX_ARCHIVE_PACKAGE_ASSET_BYTES = 512 * 1024 * 1024
 
@@ -208,7 +215,7 @@ export async function createArchivePackage(
   options: ArchiveExportOptions,
   evidence: unknown,
   assets: ArchivedAsset[],
-  fetcher: ArchiveAssetFetcher = fetchArchiveAssetBytes,
+  fetcher: ArchiveAssetFetcher = defaultArchiveAssetFetcher,
   signal?: AbortSignal,
   exportPipeline: ArchiveExportPipeline = DEFAULT_ARCHIVE_EXPORT_PIPELINE,
 ): Promise<ArchivePackageResult> {
@@ -262,11 +269,7 @@ export async function createArchivePackage(
       continue
     }
     try {
-      const data = new Uint8Array(
-        await (fetcher === fetchArchiveAssetBytes
-          ? fetchArchiveAssetBytes(url, reference.assetId, window, signal)
-          : fetcher(url, reference.assetId)),
-      )
+      const data = new Uint8Array(await fetcher(url, reference.assetId, signal))
       if (includedAssetBytes + data.byteLength > MAX_ARCHIVE_PACKAGE_ASSET_BYTES) {
         manifestAssets.push({
           ...reference,

@@ -15,12 +15,18 @@ import { createArchivePackage } from './archive-package'
 import type { ConversationArchiveStore } from './archive-store'
 import type { ConversationArchiveModule } from './conversation-archive'
 
+export interface ArchiveUiAdapterOptions {
+  exportPipeline?: ArchiveExportPipeline
+  assetFetchTarget?: Window
+}
+
 export function createArchiveUiAdapter(
   store: ConversationArchiveStore,
   capture: ConversationArchiveModule,
-  exportPipeline: ArchiveExportPipeline = DEFAULT_ARCHIVE_EXPORT_PIPELINE,
-  assetFetchTarget: Window = window,
+  options: ArchiveUiAdapterOptions = {},
 ) {
+  const exportPipeline = options.exportPipeline ?? DEFAULT_ARCHIVE_EXPORT_PIPELINE
+  const assetFetchTarget = options.assetFetchTarget ?? window
   async function observedProjectTitle(projectId: string, stored: string | null) {
     const observed = currentProjectTitle(projectId)?.trim() || null
     if (observed && observed !== stored) await store.upsertProject(projectId, observed)
@@ -218,7 +224,8 @@ export function createArchiveUiAdapter(
         options,
         evidence,
         assets,
-        (url, assetId) => fetchArchiveAssetBytes(url, assetId, assetFetchTarget, signal),
+        (url, assetId, exportSignal) =>
+          fetchArchiveAssetBytes(url, assetId, assetFetchTarget, exportSignal),
         signal,
         exportPipeline,
       )
