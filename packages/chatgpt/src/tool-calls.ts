@@ -179,15 +179,16 @@ function hashString(value: string): number {
 }
 
 export function findToolCallEvidence(root: ParentNode = document): ToolCallEvidence[] {
-  const rootElement = root instanceof Element ? root : undefined
+  const searchRoot = root === document ? (document.querySelector('main') ?? document) : root
+  const rootElement = searchRoot instanceof Element ? searchRoot : undefined
   const highSignal =
-    rootElement?.matches(HIGH_SIGNAL_SELECTOR) || root.querySelector(HIGH_SIGNAL_SELECTOR)
+    rootElement?.matches(HIGH_SIGNAL_SELECTOR) || searchRoot.querySelector(HIGH_SIGNAL_SELECTOR)
   if (!highSignal) {
-    const text = compact(root.textContent ?? '').slice(0, 1600)
+    const text = compact(searchRoot.textContent ?? '').slice(0, 1600)
     if (!TOOL_WORDS.test(text) && !TOOL_ACTIONS.test(text)) return []
   }
 
-  const candidates = [...root.querySelectorAll<HTMLElement>(CANDIDATE_SELECTOR)]
+  const candidates = [...searchRoot.querySelectorAll<HTMLElement>(CANDIDATE_SELECTOR)]
   const accepted: HTMLElement[] = []
   const result: ToolCallEvidence[] = []
 

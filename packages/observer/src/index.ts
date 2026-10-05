@@ -91,6 +91,13 @@ function captureAllowed(id: string, projectId: string | null): boolean {
         archivePolicy.defaultEnabled))
   )
 }
+function isArchiveObservedUrl(sourceUrl: string) {
+  return (
+    sourceUrl.includes('/backend-api/conversations/') ||
+    sourceUrl.includes('/backend-api/files/download/')
+  )
+}
+
 function archiveNetwork(id: string, sourceUrl: string, phase: string, status?: number) {
   const conversationId = conversationHistoryId(sourceUrl)
   if (
@@ -737,75 +744,93 @@ export function installTransportObserver(
   target.addEventListener('message', onArchiveAssetFetchCancel)
 
   const createFetchWrapper = (upstream: typeof target.fetch): typeof target.fetch => {
-    const wrapped = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      if (fetchCallDepth > 0) return upstream.call(target, input, init)
-      const id = nextId('fetch')
-      const started = performance.now()
-      const request = input instanceof Request ? input : undefined
-      const method = init?.method ?? request?.method ?? 'GET'
-      const rawUrl = request?.url ?? String(input)
-      const url = sanitizeTransportUrl(rawUrl)
-      const body = config.captureBodies
-        ? sanitizeBodyPreview(init?.body, config.maxBodyChars)
-        : undefined
-
-      emit({
-        id,
-        kind: 'fetch',
-        direction: 'outbound',
-        phase: 'request',
-        timestamp: Date.now(),
-        method,
-        url,
-        ...(body ? { bodyPreview: body } : {}),
-      })
-
-      const historyRead = beginArchiveRequest(rawUrl, id)
-      archiveNetwork(id, rawUrl, 'request')
+    const callUpstream = (input: RequestInfo | URL, init?: RequestInit) => {
+      fetchCallDepth += 1
       try {
-        let responsePromise: ReturnType<typeof target.fetch>
-        fetchCallDepth += 1
-        try {
-          responsePromise = upstream.call(target, input, init)
-        } finally {
-          fetchCallDepth -= 1
-        }
-        const response = await responsePromise
-        archiveNetwork(id, rawUrl, response.ok ? 'response' : 'error', response.status)
-        observeConversationArchiveResponse(response, rawUrl, historyRead)
-        observeArchiveAssetResponse(response, rawUrl)
-        observeFetchResponseBody(response, { id, method, url }, config)
-        emit({
-          id,
-          kind: 'fetch',
-          direction: 'inbound',
-          phase: 'response',
-          timestamp: Date.now(),
-          method,
-          url,
-          status: response.status,
-          durationMs: Math.round((performance.now() - started) * 100) / 100,
-          contentType: response.headers.get('content-type') ?? undefined,
-          size: Number(response.headers.get('content-length')) || undefined,
-        })
-        return response
-      } catch (error) {
-        archiveNetwork(id, rawUrl, 'error', 0)
-        const classified = classifyError(error)
-        emit({
-          id,
-          kind: 'fetch',
-          direction: 'inbound',
-          phase: 'error',
-          timestamp: Date.now(),
-          method,
-          url,
-          durationMs: Math.round((performance.now() - started) * 100) / 100,
-          error: classified.message,
-          errorClass: classified.errorClass,
-        })
-        throw error
+        return upstream.call(target, input, init)
+      } finally {
+        fetchCallDepth -= 1
       }
+    }
+
+    const wrapped = ((input: RequestInfo | URL, init?: RequestInit) => {
+      if (fetchCallDepth > 0) return upstream.call(target, input, init)
+      const request = input instanceof Request ? input : undefined
+      const rawUrl = request?.url ?? String(input)
+
+      // Transport diagnostics are opt-in. Keep ordinary ChatGPT fetches on the host's
+      // original promise path when diagnostics are disabled; only archive history/file
+      // resolver routes still need observation in that mode.
+      if (!transportEmissionEnabled && !isArchiveObservedUrl(rawUrl))
+        return callUpstream(input, init)
+
+      return (async () => {
+        const diagnosticsEnabled = transportEmissionEnabled
+        const id = nextId('fetch')
+        const started = diagnosticsEnabled ? performance.now() : 0
+        const method = init?.method ?? request?.method ?? 'GET'
+        const url = diagnosticsEnabled ? sanitizeTransportUrl(rawUrl) : ''
+        const body =
+          diagnosticsEnabled && config.captureBodies
+            ? sanitizeBodyPreview(init?.body, config.maxBodyChars)
+            : undefined
+
+        if (diagnosticsEnabled)
+          emit({
+            id,
+            kind: 'fetch',
+            direction: 'outbound',
+            phase: 'request',
+            timestamp: Date.now(),
+            method,
+            url,
+            ...(body ? { bodyPreview: body } : {}),
+          })
+
+        const historyRead = beginArchiveRequest(rawUrl, id)
+        archiveNetwork(id, rawUrl, 'request')
+        try {
+          const response = await callUpstream(input, init)
+          archiveNetwork(id, rawUrl, response.ok ? 'response' : 'error', response.status)
+          observeConversationArchiveResponse(response, rawUrl, historyRead)
+          observeArchiveAssetResponse(response, rawUrl)
+          if (diagnosticsEnabled) {
+            observeFetchResponseBody(response, { id, method, url }, config)
+            emit({
+              id,
+              kind: 'fetch',
+              direction: 'inbound',
+              phase: 'response',
+              timestamp: Date.now(),
+              method,
+              url,
+              status: response.status,
+              durationMs: Math.round((performance.now() - started) * 100) / 100,
+              contentType: response.headers.get('content-type') ?? undefined,
+              size: Number(response.headers.get('content-length')) || undefined,
+            })
+          }
+          return response
+        } catch (error) {
+          archiveNetwork(id, rawUrl, 'error', 0)
+          if (diagnosticsEnabled) {
+            const classified = classifyError(error)
+            emit({
+              id,
+              kind: 'fetch',
+              direction: 'inbound',
+              phase: 'error',
+              timestamp: Date.now(),
+              method,
+              url,
+              durationMs: Math.round((performance.now() - started) * 100) / 100,
+              error: classified.message,
+              errorClass: classified.errorClass,
+            })
+          }
+          throw error
+        }
+      })()
     }) as typeof target.fetch
     Object.defineProperty(wrapped, fetchWrapperMarker, { value: true })
     return wrapped
@@ -828,10 +853,7 @@ export function installTransportObserver(
   const OriginalXHR = target.XMLHttpRequest
   const originalOpen = OriginalXHR.prototype.open
   const originalSend = OriginalXHR.prototype.send
-  const xhrMeta = new WeakMap<
-    XMLHttpRequest,
-    { id: string; method: string; url: string; rawUrl: string; started: number }
-  >()
+  const xhrMeta = new WeakMap<XMLHttpRequest, { method: string; rawUrl: string }>()
 
   OriginalXHR.prototype.open = function (
     method: string,
@@ -840,80 +862,83 @@ export function installTransportObserver(
     user?: string | null,
     password?: string | null,
   ) {
-    xhrMeta.set(this, {
-      id: nextId('xhr'),
-      method,
-      url: sanitizeTransportUrl(String(url)),
-      rawUrl: String(url),
-      started: 0,
-    })
+    xhrMeta.set(this, { method, rawUrl: String(url) })
     return originalOpen.call(this, method, url, asyncFlag, user ?? null, password ?? null)
   }
 
   OriginalXHR.prototype.send = function (body?: Document | XMLHttpRequestBodyInit | null) {
     const meta = xhrMeta.get(this)
-    if (meta) {
-      meta.started = performance.now()
+    if (!meta) return originalSend.call(this, body)
+
+    const diagnosticsEnabled = transportEmissionEnabled
+    const resolverObserved = Boolean(archiveFileResolverId(meta.rawUrl))
+    if (!diagnosticsEnabled && !resolverObserved) return originalSend.call(this, body)
+
+    const id = diagnosticsEnabled ? nextId('xhr') : ''
+    const safeUrl = diagnosticsEnabled ? sanitizeTransportUrl(meta.rawUrl) : ''
+    const started = diagnosticsEnabled ? performance.now() : 0
+    if (diagnosticsEnabled)
       emit({
-        id: meta.id,
+        id,
         kind: 'xhr',
         direction: 'outbound',
         phase: 'request',
         timestamp: Date.now(),
         method: meta.method,
-        url: meta.url,
+        url: safeUrl,
         ...(config.captureBodies
           ? { bodyPreview: sanitizeBodyPreview(body, config.maxBodyChars) }
           : {}),
       })
-      this.addEventListener(
-        'loadend',
-        () => {
+
+    this.addEventListener(
+      'loadend',
+      () => {
+        if (diagnosticsEnabled)
           emit({
-            id: meta.id,
+            id,
             kind: 'xhr',
             direction: 'inbound',
             phase: 'response',
             timestamp: Date.now(),
             method: meta.method,
-            url: meta.url,
+            url: safeUrl,
             status: this.status,
-            durationMs: Math.round((performance.now() - meta.started) * 100) / 100,
+            durationMs: Math.round((performance.now() - started) * 100) / 100,
             contentType: this.getResponseHeader('content-type') ?? undefined,
           })
-          if (this.status >= 200 && this.status < 300 && archiveFileResolverId(meta.rawUrl)) {
-            try {
-              const value =
-                this.responseType === 'json' ? this.response : JSON.parse(this.responseText)
-              publishAssetResolution(value, meta.rawUrl)
-            } catch {
-              // Resolver response was unavailable or not JSON.
-            }
+        if (resolverObserved && this.status >= 200 && this.status < 300) {
+          try {
+            const value =
+              this.responseType === 'json' ? this.response : JSON.parse(this.responseText)
+            publishAssetResolution(value, meta.rawUrl)
+          } catch {
+            // Resolver response was unavailable or not JSON.
           }
-          if (config.captureBodies) {
-            try {
-              const value = this.responseType === 'json' ? this.response : this.responseText
-              const bodyPreview = sanitizeBodyPreview(value, config.maxBodyChars)
-              if (bodyPreview) {
-                emit({
-                  id: meta.id,
-                  kind: 'xhr',
-                  direction: 'inbound',
-                  phase: 'message',
-                  timestamp: Date.now(),
-                  method: meta.method,
-                  url: meta.url,
-                  bodyPreview,
-                })
-              }
-            } catch {
-              // Some response types do not expose responseText.
+        }
+        if (diagnosticsEnabled && config.captureBodies) {
+          try {
+            const value = this.responseType === 'json' ? this.response : this.responseText
+            const bodyPreview = sanitizeBodyPreview(value, config.maxBodyChars)
+            if (bodyPreview) {
+              emit({
+                id,
+                kind: 'xhr',
+                direction: 'inbound',
+                phase: 'message',
+                timestamp: Date.now(),
+                method: meta.method,
+                url: safeUrl,
+                bodyPreview,
+              })
             }
+          } catch {
+            // Some response types do not expose responseText.
           }
-        },
-        { once: true },
-      )
-    }
+        }
+      },
+      { once: true },
+    )
     return originalSend.call(this, body)
   }
 
@@ -925,70 +950,86 @@ export function installTransportObserver(
   ): WebSocket {
     const ws =
       protocols === undefined ? new OriginalWebSocket(url) : new OriginalWebSocket(url, protocols)
-    const id = nextId('websocket')
-    const safe = sanitizeTransportUrl(String(url))
+    let id: string | undefined
+    let safe: string | undefined
+    const diagnosticMeta = () => {
+      if (!transportEmissionEnabled) return undefined
+      id ??= nextId('websocket')
+      safe ??= sanitizeTransportUrl(String(url))
+      return { id, safe }
+    }
     const originalSendWs = ws.send.bind(ws)
 
     ws.send = (data: string | ArrayBufferLike | Blob | ArrayBufferView) => {
-      emit({
-        id,
-        kind: 'websocket',
-        direction: 'outbound',
-        phase: 'message',
-        timestamp: Date.now(),
-        url: safe,
-        size: typeof data === 'string' ? data.length : undefined,
-        ...(config.captureBodies
-          ? { bodyPreview: sanitizeBodyPreview(data, config.maxBodyChars) }
-          : {}),
-      })
+      const meta = diagnosticMeta()
+      if (meta)
+        emit({
+          id: meta.id,
+          kind: 'websocket',
+          direction: 'outbound',
+          phase: 'message',
+          timestamp: Date.now(),
+          url: meta.safe,
+          size: typeof data === 'string' ? data.length : undefined,
+          ...(config.captureBodies
+            ? { bodyPreview: sanitizeBodyPreview(data, config.maxBodyChars) }
+            : {}),
+        })
       return originalSendWs(data)
     }
-    ws.addEventListener('open', () =>
-      emit({
-        id,
-        kind: 'websocket',
-        direction: 'outbound',
-        phase: 'open',
-        timestamp: Date.now(),
-        url: safe,
-      }),
-    )
-    ws.addEventListener('message', (event: MessageEvent) =>
-      emit({
-        id,
-        kind: 'websocket',
-        direction: 'inbound',
-        phase: 'message',
-        timestamp: Date.now(),
-        url: safe,
-        size: typeof event.data === 'string' ? event.data.length : undefined,
-        ...(config.captureBodies
-          ? { bodyPreview: sanitizeBodyPreview(event.data, config.maxBodyChars) }
-          : {}),
-      }),
-    )
-    ws.addEventListener('close', () =>
-      emit({
-        id,
-        kind: 'websocket',
-        direction: 'inbound',
-        phase: 'close',
-        timestamp: Date.now(),
-        url: safe,
-      }),
-    )
-    ws.addEventListener('error', () =>
-      emit({
-        id,
-        kind: 'websocket',
-        direction: 'inbound',
-        phase: 'error',
-        timestamp: Date.now(),
-        url: safe,
-        errorClass: 'socket',
-      }),
-    )
+    ws.addEventListener('open', () => {
+      const meta = diagnosticMeta()
+      if (meta)
+        emit({
+          id: meta.id,
+          kind: 'websocket',
+          direction: 'outbound',
+          phase: 'open',
+          timestamp: Date.now(),
+          url: meta.safe,
+        })
+    })
+    ws.addEventListener('message', (event: MessageEvent) => {
+      const meta = diagnosticMeta()
+      if (meta)
+        emit({
+          id: meta.id,
+          kind: 'websocket',
+          direction: 'inbound',
+          phase: 'message',
+          timestamp: Date.now(),
+          url: meta.safe,
+          size: typeof event.data === 'string' ? event.data.length : undefined,
+          ...(config.captureBodies
+            ? { bodyPreview: sanitizeBodyPreview(event.data, config.maxBodyChars) }
+            : {}),
+        })
+    })
+    ws.addEventListener('close', () => {
+      const meta = diagnosticMeta()
+      if (meta)
+        emit({
+          id: meta.id,
+          kind: 'websocket',
+          direction: 'inbound',
+          phase: 'close',
+          timestamp: Date.now(),
+          url: meta.safe,
+        })
+    })
+    ws.addEventListener('error', () => {
+      const meta = diagnosticMeta()
+      if (meta)
+        emit({
+          id: meta.id,
+          kind: 'websocket',
+          direction: 'inbound',
+          phase: 'error',
+          timestamp: Date.now(),
+          url: meta.safe,
+          errorClass: 'socket',
+        })
+    })
     return ws
   } as unknown as typeof WebSocket
   Object.setPrototypeOf(WrappedWebSocket, OriginalWebSocket)
@@ -1002,43 +1043,57 @@ export function installTransportObserver(
     eventSourceInitDict?: EventSourceInit,
   ): EventSource {
     const source = new OriginalEventSource(url, eventSourceInitDict)
-    const id = nextId('eventsource')
-    const safe = sanitizeTransportUrl(String(url))
-    source.addEventListener('open', () =>
-      emit({
-        id,
-        kind: 'eventsource',
-        direction: 'inbound',
-        phase: 'open',
-        timestamp: Date.now(),
-        url: safe,
-      }),
-    )
-    source.addEventListener('message', (event: MessageEvent) =>
-      emit({
-        id,
-        kind: 'eventsource',
-        direction: 'inbound',
-        phase: 'message',
-        timestamp: Date.now(),
-        url: safe,
-        size: (event as MessageEvent).data?.length,
-        ...(config.captureBodies
-          ? { bodyPreview: sanitizeBodyPreview((event as MessageEvent).data, config.maxBodyChars) }
-          : {}),
-      }),
-    )
-    source.addEventListener('error', () =>
-      emit({
-        id,
-        kind: 'eventsource',
-        direction: 'inbound',
-        phase: 'error',
-        timestamp: Date.now(),
-        url: safe,
-        errorClass: 'stream',
-      }),
-    )
+    let id: string | undefined
+    let safe: string | undefined
+    const diagnosticMeta = () => {
+      if (!transportEmissionEnabled) return undefined
+      id ??= nextId('eventsource')
+      safe ??= sanitizeTransportUrl(String(url))
+      return { id, safe }
+    }
+    source.addEventListener('open', () => {
+      const meta = diagnosticMeta()
+      if (meta)
+        emit({
+          id: meta.id,
+          kind: 'eventsource',
+          direction: 'inbound',
+          phase: 'open',
+          timestamp: Date.now(),
+          url: meta.safe,
+        })
+    })
+    source.addEventListener('message', (event: MessageEvent) => {
+      const meta = diagnosticMeta()
+      if (meta)
+        emit({
+          id: meta.id,
+          kind: 'eventsource',
+          direction: 'inbound',
+          phase: 'message',
+          timestamp: Date.now(),
+          url: meta.safe,
+          size: (event as MessageEvent).data?.length,
+          ...(config.captureBodies
+            ? {
+                bodyPreview: sanitizeBodyPreview((event as MessageEvent).data, config.maxBodyChars),
+              }
+            : {}),
+        })
+    })
+    source.addEventListener('error', () => {
+      const meta = diagnosticMeta()
+      if (meta)
+        emit({
+          id: meta.id,
+          kind: 'eventsource',
+          direction: 'inbound',
+          phase: 'error',
+          timestamp: Date.now(),
+          url: meta.safe,
+          errorClass: 'stream',
+        })
+    })
     return source
   } as unknown as typeof EventSource
   Object.setPrototypeOf(WrappedEventSource, OriginalEventSource)

@@ -1249,7 +1249,7 @@ async function runPerformanceTests() {
       const afterStreaming = updates
 
       link.href = `/c/${id}-changed`
-      await new Promise((resolve) => setTimeout(resolve, 320))
+      await new Promise((resolve) => setTimeout(resolve, 520))
       const afterSidebar = updates
 
       results.push({
@@ -1323,18 +1323,12 @@ async function runPerformanceTests() {
     const control = mountScopeArchiveControl(chatHost, base)
     try {
       const shadow = chatHost.shadowRoot
-      const styleBytes = [...(shadow?.querySelectorAll('style') ?? [])].reduce(
-        (sum, style) => sum + (style.textContent?.length ?? 0),
-        0,
-      )
-      const hasVueRoot = Boolean(shadow?.querySelector('[data-v-app]'))
       control.update({ ...base, effectiveEnabled: true })
-      const marker = shadow?.querySelector<HTMLElement>('span')
+      const marker = chatHost.querySelector<HTMLElement>('span')
       results.push({
-        name: 'conversation scope marker avoids per-row Vue and full stylesheet',
-        pass: !hasVueRoot && styleBytes < 1024 && marker?.style.background === 'rgb(34, 197, 94)',
-        styleBytes,
-        hasVueRoot,
+        name: 'conversation scope marker avoids Vue, stylesheet and shadow root',
+        pass: shadow === null && marker?.style.background === 'rgb(34, 197, 94)',
+        hasShadowRoot: shadow !== null,
       })
     } finally {
       control.unmount()

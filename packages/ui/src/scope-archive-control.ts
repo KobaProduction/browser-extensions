@@ -36,11 +36,16 @@ export function mountScopeArchiveControl(
   host: HTMLElement,
   initial: ScopeArchiveControlModel,
 ): MountedScopeArchiveControl {
-  const shadow = host.attachShadow({ mode: 'open' })
+  let shadow: ShadowRoot | undefined
   let current = initial
   let app: App | undefined
   let projectModel: ScopeArchiveControlModel | undefined
   let marker: HTMLSpanElement | undefined
+
+  const ensureShadow = () => {
+    shadow ??= host.shadowRoot ?? host.attachShadow({ mode: 'open' })
+    return shadow
+  }
 
   const unmountVue = () => {
     app?.unmount()
@@ -59,22 +64,27 @@ export function mountScopeArchiveControl(
 
   const renderConversation = () => {
     unmountVue()
-    shadow.replaceChildren()
+    marker?.remove()
+    if (shadow) shadow.replaceChildren()
+    else host.replaceChildren()
     marker = document.createElement('span')
     marker.setAttribute('aria-hidden', 'true')
     marker.style.cssText =
       'display:block;width:6px;height:6px;flex:0 0 6px;border-radius:999px;background:transparent;'
-    shadow.append(marker)
+    ;(shadow ?? host).append(marker)
     updateConversationMarker()
   }
 
   const renderProject = () => {
+    marker?.remove()
     marker = undefined
     unmountVue()
-    shadow.replaceChildren()
-    installBoosterShadowStyles(shadow)
+    host.replaceChildren()
+    const projectShadow = ensureShadow()
+    projectShadow.replaceChildren()
+    installBoosterShadowStyles(projectShadow)
     const mountPoint = document.createElement('span')
-    shadow.append(mountPoint)
+    projectShadow.append(mountPoint)
     projectModel = reactive({ ...current }) as ScopeArchiveControlModel
     app = createApp(ScopeArchiveControl, { model: projectModel })
     app.mount(mountPoint)
@@ -100,7 +110,8 @@ export function mountScopeArchiveControl(
     },
     unmount() {
       unmountVue()
-      shadow.replaceChildren()
+      shadow?.replaceChildren()
+      host.replaceChildren()
     },
   }
 }
