@@ -58,21 +58,43 @@ export class ConversationDecoratorsModule implements BoosterModule {
     this.#unsubscribe = this.settingsAdapter.subscribe((next) => {
       const previous = this.#settings
       const languageChanged = next.language !== previous?.language
-      const relevantChanged =
-        next.enabled !== previous?.enabled ||
-        languageChanged ||
-        next.features.toolInspector !== previous?.features.toolInspector
+      const enabledChanged = next.enabled !== previous?.enabled
+      const toolInspectorChanged = next.features.toolInspector !== previous?.features.toolInspector
       this.#settings = next
-      if (!relevantChanged) return
+      if (!enabledChanged && !languageChanged && !toolInspectorChanged) return
+
+      if (!next.enabled) {
+        this.#stopObserver()
+        if (this.#archiveRefreshTimer) clearTimeout(this.#archiveRefreshTimer)
+        this.#archiveRefreshTimer = undefined
+        this.#clear()
+        return
+      }
+
       if (languageChanged) this.#clear()
-      this.#observer?.scan()
+      if (!this.#observer) {
+        void this.#refreshRecords().then(() => {
+          if (this.#settings?.enabled) this.#startObserver()
+        })
+        return
+      }
+      this.#observer.scan()
     })
     window.addEventListener(ARCHIVE_UPDATED_EVENT, this.#onArchiveUpdated)
+    await this.#refreshRecords()
+    if (this.#settings.enabled) this.#startObserver()
+  }
+
+  #startObserver() {
+    if (this.#observer) return
     this.#observer = observeConversationDecorations((targets, root) => {
       void this.#scan(targets, root)
     })
-    await this.#refreshRecords()
-    this.#observer.scan()
+  }
+
+  #stopObserver() {
+    this.#observer?.stop()
+    this.#observer = undefined
   }
 
   stop() {
@@ -103,6 +125,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
         updatedMessages?: number
       }>
     ).detail
+    if (!this.#settings?.enabled) return
     const current = currentConversationId() ?? null
     if (detail?.conversationId && current && detail.conversationId !== current) return
     if (!detail?.preload && detail && detail.insertedMessages === 0 && detail.updatedMessages === 0)

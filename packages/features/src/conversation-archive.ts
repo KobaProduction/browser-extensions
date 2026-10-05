@@ -9,6 +9,8 @@ import {
   hasPendingComposerAttachments,
   isConversationGenerating,
   observeChatGptNavigation,
+  type ScheduledIdleTask,
+  scheduleIdleTask,
 } from '@chatgpt-booster/chatgpt'
 import {
   type ArchiveRecordView,
@@ -81,6 +83,8 @@ export class ConversationArchiveModule implements BoosterModule {
   #settings: BoosterSettings = normalizeSettings()
   #unsubscribe: (() => void) | undefined
   #queue: Promise<unknown> = Promise.resolve()
+  #pendingPreloads: ConversationArchiveEventDetail[] = []
+  #preloadTask: ScheduledIdleTask | undefined
   #navigationUnsubscribe: (() => void) | undefined
   #ticketExpiryTimer: ReturnType<typeof setTimeout> | undefined
   #active = false
@@ -114,6 +118,9 @@ export class ConversationArchiveModule implements BoosterModule {
     this.#navigationUnsubscribe = undefined
     if (this.#ticketExpiryTimer) clearTimeout(this.#ticketExpiryTimer)
     this.#ticketExpiryTimer = undefined
+    this.#preloadTask?.cancel()
+    this.#preloadTask = undefined
+    this.#pendingPreloads = []
   }
   async collectCurrent(): Promise<void> {
     const conversationId = currentConversationId()
@@ -129,6 +136,7 @@ export class ConversationArchiveModule implements BoosterModule {
     )
     this.#scheduleTicketExpiry()
     this.#publishPolicy()
+    await this.#flushPendingPreloads()
     const promotedPreload = await this.#promotePreload(conversationId, startedAt)
     if (!promotedPreload) await this.#promoteDomSnapshot(conversationId, startedAt)
     window.dispatchEvent(new Event(HISTORY_LOADER_START_EVENT))
@@ -275,6 +283,31 @@ export class ConversationArchiveModule implements BoosterModule {
       this.#publishPolicy()
     }, delay)
   }
+  #schedulePreload(detail: ConversationArchiveEventDetail) {
+    this.#pendingPreloads.push(detail)
+    if (this.#preloadTask) return
+    this.#preloadTask = scheduleIdleTask(() => {
+      this.#preloadTask = undefined
+      void this.#flushPendingPreloads()
+    }, 500)
+  }
+  async #flushPendingPreloads() {
+    this.#preloadTask?.cancel()
+    this.#preloadTask = undefined
+    if (!this.#pendingPreloads.length) return
+    const pending = this.#pendingPreloads
+    this.#pendingPreloads = []
+    this.#queue = this.#queue
+      .then(async () => {
+        if (!this.#active) return
+        for (const detail of pending) {
+          if (!this.#active) return
+          await this.store.ingestPreload(detail)
+        }
+      })
+      .catch(() => undefined)
+    await this.#queue
+  }
   #publishPolicy() {
     if (!this.#active) return
     const detail = {
@@ -305,10 +338,7 @@ export class ConversationArchiveModule implements BoosterModule {
     const data = event.data
     if (data?.channel !== TRANSPORT_CHANNEL) return
     if (data.type === ARCHIVE_PRELOAD_EVENT && data.detail?.kind === 'conversation-page') {
-      const detail = data.detail as ConversationArchiveEventDetail
-      this.#queue = this.#queue
-        .then(() => (this.#active ? this.store.ingestPreload(detail) : undefined))
-        .catch(() => undefined)
+      this.#schedulePreload(data.detail as ConversationArchiveEventDetail)
       return
     }
     if (data.type === ARCHIVE_ASSET_EVENT) {

@@ -270,7 +270,10 @@ export function mountArchiveScopeControls(initial: ScopeControlOptions) {
     }, 450)
   })
 
-  refresh()
+  queued = scheduleIdleTask(() => {
+    queued = undefined
+    refresh()
+  }, 450)
 
   return {
     update(next: ScopeControlOptions) {

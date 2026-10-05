@@ -529,7 +529,8 @@ function observeConversationArchiveResponse(
           bufferedInitialPages.delete(oldest)
         }
       }
-      publishPreloadPage(detail)
+      const projectId = archiveProjectId(payload, conversationId)
+      if (!captureAllowed(conversationId, projectId)) publishPreloadPage(detail)
       publishConversationPage(detail)
     })
     .catch(() => undefined)
@@ -656,6 +657,7 @@ export function installTransportObserver(
       maxBodyChars: Math.min(Math.max(detail?.maxBodyChars ?? config.maxBodyChars, 128), 16384),
     }
     transportEmissionEnabled = config.enabled
+    setRealtimeTransportHooksEnabled(transportEmissionEnabled)
     if (!transportEmissionEnabled) flushTransportBatch()
   }
   target.addEventListener('message', onConfig)
@@ -1034,7 +1036,6 @@ export function installTransportObserver(
   } as unknown as typeof WebSocket
   Object.setPrototypeOf(WrappedWebSocket, OriginalWebSocket)
   WrappedWebSocket.prototype = OriginalWebSocket.prototype
-  target.WebSocket = WrappedWebSocket
 
   const OriginalEventSource = target.EventSource
   const WrappedEventSource = function (
@@ -1098,7 +1099,16 @@ export function installTransportObserver(
   } as unknown as typeof EventSource
   Object.setPrototypeOf(WrappedEventSource, OriginalEventSource)
   WrappedEventSource.prototype = OriginalEventSource.prototype
-  target.EventSource = WrappedEventSource
+
+  function setRealtimeTransportHooksEnabled(enabled: boolean) {
+    if (enabled) {
+      if (target.WebSocket === OriginalWebSocket) target.WebSocket = WrappedWebSocket
+      if (target.EventSource === OriginalEventSource) target.EventSource = WrappedEventSource
+      return
+    }
+    if (target.WebSocket === WrappedWebSocket) target.WebSocket = OriginalWebSocket
+    if (target.EventSource === WrappedEventSource) target.EventSource = OriginalEventSource
+  }
 
   return () => {
     target.removeEventListener('message', onConfig)
@@ -1118,8 +1128,7 @@ export function installTransportObserver(
     }
     OriginalXHR.prototype.open = originalOpen
     OriginalXHR.prototype.send = originalSend
-    target.WebSocket = OriginalWebSocket
-    target.EventSource = OriginalEventSource
+    setRealtimeTransportHooksEnabled(false)
     bufferedInitialPages.clear()
     transportEmissionEnabled = false
     flushTransportBatch()

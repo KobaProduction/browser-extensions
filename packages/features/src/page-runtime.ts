@@ -1,3 +1,4 @@
+import { type ScheduledIdleTask, scheduleIdleTask } from '@chatgpt-booster/chatgpt'
 import {
   type BoosterModule,
   BoosterRuntime,
@@ -33,6 +34,7 @@ export interface BoosterPageRuntimeOptions {
 class OverlayModule implements BoosterModule {
   readonly id = 'overlay'
   #mounted: MountedBoosterUi | undefined
+  #scheduled: ScheduledIdleTask | undefined
 
   constructor(
     private readonly options: BoosterPageRuntimeOptions,
@@ -40,23 +42,29 @@ class OverlayModule implements BoosterModule {
   ) {}
 
   start() {
-    if (!isChatGptPage() || this.#mounted) return
-    this.#mounted = mountBoosterUi({
-      settingsAdapter: this.options.settings,
-      diagnosticsAdapter: this.options.diagnostics,
-      archiveAdapter: this.archiveAdapter,
-      target: this.options.target,
-      ...(this.options.persistentDiagnostics
-        ? { persistentDiagnosticsAdapter: this.options.persistentDiagnostics }
-        : {}),
-      ...(this.options.secrets ? { secretAdapter: this.options.secrets } : {}),
-      ...(this.options.telemetryControl
-        ? { telemetryControlAdapter: this.options.telemetryControl }
-        : {}),
-    })
+    if (!isChatGptPage() || this.#mounted || this.#scheduled) return
+    this.#scheduled = scheduleIdleTask(() => {
+      this.#scheduled = undefined
+      if (this.#mounted || !isChatGptPage()) return
+      this.#mounted = mountBoosterUi({
+        settingsAdapter: this.options.settings,
+        diagnosticsAdapter: this.options.diagnostics,
+        archiveAdapter: this.archiveAdapter,
+        target: this.options.target,
+        ...(this.options.persistentDiagnostics
+          ? { persistentDiagnosticsAdapter: this.options.persistentDiagnostics }
+          : {}),
+        ...(this.options.secrets ? { secretAdapter: this.options.secrets } : {}),
+        ...(this.options.telemetryControl
+          ? { telemetryControlAdapter: this.options.telemetryControl }
+          : {}),
+      })
+    }, 300)
   }
 
   stop() {
+    this.#scheduled?.cancel()
+    this.#scheduled = undefined
     this.#mounted?.unmount()
     this.#mounted = undefined
   }

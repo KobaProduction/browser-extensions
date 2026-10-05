@@ -95,9 +95,11 @@ export class TransportObserverModule implements BoosterModule {
       )
     }
 
-    if (!this.#telemetry) return
+    const telemetry = this.#telemetry
+    if (!telemetry || !this.#current.telemetry.enabled || !this.#current.telemetry.endpoint.trim())
+      return
     for (const detail of details)
-      void this.#telemetry
+      void telemetry
         .emit({
           scope: 'transport-observer',
           name: `transport.${detail.kind}.${detail.phase}`,

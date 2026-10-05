@@ -76,14 +76,31 @@ export class ArchiveScopeControlsModule implements BoosterModule {
 
   async start() {
     this.#active = true
-    const [settings] = await Promise.all([this.settings.get(), this.#refreshArchiveState()])
+    const settings = await this.settings.get()
     if (!this.#active) return
     this.#latestSettings = settings
-    this.#apply()
+    if (settings.enabled) {
+      await this.#refreshArchiveState()
+      if (!this.#active) return
+      this.#apply()
+    }
     this.#unsubscribe = this.settings.subscribe((next) => {
-      const changed = scopeSettingsChanged(this.#latestSettings, next)
+      const previous = this.#latestSettings
+      const changed = scopeSettingsChanged(previous, next)
+      const enabledChanged = next.enabled !== previous?.enabled
       this.#latestSettings = next
-      if (changed) this.#apply()
+      if (!changed) return
+      if (!next.enabled) {
+        this.#apply()
+        return
+      }
+      if (enabledChanged) {
+        void this.#refreshArchiveState().then(() => {
+          if (this.#active && this.#latestSettings?.enabled) this.#apply()
+        })
+        return
+      }
+      this.#apply()
     })
     window.addEventListener(ARCHIVE_UPDATED_EVENT, this.#onArchiveUpdated)
   }
@@ -97,6 +114,7 @@ export class ArchiveScopeControlsModule implements BoosterModule {
   }
 
   #onArchiveUpdated = (event: Event) => {
+    if (!this.#latestSettings?.enabled) return
     const detail = (
       event as CustomEvent<{
         conversationId?: string

@@ -126,11 +126,11 @@ export function observeConversationDecorations(
     attributes: true,
     attributeFilter: ['data-message-id', 'data-message-author-role', 'data-testid'],
   })
-  scan()
+  queue(document)
 
   return {
     scan() {
-      scan()
+      queue(document)
     },
     stop() {
       stopped = true
