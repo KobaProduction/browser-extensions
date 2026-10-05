@@ -4,7 +4,8 @@ Date: 2026-10-05
 
 Tested runtime line: `0.7` on real ChatGPT through Tampermonkey 5.5.1 with `runtime_content_mode=userscripts-dynamic`.
 Primary transport fix ref: `278b5564d192179dd0963280cd322786c0b76825`.
-Late-start coverage fix ref: `794faafb9cb8b7c218a2c5b79d69add8175570ff`.
+Late-start runtime-tested build ref: `794faafb9cb8b7c218a2c5b79d69add8175570ff`.
+Published equivalent source commit on `dev`: `94c9515` (same repository tree for the tested code change; SHA changed when the validated patch series was replayed through the GitHub App-managed checkout).
 
 ## Runtime findings
 
@@ -36,7 +37,7 @@ Validation after the fix:
 - features TypeScript check passed;
 - userscript build passed;
 - full repository `bun run check` completed without errors (Biome reported existing style infos/warnings in test sources only);
-- exact local userscript `0.7-794faafb` was installed into Tampermonkey;
+- exact local userscript `0.7-794faafb` was installed into Tampermonkey; the equivalent published source change is `94c9515`;
 - on a second unarchived real chat, preload was removed after render and manual collection recovered through the DOM fallback, then completed with `completeAtLastRead=true`, `hasOlderServerHistory=false`, 22 stored records and archive state `complete`.
 
 ## Local workbench rule
@@ -45,4 +46,4 @@ Disposable browser-import copies, scratch outputs and agent-only test artifacts 
 
 ## Publication status
 
-The local `dev` branch contains the checkpoint commits after `origin/dev`, but publication is currently blocked by GitHub authentication outside the repository: local HTTPS push has no credential and the GitHub connector returns HTTP 401 for the selected installation. This is an external publication blocker, not a source/build/runtime failure.
+The validated patch series was published to `dev` through the `koba-ai-agent` GitHub App. The user-token account could read the repository but its write paths returned 403/404; `koba-ai-agent` is the authoritative write identity for this repository workflow.
