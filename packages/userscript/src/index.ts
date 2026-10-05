@@ -30,20 +30,22 @@ const pageWindow = unsafeWindow as Window & typeof globalThis
 const diagnostics = createDiagnosticsStore()
 const telemetry = createUserscriptTelemetry(userscriptSettings)
 const pageRuntime = createBoosterPageRuntime({
-  target: 'userscript',
-  settings: userscriptSettings,
-  diagnostics,
-  persistentDiagnostics: userscriptAnalytics,
-  secrets: userscriptSecrets,
-  telemetry,
-  telemetryControl: createUserscriptTelemetryControl(telemetry),
-  pageBridgeWindow: pageWindow,
+  target: {
+    kind: 'userscript',
+    settings: userscriptSettings,
+    diagnostics,
+    persistentDiagnostics: userscriptAnalytics,
+    secrets: userscriptSecrets,
+    telemetry,
+    telemetryControl: createUserscriptTelemetryControl(telemetry),
+    pageBridgeWindow: pageWindow,
+  },
 })
 
 async function registerUserscriptMenu() {
   if (typeof GM_registerMenuCommand !== 'function') return
 
-  const settings = await userscriptSettings.get()
+  const settings = await pageRuntime.settings.get()
   const locale = resolveLocale(settings.language)
 
   GM_registerMenuCommand(
@@ -75,7 +77,7 @@ if (isChatGptPage()) {
     console.error('[ChatGPT Booster] Tampermonkey transport observer failed', error)
   }
 
-  void pageRuntime.archiveCapture.start().catch((error) => {
+  void pageRuntime.startEarly().catch((error) => {
     console.error('[ChatGPT Booster] Early archive capture bootstrap failed', error)
   })
   void registerUserscriptMenu().catch((error) => {

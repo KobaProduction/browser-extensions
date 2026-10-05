@@ -91,6 +91,18 @@ function captureAllowed(id: string, projectId: string | null): boolean {
         archivePolicy.defaultEnabled))
   )
 }
+
+function shouldObserveArchiveConversation(id: string): boolean {
+  if (pageConversationId() === id || archivePolicy.manualConversationId === id) return true
+  if (!archivePolicy.enabled) return false
+
+  const conversationRule = archivePolicy.conversations[id]
+  if (conversationRule !== undefined) return conversationRule
+
+  if (archiveProjects.has(id)) return captureAllowed(id, archiveProjects.get(id) ?? null)
+
+  return archivePolicy.defaultEnabled || Object.values(archivePolicy.projects).some(Boolean)
+}
 function isArchiveObservedUrl(sourceUrl: string) {
   return (
     sourceUrl.includes('/backend-api/conversations/') ||
@@ -497,6 +509,7 @@ function observeConversationArchiveResponse(
 ) {
   const conversationId = conversationHistoryId(sourceUrl)
   if (!observerTarget || !response.ok || !conversationId || !read) return
+  if (!read.isInitial && !shouldObserveArchiveConversation(conversationId)) return
 
   const contentType = response.headers.get('content-type') ?? ''
   if (!/json/i.test(contentType)) return

@@ -12,13 +12,15 @@ import { chromeSecrets, createChromeTelemetry, createChromeTelemetryControl } fr
 const diagnostics = createDiagnosticsStore()
 const telemetry = createChromeTelemetry(chromeSettings)
 const pageRuntime = createBoosterPageRuntime({
-  target: 'extension',
-  settings: chromeSettings,
-  diagnostics,
-  persistentDiagnostics: chromeAnalytics,
-  secrets: chromeSecrets,
-  telemetry,
-  telemetryControl: createChromeTelemetryControl(telemetry),
+  target: {
+    kind: 'extension',
+    settings: chromeSettings,
+    diagnostics,
+    persistentDiagnostics: chromeAnalytics,
+    secrets: chromeSecrets,
+    telemetry,
+    telemetryControl: createChromeTelemetryControl(telemetry),
+  },
 })
 
 const CONTENT_RUNTIME_MARKER = '__chatgptBoosterContentRuntime__'
@@ -100,7 +102,7 @@ async function bootstrapContentRuntime() {
   runtimeWindow[CONTENT_RUNTIME_MARKER] = handle
 
   // Publish archive policy as early as possible, before the UI waits for document.body.
-  await pageRuntime.archiveCapture.start()
+  await pageRuntime.startEarly()
 
   const launch = () => {
     if (document.documentElement.dataset[CONTENT_RUNTIME_INSTANCE_DATASET] !== instanceId) return

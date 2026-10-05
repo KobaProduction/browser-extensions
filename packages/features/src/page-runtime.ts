@@ -20,8 +20,12 @@ import { ConversationDecoratorsModule } from './conversation-decorators'
 import { HistoryLoaderModule } from './history-loader'
 import { TransportObserverModule } from './transport-observer'
 
-export interface BoosterPageRuntimeOptions {
-  target: 'extension' | 'userscript'
+/**
+ * Browser-target HAL. The shared page runtime owns feature composition; targets provide only
+ * persistence, diagnostics/telemetry capabilities and the page-world bridge when required.
+ */
+export interface BoosterTargetAdapter {
+  kind: 'extension' | 'userscript'
   settings: SettingsAdapter
   diagnostics: TransportDiagnosticsAdapter
   persistentDiagnostics?: PersistentDiagnosticsAdapter
@@ -29,6 +33,10 @@ export interface BoosterPageRuntimeOptions {
   telemetry?: OtlpTelemetryClient
   telemetryControl?: TelemetryControlAdapter
   pageBridgeWindow?: Window
+}
+
+export interface BoosterPageRuntimeOptions {
+  target: BoosterTargetAdapter
   archiveStore?: ConversationArchiveStore
 }
 
@@ -38,7 +46,7 @@ class OverlayModule implements BoosterModule {
   #scheduled: ScheduledIdleTask | undefined
 
   constructor(
-    private readonly options: BoosterPageRuntimeOptions,
+    private readonly target: BoosterTargetAdapter,
     private readonly archiveAdapter: ReturnType<typeof createArchiveUiAdapter>,
   ) {}
 
@@ -48,16 +56,16 @@ class OverlayModule implements BoosterModule {
       this.#scheduled = undefined
       if (this.#mounted || !isChatGptPage()) return
       this.#mounted = mountBoosterUi({
-        settingsAdapter: this.options.settings,
-        diagnosticsAdapter: this.options.diagnostics,
+        settingsAdapter: this.target.settings,
+        diagnosticsAdapter: this.target.diagnostics,
         archiveAdapter: this.archiveAdapter,
-        target: this.options.target,
-        ...(this.options.persistentDiagnostics
-          ? { persistentDiagnosticsAdapter: this.options.persistentDiagnostics }
+        target: this.target.kind,
+        ...(this.target.persistentDiagnostics
+          ? { persistentDiagnosticsAdapter: this.target.persistentDiagnostics }
           : {}),
-        ...(this.options.secrets ? { secretAdapter: this.options.secrets } : {}),
-        ...(this.options.telemetryControl
-          ? { telemetryControlAdapter: this.options.telemetryControl }
+        ...(this.target.secrets ? { secretAdapter: this.target.secrets } : {}),
+        ...(this.target.telemetryControl
+          ? { telemetryControlAdapter: this.target.telemetryControl }
           : {}),
       })
     }, 300)
@@ -72,34 +80,35 @@ class OverlayModule implements BoosterModule {
 }
 
 export function createBoosterPageRuntime(options: BoosterPageRuntimeOptions) {
-  const pageBridgeWindow = options.pageBridgeWindow ?? window
+  const target = options.target
+  const pageBridgeWindow = target.pageBridgeWindow ?? window
   const archiveStore = options.archiveStore ?? new ConversationArchiveStore()
-  const settings = createCachedSettingsAdapter(options.settings)
-  const runtimeOptions: BoosterPageRuntimeOptions = { ...options, settings }
+  const settings = createCachedSettingsAdapter(target.settings)
+  const runtimeTarget: BoosterTargetAdapter = { ...target, settings }
   const archiveCapture = new ConversationArchiveModule(archiveStore, settings, pageBridgeWindow)
   const archiveAdapter = createArchiveUiAdapter(archiveStore, archiveCapture, {
     assetFetchTarget: pageBridgeWindow,
   })
 
   const modules: BoosterModule[] = [
-    new OverlayModule(runtimeOptions, archiveAdapter),
+    new OverlayModule(runtimeTarget, archiveAdapter),
     archiveCapture,
     new ArchiveScopeControlsModule(settings, archiveStore),
     new HistoryLoaderModule(archiveStore, archiveCapture, pageBridgeWindow),
     new TransportObserverModule({
       settings,
-      diagnostics: options.diagnostics,
-      ...(options.persistentDiagnostics
-        ? { persistentDiagnostics: options.persistentDiagnostics }
+      diagnostics: target.diagnostics,
+      ...(target.persistentDiagnostics
+        ? { persistentDiagnostics: target.persistentDiagnostics }
         : {}),
-      ...(options.telemetry ? { telemetry: options.telemetry } : {}),
+      ...(target.telemetry ? { telemetry: target.telemetry } : {}),
     }),
     new ConversationDecoratorsModule(settings, archiveStore),
   ]
 
   const runtime = new BoosterRuntime(modules, (module, error) => {
     console.error('[ChatGPT Booster] Module failed:', module.id, error)
-    void options.telemetry
+    void target.telemetry
       ?.emit({
         scope: 'runtime',
         name: 'module.error',
@@ -116,10 +125,14 @@ export function createBoosterPageRuntime(options: BoosterPageRuntimeOptions) {
 
   return {
     runtime,
+    startEarly: async () => {
+      await archiveCapture.start()
+    },
     archiveStore,
     archiveCapture,
     archiveAdapter,
     pageBridgeWindow,
     settings,
+    target: runtimeTarget,
   }
 }
