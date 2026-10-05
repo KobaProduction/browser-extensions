@@ -53,22 +53,35 @@ export function createArchiveUiAdapter(
     return (await store.getConversation(conversationId)) ?? domConversationView(conversationId)
   }
 
+  const READ_CACHE_LIMIT = 24
   const conversationReads = new Map<
     string,
     { revision: number; promise: ReturnType<typeof loadConversationView> }
   >()
 
+  function cacheRead<T>(cache: Map<string, T>, conversationId: string, value: T): T {
+    cache.delete(conversationId)
+    cache.set(conversationId, value)
+    while (cache.size > READ_CACHE_LIMIT) {
+      const oldest = cache.keys().next().value
+      if (typeof oldest !== 'string') break
+      cache.delete(oldest)
+    }
+    return value
+  }
+
   function conversationView(conversationId: string): ReturnType<typeof loadConversationView> {
     const revision = store.conversationRevision(conversationId)
     const cached = conversationReads.get(conversationId)
-    if (cached?.revision === revision) return cached.promise
+    if (cached?.revision === revision)
+      return cacheRead(conversationReads, conversationId, cached).promise
 
     const pending = loadConversationView(conversationId).then(async (conversation) => {
       if (store.conversationRevision(conversationId) !== revision)
         return await conversationView(conversationId)
       return conversation
     })
-    conversationReads.set(conversationId, { revision, promise: pending })
+    cacheRead(conversationReads, conversationId, { revision, promise: pending })
     return pending
   }
 
@@ -103,14 +116,14 @@ export function createArchiveUiAdapter(
   function conversationReadModel(conversationId: string): Promise<ConversationReadModel> {
     const revision = store.conversationRevision(conversationId)
     const cached = readModels.get(conversationId)
-    if (cached?.revision === revision) return cached.promise
+    if (cached?.revision === revision) return cacheRead(readModels, conversationId, cached).promise
 
     const pending = loadConversationReadModel(conversationId).then(async (model) => {
       if (store.conversationRevision(conversationId) !== revision)
         return await conversationReadModel(conversationId)
       return model
     })
-    readModels.set(conversationId, { revision, promise: pending })
+    cacheRead(readModels, conversationId, { revision, promise: pending })
     return pending
   }
 
