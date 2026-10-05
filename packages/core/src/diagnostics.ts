@@ -24,11 +24,13 @@ export interface DiagnosticsAdapter {
 
 export interface TransportDiagnosticsAdapter extends DiagnosticsAdapter {
   recordTransport(event: TransportCounterEvent): void
+  recordTransportBatch(events: readonly TransportCounterEvent[]): void
 }
 
 export interface PersistentDiagnosticsAdapter {
   getLifetimeTransportCounters(): Promise<TransportCounters>
   recordTransport(event: TransportCounterEvent): Promise<void>
+  recordTransportBatch?(events: readonly TransportCounterEvent[]): Promise<void>
   subscribeLifetimeTransport(listener: (counters: TransportCounters) => void): () => void
 }
 
@@ -90,6 +92,10 @@ export function createDiagnosticsStore(): TransportDiagnosticsAdapter {
     },
     recordTransport(event) {
       counters = applyTransportCounterEvent(counters, event)
+      schedulePublish()
+    },
+    recordTransportBatch(events) {
+      for (const event of events) counters = applyTransportCounterEvent(counters, event)
       schedulePublish()
     },
   }

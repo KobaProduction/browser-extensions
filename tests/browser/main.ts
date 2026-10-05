@@ -1067,6 +1067,54 @@ async function runPerformanceTests() {
   }
 
   {
+    const href = location.href
+    const id = `perf-current-${Date.now()}`
+    const project = `g-p-${'b'.repeat(32)}`
+    await store.ingest(
+      page(id, [raw('perf-current-user', 'user', 'Question')], { gizmo_id: project }),
+    )
+    await store.upsertProject(project, 'Performance Project')
+    const originalGetConversation = store.getConversation.bind(store)
+    const originalGetProject = store.getProject.bind(store)
+    const originalListProjects = store.listProjects.bind(store)
+    let conversationReads = 0
+    let projectReads = 0
+    let projectListReads = 0
+    store.getConversation = async (conversationId) => {
+      conversationReads += 1
+      return await originalGetConversation(conversationId)
+    }
+    store.getProject = async (projectId) => {
+      projectReads += 1
+      return await originalGetProject(projectId)
+    }
+    store.listProjects = async () => {
+      projectListReads += 1
+      return await originalListProjects()
+    }
+    try {
+      history.replaceState(null, '', `/g/${project}/c/${id}`)
+      const ui = createArchiveUiAdapter(store, new ConversationArchiveModule(store, settings))
+      const started = performance.now()
+      await Promise.all([ui.getCurrentContext(), ui.getConversation(id)])
+      const elapsedMs = performance.now() - started
+      results.push({
+        name: 'coalesce current context conversation and use keyed project read',
+        pass: conversationReads === 1 && projectReads === 1 && projectListReads === 0,
+        elapsedMs,
+        conversationReads,
+        projectReads,
+        projectListReads,
+      })
+    } finally {
+      history.replaceState(null, '', href)
+      store.getConversation = originalGetConversation
+      store.getProject = originalGetProject
+      store.listProjects = originalListProjects
+    }
+  }
+
+  {
     const id = `perf-preload-${Date.now()}`
     const preload = page(id, [raw('perf-preload-user', 'user', 'Preloaded question')], {
       title: 'Performance preload',

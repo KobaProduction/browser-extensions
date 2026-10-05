@@ -73,6 +73,26 @@ test('transport counter helper accumulates request and message events', async ()
   expect(counters.lastEventAt).toBe(2)
 })
 
+test('transport diagnostics batch matches sequential counter semantics', async () => {
+  const { createDiagnosticsStore } = await import('../packages/core/src/diagnostics')
+  const store = createDiagnosticsStore()
+  store.recordTransportBatch([
+    { direction: 'outbound', phase: 'request', timestamp: 10 },
+    { direction: 'inbound', phase: 'response', timestamp: 11 },
+    { direction: 'inbound', phase: 'message', timestamp: 12 },
+    { direction: 'inbound', phase: 'error', timestamp: 13, errorClass: 'network' },
+  ])
+
+  expect(store.getTransportCounters()).toEqual({
+    requestsSent: 1,
+    responsesReceived: 1,
+    messagesSent: 0,
+    messagesReceived: 1,
+    errors: 1,
+    lastEventAt: 13,
+  })
+})
+
 test('redacts secret fields embedded inside SSE text', () => {
   const sse =
     'data: {"type":"resume_conversation_token","token":"header.payload.signature","verify":"secret-verify"}\n\n'

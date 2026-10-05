@@ -1,4 +1,5 @@
 export const TRANSPORT_EVENT = 'chatgpt-booster:transport-event'
+export const TRANSPORT_BATCH_EVENT = 'chatgpt-booster:transport-batch'
 export const TRANSPORT_CONFIG_EVENT = 'chatgpt-booster:transport-config'
 export const TRANSPORT_CHANNEL = 'chatgpt-booster:transport'
 export const ARCHIVE_POLICY_EVENT = 'chatgpt-booster:archive-policy'
@@ -114,6 +115,7 @@ export type TransportDirection = 'outbound' | 'inbound'
 export type TransportPhase = 'request' | 'response' | 'message' | 'open' | 'close' | 'error'
 
 export interface TransportObserverConfig {
+  enabled: boolean
   captureBodies: boolean
   maxBodyChars: number
 }
@@ -157,6 +159,7 @@ export interface ConversationArchiveEventDetail {
 }
 
 const DEFAULT_CONFIG: TransportObserverConfig = {
+  enabled: false,
   captureBodies: false,
   maxBodyChars: 2048,
 }
@@ -276,17 +279,41 @@ export function sanitizeBodyPreview(value: unknown, maxChars: number): string | 
 }
 
 let observerTarget: Window | undefined = typeof window === 'undefined' ? undefined : window
+let transportEmissionEnabled = false
+let transportBatch: TransportEventDetail[] = []
+let transportBatchTimer: ReturnType<typeof setTimeout> | undefined
+const TRANSPORT_BATCH_DELAY_MS = 50
+const TRANSPORT_BATCH_MAX = 50
 
-function emit(detail: TransportEventDetail) {
-  if (!observerTarget) return
+function flushTransportBatch() {
+  if (transportBatchTimer) {
+    clearTimeout(transportBatchTimer)
+    transportBatchTimer = undefined
+  }
+  if (!observerTarget || transportBatch.length === 0) {
+    transportBatch = []
+    return
+  }
+  const details = transportBatch
+  transportBatch = []
   observerTarget.postMessage(
     {
       channel: TRANSPORT_CHANNEL,
-      type: TRANSPORT_EVENT,
-      detail,
+      type: TRANSPORT_BATCH_EVENT,
+      details,
     },
     '*',
   )
+}
+
+function emit(detail: TransportEventDetail) {
+  if (!observerTarget || !transportEmissionEnabled) return
+  transportBatch.push(detail)
+  if (transportBatch.length >= TRANSPORT_BATCH_MAX) {
+    flushTransportBatch()
+    return
+  }
+  transportBatchTimer ??= setTimeout(flushTransportBatch, TRANSPORT_BATCH_DELAY_MS)
 }
 
 function conversationHistoryId(input: string): string | undefined {
@@ -617,9 +644,12 @@ export function installTransportObserver(
 
     const detail = data.detail
     config = {
+      enabled: detail?.enabled ?? config.enabled,
       captureBodies: detail?.captureBodies ?? config.captureBodies,
       maxBodyChars: Math.min(Math.max(detail?.maxBodyChars ?? config.maxBodyChars, 128), 16384),
     }
+    transportEmissionEnabled = config.enabled
+    if (!transportEmissionEnabled) flushTransportBatch()
   }
   target.addEventListener('message', onConfig)
 
@@ -1036,6 +1066,8 @@ export function installTransportObserver(
     target.WebSocket = OriginalWebSocket
     target.EventSource = OriginalEventSource
     bufferedInitialPages.clear()
+    transportEmissionEnabled = false
+    flushTransportBatch()
     delete tagged[marker]
   }
 }

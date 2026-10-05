@@ -592,6 +592,12 @@ export class ConversationArchiveStore {
     return items.sort((a, b) => a.title?.localeCompare(b.title ?? '') ?? 0)
   }
 
+  async getProject(projectId: string): Promise<ArchivedProject | undefined> {
+    const db = await this.#db()
+    const tx = db.transaction('projects', 'readonly')
+    return await request<ArchivedProject | undefined>(tx.objectStore('projects').get(projectId))
+  }
+
   async upsertProject(projectId: string, title: string | null): Promise<void> {
     const db = await this.#db()
     // One read/write transaction prevents a late null title from losing a known name.

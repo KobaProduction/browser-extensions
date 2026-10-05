@@ -77,6 +77,14 @@ export const userscriptAnalytics: PersistentDiagnosticsAdapter = {
     recordInMemory(event)
   },
 
+  async recordTransportBatch(events) {
+    for (const event of events) counters = applyTransportCounterEvent(counters, event)
+    if (!events.length) return
+    dirty = true
+    schedulePublish()
+    scheduleFlush()
+  },
+
   subscribeLifetimeTransport(listener) {
     const onChanged = (event: Event) => {
       listener((event as CustomEvent<TransportCounters>).detail ?? { ...counters })

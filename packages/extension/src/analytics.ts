@@ -31,6 +31,15 @@ export const chromeAnalytics: PersistentDiagnosticsAdapter = {
     if (!response?.ok) throw new Error(response?.error ?? 'Analytics persistence failed')
   },
 
+  async recordTransportBatch(events) {
+    if (!events.length) return
+    const response = (await chrome.runtime.sendMessage({
+      type: 'chatgpt-booster:analytics-record-batch',
+      events,
+    })) as AnalyticsResponse
+    if (!response?.ok) throw new Error(response?.error ?? 'Analytics persistence failed')
+  },
+
   subscribeLifetimeTransport(listener) {
     const onChanged = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
       if (areaName !== 'local' || !changes[ANALYTICS_KEY]) return

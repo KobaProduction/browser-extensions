@@ -34,6 +34,11 @@ interface AnalyticsRecordMessage {
   event: TransportCounterEvent
 }
 
+interface AnalyticsRecordBatchMessage {
+  type: 'chatgpt-booster:analytics-record-batch'
+  events: TransportCounterEvent[]
+}
+
 interface AnalyticsGetMessage {
   type: 'chatgpt-booster:analytics-get'
 }
@@ -43,6 +48,7 @@ type BoosterMessage =
   | SettingsSetMessage
   | SettingsUpdateMessage
   | AnalyticsRecordMessage
+  | AnalyticsRecordBatchMessage
   | AnalyticsGetMessage
 
 let settingsWriteQueue: Promise<void> = Promise.resolve()
@@ -91,12 +97,19 @@ async function readAnalytics(): Promise<TransportCounters> {
   }
 }
 
-async function recordAnalytics(event: TransportCounterEvent): Promise<TransportCounters> {
+async function recordAnalyticsBatch(
+  events: readonly TransportCounterEvent[],
+): Promise<TransportCounters> {
   return await enqueueAnalyticsWrite(async () => {
-    const next = applyTransportCounterEvent(await readAnalytics(), event)
+    let next = await readAnalytics()
+    for (const event of events) next = applyTransportCounterEvent(next, event)
     await chrome.storage.local.set({ [ANALYTICS_KEY]: next })
     return next
   })
+}
+
+async function recordAnalytics(event: TransportCounterEvent): Promise<TransportCounters> {
+  return await recordAnalyticsBatch([event])
 }
 
 async function postTelemetry(message: TelemetryMessage): Promise<{ ok: true; status: number }> {
@@ -161,6 +174,10 @@ chrome.runtime.onMessage.addListener(
         }
         if (message.type === 'chatgpt-booster:analytics-record') {
           sendResponse({ ok: true, counters: await recordAnalytics(message.event) })
+          return
+        }
+        if (message.type === 'chatgpt-booster:analytics-record-batch') {
+          sendResponse({ ok: true, counters: await recordAnalyticsBatch(message.events) })
           return
         }
 

@@ -48,6 +48,26 @@ export function createArchiveUiAdapter(
     }
   }
 
+  async function loadConversationView(conversationId: string) {
+    return (await store.getConversation(conversationId)) ?? domConversationView(conversationId)
+  }
+
+  const activeConversationReads = new Map<string, ReturnType<typeof loadConversationView>>()
+
+  function conversationView(conversationId: string) {
+    const active = activeConversationReads.get(conversationId)
+    if (active) return active
+    const pending = loadConversationView(conversationId)
+    activeConversationReads.set(conversationId, pending)
+    void pending.finally(() => {
+      queueMicrotask(() => {
+        if (activeConversationReads.get(conversationId) === pending)
+          activeConversationReads.delete(conversationId)
+      })
+    })
+    return pending
+  }
+
   interface ConversationReadModel {
     records: ArchiveRecordView[]
     thread: ReturnType<typeof buildArchiveThread>
@@ -89,18 +109,16 @@ export function createArchiveUiAdapter(
   return {
     getCurrentContext: async () => {
       const conversationId = currentConversationId() ?? null
-      const conversation = conversationId ? await store.getConversation(conversationId) : undefined
-      const dom = conversationId ? domConversationView(conversationId) : undefined
-      const projectId = currentProjectId() ?? conversation?.projectId ?? dom?.projectId ?? null
-      const projects = projectId ? await store.listProjects() : []
-      const storedTitle = projectId
-        ? (projects.find((project) => project.projectId === projectId)?.title ?? null)
-        : null
+      const conversation = conversationId ? await conversationView(conversationId) : undefined
+      const projectId = currentProjectId() ?? conversation?.projectId ?? null
+      const project = projectId ? await store.getProject(projectId) : undefined
       return {
         conversationId,
-        conversationTitle: conversation?.title ?? dom?.title ?? currentConversationTitle() ?? null,
+        conversationTitle: conversation?.title ?? currentConversationTitle() ?? null,
         projectId,
-        projectTitle: projectId ? await observedProjectTitle(projectId, storedTitle) : null,
+        projectTitle: projectId
+          ? await observedProjectTitle(projectId, project?.title ?? null)
+          : null,
       }
     },
     currentConversationId: () => currentConversationId() ?? null,
@@ -112,8 +130,7 @@ export function createArchiveUiAdapter(
           title: await observedProjectTitle(project.projectId, project.title),
         })),
       ),
-    getConversation: async (conversationId: string) =>
-      (await store.getConversation(conversationId)) ?? domConversationView(conversationId),
+    getConversation: (conversationId: string) => conversationView(conversationId),
     getCoverage: async (conversationId: string) => {
       const {
         persistedCoverage: coverage,
