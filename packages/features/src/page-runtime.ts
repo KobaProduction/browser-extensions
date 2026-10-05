@@ -128,11 +128,6 @@ export function createBoosterPageRuntime(options: BoosterPageRuntimeOptions) {
     startEarly: async () => {
       await archiveCapture.start()
     },
-    archiveStore,
-    archiveCapture,
-    archiveAdapter,
-    pageBridgeWindow,
     settings,
-    target: runtimeTarget,
   }
 }
