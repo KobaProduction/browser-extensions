@@ -21,6 +21,7 @@ Repository map for ChatGPT Booster.
 
 ## Hard rules
 
+- Put disposable local test copies, browser-import artifacts, scratch outputs, and other agent-only files under `/.work/`; never create ad-hoc temporary files in the repository root. The whole workbench is ignored by Git.
 - ChatGPT page integration must be isolated behind small adapters/modules.
 - Injected UI must not depend on ChatGPT's CSS cascade; use Shadow DOM.
 - Do not call private ChatGPT APIs unless a feature explicitly requires it and the contract is documented.
