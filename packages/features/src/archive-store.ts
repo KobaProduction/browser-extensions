@@ -663,6 +663,23 @@ export class ConversationArchiveStore {
     return { records, coverage }
   }
 
+  async clearAll(): Promise<void> {
+    const db = await this.#db()
+    const stores = Array.from(db.objectStoreNames)
+    if (stores.length) {
+      const tx = db.transaction(stores, 'readwrite')
+      const done = transactionDone(tx)
+      for (const name of stores) tx.objectStore(name).clear()
+      await done
+    }
+    this.#domSnapshots.clear()
+    this.#conversationRevisions.clear()
+    this.#preloadReadIds.clear()
+    window.dispatchEvent(
+      new CustomEvent(ARCHIVE_UPDATED_EVENT, { detail: { cleared: true, timestamp: Date.now() } }),
+    )
+  }
+
   async listProjects(): Promise<ArchivedProject[]> {
     const db = await this.#db()
     const tx = db.transaction('projects', 'readonly')

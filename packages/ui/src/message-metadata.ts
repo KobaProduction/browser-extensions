@@ -169,9 +169,12 @@ export function mountMessageMetadata(
 ): MountedMessageMetadata {
   const host = document.createElement('span')
   host.dataset.chatgptBooster = 'message-metadata'
-  host.style.display = 'inline-flex'
+  host.style.display = 'flex'
   host.style.alignItems = 'center'
-  host.style.height = '32px'
+  host.style.justifyContent = showModel ? 'flex-start' : 'flex-end'
+  host.style.width = '100%'
+  host.style.minHeight = '28px'
+  host.style.marginTop = '2px'
   into.append(host)
 
   const shadow = host.attachShadow({ mode: 'open' })

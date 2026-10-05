@@ -76,6 +76,7 @@ export interface ArchiveDataAdapter {
   subscribeContextChange?(listener: () => void): () => void
   getThread(conversationId: string): Promise<ArchiveThreadView>
   collectCurrent(): Promise<void>
+  clearAll(): Promise<void>
   listExportFormats(): ArchiveExportFormatDescriptor[]
   exportConversation(
     conversationId: string,

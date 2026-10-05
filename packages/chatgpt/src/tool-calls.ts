@@ -5,6 +5,8 @@ export interface ToolCallEvidence {
   element: HTMLElement
   label: string
   kind: 'mcp' | 'tool'
+  toolName?: string
+  payload?: unknown
   timestamp?: string
   structuredPayloads: string[]
   attributes: Record<string, string>
@@ -20,6 +22,7 @@ const CANDIDATE_SELECTOR = [
   '[aria-label*="tool" i]',
   '[aria-label*="mcp" i]',
   '[aria-label*="connector" i]',
+  '[data-streaming-response-status]',
   'button',
   '[role="button"]',
   'details',
@@ -32,6 +35,7 @@ const HIGH_SIGNAL_SELECTOR = [
   '[aria-label*="tool" i]',
   '[aria-label*="mcp" i]',
   '[aria-label*="connector" i]',
+  '[data-streaming-response-status]',
   '[data-json]',
   '[data-payload]',
   'pre',
@@ -58,7 +62,7 @@ const EXCLUDED_UI_SELECTOR = [
 
 const TOOL_WORDS = /\b(tool|tools|mcp|connector|function|computer|browser|python|terminal)\b/i
 const TOOL_ACTIONS =
-  /\b(called|calling|used|using|ran|running|searched|searching|executed|executing)\b/i
+  /(?:\b(called|calling|used|using|ran|running|searched|searching|executed|executing)\b|поиск(?: по запросу)?|ищ(?:у|ет|ем|ет в интернете))/i
 
 function compact(value: string): string {
   return value.replace(/\s+/g, ' ').trim()
@@ -129,6 +133,28 @@ function structuredPayloads(element: HTMLElement): string[] {
   return [...values].slice(0, 8)
 }
 
+export function parseStreamingToolStatus(value: string): { name: string; payload: unknown } | null {
+  const text = compact(value)
+  if (!text) return null
+  const query =
+    text.match(
+      /(?:поиск по запросу|search(?:ing)?(?: the web)? for)\s*[«“"]([^»”"]+)[»”"]/i,
+    )?.[1] ?? null
+  if (query) return { name: 'web.search', payload: { query } }
+  return { name: 'tool.activity', payload: { status: text } }
+}
+
+function streamingStatusTool(element: HTMLElement) {
+  if (!element.matches('[data-streaming-response-status]')) return null
+  if (
+    !element.querySelector(
+      '[data-testid*="tool" i], [data-testid*="mcp" i], [data-testid*="connector" i]',
+    )
+  )
+    return null
+  return parseStreamingToolStatus(element.textContent ?? '')
+}
+
 function scoreCandidate(element: HTMLElement): { score: number; signals: string[] } {
   if (!isInsideConversationAssistantTurn(element)) return { score: 0, signals: [] }
 
@@ -160,6 +186,10 @@ function scoreCandidate(element: HTMLElement): { score: number; signals: string[
   if (element.querySelector('pre, code, [data-json], [data-payload]')) {
     score += 2
     signals.push('structured descendant')
+  }
+  if (streamingStatusTool(element)) {
+    score += 5
+    signals.push('streaming tool status')
   }
 
   return { score, signals }
@@ -207,6 +237,7 @@ export function findToolCallEvidence(root: ParentNode = document): ToolCallEvide
       visibleText,
     ].join(' ')
     const timestamp = extractTimestamp(element)
+    const liveTool = streamingStatusTool(element)
 
     accepted.push(element)
     result.push({
@@ -214,6 +245,8 @@ export function findToolCallEvidence(root: ParentNode = document): ToolCallEvide
       element,
       label: visibleText.split(/\n|\r/)[0]?.slice(0, 140) || 'Tool call',
       kind: /\bmcp\b/i.test(metadataText) ? 'mcp' : 'tool',
+      ...(liveTool?.name ? { toolName: liveTool.name } : {}),
+      ...(liveTool ? { payload: liveTool.payload } : {}),
       ...(timestamp ? { timestamp } : {}),
       structuredPayloads: structuredPayloads(element),
       attributes: relevantAttributes(element),
@@ -398,7 +431,8 @@ export function toolInvocationFromRecord(record: ArchiveRecordView): ToolInvocat
 
 export function toolInvocationFromEvidence(evidence: ToolCallEvidence): ToolInvocationView {
   const rawName =
-    nestedToolName(evidence.structuredPayloads) ??
+    evidence.toolName ??
+    nestedToolName(evidence.payload ?? evidence.structuredPayloads) ??
     evidence.attributes['data-tool-name'] ??
     evidence.attributes['data-testid'] ??
     evidence.label
@@ -413,9 +447,10 @@ export function toolInvocationFromEvidence(evidence: ToolCallEvidence): ToolInvo
     recipient: null,
     timestamp: evidence.timestamp ? Date.parse(evidence.timestamp) || null : null,
     payload:
-      evidence.structuredPayloads.length === 1
+      evidence.payload ??
+      (evidence.structuredPayloads.length === 1
         ? evidence.structuredPayloads[0]
-        : evidence.structuredPayloads,
+        : evidence.structuredPayloads),
     link: null,
     iconUrl: null,
     iconKey: null,

@@ -4,12 +4,15 @@ import {
   conversationDomSnapshotFromTargets,
   currentConversationId,
   findToolCallEvidence,
+  observeConversationActivity,
   observeConversationDecorations,
   type ScheduledIdleTask,
   scheduleIdleTask,
   toolInvocationFromEvidence,
 } from '@chatgpt-booster/chatgpt'
 import {
+  AGENT_ACTIVITY_EVENT,
+  type AgentActivitySnapshot,
   ARCHIVE_UPDATED_EVENT,
   type BoosterModule,
   type BoosterSettings,
@@ -17,8 +20,10 @@ import {
   type SettingsAdapter,
 } from '@chatgpt-booster/core'
 import {
+  type MountedAgentActivity,
   type MountedMessageMetadata,
   type MountedToolInspector,
+  mountAgentActivity,
   mountMessageMetadata,
   mountToolInspector,
   resolveLocale,
@@ -37,6 +42,9 @@ export class ConversationDecoratorsModule implements BoosterModule {
   readonly id = 'conversation-decorators'
 
   #observer: ReturnType<typeof observeConversationDecorations> | undefined
+  #activityObserver: ReturnType<typeof observeConversationActivity> | undefined
+  #activityMount: MountedAgentActivity | undefined
+  #activityMountParent: HTMLElement | undefined
   #unsubscribe: (() => void) | undefined
   #archiveRefreshTimer: ReturnType<typeof setTimeout> | undefined
   #settings: BoosterSettings | undefined
@@ -74,7 +82,10 @@ export class ConversationDecoratorsModule implements BoosterModule {
         return
       }
 
-      if (languageChanged) this.#clear()
+      if (languageChanged) {
+        this.#clear()
+        this.#activityObserver?.scan()
+      }
       if (!this.#observer) {
         this.#initialTask?.cancel()
         this.#initialTask = undefined
@@ -98,20 +109,57 @@ export class ConversationDecoratorsModule implements BoosterModule {
   }
 
   #startObserver() {
-    if (this.#observer) return
-    this.#observer = observeConversationDecorations((targets, root) => {
-      void this.#scan(targets, root)
-    })
+    if (!this.#observer)
+      this.#observer = observeConversationDecorations((targets, root) => {
+        void this.#scan(targets, root)
+      })
+    if (!this.#activityObserver)
+      this.#activityObserver = observeConversationActivity(this.#onActivity)
   }
 
   #stopObserver() {
     this.#observer?.stop()
     this.#observer = undefined
+    this.#activityObserver?.stop()
+    this.#activityObserver = undefined
+    this.#clearActivity()
+  }
+
+  #onActivity = ({
+    snapshot,
+    mount,
+  }: {
+    snapshot: AgentActivitySnapshot
+    mount: HTMLElement | null
+  }) => {
+    window.dispatchEvent(new CustomEvent(AGENT_ACTIVITY_EVENT, { detail: snapshot }))
+    if (!this.#settings?.enabled || !snapshot.active || !mount) {
+      this.#clearActivity()
+      return
+    }
+    const locale = resolveLocale(this.#settings.language)
+    if (
+      this.#activityMount &&
+      this.#activityMount.element.isConnected &&
+      this.#activityMountParent === mount &&
+      mount.contains(this.#activityMount.element)
+    ) {
+      this.#activityMount.update(snapshot)
+      return
+    }
+    this.#clearActivity()
+    this.#activityMount = mountAgentActivity(mount, snapshot, locale)
+    this.#activityMountParent = mount
+  }
+
+  #clearActivity() {
+    this.#activityMount?.unmount()
+    this.#activityMount = undefined
+    this.#activityMountParent = undefined
   }
 
   stop() {
-    this.#observer?.stop()
-    this.#observer = undefined
+    this.#stopObserver()
     this.#initialTask?.cancel()
     this.#initialTask = undefined
     this.#unsubscribe?.()
@@ -229,12 +277,19 @@ export class ConversationDecoratorsModule implements BoosterModule {
         ? archiveRecordMetadata(record)
         : { ...UNKNOWN_METADATA, sentAt: observedAt }
       const mounted = this.#messageMounts.get(target.message)
-      if (mounted) mounted.update(metadata)
-      else
+      if (
+        mounted &&
+        mounted.element.isConnected &&
+        target.metadataMount.contains(mounted.element)
+      ) {
+        mounted.update(metadata)
+      } else {
+        mounted?.unmount()
         this.#messageMounts.set(
           target.message,
-          mountMessageMetadata(target.actions, metadata, locale, target.role === 'assistant'),
+          mountMessageMetadata(target.metadataMount, metadata, locale, target.role === 'assistant'),
         )
+      }
     }
 
     if (settings.features.toolInspector) {
@@ -297,5 +352,6 @@ export class ConversationDecoratorsModule implements BoosterModule {
     for (const mounted of this.#toolMounts.values()) mounted.unmount()
     this.#messageMounts.clear()
     this.#toolMounts.clear()
+    this.#clearActivity()
   }
 }

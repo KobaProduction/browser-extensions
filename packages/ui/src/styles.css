@@ -2610,3 +2610,117 @@
   background: rgb(239 68 68 / 7%);
   color: #f87171;
 }
+
+/* Live agent activity clock. It remains visible while ChatGPT hides its native action row. */
+.booster-agent-activity {
+  display: inline-flex;
+  max-width: min(100%, 520px);
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 3px 8px;
+  border: 1px solid var(--border, rgb(148 163 184 / 22%));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--background, #202020) 88%, transparent);
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.2;
+  pointer-events: auto;
+}
+.booster-agent-activity[data-phase="tool"] {
+  border-style: dashed;
+}
+.booster-agent-activity > svg {
+  flex: 0 0 auto;
+}
+.booster-agent-activity-phase {
+  flex: 0 0 auto;
+  color: var(--foreground);
+  font-weight: 600;
+}
+.booster-agent-activity-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.booster-agent-activity-timer {
+  flex: 0 0 auto;
+  min-width: 3.2em;
+  margin-inline-start: auto;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+}
+
+.booster-danger-zone {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px;
+  border: 1px solid rgb(239 68 68 / 45%);
+  border-radius: 12px;
+  background: rgb(127 29 29 / 8%);
+}
+.booster-danger-zone .booster-setting-copy > div,
+.booster-danger-zone .booster-setting-copy b {
+  color: rgb(248 113 113);
+}
+.booster-destructive-button {
+  min-height: 34px;
+  flex: 0 0 auto;
+  padding: 7px 12px;
+  border: 1px solid rgb(239 68 68 / 55%);
+  border-radius: 8px;
+  background: rgb(185 28 28);
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.booster-destructive-button:hover:not(:disabled) {
+  background: rgb(153 27 27);
+}
+.booster-destructive-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.booster-destructive-dialog {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  padding: 22px;
+}
+.booster-destructive-dialog strong {
+  color: rgb(248 113 113);
+  font-size: 17px;
+  letter-spacing: 0.025em;
+}
+.booster-destructive-dialog p {
+  margin: 8px 0 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.booster-destructive-icon {
+  display: flex;
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgb(127 29 29 / 20%);
+  color: rgb(248 113 113);
+}
+.booster-destructive-warning {
+  color: rgb(248 113 113);
+  font-weight: 700;
+}
+.booster-destructive-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+}

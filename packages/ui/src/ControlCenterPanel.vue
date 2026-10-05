@@ -35,6 +35,7 @@ import { Badge } from './components/ui/badge'
 import { Button } from './components/ui/button'
 import { resolveLocale, translate } from './i18n'
 import CaptureSettings from './CaptureSettings.vue'
+import ModalSurface from './ModalSurface.vue'
 import type { ArchiveDataAdapter } from './mount'
 
 const props = withDefaults(
@@ -61,6 +62,9 @@ const tokenConfigured = ref(false)
 const tokenEditing = ref(false)
 const telemetryTestState = ref<'idle' | 'testing' | 'success' | 'error'>('idle')
 const telemetryTestError = ref('')
+const archiveResetOpen = ref(false)
+const archiveResetting = ref(false)
+const archiveResetError = ref('')
 const counters = ref<TransportCounters>({ ...EMPTY_TRANSPORT_COUNTERS })
 const lifetimeCounters = ref<TransportCounters>({ ...EMPTY_TRANSPORT_COUNTERS })
 const settings = ref<BoosterSettings>()
@@ -185,6 +189,21 @@ async function saveToken() {
   saved.value = true
 }
 
+async function clearArchive() {
+  if (!props.archiveAdapter || archiveResetting.value) return
+  archiveResetting.value = true
+  archiveResetError.value = ''
+  try {
+    await props.archiveAdapter.clearAll()
+    archiveResetOpen.value = false
+  } catch (error) {
+    console.error('[ChatGPT Booster] Failed to clear local archive', error)
+    archiveResetError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    archiveResetting.value = false
+  }
+}
+
 async function testTelemetry() {
   if (!props.telemetryControlAdapter) return
   telemetryTestState.value = 'testing'
@@ -251,7 +270,18 @@ async function testTelemetry() {
       </nav>
 
       <main class="booster-settings-content">
-        <CaptureSettings v-if="activeSection === 'archive'" :settings-adapter="settingsAdapter" :archive-adapter="archiveAdapter" :context="captureContext" :locale="locale" />
+        <template v-if="activeSection === 'archive'">
+          <CaptureSettings :settings-adapter="settingsAdapter" :archive-adapter="archiveAdapter" :context="captureContext" :locale="locale" />
+          <section v-if="archiveAdapter" class="booster-danger-zone">
+            <div class="booster-setting-copy">
+              <div class="flex items-center gap-2"><AlertTriangle class="size-4" /><b>{{ t('archiveReset.title') }}</b></div>
+              <span>{{ t('archiveReset.description') }}</span>
+            </div>
+            <button type="button" class="booster-destructive-button" @click="archiveResetError = ''; archiveResetOpen = true">
+              {{ t('archiveReset.action') }}
+            </button>
+          </section>
+        </template>
         <template v-if="activeSection === 'modules'">
           <section class="booster-setting-card" :class="{ 'booster-setting-disabled': !settings.enabled }">
             <div class="booster-setting-copy">
@@ -441,5 +471,23 @@ async function testTelemetry() {
         </footer>
       </main>
     </div>
+
+    <ModalSurface v-if="archiveResetOpen" :label="t('archiveReset.confirmTitle')" @close="!archiveResetting && (archiveResetOpen = false)">
+      <div class="booster-destructive-dialog">
+        <div class="booster-destructive-icon"><AlertTriangle class="size-6" /></div>
+        <div>
+          <strong>{{ t('archiveReset.confirmTitle') }}</strong>
+          <p>{{ t('archiveReset.confirmDescription') }}</p>
+          <p class="booster-destructive-warning">{{ t('archiveReset.irreversible') }}</p>
+          <p v-if="archiveResetError" class="booster-test-error">{{ archiveResetError }}</p>
+        </div>
+        <div class="booster-destructive-actions">
+          <Button variant="outline" :disabled="archiveResetting" @click="archiveResetOpen = false">{{ t('archiveReset.cancel') }}</Button>
+          <button type="button" class="booster-destructive-button" :disabled="archiveResetting" @click="clearArchive">
+            {{ archiveResetting ? t('archiveReset.clearing') : t('archiveReset.confirm') }}
+          </button>
+        </div>
+      </div>
+    </ModalSurface>
   </section>
 </template>

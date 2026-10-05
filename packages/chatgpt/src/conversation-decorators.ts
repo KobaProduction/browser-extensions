@@ -10,6 +10,7 @@ export interface ConversationMessageTarget {
   section: HTMLElement
   message: HTMLElement
   actions: HTMLElement
+  metadataMount: HTMLElement
   messageId: string
   role: string
 }
@@ -49,8 +50,10 @@ export function findConversationMessageTargets(
     if (
       cached?.message.isConnected &&
       cached.actions.isConnected &&
+      cached.metadataMount.isConnected &&
       section.contains(cached.message) &&
       section.contains(cached.actions) &&
+      section.contains(cached.metadataMount) &&
       cached.message.dataset.messageId?.trim() === cached.messageId &&
       cached.message.dataset.messageAuthorRole?.trim() === cached.role
     ) {
@@ -62,8 +65,10 @@ export function findConversationMessageTargets(
     const messageId = message?.dataset.messageId?.trim()
     const role = message?.dataset.messageAuthorRole?.trim()
     const actions = nativeActions(section)
-    if (!message || !messageId || !role || !actions) continue
-    const target = { section, message, actions, messageId, role }
+    const metadataMount =
+      section.querySelector<HTMLElement>('[data-conversation-screenshot-content]') ?? actions
+    if (!message || !messageId || !role || !actions || !metadataMount) continue
+    const target = { section, message, actions, metadataMount, messageId, role }
     targetCache.set(section, target)
     result.push(target)
   }

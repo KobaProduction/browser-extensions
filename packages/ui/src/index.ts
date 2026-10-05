@@ -1,3 +1,4 @@
+export * from './agent-activity'
 export * from './i18n'
 export * from './message-metadata'
 export * from './mount'

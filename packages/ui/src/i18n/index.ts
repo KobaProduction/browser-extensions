@@ -101,7 +101,28 @@ const messages = {
     'archive.hideRaw': 'Hide raw',
     'archive.selectConversation': 'Select a conversation on the left.',
 
+    'archiveReset.title': 'Danger zone',
+    'archiveReset.description':
+      'Permanently delete all conversations, messages, history pages, coverage and attachment metadata stored in the local Booster archive.',
+    'archiveReset.action': 'Clear local archive',
+    'archiveReset.confirmTitle': 'DELETE ALL LOCAL ARCHIVES?',
+    'archiveReset.confirmDescription':
+      'This removes every Booster archive record stored in this browser. Capture settings are kept, but the archived data itself is deleted.',
+    'archiveReset.irreversible':
+      'This cannot be undone. Export anything you need before continuing.',
+    'archiveReset.cancel': 'Keep archive',
+    'archiveReset.confirm': 'Delete everything',
+    'archiveReset.clearing': 'Deleting…',
+
     'launcher.title': 'ChatGPT Booster — drag to move, click for chat actions',
+
+    'activity.idle': 'Idle',
+    'activity.thinking': 'Thinking',
+    'activity.tool': 'Tool activity',
+    'activity.responding': 'Responding',
+    'activity.startedAt': 'Started',
+    'activity.lastActivityAt': 'Last activity',
+    'activity.sinceLastChange': 'since last change',
 
     'tool.inspect': 'Inspect',
     'tool.copyDiagnostics': 'Copy diagnostics',
@@ -212,7 +233,28 @@ const messages = {
     'archive.hideRaw': 'Скрыть raw',
     'archive.selectConversation': 'Выберите диалог слева.',
 
+    'archiveReset.title': 'Опасная зона',
+    'archiveReset.description':
+      'Безвозвратно удалить все диалоги, сообщения, страницы истории, данные полноты и метаданные вложений из локального архива Booster.',
+    'archiveReset.action': 'Очистить локальный архив',
+    'archiveReset.confirmTitle': 'УДАЛИТЬ ВЕСЬ ЛОКАЛЬНЫЙ АРХИВ?',
+    'archiveReset.confirmDescription':
+      'Будут удалены все архивные данные Booster, сохранённые в этом браузере. Настройки сохранения останутся, но сам архив исчезнет.',
+    'archiveReset.irreversible':
+      'Это действие нельзя отменить. Перед продолжением экспортируйте всё, что нужно сохранить.',
+    'archiveReset.cancel': 'Оставить архив',
+    'archiveReset.confirm': 'Удалить всё',
+    'archiveReset.clearing': 'Удаление…',
+
     'launcher.title': 'ChatGPT Booster — перетащите для перемещения, нажмите для действий чата',
+
+    'activity.idle': 'Ожидание',
+    'activity.thinking': 'Размышляет',
+    'activity.tool': 'Инструмент',
+    'activity.responding': 'Отвечает',
+    'activity.startedAt': 'Начало',
+    'activity.lastActivityAt': 'Последнее действие',
+    'activity.sinceLastChange': 'с последнего изменения',
 
     'tool.inspect': 'Inspect',
     'tool.copyDiagnostics': 'Копировать диагностику',

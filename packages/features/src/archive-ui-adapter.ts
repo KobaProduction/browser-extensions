@@ -227,6 +227,11 @@ export function createArchiveUiAdapter(
     getThread: async (conversationId: string) =>
       (await conversationReadModel(conversationId)).thread,
     collectCurrent: () => capture.collectCurrent(),
+    clearAll: async () => {
+      await store.clearAll()
+      conversationReads.clear()
+      readModels.clear()
+    },
     listExportFormats: () => exportPipeline.listFormats(),
     exportConversation: async (
       conversationId: string,

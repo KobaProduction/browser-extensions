@@ -4,7 +4,10 @@ import {
   archiveRecordMetadata,
   buildArchiveThread,
 } from '../packages/chatgpt/src/archive-records'
-import { toolInvocationFromRecord } from '../packages/chatgpt/src/tool-calls'
+import {
+  parseStreamingToolStatus,
+  toolInvocationFromRecord,
+} from '../packages/chatgpt/src/tool-calls'
 import {
   type ArchiveRecordView,
   captureRuleFor,
@@ -118,6 +121,22 @@ test('legacy pixel launcher geometry is discarded during schema 3 migration', ()
     y: null,
     side: 'right',
     heightRatio: 0.65,
+  })
+})
+
+describe('live tool status normalization', () => {
+  test('extracts browser search query from current ChatGPT streaming status', () => {
+    expect(parseStreamingToolStatus('Поиск по запросу «OpenAI news October 6 2026»')).toEqual({
+      name: 'web.search',
+      payload: { query: 'OpenAI news October 6 2026' },
+    })
+  })
+
+  test('keeps unknown native tool activity truthful instead of inventing arguments', () => {
+    expect(parseStreamingToolStatus('Using a connected tool')).toEqual({
+      name: 'tool.activity',
+      payload: { status: 'Using a connected tool' },
+    })
   })
 })
 
