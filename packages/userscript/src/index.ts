@@ -31,7 +31,7 @@ const diagnostics = createDiagnosticsStore()
 const telemetry = createUserscriptTelemetry(userscriptSettings)
 const pageRuntime = createBoosterPageRuntime({
   target: {
-    kind: 'userscript',
+    label: 'Tampermonkey',
     settings: userscriptSettings,
     diagnostics,
     persistentDiagnostics: userscriptAnalytics,

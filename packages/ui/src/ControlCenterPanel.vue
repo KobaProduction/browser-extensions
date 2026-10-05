@@ -46,7 +46,7 @@ const props = withDefaults(
     persistentDiagnosticsAdapter?: PersistentDiagnosticsAdapter | undefined
     secretAdapter?: SecretAdapter | undefined
     telemetryControlAdapter?: TelemetryControlAdapter | undefined
-    target: 'extension' | 'userscript'
+    targetLabel: string
     showClose?: boolean
   }>(),
   { showClose: false },
@@ -73,7 +73,6 @@ let pendingWrites = 0
 
 const locale = computed(() => resolveLocale(settings.value?.language ?? 'auto'))
 const t = (key: Parameters<typeof translate>[1]) => translate(locale.value, key)
-const targetLabel = computed(() => (props.target === 'userscript' ? 'Tampermonkey' : 'Extension'))
 const activeSection = computed(() => settings.value?.ui.activeSection ?? 'modules')
 const currentRequestTotal = computed(() => counters.value.requestsSent + counters.value.responsesReceived)
 const lifetimeRequestTotal = computed(() => lifetimeCounters.value.requestsSent + lifetimeCounters.value.responsesReceived)

@@ -31,5 +31,5 @@ const devSettings: SettingsAdapter = {
 
 mountBoosterUi({
   settingsAdapter: devSettings,
-  target: 'userscript',
+  targetLabel: 'Tampermonkey',
 })

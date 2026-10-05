@@ -13,7 +13,7 @@ const diagnostics = createDiagnosticsStore()
 const telemetry = createChromeTelemetry(chromeSettings)
 const pageRuntime = createBoosterPageRuntime({
   target: {
-    kind: 'extension',
+    label: 'Extension',
     settings: chromeSettings,
     diagnostics,
     persistentDiagnostics: chromeAnalytics,

@@ -100,7 +100,7 @@ export interface BoosterUiOptions {
   secretAdapter?: SecretAdapter | undefined
   telemetryControlAdapter?: TelemetryControlAdapter | undefined
   archiveAdapter?: ArchiveDataAdapter | undefined
-  target: 'extension' | 'userscript'
+  targetLabel: string
 }
 
 function createIsolatedMount(host: HTMLElement) {

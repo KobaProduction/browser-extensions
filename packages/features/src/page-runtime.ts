@@ -25,7 +25,7 @@ import { TransportObserverModule } from './transport-observer'
  * persistence, diagnostics/telemetry capabilities and the page-world bridge when required.
  */
 export interface BoosterTargetAdapter {
-  kind: 'extension' | 'userscript'
+  label: string
   settings: SettingsAdapter
   diagnostics: TransportDiagnosticsAdapter
   persistentDiagnostics?: PersistentDiagnosticsAdapter
@@ -59,7 +59,7 @@ class OverlayModule implements BoosterModule {
         settingsAdapter: this.target.settings,
         diagnosticsAdapter: this.target.diagnostics,
         archiveAdapter: this.archiveAdapter,
-        target: this.target.kind,
+        targetLabel: this.target.label,
         ...(this.target.persistentDiagnostics
           ? { persistentDiagnosticsAdapter: this.target.persistentDiagnostics }
           : {}),
