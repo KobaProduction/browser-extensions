@@ -116,6 +116,8 @@ User-facing UI strings use the shared UI i18n layer. English and Russian are man
 
 Transport interception runs in the page MAIN world and is isolated in `@chatgpt-booster/observer`. It observes fetch, XHR, WebSocket and EventSource without blocking or replacing application semantics. Cross-world events use `window.postMessage` with a Booster channel marker.
 
+General transport diagnostics are opt-in. The page-world hooks stay installed because archive/history observation uses the same HAL, but diagnostic event emission is disabled unless the Transport Observer setting is enabled. Archive capture does not require transport diagnostics to be enabled.
+
 Credentials are never exposed to the page observer. Request headers/cookies are not captured. URL and body previews are redacted before leaving the page world, body capture is disabled by default, and previews are truncated.
 
 Telemetry is exported as OTLP/HTTP JSON through `@chatgpt-booster/telemetry`. Resource identity is `service.name=chatgpt-booster-extension`, `service.namespace=koba`, with instrumentation scopes `chatgpt-booster.runtime` and `chatgpt-booster.transport-observer`. Tampermonkey sends through `GM_xmlhttpRequest`; Chromium sends through the extension background worker. Bearer tokens are stored in target-specific secret storage and are never passed into the MAIN world.
@@ -156,7 +158,7 @@ Automatic archive capture is opt-in by project/chat. A manual ticket temporarily
 only one current-tab conversation, retaining the user's selected record categories.
 Consent is rechecked after asynchronous database reads and before puts. Revoking a rule
 does not delete existing data. Project IDs remain relation keys, not display labels.
-Settings schema 4 is distinct from archive IndexedDB version 3. The archive database currently contains `conversations`, `messages`, `conversationPages`, `conversationCoverage`, `projects`, `assets`, and `preloadPages`; legacy archive version 1 is never silently erased during upgrade.
+Settings schema 5 is distinct from archive IndexedDB version 3. The archive database currently contains `conversations`, `messages`, `conversationPages`, `conversationCoverage`, `projects`, `assets`, and `preloadPages`; legacy archive version 1 is never silently erased during upgrade.
 
 JSON/Markdown export is a projection: basic mode must not serialize internal storage
 metadata or nested records. Configurable mode includes only selected categories; binary

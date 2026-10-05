@@ -17,7 +17,7 @@ describe('settings patch persistence', () => {
 
     expect(boosterOff.enabled).toBe(false)
     expect(boosterOff.features.toolInspector).toBe(false)
-    expect(boosterOff.observer.enabled).toBe(true)
+    expect(boosterOff.observer.enabled).toBe(false)
     expect(boosterOff.telemetry.endpoint).toBe('')
   })
 
@@ -36,6 +36,28 @@ describe('settings patch persistence', () => {
     expect(disabled.observer.captureBodies).toBe(true)
     expect(disabled.observer.maxBodyChars).toBe(4096)
   })
+})
+
+test('schema 4 passive transport observer migrates to opt-in', () => {
+  const migrated = normalizeSettings({
+    schemaVersion: 4,
+    observer: { enabled: true, captureBodies: false, maxBodyChars: 2048 },
+    telemetry: { enabled: false, endpoint: '' },
+  } as Partial<import('../packages/core/src/settings').BoosterSettings>)
+
+  expect(migrated.observer.enabled).toBe(false)
+  expect(migrated.schemaVersion).toBe(SETTINGS_SCHEMA_VERSION)
+})
+
+test('schema 4 advanced transport diagnostics stay enabled', () => {
+  const migrated = normalizeSettings({
+    schemaVersion: 4,
+    observer: { enabled: true, captureBodies: true, maxBodyChars: 4096 },
+    telemetry: { enabled: false, endpoint: '' },
+  } as Partial<import('../packages/core/src/settings').BoosterSettings>)
+
+  expect(migrated.observer.enabled).toBe(true)
+  expect(migrated.observer.captureBodies).toBe(true)
 })
 
 test('snapshotSettings converts proxy-backed settings into plain serializable data', () => {

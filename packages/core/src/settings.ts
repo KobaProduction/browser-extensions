@@ -80,7 +80,7 @@ export interface BoosterSettingsPatch {
   export?: Partial<ArchiveExportOptions>
 }
 
-export const SETTINGS_SCHEMA_VERSION = 4
+export const SETTINGS_SCHEMA_VERSION = 5
 
 function clampWindowRatio(value: unknown, fallback: number, min: number, max: number) {
   return typeof value === 'number' && Number.isFinite(value)
@@ -102,7 +102,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     heightRatio: 0.65,
   },
   observer: {
-    enabled: true,
+    enabled: false,
     captureBodies: false,
     maxBodyChars: 2048,
   },
@@ -155,6 +155,12 @@ export function normalizeSettings(value?: Partial<BoosterSettings>): BoosterSett
     observer: {
       ...DEFAULT_SETTINGS.observer,
       ...value?.observer,
+      enabled:
+        incomingSchema >= 5
+          ? (value?.observer?.enabled ?? DEFAULT_SETTINGS.observer.enabled)
+          : value && (value.observer?.captureBodies === true || value.telemetry?.enabled === true)
+            ? (value.observer?.enabled ?? true)
+            : false,
     },
     telemetry: {
       ...DEFAULT_SETTINGS.telemetry,

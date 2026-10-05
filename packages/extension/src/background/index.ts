@@ -53,6 +53,10 @@ type BoosterMessage =
 
 let settingsWriteQueue: Promise<void> = Promise.resolve()
 let analyticsWriteQueue: Promise<void> = Promise.resolve()
+let analyticsCounters: TransportCounters | undefined
+let analyticsDirty = false
+let analyticsFlushTimer: ReturnType<typeof setTimeout> | undefined
+const ANALYTICS_FLUSH_INTERVAL_MS = 500
 
 function enqueueSettingsWrite<T>(work: () => Promise<T>): Promise<T> {
   const result = settingsWriteQueue.then(work, work)
@@ -90,11 +94,35 @@ async function updateSettings(patch: BoosterSettingsPatch): Promise<BoosterSetti
 }
 
 async function readAnalytics(): Promise<TransportCounters> {
+  if (analyticsCounters) return { ...analyticsCounters }
   const stored = await chrome.storage.local.get(ANALYTICS_KEY)
-  return {
+  analyticsCounters = {
     ...EMPTY_TRANSPORT_COUNTERS,
     ...(stored[ANALYTICS_KEY] as Partial<TransportCounters> | undefined),
   }
+  return { ...analyticsCounters }
+}
+
+async function flushAnalytics(): Promise<void> {
+  if (analyticsFlushTimer) {
+    clearTimeout(analyticsFlushTimer)
+    analyticsFlushTimer = undefined
+  }
+  if (!analyticsDirty || !analyticsCounters) return
+  analyticsDirty = false
+  await chrome.storage.local.set({ [ANALYTICS_KEY]: { ...analyticsCounters } })
+}
+
+function scheduleAnalyticsFlush() {
+  if (analyticsFlushTimer) return
+  analyticsFlushTimer = setTimeout(() => {
+    analyticsFlushTimer = undefined
+    void enqueueAnalyticsWrite(flushAnalytics).catch((error) => {
+      analyticsDirty = true
+      console.warn('[ChatGPT Booster] Analytics persistence failed', error)
+      scheduleAnalyticsFlush()
+    })
+  }, ANALYTICS_FLUSH_INTERVAL_MS)
 }
 
 async function recordAnalyticsBatch(
@@ -103,8 +131,12 @@ async function recordAnalyticsBatch(
   return await enqueueAnalyticsWrite(async () => {
     let next = await readAnalytics()
     for (const event of events) next = applyTransportCounterEvent(next, event)
-    await chrome.storage.local.set({ [ANALYTICS_KEY]: next })
-    return next
+    analyticsCounters = next
+    if (events.length) {
+      analyticsDirty = true
+      scheduleAnalyticsFlush()
+    }
+    return { ...next }
   })
 }
 
@@ -242,6 +274,3 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.runtime.onStartup.addListener(() => {
   void bootstrapExistingChatGptTabs()
 })
-
-// Unpacked extension reloads restart the worker without necessarily navigating existing tabs.
-void bootstrapExistingChatGptTabs()
