@@ -1,5 +1,6 @@
 import type { ArchiveCaptureContext } from '@chatgpt-booster/core'
 import { currentConversationId, currentProjectId, currentProjectTitle } from './conversation-scroll'
+import { type ScheduledIdleTask, scheduleIdleTask } from './idle-task'
 
 export interface MountedArchiveScopeSlot {
   update(context: ArchiveCaptureContext): void
@@ -39,7 +40,7 @@ export function mountArchiveScopeControls(initial: ScopeControlOptions) {
     }
   >()
   let stopped = false
-  let queued: ReturnType<typeof setTimeout> | undefined
+  let queued: ScheduledIdleTask | undefined
 
   function sameContext(a: ArchiveCaptureContext, b: ArchiveCaptureContext) {
     return (
@@ -263,10 +264,10 @@ export function mountArchiveScopeControls(initial: ScopeControlOptions) {
 
   const observer = new MutationObserver((records) => {
     if (queued || stopped || !records.some(scopeMutationRelevant)) return
-    queued = setTimeout(() => {
+    queued = scheduleIdleTask(() => {
       queued = undefined
       refresh()
-    }, 200)
+    }, 450)
   })
 
   refresh()
@@ -280,7 +281,7 @@ export function mountArchiveScopeControls(initial: ScopeControlOptions) {
     stop() {
       stopped = true
       observer.disconnect()
-      if (queued) clearTimeout(queued)
+      queued?.cancel()
       queued = undefined
       for (const [link] of owned) remove(link)
       for (const [row] of projectRows) removeProjectRow(row)

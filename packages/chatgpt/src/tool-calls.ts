@@ -25,6 +25,19 @@ const CANDIDATE_SELECTOR = [
   'details',
 ].join(',')
 
+const HIGH_SIGNAL_SELECTOR = [
+  '[data-testid*="tool" i]',
+  '[data-testid*="mcp" i]',
+  '[data-testid*="connector" i]',
+  '[aria-label*="tool" i]',
+  '[aria-label*="mcp" i]',
+  '[aria-label*="connector" i]',
+  '[data-json]',
+  '[data-payload]',
+  'pre',
+  'code',
+].join(',')
+
 const ASSISTANT_TURN_SELECTOR = [
   '[data-message-author-role="assistant"]',
   '[data-turn="assistant"]',
@@ -121,7 +134,7 @@ function scoreCandidate(element: HTMLElement): { score: number; signals: string[
 
   const signals: string[] = ['assistant conversation turn']
   let score = 2
-  const text = compact(element.innerText || element.textContent || '').slice(0, 800)
+  const text = compact(element.textContent || '').slice(0, 800)
   const metadata = [
     element.getAttribute('data-testid'),
     element.getAttribute('aria-label'),
@@ -166,6 +179,14 @@ function hashString(value: string): number {
 }
 
 export function findToolCallEvidence(root: ParentNode = document): ToolCallEvidence[] {
+  const rootElement = root instanceof Element ? root : undefined
+  const highSignal =
+    rootElement?.matches(HIGH_SIGNAL_SELECTOR) || root.querySelector(HIGH_SIGNAL_SELECTOR)
+  if (!highSignal) {
+    const text = compact(root.textContent ?? '').slice(0, 1600)
+    if (!TOOL_WORDS.test(text) && !TOOL_ACTIONS.test(text)) return []
+  }
+
   const candidates = [...root.querySelectorAll<HTMLElement>(CANDIDATE_SELECTOR)]
   const accepted: HTMLElement[] = []
   const result: ToolCallEvidence[] = []
@@ -175,7 +196,7 @@ export function findToolCallEvidence(root: ParentNode = document): ToolCallEvide
     const { score, signals } = scoreCandidate(element)
     if (score < 5 || isNestedDuplicate(element, accepted)) continue
 
-    const visibleText = compact(element.innerText || element.textContent || '').slice(0, 4000)
+    const visibleText = compact(element.textContent || '').slice(0, 4000)
     if (!visibleText) continue
 
     const metadataText = [

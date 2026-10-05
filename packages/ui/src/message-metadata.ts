@@ -60,6 +60,16 @@ function fullDate(value: number | null, locale: SupportedLocale) {
   return time ? new Date(time).toLocaleString(locale) : null
 }
 
+function sameMetadata(a: ConversationItemMetadataView, b: ConversationItemMetadataView) {
+  return (
+    a.sentAt === b.sentAt &&
+    a.editedAt === b.editedAt &&
+    a.edited === b.edited &&
+    a.model === b.model &&
+    a.thinking === b.thinking
+  )
+}
+
 function createLines() {
   const lines = document.createElement('div')
   lines.className = 'booster-meta-lines'
@@ -210,11 +220,16 @@ export function mountMessageMetadata(
     model.popup.append(modelLines)
   }
 
-  render(metadata)
+  let current = { ...metadata }
+  render(current)
 
   return {
     element: host,
-    update: render,
+    update(next) {
+      if (sameMetadata(current, next)) return
+      current = { ...next }
+      render(current)
+    },
     unmount() {
       time.unmount()
       model.unmount()

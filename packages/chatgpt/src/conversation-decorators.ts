@@ -4,6 +4,7 @@ import {
   currentConversationTitle,
   currentProjectId,
 } from './conversation-scroll'
+import { type ScheduledIdleTask, scheduleIdleTask } from './idle-task'
 
 export interface ConversationMessageTarget {
   section: HTMLElement
@@ -20,6 +21,8 @@ export interface ConversationDecorationObserver {
 
 const TURN_SELECTOR = 'main section[data-testid^="conversation-turn-"]'
 const MESSAGE_SELECTOR = '[data-message-id][data-message-author-role]'
+
+const targetCache = new WeakMap<HTMLElement, ConversationMessageTarget>()
 
 function nativeActions(section: HTMLElement): HTMLElement | null {
   const copy = section.querySelector<HTMLElement>('[data-testid="copy-turn-action-button"]')
@@ -42,12 +45,27 @@ export function findConversationMessageTargets(
   sections.push(...root.querySelectorAll<HTMLElement>(TURN_SELECTOR))
   for (const section of sections) {
     if (section.closest('#chatgpt-booster-root, [data-chatgpt-booster]')) continue
+    const cached = targetCache.get(section)
+    if (
+      cached?.message.isConnected &&
+      cached.actions.isConnected &&
+      section.contains(cached.message) &&
+      section.contains(cached.actions) &&
+      cached.message.dataset.messageId?.trim() === cached.messageId &&
+      cached.message.dataset.messageAuthorRole?.trim() === cached.role
+    ) {
+      result.push(cached)
+      continue
+    }
+
     const message = section.querySelector<HTMLElement>(MESSAGE_SELECTOR)
     const messageId = message?.dataset.messageId?.trim()
     const role = message?.dataset.messageAuthorRole?.trim()
     const actions = nativeActions(section)
     if (!message || !messageId || !role || !actions) continue
-    result.push({ section, message, actions, messageId, role })
+    const target = { section, message, actions, messageId, role }
+    targetCache.set(section, target)
+    result.push(target)
   }
   return result
 }
@@ -56,7 +74,7 @@ export function observeConversationDecorations(
   onScan: (targets: ConversationMessageTarget[], root: ParentNode) => void,
 ): ConversationDecorationObserver {
   let stopped = false
-  let timer: ReturnType<typeof setTimeout> | undefined
+  let scheduled: ScheduledIdleTask | undefined
   const pending = new Set<ParentNode>()
 
   const scan = (root: ParentNode = document) => {
@@ -65,7 +83,7 @@ export function observeConversationDecorations(
   }
 
   const flush = () => {
-    timer = undefined
+    scheduled = undefined
     if (stopped) return
     const roots = pending.size ? [...pending] : [document]
     pending.clear()
@@ -74,18 +92,22 @@ export function observeConversationDecorations(
 
   const queue = (root: ParentNode) => {
     pending.add(root)
-    if (timer) return
-    timer = setTimeout(flush, 120)
+    if (scheduled) return
+    scheduled = scheduleIdleTask(flush, 320)
   }
 
   const observer = new MutationObserver((records) => {
+    const main = document.querySelector<HTMLElement>('main')
     for (const record of records) {
       const target = record.target instanceof Element ? record.target : record.target.parentElement
+      if (main && target && target !== main && !main.contains(target) && !target.contains(main))
+        continue
       const section = target?.closest<HTMLElement>('section[data-testid^="conversation-turn-"]')
       if (section) queue(section)
       for (const node of record.addedNodes) {
         if (!(node instanceof Element)) continue
         if (node.closest('#chatgpt-booster-root, [data-chatgpt-booster]')) continue
+        if (main && node !== main && !main.contains(node) && !node.contains(main)) continue
         const own = node.matches('section[data-testid^="conversation-turn-"]')
           ? node
           : node.closest('section[data-testid^="conversation-turn-"]')
@@ -113,8 +135,8 @@ export function observeConversationDecorations(
     stop() {
       stopped = true
       observer.disconnect()
-      if (timer) clearTimeout(timer)
-      timer = undefined
+      scheduled?.cancel()
+      scheduled = undefined
       pending.clear()
     },
   }
@@ -132,14 +154,12 @@ export interface ConversationDomSnapshot {
  * Lossy, transient fallback used only when Booster attached after ChatGPT already
  * fetched the initial conversation page. It never claims archive completeness.
  */
-export function currentConversationDomSnapshot(
-  root: ParentNode = document,
+export function conversationDomSnapshotFromTargets(
+  targets: readonly ConversationMessageTarget[],
 ): ConversationDomSnapshot | undefined {
   const conversationId = currentConversationId()
-  if (!conversationId) return undefined
+  if (!conversationId || !targets.length) return undefined
   const observedAt = Date.now()
-  const targets = findConversationMessageTargets(root)
-  if (!targets.length) return undefined
   const records: ArchiveRecordView[] = targets.map((target) => {
     const text = (target.message.textContent || '').trim()
     const role = target.role
@@ -178,4 +198,9 @@ export function currentConversationDomSnapshot(
     observedAt,
     records,
   }
+}
+export function currentConversationDomSnapshot(
+  root: ParentNode = document,
+): ConversationDomSnapshot | undefined {
+  return conversationDomSnapshotFromTargets(findConversationMessageTargets(root))
 }

@@ -1,7 +1,7 @@
 import {
   archiveRecordMetadata,
   type ConversationMessageTarget,
-  currentConversationDomSnapshot,
+  conversationDomSnapshotFromTargets,
   currentConversationId,
   findToolCallEvidence,
   observeConversationDecorations,
@@ -46,6 +46,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
   #messageMounts = new Map<HTMLElement, MountedMessageMetadata>()
   #firstSeen = new Map<string, number>()
   #toolMounts = new Map<HTMLElement, MountedToolInspector>()
+  #lastCleanupAt = 0
 
   constructor(
     private settingsAdapter: SettingsAdapter,
@@ -89,6 +90,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
     if (this.#recordConversationId) this.store.clearDomSnapshot(this.#recordConversationId)
     this.#recordConversationId = null
     this.#firstSeen.clear()
+    this.#lastCleanupAt = 0
     this.#clear()
   }
 
@@ -170,16 +172,15 @@ export class ConversationDecoratorsModule implements BoosterModule {
     }
     const current = currentConversationId() ?? null
     if (current !== this.#recordConversationId) await this.#refreshRecords()
-    const snapshot = currentConversationDomSnapshot(root)
+    const missingTargets = targets.filter((target) => !this.#records.has(target.messageId))
+    const snapshot = missingTargets.length
+      ? conversationDomSnapshotFromTargets(missingTargets)
+      : undefined
     if (snapshot) {
-      const missing = snapshot.records.filter((record) => !this.#records.has(record.messageId))
-      if (missing.length) {
-        const fallback = { ...snapshot, records: missing }
-        if (root === document) this.store.setDomSnapshot(fallback)
-        else this.store.mergeDomSnapshot(fallback)
-      } else if (root === document) {
-        this.store.clearDomSnapshot(snapshot.conversationId)
-      }
+      if (root === document) this.store.setDomSnapshot(snapshot)
+      else this.store.mergeDomSnapshot(snapshot)
+    } else if (root === document && current) {
+      this.store.clearDomSnapshot(current)
     }
     const locale = resolveLocale(settings.language)
 
@@ -234,10 +235,13 @@ export class ConversationDecoratorsModule implements BoosterModule {
       this.#toolMounts.clear()
     }
 
-    this.#cleanupDisconnected()
+    this.#cleanupDisconnected(root === document)
   }
 
-  #cleanupDisconnected() {
+  #cleanupDisconnected(force = false) {
+    const now = Date.now()
+    if (!force && now - this.#lastCleanupAt < 2_000) return
+    this.#lastCleanupAt = now
     for (const [target, mounted] of this.#messageMounts) {
       if (target.isConnected && mounted.element.isConnected) continue
       mounted.unmount()
