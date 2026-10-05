@@ -56,7 +56,26 @@ export class ArchiveScopeControlsModule implements BoosterModule {
     this.#controls = undefined
   }
 
-  #onArchiveUpdated = () => {
+  #onArchiveUpdated = (event: Event) => {
+    const detail = (
+      event as CustomEvent<{
+        conversationId?: string
+        projectId?: string | null
+        preload?: boolean
+      }>
+    ).detail
+
+    // Preload pages are transient and cannot change sidebar archive markers. Once a
+    // conversation is already known with the same project relation, later history pages
+    // also leave the scope-control model unchanged. Avoid rereading the whole archive and
+    // rescanning sidebar DOM for those high-frequency events.
+    if (detail?.preload) return
+    if (detail?.conversationId && this.#archivedConversationIds.has(detail.conversationId)) {
+      const knownProject = this.#conversationProjects.get(detail.conversationId) ?? null
+      const nextProject = detail.projectId ?? knownProject
+      if (knownProject === nextProject) return
+    }
+
     void this.#refreshArchiveState().then(() => {
       if (this.#active) this.#apply()
     })

@@ -420,6 +420,23 @@ export class ConversationArchiveStore {
       this.#domSnapshots.set(snapshot.conversationId, snapshot)
   }
 
+  mergeDomSnapshot(snapshot: ConversationDomSnapshot | undefined): void {
+    if (!snapshot) return
+    const previous = this.#domSnapshots.get(snapshot.conversationId)
+    if (!previous) {
+      this.#domSnapshots.set(snapshot.conversationId, snapshot)
+      return
+    }
+    const records = new Map(previous.records.map((record) => [record.messageKey, record]))
+    for (const record of snapshot.records) records.set(record.messageKey, record)
+    this.#domSnapshots.set(snapshot.conversationId, {
+      ...previous,
+      ...snapshot,
+      observedAt: Math.max(previous.observedAt, snapshot.observedAt),
+      records: [...records.values()],
+    })
+  }
+
   getDomSnapshot(conversationId: string): ConversationDomSnapshot | undefined {
     return this.#domSnapshots.get(conversationId)
   }

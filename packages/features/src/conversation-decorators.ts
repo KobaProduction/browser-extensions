@@ -119,11 +119,16 @@ export class ConversationDecoratorsModule implements BoosterModule {
     }
     const current = currentConversationId() ?? null
     if (current !== this.#recordConversationId) await this.#refreshRecords()
-    const snapshot = currentConversationDomSnapshot()
+    const snapshot = currentConversationDomSnapshot(root)
     if (snapshot) {
       const missing = snapshot.records.filter((record) => !this.#records.has(record.messageId))
-      if (missing.length) this.store.setDomSnapshot({ ...snapshot, records: missing })
-      else this.store.clearDomSnapshot(snapshot.conversationId)
+      if (missing.length) {
+        const fallback = { ...snapshot, records: missing }
+        if (root === document) this.store.setDomSnapshot(fallback)
+        else this.store.mergeDomSnapshot(fallback)
+      } else if (root === document) {
+        this.store.clearDomSnapshot(snapshot.conversationId)
+      }
     }
     const locale = resolveLocale(settings.language)
 
