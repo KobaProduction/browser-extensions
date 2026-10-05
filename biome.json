@@ -2,7 +2,7 @@
   "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!**/*.vue", "!**/node_modules", "!**/dist"]
+    "includes": ["**", "!**/*.vue", "!**/node_modules", "!**/dist", "!**/.work"]
   },
   "formatter": {
     "enabled": true,

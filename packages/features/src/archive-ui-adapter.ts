@@ -48,10 +48,20 @@ export function createArchiveUiAdapter(
     }
   }
 
-  async function mergedRecords(conversationId: string) {
-    const [stored, preload] = await Promise.all([
+  interface ConversationReadModel {
+    records: ArchiveRecordView[]
+    thread: ReturnType<typeof buildArchiveThread>
+    persistedCoverage: Awaited<ReturnType<ConversationArchiveStore['getCoverage']>>
+    preload: Awaited<ReturnType<ConversationArchiveStore['getPreloadSnapshot']>>
+  }
+
+  const activeReads = new Map<string, Promise<ConversationReadModel>>()
+
+  async function loadConversationReadModel(conversationId: string): Promise<ConversationReadModel> {
+    const [stored, preload, persistedCoverage] = await Promise.all([
       store.listMessages(conversationId),
       store.getPreloadSnapshot(conversationId),
+      store.getCoverage(conversationId),
     ])
     const merged = new Map<string, ArchiveRecordView>(
       stored.map((record) => [record.messageKey, record]),
@@ -59,7 +69,21 @@ export function createArchiveUiAdapter(
     for (const record of preload?.records ?? []) merged.set(record.messageKey, record)
     for (const record of store.getDomSnapshot(conversationId)?.records ?? [])
       if (!merged.has(record.messageKey)) merged.set(record.messageKey, record)
-    return [...merged.values()]
+    const records = [...merged.values()]
+    return { records, thread: buildArchiveThread(records), persistedCoverage, preload }
+  }
+
+  function conversationReadModel(conversationId: string): Promise<ConversationReadModel> {
+    const active = activeReads.get(conversationId)
+    if (active) return active
+    const pending = loadConversationReadModel(conversationId)
+    activeReads.set(conversationId, pending)
+    void pending.finally(() => {
+      queueMicrotask(() => {
+        if (activeReads.get(conversationId) === pending) activeReads.delete(conversationId)
+      })
+    })
+    return pending
   }
 
   return {
@@ -91,11 +115,11 @@ export function createArchiveUiAdapter(
     getConversation: async (conversationId: string) =>
       (await store.getConversation(conversationId)) ?? domConversationView(conversationId),
     getCoverage: async (conversationId: string) => {
-      const [coverage, preload, records] = await Promise.all([
-        store.getCoverage(conversationId),
-        store.getPreloadSnapshot(conversationId),
-        mergedRecords(conversationId),
-      ])
+      const {
+        persistedCoverage: coverage,
+        preload,
+        thread,
+      } = await conversationReadModel(conversationId)
       const dom = store.getDomSnapshot(conversationId)
       const effective =
         coverage ??
@@ -119,7 +143,6 @@ export function createArchiveUiAdapter(
             }
           : undefined)
       if (!effective) return undefined
-      const thread = buildArchiveThread(records)
       const liveCoverage =
         preload && preload.coverage.lastObservedAt >= effective.lastObservedAt
           ? preload.coverage
@@ -160,9 +183,10 @@ export function createArchiveUiAdapter(
       const dom = domConversationView(current)
       return dom ? [dom, ...conversations] : conversations
     },
-    listMessages: (conversationId: string) => mergedRecords(conversationId),
+    listMessages: async (conversationId: string) =>
+      (await conversationReadModel(conversationId)).records,
     getThread: async (conversationId: string) =>
-      buildArchiveThread(await mergedRecords(conversationId)),
+      (await conversationReadModel(conversationId)).thread,
     collectCurrent: () => capture.collectCurrent(),
     listExportFormats: () => exportPipeline.listFormats(),
     exportConversation: async (

@@ -10,6 +10,7 @@ The page exposes `window.extension2Harness` for the authorized browser developer
 - `runLoaderCancellationTests()` delays store responses and checks that stop/navigation cannot result in stale success.
 - `runLoaderScrollTest()` checks actual scrollTop movement, no success solely at scrollTop=0, and success only after a linked synthetic continuation is ingested. It also checks that the initial page is counted.
 - `runUiTests()` checks dock geometry, synthetic pointer handlers, project disclosures, bounded exchange rendering and the lack of a composer. Synthetic PointerEvents do not substitute for physical mouse/touch acceptance.
+- `runPerformanceTests()` checks structural performance invariants without SPA navigation: concurrent archive thread/coverage reads share one store snapshot, and preload ingest never materializes the whole preload store with `getAll()`. It also returns elapsed timings for diagnostics without enforcing machine-specific timing thresholds.
 
 Run each function separately, await its result and require every returned `pass` to be true. A connector timeout is not a test failure or permission to launch duplicate work: check the stored result or job state first. A combined run can exceed a connector's response deadline.
 

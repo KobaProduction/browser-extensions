@@ -215,6 +215,22 @@ function transactionDone(tx: IDBTransaction): Promise<void> {
   })
 }
 
+function deleteExpiredPreloadPages(store: IDBObjectStore, now: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const cursor = store.index('expiresAt').openKeyCursor(IDBKeyRange.upperBound(now, true))
+    cursor.onerror = () => reject(cursor.error ?? new Error('Failed to scan expired preload pages'))
+    cursor.onsuccess = () => {
+      const item = cursor.result
+      if (!item) {
+        resolve()
+        return
+      }
+      store.delete(item.primaryKey)
+      item.continue()
+    }
+  })
+}
+
 function createIndexIfMissing(
   store: IDBObjectStore,
   name: string,
@@ -440,8 +456,7 @@ export class ConversationArchiveStore {
     const done = transactionDone(tx)
     const store = tx.objectStore('preloadPages')
     store.put(entry)
-    const all = await request<PreloadedConversationPage[]>(store.getAll())
-    for (const page of all) if (page.expiresAt < now) store.delete(page.pageKey)
+    await deleteExpiredPreloadPages(store, now)
     await done
     window.dispatchEvent(
       new CustomEvent(ARCHIVE_UPDATED_EVENT, {

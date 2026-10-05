@@ -209,7 +209,8 @@ onMounted(async () => {
   void refreshContext()
   timer = setInterval(() => {
     if (document.hidden) return
-    if (props.archiveAdapter?.currentConversationId() !== context.value.conversationId || (expanded.value && Date.now() - refreshAt > 2000)) void refreshContext()
+    if (props.archiveAdapter?.currentConversationId() !== context.value.conversationId)
+      void refreshContext()
   }, 1000)
 })
 onBeforeUnmount(() => {

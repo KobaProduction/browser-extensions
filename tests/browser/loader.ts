@@ -45,6 +45,7 @@ export async function runLoaderCancellationTests() {
         new Promise<ConversationCoverage>((resolve) => {
           resolveRead = resolve
         }),
+      getPreloadSnapshot: async () => undefined,
     }
     const capture = {
       finishCollection: (expected?: TicketRef) => {
@@ -105,7 +106,7 @@ export async function runLoaderCancellationTests() {
 
 /** Real scrollTop changes and real IndexedDB; server page events are explicit synthetic fixtures. */
 export async function runLoaderScrollTest(
-  store: Pick<ConversationArchiveStore, 'ingest' | 'getCoverage'>,
+  store: Pick<ConversationArchiveStore, 'ingest' | 'getCoverage' | 'getPreloadSnapshot'>,
 ) {
   const href = location.href
   const id = `loader-scroll-${Date.now()}`
@@ -293,6 +294,7 @@ export async function runLoaderIsolationTests() {
           completeAtLastRead: false,
         }
       },
+      getPreloadSnapshot: async () => undefined,
     }
     const capture = {
       finishCollection: (expected?: TicketRef) => finishTicket(ticketKey, expected),

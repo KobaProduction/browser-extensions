@@ -1016,6 +1016,94 @@ async function appendCurrentExchange() {
     ),
   )
 }
+async function runPerformanceTests() {
+  const results: Array<Record<string, unknown> & { name: string; pass: boolean }> = []
+
+  {
+    const id = `perf-read-model-${Date.now()}`
+    await store.ingest(
+      page(id, [
+        raw('perf-user', 'user', 'Question'),
+        raw('perf-answer', 'assistant', 'Answer', 'perf-user'),
+      ]),
+    )
+    const originalListMessages = store.listMessages.bind(store)
+    const originalGetPreloadSnapshot = store.getPreloadSnapshot.bind(store)
+    const originalGetCoverage = store.getCoverage.bind(store)
+    let listMessagesCalls = 0
+    let preloadCalls = 0
+    let coverageCalls = 0
+    store.listMessages = async (conversationId) => {
+      listMessagesCalls += 1
+      return await originalListMessages(conversationId)
+    }
+    store.getPreloadSnapshot = async (conversationId) => {
+      preloadCalls += 1
+      return await originalGetPreloadSnapshot(conversationId)
+    }
+    store.getCoverage = async (conversationId) => {
+      coverageCalls += 1
+      return await originalGetCoverage(conversationId)
+    }
+    try {
+      const ui = createArchiveUiAdapter(store, new ConversationArchiveModule(store, settings))
+      const started = performance.now()
+      await Promise.all([ui.getThread(id), ui.getCoverage(id)])
+      const elapsedMs = performance.now() - started
+      const pass = listMessagesCalls === 1 && preloadCalls === 1 && coverageCalls === 1
+      results.push({
+        name: 'coalesce concurrent archive read model',
+        pass,
+        elapsedMs,
+        listMessagesCalls,
+        preloadCalls,
+        coverageCalls,
+      })
+    } finally {
+      store.listMessages = originalListMessages
+      store.getPreloadSnapshot = originalGetPreloadSnapshot
+      store.getCoverage = originalGetCoverage
+    }
+  }
+
+  {
+    const id = `perf-preload-${Date.now()}`
+    const preload = page(id, [raw('perf-preload-user', 'user', 'Preloaded question')], {
+      title: 'Performance preload',
+      page_info: {
+        start_cursor: 'perf-start',
+        end_cursor: 'perf-end',
+        has_previous_page: false,
+        has_next_page: false,
+      },
+    })
+    const originalGetAll = IDBObjectStore.prototype.getAll
+    let preloadGetAllCalls = 0
+    IDBObjectStore.prototype.getAll = function (
+      query?: IDBValidKey | IDBKeyRange | null,
+      count?: number,
+    ) {
+      if (this.name === 'preloadPages') preloadGetAllCalls += 1
+      return originalGetAll.call(this, query, count)
+    }
+    try {
+      const started = performance.now()
+      await store.ingestPreload(preload)
+      const elapsedMs = performance.now() - started
+      results.push({
+        name: 'preload ingest avoids full-store getAll materialization',
+        pass: preloadGetAllCalls === 0,
+        elapsedMs,
+        preloadGetAllCalls,
+      })
+    } finally {
+      IDBObjectStore.prototype.getAll = originalGetAll
+    }
+  }
+
+  return results
+}
+
 const adapter = {
   getCurrentContext: async () => ({ ...context }),
   currentConversationId: () => context.conversationId,
@@ -1075,6 +1163,7 @@ Object.assign(window, {
     runLoaderCancellationTests,
     runLoaderIsolationTests,
     runLoaderScrollTest: () => runLoaderScrollTest(store),
+    runPerformanceTests,
     settings,
     context,
     exports,
