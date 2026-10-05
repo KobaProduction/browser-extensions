@@ -126,7 +126,7 @@ Settings changes are applied as atomic nested patches rather than replacing a po
 
 ## Development builds
 
-The production userscript is minified. The development userscript is emitted without JavaScript minification and references a separately published sourcemap so Tampermonkey's editor does not need to parse a large inline base64 map. Chromium extension builds keep sourcemaps for runtime debugging.
+The production userscript is minified. The development userscript is emitted without JavaScript minification. A `.map` artifact is kept and published for offline debugging, but the finalized development userscript intentionally omits `sourceMappingURL` so ChatGPT CSP does not turn the debug aid into console noise. Chromium extension builds keep sourcemaps for runtime debugging.
 
 ## Analytics persistence
 
@@ -138,7 +138,7 @@ The settings UI stores its active section and disclosure state alongside other s
 The Conversation Archive is a local IndexedDB subsystem that records conversation/history data already fetched by the normal ChatGPT client. Lossless raw records are stored alongside normalized indexes for messages, turns, branches and coverage. The History Loader may drive normal UI scrolling to cause ChatGPT itself to load older pages, but it must not construct or send private history requests. See `docs/CONVERSATION_ARCHIVE.md` and `docs/CHATGPT_CLIENT_RESEARCH.md`.
 
 
-## Docked toolkit iteration (working branch)
+## Current docked archive/toolkit contract
 
 The launcher uses an edge (`left`/`right`) and a vertical fraction of available height,
 not saved screen pixels. Expansion keeps the toggle fixed and grows one integrated
@@ -154,10 +154,13 @@ Automatic archive capture is opt-in by project/chat. A manual ticket temporarily
 only one current-tab conversation, retaining the user's selected record categories.
 Consent is rechecked after asynchronous database reads and before puts. Revoking a rule
 does not delete existing data. Project IDs remain relation keys, not display labels.
-Settings schema 3 is distinct from the unchanged archive IndexedDB version 2.
+Settings schema 4 is distinct from archive IndexedDB version 3. The archive database currently contains `conversations`, `messages`, `conversationPages`, `conversationCoverage`, `projects`, `assets`, and `preloadPages`; legacy archive version 1 is never silently erased during upgrade.
 
 JSON/Markdown export is a projection: basic mode must not serialize internal storage
 metadata or nested records. Configurable mode includes only selected categories; binary
-images/files are off by default. Full binary packaging is unavailable until attachment
-resolvers are verified. See the task validation report for remaining live-runtime gates,
-including preservation of pending attachments before a collection-triggered reload.
+images/files are off by default. Full packaging may include attachment bytes only from a
+validated ChatGPT `backend-api/estuary/content` URL already observed by the normal client.
+Missing, expired, size-mismatched, or failed assets remain explicit in `manifest.json`; a
+package is complete only when history, capture, and requested assets are all verified.
+Manual collection runs in-place and refuses to start while there is a draft, pending
+composer attachment, or active generation.

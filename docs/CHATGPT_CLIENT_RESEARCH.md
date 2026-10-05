@@ -393,7 +393,13 @@ The client has also been observed requesting conversation-scoped resources such 
 
 `textdocs` is potentially relevant to archive completeness. Ads are not archive content and should not be persisted as conversation history.
 
-Other file/image/attachment endpoints need to be classified from real message metadata before implementation.
+Real image attachment traffic is now classified for the current client. Archived message metadata may expose a stable `file_...` asset identifier. The normal ChatGPT page has been observed rendering the matching bytes from:
+
+```text
+GET /backend-api/estuary/content?id={file_id}&...signed query...
+```
+
+The signed URL is transient and must be accepted only when its origin/path and `id` match the archived asset. Booster does not synthesize or guess resolver URLs. A live acceptance run verified both expiry/failure handling and a fresh successful JPEG fetch whose byte count and SHA-256 matched the ZIP manifest.
 
 ## Live transport
 
@@ -429,8 +435,8 @@ Never export message text, reasoning text, tool arguments/results, attachment UR
 
 ## Known next evidence tasks
 
-1. Collect additional tool-call examples and classify argument/result content shapes.
-2. Collect attachment/image/file examples and document stable client-visible references.
+1. Collect additional live tool-call DOM examples while a tool is actively running; completed turns in the current client often retain only citation pills rather than a distinct tool DOM block.
+2. Extend attachment evidence beyond the verified image/estuary path to other file classes as they are observed.
 3. Verify edit/regenerate behavior and how message IDs/parent IDs/current node change.
 4. Verify whether loading another branch requires a separate conversation request or an in-conversation version request.
 

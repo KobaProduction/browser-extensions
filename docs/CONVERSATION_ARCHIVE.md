@@ -27,17 +27,19 @@ A small wrapper may be used, but the persistent schema must remain explicit and 
 
 ## Database identity
 
-Suggested database name:
+Database name:
 
 ```text
 chatgpt-booster-archive
 ```
 
-Initial schema version:
+Current archive database version:
 
 ```text
-1
+3
 ```
+
+Version 1 is treated as a legacy boundary: the current upgrader aborts rather than silently deleting or rewriting an existing v1 archive. Version 3 adds the current preload/asset-era schema while preserving explicit migrations.
 
 ## Object stores
 
@@ -101,10 +103,10 @@ lastSeenAt
 Primary key:
 
 ```text
-[conversationId, messageId]
+messageKey
 ```
 
-Message IDs are not globally unique across conversations: branched conversations can reuse message IDs from their source history. Persistence must therefore scope message identity to the conversation.
+`messageKey` is a deterministic conversation-scoped key derived from conversation/message identity. Message IDs are not globally unique across conversations: branched conversations can reuse message IDs from their source history, so persistence must not use raw `messageId` as the object-store key.
 
 Suggested record:
 
@@ -168,17 +170,22 @@ Unknown role/content/message types are valid and must still be stored.
 
 A history response is also evidence about coverage.
 
-Suggested primary key:
+Primary key:
 
 ```text
-[conversationId, startCursor, endCursor]
+pageKey
 ```
 
-Suggested record:
+Current record also carries read identity so evidence from different rereads cannot be mixed:
 
 ```ts
 interface ArchivedConversationPage {
+  pageKey: string
   conversationId: string
+  readId?: string
+  readStartedAt?: number
+  isInitial?: boolean
+  requestedBefore?: string | null
   startCursor: string | null
   endCursor: string | null
   hasPreviousPage: boolean | null
@@ -186,6 +193,10 @@ interface ArchivedConversationPage {
   messageIds: string[]
   observedAt: number
   sourceUrl: string
+  captureReasoning?: boolean | null
+  captureTools?: boolean | null
+  captureInternal?: boolean | null
+  omittedRecordCount?: number | null
 }
 ```
 
@@ -211,9 +222,18 @@ Suggested record:
 
 ```ts
 interface ConversationCoverage {
+  evidenceVersion?: number
+  readId?: string | null
+  readStartedAt?: number | null
+  verifiedAt?: number | null
+  historyPageCount?: number
+  visibleMessageCount?: number
+  internalRecordCount?: number
   conversationId: string
   oldestKnownMessageId: string | null
   newestKnownMessageId: string | null
+  oldestKnownVisibleMessageId?: string | null
+  newestKnownVisibleMessageId?: string | null
   oldestKnownCursor: string | null
   newestKnownCursor: string | null
   hasOlderServerHistory: boolean | null
@@ -230,28 +250,33 @@ interface ConversationCoverage {
 
 ### `assets`
 
-Use this store for client-visible file/image/textdoc references once their contracts are classified.
+This store holds client-visible file/image references and the latest verified resolver state for archive packaging.
 
-Primary key should be a stable client-visible asset identifier when one exists. Otherwise use a deterministic composite key.
-
-Suggested fields:
+Primary key:
 
 ```text
 assetId
-conversationId
-messageId
-kind
-name
-mimeType
-size
-sourceUrl or pointer
-createdAt
-firstSeenAt
-lastSeenAt
-raw
 ```
 
-Signed URLs may expire. Preserve the original pointer/raw metadata but do not assume a signed download URL is a durable asset identity.
+Only client-visible stable asset identifiers already observed in message metadata are accepted into this store.
+
+Current normalized fields:
+
+```text
+assetId
+fileName
+mimeType
+sizeBytes
+width
+height
+kind
+downloadUrl
+resolverObservedAt
+firstSeenAt
+lastSeenAt
+```
+
+The stable identity is `assetId`, not the signed URL. A verified resolver may populate `downloadUrl`, but signed URLs expire and are refreshed only when the normal ChatGPT client exposes a matching resolver/content URL. Export must never invent or persist a foreign URL as an asset resolution.
 
 ### `projects`
 
@@ -269,6 +294,19 @@ raw
 ```
 
 Project list/detail classifiers should be added only for response shapes that have been observed; conversation ingestion can already associate a conversation with a project from its history envelope.
+
+### `preloadPages`
+
+The current implementation keeps a bounded current-chat preload cache even when automatic archival is disabled. This lets manual collection promote history that the normal ChatGPT client already fetched before the user explicitly started collection.
+
+Current key/index contract:
+
+```text
+primary key: pageKey
+indexes: conversationId, expiresAt
+```
+
+Preload data is not persistent consent. It is promoted into the archive only when current policy or an explicit manual ticket permits it, and stale reads must not contaminate a newer read.
 
 ### `ingestEvents` (optional, bounded)
 
