@@ -43,7 +43,8 @@ declare function GM_registerMenuCommand(
 
 const diagnostics = createDiagnosticsStore()
 const archiveStore = new ConversationArchiveStore()
-const archiveCapture = new ConversationArchiveModule(archiveStore, userscriptSettings)
+const pageWindow = unsafeWindow as Window & typeof globalThis
+const archiveCapture = new ConversationArchiveModule(archiveStore, userscriptSettings, pageWindow)
 const archiveUiAdapter = createArchiveUiAdapter(archiveStore, archiveCapture)
 const telemetry = createUserscriptTelemetry(userscriptSettings)
 const telemetryControl = createUserscriptTelemetryControl(telemetry)
@@ -94,7 +95,7 @@ function startRuntime() {
       new OverlayModule(),
       archiveCapture,
       new ArchiveScopeControlsModule(userscriptSettings, archiveStore),
-      new HistoryLoaderModule(archiveStore, archiveCapture),
+      new HistoryLoaderModule(archiveStore, archiveCapture, pageWindow),
       new TransportObserverModule({
         settings: userscriptSettings,
         diagnostics,
@@ -131,7 +132,7 @@ if (isChatGptPage()) {
   // acquire the page window for transport interception must not prevent the UI and
   // DOM-based archive fallback from starting.
   try {
-    installTransportObserver(unsafeWindow as Window & typeof globalThis)
+    installTransportObserver(pageWindow)
     document.documentElement.dataset.chatgptBoosterUserscriptObserver = 'installed'
   } catch (error) {
     document.documentElement.dataset.chatgptBoosterUserscriptObserver = 'failed'

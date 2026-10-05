@@ -623,7 +623,12 @@ export function installTransportObserver(
   }
   target.addEventListener('message', onConfig)
 
-  const originalFetch = target.fetch.bind(target)
+  const fetchWrapperMarker = '__chatgptBoosterFetchWrapper__'
+  type TaggedFetch = typeof target.fetch & { [fetchWrapperMarker]?: boolean }
+  const originalFetchDescriptor = Object.getOwnPropertyDescriptor(target, 'fetch')
+  let fetchHost = target.fetch
+  let fetchWrapper: typeof target.fetch
+  let fetchCallDepth = 0
   const archiveAssetFetches = new Map<string, AbortController>()
   const onArchiveAssetFetch = (event: MessageEvent) => {
     if (event.origin !== target.location.origin || event.source !== target) return
@@ -645,7 +650,7 @@ export function installTransportObserver(
     archiveAssetFetches.set(detail.requestId, controller)
     void (async () => {
       try {
-        const response = await originalFetch(safeUrl, {
+        const response = await fetchHost.call(target, safeUrl, {
           credentials: 'omit',
           signal: controller.signal,
         })
@@ -700,68 +705,95 @@ export function installTransportObserver(
   }
   target.addEventListener('message', onArchiveAssetFetch)
   target.addEventListener('message', onArchiveAssetFetchCancel)
-  target.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-    const id = nextId('fetch')
-    const started = performance.now()
-    const request = input instanceof Request ? input : undefined
-    const method = init?.method ?? request?.method ?? 'GET'
-    const rawUrl = request?.url ?? String(input)
-    const url = sanitizeTransportUrl(rawUrl)
-    const body = config.captureBodies
-      ? sanitizeBodyPreview(init?.body, config.maxBodyChars)
-      : undefined
 
-    emit({
-      id,
-      kind: 'fetch',
-      direction: 'outbound',
-      phase: 'request',
-      timestamp: Date.now(),
-      method,
-      url,
-      ...(body ? { bodyPreview: body } : {}),
-    })
+  const createFetchWrapper = (upstream: typeof target.fetch): typeof target.fetch => {
+    const wrapped = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (fetchCallDepth > 0) return upstream.call(target, input, init)
+      const id = nextId('fetch')
+      const started = performance.now()
+      const request = input instanceof Request ? input : undefined
+      const method = init?.method ?? request?.method ?? 'GET'
+      const rawUrl = request?.url ?? String(input)
+      const url = sanitizeTransportUrl(rawUrl)
+      const body = config.captureBodies
+        ? sanitizeBodyPreview(init?.body, config.maxBodyChars)
+        : undefined
 
-    const historyRead = beginArchiveRequest(rawUrl, id)
-    archiveNetwork(id, rawUrl, 'request')
-    try {
-      const response = await originalFetch(input, init)
-      archiveNetwork(id, rawUrl, response.ok ? 'response' : 'error', response.status)
-      observeConversationArchiveResponse(response, rawUrl, historyRead)
-      observeArchiveAssetResponse(response, rawUrl)
-      observeFetchResponseBody(response, { id, method, url }, config)
       emit({
         id,
         kind: 'fetch',
-        direction: 'inbound',
-        phase: 'response',
+        direction: 'outbound',
+        phase: 'request',
         timestamp: Date.now(),
         method,
         url,
-        status: response.status,
-        durationMs: Math.round((performance.now() - started) * 100) / 100,
-        contentType: response.headers.get('content-type') ?? undefined,
-        size: Number(response.headers.get('content-length')) || undefined,
+        ...(body ? { bodyPreview: body } : {}),
       })
-      return response
-    } catch (error) {
-      archiveNetwork(id, rawUrl, 'error', 0)
-      const classified = classifyError(error)
-      emit({
-        id,
-        kind: 'fetch',
-        direction: 'inbound',
-        phase: 'error',
-        timestamp: Date.now(),
-        method,
-        url,
-        durationMs: Math.round((performance.now() - started) * 100) / 100,
-        error: classified.message,
-        errorClass: classified.errorClass,
-      })
-      throw error
-    }
+
+      const historyRead = beginArchiveRequest(rawUrl, id)
+      archiveNetwork(id, rawUrl, 'request')
+      try {
+        let responsePromise: ReturnType<typeof target.fetch>
+        fetchCallDepth += 1
+        try {
+          responsePromise = upstream.call(target, input, init)
+        } finally {
+          fetchCallDepth -= 1
+        }
+        const response = await responsePromise
+        archiveNetwork(id, rawUrl, response.ok ? 'response' : 'error', response.status)
+        observeConversationArchiveResponse(response, rawUrl, historyRead)
+        observeArchiveAssetResponse(response, rawUrl)
+        observeFetchResponseBody(response, { id, method, url }, config)
+        emit({
+          id,
+          kind: 'fetch',
+          direction: 'inbound',
+          phase: 'response',
+          timestamp: Date.now(),
+          method,
+          url,
+          status: response.status,
+          durationMs: Math.round((performance.now() - started) * 100) / 100,
+          contentType: response.headers.get('content-type') ?? undefined,
+          size: Number(response.headers.get('content-length')) || undefined,
+        })
+        return response
+      } catch (error) {
+        archiveNetwork(id, rawUrl, 'error', 0)
+        const classified = classifyError(error)
+        emit({
+          id,
+          kind: 'fetch',
+          direction: 'inbound',
+          phase: 'error',
+          timestamp: Date.now(),
+          method,
+          url,
+          durationMs: Math.round((performance.now() - started) * 100) / 100,
+          error: classified.message,
+          errorClass: classified.errorClass,
+        })
+        throw error
+      }
+    }) as typeof target.fetch
+    Object.defineProperty(wrapped, fetchWrapperMarker, { value: true })
+    return wrapped
   }
+
+  fetchWrapper = createFetchWrapper(fetchHost)
+  Object.defineProperty(target, 'fetch', {
+    configurable: true,
+    enumerable: originalFetchDescriptor?.enumerable ?? true,
+    get: () => fetchWrapper,
+    set: (next: typeof target.fetch) => {
+      if (typeof next !== 'function' || (next as TaggedFetch)[fetchWrapperMarker]) return
+      // ChatGPT installs its own fetch instrumentation after document-start. Keep that
+      // function as the host transport, while continuing to expose Booster's wrapper.
+      fetchHost = next
+      fetchWrapper = createFetchWrapper(fetchHost)
+    },
+  })
 
   const OriginalXHR = target.XMLHttpRequest
   const originalOpen = OriginalXHR.prototype.open
@@ -990,7 +1022,15 @@ export function installTransportObserver(
     target.removeEventListener('message', onArchiveAssetFetchCancel)
     for (const controller of archiveAssetFetches.values()) controller.abort()
     archiveAssetFetches.clear()
-    target.fetch = originalFetch
+    const currentDescriptor = Object.getOwnPropertyDescriptor(target, 'fetch')
+    if (currentDescriptor?.get) {
+      Object.defineProperty(target, 'fetch', {
+        configurable: originalFetchDescriptor?.configurable ?? true,
+        enumerable: originalFetchDescriptor?.enumerable ?? true,
+        writable: true,
+        value: fetchHost,
+      })
+    }
     OriginalXHR.prototype.open = originalOpen
     OriginalXHR.prototype.send = originalSend
     target.WebSocket = OriginalWebSocket

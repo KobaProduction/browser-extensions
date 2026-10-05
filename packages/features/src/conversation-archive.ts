@@ -86,6 +86,7 @@ export class ConversationArchiveModule implements BoosterModule {
   constructor(
     store: ConversationArchiveStore,
     private settingsAdapter: SettingsAdapter,
+    private messageSource: Window = window,
   ) {
     this.store = store
   }
@@ -277,7 +278,7 @@ export class ConversationArchiveModule implements BoosterModule {
     )
   }
   #onMessage = (event: MessageEvent) => {
-    if (event.origin !== location.origin || event.source !== window) return
+    if (event.origin !== location.origin || event.source !== this.messageSource) return
     const data = event.data
     if (data?.channel !== TRANSPORT_CHANNEL) return
     if (data.type === ARCHIVE_PRELOAD_EVENT && data.detail?.kind === 'conversation-page') {

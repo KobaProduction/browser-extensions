@@ -57,7 +57,6 @@ export class HistoryLoaderModule implements BoosterModule {
   #abort: AbortController | undefined
   #pages = new Set<string>()
   #startedAt = 0
-  #baselinePages = 0
   #ticket: CollectionTicket | undefined
   #network: { pending: boolean; error: number | null } = { pending: false, error: null }
   #state: HistoryLoaderState = {
@@ -71,6 +70,7 @@ export class HistoryLoaderModule implements BoosterModule {
   constructor(
     private store: Pick<ConversationArchiveStore, 'getCoverage' | 'getPreloadSnapshot'>,
     private capture: Pick<ConversationArchiveModule, 'finishCollection'>,
+    private messageSource: Window = window,
   ) {}
   start() {
     window.addEventListener('chatgpt-booster:history-loader-query', this.#onQuery)
@@ -106,7 +106,7 @@ export class HistoryLoaderModule implements BoosterModule {
   }
   #onNetwork = (event: MessageEvent) => {
     if (!this.#abort || this.#abort.signal.aborted) return
-    if (event.origin !== location.origin || event.source !== window) return
+    if (event.origin !== location.origin || event.source !== this.messageSource) return
     const data = event.data
     if (
       data?.channel !== TRANSPORT_CHANNEL ||
@@ -141,7 +141,6 @@ export class HistoryLoaderModule implements BoosterModule {
     this.#ticket = ticket
     this.#startedAt = ticket.startedAt
     this.#pages.clear()
-    this.#baselinePages = 0
     this.#network = { pending: false, error: null }
     this.#set({
       phase: 'preparing',
@@ -203,8 +202,6 @@ export class HistoryLoaderModule implements BoosterModule {
           coverage?.historyPageCount ?? 0,
           preload?.coverage.historyPageCount ?? 0,
         )
-        if (this.#baselinePages === 0 && observedBaseline > 0)
-          this.#baselinePages = observedBaseline
         const atStart = !container || container.scrollTop <= 1
         const startMatches =
           !!bounds.firstMessageId && coverage?.oldestKnownVisibleMessageId === bounds.firstMessageId
@@ -217,7 +214,7 @@ export class HistoryLoaderModule implements BoosterModule {
             coverage?.visibleMessageCount ?? 0,
             preload?.coverage.visibleMessageCount ?? 0,
           ),
-          pagesLoaded: Math.max(observedBaseline, this.#baselinePages + this.#pages.size),
+          pagesLoaded: observedBaseline,
           hasOlderServerHistory:
             coverage?.hasOlderServerHistory ?? displayCoverage?.hasOlderServerHistory ?? null,
         })
