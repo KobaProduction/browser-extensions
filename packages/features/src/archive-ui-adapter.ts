@@ -9,6 +9,7 @@ import {
   currentResolvedAssetUrls,
 } from '@chatgpt-booster/chatgpt'
 import type { ArchiveExportOptions, ArchiveRecordView } from '@chatgpt-booster/core'
+import { fetchArchiveAssetBytes } from '@chatgpt-booster/observer'
 import { type ArchiveExportPipeline, DEFAULT_ARCHIVE_EXPORT_PIPELINE } from './archive-export'
 import { createArchivePackage } from './archive-package'
 import type { ConversationArchiveStore } from './archive-store'
@@ -18,6 +19,7 @@ export function createArchiveUiAdapter(
   store: ConversationArchiveStore,
   capture: ConversationArchiveModule,
   exportPipeline: ArchiveExportPipeline = DEFAULT_ARCHIVE_EXPORT_PIPELINE,
+  assetFetchTarget: Window = window,
 ) {
   async function observedProjectTitle(projectId: string, stored: string | null) {
     const observed = currentProjectTitle(projectId)?.trim() || null
@@ -216,7 +218,7 @@ export function createArchiveUiAdapter(
         options,
         evidence,
         assets,
-        undefined,
+        (url, assetId) => fetchArchiveAssetBytes(url, assetId, assetFetchTarget, signal),
         signal,
         exportPipeline,
       )

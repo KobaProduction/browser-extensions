@@ -45,7 +45,7 @@ const diagnostics = createDiagnosticsStore()
 const archiveStore = new ConversationArchiveStore()
 const pageWindow = unsafeWindow as Window & typeof globalThis
 const archiveCapture = new ConversationArchiveModule(archiveStore, userscriptSettings, pageWindow)
-const archiveUiAdapter = createArchiveUiAdapter(archiveStore, archiveCapture)
+const archiveUiAdapter = createArchiveUiAdapter(archiveStore, archiveCapture, undefined, pageWindow)
 const telemetry = createUserscriptTelemetry(userscriptSettings)
 const telemetryControl = createUserscriptTelemetryControl(telemetry)
 

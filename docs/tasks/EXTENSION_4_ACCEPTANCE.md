@@ -2,7 +2,7 @@
 
 Date: 2026-10-05
 
-Tested runtime line: `0.7` on real ChatGPT through Tampermonkey 5.5.1 with `runtime_content_mode=userscripts-dynamic`.
+Tested runtime line: `0.8.2` on real ChatGPT through Tampermonkey 5.5.1 with `runtime_content_mode=userscripts-dynamic`.
 Primary transport fix ref: `278b5564d192179dd0963280cd322786c0b76825`.
 Late-start runtime-tested build ref: `794faafb9cb8b7c218a2c5b79d69add8175570ff`.
 Published equivalent source commit on `dev`: `94c9515` (same repository tree for the tested code change; SHA changed when the validated patch series was replayed through the GitHub App-managed checkout).
@@ -40,10 +40,27 @@ Validation after the fix:
 - exact local userscript `0.7-794faafb` was installed into Tampermonkey; the equivalent published source change is `94c9515`;
 - on a second unarchived real chat, preload was removed after render and manual collection recovered through the DOM fallback, then completed with `completeAtLastRead=true`, `hasOlderServerHistory=false`, 22 stored records and archive state `complete`.
 
+
+## Export and attachment acceptance
+
+- JSON export was validated from the actual generated Blob: schema `chatgpt-booster.export.v1`, correct conversation identity, verified coverage and expected stored-record count.
+- Markdown export was validated from the actual generated Blob with the expected conversation title, coverage block and user/assistant transcript.
+- Full ZIP was parsed from actual Blob bytes, including `conversation.json`, `manifest.json` and `records.raw.json`.
+- Archive-selected export was tested independently of the current-chat toolkit and exported the selected archived conversation identity.
+- A real ChatGPT image attachment (`1000005889.jpg`) exposed the observed `backend-api/estuary/content` signed-URL contract.
+- Expired/stale asset resolution produced a truthful `fetch_failed` manifest entry instead of a false complete backup.
+- A userscript-world bug was found: binary export used the sandbox `window` for the archive-asset message bridge while the page observer lives on `unsafeWindow`, causing 30-second timeouts even when the same signed URL fetched successfully in page context.
+- `createArchiveUiAdapter` now accepts an explicit asset-fetch target; the userscript passes `unsafeWindow` while the extension keeps its default target.
+- With local `0.8.2`, the real JPEG was included as `attachments/1000005889.jpg`; expected and actual size were both 208775 bytes, JPEG magic was valid, and the computed SHA-256 exactly matched `manifest.json`.
+
 ## Local workbench rule
 
 Disposable browser-import copies, scratch outputs and agent-only test artifacts belong under `/.work/`, which is ignored by Git. `AGENTS.md` records this repository rule so future agents do not create ad-hoc temporary files in the repository root.
 
 ## Publication status
 
-The validated patch series was published to `dev` through the `koba-ai-agent` GitHub App. The user-token account could read the repository but its write paths returned 403/404; `koba-ai-agent` is the authoritative write identity for this repository workflow.
+The validated patch series is published to `dev` through the `koba-ai-agent` GitHub App. The user-token account can read the repository but its write paths returned 403/404; `koba-ai-agent` is the authoritative write identity for this repository workflow. The current source change is staged for the next rolling push, which resolves to version `0.8.2`.
+## Remaining gate
+
+- Checklist status after this acceptance pass: 101/102 items closed at their stated evidence levels.
+- E102 remains open: this session exposes a separate `koba-ai-reviewer` GitHub identity but no independent reasoning/reviewer runtime. A second review must not be simulated by the implementing agent.
