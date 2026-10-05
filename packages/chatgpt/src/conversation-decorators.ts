@@ -93,7 +93,7 @@ export function observeConversationDecorations(
   const queue = (root: ParentNode) => {
     pending.add(root)
     if (scheduled) return
-    scheduled = scheduleIdleTask(flush, 320)
+    scheduled = scheduleIdleTask(flush, 320, 120)
   }
 
   const observer = new MutationObserver((records) => {

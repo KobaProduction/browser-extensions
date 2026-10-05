@@ -286,10 +286,14 @@ export class ConversationArchiveModule implements BoosterModule {
   #schedulePreload(detail: ConversationArchiveEventDetail) {
     this.#pendingPreloads.push(detail)
     if (this.#preloadTask) return
-    this.#preloadTask = scheduleIdleTask(() => {
-      this.#preloadTask = undefined
-      void this.#flushPendingPreloads()
-    }, 500)
+    this.#preloadTask = scheduleIdleTask(
+      () => {
+        this.#preloadTask = undefined
+        void this.#flushPendingPreloads()
+      },
+      500,
+      100,
+    )
   }
   async #flushPendingPreloads() {
     this.#preloadTask?.cancel()
@@ -300,10 +304,8 @@ export class ConversationArchiveModule implements BoosterModule {
     this.#queue = this.#queue
       .then(async () => {
         if (!this.#active) return
-        for (const detail of pending) {
-          if (!this.#active) return
-          await this.store.ingestPreload(detail)
-        }
+        if (!this.#active) return
+        await this.store.ingestPreloadBatch(pending)
       })
       .catch(() => undefined)
     await this.#queue

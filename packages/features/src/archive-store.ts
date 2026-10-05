@@ -471,47 +471,78 @@ export class ConversationArchiveStore {
   #preloadReadIds = new Map<string, string | null>()
 
   async ingestPreload(detail: ConversationArchiveEventDetail): Promise<void> {
-    const payload = detail.payload
-    if (!payload || !Array.isArray(payload.messages)) return
-    if (payload.conversation_id && payload.conversation_id !== detail.conversationId) return
-    const pageInfo = record(payload.page_info) ?? {}
-    const startCursor = stringOrNull(pageInfo.start_cursor)
-    const endCursor = stringOrNull(pageInfo.end_cursor)
-    const pageKey = `${detail.conversationId}:${detail.readId ?? 'preload'}:${startCursor ?? ''}:${endCursor ?? ''}`
+    await this.ingestPreloadBatch([detail])
+  }
+
+  async ingestPreloadBatch(details: readonly ConversationArchiveEventDetail[]): Promise<void> {
+    if (!details.length) return
     const now = Date.now()
-    const entry: PreloadedConversationPage = {
-      pageKey,
-      conversationId: detail.conversationId,
-      readId: detail.readId ?? null,
-      readStartedAt: detail.readStartedAt ?? null,
-      isInitial: detail.isInitial === true,
-      requestedBefore: detail.requestedBefore ?? null,
-      observedAt: detail.timestamp || now,
-      expiresAt: now + 24 * 60 * 60_000,
-      sourceUrl: detail.sourceUrl,
-      payload,
+    const candidates: PreloadedConversationPage[] = []
+
+    for (const detail of details) {
+      const payload = detail.payload
+      if (!payload || !Array.isArray(payload.messages)) continue
+      if (payload.conversation_id && payload.conversation_id !== detail.conversationId) continue
+      const pageInfo = record(payload.page_info) ?? {}
+      const startCursor = stringOrNull(pageInfo.start_cursor)
+      const endCursor = stringOrNull(pageInfo.end_cursor)
+      candidates.push({
+        pageKey: `${detail.conversationId}:${detail.readId ?? 'preload'}:${startCursor ?? ''}:${endCursor ?? ''}`,
+        conversationId: detail.conversationId,
+        readId: detail.readId ?? null,
+        readStartedAt: detail.readStartedAt ?? null,
+        isInitial: detail.isInitial === true,
+        requestedBefore: detail.requestedBefore ?? null,
+        observedAt: detail.timestamp || now,
+        expiresAt: now + 24 * 60 * 60_000,
+        sourceUrl: detail.sourceUrl,
+        payload,
+      })
     }
-    if (entry.isInitial) this.#preloadReadIds.set(entry.conversationId, entry.readId)
-    else if (
-      this.#preloadReadIds.has(entry.conversationId) &&
-      this.#preloadReadIds.get(entry.conversationId) !== entry.readId
-    )
-      return
+    if (!candidates.length) return
+
+    const latestInitial = new Map<string, PreloadedConversationPage>()
+    for (const entry of candidates) {
+      if (!entry.isInitial) continue
+      const previous = latestInitial.get(entry.conversationId)
+      const entryTime = entry.readStartedAt ?? entry.observedAt
+      const previousTime = previous ? (previous.readStartedAt ?? previous.observedAt) : -Infinity
+      if (!previous || entryTime >= previousTime) latestInitial.set(entry.conversationId, entry)
+    }
+    for (const entry of latestInitial.values())
+      this.#preloadReadIds.set(entry.conversationId, entry.readId)
+
+    const entries = new Map<string, PreloadedConversationPage>()
+    for (const entry of candidates) {
+      const activeReadId = this.#preloadReadIds.get(entry.conversationId)
+      if (activeReadId !== undefined && activeReadId !== entry.readId) continue
+      entries.set(entry.pageKey, entry)
+    }
+    if (!entries.size) return
 
     const db = await this.#db()
     const tx = db.transaction('preloadPages', 'readwrite')
     const done = transactionDone(tx)
     const store = tx.objectStore('preloadPages')
-    store.put(entry)
-    if (entry.isInitial)
-      await deleteSupersededPreloadReads(store, entry.conversationId, entry.readId)
+    const conversations = new Set<string>()
+    const compacted = new Set<string>()
+    for (const entry of entries.values()) {
+      store.put(entry)
+      conversations.add(entry.conversationId)
+      if (entry.isInitial && !compacted.has(entry.conversationId)) {
+        compacted.add(entry.conversationId)
+        await deleteSupersededPreloadReads(store, entry.conversationId, entry.readId)
+      }
+    }
     await deleteExpiredPreloadPages(store, now)
     await done
-    window.dispatchEvent(
-      new CustomEvent(ARCHIVE_UPDATED_EVENT, {
-        detail: { conversationId: detail.conversationId, preload: true },
-      }),
-    )
+
+    for (const conversationId of conversations)
+      window.dispatchEvent(
+        new CustomEvent(ARCHIVE_UPDATED_EVENT, {
+          detail: { conversationId, preload: true },
+        }),
+      )
   }
 
   async listPreloadPages(conversationId: string): Promise<PreloadedConversationPage[]> {

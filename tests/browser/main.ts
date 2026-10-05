@@ -1,5 +1,6 @@
 import { buildArchiveThread } from '../../packages/chatgpt/src/archive-records'
 import { mountArchiveScopeControls } from '../../packages/chatgpt/src/archive-scope-controls'
+import { observeConversationDecorations } from '../../packages/chatgpt/src/conversation-decorators'
 import {
   type ArchiveExportOptions,
   type BoosterSettings,
@@ -1155,6 +1156,63 @@ async function runPerformanceTests() {
   }
 
   {
+    const id = `perf-preload-batch-${Date.now()}`
+    const makeDetail = (
+      readId: string,
+      suffix: string,
+      before: string | null,
+      initial = false,
+      startedAt = Date.now(),
+    ) => ({
+      kind: 'conversation-page' as const,
+      readId,
+      readStartedAt: startedAt,
+      isInitial: initial,
+      requestedBefore: before,
+      timestamp: startedAt,
+      sourceUrl: `https://chatgpt.com/backend-api/conversations/${id}${initial ? '' : '/messages'}`,
+      conversationId: id,
+      payload: page(id, [raw(`perf-batch-${suffix}`, 'user', suffix)], {
+        page_info: {
+          start_cursor: `start-${suffix}`,
+          end_cursor: `end-${suffix}`,
+          has_previous_page: !initial,
+          has_next_page: false,
+        },
+      }).payload,
+    })
+    const originalTransaction = IDBDatabase.prototype.transaction
+    let preloadTransactions = 0
+    IDBDatabase.prototype.transaction = function (storeNames, mode, options) {
+      const names = Array.isArray(storeNames) ? storeNames : [storeNames]
+      if (mode === 'readwrite' && names.includes('preloadPages')) preloadTransactions += 1
+      return originalTransaction.call(this, storeNames, mode, options)
+    }
+    try {
+      const startedAt = Date.now()
+      await store.ingestPreloadBatch([
+        makeDetail('old-read', 'old-initial', null, true, startedAt),
+        makeDetail('old-read', 'old-page', 'old-cursor', false, startedAt),
+        makeDetail('new-read', 'new-initial', null, true, startedAt + 1),
+        makeDetail('new-read', 'new-page', 'new-cursor', false, startedAt + 1),
+      ])
+      const retained = await store.listLatestPreloadPages(id)
+      results.push({
+        name: 'preload batch uses one transaction and drops superseded reads',
+        pass:
+          preloadTransactions === 1 &&
+          retained.length === 2 &&
+          retained.every((page) => page.readId === 'new-read'),
+        preloadTransactions,
+        retained: retained.length,
+        readIds: [...new Set(retained.map((page) => page.readId))],
+      })
+    } finally {
+      IDBDatabase.prototype.transaction = originalTransaction
+    }
+  }
+
+  {
     const id = `perf-preload-retention-${Date.now()}`
     const detail = (readId: string, timestamp: number) => ({
       kind: 'conversation-page' as const,
@@ -1172,7 +1230,7 @@ async function runPerformanceTests() {
           has_previous_page: false,
           has_next_page: false,
         },
-      }),
+      }).payload,
     })
     await store.ingestPreload(detail('read-a', Date.now()))
     await store.ingestPreload(detail('read-b', Date.now() + 1))
@@ -1220,6 +1278,60 @@ async function runPerformanceTests() {
   }
 
   {
+    const main = document.querySelector<HTMLElement>('main')
+    const section = document.createElement('section')
+    section.dataset.testid = `conversation-turn-perf-stream-${Date.now()}`
+    const message = document.createElement('div')
+    message.dataset.messageId = `perf-stream-${Date.now()}`
+    message.dataset.messageAuthorRole = 'assistant'
+    message.textContent = 'Streaming performance turn'
+    const actions = document.createElement('div')
+    const copy = document.createElement('button')
+    copy.dataset.testid = 'copy-turn-action-button'
+    actions.append(copy)
+    section.append(message, actions)
+    main?.append(section)
+
+    let scans = 0
+    const targetCounts: number[] = []
+    const observer = observeConversationDecorations((targets) => {
+      scans += 1
+      targetCounts.push(targets.length)
+    })
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 420))
+      const initialScans = scans
+      for (let index = 0; index < 40; index += 1)
+        message.append(document.createTextNode(String(index)))
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      const afterStreaming = scans
+
+      const outside = document.createElement('div')
+      document.body.append(outside)
+      outside.append(document.createElement('span'))
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      const afterOutside = scans
+      outside.remove()
+
+      results.push({
+        name: 'decorator observer coalesces streaming mutations to one local turn scan',
+        pass:
+          initialScans === 1 &&
+          afterStreaming === 2 &&
+          afterOutside === afterStreaming &&
+          targetCounts.at(-1) === 1,
+        initialScans,
+        afterStreaming,
+        afterOutside,
+        finalTargetCount: targetCounts.at(-1) ?? null,
+      })
+    } finally {
+      observer.stop()
+      section.remove()
+    }
+  }
+
+  {
     const id = `perf-scope-${Date.now()}`
     const nav = document.createElement('nav')
     const row = document.createElement('li')
@@ -1243,13 +1355,14 @@ async function runPerformanceTests() {
       }),
     })
     try {
+      controls.refresh()
       const beforeStreaming = updates
       main?.append(streamingNode)
       await new Promise((resolve) => setTimeout(resolve, 260))
       const afterStreaming = updates
 
       link.href = `/c/${id}-changed`
-      await new Promise((resolve) => setTimeout(resolve, 520))
+      await new Promise((resolve) => setTimeout(resolve, 750))
       const afterSidebar = updates
 
       results.push({

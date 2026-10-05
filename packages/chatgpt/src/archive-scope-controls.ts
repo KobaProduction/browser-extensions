@@ -264,10 +264,14 @@ export function mountArchiveScopeControls(initial: ScopeControlOptions) {
 
   const observer = new MutationObserver((records) => {
     if (queued || stopped || !records.some(scopeMutationRelevant)) return
-    queued = scheduleIdleTask(() => {
-      queued = undefined
-      refresh()
-    }, 450)
+    queued = scheduleIdleTask(
+      () => {
+        queued = undefined
+        refresh()
+      },
+      450,
+      180,
+    )
   })
 
   queued = scheduleIdleTask(() => {
