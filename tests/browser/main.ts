@@ -1055,15 +1055,31 @@ async function runPerformanceTests() {
       const ui = createArchiveUiAdapter(store, new ConversationArchiveModule(store, settings))
       const started = performance.now()
       await Promise.all([ui.getThread(id), ui.getCoverage(id)])
+      await ui.getThread(id)
+      await ui.getCoverage(id)
+      const cachedReads = { listMessagesCalls, preloadCalls, coverageCalls }
+
+      await store.ingest(
+        page(id, [
+          raw('perf-user', 'user', 'Question'),
+          raw('perf-answer', 'assistant', 'Updated answer', 'perf-user'),
+        ]),
+      )
+      await ui.getThread(id)
       const elapsedMs = performance.now() - started
-      const pass = listMessagesCalls === 1 && preloadCalls === 1 && coverageCalls === 1
+      const pass =
+        cachedReads.listMessagesCalls === 1 &&
+        cachedReads.preloadCalls === 1 &&
+        cachedReads.coverageCalls === 1 &&
+        listMessagesCalls === 2 &&
+        preloadCalls === 2 &&
+        coverageCalls === 2
       results.push({
-        name: 'coalesce concurrent archive read model',
+        name: 'cache archive read model until conversation revision changes',
         pass,
         elapsedMs,
-        listMessagesCalls,
-        preloadCalls,
-        coverageCalls,
+        cachedReads,
+        invalidatedReads: { listMessagesCalls, preloadCalls, coverageCalls },
       })
     } finally {
       store.listMessages = originalListMessages
@@ -1103,6 +1119,7 @@ async function runPerformanceTests() {
       const ui = createArchiveUiAdapter(store, new ConversationArchiveModule(store, settings))
       const started = performance.now()
       await Promise.all([ui.getCurrentContext(), ui.getConversation(id)])
+      await ui.getConversation(id)
       const elapsedMs = performance.now() - started
       results.push({
         name: 'coalesce current context conversation and use keyed project read',

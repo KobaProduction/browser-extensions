@@ -53,19 +53,22 @@ export function createArchiveUiAdapter(
     return (await store.getConversation(conversationId)) ?? domConversationView(conversationId)
   }
 
-  const activeConversationReads = new Map<string, ReturnType<typeof loadConversationView>>()
+  const conversationReads = new Map<
+    string,
+    { revision: number; promise: ReturnType<typeof loadConversationView> }
+  >()
 
-  function conversationView(conversationId: string) {
-    const active = activeConversationReads.get(conversationId)
-    if (active) return active
-    const pending = loadConversationView(conversationId)
-    activeConversationReads.set(conversationId, pending)
-    void pending.finally(() => {
-      queueMicrotask(() => {
-        if (activeConversationReads.get(conversationId) === pending)
-          activeConversationReads.delete(conversationId)
-      })
+  function conversationView(conversationId: string): ReturnType<typeof loadConversationView> {
+    const revision = store.conversationRevision(conversationId)
+    const cached = conversationReads.get(conversationId)
+    if (cached?.revision === revision) return cached.promise
+
+    const pending = loadConversationView(conversationId).then(async (conversation) => {
+      if (store.conversationRevision(conversationId) !== revision)
+        return await conversationView(conversationId)
+      return conversation
     })
+    conversationReads.set(conversationId, { revision, promise: pending })
     return pending
   }
 
@@ -76,7 +79,10 @@ export function createArchiveUiAdapter(
     preload: Awaited<ReturnType<ConversationArchiveStore['getPreloadSnapshot']>>
   }
 
-  const activeReads = new Map<string, Promise<ConversationReadModel>>()
+  const readModels = new Map<
+    string,
+    { revision: number; promise: Promise<ConversationReadModel> }
+  >()
 
   async function loadConversationReadModel(conversationId: string): Promise<ConversationReadModel> {
     const [stored, preload, persistedCoverage] = await Promise.all([
@@ -95,15 +101,16 @@ export function createArchiveUiAdapter(
   }
 
   function conversationReadModel(conversationId: string): Promise<ConversationReadModel> {
-    const active = activeReads.get(conversationId)
-    if (active) return active
-    const pending = loadConversationReadModel(conversationId)
-    activeReads.set(conversationId, pending)
-    void pending.finally(() => {
-      queueMicrotask(() => {
-        if (activeReads.get(conversationId) === pending) activeReads.delete(conversationId)
-      })
+    const revision = store.conversationRevision(conversationId)
+    const cached = readModels.get(conversationId)
+    if (cached?.revision === revision) return cached.promise
+
+    const pending = loadConversationReadModel(conversationId).then(async (model) => {
+      if (store.conversationRevision(conversationId) !== revision)
+        return await conversationReadModel(conversationId)
+      return model
     })
+    readModels.set(conversationId, { revision, promise: pending })
     return pending
   }
 

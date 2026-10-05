@@ -434,12 +434,23 @@ function preloadEvidence(page: PreloadedConversationPage) {
 
 export class ConversationArchiveStore {
   #domSnapshots = new Map<string, ConversationDomSnapshot>()
+  #conversationRevisions = new Map<string, number>()
+
+  conversationRevision(conversationId: string): number {
+    return this.#conversationRevisions.get(conversationId) ?? 0
+  }
+
+  #bumpConversationRevision(conversationId: string) {
+    this.#conversationRevisions.set(conversationId, this.conversationRevision(conversationId) + 1)
+  }
 
   setDomSnapshot(snapshot: ConversationDomSnapshot | undefined): void {
     if (!snapshot) return
     const previous = this.#domSnapshots.get(snapshot.conversationId)
-    if (!previous || snapshot.observedAt >= previous.observedAt)
+    if (!previous || snapshot.observedAt >= previous.observedAt) {
       this.#domSnapshots.set(snapshot.conversationId, snapshot)
+      this.#bumpConversationRevision(snapshot.conversationId)
+    }
   }
 
   mergeDomSnapshot(snapshot: ConversationDomSnapshot | undefined): void {
@@ -447,6 +458,7 @@ export class ConversationArchiveStore {
     const previous = this.#domSnapshots.get(snapshot.conversationId)
     if (!previous) {
       this.#domSnapshots.set(snapshot.conversationId, snapshot)
+      this.#bumpConversationRevision(snapshot.conversationId)
       return
     }
     const records = new Map(previous.records.map((record) => [record.messageKey, record]))
@@ -457,6 +469,7 @@ export class ConversationArchiveStore {
       observedAt: Math.max(previous.observedAt, snapshot.observedAt),
       records: [...records.values()],
     })
+    this.#bumpConversationRevision(snapshot.conversationId)
   }
 
   getDomSnapshot(conversationId: string): ConversationDomSnapshot | undefined {
@@ -464,7 +477,7 @@ export class ConversationArchiveStore {
   }
 
   clearDomSnapshot(conversationId: string): void {
-    this.#domSnapshots.delete(conversationId)
+    if (this.#domSnapshots.delete(conversationId)) this.#bumpConversationRevision(conversationId)
   }
 
   #database: Promise<IDBDatabase> | undefined
@@ -537,12 +550,14 @@ export class ConversationArchiveStore {
     await deleteExpiredPreloadPages(store, now)
     await done
 
-    for (const conversationId of conversations)
+    for (const conversationId of conversations) {
+      this.#bumpConversationRevision(conversationId)
       window.dispatchEvent(
         new CustomEvent(ARCHIVE_UPDATED_EVENT, {
           detail: { conversationId, preload: true },
         }),
       )
+    }
   }
 
   async listPreloadPages(conversationId: string): Promise<PreloadedConversationPage[]> {
@@ -1106,6 +1121,7 @@ export class ConversationArchiveStore {
     writeTx.objectStore('conversationPages').put(page)
     writeTx.objectStore('conversationCoverage').put(coverage)
     await writeDone
+    this.#bumpConversationRevision(conversationId)
     // Asset metadata is ancillary to the conversation transaction. It can be rebuilt
     // from raw records later, so a separate asset-store failure must not invalidate chat data.
     await this.syncAssetMetadata(normalizedMessages).catch(() => [])
