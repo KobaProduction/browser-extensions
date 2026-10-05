@@ -4,11 +4,9 @@ import packageJson from '../package.json' with { type: 'json' }
 type UserscriptVariant = 'prod' | 'dev'
 
 const baseVersion = packageJson.version
-const buildSha = (process.env.CHATGPT_BOOSTER_BUILD_SHA ?? '').trim()
 const rolling = process.env.CHATGPT_BOOSTER_ROLLING === '1'
-const shortSha = buildSha ? buildSha.slice(0, 8) : ''
-const displayBaseVersion = baseVersion.split('.').slice(0, 2).join('.')
-const buildLabel = shortSha ? `${displayBaseVersion}-${shortSha}` : displayBaseVersion
+const buildVersion = process.env.CHATGPT_BOOSTER_BUILD_VERSION?.trim() || baseVersion
+const buildLabel = buildVersion
 
 function outputFor(variant: UserscriptVariant): URL {
   return new URL(
@@ -18,8 +16,8 @@ function outputFor(variant: UserscriptVariant): URL {
 }
 
 function metadataVersion(variant: UserscriptVariant) {
-  if (variant === 'dev' && rolling) return buildLabel
-  return displayBaseVersion
+  if (variant === 'dev' && rolling) return buildVersion
+  return baseVersion
 }
 
 function assetBase(variant: UserscriptVariant) {

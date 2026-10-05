@@ -6,6 +6,7 @@ import { finalizeUserscript } from './scripts/finalize-userscript.ts'
 
 const variant = process.env.CHATGPT_BOOSTER_VARIANT === 'dev' ? 'dev' : 'prod'
 const buildSha = process.env.CHATGPT_BOOSTER_BUILD_SHA ?? ''
+const buildVersion = process.env.CHATGPT_BOOSTER_BUILD_VERSION?.trim() || ''
 const isDev = variant === 'dev'
 const outputFile = isDev ? 'chatgpt-booster.dev.user.js' : 'chatgpt-booster.user.js'
 
@@ -23,6 +24,7 @@ export default defineConfig({
   define: {
     'process.env.NODE_ENV': JSON.stringify('production'),
     __BOOSTER_BUILD_SHA__: JSON.stringify(buildSha),
+    __BOOSTER_BUILD_VERSION__: JSON.stringify(buildVersion),
     'process.env': '{}',
   },
   plugins: [vue(), tailwindcss(), userscriptMetadataPlugin()],

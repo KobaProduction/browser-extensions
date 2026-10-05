@@ -5,12 +5,13 @@ import webExtension from 'vite-plugin-web-extension'
 import manifest from './manifest.json' with { type: 'json' }
 
 const buildSha = process.env.CHATGPT_BOOSTER_BUILD_SHA ?? ''
-const displayBaseVersion = manifest.version.split('.').slice(0, 2).join('.')
+const buildVersion = process.env.CHATGPT_BOOSTER_BUILD_VERSION?.trim() || manifest.version
 
 export default defineConfig({
   define: {
     'process.env.NODE_ENV': JSON.stringify('production'),
     __BOOSTER_BUILD_SHA__: JSON.stringify(buildSha),
+    __BOOSTER_BUILD_VERSION__: JSON.stringify(buildVersion),
     'process.env': '{}',
   },
   plugins: [
@@ -19,9 +20,8 @@ export default defineConfig({
     webExtension({
       manifest: () => ({
         ...manifest,
-        version_name: buildSha
-          ? `${displayBaseVersion}-${buildSha.slice(0, 8)}`
-          : displayBaseVersion,
+        version: buildVersion,
+        version_name: buildVersion,
       }),
     }),
   ],
