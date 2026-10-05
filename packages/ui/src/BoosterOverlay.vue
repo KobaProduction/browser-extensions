@@ -171,8 +171,10 @@ function onState(event: Event) {
   if (!next || !['idle', 'preparing', 'scrolling', 'waiting_for_load', 'backoff', 'complete', 'cancelled', 'error'].includes(next.phase)) return
   const changed = next.pagesLoaded !== loader.value.pagesLoaded || next.phase === 'complete'
   loader.value = { ...next }
-  if (next.conversationId === props.archiveAdapter?.currentConversationId() && next.phase === 'preparing') expanded.value = true
-  if (changed && Date.now() - refreshAt > 700) void refreshContext()
+  if (next.conversationId === props.archiveAdapter?.currentConversationId() && next.phase === 'preparing') {
+    expanded.value = true
+    void refreshContext()
+  } else if (changed && opened.value && Date.now() - refreshAt > 700) void refreshContext()
 }
 function onArchive() {
   if (!opened.value && !archiveOpen.value) return
@@ -214,12 +216,13 @@ onMounted(async () => {
     unsubscribe = props.settingsAdapter.subscribe(next => { if (!dragging.value) settings.value = snapshotSettings(next) })
   } catch { error.value = 'common.saveError' }
   if (!alive) return
-  void refreshContext()
   if (props.archiveAdapter?.subscribeContextChange)
-    contextUnsubscribe = props.archiveAdapter.subscribeContextChange(() => void refreshContext())
+    contextUnsubscribe = props.archiveAdapter.subscribeContextChange(() => {
+      if (opened.value || archiveOpen.value) void refreshContext()
+    })
   else
     contextFallbackTimer = setInterval(() => {
-      if (document.hidden) return
+      if (document.hidden || (!opened.value && !archiveOpen.value)) return
       if (props.archiveAdapter?.currentConversationId() !== context.value.conversationId)
         void refreshContext()
     }, 2_000)

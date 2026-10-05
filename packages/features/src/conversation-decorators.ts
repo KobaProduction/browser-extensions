@@ -238,7 +238,8 @@ export class ConversationDecoratorsModule implements BoosterModule {
     }
 
     if (settings.features.toolInspector) {
-      for (const evidence of findToolCallEvidence(root)) {
+      const toolRoot = root === document ? (document.querySelector('main') ?? root) : root
+      for (const evidence of findToolCallEvidence(toolRoot)) {
         if (this.#toolMounts.has(evidence.element)) continue
         const tool = toolInvocationFromEvidence(evidence)
         if (!tool.timestamp) {
