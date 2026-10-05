@@ -6,7 +6,11 @@ import {
   type ArchiveExportOptions,
   type SettingsAdapter,
 } from '@chatgpt-booster/core'
-import { ArrowUpToLine, CheckCircle2, Download, Info, X } from 'lucide-vue-next'
+import ArrowUpToLine from 'lucide-vue-next/dist/esm/icons/arrow-up-to-line.js'
+import CheckCircle2 from 'lucide-vue-next/dist/esm/icons/circle-check.js'
+import Download from 'lucide-vue-next/dist/esm/icons/download.js'
+import Info from 'lucide-vue-next/dist/esm/icons/info.js'
+import X from 'lucide-vue-next/dist/esm/icons/x.js'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { translate, type SupportedLocale, type TranslationKey } from './i18n'
 import type { ArchiveCoverageView, ArchiveDataAdapter } from './mount'

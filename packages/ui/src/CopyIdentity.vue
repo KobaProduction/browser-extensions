@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Check, Copy } from 'lucide-vue-next'
+import Check from 'lucide-vue-next/dist/esm/icons/check.js'
+import Copy from 'lucide-vue-next/dist/esm/icons/copy.js'
 import { onBeforeUnmount, ref } from 'vue'
 import { translate, type SupportedLocale } from './i18n'
 const props = defineProps<{ label: string; identifier?: string | null; locale: SupportedLocale }>()

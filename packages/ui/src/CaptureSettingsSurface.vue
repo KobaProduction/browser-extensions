@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ArchiveCaptureContext, SettingsAdapter } from '@chatgpt-booster/core'
-import { ShieldCheck, X } from 'lucide-vue-next'
+import ShieldCheck from 'lucide-vue-next/dist/esm/icons/shield-check.js'
+import X from 'lucide-vue-next/dist/esm/icons/x.js'
 import CaptureSettings from './CaptureSettings.vue'
 import { translate, type SupportedLocale } from './i18n'
 import type { ArchiveDataAdapter } from './mount'

@@ -16,22 +16,20 @@ import {
   mergeSettings,
   snapshotSettings,
 } from '@chatgpt-booster/core'
-import {
-  Activity,
-  AlertTriangle,
-  ArrowDownLeft,
-  ArrowUpRight,
-  BarChart3,
-  Check,
-  ChevronDown,
-  Languages,
-  RefreshCcw,
-  Settings2,
-  ShieldCheck,
-  SlidersHorizontal,
-  Wrench,
-  X,
-} from 'lucide-vue-next'
+import Activity from 'lucide-vue-next/dist/esm/icons/activity.js'
+import AlertTriangle from 'lucide-vue-next/dist/esm/icons/triangle-alert.js'
+import ArrowDownLeft from 'lucide-vue-next/dist/esm/icons/arrow-down-left.js'
+import ArrowUpRight from 'lucide-vue-next/dist/esm/icons/arrow-up-right.js'
+import BarChart3 from 'lucide-vue-next/dist/esm/icons/chart-column.js'
+import Check from 'lucide-vue-next/dist/esm/icons/check.js'
+import ChevronDown from 'lucide-vue-next/dist/esm/icons/chevron-down.js'
+import Languages from 'lucide-vue-next/dist/esm/icons/languages.js'
+import RefreshCcw from 'lucide-vue-next/dist/esm/icons/refresh-ccw.js'
+import Settings2 from 'lucide-vue-next/dist/esm/icons/settings-2.js'
+import ShieldCheck from 'lucide-vue-next/dist/esm/icons/shield-check.js'
+import SlidersHorizontal from 'lucide-vue-next/dist/esm/icons/sliders-horizontal.js'
+import Wrench from 'lucide-vue-next/dist/esm/icons/wrench.js'
+import X from 'lucide-vue-next/dist/esm/icons/x.js'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Badge } from './components/ui/badge'
 import { Button } from './components/ui/button'

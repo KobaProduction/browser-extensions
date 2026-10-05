@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import { Check, ChevronDown, Clipboard, Clock3, Wrench } from 'lucide-vue-next'
+import Check from 'lucide-vue-next/dist/esm/icons/check.js'
+import ChevronDown from 'lucide-vue-next/dist/esm/icons/chevron-down.js'
+import Clipboard from 'lucide-vue-next/dist/esm/icons/clipboard.js'
+import Clock3 from 'lucide-vue-next/dist/esm/icons/clock-3.js'
+import Wrench from 'lucide-vue-next/dist/esm/icons/wrench.js'
 import { computed, ref } from 'vue'
 import type { ToolCallViewModel } from './tool-inspector'
 import FloatingInfoPopover from './FloatingInfoPopover.vue'

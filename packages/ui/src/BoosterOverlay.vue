@@ -5,7 +5,14 @@ import {
   OPEN_ARCHIVE_EVENT, OPEN_CAPTURE_SETTINGS_EVENT, OPEN_SETTINGS_EVENT, resolveCaptureRule,
   snapshotSettings, type ArchiveCaptureContext, type ArchiveCurrentContext, type HistoryLoaderState,
 } from '@chatgpt-booster/core'
-import { Archive, Download, Layers3, Settings, ShieldCheck, Square, X, ArrowUpToLine } from 'lucide-vue-next'
+import Archive from 'lucide-vue-next/dist/esm/icons/archive.js'
+import Download from 'lucide-vue-next/dist/esm/icons/download.js'
+import Layers3 from 'lucide-vue-next/dist/esm/icons/layers.js'
+import Settings from 'lucide-vue-next/dist/esm/icons/settings.js'
+import ShieldCheck from 'lucide-vue-next/dist/esm/icons/shield-check.js'
+import Square from 'lucide-vue-next/dist/esm/icons/square.js'
+import X from 'lucide-vue-next/dist/esm/icons/x.js'
+import ArrowUpToLine from 'lucide-vue-next/dist/esm/icons/arrow-up-to-line.js'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import ArchiveWorkspace from './ArchiveWorkspace.vue'
 import ArchiveExportDialog from './ArchiveExportDialog.vue'

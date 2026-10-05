@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Archive, Maximize2 } from 'lucide-vue-next'
+import Archive from 'lucide-vue-next/dist/esm/icons/archive.js'
+import Maximize2 from 'lucide-vue-next/dist/esm/icons/maximize-2.js'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { ArchiveWindowSettings, SettingsAdapter } from '@chatgpt-booster/core'
 import ArchiveBrowser from './ArchiveBrowser.vue'

@@ -1,21 +1,19 @@
 <script setup lang="ts">
 import type { ArchiveItemView } from '@chatgpt-booster/core'
-import {
-  Brain,
-  ChevronDown,
-  ChevronRight,
-  Code2,
-  ExternalLink,
-  FileJson2,
-  GitBranch,
-  Github,
-  Globe2,
-  Image as ImageIcon,
-  Search,
-  TerminalSquare,
-  Wrench,
-  X,
-} from 'lucide-vue-next'
+import Brain from 'lucide-vue-next/dist/esm/icons/brain.js'
+import ChevronDown from 'lucide-vue-next/dist/esm/icons/chevron-down.js'
+import ChevronRight from 'lucide-vue-next/dist/esm/icons/chevron-right.js'
+import Code2 from 'lucide-vue-next/dist/esm/icons/code-xml.js'
+import ExternalLink from 'lucide-vue-next/dist/esm/icons/external-link.js'
+import FileJson2 from 'lucide-vue-next/dist/esm/icons/file-json-2.js'
+import GitBranch from 'lucide-vue-next/dist/esm/icons/git-branch.js'
+import Github from 'lucide-vue-next/dist/esm/icons/github.js'
+import Globe2 from 'lucide-vue-next/dist/esm/icons/earth.js'
+import ImageIcon from 'lucide-vue-next/dist/esm/icons/image.js'
+import Search from 'lucide-vue-next/dist/esm/icons/search.js'
+import TerminalSquare from 'lucide-vue-next/dist/esm/icons/square-terminal.js'
+import Wrench from 'lucide-vue-next/dist/esm/icons/wrench.js'
+import X from 'lucide-vue-next/dist/esm/icons/x.js'
 import { computed, ref } from 'vue'
 import FloatingInfoPopover from './FloatingInfoPopover.vue'
 import JsonViewer from './JsonViewer.vue'

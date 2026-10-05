@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ConversationItemMetadataView } from '@chatgpt-booster/core'
-import { BrainCircuit, Clock3 } from 'lucide-vue-next'
+import BrainCircuit from 'lucide-vue-next/dist/esm/icons/brain-circuit.js'
+import Clock3 from 'lucide-vue-next/dist/esm/icons/clock-3.js'
 import { computed } from 'vue'
 import FloatingInfoPopover from './FloatingInfoPopover.vue'
 import { translate, type SupportedLocale } from './i18n'
