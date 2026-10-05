@@ -2,6 +2,7 @@ import { type ScheduledIdleTask, scheduleIdleTask } from '@chatgpt-booster/chatg
 import {
   type BoosterModule,
   BoosterRuntime,
+  createCachedSettingsAdapter,
   isChatGptPage,
   type PersistentDiagnosticsAdapter,
   type SecretAdapter,
@@ -73,29 +74,27 @@ class OverlayModule implements BoosterModule {
 export function createBoosterPageRuntime(options: BoosterPageRuntimeOptions) {
   const pageBridgeWindow = options.pageBridgeWindow ?? window
   const archiveStore = options.archiveStore ?? new ConversationArchiveStore()
-  const archiveCapture = new ConversationArchiveModule(
-    archiveStore,
-    options.settings,
-    pageBridgeWindow,
-  )
+  const settings = createCachedSettingsAdapter(options.settings)
+  const runtimeOptions: BoosterPageRuntimeOptions = { ...options, settings }
+  const archiveCapture = new ConversationArchiveModule(archiveStore, settings, pageBridgeWindow)
   const archiveAdapter = createArchiveUiAdapter(archiveStore, archiveCapture, {
     assetFetchTarget: pageBridgeWindow,
   })
 
   const modules: BoosterModule[] = [
-    new OverlayModule(options, archiveAdapter),
+    new OverlayModule(runtimeOptions, archiveAdapter),
     archiveCapture,
-    new ArchiveScopeControlsModule(options.settings, archiveStore),
+    new ArchiveScopeControlsModule(settings, archiveStore),
     new HistoryLoaderModule(archiveStore, archiveCapture, pageBridgeWindow),
     new TransportObserverModule({
-      settings: options.settings,
+      settings,
       diagnostics: options.diagnostics,
       ...(options.persistentDiagnostics
         ? { persistentDiagnostics: options.persistentDiagnostics }
         : {}),
       ...(options.telemetry ? { telemetry: options.telemetry } : {}),
     }),
-    new ConversationDecoratorsModule(options.settings, archiveStore),
+    new ConversationDecoratorsModule(settings, archiveStore),
   ]
 
   const runtime = new BoosterRuntime(modules, (module, error) => {
@@ -121,5 +120,6 @@ export function createBoosterPageRuntime(options: BoosterPageRuntimeOptions) {
     archiveCapture,
     archiveAdapter,
     pageBridgeWindow,
+    settings,
   }
 }

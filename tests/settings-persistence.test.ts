@@ -113,3 +113,50 @@ test('aborted transport events do not increment the error counter', async () => 
 
   expect(next.errors).toBe(0)
 })
+
+test('cached settings adapter coalesces reads and shares one upstream subscription', async () => {
+  const { createCachedSettingsAdapter, snapshotSettings } = await import(
+    '../packages/core/src/settings'
+  )
+  const base = normalizeSettings()
+  let reads = 0
+  let subscriptions = 0
+  let sourceListener: ((settings: typeof base) => void) | undefined
+  const source: import('../packages/core/src/settings').SettingsAdapter = {
+    async get() {
+      reads += 1
+      await Promise.resolve()
+      return snapshotSettings(base)
+    },
+    async set() {},
+    async update(patch) {
+      const next = mergeSettings(base, patch)
+      sourceListener?.(next)
+      return next
+    },
+    subscribe(listener) {
+      subscriptions += 1
+      sourceListener = listener
+      return () => {
+        sourceListener = undefined
+      }
+    },
+  }
+
+  const cached = createCachedSettingsAdapter(source)
+  const [first, second] = await Promise.all([cached.get(), cached.get()])
+  expect(reads).toBe(1)
+  expect(first).toEqual(second)
+
+  const seen: boolean[] = []
+  const stopA = cached.subscribe((settings) => seen.push(settings.enabled))
+  const stopB = cached.subscribe(() => undefined)
+  expect(subscriptions).toBe(1)
+
+  await cached.update({ enabled: false })
+  expect((await cached.get()).enabled).toBe(false)
+  expect(reads).toBe(1)
+  expect(seen).toEqual([false])
+  stopA()
+  stopB()
+})

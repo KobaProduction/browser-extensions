@@ -2,6 +2,8 @@ import {
   currentConversationId,
   currentProjectId,
   mountArchiveScopeControls,
+  type ScheduledIdleTask,
+  scheduleIdleTask,
 } from '@chatgpt-booster/chatgpt'
 import {
   ARCHIVE_UPDATED_EVENT,
@@ -68,6 +70,7 @@ export class ArchiveScopeControlsModule implements BoosterModule {
   #projectIdsByTitle = new Map<string, string>()
   #archiveStateRefresh: Promise<void> | undefined
   #archiveStateRefreshQueued = false
+  #initialTask: ScheduledIdleTask | undefined
 
   constructor(
     private settings: SettingsAdapter,
@@ -79,11 +82,6 @@ export class ArchiveScopeControlsModule implements BoosterModule {
     const settings = await this.settings.get()
     if (!this.#active) return
     this.#latestSettings = settings
-    if (settings.enabled) {
-      await this.#refreshArchiveState()
-      if (!this.#active) return
-      this.#apply()
-    }
     this.#unsubscribe = this.settings.subscribe((next) => {
       const previous = this.#latestSettings
       const changed = scopeSettingsChanged(previous, next)
@@ -103,10 +101,21 @@ export class ArchiveScopeControlsModule implements BoosterModule {
       this.#apply()
     })
     window.addEventListener(ARCHIVE_UPDATED_EVENT, this.#onArchiveUpdated)
+    if (settings.enabled) {
+      this.#initialTask = scheduleIdleTask(() => {
+        this.#initialTask = undefined
+        if (!this.#active || !this.#latestSettings?.enabled) return
+        void this.#refreshArchiveState().then(() => {
+          if (this.#active && this.#latestSettings?.enabled) this.#apply()
+        })
+      }, 350)
+    }
   }
 
   stop() {
     this.#active = false
+    this.#initialTask?.cancel()
+    this.#initialTask = undefined
     this.#unsubscribe?.()
     window.removeEventListener(ARCHIVE_UPDATED_EVENT, this.#onArchiveUpdated)
     this.#controls?.stop()

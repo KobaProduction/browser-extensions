@@ -5,11 +5,11 @@ import type { ToolCallViewModel } from './tool-inspector'
 import FloatingInfoPopover from './FloatingInfoPopover.vue'
 import JsonViewer from './JsonViewer.vue'
 import { Button } from './components/ui/button'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './components/ui/collapsible'
 import { translate } from './i18n'
 
 const props = defineProps<{ model: ToolCallViewModel }>()
 const copied = ref(false)
+const expanded = ref(false)
 const t = (key: Parameters<typeof translate>[1]) => translate(props.model.locale, key)
 
 function serverTime(value: number | null) {
@@ -31,7 +31,7 @@ async function copyDiagnostics() {
 </script>
 
 <template>
-  <Collapsible class="booster-tool-inspector" :lang="model.locale">
+  <div class="booster-tool-inspector" :lang="model.locale">
     <div class="booster-live-tool-row">
       <Wrench class="size-3.5 shrink-0" />
       <div class="booster-live-tool-copy">
@@ -55,20 +55,19 @@ async function copyDiagnostics() {
         </div>
       </FloatingInfoPopover>
 
-      <CollapsibleTrigger as-child>
-        <Button
-          variant="ghost"
-          size="sm"
-          class="h-7 gap-1 px-2 text-muted-foreground hover:text-foreground"
-        >
-          {{ t('tool.details') }}
-          <ChevronDown class="size-3.5 opacity-60" />
-        </Button>
-      </CollapsibleTrigger>
+      <Button
+        variant="ghost"
+        size="xs"
+        class="gap-1 text-muted-foreground hover:text-foreground"
+        :aria-expanded="expanded"
+        @click="expanded = !expanded"
+      >
+        {{ t('tool.details') }}
+        <ChevronDown class="size-3.5 opacity-60" :class="{ 'rotate-180': expanded }" />
+      </Button>
     </div>
 
-    <CollapsibleContent>
-      <section class="booster-live-tool-details">
+    <section v-if="expanded" class="booster-live-tool-details">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
             <div class="truncate text-xs font-semibold">{{ model.tool.label }}</div>
@@ -78,8 +77,8 @@ async function copyDiagnostics() {
           </div>
           <Button
             variant="ghost"
-            size="icon"
-            class="size-7 shrink-0"
+            size="icon-sm"
+            class="shrink-0"
             :title="t('tool.copyDiagnostics')"
             @click="copyDiagnostics"
           >
@@ -112,7 +111,6 @@ async function copyDiagnostics() {
             <pre class="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-2 font-mono text-[11px] leading-4">{{ model.visibleText }}</pre>
           </details>
         </div>
-      </section>
-    </CollapsibleContent>
-  </Collapsible>
+    </section>
+  </div>
 </template>

@@ -5,7 +5,7 @@ import { cn } from '../../../lib/utils'
 withDefaults(
   defineProps<{
     variant?: 'default' | 'outline' | 'ghost'
-    size?: 'default' | 'sm' | 'icon'
+    size?: 'default' | 'sm' | 'xs' | 'icon' | 'icon-sm'
     class?: HTMLAttributes['class']
   }>(),
   {
@@ -25,7 +25,9 @@ withDefaults(
         variant === 'ghost' && 'hover:bg-accent hover:text-accent-foreground',
         size === 'default' && 'h-9 px-4 py-2',
         size === 'sm' && 'h-8 rounded-md px-3 text-xs',
+        size === 'xs' && 'h-7 rounded-md px-2 text-xs',
         size === 'icon' && 'size-8',
+        size === 'icon-sm' && 'size-7',
         $props.class,
       )
     "

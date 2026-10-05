@@ -313,6 +313,57 @@ export interface SettingsAdapter {
   subscribe(listener: (settings: BoosterSettings) => void): () => void
 }
 
+export function createCachedSettingsAdapter(source: SettingsAdapter): SettingsAdapter {
+  let cached: BoosterSettings | undefined
+  let pending: Promise<BoosterSettings> | undefined
+  let upstreamUnsubscribe: (() => void) | undefined
+  const listeners = new Set<(settings: BoosterSettings) => void>()
+
+  const store = (settings: BoosterSettings) => {
+    cached = snapshotSettings(settings)
+    return snapshotSettings(cached)
+  }
+
+  const ensureSubscription = () => {
+    if (upstreamUnsubscribe) return
+    upstreamUnsubscribe = source.subscribe((next) => {
+      const snapshot = store(next)
+      for (const listener of listeners) listener(snapshotSettings(snapshot))
+    })
+  }
+
+  return {
+    async get() {
+      if (cached) return snapshotSettings(cached)
+      pending ??= source
+        .get()
+        .then(store)
+        .finally(() => {
+          pending = undefined
+        })
+      return snapshotSettings(await pending)
+    },
+    async set(settings) {
+      const snapshot = snapshotSettings(settings)
+      await source.set(snapshot)
+      cached = snapshot
+    },
+    async update(patch) {
+      return store(await source.update(patch))
+    },
+    subscribe(listener) {
+      listeners.add(listener)
+      ensureSubscription()
+      return () => {
+        listeners.delete(listener)
+        if (listeners.size || !upstreamUnsubscribe) return
+        upstreamUnsubscribe()
+        upstreamUnsubscribe = undefined
+      }
+    },
+  }
+}
+
 export const OPEN_SETTINGS_EVENT = 'chatgpt-booster:open-settings'
 
 function mergeCaptureRules(

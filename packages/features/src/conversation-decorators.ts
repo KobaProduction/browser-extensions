@@ -5,6 +5,8 @@ import {
   currentConversationId,
   findToolCallEvidence,
   observeConversationDecorations,
+  type ScheduledIdleTask,
+  scheduleIdleTask,
   toolInvocationFromEvidence,
 } from '@chatgpt-booster/chatgpt'
 import {
@@ -47,6 +49,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
   #firstSeen = new Map<string, number>()
   #toolMounts = new Map<HTMLElement, MountedToolInspector>()
   #lastCleanupAt = 0
+  #initialTask: ScheduledIdleTask | undefined
 
   constructor(
     private settingsAdapter: SettingsAdapter,
@@ -73,6 +76,8 @@ export class ConversationDecoratorsModule implements BoosterModule {
 
       if (languageChanged) this.#clear()
       if (!this.#observer) {
+        this.#initialTask?.cancel()
+        this.#initialTask = undefined
         void this.#refreshRecords().then(() => {
           if (this.#settings?.enabled) this.#startObserver()
         })
@@ -81,8 +86,15 @@ export class ConversationDecoratorsModule implements BoosterModule {
       this.#observer.scan()
     })
     window.addEventListener(ARCHIVE_UPDATED_EVENT, this.#onArchiveUpdated)
-    await this.#refreshRecords()
-    if (this.#settings.enabled) this.#startObserver()
+    if (this.#settings.enabled) {
+      this.#initialTask = scheduleIdleTask(() => {
+        this.#initialTask = undefined
+        if (!this.#settings?.enabled) return
+        void this.#refreshRecords().then(() => {
+          if (this.#settings?.enabled) this.#startObserver()
+        })
+      }, 350)
+    }
   }
 
   #startObserver() {
@@ -100,6 +112,8 @@ export class ConversationDecoratorsModule implements BoosterModule {
   stop() {
     this.#observer?.stop()
     this.#observer = undefined
+    this.#initialTask?.cancel()
+    this.#initialTask = undefined
     this.#unsubscribe?.()
     this.#unsubscribe = undefined
     window.removeEventListener(ARCHIVE_UPDATED_EVENT, this.#onArchiveUpdated)
