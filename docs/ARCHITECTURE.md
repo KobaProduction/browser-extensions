@@ -128,6 +128,8 @@ Settings changes are applied as atomic nested patches rather than replacing a po
 
 The production userscript is minified. The development userscript is emitted without JavaScript minification. A `.map` artifact is kept and published for offline debugging, but the finalized development userscript intentionally omits `sourceMappingURL` so ChatGPT CSP does not turn the debug aid into console noise. Chromium extension builds keep sourcemaps for runtime debugging.
 
+Rolling `dev` versions are monotonic per push. Package/manifest sources keep the series baseline (`0.8.0`), while `.github/workflows/rolling-dev.yml` derives `0.8.N` from the commit count after the fixed `version-series.json` base commit and injects that exact version into the extension manifest, userscript metadata, runtime UI and release metadata. Git SHA remains a separate diagnostic field and is not part of the displayed version.
+
 ## Analytics persistence
 
 Transport hooks are installed for the lifetime of the page runtime. The observer enable switch controls whether events are consumed, counted, or exported; disabling it does not remove the underlying fetch/XHR/WebSocket/EventSource wrappers. Current-tab counters remain in memory. All-time counters use a separate persistent diagnostics adapter (`chrome.storage.local` through the Chromium background worker, local storage for the userscript) and are displayed in the Analytics settings section.
