@@ -79,7 +79,7 @@ export function mountArchiveScopeControls(initial: ScopeControlOptions) {
       return {
         scope: 'conversation',
         id,
-        title: link.innerText.trim().split('\n')[0] || null,
+        title: link.textContent?.trim().split('\n')[0] || null,
         projectId:
           currentProjectId(link.href) ??
           (id === currentConversationId() ? (currentProjectId() ?? null) : null),
@@ -89,7 +89,7 @@ export function mountArchiveScopeControls(initial: ScopeControlOptions) {
     return {
       scope: 'project',
       id: projectId,
-      title: currentProjectTitle(projectId) ?? (link.innerText.trim() || null),
+      title: currentProjectTitle(projectId) ?? (link.textContent?.trim() || null),
     }
   }
 

@@ -36,10 +36,13 @@ export class ConversationDecoratorsModule implements BoosterModule {
 
   #observer: ReturnType<typeof observeConversationDecorations> | undefined
   #unsubscribe: (() => void) | undefined
+  #archiveRefreshTimer: ReturnType<typeof setTimeout> | undefined
   #settings: BoosterSettings | undefined
   #records = new Map<string, ArchivedMessage>()
   #recordConversationId: string | null = null
   #loadVersion = 0
+  #activeRecordRefresh: { conversationId: string | null; promise: Promise<void> } | undefined
+  #recordRefreshQueued = false
   #messageMounts = new Map<HTMLElement, MountedMessageMetadata>()
   #firstSeen = new Map<string, number>()
   #toolMounts = new Map<HTMLElement, MountedToolInspector>()
@@ -52,8 +55,14 @@ export class ConversationDecoratorsModule implements BoosterModule {
   async start() {
     this.#settings = await this.settingsAdapter.get()
     this.#unsubscribe = this.settingsAdapter.subscribe((next) => {
-      const languageChanged = next.language !== this.#settings?.language
+      const previous = this.#settings
+      const languageChanged = next.language !== previous?.language
+      const relevantChanged =
+        next.enabled !== previous?.enabled ||
+        languageChanged ||
+        next.features.toolInspector !== previous?.features.toolInspector
       this.#settings = next
+      if (!relevantChanged) return
       if (languageChanged) this.#clear()
       this.#observer?.scan()
     })
@@ -71,7 +80,11 @@ export class ConversationDecoratorsModule implements BoosterModule {
     this.#unsubscribe?.()
     this.#unsubscribe = undefined
     window.removeEventListener(ARCHIVE_UPDATED_EVENT, this.#onArchiveUpdated)
+    if (this.#archiveRefreshTimer) clearTimeout(this.#archiveRefreshTimer)
+    this.#archiveRefreshTimer = undefined
     this.#loadVersion += 1
+    this.#activeRecordRefresh = undefined
+    this.#recordRefreshQueued = false
     this.#records.clear()
     if (this.#recordConversationId) this.store.clearDomSnapshot(this.#recordConversationId)
     this.#recordConversationId = null
@@ -80,14 +93,52 @@ export class ConversationDecoratorsModule implements BoosterModule {
   }
 
   #onArchiveUpdated = (event: Event) => {
-    const detail = (event as CustomEvent<{ conversationId?: string }>).detail
+    const detail = (
+      event as CustomEvent<{
+        conversationId?: string
+        preload?: boolean
+        insertedMessages?: number
+        updatedMessages?: number
+      }>
+    ).detail
     const current = currentConversationId() ?? null
     if (detail?.conversationId && current && detail.conversationId !== current) return
-    void this.#refreshRecords().then(() => this.#observer?.scan())
+    if (!detail?.preload && detail && detail.insertedMessages === 0 && detail.updatedMessages === 0)
+      return
+    if (this.#archiveRefreshTimer) clearTimeout(this.#archiveRefreshTimer)
+    this.#archiveRefreshTimer = setTimeout(() => {
+      this.#archiveRefreshTimer = undefined
+      void this.#refreshRecords().then(() => this.#observer?.scan())
+    }, 80)
   }
 
   async #refreshRecords() {
     const conversationId = currentConversationId() ?? null
+    const active = this.#activeRecordRefresh
+    if (active?.conversationId === conversationId) {
+      this.#recordRefreshQueued = true
+      return await active.promise
+    }
+
+    const promise = (async () => {
+      do {
+        this.#recordRefreshQueued = false
+        await this.#loadRecords(conversationId)
+      } while (
+        this.#recordRefreshQueued &&
+        currentConversationId() === conversationId &&
+        this.#settings?.enabled
+      )
+    })()
+    this.#activeRecordRefresh = { conversationId, promise }
+    try {
+      await promise
+    } finally {
+      if (this.#activeRecordRefresh?.promise === promise) this.#activeRecordRefresh = undefined
+    }
+  }
+
+  async #loadRecords(conversationId: string | null) {
     if (conversationId !== this.#recordConversationId) {
       if (this.#recordConversationId) this.store.clearDomSnapshot(this.#recordConversationId)
       this.#firstSeen.clear()

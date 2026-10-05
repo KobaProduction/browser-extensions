@@ -42,7 +42,16 @@ export class TransportObserverModule implements BoosterModule {
 
     window.addEventListener('message', this.#onTransport)
     this.#unsubscribe = this.#settings.subscribe((next) => {
+      const previous = this.#current
       this.#current = next
+      if (
+        previous &&
+        previous.enabled === next.enabled &&
+        previous.observer.enabled === next.observer.enabled &&
+        previous.observer.captureBodies === next.observer.captureBodies &&
+        previous.observer.maxBodyChars === next.observer.maxBodyChars
+      )
+        return
       this.#publishConfig(next)
     })
   }

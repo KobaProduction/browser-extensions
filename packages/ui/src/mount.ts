@@ -13,7 +13,7 @@ import type {
 import { type App, createApp } from 'vue'
 import BoosterOverlay from './BoosterOverlay.vue'
 import ControlCenterPanel from './ControlCenterPanel.vue'
-import styles from './styles.css?inline'
+import { installBoosterShadowStyles } from './shadow-styles'
 
 const ROOT_ID = 'chatgpt-booster-root'
 
@@ -104,9 +104,7 @@ export interface BoosterUiOptions {
 
 function createIsolatedMount(host: HTMLElement) {
   const shadow = host.attachShadow({ mode: 'open' })
-  const style = document.createElement('style')
-  style.textContent = styles
-  shadow.append(style)
+  installBoosterShadowStyles(shadow)
 
   const mountPoint = document.createElement('div')
   shadow.append(mountPoint)

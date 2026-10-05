@@ -1,7 +1,7 @@
 import type { ToolInvocationView } from '@chatgpt-booster/core'
 import { type App, createApp } from 'vue'
 import type { SupportedLocale } from './i18n'
-import styles from './styles.css?inline'
+import { installBoosterShadowStyles } from './shadow-styles'
 import ToolInspector from './ToolInspector.vue'
 
 export interface ToolCallViewModel {
@@ -31,9 +31,7 @@ export function mountToolInspector(
   after.insertAdjacentElement('afterend', host)
 
   const shadow = host.attachShadow({ mode: 'open' })
-  const style = document.createElement('style')
-  style.textContent = styles
-  shadow.append(style)
+  installBoosterShadowStyles(shadow)
 
   const mountPoint = document.createElement('div')
   shadow.append(mountPoint)

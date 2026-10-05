@@ -141,7 +141,7 @@ export function currentConversationDomSnapshot(
   const targets = findConversationMessageTargets(root)
   if (!targets.length) return undefined
   const records: ArchiveRecordView[] = targets.map((target) => {
-    const text = (target.message.innerText || target.message.textContent || '').trim()
+    const text = (target.message.textContent || '').trim()
     const role = target.role
     return {
       messageKey: conversationId + ':' + target.messageId,

@@ -3,7 +3,7 @@ import { type App, createApp, reactive } from 'vue'
 import type { SupportedLocale } from './i18n'
 import { translate } from './i18n'
 import ScopeArchiveControl from './ScopeArchiveControl.vue'
-import styles from './styles.css?inline'
+import { installBoosterShadowStyles } from './shadow-styles'
 
 export interface ScopeArchiveControlModel {
   context: ArchiveCaptureContext
@@ -72,9 +72,7 @@ export function mountScopeArchiveControl(
     marker = undefined
     unmountVue()
     shadow.replaceChildren()
-    const style = document.createElement('style')
-    style.textContent = styles
-    shadow.append(style)
+    installBoosterShadowStyles(shadow)
     const mountPoint = document.createElement('span')
     shadow.append(mountPoint)
     projectModel = reactive({ ...current }) as ScopeArchiveControlModel

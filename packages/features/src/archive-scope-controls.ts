@@ -19,6 +19,43 @@ import {
 } from '@chatgpt-booster/ui'
 import type { ConversationArchiveStore } from './archive-store'
 
+function sameCaptureRule(
+  a: BoosterSettings['archive']['defaultRule'],
+  b: BoosterSettings['archive']['defaultRule'],
+) {
+  return (
+    a.enabled === b.enabled &&
+    a.reasoning === b.reasoning &&
+    a.tools === b.tools &&
+    a.internal === b.internal
+  )
+}
+
+function sameCaptureRuleMap(
+  a: BoosterSettings['archive']['projects'],
+  b: BoosterSettings['archive']['projects'],
+) {
+  const aKeys = Object.keys(a)
+  const bKeys = Object.keys(b)
+  if (aKeys.length !== bKeys.length) return false
+  return aKeys.every((key) => {
+    const left = a[key]
+    const right = b[key]
+    return !!left && !!right && sameCaptureRule(left, right)
+  })
+}
+
+function scopeSettingsChanged(previous: BoosterSettings | undefined, next: BoosterSettings) {
+  if (!previous) return true
+  return (
+    previous.enabled !== next.enabled ||
+    previous.language !== next.language ||
+    !sameCaptureRule(previous.archive.defaultRule, next.archive.defaultRule) ||
+    !sameCaptureRuleMap(previous.archive.projects, next.archive.projects) ||
+    !sameCaptureRuleMap(previous.archive.conversations, next.archive.conversations)
+  )
+}
+
 export class ArchiveScopeControlsModule implements BoosterModule {
   readonly id = 'archive-scope-controls'
   #controls: ReturnType<typeof mountArchiveScopeControls> | undefined
@@ -29,6 +66,8 @@ export class ArchiveScopeControlsModule implements BoosterModule {
   #archivedConversationIds = new Set<string>()
   #projectArchivedCounts = new Map<string, number>()
   #projectIdsByTitle = new Map<string, string>()
+  #archiveStateRefresh: Promise<void> | undefined
+  #archiveStateRefreshQueued = false
 
   constructor(
     private settings: SettingsAdapter,
@@ -42,8 +81,9 @@ export class ArchiveScopeControlsModule implements BoosterModule {
     this.#latestSettings = settings
     this.#apply()
     this.#unsubscribe = this.settings.subscribe((next) => {
+      const changed = scopeSettingsChanged(this.#latestSettings, next)
       this.#latestSettings = next
-      this.#apply()
+      if (changed) this.#apply()
     })
     window.addEventListener(ARCHIVE_UPDATED_EVENT, this.#onArchiveUpdated)
   }
@@ -83,12 +123,33 @@ export class ArchiveScopeControlsModule implements BoosterModule {
 
   async #refreshArchiveState() {
     if (!this.store) return
+    if (this.#archiveStateRefresh) {
+      this.#archiveStateRefreshQueued = true
+      return await this.#archiveStateRefresh
+    }
+
+    const pending = (async () => {
+      do {
+        this.#archiveStateRefreshQueued = false
+        await this.#loadArchiveState()
+      } while (this.#archiveStateRefreshQueued && this.#active)
+    })()
+    this.#archiveStateRefresh = pending
+    try {
+      await pending
+    } finally {
+      if (this.#archiveStateRefresh === pending) this.#archiveStateRefresh = undefined
+    }
+  }
+
+  async #loadArchiveState() {
+    if (!this.store) return
     try {
       const [conversations, projects] = await Promise.all([
         this.store.listConversations(),
         this.store.listProjects(),
       ])
-      if (!this.#active && this.#latestSettings) return
+      if (!this.#active) return
       this.#conversationProjects = new Map(
         conversations.map((conversation) => [conversation.conversationId, conversation.projectId]),
       )
