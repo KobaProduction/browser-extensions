@@ -10,12 +10,17 @@ export interface HistoryPageEvidence {
   observedAt: number
 }
 /** A bottom page and every before-cursor continuation must belong to one fresh read. */
+function initialEvidenceScore(page: HistoryPageEvidence): number {
+  return Number(page.hasPreviousPage !== null) + Number(page.hasNextPage !== null)
+}
+
 export function historyCoverage(pages: HistoryPageEvidence[]) {
   const initial = pages
     .filter((page) => page.isInitial && page.readId)
     .sort(
       (a, b) =>
         (b.readStartedAt ?? b.observedAt) - (a.readStartedAt ?? a.observedAt) ||
+        initialEvidenceScore(b) - initialEvidenceScore(a) ||
         b.observedAt - a.observedAt,
     )[0]
   if (!initial)

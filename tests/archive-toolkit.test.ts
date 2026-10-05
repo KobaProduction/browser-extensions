@@ -790,6 +790,26 @@ describe('resume regressions: consent, evidence and export boundaries', () => {
     expect(historyCoverage([older, latest]).verified).toBe(false)
     expect(historyCoverage([latest, older]).verified).toBe(false)
   })
+  test('same-read DOM fallback cannot degrade explicit server completion evidence', () => {
+    const server = page({
+      readStartedAt: 10,
+      observedAt: 20,
+      hasPreviousPage: false,
+      hasNextPage: false,
+    })
+    const domFallback = page({
+      readStartedAt: 10,
+      observedAt: 30,
+      startCursor: null,
+      endCursor: null,
+      hasPreviousPage: null,
+      hasNextPage: null,
+    })
+    const result = historyCoverage([server, domFallback])
+    expect(result.verified).toBe(true)
+    expect(result.startReached).toBe(true)
+    expect(result.pageCount).toBe(1)
+  })
   test('server retry cannot reuse an unrelated read to close a pagination gap', () => {
     expect(
       historyCoverage([
