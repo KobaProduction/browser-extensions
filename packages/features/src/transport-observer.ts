@@ -1,9 +1,9 @@
 import type {
   BoosterModule,
   BoosterSettings,
-  createDiagnosticsStore,
   PersistentDiagnosticsAdapter,
   SettingsAdapter,
+  TransportDiagnosticsAdapter,
 } from '@chatgpt-booster/core'
 import {
   TRANSPORT_CHANNEL,
@@ -13,13 +13,11 @@ import {
 } from '@chatgpt-booster/observer'
 import type { OtlpTelemetryClient } from '@chatgpt-booster/telemetry'
 
-type DiagnosticsStore = ReturnType<typeof createDiagnosticsStore>
-
 export class TransportObserverModule implements BoosterModule {
   readonly id = 'transport-observer'
 
   readonly #settings: SettingsAdapter
-  readonly #diagnostics: DiagnosticsStore
+  readonly #diagnostics: TransportDiagnosticsAdapter
   readonly #telemetry: OtlpTelemetryClient | undefined
   readonly #persistentDiagnostics: PersistentDiagnosticsAdapter | undefined
   #current: BoosterSettings | undefined
@@ -27,7 +25,7 @@ export class TransportObserverModule implements BoosterModule {
 
   constructor(options: {
     settings: SettingsAdapter
-    diagnostics: DiagnosticsStore
+    diagnostics: TransportDiagnosticsAdapter
     telemetry?: OtlpTelemetryClient
     persistentDiagnostics?: PersistentDiagnosticsAdapter
   }) {

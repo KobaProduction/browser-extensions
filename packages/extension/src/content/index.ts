@@ -1,53 +1,25 @@
 import {
   BOOSTER_VERSION,
-  type BoosterModule,
-  BoosterRuntime,
+  type BoosterRuntime,
   createDiagnosticsStore,
   isChatGptPage,
 } from '@chatgpt-booster/core'
-import {
-  ArchiveScopeControlsModule,
-  ConversationArchiveModule,
-  ConversationArchiveStore,
-  ConversationDecoratorsModule,
-  createArchiveUiAdapter,
-  HistoryLoaderModule,
-  TransportObserverModule,
-} from '@chatgpt-booster/features'
-import { type MountedBoosterUi, mountBoosterUi } from '@chatgpt-booster/ui'
+import { createBoosterPageRuntime } from '@chatgpt-booster/features'
 import { chromeAnalytics } from '../analytics'
 import { chromeSettings } from '../settings'
 import { chromeSecrets, createChromeTelemetry, createChromeTelemetryControl } from '../telemetry'
 
 const diagnostics = createDiagnosticsStore()
-const archiveStore = new ConversationArchiveStore()
-const archiveCapture = new ConversationArchiveModule(archiveStore, chromeSettings)
-const archiveUiAdapter = createArchiveUiAdapter(archiveStore, archiveCapture)
 const telemetry = createChromeTelemetry(chromeSettings)
-const telemetryControl = createChromeTelemetryControl(telemetry)
-
-class OverlayModule implements BoosterModule {
-  readonly id = 'overlay'
-  #mounted: MountedBoosterUi | undefined
-
-  start() {
-    if (!isChatGptPage() || this.#mounted) return
-    this.#mounted = mountBoosterUi({
-      settingsAdapter: chromeSettings,
-      diagnosticsAdapter: diagnostics,
-      persistentDiagnosticsAdapter: chromeAnalytics,
-      secretAdapter: chromeSecrets,
-      telemetryControlAdapter: telemetryControl,
-      archiveAdapter: archiveUiAdapter,
-      target: 'extension',
-    })
-  }
-
-  stop() {
-    this.#mounted?.unmount()
-    this.#mounted = undefined
-  }
-}
+const pageRuntime = createBoosterPageRuntime({
+  target: 'extension',
+  settings: chromeSettings,
+  diagnostics,
+  persistentDiagnostics: chromeAnalytics,
+  secrets: chromeSecrets,
+  telemetry,
+  telemetryControl: createChromeTelemetryControl(telemetry),
+})
 
 const CONTENT_RUNTIME_MARKER = '__chatgptBoosterContentRuntime__'
 const CONTENT_RUNTIME_DATASET = 'chatgptBoosterRuntimeVersion'
@@ -81,43 +53,12 @@ async function stopRuntimeHandle(handle: ContentRuntimeHandle) {
 function runtimeInstanceId() {
   return typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID()
-    : 'runtime-' + Date.now() + '-' + Math.random().toString(36).slice(2)
+    : `runtime-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
 async function startRuntime(handle: ContentRuntimeHandle) {
-  const runtime = new BoosterRuntime(
-    [
-      new OverlayModule(),
-      archiveCapture,
-      new ArchiveScopeControlsModule(chromeSettings, archiveStore),
-      new HistoryLoaderModule(archiveStore, archiveCapture),
-      new TransportObserverModule({
-        settings: chromeSettings,
-        diagnostics,
-        persistentDiagnostics: chromeAnalytics,
-        telemetry,
-      }),
-      new ConversationDecoratorsModule(chromeSettings, archiveStore),
-    ],
-    (module, error) => {
-      console.error('[ChatGPT Booster] Module failed:', module.id, error)
-      void telemetry
-        .emit({
-          scope: 'runtime',
-          name: 'module.error',
-          timestamp: Date.now(),
-          severity: 'ERROR',
-          attributes: {
-            'module.id': module.id,
-            'error.type': error instanceof Error ? error.name : 'unknown',
-          },
-          body: error instanceof Error ? error.message : 'Module failed',
-        })
-        .catch(() => undefined)
-    },
-  )
-  handle.runtime = runtime
-  await runtime.start()
+  handle.runtime = pageRuntime.runtime
+  await pageRuntime.runtime.start()
 }
 
 async function bootstrapContentRuntime() {
@@ -159,7 +100,7 @@ async function bootstrapContentRuntime() {
   runtimeWindow[CONTENT_RUNTIME_MARKER] = handle
 
   // Publish archive policy as early as possible, before the UI waits for document.body.
-  await archiveCapture.start()
+  await pageRuntime.archiveCapture.start()
 
   const launch = () => {
     if (document.documentElement.dataset[CONTENT_RUNTIME_INSTANCE_DATASET] !== instanceId) return

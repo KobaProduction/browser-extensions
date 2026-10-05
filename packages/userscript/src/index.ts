@@ -1,27 +1,12 @@
 import {
   BOOSTER_VERSION,
-  type BoosterModule,
-  BoosterRuntime,
   createDiagnosticsStore,
   isChatGptPage,
   OPEN_SETTINGS_EVENT,
 } from '@chatgpt-booster/core'
-import {
-  ArchiveScopeControlsModule,
-  ConversationArchiveModule,
-  ConversationArchiveStore,
-  ConversationDecoratorsModule,
-  createArchiveUiAdapter,
-  HistoryLoaderModule,
-  TransportObserverModule,
-} from '@chatgpt-booster/features'
+import { createBoosterPageRuntime } from '@chatgpt-booster/features'
 import { installTransportObserver } from '@chatgpt-booster/observer'
-import {
-  type MountedBoosterUi,
-  mountBoosterUi,
-  resolveLocale,
-  translate,
-} from '@chatgpt-booster/ui'
+import { resolveLocale, translate } from '@chatgpt-booster/ui'
 import { userscriptAnalytics } from './analytics'
 import { userscriptSettings } from './settings'
 import {
@@ -41,38 +26,19 @@ declare function GM_registerMenuCommand(
   },
 ): number | string
 
-const diagnostics = createDiagnosticsStore()
-const archiveStore = new ConversationArchiveStore()
 const pageWindow = unsafeWindow as Window & typeof globalThis
-const archiveCapture = new ConversationArchiveModule(archiveStore, userscriptSettings, pageWindow)
-const archiveUiAdapter = createArchiveUiAdapter(archiveStore, archiveCapture, {
-  assetFetchTarget: pageWindow,
-})
+const diagnostics = createDiagnosticsStore()
 const telemetry = createUserscriptTelemetry(userscriptSettings)
-const telemetryControl = createUserscriptTelemetryControl(telemetry)
-
-class OverlayModule implements BoosterModule {
-  readonly id = 'overlay'
-  #mounted: MountedBoosterUi | undefined
-
-  start() {
-    if (!isChatGptPage() || this.#mounted) return
-    this.#mounted = mountBoosterUi({
-      settingsAdapter: userscriptSettings,
-      diagnosticsAdapter: diagnostics,
-      persistentDiagnosticsAdapter: userscriptAnalytics,
-      secretAdapter: userscriptSecrets,
-      telemetryControlAdapter: telemetryControl,
-      archiveAdapter: archiveUiAdapter,
-      target: 'userscript',
-    })
-  }
-
-  stop() {
-    this.#mounted?.unmount()
-    this.#mounted = undefined
-  }
-}
+const pageRuntime = createBoosterPageRuntime({
+  target: 'userscript',
+  settings: userscriptSettings,
+  diagnostics,
+  persistentDiagnostics: userscriptAnalytics,
+  secrets: userscriptSecrets,
+  telemetry,
+  telemetryControl: createUserscriptTelemetryControl(telemetry),
+  pageBridgeWindow: pageWindow,
+})
 
 async function registerUserscriptMenu() {
   if (typeof GM_registerMenuCommand !== 'function') return
@@ -92,47 +58,15 @@ async function registerUserscriptMenu() {
 }
 
 function startRuntime() {
-  const runtime = new BoosterRuntime(
-    [
-      new OverlayModule(),
-      archiveCapture,
-      new ArchiveScopeControlsModule(userscriptSettings, archiveStore),
-      new HistoryLoaderModule(archiveStore, archiveCapture, pageWindow),
-      new TransportObserverModule({
-        settings: userscriptSettings,
-        diagnostics,
-        persistentDiagnostics: userscriptAnalytics,
-        telemetry,
-      }),
-      new ConversationDecoratorsModule(userscriptSettings, archiveStore),
-    ],
-    (module, error) => {
-      console.error('[ChatGPT Booster] Module failed:', module.id, error)
-      void telemetry
-        .emit({
-          scope: 'runtime',
-          name: 'module.error',
-          timestamp: Date.now(),
-          severity: 'ERROR',
-          attributes: {
-            'module.id': module.id,
-            'error.type': error instanceof Error ? error.name : 'unknown',
-          },
-          body: error instanceof Error ? error.message : 'Module failed',
-        })
-        .catch(() => undefined)
-    },
-  )
-
-  void runtime.start()
+  void pageRuntime.runtime.start()
 }
 
 if (isChatGptPage()) {
   document.documentElement.dataset.chatgptBoosterUserscriptVersion = BOOSTER_VERSION
 
-  // Tampermonkey and the extension have different injection mechanics. A failure to
-  // acquire the page window for transport interception must not prevent the UI and
-  // DOM-based archive fallback from starting.
+  // Tampermonkey owns page-world access directly; the native extension installs the same
+  // observer from its MAIN-world content-script entry instead. Everything after this HAL
+  // boundary uses the shared page runtime.
   try {
     installTransportObserver(pageWindow)
     document.documentElement.dataset.chatgptBoosterUserscriptObserver = 'installed'
@@ -141,7 +75,7 @@ if (isChatGptPage()) {
     console.error('[ChatGPT Booster] Tampermonkey transport observer failed', error)
   }
 
-  void archiveCapture.start().catch((error) => {
+  void pageRuntime.archiveCapture.start().catch((error) => {
     console.error('[ChatGPT Booster] Early archive capture bootstrap failed', error)
   })
   void registerUserscriptMenu().catch((error) => {

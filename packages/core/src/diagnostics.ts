@@ -22,6 +22,10 @@ export interface DiagnosticsAdapter {
   resetTransport(): void
 }
 
+export interface TransportDiagnosticsAdapter extends DiagnosticsAdapter {
+  recordTransport(event: TransportCounterEvent): void
+}
+
 export interface PersistentDiagnosticsAdapter {
   getLifetimeTransportCounters(): Promise<TransportCounters>
   recordTransport(event: TransportCounterEvent): Promise<void>
@@ -52,9 +56,7 @@ export function applyTransportCounterEvent(
   return next
 }
 
-export function createDiagnosticsStore(): DiagnosticsAdapter & {
-  recordTransport(event: TransportCounterEvent): void
-} {
+export function createDiagnosticsStore(): TransportDiagnosticsAdapter {
   let counters = { ...EMPTY_TRANSPORT_COUNTERS }
   const listeners = new Set<(value: TransportCounters) => void>()
   let publishTimer: ReturnType<typeof setTimeout> | undefined

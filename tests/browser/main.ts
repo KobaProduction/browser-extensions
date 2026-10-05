@@ -1101,6 +1101,53 @@ async function runPerformanceTests() {
     }
   }
 
+  {
+    const id = `perf-scope-${Date.now()}`
+    const nav = document.createElement('nav')
+    const row = document.createElement('li')
+    const link = document.createElement('a')
+    link.href = `/c/${id}`
+    link.textContent = 'Performance scope chat'
+    row.append(link)
+    nav.append(row)
+    document.body.append(nav)
+
+    let updates = 0
+    const main = document.querySelector('main')
+    const streamingNode = document.createElement('span')
+    const controls = mountArchiveScopeControls({
+      visible: () => true,
+      mount: () => ({
+        update() {
+          updates += 1
+        },
+        unmount() {},
+      }),
+    })
+    try {
+      const beforeStreaming = updates
+      main?.append(streamingNode)
+      await new Promise((resolve) => setTimeout(resolve, 260))
+      const afterStreaming = updates
+
+      link.href = `/c/${id}-changed`
+      await new Promise((resolve) => setTimeout(resolve, 320))
+      const afterSidebar = updates
+
+      results.push({
+        name: 'scope controls ignore unrelated conversation mutations',
+        pass: afterStreaming === beforeStreaming && afterSidebar > afterStreaming,
+        beforeStreaming,
+        afterStreaming,
+        afterSidebar,
+      })
+    } finally {
+      controls.stop()
+      streamingNode.remove()
+      nav.remove()
+    }
+  }
+
   return results
 }
 

@@ -41,6 +41,38 @@ export function mountArchiveScopeControls(initial: ScopeControlOptions) {
   let stopped = false
   let queued: ReturnType<typeof setTimeout> | undefined
 
+  function sameContext(a: ArchiveCaptureContext, b: ArchiveCaptureContext) {
+    return (
+      a.scope === b.scope &&
+      a.id === b.id &&
+      a.title === b.title &&
+      (a.scope !== 'conversation' ||
+        b.scope !== 'conversation' ||
+        (a.projectId ?? null) === (b.projectId ?? null))
+    )
+  }
+
+  function scopeMutationNode(node: Node): boolean {
+    const element = node instanceof Element ? node : node.parentElement
+    if (!element || element.closest('[data-chatgpt-booster], #chatgpt-booster-root')) return false
+    if (
+      element.matches('nav, header, [role="row"][data-page-table-selectable-row="true"]') ||
+      element.closest('nav, header, [role="row"][data-page-table-selectable-row="true"]')
+    )
+      return true
+    return Boolean(
+      element.querySelector(
+        'nav a[href], header a[href], main [role="row"][data-page-table-selectable-row="true"]',
+      ),
+    )
+  }
+
+  function scopeMutationRelevant(record: MutationRecord): boolean {
+    if (record.type === 'attributes') return scopeMutationNode(record.target)
+    if (scopeMutationNode(record.target)) return true
+    return [...record.addedNodes, ...record.removedNodes].some(scopeMutationNode)
+  }
+
   function contextFor(link: HTMLAnchorElement): ArchiveCaptureContext | undefined {
     const id = currentConversationId(link.href)
     if (id)
@@ -119,8 +151,10 @@ export function mountArchiveScopeControls(initial: ScopeControlOptions) {
         remove(link)
         continue
       }
-      item.context = context
-      item.mounted.update(context)
+      if (!sameContext(item.context, context)) {
+        item.context = context
+        item.mounted.update(context)
+      }
     }
 
     for (const [row, item] of projectRows) {
@@ -135,8 +169,10 @@ export function mountArchiveScopeControls(initial: ScopeControlOptions) {
         removeProjectRow(row)
         continue
       }
-      item.context = context
-      item.mounted.update(context)
+      if (!sameContext(item.context, context)) {
+        item.context = context
+        item.mounted.update(context)
+      }
     }
 
     for (const row of document.querySelectorAll<HTMLElement>(
@@ -225,8 +261,8 @@ export function mountArchiveScopeControls(initial: ScopeControlOptions) {
     })
   }
 
-  const observer = new MutationObserver(() => {
-    if (queued || stopped) return
+  const observer = new MutationObserver((records) => {
+    if (queued || stopped || !records.some(scopeMutationRelevant)) return
     queued = setTimeout(() => {
       queued = undefined
       refresh()
