@@ -11,7 +11,10 @@ import {
   snapshotSettings,
 } from '../../packages/core/src'
 import { serializeArchiveExport } from '../../packages/features/src/archive-export'
-import { ConversationArchiveStore } from '../../packages/features/src/archive-store'
+import {
+  ARCHIVE_DB_NAME,
+  ConversationArchiveStore,
+} from '../../packages/features/src/archive-store'
 import { createArchiveUiAdapter } from '../../packages/features/src/archive-ui-adapter'
 import {
   ConversationArchiveModule,
@@ -20,6 +23,7 @@ import {
 import { ConversationDecoratorsModule } from '../../packages/features/src/conversation-decorators'
 import { HistoryLoaderModule } from '../../packages/features/src/history-loader'
 import { ARCHIVE_ASSET_EVENT, ARCHIVE_EVENT, TRANSPORT_CHANNEL } from '../../packages/observer/src'
+import { mountMessageMetadata } from '../../packages/ui/src/message-metadata'
 import { mountBoosterUi } from '../../packages/ui/src/mount'
 import { mountScopeArchiveControl } from '../../packages/ui/src/scope-archive-control'
 import { runLoaderCancellationTests, runLoaderIsolationTests, runLoaderScrollTest } from './loader'
@@ -1151,6 +1155,71 @@ async function runPerformanceTests() {
   }
 
   {
+    const id = `perf-preload-retention-${Date.now()}`
+    const detail = (readId: string, timestamp: number) => ({
+      kind: 'conversation-page' as const,
+      readId,
+      readStartedAt: timestamp,
+      isInitial: true,
+      requestedBefore: null,
+      timestamp,
+      sourceUrl: `https://chatgpt.com/backend-api/conversations/${id}`,
+      conversationId: id,
+      payload: page(id, [raw(`${readId}-user`, 'user', readId)], {
+        page_info: {
+          start_cursor: `${readId}-start`,
+          end_cursor: `${readId}-end`,
+          has_previous_page: false,
+          has_next_page: false,
+        },
+      }),
+    })
+    await store.ingestPreload(detail('read-a', Date.now()))
+    await store.ingestPreload(detail('read-b', Date.now() + 1))
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const open = indexedDB.open(ARCHIVE_DB_NAME)
+      open.onsuccess = () => resolve(open.result)
+      open.onerror = () => reject(open.error)
+    })
+    const retained = await new Promise<number>((resolve, reject) => {
+      const request = db
+        .transaction('preloadPages', 'readonly')
+        .objectStore('preloadPages')
+        .index('conversationId')
+        .count(IDBKeyRange.only(id))
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    db.close()
+    results.push({
+      name: 'new initial preload read compacts superseded read payloads',
+      pass: retained === 1,
+      retained,
+    })
+  }
+
+  {
+    const href = location.href
+    const ui = createArchiveUiAdapter(store, new ConversationArchiveModule(store, settings))
+    let changes = 0
+    const unsubscribe = ui.subscribeContextChange(() => {
+      changes += 1
+    })
+    try {
+      history.replaceState(history.state, '', href)
+      await new Promise((resolve) => setTimeout(resolve, 40))
+      results.push({
+        name: 'archive adapter exposes event-driven SPA context changes',
+        pass: changes > 0,
+        changes,
+      })
+    } finally {
+      unsubscribe()
+      history.replaceState(history.state, '', href)
+    }
+  }
+
+  {
     const id = `perf-scope-${Date.now()}`
     const nav = document.createElement('nav')
     const row = document.createElement('li')
@@ -1194,6 +1263,41 @@ async function runPerformanceTests() {
       controls.stop()
       streamingNode.remove()
       nav.remove()
+    }
+  }
+
+  {
+    const host = document.createElement('div')
+    document.body.append(host)
+    const metadata = mountMessageMetadata(
+      host,
+      {
+        sentAt: 1700000000,
+        editedAt: null,
+        edited: false,
+        model: 'fixture-model',
+        thinking: 'fixture-thinking',
+      },
+      'en',
+      true,
+    )
+    try {
+      const shadow = metadata.element.shadowRoot
+      const vueRoots = [...(shadow?.querySelectorAll('*') ?? [])].filter(
+        (element) => '__vue_app__' in element,
+      ).length
+      const styleNodes = shadow?.querySelectorAll('style').length ?? 0
+      const adoptedSheets = shadow?.adoptedStyleSheets.length ?? 0
+      results.push({
+        name: 'message metadata avoids per-turn Vue and duplicated stylesheet nodes',
+        pass: vueRoots === 0 && styleNodes === 0 && adoptedSheets === 1,
+        vueRoots,
+        styleNodes,
+        adoptedSheets,
+      })
+    } finally {
+      metadata.unmount()
+      host.remove()
     }
   }
 

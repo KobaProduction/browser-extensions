@@ -8,6 +8,7 @@ import {
   hasConversationDraft,
   hasPendingComposerAttachments,
   isConversationGenerating,
+  observeChatGptNavigation,
 } from '@chatgpt-booster/chatgpt'
 import {
   type ArchiveRecordView,
@@ -80,7 +81,8 @@ export class ConversationArchiveModule implements BoosterModule {
   #settings: BoosterSettings = normalizeSettings()
   #unsubscribe: (() => void) | undefined
   #queue: Promise<unknown> = Promise.resolve()
-  #timer: ReturnType<typeof setInterval> | undefined
+  #navigationUnsubscribe: (() => void) | undefined
+  #ticketExpiryTimer: ReturnType<typeof setTimeout> | undefined
   #active = false
   #lastPolicy = ''
   constructor(
@@ -100,14 +102,18 @@ export class ConversationArchiveModule implements BoosterModule {
     })
     this.#settings = await this.settingsAdapter.get()
     if (!this.#active) return
+    this.#navigationUnsubscribe = observeChatGptNavigation(this.#onContextChanged)
     this.#publishPolicy()
-    this.#timer = setInterval(() => this.#publishPolicy(), 750)
+    this.#scheduleTicketExpiry()
   }
   stop() {
     this.#active = false
     window.removeEventListener('message', this.#onMessage)
     this.#unsubscribe?.()
-    clearInterval(this.#timer)
+    this.#navigationUnsubscribe?.()
+    this.#navigationUnsubscribe = undefined
+    if (this.#ticketExpiryTimer) clearTimeout(this.#ticketExpiryTimer)
+    this.#ticketExpiryTimer = undefined
   }
   async collectCurrent(): Promise<void> {
     const conversationId = currentConversationId()
@@ -121,6 +127,7 @@ export class ConversationArchiveModule implements BoosterModule {
       TICKET_KEY,
       JSON.stringify({ conversationId, startedAt, expiresAt: startedAt + 30 * 60_000 }),
     )
+    this.#scheduleTicketExpiry()
     this.#publishPolicy()
     const promotedPreload = await this.#promotePreload(conversationId, startedAt)
     if (!promotedPreload) await this.#promoteDomSnapshot(conversationId, startedAt)
@@ -250,7 +257,23 @@ export class ConversationArchiveModule implements BoosterModule {
       }
     }
     sessionStorage.removeItem(TICKET_KEY)
+    this.#scheduleTicketExpiry()
     this.#publishPolicy()
+  }
+  #onContextChanged = () => {
+    this.#publishPolicy()
+    this.#scheduleTicketExpiry()
+  }
+  #scheduleTicketExpiry() {
+    if (this.#ticketExpiryTimer) clearTimeout(this.#ticketExpiryTimer)
+    this.#ticketExpiryTimer = undefined
+    const ticket = collectionTicket()
+    if (!ticket) return
+    const delay = Math.max(0, ticket.expiresAt - Date.now())
+    this.#ticketExpiryTimer = setTimeout(() => {
+      this.#ticketExpiryTimer = undefined
+      this.#publishPolicy()
+    }, delay)
   }
   #publishPolicy() {
     if (!this.#active) return

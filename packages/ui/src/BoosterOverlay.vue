@@ -30,7 +30,8 @@ const viewport = ref({ width: window.innerWidth, height: window.innerHeight })
 const dragPosition = ref<{ x: number; y: number }>()
 const loader = ref<HistoryLoaderState>({ phase: 'idle', conversationId: null, knownMessageCount: 0, hasOlderServerHistory: null, pagesLoaded: 0, consecutiveErrors: 0 })
 const toggleButton = ref<HTMLButtonElement>()
-let unsubscribe: (() => void) | undefined, timer: ReturnType<typeof setInterval> | undefined
+let unsubscribe: (() => void) | undefined, contextUnsubscribe: (() => void) | undefined
+let contextFallbackTimer: ReturnType<typeof setInterval> | undefined
 let archiveRefreshTimer: ReturnType<typeof setTimeout> | undefined
 let alive = true, revision = 0, ignoreClick = false, refreshAt = 0
 let pointer: { id: number; startX: number; startY: number; x: number; y: number; moved: boolean } | undefined
@@ -207,14 +208,17 @@ onMounted(async () => {
   } catch { error.value = 'common.saveError' }
   if (!alive) return
   void refreshContext()
-  timer = setInterval(() => {
-    if (document.hidden) return
-    if (props.archiveAdapter?.currentConversationId() !== context.value.conversationId)
-      void refreshContext()
-  }, 1000)
+  if (props.archiveAdapter?.subscribeContextChange)
+    contextUnsubscribe = props.archiveAdapter.subscribeContextChange(() => void refreshContext())
+  else
+    contextFallbackTimer = setInterval(() => {
+      if (document.hidden) return
+      if (props.archiveAdapter?.currentConversationId() !== context.value.conversationId)
+        void refreshContext()
+    }, 2_000)
 })
 onBeforeUnmount(() => {
-  alive = false; revision++; unsubscribe?.(); clearInterval(timer); clearTimeout(archiveRefreshTimer)
+  alive = false; revision++; unsubscribe?.(); contextUnsubscribe?.(); clearInterval(contextFallbackTimer); clearTimeout(archiveRefreshTimer)
   window.removeEventListener('resize', resize); window.removeEventListener('keydown', key)
   window.removeEventListener(OPEN_SETTINGS_EVENT, openSettings); window.removeEventListener(OPEN_CAPTURE_SETTINGS_EVENT, onOpenCapture)
   window.removeEventListener(OPEN_ARCHIVE_EVENT, onOpenArchive); window.removeEventListener(ARCHIVE_UPDATED_EVENT, onArchive)

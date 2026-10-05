@@ -15,7 +15,8 @@ const thread = ref<ArchiveThreadView>({ turns: [], messageCount: 0, recordCount:
 const coverage = ref<ArchiveCoverageView>()
 const listLoading = ref(false), threadLoading = ref(false), error = ref(false), mobileList = ref(!props.initialConversationId)
 const search = ref(''), textSearch = ref(''), visibleCount = ref(40), expanded = ref(new Set<string>()), reasoningExpanded = ref(false)
-let alive = true, listRevision = 0, threadRevision = 0, initialized = false, contextTimer: ReturnType<typeof setInterval> | undefined
+let alive = true, listRevision = 0, threadRevision = 0, initialized = false
+let contextUnsubscribe: (() => void) | undefined, contextFallbackTimer: ReturnType<typeof setInterval> | undefined
 const NONE = '__outside_projects__'
 const selected = computed(() => conversations.value.find(c => c.conversationId === selectedId.value))
 const projectLabel = (id: string | null) => id ? projects.value.find(p => p.projectId === id)?.title || t('identity.unknownProject') : t('reader.noProject')
@@ -71,7 +72,7 @@ async function refresh() {
 onMounted(async () => {
   await refresh()
   let current = props.archiveAdapter.currentConversationId()
-  contextTimer = setInterval(() => {
+  const syncContext = () => {
     const next = props.archiveAdapter.currentConversationId()
     if (!next || next === current) return
     current = next
@@ -80,13 +81,17 @@ onMounted(async () => {
     if (conversation) expanded.value = new Set([conversation.projectId ?? NONE])
     textSearch.value = ''
     void loadThread(next)
-  }, 700)
+  }
+  if (props.archiveAdapter.subscribeContextChange)
+    contextUnsubscribe = props.archiveAdapter.subscribeContextChange(syncContext)
+  else contextFallbackTimer = setInterval(syncContext, 2_000)
 })
 onBeforeUnmount(() => {
   alive = false
   listRevision++
   threadRevision++
-  if (contextTimer) clearInterval(contextTimer)
+  contextUnsubscribe?.()
+  if (contextFallbackTimer) clearInterval(contextFallbackTimer)
 })
 </script>
 <template>

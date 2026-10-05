@@ -1,3 +1,26 @@
+export function observeChatGptNavigation(listener: () => void): () => void {
+  const navigation = (window as Window & { navigation?: EventTarget }).navigation
+  if (navigation) {
+    navigation.addEventListener('currententrychange', listener)
+    return () => navigation.removeEventListener('currententrychange', listener)
+  }
+
+  let lastHref = location.href
+  const check = () => {
+    if (location.href === lastHref) return
+    lastHref = location.href
+    listener()
+  }
+  window.addEventListener('popstate', check)
+  window.addEventListener('hashchange', check)
+  const fallback = setInterval(check, 2_000)
+  return () => {
+    window.removeEventListener('popstate', check)
+    window.removeEventListener('hashchange', check)
+    clearInterval(fallback)
+  }
+}
+
 export function currentConversationId(href = location.href): string | undefined {
   try {
     const url = new URL(href)

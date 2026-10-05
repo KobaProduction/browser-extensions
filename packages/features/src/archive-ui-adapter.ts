@@ -7,6 +7,7 @@ import {
   currentProjectId,
   currentProjectTitle,
   currentResolvedAssetUrls,
+  observeChatGptNavigation,
 } from '@chatgpt-booster/chatgpt'
 import type { ArchiveExportOptions, ArchiveRecordView } from '@chatgpt-booster/core'
 import { fetchArchiveAssetBytes } from '@chatgpt-booster/observer'
@@ -123,6 +124,7 @@ export function createArchiveUiAdapter(
     },
     currentConversationId: () => currentConversationId() ?? null,
     currentProjectId: () => currentProjectId() ?? null,
+    subscribeContextChange: (listener: () => void) => observeChatGptNavigation(listener),
     listProjects: async () =>
       await Promise.all(
         (await store.listProjects()).map(async (project) => ({

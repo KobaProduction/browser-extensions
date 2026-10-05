@@ -231,6 +231,28 @@ function deleteExpiredPreloadPages(store: IDBObjectStore, now: number): Promise<
   })
 }
 
+function deleteSupersededPreloadReads(
+  store: IDBObjectStore,
+  conversationId: string,
+  readId: string | null,
+): Promise<void> {
+  const keepPrefix = `${conversationId}:${readId ?? 'preload'}:`
+  return new Promise((resolve, reject) => {
+    const cursor = store.index('conversationId').openKeyCursor(IDBKeyRange.only(conversationId))
+    cursor.onerror = () => reject(cursor.error ?? new Error('Failed to compact preload reads'))
+    cursor.onsuccess = () => {
+      const item = cursor.result
+      if (!item) {
+        resolve()
+        return
+      }
+      if (typeof item.primaryKey !== 'string' || !item.primaryKey.startsWith(keepPrefix))
+        store.delete(item.primaryKey)
+      item.continue()
+    }
+  })
+}
+
 function createIndexIfMissing(
   store: IDBObjectStore,
   name: string,
@@ -446,6 +468,7 @@ export class ConversationArchiveStore {
   }
 
   #database: Promise<IDBDatabase> | undefined
+  #preloadReadIds = new Map<string, string | null>()
 
   async ingestPreload(detail: ConversationArchiveEventDetail): Promise<void> {
     const payload = detail.payload
@@ -468,11 +491,20 @@ export class ConversationArchiveStore {
       sourceUrl: detail.sourceUrl,
       payload,
     }
+    if (entry.isInitial) this.#preloadReadIds.set(entry.conversationId, entry.readId)
+    else if (
+      this.#preloadReadIds.has(entry.conversationId) &&
+      this.#preloadReadIds.get(entry.conversationId) !== entry.readId
+    )
+      return
+
     const db = await this.#db()
     const tx = db.transaction('preloadPages', 'readwrite')
     const done = transactionDone(tx)
     const store = tx.objectStore('preloadPages')
     store.put(entry)
+    if (entry.isInitial)
+      await deleteSupersededPreloadReads(store, entry.conversationId, entry.readId)
     await deleteExpiredPreloadPages(store, now)
     await done
     window.dispatchEvent(

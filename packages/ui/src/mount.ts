@@ -73,6 +73,7 @@ export interface ArchiveDataAdapter {
   getCurrentContext(): Promise<ArchiveCurrentContext>
   currentConversationId(): string | null
   currentProjectId(): string | null
+  subscribeContextChange?(listener: () => void): () => void
   getThread(conversationId: string): Promise<ArchiveThreadView>
   collectCurrent(): Promise<void>
   listExportFormats(): ArchiveExportFormatDescriptor[]
