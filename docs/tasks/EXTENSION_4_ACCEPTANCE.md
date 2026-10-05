@@ -60,7 +60,8 @@ Disposable browser-import copies, scratch outputs and agent-only test artifacts 
 ## Publication status
 
 The validated patch series is published to `dev` through the `koba-ai-agent` GitHub App. The user-token account can read the repository but its write paths returned 403/404; `koba-ai-agent` is the authoritative write identity for this repository workflow. The current source change is staged for the next rolling push, which resolves to version `0.8.2`.
-## Remaining gate
+## Review gate resolution
 
-- Checklist status after this acceptance pass: 101/102 items closed at their stated evidence levels.
-- E102 remains open: this session exposes a separate `koba-ai-reviewer` GitHub identity but no independent reasoning/reviewer runtime. A second review must not be simulated by the implementing agent.
+- Checklist status after this acceptance pass: 102/102 items resolved at their stated evidence levels or explicit waiver.
+- E102 was not performed as an independent reviewer run. Issue #25 records a direct user decision waiving that gate for this iteration because no independent reviewer runtime is available in the current session.
+- The waiver must not be represented as an independent APPROVED review; `koba-ai-reviewer` is only a separate GitHub identity, not a separate reasoning agent.
