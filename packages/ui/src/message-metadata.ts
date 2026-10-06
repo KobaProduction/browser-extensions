@@ -11,6 +11,7 @@ export interface MountedMessageMetadata {
   element: HTMLElement
   update(metadata: LiveMessageMetadataView): void
   updateActivity(activity: AgentActivitySnapshot | null): void
+  tick(now: number): void
   unmount(): void
 }
 
@@ -78,7 +79,7 @@ function appendLine(container: HTMLElement, label: string, value: string) {
   container.append(strong, span)
 }
 
-function createClickPopover(icon: SVGElement) {
+function createHoverClickPopover(icon: SVGElement, onModeChange: () => void) {
   const trigger = document.createElement('span')
   trigger.className = 'booster-meta-trigger booster-meta-trigger-time is-clickable'
   trigger.tabIndex = 0
@@ -86,10 +87,13 @@ function createClickPopover(icon: SVGElement) {
   trigger.append(icon)
 
   const popup = document.createElement('div')
-  popup.className = 'booster-floating-popover booster-message-meta-popover is-interactive'
+  popup.className = 'booster-floating-popover booster-message-meta-popover'
   popup.setAttribute('popover', 'manual')
 
   let open = false
+  let pinned = false
+  let hideTimer = 0
+
   const position = () => {
     if (!open) return
     const rect = trigger.getBoundingClientRect()
@@ -103,59 +107,97 @@ function createClickPopover(icon: SVGElement) {
     popup.style.left = `${left}px`
     popup.style.top = `${top}px`
   }
+
   const show = () => {
-    if (open) return position()
-    open = true
-    popup.classList.add('is-open')
-    try {
-      popup.showPopover?.()
-    } catch {}
-    window.addEventListener('resize', position)
-    window.addEventListener('scroll', position, true)
-    document.addEventListener('pointerdown', outside, true)
-    position()
+    if (hideTimer) window.clearTimeout(hideTimer)
+    if (!open) {
+      open = true
+      popup.classList.add('is-open')
+      try {
+        popup.showPopover?.()
+      } catch {}
+      window.addEventListener('resize', position)
+      window.addEventListener('scroll', position, true)
+      document.addEventListener('pointerdown', outside, true)
+    }
+    popup.classList.toggle('is-interactive', pinned)
+    onModeChange()
+    queueMicrotask(position)
   }
+
   const hide = () => {
     if (!open) return
     open = false
-    popup.classList.remove('is-open')
+    pinned = false
+    popup.classList.remove('is-open', 'is-interactive')
     window.removeEventListener('resize', position)
     window.removeEventListener('scroll', position, true)
     document.removeEventListener('pointerdown', outside, true)
     try {
       popup.hidePopover?.()
     } catch {}
+    onModeChange()
   }
-  const toggle = () => {
-    if (open) hide()
-    else show()
+
+  const scheduleHoverHide = () => {
+    if (pinned) return
+    if (hideTimer) window.clearTimeout(hideTimer)
+    hideTimer = window.setTimeout(hide, 90)
   }
+
   function outside(event: PointerEvent) {
+    if (!pinned) return
     const path = event.composedPath()
     if (path.includes(trigger) || path.includes(popup)) return
     hide()
+  }
+
+  const click = (event: MouseEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (pinned) {
+      hide()
+      return
+    }
+    pinned = true
+    show()
   }
   const key = (event: KeyboardEvent) => {
     if (event.key === 'Escape') hide()
     else if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
-      toggle()
+      if (pinned) hide()
+      else {
+        pinned = true
+        show()
+      }
     }
   }
-  const click = (event: MouseEvent) => {
-    event.preventDefault()
-    event.stopPropagation()
-    toggle()
+  const enter = () => {
+    if (!pinned) show()
   }
+  const leave = () => scheduleHoverHide()
+
+  trigger.addEventListener('mouseenter', enter)
+  trigger.addEventListener('mouseleave', leave)
+  trigger.addEventListener('focus', enter)
+  trigger.addEventListener('blur', leave)
   trigger.addEventListener('click', click)
   trigger.addEventListener('keydown', key)
 
   return {
     trigger,
     popup,
-    hide,
+    isPinned: () => pinned,
+    isOpen: () => open,
+    position,
     unmount() {
+      if (hideTimer) window.clearTimeout(hideTimer)
       hide()
+      trigger.removeEventListener('mouseenter', enter)
+      trigger.removeEventListener('mouseleave', leave)
+      trigger.removeEventListener('focus', enter)
+      trigger.removeEventListener('blur', leave)
       trigger.removeEventListener('click', click)
       trigger.removeEventListener('keydown', key)
     },
@@ -175,27 +217,33 @@ export function mountMessageMetadata(
 
   const shadow = host.attachShadow({ mode: 'open' })
   installBoosterShadowStyles(shadow)
-  const control = createClickPopover(clockIcon())
-  const timeText = document.createElement('span')
-  timeText.className = 'booster-meta-time-text'
-  control.trigger.append(timeText)
-  shadow.append(control.trigger, control.popup)
-
   let current: LiveMessageMetadataView = { ...initial }
+  let currentNow = Date.now()
   let rawExpanded = false
+  let render = () => {}
+  const control = createHoverClickPopover(clockIcon(), () => render())
+  shadow.append(control.trigger, control.popup)
 
   const t = (key: Parameters<typeof translate>[1]) => translate(locale, key)
 
-  const render = () => {
+  render = () => {
     const sent = fullDate(current.sentAt, locale)
     const edited = fullDate(current.editedAt, locale)
     const unknown = t('reader.timeUnknown')
-    timeText.textContent = shortTime(current.sentAt, locale)
-    control.trigger.title = sent ? `${t('reader.sentAt')}: ${sent}` : unknown
-    control.trigger.setAttribute('aria-label', control.trigger.title)
+    const pinned = control.isPinned()
+    control.trigger.setAttribute('aria-label', t('messageMeta.title'))
 
     const body = document.createElement('div')
     body.className = 'booster-message-meta-body'
+    const header = document.createElement('header')
+    header.className = 'booster-message-meta-header'
+    const heading = document.createElement('strong')
+    heading.textContent = t('messageMeta.title')
+    const stamp = document.createElement('span')
+    stamp.textContent = shortTime(current.sentAt, locale)
+    header.append(heading, stamp)
+    body.append(header)
+
     const lines = document.createElement('div')
     lines.className = 'booster-meta-lines'
     appendLine(lines, t('reader.sentAt'), sent || unknown)
@@ -205,20 +253,39 @@ export function mountMessageMetadata(
 
     const activity = current.activity
     if (activity) {
-      const activityDuration =
+      const requestDuration =
         activity.durationMs ??
-        (activity.startedAt && activity.lastActivityAt
-          ? Math.max(0, activity.lastActivityAt - activity.startedAt)
+        (activity.startedAt
+          ? Math.max(0, (activity.completedAt ?? currentNow) - activity.startedAt)
           : null)
-      if (activityDuration !== null)
-        appendLine(lines, t('activity.duration'), duration(activityDuration))
-      if (activity.startedAt)
+      const reasoningDuration =
+        activity.reasoningDurationMs ??
+        (activity.reasoningStartedAt
+          ? Math.max(0, (activity.completedAt ?? currentNow) - activity.reasoningStartedAt)
+          : null)
+      if (requestDuration !== null)
+        appendLine(lines, t('activity.requestDuration'), duration(requestDuration))
+      if (reasoningDuration !== null)
+        appendLine(lines, t('activity.reasoningDuration'), duration(reasoningDuration))
+      if (pinned && activity.startedAt)
         appendLine(
           lines,
           t('activity.startedAt'),
           new Date(activity.startedAt).toLocaleString(locale),
         )
-      if (activity.lastActivityAt)
+      if (pinned && activity.reasoningStartedAt)
+        appendLine(
+          lines,
+          t('activity.reasoningStartedAt'),
+          new Date(activity.reasoningStartedAt).toLocaleString(locale),
+        )
+      if (pinned && activity.completedAt)
+        appendLine(
+          lines,
+          t('activity.completedAt'),
+          new Date(activity.completedAt).toLocaleString(locale),
+        )
+      if (pinned && activity.lastActivityAt)
         appendLine(
           lines,
           t('activity.lastActivityAt'),
@@ -227,7 +294,7 @@ export function mountMessageMetadata(
     }
     body.append(lines)
 
-    if (current.raw !== undefined && current.raw !== null) {
+    if (pinned && current.raw !== undefined && current.raw !== null) {
       const toggle = document.createElement('button')
       toggle.type = 'button'
       toggle.className = 'booster-meta-raw-toggle'
@@ -245,11 +312,13 @@ export function mountMessageMetadata(
         event.stopPropagation()
         rawExpanded = !rawExpanded
         render()
+        queueMicrotask(control.position)
       })
       body.append(toggle, pre)
     }
 
     control.popup.replaceChildren(body)
+    if (control.isOpen()) queueMicrotask(control.position)
   }
 
   render()
@@ -263,6 +332,10 @@ export function mountMessageMetadata(
     updateActivity(activity) {
       current = { ...current, activity }
       render()
+    },
+    tick(now) {
+      currentNow = now
+      if (control.isOpen()) render()
     },
     unmount() {
       control.unmount()

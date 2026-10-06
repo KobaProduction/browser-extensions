@@ -1,4 +1,8 @@
-import type { ArchiveRecordView, ToolInvocationView } from '@chatgpt-booster/core'
+import {
+  type ArchiveRecordView,
+  serverTimeMs,
+  type ToolInvocationView,
+} from '@chatgpt-booster/core'
 import {
   chatGptToolActivityRows,
   findChatGptTurnRoot,
@@ -276,6 +280,49 @@ function asObject(value: unknown): Record<string, unknown> | undefined {
     : undefined
 }
 
+function parseJsonObject(value: unknown): Record<string, unknown> | undefined {
+  if (typeof value !== 'string' || !value.trim()) return undefined
+  try {
+    return asObject(JSON.parse(value))
+  } catch {
+    return undefined
+  }
+}
+
+function recordContentObject(record: ArchiveRecordView): Record<string, unknown> | undefined {
+  const content = asObject(record.raw.content)
+  const parsed = parseJsonObject(content?.text)
+  return parsed ?? content
+}
+
+function connectorPathParts(path: string | null): {
+  provider: string | null
+  action: string | null
+} {
+  if (!path) return { provider: null, action: null }
+  const parts = path.split('/').filter(Boolean)
+  if (parts.length < 2) return { provider: null, action: null }
+  return {
+    provider: decodeURIComponent(parts[0] ?? '').trim() || null,
+    action: cleanSegment(decodeURIComponent(parts.at(-1) ?? '')) || null,
+  }
+}
+
+function toolResultPayload(record: ArchiveRecordView | null | undefined): unknown {
+  if (!record) return null
+  const content = asObject(record.raw.content)
+  const parsed = parseJsonObject(content?.text)
+  if (parsed) return parsed
+  if (Array.isArray(content?.parts)) {
+    if (content.parts.length === 1) {
+      const only = content.parts[0]
+      return parseJsonObject(only) ?? only
+    }
+    return content.parts
+  }
+  return content?.text ?? content ?? null
+}
+
 function firstNonEmptyString(...values: unknown[]): string | null {
   return (
     values.find((value): value is string => typeof value === 'string' && value.trim().length > 0) ??
@@ -393,11 +440,21 @@ function toolIconKey(value: unknown): string | null {
     : null
 }
 
-export function toolInvocationFromRecord(record: ArchiveRecordView): ToolInvocationView | null {
+export function toolInvocationFromRecord(
+  record: ArchiveRecordView,
+  resultRecord?: ArchiveRecordView | null,
+): ToolInvocationView | null {
   const metadata = asObject(record.raw.metadata)
   const recipient = record.recipient?.trim() || null
   const searchModelQueries = asObject(metadata?.search_model_queries)
+  const envelope = recordContentObject(record)
+  const connectorPayload = parseJsonObject(metadata?.connector_tool_payload)
+  const path =
+    firstNonEmptyString(envelope?.path, metadata?.tool_path, metadata?.connector_path) ?? null
+  const pathParts = connectorPathParts(path)
   const payload =
+    connectorPayload ??
+    envelope?.args ??
     metadata?.arguments ??
     metadata?.args ??
     metadata?.input ??
@@ -417,21 +474,34 @@ export function toolInvocationFromRecord(record: ArchiveRecordView): ToolInvocat
       record.authorName,
       recipient && recipient !== 'all' ? recipient : null,
     )
-  if (!rawName && record.role !== 'tool') return null
-  const name = rawName ?? 'tool'
-  const parts = splitToolName(name)
-  const provider = parts.provider
-  const action = parts.action
-  const label = provider ? provider + ' · ' + (action ?? 'tool') : (action ?? 'Tool')
+  if (!rawName && !pathParts.provider && record.role !== 'tool') return null
+  const name = rawName ?? pathParts.action ?? 'tool'
+  const fallbackParts = splitToolName(name)
+  const provider = pathParts.provider ?? fallbackParts.provider
+  const action = pathParts.action ?? fallbackParts.action
+  const label = provider ? `${provider} · ${action ?? 'tool'}` : (action ?? 'Tool')
   const icons = metadata?.tool_icons ?? metadata?.tool_icon
+  const startedAt = record.createTime ?? null
+  const finishedAt =
+    resultRecord?.createTime ??
+    (record.updateTime && startedAt && record.updateTime > startedAt ? record.updateTime : null)
+  const durationMs =
+    startedAt && finishedAt ? Math.max(0, serverTimeMs(finishedAt) - serverTimeMs(startedAt)) : null
   return {
-    kind: /^mcp__/.test(name) || /\bmcp\b/i.test(provider ?? '') ? 'mcp' : 'tool',
+    kind:
+      /^mcp__/.test(name) || /\bmcp\b/i.test(provider ?? '') || /mcp/i.test(path ?? '')
+        ? 'mcp'
+        : 'tool',
     provider,
     action,
     label,
     recipient,
-    timestamp: record.createTime ?? record.firstSeenAt ?? null,
+    timestamp: startedAt,
+    finishedAt,
+    durationMs,
     payload,
+    result: toolResultPayload(resultRecord),
+    path,
     link: safeHttpUrl(
       metadata?.tool_url,
       metadata?.connector_url,
@@ -456,15 +526,19 @@ export function toolInvocationFromEvidence(evidence: ToolCallEvidence): ToolInvo
     provider: parts.provider,
     action: parts.action,
     label: parts.provider
-      ? parts.provider + ' · ' + (parts.action ?? evidence.label)
+      ? `${parts.provider} · ${parts.action ?? evidence.label}`
       : (parts.action ?? evidence.label),
     recipient: null,
     timestamp: evidence.timestamp ? Date.parse(evidence.timestamp) || null : null,
+    finishedAt: null,
+    durationMs: null,
     payload:
       evidence.payload ??
       (evidence.structuredPayloads.length === 1
         ? evidence.structuredPayloads[0]
         : evidence.structuredPayloads),
+    result: null,
+    path: null,
     link: null,
     iconUrl: null,
     iconKey: null,

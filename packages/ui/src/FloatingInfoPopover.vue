@@ -3,7 +3,7 @@ import { nextTick, onBeforeUnmount, ref } from 'vue'
 
 const props = withDefaults(
   defineProps<{
-    mode?: 'hover' | 'click'
+    mode?: 'hover' | 'click' | 'hover-click'
     label: string
     align?: 'start' | 'end'
     triggerClass?: string
@@ -14,27 +14,35 @@ const props = withDefaults(
 const trigger = ref<HTMLElement>()
 const popup = ref<HTMLElement>()
 const open = ref(false)
+const pinned = ref(false)
+let hideTimer = 0
 
 function position() {
   const button = trigger.value
   const panel = popup.value
   if (!button || !panel) return
   const rect = button.getBoundingClientRect()
-  const width = Math.min(340, Math.max(180, panel.offsetWidth || 260))
+  const width = Math.min(420, Math.max(180, panel.offsetWidth || 260))
   const maxLeft = Math.max(8, innerWidth - width - 8)
   const preferred = props.align === 'start' ? rect.left : rect.right - width
   const left = Math.max(8, Math.min(maxLeft, preferred))
   const panelHeight = panel.offsetHeight || 80
   const below = rect.bottom + 8
   const top = below + panelHeight <= innerHeight - 8 ? below : Math.max(8, rect.top - panelHeight - 8)
-  panel.style.left = left + 'px'
-  panel.style.top = top + 'px'
+  panel.style.left = `${left}px`
+  panel.style.top = `${top}px`
+}
+
+function cancelHide() {
+  if (!hideTimer) return
+  window.clearTimeout(hideTimer)
+  hideTimer = 0
 }
 
 function bindOpenListeners() {
   window.addEventListener('resize', reposition)
   window.addEventListener('scroll', reposition, true)
-  if (props.mode === 'click') document.addEventListener('pointerdown', onPointerDown, true)
+  if (props.mode !== 'hover') document.addEventListener('pointerdown', onPointerDown, true)
 }
 
 function unbindOpenListeners() {
@@ -44,7 +52,9 @@ function unbindOpenListeners() {
 }
 
 async function show() {
+  cancelHide()
   if (open.value) {
+    await nextTick()
     position()
     return
   }
@@ -54,40 +64,76 @@ async function show() {
   const panel = popup.value
   if (!panel) return
   try {
-    if ('showPopover' in panel) panel.showPopover()
+    panel.showPopover?.()
   } catch {}
   position()
 }
 
-function hide() {
-  if (!open.value) return
+function hide(force = false) {
+  cancelHide()
+  if (pinned.value && !force) return
+  if (!open.value) {
+    if (force) pinned.value = false
+    return
+  }
   open.value = false
+  if (force) pinned.value = false
   unbindOpenListeners()
-  const panel = popup.value
   try {
-    if (panel && 'hidePopover' in panel) panel.hidePopover()
+    popup.value?.hidePopover?.()
   } catch {}
 }
 
-function toggle() {
-  if (open.value) hide()
-  else void show()
+function scheduleHide() {
+  if (pinned.value) return
+  cancelHide()
+  hideTimer = window.setTimeout(() => hide(), 100)
+}
+
+function togglePinned() {
+  if (props.mode === 'hover') return
+  if (props.mode === 'click') {
+    if (open.value) hide(true)
+    else {
+      pinned.value = true
+      void show()
+    }
+    return
+  }
+  if (pinned.value) hide(true)
+  else {
+    pinned.value = true
+    void show()
+  }
 }
 
 function onPointerDown(event: PointerEvent) {
-  if (props.mode !== 'click' || !open.value) return
+  if (!open.value || !pinned.value) return
   const path = event.composedPath()
   if (trigger.value && path.includes(trigger.value)) return
   if (popup.value && path.includes(popup.value)) return
-  hide()
+  hide(true)
 }
 
 function reposition() {
   if (open.value) position()
 }
 
+function hoverEnter() {
+  if (props.mode === 'click') return
+  cancelHide()
+  void show()
+}
+
+function hoverLeave() {
+  if (props.mode === 'click') return
+  if (props.mode === 'hover') hide()
+  else scheduleHide()
+}
+
 onBeforeUnmount(() => {
-  unbindOpenListeners()
+  cancelHide()
+  hide(true)
 })
 </script>
 
@@ -95,28 +141,29 @@ onBeforeUnmount(() => {
   <span
     ref="trigger"
     class="booster-meta-trigger"
-    :class="[triggerClass, { 'is-clickable': mode === 'click' }]"
+    :class="[triggerClass, { 'is-clickable': mode !== 'hover' }]"
     tabindex="0"
     role="button"
     :aria-label="label"
-    :title="label"
-    @mouseenter="mode === 'hover' && show()"
-    @mouseleave="mode === 'hover' && hide()"
-    @focus="mode === 'hover' && show()"
+    @mouseenter="hoverEnter"
+    @mouseleave="hoverLeave"
+    @focus="hoverEnter"
     @blur="mode === 'hover' && hide()"
-    @click.stop="mode === 'click' && toggle()"
-    @keydown.enter.prevent="toggle"
-    @keydown.space.prevent="toggle"
-    @keydown.escape.prevent="hide"
+    @click.stop="togglePinned"
+    @keydown.enter.prevent="togglePinned"
+    @keydown.space.prevent="togglePinned"
+    @keydown.escape.prevent="hide(true)"
   >
     <slot name="trigger" />
   </span>
   <div
     ref="popup"
     class="booster-floating-popover"
-    :class="{ 'is-interactive': mode === 'click', 'is-open': open }"
+    :class="{ 'is-interactive': pinned || mode === 'click', 'is-open': open }"
     popover="manual"
+    @mouseenter="cancelHide"
+    @mouseleave="hoverLeave"
   >
-    <slot />
+    <slot :pinned="pinned" :open="open" />
   </div>
 </template>

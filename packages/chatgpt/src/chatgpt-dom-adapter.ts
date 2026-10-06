@@ -22,8 +22,10 @@ export interface ChatGptDomAdapter {
   assistantMessage(turn: HTMLElement): HTMLElement | null
   activityStatus(turn: HTMLElement): HTMLElement | null
   responseState(turn: HTMLElement): string | null
+  turnState(turn: HTMLElement): string | null
   isTurnActive(turn: HTMLElement): boolean
   activityMount(turn: HTMLElement): HTMLElement
+  requestStatusAnchor(root: ParentNode): HTMLElement | null
   turnId(turn: HTMLElement): string | null
   conversationAnchor(root: ParentNode): HTMLElement | null
   messageIds(turn: HTMLElement): string[]
@@ -170,6 +172,9 @@ const legacyTurnDomAdapter: ChatGptDomAdapter = {
         ?.getAttribute('data-dil-talvt-response-state') ?? null
     )
   },
+  turnState(turn) {
+    return this.responseState(turn) === 'streaming' ? 'in_progress' : null
+  },
   isTurnActive(turn) {
     return Boolean(
       this.responseState(turn) === 'streaming' ||
@@ -180,6 +185,13 @@ const legacyTurnDomAdapter: ChatGptDomAdapter = {
   },
   activityMount(turn) {
     return turn.querySelector<HTMLElement>('[data-conversation-screenshot-content]') ?? turn
+  },
+  requestStatusAnchor(root) {
+    return (
+      [...root.querySelectorAll<HTMLElement>('[data-markdown-copy="exclude"]')].find((element) =>
+        /ChatGPT.*(?:ошиб|mistake)/i.test(element.textContent ?? ''),
+      ) ?? null
+    )
   },
   turnId(turn) {
     return turn.dataset.turnId ?? turn.getAttribute('data-turn-id') ?? null
@@ -227,6 +239,7 @@ const searchUnitDomAdapter: ChatGptDomAdapter = {
     'data-chatgpt-search-message-ids',
     'data-chatgpt-selection-message-id',
     'data-markdown-animated',
+    'data-talvt-turn-state',
     'aria-expanded',
   ],
   matches(root) {
@@ -303,11 +316,19 @@ const searchUnitDomAdapter: ChatGptDomAdapter = {
   responseState(turn) {
     return this.isTurnActive(turn) ? 'streaming' : null
   },
+  turnState(turn) {
+    return (
+      turn
+        .querySelector<HTMLElement>('[data-talvt-turn-state]')
+        ?.getAttribute('data-talvt-turn-state') ?? null
+    )
+  },
   isTurnActive(turn) {
     return Boolean(
-      turn.querySelector(
-        '[data-markdown-animated], [class*="cadencedShimmer"], [data-streaming-response-status]',
-      ),
+      this.turnState(turn) === 'in_progress' ||
+        turn.querySelector(
+          '[data-markdown-animated], [class*="cadencedShimmer"], [data-streaming-response-status]',
+        ),
     )
   },
   activityMount(turn) {
@@ -315,6 +336,13 @@ const searchUnitDomAdapter: ChatGptDomAdapter = {
     if (status?.parentElement) return status.parentElement
     const actionRows = [...turn.querySelectorAll<HTMLElement>(TURN_ACTIONS_SELECTOR)]
     return actionRows.at(-1) ?? turn
+  },
+  requestStatusAnchor(root) {
+    return (
+      [...root.querySelectorAll<HTMLElement>('[data-markdown-copy="exclude"]')].find((element) =>
+        /ChatGPT.*(?:ошиб|mistake)/i.test(element.textContent ?? ''),
+      ) ?? null
+    )
   },
   turnId(turn) {
     return turn.dataset.turnKey?.trim() || null
@@ -423,6 +451,10 @@ export function chatGptMessageBounds(root: ParentNode = document): {
       lastMessageId: null,
     }
   )
+}
+
+export function chatGptRequestStatusAnchor(root: ParentNode = document): HTMLElement | null {
+  return resolveChatGptDomAdapter(root)?.requestStatusAnchor(root) ?? null
 }
 
 export function chatGptScrollHints(root: ParentNode = document): HTMLElement[] {

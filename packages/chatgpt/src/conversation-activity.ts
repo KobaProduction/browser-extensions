@@ -44,22 +44,22 @@ function activityFingerprint(
   phase: AgentActivityPhase,
   label: string | null,
   toolLabel: string | null,
+  active: boolean,
 ) {
-  if (!section) return `${phase}|${label ?? ''}|${toolLabel ?? ''}`
+  if (!section) return `${active ? '1' : '0'}|${phase}|${label ?? ''}|${toolLabel ?? ''}`
   const adapter = resolveChatGptDomAdapter(section)
   const message = adapter?.assistantMessage(section) ?? null
   const text = compact(message?.textContent ?? '')
-  const tail = text.slice(-180)
-  const messageState = message?.getAttribute('data-markdown-talvt-render-state') ?? ''
   return [
     adapter?.turnId(section) ?? '',
-    adapter?.id ?? '',
+    adapter?.turnState(section) ?? '',
+    active ? '1' : '0',
     phase,
     label ?? '',
     toolLabel ?? '',
-    messageState,
+    message?.getAttribute('data-markdown-talvt-render-state') ?? '',
     text.length,
-    tail,
+    text.slice(-180),
   ].join('|')
 }
 
@@ -67,30 +67,44 @@ export function readConversationActivity(): Omit<ConversationActivityObservation
   active: boolean
   phase: AgentActivityPhase
   turnId: string | null
+  turnState: string | null
   label: string | null
   tool: AgentActivitySnapshot['tool']
   fingerprint: string
 } {
   const adapter = resolveChatGptDomAdapter(document)
   const section = adapter?.latestAssistantTurn(document) ?? null
+  const turnState = section ? (adapter?.turnState(section) ?? null) : null
   const responseState = section ? adapter?.responseState(section) : null
   const status = section ? (adapter?.activityStatus(section) ?? null) : null
   const statusText = dedupeRepeatedText(status?.textContent ?? '')
-  const toolEvidence = section ? findToolCallEvidence(section)[0] : undefined
+  const evidence = section ? findToolCallEvidence(section) : []
+  const toolEvidence = status
+    ? evidence.find(
+        (candidate) =>
+          candidate.element === status ||
+          candidate.element.contains(status) ||
+          status.contains(candidate.element),
+      )
+    : undefined
   const tool = toolEvidence ? toolInvocationFromEvidence(toolEvidence) : null
   const active = Boolean(
-    (section && (responseState === 'streaming' || adapter?.isTurnActive(section))) ||
-      (section && document.querySelector(STOP_SELECTOR)),
+    section &&
+      (turnState === 'in_progress' ||
+        responseState === 'streaming' ||
+        adapter?.isTurnActive(section) ||
+        document.querySelector(STOP_SELECTOR)),
   )
   const phase = section ? activityPhase(section, tool, statusText) : 'idle'
   const label = tool?.label ?? (statusText || null)
   return {
     active,
-    phase: active ? phase : 'idle',
+    phase: active ? phase : turnState === 'complete' ? 'complete' : 'idle',
     turnId: section && adapter ? adapter.turnId(section) : null,
+    turnState,
     label,
     tool,
-    fingerprint: activityFingerprint(section, active ? phase : 'idle', label, tool?.label ?? null),
+    fingerprint: activityFingerprint(section, phase, label, tool?.label ?? null, active),
     section,
     mount: section && adapter ? adapter.activityMount(section) : null,
   }
@@ -101,47 +115,31 @@ export function observeConversationActivity(
 ): ConversationActivityObserver {
   let stopped = false
   let frame = 0
-  let activeTurnId: string | null = null
-  let startedAt: number | null = null
-  let lastActivityAt: number | null = null
-  let lastFingerprint = ''
   let lastEmittedKey = ''
+  let lastActiveTurnId: string | null = null
 
   const scan = () => {
     frame = 0
     if (stopped) return
-    const now = Date.now()
     const state = readConversationActivity()
-    let justCompleted = false
-    if (state.active) {
-      if (state.turnId !== activeTurnId) {
-        activeTurnId = state.turnId
-        startedAt = now
-        lastActivityAt = now
-        lastFingerprint = ''
-      }
-      if (state.fingerprint !== lastFingerprint) {
-        lastFingerprint = state.fingerprint
-        lastActivityAt = now
-      }
-    } else if (activeTurnId !== null) {
-      if (state.fingerprint !== lastFingerprint) lastActivityAt = now
-      activeTurnId = null
-      lastFingerprint = state.fingerprint
-      justCompleted = true
-    }
-
+    if (state.active && state.turnId) lastActiveTurnId = state.turnId
+    const justCompleted =
+      !state.active &&
+      state.turnId !== null &&
+      state.turnId === lastActiveTurnId &&
+      state.turnState === 'complete'
     const snapshot: AgentActivitySnapshot = {
       conversationId: currentConversationId() ?? null,
       turnId: state.turnId,
       active: state.active,
-      phase: state.active ? state.phase : justCompleted ? 'complete' : 'idle',
-      startedAt,
-      lastActivityAt,
-      durationMs:
-        !state.active && justCompleted && startedAt && lastActivityAt
-          ? Math.max(0, lastActivityAt - startedAt)
-          : null,
+      phase: state.active ? state.phase : justCompleted ? 'complete' : state.phase,
+      startedAt: null,
+      reasoningStartedAt: null,
+      phaseStartedAt: null,
+      completedAt: null,
+      lastActivityAt: null,
+      durationMs: null,
+      reasoningDurationMs: null,
       label: state.label,
       tool: state.tool,
     }
@@ -150,9 +148,8 @@ export function observeConversationActivity(
       snapshot.turnId ?? '',
       snapshot.active ? '1' : '0',
       snapshot.phase,
-      snapshot.lastActivityAt ?? '',
-      snapshot.label ?? '',
-      snapshot.tool?.label ?? '',
+      state.turnState ?? '',
+      state.fingerprint,
     ].join('|')
     if (emittedKey === lastEmittedKey) return
     lastEmittedKey = emittedKey
@@ -189,6 +186,7 @@ export function observeConversationActivity(
         ...CHATGPT_DOM_MUTATION_ATTRIBUTES,
         'data-dil-talvt-response-state',
         'data-markdown-talvt-render-state',
+        'data-talvt-turn-state',
         'data-testid',
       ]),
     ],
@@ -196,12 +194,16 @@ export function observeConversationActivity(
   queue()
 
   return {
-    scan: queue,
+    scan() {
+      lastEmittedKey = ''
+      queue()
+    },
     stop() {
       stopped = true
       observer.disconnect()
       if (frame) cancelAnimationFrame(frame)
       frame = 0
+      lastActiveTurnId = null
     },
   }
 }

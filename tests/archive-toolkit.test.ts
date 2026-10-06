@@ -286,6 +286,70 @@ describe('conversation vs nested records', () => {
     expect(tool?.iconKey).toBe('github')
   })
 
+  test('connector tool parser restores app, action, arguments, result and duration', () => {
+    const call = record('connector-call', 'assistant', 'code', {
+      recipient: 'api_tool.call_tool',
+      createTime: 1700000000,
+      updateTime: 1700000000,
+      raw: {
+        content: {
+          content_type: 'code',
+          text: JSON.stringify({
+            path: '/Koba Terminal/link_fixture/terminal_exec',
+            args: { workspace_id: 'chatgpt-booster', command: 'git status' },
+          }),
+        },
+        metadata: {
+          connector_tool_payload: JSON.stringify({
+            workspace_id: 'chatgpt-booster',
+            command: 'git status',
+          }),
+          tool_icons: ['terminal'],
+        },
+      },
+    })
+    const result = record('connector-result', 'tool', 'code', {
+      parentId: 'connector-call',
+      createTime: 1700000002,
+      raw: {
+        content: {
+          content_type: 'code',
+          text: JSON.stringify({ exit_code: 0, stdout: 'clean' }),
+        },
+      },
+    })
+    const tool = toolInvocationFromRecord(call, result)
+    expect(tool?.provider).toBe('Koba Terminal')
+    expect(tool?.action).toBe('terminal exec')
+    expect(tool?.path).toBe('/Koba Terminal/link_fixture/terminal_exec')
+    expect(tool?.payload).toEqual({ workspace_id: 'chatgpt-booster', command: 'git status' })
+    expect(tool?.result).toEqual({ exit_code: 0, stdout: 'clean' })
+    expect(tool?.durationMs).toBe(2000)
+    expect(tool?.finishedAt).toBe(1700000002)
+  })
+
+  test('tool timing never promotes local first-seen time into source duration', () => {
+    const call = record('no-source-time', 'assistant', 'code', {
+      recipient: 'api_tool.call_tool',
+      createTime: null,
+      firstSeenAt: 1700000000000,
+      raw: {
+        content: {
+          content_type: 'code',
+          text: JSON.stringify({ path: '/Koba Terminal/link_fixture/terminal_exec', args: {} }),
+        },
+      },
+    })
+    const result = record('no-source-result', 'tool', 'code', {
+      parentId: 'no-source-time',
+      createTime: 1700000002,
+    })
+    const tool = toolInvocationFromRecord(call, result)
+    expect(tool?.timestamp).toBeNull()
+    expect(tool?.durationMs).toBeNull()
+    expect(tool?.finishedAt).toBe(1700000002)
+  })
+
   test('server seconds and observed milliseconds sort on the same scale', () => {
     expect(serverTimeMs(1700000000)).toBe(1700000000000)
     expect(serverTimeMs(null, 1700000001000)).toBe(1700000001000)

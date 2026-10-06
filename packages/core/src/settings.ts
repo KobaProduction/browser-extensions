@@ -12,6 +12,17 @@ export interface FeatureSettings {
   messageMetadata: boolean
   activityIndicator: boolean
   toolInspector: boolean
+  requestTimer: boolean
+}
+
+export interface AlertSettings {
+  responseCompleteSound: boolean
+  longRunningSound: boolean
+  longRunningThresholdMs: number
+}
+
+export interface MonitoringSettings {
+  intervalMs: number
 }
 
 export interface HistoryLoaderSettings {
@@ -62,6 +73,8 @@ export interface BoosterSettings {
   language: LanguagePreference
   features: FeatureSettings
   historyLoader: HistoryLoaderSettings
+  alerts: AlertSettings
+  monitoring: MonitoringSettings
   launcher: LauncherSettings
   observer: ObserverSettings
   telemetry: TelemetrySettings
@@ -76,6 +89,8 @@ export interface BoosterSettingsPatch {
   language?: LanguagePreference
   features?: Partial<FeatureSettings>
   historyLoader?: Partial<HistoryLoaderSettings>
+  alerts?: Partial<AlertSettings>
+  monitoring?: Partial<MonitoringSettings>
   launcher?: Partial<LauncherSettings>
   observer?: Partial<ObserverSettings>
   telemetry?: Partial<TelemetrySettings>
@@ -90,7 +105,7 @@ export interface BoosterSettingsPatch {
   export?: Partial<ArchiveExportOptions>
 }
 
-export const SETTINGS_SCHEMA_VERSION = 6
+export const SETTINGS_SCHEMA_VERSION = 7
 
 function clampWindowRatio(value: unknown, fallback: number, min: number, max: number) {
   return typeof value === 'number' && Number.isFinite(value)
@@ -106,11 +121,20 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     messageMetadata: true,
     activityIndicator: true,
     toolInspector: true,
+    requestTimer: true,
   },
   historyLoader: {
     speedPxPerSecond: 2600,
     burstDurationMs: 650,
     pauseMs: 90,
+  },
+  alerts: {
+    responseCompleteSound: false,
+    longRunningSound: false,
+    longRunningThresholdMs: 120_000,
+  },
+  monitoring: {
+    intervalMs: 500,
   },
   launcher: {
     x: null,
@@ -172,6 +196,25 @@ export function normalizeSettings(value?: Partial<BoosterSettings>): BoosterSett
         DEFAULT_SETTINGS.historyLoader.pauseMs,
         20,
         1200,
+      ),
+    },
+    alerts: {
+      responseCompleteSound:
+        value?.alerts?.responseCompleteSound ?? DEFAULT_SETTINGS.alerts.responseCompleteSound,
+      longRunningSound: value?.alerts?.longRunningSound ?? DEFAULT_SETTINGS.alerts.longRunningSound,
+      longRunningThresholdMs: clampWindowRatio(
+        value?.alerts?.longRunningThresholdMs,
+        DEFAULT_SETTINGS.alerts.longRunningThresholdMs,
+        15_000,
+        30 * 60_000,
+      ),
+    },
+    monitoring: {
+      intervalMs: clampWindowRatio(
+        value?.monitoring?.intervalMs,
+        DEFAULT_SETTINGS.monitoring.intervalMs,
+        100,
+        10_000,
       ),
     },
     launcher: {
@@ -262,8 +305,11 @@ export function snapshotSettings(
       messageMetadata: normalized.features.messageMetadata,
       activityIndicator: normalized.features.activityIndicator,
       toolInspector: normalized.features.toolInspector,
+      requestTimer: normalized.features.requestTimer,
     },
     historyLoader: { ...normalized.historyLoader },
+    alerts: { ...normalized.alerts },
+    monitoring: { ...normalized.monitoring },
     launcher: {
       x: normalized.launcher.x,
       y: normalized.launcher.y,
@@ -312,6 +358,14 @@ export function mergeSettings(
     historyLoader: {
       ...normalized.historyLoader,
       ...patch.historyLoader,
+    },
+    alerts: {
+      ...normalized.alerts,
+      ...patch.alerts,
+    },
+    monitoring: {
+      ...normalized.monitoring,
+      ...patch.monitoring,
     },
     launcher: {
       ...normalized.launcher,

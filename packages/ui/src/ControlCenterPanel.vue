@@ -186,6 +186,27 @@ async function setHistoryScrollPause(event: Event) {
   })
 }
 
+function alertThresholdLabel(value: number) {
+  const seconds = Math.round(value / 1000)
+  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`
+}
+
+async function setLongRunningThreshold(event: Event) {
+  await applyPatch({
+    alerts: { longRunningThresholdMs: Number((event.target as HTMLInputElement).value) },
+  })
+}
+
+async function setMonitoringInterval(event: Event) {
+  await applyPatch({
+    monitoring: { intervalMs: Number((event.target as HTMLInputElement).value) },
+  })
+}
+
+function monitoringIntervalLabel(value: number) {
+  return value < 1000 ? `${Math.round(value)} ms` : `${(value / 1000).toFixed(value % 1000 ? 1 : 0)} s`
+}
+
 async function toggleTelemetryExpanded() {
   if (!settings.value) return
   await applyPatch({ ui: { telemetryExpanded: !settings.value.ui.telemetryExpanded } })
@@ -336,6 +357,40 @@ async function testTelemetry() {
             ><span /></button>
           </section>
 
+          <section class="booster-setting-card booster-setting-card-stack" :class="{ 'booster-setting-disabled': !settings.enabled }">
+            <div class="booster-setting-copy">
+              <div class="flex items-center gap-2">
+                <Clock3 class="size-4" />
+                <b>{{ t('control.requestTimer') }}</b>
+                <Badge :variant="settings.features.requestTimer && settings.enabled ? 'default' : 'secondary'">
+                  {{ settings.features.requestTimer && settings.enabled ? t('common.on') : t('common.off') }}
+                </Badge>
+              </div>
+              <span>{{ t('control.requestTimerDescription') }}</span>
+            </div>
+            <div class="booster-alert-setting-actions">
+              <button
+                type="button"
+                class="booster-switch"
+                :class="{ 'booster-switch-on': settings.features.requestTimer }"
+                :disabled="!settings.enabled"
+                @click="applyPatch({ features: { requestTimer: !settings.features.requestTimer } })"
+              ><span /></button>
+              <label class="booster-alert-threshold">
+                <span>{{ t('control.monitoringInterval') }} <b>{{ Math.round(settings.monitoring.intervalMs) }} ms</b></span>
+                <input
+                  type="range"
+                  min="100"
+                  max="2000"
+                  step="100"
+                  :value="settings.monitoring.intervalMs"
+                  :disabled="!settings.enabled"
+                  @change="setMonitoringInterval"
+                />
+              </label>
+            </div>
+          </section>
+
           <section class="booster-setting-card" :class="{ 'booster-setting-disabled': !settings.enabled }">
             <div class="booster-setting-copy">
               <div class="flex items-center gap-2">
@@ -354,6 +409,84 @@ async function testTelemetry() {
               :disabled="!settings.enabled"
               @click="applyPatch({ features: { toolInspector: !settings.features.toolInspector } })"
             ><span /></button>
+          </section>
+
+          <section class="booster-setting-card" :class="{ 'booster-setting-disabled': !settings.enabled }">
+            <div class="booster-setting-copy">
+              <div class="flex items-center gap-2">
+                <Activity class="size-4" />
+                <b>{{ t('control.responseCompleteSound') }}</b>
+                <Badge :variant="settings.alerts.responseCompleteSound && settings.enabled ? 'default' : 'secondary'">
+                  {{ settings.alerts.responseCompleteSound && settings.enabled ? t('common.on') : t('common.off') }}
+                </Badge>
+              </div>
+              <span>{{ t('control.responseCompleteSoundDescription') }}</span>
+            </div>
+            <button
+              type="button"
+              class="booster-switch"
+              :class="{ 'booster-switch-on': settings.alerts.responseCompleteSound }"
+              :disabled="!settings.enabled"
+              @click="applyPatch({ alerts: { responseCompleteSound: !settings.alerts.responseCompleteSound } })"
+            ><span /></button>
+          </section>
+
+          <section class="booster-setting-card booster-setting-card-stack" :class="{ 'booster-setting-disabled': !settings.enabled }">
+            <div class="booster-setting-copy">
+              <div class="flex items-center gap-2">
+                <AlertTriangle class="size-4" />
+                <b>{{ t('control.longRunningSound') }}</b>
+                <Badge :variant="settings.alerts.longRunningSound && settings.enabled ? 'default' : 'secondary'">
+                  {{ settings.alerts.longRunningSound && settings.enabled ? t('common.on') : t('common.off') }}
+                </Badge>
+              </div>
+              <span>{{ t('control.longRunningSoundDescription') }}</span>
+            </div>
+            <div class="booster-alert-setting-actions">
+              <button
+                type="button"
+                class="booster-switch"
+                :class="{ 'booster-switch-on': settings.alerts.longRunningSound }"
+                :disabled="!settings.enabled"
+                @click="applyPatch({ alerts: { longRunningSound: !settings.alerts.longRunningSound } })"
+              ><span /></button>
+              <label class="booster-alert-threshold">
+                <span>{{ t('control.longRunningThreshold') }} <b>{{ alertThresholdLabel(settings.alerts.longRunningThresholdMs) }}</b></span>
+                <input
+                  type="range"
+                  min="15000"
+                  max="1800000"
+                  step="15000"
+                  :value="settings.alerts.longRunningThresholdMs"
+                  :disabled="!settings.enabled || !settings.alerts.longRunningSound"
+                  @change="setLongRunningThreshold"
+                />
+              </label>
+            </div>
+          </section>
+
+          <section class="booster-setting-card booster-setting-card-stack" :class="{ 'booster-setting-disabled': !settings.enabled }">
+            <div class="booster-setting-copy">
+              <div class="flex items-center gap-2">
+                <RefreshCcw class="size-4" />
+                <b>{{ t('control.monitoringInterval') }}</b>
+              </div>
+              <span>{{ t('control.monitoringIntervalDescription') }}</span>
+            </div>
+            <div class="booster-range-grid">
+              <label>
+                <span>{{ t('control.monitoringInterval') }} <b>{{ monitoringIntervalLabel(settings.monitoring.intervalMs) }}</b></span>
+                <input
+                  type="range"
+                  min="100"
+                  max="10000"
+                  step="100"
+                  :value="settings.monitoring.intervalMs"
+                  :disabled="!settings.enabled"
+                  @change="setMonitoringInterval"
+                />
+              </label>
+            </div>
           </section>
 
           <section class="booster-setting-card booster-setting-card-stack" :class="{ 'booster-setting-disabled': !settings.enabled }">

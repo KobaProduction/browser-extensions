@@ -8,8 +8,12 @@ export interface AgentActivitySnapshot {
   active: boolean
   phase: AgentActivityPhase
   startedAt: number | null
+  reasoningStartedAt: number | null
+  phaseStartedAt: number | null
+  completedAt: number | null
   lastActivityAt: number | null
   durationMs: number | null
+  reasoningDurationMs: number | null
   label: string | null
   tool: ToolInvocationView | null
 }

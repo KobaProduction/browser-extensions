@@ -1,5 +1,6 @@
 import { buildArchiveThread } from '../../packages/chatgpt/src/archive-records'
 import { mountArchiveScopeControls } from '../../packages/chatgpt/src/archive-scope-controls'
+import { readConversationActivity } from '../../packages/chatgpt/src/conversation-activity'
 import {
   findConversationMessageTargets,
   observeConversationDecorations,
@@ -556,6 +557,15 @@ async function runStorageTests() {
       assistantMessage.textContent = 'PRO assistant fixture'
       assistantUnit.append(assistantMessage)
 
+      const turnState = document.createElement('div')
+      turnState.dataset.talvtTurnState = 'in_progress'
+      const reasoningHeader = document.createElement('div')
+      reasoningHeader.className = 'group/activity-header'
+      reasoningHeader.textContent = 'Thinking about fixture'
+      const reasoningToggle = document.createElement('button')
+      reasoningToggle.setAttribute('aria-expanded', 'true')
+      reasoningHeader.append(reasoningToggle)
+
       const toolRow = document.createElement('div')
       toolRow.className = 'group/activity-header'
       toolRow.textContent = 'Used browser tool'
@@ -567,7 +577,7 @@ async function runStorageTests() {
       assistantCopy.setAttribute('aria-label', 'Copy')
       assistantActions.append(assistantCopy)
 
-      turn.append(userUnit, toolRow, assistantUnit, assistantActions)
+      turn.append(userUnit, turnState, reasoningHeader, toolRow, assistantUnit, assistantActions)
       content.append(turn)
       scroller.append(content)
       main.append(scroller)
@@ -606,6 +616,22 @@ async function runStorageTests() {
         const tools = findToolCallEvidence(turn)
         assert(tools.length === 1, `expected one v2 tool row, got ${tools.length}`)
         assert(tools[0]?.element === toolRow, 'v2 tool row canonical target mismatch')
+
+        assert(readConversationActivity().active, 'v2 stable turn state was not active')
+        reasoningToggle.setAttribute('aria-expanded', 'false')
+        reasoningHeader.textContent = ''
+        reasoningHeader.append(reasoningToggle)
+        assert(
+          readConversationActivity().active,
+          'v2 reasoning collapse incorrectly ended the request lifecycle',
+        )
+        reasoningToggle.setAttribute('aria-expanded', 'true')
+        reasoningHeader.textContent = 'Thinking about fixture'
+        reasoningHeader.append(reasoningToggle)
+        assert(
+          readConversationActivity().active,
+          'v2 reasoning expand incorrectly restarted request activity',
+        )
       } finally {
         main.remove()
         for (const { element, placeholder } of displacedMains) placeholder.replaceWith(element)

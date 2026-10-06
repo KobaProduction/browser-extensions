@@ -5,6 +5,7 @@ import { installBoosterShadowStyles } from './shadow-styles'
 export interface MountedAgentActivity {
   element: HTMLElement
   update(snapshot: AgentActivitySnapshot): void
+  tick(now: number): void
   unmount(): void
 }
 
@@ -29,9 +30,9 @@ function clockIcon() {
   return svg
 }
 
-function elapsed(since: number | null, now = Date.now()) {
+function elapsed(since: number | null, until: number | null, now: number) {
   if (!since) return '—'
-  const ms = Math.max(0, now - since)
+  const ms = Math.max(0, (until ?? now) - since)
   if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`
   const seconds = Math.floor(ms / 1000)
   const minutes = Math.floor(seconds / 60)
@@ -51,10 +52,6 @@ function duration(value: number | null) {
   if (minutes < 60) return `${minutes}:${String(rest).padStart(2, '0')}`
   const hours = Math.floor(minutes / 60)
   return `${hours}:${String(minutes % 60).padStart(2, '0')}:${String(rest).padStart(2, '0')}`
-}
-
-function dateTime(value: number | null, locale: SupportedLocale) {
-  return value ? new Date(value).toLocaleString(locale) : '—'
 }
 
 function normalizedLabel(value: string | null) {
@@ -92,6 +89,7 @@ export function mountAgentActivity(
   shadow.append(pill)
 
   let snapshot = initial
+  let currentNow = Date.now()
   const t = (key: Parameters<typeof translate>[1]) => translate(locale, key)
 
   const phaseLabel = () => {
@@ -111,10 +109,10 @@ export function mountAgentActivity(
         : (snapshot.tool?.label ?? '')
     label.textContent = snapshot.phase === 'tool' ? normalizedLabel(rawLabel) : ''
     label.hidden = !label.textContent
-    pill.title = `${t('activity.startedAt')}: ${dateTime(snapshot.startedAt, locale)}\n${t('activity.lastActivityAt')}: ${dateTime(snapshot.lastActivityAt, locale)}`
+    pill.removeAttribute('title')
     pill.setAttribute(
       'aria-label',
-      `${phaseLabel()}, ${t('activity.sinceLastChange')} ${elapsed(snapshot.lastActivityAt)}`,
+      `${phaseLabel()}, ${t('activity.duration')} ${elapsed(snapshot.phaseStartedAt, snapshot.completedAt, currentNow)}`,
     )
   }
   const renderTimer = () => {
@@ -131,16 +129,19 @@ export function mountAgentActivity(
       )
       return
     }
-    timer.textContent = elapsed(snapshot.lastActivityAt)
+    const timerStart =
+      snapshot.phase === 'thinking'
+        ? (snapshot.reasoningStartedAt ?? snapshot.startedAt)
+        : (snapshot.phaseStartedAt ?? snapshot.startedAt)
+    timer.textContent = elapsed(timerStart, snapshot.completedAt, currentNow)
     pill.setAttribute(
       'aria-label',
-      `${phaseLabel()}, ${t('activity.sinceLastChange')} ${timer.textContent}`,
+      `${phaseLabel()}, ${t('activity.duration')} ${timer.textContent}`,
     )
   }
 
   renderStatic()
   renderTimer()
-  const interval = window.setInterval(renderTimer, 250)
 
   return {
     element: host,
@@ -149,8 +150,11 @@ export function mountAgentActivity(
       renderStatic()
       renderTimer()
     },
+    tick(now) {
+      currentNow = now
+      renderTimer()
+    },
     unmount() {
-      window.clearInterval(interval)
       host.remove()
     },
   }

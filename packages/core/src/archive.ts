@@ -49,7 +49,11 @@ export interface ToolInvocationView {
   label: string
   recipient: string | null
   timestamp: number | null
+  finishedAt: number | null
+  durationMs: number | null
   payload: unknown
+  result: unknown
+  path: string | null
   link: string | null
   iconUrl: string | null
   iconKey: string | null
