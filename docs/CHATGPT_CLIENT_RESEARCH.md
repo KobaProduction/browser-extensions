@@ -403,6 +403,135 @@ The signed URL is transient and must be accepted only when its origin/path and `
 
 ## Live transport
 
+### Verified fresh composer start contract (2026-10-07)
+
+A live external-Playwright experiment on the `Обзор RedmiBook Pro 16` conversation sent one ordinary user message, `продолжить`, through ChatGPT's native composer after the previous stuck/recovery turn had been server-stopped. The Playwright Enter call itself timed out, so it was **not** retried blindly; the resulting DOM and transport evidence proved that the message had already been submitted exactly once.
+
+The fresh start used a two-request sequence.
+
+#### 1. Prepare / preflight
+
+ChatGPT first sent:
+
+```text
+POST /backend-api/f/conversation/prepare -> 200
+```
+
+The observed request included, among other fields:
+
+```json
+{
+  "conversation_id": "<conversation_id>",
+  "action": "next",
+  "model": "gpt-5-6-thinking",
+  "parent_message_id": "<previous current node>",
+  "thinking_effort": "standard",
+  "conversation_mode": {
+    "kind": "gizmo_interaction",
+    "gizmo_id": "<project gizmo id>"
+  },
+  "local_function_names": ["local.continue_in_work"],
+  "partial_query": {
+    "author": { "role": "user" },
+    "content": { "content_type": "text", "parts": ["продолжить"] },
+    "id": "<prepare-local partial id>"
+  },
+  "client_prepare_dispatch": "debounced",
+  "client_prepare_source": "composer_editor_state"
+}
+```
+
+The response was:
+
+```json
+{
+  "status": "ok",
+  "conduit_token": "<opaque short-lived token>"
+}
+```
+
+The conduit token is transport material and must be treated as opaque/sensitive; Booster has no reason to persist or expose it.
+
+The `partial_query.id` used by `/prepare` was **not** the final user message id. Therefore the prepare request is preflight evidence only and must not be used as the authoritative message identity or request-timing boundary.
+
+#### 2. Actual conversation start
+
+ChatGPT then sent:
+
+```text
+POST /backend-api/f/conversation -> 200
+```
+
+with the actual user message in `messages[0]`. Relevant observed fields were:
+
+```json
+{
+  "turn_attribution": { "turn_trigger": "composer" },
+  "conversation_id": "<conversation_id>",
+  "action": "next",
+  "parent_message_id": "<previous current node>",
+  "model": "gpt-5-6-thinking",
+  "thinking_effort": "standard",
+  "messages": [
+    {
+      "id": "9061a1ff-2980-428e-8fc3-2426a09e4f80",
+      "author": { "role": "user" },
+      "content": { "content_type": "text", "parts": ["продолжить"] },
+      "create_time": 1791323726.555,
+      "status": "finished_successfully",
+      "recipient": "all"
+    }
+  ],
+  "supported_encodings": ["v1"],
+  "client_prepare_state": "success"
+}
+```
+
+The response was a live stream:
+
+```text
+Content-Type: text/event-stream; charset=utf-8
+Cache-Control: no-store
+X-Conduit-Token: <opaque token>
+```
+
+This confirms that ordinary fresh generation in the captured client uses the streamed `/f/conversation` response directly. No new `/f/conversation/resume` or `/conversation/{id}/stream_status` request was emitted for this fresh turn. The only resume/status calls visible in the page log had lower request indices and belonged to the previous recovery incident.
+
+#### Source timing and identity consequence
+
+For Booster, the authoritative fresh-request boundary is the actual user message in the outbound `/backend-api/f/conversation` body:
+
+```text
+user message id     = messages[0].id
+request start       = messages[0].create_time
+conversation        = conversation_id
+parent/current edge = parent_message_id
+```
+
+`/prepare` must not start the request timer. Its local `partial_query.id` may differ from the final message id. If `messages[0].create_time` is absent, the actual outbound `/f/conversation` transport boundary remains the fallback; the prepare request timestamp is not the fallback.
+
+#### Early renderer state
+
+Immediately after submission the new rendered turn showed:
+
+```text
+data-turn-key = 9061a1ff-2980-428e-8fc3-2426a09e4f80
+data-talvt-turn-state = in_progress
+native Stop control = present
+```
+
+The turn key matched the final user message id from the main `/f/conversation` payload.
+
+At the same time, the turn still had only the user search-unit; there was no assistant search-unit or `data-chatgpt-selection-message-id` yet. Nevertheless ChatGPT was already rendering activity/reasoning headers and generated progress text inside the turn.
+
+Therefore live request state and request-timer mounting must **not** depend on an assistant search-unit existing. The outbound request/state store is available earlier than the final assistant renderer contract.
+
+#### Booster 0.8.38 stale-timer finding
+
+The inspected tab was still running Booster 0.8.38. After the fresh message started, the native turn correctly changed to the new user id and exposed Stop, but Booster's global request status incorrectly continued the previous stopped/recovery elapsed value (`Запрос 1:17:38`, later `1:19:11`) instead of restarting from the new message's `create_time`.
+
+This is Booster behavior, not ChatGPT behavior. The fresh ChatGPT transport supplied the correct new id and source timestamp. A newer outbound `/f/conversation` request for the current conversation must replace any stale older active run in the live read model/UI; an old DOM turn that still says `in_progress` must not be allowed to re-promote or visually dominate the newer request lifecycle.
+
 ### Verified native Stop-generation contract (2026-10-07)
 
 A live external-Playwright experiment on the same `Обзор RedmiBook Pro 16` conversation reloaded the page, waited for ChatGPT to restore the active generation/recovery state, and then invoked the native Stop control once. No other ChatGPT controls were clicked during the experiment.
