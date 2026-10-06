@@ -21,6 +21,25 @@ describe('settings patch persistence', () => {
     expect(boosterOff.telemetry.endpoint).toBe('')
   })
 
+  test('monitoring and alert settings survive unrelated feature patches', () => {
+    const tuned = mergeSettings(normalizeSettings(), {
+      monitoring: { intervalMs: 1300 },
+      alerts: {
+        responseCompleteSound: true,
+        longRunningSound: true,
+        longRunningThresholdMs: 180000,
+      },
+    })
+    const changed = mergeSettings(tuned, {
+      features: { requestTimer: false },
+    })
+
+    expect(changed.monitoring.intervalMs).toBe(1300)
+    expect(changed.alerts.responseCompleteSound).toBe(true)
+    expect(changed.alerts.longRunningSound).toBe(true)
+    expect(changed.alerts.longRunningThresholdMs).toBe(180000)
+  })
+
   test('nested patches do not reset unrelated observer fields', () => {
     const initial = mergeSettings(normalizeSettings(), {
       observer: {

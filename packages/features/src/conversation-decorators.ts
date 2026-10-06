@@ -612,6 +612,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
     records: Array<{ call: ArchivedMessage; result: ArchivedMessage | null }>,
     used: Set<string>,
     fallbackIndex: number,
+    evidenceCount: number,
   ) {
     const visible = evidence.visibleText.replace(/\s+/g, ' ').trim().toLocaleLowerCase()
     const titled = records.find((pair) => {
@@ -622,8 +623,9 @@ export class ConversationDecoratorsModule implements BoosterModule {
       )
     })
     if (titled) return titled
-    if (records.length === 1 && !used.has(records[0]!.call.messageId)) return records[0]!
-    if (records.length === fallbackIndex + 1) {
+    const only = records.length === 1 ? records[0] : undefined
+    if (only && !used.has(only.call.messageId)) return only
+    if (records.length === evidenceCount) {
       const fallback = records[fallbackIndex]
       if (fallback && !used.has(fallback.call.messageId)) return fallback
     }
@@ -727,7 +729,13 @@ export class ConversationDecoratorsModule implements BoosterModule {
         const usedRecords = new Set<string>()
         for (const [index, evidence] of evidences.entries()) {
           const observed = toolInvocationFromEvidence(evidence)
-          const pair = this.#toolRecordForEvidence(evidence, records, usedRecords, index)
+          const pair = this.#toolRecordForEvidence(
+            evidence,
+            records,
+            usedRecords,
+            index,
+            evidences.length,
+          )
           if (records.length && !pair) {
             this.#toolMounts.get(evidence.element)?.unmount()
             this.#toolMounts.delete(evidence.element)

@@ -88,6 +88,17 @@ ChatGPT client remains independent of DOM decoration.
 A successful build or typecheck does not prove a DOM adapter. Each new/changed adapter
 needs live browser acceptance on the renderer it claims to support.
 
+## Timing authority
+
+DOM adapters report renderer state such as `in_progress`, `complete`, reasoning/activity
+surfaces and the current phase. They do not own elapsed-time measurement. Request,
+reasoning and tool timing boundaries must come from ChatGPT/archive source records.
+Collapsing or expanding a reasoning UI must therefore never reset a duration. Local
+observation timestamps such as first-seen time are not substitutes for missing source
+timestamps; missing source time is represented as unknown. A single configurable shared
+ticker may refresh displayed open intervals and alert thresholds, but must not establish
+their start/end boundaries.
+
 ## History scrolling
 
 History Loader must not encode renderer scroll geometry. In particular it must not
