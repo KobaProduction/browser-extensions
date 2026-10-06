@@ -403,6 +403,86 @@ The signed URL is transient and must be accepted only when its origin/path and `
 
 ## Live transport
 
+### Verified native Stop-generation contract (2026-10-07)
+
+A live external-Playwright experiment on the same `Обзор RedmiBook Pro 16` conversation reloaded the page, waited for ChatGPT to restore the active generation/recovery state, and then invoked the native Stop control once. No other ChatGPT controls were clicked during the experiment.
+
+#### Native control signature
+
+In the observed renderer the active composer Stop control was:
+
+```html
+<button aria-label="Остановить">…</button>
+```
+
+It did **not** carry the older `data-testid="stop-button"` / `data-testid="stop-generation"` signatures. Therefore Stop-button discovery is renderer/version dependent and must remain behind the ChatGPT DOM adapter if Booster needs the native control as corroborating UI evidence.
+
+Immediately before the click, the affected turn still exposed `data-talvt-turn-state="in_progress"`.
+
+#### Transport request
+
+The native click caused exactly this ChatGPT request:
+
+```http
+POST /backend-api/stop_conversation
+Content-Type: application/json
+```
+
+with body:
+
+```json
+{
+  "conversation_id": "<conversation_id>",
+  "exclude_async_types": []
+}
+```
+
+The observed response was HTTP `200` with:
+
+```json
+{
+  "status": "ok",
+  "last_message_id": null
+}
+```
+
+No client-synthesized Booster request was involved; this was the request emitted by ChatGPT's own native Stop action.
+
+#### Immediate and delayed effects
+
+Immediately after the successful response:
+
+- the native `Остановить` button disappeared;
+- Booster 0.8.38 removed its request-status timer because the transport-confirmed stop event had completed;
+- no native error alert was visible;
+- the affected DOM turn still remained `data-talvt-turn-state="in_progress"`.
+
+A later passive read roughly one minute after the click still found that same DOM turn marked `in_progress`, while the native Stop button and Booster request timer remained absent. This directly proves that ChatGPT's rendered turn-state can remain stale after a server-confirmed stop and must not be used as the authoritative stop boundary.
+
+The recovery loop that had been active before the click did not stop at the exact same instant as the `200` response. One final recovery pair was observed after the Stop request:
+
+```text
+GET /backend-api/conversation/{conversation_id}/stream_status -> net::ERR_ABORTED
+GET /backend-api/conversations/{conversation_id}?num_turns=10... -> 429
+```
+
+After that pair, no new repeating `stream_status` polling was observed during the follow-up window. This is consistent with cancellation/cleanup propagating through already-started recovery work rather than retroactively preventing an in-flight polling iteration.
+
+#### Proven lifecycle consequence
+
+For native Stop, Booster should model:
+
+```text
+outbound POST /stop_conversation
+  -> stop_requested
+HTTP 2xx response { status: "ok", ... }
+  -> stopped
+```
+
+The DOM Stop-button disappearance is useful corroboration but is not the confirmation source. `data-talvt-turn-state` is explicitly non-authoritative for this transition because it remained `in_progress` after the server had already confirmed the stop.
+
+The observed `last_message_id:null` means this specific stopped recovery turn did not produce a new terminal message identifier in the Stop response. Do not assume every successful Stop response will always carry `null`; the field should be recorded as server evidence rather than hard-coded as a constant.
+
 The existing MAIN-world observer can see:
 
 - `fetch`;
