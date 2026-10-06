@@ -1,6 +1,15 @@
 import { buildArchiveThread } from '../../packages/chatgpt/src/archive-records'
 import { mountArchiveScopeControls } from '../../packages/chatgpt/src/archive-scope-controls'
-import { observeConversationDecorations } from '../../packages/chatgpt/src/conversation-decorators'
+import {
+  findConversationMessageTargets,
+  observeConversationDecorations,
+} from '../../packages/chatgpt/src/conversation-decorators'
+import {
+  currentConversationMessageBounds,
+  findConversationScrollContainer,
+  scrollConversationTowardStart,
+} from '../../packages/chatgpt/src/conversation-scroll'
+import { findToolCallEvidence } from '../../packages/chatgpt/src/tool-calls'
 import {
   type ArchiveExportOptions,
   type BoosterSettings,
@@ -504,6 +513,102 @@ async function runStorageTests() {
         module.stop()
         main.remove()
         history.replaceState(null, '', href)
+      }
+    },
+  )
+
+  await check(
+    'search-unit v2 adapter resolves message targets, tool activity and conversation scroller',
+    async () => {
+      const displacedMains = [...document.querySelectorAll('main')].map((element) => {
+        const placeholder = document.createComment('search-unit-v2-main')
+        element.replaceWith(placeholder)
+        return { element, placeholder }
+      })
+      const main = document.createElement('main')
+      const scroller = document.createElement('div')
+      scroller.className = 'thread-scroll-container'
+      scroller.style.height = '120px'
+      scroller.style.overflowY = 'auto'
+      const content = document.createElement('div')
+      content.style.height = '1200px'
+      const turn = document.createElement('div')
+      turn.dataset.turnKey = 'v2-user'
+
+      const userUnit = document.createElement('div')
+      userUnit.dataset.chatgptSearchUnitKey = 'fallback-turn-0:0:user'
+      userUnit.dataset.chatgptSearchMessageIds = 'v2-user'
+      const userBubble = document.createElement('div')
+      userBubble.dataset.userMessageBubble = 'true'
+      userBubble.textContent = 'PRO user fixture'
+      const userActions = document.createElement('div')
+      userActions.className = 'turn-action-controls'
+      const userCopy = document.createElement('button')
+      userCopy.setAttribute('aria-label', 'Copy message')
+      userActions.append(userCopy)
+      userUnit.append(userBubble, userActions)
+
+      const assistantUnit = document.createElement('div')
+      assistantUnit.dataset.chatgptSearchUnitKey = 'fallback-turn-0:2:assistant'
+      assistantUnit.dataset.chatgptSearchMessageIds = 'v2-answer v2-answer'
+      const assistantMessage = document.createElement('div')
+      assistantMessage.dataset.chatgptSelectionMessageId = 'v2-answer'
+      assistantMessage.textContent = 'PRO assistant fixture'
+      assistantUnit.append(assistantMessage)
+
+      const toolRow = document.createElement('div')
+      toolRow.className = 'group/activity-header'
+      toolRow.textContent = 'Used browser tool'
+      toolRow.append(document.createElement('img'))
+
+      const assistantActions = document.createElement('div')
+      assistantActions.className = 'turn-action-controls'
+      const assistantCopy = document.createElement('button')
+      assistantCopy.setAttribute('aria-label', 'Copy')
+      assistantActions.append(assistantCopy)
+
+      turn.append(userUnit, toolRow, assistantUnit, assistantActions)
+      content.append(turn)
+      scroller.append(content)
+      main.append(scroller)
+      document.body.append(main)
+
+      try {
+        const targets = findConversationMessageTargets(document)
+        assert(targets.length === 2, `expected two v2 message targets, got ${targets.length}`)
+        assert(
+          targets[0]?.messageId === 'v2-user' && targets[0].role === 'user',
+          'v2 user target mismatch',
+        )
+        assert(
+          targets[1]?.messageId === 'v2-answer' && targets[1].role === 'assistant',
+          'v2 assistant target mismatch',
+        )
+        assert(targets[0]?.actions === userActions, 'v2 user action row mismatch')
+        assert(targets[1]?.actions === assistantActions, 'v2 assistant action row mismatch')
+        assert(
+          targets[0]?.section === turn && targets[1]?.section === turn,
+          'v2 targets did not share the logical turn root',
+        )
+
+        const bounds = currentConversationMessageBounds(document)
+        assert(
+          bounds.firstMessageId === 'v2-user' && bounds.lastMessageId === 'v2-answer',
+          'v2 message bounds mismatch',
+        )
+        assert(findConversationScrollContainer(document) === scroller, 'v2 scroller was not found')
+        const scroll = scrollConversationTowardStart(document)
+        assert(
+          scroll.requested && scroll.container === scroller && scroll.delta < 0,
+          'v2 browser scroll pulse was not issued',
+        )
+
+        const tools = findToolCallEvidence(turn)
+        assert(tools.length === 1, `expected one v2 tool row, got ${tools.length}`)
+        assert(tools[0]?.element === toolRow, 'v2 tool row canonical target mismatch')
+      } finally {
+        main.remove()
+        for (const { element, placeholder } of displacedMains) placeholder.replaceWith(element)
       }
     },
   )
@@ -1482,6 +1587,7 @@ const adapter = {
   collectCurrent: async () => {
     throw new Error('archive.error.noChat')
   },
+  clearAll: () => store.clearAll(),
   listExportFormats: () => [
     {
       id: 'json',
@@ -1519,7 +1625,7 @@ const adapter = {
   },
 }
 await seed()
-mountBoosterUi({ settingsAdapter: settings, archiveAdapter: adapter, target: 'userscript' })
+mountBoosterUi({ settingsAdapter: settings, archiveAdapter: adapter, targetLabel: 'Tampermonkey' })
 Object.assign(window, {
   extension2Harness: {
     ready: true,

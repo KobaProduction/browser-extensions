@@ -1,7 +1,6 @@
 import {
   currentConversationId,
   currentConversationMessageBounds,
-  findConversationScrollContainer,
   scrollConversationTowardStart,
 } from '@chatgpt-booster/chatgpt'
 import {
@@ -191,7 +190,6 @@ export class HistoryLoaderModule implements BoosterModule {
           stalledAt = Date.now()
           continue
         }
-        const container = findConversationScrollContainer()
         const bounds = currentConversationMessageBounds()
         const fresh = coverage?.evidenceVersion === 1 && (coverage.readStartedAt ?? 0) >= startedAt
         const displayCoverage =
@@ -202,7 +200,6 @@ export class HistoryLoaderModule implements BoosterModule {
           coverage?.historyPageCount ?? 0,
           preload?.coverage.historyPageCount ?? 0,
         )
-        const atStart = !container || container.scrollTop <= 1
         const startMatches =
           !!bounds.firstMessageId && coverage?.oldestKnownVisibleMessageId === bounds.firstMessageId
         const latestMatches =
@@ -219,7 +216,7 @@ export class HistoryLoaderModule implements BoosterModule {
             coverage?.hasOlderServerHistory ?? displayCoverage?.hasOlderServerHistory ?? null,
         })
 
-        if (fresh && coverage?.completeAtLastRead && atStart && startMatches && latestMatches) {
+        if (fresh && coverage?.completeAtLastRead && startMatches && latestMatches) {
           this.#set({ phase: 'complete', hasOlderServerHistory: false })
           window.dispatchEvent(
             new CustomEvent(OPEN_ARCHIVE_EVENT, { detail: { conversationId: id } }),
@@ -248,16 +245,13 @@ export class HistoryLoaderModule implements BoosterModule {
 
         if (this.#network.pending) {
           this.#set({ phase: 'waiting_for_load' })
-        } else if (container) {
-          const scroll = scrollConversationTowardStart(container)
-          if (scroll.moved) {
+        } else {
+          const scroll = scrollConversationTowardStart()
+          if (scroll.requested) {
             this.#set({ phase: 'scrolling' })
-            stalledAt = Date.now()
           } else {
             this.#set({ phase: 'waiting_for_load' })
           }
-        } else {
-          this.#set({ phase: 'waiting_for_load' })
         }
 
         if (Date.now() - stalledAt > 12_000) {

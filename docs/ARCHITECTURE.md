@@ -90,6 +90,9 @@ Live ChatGPT UI augmentation follows the same passive-interception rule as trans
 
 Conversation decorators append Booster-owned controls to existing ChatGPT action rows. They must not replace native handlers, move message content, synthesize native actions or make host navigation depend on Booster. DOM mutations are treated as invalidation signals: the adapter rescans the affected turn and the feature layer updates or reuses its existing mount rather than duplicating controls.
 
+ChatGPT conversation renderers are versioned behind `ChatGptDomAdapter`. Renderer selection is capability-based from the observed DOM, never plan-name based. The currently supported contracts are `legacy-turn-v1` and `search-unit-v2`; message discovery, activity/tool targets, message bounds and scroll hints must remain behind that interface. See `docs/CHATGPT_DOM_ADAPTERS.md`.
+History Loader requests older loaded content through small browser-native upward `scrollBy` pulses. It must not depend on `scrollTop` sign/range, reversed flex layouts, focus, or synthetic wheel/key events; pagination coverage remains the authority for collection completion.
+
 ## Security and privacy
 
 - host scope is limited to `https://chatgpt.com/*`;

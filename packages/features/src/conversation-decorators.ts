@@ -3,8 +3,11 @@ import {
   archiveRecordText,
   asRecord,
   type ConversationMessageTarget,
+  chatGptTurnId,
+  chatGptTurnMessageIds,
   conversationDomSnapshotFromTargets,
   currentConversationId,
+  findChatGptTurnRoot,
   findToolCallEvidence,
   observeConversationActivity,
   observeConversationDecorations,
@@ -314,8 +317,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
     const anchor = this.#records.get(target.messageId)
     return {
       conversationId: anchor?.conversationId ?? currentConversationId() ?? null,
-      turnId:
-        anchor?.turnExchangeId ?? anchor?.workingTurnId ?? target.section.dataset.turnId ?? null,
+      turnId: anchor?.turnExchangeId ?? anchor?.workingTurnId ?? chatGptTurnId(target.section),
       active: false,
       phase: 'complete',
       startedAt: Math.min(...starts),
@@ -327,11 +329,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
   }
 
   #toolCallRecords(section: HTMLElement): ArchivedMessage[] {
-    const messageIds = [
-      ...section.querySelectorAll<HTMLElement>('[data-message-id][data-message-author-role]'),
-    ]
-      .map((item) => item.dataset.messageId)
-      .filter((value): value is string => Boolean(value))
+    const messageIds = chatGptTurnMessageIds(section)
     const anchor = messageIds.map((id) => this.#records.get(id)).find(Boolean)
     const key = anchor?.turnExchangeId ?? anchor?.workingTurnId
     if (!key) return []
@@ -399,9 +397,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
       const evidenceList = findToolCallEvidence(toolRoot)
       const bySection = new Map<HTMLElement, typeof evidenceList>()
       for (const evidence of evidenceList) {
-        const section = evidence.element.closest<HTMLElement>(
-          'section[data-testid^="conversation-turn-"]',
-        )
+        const section = findChatGptTurnRoot(evidence.element)
         if (!section) continue
         const list = bySection.get(section) ?? []
         list.push(evidence)
@@ -423,9 +419,9 @@ export class ConversationDecoratorsModule implements BoosterModule {
               }
             : observed
           if (!tool.timestamp) {
-            const messageId = section.querySelector<HTMLElement>(
-              '[data-message-id][data-message-author-role]',
-            )?.dataset.messageId
+            const messageId = chatGptTurnMessageIds(section)
+              .map((id) => (this.#records.has(id) ? id : null))
+              .find((id): id is string => Boolean(id))
             const record = messageId ? this.#records.get(messageId) : undefined
             const metadata = record ? archiveRecordMetadata(record) : undefined
             tool.timestamp =

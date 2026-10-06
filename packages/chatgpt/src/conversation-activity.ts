@@ -1,4 +1,5 @@
 import type { AgentActivityPhase, AgentActivitySnapshot } from '@chatgpt-booster/core'
+import { CHATGPT_DOM_MUTATION_ATTRIBUTES, resolveChatGptDomAdapter } from './chatgpt-dom-adapter'
 import { currentConversationId } from './conversation-scroll'
 import { findToolCallEvidence, toolInvocationFromEvidence } from './tool-calls'
 
@@ -13,26 +14,10 @@ export interface ConversationActivityObserver {
   stop(): void
 }
 
-const TURN_SELECTOR = 'main section[data-testid^="conversation-turn-"][data-turn="assistant"]'
-const RESPONSE_STATE_SELECTOR = '[data-dil-talvt-response-state]'
-const STREAM_STATUS_SELECTOR = '[data-streaming-response-status]'
-const ASSISTANT_MESSAGE_SELECTOR = '[data-message-author-role="assistant"]'
-const ACTIVE_RESPONSE_SELECTOR =
-  '[data-dil-talvt-response-state="streaming"], [data-markdown-talvt-render-state="pending"], .streaming-animation'
 const STOP_SELECTOR = '[data-testid="stop-button"], [data-testid="stop-generation"]'
 
 function compact(value: string) {
   return value.replace(/\s+/g, ' ').trim()
-}
-
-function latestAssistantTurn(): HTMLElement | null {
-  const turns = document.querySelectorAll<HTMLElement>(TURN_SELECTOR)
-  return turns.item(turns.length - 1) ?? null
-}
-
-function mountTarget(section: HTMLElement | null): HTMLElement | null {
-  if (!section) return null
-  return section.querySelector<HTMLElement>('[data-conversation-screenshot-content]') ?? section
 }
 
 function activityPhase(
@@ -42,7 +27,8 @@ function activityPhase(
 ): AgentActivityPhase {
   if (tool) return 'tool'
   if (statusText) return 'thinking'
-  if (section.querySelector(ASSISTANT_MESSAGE_SELECTOR)) return 'responding'
+  const adapter = resolveChatGptDomAdapter(section)
+  if (adapter?.assistantMessage(section)) return 'responding'
   return 'thinking'
 }
 
@@ -53,12 +39,14 @@ function activityFingerprint(
   toolLabel: string | null,
 ) {
   if (!section) return `${phase}|${label ?? ''}|${toolLabel ?? ''}`
-  const message = section.querySelector<HTMLElement>(ASSISTANT_MESSAGE_SELECTOR)
+  const adapter = resolveChatGptDomAdapter(section)
+  const message = adapter?.assistantMessage(section) ?? null
   const text = compact(message?.textContent ?? '')
   const tail = text.slice(-180)
   const messageState = message?.getAttribute('data-markdown-talvt-render-state') ?? ''
   return [
-    section.dataset.turnId ?? section.getAttribute('data-turn-id') ?? '',
+    adapter?.turnId(section) ?? '',
+    adapter?.id ?? '',
     phase,
     label ?? '',
     toolLabel ?? '',
@@ -76,17 +64,15 @@ export function readConversationActivity(): Omit<ConversationActivityObservation
   tool: AgentActivitySnapshot['tool']
   fingerprint: string
 } {
-  const section = latestAssistantTurn()
-  const responseState = section
-    ?.querySelector<HTMLElement>(RESPONSE_STATE_SELECTOR)
-    ?.getAttribute('data-dil-talvt-response-state')
-  const status = section?.querySelector<HTMLElement>(STREAM_STATUS_SELECTOR) ?? null
+  const adapter = resolveChatGptDomAdapter(document)
+  const section = adapter?.latestAssistantTurn(document) ?? null
+  const responseState = section ? adapter?.responseState(section) : null
+  const status = section ? (adapter?.activityStatus(section) ?? null) : null
   const statusText = compact(status?.textContent ?? '')
   const toolEvidence = section ? findToolCallEvidence(section)[0] : undefined
   const tool = toolEvidence ? toolInvocationFromEvidence(toolEvidence) : null
   const active = Boolean(
-    (section && responseState === 'streaming') ||
-      section?.querySelector(ACTIVE_RESPONSE_SELECTOR) ||
+    (section && (responseState === 'streaming' || adapter?.isTurnActive(section))) ||
       (section && document.querySelector(STOP_SELECTOR)),
   )
   const phase = section ? activityPhase(section, tool, statusText) : 'idle'
@@ -94,12 +80,12 @@ export function readConversationActivity(): Omit<ConversationActivityObservation
   return {
     active,
     phase: active ? phase : 'idle',
-    turnId: section?.dataset.turnId ?? section?.getAttribute('data-turn-id') ?? null,
+    turnId: section && adapter ? adapter.turnId(section) : null,
     label,
     tool,
     fingerprint: activityFingerprint(section, active ? phase : 'idle', label, tool?.label ?? null),
     section,
-    mount: mountTarget(section),
+    mount: section && adapter ? adapter.activityMount(section) : null,
   }
 }
 
@@ -192,10 +178,12 @@ export function observeConversationActivity(
     characterData: true,
     attributes: true,
     attributeFilter: [
-      'data-dil-talvt-response-state',
-      'data-markdown-talvt-render-state',
-      'data-testid',
-      'data-message-id',
+      ...new Set([
+        ...CHATGPT_DOM_MUTATION_ATTRIBUTES,
+        'data-dil-talvt-response-state',
+        'data-markdown-talvt-render-state',
+        'data-testid',
+      ]),
     ],
   })
   queue()

@@ -1,4 +1,9 @@
 import type { ArchiveRecordView, ToolInvocationView } from '@chatgpt-booster/core'
+import {
+  chatGptToolActivityRows,
+  findChatGptTurnRoot,
+  isAssistantChatGptTurn,
+} from './chatgpt-dom-adapter'
 
 export interface ToolCallEvidence {
   id: string
@@ -23,7 +28,6 @@ const CANDIDATE_SELECTOR = [
   '[aria-label*="mcp" i]',
   '[aria-label*="connector" i]',
   '[data-streaming-response-status]',
-  '[data-testid="cot-v5-tool-icon-pile"]',
   'button',
   '[role="button"]',
   'details',
@@ -37,17 +41,10 @@ const HIGH_SIGNAL_SELECTOR = [
   '[aria-label*="mcp" i]',
   '[aria-label*="connector" i]',
   '[data-streaming-response-status]',
-  '[data-testid="cot-v5-tool-icon-pile"]',
   '[data-json]',
   '[data-payload]',
   'pre',
   'code',
-].join(',')
-
-const ASSISTANT_TURN_SELECTOR = [
-  '[data-message-author-role="assistant"]',
-  '[data-turn="assistant"]',
-  '[data-author="assistant"]',
 ].join(',')
 
 const EXCLUDED_UI_SELECTOR = [
@@ -71,7 +68,8 @@ function compact(value: string): string {
 }
 
 function assistantTurn(element: HTMLElement): HTMLElement | null {
-  return element.closest<HTMLElement>(ASSISTANT_TURN_SELECTOR)
+  const turn = findChatGptTurnRoot(element)
+  return turn && isAssistantChatGptTurn(turn) ? turn : null
 }
 
 function isInsideConversationAssistantTurn(element: HTMLElement): boolean {
@@ -157,23 +155,6 @@ function streamingStatusTool(element: HTMLElement) {
   return parseStreamingToolStatus(element.textContent ?? '')
 }
 
-function cotToolRow(element: HTMLElement): HTMLElement | null {
-  const icon = element.matches('[data-testid="cot-v5-tool-icon-pile"]')
-    ? element
-    : element.querySelector<HTMLElement>('[data-testid="cot-v5-tool-icon-pile"]')
-  if (!icon) return null
-  let current: HTMLElement | null = icon
-  for (let depth = 0; current && depth < 6; depth += 1, current = current.parentElement) {
-    const control = current.querySelector<HTMLElement>('button[aria-controls][aria-label]')
-    if (control) return current
-  }
-  return icon.parentElement
-}
-
-function canonicalCandidate(element: HTMLElement): HTMLElement {
-  return cotToolRow(element) ?? element
-}
-
 function scoreCandidate(element: HTMLElement): { score: number; signals: string[] } {
   if (!isInsideConversationAssistantTurn(element)) return { score: 0, signals: [] }
 
@@ -206,9 +187,9 @@ function scoreCandidate(element: HTMLElement): { score: number; signals: string[
     score += 2
     signals.push('structured descendant')
   }
-  if (element.querySelector('[data-testid="cot-v5-tool-icon-pile"]')) {
+  if (chatGptToolActivityRows(element).includes(element)) {
     score += 5
-    signals.push('cot v5 tool summary')
+    signals.push('dom adapter tool activity row')
   }
   if (streamingStatusTool(element)) {
     score += 5
@@ -234,17 +215,18 @@ function hashString(value: string): number {
 export function findToolCallEvidence(root: ParentNode = document): ToolCallEvidence[] {
   const searchRoot = root === document ? (document.querySelector('main') ?? document) : root
   const rootElement = searchRoot instanceof Element ? searchRoot : undefined
+  const activityRows = chatGptToolActivityRows(searchRoot)
   const highSignal =
-    rootElement?.matches(HIGH_SIGNAL_SELECTOR) || searchRoot.querySelector(HIGH_SIGNAL_SELECTOR)
+    activityRows.length > 0 ||
+    rootElement?.matches(HIGH_SIGNAL_SELECTOR) ||
+    searchRoot.querySelector(HIGH_SIGNAL_SELECTOR)
   if (!highSignal) {
     const text = compact(searchRoot.textContent ?? '').slice(0, 1600)
     if (!TOOL_WORDS.test(text) && !TOOL_ACTIONS.test(text)) return []
   }
 
   const candidates = [
-    ...new Set(
-      [...searchRoot.querySelectorAll<HTMLElement>(CANDIDATE_SELECTOR)].map(canonicalCandidate),
-    ),
+    ...new Set([...activityRows, ...searchRoot.querySelectorAll<HTMLElement>(CANDIDATE_SELECTOR)]),
   ]
   const accepted: HTMLElement[] = []
   const result: ToolCallEvidence[] = []

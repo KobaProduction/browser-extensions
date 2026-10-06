@@ -1,3 +1,9 @@
+import {
+  chatGptConversationAnchor,
+  chatGptMessageBounds,
+  chatGptScrollHints,
+} from './chatgpt-dom-adapter'
+
 export function observeChatGptNavigation(listener: () => void): () => void {
   const navigation = (window as Window & { navigation?: EventTarget }).navigation
   if (navigation) {
@@ -41,10 +47,12 @@ function isConversationScroller(element: HTMLElement): boolean {
   return /(auto|scroll|hidden|clip)/.test(overflowY) || element.scrollTop > 0
 }
 
-function scrollCandidateScore(element: HTMLElement, message: HTMLElement | null): number {
-  let score = 0
-  if (element.matches('[class~="group/scroll-root"]')) score += 50
-  if (element.matches('[data-scroll-root], [data-testid*="scroll" i]')) score += 24
+function scrollCandidateScore(
+  element: HTMLElement,
+  message: HTMLElement | null,
+  preferred: ReadonlySet<HTMLElement>,
+): number {
+  let score = preferred.has(element) ? 50 : 0
   if (message && element.contains(message)) score += 20
   const style = getComputedStyle(element)
   if (/(auto|scroll)/.test(style.overflowY)) score += 16
@@ -62,15 +70,11 @@ function scrollCandidateScore(element: HTMLElement, message: HTMLElement | null)
 export function findConversationScrollContainer(
   root: ParentNode = document,
 ): HTMLElement | undefined {
-  const message = root.querySelector<HTMLElement>(
-    'main [data-message-id][data-message-author-role], main [data-testid^="conversation-turn-"]',
-  )
+  const message = chatGptConversationAnchor(root)
   const candidates = new Set<HTMLElement>()
+  const preferred = new Set(chatGptScrollHints(root))
 
-  for (const known of root.querySelectorAll<HTMLElement>(
-    '[class~="group/scroll-root"], [data-scroll-root], [data-testid*="scroll" i]',
-  ))
-    candidates.add(known)
+  for (const known of preferred) candidates.add(known)
 
   let ancestor = message?.parentElement ?? null
   while (ancestor) {
@@ -88,7 +92,9 @@ export function findConversationScrollContainer(
   const ranked = [...candidates]
     .filter(isConversationScroller)
     .sort(
-      (a, b) => scrollCandidateScore(b, message ?? null) - scrollCandidateScore(a, message ?? null),
+      (a, b) =>
+        scrollCandidateScore(b, message ?? null, preferred) -
+        scrollCandidateScore(a, message ?? null, preferred),
     )
 
   if (ranked[0]) return ranked[0]
@@ -98,30 +104,28 @@ export function findConversationScrollContainer(
   return undefined
 }
 
-export function scrollConversationTowardStart(container: HTMLElement): {
-  moved: boolean
-  atStart: boolean
-  before: number
-  after: number
-} {
-  const before = container.scrollTop
-  if (before <= 1) return { moved: false, atStart: true, before, after: before }
+export interface ConversationScrollRequest {
+  requested: boolean
+  container: HTMLElement | null
+  delta: number
+}
 
-  const step = Math.min(
-    Math.max(420, Math.round(container.clientHeight * 0.85)),
-    Math.max(420, before),
-  )
-  const target = Math.max(0, before - step)
-  container.scrollTo({ top: target, behavior: 'instant' })
-  if (Math.abs(container.scrollTop - before) < 1) container.scrollTop = target
+/**
+ * Request one small browser-native upward scroll pulse. This intentionally avoids
+ * assigning scrollTop, focusing ChatGPT controls, or encoding normal/reversed layout
+ * geometry. CSSOM `scrollBy` lets the browser apply the renderer's actual scroll model
+ * and produce the normal scroll lifecycle observed by ChatGPT.
+ */
+export function scrollConversationTowardStart(
+  root: ParentNode = document,
+): ConversationScrollRequest {
+  const container = findConversationScrollContainer(root)
+  if (!container) return { requested: false, container: null, delta: 0 }
 
-  const after = container.scrollTop
-  return {
-    moved: after < before - 1,
-    atStart: after <= 1,
-    before,
-    after,
-  }
+  const step = Math.max(180, Math.min(480, Math.round(container.clientHeight * 0.35)))
+  const delta = -step
+  container.scrollBy({ top: delta, behavior: 'auto' })
+  return { requested: true, container, delta }
 }
 
 export function currentProjectId(href = location.href): string | undefined {
@@ -215,15 +219,5 @@ export function currentConversationMessageBounds(root: ParentNode = document): {
   firstMessageId: string | null
   lastMessageId: string | null
 } {
-  const ids = [
-    ...root.querySelectorAll<HTMLElement>(
-      'main [data-message-id][data-message-author-role="user"], main [data-message-id][data-message-author-role="assistant"]',
-    ),
-  ]
-    .map((element) => element.dataset.messageId?.trim() || '')
-    .filter(Boolean)
-  return {
-    firstMessageId: ids[0] ?? null,
-    lastMessageId: ids.at(-1) ?? null,
-  }
+  return chatGptMessageBounds(root)
 }

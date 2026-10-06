@@ -1,5 +1,6 @@
 export * from './archive-records'
 export * from './archive-scope-controls'
+export * from './chatgpt-dom-adapter'
 export * from './conversation-activity'
 export * from './conversation-decorators'
 export * from './conversation-scroll'

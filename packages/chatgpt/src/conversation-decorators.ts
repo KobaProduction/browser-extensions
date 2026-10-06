@@ -1,76 +1,52 @@
 import type { ArchiveRecordView } from '@chatgpt-booster/core'
 import {
+  CHATGPT_DOM_MUTATION_ATTRIBUTES,
+  type ChatGptMessageTarget,
+  findChatGptTurnRoot,
+  findChatGptTurnRoots,
+  resolveChatGptDomAdapter,
+} from './chatgpt-dom-adapter'
+import {
   currentConversationId,
   currentConversationTitle,
   currentProjectId,
 } from './conversation-scroll'
 import { type ScheduledIdleTask, scheduleIdleTask } from './idle-task'
 
-export interface ConversationMessageTarget {
-  section: HTMLElement
-  message: HTMLElement
-  actions: HTMLElement
-  metadataMount: HTMLElement
-  messageId: string
-  role: string
-}
+export type ConversationMessageTarget = ChatGptMessageTarget
 
 export interface ConversationDecorationObserver {
   scan(): void
   stop(): void
 }
 
-const TURN_SELECTOR = 'main section[data-testid^="conversation-turn-"]'
-const MESSAGE_SELECTOR = '[data-message-id][data-message-author-role]'
-
 const targetCache = new WeakMap<HTMLElement, ConversationMessageTarget>()
-
-function nativeActions(section: HTMLElement): HTMLElement | null {
-  const copy = section.querySelector<HTMLElement>('[data-testid="copy-turn-action-button"]')
-  if (copy?.parentElement) return copy.parentElement
-
-  const role = section.querySelector<HTMLElement>(MESSAGE_SELECTOR)?.dataset.messageAuthorRole
-  const selector =
-    role === 'user'
-      ? 'button[aria-label*="message" i], button[aria-label*="сообщение" i]'
-      : 'button[aria-label*="answer" i], button[aria-label*="ответ" i]'
-  return section.querySelector<HTMLElement>(selector)?.parentElement ?? null
-}
 
 export function findConversationMessageTargets(
   root: ParentNode = document,
 ): ConversationMessageTarget[] {
+  const adapter = resolveChatGptDomAdapter(root)
+  if (!adapter) return []
+
   const result: ConversationMessageTarget[] = []
-  const sections: HTMLElement[] = []
-  if (root instanceof HTMLElement && root.matches(TURN_SELECTOR)) sections.push(root)
-  sections.push(...root.querySelectorAll<HTMLElement>(TURN_SELECTOR))
-  for (const section of sections) {
-    if (section.closest('#chatgpt-booster-root, [data-chatgpt-booster]')) continue
-    const cached = targetCache.get(section)
+  for (const discovered of adapter.findMessageTargets(root)) {
+    const cached = targetCache.get(discovered.message)
     if (
       cached?.message.isConnected &&
       cached.actions.isConnected &&
       cached.metadataMount.isConnected &&
-      section.contains(cached.message) &&
-      section.contains(cached.actions) &&
-      section.contains(cached.metadataMount) &&
-      cached.message.dataset.messageId?.trim() === cached.messageId &&
-      cached.message.dataset.messageAuthorRole?.trim() === cached.role
+      cached.section === discovered.section &&
+      cached.actions === discovered.actions &&
+      cached.metadataMount === discovered.metadataMount &&
+      cached.messageId === discovered.messageId &&
+      cached.role === discovered.role &&
+      cached.domContract === discovered.domContract
     ) {
       result.push(cached)
       continue
     }
-
-    const message = section.querySelector<HTMLElement>(MESSAGE_SELECTOR)
-    const messageId = message?.dataset.messageId?.trim()
-    const role = message?.dataset.messageAuthorRole?.trim()
-    const actions = nativeActions(section)
-    const metadataMount =
-      section.querySelector<HTMLElement>('[data-conversation-screenshot-content]') ?? actions
-    if (!message || !messageId || !role || !actions || !metadataMount) continue
-    const target = { section, message, actions, metadataMount, messageId, role }
-    targetCache.set(section, target)
-    result.push(target)
+    targetCache.set(discovered.message, discovered)
+    result.push(discovered)
   }
   return result
 }
@@ -107,20 +83,19 @@ export function observeConversationDecorations(
       const target = record.target instanceof Element ? record.target : record.target.parentElement
       if (main && target && target !== main && !main.contains(target) && !target.contains(main))
         continue
-      const section = target?.closest<HTMLElement>('section[data-testid^="conversation-turn-"]')
-      if (section) queue(section)
+
+      if (target) {
+        const turn = findChatGptTurnRoot(target)
+        if (turn) queue(turn)
+      }
+
       for (const node of record.addedNodes) {
         if (!(node instanceof Element)) continue
         if (node.closest('#chatgpt-booster-root, [data-chatgpt-booster]')) continue
         if (main && node !== main && !main.contains(node) && !node.contains(main)) continue
-        const own = node.matches('section[data-testid^="conversation-turn-"]')
-          ? node
-          : node.closest('section[data-testid^="conversation-turn-"]')
-        if (own) queue(own)
-        for (const nested of node.querySelectorAll<HTMLElement>(
-          'section[data-testid^="conversation-turn-"]',
-        ))
-          queue(nested)
+        const owner = findChatGptTurnRoot(node)
+        if (owner) queue(owner)
+        for (const turn of findChatGptTurnRoots(node)) queue(turn)
       }
     }
   })
@@ -129,7 +104,7 @@ export function observeConversationDecorations(
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ['data-message-id', 'data-message-author-role', 'data-testid'],
+    attributeFilter: [...CHATGPT_DOM_MUTATION_ATTRIBUTES],
   })
   queue(document)
 
