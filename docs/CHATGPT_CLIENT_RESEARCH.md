@@ -607,6 +607,52 @@ A later passive read of the same fresh turn found the safety-review `role="statu
 
 The inspected client contract deactivates review state from `safety_review_update` with `active=false`. The exact deactivation SSE packet was not separately captured from the live stream, so the evidence boundary is: the UI transition was observed directly and the `active=false` mechanism is client-code confirmed, but that specific frame was not captured live.
 
+### Verified post-review stream completion with stale renderer (2026-10-07)
+
+A follow-up observation of the same fresh turn captured a distinct state after the `cyber` safety-review presentation disappeared.
+
+Before reload, the active safety-review `role="status"` was gone, no native alert was present, and the native Stop-generation control was also absent. The rendered turn nevertheless still exposed `data-talvt-turn-state="in_progress"`, while Booster 0.8.38 continued counting the request timer. No new `/f/conversation`, `/f/conversation/resume`, or repeating recovery traffic appeared in that quiet interval.
+
+A later context-change preflight was observed:
+
+```text
+POST /backend-api/f/conversation/prepare -> 200
+client_prepare_source = "context_change"
+client_prepare_dispatch = "immediate"
+```
+
+It contained no `partial_query` and did not start a new `/f/conversation`; this was transport/context preparation rather than a new user run.
+
+Reloading the same conversation provided authoritative server evidence for the quiet state:
+
+```text
+GET /backend-api/conversations/{conversation_id}?num_turns=10... -> 200
+async_status = null
+current_node = <last persisted thoughts record>
+page_info.has_next_page = false
+```
+
+The matching stream-status query returned:
+
+```json
+{ "status": "COMPLETE" }
+```
+
+At the same time, ChatGPT's renderer still marked the latest turn `data-talvt-turn-state="in_progress"`, the native Stop control was absent, and no status/alert was displayed.
+
+This proves another source/DOM contradiction:
+
+```text
+server async status = inactive (null)
+server stream status = COMPLETE
+native Stop          = absent
+renderer turn state  = in_progress   # stale/non-authoritative
+```
+
+For Booster, `stream_status=COMPLETE` is terminal source evidence and must stop the active request timer. An explicitly inactive `async_status` in a current conversation payload also prevents stale message/renderer state from reopening that run. The DOM `in_progress` value is presentation residue in this scenario, not evidence that generation is still executing.
+
+The exact wall-clock moment at which the server changed to `COMPLETE` was not captured before reload. For live timing, the preferred boundary is the streamed `message_stream_complete` / `main_stream_complete` event when observed. A later `stream_status=COMPLETE` response is a source-confirmation fallback and must not overwrite an earlier, more precise final-message or stream-completion timestamp.
+
 ### Verified native Stop-generation contract (2026-10-07)
 
 A live external-Playwright experiment on the same `Обзор RedmiBook Pro 16` conversation reloaded the page, waited for ChatGPT to restore the active generation/recovery state, and then invoked the native Stop control once. No other ChatGPT controls were clicked during the experiment.
@@ -698,6 +744,53 @@ The existing MAIN-world observer can see:
 Authenticated sessions have shown both ordinary HTTP/fetch traffic and WebSocket traffic. Conversation generation uses streamed HTTP responses in observed sessions; WebSocket traffic also exists for other client functions.
 
 Archive ingestion must be route/content aware. Do not interpret every WebSocket or SSE message as conversation history.
+
+### Verified recovery fallback: `Connection interrupted. Waiting for the complete answer` (2026-10-07)
+
+A live external-Playwright capture in the `Анализ RUSH 11` tab observed a distinct non-terminal recovery state rendered inside the active turn:
+
+```text
+Соединение прервано. Ожидание полного ответа
+```
+
+The native DOM shape was:
+
+```html
+<div role="status" class="...">
+  <span class="text-chatgpt-recovery">…</span>
+</div>
+```
+
+At the capture boundary:
+
+- the owning turn still rendered `data-talvt-turn-state="in_progress"`;
+- the native Stop-generation control was present;
+- there was no `role="alert"` terminal error;
+- Booster's request-status timer was absent in the inspected 0.8.38 runtime.
+
+The deployed client bundle identifies this exact UI as `errors.network.reconnecting_fallback` with the English default message:
+
+```text
+Connection interrupted. Waiting for the complete answer
+```
+
+and describes it as an informational notice shown when the network connection drops mid-response and the client falls back to a simpler polling implementation.
+
+This is therefore a **recovery-in-progress** state, not a terminal failure. It should be modeled separately from both healthy streaming and final recovery errors such as `Resume stream unavailable` or the generic network-error alert.
+
+The corresponding recovery conversation continued polling `/conversation/{id}/stream_status`; multiple late successful polls returned:
+
+```json
+{ "status": "IS_STREAMING" }
+```
+
+while other polls in the same recovery episode had already begun failing with `net::ERR_ABORTED`. This matches the client's documented fallback behavior: the live connection is lost, but the server still reports the turn as streaming, so the client waits for completion via polling.
+
+One capture also showed a route/state identity mismatch: the browser URL contained one conversation id while the native recovery component's React props referenced a different conversation id that matched the active `stream_status` polling series. This mismatch is direct evidence, but its semantics are **not yet proven**. It may represent an internal handoff/canonical id or stale client state; do not encode either explanation without additional evidence.
+
+#### Runtime consequence
+
+For Booster, this state should map to transport/recovery health such as `recovering` / `polling_fallback`, while the logical run may remain `in_progress`. The localized `role="status"` text is corroborating presentation only. Classification should come from transport/recovery evidence when the exact source signal is available.
 
 ### Verified stream-recovery failure: `Resume stream unavailable` (2026-10-07)
 

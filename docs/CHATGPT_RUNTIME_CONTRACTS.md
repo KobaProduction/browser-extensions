@@ -304,6 +304,32 @@ from `/stream_status` and can still have initial `async_status=3` (`STREAMING`).
 
 This combination means: persisted/server state still calls the turn streaming, but the client cannot resume the original live stream.
 
+### Connection-interrupted polling fallback
+
+Verified native informational state:
+
+```text
+Connection interrupted. Waiting for the complete answer
+```
+
+(Russian locale: `Соединение прервано. Ожидание полного ответа`.)
+
+The client bundle identifies this as `errors.network.reconnecting_fallback` and explicitly documents its meaning: the live network connection dropped mid-response and ChatGPT switched to a simpler polling implementation.
+
+Model this as a non-terminal transport state, for example:
+
+```text
+run lifecycle = in_progress
+transport     = recovering / polling_fallback
+server status = often IS_STREAMING
+```
+
+Do not treat the notice as completion or failure. In the captured case the native Stop control remained available and late `/stream_status` responses still returned `IS_STREAMING`.
+
+The recovery notice is rendered as `role="status"` with `text-chatgpt-recovery`; this DOM signature is presentation evidence only.
+
+A live capture also showed that the recovery component's internal `conversationId` can differ from the current route conversation id. The reason is currently unknown. Preserve the observed ids in diagnostics when safe, but do not derive lifecycle identity rules from this mismatch until the handoff/canonicalization behavior is proven.
+
 ### Long recovery polling
 
 The observed client recovery loop polls conversation data and `stream_status` together. A failed iteration increments an internal failure counter. The inspected client stops recovery when:
@@ -323,6 +349,31 @@ A network error occurred. Please check your connection and try again.
 ```
 
 This causal chain is proven for the captured incident, not for every generic network-error alert.
+
+
+### COMPLETE is terminal even when the renderer is stale
+
+A later live incident confirmed this source combination after safety review ended:
+
+```text
+initial conversation async_status = null
+stream_status                     = COMPLETE
+native Stop                       = absent
+native status/alert               = absent
+DOM turn state                    = in_progress
+```
+
+Treat `stream_status=COMPLETE` as terminal source evidence. An explicit known-inactive `async_status` (`null`, `UNREAD`/4, or a documented terminal string) also prevents stale record/DOM status from keeping the run active.
+
+Precedence rule:
+
+```text
+precise final/stream-complete source timestamp
+  > later stream_status COMPLETE confirmation
+  > stale renderer in_progress
+```
+
+A late COMPLETE confirmation may close a run whose exact completion boundary was missed, but it must not overwrite an earlier precise completion timestamp.
 
 ## 8. Safety-review stream contract
 
@@ -474,11 +525,13 @@ The live read model should obey these rules:
 1. A fresh outbound `/f/conversation` replaces the previous active run for that conversation.
 2. Renderer reconciliation cannot replace a newer run with an older stale `in_progress` turn.
 3. Confirmed Stop remains stopped even if DOM still says `in_progress`.
-4. Transport recovery state does not change run identity by itself.
-5. Safety review does not change run identity or imply failure by itself.
-6. Moderation outcome does not get inferred from safety-review presence.
-7. DB hydration cannot overwrite fresher live source evidence.
-8. Archive persistence policy does not disable live observation.
+4. `stream_status=COMPLETE` or streamed completion evidence closes the run even if DOM still says `in_progress`.
+5. Explicit known-inactive server `async_status` prevents stale record/DOM state from reopening the run.
+6. Transport recovery state does not change run identity by itself.
+7. Safety review does not change run identity or imply failure by itself.
+8. Moderation outcome does not get inferred from safety-review presence.
+9. DB hydration cannot overwrite fresher live source evidence.
+10. Archive persistence policy does not disable live observation.
 
 ## 12. Implementation anti-patterns
 
