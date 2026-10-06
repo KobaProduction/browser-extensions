@@ -4,6 +4,7 @@ export const TRANSPORT_CONFIG_EVENT = 'chatgpt-booster:transport-config'
 export const TRANSPORT_CHANNEL = 'chatgpt-booster:transport'
 export const ARCHIVE_POLICY_EVENT = 'chatgpt-booster:archive-policy'
 export const ARCHIVE_NETWORK_EVENT = 'chatgpt-booster:archive-network'
+export const CONVERSATION_REQUEST_EVENT = 'chatgpt-booster:conversation-request'
 export const ARCHIVE_ASSET_EVENT = 'chatgpt-booster:archive-asset'
 export const ARCHIVE_ASSET_FETCH_REQUEST_EVENT = 'chatgpt-booster:archive-asset-fetch-request'
 export const ARCHIVE_ASSET_FETCH_RESULT_EVENT = 'chatgpt-booster:archive-asset-fetch-result'
@@ -68,7 +69,10 @@ function publishPreloadPage(detail: ConversationArchiveEventDetail) {
 function beginArchiveRequest(sourceUrl: string, requestId: string): ArchiveReadContext | undefined {
   const id = conversationHistoryId(sourceUrl)
   if (!id) return undefined
-  const url = new URL(sourceUrl, location.href)
+  const url = new URL(
+    sourceUrl,
+    typeof location === 'undefined' ? 'https://chatgpt.com/' : location.href,
+  )
   const isInitial = !url.pathname.endsWith('/messages')
   if (isInitial && archivePolicy.manualConversationId !== id)
     archiveReads.set(id, { readId: requestId, readStartedAt: Date.now() })
@@ -103,6 +107,79 @@ function shouldObserveArchiveConversation(id: string): boolean {
 
   return archivePolicy.defaultEnabled || Object.values(archivePolicy.projects).some(Boolean)
 }
+function isConversationRequestUrl(sourceUrl: string) {
+  try {
+    const url = new URL(sourceUrl, 'https://chatgpt.com/')
+    return (
+      url.origin === 'https://chatgpt.com' &&
+      /^\/backend-api\/(?:f\/)?conversation$/.test(url.pathname)
+    )
+  } catch {
+    return false
+  }
+}
+
+function sourceTimestampMs(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return null
+  return value < 10_000_000_000 ? value * 1000 : value
+}
+
+function requestPayload(value: unknown): Record<string, unknown> | null {
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value)
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : null
+    } catch {
+      return null
+    }
+  }
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+}
+
+export function conversationRequestTimingFromBody(
+  sourceUrl: string,
+  method: string,
+  body: unknown,
+  observedAt: number,
+): ConversationRequestEventDetail | null {
+  if (method.toUpperCase() !== 'POST' || !isConversationRequestUrl(sourceUrl)) return null
+  const payload = requestPayload(body)
+  const messages = Array.isArray(payload?.messages) ? payload.messages : []
+  const user = [...messages].reverse().find((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return false
+    const author = (item as Record<string, unknown>).author
+    return Boolean(
+      author &&
+        typeof author === 'object' &&
+        !Array.isArray(author) &&
+        (author as Record<string, unknown>).role === 'user',
+    )
+  }) as Record<string, unknown> | undefined
+  const sourceStartedAt = sourceTimestampMs(user?.create_time)
+  return {
+    conversationId:
+      typeof payload?.conversation_id === 'string'
+        ? payload.conversation_id
+        : (pageConversationId() ?? null),
+    userMessageId: typeof user?.id === 'string' ? user.id : null,
+    startedAt: sourceStartedAt ?? observedAt,
+    observedAt,
+    source: sourceStartedAt ? 'message_create_time' : 'transport_request',
+  }
+}
+
+function publishConversationRequest(detail: ConversationRequestEventDetail | null) {
+  if (!observerTarget || !detail) return
+  observerTarget.postMessage(
+    { channel: TRANSPORT_CHANNEL, type: CONVERSATION_REQUEST_EVENT, detail },
+    observerTarget.location.origin,
+  )
+}
+
 function isArchiveObservedUrl(sourceUrl: string) {
   return (
     sourceUrl.includes('/backend-api/conversations/') ||
@@ -154,6 +231,14 @@ export interface TransportEventDetail {
   size?: number | undefined
   error?: string | undefined
   errorClass?: 'aborted' | 'network' | 'stream' | 'socket' | undefined
+}
+
+export interface ConversationRequestEventDetail {
+  conversationId: string | null
+  userMessageId: string | null
+  startedAt: number
+  observedAt: number
+  source: 'message_create_time' | 'transport_request'
 }
 
 export interface ArchiveAssetResolutionEventDetail {
@@ -776,7 +861,11 @@ export function installTransportObserver(
       // Transport diagnostics are opt-in. Keep ordinary ChatGPT fetches on the host's
       // original promise path when diagnostics are disabled; only archive history/file
       // resolver routes still need observation in that mode.
-      if (!transportEmissionEnabled && !isArchiveObservedUrl(rawUrl))
+      if (
+        !transportEmissionEnabled &&
+        !isArchiveObservedUrl(rawUrl) &&
+        !isConversationRequestUrl(rawUrl)
+      )
         return callUpstream(input, init)
 
       return (async () => {
@@ -789,6 +878,10 @@ export function installTransportObserver(
           diagnosticsEnabled && config.captureBodies
             ? sanitizeBodyPreview(init?.body, config.maxBodyChars)
             : undefined
+        const requestBoundaryAt = Date.now()
+        publishConversationRequest(
+          conversationRequestTimingFromBody(rawUrl, method, init?.body, requestBoundaryAt),
+        )
 
         if (diagnosticsEnabled)
           emit({
@@ -796,7 +889,7 @@ export function installTransportObserver(
             kind: 'fetch',
             direction: 'outbound',
             phase: 'request',
-            timestamp: Date.now(),
+            timestamp: requestBoundaryAt,
             method,
             url,
             ...(body ? { bodyPreview: body } : {}),
@@ -887,18 +980,24 @@ export function installTransportObserver(
 
     const diagnosticsEnabled = transportEmissionEnabled
     const resolverObserved = Boolean(archiveFileResolverId(meta.rawUrl))
-    if (!diagnosticsEnabled && !resolverObserved) return originalSend.call(this, body)
+    const conversationRequest = isConversationRequestUrl(meta.rawUrl)
+    if (!diagnosticsEnabled && !resolverObserved && !conversationRequest)
+      return originalSend.call(this, body)
 
     const id = diagnosticsEnabled ? nextId('xhr') : ''
     const safeUrl = diagnosticsEnabled ? sanitizeTransportUrl(meta.rawUrl) : ''
     const started = diagnosticsEnabled ? performance.now() : 0
+    const requestBoundaryAt = Date.now()
+    publishConversationRequest(
+      conversationRequestTimingFromBody(meta.rawUrl, meta.method, body, requestBoundaryAt),
+    )
     if (diagnosticsEnabled)
       emit({
         id,
         kind: 'xhr',
         direction: 'outbound',
         phase: 'request',
-        timestamp: Date.now(),
+        timestamp: requestBoundaryAt,
         method: meta.method,
         url: safeUrl,
         ...(config.captureBodies

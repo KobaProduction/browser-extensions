@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test'
-import { archiveFileResolverId, parseArchiveAssetResolution } from '../packages/observer/src'
+import {
+  archiveFileResolverId,
+  conversationRequestTimingFromBody,
+  parseArchiveAssetResolution,
+} from '../packages/observer/src'
 import { sanitizeBodyPreview, sanitizeTransportUrl } from '../packages/observer/src/index'
 import { buildOtlpLogPayload } from '../packages/telemetry/src/index'
 
@@ -27,6 +31,65 @@ describe('transport sanitization', () => {
     expect(preview).not.toContain('should-not-leak')
     expect(preview).not.toContain('session-secret')
     expect(preview).toContain('[REDACTED]')
+  })
+})
+
+describe('conversation request timing boundary', () => {
+  test('uses the user message create_time from ChatGPT conversation payload', () => {
+    const detail = conversationRequestTimingFromBody(
+      'https://chatgpt.com/backend-api/f/conversation',
+      'POST',
+      JSON.stringify({
+        conversation_id: 'chat-1',
+        messages: [
+          {
+            id: 'user-message-1',
+            author: { role: 'user' },
+            create_time: 1791315880.927,
+            content: { content_type: 'text', parts: ['hello'] },
+          },
+        ],
+      }),
+      1791315882000,
+    )
+
+    expect(detail).toEqual({
+      conversationId: 'chat-1',
+      userMessageId: 'user-message-1',
+      startedAt: 1791315880927,
+      observedAt: 1791315882000,
+      source: 'message_create_time',
+    })
+  })
+
+  test('falls back to the actual outbound transport boundary when create_time is absent', () => {
+    const detail = conversationRequestTimingFromBody(
+      'https://chatgpt.com/backend-api/conversation',
+      'POST',
+      JSON.stringify({
+        conversation_id: 'chat-2',
+        messages: [{ id: 'user-message-2', author: { role: 'user' } }],
+      }),
+      123456789,
+    )
+
+    expect(detail).toMatchObject({
+      conversationId: 'chat-2',
+      userMessageId: 'user-message-2',
+      startedAt: 123456789,
+      source: 'transport_request',
+    })
+  })
+
+  test('ignores unrelated requests', () => {
+    expect(
+      conversationRequestTimingFromBody(
+        'https://chatgpt.com/backend-api/f/conversation/prepare',
+        'POST',
+        '{}',
+        1,
+      ),
+    ).toBeNull()
   })
 })
 

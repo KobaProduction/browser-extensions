@@ -29,6 +29,11 @@ import {
   serverTimeMs,
 } from '@chatgpt-booster/core'
 import {
+  CONVERSATION_REQUEST_EVENT,
+  type ConversationRequestEventDetail,
+  TRANSPORT_CHANNEL,
+} from '@chatgpt-booster/observer'
+import {
   type MountedAgentActivity,
   type MountedMessageMetadata,
   type MountedRequestStatus,
@@ -118,6 +123,8 @@ export class ConversationDecoratorsModule implements BoosterModule {
   #longAlertedTurnId: string | null = null
   #completedAlertedTurnId: string | null = null
   #activeObservedTurnIds = new Set<string>()
+  #requestBoundaries = new Map<string, ConversationRequestEventDetail>()
+  #latestConversationBoundary: ConversationRequestEventDetail | null = null
   #ticker: ReturnType<typeof setInterval> | undefined
   #unsubscribe: (() => void) | undefined
   #archiveRefreshTimer: ReturnType<typeof setTimeout> | undefined
@@ -190,6 +197,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
       this.#observer.scan()
     })
     window.addEventListener(ARCHIVE_UPDATED_EVENT, this.#onArchiveUpdated)
+    window.addEventListener('message', this.#onConversationRequest)
     this.#restartTicker()
     if (this.#settings.enabled) {
       this.#initialTask = scheduleIdleTask(() => {
@@ -297,7 +305,6 @@ export class ConversationDecoratorsModule implements BoosterModule {
     if (!snapshot?.turnId) return
     if (
       snapshot.phase === 'complete' &&
-      snapshot.completedAt &&
       this.#activeObservedTurnIds.has(snapshot.turnId) &&
       this.#completedAlertedTurnId !== snapshot.turnId
     ) {
@@ -307,6 +314,9 @@ export class ConversationDecoratorsModule implements BoosterModule {
       )
       if (settings.alerts.responseCompleteSound) playActivityTone('complete')
       this.#activeObservedTurnIds.delete(snapshot.turnId)
+      this.#requestBoundaries.delete(snapshot.turnId)
+      if (this.#latestConversationBoundary?.userMessageId === snapshot.turnId)
+        this.#latestConversationBoundary = null
     }
     if (
       settings.alerts.longRunningSound &&
@@ -359,6 +369,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
     this.#unsubscribe?.()
     this.#unsubscribe = undefined
     window.removeEventListener(ARCHIVE_UPDATED_EVENT, this.#onArchiveUpdated)
+    window.removeEventListener('message', this.#onConversationRequest)
     if (this.#archiveRefreshTimer) clearTimeout(this.#archiveRefreshTimer)
     this.#archiveRefreshTimer = undefined
     this.#loadVersion += 1
@@ -369,8 +380,53 @@ export class ConversationDecoratorsModule implements BoosterModule {
     if (this.#recordConversationId) this.store.clearDomSnapshot(this.#recordConversationId)
     this.#recordConversationId = null
     this.#activitySnapshots.clear()
+    this.#requestBoundaries.clear()
+    this.#latestConversationBoundary = null
     this.#lastCleanupAt = 0
     this.#clear()
+  }
+
+  #onConversationRequest = (event: MessageEvent) => {
+    if (event.origin && event.origin !== window.location.origin) return
+    const data = event.data as {
+      channel?: string
+      type?: string
+      detail?: ConversationRequestEventDetail
+    }
+    if (
+      data?.channel !== TRANSPORT_CHANNEL ||
+      data.type !== CONVERSATION_REQUEST_EVENT ||
+      !data.detail
+    )
+      return
+    const current = currentConversationId() ?? null
+    if (data.detail.conversationId && current && data.detail.conversationId !== current) return
+    if (data.detail.userMessageId)
+      this.#requestBoundaries.set(data.detail.userMessageId, data.detail)
+    this.#latestConversationBoundary = data.detail
+    while (this.#requestBoundaries.size > 64) {
+      const oldest = this.#requestBoundaries.keys().next().value
+      if (!oldest) break
+      this.#requestBoundaries.delete(oldest)
+    }
+    this.#activityObserver?.scan()
+  }
+
+  #requestBoundaryForSection(section: HTMLElement): ConversationRequestEventDetail | null {
+    const turnId = chatGptTurnId(section)
+    if (turnId) {
+      const direct = this.#requestBoundaries.get(turnId)
+      if (direct) return direct
+    }
+    for (const id of chatGptTurnMessageIds(section)) {
+      const direct = this.#requestBoundaries.get(id)
+      if (direct) return direct
+    }
+    const latest = this.#latestConversationBoundary
+    const current = currentConversationId() ?? null
+    if (!latest) return null
+    if (latest.conversationId && current && latest.conversationId !== current) return null
+    return latest
   }
 
   #onArchiveUpdated = (event: Event) => {
@@ -470,14 +526,25 @@ export class ConversationDecoratorsModule implements BoosterModule {
 
   #sourceActivity(section: HTMLElement, observed: AgentActivitySnapshot): AgentActivitySnapshot {
     const items = this.#turnItemsForSection(section)
-    if (!items.length) return observed
+    const boundary = this.#requestBoundaryForSection(section)
+    if (!items.length)
+      return {
+        ...observed,
+        startedAt: boundary?.startedAt ?? null,
+        reasoningStartedAt: null,
+        phaseStartedAt: null,
+        completedAt: null,
+        lastActivityAt: null,
+        durationMs: null,
+        reasoningDurationMs: null,
+      }
     const ordered = [...items].sort(
       (a, b) =>
         (sourceTime(a.createTime) ?? Number.POSITIVE_INFINITY) -
         (sourceTime(b.createTime) ?? Number.POSITIVE_INFINITY),
     )
     const user = ordered.find((item) => item.role === 'user')
-    const startedAt = sourceTime(user?.createTime)
+    const startedAt = sourceTime(user?.createTime) ?? boundary?.startedAt ?? null
 
     const reasoningStarts: number[] = []
     const reasoningEnds: number[] = []
