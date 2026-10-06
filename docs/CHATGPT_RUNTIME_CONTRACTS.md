@@ -212,7 +212,74 @@ A fresh turn can already be running while the DOM contains only the user search-
 
 Therefore request lifecycle/timer mounting must not wait for assistant DOM.
 
-## 6. Native Stop contract
+## 6. Conversation-length exhaustion
+
+Verified terminal presentation:
+
+```text
+role="alert"
+turn lifecycle = complete
+native Stop = absent
+CTA = Start new chat
+```
+
+Observed Russian UI copy:
+
+```text
+Вы достигли максимальной длины этого обсуждения, но можете продолжить обсуждение, начав новый чат.
+```
+
+The deployed client recognizes the error code:
+
+```text
+conversation_too_large
+```
+
+and groups it with conversation unavailable/deleted/expired conditions that require the Start-new-chat path. This is different from `model_cap_exceeded` and `work_usage_limit_exceeded`, which represent account/model usage constraints rather than exhaustion of the current conversation's usable context/history.
+
+The exact live SSE error frame was not retained in the captured incident. Therefore the current implementation contract is:
+
+```text
+presentation evidence      = directly observed
+conversation_too_large     = client-code confirmed semantic category
+exact live frame mapping   = not yet directly captured
+```
+
+### Runtime semantics
+
+Treat conversation exhaustion as a terminal **cause**, not merely `complete`:
+
+```text
+run lifecycle     = complete/terminal
+terminal cause    = conversation_too_large
+continuation      = current conversation cannot continue normally
+recommended UX    = start/continue in a new chat
+```
+
+Do not collapse this into ordinary response completion, because product behavior differs materially.
+
+### Alert policy
+
+Product requirement (issue `#32`):
+
+- normal autonomous completion -> normal completion sound;
+- user-initiated Stop -> no completion sound (issue `#31`);
+- conversation exhaustion -> dedicated critical repeated alarm for roughly 2–3 seconds;
+- transient recovery, safety review, or generic network failure -> no conversation-exhaustion alarm.
+
+The critical alarm must be deduplicated across rerenders/reloads and keyed by source cause/state, not localized DOM copy.
+
+### Detection rule
+
+Preferred classifier:
+
+```text
+source errorCode / normalized terminal cause == conversation_too_large
+```
+
+Fallback DOM presentation may be used only as temporary diagnostics/acceptance evidence, not as the stable architectural classifier.
+
+## 7. Native Stop contract
 
 Verified native action:
 
@@ -252,7 +319,7 @@ After the confirmed Stop, one final already-started recovery pair was observed, 
 
 `last_message_id:null` is valid evidence in at least one stopped recovery case. Do not hard-code it as a constant for every successful Stop.
 
-## 7. Stream recovery contract
+## 8. Stream recovery contract
 
 Observed recovery routes:
 
@@ -375,7 +442,7 @@ precise final/stream-complete source timestamp
 
 A late COMPLETE confirmation may close a run whose exact completion boundary was missed, but it must not overwrite an earlier precise completion timestamp.
 
-## 8. Safety-review stream contract
+## 9. Safety-review stream contract
 
 Verified authoritative stream event:
 
@@ -450,7 +517,7 @@ The inspected client contract deactivates the review when a `safety_review_updat
 - client code proves `active=false` is the deactivation mechanism;
 - the exact deactivation SSE frame was not captured directly.
 
-## 9. Moderation contract
+## 10. Moderation contract
 
 Moderation is distinct from `safety_review_update`.
 
@@ -495,7 +562,7 @@ moderation blocked/safety_limited/etc.
 
 Do not collapse them into a single boolean named `moderated`.
 
-## 10. DOM signatures are corroboration only
+## 11. DOM signatures are corroboration only
 
 Verified useful DOM signals include:
 
@@ -518,7 +585,7 @@ Known contradictions include:
 
 Keep renderer/version-specific selectors behind `ChatGptDomAdapter`.
 
-## 11. State precedence rules
+## 12. State precedence rules
 
 The live read model should obey these rules:
 
@@ -533,7 +600,7 @@ The live read model should obey these rules:
 9. DB hydration cannot overwrite fresher live source evidence.
 10. Archive persistence policy does not disable live observation.
 
-## 12. Implementation anti-patterns
+## 13. Implementation anti-patterns
 
 Do not:
 
@@ -549,7 +616,7 @@ Do not:
 - persist or surface conduit/auth tokens;
 - synthesize private ChatGPT mutations when a feature is only observing native client behavior.
 
-## 13. Observer event targets
+## 14. Observer event targets
 
 The observer layer should normalize source events rather than expose feature modules to raw host details.
 
@@ -568,7 +635,7 @@ message-stream completion
 
 Feature/UI code should consume normalized runtime state from `ConversationStateStore`, not separately parse host transport or localized DOM.
 
-## 14. Validation checklist for lifecycle changes
+## 15. Validation checklist for lifecycle changes
 
 Before claiming a lifecycle change complete, verify at least:
 
@@ -582,7 +649,7 @@ Before claiming a lifecycle change complete, verify at least:
 - reload of an active/recovery conversation hydrates source state without waiting on IndexedDB;
 - extension and userscript share the same normalized runtime behavior.
 
-## 15. Evidence boundaries
+## 16. Evidence boundaries
 
 Maintain explicit confidence levels in future reverse-engineering:
 

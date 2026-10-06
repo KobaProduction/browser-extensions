@@ -653,6 +653,83 @@ For Booster, `stream_status=COMPLETE` is terminal source evidence and must stop 
 
 The exact wall-clock moment at which the server changed to `COMPLETE` was not captured before reload. For live timing, the preferred boundary is the streamed `message_stream_complete` / `main_stream_complete` event when observed. A later `stream_status=COMPLETE` response is a source-confirmation fallback and must not overwrite an earlier, more precise final-message or stream-completion timestamp.
 
+### Verified conversation-length exhaustion UI (2026-10-07)
+
+An almost-full conversation was intentionally driven with one very large full-project report request to capture the context/conversation-length terminal state.
+
+The fresh request itself started normally:
+
+```text
+POST /backend-api/f/conversation/prepare -> 200
+POST /backend-api/f/conversation         -> 200 (SSE)
+```
+
+The answer then streamed a very large response (roughly 48k visible characters in the rendered turn) before ChatGPT terminated the turn and rendered a native error callout.
+
+Direct live UI/DOM evidence:
+
+```text
+turn state = complete
+native Stop control = absent
+role="alert"
+primary CTA = "Начать новый чат"
+```
+
+Russian localized message:
+
+```text
+Вы достигли максимальной длины этого обсуждения, но можете продолжить обсуждение, начав новый чат.
+```
+
+The alert was rendered as ChatGPT's ordinary inline conversation error component (`type="error"`) and its parent response-error component held the current `conversationId`, the same error message, retry wiring, and `useDefaultModel=false`.
+
+#### Client-code classification
+
+The deployed client bundle contains `conversation_too_large` in the recognized conversation error-code taxonomy:
+
+```text
+conversation_not_found
+history_disabled_conversation_not_found
+history_disabled_conversation_expired
+conversation_deleted
+model_cap_exceeded
+conversation_too_large
+work_usage_limit_exceeded
+...
+```
+
+The client explicitly groups `conversation_too_large` with conversation-not-found/deleted/expired errors for the **Start new chat** path. The UI component used for these errors renders the CTA whose client description states that it opens a new conversation when the original conversation was deleted, expired, too large, or could not be found.
+
+The retry/continuation selector also special-cases `conversation_too_large`, including a distinct work-conversation continuation path where available.
+
+This makes `conversation_too_large` the client-code-confirmed semantic category that matches the captured maximum-length UI.
+
+#### Evidence boundary
+
+The browser network inspector did not retain the completed SSE response body for this live request, so the exact SSE frame carrying `errorCode="conversation_too_large"` was **not directly captured** in this incident.
+
+Therefore classify the evidence precisely:
+
+- native maximum-length alert + Start-new-chat CTA + terminal turn: **direct live evidence**;
+- `conversation_too_large` taxonomy and Start-new-chat handling: **client-code confirmed**;
+- exact live frame connecting this particular alert instance to that code: **strongly correlated but not directly captured**.
+
+Do not build Booster detection from the Russian/English localized text alone. Prefer the source error code/metadata once the observer captures the corresponding stream error/event contract.
+
+#### Booster consequence
+
+Conversation-length exhaustion is a critical terminal condition distinct from:
+
+- normal autonomous response completion;
+- user-confirmed Stop;
+- model usage/cap exhaustion;
+- transient recovery/polling fallback;
+- `Resume stream unavailable`;
+- generic network error;
+- safety review/moderation.
+
+It should have its own normalized runtime cause/state and a dedicated high-priority alert policy. The requested product behavior is tracked in issue `#32`: a conspicuous repeated alarm for roughly 2–3 seconds, deduplicated to one alarm per exhaustion boundary.
+
 ### Verified native Stop-generation contract (2026-10-07)
 
 A live external-Playwright experiment on the same `Обзор RedmiBook Pro 16` conversation reloaded the page, waited for ChatGPT to restore the active generation/recovery state, and then invoked the native Stop control once. No other ChatGPT controls were clicked during the experiment.
