@@ -94,7 +94,7 @@ export function createBoosterPageRuntime(options: BoosterPageRuntimeOptions) {
     new OverlayModule(runtimeTarget, archiveAdapter),
     archiveCapture,
     new ArchiveScopeControlsModule(settings, archiveStore),
-    new HistoryLoaderModule(archiveStore, archiveCapture, pageBridgeWindow),
+    new HistoryLoaderModule(archiveStore, archiveCapture, pageBridgeWindow, settings),
     new TransportObserverModule({
       settings,
       diagnostics: target.diagnostics,

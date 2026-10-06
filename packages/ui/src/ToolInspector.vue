@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import Check from 'lucide-vue-next/dist/esm/icons/check.js'
-import ChevronDown from 'lucide-vue-next/dist/esm/icons/chevron-down.js'
 import Clipboard from 'lucide-vue-next/dist/esm/icons/clipboard.js'
-import Clock3 from 'lucide-vue-next/dist/esm/icons/clock-3.js'
 import Globe2 from 'lucide-vue-next/dist/esm/icons/globe.js'
 import Wrench from 'lucide-vue-next/dist/esm/icons/wrench.js'
 import { computed, ref } from 'vue'
@@ -14,25 +12,16 @@ import { translate } from './i18n'
 
 const props = defineProps<{ model: ToolCallViewModel }>()
 const copied = ref(false)
-const expanded = ref(false)
 const t = (key: Parameters<typeof translate>[1]) => translate(props.model.locale, key)
 
 function serverTime(value: number | null) {
   if (!value || !Number.isFinite(value)) return null
   return value < 10_000_000_000 ? value * 1000 : value
 }
+
 const timestampValue = computed(() => serverTime(props.model.tool.timestamp))
 const timestamp = computed(() =>
   timestampValue.value ? new Date(timestampValue.value).toLocaleString(props.model.locale) : null,
-)
-const timestampShort = computed(() =>
-  timestampValue.value
-    ? new Date(timestampValue.value).toLocaleTimeString(props.model.locale, {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-      })
-    : null,
 )
 const isWebTool = computed(() =>
   /(?:^|\b)(web|browser|search)(?:\b|$)/i.test(
@@ -50,89 +39,49 @@ async function copyDiagnostics() {
 </script>
 
 <template>
-  <div class="booster-tool-inspector" :lang="model.locale">
-    <div class="booster-live-tool-row">
-      <img v-if="model.tool.iconUrl" :src="model.tool.iconUrl" alt="" class="booster-live-tool-icon" />
-      <Globe2 v-else-if="isWebTool" class="size-3.5 shrink-0" />
-      <Wrench v-else class="size-3.5 shrink-0" />
-      <div class="booster-live-tool-copy">
-        <strong class="booster-live-tool-name">{{ model.tool.provider || model.tool.label }}</strong>
-        <span v-if="model.tool.action" class="booster-live-tool-action-name">{{ model.tool.action }}</span>
+  <FloatingInfoPopover mode="click" :label="t('tool.inspect')" align="start" trigger-class="booster-tool-inspect-trigger">
+    <template #trigger><Wrench class="size-3.5" /></template>
+    <div class="booster-tool-detail-popover" :lang="model.locale">
+      <header>
+        <img v-if="model.tool.iconUrl" :src="model.tool.iconUrl" alt="" class="booster-live-tool-icon" />
+        <Globe2 v-else-if="isWebTool" class="size-4 shrink-0" />
+        <Wrench v-else class="size-4 shrink-0" />
+        <div class="min-w-0 flex-1">
+          <strong>{{ model.tool.provider || model.tool.label }}</strong>
+          <span v-if="model.tool.action">{{ model.tool.action }}</span>
+        </div>
+        <Button variant="ghost" size="icon-sm" :title="t('tool.copyDiagnostics')" @click.stop="copyDiagnostics">
+          <Check v-if="copied" class="size-3.5" />
+          <Clipboard v-else class="size-3.5" />
+        </Button>
+      </header>
+
+      <div class="booster-meta-lines">
+        <template v-if="timestamp">
+          <strong class="booster-meta-label">{{ t('tool.calledAt') }}</strong><span class="booster-meta-value">{{ timestamp }}</span>
+        </template>
+        <template v-if="model.tool.provider">
+          <strong class="booster-meta-label">{{ t('tool.provider') }}</strong><span class="booster-meta-value">{{ model.tool.provider }}</span>
+        </template>
+        <template v-if="model.tool.action">
+          <strong class="booster-meta-label">{{ t('tool.action') }}</strong><span class="booster-meta-value">{{ model.tool.action }}</span>
+        </template>
       </div>
 
-      <FloatingInfoPopover
-        v-if="timestamp"
-        :label="t('tool.calledAt') + ': ' + timestamp"
-        trigger-class="booster-tool-time-chip"
-      >
-        <template #trigger><Clock3 class="size-3.5" /><span>{{ timestampShort }}</span></template>
-        <div class="booster-meta-lines">
-          <strong class="booster-meta-label">{{ t('tool.calledAt') }}</strong><span class="booster-meta-value">{{ timestamp }}</span>
-          <template v-if="model.tool.provider">
-            <strong class="booster-meta-label">{{ t('tool.provider') }}</strong><span class="booster-meta-value">{{ model.tool.provider }}</span>
-          </template>
-          <template v-if="model.tool.action">
-            <strong class="booster-meta-label">{{ t('tool.action') }}</strong><span class="booster-meta-value">{{ model.tool.action }}</span>
-          </template>
-        </div>
-      </FloatingInfoPopover>
+      <div v-if="model.tool.payload !== null" class="booster-tool-payload">
+        <strong>{{ t('tool.clientPayload') }}</strong>
+        <JsonViewer :value="model.tool.payload" />
+      </div>
 
-      <Button
-        variant="ghost"
-        size="xs"
-        class="gap-1 text-muted-foreground hover:text-foreground"
-        :aria-expanded="expanded"
-        @click="expanded = !expanded"
-      >
-        {{ t('tool.details') }}
-        <ChevronDown class="size-3.5 opacity-60" :class="{ 'rotate-180': expanded }" />
-      </Button>
+      <details v-if="Object.keys(model.attributes).length || model.visibleText" class="booster-tool-evidence">
+        <summary>{{ t('tool.domEvidence') }}</summary>
+        <dl v-if="Object.keys(model.attributes).length" class="booster-tool-attributes">
+          <template v-for="(value, key) in model.attributes" :key="key">
+            <dt>{{ key }}</dt><dd>{{ value }}</dd>
+          </template>
+        </dl>
+        <pre>{{ model.visibleText }}</pre>
+      </details>
     </div>
-
-    <section v-if="expanded" class="booster-live-tool-details">
-        <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0">
-            <div class="truncate text-xs font-semibold">{{ model.tool.label }}</div>
-            <div class="mt-1 text-[11px] text-muted-foreground">
-              {{ t('tool.confidence') }} {{ model.score }} · {{ model.signals.join(', ') }}
-            </div>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            class="shrink-0"
-            :title="t('tool.copyDiagnostics')"
-            @click="copyDiagnostics"
-          >
-            <Check v-if="copied" class="size-3.5" />
-            <Clipboard v-else class="size-3.5" />
-          </Button>
-        </div>
-
-        <div class="mt-3 grid gap-3">
-          <div>
-            <div class="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              {{ t('tool.clientPayload') }}
-            </div>
-            <JsonViewer v-if="model.tool.payload !== null" :value="model.tool.payload" />
-            <p v-else class="rounded-md border border-dashed border-border p-2 text-[11px] text-muted-foreground">
-              {{ t('tool.noPayload') }}
-            </p>
-          </div>
-
-          <details v-if="Object.keys(model.attributes).length || model.visibleText" class="text-[11px]">
-            <summary class="cursor-pointer select-none font-medium text-muted-foreground">
-              {{ t('tool.domEvidence') }}
-            </summary>
-            <dl v-if="Object.keys(model.attributes).length" class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-              <template v-for="(value, key) in model.attributes" :key="key">
-                <dt class="font-mono text-muted-foreground">{{ key }}</dt>
-                <dd class="break-all font-mono">{{ value }}</dd>
-              </template>
-            </dl>
-            <pre class="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-2 font-mono text-[11px] leading-4">{{ model.visibleText }}</pre>
-          </details>
-        </div>
-    </section>
-  </div>
+  </FloatingInfoPopover>
 </template>

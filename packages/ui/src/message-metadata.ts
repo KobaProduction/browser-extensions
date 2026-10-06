@@ -1,14 +1,20 @@
-import type { ConversationItemMetadataView } from '@chatgpt-booster/core'
+import type { AgentActivitySnapshot, ConversationItemMetadataView } from '@chatgpt-booster/core'
 import { type SupportedLocale, translate } from './i18n'
 import { installBoosterShadowStyles } from './shadow-styles'
 
+export interface LiveMessageMetadataView extends ConversationItemMetadataView {
+  raw?: unknown
+  activity?: AgentActivitySnapshot | null
+}
+
 export interface MountedMessageMetadata {
   element: HTMLElement
-  update(metadata: ConversationItemMetadataView): void
+  update(metadata: LiveMessageMetadataView): void
+  updateActivity(activity: AgentActivitySnapshot | null): void
   unmount(): void
 }
 
-function svgIcon(kind: 'clock' | 'brain') {
+function clockIcon() {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
   svg.setAttribute('viewBox', '0 0 24 24')
   svg.setAttribute('width', '14')
@@ -19,34 +25,13 @@ function svgIcon(kind: 'clock' | 'brain') {
   svg.setAttribute('stroke-linecap', 'round')
   svg.setAttribute('stroke-linejoin', 'round')
   svg.setAttribute('aria-hidden', 'true')
-
-  const paths: Array<[string, Record<string, string>]> =
-    kind === 'clock'
-      ? [
-          ['circle', { cx: '12', cy: '12', r: '10' }],
-          ['path', { d: 'M12 6v6h4' }],
-        ]
-      : [
-          [
-            'path',
-            {
-              d: 'M9.5 4.5A3 3 0 0 0 6 7.5v.4A3.5 3.5 0 0 0 4 11v1a3 3 0 0 0 2 2.8V16a3 3 0 0 0 3.5 3',
-            },
-          ],
-          [
-            'path',
-            {
-              d: 'M14.5 4.5A3 3 0 0 1 18 7.5v.4a3.5 3.5 0 0 1 2 3.1v1a3 3 0 0 1-2 2.8V16a3 3 0 0 1-3.5 3',
-            },
-          ],
-          ['path', { d: 'M9.5 4.5v15M14.5 4.5v15M9.5 9H7M14.5 9H17M9.5 14H7M14.5 14H17' }],
-        ]
-
-  for (const [name, attrs] of paths) {
-    const node = document.createElementNS('http://www.w3.org/2000/svg', name)
-    for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value)
-    svg.append(node)
-  }
+  const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+  circle.setAttribute('cx', '12')
+  circle.setAttribute('cy', '12')
+  circle.setAttribute('r', '10')
+  const hand = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+  hand.setAttribute('d', 'M12 6v6h4')
+  svg.append(circle, hand)
   return svg
 }
 
@@ -71,20 +56,16 @@ function shortTime(value: number | null, locale: SupportedLocale) {
     : '—'
 }
 
-function sameMetadata(a: ConversationItemMetadataView, b: ConversationItemMetadataView) {
-  return (
-    a.sentAt === b.sentAt &&
-    a.editedAt === b.editedAt &&
-    a.edited === b.edited &&
-    a.model === b.model &&
-    a.thinking === b.thinking
-  )
-}
-
-function createLines() {
-  const lines = document.createElement('div')
-  lines.className = 'booster-meta-lines'
-  return lines
+function duration(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return '—'
+  const ms = Math.max(0, value)
+  if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`
+  const seconds = Math.floor(ms / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const rest = seconds % 60
+  if (minutes < 60) return `${minutes}:${String(rest).padStart(2, '0')}`
+  const hours = Math.floor(minutes / 60)
+  return `${hours}:${String(minutes % 60).padStart(2, '0')}:${String(rest).padStart(2, '0')}`
 }
 
 function appendLine(container: HTMLElement, label: string, value: string) {
@@ -97,25 +78,25 @@ function appendLine(container: HTMLElement, label: string, value: string) {
   container.append(strong, span)
 }
 
-function createHoverPopover(icon: SVGElement) {
+function createClickPopover(icon: SVGElement) {
   const trigger = document.createElement('span')
-  trigger.className = 'booster-meta-trigger'
+  trigger.className = 'booster-meta-trigger booster-meta-trigger-time is-clickable'
   trigger.tabIndex = 0
   trigger.setAttribute('role', 'button')
   trigger.append(icon)
 
   const popup = document.createElement('div')
-  popup.className = 'booster-floating-popover'
+  popup.className = 'booster-floating-popover booster-message-meta-popover is-interactive'
   popup.setAttribute('popover', 'manual')
 
   let open = false
   const position = () => {
     if (!open) return
     const rect = trigger.getBoundingClientRect()
-    const width = Math.min(340, Math.max(180, popup.offsetWidth || 260))
+    const width = Math.min(420, Math.max(220, popup.offsetWidth || 300))
     const maxLeft = Math.max(8, innerWidth - width - 8)
     const left = Math.max(8, Math.min(maxLeft, rect.right - width))
-    const panelHeight = popup.offsetHeight || 80
+    const panelHeight = popup.offsetHeight || 120
     const below = rect.bottom + 8
     const top =
       below + panelHeight <= innerHeight - 8 ? below : Math.max(8, rect.top - panelHeight - 8)
@@ -131,6 +112,7 @@ function createHoverPopover(icon: SVGElement) {
     } catch {}
     window.addEventListener('resize', position)
     window.addEventListener('scroll', position, true)
+    document.addEventListener('pointerdown', outside, true)
     position()
   }
   const hide = () => {
@@ -139,22 +121,33 @@ function createHoverPopover(icon: SVGElement) {
     popup.classList.remove('is-open')
     window.removeEventListener('resize', position)
     window.removeEventListener('scroll', position, true)
+    document.removeEventListener('pointerdown', outside, true)
     try {
       popup.hidePopover?.()
     } catch {}
+  }
+  const toggle = () => {
+    if (open) hide()
+    else show()
+  }
+  function outside(event: PointerEvent) {
+    const path = event.composedPath()
+    if (path.includes(trigger) || path.includes(popup)) return
+    hide()
   }
   const key = (event: KeyboardEvent) => {
     if (event.key === 'Escape') hide()
     else if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
-      if (open) hide()
-      else show()
+      toggle()
     }
   }
-  trigger.addEventListener('mouseenter', show)
-  trigger.addEventListener('mouseleave', hide)
-  trigger.addEventListener('focus', show)
-  trigger.addEventListener('blur', hide)
+  const click = (event: MouseEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    toggle()
+  }
+  trigger.addEventListener('click', click)
   trigger.addEventListener('keydown', key)
 
   return {
@@ -163,10 +156,7 @@ function createHoverPopover(icon: SVGElement) {
     hide,
     unmount() {
       hide()
-      trigger.removeEventListener('mouseenter', show)
-      trigger.removeEventListener('mouseleave', hide)
-      trigger.removeEventListener('focus', show)
-      trigger.removeEventListener('blur', hide)
+      trigger.removeEventListener('click', click)
       trigger.removeEventListener('keydown', key)
     },
   }
@@ -174,86 +164,108 @@ function createHoverPopover(icon: SVGElement) {
 
 export function mountMessageMetadata(
   into: HTMLElement,
-  metadata: ConversationItemMetadataView,
+  initial: LiveMessageMetadataView,
   locale: SupportedLocale,
-  showModel: boolean,
 ): MountedMessageMetadata {
   const host = document.createElement('span')
   host.dataset.chatgptBooster = 'message-metadata'
-  host.style.display = 'flex'
-  host.style.alignItems = 'center'
-  host.style.justifyContent = showModel ? 'flex-start' : 'flex-end'
-  host.style.width = '100%'
-  host.style.minHeight = '28px'
-  host.style.marginTop = '2px'
+  host.style.cssText =
+    'display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;width:auto;min-width:0;height:28px;margin:0;'
   into.append(host)
 
   const shadow = host.attachShadow({ mode: 'open' })
   installBoosterShadowStyles(shadow)
-  const badges = document.createElement('span')
-  badges.className = 'booster-meta-badges compact'
-  shadow.append(badges)
-
-  const time = createHoverPopover(svgIcon('clock'))
-  time.trigger.classList.add('booster-meta-trigger-time')
+  const control = createClickPopover(clockIcon())
   const timeText = document.createElement('span')
   timeText.className = 'booster-meta-time-text'
-  time.trigger.append(timeText)
-  const model = createHoverPopover(svgIcon('brain'))
-  badges.append(time.trigger, time.popup, model.trigger, model.popup)
+  control.trigger.append(timeText)
+  shadow.append(control.trigger, control.popup)
 
-  const render = (next: ConversationItemMetadataView) => {
-    const sent = fullDate(next.sentAt, locale)
-    const edited = fullDate(next.editedAt, locale)
-    const sentLabel = translate(locale, 'reader.sentAt')
-    const editedLabel = translate(locale, 'reader.editedAt')
-    const unknown = translate(locale, 'reader.timeUnknown')
-    const timeLabel = [sent ? `${sentLabel}: ${sent}` : unknown]
-    if (next.edited && edited) timeLabel.push(`${editedLabel}: ${edited}`)
-    time.trigger.setAttribute('aria-label', timeLabel.join('\n'))
-    time.trigger.title = timeLabel.join(' · ')
-    timeText.textContent = shortTime(next.sentAt, locale)
-    time.popup.replaceChildren()
-    const timeLines = createLines()
-    appendLine(timeLines, sentLabel, sent || unknown)
-    if (next.edited && edited) appendLine(timeLines, editedLabel, edited)
-    time.popup.append(timeLines)
+  let current: LiveMessageMetadataView = { ...initial }
+  let rawExpanded = false
 
-    const modelLabel = translate(locale, 'reader.model')
-    const thinkingLabel = translate(locale, 'reader.thinking')
-    const modelParts = [
-      next.model ? `${modelLabel}: ${next.model}` : '',
-      next.thinking ? `${thinkingLabel}: ${next.thinking}` : '',
-    ].filter(Boolean)
-    const visible = showModel && modelParts.length > 0
-    model.trigger.hidden = !visible
-    model.popup.hidden = !visible
-    if (!visible) {
-      model.hide()
-      return
+  const t = (key: Parameters<typeof translate>[1]) => translate(locale, key)
+
+  const render = () => {
+    const sent = fullDate(current.sentAt, locale)
+    const edited = fullDate(current.editedAt, locale)
+    const unknown = t('reader.timeUnknown')
+    timeText.textContent = shortTime(current.sentAt, locale)
+    control.trigger.title = sent ? `${t('reader.sentAt')}: ${sent}` : unknown
+    control.trigger.setAttribute('aria-label', control.trigger.title)
+
+    const body = document.createElement('div')
+    body.className = 'booster-message-meta-body'
+    const lines = document.createElement('div')
+    lines.className = 'booster-meta-lines'
+    appendLine(lines, t('reader.sentAt'), sent || unknown)
+    if (current.edited && edited) appendLine(lines, t('reader.editedAt'), edited)
+    if (current.model) appendLine(lines, t('reader.model'), current.model)
+    if (current.thinking) appendLine(lines, t('reader.thinking'), current.thinking)
+
+    const activity = current.activity
+    if (activity) {
+      const activityDuration =
+        activity.durationMs ??
+        (activity.startedAt && activity.lastActivityAt
+          ? Math.max(0, activity.lastActivityAt - activity.startedAt)
+          : null)
+      if (activityDuration !== null)
+        appendLine(lines, t('activity.duration'), duration(activityDuration))
+      if (activity.startedAt)
+        appendLine(
+          lines,
+          t('activity.startedAt'),
+          new Date(activity.startedAt).toLocaleString(locale),
+        )
+      if (activity.lastActivityAt)
+        appendLine(
+          lines,
+          t('activity.lastActivityAt'),
+          new Date(activity.lastActivityAt).toLocaleString(locale),
+        )
     }
-    model.trigger.setAttribute('aria-label', modelParts.join('\n'))
-    model.trigger.title = modelParts.join(' · ')
-    model.popup.replaceChildren()
-    const modelLines = createLines()
-    if (next.model) appendLine(modelLines, modelLabel, next.model)
-    if (next.thinking) appendLine(modelLines, thinkingLabel, next.thinking)
-    model.popup.append(modelLines)
+    body.append(lines)
+
+    if (current.raw !== undefined && current.raw !== null) {
+      const toggle = document.createElement('button')
+      toggle.type = 'button'
+      toggle.className = 'booster-meta-raw-toggle'
+      toggle.textContent = rawExpanded ? t('archive.hideRaw') : t('archive.showRaw')
+      const pre = document.createElement('pre')
+      pre.className = 'booster-message-meta-raw'
+      pre.hidden = !rawExpanded
+      try {
+        pre.textContent = JSON.stringify(current.raw, null, 2)
+      } catch {
+        pre.textContent = String(current.raw)
+      }
+      toggle.addEventListener('click', (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        rawExpanded = !rawExpanded
+        render()
+      })
+      body.append(toggle, pre)
+    }
+
+    control.popup.replaceChildren(body)
   }
 
-  let current = { ...metadata }
-  render(current)
+  render()
 
   return {
     element: host,
     update(next) {
-      if (sameMetadata(current, next)) return
-      current = { ...next }
-      render(current)
+      current = { ...next, activity: next.activity ?? current.activity ?? null }
+      render()
+    },
+    updateActivity(activity) {
+      current = { ...current, activity }
+      render()
     },
     unmount() {
-      time.unmount()
-      model.unmount()
+      control.unmount()
       host.remove()
     },
   }

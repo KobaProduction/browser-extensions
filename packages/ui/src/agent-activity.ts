@@ -57,6 +57,13 @@ function dateTime(value: number | null, locale: SupportedLocale) {
   return value ? new Date(value).toLocaleString(locale) : '—'
 }
 
+function normalizedLabel(value: string | null) {
+  const text = value?.replace(/\s+/g, ' ').trim() ?? ''
+  if (!text) return ''
+  const match = text.match(/^(.{2,}?)\1$/u)
+  return match?.[1]?.trim() || text
+}
+
 export function mountAgentActivity(
   into: HTMLElement,
   initial: AgentActivitySnapshot,
@@ -102,11 +109,7 @@ export function mountAgentActivity(
       snapshot.label && snapshot.label !== snapshot.tool?.label
         ? snapshot.label
         : (snapshot.tool?.label ?? '')
-    label.textContent =
-      snapshot.phase === 'complete' &&
-      /(?:обработка|проработка|processing|worked).*занял|took/i.test(rawLabel)
-        ? ''
-        : rawLabel
+    label.textContent = snapshot.phase === 'tool' ? normalizedLabel(rawLabel) : ''
     label.hidden = !label.textContent
     pill.title = `${t('activity.startedAt')}: ${dateTime(snapshot.startedAt, locale)}\n${t('activity.lastActivityAt')}: ${dateTime(snapshot.lastActivityAt, locale)}`
     pill.setAttribute(

@@ -599,7 +599,7 @@ async function runStorageTests() {
         assert(findConversationScrollContainer(document) === scroller, 'v2 scroller was not found')
         const scroll = scrollConversationTowardStart(document)
         assert(
-          scroll.requested && scroll.container === scroller && scroll.delta < 0,
+          scroll.requested && scroll.container === scroller && scroll.distance > 0,
           'v2 browser scroll pulse was not issued',
         )
 
@@ -1514,7 +1514,6 @@ async function runPerformanceTests() {
         thinking: 'fixture-thinking',
       },
       'en',
-      true,
     )
     try {
       const shadow = metadata.element.shadowRoot

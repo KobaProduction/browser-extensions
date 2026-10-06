@@ -21,19 +21,18 @@ export interface MountedToolInspector {
 }
 
 export function mountToolInspector(
-  after: HTMLElement,
+  into: HTMLElement,
   model: ToolCallViewModel,
 ): MountedToolInspector {
-  const host = document.createElement('div')
+  const host = document.createElement('span')
   host.dataset.chatgptBooster = 'tool-inspector'
-  host.style.display = 'block'
-  host.style.width = '100%'
-  after.insertAdjacentElement('afterend', host)
+  host.style.cssText =
+    'display:inline-flex;flex:0 0 auto;align-items:center;position:relative;z-index:2;pointer-events:auto;margin-inline-start:2px;'
+  into.append(host)
 
   const shadow = host.attachShadow({ mode: 'open' })
   installBoosterShadowStyles(shadow)
-
-  const mountPoint = document.createElement('div')
+  const mountPoint = document.createElement('span')
   shadow.append(mountPoint)
 
   const app: App = createApp(ToolInspector, { model })

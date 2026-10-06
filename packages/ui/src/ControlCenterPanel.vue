@@ -22,6 +22,7 @@ import ArrowDownLeft from 'lucide-vue-next/dist/esm/icons/arrow-down-left.js'
 import ArrowUpRight from 'lucide-vue-next/dist/esm/icons/arrow-up-right.js'
 import BarChart3 from 'lucide-vue-next/dist/esm/icons/chart-column.js'
 import Check from 'lucide-vue-next/dist/esm/icons/check.js'
+import Clock3 from 'lucide-vue-next/dist/esm/icons/clock-3.js'
 import ChevronDown from 'lucide-vue-next/dist/esm/icons/chevron-down.js'
 import Languages from 'lucide-vue-next/dist/esm/icons/languages.js'
 import RefreshCcw from 'lucide-vue-next/dist/esm/icons/refresh-ccw.js'
@@ -173,6 +174,18 @@ async function setSection(section: SettingsSection) {
   await applyPatch({ ui: { activeSection: section } })
 }
 
+async function setHistoryScrollSpeed(event: Event) {
+  await applyPatch({
+    historyLoader: { speedPxPerSecond: Number((event.target as HTMLInputElement).value) },
+  })
+}
+
+async function setHistoryScrollPause(event: Event) {
+  await applyPatch({
+    historyLoader: { pauseMs: Number((event.target as HTMLInputElement).value) },
+  })
+}
+
 async function toggleTelemetryExpanded() {
   if (!settings.value) return
   await applyPatch({ ui: { telemetryExpanded: !settings.value.ui.telemetryExpanded } })
@@ -286,6 +299,46 @@ async function testTelemetry() {
           <section class="booster-setting-card" :class="{ 'booster-setting-disabled': !settings.enabled }">
             <div class="booster-setting-copy">
               <div class="flex items-center gap-2">
+                <Clock3 class="size-4" />
+                <b>{{ t('control.messageMetadata') }}</b>
+                <Badge :variant="settings.features.messageMetadata && settings.enabled ? 'default' : 'secondary'">
+                  {{ settings.features.messageMetadata && settings.enabled ? t('common.on') : t('common.off') }}
+                </Badge>
+              </div>
+              <span>{{ t('control.messageMetadataDescription') }}</span>
+            </div>
+            <button
+              type="button"
+              class="booster-switch"
+              :class="{ 'booster-switch-on': settings.features.messageMetadata }"
+              :disabled="!settings.enabled"
+              @click="applyPatch({ features: { messageMetadata: !settings.features.messageMetadata } })"
+            ><span /></button>
+          </section>
+
+          <section class="booster-setting-card" :class="{ 'booster-setting-disabled': !settings.enabled }">
+            <div class="booster-setting-copy">
+              <div class="flex items-center gap-2">
+                <Activity class="size-4" />
+                <b>{{ t('control.activityIndicator') }}</b>
+                <Badge :variant="settings.features.activityIndicator && settings.enabled ? 'default' : 'secondary'">
+                  {{ settings.features.activityIndicator && settings.enabled ? t('common.on') : t('common.off') }}
+                </Badge>
+              </div>
+              <span>{{ t('control.activityIndicatorDescription') }}</span>
+            </div>
+            <button
+              type="button"
+              class="booster-switch"
+              :class="{ 'booster-switch-on': settings.features.activityIndicator }"
+              :disabled="!settings.enabled"
+              @click="applyPatch({ features: { activityIndicator: !settings.features.activityIndicator } })"
+            ><span /></button>
+          </section>
+
+          <section class="booster-setting-card" :class="{ 'booster-setting-disabled': !settings.enabled }">
+            <div class="booster-setting-copy">
+              <div class="flex items-center gap-2">
                 <Wrench class="size-4" />
                 <b>{{ t('control.toolInspector') }}</b>
                 <Badge :variant="settings.features.toolInspector && settings.enabled ? 'default' : 'secondary'">
@@ -301,6 +354,26 @@ async function testTelemetry() {
               :disabled="!settings.enabled"
               @click="applyPatch({ features: { toolInspector: !settings.features.toolInspector } })"
             ><span /></button>
+          </section>
+
+          <section class="booster-setting-card booster-setting-card-stack" :class="{ 'booster-setting-disabled': !settings.enabled }">
+            <div class="booster-setting-copy">
+              <div class="flex items-center gap-2">
+                <SlidersHorizontal class="size-4" />
+                <b>{{ t('control.historyScroll') }}</b>
+              </div>
+              <span>{{ t('control.historyScrollDescription') }}</span>
+            </div>
+            <div class="booster-range-grid">
+              <label>
+                <span>{{ t('control.historyScrollSpeed') }} <b>{{ Math.round(settings.historyLoader.speedPxPerSecond) }} px/s</b></span>
+                <input type="range" min="600" max="6000" step="100" :value="settings.historyLoader.speedPxPerSecond" @change="setHistoryScrollSpeed" />
+              </label>
+              <label>
+                <span>{{ t('control.historyScrollPause') }} <b>{{ Math.round(settings.historyLoader.pauseMs) }} ms</b></span>
+                <input type="range" min="20" max="1200" step="10" :value="settings.historyLoader.pauseMs" @change="setHistoryScrollPause" />
+              </label>
+            </div>
           </section>
 
           <section class="booster-setting-card" :class="{ 'booster-setting-disabled': !settings.enabled }">

@@ -8,6 +8,7 @@ import {
   conversationDomSnapshotFromTargets,
   currentConversationId,
   findChatGptTurnRoot,
+  findConversationMessageTargets,
   findToolCallEvidence,
   observeConversationActivity,
   observeConversationDecorations,
@@ -51,6 +52,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
   #observer: ReturnType<typeof observeConversationDecorations> | undefined
   #activityObserver: ReturnType<typeof observeConversationActivity> | undefined
   #activityMounts = new Map<HTMLElement, MountedAgentActivity>()
+  #activitySnapshots = new Map<HTMLElement, AgentActivitySnapshot>()
   #unsubscribe: (() => void) | undefined
   #archiveRefreshTimer: ReturnType<typeof setTimeout> | undefined
   #settings: BoosterSettings | undefined
@@ -77,9 +79,20 @@ export class ConversationDecoratorsModule implements BoosterModule {
       const previous = this.#settings
       const languageChanged = next.language !== previous?.language
       const enabledChanged = next.enabled !== previous?.enabled
+      const messageMetadataChanged =
+        next.features.messageMetadata !== previous?.features.messageMetadata
+      const activityIndicatorChanged =
+        next.features.activityIndicator !== previous?.features.activityIndicator
       const toolInspectorChanged = next.features.toolInspector !== previous?.features.toolInspector
       this.#settings = next
-      if (!enabledChanged && !languageChanged && !toolInspectorChanged) return
+      if (
+        !enabledChanged &&
+        !languageChanged &&
+        !messageMetadataChanged &&
+        !activityIndicatorChanged &&
+        !toolInspectorChanged
+      )
+        return
 
       if (!next.enabled) {
         this.#stopObserver()
@@ -93,6 +106,8 @@ export class ConversationDecoratorsModule implements BoosterModule {
         this.#clear()
         this.#activityObserver?.scan()
       }
+      if (messageMetadataChanged && !next.features.messageMetadata) this.#clearMessageMetadata()
+      if (activityIndicatorChanged && !next.features.activityIndicator) this.#clearActivity()
       if (!this.#observer) {
         this.#initialTask?.cancel()
         this.#initialTask = undefined
@@ -142,20 +157,40 @@ export class ConversationDecoratorsModule implements BoosterModule {
     mount: HTMLElement | null
   }) => {
     window.dispatchEvent(new CustomEvent(AGENT_ACTIVITY_EVENT, { detail: snapshot }))
-    if (!this.#settings?.enabled || !section || !mount || !snapshot.lastActivityAt) return
-    const locale = resolveLocale(this.#settings.language)
-    const effective = snapshot.active
-      ? snapshot
-      : snapshot.phase === 'complete'
-        ? snapshot
-        : { ...snapshot, phase: 'complete' as const }
+    const settings = this.#settings
+    if (!settings?.enabled || !section) return
+
+    if (snapshot.lastActivityAt) this.#activitySnapshots.set(section, snapshot)
+    const assistantTarget = findConversationMessageTargets(section).find(
+      (target) => target.role === 'assistant',
+    )
+    if (assistantTarget) this.#messageMounts.get(assistantTarget.message)?.updateActivity(snapshot)
+
+    if (
+      !settings.features.activityIndicator ||
+      !snapshot.active ||
+      !mount ||
+      !snapshot.lastActivityAt
+    ) {
+      const mounted = this.#activityMounts.get(section)
+      mounted?.unmount()
+      this.#activityMounts.delete(section)
+      return
+    }
+
+    const locale = resolveLocale(settings.language)
     const mounted = this.#activityMounts.get(section)
     if (mounted?.element.isConnected && mount.contains(mounted.element)) {
-      mounted.update(effective)
+      mounted.update(snapshot)
       return
     }
     mounted?.unmount()
-    this.#activityMounts.set(section, mountAgentActivity(mount, effective, locale))
+    this.#activityMounts.set(section, mountAgentActivity(mount, snapshot, locale))
+  }
+
+  #clearMessageMetadata() {
+    for (const mounted of this.#messageMounts.values()) mounted.unmount()
+    this.#messageMounts.clear()
   }
 
   #clearActivity() {
@@ -180,6 +215,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
     if (this.#recordConversationId) this.store.clearDomSnapshot(this.#recordConversationId)
     this.#recordConversationId = null
     this.#firstSeen.clear()
+    this.#activitySnapshots.clear()
     this.#lastCleanupAt = 0
     this.#clear()
   }
@@ -368,27 +404,22 @@ export class ConversationDecoratorsModule implements BoosterModule {
       const metadata = record
         ? archiveRecordMetadata(record)
         : { ...UNKNOWN_METADATA, sentAt: observedAt }
-      const mounted = this.#messageMounts.get(target.message)
-      if (
-        mounted &&
-        mounted.element.isConnected &&
-        target.metadataMount.contains(mounted.element)
-      ) {
-        mounted.update(metadata)
-      } else {
-        mounted?.unmount()
-        this.#messageMounts.set(
-          target.message,
-          mountMessageMetadata(target.metadataMount, metadata, locale, target.role === 'assistant'),
-        )
-      }
-      if (target.role === 'assistant' && !this.#activityMounts.has(target.section)) {
-        const historical = this.#historicalActivity(target)
-        if (historical)
-          this.#activityMounts.set(
-            target.section,
-            mountAgentActivity(target.metadataMount, historical, locale),
+      if (settings.features.messageMetadata) {
+        const activity =
+          target.role === 'assistant'
+            ? (this.#activitySnapshots.get(target.section) ?? this.#historicalActivity(target))
+            : null
+        const view = { ...metadata, raw: record?.raw ?? null, activity }
+        const mounted = this.#messageMounts.get(target.message)
+        if (mounted?.element.isConnected && target.metadataMount.contains(mounted.element)) {
+          mounted.update(view)
+        } else {
+          mounted?.unmount()
+          this.#messageMounts.set(
+            target.message,
+            mountMessageMetadata(target.metadataMount, view, locale),
           )
+        }
       }
     }
 
@@ -472,9 +503,8 @@ export class ConversationDecoratorsModule implements BoosterModule {
   }
 
   #clear() {
-    for (const mounted of this.#messageMounts.values()) mounted.unmount()
+    this.#clearMessageMetadata()
     for (const mounted of this.#toolMounts.values()) mounted.unmount()
-    this.#messageMounts.clear()
     this.#toolMounts.clear()
     this.#clearActivity()
   }

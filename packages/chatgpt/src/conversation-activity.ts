@@ -20,6 +20,13 @@ function compact(value: string) {
   return value.replace(/\s+/g, ' ').trim()
 }
 
+function dedupeRepeatedText(value: string) {
+  const text = compact(value)
+  if (!text) return ''
+  const match = text.match(/^(.{2,}?)\1$/u)
+  return match?.[1]?.trim() || text
+}
+
 function activityPhase(
   section: HTMLElement,
   tool: ReturnType<typeof toolInvocationFromEvidence> | null,
@@ -68,7 +75,7 @@ export function readConversationActivity(): Omit<ConversationActivityObservation
   const section = adapter?.latestAssistantTurn(document) ?? null
   const responseState = section ? adapter?.responseState(section) : null
   const status = section ? (adapter?.activityStatus(section) ?? null) : null
-  const statusText = compact(status?.textContent ?? '')
+  const statusText = dedupeRepeatedText(status?.textContent ?? '')
   const toolEvidence = section ? findToolCallEvidence(section)[0] : undefined
   const tool = toolEvidence ? toolInvocationFromEvidence(toolEvidence) : null
   const active = Boolean(

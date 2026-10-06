@@ -26,9 +26,20 @@ const messages = {
     'control.other': 'Other',
     'control.currentTab': 'Current tab',
     'control.allTime': 'All time',
+    'control.messageMetadata': 'Message metadata',
+    'control.messageMetadataDescription':
+      'Adds one compact timestamp/details control to ChatGPT message action rows.',
+    'control.activityIndicator': 'Live activity indicator',
+    'control.activityIndicatorDescription':
+      'Shows the temporary thinking/tool/responding indicator while an answer is active.',
     'control.toolInspector': 'Tool Inspector',
     'control.toolInspectorDescription':
       'Adds an Inspect control beside detected MCP/tool activity and exposes client-visible payloads, timestamps and DOM diagnostics.',
+    'control.historyScroll': 'History scroll',
+    'control.historyScrollDescription':
+      'Controls the continuous scroll bursts used by History Loader.',
+    'control.historyScrollSpeed': 'Speed',
+    'control.historyScrollPause': 'Pause between bursts',
     'control.observer': 'Transport Observer',
     'control.observerDescription':
       'Passively observes fetch, XHR, WebSocket and EventSource activity without blocking requests.',
@@ -159,9 +170,20 @@ const messages = {
     'control.other': 'Прочее',
     'control.currentTab': 'Текущая вкладка',
     'control.allTime': 'За всё время',
+    'control.messageMetadata': 'Метаданные сообщений',
+    'control.messageMetadataDescription':
+      'Добавляет один компактный контрол времени и деталей в строку действий сообщения.',
+    'control.activityIndicator': 'Живая активность',
+    'control.activityIndicatorDescription':
+      'Показывает временный индикатор размышления, инструмента или ответа, пока ответ выполняется.',
     'control.toolInspector': 'Инспектор инструментов',
     'control.toolInspectorDescription':
       'Добавляет кнопку Inspect рядом с найденными MCP/инструментами и показывает доступные клиенту payload, время и DOM-диагностику.',
+    'control.historyScroll': 'Прокрутка истории',
+    'control.historyScrollDescription':
+      'Настраивает плавные импульсы прокрутки, которыми History Loader читает старую историю.',
+    'control.historyScrollSpeed': 'Скорость',
+    'control.historyScrollPause': 'Пауза между импульсами',
     'control.observer': 'Наблюдатель транспорта',
     'control.observerDescription':
       'Пассивно наблюдает fetch, XHR, WebSocket и EventSource, не блокируя запросы.',

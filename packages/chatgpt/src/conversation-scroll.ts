@@ -104,28 +104,73 @@ export function findConversationScrollContainer(
   return undefined
 }
 
+export interface ConversationScrollOptions {
+  speedPxPerSecond?: number
+  burstDurationMs?: number
+}
+
 export interface ConversationScrollRequest {
   requested: boolean
   container: HTMLElement | null
-  delta: number
+  distance: number
+  durationMs: number
+  active: boolean
+}
+
+interface ActiveConversationScroll {
+  token: object
+  frame: number
+}
+
+const activeConversationScrolls = new WeakMap<HTMLElement, ActiveConversationScroll>()
+
+function easeInOutCubic(value: number) {
+  return value < 0.5 ? 4 * value ** 3 : 1 - (-2 * value + 2) ** 3 / 2
 }
 
 /**
- * Request one small browser-native upward scroll pulse. This intentionally avoids
- * assigning scrollTop, focusing ChatGPT controls, or encoding normal/reversed layout
- * geometry. CSSOM `scrollBy` lets the browser apply the renderer's actual scroll model
- * and produce the normal scroll lifecycle observed by ChatGPT.
+ * Request one continuous upward scroll burst. The driver intentionally avoids assigning
+ * scrollTop or encoding normal/reversed layout geometry. It uses small browser-native
+ * scrollBy deltas on animation frames so ChatGPT receives the normal scroll lifecycle.
  */
 export function scrollConversationTowardStart(
   root: ParentNode = document,
+  options: ConversationScrollOptions = {},
 ): ConversationScrollRequest {
   const container = findConversationScrollContainer(root)
-  if (!container) return { requested: false, container: null, delta: 0 }
+  if (!container)
+    return { requested: false, container: null, distance: 0, durationMs: 0, active: false }
 
-  const step = Math.max(180, Math.min(480, Math.round(container.clientHeight * 0.35)))
-  const delta = -step
-  container.scrollBy({ top: delta, behavior: 'auto' })
-  return { requested: true, container, delta }
+  const current = activeConversationScrolls.get(container)
+  if (current) return { requested: true, container, distance: 0, durationMs: 0, active: true }
+
+  const speed = Math.max(600, Math.min(6000, options.speedPxPerSecond ?? 2600))
+  const durationMs = Math.max(180, Math.min(1600, options.burstDurationMs ?? 650))
+  const distance = Math.max(180, Math.round((speed * durationMs) / 1000))
+  const token = {}
+  let frame = 0
+  let previous = 0
+  const startedAt = performance.now()
+
+  const step = (now: number) => {
+    const active = activeConversationScrolls.get(container)
+    if (!active || active.token !== token) return
+    const progress = Math.min(1, Math.max(0, (now - startedAt) / durationMs))
+    const moved = distance * easeInOutCubic(progress)
+    const delta = moved - previous
+    previous = moved
+    if (delta > 0) container.scrollBy({ top: -delta, behavior: 'auto' })
+    if (progress < 1) {
+      frame = requestAnimationFrame(step)
+      active.frame = frame
+      return
+    }
+    activeConversationScrolls.delete(container)
+  }
+
+  const active = { token, frame: requestAnimationFrame(step) }
+  activeConversationScrolls.set(container, active)
+  return { requested: true, container, distance, durationMs, active: false }
 }
 
 export function currentProjectId(href = location.href): string | undefined {

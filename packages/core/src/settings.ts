@@ -9,7 +9,15 @@ import {
 } from './archive'
 import { clampRatio, type DockSide } from './docking'
 export interface FeatureSettings {
+  messageMetadata: boolean
+  activityIndicator: boolean
   toolInspector: boolean
+}
+
+export interface HistoryLoaderSettings {
+  speedPxPerSecond: number
+  burstDurationMs: number
+  pauseMs: number
 }
 
 export interface LauncherSettings {
@@ -53,6 +61,7 @@ export interface BoosterSettings {
   enabled: boolean
   language: LanguagePreference
   features: FeatureSettings
+  historyLoader: HistoryLoaderSettings
   launcher: LauncherSettings
   observer: ObserverSettings
   telemetry: TelemetrySettings
@@ -66,6 +75,7 @@ export interface BoosterSettingsPatch {
   enabled?: boolean
   language?: LanguagePreference
   features?: Partial<FeatureSettings>
+  historyLoader?: Partial<HistoryLoaderSettings>
   launcher?: Partial<LauncherSettings>
   observer?: Partial<ObserverSettings>
   telemetry?: Partial<TelemetrySettings>
@@ -80,7 +90,7 @@ export interface BoosterSettingsPatch {
   export?: Partial<ArchiveExportOptions>
 }
 
-export const SETTINGS_SCHEMA_VERSION = 5
+export const SETTINGS_SCHEMA_VERSION = 6
 
 function clampWindowRatio(value: unknown, fallback: number, min: number, max: number) {
   return typeof value === 'number' && Number.isFinite(value)
@@ -93,7 +103,14 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
   enabled: true,
   language: 'auto',
   features: {
+    messageMetadata: true,
+    activityIndicator: true,
     toolInspector: true,
+  },
+  historyLoader: {
+    speedPxPerSecond: 2600,
+    burstDurationMs: 650,
+    pauseMs: 90,
   },
   launcher: {
     x: null,
@@ -136,6 +153,26 @@ export function normalizeSettings(value?: Partial<BoosterSettings>): BoosterSett
     features: {
       ...DEFAULT_SETTINGS.features,
       ...value?.features,
+    },
+    historyLoader: {
+      speedPxPerSecond: clampWindowRatio(
+        value?.historyLoader?.speedPxPerSecond,
+        DEFAULT_SETTINGS.historyLoader.speedPxPerSecond,
+        600,
+        6000,
+      ),
+      burstDurationMs: clampWindowRatio(
+        value?.historyLoader?.burstDurationMs,
+        DEFAULT_SETTINGS.historyLoader.burstDurationMs,
+        180,
+        1600,
+      ),
+      pauseMs: clampWindowRatio(
+        value?.historyLoader?.pauseMs,
+        DEFAULT_SETTINGS.historyLoader.pauseMs,
+        20,
+        1200,
+      ),
     },
     launcher: {
       ...DEFAULT_SETTINGS.launcher,
@@ -222,8 +259,11 @@ export function snapshotSettings(
     enabled: normalized.enabled,
     language: normalized.language,
     features: {
+      messageMetadata: normalized.features.messageMetadata,
+      activityIndicator: normalized.features.activityIndicator,
       toolInspector: normalized.features.toolInspector,
     },
+    historyLoader: { ...normalized.historyLoader },
     launcher: {
       x: normalized.launcher.x,
       y: normalized.launcher.y,
@@ -268,6 +308,10 @@ export function mergeSettings(
     features: {
       ...normalized.features,
       ...patch.features,
+    },
+    historyLoader: {
+      ...normalized.historyLoader,
+      ...patch.historyLoader,
     },
     launcher: {
       ...normalized.launcher,

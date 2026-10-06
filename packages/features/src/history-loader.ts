@@ -6,11 +6,14 @@ import {
 import {
   ARCHIVE_UPDATED_EVENT,
   type BoosterModule,
+  DEFAULT_SETTINGS,
   HISTORY_LOADER_START_EVENT,
   HISTORY_LOADER_STATE_EVENT,
   HISTORY_LOADER_STOP_EVENT,
+  type HistoryLoaderSettings,
   type HistoryLoaderState,
   OPEN_ARCHIVE_EVENT,
+  type SettingsAdapter,
 } from '@chatgpt-booster/core'
 import { ARCHIVE_NETWORK_EVENT, TRANSPORT_CHANNEL } from '@chatgpt-booster/observer'
 import type { ArchiveIngestSummary, ConversationArchiveStore } from './archive-store'
@@ -58,6 +61,8 @@ export class HistoryLoaderModule implements BoosterModule {
   #startedAt = 0
   #ticket: CollectionTicket | undefined
   #network: { pending: boolean; error: number | null } = { pending: false, error: null }
+  #scrollSettings: HistoryLoaderSettings = { ...DEFAULT_SETTINGS.historyLoader }
+  #settingsUnsubscribe: (() => void) | undefined
   #state: HistoryLoaderState = {
     phase: 'idle',
     conversationId: null,
@@ -70,8 +75,17 @@ export class HistoryLoaderModule implements BoosterModule {
     private store: Pick<ConversationArchiveStore, 'getCoverage' | 'getPreloadSnapshot'>,
     private capture: Pick<ConversationArchiveModule, 'finishCollection'>,
     private messageSource: Window = window,
+    private settingsAdapter?: SettingsAdapter,
   ) {}
   start() {
+    if (this.settingsAdapter) {
+      void this.settingsAdapter.get().then((settings) => {
+        this.#scrollSettings = { ...settings.historyLoader }
+      })
+      this.#settingsUnsubscribe = this.settingsAdapter.subscribe((settings) => {
+        this.#scrollSettings = { ...settings.historyLoader }
+      })
+    }
     window.addEventListener('chatgpt-booster:history-loader-query', this.#onQuery)
     window.addEventListener(HISTORY_LOADER_START_EVENT, this.#onStart)
     window.addEventListener(HISTORY_LOADER_STOP_EVENT, this.#onStop)
@@ -83,6 +97,8 @@ export class HistoryLoaderModule implements BoosterModule {
   }
   stop() {
     this.#onStop()
+    this.#settingsUnsubscribe?.()
+    this.#settingsUnsubscribe = undefined
     window.removeEventListener('chatgpt-booster:history-loader-query', this.#onQuery)
     window.removeEventListener(HISTORY_LOADER_START_EVENT, this.#onStart)
     window.removeEventListener(HISTORY_LOADER_STOP_EVENT, this.#onStop)
@@ -246,7 +262,10 @@ export class HistoryLoaderModule implements BoosterModule {
         if (this.#network.pending) {
           this.#set({ phase: 'waiting_for_load' })
         } else {
-          const scroll = scrollConversationTowardStart()
+          const scroll = scrollConversationTowardStart(document, {
+            speedPxPerSecond: this.#scrollSettings.speedPxPerSecond,
+            burstDurationMs: this.#scrollSettings.burstDurationMs,
+          })
           if (scroll.requested) {
             this.#set({ phase: 'scrolling' })
           } else {
@@ -263,7 +282,7 @@ export class HistoryLoaderModule implements BoosterModule {
           stalledAt = Date.now()
           continue
         }
-        await abortableDelay(360, signal)
+        await abortableDelay(this.#scrollSettings.pauseMs, signal)
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'archive.error.unknown'

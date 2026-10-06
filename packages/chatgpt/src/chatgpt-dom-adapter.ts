@@ -94,24 +94,19 @@ function searchUnitActions(
   turn: HTMLElement,
   role: 'user' | 'assistant',
 ): HTMLElement | null {
-  if (role === 'user') {
-    const local = unit.querySelector<HTMLElement>(TURN_ACTIONS_SELECTOR)
-    if (local) return local
-  }
+  if (role === 'user') return unit.querySelector<HTMLElement>(TURN_ACTIONS_SELECTOR)
 
-  const rows = [...turn.querySelectorAll<HTMLElement>(TURN_ACTIONS_SELECTOR)]
-  if (role === 'assistant' && rows.length) return rows.at(-1) ?? null
-  if (rows.length) return rows[0] ?? null
-
-  const copy = [...turn.querySelectorAll<HTMLButtonElement>('button[aria-label]')].find(
-    (button) => {
-      const label = button.getAttribute('aria-label') ?? ''
-      return role === 'user'
-        ? /copy message|скопировать сообщение/i.test(label)
-        : /^(?:copy|копировать)$/i.test(label)
-    },
+  const rows = [...turn.querySelectorAll<HTMLElement>(TURN_ACTIONS_SELECTOR)].filter(
+    (row) => !row.closest(`${SEARCH_UNIT_SELECTOR}[data-chatgpt-search-unit-key$=":user"]`),
   )
-  return copy?.parentElement ?? null
+  return rows.at(-1) ?? null
+}
+
+function metadataMountForActions(actions: HTMLElement): HTMLElement {
+  const more = [...actions.querySelectorAll<HTMLButtonElement>('button[aria-label]')].find(
+    (button) => /more actions|ещ[её] действия/i.test(button.getAttribute('aria-label') ?? ''),
+  )
+  return more?.parentElement ?? actions
 }
 
 const legacyTurnDomAdapter: ChatGptDomAdapter = {
@@ -261,8 +256,9 @@ const searchUnitDomAdapter: ChatGptDomAdapter = {
           : null) ?? searchUnitMessageId(unit)
       if (!messageId) continue
 
-      const actions = searchUnitActions(unit, section, role) ?? unit
-      const metadataMount = actions
+      const actions = searchUnitActions(unit, section, role)
+      if (!actions) continue
+      const metadataMount = metadataMountForActions(actions)
       result.push({
         section,
         message,
