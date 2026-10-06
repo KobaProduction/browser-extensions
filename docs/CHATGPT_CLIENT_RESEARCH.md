@@ -532,6 +532,73 @@ The inspected tab was still running Booster 0.8.38. After the fresh message star
 
 This is Booster behavior, not ChatGPT behavior. The fresh ChatGPT transport supplied the correct new id and source timestamp. A newer outbound `/f/conversation` request for the current conversation must replace any stale older active run in the live read model/UI; an old DOM turn that still says `in_progress` must not be allowed to re-promote or visually dominate the newer request lifecycle.
 
+### Verified safety-review processing state (2026-10-07)
+
+During the same fresh `продолжить` generation, ChatGPT rendered a new native status inside the active turn:
+
+```text
+Наши системы выполняют дополнительную обработку этого запроса, прежде чем предоставить ответ.
+```
+
+This was not an error banner. The rendered element was:
+
+```text
+role="status"
+aria-live="polite"
+data-talvt-turn-state="in_progress"  # on the owning turn
+```
+
+with a shimmer treatment and a dedicated shield/processing icon. The native Stop-generation control remained present, so generation was still active.
+
+A read-only React-fiber inspection of the rendered native component exposed the source state directly:
+
+```text
+conversationId = <current conversation>
+requestId      = 9061a1ff-2980-428e-8fc3-2426a09e4f80
+protectionType = "cyber"
+message        = "Наши системы выполняют дополнительную обработку этого запроса, прежде чем предоставить ответ."
+```
+
+The `requestId` matched the current fresh user-turn id from the outbound `/backend-api/f/conversation` request.
+
+Reverse-engineering the deployed client stream decoder identified the authoritative event contract:
+
+```json
+{
+  "type": "safety_review_update",
+  "active": true,
+  "conversation_id": "<conversation_id>",
+  "message": "<user-facing processing message>",
+  "protection_type": "cyber"
+}
+```
+
+The observed schema accepts `protection_type` values `"bio"` or `"cyber"`. The client decoder normalizes this into its internal update type `safety-review` with:
+
+```text
+active
+conversationId
+message
+protectionType
+```
+
+The stream handler applies that update to the current request state. When `active=true`, the state carries the server-provided `message` and `protectionType`; when `active=false`, the review state is deactivated. Therefore the native status should be treated as a source-driven safety-review phase, not inferred from elapsed time or DOM text.
+
+The same stream decoder also has a separate `moderation` / `safety-access-block` path. That is a distinct contract from `safety_review_update`: an active safety review means additional processing is in progress; it is not itself proof that the request was blocked or failed.
+
+#### Booster consequence
+
+Safety review must be modeled independently from request run-state, reasoning phase and transport health. A request can simultaneously be:
+
+```text
+run state        = in_progress
+reasoning        = active/idle depending on source records
+transport        = healthy
+safety review    = active, protectionType=cyber
+```
+
+Booster UI/alerts for this state should be driven from the `safety_review_update` stream event. The localized `role="status"` DOM is corroborating presentation evidence only and must not be the classifier.
+
 ### Verified native Stop-generation contract (2026-10-07)
 
 A live external-Playwright experiment on the same `Обзор RedmiBook Pro 16` conversation reloaded the page, waited for ChatGPT to restore the active generation/recovery state, and then invoked the native Stop control once. No other ChatGPT controls were clicked during the experiment.
