@@ -32,6 +32,7 @@ import {
   collectionTicket,
 } from '../../packages/features/src/conversation-archive'
 import { ConversationDecoratorsModule } from '../../packages/features/src/conversation-decorators'
+import { ConversationStateStore } from '../../packages/features/src/conversation-state'
 import { HistoryLoaderModule } from '../../packages/features/src/history-loader'
 import { ARCHIVE_ASSET_EVENT, ARCHIVE_EVENT, TRANSPORT_CHANNEL } from '../../packages/observer/src'
 import { mountMessageMetadata } from '../../packages/ui/src/message-metadata'
@@ -635,6 +636,68 @@ async function runStorageTests() {
       } finally {
         main.remove()
         for (const { element, placeholder } of displacedMains) placeholder.replaceWith(element)
+      }
+    },
+  )
+
+  await check(
+    'request timer mounts from memory lifecycle before assistant DOM exists',
+    async () => {
+      const href = location.href
+      const id = `${prefix}request-before-assistant`
+      const userMessageId = 'request-before-assistant-user'
+      const main = document.createElement('main')
+      const turn = document.createElement('div')
+      turn.dataset.turnKey = userMessageId
+      const stateMarker = document.createElement('div')
+      stateMarker.setAttribute('data-talvt-turn-state', 'in_progress')
+      const unit = document.createElement('div')
+      unit.setAttribute('data-chatgpt-search-unit-key', 'fixture-turn:0:user')
+      unit.setAttribute('data-chatgpt-search-message-ids', userMessageId)
+      const bubble = document.createElement('div')
+      bubble.setAttribute('data-user-message-bubble', 'true')
+      bubble.textContent = 'Fixture request before assistant DOM'
+      unit.append(bubble)
+      turn.append(stateMarker, unit)
+      main.append(turn)
+      const disclaimer = document.createElement('div')
+      disclaimer.setAttribute('data-markdown-copy', 'exclude')
+      disclaimer.textContent = 'ChatGPT может допускать ошибки. Проверяйте важную информацию.'
+      document.body.append(main, disclaimer)
+
+      const memory = new ConversationStateStore()
+      const module = new ConversationDecoratorsModule(settings, store, memory)
+      const previous = snapshotSettings(current)
+      try {
+        history.replaceState(null, '', `/c/${id}`)
+        await settings.update({ enabled: true, features: { requestTimer: true } })
+        await module.start()
+        memory.ingestRequest({
+          conversationId: id,
+          userMessageId,
+          startedAt: Date.now() - 5_000,
+          observedAt: Date.now(),
+          source: 'message_create_time',
+        })
+        await until(
+          async () => document.querySelector('[data-chatgpt-booster="request-status"]') !== null,
+        )
+        const host = document.querySelector<HTMLElement>('[data-chatgpt-booster="request-status"]')
+        assert(host?.shadowRoot, 'request timer did not mount from memory lifecycle')
+        assert(
+          !turn.querySelector('[data-chatgpt-search-unit-key$=":assistant"]'),
+          'fixture unexpectedly created assistant DOM before request timer',
+        )
+        assert(
+          /(?:Запрос|Request)/i.test(host.shadowRoot.textContent ?? ''),
+          'request timer mounted without request label',
+        )
+      } finally {
+        module.stop()
+        await settings.set(previous)
+        disclaimer.remove()
+        main.remove()
+        history.replaceState(null, '', href)
       }
     },
   )

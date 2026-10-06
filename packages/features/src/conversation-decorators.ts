@@ -172,6 +172,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
       if (messageMetadataChanged && !next.features.messageMetadata) this.#clearMessageMetadata()
       if (activityIndicatorChanged && !next.features.activityIndicator) this.#clearActivity()
       if (requestTimerChanged && !next.features.requestTimer) this.#clearRequestStatus()
+      else if (requestTimerChanged || languageChanged) this.#refreshRequestStatus()
       if (monitoringChanged) this.#restartTicker()
       if (!this.#observer) {
         this.#syncRecordsFromState()
@@ -186,12 +187,14 @@ export class ConversationDecoratorsModule implements BoosterModule {
       const current = currentConversationId() ?? null
       if (change.conversationId !== current) return
       this.#syncRecordsFromState()
+      this.#refreshRequestStatus()
       this.#observer?.scan()
       this.#activityObserver?.scan()
     })
     this.#restartTicker()
     if (this.#settings.enabled) {
       this.#syncRecordsFromState()
+      this.#refreshRequestStatus()
       this.#startObserver()
       this.#hydrateCurrentInBackground()
     }
@@ -242,19 +245,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
     if (snapshot.active && snapshot.turnId) this.#activeObservedTurnIds.add(snapshot.turnId)
     this.#latestActivity = snapshot
 
-    if (settings.features.requestTimer && snapshot.active && snapshot.startedAt) {
-      const anchor = chatGptRequestStatusAnchor(document)
-      if (anchor) {
-        const locale = resolveLocale(settings.language)
-        if (this.#requestStatus?.element.isConnected) this.#requestStatus.update(snapshot)
-        else {
-          this.#requestStatus?.unmount()
-          this.#requestStatus = mountRequestStatus(anchor, snapshot, locale)
-        }
-      }
-    } else {
-      this.#clearRequestStatus()
-    }
+    this.#refreshRequestStatus()
 
     if (!section) return
     if (snapshot.startedAt || snapshot.reasoningStartedAt || snapshot.completedAt)
@@ -290,12 +281,13 @@ export class ConversationDecoratorsModule implements BoosterModule {
     const settings = this.#settings
     if (!settings?.enabled) return
     const now = Date.now()
+    this.#refreshRequestStatus()
     this.#requestStatus?.tick(now)
     for (const mounted of this.#activityMounts.values()) mounted.tick(now)
     for (const mounted of this.#messageMounts.values()) mounted.tick(now)
     for (const mounted of this.#toolMounts.values()) mounted.tick(now)
 
-    const snapshot = this.#latestActivity
+    const snapshot = this.#requestLifecycleSnapshot() ?? this.#latestActivity
     if (!snapshot?.turnId) return
     if (
       snapshot.phase === 'complete' &&
@@ -320,6 +312,59 @@ export class ConversationDecoratorsModule implements BoosterModule {
       window.dispatchEvent(new CustomEvent('chatgpt-booster:long-running', { detail: snapshot }))
       playActivityTone('long')
     }
+  }
+
+  #requestLifecycleSnapshot(): AgentActivitySnapshot | null {
+    const conversationId = currentConversationId() ?? null
+    if (!conversationId) return null
+    const lifecycle = this.stateStore.lifecycle(conversationId)
+    if (!lifecycle?.startedAt || !lifecycle.userMessageId) return null
+    const active = lifecycle.state === 'in_progress' || lifecycle.state === 'stop_requested'
+    const terminal = ['complete', 'stopped', 'cancelled', 'failed'].includes(lifecycle.state)
+    const activity =
+      this.#latestActivity?.turnId === lifecycle.userMessageId ? this.#latestActivity : null
+    const phase = active ? (activity?.phase ?? 'thinking') : terminal ? 'complete' : 'idle'
+    return {
+      conversationId,
+      turnId: lifecycle.userMessageId,
+      active,
+      phase,
+      startedAt: lifecycle.startedAt,
+      reasoningStartedAt: activity?.reasoningStartedAt ?? null,
+      phaseStartedAt: activity?.phaseStartedAt ?? null,
+      completedAt: lifecycle.completedAt ?? activity?.completedAt ?? null,
+      lastActivityAt: activity?.lastActivityAt ?? null,
+      durationMs:
+        lifecycle.completedAt !== null
+          ? Math.max(0, lifecycle.completedAt - lifecycle.startedAt)
+          : null,
+      reasoningDurationMs: activity?.reasoningDurationMs ?? null,
+      label: activity?.label ?? null,
+      tool: activity?.tool ?? null,
+    }
+  }
+
+  #refreshRequestStatus() {
+    const settings = this.#settings
+    if (!settings?.enabled || !settings.features.requestTimer) {
+      this.#clearRequestStatus()
+      return
+    }
+    const snapshot = this.#requestLifecycleSnapshot()
+    if (!snapshot?.active || !snapshot.startedAt) {
+      this.#clearRequestStatus()
+      return
+    }
+    if (snapshot.turnId) this.#activeObservedTurnIds.add(snapshot.turnId)
+    const anchor = chatGptRequestStatusAnchor(document)
+    if (!anchor) return
+    const locale = resolveLocale(settings.language)
+    if (this.#requestStatus?.element.isConnected) {
+      this.#requestStatus.update(snapshot)
+      return
+    }
+    this.#requestStatus?.unmount()
+    this.#requestStatus = mountRequestStatus(anchor, snapshot, locale)
   }
 
   #restartTicker() {
