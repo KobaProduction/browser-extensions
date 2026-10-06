@@ -668,6 +668,65 @@ persisted conversation says STREAMING
 
 This does **not** prove that every generic `A network error occurred` alert in ChatGPT has this cause. It proves this cause for the captured recovery incident.
 
+### Verified native Stop during recovery (2026-10-07)
+
+The same affected conversation was reloaded once more and the native Stop-generation control was activated almost immediately after ChatGPT restored the still-streaming turn. No Retry action or other conversation mutation was performed first.
+
+The click produced the normal ChatGPT stop request:
+
+```text
+POST /backend-api/stop_conversation
+```
+
+with request body:
+
+```json
+{
+  "conversation_id": "6ac5144e-ebf0-83eb-b145-72ee142accc3",
+  "exclude_async_types": []
+}
+```
+
+The server replied HTTP `200` with:
+
+```json
+{
+  "status": "ok",
+  "last_message_id": null
+}
+```
+
+This is direct evidence that a user stop is acknowledged by the dedicated stop endpoint; the native button itself is only the UI trigger. `last_message_id=null` is valid for this recovery/stale-stream case and must not be interpreted as stop failure when the response status is `ok`.
+
+Observed immediately after the stop acknowledgement:
+
+- the native Stop-generation control disappeared;
+- Booster's request-status mount disappeared under its transport-confirmed stop handling;
+- no native error alert was present;
+- the affected turn still remained `data-talvt-turn-state="in_progress"` in the rendered DOM.
+
+The recovery request sequence around the stop was also informative. The stop call appeared as request `242`; one final paired recovery attempt followed in the captured ordering:
+
+```text
+243  GET /backend-api/conversation/{id}/stream_status          -> ERR_ABORTED
+244  GET /backend-api/conversations/{id}?num_turns=10...       -> 429
+```
+
+After that pair, no further conversation-recovery polling appeared during the following observation window (approximately 30 seconds). This supports that the confirmed stop cancels/terminates the active recovery loop even though the renderer's `data-talvt-turn-state` attribute can remain stale as `in_progress`.
+
+The exact causal ownership of requests `243/244` is not proven from ordering alone: they may already have been in flight or scheduled as the stop was acknowledged. Do not treat them as evidence that Stop intentionally starts another recovery poll. The important observed boundary is that polling did not continue after that final pair.
+
+#### Stop lifecycle consequence
+
+For Booster, a successful `POST /backend-api/stop_conversation` response is stronger evidence than native DOM turn state. The correct lifecycle remains:
+
+```text
+outbound stop request -> stop_requested
+HTTP success/status=ok -> stopped
+```
+
+The timer and active-generation UI should end on confirmed stop even if ChatGPT's renderer still exposes the old turn as `in_progress`. Conversely, the disappearance of the Stop button alone is not sufficient confirmation without the transport response.
+
 #### What is not yet proven
 
 The reproduced recovery request now proves that `/f/conversation/resume` returns `code="tokenless_resume_unavailable"` in this failure path. However, the exact one-to-one mapping from the literal rendered alert text `Resume stream unavailable` to that code has still not been observed in the same post-reload instant: the alert disappeared on reload and had not reappeared during the observation window. Treat the code and alert as strongly correlated parts of the same reproduced recovery scenario, but do not encode the literal-text mapping as the sole classifier.
