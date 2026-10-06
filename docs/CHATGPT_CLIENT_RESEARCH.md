@@ -531,6 +531,63 @@ During this entire post-reload observation window:
 
 This establishes the long-wait mechanism: the persisted conversation and `stream_status` continue to claim `STREAMING` even after `/f/conversation/resume` is no longer available. ChatGPT therefore enters a polling/recovery loop instead of immediately converting the turn to a terminal error.
 
+#### Recovery exhaustion -> native network error
+
+Continued passive observation of the same reloaded tab captured the next stage of the same recovery loop. After roughly another few minutes, ChatGPT rendered a native `aside[role="alert"]` on the same affected turn with:
+
+```text
+A network error occurred. Please check your connection and try again.
+```
+
+and a `Повторить` action.
+
+At that instant:
+
+- the affected turn still exposed `data-talvt-turn-state="in_progress"`;
+- the native Stop-generation control was still absent;
+- Booster 0.8.38 still rendered the old source-derived request/reasoning timers (`Запрос 1:03:35`, `Размышление 1:03:32`);
+- `/f/conversation/resume` had not been retried after its earlier `404 tokenless_resume_unavailable` response;
+- the recovery loop continued to issue paired conversation-refresh and `stream_status` reads.
+
+The deployed client recovery code explains this delayed transition. Each recovery iteration performs the conversation refresh and `stream_status` request together with `Promise.all`. A rejected iteration increments an internal failure counter `F`; once `F >= 30`, the client records recovery failure and forwards the original completion error out of the polling fallback.
+
+The same live network log, measured after the reload, contained:
+
+```text
+30 x GET /backend-api/conversations/{conversation_id}?num_turns=10... -> 429
+29 x GET /backend-api/conversation/{conversation_id}/stream_status -> net::ERR_ABORTED
+13 x GET /backend-api/conversation/{conversation_id}/stream_status -> 200
+```
+
+The paired-request structure is important when interpreting those numbers. A `429` from the conversation refresh can reject the `Promise.all`; the iteration's `finally` then aborts the shared per-attempt controller, which can make the still-pending companion `stream_status` request appear as `net::ERR_ABORTED`. Therefore the 29 aborted `stream_status` calls should not automatically be treated as 29 independent root network failures.
+
+The observed count reaches the client's documented recovery error budget (`F >= 30`) exactly through the repeated `429` refresh failures. This is consistent with, and now strongly explains, why the generic network-error alert appeared only after a long delay rather than immediately after the first resume failure.
+
+The same client bundle contains the generic network-error message in its network error classifier and, on recovery-budget exhaustion, forwards the original recovery error while attaching diagnostics from the last polling failure. In this reproduced case the original resume failure was already captured as:
+
+```json
+{
+  "detail": {
+    "message": "A network error occurred. Please check your connection and try again.",
+    "code": "tokenless_resume_unavailable"
+  }
+}
+```
+
+Thus the end-to-end sequence for this incident is now supported as:
+
+```text
+persisted conversation says STREAMING
+  -> tokenless resume attempt
+  -> /f/conversation/resume = 404 tokenless_resume_unavailable
+  -> recovery polling while stream_status still says IS_STREAMING
+  -> repeated paired polling failures / 429s
+  -> recovery error budget reaches 30
+  -> native generic network-error alert + Retry action
+```
+
+This does **not** prove that every generic `A network error occurred` alert in ChatGPT has this cause. It proves this cause for the captured recovery incident.
+
 #### What is not yet proven
 
 The reproduced recovery request now proves that `/f/conversation/resume` returns `code="tokenless_resume_unavailable"` in this failure path. However, the exact one-to-one mapping from the literal rendered alert text `Resume stream unavailable` to that code has still not been observed in the same post-reload instant: the alert disappeared on reload and had not reappeared during the observation window. Treat the code and alert as strongly correlated parts of the same reproduced recovery scenario, but do not encode the literal-text mapping as the sole classifier.
