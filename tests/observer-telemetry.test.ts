@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   archiveFileResolverId,
   conversationRequestTimingFromBody,
+  conversationStopTargetFromBody,
   parseArchiveAssetResolution,
 } from '../packages/observer/src'
 import { sanitizeBodyPreview, sanitizeTransportUrl } from '../packages/observer/src/index'
@@ -88,6 +89,35 @@ describe('conversation request timing boundary', () => {
         'POST',
         '{}',
         1,
+      ),
+    ).toBeNull()
+  })
+})
+
+describe('conversation stop transport boundary', () => {
+  test('recognizes the normal ChatGPT stop request and extracts conversation id', () => {
+    expect(
+      conversationStopTargetFromBody(
+        'https://chatgpt.com/backend-api/stop_conversation',
+        'POST',
+        JSON.stringify({ conversation_id: 'chat-stop', exclude_async_types: [] }),
+      ),
+    ).toBe('chat-stop')
+  })
+
+  test('does not treat unrelated routes or methods as stop confirmation flow', () => {
+    expect(
+      conversationStopTargetFromBody(
+        'https://chatgpt.com/backend-api/f/conversation',
+        'POST',
+        JSON.stringify({ conversation_id: 'chat-stop' }),
+      ),
+    ).toBeNull()
+    expect(
+      conversationStopTargetFromBody(
+        'https://chatgpt.com/backend-api/stop_conversation',
+        'GET',
+        JSON.stringify({ conversation_id: 'chat-stop' }),
       ),
     ).toBeNull()
   })

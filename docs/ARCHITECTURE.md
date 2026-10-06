@@ -68,7 +68,7 @@ The Control Center remains one Vue component with two direct settings entry poin
 
 The movable in-page launcher is intentionally one level shallower. Clicking it opens a compact current-chat quick panel with archive coverage, History Loader controls, an Archive Browser entry point and a settings gear. The launcher position remains persisted and viewport-clamped.
 
-The Archive Browser is a separate read-only surface backed only by the local Conversation Archive IndexedDB. It can list persisted projects/conversations and render archived message records, including tool/reasoning/system records and expandable raw metadata. It must not expose composer, edit, delete or private-API mutation actions.
+The Archive Browser is a separate read-only surface. The active/session-buffer conversation view is served from `ConversationStateStore` immediately; persisted projects and historical conversations are hydrated from the local Conversation Archive IndexedDB and merged behind the same adapter. It can render message records including tool/reasoning/system records and expandable raw metadata. It must not expose composer, edit, delete or private-API mutation actions.
 
 Settings entry points must not fork Control Center behavior. Archive/quick surfaces may consume settings and archive adapters, but must not duplicate target-specific persistence logic.
 
@@ -92,6 +92,22 @@ Conversation decorators append Booster-owned controls to existing ChatGPT action
 
 ChatGPT conversation renderers are versioned behind `ChatGptDomAdapter`. Renderer selection is capability-based from the observed DOM, never plan-name based. The currently supported contracts are `legacy-turn-v1` and `search-unit-v2`; message discovery, activity/tool targets, message bounds and scroll hints must remain behind that interface. See `docs/CHATGPT_DOM_ADAPTERS.md`.
 Live timing is source-derived, not stopwatch-derived. Request start comes from the user message `create_time`; before archive records exist, the same value is read from the outbound `/backend-api/f/conversation` payload, with the actual outbound transport boundary as the only fallback when `create_time` is absent. Reasoning start/end comes from ChatGPT reasoning metadata or explicit reasoning records; tool duration comes from call/result source timestamps; response completion comes from final response source timestamps. DOM observers may determine current phase/state but must not invent timing boundaries with local observation time. One configurable shared ticker may use the current clock only to render open-ended deltas and evaluate alerts. UI components must not create their own periodic timers.
+
+### Live conversation state
+
+The current conversation is **memory-first**. `ConversationStateStore` is the authoritative live read model for the active page runtime. Normal ChatGPT initial/history payloads, outbound conversation-request boundaries, stop lifecycle events and DOM fallback records enter this in-memory store immediately. It maintains message-id and turn-id indexes so decorators, activity/tool inspection, History Loader and current-chat export do not wait for IndexedDB.
+
+The data flow is intentionally one-way at the live boundary:
+
+`ChatGPT transport / initial payload -> ConversationStateStore (RAM) -> live UI`
+
+`ConversationStateStore / captured pages -> optional async IndexedDB persistence`
+
+`IndexedDB -> async hydrate -> ConversationStateStore`
+
+Archive policy controls persistence, not live observation. Disabling automatic archive capture must not disable current-chat metadata, timers, tool inspection, History Loader evidence or export of data already present in RAM. IndexedDB is a persistence/history source and hydration fallback; it is not the synchronization bus for current UI. A newly observed record must be usable from RAM before any database transaction completes.
+
+Stop is a two-phase lifecycle. Sending the normal ChatGPT `POST /backend-api/stop_conversation` moves the memory state to `stop_requested`; the request remains live and its elapsed time continues. Only a successful response confirms `stopped` and supplies the completion boundary. A failed stop returns the lifecycle to `in_progress`. Native buttons and DOM disappearance are not authoritative stop confirmations.
 History Loader requests older loaded content through small browser-native upward `scrollBy` pulses. It must not depend on `scrollTop` sign/range, reversed flex layouts, focus, or synthetic wheel/key events; pagination coverage remains the authority for collection completion.
 
 ## Security and privacy
@@ -162,7 +178,7 @@ Automatic archive capture is opt-in by project/chat. A manual ticket temporarily
 only one current-tab conversation, retaining the user's selected record categories.
 Consent is rechecked after asynchronous database reads and before puts. Revoking a rule
 does not delete existing data. Project IDs remain relation keys, not display labels.
-Settings schema 5 is distinct from archive IndexedDB version 3. The archive database currently contains `conversations`, `messages`, `conversationPages`, `conversationCoverage`, `projects`, `assets`, and `preloadPages`; legacy archive version 1 is never silently erased during upgrade.
+Settings schema 7 is distinct from archive IndexedDB version 3. The archive database currently contains `conversations`, `messages`, `conversationPages`, `conversationCoverage`, `projects`, `assets`, and legacy-compatible `preloadPages`; new live preload pages remain in `ConversationStateStore` rather than being written there. Legacy archive version 1 is never silently erased during upgrade.
 
 JSON/Markdown export is a projection: basic mode must not serialize internal storage
 metadata or nested records. Configurable mode includes only selected categories; binary

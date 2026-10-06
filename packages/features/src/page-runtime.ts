@@ -17,6 +17,7 @@ import { ConversationArchiveStore } from './archive-store'
 import { createArchiveUiAdapter } from './archive-ui-adapter'
 import { ConversationArchiveModule } from './conversation-archive'
 import { ConversationDecoratorsModule } from './conversation-decorators'
+import { ConversationStateStore } from './conversation-state'
 import { HistoryLoaderModule } from './history-loader'
 import { TransportObserverModule } from './transport-observer'
 
@@ -83,18 +84,32 @@ export function createBoosterPageRuntime(options: BoosterPageRuntimeOptions) {
   const target = options.target
   const pageBridgeWindow = target.pageBridgeWindow ?? window
   const archiveStore = options.archiveStore ?? new ConversationArchiveStore()
+  const archiveWarmup = archiveStore.warmup().catch((error) => {
+    console.warn(
+      '[ChatGPT Booster] Archive database warmup failed',
+      error instanceof Error ? error.name : 'unknown',
+    )
+  })
+  const conversationState = new ConversationStateStore(pageBridgeWindow)
   const settings = createCachedSettingsAdapter(target.settings)
   const runtimeTarget: BoosterTargetAdapter = { ...target, settings }
-  const archiveCapture = new ConversationArchiveModule(archiveStore, settings, pageBridgeWindow)
+  const archiveCapture = new ConversationArchiveModule(
+    archiveStore,
+    settings,
+    conversationState,
+    pageBridgeWindow,
+  )
   const archiveAdapter = createArchiveUiAdapter(archiveStore, archiveCapture, {
     assetFetchTarget: pageBridgeWindow,
+    stateStore: conversationState,
   })
 
   const modules: BoosterModule[] = [
+    conversationState,
     new OverlayModule(runtimeTarget, archiveAdapter),
     archiveCapture,
     new ArchiveScopeControlsModule(settings, archiveStore),
-    new HistoryLoaderModule(archiveStore, archiveCapture, pageBridgeWindow, settings),
+    new HistoryLoaderModule(conversationState, archiveCapture, pageBridgeWindow, settings),
     new TransportObserverModule({
       settings,
       diagnostics: target.diagnostics,
@@ -103,7 +118,7 @@ export function createBoosterPageRuntime(options: BoosterPageRuntimeOptions) {
         : {}),
       ...(target.telemetry ? { telemetry: target.telemetry } : {}),
     }),
-    new ConversationDecoratorsModule(settings, archiveStore),
+    new ConversationDecoratorsModule(settings, archiveStore, conversationState),
   ]
 
   const runtime = new BoosterRuntime(modules, (module, error) => {
@@ -126,6 +141,8 @@ export function createBoosterPageRuntime(options: BoosterPageRuntimeOptions) {
   return {
     runtime,
     startEarly: async () => {
+      conversationState.start()
+      void archiveWarmup
       await archiveCapture.start()
     },
     settings,

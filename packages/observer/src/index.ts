@@ -5,6 +5,7 @@ export const TRANSPORT_CHANNEL = 'chatgpt-booster:transport'
 export const ARCHIVE_POLICY_EVENT = 'chatgpt-booster:archive-policy'
 export const ARCHIVE_NETWORK_EVENT = 'chatgpt-booster:archive-network'
 export const CONVERSATION_REQUEST_EVENT = 'chatgpt-booster:conversation-request'
+export const CONVERSATION_STOP_EVENT = 'chatgpt-booster:conversation-stop'
 export const ARCHIVE_ASSET_EVENT = 'chatgpt-booster:archive-asset'
 export const ARCHIVE_ASSET_FETCH_REQUEST_EVENT = 'chatgpt-booster:archive-asset-fetch-request'
 export const ARCHIVE_ASSET_FETCH_RESULT_EVENT = 'chatgpt-booster:archive-asset-fetch-result'
@@ -107,6 +108,39 @@ function shouldObserveArchiveConversation(id: string): boolean {
 
   return archivePolicy.defaultEnabled || Object.values(archivePolicy.projects).some(Boolean)
 }
+function isConversationStopUrl(sourceUrl: string) {
+  try {
+    const url = new URL(sourceUrl, 'https://chatgpt.com/')
+    return url.origin === 'https://chatgpt.com' && url.pathname === '/backend-api/stop_conversation'
+  } catch {
+    return false
+  }
+}
+
+function conversationIdFromBody(body: unknown): string | null {
+  const payload = requestPayload(body)
+  return typeof payload?.conversation_id === 'string'
+    ? payload.conversation_id
+    : (pageConversationId() ?? null)
+}
+
+export function conversationStopTargetFromBody(
+  sourceUrl: string,
+  method: string,
+  body: unknown,
+): string | null {
+  if (method.toUpperCase() !== 'POST' || !isConversationStopUrl(sourceUrl)) return null
+  return conversationIdFromBody(body)
+}
+
+function publishConversationStop(detail: ConversationStopEventDetail | null) {
+  if (!observerTarget || !detail) return
+  observerTarget.postMessage(
+    { channel: TRANSPORT_CHANNEL, type: CONVERSATION_STOP_EVENT, detail },
+    observerTarget.location.origin,
+  )
+}
+
 function isConversationRequestUrl(sourceUrl: string) {
   try {
     const url = new URL(sourceUrl, 'https://chatgpt.com/')
@@ -239,6 +273,13 @@ export interface ConversationRequestEventDetail {
   startedAt: number
   observedAt: number
   source: 'message_create_time' | 'transport_request'
+}
+
+export interface ConversationStopEventDetail {
+  conversationId: string | null
+  phase: 'requested' | 'confirmed' | 'failed'
+  timestamp: number
+  status: number | null
 }
 
 export interface ArchiveAssetResolutionEventDetail {
@@ -864,7 +905,8 @@ export function installTransportObserver(
       if (
         !transportEmissionEnabled &&
         !isArchiveObservedUrl(rawUrl) &&
-        !isConversationRequestUrl(rawUrl)
+        !isConversationRequestUrl(rawUrl) &&
+        !isConversationStopUrl(rawUrl)
       )
         return callUpstream(input, init)
 
@@ -882,6 +924,14 @@ export function installTransportObserver(
         publishConversationRequest(
           conversationRequestTimingFromBody(rawUrl, method, init?.body, requestBoundaryAt),
         )
+        const stopConversationId = conversationStopTargetFromBody(rawUrl, method, init?.body)
+        if (stopConversationId)
+          publishConversationStop({
+            conversationId: stopConversationId,
+            phase: 'requested',
+            timestamp: requestBoundaryAt,
+            status: null,
+          })
 
         if (diagnosticsEnabled)
           emit({
@@ -899,6 +949,13 @@ export function installTransportObserver(
         archiveNetwork(id, rawUrl, 'request')
         try {
           const response = await callUpstream(input, init)
+          if (stopConversationId)
+            publishConversationStop({
+              conversationId: stopConversationId,
+              phase: response.ok ? 'confirmed' : 'failed',
+              timestamp: Date.now(),
+              status: response.status,
+            })
           archiveNetwork(id, rawUrl, response.ok ? 'response' : 'error', response.status)
           observeConversationArchiveResponse(response, rawUrl, historyRead)
           observeArchiveAssetResponse(response, rawUrl)
@@ -920,6 +977,13 @@ export function installTransportObserver(
           }
           return response
         } catch (error) {
+          if (stopConversationId)
+            publishConversationStop({
+              conversationId: stopConversationId,
+              phase: 'failed',
+              timestamp: Date.now(),
+              status: null,
+            })
           archiveNetwork(id, rawUrl, 'error', 0)
           if (diagnosticsEnabled) {
             const classified = classifyError(error)
@@ -981,7 +1045,8 @@ export function installTransportObserver(
     const diagnosticsEnabled = transportEmissionEnabled
     const resolverObserved = Boolean(archiveFileResolverId(meta.rawUrl))
     const conversationRequest = isConversationRequestUrl(meta.rawUrl)
-    if (!diagnosticsEnabled && !resolverObserved && !conversationRequest)
+    const conversationStop = isConversationStopUrl(meta.rawUrl)
+    if (!diagnosticsEnabled && !resolverObserved && !conversationRequest && !conversationStop)
       return originalSend.call(this, body)
 
     const id = diagnosticsEnabled ? nextId('xhr') : ''
@@ -991,6 +1056,15 @@ export function installTransportObserver(
     publishConversationRequest(
       conversationRequestTimingFromBody(meta.rawUrl, meta.method, body, requestBoundaryAt),
     )
+    const stopConversationId =
+      meta.method.toUpperCase() === 'POST' && conversationStop ? conversationIdFromBody(body) : null
+    if (stopConversationId)
+      publishConversationStop({
+        conversationId: stopConversationId,
+        phase: 'requested',
+        timestamp: requestBoundaryAt,
+        status: null,
+      })
     if (diagnosticsEnabled)
       emit({
         id,
@@ -1008,6 +1082,13 @@ export function installTransportObserver(
     this.addEventListener(
       'loadend',
       () => {
+        if (stopConversationId)
+          publishConversationStop({
+            conversationId: stopConversationId,
+            phase: this.status >= 200 && this.status < 300 ? 'confirmed' : 'failed',
+            timestamp: Date.now(),
+            status: this.status || null,
+          })
         if (diagnosticsEnabled)
           emit({
             id,

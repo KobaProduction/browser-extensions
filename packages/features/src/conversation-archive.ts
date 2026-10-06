@@ -9,8 +9,6 @@ import {
   hasPendingComposerAttachments,
   isConversationGenerating,
   observeChatGptNavigation,
-  type ScheduledIdleTask,
-  scheduleIdleTask,
 } from '@chatgpt-booster/chatgpt'
 import {
   type ArchiveRecordView,
@@ -24,14 +22,13 @@ import {
 } from '@chatgpt-booster/core'
 import {
   ARCHIVE_ASSET_EVENT,
-  ARCHIVE_EVENT,
   ARCHIVE_POLICY_EVENT,
-  ARCHIVE_PRELOAD_EVENT,
   type ArchiveAssetResolutionEventDetail,
   type ConversationArchiveEventDetail,
   TRANSPORT_CHANNEL,
 } from '@chatgpt-booster/observer'
 import type { ConversationArchiveStore } from './archive-store'
+import { ConversationStateStore } from './conversation-state'
 
 const TICKET_KEY = 'chatgpt-booster:manual-collection'
 export interface CollectionTicket {
@@ -82,27 +79,36 @@ export class ConversationArchiveModule implements BoosterModule {
   readonly store: ConversationArchiveStore
   #settings: BoosterSettings = normalizeSettings()
   #unsubscribe: (() => void) | undefined
+  #pageUnsubscribe: (() => void) | undefined
   #queue: Promise<unknown> = Promise.resolve()
-  #pendingPreloads: ConversationArchiveEventDetail[] = []
-  #preloadTask: ScheduledIdleTask | undefined
   #navigationUnsubscribe: (() => void) | undefined
   #ticketExpiryTimer: ReturnType<typeof setTimeout> | undefined
   #active = false
   #lastPolicy = ''
+  #persistedPageKeys = new Set<string>()
+  #ownsStateStore: boolean
+  private stateStore: ConversationStateStore
   constructor(
     store: ConversationArchiveStore,
     private settingsAdapter: SettingsAdapter,
+    stateStore?: ConversationStateStore,
     private messageSource: Window = window,
   ) {
     this.store = store
+    this.stateStore = stateStore ?? new ConversationStateStore(messageSource)
+    this.#ownsStateStore = !stateStore
   }
+
   async start() {
     if (this.#active) return
     this.#active = true
+    if (this.#ownsStateStore) this.stateStore.start()
+    this.#pageUnsubscribe = this.stateStore.subscribePages(this.#onStatePage)
     window.addEventListener('message', this.#onMessage)
     this.#unsubscribe = this.settingsAdapter.subscribe((settings) => {
       this.#settings = settings
       this.#publishPolicy()
+      if (settings.enabled) this.#persistCurrentBuffered()
     })
     this.#settings = await this.settingsAdapter.get()
     if (!this.#active) return
@@ -113,14 +119,14 @@ export class ConversationArchiveModule implements BoosterModule {
   stop() {
     this.#active = false
     window.removeEventListener('message', this.#onMessage)
+    this.#pageUnsubscribe?.()
+    this.#pageUnsubscribe = undefined
     this.#unsubscribe?.()
+    if (this.#ownsStateStore) this.stateStore.stop()
     this.#navigationUnsubscribe?.()
     this.#navigationUnsubscribe = undefined
     if (this.#ticketExpiryTimer) clearTimeout(this.#ticketExpiryTimer)
     this.#ticketExpiryTimer = undefined
-    this.#preloadTask?.cancel()
-    this.#preloadTask = undefined
-    this.#pendingPreloads = []
   }
   async collectCurrent(): Promise<void> {
     const conversationId = currentConversationId()
@@ -136,13 +142,35 @@ export class ConversationArchiveModule implements BoosterModule {
     )
     this.#scheduleTicketExpiry()
     this.#publishPolicy()
-    await this.#flushPendingPreloads()
     const promotedPreload = await this.#promotePreload(conversationId, startedAt)
     if (!promotedPreload) await this.#promoteDomSnapshot(conversationId, startedAt)
     window.dispatchEvent(new Event(HISTORY_LOADER_START_EVENT))
   }
   async #promotePreload(conversationId: string, startedAt: number): Promise<boolean> {
-    const pages = await this.store.listLatestPreloadPages(conversationId)
+    const memoryPages = this.stateStore.pages(conversationId)
+    const latestInitial = memoryPages
+      .filter((page) => page.isInitial)
+      .sort(
+        (a, b) =>
+          (b.readStartedAt ?? b.timestamp) - (a.readStartedAt ?? a.timestamp) ||
+          b.timestamp - a.timestamp,
+      )[0]
+    const selectedReadId = latestInitial?.readId ?? memoryPages.at(-1)?.readId ?? null
+    const livePages = selectedReadId
+      ? memoryPages.filter((page) => page.readId === selectedReadId)
+      : memoryPages.slice(-1)
+    const legacyPages = livePages.length
+      ? []
+      : await this.store.listLatestPreloadPages(conversationId)
+    const pages = livePages.length
+      ? livePages.map((page) => ({
+          payload: page.payload,
+          isInitial: page.isInitial,
+          requestedBefore: page.requestedBefore,
+          observedAt: page.timestamp,
+          sourceUrl: page.sourceUrl,
+        }))
+      : legacyPages
     if (!pages.length) return false
     const project =
       currentProjectId() ??
@@ -195,7 +223,17 @@ export class ConversationArchiveModule implements BoosterModule {
   }
 
   async #promoteDomSnapshot(conversationId: string, startedAt: number): Promise<boolean> {
-    const snapshot = this.store.getDomSnapshot(conversationId) ?? currentConversationDomSnapshot()
+    const memory = this.stateStore.snapshot(conversationId)
+    const fallback = currentConversationDomSnapshot()
+    const snapshot = memory?.records.length
+      ? {
+          conversationId,
+          projectId: memory.projectId,
+          title: memory.title,
+          observedAt: memory.lastObservedAt,
+          records: memory.records,
+        }
+      : fallback
     if (!snapshot || snapshot.conversationId !== conversationId || !snapshot.records.length)
       return false
 
@@ -211,7 +249,7 @@ export class ConversationArchiveModule implements BoosterModule {
       this.#active && collectionTicket()?.conversationId === conversationId
     const rawMessages = snapshot.records.map((record) => record.raw)
     const messages = rawMessages.filter((raw) => keepCapturedRecord(raw, rule))
-    const readId = 'manual-' + startedAt
+    const readId = `manual-${startedAt}`
 
     await this.store.ingest(
       {
@@ -221,7 +259,7 @@ export class ConversationArchiveModule implements BoosterModule {
         isInitial: true,
         requestedBefore: null,
         timestamp: snapshot.observedAt,
-        sourceUrl: location.href + '#chatgpt-booster-dom-snapshot',
+        sourceUrl: `${location.href}#chatgpt-booster-dom-snapshot`,
         conversationId,
         payload: {
           conversation_id: conversationId,
@@ -283,33 +321,6 @@ export class ConversationArchiveModule implements BoosterModule {
       this.#publishPolicy()
     }, delay)
   }
-  #schedulePreload(detail: ConversationArchiveEventDetail) {
-    this.#pendingPreloads.push(detail)
-    if (this.#preloadTask) return
-    this.#preloadTask = scheduleIdleTask(
-      () => {
-        this.#preloadTask = undefined
-        void this.#flushPendingPreloads()
-      },
-      500,
-      100,
-    )
-  }
-  async #flushPendingPreloads() {
-    this.#preloadTask?.cancel()
-    this.#preloadTask = undefined
-    if (!this.#pendingPreloads.length) return
-    const pending = this.#pendingPreloads
-    this.#pendingPreloads = []
-    this.#queue = this.#queue
-      .then(async () => {
-        if (!this.#active) return
-        if (!this.#active) return
-        await this.store.ingestPreloadBatch(pending)
-      })
-      .catch(() => undefined)
-    await this.#queue
-  }
   #publishPolicy() {
     if (!this.#active) return
     const detail = {
@@ -335,118 +346,133 @@ export class ConversationArchiveModule implements BoosterModule {
       location.origin,
     )
   }
-  #onMessage = (event: MessageEvent) => {
-    if (event.origin !== location.origin || event.source !== this.messageSource) return
-    const data = event.data
-    if (data?.channel !== TRANSPORT_CHANNEL) return
-    if (data.type === ARCHIVE_PRELOAD_EVENT && data.detail?.kind === 'conversation-page') {
-      this.#schedulePreload(data.detail as ConversationArchiveEventDetail)
-      return
-    }
-    if (data.type === ARCHIVE_ASSET_EVENT) {
-      const detail = data.detail as ArchiveAssetResolutionEventDetail | undefined
-      if (!detail || typeof detail.assetId !== 'string' || typeof detail.downloadUrl !== 'string')
-        return
-      const conversationId = currentConversationId()
-      if (!conversationId) return
-      void this.store
-        .getConversation(conversationId)
-        .then(async (conversation) => {
-          if (!this.#active) return
-          const projectId = currentProjectId() ?? conversation?.projectId ?? null
-          const permitted = () =>
-            captureRuleForOperation(
-              this.#settings.archive,
-              conversationId,
-              projectId,
-              collectionTicket()?.conversationId === conversationId,
-              this.#settings.enabled,
-            ).enabled
-          if (!permitted()) return
-          const stored = await this.store.updateAssetResolution(detail, conversationId)
-          if (stored || !this.#active) return
-          // The normal resolver can finish just before the conversation page is committed.
-          // Retry once, but re-check consent before the delayed write.
-          setTimeout(() => {
-            if (this.#active && permitted())
-              void this.store.updateAssetResolution(detail, conversationId).catch(() => undefined)
-          }, 750)
-        })
-        .catch(() => undefined)
-      return
-    }
-    if (data.type !== ARCHIVE_EVENT || data.detail?.kind !== 'conversation-page') return
-    const detail = data.detail as ConversationArchiveEventDetail
+  #pagePersistenceKey(detail: ConversationArchiveEventDetail, rule: CaptureRule) {
+    return [
+      detail.conversationId,
+      detail.readId ?? '',
+      detail.isInitial ? '1' : '0',
+      detail.requestedBefore ?? '',
+      detail.timestamp,
+      rule.reasoning ? 'r1' : 'r0',
+      rule.tools ? 't1' : 't0',
+      rule.internal ? 'i1' : 'i0',
+    ].join('|')
+  }
+
+  #onStatePage = (detail: ConversationArchiveEventDetail) => {
     this.#queue = this.#queue
-      .then(async () => {
-        if (!this.#active) return
-        const payload = detail.payload
-        if (
-          !payload ||
-          !Array.isArray(payload.messages) ||
-          typeof detail.conversationId !== 'string'
-        )
-          return
-        const id = detail.conversationId
-        if (payload.conversation_id && payload.conversation_id !== id) return
-        const old = await this.store.getConversation(id)
-        const project =
-          'gizmo_id' in payload
-            ? typeof payload.gizmo_id === 'string' && payload.gizmo_id.startsWith('g-p-')
-              ? payload.gizmo_id
-              : null
-            : (old?.projectId ??
-              (currentConversationId() === id ? (currentProjectId() ?? null) : null))
-        const operationRule = () =>
-          captureRuleForOperation(
-            this.#settings.archive,
-            id,
-            project,
-            collectionTicket()?.conversationId === id,
-            this.#settings.enabled,
-          )
-        const rule = operationRule()
-        if (!rule.enabled) return
-        const stillPermitted = () => {
-          const current = operationRule()
-          return (
-            this.#active &&
-            current.enabled &&
-            (!rule.reasoning || current.reasoning) &&
-            (!rule.tools || current.tools) &&
-            (!rule.internal || current.internal)
-          )
-        }
-        const messages = payload.messages
-          .map(asRecord)
-          .filter((raw): raw is Record<string, unknown> => !!raw)
-          .filter((raw) => keepCapturedRecord(raw, rule))
-        const summary = await this.store.ingest(
-          {
-            ...detail,
-            payload: {
-              ...payload,
-              messages,
-              booster_capture: {
-                reasoning: rule.reasoning,
-                tools: rule.tools,
-                internal: rule.internal,
-                omittedRecords: payload.messages.length - messages.length,
-              },
-            },
-          },
-          stillPermitted,
-        )
-        if (summary && project && stillPermitted())
-          await this.store.upsertProject(project, currentProjectTitle(project) ?? null)
-      })
+      .then(() => this.#persistPage(detail))
       .catch(() => {
-        // Error class only: do not log user payloads or IndexedDB key values.
         window.dispatchEvent(
           new CustomEvent('chatgpt-booster:archive-storage-error', {
             detail: { conversationId: detail.conversationId },
           }),
         )
       })
+  }
+
+  #persistCurrentBuffered() {
+    const conversationId = currentConversationId()
+    if (!conversationId) return
+    for (const page of this.stateStore.pages(conversationId)) this.#onStatePage(page)
+  }
+
+  async #persistPage(detail: ConversationArchiveEventDetail) {
+    if (!this.#active) return
+    const payload = detail.payload
+    if (!payload || !Array.isArray(payload.messages) || typeof detail.conversationId !== 'string')
+      return
+    const id = detail.conversationId
+    if (payload.conversation_id && payload.conversation_id !== id) return
+    const memoryProject = this.stateStore.snapshot(id)?.projectId ?? null
+    const project =
+      'gizmo_id' in payload
+        ? typeof payload.gizmo_id === 'string' && payload.gizmo_id.startsWith('g-p-')
+          ? payload.gizmo_id
+          : null
+        : (memoryProject ?? (currentConversationId() === id ? (currentProjectId() ?? null) : null))
+    const operationRule = () =>
+      captureRuleForOperation(
+        this.#settings.archive,
+        id,
+        project,
+        collectionTicket()?.conversationId === id,
+        this.#settings.enabled,
+      )
+    const rule = operationRule()
+    if (!rule.enabled) return
+    const key = this.#pagePersistenceKey(detail, rule)
+    if (this.#persistedPageKeys.has(key)) return
+    const stillPermitted = () => {
+      const current = operationRule()
+      return (
+        this.#active &&
+        current.enabled &&
+        (!rule.reasoning || current.reasoning) &&
+        (!rule.tools || current.tools) &&
+        (!rule.internal || current.internal)
+      )
+    }
+    const messages = payload.messages
+      .map(asRecord)
+      .filter((raw): raw is Record<string, unknown> => !!raw)
+      .filter((raw) => keepCapturedRecord(raw, rule))
+    const summary = await this.store.ingest(
+      {
+        ...detail,
+        payload: {
+          ...payload,
+          messages,
+          booster_capture: {
+            reasoning: rule.reasoning,
+            tools: rule.tools,
+            internal: rule.internal,
+            omittedRecords: payload.messages.length - messages.length,
+          },
+        },
+      },
+      stillPermitted,
+    )
+    if (!summary) return
+    this.#persistedPageKeys.add(key)
+    if (project && stillPermitted())
+      await this.store.upsertProject(project, currentProjectTitle(project) ?? null)
+  }
+
+  #onMessage = (event: MessageEvent) => {
+    if (event.origin !== location.origin || event.source !== this.messageSource) return
+    const data = event.data
+    if (data?.channel !== TRANSPORT_CHANNEL || data.type !== ARCHIVE_ASSET_EVENT) return
+    const detail = data.detail as ArchiveAssetResolutionEventDetail | undefined
+    if (!detail || typeof detail.assetId !== 'string' || typeof detail.downloadUrl !== 'string')
+      return
+    const conversationId = currentConversationId()
+    if (!conversationId) return
+    void this.store
+      .getConversation(conversationId)
+      .then(async (conversation) => {
+        if (!this.#active) return
+        const projectId =
+          currentProjectId() ??
+          this.stateStore.snapshot(conversationId)?.projectId ??
+          conversation?.projectId ??
+          null
+        const permitted = () =>
+          captureRuleForOperation(
+            this.#settings.archive,
+            conversationId,
+            projectId,
+            collectionTicket()?.conversationId === conversationId,
+            this.#settings.enabled,
+          ).enabled
+        if (!permitted()) return
+        const stored = await this.store.updateAssetResolution(detail, conversationId)
+        if (stored || !this.#active) return
+        setTimeout(() => {
+          if (this.#active && permitted())
+            void this.store.updateAssetResolution(detail, conversationId).catch(() => undefined)
+        }, 750)
+      })
+      .catch(() => undefined)
   }
 }

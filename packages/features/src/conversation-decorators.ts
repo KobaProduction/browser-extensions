@@ -13,26 +13,19 @@ import {
   findToolCallEvidence,
   observeConversationActivity,
   observeConversationDecorations,
-  type ScheduledIdleTask,
-  scheduleIdleTask,
+  resolveChatGptDomAdapter,
   toolInvocationFromEvidence,
   toolInvocationFromRecord,
 } from '@chatgpt-booster/chatgpt'
 import {
   AGENT_ACTIVITY_EVENT,
   type AgentActivitySnapshot,
-  ARCHIVE_UPDATED_EVENT,
   type BoosterModule,
   type BoosterSettings,
   type ConversationItemMetadataView,
   type SettingsAdapter,
   serverTimeMs,
 } from '@chatgpt-booster/core'
-import {
-  CONVERSATION_REQUEST_EVENT,
-  type ConversationRequestEventDetail,
-  TRANSPORT_CHANNEL,
-} from '@chatgpt-booster/observer'
 import {
   type MountedAgentActivity,
   type MountedMessageMetadata,
@@ -45,6 +38,7 @@ import {
   resolveLocale,
 } from '@chatgpt-booster/ui'
 import type { ArchivedMessage, ConversationArchiveStore } from './archive-store'
+import { ConversationStateStore } from './conversation-state'
 
 const UNKNOWN_METADATA: ConversationItemMetadataView = {
   sentAt: null,
@@ -123,26 +117,21 @@ export class ConversationDecoratorsModule implements BoosterModule {
   #longAlertedTurnId: string | null = null
   #completedAlertedTurnId: string | null = null
   #activeObservedTurnIds = new Set<string>()
-  #requestBoundaries = new Map<string, ConversationRequestEventDetail>()
-  #latestConversationBoundary: ConversationRequestEventDetail | null = null
   #ticker: ReturnType<typeof setInterval> | undefined
   #unsubscribe: (() => void) | undefined
-  #archiveRefreshTimer: ReturnType<typeof setTimeout> | undefined
+  #stateUnsubscribe: (() => void) | undefined
   #settings: BoosterSettings | undefined
   #records = new Map<string, ArchivedMessage>()
   #turnRecords = new Map<string, ArchivedMessage[]>()
   #recordConversationId: string | null = null
-  #loadVersion = 0
-  #activeRecordRefresh: { conversationId: string | null; promise: Promise<void> } | undefined
-  #recordRefreshQueued = false
   #messageMounts = new Map<HTMLElement, MountedMessageMetadata>()
   #toolMounts = new Map<HTMLElement, MountedToolInspector>()
   #lastCleanupAt = 0
-  #initialTask: ScheduledIdleTask | undefined
 
   constructor(
     private settingsAdapter: SettingsAdapter,
     private store: ConversationArchiveStore,
+    private stateStore: ConversationStateStore = new ConversationStateStore(),
   ) {}
 
   async start() {
@@ -172,8 +161,6 @@ export class ConversationDecoratorsModule implements BoosterModule {
 
       if (!next.enabled) {
         this.#stopObserver()
-        if (this.#archiveRefreshTimer) clearTimeout(this.#archiveRefreshTimer)
-        this.#archiveRefreshTimer = undefined
         this.#clear()
         return
       }
@@ -187,26 +174,26 @@ export class ConversationDecoratorsModule implements BoosterModule {
       if (requestTimerChanged && !next.features.requestTimer) this.#clearRequestStatus()
       if (monitoringChanged) this.#restartTicker()
       if (!this.#observer) {
-        this.#initialTask?.cancel()
-        this.#initialTask = undefined
-        void this.#refreshRecords().then(() => {
-          if (this.#settings?.enabled) this.#startObserver()
-        })
+        this.#syncRecordsFromState()
+        this.#startObserver()
+        this.#hydrateCurrentInBackground()
         return
       }
       this.#observer.scan()
     })
-    window.addEventListener(ARCHIVE_UPDATED_EVENT, this.#onArchiveUpdated)
-    window.addEventListener('message', this.#onConversationRequest)
+    this.#stateUnsubscribe = this.stateStore.subscribe((change) => {
+      if (!this.#settings?.enabled) return
+      const current = currentConversationId() ?? null
+      if (change.conversationId !== current) return
+      this.#syncRecordsFromState()
+      this.#observer?.scan()
+      this.#activityObserver?.scan()
+    })
     this.#restartTicker()
     if (this.#settings.enabled) {
-      this.#initialTask = scheduleIdleTask(() => {
-        this.#initialTask = undefined
-        if (!this.#settings?.enabled) return
-        void this.#refreshRecords().then(() => {
-          if (this.#settings?.enabled) this.#startObserver()
-        })
-      }, 350)
+      this.#syncRecordsFromState()
+      this.#startObserver()
+      this.#hydrateCurrentInBackground()
     }
   }
 
@@ -238,6 +225,13 @@ export class ConversationDecoratorsModule implements BoosterModule {
   }) => {
     const settings = this.#settings
     if (!settings?.enabled) return
+    const conversationId = currentConversationId() ?? null
+    if (conversationId && section)
+      this.stateStore.observeRendererState(
+        conversationId,
+        resolveChatGptDomAdapter(section)?.turnState(section) ?? null,
+        chatGptTurnId(section),
+      )
     const snapshot = section ? this.#sourceActivity(section, observed) : observed
     window.dispatchEvent(new CustomEvent(AGENT_ACTIVITY_EVENT, { detail: snapshot }))
 
@@ -314,9 +308,6 @@ export class ConversationDecoratorsModule implements BoosterModule {
       )
       if (settings.alerts.responseCompleteSound) playActivityTone('complete')
       this.#activeObservedTurnIds.delete(snapshot.turnId)
-      this.#requestBoundaries.delete(snapshot.turnId)
-      if (this.#latestConversationBoundary?.userMessageId === snapshot.turnId)
-        this.#latestConversationBoundary = null
     }
     if (
       settings.alerts.longRunningSound &&
@@ -364,150 +355,36 @@ export class ConversationDecoratorsModule implements BoosterModule {
     this.#longAlertedTurnId = null
     this.#completedAlertedTurnId = null
     this.#activeObservedTurnIds.clear()
-    this.#initialTask?.cancel()
-    this.#initialTask = undefined
     this.#unsubscribe?.()
     this.#unsubscribe = undefined
-    window.removeEventListener(ARCHIVE_UPDATED_EVENT, this.#onArchiveUpdated)
-    window.removeEventListener('message', this.#onConversationRequest)
-    if (this.#archiveRefreshTimer) clearTimeout(this.#archiveRefreshTimer)
-    this.#archiveRefreshTimer = undefined
-    this.#loadVersion += 1
-    this.#activeRecordRefresh = undefined
-    this.#recordRefreshQueued = false
+    this.#stateUnsubscribe?.()
+    this.#stateUnsubscribe = undefined
     this.#records.clear()
     this.#turnRecords.clear()
-    if (this.#recordConversationId) this.store.clearDomSnapshot(this.#recordConversationId)
     this.#recordConversationId = null
     this.#activitySnapshots.clear()
-    this.#requestBoundaries.clear()
-    this.#latestConversationBoundary = null
     this.#lastCleanupAt = 0
     this.#clear()
   }
 
-  #onConversationRequest = (event: MessageEvent) => {
-    if (event.origin && event.origin !== window.location.origin) return
-    const data = event.data as {
-      channel?: string
-      type?: string
-      detail?: ConversationRequestEventDetail
-    }
-    if (
-      data?.channel !== TRANSPORT_CHANNEL ||
-      data.type !== CONVERSATION_REQUEST_EVENT ||
-      !data.detail
-    )
-      return
-    const current = currentConversationId() ?? null
-    if (data.detail.conversationId && current && data.detail.conversationId !== current) return
-    if (data.detail.userMessageId)
-      this.#requestBoundaries.set(data.detail.userMessageId, data.detail)
-    this.#latestConversationBoundary = data.detail
-    while (this.#requestBoundaries.size > 64) {
-      const oldest = this.#requestBoundaries.keys().next().value
-      if (!oldest) break
-      this.#requestBoundaries.delete(oldest)
-    }
-    this.#activityObserver?.scan()
-  }
-
-  #requestBoundaryForSection(section: HTMLElement): ConversationRequestEventDetail | null {
-    const turnId = chatGptTurnId(section)
-    if (turnId) {
-      const direct = this.#requestBoundaries.get(turnId)
-      if (direct) return direct
-    }
-    for (const id of chatGptTurnMessageIds(section)) {
-      const direct = this.#requestBoundaries.get(id)
-      if (direct) return direct
-    }
-    const latest = this.#latestConversationBoundary
-    const current = currentConversationId() ?? null
-    if (!latest) return null
-    if (latest.conversationId && current && latest.conversationId !== current) return null
-    return latest
-  }
-
-  #onArchiveUpdated = (event: Event) => {
-    const detail = (
-      event as CustomEvent<{
-        conversationId?: string
-        preload?: boolean
-        insertedMessages?: number
-        updatedMessages?: number
-      }>
-    ).detail
-    if (!this.#settings?.enabled) return
-    const current = currentConversationId() ?? null
-    if (detail?.conversationId && current && detail.conversationId !== current) return
-    if (!detail?.preload && detail && detail.insertedMessages === 0 && detail.updatedMessages === 0)
-      return
-    if (this.#archiveRefreshTimer) clearTimeout(this.#archiveRefreshTimer)
-    this.#archiveRefreshTimer = setTimeout(() => {
-      this.#archiveRefreshTimer = undefined
-      void this.#refreshRecords().then(() => {
-        this.#observer?.scan()
-        this.#activityObserver?.scan()
-      })
-    }, 80)
-  }
-
-  async #refreshRecords() {
+  #syncRecordsFromState() {
     const conversationId = currentConversationId() ?? null
-    const active = this.#activeRecordRefresh
-    if (active?.conversationId === conversationId) {
-      this.#recordRefreshQueued = true
-      return await active.promise
-    }
-
-    const promise = (async () => {
-      do {
-        this.#recordRefreshQueued = false
-        await this.#loadRecords(conversationId)
-      } while (
-        this.#recordRefreshQueued &&
-        currentConversationId() === conversationId &&
-        this.#settings?.enabled
-      )
-    })()
-    this.#activeRecordRefresh = { conversationId, promise }
-    try {
-      await promise
-    } finally {
-      if (this.#activeRecordRefresh?.promise === promise) this.#activeRecordRefresh = undefined
-    }
-  }
-
-  async #loadRecords(conversationId: string | null) {
-    if (conversationId !== this.#recordConversationId) {
-      if (this.#recordConversationId) this.store.clearDomSnapshot(this.#recordConversationId)
-    }
-    const version = ++this.#loadVersion
     if (!conversationId) {
       this.#records.clear()
       this.#turnRecords.clear()
       this.#recordConversationId = null
       return
     }
-    const [persisted, preload] = await Promise.all([
-      this.store.listMessages(conversationId),
-      this.store.getPreloadSnapshot(conversationId),
-    ])
-    if (version !== this.#loadVersion || currentConversationId() !== conversationId) return
-    const merged = new Map<string, ArchivedMessage>()
-    for (const record of persisted) merged.set(record.messageId, record)
-    for (const record of preload?.records ?? []) merged.set(record.messageId, record)
-    if (preload?.records.length) this.store.clearDomSnapshot(conversationId)
-    this.#records = merged
+    const records = this.stateStore.listMessages(conversationId)
+    this.#records = new Map(records.map((record) => [record.messageId, record]))
     this.#turnRecords.clear()
-    for (const record of merged.values()) {
-      const key = record.turnExchangeId ?? record.workingTurnId
-      if (!key) continue
-      const items = this.#turnRecords.get(key) ?? []
-      items.push(record)
-      this.#turnRecords.set(key, items)
-    }
+    for (const record of records)
+      for (const key of new Set([record.turnExchangeId, record.workingTurnId])) {
+        if (!key) continue
+        const items = this.#turnRecords.get(key) ?? []
+        items.push(record)
+        this.#turnRecords.set(key, items)
+      }
     for (const items of this.#turnRecords.values())
       items.sort(
         (a, b) =>
@@ -517,20 +394,40 @@ export class ConversationDecoratorsModule implements BoosterModule {
     this.#recordConversationId = conversationId
   }
 
+  #hydrateCurrentInBackground() {
+    const conversationId = currentConversationId() ?? null
+    if (!conversationId) return
+    void this.stateStore.hydrate(conversationId, this.store).catch((error) => {
+      console.warn('[ChatGPT Booster] Conversation state hydration failed', error)
+    })
+  }
+
   #turnItemsForSection(section: HTMLElement): ArchivedMessage[] {
-    const ids = chatGptTurnMessageIds(section)
-    const anchor = ids.map((id) => this.#records.get(id)).find(Boolean)
-    const key = anchor?.turnExchangeId ?? anchor?.workingTurnId ?? chatGptTurnId(section)
-    return key ? (this.#turnRecords.get(key) ?? []) : []
+    const conversationId = currentConversationId() ?? null
+    if (!conversationId) return []
+    return this.stateStore.recordsForMessageIds(conversationId, chatGptTurnMessageIds(section))
   }
 
   #sourceActivity(section: HTMLElement, observed: AgentActivitySnapshot): AgentActivitySnapshot {
     const items = this.#turnItemsForSection(section)
-    const boundary = this.#requestBoundaryForSection(section)
+    const conversationId = currentConversationId() ?? null
+    const lifecycle = conversationId ? this.stateStore.lifecycle(conversationId) : undefined
+    const lifecycleActive = lifecycle
+      ? lifecycle.state === 'in_progress' || lifecycle.state === 'stop_requested'
+      : observed.active
+    const lifecyclePhase = lifecycleActive
+      ? observed.phase
+      : lifecycle?.state === 'complete' ||
+          lifecycle?.state === 'stopped' ||
+          lifecycle?.state === 'cancelled'
+        ? 'complete'
+        : observed.phase
     if (!items.length)
       return {
         ...observed,
-        startedAt: boundary?.startedAt ?? null,
+        active: lifecycleActive,
+        phase: lifecyclePhase,
+        startedAt: lifecycle?.startedAt ?? null,
         reasoningStartedAt: null,
         phaseStartedAt: null,
         completedAt: null,
@@ -544,7 +441,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
         (sourceTime(b.createTime) ?? Number.POSITIVE_INFINITY),
     )
     const user = ordered.find((item) => item.role === 'user')
-    const startedAt = sourceTime(user?.createTime) ?? boundary?.startedAt ?? null
+    const startedAt = sourceTime(user?.createTime) ?? lifecycle?.startedAt ?? null
 
     const reasoningStarts: number[] = []
     const reasoningEnds: number[] = []
@@ -599,9 +496,10 @@ export class ConversationDecoratorsModule implements BoosterModule {
       .reverse()
       .find((item) => item.contentType === 'reasoning_recap')
     const completedAt =
-      observed.phase === 'complete'
+      lifecycle?.completedAt ??
+      (lifecyclePhase === 'complete'
         ? (finalCompletedAt ?? sourceTime(recapCompletedAt?.createTime))
-        : null
+        : null)
 
     const eventTimes = ordered
       .filter((item) => item.role !== 'user')
@@ -613,11 +511,11 @@ export class ConversationDecoratorsModule implements BoosterModule {
     const lastActivityAt = eventTimes.length ? Math.max(...eventTimes) : null
 
     let phaseStartedAt: number | null = null
-    if (observed.phase === 'thinking') phaseStartedAt = reasoningStartedAt
-    else if (observed.phase === 'tool')
+    if (lifecyclePhase === 'thinking') phaseStartedAt = reasoningStartedAt
+    else if (lifecyclePhase === 'tool')
       phaseStartedAt = latestTool?.timestamp ? sourceTime(latestTool.timestamp) : null
-    else if (observed.phase === 'responding') phaseStartedAt = finalStartedAt
-    else if (observed.phase === 'complete') phaseStartedAt = completedAt
+    else if (lifecyclePhase === 'responding') phaseStartedAt = finalStartedAt
+    else if (lifecyclePhase === 'complete') phaseStartedAt = completedAt
 
     let reasoningCompletedAt = reasoningEnds.length ? Math.max(...reasoningEnds) : null
     if (!reasoningCompletedAt && completedAt) reasoningCompletedAt = finalStartedAt ?? completedAt
@@ -629,6 +527,8 @@ export class ConversationDecoratorsModule implements BoosterModule {
 
     return {
       ...observed,
+      active: lifecycleActive,
+      phase: lifecyclePhase,
       startedAt,
       reasoningStartedAt,
       phaseStartedAt,
@@ -637,7 +537,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
       durationMs: startedAt && completedAt ? Math.max(0, completedAt - startedAt) : null,
       reasoningDurationMs,
       label: observed.label ?? recapLabel,
-      tool: observed.phase === 'tool' ? (latestTool ?? observed.tool) : observed.tool,
+      tool: lifecyclePhase === 'tool' ? (latestTool ?? observed.tool) : observed.tool,
     }
   }
 
@@ -663,6 +563,28 @@ export class ConversationDecoratorsModule implements BoosterModule {
       : null
   }
 
+  #toolTitleTokens(value: string | null | undefined) {
+    return new Set(
+      (value ?? '')
+        .toLocaleLowerCase()
+        .normalize('NFKC')
+        .replace(/[^\p{L}\p{N}]+/gu, ' ')
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((token) => (token.length > 5 ? token.slice(0, 5) : token)),
+    )
+  }
+
+  #toolTitleSimilarity(left: string | null | undefined, right: string | null | undefined) {
+    const a = this.#toolTitleTokens(left)
+    const b = this.#toolTitleTokens(right)
+    if (!a.size || !b.size) return 0
+    let overlap = 0
+    for (const token of a) if (b.has(token)) overlap += 1
+    return overlap / Math.max(a.size, b.size)
+  }
+
   #toolReasoningTitle(pair: { call: ArchivedMessage; result: ArchivedMessage | null }) {
     const callMetadata = sourceMetadata(pair.call)
     const resultMetadata = pair.result ? sourceMetadata(pair.result) : undefined
@@ -681,14 +603,15 @@ export class ConversationDecoratorsModule implements BoosterModule {
     fallbackIndex: number,
     evidenceCount: number,
   ) {
-    const visible = evidence.visibleText.replace(/\s+/g, ' ').trim().toLocaleLowerCase()
-    const titled = records.find((pair) => {
-      if (used.has(pair.call.messageId)) return false
-      const title = this.#toolReasoningTitle(pair)?.toLocaleLowerCase()
-      return Boolean(
-        title && (title === visible || title.includes(visible) || visible.includes(title)),
-      )
-    })
+    const visible = evidence.visibleText.replace(/\s+/g, ' ').trim()
+    const titled = records
+      .filter((pair) => !used.has(pair.call.messageId))
+      .map((pair) => ({
+        pair,
+        score: this.#toolTitleSimilarity(this.#toolReasoningTitle(pair), visible),
+      }))
+      .filter((candidate) => candidate.score >= 0.6)
+      .sort((a, b) => b.score - a.score)[0]?.pair
     if (titled) return titled
     const only = records.length === 1 ? records[0] : undefined
     if (only && !used.has(only.call.messageId)) return only
@@ -745,17 +668,15 @@ export class ConversationDecoratorsModule implements BoosterModule {
       return
     }
     const current = currentConversationId() ?? null
-    if (current !== this.#recordConversationId) await this.#refreshRecords()
+    if (current !== this.#recordConversationId) {
+      this.#syncRecordsFromState()
+      this.#hydrateCurrentInBackground()
+    }
     const missingTargets = targets.filter((target) => !this.#records.has(target.messageId))
     const snapshot = missingTargets.length
       ? conversationDomSnapshotFromTargets(missingTargets)
       : undefined
-    if (snapshot) {
-      if (root === document) this.store.setDomSnapshot(snapshot)
-      else this.store.mergeDomSnapshot(snapshot)
-    } else if (root === document && current) {
-      this.store.clearDomSnapshot(current)
-    }
+    if (snapshot) this.stateStore.ingestDomSnapshot(snapshot)
     const locale = resolveLocale(settings.language)
 
     for (const target of targets) {

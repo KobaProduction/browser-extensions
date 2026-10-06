@@ -1658,7 +1658,7 @@ Object.assign(window, {
     runUiTests: () => runUiTests(settings, adapter, context, appendCurrentExchange),
     runLoaderCancellationTests,
     runLoaderIsolationTests,
-    runLoaderScrollTest: () => runLoaderScrollTest(store),
+    runLoaderScrollTest: () => runLoaderScrollTest(),
     runPerformanceTests,
     settings,
     context,

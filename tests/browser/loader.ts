@@ -4,10 +4,7 @@ import {
   type HistoryLoaderState,
   OPEN_ARCHIVE_EVENT,
 } from '../../packages/core/src'
-import type {
-  ConversationArchiveStore,
-  ConversationCoverage,
-} from '../../packages/features/src/archive-store'
+import { ConversationStateStore } from '../../packages/features/src/conversation-state'
 import { HistoryLoaderModule } from '../../packages/features/src/history-loader'
 
 type TicketRef = { conversationId: string; startedAt: number }
@@ -38,15 +35,8 @@ export async function runLoaderCancellationTests() {
     const ticketKey = 'chatgpt-booster:manual-collection'
     const states: HistoryLoaderState[] = []
     let archiveOpened = false
-    let resolveRead: ((coverage: ConversationCoverage) => void) | undefined
     let finishes = 0
-    const slowStore = {
-      getCoverage: () =>
-        new Promise<ConversationCoverage>((resolve) => {
-          resolveRead = resolve
-        }),
-      getPreloadSnapshot: async () => undefined,
-    }
+    const memory = new ConversationStateStore()
     const capture = {
       finishCollection: (expected?: TicketRef) => {
         finishes++
@@ -58,7 +48,7 @@ export async function runLoaderCancellationTests() {
     const open = (event: Event) => {
       if ((event as CustomEvent).detail?.conversationId === id) archiveOpened = true
     }
-    const loader = new HistoryLoaderModule(slowStore, capture)
+    const loader = new HistoryLoaderModule(memory, capture)
     try {
       history.replaceState(null, '', `/c/${id}`)
       sessionStorage.setItem(
@@ -67,19 +57,51 @@ export async function runLoaderCancellationTests() {
       )
       window.addEventListener(HISTORY_LOADER_STATE_EVENT, state)
       window.addEventListener(OPEN_ARCHIVE_EVENT, open)
+      memory.ingestPage({
+        kind: 'conversation-page',
+        conversationId: id,
+        timestamp: startedAt + 1,
+        sourceUrl: 'fixture://loader-cancel',
+        readId: `${id}-read`,
+        readStartedAt: startedAt + 1,
+        isInitial: true,
+        requestedBefore: null,
+        payload: {
+          conversation_id: id,
+          messages: [],
+          page_info: {
+            start_cursor: 'middle',
+            end_cursor: 'end',
+            has_previous_page: true,
+            has_next_page: false,
+          },
+        },
+      })
       loader.start()
-      if (!resolveRead) throw new Error('loader did not await a store response')
+      await new Promise((resolve) => setTimeout(resolve, 20))
       if (mode === 'stop') window.dispatchEvent(new Event(HISTORY_LOADER_STOP_EVENT))
       else history.replaceState(null, '', '/c/different-conversation')
-      resolveRead({
-        evidenceVersion: 1,
+      memory.ingestPage({
+        kind: 'conversation-page',
         conversationId: id,
+        timestamp: startedAt + 2,
+        sourceUrl: 'fixture://loader-cancel',
+        readId: `${id}-read`,
         readStartedAt: startedAt + 1,
-        completeAtLastRead: true,
-        verifiedAt: startedAt + 2,
-        visibleMessageCount: 2,
-      } as ConversationCoverage)
-      await new Promise((resolve) => setTimeout(resolve, 20))
+        isInitial: false,
+        requestedBefore: 'middle',
+        payload: {
+          conversation_id: id,
+          messages: [],
+          page_info: {
+            start_cursor: 'start',
+            end_cursor: 'middle',
+            has_previous_page: false,
+            has_next_page: true,
+          },
+        },
+      })
+      await new Promise((resolve) => setTimeout(resolve, 40))
       if (archiveOpened || states.some((item) => item.phase === 'complete'))
         throw new Error('late DB completion opened an archive after cancellation')
       if (!states.some((item) => item.phase === 'cancelled'))
@@ -105,9 +127,7 @@ export async function runLoaderCancellationTests() {
 }
 
 /** Real scrollTop changes and real IndexedDB; server page events are explicit synthetic fixtures. */
-export async function runLoaderScrollTest(
-  store: Pick<ConversationArchiveStore, 'ingest' | 'getCoverage' | 'getPreloadSnapshot'>,
-) {
+export async function runLoaderScrollTest() {
   const href = location.href
   const id = `loader-scroll-${Date.now()}`
   const ticketKey = 'chatgpt-booster:manual-collection'
@@ -145,7 +165,8 @@ export async function runLoaderScrollTest(
       finishTicket(ticketKey, expected)
     },
   }
-  const loader = new HistoryLoaderModule(store, capture)
+  const memory = new ConversationStateStore()
+  const loader = new HistoryLoaderModule(memory, capture)
   const detail = {
     kind: 'conversation-page' as const,
     conversationId: id,
@@ -181,7 +202,7 @@ export async function runLoaderScrollTest(
       ticketKey,
       JSON.stringify({ conversationId: id, startedAt, expiresAt: startedAt + 60000 }),
     )
-    await store.ingest(detail)
+    memory.ingestPage(detail)
     scroller.scrollTop = 900
     window.addEventListener(HISTORY_LOADER_STATE_EVENT, state)
     window.addEventListener(OPEN_ARCHIVE_EVENT, open)
@@ -191,7 +212,7 @@ export async function runLoaderScrollTest(
     scroller.scrollTop = 0
     await new Promise((resolve) => setTimeout(resolve, 450))
     const premature = opened || states.some((item) => item.phase === 'complete')
-    await store.ingest({
+    memory.ingestPage({
       ...detail,
       timestamp: Date.now(),
       isInitial: false,
@@ -270,36 +291,31 @@ export async function runLoaderIsolationTests() {
     const hiddenDescriptor = Object.getOwnPropertyDescriptor(document, 'hidden')
     let hidden = false
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden })
-    const store = {
-      async getCoverage(): Promise<ConversationCoverage> {
-        return {
-          evidenceVersion: 1,
-          conversationId: id,
-          readId: `${id}-read`,
-          readStartedAt: startedAt + 1,
-          verifiedAt: null,
-          historyPageCount: 1,
-          visibleMessageCount: 2,
-          internalRecordCount: 0,
-          oldestKnownMessageId: null,
-          newestKnownMessageId: null,
-          oldestKnownCursor: 'middle',
-          newestKnownCursor: 'end',
-          hasOlderServerHistory: true,
-          hasNewerServerHistory: false,
-          knownMessageCount: 2,
-          knownBranchConversationIds: [],
-          lastObservedAt: startedAt + 1,
-          lastFullReadAt: null,
-          completeAtLastRead: false,
-        }
+    const memory = new ConversationStateStore()
+    memory.ingestPage({
+      kind: 'conversation-page',
+      conversationId: id,
+      timestamp: startedAt + 1,
+      sourceUrl: 'fixture://loader-isolation',
+      readId: `${id}-read`,
+      readStartedAt: startedAt + 1,
+      isInitial: true,
+      requestedBefore: null,
+      payload: {
+        conversation_id: id,
+        messages: [],
+        page_info: {
+          start_cursor: 'middle',
+          end_cursor: 'end',
+          has_previous_page: true,
+          has_next_page: false,
+        },
       },
-      getPreloadSnapshot: async () => undefined,
-    }
+    })
     const capture = {
       finishCollection: (expected?: TicketRef) => finishTicket(ticketKey, expected),
     }
-    const loader = new HistoryLoaderModule(store, capture)
+    const loader = new HistoryLoaderModule(memory, capture)
     const state = (event: Event) =>
       states.push({ ...(event as CustomEvent<HistoryLoaderState>).detail })
     try {
@@ -382,24 +398,13 @@ export async function runLoaderIsolationTests() {
     },
   )
 
-  await run('storage error is scoped to the active conversation', async ({ id, states }) => {
-    window.dispatchEvent(
-      new CustomEvent('chatgpt-booster:archive-storage-error', {
-        detail: { conversationId: 'different-conversation' },
-      }),
-    )
-    await new Promise((resolve) => setTimeout(resolve, 600))
-    if (states.some((item) => item.phase === 'error'))
-      throw new Error('foreign storage error leaked')
+  await run('storage errors do not abort the memory-first loader', async ({ id, states }) => {
     window.dispatchEvent(
       new CustomEvent('chatgpt-booster:archive-storage-error', { detail: { conversationId: id } }),
     )
-    const started = Date.now()
-    while (!states.some((item) => item.phase === 'error') && Date.now() - started < 2500)
-      await new Promise((resolve) => setTimeout(resolve, 25))
-    const error = [...states].reverse().find((item) => item.phase === 'error')
-    if (error?.message !== 'archive.error.storage')
-      throw new Error(`wrong storage error: ${error?.message}; states=${JSON.stringify(states)}`)
+    await new Promise((resolve) => setTimeout(resolve, 650))
+    if (states.some((item) => item.message === 'archive.error.storage'))
+      throw new Error('persistence error aborted the memory-first loader')
   })
 
   return results

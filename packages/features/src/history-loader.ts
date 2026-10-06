@@ -1,10 +1,10 @@
 import {
+  buildArchiveThread,
   currentConversationId,
   currentConversationMessageBounds,
   scrollConversationTowardStart,
 } from '@chatgpt-booster/chatgpt'
 import {
-  ARCHIVE_UPDATED_EVENT,
   type BoosterModule,
   DEFAULT_SETTINGS,
   HISTORY_LOADER_START_EVENT,
@@ -16,12 +16,13 @@ import {
   type SettingsAdapter,
 } from '@chatgpt-booster/core'
 import { ARCHIVE_NETWORK_EVENT, TRANSPORT_CHANNEL } from '@chatgpt-booster/observer'
-import type { ArchiveIngestSummary, ConversationArchiveStore } from './archive-store'
+import { type HistoryPageEvidence, historyCoverage } from './archive-coverage'
 import {
   type CollectionTicket,
   type ConversationArchiveModule,
   collectionTicket,
 } from './conversation-archive'
+import type { ConversationStateStore } from './conversation-state'
 
 export type { HistoryLoaderState } from '@chatgpt-booster/core'
 export {
@@ -57,7 +58,7 @@ export function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
 export class HistoryLoaderModule implements BoosterModule {
   readonly id = 'history-loader'
   #abort: AbortController | undefined
-  #pages = new Set<string>()
+  #stateUnsubscribe: (() => void) | undefined
   #startedAt = 0
   #ticket: CollectionTicket | undefined
   #network: { pending: boolean; error: number | null } = { pending: false, error: null }
@@ -72,7 +73,7 @@ export class HistoryLoaderModule implements BoosterModule {
     consecutiveErrors: 0,
   }
   constructor(
-    private store: Pick<ConversationArchiveStore, 'getCoverage' | 'getPreloadSnapshot'>,
+    private stateStore: ConversationStateStore,
     private capture: Pick<ConversationArchiveModule, 'finishCollection'>,
     private messageSource: Window = window,
     private settingsAdapter?: SettingsAdapter,
@@ -89,9 +90,8 @@ export class HistoryLoaderModule implements BoosterModule {
     window.addEventListener('chatgpt-booster:history-loader-query', this.#onQuery)
     window.addEventListener(HISTORY_LOADER_START_EVENT, this.#onStart)
     window.addEventListener(HISTORY_LOADER_STOP_EVENT, this.#onStop)
-    window.addEventListener(ARCHIVE_UPDATED_EVENT, this.#onArchive)
+    this.#stateUnsubscribe = this.stateStore.subscribe(this.#onStateChange)
     window.addEventListener('message', this.#onNetwork)
-    window.addEventListener('chatgpt-booster:archive-storage-error', this.#onStorageError)
     this.#publish()
     if (collectionTicket()) this.#onStart()
   }
@@ -102,22 +102,15 @@ export class HistoryLoaderModule implements BoosterModule {
     window.removeEventListener('chatgpt-booster:history-loader-query', this.#onQuery)
     window.removeEventListener(HISTORY_LOADER_START_EVENT, this.#onStart)
     window.removeEventListener(HISTORY_LOADER_STOP_EVENT, this.#onStop)
-    window.removeEventListener(ARCHIVE_UPDATED_EVENT, this.#onArchive)
+    this.#stateUnsubscribe?.()
+    this.#stateUnsubscribe = undefined
     window.removeEventListener('message', this.#onNetwork)
-    window.removeEventListener('chatgpt-booster:archive-storage-error', this.#onStorageError)
   }
   #onQuery = () => this.#publish()
-  #onArchive = (event: Event) => {
+  #onStateChange = (change: { conversationId: string; reason: string }) => {
     if (!this.#abort || this.#abort.signal.aborted) return
-    const detail = (event as CustomEvent<ArchiveIngestSummary>).detail
-    if (
-      detail?.conversationId !== this.#state.conversationId ||
-      typeof detail.readStartedAt !== 'number' ||
-      detail.readStartedAt < this.#startedAt
-    )
-      return
-    if (detail.pageKey) this.#pages.add(detail.pageKey)
-    this.#network.pending = false
+    if (change.conversationId !== this.#state.conversationId) return
+    if (change.reason === 'page') this.#network.pending = false
   }
   #onNetwork = (event: MessageEvent) => {
     if (!this.#abort || this.#abort.signal.aborted) return
@@ -134,12 +127,6 @@ export class HistoryLoaderModule implements BoosterModule {
     if (data.detail.phase === 'error')
       this.#network = { pending: false, error: data.detail.status ?? 0 }
   }
-  #onStorageError = (event: Event) => {
-    if ((event as CustomEvent).detail?.conversationId !== this.#state.conversationId) return
-    const controller = this.#abort
-    if (!controller || controller.signal.aborted) return
-    controller.abort(new Error('archive.error.storage'))
-  }
   #onStop = () => {
     const running = this.#abort && !this.#abort.signal.aborted
     const ticket = this.#ticket
@@ -155,7 +142,6 @@ export class HistoryLoaderModule implements BoosterModule {
     this.#abort = controller
     this.#ticket = ticket
     this.#startedAt = ticket.startedAt
-    this.#pages.clear()
     this.#network = { pending: false, error: null }
     this.#set({
       phase: 'preparing',
@@ -174,6 +160,32 @@ export class HistoryLoaderModule implements BoosterModule {
       this.capture.finishCollection(ticket)
     })
   }
+  #memoryEvidence(id: string): {
+    evidence: ReturnType<typeof historyCoverage>
+    records: ReturnType<ConversationStateStore['listMessages']>
+  } {
+    const snapshot = this.stateStore.snapshot(id)
+    const pages: HistoryPageEvidence[] = (snapshot?.pages ?? []).map((page) => {
+      const info =
+        page.payload.page_info && typeof page.payload.page_info === 'object'
+          ? (page.payload.page_info as Record<string, unknown>)
+          : {}
+      return {
+        readId: page.readId,
+        readStartedAt: page.readStartedAt,
+        isInitial: page.isInitial,
+        requestedBefore: page.requestedBefore,
+        startCursor: typeof info.start_cursor === 'string' ? info.start_cursor : null,
+        endCursor: typeof info.end_cursor === 'string' ? info.end_cursor : null,
+        hasPreviousPage:
+          typeof info.has_previous_page === 'boolean' ? info.has_previous_page : null,
+        hasNextPage: typeof info.has_next_page === 'boolean' ? info.has_next_page : null,
+        observedAt: page.timestamp,
+      }
+    })
+    return { evidence: historyCoverage(pages), records: snapshot?.records ?? [] }
+  }
+
   async #run(id: string, startedAt: number, signal: AbortSignal) {
     let stalledAt = Date.now()
     let noProgress = 0
@@ -197,42 +209,30 @@ export class HistoryLoaderModule implements BoosterModule {
           continue
         }
 
-        const [coverage, preload] = await Promise.all([
-          this.store.getCoverage(id),
-          this.store.getPreloadSnapshot(id),
-        ])
+        const { evidence, records } = this.#memoryEvidence(id)
         requireCurrentCollection()
         if (document.hidden) {
           stalledAt = Date.now()
           continue
         }
         const bounds = currentConversationMessageBounds()
-        const fresh = coverage?.evidenceVersion === 1 && (coverage.readStartedAt ?? 0) >= startedAt
-        const displayCoverage =
-          preload && (!coverage || preload.coverage.lastObservedAt > coverage.lastObservedAt)
-            ? preload.coverage
-            : coverage
-        const observedBaseline = Math.max(
-          coverage?.historyPageCount ?? 0,
-          preload?.coverage.historyPageCount ?? 0,
-        )
+        const thread = buildArchiveThread(records)
+        const visible = thread.turns.flatMap((turn) => turn.messages.map((item) => item.record))
+        const oldestVisibleMessageId = visible[0]?.messageId ?? null
+        const newestVisibleMessageId = visible.at(-1)?.messageId ?? null
+        const fresh = (evidence.readStartedAt ?? 0) >= startedAt
         const startMatches =
-          !!bounds.firstMessageId && coverage?.oldestKnownVisibleMessageId === bounds.firstMessageId
+          !bounds.firstMessageId || oldestVisibleMessageId === bounds.firstMessageId
         const latestMatches =
-          !expectedLatestMessageId ||
-          coverage?.newestKnownVisibleMessageId === expectedLatestMessageId
+          !expectedLatestMessageId || newestVisibleMessageId === expectedLatestMessageId
 
         this.#set({
-          knownMessageCount: Math.max(
-            coverage?.visibleMessageCount ?? 0,
-            preload?.coverage.visibleMessageCount ?? 0,
-          ),
-          pagesLoaded: observedBaseline,
-          hasOlderServerHistory:
-            coverage?.hasOlderServerHistory ?? displayCoverage?.hasOlderServerHistory ?? null,
+          knownMessageCount: thread.messageCount,
+          pagesLoaded: evidence.pageCount,
+          hasOlderServerHistory: !evidence.startReached,
         })
 
-        if (fresh && coverage?.completeAtLastRead && startMatches && latestMatches) {
+        if (fresh && evidence.verified && startMatches && latestMatches) {
           this.#set({ phase: 'complete', hasOlderServerHistory: false })
           window.dispatchEvent(
             new CustomEvent(OPEN_ARCHIVE_EVENT, { detail: { conversationId: id } }),
@@ -240,8 +240,8 @@ export class HistoryLoaderModule implements BoosterModule {
           return
         }
 
-        if (this.#pages.size > previousPageCount) {
-          previousPageCount = this.#pages.size
+        if (evidence.pageCount > previousPageCount) {
+          previousPageCount = evidence.pageCount
           stalledAt = Date.now()
           noProgress = 0
           this.#set({ consecutiveErrors: 0 })

@@ -11,14 +11,22 @@ import {
 } from '@chatgpt-booster/chatgpt'
 import type { ArchiveExportOptions, ArchiveRecordView } from '@chatgpt-booster/core'
 import { fetchArchiveAssetBytes } from '@chatgpt-booster/observer'
+import { type HistoryPageEvidence, historyCoverage } from './archive-coverage'
 import { type ArchiveExportPipeline, DEFAULT_ARCHIVE_EXPORT_PIPELINE } from './archive-export'
 import { createArchivePackage } from './archive-package'
-import type { ConversationArchiveStore } from './archive-store'
+import type {
+  ArchivedConversation,
+  ArchivedMessage,
+  ConversationArchiveStore,
+  ConversationCoverage,
+} from './archive-store'
 import type { ConversationArchiveModule } from './conversation-archive'
+import { ConversationStateStore } from './conversation-state'
 
 export interface ArchiveUiAdapterOptions {
   exportPipeline?: ArchiveExportPipeline
   assetFetchTarget?: Window
+  stateStore?: ConversationStateStore
 }
 
 export function createArchiveUiAdapter(
@@ -26,34 +34,112 @@ export function createArchiveUiAdapter(
   capture: ConversationArchiveModule,
   options: ArchiveUiAdapterOptions = {},
 ) {
+  const stateStore = options.stateStore ?? new ConversationStateStore()
   const exportPipeline = options.exportPipeline ?? DEFAULT_ARCHIVE_EXPORT_PIPELINE
   const assetFetchTarget = options.assetFetchTarget ?? window
-  async function observedProjectTitle(projectId: string, stored: string | null) {
-    const observed = currentProjectTitle(projectId)?.trim() || null
-    if (observed && observed !== stored) await store.upsertProject(projectId, observed)
-    return observed ?? stored
-  }
-
-  function domConversationView(conversationId: string) {
-    const snapshot = store.getDomSnapshot(conversationId)
+  function memoryConversationView(conversationId: string): ArchivedConversation | undefined {
+    const snapshot = stateStore.snapshot(conversationId)
     if (!snapshot) return undefined
+    const records = snapshot.records
+    const sourceTimes = records
+      .map((record) => record.updateTime ?? record.createTime)
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+    const firstSeenAt = records.length
+      ? Math.min(...records.map((record) => record.firstSeenAt))
+      : snapshot.lastObservedAt
     return {
-      conversationId: snapshot.conversationId,
+      conversationId,
       projectId: snapshot.projectId,
       title: snapshot.title,
-      updatedAt: null,
-      lastSeenAt: snapshot.observedAt,
-      archiveState: 'partial' as const,
+      conversationOrigin: null,
+      conversationTemplateId: null,
+      gizmoId: snapshot.projectId,
+      gizmoType: snapshot.projectId ? 'snorlax' : null,
+      defaultModelSlug: null,
+      currentNodeId: snapshot.currentNodeId,
+      createdAt: sourceTimes.length ? Math.min(...sourceTimes) : null,
+      updatedAt: sourceTimes.length ? Math.max(...sourceTimes) : null,
+      isArchived: null,
+      isReadOnly: null,
+      isTemporaryChat: null,
+      isStarred: null,
+      isStudyMode: null,
+      isDoNotRemember: null,
       branchSourceConversationId: null,
       branchSourceTitle: null,
+      firstSeenAt,
+      lastSeenAt: snapshot.lastObservedAt,
+      lastFullReadAt: null,
+      archiveState: 'partial',
+      raw: {},
+    }
+  }
+
+  function memoryCoverage(conversationId: string): ConversationCoverage | undefined {
+    const snapshot = stateStore.snapshot(conversationId)
+    if (!snapshot) return undefined
+    const thread = buildArchiveThread(snapshot.records)
+    const visible = thread.turns.flatMap((turn) => turn.messages.map((item) => item.record))
+    const pages: HistoryPageEvidence[] = snapshot.pages.map((page) => {
+      const info =
+        page.payload.page_info && typeof page.payload.page_info === 'object'
+          ? (page.payload.page_info as Record<string, unknown>)
+          : {}
+      return {
+        readId: page.readId,
+        readStartedAt: page.readStartedAt,
+        isInitial: page.isInitial,
+        requestedBefore: page.requestedBefore,
+        startCursor: typeof info.start_cursor === 'string' ? info.start_cursor : null,
+        endCursor: typeof info.end_cursor === 'string' ? info.end_cursor : null,
+        hasPreviousPage:
+          typeof info.has_previous_page === 'boolean' ? info.has_previous_page : null,
+        hasNextPage: typeof info.has_next_page === 'boolean' ? info.has_next_page : null,
+        observedAt: page.timestamp,
+      }
+    })
+    const evidence = historyCoverage(pages)
+    const latestInitial = snapshot.pages
+      .filter((page) => page.isInitial)
+      .sort((a, b) => b.timestamp - a.timestamp)[0]
+    const info =
+      latestInitial?.payload.page_info && typeof latestInitial.payload.page_info === 'object'
+        ? (latestInitial.payload.page_info as Record<string, unknown>)
+        : {}
+    return {
+      evidenceVersion: 1,
+      readId: evidence.readId,
+      readStartedAt: evidence.readStartedAt,
+      verifiedAt: evidence.verified ? evidence.observedAt : null,
+      historyPageCount: evidence.pageCount,
+      visibleMessageCount: thread.messageCount,
+      internalRecordCount: thread.detailCount,
+      conversationId,
+      oldestKnownMessageId: snapshot.records[0]?.messageId ?? null,
+      newestKnownMessageId: snapshot.records.at(-1)?.messageId ?? null,
+      oldestKnownVisibleMessageId: visible[0]?.messageId ?? null,
+      newestKnownVisibleMessageId: visible.at(-1)?.messageId ?? null,
+      oldestKnownCursor: evidence.oldestCursor,
+      newestKnownCursor: typeof info.end_cursor === 'string' ? info.end_cursor : null,
+      hasOlderServerHistory: evidence.startReached ? false : evidence.pageCount ? true : null,
+      hasNewerServerHistory: typeof info.has_next_page === 'boolean' ? info.has_next_page : null,
+      knownMessageCount: snapshot.records.length,
+      knownBranchConversationIds: [],
+      lastObservedAt: snapshot.lastObservedAt,
+      lastFullReadAt: evidence.verified ? evidence.observedAt : null,
+      completeAtLastRead: evidence.verified,
     }
   }
 
   async function loadConversationView(conversationId: string) {
-    return (await store.getConversation(conversationId)) ?? domConversationView(conversationId)
+    const memory = memoryConversationView(conversationId)
+    if (memory && currentConversationId() === conversationId) return memory
+    return (await store.getConversation(conversationId)) ?? memory
   }
 
   const READ_CACHE_LIMIT = 24
+  const effectiveRevision = (conversationId: string) =>
+    store.conversationRevision(conversationId) * 1_000_000 + stateStore.revision(conversationId)
   const conversationReads = new Map<
     string,
     { revision: number; promise: ReturnType<typeof loadConversationView> }
@@ -71,13 +157,13 @@ export function createArchiveUiAdapter(
   }
 
   function conversationView(conversationId: string): ReturnType<typeof loadConversationView> {
-    const revision = store.conversationRevision(conversationId)
+    const revision = effectiveRevision(conversationId)
     const cached = conversationReads.get(conversationId)
     if (cached?.revision === revision)
       return cacheRead(conversationReads, conversationId, cached).promise
 
     const pending = loadConversationView(conversationId).then(async (conversation) => {
-      if (store.conversationRevision(conversationId) !== revision)
+      if (effectiveRevision(conversationId) !== revision)
         return await conversationView(conversationId)
       return conversation
     })
@@ -107,19 +193,19 @@ export function createArchiveUiAdapter(
       stored.map((record) => [record.messageKey, record]),
     )
     for (const record of preload?.records ?? []) merged.set(record.messageKey, record)
-    for (const record of store.getDomSnapshot(conversationId)?.records ?? [])
-      if (!merged.has(record.messageKey)) merged.set(record.messageKey, record)
+    for (const record of stateStore.listMessages(conversationId))
+      merged.set(record.messageKey, record)
     const records = [...merged.values()]
     return { records, thread: buildArchiveThread(records), persistedCoverage, preload }
   }
 
   function conversationReadModel(conversationId: string): Promise<ConversationReadModel> {
-    const revision = store.conversationRevision(conversationId)
+    const revision = effectiveRevision(conversationId)
     const cached = readModels.get(conversationId)
     if (cached?.revision === revision) return cacheRead(readModels, conversationId, cached).promise
 
     const pending = loadConversationReadModel(conversationId).then(async (model) => {
-      if (store.conversationRevision(conversationId) !== revision)
+      if (effectiveRevision(conversationId) !== revision)
         return await conversationReadModel(conversationId)
       return model
     })
@@ -132,60 +218,60 @@ export function createArchiveUiAdapter(
       const conversationId = currentConversationId() ?? null
       const conversation = conversationId ? await conversationView(conversationId) : undefined
       const projectId = currentProjectId() ?? conversation?.projectId ?? null
-      const project = projectId ? await store.getProject(projectId) : undefined
+      const observedTitle = projectId ? currentProjectTitle(projectId)?.trim() || null : null
+      const project = projectId && !observedTitle ? await store.getProject(projectId) : undefined
       return {
         conversationId,
         conversationTitle: conversation?.title ?? currentConversationTitle() ?? null,
         projectId,
-        projectTitle: projectId
-          ? await observedProjectTitle(projectId, project?.title ?? null)
-          : null,
+        projectTitle: observedTitle ?? project?.title ?? null,
       }
     },
     currentConversationId: () => currentConversationId() ?? null,
     currentProjectId: () => currentProjectId() ?? null,
     subscribeContextChange: (listener: () => void) => observeChatGptNavigation(listener),
-    listProjects: async () =>
-      await Promise.all(
-        (await store.listProjects()).map(async (project) => ({
-          ...project,
-          title: await observedProjectTitle(project.projectId, project.title),
-        })),
-      ),
+    listProjects: async () => {
+      const stored = await store.listProjects().catch(() => [])
+      const byId = new Map(stored.map((project) => [project.projectId, project]))
+      for (const snapshot of stateStore.listSnapshots()) {
+        if (!snapshot.projectId) continue
+        const previous = byId.get(snapshot.projectId)
+        byId.set(snapshot.projectId, {
+          projectId: snapshot.projectId,
+          title: currentProjectTitle(snapshot.projectId)?.trim() || previous?.title || null,
+          firstSeenAt: previous?.firstSeenAt ?? snapshot.lastObservedAt,
+          lastSeenAt: Math.max(previous?.lastSeenAt ?? 0, snapshot.lastObservedAt),
+        })
+      }
+      return [...byId.values()].sort((a, b) => (a.title ?? '').localeCompare(b.title ?? ''))
+    },
     getConversation: (conversationId: string) => conversationView(conversationId),
     getCoverage: async (conversationId: string) => {
+      const memory = memoryCoverage(conversationId)
+      if (memory && currentConversationId() === conversationId) {
+        const current = currentConversationMessageBounds()
+        return {
+          ...memory,
+          currentFirstMessageId: current.firstMessageId,
+          currentLastMessageId: current.lastMessageId,
+          storedStartMatchesCurrent:
+            !!current.firstMessageId &&
+            memory.oldestKnownVisibleMessageId === current.firstMessageId,
+          storedLatestMatchesCurrent:
+            !!current.lastMessageId && memory.newestKnownVisibleMessageId === current.lastMessageId,
+        }
+      }
       const {
         persistedCoverage: coverage,
         preload,
         thread,
       } = await conversationReadModel(conversationId)
-      const dom = store.getDomSnapshot(conversationId)
-      const effective =
-        coverage ??
-        preload?.coverage ??
-        (dom
-          ? {
-              conversationId,
-              knownMessageCount: dom.records.length,
-              oldestKnownMessageId: dom.records[0]?.messageId ?? null,
-              newestKnownMessageId: dom.records.at(-1)?.messageId ?? null,
-              oldestKnownVisibleMessageId: dom.records[0]?.messageId ?? null,
-              newestKnownVisibleMessageId: dom.records.at(-1)?.messageId ?? null,
-              oldestKnownCursor: null,
-              newestKnownCursor: null,
-              hasOlderServerHistory: null,
-              hasNewerServerHistory: null,
-              knownBranchConversationIds: [],
-              lastObservedAt: dom.observedAt,
-              lastFullReadAt: null,
-              completeAtLastRead: false,
-            }
-          : undefined)
+      const candidates = [coverage, preload?.coverage, memory].filter(
+        (item): item is NonNullable<typeof coverage> => Boolean(item),
+      )
+      const effective = candidates.sort((a, b) => b.lastObservedAt - a.lastObservedAt)[0]
       if (!effective) return undefined
-      const liveCoverage =
-        preload && preload.coverage.lastObservedAt >= effective.lastObservedAt
-          ? preload.coverage
-          : effective
+      const liveCoverage = memory ?? effective
       const current =
         currentConversationId() === conversationId
           ? currentConversationMessageBounds()
@@ -198,7 +284,9 @@ export function createArchiveUiAdapter(
           liveCoverage.oldestKnownVisibleMessageId ?? effective.oldestKnownVisibleMessageId ?? null,
         newestKnownVisibleMessageId:
           liveCoverage.newestKnownVisibleMessageId ?? effective.newestKnownVisibleMessageId ?? null,
-        completeAtLastRead: coverage?.evidenceVersion === 1 && coverage.completeAtLastRead === true,
+        completeAtLastRead:
+          memory?.completeAtLastRead === true ||
+          (coverage?.evidenceVersion === 1 && coverage.completeAtLastRead === true),
         visibleMessageCount: thread.messageCount,
         internalRecordCount: thread.detailCount,
         knownMessageCount: thread.recordCount,
@@ -215,17 +303,26 @@ export function createArchiveUiAdapter(
       }
     },
     listConversations: async () => {
-      const conversations = await store.listConversations()
-      const current = currentConversationId()
-      if (!current || conversations.some((item) => item.conversationId === current))
-        return conversations
-      const dom = domConversationView(current)
-      return dom ? [dom, ...conversations] : conversations
+      const stored = await store.listConversations().catch(() => [])
+      const byId = new Map(
+        stored.map((conversation) => [conversation.conversationId, conversation]),
+      )
+      for (const snapshot of stateStore.listSnapshots()) {
+        const memory = memoryConversationView(snapshot.conversationId)
+        if (memory) byId.set(snapshot.conversationId, memory)
+      }
+      return [...byId.values()].sort((a, b) => b.lastSeenAt - a.lastSeenAt)
     },
-    listMessages: async (conversationId: string) =>
-      (await conversationReadModel(conversationId)).records,
-    getThread: async (conversationId: string) =>
-      (await conversationReadModel(conversationId)).thread,
+    listMessages: async (conversationId: string) => {
+      const live = stateStore.listMessages(conversationId)
+      if (live.length && currentConversationId() === conversationId) return live
+      return (await conversationReadModel(conversationId)).records
+    },
+    getThread: async (conversationId: string) => {
+      const live = stateStore.listMessages(conversationId)
+      if (live.length && currentConversationId() === conversationId) return buildArchiveThread(live)
+      return (await conversationReadModel(conversationId)).thread
+    },
     collectCurrent: () => capture.collectCurrent(),
     clearAll: async () => {
       await store.clearAll()
@@ -238,11 +335,20 @@ export function createArchiveUiAdapter(
       options: ArchiveExportOptions,
       signal?: AbortSignal,
     ) => {
-      const [conversation, messages, coverage] = await Promise.all([
-        store.getConversation(conversationId),
-        store.listMessages(conversationId),
-        store.getCoverage(conversationId),
+      await stateStore.hydrate(conversationId, store).catch(() => undefined)
+      const [storedConversation, storedMessages, coverage] = await Promise.all([
+        store.getConversation(conversationId).catch(() => undefined),
+        store.listMessages(conversationId).catch(() => []),
+        store.getCoverage(conversationId).catch(() => undefined),
       ])
+      const memoryConversation = memoryConversationView(conversationId)
+      const conversation = storedConversation ?? memoryConversation
+      const liveMessages = stateStore.listMessages(conversationId)
+      const mergedMessages = new Map<string, ArchivedMessage>(
+        storedMessages.map((record) => [record.messageKey, record]),
+      )
+      for (const record of liveMessages) mergedMessages.set(record.messageKey, record)
+      const messages = [...mergedMessages.values()]
       if (!conversation) throw new Error('archive.error.noChat')
       const captureEvidence = await store.getCaptureEvidence(conversationId, coverage?.readId)
       const evidence = {
