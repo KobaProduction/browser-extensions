@@ -730,6 +730,211 @@ Conversation-length exhaustion is a critical terminal condition distinct from:
 
 It should have its own normalized runtime cause/state and a dedicated high-priority alert policy. The requested product behavior is tracked in issue `#32`: a conspicuous repeated alarm for roughly 2–3 seconds, deduplicated to one alarm per exhaustion boundary.
 
+### Verified exhausted-chat continuation, new-chat creation, branch API, and rename (2026-10-07)
+
+After capturing the native maximum-conversation-length terminal state, the `Start new chat` CTA was exercised end-to-end. This exposed an important distinction: **the exhausted-chat continuation CTA is not the same mechanism as ChatGPT's native branch API.**
+
+#### Exhausted CTA: stage 1 — open a new project-chat draft
+
+The native `Start new chat` action navigated the **same browser tab** to the ChatGPT root rather than immediately creating a persisted conversation.
+
+The client first initialized a new unsaved project chat:
+
+```text
+POST /backend-api/conversation/init -> 200
+```
+
+Observed request shape:
+
+```json
+{
+  "conversation_id": null,
+  "conversation_origin": null,
+  "gizmo_id": "<project_id>",
+  "requested_default_model": null,
+  "system_hints": null,
+  "timezone": "<local timezone>",
+  "timezone_offset_min": "<offset>"
+}
+```
+
+ChatGPT then prepared a draft through:
+
+```text
+POST /backend-api/f/conversation/prepare -> 200
+```
+
+Relevant fields:
+
+```json
+{
+  "action": "next",
+  "parent_message_id": "client-created-root",
+  "conversation_mode": {
+    "kind": "gizmo_interaction",
+    "gizmo_id": "<project_id>"
+  },
+  "gizmo_id": "<project_id>",
+  "partial_query": {
+    "author": { "role": "user" },
+    "content": {
+      "content_type": "text",
+      "parts": ["<last user prompt from exhausted conversation>"]
+    },
+    "id": "<temporary prepare id>"
+  },
+  "client_prepare_dispatch": "immediate",
+  "client_prepare_source": "composer_editor_state"
+}
+```
+
+The root UI presented a composer labelled as a **new chat inside the same project**, prefilled with the last user prompt from the exhausted conversation.
+
+At this stage:
+
+- no new `/f/conversation` submission had occurred;
+- no server conversation id had been allocated;
+- no `source_conversation_id` was present;
+- no `boundary_message_id` was present;
+- no parent from the exhausted conversation graph was present;
+- the project/gizmo association was preserved.
+
+Therefore this stage is a draft continuation convenience, not persisted branching of the old message graph.
+
+#### Exhausted CTA: stage 2 — actual new conversation creation
+
+A persisted conversation was created only when the prefilled draft was actually submitted. The client then sent:
+
+```text
+POST /backend-api/f/conversation -> 200
+```
+
+Relevant creation payload:
+
+```json
+{
+  "turn_attribution": { "turn_trigger": "composer" },
+  "action": "next",
+  "parent_message_id": "client-created-root",
+  "conversation_mode": {
+    "kind": "gizmo_interaction",
+    "gizmo_id": "<project_id>"
+  },
+  "gizmo_id": "<project_id>",
+  "messages": [
+    {
+      "id": "<new user message id>",
+      "author": { "role": "user" },
+      "create_time": "<new source timestamp>",
+      "content": {
+        "content_type": "text",
+        "parts": ["<copied exhausted-chat prompt>"]
+      }
+    }
+  ],
+  "client_prepare_state": "success"
+}
+```
+
+Crucially, the observed body had **no `conversation_id`**. The server allocated the new conversation id as part of this first submission and the client then navigated to the new `/c/<id>` route.
+
+The observed request still had no `source_conversation_id`, `boundary_message_id`, or old-message parent. Thus the exhausted CTA is verified as:
+
+```text
+exhausted conversation
+  -> Start new chat
+  -> root/project draft with last user prompt copied
+  -> first normal /f/conversation submission
+  -> server allocates a new conversation id
+```
+
+It is **not** the true `new_branch` transport contract described below.
+
+#### Temporary title synchronization difference
+
+Immediately after creation, the active conversation page displayed an automatically generated title, while the project conversation list still temporarily showed the generic `New chat` / localized `Новый чат` entry with the prompt preview. This proves that active-page title presentation and project-list cache synchronization can be temporarily out of phase.
+
+Do not infer persisted title state solely from `document.title` or one renderer surface. Observe the conversation metadata/list update contract when title correctness matters.
+
+#### True native branch API — client-code confirmed
+
+The deployed client contains a distinct branch method:
+
+```text
+POST /backend-api/conversation/new_branch
+```
+
+with request body:
+
+```json
+{
+  "conversation_id": "<source conversation id>",
+  "message_id": "<branch boundary message id>"
+}
+```
+
+The client receives a new `conversation` object and also generates a fresh local `clientThreadId` for the branch operation.
+
+This branch endpoint was identified directly in the deployed client code, but was **not live-executed in this particular capture**. Evidence level: client-code confirmed, not live-accepted yet.
+
+#### Native chat rename — live verified
+
+The deployed client rename function trims the requested title and no-ops on an empty title or a title identical to the previous value. A real rename was then performed through the native project conversation-list UI.
+
+Native dialog contract observed:
+
+```text
+Dialog title: Rename chat / Переименовать чат
+Input aria-label: Chat title / Название чата
+Placeholder: Add a title… / Добавьте название…
+Actions: Cancel / Save
+```
+
+The default unsynchronized list entry displayed localized `Новый чат`, while the rename input's underlying value was `New chat`, another indication that default-title presentation may be localized separately from stored/default source text.
+
+Saving the new title emitted exactly:
+
+```text
+POST /backend-api/conversation/id/{conversation_id}/rename -> 200
+```
+
+with body:
+
+```json
+{
+  "title": "<new title>"
+}
+```
+
+and response:
+
+```json
+{
+  "success": true
+}
+```
+
+The project conversation list updated immediately to the new title after the successful response.
+
+Client code also shows that successful rename updates local conversation/query/search caches and supports undo/redo through the title transition queue when a previous title is known.
+
+#### Runtime consequences
+
+Treat these as three separate operations:
+
+```text
+exhausted Start-new-chat continuation
+    = new root draft + copied last user prompt + normal first submission
+
+true branch
+    = POST /conversation/new_branch with source conversation + boundary message
+
+rename
+    = POST /conversation/id/{conversation_id}/rename with {title}
+```
+
+Do not infer a branch merely because old content remains temporarily visible during route transition, and do not infer persisted title state from a single UI surface.
+
 ### Verified native Stop-generation contract (2026-10-07)
 
 A live external-Playwright experiment on the same `Обзор RedmiBook Pro 16` conversation reloaded the page, waited for ChatGPT to restore the active generation/recovery state, and then invoked the native Stop control once. No other ChatGPT controls were clicked during the experiment.

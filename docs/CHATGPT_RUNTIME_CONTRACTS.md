@@ -110,6 +110,8 @@ This catalog contains runtime routes that have been directly observed or client-
 | `/backend-api/conversations/{id}?num_turns=...` | GET | fetch current conversation state | initial/history/server async-state evidence |
 | `/backend-api/celsius/ws/user` | GET | obtain realtime/WebSocket connection information | transport evidence; do not persist returned credentials/tokens |
 | `/backend-api/conversation/init` | POST | page/conversation initialization path | observed bootstrap; not a run timer boundary |
+| `/backend-api/conversation/new_branch` | POST | create a true branch from a source conversation/message boundary | client-code confirmed branch contract; distinct from exhausted Start-new-chat continuation |
+| `/backend-api/conversation/id/{conversation_id}/rename` | POST | rename a persisted chat | live verified; body `{title}`; update title caches after success |
 | `/backend-api/sentinel/chat-requirements/prepare` | POST | ChatGPT internal request requirements/preflight | observed around submission; no Booster lifecycle authority established |
 | `/backend-api/sentinel/chat-requirements/finalize` | POST | ChatGPT internal request requirements finalization | observed around submission; no Booster lifecycle authority established |
 
@@ -279,7 +281,83 @@ source errorCode / normalized terminal cause == conversation_too_large
 
 Fallback DOM presentation may be used only as temporary diagnostics/acceptance evidence, not as the stable architectural classifier.
 
-## 7. Native Stop contract
+## 7. New chat, exhausted continuation, branch, and rename
+
+These operations are distinct and must not share one generic "new thread" interpretation.
+
+### Exhausted conversation -> Start new chat
+
+Verified flow:
+
+```text
+conversation_too_large presentation
+  -> user selects Start new chat
+  -> same browser tab navigates to root
+  -> POST /conversation/init with conversation_id=null and project/gizmo context
+  -> POST /f/conversation/prepare with parent_message_id="client-created-root"
+  -> last exhausted user prompt is copied into partial_query/draft
+  -> no persisted new conversation yet
+  -> user submits draft
+  -> POST /f/conversation without conversation_id
+  -> server allocates new conversation id
+  -> client navigates to new /c/{id}
+```
+
+Observed creation request contained no `source_conversation_id`, no `boundary_message_id`, and no old graph parent. Therefore exhausted continuation is not a true branch operation.
+
+Project context is preserved through `gizmo_id` / `conversation_mode`, while the message itself receives a fresh id and source `create_time`.
+
+### True branch
+
+Client-code-confirmed contract:
+
+```text
+POST /backend-api/conversation/new_branch
+```
+
+```json
+{
+  "conversation_id": "<source conversation>",
+  "message_id": "<branch boundary message>"
+}
+```
+
+Use this operation as the semantic definition of a ChatGPT branch. It returns a new conversation object; the client also creates a fresh local thread id. This endpoint still requires live acceptance before Booster should depend on undocumented response details.
+
+### Rename
+
+Live-verified contract:
+
+```text
+POST /backend-api/conversation/id/{conversation_id}/rename
+```
+
+```json
+{
+  "title": "<trimmed new title>"
+}
+```
+
+Observed response:
+
+```json
+{ "success": true }
+```
+
+Client behavior:
+
+- trim requested title;
+- no-op when empty or unchanged;
+- update conversation/list/search caches after success;
+- support undo/redo when the previous title is known.
+
+### Title synchronization
+
+Active page title and project-list title can temporarily disagree immediately after new conversation creation. The observed active page had an auto-generated title while the project list still showed generic `New chat` / localized `Новый чат`.
+
+Do not use `document.title` as authoritative persisted conversation title. Treat title updates as source/cache state and allow temporary presentation lag between surfaces.
+
+## 8. Native Stop contract
 
 Verified native action:
 
@@ -319,7 +397,7 @@ After the confirmed Stop, one final already-started recovery pair was observed, 
 
 `last_message_id:null` is valid evidence in at least one stopped recovery case. Do not hard-code it as a constant for every successful Stop.
 
-## 8. Stream recovery contract
+## 9. Stream recovery contract
 
 Observed recovery routes:
 
@@ -442,7 +520,7 @@ precise final/stream-complete source timestamp
 
 A late COMPLETE confirmation may close a run whose exact completion boundary was missed, but it must not overwrite an earlier precise completion timestamp.
 
-## 9. Safety-review stream contract
+## 10. Safety-review stream contract
 
 Verified authoritative stream event:
 
@@ -517,7 +595,7 @@ The inspected client contract deactivates the review when a `safety_review_updat
 - client code proves `active=false` is the deactivation mechanism;
 - the exact deactivation SSE frame was not captured directly.
 
-## 10. Moderation contract
+## 11. Moderation contract
 
 Moderation is distinct from `safety_review_update`.
 
@@ -562,7 +640,7 @@ moderation blocked/safety_limited/etc.
 
 Do not collapse them into a single boolean named `moderated`.
 
-## 11. DOM signatures are corroboration only
+## 12. DOM signatures are corroboration only
 
 Verified useful DOM signals include:
 
@@ -585,7 +663,7 @@ Known contradictions include:
 
 Keep renderer/version-specific selectors behind `ChatGptDomAdapter`.
 
-## 12. State precedence rules
+## 13. State precedence rules
 
 The live read model should obey these rules:
 
@@ -600,7 +678,7 @@ The live read model should obey these rules:
 9. DB hydration cannot overwrite fresher live source evidence.
 10. Archive persistence policy does not disable live observation.
 
-## 13. Implementation anti-patterns
+## 14. Implementation anti-patterns
 
 Do not:
 
@@ -616,7 +694,7 @@ Do not:
 - persist or surface conduit/auth tokens;
 - synthesize private ChatGPT mutations when a feature is only observing native client behavior.
 
-## 14. Observer event targets
+## 15. Observer event targets
 
 The observer layer should normalize source events rather than expose feature modules to raw host details.
 
@@ -635,7 +713,7 @@ message-stream completion
 
 Feature/UI code should consume normalized runtime state from `ConversationStateStore`, not separately parse host transport or localized DOM.
 
-## 15. Validation checklist for lifecycle changes
+## 16. Validation checklist for lifecycle changes
 
 Before claiming a lifecycle change complete, verify at least:
 
@@ -649,7 +727,7 @@ Before claiming a lifecycle change complete, verify at least:
 - reload of an active/recovery conversation hydrates source state without waiting on IndexedDB;
 - extension and userscript share the same normalized runtime behavior.
 
-## 16. Evidence boundaries
+## 17. Evidence boundaries
 
 Maintain explicit confidence levels in future reverse-engineering:
 
