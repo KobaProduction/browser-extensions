@@ -474,7 +474,7 @@ with the actual user message in `messages[0]`. Relevant observed fields were:
   "thinking_effort": "standard",
   "messages": [
     {
-      "id": "9061a1ff-2980-428e-8fc3-2426a09e4f80",
+      "id": "<fresh_user_message_id>",
       "author": { "role": "user" },
       "content": { "content_type": "text", "parts": ["продолжить"] },
       "create_time": 1791323726.555,
@@ -515,7 +515,7 @@ parent/current edge = parent_message_id
 Immediately after submission the new rendered turn showed:
 
 ```text
-data-turn-key = 9061a1ff-2980-428e-8fc3-2426a09e4f80
+data-turn-key = <fresh_user_message_id>
 data-talvt-turn-state = in_progress
 native Stop control = present
 ```
@@ -531,6 +531,8 @@ Therefore live request state and request-timer mounting must **not** depend on a
 The inspected tab was still running Booster 0.8.38. After the fresh message started, the native turn correctly changed to the new user id and exposed Stop, but Booster's global request status incorrectly continued the previous stopped/recovery elapsed value (`Запрос 1:17:38`, later `1:19:11`) instead of restarting from the new message's `create_time`.
 
 This is Booster behavior, not ChatGPT behavior. The fresh ChatGPT transport supplied the correct new id and source timestamp. A newer outbound `/f/conversation` request for the current conversation must replace any stale older active run in the live read model/UI; an old DOM turn that still says `in_progress` must not be allowed to re-promote or visually dominate the newer request lifecycle.
+
+Implementation of this defect is tracked in GitHub issue `#29`; the normative supersession rule is documented in `docs/CHATGPT_RUNTIME_CONTRACTS.md`.
 
 ### Verified safety-review processing state (2026-10-07)
 
@@ -554,7 +556,7 @@ A read-only React-fiber inspection of the rendered native component exposed the 
 
 ```text
 conversationId = <current conversation>
-requestId      = 9061a1ff-2980-428e-8fc3-2426a09e4f80
+requestId      = <fresh_user_message_id>
 protectionType = "cyber"
 message        = "Наши системы выполняют дополнительную обработку этого запроса, прежде чем предоставить ответ."
 ```
@@ -598,6 +600,12 @@ safety review    = active, protectionType=cyber
 ```
 
 Booster UI/alerts for this state should be driven from the `safety_review_update` stream event. The localized `role="status"` DOM is corroborating presentation evidence only and must not be the classifier.
+
+#### Observed review completion
+
+A later passive read of the same fresh turn found the safety-review `role="status"` completely absent and no native error alert present. The turn still rendered as `data-talvt-turn-state="in_progress"` at that observation boundary. This proves that the review presentation can end independently of the overall request lifecycle.
+
+The inspected client contract deactivates review state from `safety_review_update` with `active=false`. The exact deactivation SSE packet was not separately captured from the live stream, so the evidence boundary is: the UI transition was observed directly and the `active=false` mechanism is client-code confirmed, but that specific frame was not captured live.
 
 ### Verified native Stop-generation contract (2026-10-07)
 
@@ -878,7 +886,7 @@ with request body:
 
 ```json
 {
-  "conversation_id": "6ac5144e-ebf0-83eb-b145-72ee142accc3",
+  "conversation_id": "<conversation_id>",
   "exclude_async_types": []
 }
 ```

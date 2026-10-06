@@ -6,8 +6,9 @@ Repository map for ChatGPT Booster.
 
 1. Read `README.md`.
 2. Read `docs/ARCHITECTURE.md` before structural changes.
-3. Use the universal workflow library routed by the account/project prompt.
-4. Keep the project browser-side unless a concrete feature requires a service.
+3. For ChatGPT runtime/lifecycle/transport/timer/safety changes, read `docs/CHATGPT_RUNTIME_CONTRACTS.md`; use `docs/CHATGPT_CLIENT_RESEARCH.md` for the underlying evidence.
+4. Use the universal workflow library routed by the account/project prompt.
+5. Keep the project browser-side unless a concrete feature requires a service.
 
 ## Repository boundaries
 
@@ -33,6 +34,9 @@ Repository map for ChatGPT Booster.
 - The active conversation is memory-first: live UI reads `ConversationStateStore`, never IndexedDB as its primary synchronization path. Archive policy affects persistence only; initial/history payloads and live lifecycle evidence must enter RAM regardless of persistence settings.
 - IndexedDB may hydrate or persist the memory model asynchronously, but a database read/write must never gate current message decorators, request/activity timers, tool inspection, History Loader state, or current-chat export.
 - Stop lifecycle is transport-confirmed: outbound stop means `stop_requested`; only a successful ChatGPT stop response means `stopped`.
+- Runtime state is multi-axis: run lifecycle, transport/recovery health, server async status, reasoning/activity, safety review and moderation are separate. Do not collapse them into one status enum.
+- A fresh outbound `/backend-api/f/conversation` supersedes any older active run for that conversation; stale DOM must not resurrect the previous run.
+- `/backend-api/f/conversation/prepare` is preflight only and never defines the request timer boundary or final message identity.
 
 ## Active archive/UI contract
 

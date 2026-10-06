@@ -79,6 +79,8 @@ Features register as small modules with explicit start/stop lifecycle. A feature
 
 ## ChatGPT integration
 
+For the implementation-facing runtime state machine, endpoint/event catalog and source-precedence rules, read `docs/CHATGPT_RUNTIME_CONTRACTS.md`; this architecture file keeps only ownership and invariants.
+
 The current foundation only depends on the page host and normal DOM capabilities. Future DOM selectors must live behind a ChatGPT adapter instead of being scattered across feature code.
 
 Live ChatGPT UI augmentation follows the same passive-interception rule as transport observation:
