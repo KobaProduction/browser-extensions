@@ -472,11 +472,70 @@ The live `Resume stream unavailable` state can coexist with a turn that still sa
 
 For the captured incident, the user-facing alert coincided with a failed WebSocket path and a `404` response from `/f/conversation/resume`. This is sufficient to classify the incident as a stream-recovery/resume failure rather than normal generation.
 
+#### Reload reproduction and long-wait mechanism
+
+The same conversation was then reloaded without clicking Retry or any other ChatGPT control. The failure reproduced as a long-lived recovery state rather than an immediate terminal error.
+
+The first normal conversation load after reload returned HTTP `200` with these relevant fields:
+
+```text
+async_status = 3
+current_node = <last persisted thoughts record>
+page_info.has_next_page = false
+```
+
+The deployed client enum in the inspected build maps:
+
+```text
+STREAMING           = 3
+UNREAD              = 4
+REALTIME            = 5
+REALTIME_BUSY       = 6
+REALTIME_BACKGROUND = 7
+```
+
+Therefore the initial payload itself tells the client that the conversation is still `STREAMING`. The `current_node` in this capture pointed to a persisted `thoughts` record whose metadata contained `reasoning_status="is_reasoning"`; there was no later final assistant answer in the returned current page, and `has_next_page=false` showed that this was the current tail rather than a locally truncated newer page.
+
+After that reload ChatGPT automatically attempted stream recovery:
+
+```text
+POST /backend-api/f/conversation/resume -> 404
+```
+
+The captured response body was:
+
+```json
+{
+  "detail": {
+    "message": "A network error occurred. Please check your connection and try again.",
+    "code": "tokenless_resume_unavailable"
+  }
+}
+```
+
+This proves that the reproduced recovery path reaches the internal `tokenless_resume_unavailable` error code. The client then repeatedly polled:
+
+```text
+GET /backend-api/conversation/{conversation_id}/stream_status -> 200
+{ "status": "IS_STREAMING" }
+```
+
+Multiple consecutive polls returned `IS_STREAMING`; later polls in the same recovery loop were observed aborting with `net::ERR_ABORTED`, with occasional later successful `IS_STREAMING` responses again. Conversation refresh requests also began returning `429` repeatedly.
+
+During this entire post-reload observation window:
+
+- the native `Resume stream unavailable` alert disappeared immediately after reload and had not yet reappeared;
+- the affected turn remained `data-talvt-turn-state="in_progress"`;
+- the native Stop-generation control remained absent;
+- Booster 0.8.38 continued the original source-derived timers past one hour because the run lifecycle had no separate transport-health state.
+
+This establishes the long-wait mechanism: the persisted conversation and `stream_status` continue to claim `STREAMING` even after `/f/conversation/resume` is no longer available. ChatGPT therefore enters a polling/recovery loop instead of immediately converting the turn to a terminal error.
+
 #### What is not yet proven
 
-The exact one-to-one mapping from the literal UI text `Resume stream unavailable` to one specific internal error code (for example `tokenless_resume_unavailable`) is not yet proven. The literal string was not found in the inspected `7078` chunk, and the 404 response body was not captured. Do not encode that stronger mapping until a response payload or client branch proves it.
+The reproduced recovery request now proves that `/f/conversation/resume` returns `code="tokenless_resume_unavailable"` in this failure path. However, the exact one-to-one mapping from the literal rendered alert text `Resume stream unavailable` to that code has still not been observed in the same post-reload instant: the alert disappeared on reload and had not reappeared during the observation window. Treat the code and alert as strongly correlated parts of the same reproduced recovery scenario, but do not encode the literal-text mapping as the sole classifier.
 
-Likewise, the repeated `429` conversation-history/list failures and the `ERR_HTTP2_PROTOCOL_ERROR` were observed in the same page session, but they are not yet proven to be the direct trigger for this particular alert.
+Likewise, the repeated `429` conversation-history/list failures and the `ERR_HTTP2_PROTOCOL_ERROR` were observed in the same page session, but they are not yet proven to be the direct trigger for the recovery failure.
 
 #### Booster design consequence
 
