@@ -60,6 +60,17 @@ function fullDate(value: number | null, locale: SupportedLocale) {
   return time ? new Date(time).toLocaleString(locale) : null
 }
 
+function shortTime(value: number | null, locale: SupportedLocale) {
+  const time = serverTime(value)
+  return time
+    ? new Date(time).toLocaleTimeString(locale, {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+    : '—'
+}
+
 function sameMetadata(a: ConversationItemMetadataView, b: ConversationItemMetadataView) {
   return (
     a.sentAt === b.sentAt &&
@@ -184,6 +195,10 @@ export function mountMessageMetadata(
   shadow.append(badges)
 
   const time = createHoverPopover(svgIcon('clock'))
+  time.trigger.classList.add('booster-meta-trigger-time')
+  const timeText = document.createElement('span')
+  timeText.className = 'booster-meta-time-text'
+  time.trigger.append(timeText)
   const model = createHoverPopover(svgIcon('brain'))
   badges.append(time.trigger, time.popup, model.trigger, model.popup)
 
@@ -196,6 +211,8 @@ export function mountMessageMetadata(
     const timeLabel = [sent ? `${sentLabel}: ${sent}` : unknown]
     if (next.edited && edited) timeLabel.push(`${editedLabel}: ${edited}`)
     time.trigger.setAttribute('aria-label', timeLabel.join('\n'))
+    time.trigger.title = timeLabel.join(' · ')
+    timeText.textContent = shortTime(next.sentAt, locale)
     time.popup.replaceChildren()
     const timeLines = createLines()
     appendLine(timeLines, sentLabel, sent || unknown)
@@ -216,6 +233,7 @@ export function mountMessageMetadata(
       return
     }
     model.trigger.setAttribute('aria-label', modelParts.join('\n'))
+    model.trigger.title = modelParts.join(' · ')
     model.popup.replaceChildren()
     const modelLines = createLines()
     if (next.model) appendLine(modelLines, modelLabel, next.model)

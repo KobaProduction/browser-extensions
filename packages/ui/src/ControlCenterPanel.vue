@@ -282,7 +282,7 @@ async function testTelemetry() {
             </button>
           </section>
         </template>
-        <template v-if="activeSection === 'modules'">
+        <template v-else-if="activeSection === 'modules'">
           <section class="booster-setting-card" :class="{ 'booster-setting-disabled': !settings.enabled }">
             <div class="booster-setting-copy">
               <div class="flex items-center gap-2">

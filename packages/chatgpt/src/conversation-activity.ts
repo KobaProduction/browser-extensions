@@ -119,6 +119,7 @@ export function observeConversationActivity(
     if (stopped) return
     const now = Date.now()
     const state = readConversationActivity()
+    let justCompleted = false
     if (state.active) {
       if (state.turnId !== activeTurnId) {
         activeTurnId = state.turnId
@@ -134,15 +135,20 @@ export function observeConversationActivity(
       if (state.fingerprint !== lastFingerprint) lastActivityAt = now
       activeTurnId = null
       lastFingerprint = state.fingerprint
+      justCompleted = true
     }
 
     const snapshot: AgentActivitySnapshot = {
       conversationId: currentConversationId() ?? null,
       turnId: state.turnId,
       active: state.active,
-      phase: state.active ? state.phase : 'idle',
+      phase: state.active ? state.phase : justCompleted ? 'complete' : 'idle',
       startedAt,
       lastActivityAt,
+      durationMs:
+        !state.active && justCompleted && startedAt && lastActivityAt
+          ? Math.max(0, lastActivityAt - startedAt)
+          : null,
       label: state.label,
       tool: state.tool,
     }

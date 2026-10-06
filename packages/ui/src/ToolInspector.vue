@@ -3,6 +3,7 @@ import Check from 'lucide-vue-next/dist/esm/icons/check.js'
 import ChevronDown from 'lucide-vue-next/dist/esm/icons/chevron-down.js'
 import Clipboard from 'lucide-vue-next/dist/esm/icons/clipboard.js'
 import Clock3 from 'lucide-vue-next/dist/esm/icons/clock-3.js'
+import Globe2 from 'lucide-vue-next/dist/esm/icons/globe.js'
 import Wrench from 'lucide-vue-next/dist/esm/icons/wrench.js'
 import { computed, ref } from 'vue'
 import type { ToolCallViewModel } from './tool-inspector'
@@ -20,10 +21,24 @@ function serverTime(value: number | null) {
   if (!value || !Number.isFinite(value)) return null
   return value < 10_000_000_000 ? value * 1000 : value
 }
-const timestamp = computed(() => {
-  const value = serverTime(props.model.tool.timestamp)
-  return value ? new Date(value).toLocaleString(props.model.locale) : null
-})
+const timestampValue = computed(() => serverTime(props.model.tool.timestamp))
+const timestamp = computed(() =>
+  timestampValue.value ? new Date(timestampValue.value).toLocaleString(props.model.locale) : null,
+)
+const timestampShort = computed(() =>
+  timestampValue.value
+    ? new Date(timestampValue.value).toLocaleTimeString(props.model.locale, {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+    : null,
+)
+const isWebTool = computed(() =>
+  /(?:^|\b)(web|browser|search)(?:\b|$)/i.test(
+    [props.model.tool.provider, props.model.tool.action, props.model.tool.label].filter(Boolean).join(' '),
+  ),
+)
 
 async function copyDiagnostics() {
   await navigator.clipboard.writeText(JSON.stringify(props.model, null, 2))
@@ -37,7 +52,9 @@ async function copyDiagnostics() {
 <template>
   <div class="booster-tool-inspector" :lang="model.locale">
     <div class="booster-live-tool-row">
-      <Wrench class="size-3.5 shrink-0" />
+      <img v-if="model.tool.iconUrl" :src="model.tool.iconUrl" alt="" class="booster-live-tool-icon" />
+      <Globe2 v-else-if="isWebTool" class="size-3.5 shrink-0" />
+      <Wrench v-else class="size-3.5 shrink-0" />
       <div class="booster-live-tool-copy">
         <strong class="booster-live-tool-name">{{ model.tool.provider || model.tool.label }}</strong>
         <span v-if="model.tool.action" class="booster-live-tool-action-name">{{ model.tool.action }}</span>
@@ -45,11 +62,12 @@ async function copyDiagnostics() {
 
       <FloatingInfoPopover
         v-if="timestamp"
-        :label="t('reader.sentAt') + ': ' + timestamp"
+        :label="t('tool.calledAt') + ': ' + timestamp"
+        trigger-class="booster-tool-time-chip"
       >
-        <template #trigger><Clock3 class="size-3.5" /></template>
+        <template #trigger><Clock3 class="size-3.5" /><span>{{ timestampShort }}</span></template>
         <div class="booster-meta-lines">
-          <strong class="booster-meta-label">{{ t('reader.sentAt') }}</strong><span class="booster-meta-value">{{ timestamp }}</span>
+          <strong class="booster-meta-label">{{ t('tool.calledAt') }}</strong><span class="booster-meta-value">{{ timestamp }}</span>
           <template v-if="model.tool.provider">
             <strong class="booster-meta-label">{{ t('tool.provider') }}</strong><span class="booster-meta-value">{{ model.tool.provider }}</span>
           </template>

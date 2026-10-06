@@ -1,5 +1,7 @@
 import {
   archiveRecordMetadata,
+  archiveRecordText,
+  asRecord,
   type ConversationMessageTarget,
   conversationDomSnapshotFromTargets,
   currentConversationId,
@@ -9,6 +11,7 @@ import {
   type ScheduledIdleTask,
   scheduleIdleTask,
   toolInvocationFromEvidence,
+  toolInvocationFromRecord,
 } from '@chatgpt-booster/chatgpt'
 import {
   AGENT_ACTIVITY_EVENT,
@@ -18,6 +21,7 @@ import {
   type BoosterSettings,
   type ConversationItemMetadataView,
   type SettingsAdapter,
+  serverTimeMs,
 } from '@chatgpt-booster/core'
 import {
   type MountedAgentActivity,
@@ -43,12 +47,12 @@ export class ConversationDecoratorsModule implements BoosterModule {
 
   #observer: ReturnType<typeof observeConversationDecorations> | undefined
   #activityObserver: ReturnType<typeof observeConversationActivity> | undefined
-  #activityMount: MountedAgentActivity | undefined
-  #activityMountParent: HTMLElement | undefined
+  #activityMounts = new Map<HTMLElement, MountedAgentActivity>()
   #unsubscribe: (() => void) | undefined
   #archiveRefreshTimer: ReturnType<typeof setTimeout> | undefined
   #settings: BoosterSettings | undefined
   #records = new Map<string, ArchivedMessage>()
+  #turnRecords = new Map<string, ArchivedMessage[]>()
   #recordConversationId: string | null = null
   #loadVersion = 0
   #activeRecordRefresh: { conversationId: string | null; promise: Promise<void> } | undefined
@@ -127,35 +131,33 @@ export class ConversationDecoratorsModule implements BoosterModule {
 
   #onActivity = ({
     snapshot,
+    section,
     mount,
   }: {
     snapshot: AgentActivitySnapshot
+    section: HTMLElement | null
     mount: HTMLElement | null
   }) => {
     window.dispatchEvent(new CustomEvent(AGENT_ACTIVITY_EVENT, { detail: snapshot }))
-    if (!this.#settings?.enabled || !snapshot.active || !mount) {
-      this.#clearActivity()
-      return
-    }
+    if (!this.#settings?.enabled || !section || !mount || !snapshot.lastActivityAt) return
     const locale = resolveLocale(this.#settings.language)
-    if (
-      this.#activityMount &&
-      this.#activityMount.element.isConnected &&
-      this.#activityMountParent === mount &&
-      mount.contains(this.#activityMount.element)
-    ) {
-      this.#activityMount.update(snapshot)
+    const effective = snapshot.active
+      ? snapshot
+      : snapshot.phase === 'complete'
+        ? snapshot
+        : { ...snapshot, phase: 'complete' as const }
+    const mounted = this.#activityMounts.get(section)
+    if (mounted?.element.isConnected && mount.contains(mounted.element)) {
+      mounted.update(effective)
       return
     }
-    this.#clearActivity()
-    this.#activityMount = mountAgentActivity(mount, snapshot, locale)
-    this.#activityMountParent = mount
+    mounted?.unmount()
+    this.#activityMounts.set(section, mountAgentActivity(mount, effective, locale))
   }
 
   #clearActivity() {
-    this.#activityMount?.unmount()
-    this.#activityMount = undefined
-    this.#activityMountParent = undefined
+    for (const mounted of this.#activityMounts.values()) mounted.unmount()
+    this.#activityMounts.clear()
   }
 
   stop() {
@@ -171,6 +173,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
     this.#activeRecordRefresh = undefined
     this.#recordRefreshQueued = false
     this.#records.clear()
+    this.#turnRecords.clear()
     if (this.#recordConversationId) this.store.clearDomSnapshot(this.#recordConversationId)
     this.#recordConversationId = null
     this.#firstSeen.clear()
@@ -233,6 +236,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
     const version = ++this.#loadVersion
     if (!conversationId) {
       this.#records.clear()
+      this.#turnRecords.clear()
       this.#recordConversationId = null
       return
     }
@@ -246,7 +250,97 @@ export class ConversationDecoratorsModule implements BoosterModule {
     for (const record of preload?.records ?? []) merged.set(record.messageId, record)
     if (preload?.records.length) this.store.clearDomSnapshot(conversationId)
     this.#records = merged
+    this.#turnRecords.clear()
+    for (const record of merged.values()) {
+      const key = record.turnExchangeId ?? record.workingTurnId
+      if (!key) continue
+      const items = this.#turnRecords.get(key) ?? []
+      items.push(record)
+      this.#turnRecords.set(key, items)
+    }
+    for (const items of this.#turnRecords.values())
+      items.sort(
+        (a, b) =>
+          serverTimeMs(a.createTime, a.firstSeenAt) - serverTimeMs(b.createTime, b.firstSeenAt),
+      )
     this.#recordConversationId = conversationId
+  }
+
+  #turnItemsForMessage(messageId: string): ArchivedMessage[] {
+    const anchor = this.#records.get(messageId)
+    const key = anchor?.turnExchangeId ?? anchor?.workingTurnId
+    return key ? (this.#turnRecords.get(key) ?? []) : []
+  }
+
+  #historicalActivity(target: ConversationMessageTarget): AgentActivitySnapshot | null {
+    if (target.role !== 'assistant') return null
+    const items = this.#turnItemsForMessage(target.messageId)
+    if (!items.length) return null
+    const activityItems = items.filter(
+      (item) =>
+        item.role === 'tool' ||
+        (item.role === 'assistant' && item.recipient && item.recipient !== 'all') ||
+        item.contentType === 'thoughts' ||
+        item.contentType === 'reasoning_recap',
+    )
+    if (!activityItems.length) return null
+
+    const starts: number[] = []
+    const ends: number[] = []
+    let durationMs: number | null = null
+    let label: string | null = null
+    for (const item of activityItems) {
+      const metadata = asRecord(item.raw.metadata)
+      const reasoningStart =
+        typeof metadata?.reasoning_start_time === 'number' ? metadata.reasoning_start_time : null
+      const reasoningEnd =
+        typeof metadata?.reasoning_end_time === 'number' ? metadata.reasoning_end_time : null
+      if (reasoningStart) starts.push(serverTimeMs(reasoningStart))
+      if (reasoningEnd) ends.push(serverTimeMs(reasoningEnd))
+      const created = serverTimeMs(item.createTime, item.firstSeenAt)
+      if (created) {
+        starts.push(created)
+        ends.push(created)
+      }
+      const updated = serverTimeMs(item.updateTime)
+      if (updated) ends.push(updated)
+      if (item.contentType === 'reasoning_recap') {
+        label = archiveRecordText(item) || label
+        if (typeof metadata?.finished_duration_sec === 'number')
+          durationMs = Math.max(0, metadata.finished_duration_sec * 1000)
+      }
+    }
+    if (!starts.length || !ends.length) return null
+    const anchor = this.#records.get(target.messageId)
+    return {
+      conversationId: anchor?.conversationId ?? currentConversationId() ?? null,
+      turnId:
+        anchor?.turnExchangeId ?? anchor?.workingTurnId ?? target.section.dataset.turnId ?? null,
+      active: false,
+      phase: 'complete',
+      startedAt: Math.min(...starts),
+      lastActivityAt: Math.max(...ends),
+      durationMs: durationMs ?? Math.max(0, Math.max(...ends) - Math.min(...starts)),
+      label,
+      tool: null,
+    }
+  }
+
+  #toolCallRecords(section: HTMLElement): ArchivedMessage[] {
+    const messageIds = [
+      ...section.querySelectorAll<HTMLElement>('[data-message-id][data-message-author-role]'),
+    ]
+      .map((item) => item.dataset.messageId)
+      .filter((value): value is string => Boolean(value))
+    const anchor = messageIds.map((id) => this.#records.get(id)).find(Boolean)
+    const key = anchor?.turnExchangeId ?? anchor?.workingTurnId
+    if (!key) return []
+    return (this.#turnRecords.get(key) ?? []).filter(
+      (item) =>
+        item.role === 'assistant' &&
+        Boolean(item.recipient && item.recipient !== 'all') &&
+        Boolean(toolInvocationFromRecord(item)),
+    )
   }
 
   async #scan(targets: ConversationMessageTarget[], root: ParentNode) {
@@ -290,38 +384,67 @@ export class ConversationDecoratorsModule implements BoosterModule {
           mountMessageMetadata(target.metadataMount, metadata, locale, target.role === 'assistant'),
         )
       }
+      if (target.role === 'assistant' && !this.#activityMounts.has(target.section)) {
+        const historical = this.#historicalActivity(target)
+        if (historical)
+          this.#activityMounts.set(
+            target.section,
+            mountAgentActivity(target.metadataMount, historical, locale),
+          )
+      }
     }
 
     if (settings.features.toolInspector) {
       const toolRoot = root === document ? (document.querySelector('main') ?? root) : root
-      for (const evidence of findToolCallEvidence(toolRoot)) {
-        if (this.#toolMounts.has(evidence.element)) continue
-        const tool = toolInvocationFromEvidence(evidence)
-        if (!tool.timestamp) {
-          const section = evidence.element.closest<HTMLElement>(
-            'section[data-testid^="conversation-turn-"]',
-          )
-          const messageId = section?.querySelector<HTMLElement>(
-            '[data-message-id][data-message-author-role]',
-          )?.dataset.messageId
-          const record = messageId ? this.#records.get(messageId) : undefined
-          const metadata = record ? archiveRecordMetadata(record) : undefined
-          tool.timestamp =
-            metadata?.sentAt ?? (messageId ? (this.#firstSeen.get(messageId) ?? null) : null)
-        }
-        this.#toolMounts.set(
-          evidence.element,
-          mountToolInspector(evidence.element, {
-            id: evidence.id,
-            tool,
-            locale,
-            structuredPayloads: evidence.structuredPayloads,
-            attributes: evidence.attributes,
-            visibleText: evidence.visibleText,
-            score: evidence.score,
-            signals: evidence.signals,
-          }),
+      const evidenceList = findToolCallEvidence(toolRoot)
+      const bySection = new Map<HTMLElement, typeof evidenceList>()
+      for (const evidence of evidenceList) {
+        const section = evidence.element.closest<HTMLElement>(
+          'section[data-testid^="conversation-turn-"]',
         )
+        if (!section) continue
+        const list = bySection.get(section) ?? []
+        list.push(evidence)
+        bySection.set(section, list)
+      }
+      for (const [section, evidences] of bySection) {
+        const records = this.#toolCallRecords(section)
+        for (const [index, evidence] of evidences.entries()) {
+          if (this.#toolMounts.has(evidence.element)) continue
+          const observed = toolInvocationFromEvidence(evidence)
+          const archived = records[index] ? toolInvocationFromRecord(records[index]) : null
+          const tool = archived
+            ? {
+                ...observed,
+                ...archived,
+                payload: archived.payload ?? observed.payload,
+                iconUrl: archived.iconUrl ?? observed.iconUrl,
+                iconKey: archived.iconKey ?? observed.iconKey,
+              }
+            : observed
+          if (!tool.timestamp) {
+            const messageId = section.querySelector<HTMLElement>(
+              '[data-message-id][data-message-author-role]',
+            )?.dataset.messageId
+            const record = messageId ? this.#records.get(messageId) : undefined
+            const metadata = record ? archiveRecordMetadata(record) : undefined
+            tool.timestamp =
+              metadata?.sentAt ?? (messageId ? (this.#firstSeen.get(messageId) ?? null) : null)
+          }
+          this.#toolMounts.set(
+            evidence.element,
+            mountToolInspector(evidence.element, {
+              id: evidence.id,
+              tool,
+              locale,
+              structuredPayloads: evidence.structuredPayloads,
+              attributes: evidence.attributes,
+              visibleText: evidence.visibleText,
+              score: evidence.score,
+              signals: evidence.signals,
+            }),
+          )
+        }
       }
     } else {
       for (const mounted of this.#toolMounts.values()) mounted.unmount()
@@ -344,6 +467,11 @@ export class ConversationDecoratorsModule implements BoosterModule {
       if (target.isConnected && mounted.element.isConnected) continue
       mounted.unmount()
       this.#toolMounts.delete(target)
+    }
+    for (const [section, mounted] of this.#activityMounts) {
+      if (section.isConnected && mounted.element.isConnected) continue
+      mounted.unmount()
+      this.#activityMounts.delete(section)
     }
   }
 

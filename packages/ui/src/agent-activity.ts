@@ -41,6 +41,18 @@ function elapsed(since: number | null, now = Date.now()) {
   return `${hours}:${String(minutes % 60).padStart(2, '0')}:${String(rest).padStart(2, '0')}`
 }
 
+function duration(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return '—'
+  const ms = Math.max(0, value)
+  if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`
+  const seconds = Math.floor(ms / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const rest = seconds % 60
+  if (minutes < 60) return `${minutes}:${String(rest).padStart(2, '0')}`
+  const hours = Math.floor(minutes / 60)
+  return `${hours}:${String(minutes % 60).padStart(2, '0')}:${String(rest).padStart(2, '0')}`
+}
+
 function dateTime(value: number | null, locale: SupportedLocale) {
   return value ? new Date(value).toLocaleString(locale) : '—'
 }
@@ -79,16 +91,22 @@ export function mountAgentActivity(
     if (snapshot.phase === 'tool') return t('activity.tool')
     if (snapshot.phase === 'responding') return t('activity.responding')
     if (snapshot.phase === 'thinking') return t('activity.thinking')
+    if (snapshot.phase === 'complete') return t('activity.complete')
     return t('activity.idle')
   }
 
   const renderStatic = () => {
     pill.dataset.phase = snapshot.phase
     phase.textContent = phaseLabel()
-    label.textContent =
+    const rawLabel =
       snapshot.label && snapshot.label !== snapshot.tool?.label
         ? snapshot.label
         : (snapshot.tool?.label ?? '')
+    label.textContent =
+      snapshot.phase === 'complete' &&
+      /(?:обработка|проработка|processing|worked).*занял|took/i.test(rawLabel)
+        ? ''
+        : rawLabel
     label.hidden = !label.textContent
     pill.title = `${t('activity.startedAt')}: ${dateTime(snapshot.startedAt, locale)}\n${t('activity.lastActivityAt')}: ${dateTime(snapshot.lastActivityAt, locale)}`
     pill.setAttribute(
@@ -97,6 +115,19 @@ export function mountAgentActivity(
     )
   }
   const renderTimer = () => {
+    if (snapshot.phase === 'complete') {
+      timer.textContent = duration(
+        snapshot.durationMs ??
+          (snapshot.startedAt && snapshot.lastActivityAt
+            ? Math.max(0, snapshot.lastActivityAt - snapshot.startedAt)
+            : null),
+      )
+      pill.setAttribute(
+        'aria-label',
+        `${phaseLabel()}, ${t('activity.duration')} ${timer.textContent}`,
+      )
+      return
+    }
     timer.textContent = elapsed(snapshot.lastActivityAt)
     pill.setAttribute(
       'aria-label',

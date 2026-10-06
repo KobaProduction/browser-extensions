@@ -6,6 +6,7 @@ const props = withDefaults(
     mode?: 'hover' | 'click'
     label: string
     align?: 'start' | 'end'
+    triggerClass?: string
   }>(),
   { mode: 'hover', align: 'end' },
 )
@@ -94,10 +95,11 @@ onBeforeUnmount(() => {
   <span
     ref="trigger"
     class="booster-meta-trigger"
-    :class="{ 'is-clickable': mode === 'click' }"
+    :class="[triggerClass, { 'is-clickable': mode === 'click' }]"
     tabindex="0"
     role="button"
     :aria-label="label"
+    :title="label"
     @mouseenter="mode === 'hover' && show()"
     @mouseleave="mode === 'hover' && hide()"
     @focus="mode === 'hover' && show()"

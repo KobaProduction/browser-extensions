@@ -1,6 +1,6 @@
 import type { ToolInvocationView } from './archive'
 
-export type AgentActivityPhase = 'idle' | 'thinking' | 'tool' | 'responding'
+export type AgentActivityPhase = 'idle' | 'thinking' | 'tool' | 'responding' | 'complete'
 
 export interface AgentActivitySnapshot {
   conversationId: string | null
@@ -9,6 +9,7 @@ export interface AgentActivitySnapshot {
   phase: AgentActivityPhase
   startedAt: number | null
   lastActivityAt: number | null
+  durationMs: number | null
   label: string | null
   tool: ToolInvocationView | null
 }

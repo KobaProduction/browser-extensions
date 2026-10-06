@@ -23,6 +23,7 @@ const CANDIDATE_SELECTOR = [
   '[aria-label*="mcp" i]',
   '[aria-label*="connector" i]',
   '[data-streaming-response-status]',
+  '[data-testid="cot-v5-tool-icon-pile"]',
   'button',
   '[role="button"]',
   'details',
@@ -36,6 +37,7 @@ const HIGH_SIGNAL_SELECTOR = [
   '[aria-label*="mcp" i]',
   '[aria-label*="connector" i]',
   '[data-streaming-response-status]',
+  '[data-testid="cot-v5-tool-icon-pile"]',
   '[data-json]',
   '[data-payload]',
   'pre',
@@ -155,6 +157,23 @@ function streamingStatusTool(element: HTMLElement) {
   return parseStreamingToolStatus(element.textContent ?? '')
 }
 
+function cotToolRow(element: HTMLElement): HTMLElement | null {
+  const icon = element.matches('[data-testid="cot-v5-tool-icon-pile"]')
+    ? element
+    : element.querySelector<HTMLElement>('[data-testid="cot-v5-tool-icon-pile"]')
+  if (!icon) return null
+  let current: HTMLElement | null = icon
+  for (let depth = 0; current && depth < 6; depth += 1, current = current.parentElement) {
+    const control = current.querySelector<HTMLElement>('button[aria-controls][aria-label]')
+    if (control) return current
+  }
+  return icon.parentElement
+}
+
+function canonicalCandidate(element: HTMLElement): HTMLElement {
+  return cotToolRow(element) ?? element
+}
+
 function scoreCandidate(element: HTMLElement): { score: number; signals: string[] } {
   if (!isInsideConversationAssistantTurn(element)) return { score: 0, signals: [] }
 
@@ -187,6 +206,10 @@ function scoreCandidate(element: HTMLElement): { score: number; signals: string[
     score += 2
     signals.push('structured descendant')
   }
+  if (element.querySelector('[data-testid="cot-v5-tool-icon-pile"]')) {
+    score += 5
+    signals.push('cot v5 tool summary')
+  }
   if (streamingStatusTool(element)) {
     score += 5
     signals.push('streaming tool status')
@@ -218,7 +241,11 @@ export function findToolCallEvidence(root: ParentNode = document): ToolCallEvide
     if (!TOOL_WORDS.test(text) && !TOOL_ACTIONS.test(text)) return []
   }
 
-  const candidates = [...searchRoot.querySelectorAll<HTMLElement>(CANDIDATE_SELECTOR)]
+  const candidates = [
+    ...new Set(
+      [...searchRoot.querySelectorAll<HTMLElement>(CANDIDATE_SELECTOR)].map(canonicalCandidate),
+    ),
+  ]
   const accepted: HTMLElement[] = []
   const result: ToolCallEvidence[] = []
 
@@ -227,7 +254,10 @@ export function findToolCallEvidence(root: ParentNode = document): ToolCallEvide
     const { score, signals } = scoreCandidate(element)
     if (score < 5 || isNestedDuplicate(element, accepted)) continue
 
-    const visibleText = compact(element.textContent || '').slice(0, 4000)
+    const cotLabel = element
+      .querySelector<HTMLElement>('button[aria-controls][aria-label]')
+      ?.getAttribute('aria-label')
+    const visibleText = compact(element.textContent || cotLabel || '').slice(0, 4000)
     if (!visibleText) continue
 
     const metadataText = [
@@ -384,6 +414,7 @@ function toolIconKey(value: unknown): string | null {
 export function toolInvocationFromRecord(record: ArchiveRecordView): ToolInvocationView | null {
   const metadata = asObject(record.raw.metadata)
   const recipient = record.recipient?.trim() || null
+  const searchModelQueries = asObject(metadata?.search_model_queries)
   const payload =
     metadata?.arguments ??
     metadata?.args ??
@@ -391,7 +422,8 @@ export function toolInvocationFromRecord(record: ArchiveRecordView): ToolInvocat
     record.raw.arguments ??
     record.raw.args ??
     record.raw.input ??
-    null
+    metadata?.search_queries ??
+    (Array.isArray(searchModelQueries?.queries) ? { queries: searchModelQueries.queries } : null)
   const rawName =
     nestedToolName(payload ?? record.raw) ??
     firstNonEmptyString(
