@@ -415,6 +415,75 @@ Authenticated sessions have shown both ordinary HTTP/fetch traffic and WebSocket
 
 Archive ingestion must be route/content aware. Do not interpret every WebSocket or SSE message as conversation history.
 
+### Verified stream-recovery failure: `Resume stream unavailable` (2026-10-07)
+
+A live external-Playwright inspection of the ChatGPT tab titled `Обзор RedmiBook Pro 16` captured a real recovery failure state without clicking, retrying, scrolling or reloading the page.
+
+Directly observed UI/DOM facts:
+
+- ChatGPT rendered a native `aside[role="alert"]` containing `Resume stream unavailable` and a `Повторить` action.
+- The affected conversation turn still exposed `data-talvt-turn-state="in_progress"`.
+- The native Stop-generation control was absent.
+- Booster 0.8.37 still displayed the request/reasoning timers (`Запрос 51:23`, `Размышление 51:20`) because the old lifecycle model treated `in_progress` as sufficient evidence that generation was still healthy.
+
+Directly observed transport/console facts from the same tab/session:
+
+- the ChatGPT WebSocket connection to `wss://ws.chatgpt.com/...` failed before establishment;
+- `POST /backend-api/f/conversation/resume` returned HTTP `404`;
+- an ordinary `POST /backend-api/f/conversation` also produced `net::ERR_HTTP2_PROTOCOL_ERROR` in the same page session;
+- repeated conversation refresh requests were also observed returning `429` in that session.
+
+The deployed ChatGPT client chunk (`cdn/assets/7078.b973546175.js`, observed build on 2026-10-07) independently confirms the recovery pipeline:
+
+```text
+GET  /backend-api/conversation/{conversation_id}/stream_status
+POST /backend-api/f/conversation/resume
+GET  /backend-api/celsius/ws/user          -> returns the WebSocket URL
+```
+
+The recovered client logic distinguishes at least these stream-status / recovery outcomes:
+
+```text
+IS_STREAMING
+COMPLETE
+FAILURE
+UNAVAILABLE          # client maps stream_status HTTP 404 to this value
+stream_failure       # FAILURE when no terminal recovered message is available
+unconfirmed          # recovery/polling could not prove the terminal result
+```
+
+A `410` completion-stream error with `errorCode="persisted_final_available"` is handled specially: the client treats the final response as already persisted and attempts to recover it from conversation data instead of requiring the original stream.
+
+The client also contains user-facing/internal error taxonomy including:
+
+```text
+tokenless_resume_unavailable
+network_error
+network_error_with_reconnection
+recovery_unconfirmed
+recovery_terminal
+```
+
+and retries resume transport through `/f/conversation/resume` with a bounded backoff policy before falling back to recovery polling.
+
+#### What is proven
+
+The live `Resume stream unavailable` state can coexist with a turn that still says `in_progress`. Therefore `data-talvt-turn-state="in_progress"` alone is **not** proof that ChatGPT still has a healthy live generation stream.
+
+For the captured incident, the user-facing alert coincided with a failed WebSocket path and a `404` response from `/f/conversation/resume`. This is sufficient to classify the incident as a stream-recovery/resume failure rather than normal generation.
+
+#### What is not yet proven
+
+The exact one-to-one mapping from the literal UI text `Resume stream unavailable` to one specific internal error code (for example `tokenless_resume_unavailable`) is not yet proven. The literal string was not found in the inspected `7078` chunk, and the 404 response body was not captured. Do not encode that stronger mapping until a response payload or client branch proves it.
+
+Likewise, the repeated `429` conversation-history/list failures and the `ERR_HTTP2_PROTOCOL_ERROR` were observed in the same page session, but they are not yet proven to be the direct trigger for this particular alert.
+
+#### Booster design consequence
+
+Generation lifecycle and transport health must be modeled separately. A conversation can be logically `in_progress` while its realtime transport is reconnecting, unavailable or failed. Booster must not infer healthy execution, long-running work, completion sounds or stuck-request warnings solely from native DOM turn state or from the presence/absence of the Stop button.
+
+Transport/recovery classification should be driven by the documented API/WebSocket evidence above. DOM alerts are useful for acceptance verification and presentation correlation, but they are not the primary source of truth for the recovery state.
+
 ## Privacy contract
 
 Conversation/archive content is local browser data.
