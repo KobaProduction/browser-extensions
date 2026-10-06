@@ -7,9 +7,13 @@ import {
   ARCHIVE_PRELOAD_EVENT,
   CONVERSATION_REQUEST_EVENT,
   CONVERSATION_STOP_EVENT,
+  CONVERSATION_STREAM_EVENT,
+  CONVERSATION_STREAM_STATUS_EVENT,
   type ConversationArchiveEventDetail,
   type ConversationRequestEventDetail,
   type ConversationStopEventDetail,
+  type ConversationStreamEventDetail,
+  type ConversationStreamStatusEventDetail,
   TRANSPORT_CHANNEL,
 } from '@chatgpt-booster/observer'
 import type { ArchivedMessage, ConversationArchiveStore } from './archive-store'
@@ -35,7 +39,7 @@ export interface ConversationLifecycleSnapshot {
   completedAt: number | null
   stopRequestedAt: number | null
   updatedAt: number
-  source: 'initial' | 'request' | 'stop' | 'renderer' | 'hydrated' | 'unknown'
+  source: 'initial' | 'request' | 'stop' | 'transport' | 'renderer' | 'hydrated' | 'unknown'
 }
 
 export interface ConversationMemorySnapshot {
@@ -53,7 +57,7 @@ export interface ConversationMemorySnapshot {
 export interface ConversationStateChange {
   conversationId: string
   revision: number
-  reason: 'page' | 'request' | 'stop' | 'renderer' | 'dom' | 'hydrate'
+  reason: 'page' | 'request' | 'stop' | 'transport' | 'renderer' | 'dom' | 'hydrate'
 }
 
 interface MutableConversationState {
@@ -75,6 +79,33 @@ const MAX_CONVERSATIONS = 12
 const MAX_PAGES_PER_CONVERSATION = 96
 const ACTIVE_MESSAGE_STATUS = new Set(['in_progress', 'streaming', 'running'])
 const STOPPED_MESSAGE_STATUS = new Set(['stopped', 'cancelled', 'canceled'])
+
+function asyncStatusIsActive(value: unknown): boolean {
+  if (typeof value === 'number') return [3, 5, 6, 7].includes(value)
+  if (typeof value !== 'string') return false
+  const normalized = value.trim().toLowerCase()
+  if (!normalized) return false
+  if (/^\d+$/.test(normalized)) return [3, 5, 6, 7].includes(Number(normalized))
+  return [
+    'streaming',
+    'realtime',
+    'realtime_busy',
+    'realtime_background',
+    'in_progress',
+    'running',
+  ].includes(normalized)
+}
+
+function asyncStatusIsInactive(value: unknown): boolean {
+  if (value === null) return true
+  if (typeof value === 'number') return value === 4
+  if (typeof value !== 'string') return false
+  const normalized = value.trim().toLowerCase()
+  if (/^\d+$/.test(normalized)) return Number(normalized) === 4
+  return ['complete', 'completed', 'stopped', 'cancelled', 'canceled', 'failed', 'unread'].includes(
+    normalized,
+  )
+}
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -315,6 +346,79 @@ export class ConversationStateStore implements BoosterModule {
     this.#touch(state, 'stop')
   }
 
+  ingestStreamStatus(detail: ConversationStreamStatusEventDetail) {
+    if (detail.status !== 'COMPLETE') return
+    const state = this.#ensure(detail.conversationId)
+    const previous = state.lifecycle
+    if (
+      previous.state === 'stop_requested' ||
+      previous.state === 'stopped' ||
+      (previous.state === 'complete' && previous.completedAt !== null)
+    )
+      return
+    state.lifecycle = {
+      ...previous,
+      state: 'complete',
+      completedAt: detail.observedAt,
+      updatedAt: detail.observedAt,
+      source: 'transport',
+    }
+    state.lastObservedAt = Math.max(state.lastObservedAt, detail.observedAt)
+    this.#touch(state, 'transport')
+  }
+
+  ingestStreamEvent(detail: ConversationStreamEventDetail) {
+    const conversationId = detail.conversationId ?? currentConversationId() ?? null
+    if (!conversationId) return
+    const state = this.#ensure(conversationId)
+    const previous = state.lifecycle
+    if (detail.kind === 'complete') {
+      if (
+        previous.state === 'stop_requested' ||
+        previous.state === 'stopped' ||
+        (previous.state === 'complete' && previous.completedAt !== null)
+      )
+        return
+      state.lifecycle = {
+        ...previous,
+        state: 'complete',
+        completedAt: detail.observedAt,
+        updatedAt: detail.observedAt,
+        source: 'transport',
+      }
+      state.lastObservedAt = Math.max(state.lastObservedAt, detail.observedAt)
+      this.#touch(state, 'transport')
+      return
+    }
+    if (detail.kind === 'async-status') {
+      if (asyncStatusIsActive(detail.asyncStatus)) {
+        if (
+          !['stop_requested', 'stopped', 'complete', 'cancelled', 'failed'].includes(previous.state)
+        ) {
+          state.lifecycle = {
+            ...previous,
+            state: 'in_progress',
+            completedAt: null,
+            updatedAt: detail.observedAt,
+            source: 'transport',
+          }
+          state.lastObservedAt = Math.max(state.lastObservedAt, detail.observedAt)
+          this.#touch(state, 'transport')
+        }
+      } else if (asyncStatusIsInactive(detail.asyncStatus) && previous.state === 'in_progress') {
+        state.lifecycle = {
+          ...previous,
+          state: 'complete',
+          completedAt: detail.observedAt,
+          updatedAt: detail.observedAt,
+          source: 'transport',
+        }
+        state.lastObservedAt = Math.max(state.lastObservedAt, detail.observedAt)
+        this.#touch(state, 'transport')
+      }
+    }
+  }
+
   observeRendererState(
     conversationId: string,
     stateValue: string | null,
@@ -325,23 +429,46 @@ export class ConversationStateStore implements BoosterModule {
     const normalized = stateValue?.toLowerCase() ?? ''
     let next = previous
     if (normalized === 'in_progress') {
-      if (!['stop_requested', 'stopped'].includes(previous.state)) {
+      if (previous.state !== 'stop_requested') {
         const nextUserMessageId = userMessageId ?? previous.userMessageId
         const userRecord = nextUserMessageId ? state.records.get(nextUserMessageId) : undefined
-        const nextStartedAt = sourceTime(userRecord?.createTime) ?? previous.startedAt
-        if (
-          previous.state !== 'in_progress' ||
-          nextUserMessageId !== previous.userMessageId ||
-          nextStartedAt !== previous.startedAt
+        const nextStartedAt =
+          sourceTime(userRecord?.createTime) ??
+          (nextUserMessageId === previous.userMessageId ? previous.startedAt : null)
+        const sameRun =
+          !nextUserMessageId ||
+          !previous.userMessageId ||
+          nextUserMessageId === previous.userMessageId
+        const terminal = ['stopped', 'complete', 'cancelled', 'failed'].includes(previous.state)
+        const regressesRun = Boolean(
+          nextUserMessageId &&
+            previous.userMessageId &&
+            nextUserMessageId !== previous.userMessageId &&
+            nextStartedAt &&
+            previous.startedAt &&
+            nextStartedAt < previous.startedAt,
         )
-          next = {
-            ...previous,
-            state: 'in_progress',
-            userMessageId: nextUserMessageId,
-            startedAt: nextStartedAt,
-            completedAt: null,
-            source: 'renderer',
-          }
+        const conflictsWithFreshRequest = Boolean(
+          previous.source === 'request' &&
+            previous.userMessageId &&
+            nextUserMessageId &&
+            nextUserMessageId !== previous.userMessageId,
+        )
+        if (!((terminal && sameRun) || regressesRun || conflictsWithFreshRequest)) {
+          if (
+            previous.state !== 'in_progress' ||
+            nextUserMessageId !== previous.userMessageId ||
+            nextStartedAt !== previous.startedAt
+          )
+            next = {
+              ...previous,
+              state: 'in_progress',
+              userMessageId: nextUserMessageId,
+              startedAt: nextStartedAt,
+              completedAt: null,
+              source: 'renderer',
+            }
+        }
       }
     } else if (normalized === 'complete' && previous.state !== 'stop_requested') {
       if (previous.state !== 'complete')
@@ -408,8 +535,16 @@ export class ConversationStateStore implements BoosterModule {
       this.ingestRequest(data.detail as ConversationRequestEventDetail)
       return
     }
-    if (data.type === CONVERSATION_STOP_EVENT && data.detail)
+    if (data.type === CONVERSATION_STOP_EVENT && data.detail) {
       this.ingestStop(data.detail as ConversationStopEventDetail)
+      return
+    }
+    if (data.type === CONVERSATION_STREAM_STATUS_EVENT && data.detail) {
+      this.ingestStreamStatus(data.detail as ConversationStreamStatusEventDetail)
+      return
+    }
+    if (data.type === CONVERSATION_STREAM_EVENT && data.detail)
+      this.ingestStreamEvent(data.detail as ConversationStreamEventDetail)
   }
 
   #ensure(conversationId: string) {
@@ -477,14 +612,11 @@ export class ConversationStateStore implements BoosterModule {
     const activeRecord = [...records]
       .reverse()
       .find((record) => ACTIVE_MESSAGE_STATUS.has(record.status?.toLowerCase() ?? ''))
-    const asyncStatus =
-      typeof payload.async_status === 'string' ? payload.async_status.toLowerCase() : ''
-    const asyncActive = Boolean(
-      asyncStatus &&
-        !['complete', 'completed', 'stopped', 'cancelled', 'canceled', 'failed'].includes(
-          asyncStatus,
-        ),
-    )
+    const hasAsyncStatus = Object.hasOwn(payload, 'async_status')
+    const asyncStatus = payload.async_status
+    const asyncActive = hasAsyncStatus && asyncStatusIsActive(asyncStatus)
+    const asyncInactive = hasAsyncStatus && asyncStatusIsInactive(asyncStatus)
+    const asyncAuthoritative = hasAsyncStatus && (asyncActive || asyncInactive)
     const latestUser = [...records].reverse().find((record) => record.role === 'user')
     const latestTurnKey = latestUser?.turnExchangeId ?? latestUser?.workingTurnId ?? null
     const turnRecords = latestTurnKey
@@ -513,7 +645,7 @@ export class ConversationStateStore implements BoosterModule {
         source: 'initial',
       }
 
-    if (activeRecord || asyncActive) {
+    if (asyncActive || (!asyncAuthoritative && activeRecord)) {
       if (state.lifecycle.state !== 'stop_requested')
         state.lifecycle = {
           ...state.lifecycle,
@@ -545,6 +677,16 @@ export class ConversationStateStore implements BoosterModule {
         userMessageId,
         startedAt,
         completedAt: sourceTime(final.updateTime) ?? sourceTime(final.createTime),
+        source: 'initial',
+        updatedAt: observedAt,
+      }
+    } else if (asyncInactive && latestUser && state.lifecycle.state !== 'stop_requested') {
+      state.lifecycle = {
+        ...state.lifecycle,
+        state: 'complete',
+        userMessageId,
+        startedAt,
+        completedAt: state.lifecycle.completedAt,
         source: 'initial',
         updatedAt: observedAt,
       }

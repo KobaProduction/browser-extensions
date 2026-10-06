@@ -3,6 +3,8 @@ import {
   archiveFileResolverId,
   conversationRequestTimingFromBody,
   conversationStopTargetFromBody,
+  conversationStreamEventFromPayload,
+  conversationStreamStatusFromPayload,
   parseArchiveAssetResolution,
 } from '../packages/observer/src'
 import { sanitizeBodyPreview, sanitizeTransportUrl } from '../packages/observer/src/index'
@@ -91,6 +93,103 @@ describe('conversation request timing boundary', () => {
         1,
       ),
     ).toBeNull()
+  })
+})
+
+describe('conversation stream status boundary', () => {
+  test('parses COMPLETE from the normal stream_status response', () => {
+    expect(
+      conversationStreamStatusFromPayload(
+        'https://chatgpt.com/backend-api/conversation/chat-stream/stream_status',
+        { status: 'COMPLETE' },
+        1234,
+        200,
+      ),
+    ).toEqual({
+      conversationId: 'chat-stream',
+      status: 'COMPLETE',
+      observedAt: 1234,
+      httpStatus: 200,
+    })
+  })
+
+  test('maps stream_status HTTP 404 to UNAVAILABLE', () => {
+    expect(
+      conversationStreamStatusFromPayload(
+        'https://chatgpt.com/backend-api/conversation/chat-stream/stream_status',
+        null,
+        2345,
+        404,
+      ),
+    ).toEqual({
+      conversationId: 'chat-stream',
+      status: 'UNAVAILABLE',
+      observedAt: 2345,
+      httpStatus: 404,
+    })
+  })
+
+  test('ignores unrelated routes and unknown status values', () => {
+    expect(
+      conversationStreamStatusFromPayload(
+        'https://chatgpt.com/backend-api/conversation/chat-stream',
+        { status: 'COMPLETE' },
+        1,
+        200,
+      ),
+    ).toBeNull()
+    expect(
+      conversationStreamStatusFromPayload(
+        'https://chatgpt.com/backend-api/conversation/chat-stream/stream_status',
+        { status: 'SOMETHING_NEW' },
+        1,
+        200,
+      ),
+    ).toBeNull()
+  })
+})
+
+describe('conversation SSE runtime source events', () => {
+  test('normalizes stream completion, async status, and safety review updates', () => {
+    expect(
+      conversationStreamEventFromPayload(
+        { type: 'message_stream_complete', conversation_id: 'chat-runtime' },
+        null,
+        200,
+      ),
+    ).toEqual({
+      conversationId: 'chat-runtime',
+      kind: 'complete',
+      phase: 'message',
+      observedAt: 200,
+    })
+    expect(
+      conversationStreamEventFromPayload(
+        { type: 'conversation_async_status', conversation_id: 'chat-runtime', async_status: 3 },
+        null,
+        201,
+      ),
+    ).toMatchObject({ kind: 'async-status', asyncStatus: 3 })
+    expect(
+      conversationStreamEventFromPayload(
+        {
+          type: 'safety_review_update',
+          conversation_id: 'chat-runtime',
+          active: true,
+          protection_type: 'cyber',
+          message: 'Additional processing',
+        },
+        null,
+        202,
+      ),
+    ).toEqual({
+      conversationId: 'chat-runtime',
+      kind: 'safety-review',
+      active: true,
+      protectionType: 'cyber',
+      message: 'Additional processing',
+      observedAt: 202,
+    })
   })
 })
 

@@ -6,6 +6,8 @@ export const ARCHIVE_POLICY_EVENT = 'chatgpt-booster:archive-policy'
 export const ARCHIVE_NETWORK_EVENT = 'chatgpt-booster:archive-network'
 export const CONVERSATION_REQUEST_EVENT = 'chatgpt-booster:conversation-request'
 export const CONVERSATION_STOP_EVENT = 'chatgpt-booster:conversation-stop'
+export const CONVERSATION_STREAM_STATUS_EVENT = 'chatgpt-booster:conversation-stream-status'
+export const CONVERSATION_STREAM_EVENT = 'chatgpt-booster:conversation-stream'
 export const ARCHIVE_ASSET_EVENT = 'chatgpt-booster:archive-asset'
 export const ARCHIVE_ASSET_FETCH_REQUEST_EVENT = 'chatgpt-booster:archive-asset-fetch-request'
 export const ARCHIVE_ASSET_FETCH_RESULT_EVENT = 'chatgpt-booster:archive-asset-fetch-result'
@@ -108,6 +110,162 @@ function shouldObserveArchiveConversation(id: string): boolean {
 
   return archivePolicy.defaultEnabled || Object.values(archivePolicy.projects).some(Boolean)
 }
+function conversationStreamStatusTarget(sourceUrl: string): string | null {
+  try {
+    const url = new URL(sourceUrl, 'https://chatgpt.com/')
+    if (url.origin !== 'https://chatgpt.com') return null
+    const match = url.pathname.match(/^\/backend-api\/conversation\/([^/]+)\/stream_status$/)
+    return match?.[1] ? decodeURIComponent(match[1]) : null
+  } catch {
+    return null
+  }
+}
+
+function isConversationStreamStatusUrl(sourceUrl: string) {
+  return conversationStreamStatusTarget(sourceUrl) !== null
+}
+
+function normalizeConversationStreamStatus(value: unknown): ConversationStreamStatus | null {
+  if (typeof value !== 'string') return null
+  const normalized = value.trim().toUpperCase()
+  return ['IS_STREAMING', 'COMPLETE', 'FAILURE', 'UNAVAILABLE'].includes(normalized)
+    ? (normalized as ConversationStreamStatus)
+    : null
+}
+
+export function conversationStreamStatusFromPayload(
+  sourceUrl: string,
+  payload: unknown,
+  observedAt: number,
+  httpStatus: number,
+): ConversationStreamStatusEventDetail | null {
+  const conversationId = conversationStreamStatusTarget(sourceUrl)
+  if (!conversationId) return null
+  const record = requestPayload(payload)
+  const status =
+    httpStatus === 404 ? 'UNAVAILABLE' : normalizeConversationStreamStatus(record?.status)
+  if (!status) return null
+  return { conversationId, status, observedAt, httpStatus }
+}
+
+function publishConversationStreamStatus(detail: ConversationStreamStatusEventDetail | null) {
+  if (!observerTarget || !detail) return
+  observerTarget.postMessage(
+    { channel: TRANSPORT_CHANNEL, type: CONVERSATION_STREAM_STATUS_EVENT, detail },
+    observerTarget.location.origin,
+  )
+}
+
+function observeConversationStreamStatusResponse(response: Response, sourceUrl: string) {
+  if (!isConversationStreamStatusUrl(sourceUrl)) return
+  const observedAt = Date.now()
+  if (response.status === 404) {
+    publishConversationStreamStatus(
+      conversationStreamStatusFromPayload(sourceUrl, null, observedAt, response.status),
+    )
+    return
+  }
+  void response
+    .clone()
+    .json()
+    .then((payload) =>
+      publishConversationStreamStatus(
+        conversationStreamStatusFromPayload(sourceUrl, payload, observedAt, response.status),
+      ),
+    )
+    .catch(() => undefined)
+}
+
+function publishConversationStream(detail: ConversationStreamEventDetail | null) {
+  if (!observerTarget || !detail) return
+  observerTarget.postMessage(
+    { channel: TRANSPORT_CHANNEL, type: CONVERSATION_STREAM_EVENT, detail },
+    observerTarget.location.origin,
+  )
+}
+
+export function conversationStreamEventFromPayload(
+  payload: unknown,
+  fallbackConversationId: string | null,
+  observedAt: number,
+): ConversationStreamEventDetail | null {
+  const value = requestPayload(payload)
+  if (!value) return null
+  const conversationId =
+    typeof value.conversation_id === 'string' ? value.conversation_id : fallbackConversationId
+  if (value.type === 'message_stream_complete')
+    return { conversationId, kind: 'complete', phase: 'message', observedAt }
+  if (value.type === 'main_stream_complete')
+    return { conversationId, kind: 'complete', phase: 'main', observedAt }
+  if (value.type === 'conversation_async_status') {
+    const asyncStatus = value.async_status
+    if (asyncStatus === null || typeof asyncStatus === 'number' || typeof asyncStatus === 'string')
+      return { conversationId, kind: 'async-status', asyncStatus, observedAt }
+    return null
+  }
+  if (value.type === 'safety_review_update') {
+    if (typeof value.active !== 'boolean') return null
+    const protectionType =
+      value.protection_type === 'bio' || value.protection_type === 'cyber'
+        ? value.protection_type
+        : null
+    const message = typeof value.message === 'string' && value.message.trim() ? value.message : null
+    return {
+      conversationId,
+      kind: 'safety-review',
+      active: value.active,
+      protectionType,
+      message,
+      observedAt,
+    }
+  }
+  return null
+}
+
+function observeConversationStreamResponse(response: Response, conversationId: string | null) {
+  if (!response.ok || !/event-stream/i.test(response.headers.get('content-type') ?? '')) return
+  const body = response.clone().body
+  if (!body) return
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  void (async () => {
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        buffer = buffer.replace(/\r\n/g, '\n')
+        let boundary = buffer.indexOf('\n\n')
+        while (boundary >= 0) {
+          const block = buffer.slice(0, boundary)
+          buffer = buffer.slice(boundary + 2)
+          const data = block
+            .split('\n')
+            .filter((line) => line.startsWith('data:'))
+            .map((line) => line.slice(5).trimStart())
+            .join('\n')
+          if (data && data !== '[DONE]') {
+            try {
+              publishConversationStream(
+                conversationStreamEventFromPayload(JSON.parse(data), conversationId, Date.now()),
+              )
+            } catch {
+              // Encoded deltas and ordinary content chunks are intentionally ignored.
+            }
+          }
+          boundary = buffer.indexOf('\n\n')
+        }
+      }
+    } catch {
+      // Recovery/status observation owns transport failure classification.
+    } finally {
+      reader.releaseLock()
+    }
+  })()
+}
+
 function isConversationStopUrl(sourceUrl: string) {
   try {
     const url = new URL(sourceUrl, 'https://chatgpt.com/')
@@ -281,6 +439,37 @@ export interface ConversationStopEventDetail {
   timestamp: number
   status: number | null
 }
+
+export type ConversationStreamStatus = 'IS_STREAMING' | 'COMPLETE' | 'FAILURE' | 'UNAVAILABLE'
+
+export interface ConversationStreamStatusEventDetail {
+  conversationId: string
+  status: ConversationStreamStatus
+  observedAt: number
+  httpStatus: number
+}
+
+export type ConversationStreamEventDetail =
+  | {
+      conversationId: string | null
+      kind: 'complete'
+      phase: 'main' | 'message'
+      observedAt: number
+    }
+  | {
+      conversationId: string | null
+      kind: 'async-status'
+      asyncStatus: number | string | null
+      observedAt: number
+    }
+  | {
+      conversationId: string | null
+      kind: 'safety-review'
+      active: boolean
+      protectionType: 'bio' | 'cyber' | null
+      message: string | null
+      observedAt: number
+    }
 
 export interface ArchiveAssetResolutionEventDetail {
   assetId: string
@@ -906,7 +1095,8 @@ export function installTransportObserver(
         !transportEmissionEnabled &&
         !isArchiveObservedUrl(rawUrl) &&
         !isConversationRequestUrl(rawUrl) &&
-        !isConversationStopUrl(rawUrl)
+        !isConversationStopUrl(rawUrl) &&
+        !isConversationStreamStatusUrl(rawUrl)
       )
         return callUpstream(input, init)
 
@@ -958,6 +1148,9 @@ export function installTransportObserver(
             })
           archiveNetwork(id, rawUrl, response.ok ? 'response' : 'error', response.status)
           observeConversationArchiveResponse(response, rawUrl, historyRead)
+          observeConversationStreamStatusResponse(response, rawUrl)
+          if (method.toUpperCase() === 'POST' && isConversationRequestUrl(rawUrl))
+            observeConversationStreamResponse(response, conversationIdFromBody(init?.body))
           observeArchiveAssetResponse(response, rawUrl)
           if (diagnosticsEnabled) {
             observeFetchResponseBody(response, { id, method, url }, config)
@@ -1046,7 +1239,14 @@ export function installTransportObserver(
     const resolverObserved = Boolean(archiveFileResolverId(meta.rawUrl))
     const conversationRequest = isConversationRequestUrl(meta.rawUrl)
     const conversationStop = isConversationStopUrl(meta.rawUrl)
-    if (!diagnosticsEnabled && !resolverObserved && !conversationRequest && !conversationStop)
+    const conversationStreamStatus = isConversationStreamStatusUrl(meta.rawUrl)
+    if (
+      !diagnosticsEnabled &&
+      !resolverObserved &&
+      !conversationRequest &&
+      !conversationStop &&
+      !conversationStreamStatus
+    )
       return originalSend.call(this, body)
 
     const id = diagnosticsEnabled ? nextId('xhr') : ''
@@ -1102,6 +1302,20 @@ export function installTransportObserver(
             durationMs: Math.round((performance.now() - started) * 100) / 100,
             contentType: this.getResponseHeader('content-type') ?? undefined,
           })
+        if (conversationStreamStatus) {
+          try {
+            const value =
+              this.responseType === 'json' ? this.response : JSON.parse(this.responseText)
+            publishConversationStreamStatus(
+              conversationStreamStatusFromPayload(meta.rawUrl, value, Date.now(), this.status),
+            )
+          } catch {
+            if (this.status === 404)
+              publishConversationStreamStatus(
+                conversationStreamStatusFromPayload(meta.rawUrl, null, Date.now(), this.status),
+              )
+          }
+        }
         if (resolverObserved && this.status >= 200 && this.status < 300) {
           try {
             const value =

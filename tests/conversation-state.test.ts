@@ -4,7 +4,12 @@ import { ConversationStateStore } from '../packages/features/src/conversation-st
 
 const fakeWindow = {} as Window
 
-function page(conversationId: string, messages: Record<string, unknown>[], timestamp = 2_000) {
+function page(
+  conversationId: string,
+  messages: Record<string, unknown>[],
+  timestamp = 2_000,
+  payloadPatch: Record<string, unknown> = {},
+) {
   return {
     kind: 'conversation-page' as const,
     conversationId,
@@ -24,6 +29,7 @@ function page(conversationId: string, messages: Record<string, unknown>[], times
         has_previous_page: false,
         has_next_page: false,
       },
+      ...payloadPatch,
     },
   }
 }
@@ -184,6 +190,74 @@ describe('ConversationStateStore memory-first state', () => {
     })
   })
 
+  test('stream COMPLETE is terminal even when stale renderer still says in-progress', () => {
+    const state = new ConversationStateStore(fakeWindow)
+    const conversationId = 'chat-stream-complete'
+    state.ingestPage(
+      page(conversationId, [
+        message('user-complete', 'user', 10, {
+          metadata: { turn_exchange_id: 'turn-complete', working_turn_id: 'turn-complete' },
+        }),
+        message('reasoning-tail', 'assistant', 11, {
+          channel: null,
+          end_turn: false,
+          content: { content_type: 'thoughts', thoughts: [] },
+          metadata: {
+            turn_exchange_id: 'turn-complete',
+            working_turn_id: 'turn-complete',
+            reasoning_status: 'is_reasoning',
+          },
+        }),
+      ]),
+    )
+    state.observeRendererState(conversationId, 'in_progress', 'user-complete')
+    state.ingestStreamStatus({
+      conversationId,
+      status: 'COMPLETE',
+      observedAt: 12_000,
+      httpStatus: 200,
+    })
+
+    expect(state.lifecycle(conversationId)).toMatchObject({
+      state: 'complete',
+      userMessageId: 'user-complete',
+      startedAt: 10_000,
+      completedAt: 12_000,
+      source: 'transport',
+    })
+
+    state.observeRendererState(conversationId, 'in_progress', 'user-complete')
+    expect(state.lifecycle(conversationId)).toMatchObject({
+      state: 'complete',
+      completedAt: 12_000,
+      source: 'transport',
+    })
+  })
+
+  test('older stale renderer cannot replace a newer outbound request', () => {
+    const state = new ConversationStateStore(fakeWindow)
+    const conversationId = 'chat-new-run-wins'
+    state.ingestPage(
+      page(conversationId, [message('user-old', 'user', 10), message('user-new', 'user', 20)]),
+    )
+    state.ingestRequest({
+      conversationId,
+      userMessageId: 'user-new',
+      startedAt: 20_000,
+      observedAt: 20_100,
+      source: 'message_create_time',
+    })
+
+    state.observeRendererState(conversationId, 'in_progress', 'user-old')
+
+    expect(state.lifecycle(conversationId)).toMatchObject({
+      state: 'in_progress',
+      userMessageId: 'user-new',
+      startedAt: 20_000,
+      source: 'request',
+    })
+  })
+
   test('failed stop confirmation returns lifecycle to in-progress', () => {
     const state = new ConversationStateStore(fakeWindow)
     state.ingestRequest({
@@ -211,6 +285,69 @@ describe('ConversationStateStore memory-first state', () => {
       startedAt: 100,
       completedAt: null,
       stopRequestedAt: null,
+    })
+  })
+
+  test('numeric async status is authoritative and null closes a stale in-progress renderer', () => {
+    const state = new ConversationStateStore(fakeWindow)
+    const conversationId = 'chat-async-status'
+    const messages = [
+      message('user-async', 'user', 10, {
+        metadata: { turn_exchange_id: 'turn-async', working_turn_id: 'turn-async' },
+      }),
+      message('thought-async', 'assistant', 11, {
+        channel: null,
+        recipient: 'all',
+        content: { content_type: 'thoughts', thoughts: [{ summary: 'working', finished: true }] },
+        metadata: {
+          turn_exchange_id: 'turn-async',
+          working_turn_id: 'turn-async',
+          reasoning_status: 'is_reasoning',
+        },
+      }),
+    ]
+
+    state.ingestPage(page(conversationId, messages, 20_000, { async_status: 3 }))
+    expect(state.lifecycle(conversationId)).toMatchObject({
+      state: 'in_progress',
+      userMessageId: 'user-async',
+      startedAt: 10_000,
+      source: 'initial',
+    })
+
+    state.ingestPage(page(conversationId, messages, 30_000, { async_status: null }))
+    expect(state.lifecycle(conversationId)).toMatchObject({
+      state: 'complete',
+      userMessageId: 'user-async',
+      source: 'initial',
+    })
+
+    state.observeRendererState(conversationId, 'in_progress', 'user-async')
+    expect(state.lifecycle(conversationId)?.state).toBe('complete')
+  })
+
+  test('message stream completion closes an active request without waiting for renderer DOM', () => {
+    const state = new ConversationStateStore(fakeWindow)
+    const conversationId = 'chat-sse-complete'
+    state.ingestRequest({
+      conversationId,
+      userMessageId: 'user-sse',
+      startedAt: 1_000,
+      observedAt: 1_010,
+      source: 'message_create_time',
+    })
+    state.ingestStreamEvent({
+      conversationId,
+      kind: 'complete',
+      phase: 'message',
+      observedAt: 1_750,
+    })
+
+    expect(state.lifecycle(conversationId)).toMatchObject({
+      state: 'complete',
+      userMessageId: 'user-sse',
+      completedAt: 1_750,
+      source: 'transport',
     })
   })
 })
