@@ -565,7 +565,7 @@ message        = "Наши системы выполняют дополните�
 
 The `requestId` matched the current fresh user-turn id from the outbound `/backend-api/f/conversation` request.
 
-Reverse-engineering the deployed client stream decoder identified the authoritative event contract:
+Analysis of the deployed client stream decoder identified the authoritative event contract:
 
 ```json
 {
@@ -1787,7 +1787,7 @@ The `/scheduled` primary UI in this build displayed a template gallery even whil
 
 A later direct inspection of the dedicated Scheduled surface resolved the management UI more completely. The page exposed its own composer (`Запланируйте задачу`), recommended templates, and filters for `Активно / Приостановленные / Завершенные`.
 
-An existing disposable reverse fixture in a separate test conversation was opened in the native task editor. It exposed editable `Название` and `Инструкции`, separate date/time controls, next-run state, `Возобновить`, and an overflow containing `Запустить сейчас`, `Настройки уведомлений`, and `Удалить`.
+An existing disposable test fixture in a separate test conversation was opened in the native task editor. It exposed editable `Название` and `Инструкции`, separate date/time controls, next-run state, `Возобновить`, and an overflow containing `Запустить сейчас`, `Настройки уведомлений`, and `Удалить`.
 
 Live editor mutations:
 - title changed to `Booster Reverse Test UI Verified`;
@@ -2106,3 +2106,32 @@ A second live capture recorded the exact active DOM shape:
       text suffix = "начал(-и) работу"
 
 The captured example was `Multiply 211 223 начал(-и) работу`. The renderer selector belongs in `ChatGptDomAdapter`; feature code consumes a normalized `working` child. This DOM signal is only a bounded live fallback. Persisted/live `codex_sub_agent_activity` records remain authoritative for child identity and terminal state.
+
+## File upload, Library and generated-download observations (2026-10-07)
+
+A separate product-behavior acceptance used only a disposable 87-byte CSV to test chat upload, aggregation and download. Its data and result are reproduced in `CHATGPT_BROWSER_WORKFLOWS.md`. This is distinct from the earlier Estuary image-persistence tests and from Booster archive ZIP export.
+
+- Library displayed a storage-full warning; a native Library upload produced a quota dialog. No existing files were deleted.
+- A pre-existing Markdown file opened in the native full-text preview and downloaded via selection → Download (141,226 bytes); content and original filename are not recorded.
+- Library → Start Chat visually staged an existing file, but the model reported no accessible files after submission. This was an actual unsuccessful instance and needs retesting under a healthy quota.
+- The same test CSV uploaded directly in the conversation composer, with a `chat-only` status despite full Library. Closing the quota dialog preserved the staged file, and the sent message displayed the CSV attachment.
+- The model returned a generated CSV card with a preview. The spreadsheet-like viewer exposed a formula bar, and its own Download control wrote 32 bytes. Independent byte inspection confirmed `category,total
+alpha,25
+beta,25`.
+- The assistant message said a Python/data-analysis tool was used, but a distinct tool-execution trace was **not** captured; do not mark Python execution itself live verified on this basis.
+
+See the workflow matrix for official-only browser capabilities and remaining test boundaries.
+
+## Pro external Playwright: Space file → Chat → Python (2026-10-07)
+
+The test used the external Playwright server `192.168.1.11:8931` and an already approved remote Chrome tab, **not** Koba Web managed Chromium. Native profile menu showed Intens Tech / Pro. A separate test tab was used; the original `Запрос нативного ввода` Work chat was not closed.
+
+- `/library` redirected to `/space`. Space showed Your items, Shared with you, Favorites, Recommendations and Create menu; Presentation/Spreadsheet creation options in this menu were explicitly disabled.
+- A browser-constructed disposable CSV (87 bytes) was selected via the real Space file input. Network recorded file create (200), storage write (201), process-upload stream (200), and library listing (200). The CSV persisted after full page reload.
+- Opening the saved file used `/space/file/<id>`; the viewer showed spreadsheet canvas, formula bar and Download. File-opened telemetry returned 204; clicking Download caused content route to return 302. Browser-host download bytes are **not** independently checked.
+- Selecting the saved file and pressing `Начать чат` staged a `chatgpt-library-file-mention-id` in the normal Chat composer, with entrypoint `library_start_chat`, file ID and MIME type. After sending the prompt, the model had access to the exact fixture.
+- The native `Просмотр анализа` dialog showed **two Python executions** with full source and stdout. First: `exists: True size: 87`, detected delimiter and headers, read sample rows. Second: aggregation with DictReader, defaultdict and Decimal, wrote an output CSV, then reopened it and asserted equality; `Output readable: True bytes: 94`.
+- Aggregates: `category/alpha 25`, `category/beta 25`, `month/2026-09 30`, `month/2026-10 20`. A generated `booster-pro-aggregated.csv` link was rendered. Link activation and local download completion remain unverified independently.
+- Pro `/scheduled` showed template gallery only in this pass (no new tasks). Pro `/space/sites` showed first-use legal terms (not accepted). Pro `/plugins?directoryTab=personal` listed custom Koba apps (no permission mutations).
+
+See `CHATGPT_BROWSER_WORKFLOWS.md` for the status matrix. This **does** prove actual Python code execution for the Pro case, superseding the Free-only trace gap without pretending the Free case was independently traced.

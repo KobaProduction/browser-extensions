@@ -31,7 +31,7 @@ Active work runs on the rolling `dev` line. The earlier docked archive/selective
 milestone remains documented under `docs/tasks/`, but those historical task files are
 not the current project-status authority.
 
-Current implementation and reverse-engineering authority is split by concern:
+Current implementation authority and ChatGPT product-behavior evidence are split by concern:
 
 - `docs/ARCHITECTURE.md` — ownership and architectural invariants;
 - `docs/CHATGPT_RUNTIME_CONTRACTS.md` — per-turn lifecycle, timing, transport,
@@ -39,6 +39,7 @@ Current implementation and reverse-engineering authority is split by concern:
 - `docs/CHATGPT_PRODUCT_OPERATIONS.md` — Projects, chat operations, model/effort
   selection, Automations and Plugin/MCP management;
 - `docs/CHATGPT_CLIENT_RESEARCH.md` — live/client-code evidence and proof boundaries.
+- `docs/CHATGPT_BROWSER_WORKFLOWS.md` — tested user flows, file I/O and cross-feature coverage/gaps.
 
 Source/type/build/CI validation and live ChatGPT runtime acceptance remain separate
 evidence levels. Use current GitHub issues for open implementation defects rather than
@@ -62,7 +63,7 @@ The browser integration is intentionally limited to `https://chatgpt.com/*`.
 
 ## Repository
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for package boundaries, [docs/CHATGPT_RUNTIME_CONTRACTS.md](docs/CHATGPT_RUNTIME_CONTRACTS.md) for the implementation-facing ChatGPT lifecycle/transport/state model, [docs/CHATGPT_PRODUCT_OPERATIONS.md](docs/CHATGPT_PRODUCT_OPERATIONS.md) for Projects, model selection, Automations and Plugin/MCP management flows, [docs/CHATGPT_CLIENT_RESEARCH.md](docs/CHATGPT_CLIENT_RESEARCH.md) for reverse-engineering evidence, and [docs/CONVERSATION_ARCHIVE.md](docs/CONVERSATION_ARCHIVE.md) for the local archive/history-loader design.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for package boundaries, [docs/CHATGPT_RUNTIME_CONTRACTS.md](docs/CHATGPT_RUNTIME_CONTRACTS.md) for the implementation-facing ChatGPT lifecycle/transport/state model, [docs/CHATGPT_PRODUCT_OPERATIONS.md](docs/CHATGPT_PRODUCT_OPERATIONS.md) for Projects, model selection, Automations and Plugin/MCP management flows, [docs/CHATGPT_CLIENT_RESEARCH.md](docs/CHATGPT_CLIENT_RESEARCH.md) for observed client-behavior evidence, and [docs/CONVERSATION_ARCHIVE.md](docs/CONVERSATION_ARCHIVE.md) for the local archive/history-loader design.
 
 ## License
 

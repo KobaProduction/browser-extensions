@@ -14,14 +14,14 @@ Read it before changing features that observe or interact with:
 Companion documents:
 
 - `docs/CHATGPT_RUNTIME_CONTRACTS.md` — per-turn lifecycle, transport, recovery, safety and timing contracts.
-- `docs/CHATGPT_CLIENT_RESEARCH.md` — raw/live reverse-engineering evidence and proof boundaries.
+- `docs/CHATGPT_CLIENT_RESEARCH.md` — raw/live client-behavior evidence and proof boundaries.
 - `docs/ARCHITECTURE.md` — package ownership and stable architectural invariants.
 
 The contracts below describe observed ChatGPT client behavior. They are not an invitation to synthesize private ChatGPT mutations. Prefer observing native user/client actions unless a Booster feature has an explicit documented need to perform one.
 
 ## 1. Evidence and authority
 
-For product operations use the same evidence discipline as runtime reverse-engineering:
+For product operations use the same evidence discipline as runtime behavior analysis:
 
 1. native request/response emitted by ChatGPT UI;
 2. native client code branch/schema from the deployed ChatGPT bundle;
@@ -729,7 +729,7 @@ Additional actions:
   Delete
 ```
 
-On the disposable reverse fixture, title and prompt edits were saved through the native editor and remained persisted after closing and reopening the editor. A date edit from 9 October to 10 October also persisted after Save. The calendar disabled dates before the current day and allowed future dates.
+On the disposable test fixture, title and prompt edits were saved through the native editor and remained persisted after closing and reopening the editor. A date edit from 9 October to 10 October also persisted after Save. The calendar disabled dates before the current day and allowed future dates.
 
 The same fixture's persisted conversation history contains a completed explicit `Run now` request and its task result, while the task itself was paused. This establishes that manual execution is a distinct operation from enabling the recurring/one-shot schedule.
 
@@ -1100,7 +1100,7 @@ When running product-operation acceptance tests:
 
 The 2026-10-07 acceptance run followed this cleanup boundary: both test automations were disabled, the test chat was deleted, and the test project was deleted. Koba MCP Bridge remained installed and connected after a successful native reconnect/reauth.
 
-## 11. Reverse-engineering coverage and validation checklist
+## 11. Product-operation coverage and validation checklist
 
 This table is the durable coverage map for the browser-product research. Do not treat a visible control as equivalent to a verified operation. `Live` means the native action/postcondition was exercised; `mixed` means live UI/postcondition is paired with client-code transport evidence; `client-code` means the exact deployed implementation was found but not executed at that boundary.
 
@@ -1222,3 +1222,13 @@ This validates completed-state correlation and Work-surface warning behavior. A 
 ### Active child presentation fallback
 
 Live acceptance found a short timing gap between native Work rendering and Booster source ingestion: native Work can show a child as started before the corresponding source record has reached Booster RAM. Booster may use the adapter-owned `chatgpt-subagent-activity` renderer signal to supplement the visible active count during that gap. Source records remain authoritative and supersede the fallback once available.
+
+## 13. Browser workflow coverage
+
+The cross-feature checklist, including native file uploads, Library preview/download, chat-only attachments, generated CSV download, scheduled-event capabilities, Work browser and product-help-only features, is maintained in [CHATGPT_BROWSER_WORKFLOWS.md](CHATGPT_BROWSER_WORKFLOWS.md). **Do not** treat a file chip, a model claim about Python, a generated-file card or a documentation statement as the same level of evidence as a submitted attachment, an observed code-execution trace or downloaded bytes.
+
+## 14. Pro Space and plugin/task navigation — browser observed (2026-10-07)
+
+The external remote Playwright acceptance on the Intens Tech / Pro profile confirmed that `/library` navigates to `/space`, rather than the Free account's former Library interface. Saving a synthetic CSV, reopening it after a full reload, selecting it for `Начать чат`, and then actually executing Python in the resulting normal Chat is documented in `CHATGPT_BROWSER_WORKFLOWS.md` and `CHATGPT_CLIENT_RESEARCH.md`.
+
+The Pro `/scheduled` landing surface exposed task suggestions but no new task was created. `/space/sites` prompted for separate Sites terms; those terms were not accepted. `/plugins` has separate Public/Personal tabs, with custom Koba apps listed in Personal; listing an app does not establish a connected authorized provider account. These do not supersede earlier OAuth and task lifecycle evidence.
