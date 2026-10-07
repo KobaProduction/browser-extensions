@@ -999,6 +999,95 @@ export async function runUiTests(
       }
     })
 
+    await check(
+      'archive branch forest renders nested depth and ancestor-aware search',
+      async () => {
+        await close()
+        await settings.update({ language: 'ru' })
+        const originalListConversations = adapter.listConversations
+        const baseline = await originalListConversations()
+        const root = baseline.find((item) => item.conversationId === context.conversationId)
+        assert(root, 'fixture source conversation missing')
+        const branch = {
+          ...root,
+          conversationId: 'fixture-browser-branch',
+          title: 'Ветка продукта',
+          branchSourceConversationId: root.conversationId,
+          branchSourceTitle: root.title,
+        }
+        const nested = {
+          ...root,
+          conversationId: 'fixture-browser-nested',
+          title: 'Вложенная ветка продукта',
+          branchSourceConversationId: branch.conversationId,
+          branchSourceTitle: branch.title,
+        }
+        adapter.listConversations = async () => [...baseline, branch, nested]
+        try {
+          button('.booster-dock-toggle').click()
+          await delay()
+          button('.booster-dock-actions > button:nth-child(3)').click()
+          await delay()
+          const reader = shadow().querySelector<HTMLElement>('.booster-reader')
+          assert(reader, 'archive browser missing')
+          const project = [
+            ...reader.querySelectorAll<HTMLButtonElement>('.booster-group-toggle'),
+          ].find((item) => item.textContent?.includes('Koba Infrastructure'))
+          assert(project, 'fixture project missing')
+          if (project.getAttribute('aria-expanded') !== 'true') project.click()
+          await delay()
+          const rows = [
+            ...reader.querySelectorAll<HTMLButtonElement>('.booster-reader-chat-list button'),
+          ]
+          const rootRow = rows.find((item) => item.textContent?.includes(root.title ?? '#none'))
+          const branchRow = rows.find((item) => item.textContent?.includes(branch.title))
+          const nestedRow = rows.find((item) => item.textContent?.includes(nested.title))
+          assert(rootRow && branchRow && nestedRow, 'tree is missing one branch generation')
+          assert(
+            Number.parseFloat(rootRow.style.paddingInlineStart) <
+              Number.parseFloat(branchRow.style.paddingInlineStart) &&
+              Number.parseFloat(branchRow.style.paddingInlineStart) <
+                Number.parseFloat(nestedRow.style.paddingInlineStart),
+            'nested conversations have no increasing depth',
+          )
+          assert(
+            branchRow.querySelector('.booster-reader-branch-icon') &&
+              nestedRow.querySelector('.booster-reader-branch-icon'),
+            'nested rows lack branch signifiers',
+          )
+          const searchInput = reader.querySelector<HTMLInputElement>(
+            '.booster-reader-sidebar > input',
+          )
+          assert(searchInput, 'archive project search missing')
+          searchInput.value = nested.title
+          searchInput.dispatchEvent(new Event('input', { bubbles: true }))
+          await delay()
+          const matched = [
+            ...reader.querySelectorAll<HTMLButtonElement>('.booster-reader-chat-list button'),
+          ]
+          assert(matched.length === 3, 'search did not preserve exactly the known ancestor chain')
+          assert(
+            matched.some((item) => item.textContent?.includes(root.title ?? '#none')) &&
+              matched.some((item) => item.textContent?.includes(branch.title)) &&
+              matched.some((item) => item.textContent?.includes(nested.title)),
+            'search lost branch ancestry',
+          )
+          matched.find((item) => item.textContent?.includes(nested.title))?.click()
+          await delay()
+          assert(
+            reader
+              .querySelector('.booster-reader-chat-header')
+              ?.textContent?.includes(nested.title),
+            'nested branch is not selectable',
+          )
+          return { nestedDepth: 2, searchAncestors: 2 }
+        } finally {
+          adapter.listConversations = originalListConversations
+          await close()
+        }
+      },
+    )
+
     return result
   } finally {
     await close()
