@@ -2135,3 +2135,9 @@ The test used the external Playwright server `192.168.1.11:8931` and an already 
 - Pro `/scheduled` showed template gallery only in this pass (no new tasks). Pro `/space/sites` showed first-use legal terms (not accepted). Pro `/plugins?directoryTab=personal` listed custom Koba apps (no permission mutations).
 
 See `CHATGPT_BROWSER_WORKFLOWS.md` for the status matrix. This **does** prove actual Python code execution for the Pro case, superseding the Free-only trace gap without pretending the Free case was independently traced.
+
+### Pro Space PDF/TXT simultaneous upload and PDF preview (2026-10-07)
+
+A single real Space multiple-file input change selected two browser-side synthetic files: `booster-pro-pdf-20261007.pdf` (595 bytes, one minimal valid PDF page) and `booster-pro-text-20261007.txt` (36 bytes). Both files entered the `/space?tab=all` list with exact sizes and persisted after reload. The PDF opened through `/space/file/<library-id>`, exposing a rendered preview containing `BOOSTER_PDF_20261007`, plus Download. The PDF Download content route returned HTTP 302; the Playwright `download` event/actual browser-host bytes were not obtained before a tool timeout. Keep download accepted only at the request/redirect boundary, not byte-level completion.
+
+The Python-generated `booster-pro-aggregated.csv` (94 bytes) was also visible in the Pro Space list later, establishing that the analysis output had been saved as a persistent Library item, not merely described in chat. The main account's existing files were left untouched.
