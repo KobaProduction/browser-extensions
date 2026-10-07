@@ -30,7 +30,7 @@ Two distinct browser contexts were investigated: a managed persistent Chromium s
 | Composer upload | Attach a synthetic 87-byte CSV to a chat during Library quota exhaustion | **Live** | UI identified the file as spreadsheet and explicitly indicated **only in this chat**, not Library; quota notice was a dismissible modal. Attachment remained after dismissing it and was attached to the outgoing user turn. |
 | File content analysis | Group synthetic CSV `amount` by `category` and `month` | **Live Python trace in Pro** | Free answer had no captured code trace. In Pro native `Просмотр анализа` displayed Python code and STDOUT: source exists and size 87, 4 rows, grouped totals 25/25 and 30/20, generated CSV 94 bytes, reopened and validated. Distinguish this trace from the model's prose claim. |
 | Generated file | Open a generated CSV and download it | **Free download live; Pro Library persistence live** | Free generated CSV was downloaded and independently read (32 bytes). Pro Python generated a 94-byte CSV which appeared persistently under Space Your items. The Pro download event/bytes were not independently captured. |
-| File formats | PDF, TXT, DOCX, XLSX, PPTX, image, multi-file upload/preview | **Pro PDF/TXT upload and PDF preview live; others untested** | Two files, PDF (595 bytes) and TXT (36 bytes), were simultaneously submitted through Space multiple-file input and survived full reload. PDF preview displayed its unique synthetic marker. DOCX/XLSX/PPTX/multi-image and OS-native file chooser are not accepted. |
+| File formats | PDF, TXT, DOCX, XLSX, PPTX, image, multi-file upload/preview | **Pro PDF/TXT file-to-chat Python live; other formats untested** | Two files, PDF (595 bytes) and TXT (36 bytes), were uploaded together to Space and persisted; Pro Chat successfully read both with PyMuPDF/UTF-8 in one native Python execution, confirmed by code and stdout. DOCX/XLSX/PPTX, image and OS-native chooser remain untested. |
 | Python / data analysis | Code execution, charts, tables, notebook/artifact visibility | **Live Pro code and stdout** | Native `Просмотр анализа` showed two Python code cells with actual STDOUT and output-file round-trip. The generated-file pressable existed, but independently observing its download into the external computer remains a separate acceptance boundary. Charts/interactive DataFrames untested. |
 | Search / Deep Research | Public web, site restrictions, research plan/progress and report downloads | Official documentation | Deep Research supports plan review, citations and export; execution and downloads not yet tested in the current browser account. |
 | Study | `@study` / study mode in normal chat | Official documentation | Not tested. Availability differs for temporary chats, GPTs and Projects. |
@@ -103,7 +103,20 @@ The same external Pro Space page exposed one `input[type=file]` with `multiple=t
 
 Both appeared in Space Your items with their exact sizes, and both remained after full page reload. Clicking the PDF opened the native `/space/file/<id>` viewer; the unique `BOOSTER_PDF_20261007` marker was visible in the rendered document. The viewer exposed Download. Activation produced a native content request/302 redirect, but the separate Playwright download-event/byte inspection **timed out**, so it is **not accepted** as a completed browser-host download.
 
-This proves **multi-file input → backend persistence → PDF preview**; it does not test the OS-native file chooser, drag/drop, OCR, complex PDF pages, or TXT content reasoning in a chat. The files are explicitly disposable named fixtures; no existing user files were modified or deleted. Alongside the 87-byte input CSV, the 94-byte Python-generated CSV was visible in Pro Space after the test.
+This proves **multi-file input → backend persistence → PDF preview**. A subsequent distinct test **also proved both files can be read from one Chat Python execution**, detailed below. It does not test the OS-native file chooser, drag/drop, OCR or complex PDF layouts. The files are explicitly disposable named fixtures; no existing user files were modified or deleted. Alongside the 87-byte input CSV, the 94-byte Python-generated CSV was visible in Pro Space after the test.
+
+### Pro PDF + TXT → Chat → Python acceptance (2026-10-07)
+
+From the same Pro Space library the two **previously saved** disposable files were selected together and **Начать чат** opened a normal Chat composer containing two distinct inline `chatgpt-library-file-mention-id` records with MIME types `application/pdf` and `text/plain`. Neither was merely a typed filename. A test prompt asked for direct extraction of PDF text and TXT token without supplying the expected marker or token.
+
+The resulting chat `/c/6ac6a941-eb70-83eb-8117-f620911e8793` completed after about 16 seconds. The **native `Просмотр анализа` dialog** exposed Python source and STDOUT:
+
+- Used `Path('/mnt/data/booster-pro-pdf-20261007.pdf')` and `Path('/mnt/data/booster-pro-text-20261007.txt')`, printing `exists=True` and respective sizes **595** and **36 bytes**.
+- Read raw TXT bytes and decoded UTF-8 lines `BOOSTER_TXT_20261007` and `Token: ORBITAL`.
+- Called `fitz.open(pdf_path)` (PyMuPDF), confirmed **one page** and extracted `BOOSTER_PDF_20261007\n` via `doc[0].get_text('text')`.
+- The assistant's final answer also reported these exact markers/sizes. The **independent tool code and stdout**, not the prose answer, establish actual file access and parsing.
+
+This accepts the full **two-file Space storage → Library references → Chat submission → Python PDF/TXT extraction → observed result** path. It does not establish OCR for scanned PDFs, complex layouts, filesystem persistence beyond this execution, or downloaded bytes on the remote Chrome host.
 
 ## Higher-value browser-agent capabilities discovered in product help
 
@@ -123,8 +136,8 @@ There is **no verified separate Goals/Plans manager** in this capture. Product g
 | Priority | Scenario | Missing proof / blocker |
 | --- | --- | --- |
 | P0 | Library → Chat existing file | **Pro acceptance passed** with a healthy Space upload: source file reached Python. Preserve separate Free quota/missing-file failure for follow-up only if Free-specific behavior matters. |
-| P0 | File upload by format | **Pro PDF + TXT simultaneous upload and PDF preview passed.** Remaining: DOCX, XLSX, PPTX, image, OS chooser and drag/drop, download bytes and intentional failure variants. Do not repeat proven synthetic PDF/TXT upload merely for coverage count. |
-| P0 | Python and code-backed analysis | **Pro code trace passed** on 2026-10-07. Remaining: graphical data analysis, multi-file and error/retry variants, not this already-proven CSV/Python path. |
+| P0 | File upload by format | **Pro PDF + TXT simultaneous upload, PDF preview, both-file Chat attachment and Python read passed.** Remaining: DOCX, XLSX, PPTX, image, OS chooser and drag/drop, download bytes and intentional failure variants. |
+| P0 | Python and code-backed analysis | **Pro code trace passed** for CSV aggregation and independent two-file PDF/TXT reading on 2026-10-07. Remaining: graphical data analysis, malformed files, error/retry and result download variants. |
 | P0 | Download variants | Free Markdown and generated CSV downloads have byte-level proof. Pro native PDF/CSV viewers offered Download and network 302 but remote Chrome-host bytes were not captured. Next: Pro download event/bytes and other generated formats. |
 | P0 | Scheduled task matrix | In native `/scheduled` capture run-now/Pause/Resume/Delete with exact transport and postconditions, notification settings, event triggers, task sharing and approval dependency. Do **not** create tasks through the assistant's current chat merely to test the external browser. |
 | P1 | Work/Cloud Browser and model selection | Native Work browser actions, files in/out, approvals, handoff/resume, current model/effort selector; separately re-capture the paid ordinary Chat selector on the current release. |
