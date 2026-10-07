@@ -877,6 +877,61 @@ The client receives a new `conversation` object and also generates a fresh local
 
 This branch endpoint was identified directly in the deployed client code, but was **not live-executed in this particular capture**. Evidence level: client-code confirmed, not live-accepted yet.
 
+#### Regeneration and version graph — client-code confirmed
+
+The deployed completion pipeline distinguishes normal continuation from regeneration
+without introducing a dedicated regenerate endpoint.
+
+For a regeneration the client calls the ordinary conversation submission path with a
+`regeneration` descriptor and derives:
+
+```text
+action = "variant"
+parent_message_id = regenerateFromMessageId
+regeneration_source = regeneration.source
+variant_purpose = regeneration.variantPurpose
+```
+
+when the optional fields are present. The same request builder also carries the ordinary
+conversation id, model, reasoning effort and other current conversation settings.
+
+The in-memory graph uses sibling `children` below a common parent to represent response
+alternatives. During submission/stream application the client separately tracks:
+
+```text
+messageIdToMarkHasVersions
+regeneratedMessageId
+hasExistingVariants
+```
+
+and promotes `metadata.has_versions=true` when the message acquires alternatives. This
+is graph/version semantics, not destructive replacement of the old response.
+
+History loading is explicitly version-aware. Recent and older-page requests include:
+
+```text
+include_has_versions=true
+```
+
+on `/backend-api/conversations/{conversation_id}` and
+`/backend-api/conversations/{conversation_id}/messages`. If the current route contains
+a `message` or `messageId` query parameter, the loader forces the full-conversation
+path rather than relying only on the bounded recent-turn pagination path.
+
+The loaded conversation keeps both `mapping` and `current_node`. The client merges
+additional nodes/children without flattening sibling alternatives and preserves
+`has_versions` evidence while merging paginated pages.
+
+This establishes the data model and request construction, but it does **not** yet prove
+the current native UI interaction sequence for:
+
+- editing a user message;
+- clicking Regenerate/Try again;
+- moving backward/forward between visible response versions;
+- opening a version-targeted route.
+
+Those remain dedicated live-acceptance points.
+
 #### Native chat rename — live verified
 
 The deployed client rename function trims the requested title and no-ops on an empty title or a title identical to the previous value. A real rename was then performed through the native project conversation-list UI.

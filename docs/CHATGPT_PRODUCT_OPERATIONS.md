@@ -242,6 +242,54 @@ POST /backend-api/conversation/new_branch
 
 This branch operation has not yet received a dedicated live mutation acceptance test.
 
+### Regenerate and in-conversation versions — client-code confirmed
+
+The current deployed client does not expose a dedicated `/regenerate` mutation. Native
+regeneration reuses the normal conversation completion transport and changes the request
+semantics to a variant submission.
+
+The client submission pipeline sets:
+
+```text
+action = "variant"
+parent_message_id = <message selected as regeneration boundary>
+regeneration_source = <native retry/regenerate source, when present>
+variant_purpose = <purpose, when present>
+```
+
+and then sends the ordinary conversation completion request. Internally the call carries
+`regenerateFromMessageId` separately from the optional replacement message payload.
+
+When a prompt already has child alternatives, the graph treats them as sibling variants.
+The source-state layer records:
+
+```text
+messageIdToMarkHasVersions
+regeneratedMessageId
+hasExistingVariants
+```
+
+and marks the relevant message with `metadata.has_versions=true`.
+
+Conversation history reads request version awareness explicitly:
+
+```text
+GET /backend-api/conversations/{conversation_id}?num_turns=...&include_has_versions=true
+GET /backend-api/conversations/{conversation_id}/messages?before=...&num_turns=...&include_has_versions=true
+```
+
+When the route contains a `message` or `messageId` query parameter, or when the
+pagination cache is already complete, the client forces the full conversation loader
+instead of relying only on the bounded recent-turn page. This is relevant to opening a
+specific historical branch/version.
+
+The conversation model remains a graph of nodes with `parent` and `children`; the
+visible branch is determined by `current_node`. Do not model regeneration as overwriting
+the prior assistant response.
+
+Evidence level: deployed-client-code confirmed. Dedicated live acceptance for regenerate,
+user-message edit and version navigation remains required.
+
 ## 4. Model and reasoning-effort selector
 
 The tested Chat composer exposed one five-position reasoning-power control. Its visual label is not merely cosmetic: the selected position changes the actual `/f/conversation` transport model/effort contract.

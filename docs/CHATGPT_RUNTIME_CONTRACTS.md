@@ -325,6 +325,25 @@ POST /backend-api/conversation/new_branch
 
 Use this operation as the semantic definition of a ChatGPT branch. It returns a new conversation object; the client also creates a fresh local thread id. This endpoint still requires live acceptance before Booster should depend on undocumented response details.
 
+### Regenerate / version graph
+
+Deployed-client-code contract:
+
+- regeneration uses the ordinary conversation completion transport with
+  `action="variant"`;
+- the regeneration boundary becomes `parent_message_id`;
+- optional request metadata includes `regeneration_source` and `variant_purpose`;
+- alternate answers remain sibling graph nodes rather than replacing the previous node;
+- `metadata.has_versions=true` is explicit source evidence that alternatives exist;
+- the selected visible branch is represented by `current_node`;
+- history pagination asks for `include_has_versions=true`.
+
+Treat user-message edit, assistant regeneration, true `new_branch`, and selecting an
+existing version as separate operations even though they can all change the visible
+conversation branch.
+
+Live UI/transport acceptance for edit/regenerate/version switching is still pending.
+
 ### Rename
 
 Live-verified contract:
