@@ -1706,33 +1706,103 @@ GET  /backend-api/ca/v2/user/connection_status
 
 The page exposed OAuth as the active authentication method and provided connected-account actions plus app management.
 
-### Refresh tools — live verified
+### Disposable custom MCP lifecycle — live verified
 
-Native `Refresh tools` / `Обновить инструменты` was activated. No separate mutation endpoint appeared. Instead ChatGPT repeated the plugin metadata and connector action-schema reads, including:
+A separate disposable custom MCP app was created through `Add -> Create custom MCP server`.
+
+The dialog exposed optional PNG icon, name, optional description, server URL vs tunnel, three authentication choices (`OAuth`, `None`, `OAuth or None`), advanced OAuth configuration, and an explicit risk acknowledgement.
+
+Entering the known MCP URL triggered OAuth discovery. Advanced settings showed DCR selected, custom OAuth client available, CIMD disabled because the server did not advertise support, default scope `read:user`, the discovered OAuth endpoints/resource and PKCE S256. OIDC remained unavailable because no OIDC configuration URL was advertised.
+
+Creation emitted:
 
 ```text
-GET /backend-api/ps/plugins/{plugin_id}
-GET /backend-api/aip/connectors/{app_id}?include_actions=true
+POST /backend-api/aip/connectors/mcp -> 200
 ```
 
-The action schema before and after refresh contained the same six actions:
+with `name`, `description`, `mcp_url`, optional `logo_url`, and discovered `auth_request`.
+
+The result was a new independent `asdk_app_...` connector even though it used the same MCP URL as the existing Koba MCP Bridge.
+
+The OAuth connection then completed through `links/oauth` and `links/oauth/callback`, producing an ACTIVE OAuth link with the six bridge actions.
+
+The app metadata reported `enable_multi_links=true`, and native settings exposed `Connect another account`. A separate app object and a second link on one app are therefore distinct product operations.
+
+### Create-time icon — live verified
+
+A second disposable connector was created with a 256 x 256 PNG. The native file input accepted PNG only; product copy recommended at least 256 x 256 and limited the file to 10 KB.
+
+The actual create request embedded the image as a data URL in `logo_url`. The response returned hosted `icon_assets` for square and circular variants.
+
+The resulting app could be managed before connecting an account. Its management surface exposed name, description and delete, but no post-create icon-edit control or file input. Post-create icon editing remains unsupported by the observed native UI; no private mutation is inferred.
+
+### Name and description mutations — live verified
+
+On the connected disposable app:
 
 ```text
-bridge_ping
-bridge_build_info
-bridge_backends
-bridge_tools
-bridge_call
-bridge_capabilities
+PATCH /backend-api/aip/connectors/{app_id}/name -> 200
+PATCH /backend-api/connectors/{app_id}/description -> 200
 ```
 
-Thus the observed refresh operation is a force-reload/reconciliation of current action schema rather than a distinct server mutation.
+Each body contained only the changed field and each response returned updated connector metadata.
 
-### Connected-account permissions
+### Refresh tools — corrected live contract
 
-The connected-account menu exposed `Settings` and `Reconnect`.
+The original Koba MCP Bridge capture only showed the subsequent GET reconciliation and therefore missed the write boundary. On the disposable connected app, native `Refresh tools` emitted:
 
-The read-only Settings dialog presented permission policies ranging from always asking for confirmation through read-only/low-risk auto-approval to an elevated-risk allow-all mode. No permission setting was changed during the test.
+```text
+POST /backend-api/aip/connectors/mcp/refresh_actions -> 200
+```
+
+with:
+
+```json
+{ "link_id": "<connected account link>" }
+```
+
+and then re-read plugin metadata plus `connector?include_actions=true`.
+
+The six bridge actions remained unchanged. `Refresh tools` is therefore a link-scoped server refresh followed by local/server-state reconciliation, not GET-only behavior.
+
+### Connected-account permissions — live verified
+
+The permission radio values observed were:
+
+```text
+always_ask
+ask_before_writes
+review_important_actions
+full_access
+```
+
+A new disposable OAuth link defaulted to `review_important_actions`.
+
+All four states were exercised. Each change emitted:
+
+```text
+PATCH /backend-api/aip/connectors/links/{link_id} -> 200
+```
+
+with:
+
+```json
+{ "apps_privacy_control": "<selected value>" }
+```
+
+The test link was restored to `review_important_actions` afterward.
+
+### App deletion — live verified
+
+The native confirmation for both connected and unconnected disposable apps stated that the app and its connections would be permanently deleted.
+
+Both used:
+
+```text
+DELETE /backend-api/aip/connectors/{app_id} -> 200
+```
+
+After deletion the client returned to plugin settings and a subsequent plugin lookup returned `404`.
 
 ### OAuth reconnect / reauthorization — live verified
 
@@ -1763,6 +1833,7 @@ After the operation tests:
 - both test automations were disabled;
 - the temporary test chat was deleted;
 - the temporary test project was deleted;
+- both disposable MCP apps were deleted;
 - Koba MCP Bridge remained installed and connected after successful OAuth reconnect;
 - no OAuth token/code/state/link identifiers or personal account metadata are retained in repository docs.
 

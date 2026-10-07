@@ -636,35 +636,167 @@ App management
 
 It reported OAuth as both supported and currently used authentication for the connected account.
 
+### Create a custom MCP app — live verified
+
+The native `Add / Добавить` menu exposes three distinct authoring paths:
+
+```text
+Create plugin
+Upload plugin archive
+Create custom MCP server
+```
+
+The custom-MCP dialog exposes:
+
+```text
+optional PNG icon
+  recommended >= 256 x 256
+  maximum file size 10 KB
+name
+optional description
+connection:
+  server URL
+  tunnel
+authentication:
+  OAuth
+  no authentication
+  OAuth or no authentication
+risk acknowledgement
+```
+
+Entering a known MCP URL causes ChatGPT to discover OAuth configuration before creation. In the captured OAuth server, advanced settings exposed:
+
+```text
+client registration:
+  custom OAuth client
+  DCR
+  CIMD
+default scopes:
+  read:user
+authorization URL
+token URL
+registration URL
+authorization-server base URL
+resource URL
+PKCE:
+  S256
+```
+
+DCR was selected. CIMD was disabled because the server did not advertise it. OIDC remained unavailable because the server did not advertise an OIDC configuration URL.
+
+Creation used:
+
+```text
+POST /backend-api/aip/connectors/mcp -> 200
+```
+
+Safe request shape:
+
+```json
+{
+  "name": "<app name>",
+  "description": "<optional description>",
+  "mcp_url": "<MCP endpoint>",
+  "logo_url": "<data:image/png;base64,... or null>",
+  "auth_request": {
+    "supported_auth": ["<discovered OAuth configuration>"]
+  }
+}
+```
+
+The returned connector is a new `asdk_app_...` object even when it points at the same MCP endpoint as an existing app. A second disposable app was successfully created against the existing Koba MCP endpoint, so app identity is not derived solely from server URL.
+
+For OAuth apps, native installation then uses:
+
+```text
+POST /backend-api/aip/connectors/links/oauth
+POST /backend-api/aip/connectors/links/oauth/callback
+```
+
+The callback returned an active link with the connector action set. Connector metadata exposed `enable_multi_links=true`, and the management UI exposed `Connect another account`, so multiple connected-account links are a separate concept from creating another app object.
+
+### Create-time icon — live verified
+
+A 256 x 256 PNG was supplied through the native icon input before creating a disposable MCP app.
+
+The create request embedded the PNG as:
+
+```text
+logo_url = data:image/png;base64,...
+```
+
+The connector response normalized it into hosted icon assets:
+
+```text
+icon_assets.256_square
+icon_assets.256_circle
+```
+
+After creation, the current native management surface exposes name, description, tool refresh and app deletion, but no icon-edit control or file input. Therefore:
+
+```text
+create-time icon upload      = live verified
+post-create icon editing UI  = not exposed in this build
+```
+
+Do not infer a private post-create icon mutation endpoint from the create-time `logo_url` field.
+
+### App name and description mutations — live verified
+
+Name editing uses:
+
+```text
+PATCH /backend-api/aip/connectors/{app_id}/name -> 200
+```
+
+```json
+{ "name": "<new name>" }
+```
+
+Description editing uses:
+
+```text
+PATCH /backend-api/aip/connectors/{app_id}/description -> 200
+```
+
+```json
+{ "description": "<new description>" }
+```
+
+Both mutations returned the updated connector and were reflected in the native settings UI.
+
 ### Refresh tools — live verified
 
-Clicking native `Refresh tools` / `Обновить инструменты` did **not** emit a separate mutation request in the captured build.
+An earlier capture on the long-lived Koba MCP Bridge only exposed the post-refresh GET reconciliation. A later disposable-app capture resolved the missing write boundary:
 
-Instead it forced a re-read of app metadata and current connector action schema:
+```text
+POST /backend-api/aip/connectors/mcp/refresh_actions -> 200
+```
+
+with safe request shape:
+
+```json
+{ "link_id": "<connected account link>" }
+```
+
+ChatGPT then re-read plugin metadata and connector action schema:
 
 ```text
 GET /backend-api/ps/plugins/{plugin_id}
 GET /backend-api/aip/connectors/{app_id}?include_actions=true
 ```
 
-The action set before and after refresh was unchanged and contained six actions:
+The action set remained the same six bridge actions in the captured app.
+
+Therefore the verified semantic contract is:
 
 ```text
-bridge_ping
-bridge_build_info
-bridge_backends
-bridge_tools
-bridge_call
-bridge_capabilities
+Refresh tools
+  = server refresh_actions operation scoped to a connected-account link
+  + client reconciliation of current plugin/connector action metadata
 ```
 
-Therefore the observed semantic contract is:
-
-```text
-Refresh tools = force connector/action-schema refresh and update local plugin state
-```
-
-Do not assume it is a server-side mutation merely because the UI uses an action button.
+The older GET-only observation was incomplete evidence, not a different contract.
 
 ### Connected-account menu
 
@@ -675,9 +807,11 @@ Settings
 Reconnect
 ```
 
-### Account permission settings
+### Account permission settings — live verified
 
-The read-only inspection of `Settings` showed per-account tool-approval policies:
+Permissions are stored on the connected-account link, not only on the app object.
+
+The native settings surface exposes:
 
 ```text
 Always ask for confirmation
@@ -693,7 +827,40 @@ Allow all tools                  # elevated risk
   -> use tools without confirmation
 ```
 
-The dialog also offered a reset-to-default action. No permission changes were made during the reverse-engineering session.
+The actual stored values observed in the radio controls are:
+
+```text
+always_ask
+ask_before_writes
+review_important_actions
+full_access
+```
+
+Every mode was exercised on the disposable OAuth link. The mutation contract is:
+
+```text
+PATCH /backend-api/aip/connectors/links/{link_id} -> 200
+```
+
+```json
+{ "apps_privacy_control": "<mode>" }
+```
+
+A new disposable connection defaulted to `review_important_actions` (`Allow low-risk`). After testing, it was restored to that default.
+
+### Delete app — live verified
+
+The native destructive confirmation states that the app and its connections are permanently deleted and that the action cannot be undone.
+
+Both an unconnected disposable app and a connected OAuth disposable app used the same mutation:
+
+```text
+DELETE /backend-api/aip/connectors/{app_id} -> 200
+```
+
+After success, the client returned to the plugin settings list. A subsequent plugin metadata read returned `404`.
+
+This is an app-object deletion, not merely disconnecting one connected-account link.
 
 ## 9. OAuth reconnect / reauthorization
 
