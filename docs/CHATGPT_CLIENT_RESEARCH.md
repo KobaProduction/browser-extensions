@@ -1834,3 +1834,22 @@ execution lifecycle.
 The same deployed client code maps `tpp` and `flora` conversation origins to the Work
 product experience. The live conversation used `tpp`. This gives Booster a
 source-level Work classifier rather than relying on renderer copy.
+
+## Verified conversation-scoped load failure (2026-10-07)
+
+A separate native failure surface was captured on a single conversation route:
+
+    Не удалось загрузить этот разговор ChatGPT
+    Повторить
+
+This presentation is materially different from a failure to load the chat list or from a global application outage. Another ChatGPT conversation remained open and usable in a separate tab while the affected route showed this error.
+
+Network evidence around the incident was mixed:
+
+- a clean reload reproduced the failure while GET /backend-api/conversations/{id} returned HTTP 429;
+- the same conversation endpoint had returned HTTP 200 earlier in the page session;
+- conversation-list requests also showed repeated 429 responses.
+
+Therefore HTTP 429 is a live-verified cause of this UI state in the captured reproduction, but the evidence does not justify defining the UI state as a one-to-one alias for HTTP 429 or assuming every occurrence has the same backend cause. Preserve it as its own normalized availability state, conversation_load_failed, and keep it independent from conversation-list availability, transport recovery, generation lifecycle and global service health.
+
+The Retry button is a user-facing recovery action for the current conversation load. It is not evidence that every other conversation is unavailable.

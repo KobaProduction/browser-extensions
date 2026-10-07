@@ -828,3 +828,19 @@ Maintain explicit confidence levels in future reverse-engineering:
 - **unknown** — do not fill with assumptions.
 
 When a new ChatGPT status appears, capture its source event first when possible, then document presentation. Do not make localized UI strings the architectural contract.
+
+## 19. Conversation-scoped load availability
+
+Conversation-document availability is separate from both the conversation-list surface and run/transport lifecycle.
+
+Representative normalized states:
+
+    unknown
+    available
+    conversation_load_failed
+
+A conversation-scoped native failure such as the Russian UI text "Не удалось загрузить этот разговор ChatGPT" with a "Повторить" action must not be promoted to a global ChatGPT outage and must not be collapsed into a conversation-list loading failure. Other conversations can remain usable while one route is in conversation_load_failed.
+
+The native Retry action is evidence that the failed unit is the current conversation load. Do not infer the root cause from the localized error alone. Around the 2026-10-07 capture, a clean reload reproduction rendered the same conversation-scoped failure while GET /backend-api/conversations/{id} returned HTTP 429. The same conversation endpoint had also returned HTTP 200 earlier in the session. Therefore 429 is a verified cause for this reproduction, but the UI state must not be defined as an alias for HTTP 429.
+
+Keep this axis independent from generation lifecycle, transport recovery, server async status and global service health.
