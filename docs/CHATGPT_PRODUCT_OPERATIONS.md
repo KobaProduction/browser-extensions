@@ -1235,4 +1235,8 @@ The Pro `/scheduled` landing surface exposed task suggestions but no new task wa
 
 ## 15. GPT-6 current Chat selector (2026-10-07)
 
-The externally authorized Pro ordinary Chat picker selected GPT-6 and displayed a five-position effort slider at High (3/5). The two alternate radios were GPT-5.6 Sol and GPT-5.5. Slider mutation was not observed; model-change automation was blocked. Do not mark selection changes or outbound fields validated. See CHATGPT_BROWSER_WORKFLOWS.md.
+The externally authorized Pro ordinary Chat picker selected GPT-6 and displayed a five-position effort slider at High (3/5). The two alternate radios were GPT-5.6 Sol and GPT-5.5. Slider mutation was not reproduced in this attempt, though a separate earlier Pro run confirmed High → Medium → High; model-radio change was blocked. Do not mark model-radio selection or outbound fields validated. See CHATGPT_BROWSER_WORKFLOWS.md.
+
+## 16. GPT-6 rollout: ordinary Chat vs Work (2026-10-07)
+
+A newly opened external Pro Chat tab had `Чат` selected and `Работа` not selected while `GPT-6` was checked in the model menu; a separate **Work** conversation displayed `GPT-6 Astra`. Per the official 7 October GPT-6 release, Chat receives the new GPT-6 Sol-backed experience while the Work/Codex models are unchanged by that update. The user's specific `GPT-6 Finetuning` chat was not among available remote tabs and was not classified. One High → Medium → High transition was previously verified; exhaustive five-level selection, persistence and outbound model fields remain pending. Do not infer them from picker state alone.

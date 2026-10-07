@@ -132,7 +132,7 @@ The official GPT-6 launch/update was published on 7 October 2026: https://openai
 
 - Selected radio: **GPT-6**; visible alternatives: **GPT-5.6 Sol** and **GPT-5.5** (UI: available until 14 October).
 - Effort menuitem `Мощность` exposed a five-step slider (`aria-valuemin=0`, `aria-valuemax=4`), current `aria-valuenow=2` with status **`Высокий, 3 из 5`**, and ArrowLeft/ArrowRight shortcut metadata.
-- Playwright mouse/keyboard attempts did not change the numeric slider value. An attempted model-change tool action was blocked by tool safety. **Model switching, thinking-effort change/persistence, and outbound payload verification remain unaccepted**. Original GPT-6/High choice was preserved.
+- Playwright mouse/keyboard attempts did not change the numeric slider value. An attempted model-change tool action was blocked by tool safety. **Changing model radio, persistence of effort, and outbound payload verification remain unaccepted; a prior separate Pro attempt did accept High → Medium → High effort transition**. Original GPT-6/High choice was preserved.
 
 The user reported seeing both **Booster Pro PDF** and **Booster Pro Workflow CSV** in the remote Chrome Downloads UI. This is user-confirmed download occurrence, not automated byte inspection. Reported sizes were **195 and 87 bytes**, respectively, whereas the synthetic PDF uploaded to Space was **595 bytes** (CSV: 87 bytes). The PDF size discrepancy must be resolved before claiming identical downloaded bytes.
 ## Higher-value browser-agent capabilities discovered in product help
@@ -164,7 +164,7 @@ There is **no verified separate Goals/Plans manager** in this capture. Product g
 | P1 | Project file flows | Source upload/replace/download/removal and memory-setting availability; current official help and one previously observed native UI disagree about whether memory can later be switched. Record as version/account-dependent until retested. |
 | P2 | Study / audio / images / Library notes / Sites | Sites first-entry legal terms were observed in Pro; activation and further actions require explicit acceptance. Other listed areas are not yet tested. |
 | P2 | Exact retry / true branch transport | Capture two missing request payloads without redoing already verified version/branch presentation. |
-| P0 | GPT-6 current selector | UI shows selected GPT-6, alternatives and 5-step effort slider; actual switching, effort change and outbound parameters not yet accepted. |
+| P0 | GPT-6 current selector | UI GPT-6/default Chat and five levels observed; **earlier High → Medium → High slider transitions accepted**. New-model radio switch, post-reload persistence and outbound request parameters unaccepted. |
 
 A storage-full Free account is not a sufficient test environment to close cross-format/Library requirements. The user later authorized clearing the old Free Library, but **no Free-library deletion was performed** in this pass because research was switched to the external Pro Chrome profile. Do not touch Pro library content beyond clearly disposable fixtures.
 
@@ -188,3 +188,16 @@ A storage-full Free account is not a sufficient test environment to close cross-
 - [Team tasks](https://help.openai.com/en/articles/20001540-creating-and-managing-team-tasks-in-chatgpt)
 
 Links describe supported product behavior at the time of review; they do not supersede contradictory live evidence in a specific browser build.
+
+### GPT-6 default Chat vs Work — fresh Pro browser tabs (2026-10-07)
+
+Following the 2026-10-07 OpenAI GPT-6 with Intelligent UI launch, the agent opened a **new third tab** in the previously approved external Playwright Pro Chrome profile (existing tabs preserved). The new tab at `https://chatgpt.com/` displayed:
+
+- Composer mode `Чат`: `aria-pressed=true`. `Работа`: `aria-pressed=false`.
+- Ordinary Chat model picker had radio `GPT-6` checked (`GPT-5.6 Sol` and `GPT-5.5` unchecked); effort slider was `High, 3 из 5` with `aria-valuenow=2` in `0..4`.
+- The state in a **fresh Chat tab** independently confirms GPT-6 is the currently selected/default visible Chat model in this Pro profile, without selecting Work. The default **effort level** is not necessarily globally High: draft/composer state is shared across tabs, so treat this as this profile's selected setting, not a universal default.
+- The original remote tab `/c/6ac62b45-0128-83ed-870c-20e999c59bac` is an already known **Work** test conversation titled `Запрос нативного ввода`, whose composer exposes **GPT-6 Astra** and an independent Work reasoning selector. That fact does **not** mean newly opened Chat tabs are Work.
+- The conversation described by the user as `GPT-6 Finetuning` was **not among the three accessible remote Playwright tabs**. The obsolete/unsupported conversation-list API in this client returned an empty page; tested read-only legacy conversation detail routes returned 404. Do not infer that the conversation is deleted or classify its mode from unrelated tabs. A direct visit to its actual URL (when provided or opened in the approved browser) is required.
+- Real pointer/keyboard slider actions in **this later fresh-tab attempt** did not change the observed level, and another attempt to open/change the picker was blocked by tool safety. However, a **separate earlier Pro acceptance** recorded High 3/5 → Medium 2/5 → High 3/5. Thus the effort slider has an accepted transition in one run, but **post-reload persistence, all five positions, model-radio change, and outbound request model slug remain unproven**.
+
+The [OpenAI release of 7 October 2026](https://openai.com/index/gpt-6-for-everyone/) explicitly states that this rollout affects **Chat**, and that **Work and Codex models do not change as part of it**. For eligible paid Chat plans it identifies GPT-6 Sol as the engine behind the GPT-6 label, while the visible menu groups it as `GPT-6`. The product claim does not by itself prove the internal model slug for each request.
