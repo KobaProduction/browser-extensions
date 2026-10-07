@@ -155,6 +155,9 @@ const messages = {
     'activity.sinceLastChange': 'since last change',
     'requestStatus.request': 'Request',
     'requestStatus.reasoning': 'Reasoning',
+    'work.browserOnly': 'Work mode · browser inspection only',
+    'work.subagents': 'Subagents',
+    'work.active': 'active',
     'messageMeta.title': 'Message details',
 
     'tool.inspect': 'Inspect',
@@ -326,6 +329,9 @@ const messages = {
     'activity.sinceLastChange': 'с последнего изменения',
     'requestStatus.request': 'Запрос',
     'requestStatus.reasoning': 'Размышление',
+    'work.browserOnly': 'Режим Work · браузер только для проверки',
+    'work.subagents': 'Субагенты',
+    'work.active': 'активно',
     'messageMeta.title': 'Детали сообщения',
 
     'tool.inspect': 'Inspect',

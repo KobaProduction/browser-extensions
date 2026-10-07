@@ -38,6 +38,7 @@ import { ARCHIVE_ASSET_EVENT, ARCHIVE_EVENT, TRANSPORT_CHANNEL } from '../../pac
 import { mountMessageMetadata } from '../../packages/ui/src/message-metadata'
 import { mountBoosterUi } from '../../packages/ui/src/mount'
 import { mountScopeArchiveControl } from '../../packages/ui/src/scope-archive-control'
+import { mountWorkModeWarning } from '../../packages/ui/src/work-mode-warning'
 import { runLoaderCancellationTests, runLoaderIsolationTests, runLoaderScrollTest } from './loader'
 import { runUiTests } from './ui'
 
@@ -1637,6 +1638,7 @@ async function runPerformanceTests() {
       locale: 'en' as const,
       archivedCount: 0,
       effectiveEnabled: false,
+      workConversation: false,
       source: 'default' as const,
       hasOverride: false,
       onSetEnabled() {},
@@ -1653,9 +1655,54 @@ async function runPerformanceTests() {
         pass: shadow === null && marker?.style.background === 'rgb(34, 197, 94)',
         hasShadowRoot: shadow !== null,
       })
+      control.update({ ...base, workConversation: true })
+      results.push({
+        name: 'Work conversation marker overrides archive green with warning red',
+        pass:
+          marker?.dataset.workConversation === 'true' &&
+          marker.style.background === 'rgb(239, 68, 68)',
+        markerBackground: marker?.style.background ?? null,
+      })
     } finally {
       control.unmount()
       chatHost.remove()
+    }
+  }
+
+  {
+    const anchor = document.createElement('div')
+    document.body.append(anchor)
+    const warning = mountWorkModeWarning(
+      anchor,
+      [
+        { displayName: 'Multiply', status: 'done' },
+        { displayName: 'Primes', status: 'working' },
+      ],
+      'en',
+    )
+    try {
+      const text = warning.element.shadowRoot?.textContent ?? ''
+      results.push({
+        name: 'Work warning surfaces subagent total and active count',
+        pass:
+          text.includes('Work mode · browser inspection only') &&
+          text.includes('Subagents 2') &&
+          text.includes('active 1'),
+        text,
+      })
+      warning.update([
+        { displayName: 'Multiply', status: 'done' },
+        { displayName: 'Primes', status: 'done' },
+      ])
+      const completedText = warning.element.shadowRoot?.textContent ?? ''
+      results.push({
+        name: 'Work warning clears active count after all subagents complete',
+        pass: completedText.includes('Subagents 2') && completedText.includes('active 0'),
+        text: completedText,
+      })
+    } finally {
+      warning.unmount()
+      anchor.remove()
     }
   }
 

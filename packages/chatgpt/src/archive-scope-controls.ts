@@ -57,13 +57,17 @@ export function mountArchiveScopeControls(initial: ScopeControlOptions) {
     const element = node instanceof Element ? node : node.parentElement
     if (!element || element.closest('[data-chatgpt-booster], #chatgpt-booster-root')) return false
     if (
-      element.matches('nav, header, [role="row"][data-page-table-selectable-row="true"]') ||
-      element.closest('nav, header, [role="row"][data-page-table-selectable-row="true"]')
+      element.matches(
+        'nav, header, main [role="list"], [role="row"][data-page-table-selectable-row="true"]',
+      ) ||
+      element.closest(
+        'nav, header, main [role="list"], [role="row"][data-page-table-selectable-row="true"]',
+      )
     )
       return true
     return Boolean(
       element.querySelector(
-        'nav a[href], header a[href], main [role="row"][data-page-table-selectable-row="true"]',
+        'nav a[href], header a[href], main [role="list"] a[href], main [role="row"][data-page-table-selectable-row="true"]',
       ),
     )
   }
@@ -208,7 +212,7 @@ export function mountArchiveScopeControls(initial: ScopeControlOptions) {
     }
 
     for (const link of document.querySelectorAll<HTMLAnchorElement>(
-      'nav a[href], header a[href]',
+      'nav a[href], header a[href], main [role="list"] a[href]',
     )) {
       if (owned.has(link) || link.closest('[data-chatgpt-booster], #chatgpt-booster-root')) continue
       const context = contextFor(link)

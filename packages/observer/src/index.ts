@@ -8,6 +8,7 @@ export const CONVERSATION_REQUEST_EVENT = 'chatgpt-booster:conversation-request'
 export const CONVERSATION_STOP_EVENT = 'chatgpt-booster:conversation-stop'
 export const CONVERSATION_STREAM_STATUS_EVENT = 'chatgpt-booster:conversation-stream-status'
 export const CONVERSATION_STREAM_EVENT = 'chatgpt-booster:conversation-stream'
+export const CONVERSATION_CATALOG_EVENT = 'chatgpt-booster:conversation-catalog'
 export const ARCHIVE_ASSET_EVENT = 'chatgpt-booster:archive-asset'
 export const ARCHIVE_ASSET_FETCH_REQUEST_EVENT = 'chatgpt-booster:archive-asset-fetch-request'
 export const ARCHIVE_ASSET_FETCH_RESULT_EVENT = 'chatgpt-booster:archive-asset-fetch-result'
@@ -193,6 +194,12 @@ export function conversationStreamEventFromPayload(
   if (!value) return null
   const conversationId =
     typeof value.conversation_id === 'string' ? value.conversation_id : fallbackConversationId
+  const directMessage = conversationMessageRecord(value.message)
+  if (directMessage) return { conversationId, kind: 'message', record: directMessage, observedAt }
+  if (value.type === 'input_message') {
+    const inputMessage = conversationMessageRecord(value.input_message)
+    if (inputMessage) return { conversationId, kind: 'message', record: inputMessage, observedAt }
+  }
   if (value.type === 'message_stream_complete')
     return { conversationId, kind: 'complete', phase: 'message', observedAt }
   if (value.type === 'main_stream_complete')
@@ -316,6 +323,22 @@ function sourceTimestampMs(value: unknown): number | null {
   return value < 10_000_000_000 ? value * 1000 : value
 }
 
+function conversationMessageRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const record = value as Record<string, unknown>
+  const author = record.author
+  if (
+    typeof record.id !== 'string' ||
+    !author ||
+    typeof author !== 'object' ||
+    Array.isArray(author) ||
+    typeof (author as Record<string, unknown>).role !== 'string' ||
+    !Object.hasOwn(record, 'content')
+  )
+    return null
+  return record
+}
+
 function requestPayload(value: unknown): Record<string, unknown> | null {
   if (typeof value === 'string') {
     try {
@@ -358,6 +381,12 @@ export function conversationRequestTimingFromBody(
         ? payload.conversation_id
         : (pageConversationId() ?? null),
     userMessageId: typeof user?.id === 'string' ? user.id : null,
+    ...(payload && Object.hasOwn(payload, 'conversation_origin')
+      ? {
+          conversationOrigin:
+            typeof payload.conversation_origin === 'string' ? payload.conversation_origin : null,
+        }
+      : {}),
     startedAt: sourceStartedAt ?? observedAt,
     observedAt,
     source: sourceStartedAt ? 'message_create_time' : 'transport_request',
@@ -370,6 +399,71 @@ function publishConversationRequest(detail: ConversationRequestEventDetail | nul
     { channel: TRANSPORT_CHANNEL, type: CONVERSATION_REQUEST_EVENT, detail },
     observerTarget.location.origin,
   )
+}
+
+function conversationCatalogProjectId(sourceUrl: string): string | null | undefined {
+  try {
+    const url = new URL(sourceUrl, 'https://chatgpt.com/')
+    if (url.origin !== 'https://chatgpt.com') return undefined
+    if (url.pathname === '/backend-api/conversations') return null
+    const match = url.pathname.match(/^\/backend-api\/gizmos\/([^/]+)\/conversations$/)
+    return match?.[1] ? decodeURIComponent(match[1]) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function isConversationCatalogUrl(sourceUrl: string) {
+  return conversationCatalogProjectId(sourceUrl) !== undefined
+}
+
+export function conversationCatalogFromPayload(
+  sourceUrl: string,
+  payload: unknown,
+  observedAt: number,
+): ConversationCatalogEventDetail | null {
+  const routeProjectId = conversationCatalogProjectId(sourceUrl)
+  if (routeProjectId === undefined) return null
+  const value = requestPayload(payload)
+  const items = Array.isArray(value?.items) ? value.items : []
+  const normalized = items.flatMap((item): ConversationCatalogItem[] => {
+    const record = requestPayload(item)
+    if (!record || typeof record.id !== 'string') return []
+    const gizmoId =
+      typeof record.gizmo_id === 'string' && record.gizmo_id.startsWith('g-p-')
+        ? record.gizmo_id
+        : null
+    return [
+      {
+        conversationId: record.id,
+        projectId: gizmoId ?? routeProjectId,
+        conversationOrigin:
+          typeof record.conversation_origin === 'string' ? record.conversation_origin : null,
+      },
+    ]
+  })
+  return normalized.length ? { items: normalized, observedAt } : null
+}
+
+function publishConversationCatalog(detail: ConversationCatalogEventDetail | null) {
+  if (!observerTarget || !detail) return
+  observerTarget.postMessage(
+    { channel: TRANSPORT_CHANNEL, type: CONVERSATION_CATALOG_EVENT, detail },
+    observerTarget.location.origin,
+  )
+}
+
+function observeConversationCatalogResponse(response: Response, sourceUrl: string) {
+  if (!response.ok || !isConversationCatalogUrl(sourceUrl)) return
+  const contentType = response.headers.get('content-type') ?? ''
+  if (!/json/i.test(contentType)) return
+  void response
+    .clone()
+    .json()
+    .then((payload: unknown) =>
+      publishConversationCatalog(conversationCatalogFromPayload(sourceUrl, payload, Date.now())),
+    )
+    .catch(() => undefined)
 }
 
 function isArchiveObservedUrl(sourceUrl: string) {
@@ -428,6 +522,7 @@ export interface TransportEventDetail {
 export interface ConversationRequestEventDetail {
   conversationId: string | null
   userMessageId: string | null
+  conversationOrigin?: string | null
   startedAt: number
   observedAt: number
   source: 'message_create_time' | 'transport_request'
@@ -452,6 +547,12 @@ export interface ConversationStreamStatusEventDetail {
 export type ConversationStreamEventDetail =
   | {
       conversationId: string | null
+      kind: 'message'
+      record: Record<string, unknown>
+      observedAt: number
+    }
+  | {
+      conversationId: string | null
       kind: 'complete'
       phase: 'main' | 'message'
       observedAt: number
@@ -470,6 +571,17 @@ export type ConversationStreamEventDetail =
       message: string | null
       observedAt: number
     }
+
+export interface ConversationCatalogItem {
+  conversationId: string
+  projectId: string | null
+  conversationOrigin: string | null
+}
+
+export interface ConversationCatalogEventDetail {
+  items: ConversationCatalogItem[]
+  observedAt: number
+}
 
 export interface ArchiveAssetResolutionEventDetail {
   assetId: string
@@ -1096,7 +1208,8 @@ export function installTransportObserver(
         !isArchiveObservedUrl(rawUrl) &&
         !isConversationRequestUrl(rawUrl) &&
         !isConversationStopUrl(rawUrl) &&
-        !isConversationStreamStatusUrl(rawUrl)
+        !isConversationStreamStatusUrl(rawUrl) &&
+        !isConversationCatalogUrl(rawUrl)
       )
         return callUpstream(input, init)
 
@@ -1148,6 +1261,7 @@ export function installTransportObserver(
             })
           archiveNetwork(id, rawUrl, response.ok ? 'response' : 'error', response.status)
           observeConversationArchiveResponse(response, rawUrl, historyRead)
+          observeConversationCatalogResponse(response, rawUrl)
           observeConversationStreamStatusResponse(response, rawUrl)
           if (method.toUpperCase() === 'POST' && isConversationRequestUrl(rawUrl))
             observeConversationStreamResponse(response, conversationIdFromBody(init?.body))

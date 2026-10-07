@@ -1,6 +1,7 @@
 import {
   currentConversationId,
   currentProjectId,
+  isChatGptWorkConversationOrigin,
   mountArchiveScopeControls,
   type ScheduledIdleTask,
   scheduleIdleTask,
@@ -20,6 +21,7 @@ import {
   type ScopeArchiveControlModel,
 } from '@chatgpt-booster/ui'
 import type { ConversationArchiveStore } from './archive-store'
+import type { ConversationStateStore } from './conversation-state'
 
 function sameCaptureRule(
   a: BoosterSettings['archive']['defaultRule'],
@@ -62,6 +64,7 @@ export class ArchiveScopeControlsModule implements BoosterModule {
   readonly id = 'archive-scope-controls'
   #controls: ReturnType<typeof mountArchiveScopeControls> | undefined
   #unsubscribe: (() => void) | undefined
+  #stateUnsubscribe: (() => void) | undefined
   #active = false
   #latestSettings: BoosterSettings | undefined
   #conversationProjects = new Map<string, string | null>()
@@ -75,6 +78,7 @@ export class ArchiveScopeControlsModule implements BoosterModule {
   constructor(
     private settings: SettingsAdapter,
     private store?: Pick<ConversationArchiveStore, 'listConversations' | 'listProjects'>,
+    private stateStore?: ConversationStateStore,
   ) {}
 
   async start() {
@@ -101,6 +105,14 @@ export class ArchiveScopeControlsModule implements BoosterModule {
       this.#apply()
     })
     window.addEventListener(ARCHIVE_UPDATED_EVENT, this.#onArchiveUpdated)
+    this.#stateUnsubscribe = this.stateStore?.subscribe((change) => {
+      if (
+        this.#active &&
+        this.#latestSettings?.enabled &&
+        (change.reason === 'catalog' || change.reason === 'request' || change.reason === 'page')
+      )
+        this.#apply()
+    })
     if (settings.enabled) {
       this.#initialTask = scheduleIdleTask(() => {
         this.#initialTask = undefined
@@ -117,6 +129,8 @@ export class ArchiveScopeControlsModule implements BoosterModule {
     this.#initialTask?.cancel()
     this.#initialTask = undefined
     this.#unsubscribe?.()
+    this.#stateUnsubscribe?.()
+    this.#stateUnsubscribe = undefined
     window.removeEventListener(ARCHIVE_UPDATED_EVENT, this.#onArchiveUpdated)
     this.#controls?.stop()
     this.#controls = undefined
@@ -240,6 +254,9 @@ export class ArchiveScopeControlsModule implements BoosterModule {
             ? 1
             : 0,
       effectiveEnabled: settings.enabled && resolved.rule.enabled,
+      workConversation:
+        context.scope === 'conversation' &&
+        isChatGptWorkConversationOrigin(this.stateStore?.conversationOrigin(context.id)),
       source: resolved.source,
       hasOverride,
       onSetEnabled: (enabled) => this.#setEnabled(context, enabled),

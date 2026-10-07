@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import {
   archiveFileResolverId,
+  conversationCatalogFromPayload,
   conversationRequestTimingFromBody,
   conversationStopTargetFromBody,
   conversationStreamEventFromPayload,
@@ -189,6 +190,87 @@ describe('conversation SSE runtime source events', () => {
       protectionType: 'cyber',
       message: 'Additional processing',
       observedAt: 202,
+    })
+  })
+})
+
+describe('Work and subagent source observation', () => {
+  test('keeps conversation origin on fresh Work submissions', () => {
+    expect(
+      conversationRequestTimingFromBody(
+        'https://chatgpt.com/backend-api/f/conversation',
+        'POST',
+        JSON.stringify({
+          conversation_id: 'work-chat',
+          conversation_origin: 'tpp',
+          messages: [
+            {
+              id: 'work-user',
+              author: { role: 'user' },
+              create_time: 10,
+              content: { content_type: 'text', parts: ['work'] },
+            },
+          ],
+        }),
+        11_000,
+      ),
+    ).toMatchObject({ conversationOrigin: 'tpp' })
+  })
+
+  test('normalizes streamed message records used by subagent activity', () => {
+    const record = {
+      id: 'subagent-start',
+      author: { role: 'assistant' },
+      content: { content_type: 'text', parts: [''] },
+      metadata: {
+        codex_sub_agent_activity: {
+          type: 'subAgentActivity',
+          kind: 'started',
+          agentPath: '/root/multiply',
+          agentThreadId: 'thread-multiply',
+        },
+      },
+      recipient: 'SubAgentActivityThreadItem.started',
+      channel: 'commentary',
+    }
+    expect(
+      conversationStreamEventFromPayload(
+        { type: 'message', conversation_id: 'work-chat', message: record },
+        null,
+        12_000,
+      ),
+    ).toEqual({
+      conversationId: 'work-chat',
+      kind: 'message',
+      record,
+      observedAt: 12_000,
+    })
+  })
+
+  test('reads Work origins from native conversation catalogs', () => {
+    expect(
+      conversationCatalogFromPayload(
+        'https://chatgpt.com/backend-api/conversations?conversation_origin=tpp',
+        {
+          items: [
+            {
+              id: 'work-chat',
+              conversation_origin: 'tpp',
+              gizmo_id: null,
+            },
+          ],
+        },
+        13_000,
+      ),
+    ).toEqual({
+      items: [
+        {
+          conversationId: 'work-chat',
+          projectId: null,
+          conversationOrigin: 'tpp',
+        },
+      ],
+      observedAt: 13_000,
     })
   })
 })

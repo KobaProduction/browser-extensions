@@ -351,3 +351,113 @@ describe('ConversationStateStore memory-first state', () => {
     })
   })
 })
+
+describe('Work subagent runtime state', () => {
+  test('keeps independent subagent lifecycle in RAM and does not let wait complete a running agent', () => {
+    const state = new ConversationStateStore(fakeWindow)
+    const conversationId = 'work-subagents'
+
+    state.ingestRequest({
+      conversationId,
+      userMessageId: 'user-work',
+      conversationOrigin: 'tpp',
+      startedAt: 1_000,
+      observedAt: 1_010,
+      source: 'message_create_time',
+    })
+
+    const activity = (
+      id: string,
+      threadId: string,
+      path: string,
+      kind: 'started' | 'completed',
+      observedAt: number,
+    ) =>
+      state.ingestStreamEvent({
+        conversationId,
+        kind: 'message',
+        observedAt,
+        record: message(id, 'assistant', observedAt / 1000, {
+          recipient:
+            kind === 'started'
+              ? 'SubAgentActivityThreadItem.started'
+              : 'SubAgentActivityThreadItem.completed',
+          channel: 'commentary',
+          metadata: {
+            codex_sub_agent_activity: {
+              type: 'subAgentActivity',
+              kind,
+              agentPath: path,
+              agentThreadId: threadId,
+              id,
+            },
+          },
+        }),
+      })
+
+    activity('multiply-start', 'thread-multiply', '/root/multiply', 'started', 2_000)
+    activity('primes-start', 'thread-primes', '/root/primes', 'started', 3_000)
+    activity('multiply-done', 'thread-multiply', '/root/multiply', 'completed', 4_000)
+
+    state.ingestStreamEvent({
+      conversationId,
+      kind: 'message',
+      observedAt: 5_000,
+      record: message('wait-one', 'assistant', 5, {
+        recipient: 'CollabAgentToolCallThreadItem.wait',
+        channel: 'commentary',
+        metadata: {
+          codex_collab_agent_tool_call: {
+            type: 'collabAgentToolCall',
+            tool: 'wait',
+            status: 'completed',
+            receiverThreadIds: [],
+            agentsStates: {},
+          },
+        },
+      }),
+    })
+
+    expect(state.conversationOrigin(conversationId)).toBe('tpp')
+    const beforePrimesComplete = new Map(
+      state.subagents(conversationId).map((agent) => [agent.threadId, agent]),
+    )
+    expect(beforePrimesComplete.get('thread-multiply')).toMatchObject({
+      displayName: 'Multiply',
+      status: 'done',
+      activityKind: 'completed',
+    })
+    expect(beforePrimesComplete.get('thread-primes')).toMatchObject({
+      displayName: 'Primes',
+      status: 'working',
+      activityKind: 'started',
+    })
+
+    activity('primes-done', 'thread-primes', '/root/primes', 'completed', 6_000)
+    const afterPrimesComplete = new Map(
+      state.subagents(conversationId).map((agent) => [agent.threadId, agent]),
+    )
+    expect(afterPrimesComplete.get('thread-primes')).toMatchObject({
+      status: 'done',
+      activityKind: 'completed',
+    })
+    expect(state.listMessages(conversationId)).toHaveLength(5)
+  })
+
+  test('catalog origin can classify a sidebar conversation without materializing a RAM conversation', () => {
+    const state = new ConversationStateStore(fakeWindow)
+    state.ingestCatalog({
+      observedAt: 2_000,
+      items: [
+        {
+          conversationId: 'catalog-work',
+          projectId: null,
+          conversationOrigin: 'tpp',
+        },
+      ],
+    })
+
+    expect(state.conversationOrigin('catalog-work')).toBe('tpp')
+    expect(state.snapshot('catalog-work')).toBeUndefined()
+  })
+})

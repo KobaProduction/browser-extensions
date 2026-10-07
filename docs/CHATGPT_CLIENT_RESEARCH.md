@@ -1797,3 +1797,40 @@ Never export message text, reasoning text, tool arguments/results, attachment UR
 Current ChatGPT conversation turns expose a stable outer `section[data-testid^="conversation-turn-"]`. The visible message node inside the turn carries both `data-message-id` and `data-message-author-role`. Native user/assistant action rows contain `data-testid="copy-turn-action-button"`; its parent is the preferred non-destructive insertion slot for Booster message metadata controls.
 
 Booster may observe append/replace/attribute mutations under the conversation root and decorate these slots, but it must leave ChatGPT buttons, navigation, message layout and event handlers intact. The selector/slot knowledge belongs in `packages/chatgpt`; feature modules consume normalized targets instead of querying these signatures directly.
+
+## Verified Work sub-agent lifecycle (2026-10-07)
+
+A fresh native Work-mode conversation was created specifically to resolve the earlier
+ordinary-Chat negative sub-agent result. The prompt required exactly two parallel
+sub-agents with trivial independent tasks and required the parent to wait for both.
+
+Direct live UI evidence progressed through:
+
+```text
+sub-agent activity: Multiply started
+sub-agent activity: Multiply + Primes completed
+Subagents panel: Active -> none
+Subagents panel: Done -> 2
+```
+
+The parent then returned both requested results only after the child activity completed.
+
+A subsequent normal conversation-history read preserved four hidden lifecycle records:
+one `started` and one `completed` record for each child. Their metadata contained
+`codex_sub_agent_activity` with unique `agentThreadId` values and paths
+`/root/multiply` and `/root/primes`.
+
+Two intermediate hidden records used `codex_collab_agent_tool_call` with
+`tool="wait"`. The first wait completed after Multiply had completed but before Primes
+had completed. Consequently, `wait status=completed` must not be used as a blanket
+"all children done" signal.
+
+Opening the completed Multiply child triggered
+`/backend-api/flora/subagent/thread/turns` with the parent conversation id and the
+child thread id. That detail request returned HTTP 500 in this capture while the parent
+still reported the child as Done. Treat detail fetch health independently from child
+execution lifecycle.
+
+The same deployed client code maps `tpp` and `flora` conversation origins to the Work
+product experience. The live conversation used `tpp`. This gives Booster a
+source-level Work classifier rather than relying on renderer copy.

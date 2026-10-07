@@ -11,6 +11,7 @@ import {
   findChatGptTurnRoot,
   findConversationMessageTargets,
   findToolCallEvidence,
+  isChatGptWorkConversationOrigin,
   observeConversationActivity,
   observeConversationDecorations,
   resolveChatGptDomAdapter,
@@ -31,10 +32,12 @@ import {
   type MountedMessageMetadata,
   type MountedRequestStatus,
   type MountedToolInspector,
+  type MountedWorkModeWarning,
   mountAgentActivity,
   mountMessageMetadata,
   mountRequestStatus,
   mountToolInspector,
+  mountWorkModeWarning,
   resolveLocale,
 } from '@chatgpt-booster/ui'
 import type { ArchivedMessage, ConversationArchiveStore } from './archive-store'
@@ -113,6 +116,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
   #activityMounts = new Map<HTMLElement, MountedAgentActivity>()
   #activitySnapshots = new Map<HTMLElement, AgentActivitySnapshot>()
   #requestStatus: MountedRequestStatus | undefined
+  #workWarning: MountedWorkModeWarning | undefined
   #latestActivity: AgentActivitySnapshot | null = null
   #longAlertedTurnId: string | null = null
   #completedAlertedTurnId: string | null = null
@@ -187,6 +191,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
       const current = currentConversationId() ?? null
       if (change.conversationId !== current) return
       this.#syncRecordsFromState()
+      this.#refreshWorkWarning()
       this.#refreshRequestStatus()
       this.#observer?.scan()
       this.#activityObserver?.scan()
@@ -194,6 +199,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
     this.#restartTicker()
     if (this.#settings.enabled) {
       this.#syncRecordsFromState()
+      this.#refreshWorkWarning()
       this.#refreshRequestStatus()
       this.#startObserver()
       this.#hydrateCurrentInBackground()
@@ -245,6 +251,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
     if (snapshot.active && snapshot.turnId) this.#activeObservedTurnIds.add(snapshot.turnId)
     this.#latestActivity = snapshot
 
+    this.#refreshWorkWarning()
     this.#refreshRequestStatus()
 
     if (!section) return
@@ -281,6 +288,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
     const settings = this.#settings
     if (!settings?.enabled) return
     const now = Date.now()
+    this.#refreshWorkWarning()
     this.#refreshRequestStatus()
     this.#requestStatus?.tick(now)
     for (const mounted of this.#activityMounts.values()) mounted.tick(now)
@@ -344,6 +352,32 @@ export class ConversationDecoratorsModule implements BoosterModule {
     }
   }
 
+  #refreshWorkWarning() {
+    const settings = this.#settings
+    const conversationId = currentConversationId() ?? null
+    if (
+      !settings?.enabled ||
+      !conversationId ||
+      !isChatGptWorkConversationOrigin(this.stateStore.conversationOrigin(conversationId))
+    ) {
+      this.#workWarning?.unmount()
+      this.#workWarning = undefined
+      return
+    }
+    const anchor = chatGptRequestStatusAnchor(document)
+    if (!anchor) return
+    const subagents = this.stateStore.subagents(conversationId).map((agent) => ({
+      displayName: agent.displayName,
+      status: agent.status,
+    }))
+    if (this.#workWarning?.element.isConnected) {
+      this.#workWarning.update(subagents)
+      return
+    }
+    this.#workWarning?.unmount()
+    this.#workWarning = mountWorkModeWarning(anchor, subagents, resolveLocale(settings.language))
+  }
+
   #refreshRequestStatus() {
     const settings = this.#settings
     if (!settings?.enabled || !settings.features.requestTimer) {
@@ -381,6 +415,11 @@ export class ConversationDecoratorsModule implements BoosterModule {
     this.#requestStatus = undefined
   }
 
+  #clearWorkWarning() {
+    this.#workWarning?.unmount()
+    this.#workWarning = undefined
+  }
+
   #clearMessageMetadata() {
     for (const mounted of this.#messageMounts.values()) mounted.unmount()
     this.#messageMounts.clear()
@@ -394,6 +433,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
   stop() {
     this.#stopObserver()
     this.#clearRequestStatus()
+    this.#clearWorkWarning()
     if (this.#ticker) clearInterval(this.#ticker)
     this.#ticker = undefined
     this.#latestActivity = null
@@ -849,6 +889,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
 
   #clear() {
     this.#clearRequestStatus()
+    this.#clearWorkWarning()
     this.#clearMessageMetadata()
     for (const mounted of this.#toolMounts.values()) mounted.unmount()
     this.#toolMounts.clear()

@@ -822,3 +822,72 @@ Reconnect      -> OAuth reauth + callback + ACTIVE link + action reload
 Permissions    -> treat per-account approval policy as separate from OAuth auth state
 ```
 
+
+## 12. Work mode and sub-agents
+
+### Work surface classification
+
+A live browser acceptance run on 2026-10-07 created a fresh conversation from the
+native `Work / Работа` composer surface.
+
+The fresh submission carried:
+
+```text
+conversation_origin = tpp
+model               = gpt-6-astra-wm
+local_function_names includes local.continue_in_work
+```
+
+Deployed client code independently classifies both `conversation_origin="tpp"` and
+`conversation_origin="flora"` as the Work product experience. Treat this source
+metadata as the product-surface classifier; do not infer Work from localized labels,
+model choice, URL shape or CSS.
+
+Booster product policy for Work conversations is inspection-only in the browser.
+Work conversations must be visually distinct from ordinary Chat conversations and
+should direct implementation activity to Codex rather than encouraging browser Work.
+
+### Sub-agent lifecycle — live verified
+
+A Work conversation explicitly requested exactly two independent parallel sub-agents.
+The native client created both:
+
+```text
+/root/multiply
+/root/primes
+```
+
+Each child received its own stable `agentThreadId`. Parent history represented child
+lifecycle with hidden source records:
+
+```text
+metadata.codex_sub_agent_activity:
+  type = subAgentActivity
+  agentPath
+  agentThreadId
+  kind = started | interacted | completed | interrupted
+```
+
+The captured run contained a distinct `started` and `completed` record for each child.
+The parent also emitted `codex_collab_agent_tool_call` records, including `tool="wait"`,
+while waiting for children. A completed wait call is not itself proof that every child
+is complete; child status must remain keyed by its own thread/activity evidence or
+explicit per-agent state.
+
+Native presentation exposed a `Subagents / Субагенты` panel with separate Active and
+Done groups. After both children completed it showed `Done · 2`.
+
+Opening one child caused:
+
+```text
+GET /backend-api/flora/subagent/thread/turns
+  ?conversationId=<parent conversation>
+  &threadId=<agentThreadId>
+```
+
+In the captured attempt this detail request returned HTTP 500 while the child remained
+authoritatively `Done` in the parent conversation. Therefore child lifecycle state and
+detail/result availability are separate axes.
+
+The parent conversation history retained the child activity records after completion,
+so Booster can reconstruct sub-agent lifecycle without depending on the detail endpoint.

@@ -5,11 +5,13 @@ import { serverTimeMs } from '@chatgpt-booster/core'
 import {
   ARCHIVE_EVENT,
   ARCHIVE_PRELOAD_EVENT,
+  CONVERSATION_CATALOG_EVENT,
   CONVERSATION_REQUEST_EVENT,
   CONVERSATION_STOP_EVENT,
   CONVERSATION_STREAM_EVENT,
   CONVERSATION_STREAM_STATUS_EVENT,
   type ConversationArchiveEventDetail,
+  type ConversationCatalogEventDetail,
   type ConversationRequestEventDetail,
   type ConversationStopEventDetail,
   type ConversationStreamEventDetail,
@@ -42,14 +44,35 @@ export interface ConversationLifecycleSnapshot {
   source: 'initial' | 'request' | 'stop' | 'transport' | 'renderer' | 'hydrated' | 'unknown'
 }
 
+export type ConversationSubagentStatus = 'waiting' | 'working' | 'done' | 'failed' | 'interrupted'
+
+export type ConversationSubagentActivityKind =
+  | 'started'
+  | 'interacted'
+  | 'completed'
+  | 'interrupted'
+
+export interface ConversationSubagentSnapshot {
+  threadId: string
+  agentPath: string | null
+  displayName: string | null
+  prompt: string | null
+  status: ConversationSubagentStatus
+  statusMessage: string | null
+  activityKind: ConversationSubagentActivityKind | null
+  lastObservedAt: number | null
+}
+
 export interface ConversationMemorySnapshot {
   conversationId: string
   projectId: string | null
+  conversationOrigin: string | null
   title: string | null
   currentNodeId: string | null
   lastObservedAt: number
   revision: number
   lifecycle: ConversationLifecycleSnapshot
+  subagents: ConversationSubagentSnapshot[]
   records: ArchivedMessage[]
   pages: ConversationArchiveEventDetail[]
 }
@@ -57,12 +80,13 @@ export interface ConversationMemorySnapshot {
 export interface ConversationStateChange {
   conversationId: string
   revision: number
-  reason: 'page' | 'request' | 'stop' | 'transport' | 'renderer' | 'dom' | 'hydrate'
+  reason: 'page' | 'catalog' | 'request' | 'stop' | 'transport' | 'renderer' | 'dom' | 'hydrate'
 }
 
 interface MutableConversationState {
   conversationId: string
   projectId: string | null
+  conversationOrigin: string | null
   title: string | null
   currentNodeId: string | null
   lastObservedAt: number
@@ -153,9 +177,136 @@ function recordSort(a: ArchivedMessage, b: ArchivedMessage) {
   )
 }
 
+const SUBAGENT_ACTIVITY_KINDS = new Set<ConversationSubagentActivityKind>([
+  'started',
+  'interacted',
+  'completed',
+  'interrupted',
+])
+const COLLAB_AGENT_TOOLS = new Set(['spawnAgent', 'sendInput', 'resumeAgent', 'wait', 'closeAgent'])
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string' && Boolean(item.trim()))
+    : []
+}
+
+function subagentDisplayName(path: string | null): string | null {
+  const value = path?.split('/').filter(Boolean).at(-1)?.trim()
+  if (!value) return null
+  return value.replace(/[-_]+/g, ' ').replace(/\b\p{L}/gu, (letter) => letter.toUpperCase())
+}
+
+function collabAgentState(value: unknown): {
+  status: ConversationSubagentStatus
+  message: string | null
+} | null {
+  const state = asRecord(value)
+  const rawStatus = typeof state?.status === 'string' ? state.status : null
+  if (!rawStatus) return null
+  const message = typeof state?.message === 'string' && state.message.trim() ? state.message : null
+  if (rawStatus === 'pendingInit') return { status: 'waiting', message: null }
+  if (rawStatus === 'running') return { status: 'working', message: null }
+  if (rawStatus === 'errored' || rawStatus === 'notFound') return { status: 'failed', message }
+  if (rawStatus === 'interrupted') return { status: 'interrupted', message }
+  if (rawStatus === 'completed' || rawStatus === 'shutdown') return { status: 'done', message }
+  return null
+}
+
+function subagentsFromRecords(records: Iterable<ArchivedMessage>): ConversationSubagentSnapshot[] {
+  const agents = new Map<string, ConversationSubagentSnapshot>()
+  const sorted = [...records].sort(recordSort)
+
+  const ensure = (threadId: string, observedAt: number | null) => {
+    const current = agents.get(threadId)
+    if (current) {
+      if (observedAt !== null)
+        current.lastObservedAt = Math.max(current.lastObservedAt ?? 0, observedAt)
+      return current
+    }
+    const created: ConversationSubagentSnapshot = {
+      threadId,
+      agentPath: null,
+      displayName: null,
+      prompt: null,
+      status: 'working',
+      statusMessage: null,
+      activityKind: null,
+      lastObservedAt: observedAt,
+    }
+    agents.set(threadId, created)
+    return created
+  }
+
+  for (const message of sorted) {
+    const metadata = asRecord(message.raw.metadata)
+    const observedAt =
+      sourceTime(message.updateTime) ?? sourceTime(message.createTime) ?? message.lastSeenAt
+
+    const activity = asRecord(metadata?.codex_sub_agent_activity)
+    const activityThreadId =
+      typeof activity?.agentThreadId === 'string' ? activity.agentThreadId : null
+    const activityKind =
+      typeof activity?.kind === 'string' &&
+      SUBAGENT_ACTIVITY_KINDS.has(activity.kind as ConversationSubagentActivityKind)
+        ? (activity.kind as ConversationSubagentActivityKind)
+        : null
+    if (activityThreadId && activityKind) {
+      const agent = ensure(activityThreadId, observedAt)
+      const agentPath = typeof activity?.agentPath === 'string' ? activity.agentPath : null
+      if (agentPath) {
+        agent.agentPath = agentPath
+        agent.displayName = subagentDisplayName(agentPath)
+      }
+      agent.activityKind = activityKind
+      agent.status =
+        activityKind === 'interrupted'
+          ? 'interrupted'
+          : activityKind === 'completed'
+            ? 'done'
+            : 'working'
+      if (agent.status === 'working') agent.statusMessage = null
+    }
+
+    const toolCall = asRecord(metadata?.codex_collab_agent_tool_call)
+    const tool = typeof toolCall?.tool === 'string' ? toolCall.tool : null
+    if (!tool || !COLLAB_AGENT_TOOLS.has(tool)) continue
+    const receiverThreadIds = stringArray(toolCall?.receiverThreadIds)
+    const prompt =
+      typeof toolCall?.prompt === 'string' && toolCall.prompt.trim() ? toolCall.prompt : null
+    for (const threadId of receiverThreadIds) {
+      const agent = ensure(threadId, observedAt)
+      if (tool === 'spawnAgent' && prompt) agent.prompt = prompt
+      if (tool === 'spawnAgent' || tool === 'sendInput' || tool === 'resumeAgent') {
+        agent.status = 'working'
+        agent.statusMessage = null
+      }
+    }
+
+    const states = asRecord(toolCall?.agentsStates)
+    if (states) {
+      for (const [threadId, value] of Object.entries(states)) {
+        const normalized = collabAgentState(value)
+        if (!normalized) continue
+        const agent = ensure(threadId, observedAt)
+        agent.status = normalized.status
+        agent.statusMessage = normalized.message
+        if (normalized.status === 'interrupted') agent.activityKind = 'interrupted'
+      }
+    }
+  }
+
+  return [...agents.values()].sort((a, b) => {
+    const left = a.lastObservedAt ?? 0
+    const right = b.lastObservedAt ?? 0
+    return left - right || a.threadId.localeCompare(b.threadId)
+  })
+}
+
 export class ConversationStateStore implements BoosterModule {
   readonly id = 'conversation-state'
   #states = new Map<string, MutableConversationState>()
+  #catalogOrigins = new Map<string, string | null>()
   #listeners = new Set<(change: ConversationStateChange) => void>()
   #pageListeners = new Set<(detail: ConversationArchiveEventDetail) => void>()
   #active = false
@@ -195,17 +346,31 @@ export class ConversationStateStore implements BoosterModule {
     return value ? { ...value } : undefined
   }
 
+  conversationOrigin(conversationId: string): string | null | undefined {
+    return (
+      this.#states.get(conversationId)?.conversationOrigin ??
+      this.#catalogOrigins.get(conversationId)
+    )
+  }
+
+  subagents(conversationId: string): ConversationSubagentSnapshot[] {
+    const state = this.#states.get(conversationId)
+    return state ? subagentsFromRecords(state.records.values()) : []
+  }
+
   snapshot(conversationId: string): ConversationMemorySnapshot | undefined {
     const state = this.#states.get(conversationId)
     if (!state) return undefined
     return {
       conversationId,
       projectId: state.projectId,
+      conversationOrigin: state.conversationOrigin,
       title: state.title,
       currentNodeId: state.currentNodeId,
       lastObservedAt: state.lastObservedAt,
       revision: state.revision,
       lifecycle: { ...state.lifecycle },
+      subagents: subagentsFromRecords(state.records.values()),
       records: [...state.records.values()].sort(recordSort),
       pages: [...state.pages.values()].sort((a, b) => a.timestamp - b.timestamp),
     }
@@ -261,6 +426,9 @@ export class ConversationStateStore implements BoosterModule {
     const state = this.#ensure(conversationId)
     const observedAt = detail.timestamp || Date.now()
     state.projectId = normalizeConversationProjectId(payload) ?? state.projectId
+    if (Object.hasOwn(payload, 'conversation_origin'))
+      state.conversationOrigin =
+        typeof payload.conversation_origin === 'string' ? payload.conversation_origin : null
     state.title = typeof payload.title === 'string' ? payload.title : state.title
     state.currentNodeId =
       typeof payload.current_node === 'string' ? payload.current_node : state.currentNodeId
@@ -295,10 +463,46 @@ export class ConversationStateStore implements BoosterModule {
     for (const listener of this.#pageListeners) listener(detail)
   }
 
+  ingestCatalog(detail: ConversationCatalogEventDetail) {
+    let changedConversationId: string | null = null
+    for (const item of detail.items) {
+      const previousOrigin = this.#catalogOrigins.get(item.conversationId)
+      this.#catalogOrigins.set(item.conversationId, item.conversationOrigin)
+      const state = this.#states.get(item.conversationId)
+      let changed = previousOrigin !== item.conversationOrigin
+      if (state) {
+        const nextProjectId = item.projectId ?? state.projectId
+        changed ||=
+          nextProjectId !== state.projectId || item.conversationOrigin !== state.conversationOrigin
+        state.projectId = nextProjectId
+        state.conversationOrigin = item.conversationOrigin
+        state.lastObservedAt = Math.max(state.lastObservedAt, detail.observedAt)
+        if (changed) state.revision += 1
+      }
+      if (changed && !changedConversationId) changedConversationId = item.conversationId
+    }
+    while (this.#catalogOrigins.size > 200) {
+      const oldest = this.#catalogOrigins.keys().next().value
+      if (typeof oldest !== 'string') break
+      this.#catalogOrigins.delete(oldest)
+    }
+    if (!changedConversationId) return
+    const state = this.#states.get(changedConversationId)
+    const change = {
+      conversationId: changedConversationId,
+      revision: state?.revision ?? 0,
+      reason: 'catalog' as const,
+    }
+    for (const listener of this.#listeners) listener(change)
+  }
+
   ingestRequest(detail: ConversationRequestEventDetail) {
     const conversationId = detail.conversationId ?? currentConversationId() ?? null
     if (!conversationId) return
     const state = this.#ensure(conversationId)
+    if (Object.hasOwn(detail, 'conversationOrigin'))
+      state.conversationOrigin =
+        typeof detail.conversationOrigin === 'string' ? detail.conversationOrigin : null
     state.lifecycle = {
       state: 'in_progress',
       userMessageId: detail.userMessageId,
@@ -371,6 +575,20 @@ export class ConversationStateStore implements BoosterModule {
     const conversationId = detail.conversationId ?? currentConversationId() ?? null
     if (!conversationId) return
     const state = this.#ensure(conversationId)
+    if (detail.kind === 'message') {
+      const normalized = normalizeConversationMessage(
+        detail.record,
+        conversationId,
+        state.projectId,
+        detail.observedAt,
+        typeof detail.record.id === 'string' ? state.records.get(detail.record.id) : undefined,
+      )
+      if (!normalized) return
+      this.#mergeRecord(state, normalized)
+      state.lastObservedAt = Math.max(state.lastObservedAt, detail.observedAt)
+      this.#touch(state, 'transport')
+      return
+    }
     const previous = state.lifecycle
     if (detail.kind === 'complete') {
       if (
@@ -531,6 +749,10 @@ export class ConversationStateStore implements BoosterModule {
       this.ingestPage(data.detail as ConversationArchiveEventDetail)
       return
     }
+    if (data.type === CONVERSATION_CATALOG_EVENT && data.detail) {
+      this.ingestCatalog(data.detail as ConversationCatalogEventDetail)
+      return
+    }
     if (data.type === CONVERSATION_REQUEST_EVENT && data.detail) {
       this.ingestRequest(data.detail as ConversationRequestEventDetail)
       return
@@ -553,6 +775,7 @@ export class ConversationStateStore implements BoosterModule {
     const state: MutableConversationState = {
       conversationId,
       projectId: null,
+      conversationOrigin: null,
       title: null,
       currentNodeId: null,
       lastObservedAt: 0,

@@ -2626,6 +2626,12 @@
     0 0 0 1px rgb(34 197 94 / 25%),
     0 0 6px rgb(34 197 94 / 38%);
 }
+.booster-chat-save-marker.is-work {
+  background: #ef4444;
+  box-shadow:
+    0 0 0 1px rgb(239 68 68 / 32%),
+    0 0 8px rgb(239 68 68 / 55%);
+}
 .booster-project-status-badge {
   display: inline-flex;
   width: 24px;
@@ -2999,6 +3005,29 @@
 .booster-tool-link:hover {
   color: #86efac;
   text-decoration: underline;
+}
+
+.booster-work-mode-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 9px;
+  border: 1px solid rgb(239 68 68 / 55%);
+  border-radius: 999px;
+  background: rgb(239 68 68 / 10%);
+  color: #fca5a5;
+  font-family: inherit;
+  font-size: 10px;
+  line-height: 1.25;
+}
+.booster-work-mode-warning strong {
+  color: #f87171;
+  font-weight: 750;
+}
+.booster-work-mode-warning > span::before {
+  content: "·";
+  margin-inline-end: 7px;
+  color: rgb(248 113 113 / 72%);
 }
 
 .booster-request-status {

@@ -108,7 +108,7 @@ export function createBoosterPageRuntime(options: BoosterPageRuntimeOptions) {
     conversationState,
     new OverlayModule(runtimeTarget, archiveAdapter),
     archiveCapture,
-    new ArchiveScopeControlsModule(settings, archiveStore),
+    new ArchiveScopeControlsModule(settings, archiveStore, conversationState),
     new HistoryLoaderModule(conversationState, archiveCapture, pageBridgeWindow, settings),
     new TransportObserverModule({
       settings,

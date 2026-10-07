@@ -18,7 +18,7 @@ const label = () =>
   <span
     v-if="model.context.scope === 'conversation'"
     class="booster-chat-save-marker"
-    :class="{ 'is-enabled': model.effectiveEnabled }"
+    :class="{ 'is-enabled': model.effectiveEnabled, 'is-work': model.workConversation }"
     :title="label()"
     aria-hidden="true"
   />

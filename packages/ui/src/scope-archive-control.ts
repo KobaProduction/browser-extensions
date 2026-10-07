@@ -10,6 +10,7 @@ export interface ScopeArchiveControlModel {
   locale: SupportedLocale
   archivedCount: number
   effectiveEnabled: boolean
+  workConversation: boolean
   source: CaptureRuleSource
   hasOverride: boolean
   onSetEnabled(enabled: boolean): void | Promise<void>
@@ -29,7 +30,10 @@ function conversationLabel(model: ScopeArchiveControlModel) {
       model.locale,
       model.context.scope === 'project' ? 'identity.unknownProject' : 'identity.untitled',
     )
-  return `${title} · ${translate(model.locale, model.effectiveEnabled ? 'dock.autoOn' : 'dock.autoOff')}`
+  const archive = translate(model.locale, model.effectiveEnabled ? 'dock.autoOn' : 'dock.autoOff')
+  return model.workConversation
+    ? `${title} · ${translate(model.locale, 'work.browserOnly')} · ${archive}`
+    : `${title} · ${archive}`
 }
 
 export function mountScopeArchiveControl(
@@ -56,10 +60,17 @@ export function mountScopeArchiveControl(
   const updateConversationMarker = () => {
     if (!marker) return
     marker.title = conversationLabel(current)
-    marker.style.background = current.effectiveEnabled ? '#22c55e' : 'transparent'
-    marker.style.boxShadow = current.effectiveEnabled
-      ? '0 0 0 1px rgb(34 197 94 / 25%), 0 0 6px rgb(34 197 94 / 38%)'
-      : 'none'
+    marker.dataset.workConversation = current.workConversation ? 'true' : 'false'
+    marker.style.background = current.workConversation
+      ? '#ef4444'
+      : current.effectiveEnabled
+        ? '#22c55e'
+        : 'transparent'
+    marker.style.boxShadow = current.workConversation
+      ? '0 0 0 1px rgb(239 68 68 / 32%), 0 0 8px rgb(239 68 68 / 55%)'
+      : current.effectiveEnabled
+        ? '0 0 0 1px rgb(34 197 94 / 25%), 0 0 6px rgb(34 197 94 / 38%)'
+        : 'none'
   }
 
   const renderConversation = () => {
