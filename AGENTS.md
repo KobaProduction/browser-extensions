@@ -7,8 +7,9 @@ Repository map for ChatGPT Booster.
 1. Read `README.md`.
 2. Read `docs/ARCHITECTURE.md` before structural changes.
 3. For ChatGPT runtime/lifecycle/transport/timer/safety changes, read `docs/CHATGPT_RUNTIME_CONTRACTS.md`; use `docs/CHATGPT_CLIENT_RESEARCH.md` for the underlying evidence.
-4. Use the universal workflow library routed by the account/project prompt.
-5. Keep the project browser-side unless a concrete feature requires a service.
+4. For Projects, conversation CRUD, model/effort selection, Automations, or Plugin/MCP account-management changes, read `docs/CHATGPT_PRODUCT_OPERATIONS.md`.
+5. Use the universal workflow library routed by the account/project prompt.
+6. Keep the project browser-side unless a concrete feature requires a service.
 
 ## Repository boundaries
 

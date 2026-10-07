@@ -7,6 +7,7 @@ Read this document before changing request timers, reasoning/activity UI, Stop h
 Use the companion documents for different purposes:
 
 - `docs/ARCHITECTURE.md` — normative ownership and architectural invariants.
+- `docs/CHATGPT_PRODUCT_OPERATIONS.md` — Projects, chat CRUD, model/effort, Automations and Plugin/MCP management contracts.
 - `docs/CHATGPT_CLIENT_RESEARCH.md` — raw/live reverse-engineering evidence and proof boundaries.
 - GitHub issues — concrete Booster defects and implementation work.
 
@@ -640,7 +641,77 @@ moderation blocked/safety_limited/etc.
 
 Do not collapse them into a single boolean named `moderated`.
 
-## 12. DOM signatures are corroboration only
+## 12. Interactive user-input requests
+
+Structured questions are an independent interaction state. Do not infer their protocol from shared visual presentation.
+
+### GenUI `ask_user_input`
+
+Verified live response path:
+
+```text
+assistant message with ask_user_input widget, end_turn=true
+  -> UI waits for user answer
+  -> user submits widget
+  -> fresh /f/conversation user turn
+```
+
+Authoritative response markers:
+
+```text
+messages[0].author.role = user
+messages[0].metadata.message_submission_source = ask_user_input
+parent_message_id = source assistant widget message id
+```
+
+The question/answer is also serialized into user-visible text, but that string is presentation/export material, not the classifier.
+
+### Native `request_user_input`
+
+Client-code-confirmed request identity:
+
+```text
+source messageId
+codex_request_user_input.request_id
+codex_request_user_input.question_ids[]
+codex_request_user_input.is_blocking?
+codex_request_user_input.expires_at?
+```
+
+Authoritative response is a generated tool message:
+
+```text
+author.role = tool
+author.name = request_user_input
+channel = commentary
+metadata.codex_request_user_input_response.request_id = original request_id
+```
+
+The response answer map is keyed by the original `question_ids`. Preserve `reasoning_group_id` when present.
+
+Non-blocking native questions may use:
+
+```text
+POST /conversation/{conversation_id}/messages/{message_id}/request_user_input/snooze
+```
+
+at their expiry boundary.
+
+### State semantics
+
+Represent waiting-for-user-input separately from transport/lifecycle health:
+
+```text
+run/turn may be complete or paused at an interaction boundary
+transport may be healthy
+user-input request may be pending
+```
+
+For GenUI, the source assistant turn can already be terminal while the product waits for a brand-new user turn. For native `request_user_input`, the agent continuation expects the correlated tool response.
+
+Never synthesize one protocol's response using the other protocol's shape.
+
+## 13. DOM signatures are corroboration only
 
 Verified useful DOM signals include:
 
@@ -663,7 +734,7 @@ Known contradictions include:
 
 Keep renderer/version-specific selectors behind `ChatGptDomAdapter`.
 
-## 13. State precedence rules
+## 14. State precedence rules
 
 The live read model should obey these rules:
 
@@ -678,7 +749,7 @@ The live read model should obey these rules:
 9. DB hydration cannot overwrite fresher live source evidence.
 10. Archive persistence policy does not disable live observation.
 
-## 14. Implementation anti-patterns
+## 15. Implementation anti-patterns
 
 Do not:
 
@@ -694,7 +765,7 @@ Do not:
 - persist or surface conduit/auth tokens;
 - synthesize private ChatGPT mutations when a feature is only observing native client behavior.
 
-## 15. Observer event targets
+## 16. Observer event targets
 
 The observer layer should normalize source events rather than expose feature modules to raw host details.
 
@@ -707,13 +778,14 @@ server async-status update
 transport recovery/status update
 safety-review update
 moderation/safety-access outcome
+interactive user-input request/response
 message/source record update
 message-stream completion
 ```
 
 Feature/UI code should consume normalized runtime state from `ConversationStateStore`, not separately parse host transport or localized DOM.
 
-## 16. Validation checklist for lifecycle changes
+## 17. Validation checklist for lifecycle changes
 
 Before claiming a lifecycle change complete, verify at least:
 
@@ -724,10 +796,11 @@ Before claiming a lifecycle change complete, verify at least:
 - recovery-unavailable state can coexist with `in_progress`;
 - safety review can activate and disappear without being treated as a block;
 - moderation outcomes remain distinct from review state;
+- GenUI `ask_user_input` and native `request_user_input` remain distinct response protocols;
 - reload of an active/recovery conversation hydrates source state without waiting on IndexedDB;
 - extension and userscript share the same normalized runtime behavior.
 
-## 17. Evidence boundaries
+## 18. Evidence boundaries
 
 Maintain explicit confidence levels in future reverse-engineering:
 

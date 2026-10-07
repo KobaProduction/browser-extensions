@@ -1318,6 +1318,361 @@ Generation lifecycle and transport health must be modeled separately. A conversa
 
 Transport/recovery classification should be driven by the documented API/WebSocket evidence above. DOM alerts are useful for acceptance verification and presentation correlation, but they are not the primary source of truth for the recovery state.
 
+## Verified product-operation flows (2026-10-07)
+
+This section records one live end-to-end acceptance run covering project lifecycle, project-chat lifecycle, model/reasoning selection, Automations, and Koba MCP Bridge management. Stable implementation guidance is summarized in `docs/CHATGPT_PRODUCT_OPERATIONS.md`.
+
+### Structured user-input question during automation setup — live verified
+
+During a natural-language request to create a daily news summary, the model first requested missing preferences with a structured question.
+
+This capture proved that the rendered question was **GenUI `ask_user_input`, not native agent `request_user_input`**.
+
+The initial fresh submission carried:
+
+```text
+suggested_automation_type = daily_brief
+force_genui_prefetch      = ask_user_input
+model                     = gpt-6-astra-wm
+thinking_effort           = standard
+```
+
+The assistant completed its source turn successfully with `end_turn=true` and emitted ordinary answer text plus an `ask_user_input` GenUI payload containing a `multi_select` question, options and free-text placeholder.
+
+The native UI rendered:
+
+```text
+Waiting for your answer / Ожидание вашего ответа
+structured checkbox form
+free-text field
+Submit button
+```
+
+Selecting one option and submitting it produced a new `/f/conversation` request whose message was an ordinary user message. Relevant live request fields:
+
+```text
+conversation_id      = <same conversation>
+parent_message_id    = <assistant message containing the GenUI question>
+model                = gpt-6-astra-wm
+thinking_effort      = standard
+messages[0].role     = user
+messages[0].metadata.message_submission_source = ask_user_input
+```
+
+The selected answer was serialized as visible text in the form:
+
+```text
+> <question>
+<selected answer>
+```
+
+The persisted conversation graph confirmed a new user `turn_exchange_id` for this answer. The subsequent model turn then called the automation create tool and received a successful tool result before producing the final confirmation message.
+
+This gives a direct end-to-end correlation chain:
+
+```text
+assistant GenUI source message
+  -> parent_message_id on answer turn
+  -> message_submission_source=ask_user_input
+  -> model continuation
+  -> downstream tool call/result
+```
+
+#### Distinct native `request_user_input` contract
+
+The deployed client separately implements native agent `request_user_input`. Its pending metadata schema includes:
+
+```text
+request_id
+question_ids[]
+status = pending
+is_blocking?
+expires_at?
+```
+
+For this native path the user response is generated as a **tool message**, not a normal user message:
+
+```text
+author.role = tool
+author.name = request_user_input
+channel = commentary
+metadata.codex_request_user_input_response.request_id = <original request_id>
+```
+
+The answer object is keyed by the original `question_ids`, and `reasoning_group_id` is retained when supplied by the native request. Non-blocking requests can cross an expiry boundary through:
+
+```text
+POST /conversation/{conversation_id}/messages/{message_id}/request_user_input/snooze
+```
+
+The exact native `request_user_input` submit path above is client-code confirmed; the automation preference question in this live capture used the GenUI path instead.
+
+Implementation consequence: do not classify structured questions by UI appearance. Use source widget/metadata and protocol-specific correlation keys.
+
+### Project memory availability and Instructions settings — mixed live/client-code evidence
+
+A later Project creation/settings capture exposed two separate memory layers.
+
+With account-level Memory disabled, opening the create-project `Default memory` control rendered only an informational item stating that Memory is off and must be enabled in Settings to use it in Projects. No alternate project-memory modes were selectable in that state.
+
+A project was then created with the normal default request:
+
+```json
+{
+  "memory_scope": "unset"
+}
+```
+
+The returned project resource nevertheless carried project-level fields equivalent to:
+
+```text
+memory_enabled = true
+memory_scope   = global
+```
+
+After creation, Project Settings rendered:
+
+```text
+Memory
+Default
+Project can access memory from other chats, and vice versa. This cannot be changed.
+```
+
+This is not a contradiction if the fields are modeled at the correct levels: the server resource records the project's configured/default memory policy, while the account-level Memory setting controls whether the feature is currently available to the user. Do not collapse them into one boolean.
+
+The same Project Settings dialog exposed an `Instructions` textarea for project-scoped response context.
+
+Deployed client code confirmed persistence through:
+
+```text
+PATCH /backend-api/projects/{project_id}
+```
+
+with body fields:
+
+```text
+emoji
+instructions
+memory_scope
+name
+theme
+```
+
+The client first fetches current project data, computes changed fields, and then PATCHes a complete effective settings body. Ordinary instructions/name/icon/theme edits pass `memory_scope=null`, preserving the existing memory mode.
+
+A bounded live attempt to discover the native UI commit trigger found that the textarea is **not simple autosave**: typing instructions and then closing the dialog, blurring, waiting, or pressing `Ctrl+Enter` emitted no project PATCH, and reopening showed the original empty instructions. The exact native submit trigger remains unverified in this capture and must not be invented.
+
+### Project creation — live verified
+
+A temporary test Project was created through the native `Add new project` flow. The dialog exposed project name, icon/color and memory configuration.
+
+Creation emitted:
+
+```text
+POST /backend-api/projects -> 200
+```
+
+with the observed shape:
+
+```json
+{
+  "emoji": null,
+  "instructions": "",
+  "memory_scope": "unset",
+  "name": "<temporary project name>",
+  "theme": null
+}
+```
+
+The response allocated a new project/gizmo resource and the client navigated to its project route. With the default memory choice, the server resolved the effective project memory configuration rather than treating request `memory_scope="unset"` as disabled memory.
+
+### Project-chat create and ping/pong — live verified
+
+The first user message in the empty project was `ping`. The project did not use a separate chat-create REST mutation; it used the normal prepare + fresh `/f/conversation` submission carrying the project/gizmo context. The server allocated a new conversation id and the assistant returned `pong`.
+
+### Model/reasoning selector — live verified
+
+The Chat model picker contained a five-position reasoning-power control. Accessibility announcements exposed:
+
+```text
+Instant       = 1 of 5
+Medium        = 2 of 5
+High          = 3 of 5
+Very High     = 4 of 5
+Pro           = 5 of 5
+```
+
+Each position was selected and followed by a short message. Actual outbound `/f/conversation` payloads proved:
+
+```text
+Instant    -> model gpt-5-6,          thinking_effort omitted
+Medium     -> model gpt-5-6-thinking, thinking_effort standard
+High       -> model gpt-5-6-thinking, thinking_effort extended
+Very High  -> model gpt-5-6-thinking, thinking_effort max
+Pro        -> model gpt-6-pro,        thinking_effort omitted
+```
+
+This proves that the top `Pro` position changes the transport model family; it is not simply another GPT-5.6 thinking-effort string.
+
+### GPT-6 Pro sub-agent test — negative live result
+
+While the transport was verified as `gpt-6-pro`, a prompt explicitly requested 4–6 independent parallel sub-agents with trivial independent tasks.
+
+The turn entered `in_progress`, and a generic in-progress tool record appeared while the model inspected capabilities. No child-agent conversation/thread records and no dedicated browser `subagent` endpoint appeared.
+
+The final answer explicitly reported that no mechanism for launching sub-agents was available in the current ordinary Chat surface, and that `0 / 6` requested sub-agents had been launched. The main model performed the trivial arithmetic itself.
+
+Evidence boundary: this is a negative result for the tested ordinary Chat surface/build only. Work/Codex/future surfaces remain separate questions.
+
+### Automations — one-time reminder and condition watch
+
+Two test automations were created through natural-language requests in the same chat.
+
+The one-time reminder persisted with:
+
+```text
+timing_mode = exact_schedule
+executor = cloud
+thread_mode = existing_chat
+schedule = one-shot VEVENT DTSTART
+```
+
+The hourly incident watch persisted with:
+
+```text
+timing_mode = condition_watch
+executor = cloud
+thread_mode = existing_chat
+schedule = VEVENT + RRULE:FREQ=HOURLY
+```
+
+Native task persistence was read through:
+
+```text
+GET /backend-api/automations?filter=scheduled&limit=...
+GET /backend-api/automations?filter=paused&limit=...
+GET /backend-api/automations?filter=finished&limit=...
+```
+
+The inspected client recognizes automation tool operations `create`, `update`, `run_now`, `list`, and `peek`.
+
+A cleanup prompt then asked ChatGPT to disable both test tasks. Subsequent paused-list evidence showed both with `is_enabled=false`. No new tasks were created by the cleanup turn.
+
+The `/scheduled` primary UI in this build displayed a template gallery even while native automation-list requests contained the actual tasks; raw page text is therefore not the authoritative task registry.
+
+### Chat deletion — live verified
+
+The temporary chat was deleted through its project-list `Delete` action and irreversible confirmation.
+
+Transport:
+
+```text
+DELETE /backend-api/conversation/id/{conversation_id} -> 200
+```
+
+Response:
+
+```json
+{ "success": true }
+```
+
+The project-list entry disappeared immediately after success.
+
+### Project deletion — live verified
+
+Project deletion was reached through `Project actions -> Project settings -> Delete project`.
+
+The final native warning stated that deletion permanently removes the project and all of its Chat/Work chats and tasks, while files stored in Space are not removed.
+
+Transport:
+
+```text
+DELETE /backend-api/gizmos/{project_id} -> 200
+```
+
+The captured response body was empty and the client returned to the root page.
+
+### Koba MCP Bridge plugin discovery and management
+
+Literal catalog search for `COBMCP` returned no result. Searching `Koba` exposed the installed app under its actual display name `Koba MCP Bridge`.
+
+Native plugin search used:
+
+```text
+GET /backend-api/ps/plugins/search?q={query}&limit=50
+```
+
+The management page loaded app/link state through requests including:
+
+```text
+GET  /backend-api/ps/plugins/{plugin_id}
+GET  /backend-api/aip/connectors/{app_id}?include_actions=true
+POST /backend-api/aip/connectors/links/list_accessible
+GET  /backend-api/ca/v2/user/connection_status
+```
+
+The page exposed OAuth as the active authentication method and provided connected-account actions plus app management.
+
+### Refresh tools — live verified
+
+Native `Refresh tools` / `Обновить инструменты` was activated. No separate mutation endpoint appeared. Instead ChatGPT repeated the plugin metadata and connector action-schema reads, including:
+
+```text
+GET /backend-api/ps/plugins/{plugin_id}
+GET /backend-api/aip/connectors/{app_id}?include_actions=true
+```
+
+The action schema before and after refresh contained the same six actions:
+
+```text
+bridge_ping
+bridge_build_info
+bridge_backends
+bridge_tools
+bridge_call
+bridge_capabilities
+```
+
+Thus the observed refresh operation is a force-reload/reconciliation of current action schema rather than a distinct server mutation.
+
+### Connected-account permissions
+
+The connected-account menu exposed `Settings` and `Reconnect`.
+
+The read-only Settings dialog presented permission policies ranging from always asking for confirmation through read-only/low-risk auto-approval to an elevated-risk allow-all mode. No permission setting was changed during the test.
+
+### OAuth reconnect / reauthorization — live verified
+
+Native `Reconnect` opened a ChatGPT connector-risk/permission disclosure and then continued to the provider OAuth authorization endpoint.
+
+ChatGPT initiated reauthorization through:
+
+```text
+POST /backend-api/aip/connectors/links/oauth/reauth -> 200
+```
+
+The provider flow used standard OAuth authorization-code + PKCE parameters. Exact client ids, link ids, code/state/challenge values and tokens are intentionally excluded from this document.
+
+After provider authorization, ChatGPT completed:
+
+```text
+POST /backend-api/aip/connectors/links/oauth/callback -> 200
+```
+
+The returned link was active and OAuth-authenticated; it included the current six connector actions. ChatGPT then refreshed connection/link/action state with requests including `connection_status`, connector metadata/action schema, connector link and accessible-link list.
+
+No extra provider username/password entry was required in this specific capture because an existing provider session completed authorization. This is session-specific and must not be generalized.
+
+### Cleanup boundary
+
+After the operation tests:
+
+- both test automations were disabled;
+- the temporary test chat was deleted;
+- the temporary test project was deleted;
+- Koba MCP Bridge remained installed and connected after successful OAuth reconnect;
+- no OAuth token/code/state/link identifiers or personal account metadata are retained in repository docs.
+
 ## Privacy contract
 
 Conversation/archive content is local browser data.
