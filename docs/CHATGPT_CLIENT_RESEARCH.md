@@ -2151,3 +2151,13 @@ The native `Просмотр анализа` panel displayed Python and STDOUT p
 ### Pro ordinary Chat model/effort menu mutation (2026-10-07)
 
 The remote Pro Chat menu `Выбрать модель ChatGPT` exposed `GPT-6` as checked, with `GPT-5.6 Sol` and `GPT-5.5` (native label: `Доступна до 14 октября`) available in the list. A separate `Мощность` menuitem contained an aria-hidden slider with `aria-valuemin=0`, `aria-valuemax=4`, `aria-valuenow=2`; its accessible status said `Высокий, 3 из 5.`. A real synthetic keyboard ArrowLeft on the `Мощность` menuitem led to `aria-valuenow=1` and `Средний, 2 из 5.` when sampled after the React update; ArrowRight returned it to `aria-valuenow=2` and `Высокий, 3 из 5.`, still GPT-6 checked. No submission occurred at altered effort, so the current network request mapping remains an explicit evidence gap. This menu is distinct from Work GPT-6 Astra.
+
+### GPT-6 model and effort picker — external Pro observation (2026-10-07)
+
+The official GPT-6 launch/update was published on 7 October 2026: https://openai.com/index/gpt-6-for-everyone/ . On the external **Intens Tech / Pro** account, the **ordinary Chat** composer opened a combined model/effort picker:
+
+- Selected radio: **GPT-6**; visible alternatives: **GPT-5.6 Sol** and **GPT-5.5** (UI: available until 14 October).
+- Effort menuitem `Мощность` exposed a five-step slider (`aria-valuemin=0`, `aria-valuemax=4`), current `aria-valuenow=2` with status **`Высокий, 3 из 5`**, and ArrowLeft/ArrowRight shortcut metadata.
+- Playwright mouse/keyboard attempts did not change the numeric slider value. An attempted model-change tool action was blocked by tool safety. **Model switching, thinking-effort change/persistence, and outbound payload verification remain unaccepted**. Original GPT-6/High choice was preserved.
+
+The user reported seeing both **Booster Pro PDF** and **Booster Pro Workflow CSV** in the remote Chrome Downloads UI. This is user-confirmed download occurrence, not automated byte inspection. Reported sizes were **195 and 87 bytes**, respectively, whereas the synthetic PDF uploaded to Space was **595 bytes** (CSV: 87 bytes). The PDF size discrepancy must be resolved before claiming identical downloaded bytes.

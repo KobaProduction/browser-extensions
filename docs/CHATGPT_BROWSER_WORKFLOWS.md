@@ -126,6 +126,15 @@ The resulting chat `/c/6ac6a941-eb70-83eb-8117-f620911e8793` completed after abo
 
 This accepts the full **two-file Space storage → Library references → Chat submission → Python PDF/TXT extraction → observed result** path. It does not establish OCR for scanned PDFs, complex layouts, filesystem persistence beyond this execution, or downloaded bytes on the remote Chrome host.
 
+### GPT-6 model and effort picker — external Pro observation (2026-10-07)
+
+The official GPT-6 launch/update was published on 7 October 2026: https://openai.com/index/gpt-6-for-everyone/ . On the external **Intens Tech / Pro** account, the **ordinary Chat** composer opened a combined model/effort picker:
+
+- Selected radio: **GPT-6**; visible alternatives: **GPT-5.6 Sol** and **GPT-5.5** (UI: available until 14 October).
+- Effort menuitem `Мощность` exposed a five-step slider (`aria-valuemin=0`, `aria-valuemax=4`), current `aria-valuenow=2` with status **`Высокий, 3 из 5`**, and ArrowLeft/ArrowRight shortcut metadata.
+- Playwright mouse/keyboard attempts did not change the numeric slider value. An attempted model-change tool action was blocked by tool safety. **Model switching, thinking-effort change/persistence, and outbound payload verification remain unaccepted**. Original GPT-6/High choice was preserved.
+
+The user reported seeing both **Booster Pro PDF** and **Booster Pro Workflow CSV** in the remote Chrome Downloads UI. This is user-confirmed download occurrence, not automated byte inspection. Reported sizes were **195 and 87 bytes**, respectively, whereas the synthetic PDF uploaded to Space was **595 bytes** (CSV: 87 bytes). The PDF size discrepancy must be resolved before claiming identical downloaded bytes.
 ## Higher-value browser-agent capabilities discovered in product help
 
 1. **Scheduled event triggers and monitoring**: beyond daily/weekly reminders, supported app events can initiate eligible jobs; task sharing, notification channels, provider permissions and approvals are separate controls. Tasks created within Projects cannot read that project's uploaded/stored files, per current OpenAI help; capture this as a scope limitation, not an inferred exception.
@@ -155,6 +164,7 @@ There is **no verified separate Goals/Plans manager** in this capture. Product g
 | P1 | Project file flows | Source upload/replace/download/removal and memory-setting availability; current official help and one previously observed native UI disagree about whether memory can later be switched. Record as version/account-dependent until retested. |
 | P2 | Study / audio / images / Library notes / Sites | Sites first-entry legal terms were observed in Pro; activation and further actions require explicit acceptance. Other listed areas are not yet tested. |
 | P2 | Exact retry / true branch transport | Capture two missing request payloads without redoing already verified version/branch presentation. |
+| P0 | GPT-6 current selector | UI shows selected GPT-6, alternatives and 5-step effort slider; actual switching, effort change and outbound parameters not yet accepted. |
 
 A storage-full Free account is not a sufficient test environment to close cross-format/Library requirements. The user later authorized clearing the old Free Library, but **no Free-library deletion was performed** in this pass because research was switched to the external Pro Chrome profile. Do not touch Pro library content beyond clearly disposable fixtures.
 

@@ -1232,3 +1232,7 @@ The cross-feature checklist, including native file uploads, Library preview/down
 The external remote Playwright acceptance on the Intens Tech / Pro profile confirmed that `/library` navigates to `/space`, rather than the Free account's former Library interface. Saving a synthetic CSV, reopening it after a full reload, selecting it for `Начать чат`, and then actually executing Python in the resulting normal Chat is documented in `CHATGPT_BROWSER_WORKFLOWS.md` and `CHATGPT_CLIENT_RESEARCH.md`.
 
 The Pro `/scheduled` landing surface exposed task suggestions but no new task was created. `/space/sites` prompted for separate Sites terms; those terms were not accepted. `/plugins` has separate Public/Personal tabs, with custom Koba apps listed in Personal; listing an app does not establish a connected authorized provider account. These do not supersede earlier OAuth and task lifecycle evidence.
+
+## 15. GPT-6 current Chat selector (2026-10-07)
+
+The externally authorized Pro ordinary Chat picker selected GPT-6 and displayed a five-position effort slider at High (3/5). The two alternate radios were GPT-5.6 Sol and GPT-5.5. Slider mutation was not observed; model-change automation was blocked. Do not mark selection changes or outbound fields validated. See CHATGPT_BROWSER_WORKFLOWS.md.
