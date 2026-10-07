@@ -246,6 +246,8 @@ This is live acceptance of the native branch presentation and persisted postcond
 
 OpenAI's public product documentation agrees with this separate-conversation model: the 2025-09-04 ChatGPT release notes describe branching as starting a separate chat from a selected message without losing the original thread, and the current Projects documentation says branched chats appear alongside the original project conversation. Treat this as public product-semantics corroboration, not as documentation of the private endpoint.
 
+The successful branch response returns a full child `conversation` graph. The current client allocates a fresh local `clientThreadId`, hydrates the child mapping/current node plus conversation origin, title, async state, project/moderation context, and records the source `(conversation id, message id)` boundary separately. Branch creation is therefore a server-allocated child conversation followed by local graph hydration, not a client-side clone of the visible DOM.
+
 The deployed transport coalesces duplicate in-flight branch calls for the same
 `conversation_id + message_id` boundary and exposes `chatgpt.pending-branch` as a
 restart blocker until the branch promise settles. This is useful operationally: a

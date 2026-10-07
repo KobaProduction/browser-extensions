@@ -875,7 +875,7 @@ with request body:
 }
 ```
 
-The client receives a new `conversation` object and also generates a fresh local `clientThreadId` for the branch operation.
+The client receives a new `conversation` object and also generates a fresh local `clientThreadId` for the branch operation. The caller then hydrates the new local thread directly from that returned conversation graph: mapping/current node, conversation origin, title, async status, project id and moderation/disclaimer state are copied into the fresh thread, and Work origin is preserved when the source branch is in Work mode. The client separately records the source boundary `(source conversation id, message id)` for the child branch.
 
 The current deployed client also protects this mutation as a single in-flight operation per exact source boundary. It keys pending branches by the pair `conversationId + messageId`; a duplicate attempt for the same pair returns the existing promise rather than issuing another POST. While any branch mutation is pending, the conversation transport advertises the restart blocker `chatgpt.pending-branch`. The pending entry is cleared in `finally` after success or failure. These are client-code guarantees, not a claim about native button debounce timing.
 
@@ -1989,10 +1989,14 @@ Never export message text, reasoning text, tool arguments/results, attachment UR
 
 ## Known next evidence tasks
 
-1. Collect additional live tool-call DOM examples while a tool is actively running; completed turns in the current client often retain only citation pills rather than a distinct tool DOM block.
-2. Extend attachment evidence beyond the verified image/estuary path to other file classes as they are observed.
-3. Verify edit/regenerate behavior and how message IDs/parent IDs/current node change.
-4. Verify whether loading another branch requires a separate conversation request or an in-conversation version request.
+The product-operation map is now reduced to two exact transport captures:
+
+1. Intercept the native `Попробовать еще раз / Try again` submission in the current build and record the exact `regeneration_source`/variant request fields chosen by that menu caller.
+2. Intercept the native `POST /backend-api/conversation/new_branch` request while creating a disposable branch and compare its live body/response with the deployed-client contract.
+
+Adjacent behavior is already covered: user-message edit and in-conversation version navigation are live verified; custom assistant variants are live verified; true branch presentation and persisted parent linkage are live verified; image attachment persistence across branch/edit/variant/reload is live verified. Do not repeat those workflows merely to restate existing evidence.
+
+Additional attachment classes or active tool-call renderer examples may be collected opportunistically, but they are no longer blockers for the current product-operation map.
 
 
 ## Verified live message decoration signatures (2026-10-04)
