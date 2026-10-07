@@ -401,6 +401,8 @@ GET /backend-api/estuary/content?id={file_id}&...signed query...
 
 The signed URL is transient and must be accepted only when its origin/path and `id` match the archived asset. Booster does not synthesize or guess resolver URLs. A live acceptance run verified both expiry/failure handling and a fresh successful JPEG fetch whose byte count and SHA-256 matched the ZIP manifest.
 
+A later branch/version acceptance run supplied an additional persistence check. The same historical image remained exposed by the native conversation renderer as `Открыть изображение: 1000005889.jpg` after creating separate branch conversations, editing a later user message, navigating old/current versions, creating a new assistant response variant, and performing a full page reload. This does not introduce a new asset transport contract; it confirms that the historical attachment remains part of the persisted conversation graph across those later mutations.
+
 ## Live transport
 
 ### Verified fresh composer start contract (2026-10-07)
@@ -875,25 +877,87 @@ with request body:
 
 The client receives a new `conversation` object and also generates a fresh local `clientThreadId` for the branch operation.
 
-This branch endpoint was identified directly in the deployed client code, but was **not live-executed in this particular capture**. Evidence level: client-code confirmed, not live-accepted yet.
+The current deployed client also protects this mutation as a single in-flight operation per exact source boundary. It keys pending branches by the pair `conversationId + messageId`; a duplicate attempt for the same pair returns the existing promise rather than issuing another POST. While any branch mutation is pending, the conversation transport advertises the restart blocker `chatgpt.pending-branch`. The pending entry is cleared in `finally` after success or failure. These are client-code guarantees, not a claim about native button debounce timing.
 
-#### Regeneration and version graph — client-code confirmed
+The exact branch POST was not contemporaneously intercepted in the later acceptance capture, so its request shape remains client-code-confirmed. The native branch presentation and persisted postcondition were observed live. A test family showed three separate sidebar conversations (original, `Ветка · …`, and nested `Ветка · Ветка · …`) with distinct `/c/{id}` routes. The nested branch rendered `Ответвление от Ветка · Проверка оригинальности кабеля` as a persistent parent link, and the assistant action menu exposed `Ветка в новом чате`. This confirms that true branch presentation persists as a separate conversation rather than merely switching `current_node` inside one conversation.
+
+Public OpenAI product documentation independently matches that semantic boundary. The ChatGPT release notes for 2025-09-04 describe `Branch in new chat` as starting a separate conversation from the selected message while preserving the original thread. The current Projects help article additionally states that branched chats appear in a Project alongside the original conversation. These public statements corroborate the product semantics only; they do not document the private `/conversation/new_branch` transport contract.
+
+Public references:
+- https://help.openai.com/en/articles/6825453-chatgpt-release-notes
+- https://help.openai.com/en/articles/10169521-projects-in-chatgpt
+
+#### Regeneration and version graph — mixed live/client-code evidence
 
 The deployed completion pipeline distinguishes normal continuation from regeneration
 without introducing a dedicated regenerate endpoint.
 
 For a regeneration the client calls the ordinary conversation submission path with a
-`regeneration` descriptor and derives:
+`regeneration` descriptor. In the current submission pipeline, any non-null
+`regeneration` changes the outbound action from the normal `next` value to
+`variant`. Parent resolution gives `regenerateFromMessageId` precedence over the
+ordinary current-turn parent, so the regenerated response is anchored to the selected
+version boundary rather than replacing the old node in place.
+
+The request builder derives:
 
 ```text
 action = "variant"
 parent_message_id = regenerateFromMessageId
 regeneration_source = regeneration.source
 variant_purpose = regeneration.variantPurpose
+force_use_search = regeneration.forceUseSearch        # when present
+map_search_params = regeneration.mapSearchParams      # when present
+client_reported_search_source = regeneration.searchSource  # when present
 ```
 
-when the optional fields are present. The same request builder also carries the ordinary
+and enables message follow-ups by default for a regeneration unless the caller overrides
+that behavior. These fields are client-code confirmed; the exact values chosen by the
+native `Попробовать еще раз` menu action still require a contemporaneous live request
+capture. The same request builder also carries the ordinary
 conversation id, model, reasoning effort and other current conversation settings.
+
+A deeper read of the current deployed retry coordinator narrows several derived fields.
+Before submission it rebuilds the valid system-hint set for the selected model and
+conversation mode. Search behavior is inherited from the original prompt unless the
+retry explicitly overrides it. An explicit search override maps to:
+
+```text
+forceUseSearch = true  -> searchSource = "conversation_regenerate_with_search"
+forceUseSearch = false -> searchSource = "conversation_regenerate_without_search"
+```
+
+The coordinator also derives `variantPurpose` from the existing variant graph:
+
+```text
+variant_count = raw sibling variants + locally pending/additional variants
+
+variantPurpose =
+  "comparison_implicit"
+    when variant_count == 1 and forceUseSearch is undefined
+  "none"
+    otherwise
+```
+
+Error recovery has a separate replay boundary. For `source="error_retry"`, when the
+stored error state still owns a matching unsent submission, the client can replay that
+captured request/message rather than constructing a normal regeneration. Image
+generation, safety-review retry and precise-location retry also have dedicated source
+values/guards in the deployed client. These are client-code contracts. The ordinary
+native `Попробовать еще раз` menu caller is loaded outside the saved main bundle, so its
+exact `regeneration_source` value is still intentionally unresolved pending a live
+request capture.
+
+OpenAI's public product documentation independently classifies this UI as regeneration:
+the 2026-03-17 release notes describe the response retry menu under the three-dot action
+as a way to regenerate a response with Thinking or Pro, and the ChatGPT Search help
+article describes the response refresh control as offering `Try again` or
+`Search the web` to regenerate an existing response. This corroborates the
+response-variant interpretation only; it does not expose the private transport fields.
+
+Public references:
+- https://help.openai.com/en/articles/6825453-chatgpt-release-notes
+- https://help.openai.com/en/articles/9237897-chatgpt-search
 
 The in-memory graph uses sibling `children` below a common parent to represent response
 alternatives. During submission/stream application the client separately tracks:
@@ -922,15 +986,15 @@ The loaded conversation keeps both `mapping` and `current_node`. The client merg
 additional nodes/children without flattening sibling alternatives and preserves
 `has_versions` evidence while merging paginated pages.
 
-This establishes the data model and request construction, but it does **not** yet prove
-the current native UI interaction sequence for:
+The data model/request construction above was then compared with live native behavior on the nested test branch conversation.
 
-- editing a user message;
-- clicking Regenerate/Try again;
-- moving backward/forward between visible response versions;
-- opening a version-targeted route.
+**User-message edit — live verified.** Native `Редактировать сообщение` switched the selected user turn to an inline textarea with `Отменить / Отправить`. Submitting a deliberately changed test prompt did not allocate a new conversation route: the browser stayed on the same `/c/6a882204-...`, the edited text became current, and the assistant returned `OK EDIT`. The edited turn then gained `Показать версии`.
 
-Those remain dedicated live-acceptance points.
+**User-version navigator — live verified.** Opening `Показать версии` exposed the original message as `Версия 1` and the edited message as `Текущая версия`. Controls included `Предыдущая версия`, `Следующая версия`, `Вернуться к текущей версии`, and, while viewing an older branch, `Продолжить в новом чате`. Moving backward/forward changed the visible user/assistant branch while preserving the same conversation URL.
+
+**Response-variant surface — live verified.** `Сменить модель` opened a menu containing `Попробовать еще раз`, `Думай дольше`, `Искать в сети`, and `Попросите изменить ответ`. The custom modify-response path was executed with an instruction to return only `OK EDIT 2`; the same conversation id remained active and the visible answer became `OK EDIT 2`. A full reload returned HTTP 200 and restored the edited user branch plus `OK EDIT 2`, proving persistence.
+
+The exact `Попробовать еще раз` menu item was observed live but not clicked. Therefore the native retry affordance is live-observed, the custom assistant variant is live-executed, and the retry request construction remains client-code-confirmed `action="variant"`.
 
 #### Native chat rename — live verified
 

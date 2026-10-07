@@ -323,7 +323,7 @@ POST /backend-api/conversation/new_branch
 }
 ```
 
-Use this operation as the semantic definition of a ChatGPT branch. It returns a new conversation object; the client also creates a fresh local thread id. This endpoint still requires live acceptance before Booster should depend on undocumented response details.
+Use this operation as the semantic definition of a ChatGPT branch. It returns a new conversation object; the client also creates a fresh local thread id. Live UI/postcondition evidence confirms the separate-conversation result: a test branch family persisted as three distinct `/c/{id}` conversations, nested titles were prefixed with `Ветка ·`, and the child rendered an `Ответвление от …` link to its source. The exact POST response was not intercepted in that acceptance capture, so undocumented response details remain client-code-only evidence.
 
 ### Regenerate / version graph
 
@@ -338,11 +338,9 @@ Deployed-client-code contract:
 - the selected visible branch is represented by `current_node`;
 - history pagination asks for `include_has_versions=true`.
 
-Treat user-message edit, assistant regeneration, true `new_branch`, and selecting an
-existing version as separate operations even though they can all change the visible
-conversation branch.
+Treat user-message edit, assistant regeneration, true `new_branch`, and selecting an existing version as separate operations even though they can all change the visible conversation branch.
 
-Live UI/transport acceptance for edit/regenerate/version switching is still pending.
+Live renderer/postcondition evidence establishes that user-message edit stays on the same conversation id and creates a versioned branch; `Показать версии` navigates old/current branches without changing `/c/{id}`; older-version view exposes `Продолжить в новом чате`; and the response-variant menu exposes `Попробовать еще раз`, `Думай дольше`, `Искать в сети`, plus a custom `Попросите изменить ответ` path. A custom assistant response variant persisted across full reload on the same conversation id. The exact `Попробовать еще раз` request was not intercepted live; its `action="variant"` transport remains client-code-confirmed.
 
 ### Rename
 

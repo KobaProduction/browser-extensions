@@ -240,25 +240,69 @@ POST /backend-api/conversation/new_branch
 }
 ```
 
-This branch operation has not yet received a dedicated live mutation acceptance test.
+Live UI/postcondition evidence now corroborates the separate-conversation branch model. A test conversation family contained three simultaneously listed conversations with three distinct `/c/{conversation_id}` routes: the original, `Ветка · …`, and nested `Ветка · Ветка · …`. The nested branch rendered a persistent `Ответвление от …` link back to its source branch, and the assistant action menu exposed `Ветка в новом чате`.
 
-### Regenerate and in-conversation versions — client-code confirmed
+This is live acceptance of the native branch presentation and persisted postcondition. The `/conversation/new_branch` request shape remains client-code-confirmed because that exact request was not contemporaneously intercepted in this capture.
+
+OpenAI's public product documentation agrees with this separate-conversation model: the 2025-09-04 ChatGPT release notes describe branching as starting a separate chat from a selected message without losing the original thread, and the current Projects documentation says branched chats appear alongside the original project conversation. Treat this as public product-semantics corroboration, not as documentation of the private endpoint.
+
+The deployed transport coalesces duplicate in-flight branch calls for the same
+`conversation_id + message_id` boundary and exposes `chatgpt.pending-branch` as a
+restart blocker until the branch promise settles. This is useful operationally: a
+timeout at an automation boundary must be followed by post-state inspection before a
+second native click, because the ChatGPT client itself treats the mutation as one
+pending branch operation.
+
+### Regenerate and in-conversation versions — mixed live/client-code evidence
 
 The current deployed client does not expose a dedicated `/regenerate` mutation. Native
 regeneration reuses the normal conversation completion transport and changes the request
 semantics to a variant submission.
 
-The client submission pipeline sets:
+The client submission pipeline sets `action="variant"` whenever the regeneration
+descriptor is present. `regenerateFromMessageId` takes precedence during parent
+resolution, so the selected message/version boundary becomes the parent for the new
+assistant variant.
+
+The request builder can additionally carry:
 
 ```text
-action = "variant"
-parent_message_id = <message selected as regeneration boundary>
 regeneration_source = <native retry/regenerate source, when present>
 variant_purpose = <purpose, when present>
+force_use_search = <regeneration search override, when present>
+map_search_params = <regeneration map-search parameters, when present>
+client_reported_search_source = <regeneration search source, when present>
 ```
 
-and then sends the ordinary conversation completion request. Internally the call carries
-`regenerateFromMessageId` separately from the optional replacement message payload.
+The client then sends the ordinary conversation completion request. Internally the call
+carries `regenerateFromMessageId` separately from the optional replacement message
+payload.
+
+Current deployed-client logic further derives:
+
+```text
+explicit search retry:
+  true  -> client_reported_search_source = conversation_regenerate_with_search
+  false -> client_reported_search_source = conversation_regenerate_without_search
+
+variant_purpose:
+  comparison_implicit
+    only for the first added alternative when search is not explicitly overridden
+  none
+    otherwise
+```
+
+`error_retry` is a separate recovery case: if a matching failed turn retained an unsent
+submission, the client can replay that original request boundary rather than manufacture
+a new ordinary regeneration. Other dedicated retry sources exist for image generation,
+safety review and precise-location recovery. The exact source value selected by the
+ordinary native `Try again / Попробовать еще раз` menu remains unverified until its live
+request is intercepted.
+
+OpenAI's public release notes and ChatGPT Search documentation independently describe
+the response retry UI as regeneration of an existing response, including the
+`Try again` and `Search the web` choices where available. This corroborates the
+product-level variant semantics, but not the exact private request fields.
 
 When a prompt already has child alternatives, the graph treats them as sibling variants.
 The source-state layer records:
@@ -287,8 +331,18 @@ The conversation model remains a graph of nodes with `parent` and `children`; th
 visible branch is determined by `current_node`. Do not model regeneration as overwriting
 the prior assistant response.
 
-Evidence level: deployed-client-code confirmed. Dedicated live acceptance for regenerate,
-user-message edit and version navigation remains required.
+Live acceptance on a dedicated test branch established the current UI semantics:
+
+- editing a user message keeps the same conversation id and creates a versioned branch;
+- the inline editor exposes `Редактирование сообщения` with `Отменить / Отправить`;
+- after submit, native `Показать версии` appears on the edited user turn;
+- version navigation exposes `Версия 1`, `Текущая версия`, `Предыдущая версия`, `Следующая версия`, `Вернуться к текущей версии`, and on an older branch `Продолжить в новом чате`;
+- previous/next navigation keeps the same `/c/{conversation_id}` URL;
+- full reload preserves the edited branch.
+
+The response control labeled `Сменить модель` currently opens a response-variant menu containing `Попробовать еще раз`, `Думай дольше`, `Искать в сети`, and `Попросите изменить ответ`. A custom response variant was executed through the latter: the same conversation id remained active and `OK EDIT` became `OK EDIT 2`, which persisted across reload.
+
+The exact `Попробовать еще раз` item was observed but not invoked in this capture. Its request construction remains the client-code-confirmed `action="variant"` contract above.
 
 ## 4. Model and reasoning-effort selector
 
@@ -1004,44 +1058,47 @@ When running product-operation acceptance tests:
 
 The 2026-10-07 acceptance run followed this cleanup boundary: both test automations were disabled, the test chat was deleted, and the test project was deleted. Koba MCP Bridge remained installed and connected after a successful native reconnect/reauth.
 
-## 11. Validation checklist
+## 11. Reverse-engineering coverage and validation checklist
 
-Before claiming a product-operation integration complete, verify the specific operation at its actual source boundary.
+This table is the durable coverage map for the browser-product research. Do not treat a visible control as equivalent to a verified operation. `Live` means the native action/postcondition was exercised; `mixed` means live UI/postcondition is paired with client-code transport evidence; `client-code` means the exact deployed implementation was found but not executed at that boundary.
 
-Project/chat operations:
+| Direction | Evidence | Current contract |
+| --- | --- | --- |
+| Project create/delete | Live | create/delete endpoints and native postconditions verified |
+| Project Instructions | Live | explicit Save submits `PATCH /backend-api/projects/{id}`; not autosave |
+| First chat in Project | Live | fresh `/f/conversation` allocates server conversation id |
+| Chat rename/delete | Live | dedicated rename/delete mutations verified |
+| True branch | Mixed | separate branch conversations and parent marker live; `/conversation/new_branch` request shape client-code confirmed |
+| User-message edit | Live | same conversation id; creates navigable in-conversation version branch |
+| Version navigation | Live | previous/current version UI changes visible branch without changing conversation id |
+| Assistant response variant | Live + client-code | custom response variant live; retry menu observed; retry transport `action="variant"` client-code confirmed |
+| Model / reasoning effort | Live | outbound `model` and `thinking_effort` matrix verified |
+| Automations create/update | Live | persisted task objects and disable transition verified |
+| Native structured user input | Live | request/response correlation and history compaction verified |
+| Plugin discovery/management | Live | catalog and management bootstrap verified |
+| Custom MCP creation | Live | connector creation, OAuth discovery/DCR and OAuth link activation verified |
+| MCP create-time icon | Live | PNG is embedded as create-time `logo_url` and normalized to hosted icon assets |
+| MCP post-create icon edit | Negative UI result | no native post-create icon edit/file input exposed in captured management UI |
+| MCP permissions | Live | per-link `apps_privacy_control` modes round-tripped and default restored |
+| MCP rename/description | Live | dedicated connector name/description PATCH routes verified |
+| MCP Refresh tools | Live | `POST /aip/connectors/mcp/refresh_actions` + metadata/action reconciliation verified |
+| MCP reconnect / reauth | Live | reauth, provider OAuth callback and ACTIVE link/action reload verified |
+| Multiple MCP links / duplicate endpoint | Live metadata/UI | separate app over same endpoint created; `enable_multi_links=true`; another-account affordance exposed |
+| MCP delete | Live | disposable connector delete and 404 postcondition verified |
+| Work classification | Live + client-code | `tpp|flora` source classifier established |
+| Work sub-agents | Live | child thread identity, started/completed lifecycle and native panel verified |
+| Conversation-scoped load failure | Live | distinct single-conversation failure/retry state verified |
+| Image attachment persistence | Live | historical image survives branch/edit/variant/reload; Estuary asset resolver previously verified |
 
-```text
-project create      -> POST /backend-api/projects + project route
-first project chat  -> fresh /f/conversation + new server conversation id
-chat delete         -> DELETE /conversation/id/{id} success
-project delete      -> DELETE /gizmos/{project_id} success
-rename              -> POST /conversation/id/{id}/rename success
-branch              -> /conversation/new_branch (live acceptance still needed)
-```
+Remaining evidence boundaries relevant to this product-operation map:
 
-Model selection:
+- the exact native `Попробовать еще раз` request has not been intercepted live in the current build, although the affordance is live-observed and its `action="variant"` request builder is client-code confirmed;
+- the exact `POST /conversation/new_branch` request was not intercepted during the later live branch acceptance, although separate branch conversations and parent-link postconditions were verified live;
+- post-create icon replacement is not exposed by the captured native MCP management UI.
 
-```text
-read outbound model + thinking_effort
-never infer solely from UI label
-```
+These are evidence-level distinctions, not reasons to repeat already-verified adjacent workflows.
 
-Automations:
-
-```text
-verify persisted automation object in scheduled/paused list
-verify timing_mode and VEVENT schedule
-verify is_enabled transition after update
-```
-
-Plugin/MCP management:
-
-```text
-Refresh tools  -> current action schema re-read
-Reconnect      -> OAuth reauth + callback + ACTIVE link + action reload
-Permissions    -> treat per-account approval policy as separate from OAuth auth state
-```
-
+Before claiming a future product-operation integration complete, verify the specific operation at its actual source boundary and preserve the evidence level above.
 
 ## 12. Work mode and sub-agents
 
