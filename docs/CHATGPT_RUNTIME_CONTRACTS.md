@@ -668,7 +668,7 @@ The question/answer is also serialized into user-visible text, but that string i
 
 ### Native `request_user_input`
 
-Client-code-confirmed request identity:
+Live-verified request identity:
 
 ```text
 source messageId
@@ -678,16 +678,33 @@ codex_request_user_input.is_blocking?
 codex_request_user_input.expires_at?
 ```
 
-Authoritative response is a generated tool message:
+The active pending request is represented by a tool message named
+`request_user_input`. A live single-select answer confirmed that selecting an option
+submits a fresh `/f/conversation` continuation whose `parent_message_id` is the source
+request message and whose generated input message is:
 
 ```text
 author.role = tool
 author.name = request_user_input
 channel = commentary
+recipient = all
 metadata.codex_request_user_input_response.request_id = original request_id
 ```
 
-The response answer map is keyed by the original `question_ids`. Preserve `reasoning_group_id` when present.
+The response answer map is keyed by the original `question_ids`. Preserve
+`reasoning_group_id` when present; the live sample did not include one.
+
+Late history is not guaranteed to preserve the native request and response as standalone
+records. In the live acceptance capture, a reload compacted them into
+`inline_cot_expandable_content.questions` on the completed reasoning record. Therefore
+live observation is the lossless source for this interaction class; later history may be
+a presentation projection.
+
+If duplicate request metadata copies disagree, prefer the top-level active
+`metadata.codex_request_user_input` / normalized live request state over a contradictory
+nested copy in `content_references[].data`. The live sample had top-level
+`is_blocking=true` while the nested copy still contained `is_blocking=false` and an
+`expires_at`.
 
 Non-blocking native questions may use:
 
@@ -695,7 +712,8 @@ Non-blocking native questions may use:
 POST /conversation/{conversation_id}/messages/{message_id}/request_user_input/snooze
 ```
 
-at their expiry boundary.
+at their expiry boundary. Do not infer that snooze occurred merely from a contradictory
+nested expiry copy; require the actual transport event.
 
 ### State semantics
 

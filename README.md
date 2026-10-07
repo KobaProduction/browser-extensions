@@ -4,30 +4,45 @@ Open-source browser extension that enhances ChatGPT with UI improvements, produc
 
 ## Status
 
-Early foundation. The repository currently provides:
+Rolling development. The current `dev` line provides:
 
-- a Chromium Manifest V3 extension target;
-- a Tampermonkey/userscript target;
-- shared typed runtime contracts;
-- a Vue 3 + shadcn-vue injected UI mounted in Shadow DOM;
-- an initial Tool Inspector module for client-visible MCP/tool diagnostics;
-- one shared Control Center UI exposed through Tampermonkey, the extension popup, and a movable in-page launcher;
-- English/Russian i18n with automatic browser-language detection and manual override;
-- passive transport observer for fetch/XHR/WebSocket/EventSource with current-tab and persisted all-time counters;
-- categorized Control Center sections for modules, analytics, and other settings with persisted UI state;
-- optional OTLP/HTTP telemetry export through a target-specific secure transport path;
-- strict TypeScript and Biome checks;
-- CI build artifacts and tag-based GitHub Release packaging.
+- Chromium Manifest V3 and Tampermonkey/userscript targets backed by shared feature logic;
+- a Vue 3 injected UI isolated with Shadow DOM, including the Control Center and docked
+  current-chat/archive surfaces;
+- a local Conversation Archive with selective capture, paginated history ingestion,
+  attachment packaging and read-only archive browsing;
+- a memory-first `ConversationStateStore` for current-chat lifecycle, message, reasoning,
+  tool and timing state, with asynchronous IndexedDB persistence/hydration;
+- versioned ChatGPT DOM adapters and passive transport observation for documented
+  lifecycle/recovery/safety/user-input evidence;
+- source-derived request/reasoning/tool timing and normalized current-run state;
+- JSON/Markdown/ZIP export and History Loader workflows;
+- English/Russian i18n and persisted settings;
+- optional redacted OTLP/HTTP telemetry that excludes chat content;
+- strict TypeScript/Biome checks, automated tests, build packaging and rolling CI.
 
-## Active Extension 2 work
+A successful build or CI run is not equivalent to live acceptance against the current
+ChatGPT client. Runtime/product-operation evidence is maintained separately in the
+contracts and research documents below.
 
-The docked toolkit and selective-archive iteration is tracked in
-[the 102-item checklist](docs/tasks/EXTENSION_2_CHECKLIST.md),
-[the acceptance contract](docs/tasks/DOCKED_ARCHIVE_TOOLKIT.md), and
-[the validation report](docs/tasks/EXTENSION_2_VALIDATION.md).
-This working branch is not a new release: local-fixture acceptance is separate from
-live ChatGPT/userscript acceptance. Full attachment packaging and independent review
-remain open. The reproducible synthetic browser fixture is in `tests/browser/`.
+## Current development
+
+Active work runs on the rolling `dev` line. The earlier docked archive/selective-capture
+milestone remains documented under `docs/tasks/`, but those historical task files are
+not the current project-status authority.
+
+Current implementation and reverse-engineering authority is split by concern:
+
+- `docs/ARCHITECTURE.md` — ownership and architectural invariants;
+- `docs/CHATGPT_RUNTIME_CONTRACTS.md` — per-turn lifecycle, timing, transport,
+  recovery, safety and structured-input contracts;
+- `docs/CHATGPT_PRODUCT_OPERATIONS.md` — Projects, chat operations, model/effort
+  selection, Automations and Plugin/MCP management;
+- `docs/CHATGPT_CLIENT_RESEARCH.md` — live/client-code evidence and proof boundaries.
+
+Source/type/build/CI validation and live ChatGPT runtime acceptance remain separate
+evidence levels. Use current GitHub issues for open implementation defects rather than
+the historical Extension 2 checklist.
 
 ## Development
 

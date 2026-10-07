@@ -368,41 +368,82 @@ There is no native `request_id/question_ids` correlation object in this protocol
 
 The live flow then continued as a normal new model turn. In the observed automation case the model subsequently called the automation create tool and received a successful tool result.
 
-### Native agent `request_user_input` — client-code confirmed
+### Native agent `request_user_input` — live verified
 
-The deployed client contains a separate native agent/tool protocol for structured questions. Its request metadata schema is:
+A dedicated live acceptance run forced the ordinary Chat/Work-capable model surface to
+emit one native single-select request with two options and then selected the second
+option.
 
-```text
-codex_request_user_input:
-  request_id: string | number
-  question_ids: string[]
-  status: pending
-  is_blocking?: boolean
-  expires_at?: number
-```
-
-Questions can be `single_select`, `multi_select`, or `free_text`, with optional custom text. The request is associated with a concrete source `messageId`; native submissions may also carry a `reasoning_group_id`.
-
-When the user submits answers to a native request, ChatGPT does **not** create a normal user-text answer. It resumes completion with a generated tool message:
+The pending source record used a tool message:
 
 ```text
 author.role = tool
 author.name = request_user_input
+recipient   = assistant
 channel     = commentary
-recipient   = all
+end_turn    = true
 ```
 
-Its content contains JSON answers and metadata carries:
+Its active request metadata exposed:
+
+```text
+codex_request_user_input:
+  request_id: <request id>
+  question_ids: [<question id>]
+  status: pending
+  is_blocking: true
+```
+
+The visible native UI rendered a radio group, free-text alternative and Skip action under
+`Waiting for your answer`. For the captured single-select request, choosing one radio
+option submitted immediately; there was no separate Submit action.
+
+The answer produced a normal streamed continuation through:
+
+```text
+POST /backend-api/f/conversation -> 200
+```
+
+with the original request message as the parent and a generated tool message in
+`messages[0]`:
+
+```text
+parent_message_id = <source request_user_input message id>
+messages[0].author.role = tool
+messages[0].author.name = request_user_input
+messages[0].channel = commentary
+messages[0].recipient = all
+```
+
+Its text content serialized the answer map and metadata carried the protocol correlation:
 
 ```text
 codex_request_user_input_response:
   request_id: <same request id>
   answers:
     <question id>:
-      answers: [...]
+      answers: [<selected answer>]
 ```
 
-If the original native submission has a `reasoning_group_id`, the generated tool response preserves it in metadata. The continuation is submitted with the original request's source message as the continuation boundary.
+The captured request did not carry a `reasoning_group_id`; client code still confirms
+that it is preserved when present.
+
+A later native conversation reload exposed an important persistence boundary. In this
+capture, neither the original `request_user_input` tool record nor the submitted tool
+response was returned as a standalone history record. Instead, the completed reasoning
+record contained `inline_cot_expandable_content.questions` with the question and selected
+answer, followed by the normal final assistant message. Lossless handling therefore
+requires observing the live request/response path; late history hydration alone may only
+retain a compacted presentation of the interaction.
+
+One source inconsistency was also observed before answering: the top-level
+`metadata.codex_request_user_input.is_blocking` and active React request state both said
+`true`, while a nested copy under
+`content_references[].data.codex_request_user_input` still contained
+`is_blocking=false` plus an `expires_at`. Treat the top-level active request metadata
+as the current interaction state when these copies disagree. The capture did not contain
+a corresponding snooze request, so do not invent an expiry/snooze causal explanation
+for this specific divergence.
 
 ### Native non-blocking expiry / snooze
 

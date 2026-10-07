@@ -1405,9 +1405,102 @@ The answer object is keyed by the original `question_ids`, and `reasoning_group_
 POST /conversation/{conversation_id}/messages/{message_id}/request_user_input/snooze
 ```
 
-The exact native `request_user_input` submit path above is client-code confirmed; the automation preference question in this live capture used the GenUI path instead.
+The automation preference question in this capture used the GenUI path; the native submit
+path was later accepted live in the dedicated experiment below.
 
 Implementation consequence: do not classify structured questions by UI appearance. Use source widget/metadata and protocol-specific correlation keys.
+
+### Native `request_user_input` answer — live verified (2026-10-07)
+
+A dedicated conversation explicitly requested one native `request_user_input`
+single-select question with two options and required the model to wait for the answer.
+
+Before selection, the native UI showed:
+
+```text
+Waiting for your answer
+single-select radio group
+free-text alternative
+Skip
+```
+
+The active React request object and top-level persisted message metadata both exposed a
+pending `codex_request_user_input` with one `question_id` and
+`is_blocking=true`. The pending source message itself was:
+
+```text
+author.role = tool
+author.name = request_user_input
+recipient = assistant
+channel = commentary
+end_turn = true
+```
+
+A nested metadata copy under
+`content_references[].data.codex_request_user_input` simultaneously retained
+`is_blocking=false` and an `expires_at`. No
+`/request_user_input/snooze` request was present in the captured page network log.
+This proves the copies can diverge; it does not prove why. For current interaction state,
+the top-level metadata and active native request object matched the UI and are the
+stronger evidence.
+
+Selecting the second radio option immediately resumed the model. The browser-automation
+call timed out at the MCP boundary, so it was not retried; the changed DOM and a new
+successful request proved the click had already executed once.
+
+The continuation request was:
+
+```text
+POST /backend-api/f/conversation -> 200
+```
+
+with:
+
+```text
+parent_message_id = <native request tool-message id>
+model = gpt-6-astra-wm
+thinking_effort = standard
+messages[0].author.role = tool
+messages[0].author.name = request_user_input
+messages[0].recipient = all
+messages[0].channel = commentary
+```
+
+The tool-message content serialized:
+
+```json
+{
+  "answers": {
+    "<question id>": {
+      "answers": ["<selected option>"]
+    }
+  }
+}
+```
+
+and its metadata carried the same request id under
+`codex_request_user_input_response.request_id`.
+
+The continuation completed normally and the final assistant response acknowledged the
+selected option.
+
+After completion, a native page reload produced another important observation: the
+server history response no longer contained either the pending native tool request or
+the submitted tool-response message as standalone records. Instead, the preceding
+reasoning record had been rewritten with:
+
+```text
+inline_cot_expandable_content.questions[0].question = <question>
+inline_cot_expandable_content.questions[0].answers = [<selected answer>]
+```
+
+and the final assistant record followed it normally. The continuation used a new
+`turn_exchange_id` while retaining the original `working_turn_id`.
+
+Evidence consequence: the live `/f/conversation` request is the lossless authoritative
+answer record for native `request_user_input`. Later history can compact the interaction
+into reasoning presentation metadata, so an archive that only hydrates after the fact
+cannot reconstruct the original native request/response envelope exactly.
 
 ### Project memory availability and Instructions settings — mixed live/client-code evidence
 
