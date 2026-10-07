@@ -106,27 +106,30 @@ The memory setting was informational after creation in the tested project; the U
 
 Do not equate that stored project policy with current account-level Memory availability. In the same account/build, the create dialog reported that Memory was disabled at account level while the server-created project still returned `memory_enabled=true` and `memory_scope=global` after a request with `memory_scope=unset`. Treat those fields as project configuration semantics, not proof that account Memory is currently usable.
 
-The same settings surface exposes project-level `Instructions`, which act as a project-scoped base prompt/context. Deployed client code confirms project settings are persisted through:
+The same settings surface exposes project-level `Instructions`, which act as a project-scoped base prompt/context.
+
+The native commit trigger is the explicit `Save / Сохранить` button in Project Settings. A live instructions save emitted:
 
 ```text
-PATCH /backend-api/projects/{project_id}
+PATCH /backend-api/projects/{project_id} -> 200
 ```
 
-with a full request shape containing:
+with the observed body:
 
 ```json
 {
-  "emoji": "<value-or-null>",
+  "emoji": null,
   "instructions": "<project instructions>",
-  "memory_scope": null,
   "name": "<project name>",
-  "theme": "<value-or-null>"
+  "theme": null
 }
 ```
 
-For an ordinary instructions/name/icon/theme edit, `memory_scope` is left `null`; changing memory policy is a separate create-time/update path in the client contract.
+The response returned the updated project resource with the saved instructions.
 
-Evidence boundary for the current live build: the PATCH implementation is client-code confirmed, but the exact native UI commit trigger for the `Instructions` textarea was not captured. Typing text and then closing the dialog, blurring the textarea, waiting for debounce, or pressing `Ctrl+Enter` did not emit the PATCH and the staged text was absent after reopening. Do not assume project settings are autosaved.
+This also resolves a version-sensitive discrepancy with the previously inspected client-code path: the live 2026-10-07 request **omitted** `memory_scope` entirely for this ordinary settings save. Do not require or synthesize `memory_scope:null` merely because an earlier deployed-client implementation included it in its effective settings body.
+
+The textarea is not simple autosave. Earlier attempts using close, blur, waiting and `Ctrl+Enter` produced no PATCH. Treat explicit `Save` as the verified native commit boundary for the captured build.
 
 ### Delete project
 

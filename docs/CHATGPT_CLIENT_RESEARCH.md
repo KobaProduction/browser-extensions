@@ -1535,25 +1535,36 @@ This is not a contradiction if the fields are modeled at the correct levels: the
 
 The same Project Settings dialog exposed an `Instructions` textarea for project-scoped response context.
 
-Deployed client code confirmed persistence through:
+Earlier client-code inspection showed persistence through:
 
 ```text
 PATCH /backend-api/projects/{project_id}
 ```
 
-with body fields:
+and an implementation that could construct an effective settings body including `memory_scope`.
+
+The native commit trigger is now live verified. Project Settings renders explicit `Cancel / Отмена` and `Save / Сохранить` controls. Clicking `Save` after an instructions edit emitted:
 
 ```text
-emoji
-instructions
-memory_scope
-name
-theme
+PATCH /backend-api/projects/{project_id} -> 200
 ```
 
-The client first fetches current project data, computes changed fields, and then PATCHes a complete effective settings body. Ordinary instructions/name/icon/theme edits pass `memory_scope=null`, preserving the existing memory mode.
+with the captured body:
 
-A bounded live attempt to discover the native UI commit trigger found that the textarea is **not simple autosave**: typing instructions and then closing the dialog, blurring, waiting, or pressing `Ctrl+Enter` emitted no project PATCH, and reopening showed the original empty instructions. The exact native submit trigger remains unverified in this capture and must not be invented.
+```json
+{
+  "emoji": null,
+  "instructions": "Reverse documentation test instruction. Reply concisely.",
+  "name": "Booster Work Test",
+  "theme": null
+}
+```
+
+The response returned the project resource with the same persisted instructions.
+
+Notably, this live request did **not** contain `memory_scope`. This is a real version/build difference from the earlier client-code path and should be preserved as such rather than reconciled by assumption.
+
+The negative save experiments remain useful: close, blur, debounce waiting and `Ctrl+Enter` did not save. In the captured build the verified commit boundary is the explicit `Save` button; Project Instructions are not autosave.
 
 ### Project creation — live verified
 
@@ -1742,7 +1753,7 @@ On the connected disposable app:
 
 ```text
 PATCH /backend-api/aip/connectors/{app_id}/name -> 200
-PATCH /backend-api/connectors/{app_id}/description -> 200
+PATCH /backend-api/aip/connectors/{app_id}/description -> 200
 ```
 
 Each body contained only the changed field and each response returned updated connector metadata.
