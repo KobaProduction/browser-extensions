@@ -131,6 +131,8 @@ This also resolves a version-sensitive discrepancy with the previously inspected
 
 The textarea is not simple autosave. Earlier attempts using close, blur, waiting and `Ctrl+Enter` produced no PATCH. Treat explicit `Save` as the verified native commit boundary for the captured build.
 
+The current Project Settings component renders its footer only after settings become dirty. For an editable project the dirty footer contains `Cancel / Отмена` and a primary `Save / Сохранить` button with `type=submit`; the enclosing form owns the save handler. Closing or cancelling dismisses staged edits without invoking that submit path. The client also rejects instructions longer than 8,000 characters before save.
+
 ### Delete project
 
 Native deletion is a two-step destructive UI flow:

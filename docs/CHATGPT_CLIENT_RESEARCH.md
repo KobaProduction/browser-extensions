@@ -1566,6 +1566,8 @@ Notably, this live request did **not** contain `memory_scope`. This is a real ve
 
 The negative save experiments remain useful: close, blur, debounce waiting and `Ctrl+Enter` did not save. In the captured build the verified commit boundary is the explicit `Save` button; Project Instructions are not autosave.
 
+The lazily loaded `ChatGptProjectSettingsModal` client component explains the native behavior precisely. It computes a dirty flag from name, instructions, emoji/theme and mutable memory changes. Only while dirty does an editable project render a footer with `Cancel` and `Save`; `Save` is `type=submit` on the enclosing form. The form submit handler gates on the current can-save state and invokes the project update function, then closes the dialog only after success. `Cancel`/ordinary close only close the dialog and do not call the save function. The same component enforces an 8,000-character maximum for Project Instructions.
+
 ### Project creation — live verified
 
 A temporary test Project was created through the native `Add new project` flow. The dialog exposed project name, icon/color and memory configuration.
