@@ -703,6 +703,46 @@ is_enabled = false
 
 Thus the same chat/tool layer can mutate existing automations, not only create them.
 
+### Native Scheduled management UI — live verified
+
+The dedicated `/scheduled` surface exposes its own task composer, a recommended-template gallery and a task filter with:
+
+```text
+Active
+Paused
+Completed
+```
+
+Opening a persisted task exposes a native editor with:
+
+```text
+state badge
+title textarea
+prompt/instructions textarea
+date control
+time control
+next-run presentation
+Resume/Pause
+Additional actions:
+  Run now
+  Notification settings
+  Delete
+```
+
+On the disposable reverse fixture, title and prompt edits were saved through the native editor and remained persisted after closing and reopening the editor. A date edit from 9 October to 10 October also persisted after Save. The calendar disabled dates before the current day and allowed future dates.
+
+The same fixture's persisted conversation history contains a completed explicit `Run now` request and its task result, while the task itself was paused. This establishes that manual execution is a distinct operation from enabling the recurring/one-shot schedule.
+
+A desktop-notification affordance was also rendered:
+
+```text
+Enable desktop notifications
+Allow
+Not now
+```
+
+and the task overflow exposed `Notification settings`. The current capture did not mutate those settings or execute Delete; keep those as UI-observed management capabilities rather than transport-verified mutations.
+
 ### Scheduling vs notification delivery
 
 Do not infer notification-channel behavior solely from `notifications_enabled` or `email_enabled` in one automation object. Those fields are task metadata and can coexist with product-level notification handling elsewhere.
@@ -1075,7 +1115,7 @@ This table is the durable coverage map for the browser-product research. Do not 
 | Version navigation | Live | previous/current version UI changes visible branch without changing conversation id |
 | Assistant response variant | Live + client-code | custom response variant live; retry menu observed; retry transport `action="variant"` client-code confirmed |
 | Model / reasoning effort | Live | outbound `model` and `thinking_effort` matrix verified |
-| Automations create/update | Live | persisted task objects and disable transition verified |
+| Automations create/update/manage | Live | create/update/disable plus native title, prompt and schedule edits persisted; Run now previously executed live |
 | Native structured user input | Live | request/response correlation and history compaction verified |
 | Plugin discovery/management | Live | catalog and management bootstrap verified |
 | Custom MCP creation | Live | connector creation, OAuth discovery/DCR and OAuth link activation verified |

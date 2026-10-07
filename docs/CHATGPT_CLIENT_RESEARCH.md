@@ -1785,6 +1785,21 @@ A cleanup prompt then asked ChatGPT to disable both test tasks. Subsequent pause
 
 The `/scheduled` primary UI in this build displayed a template gallery even while native automation-list requests contained the actual tasks; raw page text is therefore not the authoritative task registry.
 
+A later direct inspection of the dedicated Scheduled surface resolved the management UI more completely. The page exposed its own composer (`Запланируйте задачу`), recommended templates, and filters for `Активно / Приостановленные / Завершенные`.
+
+An existing disposable reverse fixture in a separate test conversation was opened in the native task editor. It exposed editable `Название` and `Инструкции`, separate date/time controls, next-run state, `Возобновить`, and an overflow containing `Запустить сейчас`, `Настройки уведомлений`, and `Удалить`.
+
+Live editor mutations:
+- title changed to `Booster Reverse Test UI Verified`;
+- prompt changed to `Reverse UI task editor verification. Reply only TASK-UI-OK.`;
+- both persisted after Save, close and reopen;
+- scheduled date changed from 9 October to 10 October and persisted after Save;
+- past dates in the calendar were disabled while current/future dates remained selectable.
+
+The same external test conversation already contained a successful manual `Run now` execution for the task, while the current editor state was paused. This confirms that manual execution and schedule enablement are separate controls.
+
+The renderer also exposed a desktop notification prompt (`Включите уведомления на рабочем столе`) and the task overflow exposed `Настройки уведомлений`. Notification mutation, native Resume/Pause mutation, and task deletion were not executed in this pass: the external browser safety layer blocked the attempted Resume action, so the agent did not route around that protection.
+
 ### Chat deletion — live verified
 
 The temporary chat was deleted through its project-list `Delete` action and irreversible confirmation.
