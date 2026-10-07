@@ -2158,10 +2158,38 @@ The official GPT-6 launch/update was published on 7 October 2026: https://openai
 
 - Selected radio: **GPT-6**; visible alternatives: **GPT-5.6 Sol** and **GPT-5.5** (UI: available until 14 October).
 - Effort menuitem `Мощность` exposed a five-step slider (`aria-valuemin=0`, `aria-valuemax=4`), current `aria-valuenow=2` with status **`Высокий, 3 из 5`**, and ArrowLeft/ArrowRight shortcut metadata.
-- Playwright mouse/keyboard attempts did not change the numeric slider value. An attempted model-change tool action was blocked by tool safety. **Model radio switching, effort persistence and outbound payload verification remain unaccepted; an earlier separate Pro run successfully observed High → Medium → High effort changes**. Original GPT-6/High choice was preserved.
+- In that 2026-10-07 attempt, pointer/keyboard actions did not mutate the slider, and a model-radio change was blocked by tool safety. Another run already showed High → Medium → High. The newer 2026-10-08 live test below confirms all five slider positions, restored-level persistence and High/Very High outgoing model/effort fields; **alternate model radios remain unverified**.
 
 The user reported seeing both **Booster Pro PDF** and **Booster Pro Workflow CSV** in the remote Chrome Downloads UI. This is user-confirmed download occurrence, not automated byte inspection. Reported sizes were **195 and 87 bytes**, respectively, whereas the synthetic PDF uploaded to Space was **595 bytes** (CSV: 87 bytes). The PDF size discrepancy must be resolved before claiming identical downloaded bytes.
 
 ### Fresh Pro Chat defaults after 2026-10-07 GPT-6 launch
 
 Remote approved Playwright profile, third new tab `/`: `Чат` was pressed, `Работа` unpressed; the model menu selected `GPT-6` and effort `High, 3 of 5` (`aria-valuenow=2` of 0..4). Compare the separate earlier Work conversation `Запрос нативного ввода`, whose composer displayed `GPT-6 Astra`. GPT-6 in Chat is **not evidence** of a Work-origin thread. The specific thread named by the user `GPT-6 Finetuning` was absent from remote tabs; no mode/origin is claimed for that unseen thread. Legacy history endpoint returned an empty list and tested legacy detail routes returned 404, so they cannot be used to classify it. OpenAI 2026-10-07 release says GPT-6 update targets Chat and leaves Work/Codex unchanged: https://openai.com/index/gpt-6-for-everyone/ .
+
+### Post-rollout GPT-6 ordinary Chat transport acceptance (2026-10-08)
+
+Fresh external Playwright Pro Chrome test (same approved remote MCP session), on `chatgpt.com` at **1600×1000**. The test tab was reloaded before use; the initial ordinary Chat composer had **Chat selected and Work unselected**, and the model picker had **GPT-6** checked. The separate Work tab was not modified.
+
+Using the native `Мощность` menuitem and Playwright ArrowLeft/ArrowRight, the following **five UI states were all live exercised** (zero-based slider index):
+
+| Slider index | Current label | Verified UI transition |
+| --- | --- | --- |
+| 0 | Instant (1 of 5) | Yes |
+| 1 | Medium / Средний (2 of 5) | Yes |
+| 2 | High / Высокий (3 of 5) | Yes |
+| 3 | Very High / Очень высокий (4 of 5) | Yes |
+| 4 | Pro (5 of 5) | Yes |
+
+Two separate short **normal Chat** turns were submitted and completed in one dedicated test conversation. Passive `browser_network_request` inspection of the actual outgoing **`POST /backend-api/f/conversation` requests**, both returning HTTP 200, established the following **current** transport behavior:
+
+| Selected UI level | Actual `model` | Actual `thinking_effort` | Evidence |
+| --- | --- | --- | --- |
+| High / 3 of 5 | `gpt-6-thinking` | `extended` | Accepted — native response completed, outbound request body captured |
+| Very High / 4 of 5 | `gpt-6-thinking` | `max` | Accepted — native response completed, outbound request body captured |
+| Instant / 1 of 5 | *Not captured for GPT-6* | *Not captured* | UI state only |
+| Medium / 2 of 5 | *Not captured for GPT-6* | *Not captured* | UI state only |
+| Pro / 5 of 5 | *Not captured for GPT-6* | *Not captured* | UI state only; do not infer `gpt-6-pro` from the label |
+
+Both outgoing requests were `action=next`, `turn_attribution.turn_trigger=composer`, and contained no explicit `conversation_origin=tpp` Work marker. The first generated the expected brief reply; the second generated the expected distinct reply. The **test conversation** was `https://chatgpt.com/c/6ac6b567-96d4-83ed-a087-cd6cdcd033f5` (synthetic text only). Both messages and the restored **Very High / 4 of 5** selection remained visible after full page reload; the viewport also stayed at 1600×1000. No existing user conversations or the original Work test tab were modified.
+
+**Refactor rule:** do not map a current model from slider ordinal, a translated user-facing label, or an older snapshot of the GPT-5.6 payload matrix. The actual outbound transport fields are authoritative for the runtime. The old GPT-5.6 matrix is retained as dated product evidence, **not** as the current GPT-6 model map. Model-radio transitions (to GPT-5.6 Sol or GPT-5.5) and GPT-6 Instant/Medium/Pro outbound mappings still require separate acceptance.

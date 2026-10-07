@@ -18,7 +18,7 @@ Two distinct browser contexts were investigated: a managed persistent Chromium s
 | --- | --- | --- | --- |
 | Ordinary chat | Create chat, submit message, stop response, rename/delete, load history | Live | Transport, run identity, stop acknowledgment, rename/delete and load-error outcomes are documented in `CHATGPT_RUNTIME_CONTRACTS.md` and `CHATGPT_PRODUCT_OPERATIONS.md`. |
 | Chat alternatives | Edit user message, select previous/current versions, request assistant variant, true branch/nested branch | Mixed live + client implementation | Edit/version graph and branch parent navigation observed; exact native ordinary Retry and `POST /conversation/new_branch` payloads still need live capture. |
-| Model/reasoning | Change model, effort, send and verify outbound fields | **Pro selector mutation live; outbound pending** | Free `Размышление` opened Plus upsell. Pro ordinary Chat menu selected GPT-6 and five effort positions; keyboard `ArrowLeft` changed High 3/5 → Medium 2/5, `ArrowRight` restored High 3/5. Alternate GPT-5.6 Sol and GPT-5.5 offered. The new outbound payload on changed effort still needs separate acceptance; Work offered GPT-6 Astra. |
+| Model/reasoning | Change model, effort, send and verify outbound fields | **Pro GPT-6 Chat UI 5/5 levels; 2 live transport mappings** | External Pro Chat exercised all five slider labels and completed two turns: High 3/5 → `gpt-6-thinking`/`extended`; Very High 4/5 → `gpt-6-thinking`/`max`, from actual outbound request bodies. Mode Chat selected, Work off; other three GPT-6 mappings and model-radio switches not yet accepted. |
 | Projects | Create, set instructions, save, first chat, delete | Live | Explicit `Save` for Instructions; memory state differs by account; project-file preview/download/delete described officially but not end-to-end tested here. |
 | Work | Start Work conversation, inspect subagents | Live in earlier capture | `conversation_origin=tpp`, subagent lifecycle, panel and detail call observed. Cloud Browser/computer-use actions are **separate** and not yet accepted through native Work. |
 | MCP apps | Create custom server app, OAuth/DCR/PKCE link, call/inspect tools, reconnect, permissions, refresh, rename, icon, delete | Live earlier + Pro catalog UI | Main OAuth path well covered. Pro `/plugins?directoryTab=personal` showed personal Koba Analysis/Files/GitLab/Web/MCP Bridge/GitHub. The public directory is distinct from personal apps. No-auth, hybrid OAuth, Tunnel, second link removal and sharing remain untested. |
@@ -132,9 +132,36 @@ The official GPT-6 launch/update was published on 7 October 2026: https://openai
 
 - Selected radio: **GPT-6**; visible alternatives: **GPT-5.6 Sol** and **GPT-5.5** (UI: available until 14 October).
 - Effort menuitem `Мощность` exposed a five-step slider (`aria-valuemin=0`, `aria-valuemax=4`), current `aria-valuenow=2` with status **`Высокий, 3 из 5`**, and ArrowLeft/ArrowRight shortcut metadata.
-- Playwright mouse/keyboard attempts did not change the numeric slider value. An attempted model-change tool action was blocked by tool safety. **Changing model radio, persistence of effort, and outbound payload verification remain unaccepted; a prior separate Pro attempt did accept High → Medium → High effort transition**. Original GPT-6/High choice was preserved.
+- During that 2026-10-07 attempt, pointer/keyboard actions did not mutate the slider, and a model-radio change was blocked by tool safety. Another 2026-10-07 attempt did accept High → Medium → High. **The subsequent 2026-10-08 acceptance below supersedes the earlier persistence and outbound-payload gaps for High and Very High**, while model-radio switching remains unverified.
 
 The user reported seeing both **Booster Pro PDF** and **Booster Pro Workflow CSV** in the remote Chrome Downloads UI. This is user-confirmed download occurrence, not automated byte inspection. Reported sizes were **195 and 87 bytes**, respectively, whereas the synthetic PDF uploaded to Space was **595 bytes** (CSV: 87 bytes). The PDF size discrepancy must be resolved before claiming identical downloaded bytes.
+### Post-rollout GPT-6 ordinary Chat transport acceptance (2026-10-08)
+
+Fresh external Playwright Pro Chrome test (same approved remote MCP session), on `chatgpt.com` at **1600×1000**. The test tab was reloaded before use; the initial ordinary Chat composer had **Chat selected and Work unselected**, and the model picker had **GPT-6** checked. The separate Work tab was not modified.
+
+Using the native `Мощность` menuitem and Playwright ArrowLeft/ArrowRight, the following **five UI states were all live exercised** (zero-based slider index):
+
+| Slider index | Current label | Verified UI transition |
+| --- | --- | --- |
+| 0 | Instant (1 of 5) | Yes |
+| 1 | Medium / Средний (2 of 5) | Yes |
+| 2 | High / Высокий (3 of 5) | Yes |
+| 3 | Very High / Очень высокий (4 of 5) | Yes |
+| 4 | Pro (5 of 5) | Yes |
+
+Two separate short **normal Chat** turns were submitted and completed in one dedicated test conversation. Passive `browser_network_request` inspection of the actual outgoing **`POST /backend-api/f/conversation` requests**, both returning HTTP 200, established the following **current** transport behavior:
+
+| Selected UI level | Actual `model` | Actual `thinking_effort` | Evidence |
+| --- | --- | --- | --- |
+| High / 3 of 5 | `gpt-6-thinking` | `extended` | Accepted — native response completed, outbound request body captured |
+| Very High / 4 of 5 | `gpt-6-thinking` | `max` | Accepted — native response completed, outbound request body captured |
+| Instant / 1 of 5 | *Not captured for GPT-6* | *Not captured* | UI state only |
+| Medium / 2 of 5 | *Not captured for GPT-6* | *Not captured* | UI state only |
+| Pro / 5 of 5 | *Not captured for GPT-6* | *Not captured* | UI state only; do not infer `gpt-6-pro` from the label |
+
+Both outgoing requests were `action=next`, `turn_attribution.turn_trigger=composer`, and contained no explicit `conversation_origin=tpp` Work marker. The first generated the expected brief reply; the second generated the expected distinct reply. The **test conversation** was `https://chatgpt.com/c/6ac6b567-96d4-83ed-a087-cd6cdcd033f5` (synthetic text only). Both messages and the restored **Very High / 4 of 5** selection remained visible after full page reload; the viewport also stayed at 1600×1000. No existing user conversations or the original Work test tab were modified.
+
+**Refactor rule:** do not map a current model from slider ordinal, a translated user-facing label, or an older snapshot of the GPT-5.6 payload matrix. The actual outbound transport fields are authoritative for the runtime. The old GPT-5.6 matrix is retained as dated product evidence, **not** as the current GPT-6 model map. Model-radio transitions (to GPT-5.6 Sol or GPT-5.5) and GPT-6 Instant/Medium/Pro outbound mappings still require separate acceptance.
 ## Higher-value browser-agent capabilities discovered in product help
 
 1. **Scheduled event triggers and monitoring**: beyond daily/weekly reminders, supported app events can initiate eligible jobs; task sharing, notification channels, provider permissions and approvals are separate controls. Tasks created within Projects cannot read that project's uploaded/stored files, per current OpenAI help; capture this as a scope limitation, not an inferred exception.
@@ -157,14 +184,14 @@ There is **no verified separate Goals/Plans manager** in this capture. Product g
 | P0 | Python and code-backed analysis | **Pro code trace passed** for CSV aggregation and independent two-file PDF/TXT reading on 2026-10-07. Remaining: graphical data analysis, malformed files, error/retry and result download variants. |
 | P0 | Download variants | Free Markdown and generated CSV downloads have byte-level proof. Pro native PDF/CSV viewers offered Download and network 302 but remote Chrome-host bytes were not captured. Next: Pro download event/bytes and other generated formats. |
 | P0 | Scheduled task matrix | In native `/scheduled` capture run-now/Pause/Resume/Delete with exact transport and postconditions, notification settings, event triggers, task sharing and approval dependency. Do **not** create tasks through the assistant's current chat merely to test the external browser. |
-| P1 | Work/Cloud Browser and model selection | Native Work browser actions, files in/out, approvals, handoff/resume, current model/effort selector; separately re-capture the paid ordinary Chat selector on the current release. |
+| P1 | Work/Cloud Browser and model selection | Native Work browser actions, files in/out, approvals, handoff/resume and independent Work selector remain unaccepted. Ordinary Chat GPT-6 picker/High/Very High payloads are accepted; alternate model radios still need capture. |
 | P1 | MCP variants | No auth, hybrid OAuth, Tunnel, multiple links/unlink and explicit tool invocation/approval outcomes on disposable apps. Do not mutate the production Koba MCP Bridge. |
 | P1 | Deep Research / Search | Source selection, proposed plan review, interaction, citations and report export. |
 | P1 | Event-triggered and team tasks | Native trigger setup, supported events, sharing, shared owner controls and approval/pause outcomes in an eligible workspace. |
 | P1 | Project file flows | Source upload/replace/download/removal and memory-setting availability; current official help and one previously observed native UI disagree about whether memory can later be switched. Record as version/account-dependent until retested. |
 | P2 | Study / audio / images / Library notes / Sites | Sites first-entry legal terms were observed in Pro; activation and further actions require explicit acceptance. Other listed areas are not yet tested. |
 | P2 | Exact retry / true branch transport | Capture two missing request payloads without redoing already verified version/branch presentation. |
-| P0 | GPT-6 current selector | UI GPT-6/default Chat and five levels observed; **earlier High → Medium → High slider transitions accepted**. New-model radio switch, post-reload persistence and outbound request parameters unaccepted. |
+| P0 | GPT-6 current selector | All five UI levels exercised; post-reload Very High persisted. **High and Very High model/effort payloads accepted**. Remaining: native switch to alternate model radios and outgoing payloads for Instant/Medium/Pro. |
 
 A storage-full Free account is not a sufficient test environment to close cross-format/Library requirements. The user later authorized clearing the old Free Library, but **no Free-library deletion was performed** in this pass because research was switched to the external Pro Chrome profile. Do not touch Pro library content beyond clearly disposable fixtures.
 
@@ -198,6 +225,6 @@ Following the 2026-10-07 OpenAI GPT-6 with Intelligent UI launch, the agent open
 - The state in a **fresh Chat tab** independently confirms GPT-6 is the currently selected/default visible Chat model in this Pro profile, without selecting Work. The default **effort level** is not necessarily globally High: draft/composer state is shared across tabs, so treat this as this profile's selected setting, not a universal default.
 - The original remote tab `/c/6ac62b45-0128-83ed-870c-20e999c59bac` is an already known **Work** test conversation titled `Запрос нативного ввода`, whose composer exposes **GPT-6 Astra** and an independent Work reasoning selector. That fact does **not** mean newly opened Chat tabs are Work.
 - The conversation described by the user as `GPT-6 Finetuning` was **not among the three accessible remote Playwright tabs**. The obsolete/unsupported conversation-list API in this client returned an empty page; tested read-only legacy conversation detail routes returned 404. Do not infer that the conversation is deleted or classify its mode from unrelated tabs. A direct visit to its actual URL (when provided or opened in the approved browser) is required.
-- Real pointer/keyboard slider actions in **this later fresh-tab attempt** did not change the observed level, and another attempt to open/change the picker was blocked by tool safety. However, a **separate earlier Pro acceptance** recorded High 3/5 → Medium 2/5 → High 3/5. Thus the effort slider has an accepted transition in one run, but **post-reload persistence, all five positions, model-radio change, and outbound request model slug remain unproven**.
+- In this earlier 2026-10-07 fresh-tab attempt, some slider actions failed or were blocked; another Pro attempt established High 3/5 → Medium 2/5 → High 3/5. **The later 2026-10-08 acceptance** validates all five UI positions, persistence of the restored selection after reload, and real `gpt-6-thinking` High/Very High requests. Only alternate model-radio changes and the other three GPT-6 outbound mappings remain unverified.
 
 The [OpenAI release of 7 October 2026](https://openai.com/index/gpt-6-for-everyone/) explicitly states that this rollout affects **Chat**, and that **Work and Codex models do not change as part of it**. For eligible paid Chat plans it identifies GPT-6 Sol as the engine behind the GPT-6 label, while the visible menu groups it as `GPT-6`. The product claim does not by itself prove the internal model slug for each request.

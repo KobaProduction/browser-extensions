@@ -372,7 +372,7 @@ data-reasoning-slider="true"
 
 with an internal slider range `0..4`.
 
-### Live transport matrix
+### Historical transport matrix (pre-2026-10-07 GPT-6 Chat rollout)
 
 Each row below was verified by submitting a new short message after selecting that position and reading the outbound `/backend-api/f/conversation` body.
 
@@ -383,6 +383,8 @@ Each row below was verified by submitting a new short message after selecting th
 | High | `gpt-5-6-thinking` | `extended` |
 | Very High | `gpt-5-6-thinking` | `max` |
 | Pro | `gpt-6-pro` | omitted |
+
+The matrix above is historical evidence from an earlier client build. Do not assume its GPT-5.6 model values are current after the GPT-6 Chat rollout.
 
 ### Important consequence
 
@@ -396,6 +398,33 @@ Feature code must therefore consume actual transport/model metadata and must not
 
 The visible model menu and the five-position reasoning-power control are related but distinct product concepts. The exact available model list is account/build dependent and should not be hard-coded from one capture.
 
+### Post-rollout GPT-6 ordinary Chat transport acceptance (2026-10-08)
+
+Fresh external Playwright Pro Chrome test (same approved remote MCP session), on `chatgpt.com` at **1600×1000**. The test tab was reloaded before use; the initial ordinary Chat composer had **Chat selected and Work unselected**, and the model picker had **GPT-6** checked. The separate Work tab was not modified.
+
+Using the native `Мощность` menuitem and Playwright ArrowLeft/ArrowRight, the following **five UI states were all live exercised** (zero-based slider index):
+
+| Slider index | Current label | Verified UI transition |
+| --- | --- | --- |
+| 0 | Instant (1 of 5) | Yes |
+| 1 | Medium / Средний (2 of 5) | Yes |
+| 2 | High / Высокий (3 of 5) | Yes |
+| 3 | Very High / Очень высокий (4 of 5) | Yes |
+| 4 | Pro (5 of 5) | Yes |
+
+Two separate short **normal Chat** turns were submitted and completed in one dedicated test conversation. Passive `browser_network_request` inspection of the actual outgoing **`POST /backend-api/f/conversation` requests**, both returning HTTP 200, established the following **current** transport behavior:
+
+| Selected UI level | Actual `model` | Actual `thinking_effort` | Evidence |
+| --- | --- | --- | --- |
+| High / 3 of 5 | `gpt-6-thinking` | `extended` | Accepted — native response completed, outbound request body captured |
+| Very High / 4 of 5 | `gpt-6-thinking` | `max` | Accepted — native response completed, outbound request body captured |
+| Instant / 1 of 5 | *Not captured for GPT-6* | *Not captured* | UI state only |
+| Medium / 2 of 5 | *Not captured for GPT-6* | *Not captured* | UI state only |
+| Pro / 5 of 5 | *Not captured for GPT-6* | *Not captured* | UI state only; do not infer `gpt-6-pro` from the label |
+
+Both outgoing requests were `action=next`, `turn_attribution.turn_trigger=composer`, and contained no explicit `conversation_origin=tpp` Work marker. The first generated the expected brief reply; the second generated the expected distinct reply. The **test conversation** was `https://chatgpt.com/c/6ac6b567-96d4-83ed-a087-cd6cdcd033f5` (synthetic text only). Both messages and the restored **Very High / 4 of 5** selection remained visible after full page reload; the viewport also stayed at 1600×1000. No existing user conversations or the original Work test tab were modified.
+
+**Refactor rule:** do not map a current model from slider ordinal, a translated user-facing label, or an older snapshot of the GPT-5.6 payload matrix. The actual outbound transport fields are authoritative for the runtime. The old GPT-5.6 matrix is retained as dated product evidence, **not** as the current GPT-6 model map. Model-radio transitions (to GPT-5.6 Sol or GPT-5.5) and GPT-6 Instant/Medium/Pro outbound mappings still require separate acceptance.
 ## 5. GPT-6 Pro sub-agent capability test
 
 A deliberate live test was run in ordinary Chat mode while the transport model was verified as `gpt-6-pro`.
@@ -1235,8 +1264,8 @@ The Pro `/scheduled` landing surface exposed task suggestions but no new task wa
 
 ## 15. GPT-6 current Chat selector (2026-10-07)
 
-The externally authorized Pro ordinary Chat picker selected GPT-6 and displayed a five-position effort slider at High (3/5). The two alternate radios were GPT-5.6 Sol and GPT-5.5. Slider mutation was not reproduced in this attempt, though a separate earlier Pro run confirmed High → Medium → High; model-radio change was blocked. Do not mark model-radio selection or outbound fields validated. See CHATGPT_BROWSER_WORKFLOWS.md.
+The externally authorized Pro ordinary Chat picker selected GPT-6 and displayed a five-position effort slider at High (3/5). The two alternate radios were GPT-5.6 Sol and GPT-5.5. Slider mutation was not reproduced in this attempt, though a separate earlier Pro run confirmed High → Medium → High; model-radio change was blocked. Do not mark model-radio selection validated; the later live GPT-6 acceptance above verifies High and Very High outbound fields. See CHATGPT_BROWSER_WORKFLOWS.md.
 
 ## 16. GPT-6 rollout: ordinary Chat vs Work (2026-10-07)
 
-A newly opened external Pro Chat tab had `Чат` selected and `Работа` not selected while `GPT-6` was checked in the model menu; a separate **Work** conversation displayed `GPT-6 Astra`. Per the official 7 October GPT-6 release, Chat receives the new GPT-6 Sol-backed experience while the Work/Codex models are unchanged by that update. The user's specific `GPT-6 Finetuning` chat was not among available remote tabs and was not classified. One High → Medium → High transition was previously verified; exhaustive five-level selection, persistence and outbound model fields remain pending. Do not infer them from picker state alone.
+A newly opened external Pro Chat tab had `Чат` selected and `Работа` not selected while `GPT-6` was checked in the model menu; a separate **Work** conversation displayed `GPT-6 Astra`. Per the official 7 October GPT-6 release, Chat receives the new GPT-6 Sol-backed experience while the Work/Codex models are unchanged by that update. The user's specific `GPT-6 Finetuning` chat was not among available remote tabs and was not classified. One High → Medium → High transition was previously verified; all five UI positions have since been exercised and the restored level persisted after reload; High/Very High outbound values are verified, while the other three mappings remain pending. Do not infer them from picker state alone.
