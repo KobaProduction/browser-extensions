@@ -191,6 +191,25 @@ describe('conversation SSE runtime source events', () => {
       message: 'Additional processing',
       observedAt: 202,
     })
+    expect(
+      conversationStreamEventFromPayload(
+        {
+          error: 'Conversation is too long',
+          error_code: 'conversation_too_large',
+          can_retry: false,
+          error_reason: 'conversation_limit',
+        },
+        'chat-runtime',
+        203,
+      ),
+    ).toEqual({
+      conversationId: 'chat-runtime',
+      kind: 'error',
+      errorCode: 'conversation_too_large',
+      errorReason: 'conversation_limit',
+      canRetry: false,
+      observedAt: 203,
+    })
   })
 })
 

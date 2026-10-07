@@ -43,6 +43,11 @@ import {
   resolveLocale,
 } from '@chatgpt-booster/ui'
 import type { ArchivedMessage, ConversationArchiveStore } from './archive-store'
+import {
+  claimSessionAlert,
+  conversationCriticalAlertKey,
+  conversationTerminalAlert,
+} from './conversation-alerts'
 import { ConversationStateStore } from './conversation-state'
 
 const UNKNOWN_METADATA: ConversationItemMetadataView = {
@@ -87,26 +92,39 @@ function hasConcreteConnectorPayload(record: ArchivedMessage) {
   }
 }
 
-function playActivityTone(kind: 'complete' | 'long') {
+function playActivityTone(kind: 'complete' | 'long' | 'critical') {
   try {
     const context = new AudioContext()
     const gain = context.createGain()
     gain.connect(context.destination)
     const now = context.currentTime
-    const notes = kind === 'complete' ? [660, 880] : [360, 300]
+    const critical = kind === 'critical'
+    const notes = critical
+      ? Array.from({ length: 10 }, (_, index) => (index % 2 === 0 ? 980 : 760))
+      : kind === 'complete'
+        ? [660, 880]
+        : [360, 300]
+    const spacing = critical ? 0.24 : 0.12
+    const duration = critical ? 0.12 : 0.1
     notes.forEach((frequency, index) => {
       const oscillator = context.createOscillator()
       oscillator.type = 'sine'
       oscillator.frequency.value = frequency
       oscillator.connect(gain)
-      const start = now + index * 0.12
+      const start = now + index * spacing
       oscillator.start(start)
-      oscillator.stop(start + 0.1)
+      oscillator.stop(start + duration)
     })
     gain.gain.setValueAtTime(0.0001, now)
     gain.gain.exponentialRampToValueAtTime(0.11, now + 0.015)
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.32)
-    window.setTimeout(() => void context.close(), 500)
+    if (critical) {
+      gain.gain.setValueAtTime(0.11, now + 2.16)
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 2.36)
+      window.setTimeout(() => void context.close(), 2_600)
+    } else {
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.32)
+      window.setTimeout(() => void context.close(), 500)
+    }
   } catch {}
 }
 
@@ -122,6 +140,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
   #latestActivity: AgentActivitySnapshot | null = null
   #longAlertedTurnId: string | null = null
   #completedAlertedTurnId: string | null = null
+  #criticalAlertedRunKey: string | null = null
   #activeObservedTurnIds = new Set<string>()
   #ticker: ReturnType<typeof setInterval> | undefined
   #unsubscribe: (() => void) | undefined
@@ -249,6 +268,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
     if (this.#latestActivity?.turnId !== snapshot.turnId) {
       this.#longAlertedTurnId = null
       this.#completedAlertedTurnId = null
+      this.#criticalAlertedRunKey = null
     }
     if (snapshot.active && snapshot.turnId) this.#activeObservedTurnIds.add(snapshot.turnId)
     this.#latestActivity = snapshot
@@ -299,8 +319,27 @@ export class ConversationDecoratorsModule implements BoosterModule {
 
     const snapshot = this.#requestLifecycleSnapshot() ?? this.#latestActivity
     if (!snapshot?.turnId) return
-    if (
-      snapshot.phase === 'complete' &&
+    const conversationId = currentConversationId() ?? null
+    const lifecycle = conversationId ? this.stateStore.lifecycle(conversationId) : undefined
+    const sourceAlert =
+      lifecycle?.userMessageId === snapshot.turnId ? conversationTerminalAlert(lifecycle) : null
+    const alertKind =
+      sourceAlert ?? (!lifecycle && snapshot.phase === 'complete' ? 'complete' : null)
+
+    if (alertKind === 'conversation_exhausted' && conversationId && lifecycle) {
+      const alertKey = conversationCriticalAlertKey(conversationId, lifecycle)
+      if (alertKey && this.#criticalAlertedRunKey !== alertKey) {
+        this.#criticalAlertedRunKey = alertKey
+        if (claimSessionAlert(window.sessionStorage, alertKey)) {
+          window.dispatchEvent(
+            new CustomEvent('chatgpt-booster:conversation-exhausted', { detail: snapshot }),
+          )
+          playActivityTone('critical')
+        }
+      }
+      this.#activeObservedTurnIds.delete(snapshot.turnId)
+    } else if (
+      alertKind === 'complete' &&
       this.#activeObservedTurnIds.has(snapshot.turnId) &&
       this.#completedAlertedTurnId !== snapshot.turnId
     ) {
@@ -523,7 +562,8 @@ export class ConversationDecoratorsModule implements BoosterModule {
       ? observed.phase
       : lifecycle?.state === 'complete' ||
           lifecycle?.state === 'stopped' ||
-          lifecycle?.state === 'cancelled'
+          lifecycle?.state === 'cancelled' ||
+          lifecycle?.state === 'failed'
         ? 'complete'
         : observed.phase
     if (!items.length)

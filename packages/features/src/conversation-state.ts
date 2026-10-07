@@ -40,6 +40,7 @@ export interface ConversationLifecycleSnapshot {
   startedAt: number | null
   completedAt: number | null
   stopRequestedAt: number | null
+  terminalCause: string | null
   updatedAt: number
   source: 'initial' | 'request' | 'stop' | 'transport' | 'renderer' | 'hydrated' | 'unknown'
 }
@@ -165,6 +166,7 @@ function initialLifecycle(): ConversationLifecycleSnapshot {
     startedAt: null,
     completedAt: null,
     stopRequestedAt: null,
+    terminalCause: null,
     updatedAt: 0,
     source: 'unknown',
   }
@@ -509,6 +511,7 @@ export class ConversationStateStore implements BoosterModule {
       startedAt: detail.startedAt,
       completedAt: null,
       stopRequestedAt: null,
+      terminalCause: null,
       updatedAt: detail.observedAt,
       source: 'request',
     }
@@ -526,6 +529,7 @@ export class ConversationStateStore implements BoosterModule {
         ...previous,
         state: 'stop_requested',
         stopRequestedAt: detail.timestamp,
+        terminalCause: null,
         updatedAt: detail.timestamp,
         source: 'stop',
       }
@@ -542,6 +546,7 @@ export class ConversationStateStore implements BoosterModule {
         ...previous,
         state: 'in_progress',
         stopRequestedAt: null,
+        terminalCause: null,
         updatedAt: detail.timestamp,
         source: 'stop',
       }
@@ -557,6 +562,7 @@ export class ConversationStateStore implements BoosterModule {
     if (
       previous.state === 'stop_requested' ||
       previous.state === 'stopped' ||
+      previous.state === 'failed' ||
       (previous.state === 'complete' && previous.completedAt !== null)
     )
       return
@@ -594,6 +600,7 @@ export class ConversationStateStore implements BoosterModule {
       if (
         previous.state === 'stop_requested' ||
         previous.state === 'stopped' ||
+        previous.state === 'failed' ||
         (previous.state === 'complete' && previous.completedAt !== null)
       )
         return
@@ -601,6 +608,20 @@ export class ConversationStateStore implements BoosterModule {
         ...previous,
         state: 'complete',
         completedAt: detail.observedAt,
+        updatedAt: detail.observedAt,
+        source: 'transport',
+      }
+      state.lastObservedAt = Math.max(state.lastObservedAt, detail.observedAt)
+      this.#touch(state, 'transport')
+      return
+    }
+    if (detail.kind === 'error') {
+      const terminalCause = detail.errorCode ?? detail.errorReason ?? 'stream_error'
+      state.lifecycle = {
+        ...previous,
+        state: terminalCause === 'conversation_too_large' ? 'complete' : 'failed',
+        completedAt: detail.observedAt,
+        terminalCause,
         updatedAt: detail.observedAt,
         source: 'transport',
       }
@@ -617,6 +638,7 @@ export class ConversationStateStore implements BoosterModule {
             ...previous,
             state: 'in_progress',
             completedAt: null,
+            terminalCause: null,
             updatedAt: detail.observedAt,
             source: 'transport',
           }
@@ -684,11 +706,16 @@ export class ConversationStateStore implements BoosterModule {
               userMessageId: nextUserMessageId,
               startedAt: nextStartedAt,
               completedAt: null,
+              terminalCause: null,
               source: 'renderer',
             }
         }
       }
-    } else if (normalized === 'complete' && previous.state !== 'stop_requested') {
+    } else if (
+      normalized === 'complete' &&
+      previous.state !== 'stop_requested' &&
+      previous.state !== 'failed'
+    ) {
       if (previous.state !== 'complete')
         next = { ...previous, state: 'complete', source: 'renderer' }
     }
@@ -856,6 +883,11 @@ export class ConversationStateStore implements BoosterModule {
       .find((record) => visibleFinal(record) && record.status === 'finished_successfully')
     const startedAt = sourceTime(latestUser?.createTime) ?? state.lifecycle.startedAt
     const userMessageId = latestUser?.messageId ?? state.lifecycle.userMessageId
+    const isNewRun = Boolean(
+      userMessageId &&
+        state.lifecycle.userMessageId &&
+        userMessageId !== state.lifecycle.userMessageId,
+    )
     if (
       (startedAt && startedAt !== state.lifecycle.startedAt) ||
       (userMessageId && userMessageId !== state.lifecycle.userMessageId)
@@ -864,6 +896,7 @@ export class ConversationStateStore implements BoosterModule {
         ...state.lifecycle,
         userMessageId,
         startedAt,
+        terminalCause: isNewRun ? null : state.lifecycle.terminalCause,
         updatedAt: observedAt,
         source: 'initial',
       }
@@ -876,6 +909,7 @@ export class ConversationStateStore implements BoosterModule {
           userMessageId,
           startedAt,
           completedAt: null,
+          terminalCause: null,
           source: 'initial',
           updatedAt: observedAt,
         }

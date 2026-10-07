@@ -350,6 +350,92 @@ describe('ConversationStateStore memory-first state', () => {
       source: 'transport',
     })
   })
+  test('conversation-too-large stream error becomes a terminal source cause', () => {
+    const state = new ConversationStateStore(fakeWindow)
+    const conversationId = 'chat-exhausted'
+    state.ingestRequest({
+      conversationId,
+      userMessageId: 'user-exhausted',
+      startedAt: 1_000,
+      observedAt: 1_010,
+      source: 'message_create_time',
+    })
+    state.ingestStreamEvent({
+      conversationId,
+      kind: 'error',
+      errorCode: 'conversation_too_large',
+      errorReason: null,
+      canRetry: false,
+      observedAt: 1_800,
+    })
+
+    expect(state.lifecycle(conversationId)).toMatchObject({
+      state: 'complete',
+      userMessageId: 'user-exhausted',
+      completedAt: 1_800,
+      terminalCause: 'conversation_too_large',
+      source: 'transport',
+    })
+
+    state.ingestStreamEvent({
+      conversationId,
+      kind: 'complete',
+      phase: 'main',
+      observedAt: 1_900,
+    })
+    expect(state.lifecycle(conversationId)?.terminalCause).toBe('conversation_too_large')
+  })
+
+  test('generic terminal stream error is failed and a new request clears its cause', () => {
+    const state = new ConversationStateStore(fakeWindow)
+    const conversationId = 'chat-stream-error'
+    state.ingestRequest({
+      conversationId,
+      userMessageId: 'user-error',
+      startedAt: 1_000,
+      observedAt: 1_010,
+      source: 'message_create_time',
+    })
+    state.ingestStreamEvent({
+      conversationId,
+      kind: 'error',
+      errorCode: 'network_error',
+      errorReason: 'network',
+      canRetry: true,
+      observedAt: 1_500,
+    })
+    expect(state.lifecycle(conversationId)).toMatchObject({
+      state: 'failed',
+      terminalCause: 'network_error',
+      completedAt: 1_500,
+    })
+
+    state.ingestStreamEvent({
+      conversationId,
+      kind: 'complete',
+      phase: 'main',
+      observedAt: 1_600,
+    })
+    state.observeRendererState(conversationId, 'complete', 'user-error')
+    expect(state.lifecycle(conversationId)).toMatchObject({
+      state: 'failed',
+      terminalCause: 'network_error',
+      completedAt: 1_500,
+    })
+
+    state.ingestRequest({
+      conversationId,
+      userMessageId: 'user-next',
+      startedAt: 2_000,
+      observedAt: 2_010,
+      source: 'message_create_time',
+    })
+    expect(state.lifecycle(conversationId)).toMatchObject({
+      state: 'in_progress',
+      userMessageId: 'user-next',
+      terminalCause: null,
+    })
+  })
 })
 
 describe('Work subagent runtime state', () => {

@@ -194,6 +194,23 @@ export function conversationStreamEventFromPayload(
   if (!value) return null
   const conversationId =
     typeof value.conversation_id === 'string' ? value.conversation_id : fallbackConversationId
+  if (typeof value.error === 'string' && value.error.trim()) {
+    const errorCode =
+      typeof value.error_code === 'string' && value.error_code.trim() ? value.error_code : null
+    const errorReason =
+      typeof value.error_reason === 'string' && value.error_reason.trim()
+        ? value.error_reason
+        : null
+    const canRetry = typeof value.can_retry === 'boolean' ? value.can_retry : null
+    return {
+      conversationId,
+      kind: 'error',
+      errorCode,
+      errorReason,
+      canRetry,
+      observedAt,
+    }
+  }
   const directMessage = conversationMessageRecord(value.message)
   if (directMessage) return { conversationId, kind: 'message', record: directMessage, observedAt }
   if (value.type === 'input_message') {
@@ -569,6 +586,14 @@ export type ConversationStreamEventDetail =
       active: boolean
       protectionType: 'bio' | 'cyber' | null
       message: string | null
+      observedAt: number
+    }
+  | {
+      conversationId: string | null
+      kind: 'error'
+      errorCode: string | null
+      errorReason: string | null
+      canRetry: boolean | null
       observedAt: number
     }
 
