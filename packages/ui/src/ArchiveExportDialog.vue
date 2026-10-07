@@ -24,6 +24,15 @@ const refreshing = ref(false)
 const preparedUrl = ref(''), preparedName = ref('')
 const t = (key: TranslationKey) => translate(props.locale, key)
 const isCurrent = computed(() => props.archiveAdapter.currentConversationId() === props.conversationId)
+const wantsAssets = computed(
+  () => options.value.level !== 'conversation' && (options.value.images || options.value.files),
+)
+const effectiveOptions = computed<ArchiveExportOptions>(() =>
+  options.value.level === 'conversation'
+    ? { ...options.value, images: false, files: false }
+    : { ...options.value },
+)
+
 const updateRecommended = computed(
   () =>
     isCurrent.value &&
@@ -95,7 +104,7 @@ async function download() {
   try {
     await queue
     await props.settingsAdapter.update({ export: { ...options.value } })
-    const outcome = await props.archiveAdapter.exportConversation(props.conversationId, { ...options.value }, controller.signal)
+    const outcome = await props.archiveAdapter.exportConversation(props.conversationId, effectiveOptions.value, controller.signal)
     clearPrepared()
     preparedUrl.value = URL.createObjectURL(outcome.blob)
     const base = (props.title || 'conversation').replace(/[\/:*?"<>|]/g, '-').slice(0, 100) || 'conversation'
@@ -126,14 +135,19 @@ function cancelExport() {
       </div>
       <label>{{ t('export.format') }}<select v-model="options.format" :disabled="busy" @change="remember"><option v-for="format in formats" :key="format.id" :value="format.id">{{ format.label }}</option></select></label>
       <label>{{ t('export.level') }}<select v-model="options.level" :disabled="busy" @change="remember"><option value="conversation">{{ t('export.conversation') }}</option><option value="custom">{{ t('export.custom') }}</option><option value="full">{{ t('export.full') }}</option></select></label>
+      <p class="booster-note">{{ t(options.level === 'full' ? 'export.profileFull' : options.level === 'custom' ? 'export.profileCustom' : 'export.profileConversation') }}</p>
       <fieldset v-if="options.level === 'custom'" :disabled="busy" class="booster-checkboxes">
         <label><input v-model="options.reasoning" type="checkbox" @change="remember" />{{ t('export.reasoning') }}</label>
         <label><input v-model="options.tools" type="checkbox" @change="remember" />{{ t('export.tools') }}</label>
         <label><input v-model="options.internal" type="checkbox" @change="remember" />{{ t('export.internal') }}</label>
         <label><input v-model="options.images" type="checkbox" @change="remember" />{{ t('export.images') }}</label><label><input v-model="options.files" type="checkbox" @change="remember" />{{ t('export.files') }}</label>
       </fieldset>
-      <p class="booster-note">{{ t('export.metadata') }}</p>
-      <p v-if="options.level === 'full' || options.images || options.files" class="booster-notice">{{ t('export.binaryUnavailable') }}</p>
+      <fieldset v-if="options.level === 'full'" :disabled="busy" class="booster-checkboxes">
+        <label><input v-model="options.images" type="checkbox" @change="remember" />{{ t('export.images') }}</label>
+        <label><input v-model="options.files" type="checkbox" @change="remember" />{{ t('export.files') }}</label>
+      </fieldset>
+      <p v-if="wantsAssets" class="booster-note">{{ t('export.metadata') }}</p>
+      <p v-if="wantsAssets" class="booster-notice">{{ t('export.binaryUnavailable') }}</p>
       <p class="booster-note">{{ t('export.remember') }}</p>
       <p v-if="error" role="alert" class="booster-error">{{ t(error as TranslationKey) }}</p><p v-if="complete" role="status">{{ t(incomplete ? 'export.savedPartial' : 'export.saved') }}</p>
       <a v-if="preparedUrl" class="booster-action-primary booster-export-ready" :href="preparedUrl" :download="preparedName"><Download class="size-4" />{{ t('export.readyDownload') }}</a>

@@ -367,7 +367,11 @@ The archive should derive a conversation-level edge:
 source conversation -> branch conversation
 ```
 
-A future UI can render this like a source-control graph: trunk and branches, selected/current path, message/turn counts, and archive coverage per branch.
+The read-only Archive Browser renders a project-local forest of trunk, branch and nested-branch conversations. Search retains matching conversations and their available ancestors. Missing source conversations remain visible as orphan roots, and malformed/cyclic provenance is shown at most once per conversation rather than hiding records. Branch provenance remains unmodified in IndexedDB.
+
+The archive reader opens at the latest saved turn, preserving chronological record identity. It mounts a bounded tail window (initially 40 turns) and progressively extends the visible history by 40 older turns as the user scrolls toward the earlier edge, preserving the viewport anchor. The title, reasoning toggle, ordering, export, search and coverage controls remain separate from the scrolling message pane. A reverse-order control makes the newest exchange the first item. Reasoning is collapsed by default.
+
+**Evidence boundary:** currently this is progressive **UI rendering**, not paginated IndexedDB reads; the shared archive read model still loads and groups the stored conversation before the viewport is displayed. It must not be represented as incremental storage/history capture. Future storage-level pagination needs to preserve turn correlation, raw record identity and coverage proofs.
 
 ## Turn grouping
 
@@ -605,17 +609,7 @@ It should not remain the default panel opened by the in-page launcher.
 
 The first archive UI can be simple: message/turn list with filters and raw diagnostics.
 
-A later graph view should visualize:
-
-```text
-conversation branch graph
-message parent graph
-turn groups
-reasoning/tool subrecords
-archive coverage per branch
-```
-
-Source-control-style graph rendering is a suitable mental model.
+The Archive Browser now displays the conversation branch forest inside each project, in addition to read-only turn grouping, search, reasoning/tool records and coverage. The underlying message-level parent graph visualization remains a separate possible extension; it is not implied by the conversation-level branch forest.
 
 ## Telemetry boundary
 

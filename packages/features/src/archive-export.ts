@@ -146,40 +146,97 @@ function jsonBlock(value: unknown): string[] {
   return [fence + 'json', text, fence, '']
 }
 
+function exportEntries(turn: ArchiveExportTurn): ArchiveExportRecord[] {
+  return [
+    ...turn.messages.filter((message) => message.kind === 'user'),
+    ...turn.details,
+    ...turn.messages.filter((message) => message.kind !== 'user'),
+  ]
+}
+
+function readableKind(kind: ArchiveExportRecord['kind']): string {
+  if (kind === 'user') return 'User'
+  if (kind === 'answer') return 'Assistant'
+  return kind
+}
+
+function readableMessageText(message: ArchiveExportRecord): string {
+  const assets = new Set(message.attachments.map((item) => item.assetId))
+  return message.text
+    .split(/\r?\n/)
+    .filter((line) => {
+      const pointer = line.trim().match(/^\[[^\]]+\]\s+(?:sediment:\/\/)?(file_[\w-]+)$/)
+      return !pointer || !assets.has(pointer[1] ?? '')
+    })
+    .join('\n')
+    .trim()
+}
+
+function attachmentLines(message: ArchiveExportRecord): string[] {
+  if (!message.attachments.length) return []
+  return [
+    'Attachments:',
+    ...message.attachments.map(
+      (attachment) =>
+        '- ' +
+        (attachment.fileName || 'File') +
+        (attachment.mimeType ? ' (' + attachment.mimeType + ')' : ''),
+    ),
+    '',
+  ]
+}
+
 const markdownFormat: ArchiveExportFormatProvider = {
   descriptor: {
     id: 'markdown',
-    label: 'Markdown',
+    label: 'Markdown · readable',
     mimeType: 'text/markdown',
     fileExtension: 'md',
   },
   serialize(document) {
-    const lines = [
-      '# ' + (document.conversation.title ?? 'Untitled').replace(/[\r\n]+/g, ' '),
-      '',
-      '> Local archive export · ' + document.exportedAt,
-      '> Attachment metadata only; no binary files. Coverage is recorded below.',
-      '',
-      ...jsonBlock(document.coverage),
-    ]
+    const lines = ['# ' + (document.conversation.title ?? 'Untitled').replace(/[\r\n]+/g, ' '), '']
     for (const turn of document.turns) {
-      const entries = [
-        ...turn.messages.filter((message) => message.kind === 'user'),
-        ...turn.details,
-        ...turn.messages.filter((message) => message.kind !== 'user'),
-      ]
-      for (const message of entries) {
+      for (const message of exportEntries(turn)) {
         const visible = message.kind === 'user' || message.kind === 'answer'
-        const label =
-          message.kind === 'user' ? 'User' : message.kind === 'answer' ? 'Assistant' : message.kind
-        lines.push((visible ? '## ' : '### ') + label, '', message.text, '')
-        if (!visible) lines.push(...jsonBlock(message))
-        else if (message.attachments.length)
-          lines.push('### Attachment metadata', '', ...jsonBlock(message.attachments))
+        lines.push((visible ? '## ' : '### ') + readableKind(message.kind), '')
+        const content = readableMessageText(message)
+        if (content) lines.push(content, '')
+        lines.push(...attachmentLines(message))
+        // The full profile is an explicit technical backup. Ordinary/custom Markdown
+        // must not repeat each record as a JSON block after its visible text.
+        if (document.selection.level === 'full' && message.originalRecord)
+          lines.push('Original record:', '', ...jsonBlock(message.originalRecord))
       }
     }
     return {
-      text: lines.join('\n'),
+      text: lines.join('\n').trimEnd() + '\n',
+      mime: this.descriptor.mimeType,
+      extension: this.descriptor.fileExtension,
+    }
+  },
+}
+
+const textFormat: ArchiveExportFormatProvider = {
+  descriptor: {
+    id: 'text',
+    label: 'Plain text · readable',
+    mimeType: 'text/plain',
+    fileExtension: 'txt',
+  },
+  serialize(document) {
+    const lines = [document.conversation.title ?? 'Untitled', '']
+    for (const turn of document.turns) {
+      for (const message of exportEntries(turn)) {
+        lines.push(readableKind(message.kind) + ':')
+        if (readableMessageText(message)) lines.push(readableMessageText(message))
+        lines.push(...attachmentLines(message))
+        if (document.selection.level === 'full' && message.originalRecord)
+          lines.push(JSON.stringify(message.originalRecord, null, 2))
+        lines.push('')
+      }
+    }
+    return {
+      text: lines.join('\n').trimEnd() + '\n',
       mime: this.descriptor.mimeType,
       extension: this.descriptor.fileExtension,
     }
@@ -187,8 +244,9 @@ const markdownFormat: ArchiveExportFormatProvider = {
 }
 
 export const BUILTIN_ARCHIVE_EXPORT_FORMATS: readonly ArchiveExportFormatProvider[] = [
-  jsonFormat,
   markdownFormat,
+  textFormat,
+  jsonFormat,
 ]
 
 export class ArchiveExportPipeline {

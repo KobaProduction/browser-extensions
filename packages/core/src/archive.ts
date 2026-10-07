@@ -119,7 +119,7 @@ export const DEFAULT_CAPTURE_RULE: CaptureRule = {
   internal: true,
 }
 export const DEFAULT_EXPORT_OPTIONS: ArchiveExportOptions = {
-  format: 'json',
+  format: 'markdown',
   level: 'conversation',
   reasoning: true,
   tools: true,

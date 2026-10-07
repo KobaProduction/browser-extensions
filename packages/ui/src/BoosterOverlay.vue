@@ -225,7 +225,7 @@ onMounted(async () => {
       if (document.hidden || (!opened.value && !archiveOpen.value)) return
       if (props.archiveAdapter?.currentConversationId() !== context.value.conversationId)
         void refreshContext()
-    }, 2_000)
+    }, 450)
 })
 onBeforeUnmount(() => {
   alive = false; revision++; unsubscribe?.(); contextUnsubscribe?.(); clearInterval(contextFallbackTimer); clearTimeout(archiveRefreshTimer)

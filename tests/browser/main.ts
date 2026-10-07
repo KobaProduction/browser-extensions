@@ -25,7 +25,10 @@ import {
   type SettingsAdapter,
   snapshotSettings,
 } from '../../packages/core/src'
-import { serializeArchiveExport } from '../../packages/features/src/archive-export'
+import {
+  DEFAULT_ARCHIVE_EXPORT_PIPELINE,
+  serializeArchiveExport,
+} from '../../packages/features/src/archive-export'
 import {
   ARCHIVE_DB_NAME,
   ConversationArchiveStore,
@@ -1764,22 +1767,7 @@ const adapter = {
     throw new Error('archive.error.noChat')
   },
   clearAll: () => store.clearAll(),
-  listExportFormats: () => [
-    {
-      id: 'json',
-      label: 'JSON',
-      mimeType: 'application/json',
-      fileExtension: 'json',
-      isDefault: true,
-    },
-    {
-      id: 'markdown',
-      label: 'Markdown',
-      mimeType: 'text/markdown',
-      fileExtension: 'md',
-      isDefault: false,
-    },
-  ],
+  listExportFormats: () => DEFAULT_ARCHIVE_EXPORT_PIPELINE.listFormats(),
   exportConversation: async (id: string, options: ArchiveExportOptions) => {
     const c = await store.getConversation(id)
     if (!c) throw new Error('archive.error.noChat')
@@ -1822,3 +1810,38 @@ Object.assign(window, {
 })
 const status = document.querySelector('#fixture-status')
 if (status) status.textContent = 'Fixture ready. Use the edge toolkit.'
+
+// Developer-only acceptance control for browser tools without script-evaluation access.
+const runFixtureUi = document.querySelector<HTMLButtonElement>('#fixture-run-ui-tests')
+const fixtureResults = document.querySelector<HTMLElement>('#fixture-test-results')
+runFixtureUi?.addEventListener('click', async () => {
+  if (!fixtureResults || !runFixtureUi) return
+  runFixtureUi.disabled = true
+  fixtureResults.textContent = 'Running archive UI acceptance…'
+  try {
+    const results = await runUiTests(settings, adapter, context, appendCurrentExchange)
+    const failed = results.filter((entry) => !entry.pass)
+    fixtureResults.textContent = JSON.stringify(
+      {
+        passed: results.length - failed.length,
+        failed: failed.length,
+        failures: failed,
+      },
+      null,
+      2,
+    )
+  } catch (error) {
+    fixtureResults.textContent = 'Fixture failed: ' + String(error)
+  } finally {
+    runFixtureUi.disabled = false
+  }
+})
+
+// Preview production archive UI with persistent synthetic records for visual inspection.
+document.querySelector('#fixture-open-archive')?.addEventListener('click', () => {
+  window.dispatchEvent(
+    new CustomEvent('chatgpt-booster:open-archive', {
+      detail: { conversationId: 'fixture-current' },
+    }),
+  )
+})

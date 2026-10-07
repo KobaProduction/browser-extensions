@@ -374,6 +374,40 @@ export async function runUiTests(
           restored.querySelectorAll('.booster-exchange').length === 40,
           'initial rendering is not bounded',
         )
+        const viewport = restored.querySelector<HTMLElement>('.booster-reader-scroll')
+        const pinned = restored.querySelector<HTMLElement>('.booster-reader-pinned')
+        assert(viewport && pinned, 'reader must have separate fixed controls and scroll viewport')
+        assert(
+          Math.abs(viewport.scrollTop - (viewport.scrollHeight - viewport.clientHeight)) < 3,
+          'reading does not start on the latest exchange',
+        )
+        const mostRecentTurn = (await adapter.getThread(context.conversationId ?? '')).turns.at(-1)
+        const mostRecentQuestion =
+          mostRecentTurn?.messages.find((item) => item.kind === 'user')?.text ?? ''
+        assert(mostRecentQuestion, 'fixture has no latest user message')
+        assert(
+          restored
+            .querySelector('.booster-exchange:last-child')
+            ?.textContent?.includes(mostRecentQuestion),
+          'latest exchange is not visible initially',
+        )
+        const pinnedBefore = bounds(pinned)
+        viewport.scrollTop = 0
+        viewport.dispatchEvent(new Event('scroll', { bubbles: true }))
+        await delay()
+        const expectedTurns = (await adapter.getThread(context.conversationId ?? '')).turns.length
+        assert(
+          restored.querySelectorAll('.booster-exchange').length === expectedTurns,
+          'scrolling toward history did not load older exchanges',
+        )
+        assert(
+          viewport.scrollTop > 0,
+          'prepending older exchanges did not preserve the scroll anchor',
+        )
+        assert(
+          same(bounds(pinned), pinnedBefore),
+          'scrolling messages moved the pinned reader controls',
+        )
         assert(
           restored.querySelector('.booster-record-reasoning'),
           'reasoning preview is not visible',
@@ -496,17 +530,25 @@ export async function runUiTests(
         dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
         await delay()
 
-        const more = [...restored.querySelectorAll<HTMLButtonElement>('button')].find(
-          (item) => item.textContent?.trim() === translate('ru', 'reader.more'),
+        assert(
+          ![...restored.querySelectorAll<HTMLButtonElement>('button')].some(
+            (item) => item.textContent?.trim() === translate('ru', 'reader.more'),
+          ),
+          'manual show-more control should be replaced by continuous reading',
         )
-        assert(more, 'show more missing')
-        const expectedTurns = (await adapter.getThread(context.conversationId ?? '')).turns.length
-        more.click()
+        const newestFirst = [
+          ...restored.querySelectorAll<HTMLButtonElement>('.booster-reader-chat-actions button'),
+        ].find((item) => item.textContent?.includes(translate('ru', 'reader.newestFirst')))
+        assert(newestFirst, 'reverse sort control missing')
+        newestFirst.click()
         await delay()
         assert(
-          restored.querySelectorAll('.booster-exchange').length === expectedTurns,
-          'show more did not render remaining exchanges',
+          restored
+            .querySelector('.booster-exchange:first-child')
+            ?.textContent?.includes(mostRecentQuestion),
+          'newest-first sort does not start on the latest exchange',
         )
+        assert(viewport.scrollTop === 0, 'reverse sort did not reset to the latest exchange')
         otherProject.click()
         await delay()
         assert(
@@ -720,7 +762,9 @@ export async function runUiTests(
       listSearch.value = ''
       listSearch.dispatchEvent(new Event('input', { bubbles: true }))
       await delay()
-      const textSearch = reader.querySelector<HTMLInputElement>('.booster-reader-text-search')
+      const textSearch = reader.querySelector<HTMLInputElement>(
+        '.booster-reader-find input[type="search"]',
+      )
       assert(textSearch, 'message search missing')
       textSearch.value = 'Вопрос 55'
       textSearch.dispatchEvent(new Event('input', { bubbles: true }))
@@ -740,7 +784,7 @@ export async function runUiTests(
       const after = Number(reader.querySelector('.booster-reader-summary b')?.textContent ?? '0')
       assert(after === before + 2, 'refresh did not reread open thread')
       const exportButton = reader.querySelector<HTMLButtonElement>(
-        '.booster-reader-chat-header .booster-reader-export',
+        '.booster-reader-chat-actions .booster-reader-export',
       )
       assert(exportButton, 'archive export button missing')
       exportButton.click()

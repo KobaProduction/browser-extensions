@@ -21,6 +21,7 @@ import MarkdownContent from './MarkdownContent.vue'
 import ModalSurface from './ModalSurface.vue'
 import RecordMetaBadges from './RecordMetaBadges.vue'
 import { translate, type SupportedLocale, type TranslationKey } from './i18n'
+import { omitRepeatedRecordHeading, parseArchiveStructuredText } from './archive-presentation'
 
 const props = withDefaults(
   defineProps<{ item: ArchiveItemView; locale: SupportedLocale; expandReasoning?: boolean }>(),
@@ -30,26 +31,40 @@ const expanded = ref(false)
 const rawOpen = ref(false)
 const t = (key: TranslationKey) => translate(props.locale, key)
 
+const tool = computed(() => props.item.tool)
+const toolName = computed(() => tool.value?.label ?? t(('reader.' + props.item.kind) as TranslationKey))
+const toolPayload = computed(() => tool.value?.payload ?? null)
+const structuredText = computed(() => parseArchiveStructuredText(props.item.text))
+const toolDetails = computed(() => toolPayload.value ?? tool.value?.result ?? structuredText.value)
+const displayText = computed(() => {
+  const heading =
+    props.item.kind === 'tool_call' || props.item.kind === 'tool_result'
+      ? toolName.value
+      : t(('reader.' + props.item.kind) as TranslationKey)
+  const text = omitRepeatedRecordHeading(props.item.text, heading)
+  // A tool payload already has a dedicated structured inspector; do not repeat raw JSON as prose.
+  return (props.item.kind === 'tool_call' || props.item.kind === 'tool_result') &&
+    parseArchiveStructuredText(text) !== null
+    ? ''
+    : text
+})
 const hasText = computed(() => {
-  const value = props.item.text.trim()
+  const value = displayText.value.trim()
   if (!value) return false
   return !/^(?:the output of this plugin was (?:redacted|omitted)|output (?:redacted|omitted))\.?$/i.test(
     value,
   )
 })
 const preview = computed(() => {
-  const text = props.item.text.trim()
+  const text = displayText.value.trim()
   return text.length > 220 ? text.slice(0, 220).trimEnd() + '…' : text
 })
 const isReasoningExpanded = computed(() => props.expandReasoning || expanded.value)
 
-const tool = computed(() => props.item.tool)
-const toolName = computed(() => tool.value?.label ?? t(('reader.' + props.item.kind) as TranslationKey))
-const toolPayload = computed(() => tool.value?.payload ?? null)
 const toolLink = computed(() => tool.value?.link ?? null)
 const toolIcon = computed(() => tool.value?.iconUrl ?? null)
 const toolRecipient = computed(() => tool.value?.recipient ?? props.item.record.recipient ?? null)
-const hasToolDetails = computed(() => hasText.value || toolPayload.value !== null)
+const hasToolDetails = computed(() => hasText.value || toolDetails.value !== null)
 const toolGlyph = computed(() => {
   const key = (tool.value?.iconKey ?? tool.value?.label ?? '').toLowerCase()
   if (key.includes('globe') || key.includes('web')) return Globe2
@@ -136,7 +151,7 @@ const reasoningInfo = computed(() =>
         </span>
       </header>
       <div v-if="hasText" class="booster-reasoning-preview" :class="{ expanded: isReasoningExpanded }">
-        <MarkdownContent :text="item.text" />
+        <MarkdownContent :text="displayText" />
       </div>
     </template>
 
@@ -165,7 +180,7 @@ const reasoningInfo = computed(() =>
               · {{ toolRecipient }}
             </template>
           </span>
-          <p v-if="preview">{{ preview }}</p>
+          <p v-if="preview && !expanded">{{ preview }}</p>
         </div>
         <div class="booster-tool-actions" @click.stop>
           <RecordMetaBadges :metadata="item.metadata" :locale="locale" />
@@ -193,8 +208,8 @@ const reasoningInfo = computed(() =>
         </div>
       </div>
       <div v-if="expanded && hasToolDetails" class="booster-tool-expanded">
-        <MarkdownContent v-if="hasText" :text="item.text" />
-        <JsonViewer v-else :value="toolPayload" />
+        <MarkdownContent v-if="hasText" :text="displayText" />
+        <JsonViewer v-else :value="toolDetails" />
       </div>
     </template>
 
@@ -208,13 +223,13 @@ const reasoningInfo = computed(() =>
       >
         <span><Code2 class="size-4" /><strong>{{ t('reader.internal') }}</strong></span>
         <span class="booster-internal-preview">
-          {{ preview || item.record.contentType || item.record.messageType || t('reader.metadataOnly') }}
+          {{ expanded ? '' : (preview || item.record.contentType || item.record.messageType || t('reader.metadataOnly')) }}
         </span>
         <ChevronDown v-if="expanded && hasText" class="size-3.5" />
         <ChevronRight v-else-if="hasText" class="size-3.5" />
       </button>
       <div v-if="expanded && hasText" class="booster-tool-expanded">
-        <MarkdownContent :text="item.text" />
+        <MarkdownContent :text="displayText" />
       </div>
       <button
         class="booster-record-icon-button booster-record-raw-corner"

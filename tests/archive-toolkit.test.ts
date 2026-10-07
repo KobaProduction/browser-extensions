@@ -358,7 +358,7 @@ describe('conversation vs nested records', () => {
     const json = serializeArchiveExport(
       { conversationId: 'chat', title: 'Test', projectId: null },
       buildArchiveThread(records),
-      DEFAULT_EXPORT_OPTIONS,
+      { ...DEFAULT_EXPORT_OPTIONS, format: 'json' },
       { verified: false },
     ).text
     const exported = JSON.parse(json)
@@ -424,7 +424,12 @@ describe('conversation vs nested records', () => {
         },
       },
     ])
-    expect(pipeline.listFormats().map((format) => format.id)).toEqual(['json', 'markdown', 'html'])
+    expect(pipeline.listFormats().map((format) => format.id)).toEqual([
+      'markdown',
+      'text',
+      'json',
+      'html',
+    ])
   })
 
   test('ZIP transcript uses the same injected format pipeline', async () => {
@@ -461,6 +466,29 @@ describe('conversation vs nested records', () => {
     const zip = new TextDecoder().decode(await result.blob.arrayBuffer())
     expect(zip).toContain('conversation.txt')
     expect(zip).toContain('plain:Test')
+  })
+
+  test('readable Markdown omits coverage/raw JSON and plain text remains simple', () => {
+    const thread = buildArchiveThread(records)
+    const markdown = serializeArchiveExport(
+      { conversationId: 'chat', title: 'Test', projectId: null },
+      thread,
+      { ...DEFAULT_EXPORT_OPTIONS, format: 'markdown' },
+      { verified: false, capture: { readId: 'private-debug' } },
+    ).text
+    expect(markdown).toContain('## User')
+    expect(markdown).toContain('## Assistant')
+    expect(markdown).not.toContain('private-debug')
+    expect(markdown).not.toContain('originalRecord')
+    expect(markdown).not.toContain('### tool_result')
+    const plain = serializeArchiveExport(
+      { conversationId: 'chat', title: 'Test', projectId: null },
+      thread,
+      { ...DEFAULT_EXPORT_OPTIONS, format: 'text' },
+      {},
+    ).text
+    expect(plain).toContain('Assistant:')
+    expect(plain).not.toContain('originalRecord')
   })
 
   test('custom Markdown includes only selected reasoning, not tool outputs', () => {
@@ -509,7 +537,8 @@ describe('conversation vs nested records', () => {
       full,
       {},
     ).text
-    expect(transcript).toContain('originalRecord')
+    expect(transcript).toContain('Original record:')
+    expect(transcript).toContain('asset_pointer')
     const conversation = {
       conversationId: 'chat',
       projectId: null,
@@ -927,7 +956,7 @@ describe('resume regressions: consent, evidence and export boundaries', () => {
       const text = serializeArchiveExport(
         stored,
         buildArchiveThread([record('u', 'user')]),
-        { ...DEFAULT_EXPORT_OPTIONS, level },
+        { ...DEFAULT_EXPORT_OPTIONS, level, format: 'json' },
         { verified: false },
       ).text
       expect(text).not.toContain('PRIVATE_STORAGE_ONLY')
