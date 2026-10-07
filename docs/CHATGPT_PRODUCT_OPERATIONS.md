@@ -891,3 +891,10 @@ detail/result availability are separate axes.
 
 The parent conversation history retained the child activity records after completion,
 so Booster can reconstruct sub-agent lifecycle without depending on the detail endpoint.
+
+
+### Booster Work UI acceptance
+
+The published browser build was live-checked on a native Work conversation. Booster rendered a red inspection-only Work warning and, after successive short child runs, accumulated three distinct completed sub-agents with active count zero. Native Work UI independently showed the same completed child count.
+
+This validates completed-state correlation and Work-surface warning behavior. A deployed-build snapshot with Booster visibly showing an active child count greater than zero is still a separate acceptance point; do not claim that presentation boundary from completed-state evidence alone.

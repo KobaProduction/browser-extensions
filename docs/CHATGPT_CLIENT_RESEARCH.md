@@ -1852,4 +1852,21 @@ Network evidence around the incident was mixed:
 
 Therefore HTTP 429 is a live-verified cause of this UI state in the captured reproduction, but the evidence does not justify defining the UI state as a one-to-one alias for HTTP 429 or assuming every occurrence has the same backend cause. Preserve it as its own normalized availability state, conversation_load_failed, and keep it independent from conversation-list availability, transport recovery, generation lifecycle and global service health.
 
-The Retry button is a user-facing recovery action for the current conversation load. It is not evidence that every other conversation is unavailable.
+The Retry control is a user-facing recovery action for the current conversation load. In observed renderers its Russian label varied between "Повторить" and "Попробовать снова"; do not make either exact string the architectural classifier. The control is not evidence that every other conversation is unavailable.
+
+
+### Booster post-deployment Work acceptance (2026-10-07)
+
+After updating to the published Work/sub-agent build, a real Work conversation rendered the Booster warning:
+
+    Режим Work · браузер только для проверки
+
+Three small one-sub-agent test turns were then observed. After each child completed, Booster reconstructed the accumulated child set from the conversation source state and rendered:
+
+    Субагенты 1 · активно 0
+    Субагенты 2 · активно 0
+    Субагенты 3 · активно 0
+
+The warning tooltip exposed distinct completed child names, while the native Subagents panel independently showed the matching Done count. This live-validates Work classification, warning placement, completed child identity and completed-state counting in the published browser build.
+
+The deployed-build observation did not catch a child in Booster's active counter before completion: the child execution windows completed between inspection snapshots. The earlier raw source capture already live-verified separate started/completed records and the source/unit contract maps started to working, but an explicit browser screenshot/state with Booster showing active > 0 remains a separate acceptance point.
