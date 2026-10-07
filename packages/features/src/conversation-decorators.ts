@@ -6,6 +6,8 @@ import {
   chatGptRequestStatusAnchor,
   chatGptTurnId,
   chatGptTurnMessageIds,
+  chatGptWorkSubagentActivity,
+  chatGptWorkSubagentUsageCount,
   conversationDomSnapshotFromTargets,
   currentConversationId,
   findChatGptTurnRoot,
@@ -370,6 +372,23 @@ export class ConversationDecoratorsModule implements BoosterModule {
       displayName: agent.displayName,
       status: agent.status,
     }))
+    const nativeUsageCount = chatGptWorkSubagentUsageCount(document)
+    let missingFromSource =
+      nativeUsageCount === null ? 0 : Math.max(0, nativeUsageCount - subagents.length)
+    for (const live of chatGptWorkSubagentActivity(document)) {
+      if (live.status !== 'working' || missingFromSource <= 0) continue
+      const alreadyWorking = subagents.some(
+        (agent) =>
+          agent.status === 'working' &&
+          agent.displayName?.toLocaleLowerCase() === live.displayName?.toLocaleLowerCase(),
+      )
+      if (alreadyWorking) continue
+      subagents.push({
+        displayName: live.displayName,
+        status: 'working',
+      })
+      missingFromSource -= 1
+    }
     if (this.#workWarning?.element.isConnected) {
       this.#workWarning.update(subagents)
       return

@@ -1,5 +1,9 @@
 import { buildArchiveThread } from '../../packages/chatgpt/src/archive-records'
 import { mountArchiveScopeControls } from '../../packages/chatgpt/src/archive-scope-controls'
+import {
+  chatGptWorkSubagentActivity,
+  chatGptWorkSubagentUsageCount,
+} from '../../packages/chatgpt/src/chatgpt-dom-adapter'
 import { readConversationActivity } from '../../packages/chatgpt/src/conversation-activity'
 import {
   findConversationMessageTargets,
@@ -1666,6 +1670,43 @@ async function runPerformanceTests() {
     } finally {
       control.unmount()
       chatHost.remove()
+    }
+  }
+
+  {
+    const activity = document.createElement('section')
+    activity.dataset.testid = 'chatgpt-subagent-activity'
+    activity.setAttribute('aria-label', 'Активность субагента')
+    const label = document.createElement('span')
+    label.setAttribute('role', 'button')
+    label.textContent = 'Multiply 211 223'
+    activity.append(label, document.createTextNode(' начал(-и) работу'))
+    const summary = document.createElement('button')
+    summary.dataset.slot = 'thread-summary-panel-item-button'
+    const summaryLabel = document.createElement('span')
+    summaryLabel.dataset.slot = 'thread-summary-panel-item-label'
+    summaryLabel.textContent = 'Субагенты'
+    const summaryMeta = document.createElement('span')
+    summaryMeta.dataset.slot = 'thread-summary-panel-item-meta'
+    summaryMeta.textContent = 'Использовано: 5'
+    summary.append(summaryLabel, summaryMeta)
+    document.body.append(activity, summary)
+    try {
+      const parsed = chatGptWorkSubagentActivity(document)
+      const usageCount = chatGptWorkSubagentUsageCount(document)
+      results.push({
+        name: 'Work subagent DOM fallback recognizes native active activity',
+        pass:
+          parsed.length === 1 &&
+          parsed[0]?.displayName === 'Multiply 211 223' &&
+          parsed[0]?.status === 'working' &&
+          usageCount === 5,
+        parsed,
+        usageCount,
+      })
+    } finally {
+      activity.remove()
+      summary.remove()
     }
   }
 

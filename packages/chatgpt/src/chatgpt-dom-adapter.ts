@@ -42,6 +42,47 @@ const SEARCH_MESSAGE_IDS = 'data-chatgpt-search-message-ids'
 const SEARCH_ASSISTANT_MESSAGE_SELECTOR = '[data-chatgpt-selection-message-id]'
 const SEARCH_ACTIVITY_HEADER_SELECTOR = '[class~="group/activity-header"]'
 const TURN_ACTIONS_SELECTOR = '.turn-action-controls'
+const WORK_SUBAGENT_ACTIVITY_SELECTOR = '[data-testid="chatgpt-subagent-activity"]'
+
+export interface ChatGptWorkSubagentActivity {
+  displayName: string | null
+  status: 'working' | 'done' | 'interrupted' | 'unknown'
+}
+
+export function parseChatGptWorkSubagentActivityText(
+  text: string,
+): ChatGptWorkSubagentActivity['status'] {
+  if (/начал\(-и\) работу|started work(?:ing)?/i.test(text)) return 'working'
+  if (/завершил\(-и\) работу|completed work|finished work/i.test(text)) return 'done'
+  if (/прерван|остановлен|interrupted|cancelled|canceled/i.test(text)) return 'interrupted'
+  return 'unknown'
+}
+
+export function chatGptWorkSubagentUsageCount(root: ParentNode = document): number | null {
+  for (const button of root.querySelectorAll<HTMLElement>(
+    '[data-slot="thread-summary-panel-item-button"]',
+  )) {
+    const label = button.querySelector<HTMLElement>('[data-slot="thread-summary-panel-item-label"]')
+    const meta = button.querySelector<HTMLElement>('[data-slot="thread-summary-panel-item-meta"]')
+    if (!label || !meta || !/субагент|subagent/i.test(label.textContent ?? '')) continue
+    const match = (meta.textContent ?? '').match(/\d+/)
+    if (match) return Number(match[0])
+  }
+  return null
+}
+
+export function chatGptWorkSubagentActivity(
+  root: ParentNode = document,
+): ChatGptWorkSubagentActivity[] {
+  return includeSelf(root, WORK_SUBAGENT_ACTIVITY_SELECTOR).flatMap((element) => {
+    const text = (element.textContent ?? '').trim()
+    const status = parseChatGptWorkSubagentActivityText(text)
+    if (status === 'unknown') return []
+    const displayName =
+      element.querySelector<HTMLElement>('[role="button"]')?.textContent?.trim() || null
+    return [{ displayName, status }]
+  })
+}
 
 function includeSelf(root: ParentNode, selector: string): HTMLElement[] {
   const result: HTMLElement[] = []

@@ -898,3 +898,8 @@ so Booster can reconstruct sub-agent lifecycle without depending on the detail e
 The published browser build was live-checked on a native Work conversation. Booster rendered a red inspection-only Work warning and, after successive short child runs, accumulated three distinct completed sub-agents with active count zero. Native Work UI independently showed the same completed child count.
 
 This validates completed-state correlation and Work-surface warning behavior. A deployed-build snapshot with Booster visibly showing an active child count greater than zero is still a separate acceptance point; do not claim that presentation boundary from completed-state evidence alone.
+
+
+### Active child presentation fallback
+
+Live acceptance found a short timing gap between native Work rendering and Booster source ingestion: native Work can show a child as started before the corresponding source record has reached Booster RAM. Booster may use the adapter-owned `chatgpt-subagent-activity` renderer signal to supplement the visible active count during that gap. Source records remain authoritative and supersede the fallback once available.

@@ -1870,3 +1870,17 @@ Three small one-sub-agent test turns were then observed. After each child comple
 The warning tooltip exposed distinct completed child names, while the native Subagents panel independently showed the matching Done count. This live-validates Work classification, warning placement, completed child identity and completed-state counting in the published browser build.
 
 The deployed-build observation did not catch a child in Booster's active counter before completion: the child execution windows completed between inspection snapshots. The earlier raw source capture already live-verified separate started/completed records and the source/unit contract maps started to working, but an explicit browser screenshot/state with Booster showing active > 0 remains a separate acceptance point.
+
+
+### Verified active-subagent renderer gap (2026-10-07)
+
+A 500 ms page-side sampler captured a live Work child while the native UI had already advanced from three completed children to `Использовано: 4` and rendered `Codex title начал(-и) работу`. Throughout that active window, the published Booster build still displayed the previous `Субагенты 3 · активно 0`. This proves a presentation timing gap: the child `started` state can become visible in the native renderer before Booster receives or hydrates the corresponding source record.
+
+A second live capture recorded the exact active DOM shape:
+
+    section[data-testid="chatgpt-subagent-activity"]
+      aria-label="Активность субагента"
+      [role="button"] = child display name
+      text suffix = "начал(-и) работу"
+
+The captured example was `Multiply 211 223 начал(-и) работу`. The renderer selector belongs in `ChatGptDomAdapter`; feature code consumes a normalized `working` child. This DOM signal is only a bounded live fallback. Persisted/live `codex_sub_agent_activity` records remain authoritative for child identity and terminal state.

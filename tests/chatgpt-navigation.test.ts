@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test'
+import { parseChatGptWorkSubagentActivityText } from '../packages/chatgpt/src/chatgpt-dom-adapter'
+
 import {
   currentConversationId,
   hasPendingComposerAttachments,
@@ -43,5 +45,15 @@ describe('ChatGPT composer safety', () => {
       }),
     } as unknown as ParentNode
     expect(hasPendingComposerAttachments(preview)).toBe(true)
+  })
+})
+
+describe('Work subagent activity text', () => {
+  test('normalizes current Russian and English activity presentation', () => {
+    expect(parseChatGptWorkSubagentActivityText('Multiply начал(-и) работу')).toBe('working')
+    expect(parseChatGptWorkSubagentActivityText('Multiply started working')).toBe('working')
+    expect(parseChatGptWorkSubagentActivityText('Multiply завершил(-и) работу')).toBe('done')
+    expect(parseChatGptWorkSubagentActivityText('Multiply interrupted')).toBe('interrupted')
+    expect(parseChatGptWorkSubagentActivityText('Multiply')).toBe('unknown')
   })
 })

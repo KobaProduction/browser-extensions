@@ -752,6 +752,8 @@ Known contradictions include:
 
 Keep renderer/version-specific selectors behind `ChatGptDomAdapter`.
 
+For Work sub-agent presentation, persisted/live source records remain authoritative. The current renderer can expose a newly started child in `section[data-testid="chatgpt-subagent-activity"]` before Booster has received the corresponding source record. A bounded DOM fallback may therefore temporarily add a `working` child to the display using that adapter-owned selector. It must not overwrite a contradictory source state, and completed/interrupted state should return to source authority as soon as source evidence is present.
+
 ## 14. State precedence rules
 
 The live read model should obey these rules:
