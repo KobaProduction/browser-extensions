@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@vue-flow/core/dist/style.css";
 @source "./**/*.{vue,ts}";
 
 :host {
@@ -3544,4 +3545,53 @@
   text-align: center;
   font-size: 12px;
   cursor: help;
+}
+
+/* Vue Flow owns graph layout and edges; surrounding controls retain Booster/shadcn styling. */
+.booster-archive-flow-graph {
+  order: 2;
+  flex: 0 0 180px;
+  width: 180px;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+  background: var(--card);
+}
+.booster-archive-flow-graph .vue-flow {
+  width: 100%;
+  height: 100%;
+}
+.booster-archive-flow-graph .vue-flow__node {
+  border: 0;
+  background: none;
+  width: 34px;
+  height: 24px;
+}
+.booster-flow-node {
+  width: 34px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--foreground);
+  border: 2px solid var(--muted-foreground);
+  border-radius: 7px;
+  background: var(--card);
+  cursor: pointer;
+}
+.booster-flow-node.is-user {
+  border-color: var(--primary);
+  border-radius: 50%;
+}
+.booster-flow-node:hover {
+  box-shadow: 0 0 0 3px var(--ring);
+}
+.booster-flow-handle {
+  opacity: 0;
+  pointer-events: none;
+}
+@media (max-width: 700px) {
+  .booster-archive-flow-graph {
+    flex-basis: 120px;
+    width: 120px;
+  }
 }

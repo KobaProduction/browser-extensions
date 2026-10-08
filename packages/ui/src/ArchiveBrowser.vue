@@ -16,19 +16,15 @@ import RefreshCw from 'lucide-vue-next/dist/esm/icons/refresh-cw.js'
 import X from 'lucide-vue-next/dist/esm/icons/x.js'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ArchiveRecord from './ArchiveRecord.vue'
+import ArchiveFlowGraph from './ArchiveFlowGraph.vue'
 import {
   archiveConversationForest,
-  archiveNavigatorSample,
-  archiveNavigatorEdges,
-  archiveReverseAncestryCount,
-  archiveTimelinePosition,
   archiveTurnWindow,
   ARCHIVE_INITIAL_TURNS,
   ARCHIVE_TURN_BATCH,
   type ArchiveReadingOrder,
 } from './archive-navigation'
 import CopyIdentity from './CopyIdentity.vue'
-import { archiveMessageGraph } from './archive-message-graph'
 import { archiveForkChoices } from './archive-fork-choices'
 import { translate, type SupportedLocale, type TranslationKey } from './i18n'
 import type {
@@ -66,7 +62,6 @@ const visibleCount = ref(ARCHIVE_INITIAL_TURNS)
 const readingOrder = ref<ArchiveReadingOrder>('chronological')
 const searchOpen = ref(false)
 const forksOpen = ref(false)
-const readingProgress = ref(1)
 const windowCenter = ref<number | null>(null)
 const loadingOlder = ref(false)
 const readingScroll = ref<HTMLElement | null>(null)
@@ -124,40 +119,10 @@ const displayedTurns = computed(() => {
   }
   return archiveTurnWindow(filteredTurns.value, visibleCount.value, readingOrder.value)
 })
-const messageGraph = computed(() => archiveMessageGraph(thread.value))
 const forkChoices = computed(() => archiveForkChoices(thread.value))
-const navigationNodes = computed(() => thread.value.turns.flatMap(turn => turn.messages.filter(item => item.kind === 'user' || item.kind === 'answer')))
-const timelineNodes = computed(() =>
-  archiveNavigatorSample(
-    navigationNodes.value,
-    item => (messageGraph.value.get(item.record.messageKey)?.siblingCount ?? 1) > 1,
-    36,
-  ),
+const navigationNodes = computed(() =>
+  thread.value.turns.flatMap(turn => turn.messages.filter(item => item.kind === 'user' || item.kind === 'answer')),
 )
-const navigationParents = computed(() => {
-  const parents = new Map<string, string | null>()
-  for (const turn of thread.value.turns)
-    for (const item of [...turn.messages, ...turn.details])
-      if (item.record.messageId) parents.set(item.record.messageId, item.record.parentId)
-  return parents
-})
-const checkpoints = computed(() => timelineNodes.value.map(({ item, index }) => ({
-  id: item.record.messageId, index,
-})))
-const reverseAncestry = computed(() => archiveReverseAncestryCount(navigationParents.value, checkpoints.value))
-const navigatorEdges = computed(() => archiveNavigatorEdges(navigationParents.value, checkpoints.value))
-function nodeAxisX(index: number): number {
-  const item = navigationNodes.value[index]
-  return 18 + Math.min(3, item ? (messageGraph.value.get(item.record.messageKey)?.lane ?? 0) : 0) * 23
-}
-function graphEdgePath(from: number, to: number): string {
-  const startY = archiveTimelinePosition((from + 0.5) / Math.max(1, navigationNodes.value.length), readingProgress.value) * 1000
-  const endY = archiveTimelinePosition((to + 0.5) / Math.max(1, navigationNodes.value.length), readingProgress.value) * 1000
-  const startX = nodeAxisX(from), endX = nodeAxisX(to)
-  const bendY = startY + (endY - startY) * 0.25
-  return `M ${startX} ${startY} L ${startX} ${bendY} Q ${startX} ${endY} ${endX} ${endY}`
-}
-const currentNavigationIndex = computed(() => Math.round(readingProgress.value * Math.max(0, navigationNodes.value.length - 1)))
 const hasEarlier = computed(() => filteredTurns.value.length > visibleCount.value)
 const archiveStatusKey = computed<TranslationKey>(() =>
   coverage.value?.completeAtLastRead ? 'reader.savedToStart' : 'reader.savedPartial',
@@ -194,10 +159,8 @@ async function resetReadingPosition() {
     await nextTick()
     if (!alive || scrollRevision !== ticket) return
     viewport.scrollTop = 0
-    readingProgress.value = 0
   } else {
     viewport.scrollTop = readingOrder.value === 'chronological' ? viewport.scrollHeight : 0
-    readingProgress.value = readingOrder.value === 'chronological' ? 1 : 0
   }
   resettingPosition = false
 }
@@ -228,12 +191,6 @@ async function loadEarlier() {
 function onReadingScroll() {
   const viewport = readingScroll.value
   if (!viewport || resettingPosition) return
-  const fraction = viewport.scrollTop / Math.max(1, viewport.scrollHeight - viewport.clientHeight)
-  const total = filteredTurns.value.length
-  const start = windowCenter.value !== null
-    ? Math.max(0, windowCenter.value - 20)
-    : Math.max(0, total - visibleCount.value)
-  readingProgress.value = Math.max(0, Math.min(1, (start + fraction * displayedTurns.value.length) / Math.max(1, total)))
   if (windowCenter.value !== null) {
     if (loadingOlder.value) return
     const atTop = viewport.scrollTop < 100
@@ -516,24 +473,7 @@ onBeforeUnmount(() => {
         <p v-if="error" role="alert" class="booster-error">{{ t('reader.error') }}</p>
         <div class="booster-reader-reading-surface">
           <div v-if="loadingOlder" class="booster-reader-older-loading" role="status" aria-live="polite"><LoaderCircle class="size-4 booster-reader-spinner" />{{ t('reader.loadingEarlier') }} · {{ displayedTurns.length }}/{{ filteredTurns.length }}</div>
-          <nav v-if="selected && navigationNodes.length" class="booster-reader-map" :aria-label="locale === 'ru' ? 'Навигация по сообщениям' : 'Message timeline'">
-            <button class="booster-reader-map-end" type="button" :title="locale === 'ru' ? 'Начало сохранённых сообщений' : 'First saved message'" @click="navigateToNode(0)">↑</button>
-            <div v-if="reverseAncestry" class="booster-reader-map-warning" :title="locale === 'ru' ? 'Родительские связи противоречат порядку сообщений. Это не доказывает потерю истории' : 'Parent links conflict with message order; this does not prove missing history'">!</div>
-            <div class="booster-reader-map-track">
-              <svg class="booster-reader-map-links" viewBox="0 0 108 1000" preserveAspectRatio="none" aria-hidden="true">
-                <path v-for="edge in navigatorEdges" :key="`${edge.from}-${edge.to}`" :d="graphEdgePath(edge.from, edge.to)" />
-              </svg>
-              <button v-for="{ item, index } in timelineNodes" :key="item.record.messageKey" class="booster-reader-map-node"
-                :class="{ 'is-user': item.kind === 'user', 'is-fork': (messageGraph.get(item.record.messageKey)?.siblingCount ?? 1) > 1, 'is-near': Math.abs(index - currentNavigationIndex) < 3 }"
-                :style="{ top: `${archiveTimelinePosition((index + 0.5) / navigationNodes.length, readingProgress) * 100}%`, '--map-lane': messageGraph.get(item.record.messageKey)?.lane ?? 0 }"
-                :title="`${item.kind === 'user' ? (locale === 'ru' ? 'Вы' : 'You') : (locale === 'ru' ? 'Ассистент' : 'Assistant')} · ${item.record.createTime ? date(item.record.createTime * 1000) : ''}
-${item.text.slice(0, 160)}`"
-                :data-preview="(item.record.createTime ? date(item.record.createTime * 1000) + ' · ' : '') + item.text.slice(0, 145)"
-                :aria-label="item.text.slice(0, 80)" type="button" @click="navigateToNode(index)"></button>
-              <span class="booster-reader-map-position" :style="{ top: `${readingProgress * 100}%` }"></span>
-            </div>
-            <button class="booster-reader-map-end" type="button" :title="locale === 'ru' ? 'Последние сообщения' : 'Last messages'" @click="navigateToNode(navigationNodes.length - 1)">↓</button>
-          </nav>
+          <ArchiveFlowGraph v-if="selected && navigationNodes.length && !threadLoading" :key="selectedId ?? ''" :thread="thread" :locale="locale" @navigate="navigateToMessageKey" />
           <div ref="readingScroll" class="booster-reader-scroll" @scroll.passive="onReadingScroll">
             <p v-if="threadLoading" role="status" class="booster-reader-loading"><LoaderCircle class="size-4 booster-reader-spinner" />{{ t('reader.loading') }}</p>
             <template v-else-if="selected">

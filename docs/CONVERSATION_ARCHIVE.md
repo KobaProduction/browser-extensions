@@ -787,3 +787,20 @@ or missing files. Missing links elsewhere can also reflect skipped ordinary
 checkpoints, absent ancestors, cycle guards or internal-only parent records.
 Full topology-aware rendering remains an independent acceptance requirement;
 this mitigation does not establish history completeness.
+
+### Vue Flow / Dagre message DAG (2026-10-08)
+
+The custom per-checkpoint SVG rail was replaced with Vue Flow (`@vue-flow/core`,
+MIT) for read-only node/edge interaction and Dagre (`@dagrejs/dagre`, MIT)
+for directed acyclic top-to-bottom layout. Shadcn-vue/Booster surfaces remain
+responsible for surrounding controls. Each saved user or final-assistant message
+is a selectable node; tool/reasoning records can be traversed as intermediate
+parent links but are not nodes. Exact observed `parentId` links define edges;
+unknown ancestry is never fabricated. Sampling bounds extremely long threads
+and retains observed sibling forks; malformed cycles are excluded. Clicking a
+node navigates within the stored archive, not the native ChatGPT branch.
+
+This supersedes the hand-written fixed SVG checkpoint geometry, which no longer
+runs in Archive Browser. Source typecheck, unit and target builds plus managed
+Chromium fixture are separate from live Pro acceptance and full server-backed
+history completeness.

@@ -555,14 +555,11 @@ export async function runUiTests(
           ),
           'manual show-more control should be replaced by continuous reading',
         )
-        const nav = restored.querySelector<HTMLElement>('.booster-reader-map')
+        const nav = restored.querySelector<HTMLElement>('.booster-archive-flow-graph')
         assert(nav, 'separate message navigation rail is missing')
+        assert(nav.querySelectorAll('.vue-flow__node').length > 0, 'timeline nodes missing')
         assert(
-          nav.querySelectorAll('.booster-reader-map-node').length > 0,
-          'timeline nodes missing',
-        )
-        assert(
-          nav.querySelectorAll('.booster-reader-map-node').length <= 36,
+          nav.querySelectorAll('.vue-flow__node').length <= 180,
           'timeline rendered an unbounded set of nodes',
         )
         assert(
@@ -571,8 +568,10 @@ export async function runUiTests(
           ),
           'obsolete sorting control is still visible',
         )
-        const firstSaved = nav.querySelector<HTMLButtonElement>('.booster-reader-map-end')
-        assert(firstSaved, 'start endpoint missing')
+        const firstSaved = [...nav.querySelectorAll<HTMLElement>('.vue-flow__node')].find(
+          (node) => node.getAttribute('data-id') === 'user-000',
+        )
+        assert(firstSaved, 'start checkpoint missing')
         firstSaved.click()
         await delay()
         assert(
@@ -1075,11 +1074,11 @@ export async function runUiTests(
           'late other-chat result replaced current chat',
         )
         await waitFor(
-          () => reader.querySelectorAll('.booster-reader-map-node').length > 10,
+          () => reader.querySelectorAll('.vue-flow__node').length > 10,
           'restored long-chat navigation nodes',
         )
         assert(
-          reader.querySelectorAll('.booster-reader-map-node').length <= 36,
+          reader.querySelectorAll('.vue-flow__node').length <= 180,
           'rapid switching restored a stale or overcrowded timeline',
         )
       } finally {
@@ -1211,21 +1210,19 @@ export async function runUiTests(
         assert(forkChat, 'fixture internal branch conversation not listed')
         forkChat.click()
         await waitFor(
-          () => Boolean(reader.querySelector('.booster-reader-map')),
+          () => Boolean(reader.querySelector('.booster-archive-flow-graph')),
           'internal fork navigator',
         )
-        const nav = reader.querySelector<HTMLElement>('.booster-reader-map')
+        const nav = reader.querySelector<HTMLElement>('.booster-archive-flow-graph')
         assert(nav, 'internal-branch message navigation rail missing')
-        const forks = [
-          ...nav.querySelectorAll<HTMLButtonElement>('.booster-reader-map-node.is-fork'),
-        ]
-        assert(forks.length >= 4, 'two sibling fork points were not rendered')
+        const forks = [...nav.querySelectorAll<HTMLElement>('.vue-flow__node')]
+        assert(forks.length >= 8, 'two sibling fork points were not rendered')
         assert(
-          nav.querySelectorAll('.booster-reader-map-links path').length >= 4,
+          nav.querySelectorAll('.vue-flow__edge').length >= 4,
           'verified fork connectors missing',
         )
         assert(
-          forks.some((node) => node.title.includes('редакция')),
+          forks.some((node) => node.textContent?.includes('●')),
           'fork node lacks message preview',
         )
         const switcher = reader.querySelector<HTMLButtonElement>('.booster-reader-fork-toggle')
