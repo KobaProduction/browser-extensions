@@ -4,10 +4,12 @@ Status: **target design / not yet implemented**. The currently deployed IndexedD
 History Loader, and export v1 remain the implemented baseline until a **clean
 new database rollout** and runtime acceptance explicitly prove otherwise.
 
-This document defines durable design constraints. **GitHub Issues are the live plan**:
-they contain stage checklists, ownership, dependencies, progress evidence and closure
-criteria. Do not add parallel task checklists or a purported implementation-status table
-here. See [Agent execution and issue workflow](#agent-execution-and-issue-workflow).
+This document defines durable design constraints. **One GitHub Issue
+[#54 — ARCHIVE & EXPORT](https://github.com/KobaProduction/chatgpt-booster/issues/54)
+is the sole live work plan**: its six phase sections hold all implementation and
+acceptance checklists, dependencies, owners by role, progress evidence and closure
+criteria. Do not create separate Issues per phase or duplicate task checklists
+in Markdown. See [Agent execution and issue workflow](#agent-execution-and-issue-workflow).
 
 References: [Architecture](ARCHITECTURE.md), [Conversation Archive](CONVERSATION_ARCHIVE.md),
 [Runtime contracts](CHATGPT_RUNTIME_CONTRACTS.md),
@@ -234,32 +236,35 @@ windows load progressively rather than mounting millions of nodes.
 - Persist no private identifiers, personal messages, credentials or signed
   asset URLs in repository documentation or issue bodies.
 
-## Agent execution and issue workflow
+## Agent execution and single-Issue workflow
 
-- **Source of truth:** this document is the target architecture; runtime
-  contracts and client research are implementation evidence; existing code and
-  published `dev` are current state; **GitHub Issues are the only active task
-  plan**. Existing [branch-visualization issue #53](https://github.com/KobaProduction/chatgpt-booster/issues/53)
-  remains deferred, separate from export and storage work.
-- **Enter:** read repository `AGENTS.md`, this document, current branch/diff,
-  then the relevant issue and linked dependencies. Identify the next *unmet*
-  acceptance criterion from its checklist. Do not treat unreviewed proposal text
-  as deployed behavior.
-- **Own one stage:** Implementer checks source state, sets issue progress with
-  a concise evidence comment, implements only its stage on a working branch,
-  and updates its checkboxes when their actual criteria are proved. Reviewer
-  independently inspects exact diff/CI/contract gates; product owner/Tester
-  checks live behaviors. Never mark acceptance based only on planned code.
-- **Handoff:** each issue comment records owner role, current base/head/PR,
-  changes, validation level, failures/blockers, dependency state and next
-  decision. Use GitHub links to commits/checks instead of copying sensitive
-  data or fragile machine paths. Roles are not automatically assigned to a
-  specific human or agent account.
-- **Finish:** close an issue only after **every** required acceptance checkbox,
-  blocker review and independent review are satisfied. A stage whose tests pass
-  but live acceptance fails remains open. The parent roadmap issue closes only
-  when all mandatory stages are accepted; deferred optional work remains linked.
-- **PR hygiene:** prefer one coherent PR per stage (not per checklist item),
-  with the writer/reviewer identity split from `AGENTS.md`. Where a stage is
-  blocked by a contract contradiction, stop at that boundary and resolve it
-  before implementation.
+- **Authority:** this document defines target architecture; runtime/client
+  research defines observed evidence; repository code and `dev` define current
+  implementation. **Only [Issue #54](https://github.com/KobaProduction/chatgpt-booster/issues/54)
+  tracks work for archive storage, strict API contracts and export.** It contains
+  six phases (0–5), their dependencies, checklists, role ownership, blocking
+  findings and product acceptance. Former phase Issues #55–#60 are closed
+  historical records, **not** active task lists.
+- **Enter:** read repository `AGENTS.md`, this document, current git state and
+  the entire Issue #54. Identify the first unmet, unblocked phase/checklist item
+  **inside #54**. Never treat design prose as deployed capability.
+- **Execute:** Implementer owns the selected implementation slice and updates
+  the matching checkboxes **in #54 only** when supported by proof. Independent
+  Reviewer verifies the exact diff/CI/contracts. Tester/product owner performs
+  required live Free/Pro visual and runtime acceptance. No named assignee is
+  invented where one is not actually appointed.
+- **Handoff:** comment on #54 with current phase/checkpoints, actor role,
+  branch/head/PR, changes, source/build/browser/live validation, open blockers,
+  dependencies and the next decision. Keep sensitive ChatGPT records, IDs,
+  credentials and signed URLs out of public issues and CI logs.
+- **Closure:** Issue #54 stays open until every mandatory phase and its
+  independent/product acceptance is completed. Synthetic Chromium passing
+  cannot substitute for live Free/Pro acceptance; do not check acceptance
+  boxes without its actual evidence.
+- **PR hygiene:** one coherent PR per meaningful implementation slice, not per
+  checkbox and not a separate Issue per PR. Use repository writer/reviewer
+  authority and stop on architecture/API-signature contradictions.
+- **Deferred boundary:** existing [issue #53](https://github.com/KobaProduction/chatgpt-booster/issues/53)
+  continues to track the previously requested unfinished branch visualization.
+  The master export work may only claim a verified selected path; it must not
+  silently solve missing parent links by invention.
