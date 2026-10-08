@@ -42,4 +42,4 @@ Repository map for ChatGPT Booster.
 ## Active archive/UI contract
 
 For archive/toolkit changes, read `docs/tasks/DOCKED_ARCHIVE_TOOLKIT.md`; its selective capture and evidence rules supersede the earlier unconditional capture behavior.
-For archive storage/API-signature/export architecture and staged modernization, also read `docs/ARCHIVE_TARGET_ARCHITECTURE.md` and the linked GitHub stage Issue. The document is a target contract, not a claim of implementation; Issues own execution checklists and completion status.
+For archive storage/API-signature/export modernization, read `docs/ARCHIVE_TARGET_ARCHITECTURE.md` and **one master GitHub Issue #54**. Its six phases and acceptance checklists are the only active work plan; closed historical phase Issues #55–#60 must not be used for new work. The architecture is a target contract, not a claim of implementation.

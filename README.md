@@ -63,7 +63,7 @@ The browser integration is intentionally limited to `https://chatgpt.com/*`.
 
 ## Repository
 
-See [docs/ARCHIVE_TARGET_ARCHITECTURE.md](docs/ARCHIVE_TARGET_ARCHITECTURE.md) for the proposed archive modernization contract and GitHub Issue-based work plan (not yet implemented).
+See [docs/ARCHIVE_TARGET_ARCHITECTURE.md](docs/ARCHIVE_TARGET_ARCHITECTURE.md) for the proposed archive modernization contract; all work stages and acceptance are tracked in [one master Issue #54](https://github.com/KobaProduction/chatgpt-booster/issues/54) (not yet implemented).
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for package boundaries, [docs/CHATGPT_RUNTIME_CONTRACTS.md](docs/CHATGPT_RUNTIME_CONTRACTS.md) for the implementation-facing ChatGPT lifecycle/transport/state model, [docs/CHATGPT_PRODUCT_OPERATIONS.md](docs/CHATGPT_PRODUCT_OPERATIONS.md) for Projects, model selection, Automations and Plugin/MCP management flows, [docs/CHATGPT_CLIENT_RESEARCH.md](docs/CHATGPT_CLIENT_RESEARCH.md) for observed client-behavior evidence, and [docs/CONVERSATION_ARCHIVE.md](docs/CONVERSATION_ARCHIVE.md) for the local archive/history-loader design.
 
