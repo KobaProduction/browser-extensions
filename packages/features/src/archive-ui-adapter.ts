@@ -229,6 +229,7 @@ export function createArchiveUiAdapter(
     },
     currentConversationId: () => currentConversationId() ?? null,
     currentProjectId: () => currentProjectId() ?? null,
+    hasIncompatibleSource: (id: string) => !!store.sourceGate.get(id),
     subscribeContextChange: (listener: () => void) => observeChatGptNavigation(listener),
     listProjects: async () => {
       const stored = await store.listProjects().catch(() => [])
@@ -335,6 +336,7 @@ export function createArchiveUiAdapter(
       options: ArchiveExportOptions,
       signal?: AbortSignal,
     ) => {
+      store.sourceGate.assertCompatible(conversationId)
       await stateStore.hydrate(conversationId, store).catch(() => undefined)
       const [storedConversation, storedMessages, coverage] = await Promise.all([
         store.getConversation(conversationId).catch(() => undefined),
@@ -358,10 +360,12 @@ export function createArchiveUiAdapter(
         scope: 'observed history pages only; not all branches or attachment bytes',
         storedRecordCount: messages.length,
       }
+      store.sourceGate.assertCompatible(conversationId)
       const thread = buildArchiveThread(messages)
       const packageRequested = options.level === 'full' || options.images || options.files
       if (!packageRequested) {
         const result = exportPipeline.serialize(conversation, thread, options, evidence)
+        store.sourceGate.assertCompatible(conversationId)
         return {
           packaged: false,
           complete: evidence.verified && captureEvidence.verified,
@@ -403,6 +407,7 @@ export function createArchiveUiAdapter(
         signal,
         exportPipeline,
       )
+      store.sourceGate.assertCompatible(conversationId)
       const includedAssets = result.manifest.assets.filter(
         (asset) => asset.status === 'included',
       ).length

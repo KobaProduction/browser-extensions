@@ -1,6 +1,7 @@
 export * from './archive-export'
 export * from './archive-package'
 export * from './archive-scope-controls'
+export * from './archive-source-contract'
 export * from './archive-store'
 export * from './archive-ui-adapter'
 export * from './conversation-alerts'

@@ -29,6 +29,7 @@ import {
   DEFAULT_ARCHIVE_EXPORT_PIPELINE,
   serializeArchiveExport,
 } from '../../packages/features/src/archive-export'
+import { ArchiveSourceGate } from '../../packages/features/src/archive-source-contract'
 import {
   ARCHIVE_DB_NAME,
   ConversationArchiveStore,
@@ -49,7 +50,7 @@ import { mountWorkModeWarning } from '../../packages/ui/src/work-mode-warning'
 import { runLoaderCancellationTests, runLoaderIsolationTests, runLoaderScrollTest } from './loader'
 import { runUiTests } from './ui'
 
-const store = new ConversationArchiveStore()
+const store = new ConversationArchiveStore(new ArchiveSourceGate(true))
 const projectA = 'g-p-11111111111111111111111111111111'
 const projectB = 'g-p-22222222222222222222222222222222'
 const listeners = new Set<(settings: BoosterSettings) => void>()
@@ -698,7 +699,7 @@ async function runStorageTests() {
       disclaimer.textContent = 'ChatGPT может допускать ошибки. Проверяйте важную информацию.'
       document.body.append(main, disclaimer)
 
-      const memory = new ConversationStateStore()
+      const memory = new ConversationStateStore(window, store.sourceGate)
       const module = new ConversationDecoratorsModule(settings, store, memory)
       const previous = snapshotSettings(current)
       try {
@@ -1436,7 +1437,7 @@ async function runPerformanceTests() {
       isInitial: initial,
       requestedBefore: before,
       timestamp: startedAt,
-      sourceUrl: `https://chatgpt.com/backend-api/conversations/${id}${initial ? '' : '/messages'}`,
+      sourceUrl: 'fixture://history',
       conversationId: id,
       payload: page(id, [raw(`perf-batch-${suffix}`, 'user', suffix)], {
         page_info: {
@@ -1487,7 +1488,7 @@ async function runPerformanceTests() {
       isInitial: true,
       requestedBefore: null,
       timestamp,
-      sourceUrl: `https://chatgpt.com/backend-api/conversations/${id}`,
+      sourceUrl: 'fixture://history',
       conversationId: id,
       payload: page(id, [raw(`${readId}-user`, 'user', readId)], {
         page_info: {

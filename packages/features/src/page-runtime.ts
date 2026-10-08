@@ -90,7 +90,7 @@ export function createBoosterPageRuntime(options: BoosterPageRuntimeOptions) {
       error instanceof Error ? error.name : 'unknown',
     )
   })
-  const conversationState = new ConversationStateStore(pageBridgeWindow)
+  const conversationState = new ConversationStateStore(pageBridgeWindow, archiveStore.sourceGate)
   const settings = createCachedSettingsAdapter(target.settings)
   const runtimeTarget: BoosterTargetAdapter = { ...target, settings }
   const archiveCapture = new ConversationArchiveModule(

@@ -9,6 +9,7 @@ import {
   serverTimeMs,
 } from '@chatgpt-booster/core'
 import { historyCoverage } from './archive-coverage'
+import { ArchiveSourceGate } from './archive-source-contract'
 import {
   normalizeConversationMessage,
   normalizeConversationProjectId,
@@ -378,6 +379,7 @@ function preloadEvidence(page: PreloadedConversationPage) {
 }
 
 export class ConversationArchiveStore {
+  constructor(readonly sourceGate = new ArchiveSourceGate()) {}
   #domSnapshots = new Map<string, ConversationDomSnapshot>()
   #conversationRevisions = new Map<string, number>()
 
@@ -438,6 +440,7 @@ export class ConversationArchiveStore {
 
   async ingestPreloadBatch(details: readonly ConversationArchiveEventDetail[]): Promise<void> {
     if (!details.length) return
+    for (const detail of details) this.sourceGate.inspect(detail)
     const now = Date.now()
     const candidates: PreloadedConversationPage[] = []
 
@@ -894,6 +897,11 @@ export class ConversationArchiveStore {
     canWrite: () => boolean = () => true,
   ): Promise<ArchiveIngestSummary | undefined> {
     if (!canWrite()) return undefined
+    // Source checks precede opening an IndexedDB transaction. The Booster capture
+    // envelope is a derived, intentionally filtered view of a validated page.
+    if (!detail.sourceUrl.includes('#chatgpt-booster-dom-snapshot'))
+      this.sourceGate.inspect(detail, Object.hasOwn(detail.payload, 'booster_capture'))
+    else this.sourceGate.assertCompatible(detail.conversationId)
     const payload = detail.payload
     const conversationId = stringOrNull(payload.conversation_id) ?? detail.conversationId
     const incomingMessages = Array.isArray(payload.messages)

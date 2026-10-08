@@ -169,6 +169,7 @@ export function serverTimeMs(value: number | null | undefined, observedAt = 0): 
     : observedAt
 }
 export const ARCHIVE_UPDATED_EVENT = 'chatgpt-booster:archive-updated'
+export const ARCHIVE_SOURCE_INCOMPATIBLE_EVENT = 'chatgpt-booster:archive-contract-error'
 export const OPEN_ARCHIVE_EVENT = 'chatgpt-booster:open-archive'
 export const OPEN_CAPTURE_SETTINGS_EVENT = 'chatgpt-booster:open-capture-settings'
 export const HISTORY_LOADER_STATE_EVENT = 'chatgpt-booster:history-loader-state'

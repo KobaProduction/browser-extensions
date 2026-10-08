@@ -172,6 +172,8 @@ export const archiveMessages = {
       'Export created, but completeness evidence is partial. Check coverage and manifest.json for omissions.',
     'export.remember': 'Format and contents selection are remembered.',
     'export.failed': 'Export failed',
+    'archive.error.incompatibleSource':
+      'ChatGPT history format is not supported by this Booster build. Archive capture and export are disabled for this conversation. Saved data is unchanged.',
     'archive.error.noChat': 'No conversation is available.',
     'archive.error.draft': 'Save or clear the draft and its attachments before collecting.',
     'archive.error.attachments': 'Remove or send pending attachments before collecting.',
@@ -360,6 +362,8 @@ export const archiveMessages = {
       'Архив создан; в manifest.json перечислены недоступные или непроверенные файлы.',
     'export.remember': 'Формат и состав экспорта запоминаются.',
     'export.failed': 'Не удалось выполнить экспорт',
+    'archive.error.incompatibleSource':
+      'Формат истории ChatGPT несовместим с этой версией Booster. Сохранение и экспорт этого диалога остановлены. Данные архива не изменены.',
     'archive.error.noChat': 'Диалог недоступен.',
     'archive.error.draft': 'Сохраните или очистите черновик и его вложения перед сбором.',
     'archive.error.attachments': 'Отправьте или удалите ожидающие вложения перед сбором.',

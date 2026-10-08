@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { ArchiveSourceGate } from '../packages/features/src/archive-source-contract'
 import type { ArchivedMessage } from '../packages/features/src/archive-store'
 import { ConversationStateStore } from '../packages/features/src/conversation-state'
 
@@ -14,7 +15,7 @@ function page(
     kind: 'conversation-page' as const,
     conversationId,
     timestamp,
-    sourceUrl: `https://chatgpt.com/backend-api/conversations/${conversationId}`,
+    sourceUrl: 'fixture://history',
     readId: `${conversationId}-read`,
     readStartedAt: timestamp - 10,
     isInitial: true,
@@ -55,8 +56,28 @@ function message(
 }
 
 describe('ConversationStateStore memory-first state', () => {
+  test('account transition does not promote unattributed or other-account pages', () => {
+    const store = new ConversationStateStore(fakeWindow, new ArchiveSourceGate(true))
+    const oldPage = { ...page('chat-memory', [message('m1', 'user', 1)]), accountId: null }
+    store.ingestPage(oldPage)
+    expect(store.listMessages('chat-memory')).toHaveLength(1)
+
+    store.ingestAccount({ accountId: 'account-A', observedAt: 1 })
+    expect(store.verifiedAccountId()).toBe('account-A')
+    expect(store.listMessages('chat-memory')).toHaveLength(0)
+
+    store.ingestPage({ ...oldPage, timestamp: 2, accountId: 'account-A' })
+    expect(store.listMessages('chat-memory')).toHaveLength(1)
+
+    store.ingestAccount({ accountId: 'account-B', observedAt: 3 })
+    expect(store.verifiedAccountId()).toBe('account-B')
+    expect(store.listMessages('chat-memory')).toHaveLength(0)
+    store.ingestPage({ ...oldPage, timestamp: 4, accountId: 'account-A' })
+    expect(store.listMessages('chat-memory')).toHaveLength(0)
+  })
+
   test('initial payload is immediately indexed by message and turn ids', () => {
-    const state = new ConversationStateStore(fakeWindow)
+    const state = new ConversationStateStore(fakeWindow, new ArchiveSourceGate(true))
     const conversationId = 'chat-memory'
     const turnId = 'turn-memory'
     state.ingestPage(
@@ -81,7 +102,7 @@ describe('ConversationStateStore memory-first state', () => {
   })
 
   test('page subscribers observe records only after they are already committed to RAM', () => {
-    const state = new ConversationStateStore(fakeWindow)
+    const state = new ConversationStateStore(fakeWindow, new ArchiveSourceGate(true))
     const conversationId = 'chat-page-order'
     let visibleInsideSubscriber = false
     state.subscribePages(() => {
@@ -94,7 +115,7 @@ describe('ConversationStateStore memory-first state', () => {
   })
 
   test('live memory wins over older persisted hydration', async () => {
-    const state = new ConversationStateStore(fakeWindow)
+    const state = new ConversationStateStore(fakeWindow, new ArchiveSourceGate(true))
     const conversationId = 'chat-hydrate'
     state.ingestPage(
       page(
@@ -128,7 +149,7 @@ describe('ConversationStateStore memory-first state', () => {
   })
 
   test('renderer in-progress state immediately anchors to initial user create_time', () => {
-    const state = new ConversationStateStore(fakeWindow)
+    const state = new ConversationStateStore(fakeWindow, new ArchiveSourceGate(true))
     const conversationId = 'chat-initial-active'
     state.ingestPage(
       page(conversationId, [
@@ -153,7 +174,7 @@ describe('ConversationStateStore memory-first state', () => {
   })
 
   test('stop request keeps lifecycle open until API confirmation', () => {
-    const state = new ConversationStateStore(fakeWindow)
+    const state = new ConversationStateStore(fakeWindow, new ArchiveSourceGate(true))
     const conversationId = 'chat-stop'
     state.ingestRequest({
       conversationId,
@@ -191,7 +212,7 @@ describe('ConversationStateStore memory-first state', () => {
   })
 
   test('stream COMPLETE is terminal even when stale renderer still says in-progress', () => {
-    const state = new ConversationStateStore(fakeWindow)
+    const state = new ConversationStateStore(fakeWindow, new ArchiveSourceGate(true))
     const conversationId = 'chat-stream-complete'
     state.ingestPage(
       page(conversationId, [
@@ -235,7 +256,7 @@ describe('ConversationStateStore memory-first state', () => {
   })
 
   test('older stale renderer cannot replace a newer outbound request', () => {
-    const state = new ConversationStateStore(fakeWindow)
+    const state = new ConversationStateStore(fakeWindow, new ArchiveSourceGate(true))
     const conversationId = 'chat-new-run-wins'
     state.ingestPage(
       page(conversationId, [message('user-old', 'user', 10), message('user-new', 'user', 20)]),
@@ -259,7 +280,7 @@ describe('ConversationStateStore memory-first state', () => {
   })
 
   test('failed stop confirmation returns lifecycle to in-progress', () => {
-    const state = new ConversationStateStore(fakeWindow)
+    const state = new ConversationStateStore(fakeWindow, new ArchiveSourceGate(true))
     state.ingestRequest({
       conversationId: 'chat-failed-stop',
       userMessageId: 'user-stop',
@@ -289,7 +310,7 @@ describe('ConversationStateStore memory-first state', () => {
   })
 
   test('numeric async status is authoritative and null closes a stale in-progress renderer', () => {
-    const state = new ConversationStateStore(fakeWindow)
+    const state = new ConversationStateStore(fakeWindow, new ArchiveSourceGate(true))
     const conversationId = 'chat-async-status'
     const messages = [
       message('user-async', 'user', 10, {
@@ -327,7 +348,7 @@ describe('ConversationStateStore memory-first state', () => {
   })
 
   test('message stream completion closes an active request without waiting for renderer DOM', () => {
-    const state = new ConversationStateStore(fakeWindow)
+    const state = new ConversationStateStore(fakeWindow, new ArchiveSourceGate(true))
     const conversationId = 'chat-sse-complete'
     state.ingestRequest({
       conversationId,
@@ -351,7 +372,7 @@ describe('ConversationStateStore memory-first state', () => {
     })
   })
   test('conversation-too-large stream error becomes a terminal source cause', () => {
-    const state = new ConversationStateStore(fakeWindow)
+    const state = new ConversationStateStore(fakeWindow, new ArchiveSourceGate(true))
     const conversationId = 'chat-exhausted'
     state.ingestRequest({
       conversationId,
@@ -387,7 +408,7 @@ describe('ConversationStateStore memory-first state', () => {
   })
 
   test('generic terminal stream error is failed and a new request clears its cause', () => {
-    const state = new ConversationStateStore(fakeWindow)
+    const state = new ConversationStateStore(fakeWindow, new ArchiveSourceGate(true))
     const conversationId = 'chat-stream-error'
     state.ingestRequest({
       conversationId,
@@ -440,7 +461,7 @@ describe('ConversationStateStore memory-first state', () => {
 
 describe('Work subagent runtime state', () => {
   test('keeps independent subagent lifecycle in RAM and does not let wait complete a running agent', () => {
-    const state = new ConversationStateStore(fakeWindow)
+    const state = new ConversationStateStore(fakeWindow, new ArchiveSourceGate(true))
     const conversationId = 'work-subagents'
 
     state.ingestRequest({
@@ -531,7 +552,7 @@ describe('Work subagent runtime state', () => {
   })
 
   test('catalog origin can classify a sidebar conversation without materializing a RAM conversation', () => {
-    const state = new ConversationStateStore(fakeWindow)
+    const state = new ConversationStateStore(fakeWindow, new ArchiveSourceGate(true))
     state.ingestCatalog({
       observedAt: 2_000,
       items: [

@@ -4,11 +4,13 @@ export const TRANSPORT_CONFIG_EVENT = 'chatgpt-booster:transport-config'
 export const TRANSPORT_CHANNEL = 'chatgpt-booster:transport'
 export const ARCHIVE_POLICY_EVENT = 'chatgpt-booster:archive-policy'
 export const ARCHIVE_NETWORK_EVENT = 'chatgpt-booster:archive-network'
+export const ARCHIVE_CONTRACT_ERROR_EVENT = 'chatgpt-booster:archive-native-contract-error'
 export const CONVERSATION_REQUEST_EVENT = 'chatgpt-booster:conversation-request'
 export const CONVERSATION_STOP_EVENT = 'chatgpt-booster:conversation-stop'
 export const CONVERSATION_STREAM_STATUS_EVENT = 'chatgpt-booster:conversation-stream-status'
 export const CONVERSATION_STREAM_EVENT = 'chatgpt-booster:conversation-stream'
 export const CONVERSATION_CATALOG_EVENT = 'chatgpt-booster:conversation-catalog'
+export const CONVERSATION_ACCOUNT_EVENT = 'chatgpt-booster:conversation-account'
 export const ARCHIVE_ASSET_EVENT = 'chatgpt-booster:archive-asset'
 export const ARCHIVE_ASSET_FETCH_REQUEST_EVENT = 'chatgpt-booster:archive-asset-fetch-request'
 export const ARCHIVE_ASSET_FETCH_RESULT_EVENT = 'chatgpt-booster:archive-asset-fetch-result'
@@ -36,6 +38,8 @@ interface ArchiveReadContext {
   readStartedAt: number
   isInitial: boolean
   requestedBefore: string | null
+  accountId: string | null
+  accountEpoch: number
 }
 const archiveReads = new Map<string, { readId: string; readStartedAt: number }>()
 const bufferedInitialPages = new Map<string, ConversationArchiveEventDetail>()
@@ -70,7 +74,12 @@ function publishPreloadPage(detail: ConversationArchiveEventDetail) {
     observerTarget.location.origin,
   )
 }
-function beginArchiveRequest(sourceUrl: string, requestId: string): ArchiveReadContext | undefined {
+function beginArchiveRequest(
+  sourceUrl: string,
+  requestId: string,
+  accountId: string | null,
+  accountEpoch: number,
+): ArchiveReadContext | undefined {
   const id = conversationHistoryId(sourceUrl)
   if (!id) return undefined
   const url = new URL(
@@ -88,7 +97,13 @@ function beginArchiveRequest(sourceUrl: string, requestId: string): ArchiveReadC
       archiveProjects.delete(oldest)
     }
   }
-  return { ...read, isInitial, requestedBefore: url.searchParams.get('before') }
+  return {
+    ...read,
+    isInitial,
+    requestedBefore: url.searchParams.get('before'),
+    accountId,
+    accountEpoch,
+  }
 }
 function captureAllowed(id: string, projectId: string | null): boolean {
   return (
@@ -246,7 +261,13 @@ export function conversationStreamEventFromPayload(
   return null
 }
 
-function observeConversationStreamResponse(response: Response, conversationId: string | null) {
+function observeConversationStreamResponse(
+  response: Response,
+  conversationId: string | null,
+  accountId: string | null,
+  requestEpoch: number,
+  currentEpoch: () => number,
+) {
   if (!response.ok || !/event-stream/i.test(response.headers.get('content-type') ?? '')) return
   const body = response.clone().body
   if (!body) return
@@ -258,7 +279,7 @@ function observeConversationStreamResponse(response: Response, conversationId: s
     try {
       while (true) {
         const { done, value } = await reader.read()
-        if (done) break
+        if (done || requestEpoch !== currentEpoch()) break
         buffer += decoder.decode(value, { stream: true })
         buffer = buffer.replace(/\r\n/g, '\n')
         let boundary = buffer.indexOf('\n\n')
@@ -272,9 +293,34 @@ function observeConversationStreamResponse(response: Response, conversationId: s
             .join('\n')
           if (data && data !== '[DONE]') {
             try {
-              publishConversationStream(
-                conversationStreamEventFromPayload(JSON.parse(data), conversationId, Date.now()),
+              const decoded = JSON.parse(data)
+              const normalized = conversationStreamEventFromPayload(
+                decoded,
+                conversationId,
+                Date.now(),
               )
+              if (!normalized) {
+                const value = requestPayload(decoded)
+                const sourceId =
+                  typeof value?.conversation_id === 'string'
+                    ? value.conversation_id
+                    : conversationId
+                const expectedMessage =
+                  value?.type === 'input_message' ||
+                  (value?.message !== undefined &&
+                    (value?.type === undefined || value?.type === 'message'))
+                if (sourceId && expectedMessage && shouldObserveArchiveConversation(sourceId))
+                  observerTarget?.postMessage(
+                    {
+                      channel: TRANSPORT_CHANNEL,
+                      type: ARCHIVE_CONTRACT_ERROR_EVENT,
+                      detail: { conversationId: sourceId, path: 'stream.message' },
+                    },
+                    observerTarget.location.origin,
+                  )
+              }
+              if (requestEpoch === currentEpoch())
+                publishConversationStream(normalized ? { ...normalized, accountId } : null)
             } catch {
               // Encoded deltas and ordinary content chunks are intentionally ignored.
             }
@@ -430,6 +476,18 @@ function conversationCatalogProjectId(sourceUrl: string): string | null | undefi
   }
 }
 
+function isAccountCheckUrl(sourceUrl: string): boolean {
+  try {
+    const url = new URL(sourceUrl, 'https://chatgpt.com/')
+    return (
+      url.origin === 'https://chatgpt.com' &&
+      /^\/backend-api\/accounts\/check(?:\/[^/]+)?$/.test(url.pathname)
+    )
+  } catch {
+    return false
+  }
+}
+
 function isConversationCatalogUrl(sourceUrl: string) {
   return conversationCatalogProjectId(sourceUrl) !== undefined
 }
@@ -471,16 +529,24 @@ function publishConversationCatalog(detail: ConversationCatalogEventDetail | nul
   )
 }
 
-function observeConversationCatalogResponse(response: Response, sourceUrl: string) {
+function observeConversationCatalogResponse(
+  response: Response,
+  sourceUrl: string,
+  accountId: string | null,
+  requestEpoch: number,
+  currentEpoch: () => number,
+) {
   if (!response.ok || !isConversationCatalogUrl(sourceUrl)) return
   const contentType = response.headers.get('content-type') ?? ''
   if (!/json/i.test(contentType)) return
   void response
     .clone()
     .json()
-    .then((payload: unknown) =>
-      publishConversationCatalog(conversationCatalogFromPayload(sourceUrl, payload, Date.now())),
-    )
+    .then((payload: unknown) => {
+      if (currentEpoch() !== requestEpoch) return
+      const detail = conversationCatalogFromPayload(sourceUrl, payload, Date.now())
+      if (detail) publishConversationCatalog({ ...detail, accountId })
+    })
     .catch(() => undefined)
 }
 
@@ -562,7 +628,7 @@ export interface ConversationStreamStatusEventDetail {
   httpStatus: number
 }
 
-export type ConversationStreamEventDetail =
+export type ConversationStreamEventDetail = (
   | {
       conversationId: string | null
       kind: 'message'
@@ -597,6 +663,7 @@ export type ConversationStreamEventDetail =
       canRetry: boolean | null
       observedAt: number
     }
+) & { accountId?: string | null }
 
 export interface ConversationCatalogItem {
   conversationId: string
@@ -605,9 +672,20 @@ export interface ConversationCatalogItem {
   conversationOrigin: string | null
 }
 
+/**
+ * Account identity is accepted only after a native catalog request selector
+ * matches an account ID listed in native account/check response.
+ * Never infer the selected account from the default account record.
+ */
+export interface ConversationAccountEventDetail {
+  accountId: string | null
+  observedAt: number
+}
+
 export interface ConversationCatalogEventDetail {
   items: ConversationCatalogItem[]
   observedAt: number
+  accountId?: string | null
 }
 
 export interface ArchiveAssetResolutionEventDetail {
@@ -623,6 +701,7 @@ export interface ConversationArchiveEventDetail {
   kind: 'conversation-page'
   readId?: string | undefined
   readStartedAt?: number | undefined
+  accountId?: string | null | undefined
   isInitial?: boolean | undefined
   requestedBefore?: string | null | undefined
   timestamp: number
@@ -960,9 +1039,11 @@ function observeConversationArchiveResponse(
   response: Response,
   sourceUrl: string,
   read: ArchiveReadContext | undefined,
+  activeAccountEpoch: () => number,
 ) {
   const conversationId = conversationHistoryId(sourceUrl)
   if (!observerTarget || !response.ok || !conversationId || !read) return
+  if (read.accountEpoch !== activeAccountEpoch()) return
   if (!read.isInitial && !shouldObserveArchiveConversation(conversationId)) return
 
   const contentType = response.headers.get('content-type') ?? ''
@@ -975,7 +1056,21 @@ function observeConversationArchiveResponse(
     .clone()
     .json()
     .then((payload: unknown) => {
-      if (!observerTarget || !isConversationHistoryPayload(payload)) return
+      if (!observerTarget || read.accountEpoch !== activeAccountEpoch()) return
+      if (!isConversationHistoryPayload(payload)) {
+        // Malformed history must not disappear silently: an archive-only gate takes over.
+        // Keep message text and nested transport payload out of diagnostics.
+        if (shouldObserveArchiveConversation(conversationId))
+          observerTarget.postMessage(
+            {
+              channel: TRANSPORT_CHANNEL,
+              type: ARCHIVE_CONTRACT_ERROR_EVENT,
+              detail: { conversationId, path: 'payload.messages/page_info' },
+            },
+            observerTarget.location.origin,
+          )
+        return
+      }
       const detail = {
         kind: 'conversation-page',
         ...read,
@@ -1074,6 +1169,66 @@ export function installTransportObserver(
   observerTarget = target
 
   archivePolicy = { ...DENY_ARCHIVE }
+  let verifiedAccountIds = new Set<string>()
+  let selectedAccountId: string | null = null
+  let emittedAccountId: string | null = null
+  let accountEpoch = 0
+
+  const publishAccount = (accountId: string | null, observedAt: number) => {
+    if (emittedAccountId === accountId) return
+    emittedAccountId = accountId
+    accountEpoch += 1
+    // Cached request pages from a prior account must never be replayed as
+    // belonging to the new selected account.
+    archiveReads.clear()
+    archiveProjects.clear()
+    bufferedInitialPages.clear()
+    target.postMessage(
+      {
+        channel: TRANSPORT_CHANNEL,
+        type: CONVERSATION_ACCOUNT_EVENT,
+        detail: { accountId, observedAt } satisfies ConversationAccountEventDetail,
+      },
+      target.location.origin,
+    )
+  }
+
+  const verifyAccountCatalog = (response: Response, requestEpoch: number) => {
+    if (!response.ok || !/json/i.test(response.headers.get('content-type') ?? '')) return
+    void response
+      .clone()
+      .json()
+      .then((value: unknown) => {
+        if (requestEpoch !== accountEpoch) return
+        const root = requestPayload(value)
+        const accounts = requestPayload(root?.accounts)
+        if (!accounts) return
+        const ids = new Set<string>()
+        for (const [key, raw] of Object.entries(accounts)) {
+          if (key === 'default') continue
+          const account = requestPayload(requestPayload(raw)?.account)
+          if (typeof account?.account_id === 'string' && account.account_id === key) ids.add(key)
+        }
+        verifiedAccountIds = ids
+        const confirmed = selectedAccountId && ids.has(selectedAccountId) ? selectedAccountId : null
+        publishAccount(confirmed, Date.now())
+      })
+      .catch(() => undefined)
+  }
+
+  const observeAccountSelector = (
+    sourceUrl: string,
+    method: string,
+    headerValue: string | null,
+    observedAt: number,
+  ) => {
+    if (method.toUpperCase() !== 'GET' || !isConversationCatalogUrl(sourceUrl)) return
+    if ((headerValue?.trim() || null) !== selectedAccountId) return
+    const confirmed =
+      selectedAccountId && verifiedAccountIds.has(selectedAccountId) ? selectedAccountId : null
+    publishAccount(confirmed, observedAt)
+  }
+
   const onArchivePolicy = (event: MessageEvent) => {
     if (event.origin !== target.location.origin || event.source !== target) return
     const data = event.data
@@ -1236,7 +1391,8 @@ export function installTransportObserver(
         !isConversationRequestUrl(rawUrl) &&
         !isConversationStopUrl(rawUrl) &&
         !isConversationStreamStatusUrl(rawUrl) &&
-        !isConversationCatalogUrl(rawUrl)
+        !isConversationCatalogUrl(rawUrl) &&
+        !isAccountCheckUrl(rawUrl)
       )
         return callUpstream(input, init)
 
@@ -1251,6 +1407,21 @@ export function installTransportObserver(
             ? sanitizeBodyPreview(init?.body, config.maxBodyChars)
             : undefined
         const requestBoundaryAt = Date.now()
+        const headers = new Headers(request?.headers)
+        if (init?.headers)
+          new Headers(init.headers).forEach((value, key) => {
+            headers.set(key, value)
+          })
+        // Revoke the verified account immediately when native ChatGPT starts
+        // selecting another one, not after a potentially slow response.
+        if (method.toUpperCase() === 'GET' && isConversationCatalogUrl(rawUrl)) {
+          const candidate = headers.get('chatgpt-account-id')?.trim() || null
+          if (candidate !== selectedAccountId) {
+            selectedAccountId = candidate
+            if (emittedAccountId === null) accountEpoch += 1
+            publishAccount(null, requestBoundaryAt)
+          }
+        }
         publishConversationRequest(
           conversationRequestTimingFromBody(rawUrl, method, init?.body, requestBoundaryAt),
         )
@@ -1275,7 +1446,8 @@ export function installTransportObserver(
             ...(body ? { bodyPreview: body } : {}),
           })
 
-        const historyRead = beginArchiveRequest(rawUrl, id)
+        const historyRead = beginArchiveRequest(rawUrl, id, emittedAccountId, accountEpoch)
+        const accountCheckEpoch = accountEpoch
         archiveNetwork(id, rawUrl, 'request')
         try {
           const response = await callUpstream(input, init)
@@ -1287,11 +1459,32 @@ export function installTransportObserver(
               status: response.status,
             })
           archiveNetwork(id, rawUrl, response.ok ? 'response' : 'error', response.status)
-          observeConversationArchiveResponse(response, rawUrl, historyRead)
-          observeConversationCatalogResponse(response, rawUrl)
+          observeConversationArchiveResponse(response, rawUrl, historyRead, () => accountEpoch)
+          if (response.ok)
+            observeAccountSelector(
+              rawUrl,
+              method,
+              headers.get('chatgpt-account-id'),
+              requestBoundaryAt,
+            )
+          observeConversationCatalogResponse(
+            response,
+            rawUrl,
+            emittedAccountId,
+            accountEpoch,
+            () => accountEpoch,
+          )
+          if (method.toUpperCase() === 'GET' && isAccountCheckUrl(rawUrl))
+            verifyAccountCatalog(response, accountCheckEpoch)
           observeConversationStreamStatusResponse(response, rawUrl)
           if (method.toUpperCase() === 'POST' && isConversationRequestUrl(rawUrl))
-            observeConversationStreamResponse(response, conversationIdFromBody(init?.body))
+            observeConversationStreamResponse(
+              response,
+              conversationIdFromBody(init?.body),
+              historyRead?.accountId ?? emittedAccountId,
+              accountCheckEpoch,
+              () => accountEpoch,
+            )
           observeArchiveAssetResponse(response, rawUrl)
           if (diagnosticsEnabled) {
             observeFetchResponseBody(response, { id, method, url }, config)
@@ -1678,6 +1871,9 @@ export function installTransportObserver(
     OriginalXHR.prototype.send = originalSend
     setRealtimeTransportHooksEnabled(false)
     bufferedInitialPages.clear()
+    verifiedAccountIds.clear()
+    selectedAccountId = null
+    emittedAccountId = null
     transportEmissionEnabled = false
     flushTransportBatch()
     delete tagged[marker]

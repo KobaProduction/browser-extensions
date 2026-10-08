@@ -3,13 +3,16 @@ import { currentConversationId } from '@chatgpt-booster/chatgpt'
 import type { BoosterModule } from '@chatgpt-booster/core'
 import { serverTimeMs } from '@chatgpt-booster/core'
 import {
+  ARCHIVE_CONTRACT_ERROR_EVENT,
   ARCHIVE_EVENT,
   ARCHIVE_PRELOAD_EVENT,
+  CONVERSATION_ACCOUNT_EVENT,
   CONVERSATION_CATALOG_EVENT,
   CONVERSATION_REQUEST_EVENT,
   CONVERSATION_STOP_EVENT,
   CONVERSATION_STREAM_EVENT,
   CONVERSATION_STREAM_STATUS_EVENT,
+  type ConversationAccountEventDetail,
   type ConversationArchiveEventDetail,
   type ConversationCatalogEventDetail,
   type ConversationRequestEventDetail,
@@ -18,6 +21,11 @@ import {
   type ConversationStreamStatusEventDetail,
   TRANSPORT_CHANNEL,
 } from '@chatgpt-booster/observer'
+import {
+  ArchiveContractError,
+  ArchiveSourceGate,
+  NATIVE_HISTORY_CONTRACT_VERSION,
+} from './archive-source-contract'
 import type { ArchivedMessage, ConversationArchiveStore } from './archive-store'
 import {
   normalizeConversationMessage,
@@ -309,11 +317,15 @@ export class ConversationStateStore implements BoosterModule {
   readonly id = 'conversation-state'
   #states = new Map<string, MutableConversationState>()
   #catalogOrigins = new Map<string, string | null>()
+  #verifiedAccountId: string | null = null
   #listeners = new Set<(change: ConversationStateChange) => void>()
   #pageListeners = new Set<(detail: ConversationArchiveEventDetail) => void>()
   #active = false
 
-  constructor(private readonly messageSource: Window = window) {}
+  constructor(
+    private readonly messageSource: Window = window,
+    readonly sourceGate = new ArchiveSourceGate(),
+  ) {}
 
   start() {
     if (this.#active) return
@@ -327,6 +339,21 @@ export class ConversationStateStore implements BoosterModule {
     window.removeEventListener('message', this.#onMessage)
     this.#listeners.clear()
     this.#pageListeners.clear()
+  }
+
+  /** Only the native catalog request selector matched against the account registry qualifies. */
+  verifiedAccountId(): string | null {
+    return this.#verifiedAccountId
+  }
+
+  ingestAccount(detail: ConversationAccountEventDetail) {
+    const next = typeof detail.accountId === 'string' && detail.accountId ? detail.accountId : null
+    if (next === this.#verifiedAccountId) return
+    // Native history observed without a confirmed owner cannot be silently
+    // attributed later. A switch also invalidates every prior RAM view.
+    this.#states.clear()
+    this.#catalogOrigins.clear()
+    this.#verifiedAccountId = next
   }
 
   subscribe(listener: (change: ConversationStateChange) => void) {
@@ -420,6 +447,15 @@ export class ConversationStateStore implements BoosterModule {
   }
 
   ingestPage(detail: ConversationArchiveEventDetail) {
+    // Native page ownership is captured at request time. Discard a late reply
+    // from a previous verified account instead of merging it into this RAM scope.
+    if (
+      detail.accountId !== undefined &&
+      this.#verifiedAccountId !== null &&
+      detail.accountId !== this.#verifiedAccountId
+    )
+      return
+    this.sourceGate.inspect(detail)
     const payload = detail.payload
     if (!payload || !Array.isArray(payload.messages)) return
     const conversationId =
@@ -466,6 +502,12 @@ export class ConversationStateStore implements BoosterModule {
   }
 
   ingestCatalog(detail: ConversationCatalogEventDetail) {
+    if (
+      detail.accountId !== undefined &&
+      this.#verifiedAccountId !== null &&
+      detail.accountId !== this.#verifiedAccountId
+    )
+      return
     let changedConversationId: string | null = null
     for (const item of detail.items) {
       const previousOrigin = this.#catalogOrigins.get(item.conversationId)
@@ -584,6 +626,14 @@ export class ConversationStateStore implements BoosterModule {
   ingestStreamEvent(detail: ConversationStreamEventDetail) {
     const conversationId = detail.conversationId ?? currentConversationId() ?? null
     if (!conversationId) return
+    if (
+      detail.accountId !== undefined &&
+      this.#verifiedAccountId !== null &&
+      detail.accountId !== this.#verifiedAccountId
+    )
+      return
+    if (detail.kind === 'message')
+      this.sourceGate.inspectStreamMessage(conversationId, detail.record)
     const state = this.#ensure(conversationId)
     if (detail.kind === 'message') {
       const normalized = normalizeConversationMessage(
@@ -773,11 +823,32 @@ export class ConversationStateStore implements BoosterModule {
       detail?: unknown
     }
     if (data?.channel !== TRANSPORT_CHANNEL) return
+    if (data.type === CONVERSATION_ACCOUNT_EVENT) {
+      const detail = data.detail as ConversationAccountEventDetail | undefined
+      if (detail) this.ingestAccount(detail)
+      return
+    }
+    if (data.type === ARCHIVE_CONTRACT_ERROR_EVENT) {
+      const detail = asRecord(data.detail)
+      if (typeof detail?.conversationId === 'string')
+        this.sourceGate.reject({
+          conversationId: detail.conversationId,
+          version: NATIVE_HISTORY_CONTRACT_VERSION,
+          path: typeof detail.path === 'string' ? detail.path : 'payload',
+          reason: 'unsupported',
+        })
+      return
+    }
     if (
       (data.type === ARCHIVE_EVENT || data.type === ARCHIVE_PRELOAD_EVENT) &&
       asRecord(data.detail)?.kind === 'conversation-page'
     ) {
-      this.ingestPage(data.detail as ConversationArchiveEventDetail)
+      try {
+        this.ingestPage(data.detail as ConversationArchiveEventDetail)
+      } catch (cause) {
+        if (!(cause instanceof ArchiveContractError)) throw cause
+        // The gate publishes a safe structural diagnostic; keep native ChatGPT working.
+      }
       return
     }
     if (data.type === CONVERSATION_CATALOG_EVENT && data.detail) {
@@ -796,8 +867,13 @@ export class ConversationStateStore implements BoosterModule {
       this.ingestStreamStatus(data.detail as ConversationStreamStatusEventDetail)
       return
     }
-    if (data.type === CONVERSATION_STREAM_EVENT && data.detail)
-      this.ingestStreamEvent(data.detail as ConversationStreamEventDetail)
+    if (data.type === CONVERSATION_STREAM_EVENT && data.detail) {
+      try {
+        this.ingestStreamEvent(data.detail as ConversationStreamEventDetail)
+      } catch (cause) {
+        if (!(cause instanceof ArchiveContractError)) throw cause
+      }
+    }
   }
 
   #ensure(conversationId: string) {

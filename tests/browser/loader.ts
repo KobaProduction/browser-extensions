@@ -4,6 +4,7 @@ import {
   type HistoryLoaderState,
   OPEN_ARCHIVE_EVENT,
 } from '../../packages/core/src'
+import { ArchiveSourceGate } from '../../packages/features/src/archive-source-contract'
 import { ConversationStateStore } from '../../packages/features/src/conversation-state'
 import { HistoryLoaderModule } from '../../packages/features/src/history-loader'
 
@@ -36,7 +37,7 @@ export async function runLoaderCancellationTests() {
     const states: HistoryLoaderState[] = []
     let archiveOpened = false
     let finishes = 0
-    const memory = new ConversationStateStore()
+    const memory = new ConversationStateStore(window, new ArchiveSourceGate(true))
     const capture = {
       finishCollection: (expected?: TicketRef) => {
         finishes++
@@ -165,7 +166,7 @@ export async function runLoaderScrollTest() {
       finishTicket(ticketKey, expected)
     },
   }
-  const memory = new ConversationStateStore()
+  const memory = new ConversationStateStore(window, new ArchiveSourceGate(true))
   const loader = new HistoryLoaderModule(memory, capture)
   const detail = {
     kind: 'conversation-page' as const,
@@ -291,7 +292,7 @@ export async function runLoaderIsolationTests() {
     const hiddenDescriptor = Object.getOwnPropertyDescriptor(document, 'hidden')
     let hidden = false
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden })
-    const memory = new ConversationStateStore()
+    const memory = new ConversationStateStore(window, new ArchiveSourceGate(true))
     memory.ingestPage({
       kind: 'conversation-page',
       conversationId: id,

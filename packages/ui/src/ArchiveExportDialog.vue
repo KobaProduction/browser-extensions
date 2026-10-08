@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+  ARCHIVE_SOURCE_INCOMPATIBLE_EVENT,
   DEFAULT_EXPORT_OPTIONS,
   normalizeExportOptions,
   type ArchiveExportFormatDescriptor,
@@ -21,6 +22,7 @@ const formats = ref<ArchiveExportFormatDescriptor[]>(props.archiveAdapter.listEx
 const busy = ref(false), ready = ref(false), error = ref(''), complete = ref(false), incomplete = ref(false)
 const coverage = ref<ArchiveCoverageView>()
 const refreshing = ref(false)
+const incompatible = ref(false)
 const preparedUrl = ref(''), preparedName = ref('')
 const t = (key: TranslationKey) => translate(props.locale, key)
 const isCurrent = computed(() => props.archiveAdapter.currentConversationId() === props.conversationId)
@@ -49,7 +51,16 @@ const statusKey = computed<TranslationKey>(() => {
 })
 let queue: Promise<unknown> = Promise.resolve(), active = true
 let exportController: AbortController | undefined
+function onSourceIncompatible(event: Event) {
+  const conversationId = (event as CustomEvent<{ conversationId?: string }>).detail?.conversationId
+  if (conversationId !== props.conversationId) return
+  incompatible.value = true
+  exportController?.abort()
+  clearPrepared()
+  error.value = 'archive.error.incompatibleSource'
+}
 onMounted(async () => {
+  window.addEventListener(ARCHIVE_SOURCE_INCOMPATIBLE_EVENT, onSourceIncompatible)
   try {
     const [settings, nextCoverage] = await Promise.all([
       props.settingsAdapter.get(),
@@ -65,13 +76,14 @@ onMounted(async () => {
         format: selected?.id ?? fallback?.id ?? DEFAULT_EXPORT_OPTIONS.format,
       }
       coverage.value = nextCoverage
+      incompatible.value = !!props.archiveAdapter.hasIncompatibleSource?.(props.conversationId)
       ready.value = true
     }
   } catch {
     error.value = 'common.saveError'
   }
 })
-onBeforeUnmount(() => { active = false; exportController?.abort(); if (preparedUrl.value) URL.revokeObjectURL(preparedUrl.value) })
+onBeforeUnmount(() => { window.removeEventListener(ARCHIVE_SOURCE_INCOMPATIBLE_EVENT, onSourceIncompatible); active = false; exportController?.abort(); if (preparedUrl.value) URL.revokeObjectURL(preparedUrl.value) })
 function clearPrepared() {
   if (preparedUrl.value) URL.revokeObjectURL(preparedUrl.value)
   preparedUrl.value = ''
@@ -97,7 +109,10 @@ async function refreshBeforeExport() {
   }
 }
 async function download() {
-  if (busy.value) return
+  if (busy.value || props.archiveAdapter.hasIncompatibleSource?.(props.conversationId)) {
+    error.value = 'archive.error.incompatibleSource'
+    return
+  }
   const controller = new AbortController()
   exportController = controller
   busy.value = true; error.value = ''; complete.value = false; incomplete.value = false
@@ -112,7 +127,9 @@ async function download() {
     complete.value = true
     incomplete.value = !outcome.complete
   } catch (cause) {
-    if (!(cause instanceof DOMException && cause.name === 'AbortError')) error.value = 'export.failed'
+    if (!(cause instanceof DOMException && cause.name === 'AbortError'))
+      error.value = cause instanceof Error && cause.message === 'archive.error.incompatibleSource'
+        ? 'archive.error.incompatibleSource' : 'export.failed'
   }
   finally {
     if (exportController === controller) exportController = undefined
@@ -146,12 +163,13 @@ function cancelExport() {
         <label><input v-model="options.images" type="checkbox" @change="remember" />{{ t('export.images') }}</label>
         <label><input v-model="options.files" type="checkbox" @change="remember" />{{ t('export.files') }}</label>
       </fieldset>
+      <p v-if="incompatible" role="alert" class="booster-error">{{ t("archive.error.incompatibleSource") }}</p>
       <p v-if="wantsAssets" class="booster-note">{{ t('export.metadata') }}</p>
       <p v-if="wantsAssets" class="booster-notice">{{ t('export.binaryUnavailable') }}</p>
       <p class="booster-note">{{ t('export.remember') }}</p>
-      <p v-if="error" role="alert" class="booster-error">{{ t(error as TranslationKey) }}</p><p v-if="complete" role="status">{{ t(incomplete ? 'export.savedPartial' : 'export.saved') }}</p>
+      <p v-if="error && !incompatible" role="alert" class="booster-error">{{ t(error as TranslationKey) }}</p><p v-if="complete" role="status">{{ t(incomplete ? 'export.savedPartial' : 'export.saved') }}</p>
       <a v-if="preparedUrl" class="booster-action-primary booster-export-ready" :href="preparedUrl" :download="preparedName"><Download class="size-4" />{{ t('export.readyDownload') }}</a>
-      <button v-else class="booster-action-primary" type="button" :disabled="busy" @click="download"><Download class="size-4" />{{ t(busy ? 'export.working' : 'export.prepare') }}</button>
+      <button v-else class="booster-action-primary" type="button" :disabled="busy || incompatible" @click="download"><Download class="size-4" />{{ t(busy ? 'export.working' : 'export.prepare') }}</button>
       <button v-if="busy" class="booster-action-secondary" type="button" @click="cancelExport">{{ t('common.cancel') }}</button>
     </div><p v-else class="booster-note">{{ t(error ? 'common.saveError' : 'control.loading') }}</p>
   </section>

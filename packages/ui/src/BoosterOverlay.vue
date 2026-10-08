@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {
-  ARCHIVE_UPDATED_EVENT, dockFromDrop, dockPosition,
+  ARCHIVE_UPDATED_EVENT, ARCHIVE_SOURCE_INCOMPATIBLE_EVENT, dockFromDrop, dockPosition,
   HISTORY_LOADER_STATE_EVENT, HISTORY_LOADER_STOP_EVENT, normalizeSettings,
   OPEN_ARCHIVE_EVENT, OPEN_CAPTURE_SETTINGS_EVENT, OPEN_SETTINGS_EVENT, resolveCaptureRule,
   snapshotSettings, type ArchiveCaptureContext, type ArchiveCurrentContext, type HistoryLoaderState,
@@ -94,7 +94,7 @@ const currentCaptureTarget = computed<ArchiveCaptureContext | undefined>(() => {
 })
 const safeError = (value: unknown): TranslationKey => {
   const message = value instanceof Error ? value.message : ''
-  return ['archive.error.noChat', 'archive.error.draft', 'archive.error.attachments', 'archive.error.generating', 'archive.error.storage', 'archive.error.timeout', 'archive.error.noProgress', 'archive.error.auth', 'archive.error.network'].includes(message) ? message as TranslationKey : 'archive.error.unknown'
+  return ['archive.error.noChat', 'archive.error.draft', 'archive.error.attachments', 'archive.error.generating', 'archive.error.storage', 'archive.error.timeout', 'archive.error.noProgress', 'archive.error.auth', 'archive.error.network', 'archive.error.incompatibleSource'].includes(message) ? message as TranslationKey : 'archive.error.unknown'
 }
 async function refreshContext() {
   const adapter = props.archiveAdapter
@@ -111,6 +111,7 @@ async function refreshContext() {
     const [next, nextCoverage, stored] = await Promise.all([adapter.getCurrentContext(), currentId ? adapter.getCoverage(currentId) : undefined, currentId ? adapter.getConversation(currentId) : undefined])
     if (!alive || request !== revision || adapter.currentConversationId() !== currentId) return
     context.value = next; coverage.value = nextCoverage; savedChat.value = !!stored
+    if (currentId && adapter.hasIncompatibleSource?.(currentId)) error.value = 'archive.error.incompatibleSource'
   } catch { if (alive && request === revision) error.value = 'archive.error.storage' }
   finally { if (alive && request === revision) loading.value = false }
 }
@@ -176,6 +177,11 @@ function onState(event: Event) {
     void refreshContext()
   } else if (changed && opened.value && Date.now() - refreshAt > 700) void refreshContext()
 }
+function onArchiveIncompatible(event: Event) {
+  const id = (event as CustomEvent<{ conversationId?: string }>).detail?.conversationId
+  if (id && id === props.archiveAdapter?.currentConversationId())
+    error.value = 'archive.error.incompatibleSource'
+}
 function onArchive() {
   if (!opened.value && !archiveOpen.value) return
   clearTimeout(archiveRefreshTimer)
@@ -207,6 +213,7 @@ onMounted(async () => {
   window.addEventListener('resize', resize); window.addEventListener('keydown', key)
   window.addEventListener(OPEN_SETTINGS_EVENT, openSettings); window.addEventListener(OPEN_CAPTURE_SETTINGS_EVENT, onOpenCapture)
   window.addEventListener(OPEN_ARCHIVE_EVENT, onOpenArchive); window.addEventListener(ARCHIVE_UPDATED_EVENT, onArchive)
+  window.addEventListener(ARCHIVE_SOURCE_INCOMPATIBLE_EVENT, onArchiveIncompatible)
   window.addEventListener(HISTORY_LOADER_STATE_EVENT, onState)
   window.dispatchEvent(new Event('chatgpt-booster:history-loader-query'))
   try {
@@ -232,6 +239,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', resize); window.removeEventListener('keydown', key)
   window.removeEventListener(OPEN_SETTINGS_EVENT, openSettings); window.removeEventListener(OPEN_CAPTURE_SETTINGS_EVENT, onOpenCapture)
   window.removeEventListener(OPEN_ARCHIVE_EVENT, onOpenArchive); window.removeEventListener(ARCHIVE_UPDATED_EVENT, onArchive)
+  window.removeEventListener(ARCHIVE_SOURCE_INCOMPATIBLE_EVENT, onArchiveIncompatible)
   window.removeEventListener(HISTORY_LOADER_STATE_EVENT, onState)
 })
 </script>

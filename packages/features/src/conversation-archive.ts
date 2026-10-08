@@ -98,7 +98,7 @@ export class ConversationArchiveModule implements BoosterModule {
     private messageSource: Window = window,
   ) {
     this.store = store
-    this.stateStore = stateStore ?? new ConversationStateStore(messageSource)
+    this.stateStore = stateStore ?? new ConversationStateStore(messageSource, store.sourceGate)
     this.#ownsStateStore = !stateStore
   }
 
@@ -134,6 +134,8 @@ export class ConversationArchiveModule implements BoosterModule {
   async collectCurrent(): Promise<void> {
     const conversationId = currentConversationId()
     if (!conversationId) throw new Error('archive.error.noChat')
+    this.store.sourceGate.assertCompatible(conversationId)
+    if (!this.stateStore.verifiedAccountId()) throw new Error('archive.error.auth')
     if (hasConversationDraft()) throw new Error('archive.error.draft')
     if (hasPendingComposerAttachments()) throw new Error('archive.error.attachments')
     if (isConversationGenerating()) throw new Error('archive.error.generating')
@@ -150,7 +152,13 @@ export class ConversationArchiveModule implements BoosterModule {
     window.dispatchEvent(new Event(HISTORY_LOADER_START_EVENT))
   }
   async #promotePreload(conversationId: string, startedAt: number): Promise<boolean> {
-    const memoryPages = this.stateStore.pages(conversationId)
+    const owner = this.stateStore.verifiedAccountId()
+    if (!owner) return false
+    // Unattributed pages and old v3 preload records cannot be relabeled as
+    // belonging to the newly verified account.
+    const memoryPages = this.stateStore
+      .pages(conversationId)
+      .filter((page) => page.accountId === owner)
     const latestInitial = memoryPages
       .filter((page) => page.isInitial)
       .sort(
@@ -162,18 +170,14 @@ export class ConversationArchiveModule implements BoosterModule {
     const livePages = selectedReadId
       ? memoryPages.filter((page) => page.readId === selectedReadId)
       : memoryPages.slice(-1)
-    const legacyPages = livePages.length
-      ? []
-      : await this.store.listLatestPreloadPages(conversationId)
-    const pages = livePages.length
-      ? livePages.map((page) => ({
-          payload: page.payload,
-          isInitial: page.isInitial,
-          requestedBefore: page.requestedBefore,
-          observedAt: page.timestamp,
-          sourceUrl: page.sourceUrl,
-        }))
-      : legacyPages
+    const pages = livePages.map((page) => ({
+      payload: page.payload,
+      isInitial: page.isInitial,
+      requestedBefore: page.requestedBefore,
+      observedAt: page.timestamp,
+      sourceUrl: page.sourceUrl,
+      accountId: page.accountId,
+    }))
     if (!pages.length) return false
     const project =
       currentProjectId() ??
@@ -189,7 +193,9 @@ export class ConversationArchiveModule implements BoosterModule {
       this.#settings.enabled,
     )
     const stillPermitted = () =>
-      this.#active && collectionTicket()?.conversationId === conversationId
+      this.#active &&
+      collectionTicket()?.conversationId === conversationId &&
+      this.stateStore.verifiedAccountId() === owner
     const readId = `manual-${startedAt}`
     for (const page of pages) {
       if (!stillPermitted()) return false
@@ -208,6 +214,7 @@ export class ConversationArchiveModule implements BoosterModule {
           timestamp: page.observedAt,
           sourceUrl: page.sourceUrl,
           conversationId,
+          accountId: owner,
           payload: {
             ...page.payload,
             messages,
@@ -226,6 +233,8 @@ export class ConversationArchiveModule implements BoosterModule {
   }
 
   async #promoteDomSnapshot(conversationId: string, startedAt: number): Promise<boolean> {
+    const owner = this.stateStore.verifiedAccountId()
+    if (!owner) return false
     const memory = this.stateStore.snapshot(conversationId)
     const fallback = currentConversationDomSnapshot()
     const snapshot = memory?.records.length
@@ -249,7 +258,9 @@ export class ConversationArchiveModule implements BoosterModule {
       this.#settings.enabled,
     )
     const stillPermitted = () =>
-      this.#active && collectionTicket()?.conversationId === conversationId
+      this.#active &&
+      collectionTicket()?.conversationId === conversationId &&
+      this.stateStore.verifiedAccountId() === owner
     const rawMessages = snapshot.records.map((record) => record.raw)
     const messages = rawMessages.filter((raw) => keepCapturedRecord(raw, rule))
     const readId = `manual-${startedAt}`
@@ -351,6 +362,7 @@ export class ConversationArchiveModule implements BoosterModule {
   }
   #pagePersistenceKey(detail: ConversationArchiveEventDetail, rule: CaptureRule) {
     return [
+      detail.accountId ?? 'unverified',
       detail.conversationId,
       detail.readId ?? '',
       detail.isInitial ? '1' : '0',
@@ -387,6 +399,11 @@ export class ConversationArchiveModule implements BoosterModule {
       return
     const id = detail.conversationId
     if (payload.conversation_id && payload.conversation_id !== id) return
+    if (
+      detail.accountId !== undefined &&
+      (!detail.accountId || detail.accountId !== this.stateStore.verifiedAccountId())
+    )
+      return
     const memoryProject = this.stateStore.snapshot(id)?.projectId ?? null
     const project =
       'gizmo_id' in payload
@@ -410,6 +427,8 @@ export class ConversationArchiveModule implements BoosterModule {
       const current = operationRule()
       return (
         this.#active &&
+        (detail.accountId === undefined ||
+          detail.accountId === this.stateStore.verifiedAccountId()) &&
         current.enabled &&
         (!rule.reasoning || current.reasoning) &&
         (!rule.tools || current.tools) &&
@@ -448,10 +467,11 @@ export class ConversationArchiveModule implements BoosterModule {
     if (data?.channel === TRANSPORT_CHANNEL && data.type === CONVERSATION_CATALOG_EVENT) {
       const catalog = data.detail as ConversationCatalogEventDetail | undefined
       if (!this.#active || !Array.isArray(catalog?.items)) return
+      if (!catalog.accountId || catalog.accountId !== this.stateStore.verifiedAccountId()) return
       // One read/write transaction for the observed catalog, never a new capture.
       const titles = catalog.items
         .filter((item) => typeof item.title === 'string' && item.title.trim())
-        .map((item) => ({ conversationId: item.conversationId, title: item.title! }))
+        .map((item) => ({ conversationId: item.conversationId, title: item.title as string }))
       if (titles.length)
         void this.store
           .updateExistingConversationTitles(titles)
