@@ -172,3 +172,21 @@ describe('dense timeline checkpoint sampling', () => {
     expect(sampled.some(({ index }) => index === 40)).toBe(true)
   })
 })
+
+describe('reverse-ordered saved history', () => {
+  test('does not draw parent-child edges backwards in chronological view', async () => {
+    const { archiveNavigatorEdges, archiveReverseAncestryCount } = await import(
+      '../packages/ui/src/archive-navigation'
+    )
+    const parents = new Map<string, string | null>([
+      ['child', 'parent'],
+      ['parent', null],
+    ])
+    const checkpoints = [
+      { id: 'child', index: 0 },
+      { id: 'parent', index: 1 },
+    ]
+    expect(archiveNavigatorEdges(parents, checkpoints)).toEqual([])
+    expect(archiveReverseAncestryCount(parents, checkpoints)).toBe(1)
+  })
+})

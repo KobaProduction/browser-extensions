@@ -776,3 +776,14 @@ scenario and verifies bounded navigation on the restored long chat.
 This is a presentation and stale-task fix; it does not prove full historical
 coverage, implement paginated IndexedDB reads, or replace live Pro browser
 acceptance of a specific saved conversation.
+
+### Reverse ancestry conflict in chronological checkpoints (2026-10-08)
+
+The source archive may contain records whose exact `parentId` relationship
+contradicts the reading-order projection: the referenced ancestor appears after
+its descendant. The graph must not draw that edge upward as a normal fork.
+This is reported as a diagnostic on the rail, not classified as lost messages
+or missing files. Missing links elsewhere can also reflect skipped ordinary
+checkpoints, absent ancestors, cycle guards or internal-only parent records.
+Full topology-aware rendering remains an independent acceptance requirement;
+this mitigation does not establish history completeness.

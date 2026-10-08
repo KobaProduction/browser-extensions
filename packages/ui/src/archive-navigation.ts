@@ -134,7 +134,10 @@ export function archiveNavigatorEdges(
     while (parent && !traversed.has(parent) && parents.has(parent)) {
       const index = selected.get(parent)
       if (index !== undefined) {
-        edges.push({ from: index, to: node.index })
+        // The view is chronological, not topologically ordered. A parent observed
+        // after its descendant cannot be drawn as an upward-going fork.
+        // Keep the saved records but report the ordering conflict separately.
+        if (index < node.index) edges.push({ from: index, to: node.index })
         break
       }
       traversed.add(parent)
@@ -142,4 +145,27 @@ export function archiveNavigatorEdges(
     }
   }
   return edges
+}
+
+/** UI evidence only: reverse-ordered links must not be drawn as valid forks. */
+export function archiveReverseAncestryCount(
+  parents: ReadonlyMap<string, string | null>,
+  checkpoints: readonly { id: string; index: number }[],
+): number {
+  const indices = new Map(checkpoints.map(({ id, index }) => [id, index]))
+  let conflicts = 0
+  for (const { id, index } of checkpoints) {
+    let parent = parents.get(id) ?? null
+    const visited = new Set([id])
+    while (parent && parents.has(parent) && !visited.has(parent)) {
+      const ancestorIndex = indices.get(parent)
+      if (ancestorIndex !== undefined) {
+        if (ancestorIndex >= index) conflicts++
+        break
+      }
+      visited.add(parent)
+      parent = parents.get(parent) ?? null
+    }
+  }
+  return conflicts
 }

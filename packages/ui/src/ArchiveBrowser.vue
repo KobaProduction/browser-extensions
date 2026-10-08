@@ -20,6 +20,7 @@ import {
   archiveConversationForest,
   archiveNavigatorSample,
   archiveNavigatorEdges,
+  archiveReverseAncestryCount,
   archiveTimelinePosition,
   archiveTurnWindow,
   ARCHIVE_INITIAL_TURNS,
@@ -133,15 +134,18 @@ const timelineNodes = computed(() =>
     36,
   ),
 )
-const navigatorEdges = computed(() => {
+const navigationParents = computed(() => {
   const parents = new Map<string, string | null>()
   for (const turn of thread.value.turns)
     for (const item of [...turn.messages, ...turn.details])
       if (item.record.messageId) parents.set(item.record.messageId, item.record.parentId)
-  return archiveNavigatorEdges(parents, timelineNodes.value.map(({ item, index }) => ({
-    id: item.record.messageId, index,
-  })))
+  return parents
 })
+const checkpoints = computed(() => timelineNodes.value.map(({ item, index }) => ({
+  id: item.record.messageId, index,
+})))
+const reverseAncestry = computed(() => archiveReverseAncestryCount(navigationParents.value, checkpoints.value))
+const navigatorEdges = computed(() => archiveNavigatorEdges(navigationParents.value, checkpoints.value))
 function nodeAxisX(index: number): number {
   const item = navigationNodes.value[index]
   return 18 + Math.min(3, item ? (messageGraph.value.get(item.record.messageKey)?.lane ?? 0) : 0) * 23
@@ -514,6 +518,7 @@ onBeforeUnmount(() => {
           <div v-if="loadingOlder" class="booster-reader-older-loading" role="status" aria-live="polite"><LoaderCircle class="size-4 booster-reader-spinner" />{{ t('reader.loadingEarlier') }} · {{ displayedTurns.length }}/{{ filteredTurns.length }}</div>
           <nav v-if="selected && navigationNodes.length" class="booster-reader-map" :aria-label="locale === 'ru' ? 'Навигация по сообщениям' : 'Message timeline'">
             <button class="booster-reader-map-end" type="button" :title="locale === 'ru' ? 'Начало сохранённых сообщений' : 'First saved message'" @click="navigateToNode(0)">↑</button>
+            <div v-if="reverseAncestry" class="booster-reader-map-warning" :title="locale === 'ru' ? 'Родительские связи противоречат порядку сообщений. Это не доказывает потерю истории' : 'Parent links conflict with message order; this does not prove missing history'">!</div>
             <div class="booster-reader-map-track">
               <svg class="booster-reader-map-links" viewBox="0 0 108 1000" preserveAspectRatio="none" aria-hidden="true">
                 <path v-for="edge in navigatorEdges" :key="`${edge.from}-${edge.to}`" :d="graphEdgePath(edge.from, edge.to)" />

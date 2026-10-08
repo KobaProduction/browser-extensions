@@ -3534,3 +3534,14 @@
     left: calc(12px + min(var(--map-lane, 0), 3) * 19px);
   }
 }
+
+.booster-reader-map-warning {
+  width: 19px;
+  height: 19px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--foreground);
+  text-align: center;
+  font-size: 12px;
+  cursor: help;
+}
