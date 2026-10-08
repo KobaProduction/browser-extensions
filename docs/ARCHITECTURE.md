@@ -73,6 +73,8 @@ The Archive Browser is a separate read-only surface. The active/session-buffer c
 Settings entry points must not fork Control Center behavior. Archive/quick surfaces may consume settings and archive adapters, but must not duplicate target-specific persistence logic.
 
 
+For the **proposed, not-yet-implemented** archive data model, strict ChatGPT source-signature validation, migration and Issue-based delivery contract, see [Archive target architecture](ARCHIVE_TARGET_ARCHITECTURE.md). Current v3 behavior remains documented in [Conversation Archive](CONVERSATION_ARCHIVE.md).
+
 ## Feature model
 
 Features register as small modules with explicit start/stop lifecycle. A feature should own only its injected DOM and subscriptions. Failure of one feature must not prevent unrelated features from starting.
