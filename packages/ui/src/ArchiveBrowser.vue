@@ -62,6 +62,7 @@ const visibleCount = ref(ARCHIVE_INITIAL_TURNS)
 const readingOrder = ref<ArchiveReadingOrder>('chronological')
 const searchOpen = ref(false)
 const forksOpen = ref(false)
+const historyOpen = ref(false)
 const windowCenter = ref<number | null>(null)
 const loadingOlder = ref(false)
 const readingScroll = ref<HTMLElement | null>(null)
@@ -364,6 +365,7 @@ function select(id: string) {
   mobileList.value = false
   textSearch.value = ''
   forksOpen.value = false
+  historyOpen.value = false
   void loadThread(id)
 }
 async function refresh() {
@@ -497,6 +499,12 @@ onBeforeUnmount(() => {
             <div class="booster-reader-chat-actions">
               <button class="booster-action-secondary" type="button" @click="reasoningExpanded = !reasoningExpanded"><Brain class="size-4" />{{ t(reasoningExpanded ? 'reader.collapseReasoning' : 'reader.expandReasoning') }}</button>
               <button class="booster-action-secondary booster-reader-export" type="button" :disabled="threadLoading" @click="emit('export', selected.conversationId, selected.title)"><Download class="size-4" />{{ t('reader.export') }}</button>
+              <button class="booster-action-secondary booster-reader-history-toggle" type="button"
+                :disabled="threadLoading || !navigationNodes.length" :aria-expanded="historyOpen"
+                :aria-label="locale === 'ru' ? 'Показать историю сообщений' : 'Show message history'"
+                :class="{ active: historyOpen }" @click="historyOpen = !historyOpen">
+                <GitBranch class="size-4" />{{ locale === 'ru' ? 'История' : 'History' }}
+              </button>
               <button v-if="forkChoices.length" class="booster-action-secondary booster-reader-fork-toggle" type="button" :aria-expanded="forksOpen" @click="forksOpen = !forksOpen"><GitBranch class="size-4" />{{ locale === 'ru' ? 'Ветки' : 'Forks' }} · {{ forkChoices.length }}</button>
               <button class="booster-action-secondary" type="button" :aria-expanded="searchOpen" :aria-label="t('reader.searchMessages')" @click="searchOpen = !searchOpen"><Search class="size-4" /></button>
             </div>
@@ -523,7 +531,9 @@ onBeforeUnmount(() => {
         <p v-if="error" role="alert" class="booster-error">{{ t('reader.error') }}</p>
         <div class="booster-reader-reading-surface">
           <div v-if="loadingOlder" class="booster-reader-older-loading" role="status" aria-live="polite"><LoaderCircle class="size-4 booster-reader-spinner" />{{ t('reader.loadingEarlier') }} · {{ displayedTurns.length }}/{{ filteredTurns.length }}</div>
-          <ArchiveFlowGraph v-if="selected && navigationNodes.length && !threadLoading" :key="selectedId ?? ''" :thread="thread" :locale="locale" :active-key="activeMessageKey" @navigate="navigateToMessageKey" />
+          <ArchiveFlowGraph v-if="historyOpen && selected && navigationNodes.length && !threadLoading"
+            :key="selectedId ?? ''" :thread="thread" :locale="locale" :active-key="activeMessageKey"
+            @navigate="navigateToMessageKey" @close="historyOpen = false" />
           <div ref="readingScroll" class="booster-reader-scroll" @scroll.passive="onReadingScroll">
             <p v-if="threadLoading" role="status" class="booster-reader-loading"><LoaderCircle class="size-4 booster-reader-spinner" />{{ t('reader.loading') }}</p>
             <template v-else-if="selected">

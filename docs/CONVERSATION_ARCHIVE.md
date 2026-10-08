@@ -852,3 +852,33 @@ check and both build targets also passed before review publication.
 These checks **do not** establish current ChatGPT Free/Pro runtime acceptance,
 completeness of remote history, or performance on arbitrarily large archives.
 A real-account visual and interaction gate remains open.
+
+### Archive History inspector redesign (2026-10-08)
+
+The earlier always-visible narrow GitGraph rail failed real Free visual acceptance:
+it obscured reading width, offered dots without message context, and converted
+archives with many unverified parent edges into a misleading array of stems.
+The reader now owns the entire message width by default. The **History** action
+opens a dismissible, bounded inspector over the reader; on compact viewports
+the inspector fills the reading surface instead of squeezing message cards.
+
+Within confirmed connected histories, the inspector uses GitGraph SVG together
+with readable user/assistant message previews anchored beside each saved node.
+Sibling nodes at the same graph Y position are collision-resolved so their text
+does not overlap; SVG paths still come exclusively from observed parent IDs.
+In an archive with insufficient verified ancestry, it shows ordinary saved
+message chronology (using actual turn order, not graph topological order) with
+individual clickable entries and a notice about unverified *links*. This status
+does not claim that the archive itself is incomplete. All navigation is local
+and read-only. Both views retain a 140-node/entry window and keyboard access.
+
+Product acceptance requires real Free/Pro screenshots in addition to synthetic
+Chromium UI tests. A successful source build or synthetic test suite is not
+visual product acceptance.
+
+The redesign's synthetic Chromium UI fixture passed 16/16 scenarios on the
+2026-10-08 implementation branch, including branch navigation, bounded 300-
+message history, and the original archive capture/export regression cases.
+Desktop and 390px mobile visual checks used both the two-fork fixture and an
+unlinked 110+ message conversation. These do not replace live Free/Pro visual
+acceptance on the rolled-out userscript.

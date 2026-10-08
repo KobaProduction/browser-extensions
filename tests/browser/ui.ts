@@ -555,12 +555,44 @@ export async function runUiTests(
           ),
           'manual show-more control should be replaced by continuous reading',
         )
-        const nav = restored.querySelector<HTMLElement>('.booster-archive-flow-graph')
-        assert(nav, 'separate message navigation rail is missing')
-        assert(nav.querySelectorAll('svg circle[id]').length > 0, 'timeline nodes missing')
         assert(
-          nav.querySelectorAll('svg circle[id]').length <= 180,
-          'timeline rendered an unbounded set of nodes',
+          !restored.querySelector('.booster-archive-flow-graph'),
+          'history must be closed initially',
+        )
+        const readerSurface = restored.querySelector<HTMLElement>('.booster-reader-reading-surface')
+        const readerScroll = restored.querySelector<HTMLElement>('.booster-reader-scroll')
+        assert(readerSurface && readerScroll, 'reader layout missing')
+        const readerWidth = readerScroll.getBoundingClientRect().width
+        assert(
+          Math.abs(readerWidth - readerSurface.getBoundingClientRect().width) < 2,
+          'closed history still reserves a reader gutter',
+        )
+        const toggle = restored.querySelector<HTMLButtonElement>('.booster-reader-history-toggle')
+        assert(toggle, 'history action missing')
+        toggle.click()
+        await waitFor(
+          () => Boolean(restored.querySelector('.booster-history-list-row')),
+          'unlinked saved chronology',
+        )
+        const nav = restored.querySelector<HTMLElement>('.booster-archive-flow-graph')
+        assert(nav, 'history inspector missing')
+        assert(
+          Math.abs(readerScroll.getBoundingClientRect().width - readerWidth) < 2,
+          'opening history unexpectedly shrunk the message viewport',
+        )
+        const chronologicalRows = [
+          ...nav.querySelectorAll<HTMLButtonElement>('.booster-history-list-row'),
+        ]
+        assert(
+          chronologicalRows[0]?.textContent?.includes('Вопрос 1') &&
+            chronologicalRows[1]?.textContent?.includes('Ответ 1') &&
+            chronologicalRows[2]?.textContent?.includes('Вопрос 2'),
+          'unlinked history lost conversation turn order',
+        )
+        assert(
+          nav.querySelectorAll('.booster-history-list-row').length <= 140 &&
+            !nav.querySelector('svg circle[id]'),
+          'partial history should use chronology, not disconnected graph stems',
         )
         assert(
           ![...restored.querySelectorAll('.booster-reader-chat-actions button')].some((item) =>
@@ -568,11 +600,11 @@ export async function runUiTests(
           ),
           'obsolete sorting control is still visible',
         )
-        const firstSaved = [...nav.querySelectorAll<SVGCircleElement>('svg circle[id]')].find(
-          (node) => node.getAttribute('id') === 'user-000',
+        const firstSaved = nav.querySelector<HTMLButtonElement>(
+          '.booster-history-list-row[data-archive-history-key="user-000"]',
         )
-        assert(firstSaved, 'start checkpoint missing')
-        firstSaved.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }))
+        assert(firstSaved, 'first saved chronology row missing')
+        firstSaved.click()
         await delay()
         assert(
           restored.querySelectorAll('.booster-exchange').length <= 40,
@@ -814,7 +846,7 @@ export async function runUiTests(
       listSearch.dispatchEvent(new Event('input', { bubbles: true }))
       await delay()
       const openFind = reader.querySelector<HTMLButtonElement>(
-        '.booster-reader-chat-actions button[aria-expanded]',
+        '.booster-reader-chat-actions button:last-child',
       )
       assert(openFind, 'collapsed message search toggle missing')
       openFind.click()
@@ -1074,12 +1106,24 @@ export async function runUiTests(
           'late other-chat result replaced current chat',
         )
         await waitFor(
-          () => reader.querySelectorAll('svg circle[id]').length > 10,
-          'restored long-chat navigation nodes',
+          () =>
+            Boolean(
+              reader.querySelector<HTMLButtonElement>(
+                '.booster-reader-history-toggle:not(:disabled)',
+              ),
+            ),
+          'restored history action is enabled',
+        )
+        const toggle = reader.querySelector<HTMLButtonElement>('.booster-reader-history-toggle')
+        assert(toggle, 'history toggle missing after chat switching')
+        toggle.click()
+        await waitFor(
+          () => Boolean(reader.querySelector('.booster-archive-flow-graph')),
+          'restored history inspector',
         )
         assert(
-          reader.querySelectorAll('svg circle[id]').length <= 180,
-          'rapid switching restored a stale or overcrowded timeline',
+          reader.querySelectorAll('.booster-history-list-row, svg circle[id]').length <= 140,
+          'rapid switching restored an overcrowded inspector',
         )
       } finally {
         releaseOther?.()
@@ -1215,11 +1259,22 @@ export async function runUiTests(
             currentReader
               ?.querySelector('.booster-reader-chat-header')
               ?.textContent?.includes('Две внутренние ветки') &&
-              currentReader.querySelector('.booster-archive-flow-graph svg circle[id]'),
+              currentReader.querySelector<HTMLButtonElement>(
+                '.booster-reader-history-toggle:not(:disabled)',
+              ),
           )
-        }, 'internal fork navigator for selected conversation')
+        }, 'selected fork conversation ready')
         const activeReader = shadow().querySelector<HTMLElement>('.booster-reader')
         assert(activeReader, 'archive unmounted while selecting fork')
+        const historyToggle = activeReader.querySelector<HTMLButtonElement>(
+          '.booster-reader-history-toggle',
+        )
+        assert(historyToggle, 'fork history toggle missing')
+        historyToggle.click()
+        await waitFor(
+          () => Boolean(activeReader.querySelector('.booster-archive-flow-graph svg circle[id]')),
+          'fork graph',
+        )
         const nav = activeReader.querySelector<HTMLElement>('.booster-archive-flow-graph')
         assert(nav, 'internal-branch message navigation rail missing')
         const dots = () => [...nav.querySelectorAll<SVGCircleElement>('svg circle[id]')]
@@ -1297,20 +1352,43 @@ export async function runUiTests(
       assert(openLong, 'long-history fixture trigger unavailable')
       openLong.click()
       await waitFor(
-        () => {
-          const current = shadow().querySelector<HTMLElement>('.booster-reader')
-          const graph = current?.querySelector<HTMLElement>('.booster-archive-flow-graph')
-          return Boolean(
-            current?.textContent?.includes('Длинный связный диалог') &&
-              graph?.textContent?.includes('161–300/300') &&
-              graph.querySelectorAll('svg circle[id]').length === 140,
-          )
-        },
-        '300-message bounded GitGraph window',
+        () =>
+          Boolean(
+            shadow()
+              .querySelector<HTMLElement>('.booster-reader')
+              ?.textContent?.includes('Длинный связный диалог'),
+          ),
+        'long conversation',
+      )
+      await waitFor(
+        () =>
+          Boolean(
+            shadow()
+              .querySelector('.booster-reader-chat-header')
+              ?.textContent?.includes('Длинный связный диалог') &&
+              shadow().querySelector<HTMLButtonElement>(
+                '.booster-reader-history-toggle:not(:disabled)',
+              ),
+          ),
+        'long conversation reading is ready',
+      )
+      const reader = shadow().querySelector<HTMLElement>('.booster-reader')
+      const toggle = reader?.querySelector<HTMLButtonElement>('.booster-reader-history-toggle')
+      assert(toggle, 'long history toggle missing')
+      toggle.click()
+      await waitFor(
+        () =>
+          Boolean(
+            reader
+              ?.querySelector('.booster-history-range')
+              ?.textContent?.includes('161–300 / 300') &&
+              reader.querySelectorAll('.booster-archive-flow-graph svg circle[id]').length === 140,
+          ),
+        '300-message bounded inspector',
         10000,
       )
-      const graph = shadow().querySelector<HTMLElement>('.booster-archive-flow-graph')
-      assert(graph, 'long-history graph missing')
+      const graph = reader?.querySelector<HTMLElement>('.booster-archive-flow-graph')
+      assert(graph, 'long-history inspector missing')
       assert(
         graph.scrollWidth <= graph.clientWidth + 1,
         'single-linked history unnecessarily overflows the graph horizontally',
@@ -1319,7 +1397,10 @@ export async function runUiTests(
       assert(earlier && !earlier.disabled, 'long-history earlier graph action unavailable')
       earlier.click()
       await waitFor(
-        () => Boolean(graph.textContent?.includes('21–160/300')),
+        () =>
+          Boolean(
+            graph.querySelector('.booster-history-range')?.textContent?.includes('21–160 / 300'),
+          ),
         'earlier 140-node graph window',
       )
       assert(

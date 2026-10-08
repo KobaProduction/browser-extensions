@@ -3546,87 +3546,11 @@
   cursor: help;
 }
 
-/* Native GitGraph SVG: fixed-sized history rows, never fit-to-view scaling. */
-.booster-archive-flow-graph {
-  order: 2;
-  flex: 0 0 180px;
-  width: 180px;
-  min-height: 0;
-  border-left: 1px solid var(--border);
-  background: var(--card);
-  overflow: auto;
-}
-.booster-gitgraph-content {
-  min-width: 140px;
-  width: max-content;
-  min-height: 100%;
-}
-.booster-gitgraph-content svg {
-  display: block;
-  overflow: visible;
-  max-width: none;
-}
-@media (max-width: 700px) {
-  .booster-archive-flow-graph {
-    flex-basis: 120px;
-    width: 120px;
-  }
-}
-
 /* GitGraph keeps one saved connected path per vertical segment. Unlinked
    archive fragments are separated, not overlaid as invented Git branches. */
 .booster-archive-flow-graph {
   overflow-x: auto;
   scrollbar-gutter: stable;
-}
-.booster-gitgraph-header {
-  position: sticky;
-  z-index: 2;
-  top: 0;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 4px;
-  padding: 6px 7px;
-  background: var(--card);
-  border-bottom: 1px solid var(--border);
-  font-size: 10px;
-  white-space: nowrap;
-}
-/* Put the range and pager on separate rows when the rail is narrow.
-   This avoids needless x-scroll even for a one-lane SVG. */
-.booster-gitgraph-header > span {
-  min-width: 0;
-  flex: 1 1 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.booster-gitgraph-pager {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex: 0 0 auto;
-  margin-left: auto;
-}
-.booster-gitgraph-pager button {
-  width: 22px;
-  height: 23px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  cursor: pointer;
-}
-.booster-gitgraph-pager button:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-.booster-gitgraph-pager button:focus-visible {
-  outline: 2px solid var(--ring);
-}
-.booster-gitgraph-warning {
-  margin: 5px 7px;
-  color: var(--muted-foreground);
-  font-size: 10px;
 }
 .booster-gitgraph-content {
   min-width: 0;
@@ -3655,4 +3579,304 @@
 }
 .booster-gitgraph-segment-canvas svg g[data-archive-graph-node][aria-current="true"] > use {
   filter: drop-shadow(0 0 3px var(--foreground));
+}
+
+/* Archive history inspector: an optional, readable navigation surface.
+   The archive reader keeps the full available width when history is closed. */
+.booster-reader-reading-surface {
+  display: block;
+}
+.booster-reader-reading-surface > .booster-reader-scroll {
+  width: 100%;
+  height: 100%;
+}
+.booster-reader-history-toggle.active {
+  background: var(--muted);
+  border-color: var(--ring);
+}
+.booster-archive-flow-graph {
+  position: absolute;
+  z-index: 5;
+  inset: 8px 8px 8px auto;
+  order: unset;
+  display: block;
+  width: min(360px, calc(100% - 16px));
+  max-width: none;
+  height: auto;
+  flex: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background);
+  box-shadow: 0 10px 32px rgb(0 0 0 / 28%);
+  scrollbar-gutter: stable;
+}
+.booster-history-header {
+  position: sticky;
+  z-index: 3;
+  top: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 15px 14px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--background);
+}
+.booster-history-header > div {
+  min-width: 0;
+}
+.booster-history-heading {
+  font-weight: 650;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--foreground);
+}
+.booster-history-header p {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  margin: 3px 0 0;
+}
+.booster-history-close {
+  flex: 0 0 28px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--card);
+  color: var(--muted-foreground);
+  font-size: 19px;
+  cursor: pointer;
+}
+.booster-history-close:hover {
+  color: var(--foreground);
+  background: var(--muted);
+}
+.booster-history-state {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 12px 14px 0;
+  color: var(--foreground);
+  font-size: 11px;
+  font-weight: 550;
+}
+.booster-history-state-dot {
+  flex: 0 0 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--primary);
+}
+.booster-history-state-dot.is-unverified {
+  background: var(--muted-foreground);
+}
+.booster-history-range {
+  margin-left: auto;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+  white-space: nowrap;
+}
+.booster-history-explainer {
+  margin: 6px 14px 0;
+  color: var(--muted-foreground);
+  line-height: 1.45;
+  font-size: 11px;
+}
+.booster-history-evidence {
+  margin: 10px 14px 2px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.booster-gitgraph-content {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px 9px 16px;
+}
+.booster-gitgraph-segment {
+  width: 100%;
+  position: relative;
+}
+.booster-gitgraph-segment-canvas {
+  min-width: 0;
+}
+.booster-gitgraph-segment-labels {
+  position: absolute;
+  inset: 0 8px 0 80px;
+  height: 100%;
+  pointer-events: none;
+}
+.booster-graph-message {
+  position: absolute;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  width: 100%;
+  height: 28px;
+  padding: 1px 7px;
+  background: transparent;
+  color: var(--foreground);
+  border: 1px solid transparent;
+  border-radius: 5px;
+  text-align: left;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.booster-graph-message:hover,
+.booster-graph-message:focus-visible {
+  border-color: var(--border);
+  background: var(--muted);
+}
+.booster-graph-message[aria-current="true"] {
+  background: color-mix(in oklab, var(--primary) 12%, var(--card));
+  border-color: color-mix(in oklab, var(--primary) 35%, var(--border));
+}
+.booster-graph-message-role {
+  color: var(--muted-foreground);
+  font-size: 9px;
+  line-height: 12px;
+}
+.booster-graph-message-preview {
+  width: 100%;
+  overflow: hidden;
+  color: var(--foreground);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  line-height: 14px;
+}
+.booster-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 9px 14px;
+}
+.booster-history-list-row {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--foreground);
+  text-align: left;
+  cursor: pointer;
+}
+.booster-history-list-row:hover,
+.booster-history-list-row:focus-visible {
+  background: var(--muted);
+  border-color: var(--border);
+}
+.booster-history-list-row[aria-current="true"] {
+  background: color-mix(in oklab, var(--primary) 10%, var(--card));
+  border-color: color-mix(in oklab, var(--primary) 32%, var(--border));
+}
+.booster-history-list-rail {
+  flex: 0 0 12px;
+  display: flex;
+  justify-content: center;
+  padding-top: 7px;
+}
+.booster-history-list-dot {
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--muted-foreground);
+  border-radius: 50%;
+}
+.booster-history-list-dot.is-user {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.booster-history-list-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.booster-history-list-meta {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  line-height: 13px;
+}
+.booster-history-list-preview {
+  font-size: 11px;
+  line-height: 1.4;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+.booster-history-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--background);
+}
+.booster-history-footer button {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--card);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.booster-history-footer button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.booster-history-close:focus-visible,
+.booster-history-footer button:focus-visible,
+.booster-history-list-row:focus-visible,
+.booster-graph-message:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+@media (max-width: 700px) {
+  .booster-archive-flow-graph {
+    inset: 0;
+    width: 100%;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+@media (max-width: 700px) {
+  .booster-archive-flow-graph {
+    scrollbar-gutter: auto;
+  }
+  .booster-history-header {
+    padding-right: 16px;
+  }
+  .booster-history-state {
+    flex-wrap: wrap;
+  }
+  .booster-history-range {
+    flex: 1 1 100%;
+    text-align: right;
+  }
 }
