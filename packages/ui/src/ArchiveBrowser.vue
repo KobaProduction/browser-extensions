@@ -23,6 +23,7 @@ import {
   type ArchiveReadingOrder,
 } from './archive-navigation'
 import CopyIdentity from './CopyIdentity.vue'
+import { archiveMessageGraph } from './archive-message-graph'
 import { translate, type SupportedLocale, type TranslationKey } from './i18n'
 import type {
   ArchiveConversationView,
@@ -105,6 +106,7 @@ const filteredTurns = computed(() => {
 const displayedTurns = computed(() =>
   archiveTurnWindow(filteredTurns.value, visibleCount.value, readingOrder.value),
 )
+const messageGraph = computed(() => archiveMessageGraph(thread.value))
 const hasEarlier = computed(() => filteredTurns.value.length > visibleCount.value)
 const archiveStatusKey = computed<TranslationKey>(() =>
   coverage.value?.completeAtLastRead ? 'reader.savedToStart' : 'reader.savedPartial',
@@ -353,12 +355,24 @@ onBeforeUnmount(() => {
                 <article v-for="turn in displayedTurns" :key="turn.id" class="booster-exchange">
                   <p v-if="turn.association === 'unassigned'" class="booster-note">{{ t('reader.unassigned') }}</p>
                   <p v-else-if="turn.association === 'adjacency'" class="booster-note">{{ t('reader.adjacency') }}</p>
-                  <ArchiveRecord v-for="item in turn.messages.filter(i => i.kind === 'user')" :key="item.record.messageKey" :item="item" :locale="locale" :expand-reasoning="reasoningExpanded" />
+                  <div v-for="item in turn.messages.filter(i => i.kind === 'user')" :key="item.record.messageKey" class="booster-graph-message" :class="{ 'is-fork': (messageGraph.get(item.record.messageKey)?.siblingCount ?? 1) > 1 }" :style="{ '--graph-lane': messageGraph.get(item.record.messageKey)?.lane ?? 0 }">
+                    <div class="booster-graph-rail" aria-hidden="true"><span class="booster-graph-dot is-user"></span></div>
+                    <div class="booster-graph-content">
+                      <span v-if="(messageGraph.get(item.record.messageKey)?.siblingCount ?? 1) > 1" class="booster-graph-branch-label"><GitBranch class="size-3" />{{ locale === 'ru' ? 'Вариант' : 'Variant' }} {{ (messageGraph.get(item.record.messageKey)?.siblingIndex ?? 0) + 1 }}/{{ messageGraph.get(item.record.messageKey)?.siblingCount }}</span>
+                      <ArchiveRecord :item="item" :locale="locale" :expand-reasoning="reasoningExpanded" />
+                    </div>
+                  </div>
                   <div v-if="turn.details.length" class="booster-exchange-details">
                     <div class="booster-exchange-details-label">{{ t('reader.details') }} · {{ turn.details.length }}</div>
                     <ArchiveRecord v-for="item in turn.details" :key="item.record.messageKey" :item="item" :locale="locale" :expand-reasoning="reasoningExpanded" />
                   </div>
-                  <ArchiveRecord v-for="item in turn.messages.filter(i => i.kind !== 'user')" :key="item.record.messageKey" :item="item" :locale="locale" :expand-reasoning="reasoningExpanded" />
+                  <div v-for="item in turn.messages.filter(i => i.kind !== 'user')" :key="item.record.messageKey" class="booster-graph-message" :class="{ 'is-fork': (messageGraph.get(item.record.messageKey)?.siblingCount ?? 1) > 1 }" :style="{ '--graph-lane': messageGraph.get(item.record.messageKey)?.lane ?? 0 }">
+                    <div class="booster-graph-rail" aria-hidden="true"><span class="booster-graph-dot is-assistant"></span></div>
+                    <div class="booster-graph-content">
+                      <span v-if="(messageGraph.get(item.record.messageKey)?.siblingCount ?? 1) > 1" class="booster-graph-branch-label"><GitBranch class="size-3" />{{ locale === 'ru' ? 'Вариант' : 'Variant' }} {{ (messageGraph.get(item.record.messageKey)?.siblingIndex ?? 0) + 1 }}/{{ messageGraph.get(item.record.messageKey)?.siblingCount }}</span>
+                      <ArchiveRecord :item="item" :locale="locale" :expand-reasoning="reasoningExpanded" />
+                    </div>
+                  </div>
                 </article>
               </div>
             </template>

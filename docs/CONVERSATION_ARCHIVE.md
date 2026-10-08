@@ -673,3 +673,18 @@ Do not include conversation IDs or titles unless the user explicitly opts into a
 10. Loader success is driven by observed history-page ingestion, not arbitrary timeouts alone.
 11. Full reread is always available.
 12. Chat content never reaches OTLP telemetry.
+
+### Read-only message-node rail (first visual iteration, 2026-10-08)
+
+Archive Browser overlays a compact message-node rail on the saved exchange stream: round
+nodes for user messages, square nodes for assistant replies. A node's lane is derived
+from explicit `parentId` edges, with sibling variants shown as separate lanes and
+numbered variant markers. Tool/reasoning/system details stay under the corresponding
+exchange and do not create new graph nodes. Unknown parents and malformed cycles never
+create inferred edges or remove messages; lanes are deliberately capped for narrow UI.
+
+This is a **visual prototype**, not a complete DAG editor. It does not switch native
+ChatGPT versions, identify a canonical active path, prove missing ancestors, or claim
+complete historical branch coverage. The conversation-level project forest remains
+independent. Full graph navigation, loading indicator, and oldest-endpoint jump are
+tracked separately in #38 and #39.
