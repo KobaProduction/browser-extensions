@@ -19,6 +19,7 @@ import ArchiveRecord from './ArchiveRecord.vue'
 import {
   archiveConversationForest,
   archiveNavigatorSample,
+  archiveNavigatorEdges,
   archiveTimelinePosition,
   archiveTurnWindow,
   ARCHIVE_INITIAL_TURNS,
@@ -73,6 +74,7 @@ let listRevision = 0
 let threadRevision = 0
 let scrollRevision = 0
 let initialized = false
+let resettingPosition = false
 let suppressSearchReset = false
 let contextUnsubscribe: (() => void) | undefined
 let contextFallbackTimer: ReturnType<typeof setInterval> | undefined
@@ -126,6 +128,26 @@ const timelineNodes = computed(() =>
     item => (messageGraph.value.get(item.record.messageKey)?.siblingCount ?? 1) > 1,
   ),
 )
+const navigatorEdges = computed(() => {
+  const parents = new Map<string, string | null>()
+  for (const turn of thread.value.turns)
+    for (const item of [...turn.messages, ...turn.details])
+      if (item.record.messageId) parents.set(item.record.messageId, item.record.parentId)
+  return archiveNavigatorEdges(parents, timelineNodes.value.map(({ item, index }) => ({
+    id: item.record.messageId, index,
+  })))
+})
+function nodeAxisX(index: number): number {
+  const item = navigationNodes.value[index]
+  return 27 + Math.min(3, item ? (messageGraph.value.get(item.record.messageKey)?.lane ?? 0) : 0) * 5
+}
+function graphEdgePath(from: number, to: number): string {
+  const startY = archiveTimelinePosition((from + 0.5) / Math.max(1, navigationNodes.value.length), readingProgress.value) * 1000
+  const endY = archiveTimelinePosition((to + 0.5) / Math.max(1, navigationNodes.value.length), readingProgress.value) * 1000
+  const startX = nodeAxisX(from), endX = nodeAxisX(to)
+  const bendY = startY + (endY - startY) * 0.25
+  return `M ${startX} ${startY} L ${startX} ${bendY} Q ${startX} ${endY} ${endX} ${endY}`
+}
 const currentNavigationIndex = computed(() => Math.round(readingProgress.value * Math.max(0, navigationNodes.value.length - 1)))
 const hasEarlier = computed(() => filteredTurns.value.length > visibleCount.value)
 const archiveStatusKey = computed<TranslationKey>(() =>
@@ -144,33 +166,31 @@ function date(value?: number | null) {
 /** Reset each new view to its latest exchange, without moving the pinned controls. */
 async function resetReadingPosition() {
   const ticket = ++scrollRevision
+  resettingPosition = true
   visibleCount.value = ARCHIVE_INITIAL_TURNS
   windowCenter.value = null
   loadingOlder.value = false
   await nextTick()
   if (!alive || scrollRevision !== ticket) return
   const viewport = readingScroll.value
-  if (!viewport) return
-
-  // Short messages may not fill a tall reading pane; add enough older turns to scroll.
-  for (
-    let batch = 0;
-    batch < 8 && hasEarlier.value && viewport.scrollHeight <= viewport.clientHeight + 8;
-    batch++
-  ) {
-    visibleCount.value += ARCHIVE_TURN_BATCH
-    await nextTick()
-    if (!alive || scrollRevision !== ticket) return
+  if (!viewport) {
+    resettingPosition = false
+    return
   }
+
+  // A bounded window must remain bounded regardless of viewport geometry.
+  // Loading more turns is driven only by navigation or user scroll.
   if (props.openPosition === 'first' && filteredTurns.value.length) {
     windowCenter.value = 0
     await nextTick()
+    if (!alive || scrollRevision !== ticket) return
     viewport.scrollTop = 0
     readingProgress.value = 0
   } else {
     viewport.scrollTop = readingOrder.value === 'chronological' ? viewport.scrollHeight : 0
     readingProgress.value = readingOrder.value === 'chronological' ? 1 : 0
   }
+  resettingPosition = false
 }
 
 async function loadEarlier() {
@@ -198,7 +218,7 @@ async function loadEarlier() {
 
 function onReadingScroll() {
   const viewport = readingScroll.value
-  if (!viewport) return
+  if (!viewport || resettingPosition) return
   const fraction = viewport.scrollTop / Math.max(1, viewport.scrollHeight - viewport.clientHeight)
   const total = filteredTurns.value.length
   const start = windowCenter.value !== null
@@ -354,7 +374,8 @@ async function refreshConversationTitles() {
   }
 }
 onMounted(async () => {
-  await refresh()
+  // Capture the live context before the asynchronous archive read. Navigation
+  // during the initial read must not silently become the observer baseline.
   let current = props.archiveAdapter.currentConversationId()
   const syncContext = () => {
     const next = props.archiveAdapter.currentConversationId()
@@ -370,6 +391,8 @@ onMounted(async () => {
   if (props.archiveAdapter.subscribeContextChange)
     contextUnsubscribe = props.archiveAdapter.subscribeContextChange(syncContext)
   else contextFallbackTimer = setInterval(syncContext, 450)
+  await refresh()
+  if (alive) syncContext()
 })
 onBeforeUnmount(() => {
   alive = false
@@ -462,6 +485,9 @@ onBeforeUnmount(() => {
           <nav v-if="selected && navigationNodes.length" class="booster-reader-map" :aria-label="locale === 'ru' ? 'Навигация по сообщениям' : 'Message timeline'">
             <button class="booster-reader-map-end" type="button" :title="locale === 'ru' ? 'Начало сохранённых сообщений' : 'First saved message'" @click="navigateToNode(0)">↑</button>
             <div class="booster-reader-map-track">
+              <svg class="booster-reader-map-links" viewBox="0 0 54 1000" preserveAspectRatio="none" aria-hidden="true">
+                <path v-for="edge in navigatorEdges" :key="`${edge.from}-${edge.to}`" :d="graphEdgePath(edge.from, edge.to)" />
+              </svg>
               <button v-for="{ item, index } in timelineNodes" :key="item.record.messageKey" class="booster-reader-map-node"
                 :class="{ 'is-user': item.kind === 'user', 'is-fork': (messageGraph.get(item.record.messageKey)?.siblingCount ?? 1) > 1, 'is-near': Math.abs(index - currentNavigationIndex) < 3 }"
                 :style="{ top: `${archiveTimelinePosition((index + 0.5) / navigationNodes.length, readingProgress) * 100}%`, '--map-lane': messageGraph.get(item.record.messageKey)?.lane ?? 0 }"

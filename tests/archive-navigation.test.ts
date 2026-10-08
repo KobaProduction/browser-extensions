@@ -121,3 +121,41 @@ describe('fisheye timeline', () => {
     expect(archiveTimelinePosition(0.75, 0.5)).toBeGreaterThan(0.75)
   })
 })
+
+describe('message fork checkpoint connectors', () => {
+  test('retains both forks and skips no known parents', async () => {
+    const { archiveNavigatorEdges } = await import('../packages/ui/src/archive-navigation')
+    const parents = new Map<string, string | null>([
+      ['root', null],
+      ['user-old', 'root'],
+      ['answer-old', 'user-old'],
+      ['user-edit', 'root'],
+      ['answer-edit', 'user-edit'],
+      ['orphan', 'missing'],
+    ])
+    expect(
+      archiveNavigatorEdges(parents, [
+        { id: 'root', index: 0 },
+        { id: 'answer-old', index: 3 },
+        { id: 'answer-edit', index: 5 },
+        { id: 'orphan', index: 6 },
+      ]),
+    ).toEqual([
+      { from: 0, to: 3 },
+      { from: 0, to: 5 },
+    ])
+  })
+  test('missing intermediate ancestors do not form invented links', async () => {
+    const { archiveNavigatorEdges } = await import('../packages/ui/src/archive-navigation')
+    const parents = new Map([
+      ['a', null],
+      ['c', 'b'],
+    ] as [string, string | null][])
+    expect(
+      archiveNavigatorEdges(parents, [
+        { id: 'a', index: 0 },
+        { id: 'c', index: 2 },
+      ]),
+    ).toEqual([])
+  })
+})

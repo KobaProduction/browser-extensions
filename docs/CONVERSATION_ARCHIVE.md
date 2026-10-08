@@ -720,3 +720,23 @@ the view window; this iteration does **not** establish paginated IndexedDB reads
 or guarantee bounded peak memory for enormous archives. The separate
 source-pagination/history-coverage and full message-DAG reconstruction tasks
 remain tracked in #38 and #39.
+
+### Free-profile local branch fixture and checkpoint connectors (2026-10-08)
+
+The server-managed Chromium is authenticated to a ChatGPT Free account, but the
+repeatable browser acceptance suite uses the isolated synthetic fixture origin,
+not private Free conversation history. The fixture contains two edited-message
+fork points within **one conversation**, with original and alternative descendants.
+
+The navigation rail now renders read-only graph connector paths between selected
+checkpoints only when the entire parent-message chain was observed. It traverses
+observed intermediary internal records as needed; a missing parent, a cycle, or
+an unknown intervening message terminates the drawn edge instead of inventing
+continuity. The compact central rail remains a visual location cue, not an
+assertion that missing history was captured. The archive remains read-only.
+
+The browser fixture asserts that sibling fork checkpoints and verified graph
+connector paths are rendered; the source tests cover both fork retention and
+unknown-parent gaps. Live Free page integration with an installed Booster
+userscript and live ChatGPT editing/version-switching is a separate validation
+level from this isolated fixture.

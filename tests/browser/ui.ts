@@ -3,6 +3,14 @@ import { translate } from '../../packages/ui/src/i18n'
 import type { ArchiveDataAdapter } from '../../packages/ui/src/mount'
 
 const delay = () => new Promise((resolve) => setTimeout(resolve, 100))
+async function waitFor(condition: () => boolean, label: string, timeoutMs = 4000) {
+  const started = performance.now()
+  while (!condition()) {
+    if (performance.now() - started > timeoutMs) throw new Error(`Timeout waiting for ${label}`)
+    await delay()
+  }
+}
+
 function assert(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message)
 }
@@ -374,9 +382,13 @@ export async function runUiTests(
             otherProject?.getAttribute('aria-expanded') === 'false',
           'wrong expanded projects',
         )
+        await waitFor(
+          () => restored.querySelectorAll('.booster-exchange').length > 0,
+          'initial archive turns',
+        )
         assert(
           restored.querySelectorAll('.booster-exchange').length === 40,
-          'initial rendering is not bounded',
+          `initial rendering is not bounded: ${restored.querySelectorAll('.booster-exchange').length}`,
         )
         const viewport = restored.querySelector<HTMLElement>('.booster-reader-scroll')
         const pinned = restored.querySelector<HTMLElement>('.booster-reader-pinned')
@@ -398,8 +410,11 @@ export async function runUiTests(
         const pinnedBefore = bounds(pinned)
         viewport.scrollTop = 0
         viewport.dispatchEvent(new Event('scroll', { bubbles: true }))
-        await delay()
         const expectedTurns = (await adapter.getThread(context.conversationId ?? '')).turns.length
+        await waitFor(
+          () => restored.querySelectorAll('.booster-exchange').length === expectedTurns,
+          'incremental older-turn load',
+        )
         assert(
           restored.querySelectorAll('.booster-exchange').length === expectedTurns,
           'scrolling toward history did not load older exchanges',
@@ -610,7 +625,15 @@ export async function runUiTests(
           projectId: 'g-p-22222222222222222222222222222222',
           projectTitle: 'Другой проект · тест',
         })
-        await new Promise((resolve) => setTimeout(resolve, 850))
+        await waitFor(
+          () =>
+            Boolean(
+              shadow()
+                .querySelector('.booster-reader-chat-header')
+                ?.textContent?.includes('Другой диалог'),
+            ),
+          'SPA next chat',
+        )
         assert(
           shadow()
             .querySelector('.booster-reader-chat-header')
@@ -618,7 +641,15 @@ export async function runUiTests(
           'archive did not follow the new chat',
         )
         Object.assign(context, original)
-        await new Promise((resolve) => setTimeout(resolve, 850))
+        await waitFor(
+          () =>
+            Boolean(
+              shadow()
+                .querySelector('.booster-reader-chat-header')
+                ?.textContent?.includes('Проверка панели и архива'),
+            ),
+          'SPA original chat',
+        )
         assert(
           shadow()
             .querySelector('.booster-reader-chat-header')
@@ -795,7 +826,10 @@ export async function runUiTests(
       assert(textSearch, 'message search missing')
       textSearch.value = 'Вопрос 55'
       textSearch.dispatchEvent(new Event('input', { bubbles: true }))
-      await delay()
+      await waitFor(
+        () => reader.querySelectorAll('.booster-exchange').length === 1,
+        'filtered message render',
+      )
       assert(reader.querySelectorAll('.booster-exchange').length === 1, 'message search failed')
       textSearch.value = ''
       textSearch.dispatchEvent(new Event('input', { bubbles: true }))
@@ -807,7 +841,12 @@ export async function runUiTests(
       )
       assert(refresh, 'refresh button missing')
       refresh.click()
-      await new Promise((resolve) => setTimeout(resolve, 180))
+      await waitFor(
+        () =>
+          Number(reader.querySelector('.booster-reader-summary b')?.textContent ?? '0') ===
+          before + 2,
+        'reread saved exchange',
+      )
       const after = Number(reader.querySelector('.booster-reader-summary b')?.textContent ?? '0')
       assert(after === before + 2, 'refresh did not reread open thread')
       const exportButton = reader.querySelector<HTMLButtonElement>(
@@ -920,12 +959,20 @@ export async function runUiTests(
           button('.booster-dock-toggle').click()
           await new Promise((resolve) => setTimeout(resolve, 1100))
           button('.booster-dock-actions > button:nth-child(3)').click()
-          await delay()
+          await waitFor(
+            () =>
+              Boolean(
+                shadow()
+                  .querySelector('.booster-reader')
+                  ?.textContent?.includes(translate('ru', 'reader.missing')),
+              ),
+            'missing conversation state',
+          )
           assert(
             shadow()
               .querySelector('.booster-reader')
               ?.textContent?.includes(translate('ru', 'reader.missing')),
-            'missing-current-chat state not shown',
+            `missing-current-chat state not shown: ${shadow().querySelector('.booster-reader')?.textContent?.slice(-190)}`,
           )
           await close()
 
@@ -949,7 +996,15 @@ export async function runUiTests(
             'loading state missing',
           )
           releaseList?.()
-          await delay()
+          await waitFor(
+            () =>
+              Boolean(
+                shadow()
+                  .querySelector('.booster-reader')
+                  ?.textContent?.includes(translate('ru', 'reader.empty')),
+              ),
+            'empty archive list',
+          )
           assert(
             shadow()
               .querySelector('.booster-reader')
@@ -1125,18 +1180,42 @@ export async function runUiTests(
         await delay()
         const reader = shadow().querySelector<HTMLElement>('.booster-reader')
         assert(reader, 'archive missing for synthetic Free branching example')
+        await waitFor(
+          () => Boolean(reader.querySelector('.booster-reader-group')),
+          'archive groups',
+        )
+        const fixtureProject = [
+          ...reader.querySelectorAll<HTMLButtonElement>('.booster-group-toggle'),
+        ].find((item) => item.textContent?.includes('Koba Infrastructure'))
+        if (fixtureProject?.getAttribute('aria-expanded') !== 'true') fixtureProject?.click()
+        await waitFor(
+          () =>
+            Boolean(
+              [
+                ...reader.querySelectorAll<HTMLButtonElement>('.booster-reader-chat-list button'),
+              ].find((item) => item.textContent?.includes('Две внутренние ветки')),
+            ),
+          'fixture fork chat entry',
+        )
         const forkChat = [
           ...reader.querySelectorAll<HTMLButtonElement>('.booster-reader-chat-list button'),
         ].find((item) => item.textContent?.includes('Две внутренние ветки'))
         assert(forkChat, 'fixture internal branch conversation not listed')
         forkChat.click()
-        await delay()
+        await waitFor(
+          () => Boolean(reader.querySelector('.booster-reader-map')),
+          'internal fork navigator',
+        )
         const nav = reader.querySelector<HTMLElement>('.booster-reader-map')
         assert(nav, 'internal-branch message navigation rail missing')
         const forks = [
           ...nav.querySelectorAll<HTMLButtonElement>('.booster-reader-map-node.is-fork'),
         ]
         assert(forks.length >= 4, 'two sibling fork points were not rendered')
+        assert(
+          nav.querySelectorAll('.booster-reader-map-links path').length >= 4,
+          'verified fork connectors missing',
+        )
         assert(
           forks.some((node) => node.title.includes('редакция')),
           'fork node lacks message preview',

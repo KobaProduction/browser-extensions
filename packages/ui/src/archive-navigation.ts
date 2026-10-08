@@ -120,3 +120,26 @@ export function archiveTimelinePosition(position: number, focus: number, exponen
   if (p <= f) return f * (p / f) ** exponent
   return 1 - (1 - f) * ((1 - p) / (1 - f)) ** exponent
 }
+
+/** Connect displayed checkpoints only through fully observed parent-ID chains. */
+export function archiveNavigatorEdges(
+  parents: ReadonlyMap<string, string | null>,
+  checkpoints: readonly { id: string; index: number }[],
+): { from: number; to: number }[] {
+  const selected = new Map(checkpoints.map((node) => [node.id, node.index]))
+  const edges: { from: number; to: number }[] = []
+  for (const node of checkpoints) {
+    let parent = parents.get(node.id) ?? null
+    const traversed = new Set<string>([node.id])
+    while (parent && !traversed.has(parent) && parents.has(parent)) {
+      const index = selected.get(parent)
+      if (index !== undefined) {
+        edges.push({ from: index, to: node.index })
+        break
+      }
+      traversed.add(parent)
+      parent = parents.get(parent) ?? null
+    }
+  }
+  return edges
+}
