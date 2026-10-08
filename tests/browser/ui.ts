@@ -562,7 +562,7 @@ export async function runUiTests(
           'timeline nodes missing',
         )
         assert(
-          nav.querySelectorAll('.booster-reader-map-node').length <= 160,
+          nav.querySelectorAll('.booster-reader-map-node').length <= 36,
           'timeline rendered an unbounded set of nodes',
         )
         assert(
@@ -1073,6 +1073,14 @@ export async function runUiTests(
             .querySelector('.booster-reader-chat-header')
             ?.textContent?.includes('Проверка панели и архива'),
           'late other-chat result replaced current chat',
+        )
+        await waitFor(
+          () => reader.querySelectorAll('.booster-reader-map-node').length > 10,
+          'restored long-chat navigation nodes',
+        )
+        assert(
+          reader.querySelectorAll('.booster-reader-map-node').length <= 36,
+          'rapid switching restored a stale or overcrowded timeline',
         )
       } finally {
         releaseOther?.()

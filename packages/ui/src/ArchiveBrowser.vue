@@ -77,6 +77,7 @@ let threadRevision = 0
 let scrollRevision = 0
 let initialized = false
 let resettingPosition = false
+let windowShiftRevision = 0
 let suppressSearchReset = false
 let contextUnsubscribe: (() => void) | undefined
 let contextFallbackTimer: ReturnType<typeof setInterval> | undefined
@@ -129,6 +130,7 @@ const timelineNodes = computed(() =>
   archiveNavigatorSample(
     navigationNodes.value,
     item => (messageGraph.value.get(item.record.messageKey)?.siblingCount ?? 1) > 1,
+    36,
   ),
 )
 const navigatorEdges = computed(() => {
@@ -253,13 +255,16 @@ async function paintLoadingStatus() {
 async function shiftWindow(amount: number) {
   const viewport = readingScroll.value
   if (!viewport || loadingOlder.value || windowCenter.value === null) return
+  const ticket = ++windowShiftRevision
+  const conversation = selectedId.value
   const beforeTop = viewport.scrollTop
   const beforeHeight = viewport.scrollHeight
   loadingOlder.value = true
   await paintLoadingStatus()
-  if (!alive || windowCenter.value === null) return
+  if (!alive || ticket !== windowShiftRevision || selectedId.value !== conversation || windowCenter.value === null) return
   windowCenter.value = Math.max(0, Math.min(filteredTurns.value.length - 1, windowCenter.value + amount))
   await nextTick()
+  if (!alive || ticket !== windowShiftRevision || selectedId.value !== conversation) return
   if (amount < 0) viewport.scrollTop = beforeTop + viewport.scrollHeight - beforeHeight
   else viewport.scrollTop = Math.max(0, beforeTop - (beforeHeight - viewport.scrollHeight))
   loadingOlder.value = false
@@ -312,6 +317,8 @@ watch(
 async function loadThread(id: string | null) {
   const revision = ++threadRevision
   ++scrollRevision
+  ++windowShiftRevision
+  resettingPosition = false
   thread.value = { turns: [], messageCount: 0, recordCount: 0, detailCount: 0 }
   coverage.value = undefined
   visibleCount.value = ARCHIVE_INITIAL_TURNS
@@ -342,6 +349,7 @@ async function loadThread(id: string | null) {
   }
 }
 function select(id: string) {
+  ++windowShiftRevision
   selectedId.value = id
   mobileList.value = false
   textSearch.value = ''
@@ -409,6 +417,7 @@ onBeforeUnmount(() => {
   listRevision++
   threadRevision++
   scrollRevision++
+  windowShiftRevision++
   contextUnsubscribe?.()
   window.removeEventListener(ARCHIVE_UPDATED_EVENT, refreshConversationTitles)
   if (contextFallbackTimer) clearInterval(contextFallbackTimer)

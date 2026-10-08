@@ -159,3 +159,16 @@ describe('message fork checkpoint connectors', () => {
     ).toEqual([])
   })
 })
+
+describe('dense timeline checkpoint sampling', () => {
+  test('limits regular nodes while retaining both endpoints and every fork', async () => {
+    const { archiveNavigatorSample } = await import('../packages/ui/src/archive-navigation')
+    const records = Array.from({ length: 63 }, (_, i) => i)
+    const sampled = archiveNavigatorSample(records, (index) => index === 20 || index === 40, 36)
+    expect(sampled.length).toBeLessThanOrEqual(36)
+    expect(sampled[0]?.index).toBe(0)
+    expect(sampled.at(-1)?.index).toBe(62)
+    expect(sampled.some(({ index }) => index === 20)).toBe(true)
+    expect(sampled.some(({ index }) => index === 40)).toBe(true)
+  })
+})

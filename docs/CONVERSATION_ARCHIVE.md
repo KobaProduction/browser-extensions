@@ -762,3 +762,17 @@ and no longer paints a continuous line through unverified gaps. The SVG paths
 remain derived exclusively from known parent chains; missing edges are not
 invented. This is a visual distinction, not native branch switching or proof
 of complete history. Live Pro visual acceptance is still required.
+
+### Dense navigation and conversation switch isolation (2026-10-08)
+
+Long archives now sample at most 36 ordinary/navigation checkpoints while retaining
+both saved endpoints and every explicitly observed fork (fork-heavy histories may
+exceed the nominal sampling count). The SVG links continue to use original message
+indices, not local sample offsets. A pending reader-window shift is invalidated
+when changing conversation or unmounting, so an older async continuation cannot
+reposition the next conversation. The fixture exercises the long/short rapid-switch
+scenario and verifies bounded navigation on the restored long chat.
+
+This is a presentation and stale-task fix; it does not prove full historical
+coverage, implement paginated IndexedDB reads, or replace live Pro browser
+acceptance of a specific saved conversation.
