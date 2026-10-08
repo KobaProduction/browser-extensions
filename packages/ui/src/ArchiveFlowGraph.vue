@@ -3,6 +3,7 @@ import type { ArchiveThreadView } from '@chatgpt-booster/core'
 import { createGitgraph, Mode, Orientation, TemplateName, templateExtend } from '@gitgraph/js'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { archiveGitgraphData, archiveGitgraphSegments } from './archive-gitgraph'
+import { archiveHistoryPreview } from './archive-history-preview'
 
 const PAGE_SIZE = 140
 const props = defineProps<{ thread: ArchiveThreadView; locale: 'ru' | 'en'; activeKey?: string | null }>()
@@ -41,7 +42,7 @@ const chronologicalItems = computed(() => {
 })
 const displayItems = computed(() => sparseHistory.value ? chronologicalItems.value : ordered.value)
 const pageItems = computed(() => displayItems.value.slice(pageStart.value, pageEnd.value))
-const messageText = (id: string) => (data.value.byId.get(id)?.text ?? '').replace(/\s+/g, ' ').trim()
+const messageText = (id: string) => archiveHistoryPreview(data.value.byId.get(id)?.text ?? '', props.locale)
 const isUser = (id: string) => data.value.byId.get(id)?.kind === 'user'
 const messageKey = (id: string) => data.value.byId.get(id)?.record.messageKey ?? id
 const messageLabel = (id: string) => isUser(id)
@@ -105,7 +106,7 @@ function decorateNodes(scrollIntoView = false) {
     group.dataset.archiveGraphNode = circle.id
     group.setAttribute('role', 'button')
     group.setAttribute('tabindex', '0')
-    group.setAttribute('aria-label', `${item.kind === 'user' ? (props.locale === 'ru' ? 'Вы' : 'You') : (props.locale === 'ru' ? 'Ассистент' : 'Assistant')}: ${item.text.slice(0, 100)}`)
+    group.setAttribute('aria-label', `${item.kind === 'user' ? (props.locale === 'ru' ? 'Вы' : 'You') : (props.locale === 'ru' ? 'Ассистент' : 'Assistant')}: ${messageText(circle.id).slice(0, 100)}`)
     const selected = item.record.messageKey === props.activeKey
     group.setAttribute('aria-current', selected ? 'true' : 'false')
     const label = labels.get(circle.id)

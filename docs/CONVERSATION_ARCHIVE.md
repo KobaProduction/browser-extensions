@@ -882,3 +882,9 @@ message history, and the original archive capture/export regression cases.
 Desktop and 390px mobile visual checks used both the two-fork fixture and an
 unlinked 110+ message conversation. These do not replace live Free/Pro visual
 acceptance on the rolled-out userscript.
+
+History inspector previews are presentation-only: opaque attachment pointers,
+internal citation markers, and simple Markdown delimiters are suppressed in
+navigation labels. Full archived message text, provenance, raw records and
+exports are untouched. The preview sanitizer is covered by separate unit cases
+based on an observed Free-account attachment reference.
