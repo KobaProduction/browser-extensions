@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import type { ArchiveThreadView } from '../packages/core/src/archive'
-import { layoutArchiveFlow } from '../packages/ui/src/archive-flow-layout'
+import { archiveGitgraphData } from '../packages/ui/src/archive-gitgraph'
 
 function fixture(pairs: Array<[string, string | null]>): ArchiveThreadView {
   return {
@@ -27,9 +27,10 @@ function fixture(pairs: Array<[string, string | null]>): ArchiveThreadView {
     detailCount: 0,
   } as unknown as ArchiveThreadView
 }
-describe('Dagre chronological independent DAG', () => {
-  test('lays out edited sibling branches below parent', () => {
-    const result = layoutArchiveFlow(
+
+describe('GitGraph saved message DAG', () => {
+  test('exports topologically ordered exact parent links for edited siblings', () => {
+    const result = archiveGitgraphData(
       fixture([
         ['child-b', 'root'],
         ['root', null],
@@ -38,32 +39,32 @@ describe('Dagre chronological independent DAG', () => {
         ['tip-b', 'child-b'],
       ]),
     )
-    expect(result.nodes.length).toBe(5)
-    expect(result.edges).toHaveLength(4)
-    const by = new Map(result.nodes.map((n) => [n.id, n.position]))
-    expect(by.get('child-a')!.y).toBeGreaterThan(by.get('root')!.y)
-    expect(by.get('child-b')!.y).toBeGreaterThan(by.get('root')!.y)
-    expect(by.get('child-a')!.x).not.toBe(by.get('child-b')!.x)
+    expect(result.commits.length).toBe(5)
+    const by = new Map(result.commits.map((commit, index) => [commit.hash, { ...commit, index }]))
+    expect(by.get('child-a')?.parents).toEqual(['root'])
+    expect(by.get('child-b')?.parents).toEqual(['root'])
+    expect(by.get('root')!.index).toBeGreaterThan(by.get('child-a')!.index)
+    expect(by.get('root')!.index).toBeGreaterThan(by.get('child-b')!.index)
+    expect(result.commits.filter((commit) => commit.refs.length > 0)).toHaveLength(2)
   })
-  test('does not link missing parents', () => {
-    const result = layoutArchiveFlow(
+  test('orphan ancestry is reported but never invented', () => {
+    const data = archiveGitgraphData(
       fixture([
         ['root', null],
         ['stray', 'unavailable'],
       ]),
     )
-    expect(result.edges).toHaveLength(0)
-    expect(result.disconnected).toBe(2)
+    expect(data.commits.find((x) => x.hash === 'stray')?.parents).toEqual([])
+    expect(data.unresolved).toBe(1)
   })
-})
-
-test('cyclic corrupt parent metadata does not generate a cyclic graph', () => {
-  const result = layoutArchiveFlow(
-    fixture([
-      ['a', 'b'],
-      ['b', 'a'],
-    ]),
-  )
-  expect(result.edges.length).toBeLessThan(2)
-  expect(result.nodes).toHaveLength(2)
+  test('corrupt cycles do not hang or create valid-looking loops', () => {
+    const data = archiveGitgraphData(
+      fixture([
+        ['a', 'b'],
+        ['b', 'a'],
+      ]),
+    )
+    expect(data.commits).toHaveLength(2)
+    expect(data.commits.some((x) => x.parents.length === 0)).toBe(true)
+  })
 })

@@ -1,43 +1,50 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { VueFlow, Handle, Position } from '@vue-flow/core'
-import type { NodeMouseEvent } from '@vue-flow/core'
 import type { ArchiveThreadView } from '@chatgpt-booster/core'
-import { layoutArchiveFlow } from './archive-flow-layout'
+import { createGitgraph, Mode, Orientation, TemplateName, templateExtend } from '@gitgraph/js'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { archiveGitgraphData } from './archive-gitgraph'
 
 const props = defineProps<{ thread: ArchiveThreadView; locale: 'ru' | 'en' }>()
 const emit = defineEmits<{ navigate: [key: string] }>()
-const layout = computed(() => layoutArchiveFlow(props.thread))
-function activate(event: NodeMouseEvent) {
-  const key = (event.node.data as { key?: string })?.key
-  if (key) emit('navigate', key)
+const holder = ref<HTMLElement | null>(null)
+let stop = false
+function renderGraph() {
+  const target = holder.value
+  if (!target || stop) return
+  target.replaceChildren()
+  const data = archiveGitgraphData(props.thread)
+  if (!data.commits.length) return
+  const graph = createGitgraph(target, {
+    orientation: Orientation.VerticalReverse,
+    mode: Mode.Compact,
+    template: templateExtend(TemplateName.Metro, {
+      colors: ['#679fea', '#4bbd9d', '#c18bed', '#e8a859', '#dd769b'],
+      branch: { spacing: 19, lineWidth: 2, label: { display: false } },
+      commit: { spacing: 27, dot: { size: 4 }, message: { display: false }, hasTooltipInCompactMode: true },
+    }),
+  })
+  graph.import(data.commits)
+  // GitGraph's imported SVG dots carry the exact message ID on <circle>.
+  // Use event delegation because GitGraph rebuilds SVG nodes on updates.
+  const activate = (event: MouseEvent) => {
+    const path = event.composedPath()
+    const circle = path.find(node => node instanceof SVGCircleElement && node.id && data.byId.has(node.id)) as SVGCircleElement | undefined
+    // Clicking a dot's parent <g> is also supported.
+    const element = event.target as Element | null
+    const group = element?.closest('g')
+    const fallback = group?.querySelector<SVGCircleElement>('circle[id]')
+    const id = circle?.id ?? fallback?.id
+    const record = id ? data.byId.get(id) : undefined
+    if (record) emit('navigate', record.record.messageKey)
+  }
+  target.onclick = activate
 }
+onMounted(() => { void nextTick(renderGraph) })
+watch(() => props.thread, () => { void nextTick(renderGraph) })
+onBeforeUnmount(() => { stop = true; if (holder.value) holder.value.onclick = null })
 </script>
 <template>
   <div class="booster-archive-flow-graph" :aria-label="locale === 'ru' ? 'Граф ветвей диалога' : 'Conversation branch graph'">
-    <VueFlow
-      :key="thread.recordCount"
-      :nodes="layout.nodes"
-      :edges="layout.edges"
-      :nodes-draggable="false"
-      :nodes-connectable="false"
-      :elements-selectable="true"
-      :zoom-on-scroll="false"
-      :zoom-on-pinch="false"
-      :pan-on-scroll="true"
-      :fit-view-on-init="true"
-      :min-zoom="0.12"
-      :max-zoom="2"
-      :default-edge-options="{ animated: false, style: { stroke: 'var(--primary)', strokeWidth: 2 } }"
-      @node-click="activate"
-    >
-      <template #node-archive="{ data }">
-        <div class="booster-flow-node" :class="{ 'is-user': data.kind === 'user' }" :title="data.text.slice(0, 175)" :aria-label="data.text.slice(0, 90)">
-          <Handle type="target" :position="Position.Top" class="booster-flow-handle" />
-          <span>{{ data.kind === 'user' ? '●' : '■' }}</span>
-          <Handle type="source" :position="Position.Bottom" class="booster-flow-handle" />
-        </div>
-      </template>
-    </VueFlow>
+    <div ref="holder" class="booster-gitgraph-content"></div>
   </div>
 </template>

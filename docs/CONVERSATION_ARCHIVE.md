@@ -804,3 +804,22 @@ This supersedes the hand-written fixed SVG checkpoint geometry, which no longer
 runs in Archive Browser. Source typecheck, unit and target builds plus managed
 Chromium fixture are separate from live Pro acceptance and full server-backed
 history completeness.
+
+### GitGraph.js vertical archive history (2026-10-08)
+
+The previous Vue Flow / Dagre renderer (described above for historical
+traceability) was replaced by MIT-licensed `@gitgraph/js` / `@gitgraph/core`.
+The core's experimental git2json import is fed a deterministic parent-first
+ordered projection of stored messages, reversed into its expected input order.
+Non-visible tool records can bridge observed `parentId` chains; missing parent
+links are left rootless rather than fabricated. Each terminal saved path has a
+synthetic Git ref because GitGraph hides unreachable commits, but synthetic refs
+do **not** create merges or change the stored parent IDs. The graph uses compact
+`VerticalReverse` orientation (oldest above newest), fixed pixel spacing, narrow
+lanes and scrollable SVG rather than fit-to-view scaling. The surrounding
+archive remains Vue/shadcn styled, and navigation is archive-only. Malformed
+cycles are broken for rendering without rewriting stored data.
+
+This is a renderer replacement, not confirmation that the existing IndexedDB
+archive contains every ancestral branch. Server Chromium fixture acceptance is
+separate from user Pro screenshot acceptance.

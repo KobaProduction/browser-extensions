@@ -12,8 +12,8 @@
   },
   "dependencies": {
     "@chatgpt-booster/core": "workspace:*",
-    "@dagrejs/dagre": "3.1.1",
-    "@vue-flow/core": "1.48.2",
+    "@gitgraph/core": "1.5.0",
+    "@gitgraph/js": "1.4.0",
     "clsx": "^2.1.1",
     "lucide-vue-next": "^0.545.0",
     "tailwind-merge": "^3.3.1",

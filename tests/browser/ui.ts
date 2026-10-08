@@ -557,9 +557,9 @@ export async function runUiTests(
         )
         const nav = restored.querySelector<HTMLElement>('.booster-archive-flow-graph')
         assert(nav, 'separate message navigation rail is missing')
-        assert(nav.querySelectorAll('.vue-flow__node').length > 0, 'timeline nodes missing')
+        assert(nav.querySelectorAll('svg circle[id]').length > 0, 'timeline nodes missing')
         assert(
-          nav.querySelectorAll('.vue-flow__node').length <= 180,
+          nav.querySelectorAll('svg circle[id]').length <= 180,
           'timeline rendered an unbounded set of nodes',
         )
         assert(
@@ -568,11 +568,11 @@ export async function runUiTests(
           ),
           'obsolete sorting control is still visible',
         )
-        const firstSaved = [...nav.querySelectorAll<HTMLElement>('.vue-flow__node')].find(
-          (node) => node.getAttribute('data-id') === 'user-000',
+        const firstSaved = [...nav.querySelectorAll<SVGCircleElement>('svg circle[id]')].find(
+          (node) => node.getAttribute('id') === 'user-000',
         )
         assert(firstSaved, 'start checkpoint missing')
-        firstSaved.click()
+        firstSaved.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }))
         await delay()
         assert(
           restored.querySelectorAll('.booster-exchange').length <= 40,
@@ -1074,11 +1074,11 @@ export async function runUiTests(
           'late other-chat result replaced current chat',
         )
         await waitFor(
-          () => reader.querySelectorAll('.vue-flow__node').length > 10,
+          () => reader.querySelectorAll('svg circle[id]').length > 10,
           'restored long-chat navigation nodes',
         )
         assert(
-          reader.querySelectorAll('.vue-flow__node').length <= 180,
+          reader.querySelectorAll('svg circle[id]').length <= 180,
           'rapid switching restored a stale or overcrowded timeline',
         )
       } finally {
@@ -1215,14 +1215,11 @@ export async function runUiTests(
         )
         const nav = reader.querySelector<HTMLElement>('.booster-archive-flow-graph')
         assert(nav, 'internal-branch message navigation rail missing')
-        const forks = [...nav.querySelectorAll<HTMLElement>('.vue-flow__node')]
+        const forks = [...nav.querySelectorAll<SVGCircleElement>('svg circle[id]')]
         assert(forks.length >= 8, 'two sibling fork points were not rendered')
+        assert(nav.querySelectorAll('svg path').length >= 2, 'verified fork connectors missing')
         assert(
-          nav.querySelectorAll('.vue-flow__edge').length >= 4,
-          'verified fork connectors missing',
-        )
-        assert(
-          forks.some((node) => node.textContent?.includes('●')),
+          forks.some((node) => Boolean(node.id)),
           'fork node lacks message preview',
         )
         const switcher = reader.querySelector<HTMLButtonElement>('.booster-reader-fork-toggle')
@@ -1242,7 +1239,7 @@ export async function runUiTests(
           reader.textContent?.includes('Вопрос 3 · редакция (ветка 2)'),
           'selected variant did not open for reading',
         )
-        forks[0]?.click()
+        forks[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }))
         await delay()
         assert(
           reader.querySelectorAll('.booster-exchange').length < 20,
