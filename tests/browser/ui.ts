@@ -355,10 +355,14 @@ export async function runUiTests(
           !shadow().querySelector('.booster-reader'),
           'drag release incorrectly restored archive',
         )
-        docked.click()
+        window.dispatchEvent(
+          new CustomEvent('chatgpt-booster:open-archive', {
+            detail: { conversationId: context.conversationId },
+          }),
+        )
         await delay()
         const restored = shadow().querySelector<HTMLElement>('.booster-reader')
-        assert(restored, 'archive did not restore from dock button')
+        assert(restored, 'reopening archive while minimized did not restore the workspace')
 
         const projects = [...restored.querySelectorAll<HTMLButtonElement>('.booster-group-toggle')]
         const activeProject = projects.find((item) =>
@@ -536,19 +540,36 @@ export async function runUiTests(
           ),
           'manual show-more control should be replaced by continuous reading',
         )
-        const newestFirst = [
-          ...restored.querySelectorAll<HTMLButtonElement>('.booster-reader-chat-actions button'),
-        ].find((item) => item.textContent?.includes(translate('ru', 'reader.newestFirst')))
-        assert(newestFirst, 'reverse sort control missing')
-        newestFirst.click()
+        const nav = restored.querySelector<HTMLElement>('.booster-reader-map')
+        assert(nav, 'separate message navigation rail is missing')
+        assert(
+          nav.querySelectorAll('.booster-reader-map-node').length > 0,
+          'timeline nodes missing',
+        )
+        assert(
+          nav.querySelectorAll('.booster-reader-map-node').length <= 160,
+          'timeline rendered an unbounded set of nodes',
+        )
+        assert(
+          ![...restored.querySelectorAll('.booster-reader-chat-actions button')].some((item) =>
+            /Новые сверху|Старые сверху/.test(item.textContent ?? ''),
+          ),
+          'obsolete sorting control is still visible',
+        )
+        const firstSaved = nav.querySelector<HTMLButtonElement>('.booster-reader-map-end')
+        assert(firstSaved, 'start endpoint missing')
+        firstSaved.click()
         await delay()
+        assert(
+          restored.querySelectorAll('.booster-exchange').length <= 40,
+          'jump to earliest endpoint rendered all intervening exchanges',
+        )
         assert(
           restored
             .querySelector('.booster-exchange:first-child')
-            ?.textContent?.includes(mostRecentQuestion),
-          'newest-first sort does not start on the latest exchange',
+            ?.textContent?.includes('Вопрос 1'),
+          'earliest saved exchange did not open',
         )
-        assert(viewport.scrollTop === 0, 'reverse sort did not reset to the latest exchange')
         otherProject.click()
         await delay()
         assert(
@@ -761,6 +782,12 @@ export async function runUiTests(
       )
       listSearch.value = ''
       listSearch.dispatchEvent(new Event('input', { bubbles: true }))
+      await delay()
+      const openFind = reader.querySelector<HTMLButtonElement>(
+        '.booster-reader-chat-actions button[aria-expanded]',
+      )
+      assert(openFind, 'collapsed message search toggle missing')
+      openFind.click()
       await delay()
       const textSearch = reader.querySelector<HTMLInputElement>(
         '.booster-reader-find input[type="search"]',
@@ -1085,6 +1112,42 @@ export async function runUiTests(
           adapter.listConversations = originalListConversations
           await close()
         }
+      },
+    )
+
+    await check(
+      'Free-shaped fixture renders two internal message forks in the fixed navigator',
+      async () => {
+        await close()
+        button('.booster-dock-toggle').click()
+        await delay()
+        button('.booster-dock-actions > button:nth-child(3)').click()
+        await delay()
+        const reader = shadow().querySelector<HTMLElement>('.booster-reader')
+        assert(reader, 'archive missing for synthetic Free branching example')
+        const forkChat = [
+          ...reader.querySelectorAll<HTMLButtonElement>('.booster-reader-chat-list button'),
+        ].find((item) => item.textContent?.includes('Две внутренние ветки'))
+        assert(forkChat, 'fixture internal branch conversation not listed')
+        forkChat.click()
+        await delay()
+        const nav = reader.querySelector<HTMLElement>('.booster-reader-map')
+        assert(nav, 'internal-branch message navigation rail missing')
+        const forks = [
+          ...nav.querySelectorAll<HTMLButtonElement>('.booster-reader-map-node.is-fork'),
+        ]
+        assert(forks.length >= 4, 'two sibling fork points were not rendered')
+        assert(
+          forks.some((node) => node.title.includes('редакция')),
+          'fork node lacks message preview',
+        )
+        forks[0]?.click()
+        await delay()
+        assert(
+          reader.querySelectorAll('.booster-exchange').length < 20,
+          'fork click mounted unrelated history',
+        )
+        return { forkPoints: 2, forkNodes: forks.length }
       },
     )
 

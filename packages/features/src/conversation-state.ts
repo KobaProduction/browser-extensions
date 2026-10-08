@@ -477,6 +477,10 @@ export class ConversationStateStore implements BoosterModule {
         changed ||=
           nextProjectId !== state.projectId || item.conversationOrigin !== state.conversationOrigin
         state.projectId = nextProjectId
+        if (typeof item.title === 'string' && item.title.trim()) {
+          changed ||= state.title !== item.title
+          state.title = item.title
+        }
         state.conversationOrigin = item.conversationOrigin
         state.lastObservedAt = Math.max(state.lastObservedAt, detail.observedAt)
         if (changed) state.revision += 1

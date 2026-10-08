@@ -148,7 +148,7 @@ async function pointerUp(event: PointerEvent) {
 }
 function cancelPointer() { pointer = undefined; dragging.value = false; dragPosition.value = undefined }
 function resize() { viewport.value = { width: window.innerWidth, height: window.innerHeight }; cancelPointer() }
-function openArchive(id = context.value.conversationId) { archiveInitial.value = id; archiveOpen.value = true; expanded.value = false }
+function openArchive(id = context.value.conversationId) { if (archiveOpen.value) window.dispatchEvent(new Event('chatgpt-booster:restore-archive')); archiveInitial.value = id; archiveOpen.value = true; expanded.value = false }
 function openExport(id: string, title: string | null, fromArchive = false) { exportTarget.value = { id, title, backToArchive: fromArchive }; archiveInitial.value = id; expanded.value = false; view.value = 'export' }
 function openSettings() { captureContext.value = undefined; expanded.value = false; view.value = 'settings' }
 function openCapture(scope?: ArchiveCaptureContext) {

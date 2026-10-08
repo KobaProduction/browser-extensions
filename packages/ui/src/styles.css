@@ -3283,3 +3283,172 @@
     padding: 12px 12px 24px;
   }
 }
+
+/* Separate fixed message navigator; never splice the timeline into message cards. */
+.booster-reader-reading-surface {
+  display: flex;
+}
+.booster-reader-reading-surface > .booster-reader-scroll {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.booster-reader-map {
+  order: 2;
+  width: 54px;
+  flex: 0 0 54px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 7px 3px;
+  border-left: 1px solid var(--border);
+  background: var(--card);
+}
+.booster-reader-map-track {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  position: relative;
+  background: linear-gradient(var(--border), var(--border)) center / 2px 100% no-repeat;
+}
+.booster-reader-map-node {
+  position: absolute;
+  left: calc(50% + min(var(--map-lane, 0), 3) * 5px);
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: 1px solid var(--background);
+  border-radius: 3px;
+  background: var(--muted-foreground);
+  cursor: pointer;
+  z-index: 1;
+}
+.booster-reader-map-node.is-user {
+  border-radius: 50%;
+  background: var(--primary);
+}
+.booster-reader-map-node.is-fork {
+  width: 12px;
+  height: 12px;
+  box-shadow: 0 0 0 2px var(--primary);
+}
+.booster-reader-map-node:hover,
+.booster-reader-map-node:focus-visible,
+.booster-reader-map-node.is-near {
+  width: 13px;
+  height: 13px;
+  outline: 1px solid var(--ring);
+  z-index: 4;
+}
+.booster-reader-map-position {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 19px;
+  transform: translateY(-50%);
+  border: 1px solid var(--ring);
+  background: color-mix(in oklab, var(--primary) 16%, transparent);
+  border-radius: 6px;
+  pointer-events: none;
+  z-index: 0;
+}
+.booster-reader-map-end {
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 15px;
+  cursor: pointer;
+}
+.booster-reader-pinned {
+  max-height: 35%;
+  padding: 8px 12px;
+}
+.booster-reader-summary {
+  margin-top: 4px;
+  align-items: center;
+}
+.booster-reader-coverage {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+}
+.booster-reader-project-label {
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+.booster-reader-chat-actions {
+  margin-top: 4px;
+}
+.booster-reader-chat-actions .booster-action-secondary {
+  padding: 5px 8px;
+}
+.booster-reader-heading {
+  justify-content: center;
+}
+.booster-reader-exchanges {
+  gap: 12px;
+}
+.booster-reader-map-node.is-fork::after {
+  content: "";
+  position: absolute;
+  right: 80%;
+  top: 50%;
+  width: calc(min(var(--map-lane, 0), 3) * 5px);
+  border-top: 2px solid var(--primary);
+}
+.booster-reader-loading {
+  justify-content: center;
+  min-height: 130px;
+  font-size: 13px;
+}
+
+.booster-reader-map-node {
+  transition:
+    top 100ms ease-out,
+    width 120ms ease-out,
+    height 120ms ease-out;
+}
+.booster-reader-map-node:hover::before,
+.booster-reader-map-node:focus-visible::before {
+  content: attr(data-preview);
+  position: absolute;
+  right: calc(100% + 15px);
+  top: -8px;
+  z-index: 12;
+  min-width: 170px;
+  width: 240px;
+  max-width: min(240px, 60vw);
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 7px 24px color-mix(in oklab, black 18%, transparent);
+  white-space: normal;
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 400;
+  text-align: left;
+  pointer-events: none;
+}
+.booster-reader .booster-section-header {
+  padding-block: 6px;
+  min-height: 42px;
+}
+.booster-reader-heading {
+  gap: 7px;
+}
+.booster-reader-heading strong {
+  font-size: 12px;
+}
+.booster-reader-heading p {
+  font-size: 10px;
+  margin: 0;
+  opacity: 0.7;
+}
+
+.booster-reader-older-loading {
+  inset: 50% auto auto 50%;
+  border-radius: 10px;
+  font-size: 12px;
+}

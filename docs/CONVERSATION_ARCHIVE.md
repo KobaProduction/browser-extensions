@@ -688,3 +688,35 @@ ChatGPT versions, identify a canonical active path, prove missing ancestors, or 
 complete historical branch coverage. The conversation-level project forest remains
 independent. Full graph navigation, loading indicator, and oldest-endpoint jump are
 tracked separately in #38 and #39.
+
+### Fixed chronology navigator and saved-title metadata (2026-10-08 redesign)
+
+The former inline message-node decorations have been replaced by a fixed side
+timeline. This rail is independent of the exchange cards: it keeps earliest/latest
+saved endpoints visible, samples ordinary message checkpoints on long threads,
+retains explicitly observed sibling forks, and enlarges the neighbourhood around
+the reader's current position. Hover/focus previews present the saved message text
+and source timestamp when available. Clicking a checkpoint mounts a bounded
+window centred on it, without mounting the entire intervening history. Scrolling
+can shift that window; the loader indicates preparation of additional UI records.
+
+The reader opens at the latest or earliest *saved* message according to the
+persisted Control Center preference. This is a UI positioning preference, not
+proof that the full ChatGPT conversation has been captured. The compact status
+icon reports whether the start was verified through linked source pagination;
+unknown evidence must not be restated as a confirmed missing beginning. Branch
+links are drawn only from observed `parentId` values; incomplete ancestor
+metadata is not silently guessed.
+
+The existing native-client conversation catalog is also observed for title
+changes. Observed names update **existing** saved conversation metadata in one
+IndexedDB transaction and refresh the sidebar; they never cause an unselected
+conversation to be archived. The browser fixture additionally contains a separate
+synthetic Free-shaped conversation with two internal edited-message fork points.
+That is synthetic acceptance evidence, not live Free-account acceptance.
+
+The current `getThread` still materializes the local saved thread before applying
+the view window; this iteration does **not** establish paginated IndexedDB reads
+or guarantee bounded peak memory for enormous archives. The separate
+source-pagination/history-coverage and full message-DAG reconstruction tasks
+remain tracked in #38 and #39.

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import type { ArchiveThreadView } from '@chatgpt-booster/core'
+import { ARCHIVE_UPDATED_EVENT, type ArchiveThreadView } from '@chatgpt-booster/core'
 import ArrowLeft from 'lucide-vue-next/dist/esm/icons/arrow-left.js'
-import ArrowDownUp from 'lucide-vue-next/dist/esm/icons/arrow-down-up.js'
+import Search from 'lucide-vue-next/dist/esm/icons/search.js'
+import Info from 'lucide-vue-next/dist/esm/icons/info.js'
 import Brain from 'lucide-vue-next/dist/esm/icons/brain.js'
 import ChevronDown from 'lucide-vue-next/dist/esm/icons/chevron-down.js'
 import ChevronRight from 'lucide-vue-next/dist/esm/icons/chevron-right.js'
@@ -17,6 +18,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ArchiveRecord from './ArchiveRecord.vue'
 import {
   archiveConversationForest,
+  archiveNavigatorSample,
+  archiveTimelinePosition,
   archiveTurnWindow,
   ARCHIVE_INITIAL_TURNS,
   ARCHIVE_TURN_BATCH,
@@ -37,6 +40,7 @@ const props = defineProps<{
   initialConversationId?: string | null | undefined
   locale: SupportedLocale
   windowed?: boolean
+  openPosition?: 'first' | 'latest'
 }>()
 const emit = defineEmits<{
   close: []
@@ -57,6 +61,9 @@ const search = ref('')
 const textSearch = ref('')
 const visibleCount = ref(ARCHIVE_INITIAL_TURNS)
 const readingOrder = ref<ArchiveReadingOrder>('chronological')
+const searchOpen = ref(false)
+const readingProgress = ref(1)
+const windowCenter = ref<number | null>(null)
 const loadingOlder = ref(false)
 const readingScroll = ref<HTMLElement | null>(null)
 const expanded = ref(new Set<string>())
@@ -66,6 +73,7 @@ let listRevision = 0
 let threadRevision = 0
 let scrollRevision = 0
 let initialized = false
+let suppressSearchReset = false
 let contextUnsubscribe: (() => void) | undefined
 let contextFallbackTimer: ReturnType<typeof setInterval> | undefined
 
@@ -103,10 +111,22 @@ const filteredTurns = computed(() => {
     ),
   )
 })
-const displayedTurns = computed(() =>
-  archiveTurnWindow(filteredTurns.value, visibleCount.value, readingOrder.value),
-)
+const displayedTurns = computed(() => {
+  if (windowCenter.value !== null) {
+    const offset = Math.max(0, Math.min(filteredTurns.value.length - 1, windowCenter.value))
+    return filteredTurns.value.slice(Math.max(0, offset - 20), Math.min(filteredTurns.value.length, offset + 20))
+  }
+  return archiveTurnWindow(filteredTurns.value, visibleCount.value, readingOrder.value)
+})
 const messageGraph = computed(() => archiveMessageGraph(thread.value))
+const navigationNodes = computed(() => thread.value.turns.flatMap(turn => turn.messages.filter(item => item.kind === 'user' || item.kind === 'answer')))
+const timelineNodes = computed(() =>
+  archiveNavigatorSample(
+    navigationNodes.value,
+    item => (messageGraph.value.get(item.record.messageKey)?.siblingCount ?? 1) > 1,
+  ),
+)
+const currentNavigationIndex = computed(() => Math.round(readingProgress.value * Math.max(0, navigationNodes.value.length - 1)))
 const hasEarlier = computed(() => filteredTurns.value.length > visibleCount.value)
 const archiveStatusKey = computed<TranslationKey>(() =>
   coverage.value?.completeAtLastRead ? 'reader.savedToStart' : 'reader.savedPartial',
@@ -125,6 +145,7 @@ function date(value?: number | null) {
 async function resetReadingPosition() {
   const ticket = ++scrollRevision
   visibleCount.value = ARCHIVE_INITIAL_TURNS
+  windowCenter.value = null
   loadingOlder.value = false
   await nextTick()
   if (!alive || scrollRevision !== ticket) return
@@ -141,7 +162,15 @@ async function resetReadingPosition() {
     await nextTick()
     if (!alive || scrollRevision !== ticket) return
   }
-  viewport.scrollTop = readingOrder.value === 'chronological' ? viewport.scrollHeight : 0
+  if (props.openPosition === 'first' && filteredTurns.value.length) {
+    windowCenter.value = 0
+    await nextTick()
+    viewport.scrollTop = 0
+    readingProgress.value = 0
+  } else {
+    viewport.scrollTop = readingOrder.value === 'chronological' ? viewport.scrollHeight : 0
+    readingProgress.value = readingOrder.value === 'chronological' ? 1 : 0
+  }
 }
 
 async function loadEarlier() {
@@ -152,6 +181,9 @@ async function loadEarlier() {
   const beforeHeight = viewport.scrollHeight
   const beforeTop = viewport.scrollTop
   loadingOlder.value = true
+  // Let the pending state paint before expensive exchange layout work.
+  await paintLoadingStatus()
+  if (!alive || ticket !== scrollRevision || selectedId.value !== conversation) return
   visibleCount.value = Math.min(
     filteredTurns.value.length,
     visibleCount.value + ARCHIVE_TURN_BATCH,
@@ -166,7 +198,22 @@ async function loadEarlier() {
 
 function onReadingScroll() {
   const viewport = readingScroll.value
-  if (!viewport || !hasEarlier.value || loadingOlder.value) return
+  if (!viewport) return
+  const fraction = viewport.scrollTop / Math.max(1, viewport.scrollHeight - viewport.clientHeight)
+  const total = filteredTurns.value.length
+  const start = windowCenter.value !== null
+    ? Math.max(0, windowCenter.value - 20)
+    : Math.max(0, total - visibleCount.value)
+  readingProgress.value = Math.max(0, Math.min(1, (start + fraction * displayedTurns.value.length) / Math.max(1, total)))
+  if (windowCenter.value !== null) {
+    if (loadingOlder.value) return
+    const atTop = viewport.scrollTop < 100
+    const atBottom = viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop < 100
+    if (atTop && windowCenter.value > 0) void shiftWindow(-20)
+    else if (atBottom && windowCenter.value < filteredTurns.value.length - 1) void shiftWindow(20)
+    return
+  }
+  if (!hasEarlier.value || loadingOlder.value) return
   const reachedOlderEdge =
     readingOrder.value === 'chronological'
       ? viewport.scrollTop < 180
@@ -174,7 +221,64 @@ function onReadingScroll() {
   if (reachedOlderEdge) void loadEarlier()
 }
 
-watch([textSearch, readingOrder], () => { void resetReadingPosition() })
+async function paintLoadingStatus() {
+  await nextTick()
+  // Background tabs can suspend animation frames indefinitely; never gate reads on them.
+  if (document.hidden) return
+  await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+}
+async function shiftWindow(amount: number) {
+  const viewport = readingScroll.value
+  if (!viewport || loadingOlder.value || windowCenter.value === null) return
+  const beforeTop = viewport.scrollTop
+  const beforeHeight = viewport.scrollHeight
+  loadingOlder.value = true
+  await paintLoadingStatus()
+  if (!alive || windowCenter.value === null) return
+  windowCenter.value = Math.max(0, Math.min(filteredTurns.value.length - 1, windowCenter.value + amount))
+  await nextTick()
+  if (amount < 0) viewport.scrollTop = beforeTop + viewport.scrollHeight - beforeHeight
+  else viewport.scrollTop = Math.max(0, beforeTop - (beforeHeight - viewport.scrollHeight))
+  loadingOlder.value = false
+}
+async function navigateToNode(index: number) {
+  const total = navigationNodes.value.length
+  if (!total) return
+  const safe = Math.max(0, Math.min(total - 1, index))
+  const item = navigationNodes.value[safe]
+  if (!item) return
+  let turnIndex = filteredTurns.value.findIndex(turn => turn.messages.some(message => message.record.messageKey === item.record.messageKey))
+  if (turnIndex < 0 && textSearch.value) {
+    suppressSearchReset = true
+    textSearch.value = ''
+    await nextTick()
+    suppressSearchReset = false
+    turnIndex = filteredTurns.value.findIndex(turn => turn.messages.some(message => message.record.messageKey === item.record.messageKey))
+  }
+  if (turnIndex < 0) return
+  windowCenter.value = turnIndex
+  await nextTick()
+  const target = [...(readingScroll.value?.querySelectorAll<HTMLElement>('[data-archive-node]') ?? [])].find(x => x.dataset.archiveNode === item.record.messageKey)
+  if (target) target.scrollIntoView({ block: 'center', behavior: 'instant' })
+  else if (readingScroll.value) {
+    const viewport = readingScroll.value
+    viewport.scrollTop = safe / Math.max(1, total - 1) * (viewport.scrollHeight - viewport.clientHeight)
+  }
+  onReadingScroll()
+}
+watch([textSearch, readingOrder], () => { if (!suppressSearchReset) void resetReadingPosition() })
+
+watch(
+  () => props.initialConversationId,
+  (next) => {
+    if (!next || next === selectedId.value) return
+    selectedId.value = next
+    textSearch.value = ''
+    mobileList.value = false
+    void loadThread(next)
+  },
+)
+
 
 async function loadThread(id: string | null) {
   const revision = ++threadRevision
@@ -182,6 +286,7 @@ async function loadThread(id: string | null) {
   thread.value = { turns: [], messageCount: 0, recordCount: 0, detailCount: 0 }
   coverage.value = undefined
   visibleCount.value = ARCHIVE_INITIAL_TURNS
+  windowCenter.value = null
   loadingOlder.value = false
   if (!id) {
     threadLoading.value = false
@@ -190,6 +295,8 @@ async function loadThread(id: string | null) {
   threadLoading.value = true
   error.value = false
   try {
+    await paintLoadingStatus()
+    if (!alive || revision !== threadRevision || selectedId.value !== id) return
     const [next, nextCoverage] = await Promise.all([
       props.archiveAdapter.getThread(id),
       props.archiveAdapter.getCoverage(id),
@@ -238,6 +345,14 @@ async function refresh() {
     if (alive && revision === listRevision) listLoading.value = false
   }
 }
+async function refreshConversationTitles() {
+  try {
+    const items = await props.archiveAdapter.listConversations()
+    if (alive) conversations.value = items
+  } catch {
+    // The current reader stays usable when catalog refresh fails.
+  }
+}
 onMounted(async () => {
   await refresh()
   let current = props.archiveAdapter.currentConversationId()
@@ -251,6 +366,7 @@ onMounted(async () => {
     textSearch.value = ''
     void loadThread(next)
   }
+  window.addEventListener(ARCHIVE_UPDATED_EVENT, refreshConversationTitles)
   if (props.archiveAdapter.subscribeContextChange)
     contextUnsubscribe = props.archiveAdapter.subscribeContextChange(syncContext)
   else contextFallbackTimer = setInterval(syncContext, 450)
@@ -261,6 +377,7 @@ onBeforeUnmount(() => {
   threadRevision++
   scrollRevision++
   contextUnsubscribe?.()
+  window.removeEventListener(ARCHIVE_UPDATED_EVENT, refreshConversationTitles)
   if (contextFallbackTimer) clearInterval(contextFallbackTimer)
 })
 </script>
@@ -318,8 +435,7 @@ onBeforeUnmount(() => {
           <template v-if="selected">
             <header class="booster-reader-chat-header">
               <div>
-                <h2><CopyIdentity :label="selected.title || t('identity.untitled')" :identifier="selected.conversationId" :locale="locale" /></h2>
-                <CopyIdentity :label="projectLabel(selected.projectId)" :identifier="selected.projectId" :locale="locale" />
+                <h2><span v-if="selected.projectId" class="booster-reader-project-label">{{ projectLabel(selected.projectId) }} / </span><CopyIdentity :label="selected.title || t('identity.untitled')" :identifier="selected.conversationId" :locale="locale" /></h2>
                 <p v-if="selected.branchSourceConversationId" class="booster-note">
                   <CopyIdentity :label="t('reader.branch') + ': ' + (selected.branchSourceTitle || t('identity.untitled'))" :identifier="selected.branchSourceConversationId" :locale="locale" />
                 </p>
@@ -328,25 +444,35 @@ onBeforeUnmount(() => {
             <div class="booster-reader-chat-actions">
               <button class="booster-action-secondary" type="button" @click="reasoningExpanded = !reasoningExpanded"><Brain class="size-4" />{{ t(reasoningExpanded ? 'reader.collapseReasoning' : 'reader.expandReasoning') }}</button>
               <button class="booster-action-secondary booster-reader-export" type="button" :disabled="threadLoading" @click="emit('export', selected.conversationId, selected.title)"><Download class="size-4" />{{ t('reader.export') }}</button>
-              <button class="booster-action-secondary" type="button" :aria-pressed="readingOrder === 'newest-first'" @click="readingOrder = readingOrder === 'chronological' ? 'newest-first' : 'chronological'"><ArrowDownUp class="size-4" />{{ t(readingOrder === 'chronological' ? 'reader.newestFirst' : 'reader.chronological') }}</button>
+              <button class="booster-action-secondary" type="button" :aria-expanded="searchOpen" :aria-label="t('reader.searchMessages')" @click="searchOpen = !searchOpen"><Search class="size-4" /></button>
             </div>
-            <div class="booster-reader-find">
+            <div v-if="searchOpen" class="booster-reader-find">
               <input v-model="textSearch" type="search" :placeholder="t('reader.searchMessages')" :aria-label="t('reader.searchMessages')" />
             </div>
             <div class="booster-reader-summary">
-              <span>{{ t('dock.messages') }}: <b>{{ thread.messageCount }}</b></span>
-              <span>{{ t('dock.details') }}: {{ thread.detailCount }}</span>
-              <span>{{ t(archiveStatusKey) }}</span>
-              <p v-if="coverage?.currentLastMessageId">{{ t(coverage.storedLatestMatchesCurrent ? 'reader.currentLatestSaved' : 'reader.currentNewer') }}</p>
-              <p v-if="coverage?.verifiedAt">{{ t('reader.lastRefreshCheck') }}: {{ date(coverage.verifiedAt) }}</p>
-              <p v-else>{{ t('reader.updateUnchecked') }}</p>
+              <span>{{ t('dock.messages') }}: <b>{{ thread.messageCount }}</b> · {{ t('dock.details') }}: {{ thread.detailCount }}</span>
+              <span class="booster-reader-coverage" :title="t(archiveStatusKey)" :aria-label="t(archiveStatusKey)"><Info class="size-4" />{{ coverage?.completeAtLastRead ? (locale === 'ru' ? 'Начало подтверждено' : 'Start verified') : (locale === 'ru' ? 'Начало не подтверждено' : 'Start unverified') }}</span>
             </div>
           </template>
         </div>
 
         <p v-if="error" role="alert" class="booster-error">{{ t('reader.error') }}</p>
         <div class="booster-reader-reading-surface">
-          <div v-if="loadingOlder" class="booster-reader-older-loading" role="status"><LoaderCircle class="size-4 booster-reader-spinner" />{{ t('reader.loadingEarlier') }}</div>
+          <div v-if="loadingOlder" class="booster-reader-older-loading" role="status" aria-live="polite"><LoaderCircle class="size-4 booster-reader-spinner" />{{ t('reader.loadingEarlier') }} · {{ displayedTurns.length }}/{{ filteredTurns.length }}</div>
+          <nav v-if="selected && navigationNodes.length" class="booster-reader-map" :aria-label="locale === 'ru' ? 'Навигация по сообщениям' : 'Message timeline'">
+            <button class="booster-reader-map-end" type="button" :title="locale === 'ru' ? 'Начало сохранённых сообщений' : 'First saved message'" @click="navigateToNode(0)">↑</button>
+            <div class="booster-reader-map-track">
+              <button v-for="{ item, index } in timelineNodes" :key="item.record.messageKey" class="booster-reader-map-node"
+                :class="{ 'is-user': item.kind === 'user', 'is-fork': (messageGraph.get(item.record.messageKey)?.siblingCount ?? 1) > 1, 'is-near': Math.abs(index - currentNavigationIndex) < 3 }"
+                :style="{ top: `${archiveTimelinePosition((index + 0.5) / navigationNodes.length, readingProgress) * 100}%`, '--map-lane': messageGraph.get(item.record.messageKey)?.lane ?? 0 }"
+                :title="`${item.kind === 'user' ? (locale === 'ru' ? 'Вы' : 'You') : (locale === 'ru' ? 'Ассистент' : 'Assistant')} · ${item.record.createTime ? date(item.record.createTime * 1000) : ''}
+${item.text.slice(0, 160)}`"
+                :data-preview="(item.record.createTime ? date(item.record.createTime * 1000) + ' · ' : '') + item.text.slice(0, 145)"
+                :aria-label="item.text.slice(0, 80)" type="button" @click="navigateToNode(index)"></button>
+              <span class="booster-reader-map-position" :style="{ top: `${readingProgress * 100}%` }"></span>
+            </div>
+            <button class="booster-reader-map-end" type="button" :title="locale === 'ru' ? 'Последние сообщения' : 'Last messages'" @click="navigateToNode(navigationNodes.length - 1)">↓</button>
+          </nav>
           <div ref="readingScroll" class="booster-reader-scroll" @scroll.passive="onReadingScroll">
             <p v-if="threadLoading" role="status" class="booster-reader-loading"><LoaderCircle class="size-4 booster-reader-spinner" />{{ t('reader.loading') }}</p>
             <template v-else-if="selected">
@@ -355,24 +481,12 @@ onBeforeUnmount(() => {
                 <article v-for="turn in displayedTurns" :key="turn.id" class="booster-exchange">
                   <p v-if="turn.association === 'unassigned'" class="booster-note">{{ t('reader.unassigned') }}</p>
                   <p v-else-if="turn.association === 'adjacency'" class="booster-note">{{ t('reader.adjacency') }}</p>
-                  <div v-for="item in turn.messages.filter(i => i.kind === 'user')" :key="item.record.messageKey" class="booster-graph-message" :class="{ 'is-fork': (messageGraph.get(item.record.messageKey)?.siblingCount ?? 1) > 1 }" :style="{ '--graph-lane': messageGraph.get(item.record.messageKey)?.lane ?? 0 }">
-                    <div class="booster-graph-rail" aria-hidden="true"><span class="booster-graph-dot is-user"></span></div>
-                    <div class="booster-graph-content">
-                      <span v-if="(messageGraph.get(item.record.messageKey)?.siblingCount ?? 1) > 1" class="booster-graph-branch-label"><GitBranch class="size-3" />{{ locale === 'ru' ? 'Вариант' : 'Variant' }} {{ (messageGraph.get(item.record.messageKey)?.siblingIndex ?? 0) + 1 }}/{{ messageGraph.get(item.record.messageKey)?.siblingCount }}</span>
-                      <ArchiveRecord :item="item" :locale="locale" :expand-reasoning="reasoningExpanded" />
-                    </div>
-                  </div>
+                  <div v-for="item in turn.messages.filter(i => i.kind === 'user')" :key="item.record.messageKey" :data-archive-node="item.record.messageKey"><ArchiveRecord :item="item" :locale="locale" :expand-reasoning="reasoningExpanded" /></div>
                   <div v-if="turn.details.length" class="booster-exchange-details">
                     <div class="booster-exchange-details-label">{{ t('reader.details') }} · {{ turn.details.length }}</div>
                     <ArchiveRecord v-for="item in turn.details" :key="item.record.messageKey" :item="item" :locale="locale" :expand-reasoning="reasoningExpanded" />
                   </div>
-                  <div v-for="item in turn.messages.filter(i => i.kind !== 'user')" :key="item.record.messageKey" class="booster-graph-message" :class="{ 'is-fork': (messageGraph.get(item.record.messageKey)?.siblingCount ?? 1) > 1 }" :style="{ '--graph-lane': messageGraph.get(item.record.messageKey)?.lane ?? 0 }">
-                    <div class="booster-graph-rail" aria-hidden="true"><span class="booster-graph-dot is-assistant"></span></div>
-                    <div class="booster-graph-content">
-                      <span v-if="(messageGraph.get(item.record.messageKey)?.siblingCount ?? 1) > 1" class="booster-graph-branch-label"><GitBranch class="size-3" />{{ locale === 'ru' ? 'Вариант' : 'Variant' }} {{ (messageGraph.get(item.record.messageKey)?.siblingIndex ?? 0) + 1 }}/{{ messageGraph.get(item.record.messageKey)?.siblingCount }}</span>
-                      <ArchiveRecord :item="item" :locale="locale" :expand-reasoning="reasoningExpanded" />
-                    </div>
-                  </div>
+                  <div v-for="item in turn.messages.filter(i => i.kind !== 'user')" :key="item.record.messageKey" :data-archive-node="item.record.messageKey"><ArchiveRecord :item="item" :locale="locale" :expand-reasoning="reasoningExpanded" /></div>
                 </article>
               </div>
             </template>

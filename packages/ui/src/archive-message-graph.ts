@@ -37,18 +37,27 @@ export function archiveMessageGraph(thread: ArchiveThreadView): Map<string, Arch
   function laneFor(id: string): number {
     const cached = lanes.get(id)
     if (cached !== undefined) return cached
-    if (visited.has(id)) return 0 // Cycles must not hide records.
-    visited.add(id)
-    const parentId = byId.get(id)?.record.parentId
-    let lane = parentId && byId.has(parentId) ? laneFor(parentId) : 0
-    if (parentId) {
-      const siblings = children.get(parentId) ?? []
-      const index = siblings.indexOf(id)
-      if (index > 0) lane = Math.min(3, lane + index)
+    const chain: string[] = []
+    const seen = new Set<string>()
+    let current: string | null = id
+    while (current && byId.has(current) && !lanes.has(current) && !seen.has(current)) {
+      seen.add(current)
+      chain.push(current)
+      current = byId.get(current)?.record.parentId ?? null
     }
-    visited.delete(id)
-    lanes.set(id, lane)
-    return lane
+    // A malformed cycle is terminated at the first repeated ID; no fake edge is added.
+    let lane = current ? (lanes.get(current) ?? 0) : 0
+    for (let i = chain.length - 1; i >= 0; i--) {
+      const nodeId = chain[i]!
+      const parentId = byId.get(nodeId)?.record.parentId
+      if (parentId) {
+        const siblings = children.get(parentId) ?? []
+        const siblingIndex = siblings.indexOf(nodeId)
+        if (siblingIndex > 0) lane = Math.min(3, lane + siblingIndex)
+      }
+      lanes.set(nodeId, lane)
+    }
+    return lanes.get(id) ?? 0
   }
 
   const result = new Map<string, ArchiveMessageNode>()

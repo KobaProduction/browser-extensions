@@ -11,6 +11,7 @@ import {
   observeChatGptNavigation,
 } from '@chatgpt-booster/chatgpt'
 import {
+  ARCHIVE_UPDATED_EVENT,
   type ArchiveRecordView,
   type BoosterModule,
   type BoosterSettings,
@@ -24,7 +25,9 @@ import {
   ARCHIVE_ASSET_EVENT,
   ARCHIVE_POLICY_EVENT,
   type ArchiveAssetResolutionEventDetail,
+  CONVERSATION_CATALOG_EVENT,
   type ConversationArchiveEventDetail,
+  type ConversationCatalogEventDetail,
   TRANSPORT_CHANNEL,
 } from '@chatgpt-booster/observer'
 import type { ConversationArchiveStore } from './archive-store'
@@ -442,6 +445,22 @@ export class ConversationArchiveModule implements BoosterModule {
   #onMessage = (event: MessageEvent) => {
     if (event.origin !== location.origin || event.source !== this.messageSource) return
     const data = event.data
+    if (data?.channel === TRANSPORT_CHANNEL && data.type === CONVERSATION_CATALOG_EVENT) {
+      const catalog = data.detail as ConversationCatalogEventDetail | undefined
+      if (!this.#active || !Array.isArray(catalog?.items)) return
+      // One read/write transaction for the observed catalog, never a new capture.
+      const titles = catalog.items
+        .filter((item) => typeof item.title === 'string' && item.title.trim())
+        .map((item) => ({ conversationId: item.conversationId, title: item.title! }))
+      if (titles.length)
+        void this.store
+          .updateExistingConversationTitles(titles)
+          .then((changed) => {
+            if (changed && this.#active) window.dispatchEvent(new Event(ARCHIVE_UPDATED_EVENT))
+          })
+          .catch(() => undefined)
+      return
+    }
     if (data?.channel !== TRANSPORT_CHANNEL || data.type !== ARCHIVE_ASSET_EVENT) return
     const detail = data.detail as ArchiveAssetResolutionEventDetail | undefined
     if (!detail || typeof detail.assetId !== 'string' || typeof detail.downloadUrl !== 'string')

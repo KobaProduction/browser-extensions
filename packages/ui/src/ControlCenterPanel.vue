@@ -305,6 +305,17 @@ async function testTelemetry() {
 
       <main class="booster-settings-content">
         <template v-if="activeSection === 'archive'">
+          <section class="booster-setting-card">
+            <div class="booster-setting-copy">
+              <b>{{ locale === 'ru' ? 'Открывать архив' : 'Open archive at' }}</b>
+              <span>{{ locale === 'ru' ? 'С начала или с конца сохранённых сообщений' : 'Choose the saved history endpoint' }}</span>
+            </div>
+            <select class="booster-select" :value="settings.ui.archiveStart"
+              @change="applyPatch({ ui: { archiveStart: ($event.target as HTMLSelectElement).value === 'first' ? 'first' : 'latest' } })">
+              <option value="latest">{{ locale === 'ru' ? 'Конец истории' : 'Latest messages' }}</option>
+              <option value="first">{{ locale === 'ru' ? 'Начало сохранённой истории' : 'First saved messages' }}</option>
+            </select>
+          </section>
           <CaptureSettings :settings-adapter="settingsAdapter" :archive-adapter="archiveAdapter" :context="captureContext" :locale="locale" />
           <section v-if="archiveAdapter" class="booster-danger-zone">
             <div class="booster-setting-copy">

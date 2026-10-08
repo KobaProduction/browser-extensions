@@ -62,6 +62,7 @@ export interface ArchiveWindowSettings {
 }
 
 export interface UiSettings {
+  archiveStart: 'first' | 'latest'
   activeSection: SettingsSection
   telemetryExpanded: boolean
   archiveWindow: ArchiveWindowSettings
@@ -154,6 +155,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
   archive: { defaultRule: { ...DEFAULT_CAPTURE_RULE }, projects: {}, conversations: {} },
   export: { ...DEFAULT_EXPORT_OPTIONS },
   ui: {
+    archiveStart: 'latest',
     activeSection: 'modules',
     telemetryExpanded: true,
     archiveWindow: {
@@ -259,6 +261,7 @@ export function normalizeSettings(value?: Partial<BoosterSettings>): BoosterSett
     ui: {
       ...DEFAULT_SETTINGS.ui,
       ...value?.ui,
+      archiveStart: value?.ui?.archiveStart === 'first' ? 'first' : 'latest',
       archiveWindow: {
         ...DEFAULT_SETTINGS.ui.archiveWindow,
         ...value?.ui?.archiveWindow,
@@ -336,6 +339,7 @@ export function snapshotSettings(
     },
     export: { ...normalized.export },
     ui: {
+      archiveStart: normalized.ui.archiveStart,
       activeSection: normalized.ui.activeSection,
       telemetryExpanded: normalized.ui.telemetryExpanded,
       archiveWindow: { ...normalized.ui.archiveWindow },

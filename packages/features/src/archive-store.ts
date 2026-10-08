@@ -823,6 +823,51 @@ export class ConversationArchiveStore {
     )
   }
 
+  async updateExistingConversationTitle(conversationId: string, title: string): Promise<boolean> {
+    if (!title.trim()) return false
+    const db = await this.#db()
+    const tx = db.transaction('conversations', 'readwrite')
+    const done = transactionDone(tx)
+    const store = tx.objectStore('conversations')
+    const previous = await request<ArchivedConversation | undefined>(store.get(conversationId))
+    if (!previous || previous.title === title) {
+      await done
+      return false
+    }
+    store.put({ ...previous, title })
+    await done
+    return true
+  }
+
+  async updateExistingConversationTitles(
+    updates: readonly { conversationId: string; title: string }[],
+  ): Promise<number> {
+    const titles = new Map(
+      updates
+        .filter((item) => item.conversationId && item.title.trim())
+        .map((item) => [item.conversationId, item.title]),
+    )
+    if (!titles.size) return 0
+    const db = await this.#db()
+    const tx = db.transaction('conversations', 'readwrite')
+    const done = transactionDone(tx)
+    const store = tx.objectStore('conversations')
+    const entries = [...titles]
+    const previous = await Promise.all(
+      entries.map(([id]) => request<ArchivedConversation | undefined>(store.get(id))),
+    )
+    let changed = 0
+    for (let i = 0; i < entries.length; i++) {
+      const old = previous[i]
+      const title = entries[i]?.[1]
+      if (!old || !title || old.title === title) continue
+      store.put({ ...old, title })
+      changed++
+    }
+    await done
+    return changed
+  }
+
   async listConversations(): Promise<ArchivedConversation[]> {
     const db = await this.#db()
     const tx = db.transaction('conversations', 'readonly')

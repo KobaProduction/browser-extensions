@@ -266,6 +266,16 @@ describe('Work and subagent source observation', () => {
     })
   })
 
+  test('uses observed catalog titles without treating lists as archived messages', () => {
+    const found = conversationCatalogFromPayload(
+      'https://chatgpt.com/backend-api/conversations',
+      { items: [{ id: 'existing', title: 'Updated test title', conversation_origin: null }] },
+      14_000,
+    )
+    expect(found?.items[0]?.title).toBe('Updated test title')
+    expect(found?.items).toHaveLength(1)
+  })
+
   test('reads Work origins from native conversation catalogs', () => {
     expect(
       conversationCatalogFromPayload(
@@ -285,6 +295,7 @@ describe('Work and subagent source observation', () => {
       items: [
         {
           conversationId: 'work-chat',
+          title: null,
           projectId: null,
           conversationOrigin: 'tpp',
         },

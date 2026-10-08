@@ -453,6 +453,7 @@ export function conversationCatalogFromPayload(
     return [
       {
         conversationId: record.id,
+        title: typeof record.title === 'string' ? record.title : null,
         projectId: gizmoId ?? routeProjectId,
         conversationOrigin:
           typeof record.conversation_origin === 'string' ? record.conversation_origin : null,
@@ -599,6 +600,7 @@ export type ConversationStreamEventDetail =
 
 export interface ConversationCatalogItem {
   conversationId: string
+  title?: string | null
   projectId: string | null
   conversationOrigin: string | null
 }

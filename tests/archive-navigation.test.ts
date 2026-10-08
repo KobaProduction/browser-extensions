@@ -97,3 +97,27 @@ describe('record presentation is a lossless projection', () => {
     expect(parseArchiveStructuredText('plain result')).toBeNull()
   })
 })
+
+describe('bounded archive navigator', () => {
+  test('retains earliest, newest, and all forks while sampling long dialogs', async () => {
+    const { archiveNavigatorSample } = await import('../packages/ui/src/archive-navigation')
+    const nodes = Array.from({ length: 2000 }, (_, i) => i)
+    const result = archiveNavigatorSample(nodes, (i) => i === 450 || i === 900, 120)
+    expect(result.length).toBeLessThanOrEqual(120)
+    expect(result[0]?.item).toBe(0)
+    expect(result.at(-1)?.item).toBe(1999)
+    expect(result.some((x) => x.item === 450)).toBe(true)
+    expect(result.some((x) => x.item === 900)).toBe(true)
+  })
+})
+
+describe('fisheye timeline', () => {
+  test('keeps endpoints and current checkpoint anchored', async () => {
+    const { archiveTimelinePosition } = await import('../packages/ui/src/archive-navigation')
+    expect(archiveTimelinePosition(0, 0.5)).toBe(0)
+    expect(archiveTimelinePosition(1, 0.5)).toBe(1)
+    expect(archiveTimelinePosition(0.5, 0.5)).toBe(0.5)
+    expect(archiveTimelinePosition(0.25, 0.5)).toBeLessThan(0.25)
+    expect(archiveTimelinePosition(0.75, 0.5)).toBeGreaterThan(0.75)
+  })
+})

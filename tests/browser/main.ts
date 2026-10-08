@@ -205,6 +205,31 @@ async function runStorageTests() {
       'lost name',
     )
   })
+  await check(
+    'catalog rename refreshes an existing saved title without creating new conversations',
+    async () => {
+      const id = `${prefix}renamed`
+      await store.ingest(page(id, [raw('u', 'user', 'Preserve body')], { title: 'Before' }))
+      assert(await store.updateExistingConversationTitle(id, 'After'), 'rename not persisted')
+      assert((await store.getConversation(id))?.title === 'After', 'saved title is stale')
+      assert(
+        (await store.updateExistingConversationTitles([
+          { conversationId: id, title: 'From native catalog' },
+          { conversationId: `${id}-unsaved`, title: 'Never create from catalog' },
+        ])) === 1,
+        'catalog batch did not update precisely one previously captured conversation',
+      )
+      assert(
+        (await store.getConversation(id))?.title === 'From native catalog',
+        'catalog title was not persisted',
+      )
+      assert(
+        !(await store.updateExistingConversationTitle(`${id}-unknown`, 'Do not create')),
+        'unsaved conversation was created',
+      )
+      assert((await store.listMessages(id)).length === 1, 'rename changed messages')
+    },
+  )
   await check('project removal updates all normalized message links', async () => {
     const id = `${prefix}move`
     await store.ingest(
@@ -1186,6 +1211,28 @@ async function seed() {
       gizmo_id: projectA,
       gizmo_type: 'snorlax',
     }),
+  )
+  // Free-renderer-shaped local archive example: two real message-level fork points.
+  // Independent of the live Pro account and without invoking any ChatGPT mutation API.
+  await store.ingest(
+    page(
+      'fixture-forks',
+      [
+        raw('f-u1', 'user', 'Начало экспериментального диалога'),
+        raw('f-a1', 'assistant', 'Начало подтверждено', 'f-u1'),
+        raw('f-u2', 'user', 'Вопрос 2 · исходный', 'f-a1'),
+        raw('f-a2', 'assistant', 'Ответ исходной цепочки', 'f-u2'),
+        raw('f-u2-edit', 'user', 'Вопрос 2 · редакция (ветка 1)', 'f-a1'),
+        raw('f-a2-edit', 'assistant', 'Альтернативный ответ', 'f-u2-edit'),
+        raw('f-u3', 'user', 'Вопрос 3 · исходный', 'f-a2'),
+        raw('f-a3', 'assistant', 'Продолжение исходной цепочки', 'f-u3'),
+        raw('f-u3-edit', 'user', 'Вопрос 3 · редакция (ветка 2)', 'f-a2'),
+        raw('f-a3-edit', 'assistant', 'Второй альтернативный ответ', 'f-u3-edit'),
+        raw('f-u4', 'user', 'Последний вопрос', 'f-a3'),
+        raw('f-a4', 'assistant', 'Последний ответ', 'f-u4'),
+      ],
+      { title: 'Две внутренние ветки · Free fixture', gizmo_id: projectA, gizmo_type: 'snorlax' },
+    ),
   )
   await store.ingest(
     page('fixture-other', [raw('u', 'user', 'Other')], {

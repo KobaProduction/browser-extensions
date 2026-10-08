@@ -79,3 +79,32 @@ describe('read-only message graph', () => {
     expect(g.get('agent')?.kind).toBe('assistant')
   })
 })
+
+describe('long parent chains', () => {
+  test('handles thousands of linked messages without recursive stack overflow', () => {
+    const entries = Array.from({ length: 12000 }, (_, i) => {
+      const id = `chain-${i}`
+      const parentId = i ? `chain-${i - 1}` : null
+      return {
+        kind: i % 2 ? 'answer' : 'user',
+        text: id,
+        record: {
+          messageId: id,
+          messageKey: id,
+          conversationId: 'chain',
+          parentId,
+          role: i % 2 ? 'assistant' : 'user',
+        },
+      }
+    })
+    const thread = {
+      turns: [{ id: 'long', messages: entries, details: [], association: 'parent' }],
+      messageCount: entries.length,
+      recordCount: entries.length,
+      detailCount: 0,
+    } as unknown as import('../packages/core/src/archive').ArchiveThreadView
+    const result = archiveMessageGraph(thread)
+    expect(result.size).toBe(entries.length)
+    expect(result.get('chain-11999')?.lane).toBe(0)
+  })
+})

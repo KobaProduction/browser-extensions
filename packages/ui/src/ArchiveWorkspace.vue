@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import Archive from 'lucide-vue-next/dist/esm/icons/archive.js'
+import { OPEN_ARCHIVE_EVENT } from '@chatgpt-booster/core'
 import Maximize2 from 'lucide-vue-next/dist/esm/icons/maximize-2.js'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { ArchiveWindowSettings, SettingsAdapter } from '@chatgpt-booster/core'
@@ -20,6 +21,7 @@ const emit = defineEmits<{
 
 const ready = ref(false)
 const minimized = ref(false)
+const openPosition = ref<'first' | 'latest'>('latest')
 const viewport = ref({ width: innerWidth, height: innerHeight })
 const settings = ref<ArchiveWindowSettings>()
 const transient = ref<{ x: number; y: number; width: number; height: number }>()
@@ -184,15 +186,21 @@ function resizeViewport() {
 onMounted(async () => {
   const current = await props.settingsAdapter.get()
   settings.value = { ...current.ui.archiveWindow }
+  openPosition.value = current.ui.archiveStart
   unsubscribe = props.settingsAdapter.subscribe((next) => {
     if (!drag) settings.value = { ...next.ui.archiveWindow }
+    openPosition.value = next.ui.archiveStart
   })
   addEventListener('resize', resizeViewport)
+  addEventListener(OPEN_ARCHIVE_EVENT, restoreFromDock)
+  addEventListener('chatgpt-booster:restore-archive', restoreFromDock)
   ready.value = true
 })
 onBeforeUnmount(() => {
   unsubscribe?.()
   removeEventListener('resize', resizeViewport)
+  removeEventListener(OPEN_ARCHIVE_EVENT, restoreFromDock)
+  removeEventListener('chatgpt-booster:restore-archive', restoreFromDock)
 })
 </script>
 
@@ -223,6 +231,7 @@ onBeforeUnmount(() => {
       <ArchiveBrowser
         :archive-adapter="archiveAdapter"
         :initial-conversation-id="initialConversationId"
+        :open-position="openPosition"
         :locale="locale"
         windowed
         @minimize="minimize"

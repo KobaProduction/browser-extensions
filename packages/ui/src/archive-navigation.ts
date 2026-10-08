@@ -97,3 +97,26 @@ export function archiveTurnWindow<T>(
   const latest = turns.slice(Math.max(0, turns.length - Math.max(1, visibleCount)))
   return order === 'newest-first' ? latest.reverse() : latest
 }
+
+/** A bounded navigation sample for very long chats. Always retain endpoints and known forks. */
+export function archiveNavigatorSample<T>(
+  items: readonly T[],
+  isFork: (item: T) => boolean,
+  maximum = 160,
+): { item: T; index: number }[] {
+  if (!items.length) return []
+  const selected = new Set<number>([0, items.length - 1])
+  for (let i = 0; i < items.length; i++) if (isFork(items[i]!)) selected.add(i)
+  const remaining = Math.max(0, maximum - selected.size)
+  for (let slot = 1; slot <= remaining; slot++)
+    selected.add(Math.round((slot * (items.length - 1)) / (remaining + 1)))
+  return [...selected].sort((a, b) => a - b).map((index) => ({ item: items[index]!, index }))
+}
+
+/** Fisheye chronology: endpoints stay fixed; nearby checkpoints get more room. */
+export function archiveTimelinePosition(position: number, focus: number, exponent = 1.65): number {
+  const p = Math.max(0, Math.min(1, position))
+  const f = Math.max(0.05, Math.min(0.95, focus))
+  if (p <= f) return f * (p / f) ** exponent
+  return 1 - (1 - f) * ((1 - p) / (1 - f)) ** exponent
+}
