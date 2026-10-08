@@ -1,8 +1,8 @@
 # Archive target architecture and delivery contract
 
 Status: **target design / not yet implemented**. The currently deployed IndexedDB v3,
-History Loader, and export v1 remain the implemented baseline until a migration and
-runtime acceptance explicitly prove otherwise.
+History Loader, and export v1 remain the implemented baseline until a **clean
+new database rollout** and runtime acceptance explicitly prove otherwise.
 
 This document defines durable design constraints. **GitHub Issues are the live plan**:
 they contain stage checklists, ownership, dependencies, progress evidence and closure
@@ -25,9 +25,10 @@ incompatible with its explicitly supported contract.
 
 - **No loss of original ChatGPT message structure.** The source message is the
   primary record; display/search/export projections are derived and rebuildable.
-- **No silent migration or inference.** Unknown account identity, unrecognized
-  payload signatures, pagination gaps and unverified branch parents must not be
-  converted into authoritative values.
+- **No legacy migrations.** The new database starts empty: v3 archives and v1
+  exported files are not converted, imported or supported by the new schema.
+  Unknown account identities, incompatible API signatures, pagination gaps and
+  unverified branch parents must never be converted into authoritative values.
 - **No private ChatGPT history requests.** Collect by observing the native client
   while it loads its own pages. Live UI remains memory-first through
   `ConversationStateStore`; IndexedDB must never block live decorators, timers,
@@ -40,7 +41,7 @@ incompatible with its explicitly supported contract.
 ## Domain and account boundary
 
 Exactly four primary **ChatGPT information entities** are required. They do not
-mandate exactly four IndexedDB object stores: physical indexes, migration state,
+mandate exactly four IndexedDB object stores: physical indexes, storage state,
 transient jobs and Booster-specific preferences may use separate implementation
 stores without becoming competing domain entities.
 
@@ -127,7 +128,7 @@ This is a release-blocking invariant, not a best-effort parser heuristic.
 3. Validate the **whole observed batch/page** and its relationship to the
    verified conversation/account **before any durable write**. One incompatible
    record invalidates the batch. No partially accepted page, successful
-   coverage flag, updated counts, migrated raw data or subsequent export on
+   coverage flag, updated counts, derived raw data or subsequent export on
    that incompatible source.
 4. Transition the affected archive ingestion/reconciliation/export capability
    to `incompatible_source_contract`, raise a visible actionable diagnostic
@@ -135,7 +136,7 @@ This is a release-blocking invariant, not a best-effort parser heuristic.
    content/credentials in telemetry). Preserve existing IndexedDB unmodified.
    Native ChatGPT and independent Booster features must continue working.
 5. Introduce a new adapter version only after examining observed native samples,
-   fixing schema fixtures, cross-version migration expectations and tests.
+   confirming only currently supported native schema fixtures and focused tests.
    Record the selected native/adapter signature and evidence provenance.
 6. Account for legitimate nullable/optional variants **only** by explicitly
    registered signatures. Do not reject a known legitimate form by applying a
@@ -145,7 +146,8 @@ This is a release-blocking invariant, not a best-effort parser heuristic.
 **Atomicity:** validate -> normalize to a separate projection -> commit source
 message(s), associated summary and evidence in one IndexedDB transaction ->
 notify readers. On validation or commit failure, no successful capture result
-is exposed. Migration must never rewrite the immutable source payloads.
+is exposed. A new internal database version must never rewrite the immutable
+source payloads or reset the database because a ChatGPT API signature changed.
 
 ## Incremental ingestion and materialized reads
 
@@ -203,18 +205,29 @@ windows load progressively rather than mounting millions of nodes.
   context/quota/cancellation/cleanup verification. Binary assets remain
   experimental until independently accepted.
 
-## Migration, recovery and acceptance rules
+## Clean database reset and acceptance rules
 
-- Keep old v3 archive readable until a demonstrated, reversible migration to a
-  new, explicit schema exists. Snapshot/inventory/backup old object stores and
-  prove message count, raw payload equivalence, account isolation and coverage
-  evidence before switching the active reader. **No destructive rewrite** of
-  existing data or blind automatic deletion on unsupported DB versions.
-- Verify a dry run against real archive *structures* without committing real
-  user content to Git, logs, telemetry or issues. Tests use synthetic redacted
-  fixtures and include old/unknown native signatures, partial pages, duplicates,
-  multi-account cases, renamed projects, stale branches, quota failures and
-  interrupted migrations.
+- **Deliberate clean cutover.** Instead of supporting IndexedDB v3 migrations,
+  initialize a new isolated database/namespace with the accepted schema. Old
+  local v3 archive data will not be carried over and must be re-collected from
+  normal ChatGPT UI if needed. Communicate this loss of local-only history
+  before switching. Prefer a new namespace over overwriting existing v3 in
+  place; subsequent explicit cleanup of an obsolete namespace is separate.
+- Do **not** clear any browser profile as part of documentation work. A later
+  controlled reset applies only to the targeted Booster archive database, not
+  ChatGPT site data, browser cookies, unrelated IndexedDB stores or other
+  accounts/profiles. Reject unsupported new schema versions safely without
+  silently deleting contents. A mismatching **ChatGPT source API signature**
+  always stops archive writes; it never triggers any reset or re-creation.
+- Do not implement compatibility bridges for old archive v3, export v1 or their
+  historical cases. Test only the new contract's essential invariants: accepted
+  source messages remain exact, rejected batches perform no writes, account
+  isolation holds, fresh initialization is stable and current data/query/export
+  paths work. Avoid redundant legacy, migration and exhaustive matrix suites.
+- Validate real archive *shapes* using safe aggregate observations without
+  committing real content, identifiers or private URLs to Git, logs or issues.
+  Use focused redacted fixtures for supported signatures, partial history and
+  new-schema recovery rather than exhaustive speculative test families.
 - Separate validation levels: source audit, unit/schema tests, build/CI,
   browser runtime, live Free/Pro acceptance. CI green or synthetic fixtures do
   not by themselves authorize production claims or issue closure.
