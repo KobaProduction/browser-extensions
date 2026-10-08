@@ -751,3 +751,14 @@ least two distinct user message IDs sharing an explicit parent ID; duplicate
 records and messages lacking parent evidence are not treated as forks. The
 archive retains all variants without deleting older descendants. Local Free-shaped
 fixture covers two forks and alternate variant selection in managed Chromium.
+
+### Fork-rail visibility correction (2026-10-08)
+
+The previous narrow 54px rail and unconditional centre background line made
+parallel branches appear as one column, even when exact parent-linked SVG
+connectors existed. The rail now reserves visible horizontal space between
+branches, positions checkpoint markers on the same explicit SVG lane axes,
+and no longer paints a continuous line through unverified gaps. The SVG paths
+remain derived exclusively from known parent chains; missing edges are not
+invented. This is a visual distinction, not native branch switching or proof
+of complete history. Live Pro visual acceptance is still required.

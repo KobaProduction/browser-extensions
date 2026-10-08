@@ -142,7 +142,7 @@ const navigatorEdges = computed(() => {
 })
 function nodeAxisX(index: number): number {
   const item = navigationNodes.value[index]
-  return 27 + Math.min(3, item ? (messageGraph.value.get(item.record.messageKey)?.lane ?? 0) : 0) * 5
+  return 18 + Math.min(3, item ? (messageGraph.value.get(item.record.messageKey)?.lane ?? 0) : 0) * 23
 }
 function graphEdgePath(from: number, to: number): string {
   const startY = archiveTimelinePosition((from + 0.5) / Math.max(1, navigationNodes.value.length), readingProgress.value) * 1000
@@ -506,7 +506,7 @@ onBeforeUnmount(() => {
           <nav v-if="selected && navigationNodes.length" class="booster-reader-map" :aria-label="locale === 'ru' ? 'Навигация по сообщениям' : 'Message timeline'">
             <button class="booster-reader-map-end" type="button" :title="locale === 'ru' ? 'Начало сохранённых сообщений' : 'First saved message'" @click="navigateToNode(0)">↑</button>
             <div class="booster-reader-map-track">
-              <svg class="booster-reader-map-links" viewBox="0 0 54 1000" preserveAspectRatio="none" aria-hidden="true">
+              <svg class="booster-reader-map-links" viewBox="0 0 108 1000" preserveAspectRatio="none" aria-hidden="true">
                 <path v-for="edge in navigatorEdges" :key="`${edge.from}-${edge.to}`" :d="graphEdgePath(edge.from, edge.to)" />
               </svg>
               <button v-for="{ item, index } in timelineNodes" :key="item.record.messageKey" class="booster-reader-map-node"

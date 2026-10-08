@@ -3294,8 +3294,8 @@
 }
 .booster-reader-map {
   order: 2;
-  width: 54px;
-  flex: 0 0 54px;
+  width: 108px;
+  flex: 0 0 108px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3312,7 +3312,7 @@
 }
 .booster-reader-map-node {
   position: absolute;
-  left: calc(50% + min(var(--map-lane, 0), 3) * 5px);
+  left: calc(18px + min(var(--map-lane, 0), 3) * 23px);
   transform: translate(-50%, -50%);
   width: 8px;
   height: 8px;
@@ -3393,7 +3393,7 @@
   position: absolute;
   right: 80%;
   top: 50%;
-  width: calc(min(var(--map-lane, 0), 3) * 5px);
+  width: calc(min(var(--map-lane, 0), 3) * 23px);
   border-top: 2px solid var(--primary);
 }
 .booster-reader-loading {
@@ -3506,4 +3506,31 @@
 .booster-reader-fork-choice:hover,
 .booster-reader-fork-choice:focus-visible {
   border-color: var(--ring);
+}
+
+/* Git-style parallel lanes: do not draw an unconditional spine across unknown gaps. */
+.booster-reader-map-track {
+  background: none;
+}
+.booster-reader-map-links path {
+  stroke-width: 2.5;
+  opacity: 0.95;
+}
+.booster-reader-map-node.is-fork {
+  background: var(--primary);
+  box-shadow:
+    0 0 0 3px var(--card),
+    0 0 0 5px var(--primary);
+}
+.booster-reader-map-node.is-fork::after {
+  display: none;
+}
+@media (max-width: 700px) {
+  .booster-reader-map {
+    width: 88px;
+    flex-basis: 88px;
+  }
+  .booster-reader-map-node {
+    left: calc(12px + min(var(--map-lane, 0), 3) * 19px);
+  }
 }
