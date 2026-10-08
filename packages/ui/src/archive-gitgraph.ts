@@ -7,23 +7,40 @@ export interface GitgraphArchiveCommit {
   refs: string[]
   subject: string
 }
+
 export interface GitgraphArchiveData {
   commits: GitgraphArchiveCommit[]
   byId: Map<string, ArchiveItemView>
+  missingParents: number
+  cyclicParents: number
   unresolved: number
 }
 
-/** GitGraph's import format expects newest-first commits with exact parent hashes. */
+export interface GitgraphArchiveSegment {
+  id: string
+  commits: GitgraphArchiveCommit[]
+  clipped: boolean
+}
+
+/**
+ * Project the saved parent graph onto visible user/answer records. Traverse real
+ * intermediate records, never substitute a chronological adjacency for parentId.
+ */
 export function archiveGitgraphData(thread: ArchiveThreadView): GitgraphArchiveData {
   const all = thread.turns.flatMap((turn) => [...turn.messages, ...turn.details])
   const byId = new Map<string, ArchiveItemView>()
   for (const item of all)
     if (item.record.messageId && !byId.has(item.record.messageId))
       byId.set(item.record.messageId, item)
-  const display = all.filter((item) => item.kind === 'user' || item.kind === 'answer')
+
+  const display = all.filter(
+    (item) => (item.kind === 'user' || item.kind === 'answer') && item.record.messageId,
+  )
   const chosen = new Map(display.map((item) => [item.record.messageId, item]))
   const parents = new Map<string, string | null>()
-  let unresolved = 0
+  let missingParents = 0
+  let cyclicParents = 0
+
   for (const item of display) {
     let id = item.record.parentId
     const seen = new Set([item.record.messageId])
@@ -31,14 +48,17 @@ export function archiveGitgraphData(thread: ArchiveThreadView): GitgraphArchiveD
       seen.add(id)
       id = byId.get(id)?.record.parentId ?? null
     }
-    if (id && seen.has(id)) id = null
-    if (id && !chosen.has(id)) {
-      unresolved++
+    if (id && seen.has(id)) {
+      cyclicParents++
+      id = null
+    } else if (id && !chosen.has(id)) {
+      missingParents++
       id = null
     }
     parents.set(item.record.messageId, id)
   }
-  // Preserve all records, but order them as a DAG (not by ingestion time).
+
+  // Topological order keeps every saved record, even if it arrived out of order.
   const descendants = new Map<string, string[]>()
   const indegree = new Map(display.map((item) => [item.record.messageId, 0]))
   for (const [child, parent] of parents) {
@@ -48,34 +68,99 @@ export function archiveGitgraphData(thread: ArchiveThreadView): GitgraphArchiveD
   }
   const pending = display.filter((item) => indegree.get(item.record.messageId) === 0)
   const ordered: ArchiveItemView[] = []
-  while (pending.length) {
-    const item = pending.shift()!
+  const emitted = new Set<string>()
+  for (let cursor = 0; cursor < pending.length; cursor++) {
+    const item = pending[cursor]!
     ordered.push(item)
+    emitted.add(item.record.messageId)
     for (const child of descendants.get(item.record.messageId) ?? []) {
       const count = (indegree.get(child) ?? 0) - 1
       indegree.set(child, count)
-      if (!count) pending.push(chosen.get(child)!)
+      if (count === 0) pending.push(chosen.get(child)!)
     }
   }
-  // A corrupted cycle must not make GitGraph hang or render invented edges.
+  // A genuine cycle must not hang the graph or masquerade as a valid edge.
   for (const item of display) {
-    if (ordered.includes(item)) continue
+    if (emitted.has(item.record.messageId)) continue
     parents.set(item.record.messageId, null)
     ordered.push(item)
-    unresolved++
+    cyclicParents++
   }
+
   const referenced = new Set([...parents.values()].filter((id): id is string => Boolean(id)))
   return {
     commits: ordered.reverse().map((item) => ({
       hash: item.record.messageId,
       parents: parents.get(item.record.messageId) ? [parents.get(item.record.messageId)!] : [],
       author: { name: item.kind === 'user' ? 'You' : 'Assistant', email: '' },
-      // GitGraph imports only commits reachable from named refs.
-      // Give each saved terminal branch a ref; never invent a merge.
       refs: referenced.has(item.record.messageId) ? [] : [`path-${item.record.messageId}`],
       subject: item.text.slice(0, 180),
     })),
     byId,
-    unresolved,
+    missingParents,
+    cyclicParents,
+    unresolved: missingParents + cyclicParents,
   }
+}
+
+/**
+ * Render weakly connected saved components sequentially rather than treating
+ * unrelated roots as parallel Git branches. A viewport boundary may truncate
+ * an edge; the boundary is reported, never silently joined to another root.
+ */
+export function archiveGitgraphSegments(
+  commits: readonly GitgraphArchiveCommit[],
+): GitgraphArchiveSegment[] {
+  const visible = new Map(commits.map((commit) => [commit.hash, commit]))
+  const roots = new Map<string, string>()
+  const segments = new Map<string, GitgraphArchiveSegment>()
+  const chronological = [...commits].reverse()
+
+  function rootOf(id: string): string {
+    const known = roots.get(id)
+    if (known) return known
+    let cursor = id
+    const traversed: string[] = []
+    const visited = new Set<string>()
+    while (visible.has(cursor) && !visited.has(cursor)) {
+      const saved = roots.get(cursor)
+      if (saved) {
+        cursor = saved
+        break
+      }
+      visited.add(cursor)
+      traversed.push(cursor)
+      const parent = visible.get(cursor)?.parents[0]
+      if (!parent || !visible.has(parent)) break
+      cursor = parent
+    }
+    for (const part of traversed) roots.set(part, cursor)
+    return cursor
+  }
+
+  for (const commit of chronological) {
+    const root = rootOf(commit.hash)
+    let segment = segments.get(root)
+    if (!segment) {
+      segment = { id: root, commits: [], clipped: false }
+      segments.set(root, segment)
+    }
+    const parent = commit.parents[0]
+    if (parent && !visible.has(parent)) segment.clipped = true
+    segment.commits.push({
+      ...commit,
+      parents: parent && visible.has(parent) ? [parent] : [],
+      refs: commit.refs,
+    })
+  }
+  return [...segments.values()].map((segment) => {
+    const linked = new Set(segment.commits.flatMap((commit) => commit.parents))
+    return {
+      ...segment,
+      commits: segment.commits.reverse().map((commit) => ({
+        ...commit,
+        refs: linked.has(commit.hash) ? [] : [`path-${commit.hash}`],
+      })),
+    }
+  })
 }

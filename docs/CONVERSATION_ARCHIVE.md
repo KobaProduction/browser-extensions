@@ -823,3 +823,32 @@ cycles are broken for rendering without rewriting stored data.
 This is a renderer replacement, not confirmation that the existing IndexedDB
 archive contains every ancestral branch. Server Chromium fixture acceptance is
 separate from user Pro screenshot acceptance.
+
+### Bounded and navigable GitGraph view (2026-10-08)
+
+The archive reader now projects exact saved parent relationships into individual
+connected GitGraph segments. Disconnected roots appear sequentially with visible
+gaps and an explicit count, **not** as invented parallel branches of one trunk.
+Missing parent IDs and invalid cycles are reported separately; a viewport
+boundary that clips an otherwise known parent edge is marked as a truncated
+segment rather than silently linked to another fragment.
+
+A maximum of 140 message nodes is mounted in the graph at a time. Earlier/later
+navigation moves that graph window without discarding archived records or
+materializing all intervening reader turns. The reader tracks its visible
+message and passes the message *key* to the graph for selection and bounded
+scroll positioning; graph navigation remains read-only. GitGraph's visible SVG
+`<use>` markers have focusable parent groups with accessible message labels,
+keyboard Enter/Space activation, and a selected-state indicator. The drawn SVG
+width trims unused blank GitGraph layout space without fit-to-view scaling.
+
+The Chromium synthetic fixture passed 16/16 browser acceptance cases on
+2026-10-08 after the GitGraph SVG re-render and reader-focus fixes. Those cases
+cover edited sibling paths, saved-record keyboard navigation, 300 linked
+messages, the 140-node graph window/pager and absence of horizontal overflow
+in a one-lane graph. A separate local 128-test unit suite, TypeScript/Biome
+check and both build targets also passed before review publication.
+
+These checks **do not** establish current ChatGPT Free/Pro runtime acceptance,
+completeness of remote history, or performance on arbitrarily large archives.
+A real-account visual and interaction gate remains open.

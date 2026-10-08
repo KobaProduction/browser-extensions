@@ -1209,25 +1209,51 @@ export async function runUiTests(
         ].find((item) => item.textContent?.includes('Две внутренние ветки'))
         assert(forkChat, 'fixture internal branch conversation not listed')
         forkChat.click()
-        await waitFor(
-          () => Boolean(reader.querySelector('.booster-archive-flow-graph')),
-          'internal fork navigator',
-        )
-        const nav = reader.querySelector<HTMLElement>('.booster-archive-flow-graph')
+        await waitFor(() => {
+          const currentReader = shadow().querySelector<HTMLElement>('.booster-reader')
+          return Boolean(
+            currentReader
+              ?.querySelector('.booster-reader-chat-header')
+              ?.textContent?.includes('Две внутренние ветки') &&
+              currentReader.querySelector('.booster-archive-flow-graph svg circle[id]'),
+          )
+        }, 'internal fork navigator for selected conversation')
+        const activeReader = shadow().querySelector<HTMLElement>('.booster-reader')
+        assert(activeReader, 'archive unmounted while selecting fork')
+        const nav = activeReader.querySelector<HTMLElement>('.booster-archive-flow-graph')
         assert(nav, 'internal-branch message navigation rail missing')
-        const forks = [...nav.querySelectorAll<SVGCircleElement>('svg circle[id]')]
-        assert(forks.length >= 8, 'two sibling fork points were not rendered')
+        const dots = () => [...nav.querySelectorAll<SVGCircleElement>('svg circle[id]')]
+        await waitFor(
+          () =>
+            dots().length >= 8 &&
+            dots().every((node) => {
+              const group = node.closest('defs')?.parentElement
+              return (
+                group?.getAttribute('tabindex') === '0' &&
+                group.getAttribute('role') === 'button' &&
+                !!group.getAttribute('aria-label')
+              )
+            }),
+          'accessible GitGraph message nodes',
+        )
+        const forks = dots()
+        assert(
+          nav.querySelectorAll('.booster-gitgraph-segment').length === 1,
+          'confirmed fork paths were split into disconnected segments',
+        )
         assert(nav.querySelectorAll('svg path').length >= 2, 'verified fork connectors missing')
         assert(
           forks.some((node) => Boolean(node.id)),
           'fork node lacks message preview',
         )
-        const switcher = reader.querySelector<HTMLButtonElement>('.booster-reader-fork-toggle')
+        const switcher = activeReader.querySelector<HTMLButtonElement>(
+          '.booster-reader-fork-toggle',
+        )
         assert(switcher, 'fork variant switcher is absent')
         switcher.click()
         await delay()
         const variants = [
-          ...reader.querySelectorAll<HTMLButtonElement>('.booster-reader-fork-choice'),
+          ...activeReader.querySelectorAll<HTMLButtonElement>('.booster-reader-fork-choice'),
         ]
         assert(
           variants.length === 4,
@@ -1236,18 +1262,72 @@ export async function runUiTests(
         variants.find((item) => item.textContent?.includes('редакция (ветка 2)'))?.click()
         await delay()
         assert(
-          reader.textContent?.includes('Вопрос 3 · редакция (ветка 2)'),
+          activeReader.textContent?.includes('Вопрос 3 · редакция (ветка 2)'),
           'selected variant did not open for reading',
         )
-        forks[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }))
+        const first = nav
+          .querySelector<SVGCircleElement>('svg circle[id="f-u1"]')
+          ?.closest('defs')?.parentElement
+        assert(first?.getAttribute('role') === 'button', 'first node has no keyboard interaction')
+        first.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+        )
+        await waitFor(
+          () => Boolean(activeReader.textContent?.includes('Начало экспериментального диалога')),
+          'keyboard-selected GitGraph node opened its saved conversation record',
+        )
+        await waitFor(
+          () =>
+            nav.querySelector('g[data-archive-graph-node="f-u1"]')?.getAttribute('aria-current') ===
+            'true',
+          'keyboard-selected GitGraph node highlight',
+        )
         await delay()
         assert(
-          reader.querySelectorAll('.booster-exchange').length < 20,
+          activeReader.querySelectorAll('.booster-exchange').length < 20,
           'fork click mounted unrelated history',
         )
         return { forkPoints: 2, forkNodes: forks.length }
       },
     )
+
+    await check('long connected GitGraph stays bounded without horizontal overflow', async () => {
+      await close()
+      const openLong = document.querySelector<HTMLButtonElement>('#fixture-open-long')
+      assert(openLong, 'long-history fixture trigger unavailable')
+      openLong.click()
+      await waitFor(
+        () => {
+          const current = shadow().querySelector<HTMLElement>('.booster-reader')
+          const graph = current?.querySelector<HTMLElement>('.booster-archive-flow-graph')
+          return Boolean(
+            current?.textContent?.includes('Длинный связный диалог') &&
+              graph?.textContent?.includes('161–300/300') &&
+              graph.querySelectorAll('svg circle[id]').length === 140,
+          )
+        },
+        '300-message bounded GitGraph window',
+        10000,
+      )
+      const graph = shadow().querySelector<HTMLElement>('.booster-archive-flow-graph')
+      assert(graph, 'long-history graph missing')
+      assert(
+        graph.scrollWidth <= graph.clientWidth + 1,
+        'single-linked history unnecessarily overflows the graph horizontally',
+      )
+      const earlier = graph.querySelector<HTMLButtonElement>('button[aria-label="Ранее в графе"]')
+      assert(earlier && !earlier.disabled, 'long-history earlier graph action unavailable')
+      earlier.click()
+      await waitFor(
+        () => Boolean(graph.textContent?.includes('21–160/300')),
+        'earlier 140-node graph window',
+      )
+      assert(
+        graph.querySelectorAll('svg circle[id]').length === 140,
+        'earlier graph window exceeded bounded node count',
+      )
+      return { records: 300, mounted: 140, graphWidth: graph.clientWidth }
+    })
 
     return result
   } finally {

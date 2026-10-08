@@ -2,6 +2,8 @@
 
 This fixture runs the production Vue components, archive store, capture module and history loader in real Chromium, using synthetic local data. It is not live ChatGPT acceptance. No private history requests are constructed. Its IndexedDB and localStorage live on the fixture origin, separate from chatgpt.com.
 
+Use the “Open saved forks” button to inspect actual connected sibling paths in the production GitGraph pane. The “Open long graph” scenario creates 300 linked messages on demand and exercises the 140-node graph window/pager. The UI acceptance suite also checks this exact 300-node fixture for bounded SVG mounting, graph paging and absence of horizontal overflow in a single linked path. The regular “Open archive preview” intentionally has unlinked exchange roots; it is a regression case for unknown ancestry, not a malformed link.
+
 Start the fixture from the repository with `bun tests/browser/serve.ts`. Use the exact URL printed by the running job; the port is allocated at runtime. Stop that job after validation. Typecheck the fixture with `bun node_modules/.bin/vue-tsc --noEmit -p tests/browser/tsconfig.json`.
 
 The page exposes `window.extension2Harness` for the authorized browser developer tool:

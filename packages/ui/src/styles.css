@@ -3572,3 +3572,87 @@
     width: 120px;
   }
 }
+
+/* GitGraph keeps one saved connected path per vertical segment. Unlinked
+   archive fragments are separated, not overlaid as invented Git branches. */
+.booster-archive-flow-graph {
+  overflow-x: auto;
+  scrollbar-gutter: stable;
+}
+.booster-gitgraph-header {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 6px 7px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  font-size: 10px;
+  white-space: nowrap;
+}
+/* Put the range and pager on separate rows when the rail is narrow.
+   This avoids needless x-scroll even for a one-lane SVG. */
+.booster-gitgraph-header > span {
+  min-width: 0;
+  flex: 1 1 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.booster-gitgraph-pager {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+.booster-gitgraph-pager button {
+  width: 22px;
+  height: 23px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.booster-gitgraph-pager button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.booster-gitgraph-pager button:focus-visible {
+  outline: 2px solid var(--ring);
+}
+.booster-gitgraph-warning {
+  margin: 5px 7px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.booster-gitgraph-content {
+  min-width: 0;
+  width: max-content;
+  padding: 4px 8px 10px;
+}
+.booster-gitgraph-segment {
+  width: max-content;
+}
+.booster-gitgraph-gap {
+  height: 21px;
+  padding: 1px 9px;
+  border-left: 2px dashed var(--border);
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 20px;
+}
+/* GitGraph draws each dot through an SVG <use> inside a focusable group.
+   Circles in <defs> are not interactive surfaces. */
+.booster-gitgraph-segment-canvas svg g[data-archive-graph-node] {
+  cursor: pointer;
+  outline: none;
+}
+.booster-gitgraph-segment-canvas svg g[data-archive-graph-node]:is(:hover, :focus-visible) > use {
+  filter: drop-shadow(0 0 3px var(--ring));
+}
+.booster-gitgraph-segment-canvas svg g[data-archive-graph-node][aria-current="true"] > use {
+  filter: drop-shadow(0 0 3px var(--foreground));
+}

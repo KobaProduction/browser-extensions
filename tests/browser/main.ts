@@ -1892,3 +1892,43 @@ document.querySelector('#fixture-open-archive')?.addEventListener('click', () =>
     }),
   )
 })
+
+// Persistent free-account-shaped sibling branches, available for visual review.
+document.querySelector('#fixture-open-forks')?.addEventListener('click', () => {
+  window.dispatchEvent(
+    new CustomEvent('chatgpt-booster:open-archive', {
+      detail: { conversationId: 'fixture-forks' },
+    }),
+  )
+})
+
+// Long linked history for verifying the bounded graph and its earlier/later controls.
+document.querySelector('#fixture-open-long')?.addEventListener('click', async () => {
+  const history: Record<string, unknown>[] = []
+  let parent: string | undefined
+  for (let index = 0; index < 150; index++) {
+    const userId = `long-u-${index}`
+    const assistantId = `long-a-${index}`
+    history.push({
+      ...raw(userId, 'user', `Длинная история · вопрос ${index + 1}`, parent),
+      create_time: 1700000000 + index * 2,
+    })
+    history.push({
+      ...raw(assistantId, 'assistant', `Ответ ${index + 1}`, userId),
+      create_time: 1700000000 + index * 2 + 1,
+    })
+    parent = assistantId
+  }
+  await store.ingest(
+    page('fixture-long', history, {
+      title: 'Длинный связный диалог · 300 сообщений',
+      gizmo_id: projectA,
+      gizmo_type: 'snorlax',
+    }),
+  )
+  window.dispatchEvent(
+    new CustomEvent('chatgpt-booster:open-archive', {
+      detail: { conversationId: 'fixture-long' },
+    }),
+  )
+})

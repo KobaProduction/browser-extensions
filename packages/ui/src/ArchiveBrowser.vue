@@ -65,6 +65,7 @@ const forksOpen = ref(false)
 const windowCenter = ref<number | null>(null)
 const loadingOlder = ref(false)
 const readingScroll = ref<HTMLElement | null>(null)
+const activeMessageKey = ref<string | null>(null)
 const expanded = ref(new Set<string>())
 const reasoningExpanded = ref(false)
 let alive = true
@@ -75,6 +76,8 @@ let initialized = false
 let resettingPosition = false
 let windowShiftRevision = 0
 let suppressSearchReset = false
+let readFocusFrame: number | null = null
+let explicitlyNavigatedTo: string | null = null
 let contextUnsubscribe: (() => void) | undefined
 let contextFallbackTimer: ReturnType<typeof setInterval> | undefined
 
@@ -163,6 +166,7 @@ async function resetReadingPosition() {
     viewport.scrollTop = readingOrder.value === 'chronological' ? viewport.scrollHeight : 0
   }
   resettingPosition = false
+  scheduleReadFocus()
 }
 
 async function loadEarlier() {
@@ -188,9 +192,50 @@ async function loadEarlier() {
   loadingOlder.value = false
 }
 
+function trackReadingPosition() {
+  const viewport = readingScroll.value
+  if (!viewport || resettingPosition) return
+  const bounds = viewport.getBoundingClientRect()
+  const anchorY = bounds.top + Math.min(140, bounds.height / 3)
+  // Keep explicit graph/fork selection while that exact saved message remains
+  // visible. Programmatic scrollIntoView fires scroll events too, and must not
+  // immediately replace the selected node with the nearest neighboring turn.
+  if (explicitlyNavigatedTo) {
+    const selectedElement = [...viewport.querySelectorAll<HTMLElement>('[data-archive-node]')]
+      .find((element) => element.dataset.archiveNode === explicitlyNavigatedTo)
+    const selectedBounds = selectedElement?.getBoundingClientRect()
+    if (selectedBounds && selectedBounds.bottom > bounds.top && selectedBounds.top < bounds.bottom) {
+      activeMessageKey.value = explicitlyNavigatedTo
+      return
+    }
+    explicitlyNavigatedTo = null
+  }
+
+  let closest: HTMLElement | null = null
+  let distance = Infinity
+  for (const element of viewport.querySelectorAll<HTMLElement>('[data-archive-node]')) {
+    const rect = element.getBoundingClientRect()
+    if (rect.bottom < bounds.top || rect.top > bounds.bottom) continue
+    const offset = Math.abs(Math.max(bounds.top, rect.top) - anchorY)
+    if (offset < distance) {
+      closest = element
+      distance = offset
+    }
+  }
+  if (closest?.dataset.archiveNode) activeMessageKey.value = closest.dataset.archiveNode
+}
+function scheduleReadFocus() {
+  if (readFocusFrame !== null) return
+  readFocusFrame = requestAnimationFrame(() => {
+    readFocusFrame = null
+    trackReadingPosition()
+  })
+}
+
 function onReadingScroll() {
   const viewport = readingScroll.value
   if (!viewport || resettingPosition) return
+  scheduleReadFocus()
   if (windowCenter.value !== null) {
     if (loadingOlder.value) return
     const atTop = viewport.scrollTop < 100
@@ -251,6 +296,8 @@ async function navigateToNode(index: number) {
     turnIndex = filteredTurns.value.findIndex(turn => turn.messages.some(message => message.record.messageKey === item.record.messageKey))
   }
   if (turnIndex < 0) return
+  explicitlyNavigatedTo = item.record.messageKey
+  activeMessageKey.value = item.record.messageKey
   windowCenter.value = turnIndex
   await nextTick()
   const target = [...(readingScroll.value?.querySelectorAll<HTMLElement>('[data-archive-node]') ?? [])].find(x => x.dataset.archiveNode === item.record.messageKey)
@@ -281,6 +328,8 @@ async function loadThread(id: string | null) {
   ++windowShiftRevision
   resettingPosition = false
   thread.value = { turns: [], messageCount: 0, recordCount: 0, detailCount: 0 }
+  activeMessageKey.value = null
+  explicitlyNavigatedTo = null
   coverage.value = undefined
   visibleCount.value = ARCHIVE_INITIAL_TURNS
   windowCenter.value = null
@@ -381,6 +430,7 @@ onBeforeUnmount(() => {
   windowShiftRevision++
   contextUnsubscribe?.()
   window.removeEventListener(ARCHIVE_UPDATED_EVENT, refreshConversationTitles)
+  if (readFocusFrame !== null) cancelAnimationFrame(readFocusFrame)
   if (contextFallbackTimer) clearInterval(contextFallbackTimer)
 })
 </script>
@@ -473,7 +523,7 @@ onBeforeUnmount(() => {
         <p v-if="error" role="alert" class="booster-error">{{ t('reader.error') }}</p>
         <div class="booster-reader-reading-surface">
           <div v-if="loadingOlder" class="booster-reader-older-loading" role="status" aria-live="polite"><LoaderCircle class="size-4 booster-reader-spinner" />{{ t('reader.loadingEarlier') }} · {{ displayedTurns.length }}/{{ filteredTurns.length }}</div>
-          <ArchiveFlowGraph v-if="selected && navigationNodes.length && !threadLoading" :key="selectedId ?? ''" :thread="thread" :locale="locale" @navigate="navigateToMessageKey" />
+          <ArchiveFlowGraph v-if="selected && navigationNodes.length && !threadLoading" :key="selectedId ?? ''" :thread="thread" :locale="locale" :active-key="activeMessageKey" @navigate="navigateToMessageKey" />
           <div ref="readingScroll" class="booster-reader-scroll" @scroll.passive="onReadingScroll">
             <p v-if="threadLoading" role="status" class="booster-reader-loading"><LoaderCircle class="size-4 booster-reader-spinner" />{{ t('reader.loading') }}</p>
             <template v-else-if="selected">
