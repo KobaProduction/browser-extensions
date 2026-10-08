@@ -3468,3 +3468,42 @@
   vector-effect: non-scaling-stroke;
   opacity: 0.58;
 }
+
+.booster-reader-fork-choices {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  max-height: 115px;
+  overflow: auto;
+  margin-top: 6px;
+}
+.booster-reader-fork-group {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  flex-wrap: wrap;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 5px 8px;
+  font-size: 11px;
+}
+.booster-reader-fork-group > span {
+  color: var(--muted-foreground);
+  font-weight: 600;
+}
+.booster-reader-fork-choice {
+  max-width: 180px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 6px;
+  cursor: pointer;
+  font-size: 11px;
+}
+.booster-reader-fork-choice:hover,
+.booster-reader-fork-choice:focus-visible {
+  border-color: var(--ring);
+}

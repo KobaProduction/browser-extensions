@@ -740,3 +740,14 @@ connector paths are rendered; the source tests cover both fork retention and
 unknown-parent gaps. Live Free page integration with an installed Booster
 userscript and live ChatGPT editing/version-switching is a separate validation
 level from this isolated fixture.
+
+### Read-only sibling variant navigation (2026-10-08)
+
+The archive reader exposes observed user-message sibling forks as small groups of
+clickable saved variants. Selecting one focuses the corresponding checkpoint and
+opens its bounded local reading window; this does not mutate ChatGPT's active
+conversation path or claim a globally verified active branch. Groups require at
+least two distinct user message IDs sharing an explicit parent ID; duplicate
+records and messages lacking parent evidence are not treated as forks. The
+archive retains all variants without deleting older descendants. Local Free-shaped
+fixture covers two forks and alternate variant selection in managed Chromium.

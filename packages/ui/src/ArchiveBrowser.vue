@@ -28,6 +28,7 @@ import {
 } from './archive-navigation'
 import CopyIdentity from './CopyIdentity.vue'
 import { archiveMessageGraph } from './archive-message-graph'
+import { archiveForkChoices } from './archive-fork-choices'
 import { translate, type SupportedLocale, type TranslationKey } from './i18n'
 import type {
   ArchiveConversationView,
@@ -63,6 +64,7 @@ const textSearch = ref('')
 const visibleCount = ref(ARCHIVE_INITIAL_TURNS)
 const readingOrder = ref<ArchiveReadingOrder>('chronological')
 const searchOpen = ref(false)
+const forksOpen = ref(false)
 const readingProgress = ref(1)
 const windowCenter = ref<number | null>(null)
 const loadingOlder = ref(false)
@@ -121,6 +123,7 @@ const displayedTurns = computed(() => {
   return archiveTurnWindow(filteredTurns.value, visibleCount.value, readingOrder.value)
 })
 const messageGraph = computed(() => archiveMessageGraph(thread.value))
+const forkChoices = computed(() => archiveForkChoices(thread.value))
 const navigationNodes = computed(() => thread.value.turns.flatMap(turn => turn.messages.filter(item => item.kind === 'user' || item.kind === 'answer')))
 const timelineNodes = computed(() =>
   archiveNavigatorSample(
@@ -261,6 +264,12 @@ async function shiftWindow(amount: number) {
   else viewport.scrollTop = Math.max(0, beforeTop - (beforeHeight - viewport.scrollHeight))
   loadingOlder.value = false
 }
+async function navigateToMessageKey(key: string) {
+  const index = navigationNodes.value.findIndex((item) => item.record.messageKey === key)
+  if (index < 0) return
+  await navigateToNode(index)
+  forksOpen.value = false
+}
 async function navigateToNode(index: number) {
   const total = navigationNodes.value.length
   if (!total) return
@@ -336,6 +345,7 @@ function select(id: string) {
   selectedId.value = id
   mobileList.value = false
   textSearch.value = ''
+  forksOpen.value = false
   void loadThread(id)
 }
 async function refresh() {
@@ -467,7 +477,18 @@ onBeforeUnmount(() => {
             <div class="booster-reader-chat-actions">
               <button class="booster-action-secondary" type="button" @click="reasoningExpanded = !reasoningExpanded"><Brain class="size-4" />{{ t(reasoningExpanded ? 'reader.collapseReasoning' : 'reader.expandReasoning') }}</button>
               <button class="booster-action-secondary booster-reader-export" type="button" :disabled="threadLoading" @click="emit('export', selected.conversationId, selected.title)"><Download class="size-4" />{{ t('reader.export') }}</button>
+              <button v-if="forkChoices.length" class="booster-action-secondary booster-reader-fork-toggle" type="button" :aria-expanded="forksOpen" @click="forksOpen = !forksOpen"><GitBranch class="size-4" />{{ locale === 'ru' ? 'Ветки' : 'Forks' }} · {{ forkChoices.length }}</button>
               <button class="booster-action-secondary" type="button" :aria-expanded="searchOpen" :aria-label="t('reader.searchMessages')" @click="searchOpen = !searchOpen"><Search class="size-4" /></button>
+            </div>
+            <div v-if="forksOpen && forkChoices.length" class="booster-reader-fork-choices" :aria-label="locale === 'ru' ? 'Сохранённые варианты сообщений' : 'Saved message variants'">
+              <div v-for="(fork, forkIndex) in forkChoices" :key="fork.id" class="booster-reader-fork-group">
+                <span>{{ locale === 'ru' ? 'Развилка' : 'Fork' }} {{ forkIndex + 1 }}</span>
+                <button v-for="(variant, variantIndex) in fork.variants" :key="variant.messageId" type="button" class="booster-reader-fork-choice"
+                  :title="variant.text.slice(0, 160)"
+                  @click="navigateToMessageKey(variant.key)">
+                  {{ locale === 'ru' ? 'Вариант' : 'Variant' }} {{ variantIndex + 1 }} · {{ variant.text.slice(0, 45) }}
+                </button>
+              </div>
             </div>
             <div v-if="searchOpen" class="booster-reader-find">
               <input v-model="textSearch" type="search" :placeholder="t('reader.searchMessages')" :aria-label="t('reader.searchMessages')" />

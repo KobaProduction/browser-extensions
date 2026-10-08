@@ -1220,6 +1220,23 @@ export async function runUiTests(
           forks.some((node) => node.title.includes('редакция')),
           'fork node lacks message preview',
         )
+        const switcher = reader.querySelector<HTMLButtonElement>('.booster-reader-fork-toggle')
+        assert(switcher, 'fork variant switcher is absent')
+        switcher.click()
+        await delay()
+        const variants = [
+          ...reader.querySelectorAll<HTMLButtonElement>('.booster-reader-fork-choice'),
+        ]
+        assert(
+          variants.length === 4,
+          'two fork groups do not offer exactly four saved alternatives',
+        )
+        variants.find((item) => item.textContent?.includes('редакция (ветка 2)'))?.click()
+        await delay()
+        assert(
+          reader.textContent?.includes('Вопрос 3 · редакция (ветка 2)'),
+          'selected variant did not open for reading',
+        )
         forks[0]?.click()
         await delay()
         assert(
