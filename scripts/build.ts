@@ -113,6 +113,10 @@ async function pack(name: string) {
   }
 }
 for (const name of ['core', 'adapters', 'storage', 'archive', 'ui', 'widgets', 'shell']) await pack(name)
+if (requested === 'packages') {
+  console.log('Shared packages built')
+  process.exit(0)
+}
 for (const id of ids) {
   const info = await manifest(id)
   if (!info.release) throw Error('Module ' + id + ' is not releasable')

@@ -16,7 +16,7 @@ Repository map for ChatGPT Booster.
 - `packages/core` — environment-neutral runtime contracts and settings.
 - `packages/chatgpt` — ChatGPT DOM adapters.
 - `packages/features` — reusable feature modules.
-- `packages/ui` — Vue/shadcn-vue components and injected UI.
+- `packages/ui` — Vue/shadcn-vue components and injected UI. Shared archive list, progress and dock primitives are imported through `@kobaproduction/browser-widgets`; keep ChatGPT-specific data and source validation at the feature/adapter boundary.
 - `packages/extension` — Chromium Manifest V3 target.
 - `packages/userscript` — Tampermonkey/userscript target.
 - `.github/workflows` — CI and release packaging.

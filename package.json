@@ -18,11 +18,12 @@
     "build:vk": "bun scripts/build.ts --module vk-booster",
     "build:changed": "bun scripts/build.ts --module changed",
     "release:plan": "bun scripts/release-plan.ts",
-    "check:chatgpt": "cd integrations/chatgpt-booster && bun run check",
-    "test:chatgpt": "cd integrations/chatgpt-booster && bun test",
-    "build:chatgpt": "cd integrations/chatgpt-booster && bun run build",
+    "check:chatgpt": "bun run build:shared && cd integrations/chatgpt-booster && bun run check",
+    "test:chatgpt": "bun run build:shared && cd integrations/chatgpt-booster && bun test",
+    "build:chatgpt": "bun run build:shared && cd integrations/chatgpt-booster && bun run build",
     "lint": "biome check --error-on-warnings .",
-    "lint:fix": "biome check --write ."
+    "lint:fix": "biome check --write .",
+    "build:shared": "bun scripts/build.ts --module packages"
   },
   "devDependencies": {
     "@types/bun": "^1.3.0",

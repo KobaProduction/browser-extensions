@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "../../widgets/src/archive-conversation-list.css";
 @source "./**/*.{vue,ts}";
 @source "../../ui/src/**/*.{vue,ts}";
 @source "../../widgets/src/**/*.{vue,ts}";

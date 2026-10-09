@@ -39,6 +39,20 @@ for the first-party workspace. The imported ChatGPT workspace keeps its own
 quality gate until its compatibility migration is complete. Type safety
 does not replace live VK browser acceptance or solve v2 multi-file atomicity.
 
+## ChatGPT Booster compatibility decomposition
+
+The imported ChatGPT DEV application remains under `integrations/chatgpt-booster`
+with an independent build and rollback path. Its Archive Browser delegates
+conversation list presentation to `packages/widgets/ArchiveConversationList`,
+docked-window positioning to portable widget geometry, and export progress
+to `ArchiveProgressBar`, which VK Archive Manager also consumes.
+The ChatGPT-specific export format/level/evidence form is a separate
+`ArchiveExportOptions.vue` feature view; source-specific options are not
+projected into VK. V4 archive entity/metadata types, physical database
+validation and indexed window reads have separate owners. This is
+**source decomposition only**, not canonical migration, data move or
+ChatGPT browser acceptance.
+
 ## VK Booster migration
 
 The VK archive engine is wrapped as a `Feature` and used by both Tampermonkey and MV3. The duplicate Tampermonkey menu was removed. Its internal VK API/authentication, VK attachment mapping/downloading and offline HTML renderer are separate modules. Linear page selection and an acknowledgement-gated page-scan application service for exact-N/incremental/backfill use `@kobaproduction/browser-archive` with VK-supplied source and commit ports. Its bounded binary response reader also verifies media MIME, length and SHA-256, while VK-specific media URL selection/fallback remains in its provider adapter. Generic directory writes use `@kobaproduction/browser-adapters`. VK-owned checkpoint format, on-disk serialization, media iteration and the public v2 file format remain unchanged. The VK commit adapter stages its next records/checkpoint and publishes them in memory only after both file writes are acknowledged (the browser File System Access API does not provide a multi-file ACID transaction); a complete shared multi-source ArchiveController/Repository/Output has **not** been extracted or adopted by ChatGPT Booster. Selecting an invalid or unreadable archive folder fails closed and restores the previously active folder/data instead of redirecting later writes. Regression checks cover existing semantics, but Chrome/Tampermonkey/MV3 live acceptance is still outstanding.

@@ -2,6 +2,7 @@
 import { Badge, Button } from '@kobaproduction/browser-ui'
 import { Archive, Download, FolderOpen, Pause, Play, Settings2 } from 'lucide-vue-next'
 import { computed, ref } from 'vue'
+import ArchiveProgressBar from './ArchiveProgressBar.vue'
 import type { ArchiveManagerMode, ArchiveManagerOptions, ArchiveManagerState } from './types'
 
 const props = defineProps<{
@@ -96,7 +97,7 @@ function start() {
       <div class="booster-setting-copy"><b>Прогресс экспорта</b><span>{{state.error||state.phase||'Ожидание'}}</span></div>
       <strong class="text-base font-semibold tabular-nums">{{percent}}%</strong>
     </div>
-    <progress class="w-full" :value="percent" max="100" aria-label="Прогресс экспорта">{{percent}}%</progress>
+    <ArchiveProgressBar label="Прогресс экспорта" :percent="percent" compact />
     <div class="booster-counter-grid text-xs">
       <span>Обработано <b>{{state.done}} / {{state.total}}</b></span>
       <span>Новых <b>{{state.newCount}}</b></span>

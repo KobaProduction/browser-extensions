@@ -86,6 +86,7 @@
         "@gitgraph/core": "1.5.0",
         "@gitgraph/js": "1.4.0",
         "@kobaproduction/browser-ui": "file:../../../../packages/ui",
+        "@kobaproduction/browser-widgets": "file:../../../../packages/widgets",
         "clsx": "^2.1.1",
         "lucide-vue-next": "^0.545.0",
         "tailwind-merge": "^3.3.1",
@@ -104,6 +105,9 @@
         "vue": "^3.5.22",
       },
     },
+  },
+  "overrides": {
+    "@kobaproduction/browser-ui": "file:../../packages/ui",
   },
   "packages": {
     "@babel/code-frame": ["@babel/code-frame@7.29.7", "", { "dependencies": { "@babel/helper-validator-identifier": "^7.29.7", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw=="],
@@ -708,6 +712,8 @@
 
     "@chatgpt-booster/ui/@kobaproduction/browser-ui": ["@kobaproduction/browser-ui@file:../../packages/ui", { "dependencies": { "clsx": "^2.1.1", "tailwind-merge": "^3.3.1", "vue": "^3.5.22" } }],
 
+    "@chatgpt-booster/ui/@kobaproduction/browser-widgets": ["@kobaproduction/browser-widgets@file:../../packages/widgets", { "dependencies": { "lucide-vue-next": "^0.545.0", "vue": "^3.5.22" }, "peerDependencies": { "@kobaproduction/browser-ui": "^0.1.0" } }],
+
     "@pnpm/network.ca-file/graceful-fs": ["graceful-fs@4.2.10", "", {}, "sha512-9ByhssR2fPVsNZj478qUUbKfmL0+t5BDVyjShtyZZLiK7ZDAArFFfopyOTj0M05wE2tJPisA4iTnnXl2YoPvOA=="],
 
     "@tailwindcss/node/lightningcss": ["lightningcss@1.32.0", "", { "dependencies": { "detect-libc": "^2.0.3" }, "optionalDependencies": { "lightningcss-android-arm64": "1.32.0", "lightningcss-darwin-arm64": "1.32.0", "lightningcss-darwin-x64": "1.32.0", "lightningcss-freebsd-x64": "1.32.0", "lightningcss-linux-arm-gnueabihf": "1.32.0", "lightningcss-linux-arm64-gnu": "1.32.0", "lightningcss-linux-arm64-musl": "1.32.0", "lightningcss-linux-x64-gnu": "1.32.0", "lightningcss-linux-x64-musl": "1.32.0", "lightningcss-win32-arm64-msvc": "1.32.0", "lightningcss-win32-x64-msvc": "1.32.0" } }, "sha512-NXYBzinNrblfraPGyrbPoD19C1h9lfI/1mzgWYvXUTe414Gz/X1FD2XBZSZM7rRTrMA8JL3OtAaGifrIKhQ5yQ=="],
@@ -747,6 +753,8 @@
     "rc/ini": ["ini@1.3.8", "", {}, "sha512-JV/yugV2uzW5iMRSiZAyDtQd+nxtUnjeLt0acNdw98kKLrvuRVyB80tsREOE7yvGVgalhZ6RNXCmEHkUKBKxew=="],
 
     "rc/strip-json-comments": ["strip-json-comments@2.0.1", "", {}, "sha512-4gB8na07fecVVkOI6Rs4e7T6NOTki5EmL7TUduTs6bu3EdnSycntVJ4re8kgZA+wx9IueI2Y11bfbgwtzuE0KQ=="],
+
+    "@chatgpt-booster/ui/@kobaproduction/browser-widgets/@kobaproduction/browser-ui": ["@kobaproduction/browser-ui@file:../../packages/ui", {}],
 
     "@tailwindcss/node/lightningcss/lightningcss-android-arm64": ["lightningcss-android-arm64@1.32.0", "", { "os": "android", "cpu": "arm64" }, "sha512-YK7/ClTt4kAK0vo6w3X+Pnm0D2cf2vPHbhOXdoNti1Ga0al1P4TBZhwjATvjNwLEBCnKvjJc2jQgHXH0NEwlAg=="],
 

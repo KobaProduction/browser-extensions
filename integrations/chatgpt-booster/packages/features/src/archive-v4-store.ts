@@ -14,7 +14,29 @@ import {
   sameSubmissionSelection,
 } from './archive-source-contract'
 import { ArchiveV4Database } from './archive-v4-database'
+import type {
+  ArchiveV4Change,
+  ArchiveV4Conversation,
+  ArchiveV4IngestResult,
+  ArchiveV4Message,
+  ArchiveV4Metadata,
+  ArchiveV4PathIndex,
+  ArchiveV4PathResult,
+  ArchiveV4PathStatus,
+  ArchiveV4Preview,
+  ArchiveV4Project,
+  ArchiveV4SourceRevisionEvidence,
+  ArchiveV4SourceRevisionWindow,
+  ArchiveV4SubmissionEvidence,
+  ArchiveV4WriteOptions,
+  ArchiveV4WriteTicket,
+  MetadataKind,
+  OwnerType,
+  Source,
+} from './archive-v4-entities'
+import { comparePoint, identity, key, sourceObject } from './archive-v4-identities'
 import { traceArchiveV4Path, traceArchiveV4PathIds } from './archive-v4-path'
+import { readChronologyWindow, readMessageWindow } from './archive-v4-windows'
 import {
   archiveWriteAllowed,
   canonicalSourceJson,
@@ -28,191 +50,24 @@ import { normalizeConversationProjectId } from './conversation-records'
  * Four ChatGPT domain entities; UI preferences and export jobs are independent.
  */
 export { ARCHIVE_V4_DB_NAME, ARCHIVE_V4_DB_VERSION } from './archive-v4-database'
+export type {
+  ArchiveV4Change,
+  ArchiveV4Conversation,
+  ArchiveV4IngestResult,
+  ArchiveV4Message,
+  ArchiveV4Metadata,
+  ArchiveV4PathIndex,
+  ArchiveV4PathResult,
+  ArchiveV4PathStatus,
+  ArchiveV4Preview,
+  ArchiveV4Project,
+  ArchiveV4SourceRevisionEvidence,
+  ArchiveV4SourceRevisionWindow,
+  ArchiveV4SubmissionEvidence,
+  ArchiveV4WriteOptions,
+  ArchiveV4WriteTicket,
+} from './archive-v4-entities'
 export { traceArchiveV4Path, traceArchiveV4PathIds } from './archive-v4-path'
-
-type Source = Record<string, unknown>
-type OwnerType = 'project' | 'conversation' | 'message' | 'account'
-type MetadataKind =
-  | 'history-page'
-  | 'message-snapshot'
-  | 'message-revision-evidence'
-  | 'submission-selection'
-  | 'write-generation'
-
-export interface ArchiveV4Project {
-  key: string
-  projectId: string
-  accountId: string
-  title: string | null
-  firstSeenAt: number
-  lastSeenAt: number
-}
-
-export interface ArchiveV4Conversation {
-  key: string
-  conversationId: string
-  accountId: string
-  projectId: string | null
-  title: string | null
-  currentNodeId: string | null
-  /** Newest native initial read allowed to update title/project/selected head. */
-  headReadId?: string | null
-  headReadStartedAt?: number | null
-  catalogReadStartedAt?: number | null
-  /** Changes on recreation, so deleting and recollecting cannot alias revision 1. */
-  instanceId?: string
-  latestReadId?: string | null
-  latestReadStartedAt?: number | null
-  latestReadConflicted?: boolean
-  knownMessageCount: number
-  // Native create_time may be null. These messages remain stored but have no proven chronology.
-  unsequencedMessageCount: number
-  firstKnownMessageId: string | null
-  lastKnownMessageId: string | null
-  firstKnownTime: number | null
-  lastKnownTime: number | null
-  // Source pagination proof does not prove selected branch ancestry.
-  verifiedPathRootId: string | null
-  verifiedPathTipId: string | null
-  /** The exact native history read and revision that established these boundaries. */
-  verifiedPathReadId?: string | null
-  verifiedPathRevision?: number | null
-  coverage: 'unverified'
-  revision: number
-  firstSeenAt: number
-  lastSeenAt: number
-}
-
-export interface ArchiveV4Message {
-  key: string
-  conversationKey: string
-  messageId: string
-  parentId: string | null
-  // Absent parent_id is not proof that this node is a root.
-  parentKnown: boolean
-  sourceCreateTime: number | null
-  firstSeenAt: number
-  lastSeenAt: number
-  revision: number
-  /** Snapshot provenance prevents a late older read overwriting fresher raw. */
-  sourceReadId?: string | null
-  sourceReadStartedAt?: number | null
-  sourceFingerprint?: string
-  // Entire original ChatGPT message. No Booster keys inserted or removed.
-  raw: Source
-}
-
-export interface ArchiveV4Metadata {
-  key: string
-  ownerType: OwnerType
-  ownerKey: string
-  kind: MetadataKind
-  observedAt: number
-  payload: Source
-}
-
-/** Previous stored source version; no claim about when or who edited it. */
-export interface ArchiveV4SourceRevisionEvidence {
-  previousRevision: number
-  previousLastSeenAtMs: number
-  sourceReadId: string | null
-  sourceReadStartedAtMs: number | null
-}
-
-export interface ArchiveV4SourceRevisionWindow {
-  previous: ArchiveV4SourceRevisionEvidence[]
-  /** Older revisions have been omitted to bound the exported evidence. */
-  olderRevisionsOmitted: boolean
-}
-
-export type ArchiveV4SubmissionEvidence =
-  | { status: 'unobserved' | 'conflicted'; selection: null }
-  | { status: 'observed'; selection: ConversationSubmissionSelection }
-
-export type ArchiveV4Change =
-  | { kind: 'conversation'; accountId: string; conversationId: string; revision: number }
-  | { kind: 'project'; accountId: string; projectId: string }
-  | { kind: 'cleared'; accountId: string }
-
-export interface ArchiveV4WriteTicket {
-  readonly accountId: string
-  readonly generation: string | null
-  readonly localEpoch: number
-  readonly requestedAt: number
-}
-export interface ArchiveV4WriteOptions {
-  ticket?: ArchiveV4WriteTicket
-  signal?: AbortSignal
-}
-
-export interface ArchiveV4IngestResult {
-  mutated: boolean
-  conversationKey: string
-  inserted: number
-  changed: number
-  unchanged: number
-  totalMessages: number
-  revision: number
-}
-
-/** A chronological preview is not proof of a complete message lineage. */
-export interface ArchiveV4Preview {
-  conversation: ArchiveV4Conversation | undefined
-  earliest: ArchiveV4Message[]
-  latest: ArchiveV4Message[]
-  hiddenKnownCount: number
-  hasUnsequencedMessages: boolean
-}
-
-export type ArchiveV4PathStatus =
-  | 'verified'
-  | 'conversation_missing'
-  | 'head_mismatch'
-  | 'pagination_incomplete'
-  | 'capture_omissions'
-  | 'tip_missing'
-  | 'parent_unknown'
-  | 'missing_parent'
-  | 'cyclic_parent'
-  | 'depth_limit'
-  | 'source_changed'
-
-export interface ArchiveV4PathResult {
-  status: ArchiveV4PathStatus
-  /** Ordered root -> selected tip for the confirmed subset only. */
-  messages: ArchiveV4Message[]
-  rootId: string | null
-  selectedTipId: string
-  // Raw provenance is never inferred from chronological adjacency.
-  coverageReadId: string | null
-  /** Conversation revision captured before tracing this native path. */
-  conversationRevision: number | null
-  conversationInstanceId?: string | null
-}
-
-/** Verified root-to-tip IDs without retaining every source-native raw message. */
-export type ArchiveV4PathIndex = Omit<ArchiveV4PathResult, 'messages'> & {
-  messageIds: string[]
-}
-
-function key(...values: string[]): string {
-  return JSON.stringify(values)
-}
-
-function identity(value: string, label: string): string {
-  if (!value || value.trim() !== value) throw new Error('Invalid value: '.concat(label))
-  return value
-}
-
-function sourceObject(value: unknown): Source {
-  if (!value || typeof value !== 'object' || Array.isArray(value))
-    throw new Error('Invalid source message object')
-  return value as Source
-}
-
-function comparePoint(aTime: number, aId: string, bTime: number, bId: string): number {
-  return aTime - bTime || (aId < bId ? -1 : aId > bId ? 1 : 0)
-}
 
 export class ArchiveV4Store {
   readonly #database = new ArchiveV4Database()
@@ -1398,74 +1253,15 @@ export class ArchiveV4Store {
     fromExclusive?: Pick<ArchiveV4Message, 'sourceCreateTime' | 'messageId'>,
     signal?: AbortSignal,
   ): Promise<ArchiveV4Message[]> {
-    const conversationKey = key(
-      identity(accountId, 'accountId'),
-      identity(conversationId, 'conversationId'),
+    return readChronologyWindow(
+      () => this.#db(),
+      accountId,
+      conversationId,
+      limit,
+      direction,
+      fromExclusive,
+      signal,
     )
-    if (signal?.aborted) throw new DOMException('Archive window cancelled', 'AbortError')
-    const db = await this.#db()
-    if (signal?.aborted) throw new DOMException('Archive window cancelled', 'AbortError')
-    const tx = db.transaction('messages', 'readonly')
-    const index = tx.objectStore('messages').index('byChronology')
-    if (
-      fromExclusive &&
-      (fromExclusive.sourceCreateTime === null || !Number.isFinite(fromExclusive.sourceCreateTime))
-    )
-      throw new Error('Chronological cursor requires a verified numeric source time')
-    const range = fromExclusive
-      ? direction === 'newest'
-        ? IDBKeyRange.bound(
-            [conversationKey],
-            [conversationKey, fromExclusive.sourceCreateTime, fromExclusive.messageId],
-            false,
-            true,
-          )
-        : IDBKeyRange.bound(
-            [conversationKey, fromExclusive.sourceCreateTime, fromExclusive.messageId],
-            [conversationKey, []],
-            true,
-            false,
-          )
-      : IDBKeyRange.bound([conversationKey], [conversationKey, []])
-    const amount = Number.isFinite(limit) ? Math.max(1, Math.min(200, Math.floor(limit))) : 40
-    return new Promise((resolve, reject) => {
-      const rows: ArchiveV4Message[] = []
-      const detach = () => signal?.removeEventListener('abort', abort)
-      const abort = () => {
-        detach()
-        try {
-          tx.abort()
-        } catch {
-          /* A completed read needs no cancellation. */
-        }
-        reject(new DOMException('Archive window cancelled', 'AbortError'))
-      }
-      signal?.addEventListener('abort', abort, { once: true })
-      tx.onabort = () => {
-        detach()
-        reject(
-          signal?.aborted
-            ? new DOMException('Archive window cancelled', 'AbortError')
-            : (tx.error ?? new Error('Archive index read aborted')),
-        )
-      }
-      tx.oncomplete = () => {
-        detach()
-        resolve(rows)
-      }
-      const cursor = index.openCursor(range, direction === 'newest' ? 'prev' : 'next')
-      cursor.onerror = () => {
-        detach()
-        reject(cursor.error ?? new Error('Archive index read failed'))
-      }
-      cursor.onsuccess = () => {
-        const current = cursor.result
-        if (!current || rows.length >= amount || signal?.aborted) return
-        rows.push(current.value as ArchiveV4Message)
-        if (rows.length < amount) current.continue()
-      }
-      if (signal?.aborted) abort()
-    })
   }
 
   /** One point lookup and two bounded index cursors inside the same readonly snapshot. */
@@ -1476,103 +1272,7 @@ export class ArchiveV4Store {
     radius = 20,
     signal?: AbortSignal,
   ) {
-    const owner = identity(accountId, 'accountId')
-    const id = identity(conversationId, 'conversationId')
-    const sourceId = identity(messageId, 'messageId')
-    const scoped = key(owner, id)
-    const amount = Number.isFinite(radius) ? Math.max(1, Math.min(60, Math.floor(radius))) : 20
-    if (signal?.aborted) throw new DOMException('Archive navigation cancelled', 'AbortError')
-    const db = await this.#db()
-    if (signal?.aborted) throw new DOMException('Archive navigation cancelled', 'AbortError')
-    const tx = db.transaction(['conversations', 'messages'], 'readonly')
-    const done = settled(tx)
-    // Abort can happen while a cursor promise is still pending.
-    void done.catch(() => undefined)
-    const abort = () => {
-      try {
-        tx.abort()
-      } catch {
-        /* Already settled. */
-      }
-    }
-    signal?.addEventListener('abort', abort, { once: true })
-    try {
-      const store = tx.objectStore('messages')
-      const [conversation, target] = await Promise.all([
-        req<ArchiveV4Conversation | undefined>(tx.objectStore('conversations').get(scoped)),
-        req<ArchiveV4Message | undefined>(store.get(key(scoped, sourceId))),
-      ])
-      if (!conversation || !target) throw new Error('archive.error.messageMissing')
-      if (
-        conversation.accountId !== owner ||
-        conversation.conversationId !== id ||
-        target.conversationKey !== scoped ||
-        target.messageId !== sourceId
-      )
-        throw new Error('archive.error.auth')
-      if (signal?.aborted) throw new DOMException('Archive navigation cancelled', 'AbortError')
-      const point = target.sourceCreateTime
-      if (point === null) {
-        await done
-        return {
-          conversation,
-          target,
-          messages: [target],
-          hasOlder: false,
-          hasNewer: false,
-          unsequencedTarget: true,
-        }
-      }
-      if (!Number.isFinite(point)) throw new Error('archive.error.incompatibleSource')
-      const index = store.index('byChronology')
-      const anchor = [scoped, point, sourceId]
-      const neighbors = (direction: 'prev' | 'next') =>
-        new Promise<ArchiveV4Message[]>((resolve, reject) => {
-          const rows: ArchiveV4Message[] = []
-          const onAbort = () =>
-            reject(
-              signal?.aborted
-                ? new DOMException('Archive navigation cancelled', 'AbortError')
-                : (tx.error ?? new Error('Archive navigation aborted')),
-            )
-          tx.addEventListener('abort', onAbort, { once: true })
-          const range =
-            direction === 'prev'
-              ? IDBKeyRange.bound([scoped], anchor, false, true)
-              : IDBKeyRange.bound(anchor, [scoped, []], true, false)
-          const cursor = index.openCursor(range, direction)
-          cursor.onerror = () =>
-            reject(cursor.error ?? new Error('Archive navigation cursor failed'))
-          cursor.onsuccess = () => {
-            const current = cursor.result
-            if (!current) {
-              resolve(rows)
-              return
-            }
-            rows.push(current.value as ArchiveV4Message)
-            if (rows.length >= amount + 1) resolve(rows)
-            else current.continue()
-          }
-        })
-      const [older, newer] = await Promise.all([neighbors('prev'), neighbors('next')])
-      await done
-      if (signal?.aborted) throw new DOMException('Archive navigation cancelled', 'AbortError')
-      return {
-        conversation,
-        target,
-        messages: [...older.slice(0, amount).reverse(), target, ...newer.slice(0, amount)],
-        hasOlder: older.length > amount,
-        hasNewer: newer.length > amount,
-        unsequencedTarget: false,
-      }
-    } catch (cause) {
-      abort()
-      await done.catch(() => undefined)
-      if (signal?.aborted) throw new DOMException('Archive navigation cancelled', 'AbortError')
-      throw cause
-    } finally {
-      signal?.removeEventListener('abort', abort)
-    }
+    return readMessageWindow(() => this.#db(), accountId, conversationId, messageId, radius, signal)
   }
 
   /** No ancestry traversal or message bodies: correlate only one stable saved revision. */

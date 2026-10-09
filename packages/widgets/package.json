@@ -13,7 +13,6 @@
     }
   },
   "dependencies": {
-    "@kobaproduction/browser-ui": "workspace:*",
     "vue": "^3.5.22",
     "lucide-vue-next": "^0.545.0"
   },
@@ -21,5 +20,8 @@
   "publishConfig": {
     "access": "public",
     "registry": "https://npm.pkg.github.com"
+  },
+  "peerDependencies": {
+    "@kobaproduction/browser-ui": "^0.1.0"
   }
 }

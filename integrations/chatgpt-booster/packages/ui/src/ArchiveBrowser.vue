@@ -4,8 +4,6 @@ import ArrowLeft from 'lucide-vue-next/dist/esm/icons/arrow-left.js'
 import Search from 'lucide-vue-next/dist/esm/icons/search.js'
 import Info from 'lucide-vue-next/dist/esm/icons/info.js'
 import Brain from 'lucide-vue-next/dist/esm/icons/brain.js'
-import ChevronDown from 'lucide-vue-next/dist/esm/icons/chevron-down.js'
-import ChevronRight from 'lucide-vue-next/dist/esm/icons/chevron-right.js'
 import Database from 'lucide-vue-next/dist/esm/icons/database.js'
 import Download from 'lucide-vue-next/dist/esm/icons/download.js'
 import GitBranch from 'lucide-vue-next/dist/esm/icons/git-branch.js'
@@ -15,6 +13,7 @@ import Minus from 'lucide-vue-next/dist/esm/icons/minus.js'
 import RefreshCw from 'lucide-vue-next/dist/esm/icons/refresh-cw.js'
 import X from 'lucide-vue-next/dist/esm/icons/x.js'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { ArchiveConversationList, type ArchiveConversationGroup } from '@kobaproduction/browser-widgets'
 import ArchiveRecord from './ArchiveRecord.vue'
 import ArchiveFlowGraph from './ArchiveFlowGraph.vue'
 import {
@@ -137,6 +136,29 @@ const groups = computed(() => {
     return rows.length ? [{ id, rows, count: items.length, label }] : []
   })
 })
+
+const sidebarGroups = computed<ArchiveConversationGroup[]>(() =>
+  groups.value.map(group => ({
+    id: group.id, label: group.label, count: group.count,
+    rows: group.rows.map(entry => ({
+      id: entry.conversation.conversationId,
+      title: entry.conversation.title ?? '',
+      depth: entry.depth,
+      branched: entry.branched,
+      sourceMissing: entry.sourceMissing,
+    })),
+  })),
+)
+const sidebarCopy = computed(() => ({
+  search: t('reader.search'), loading: t('reader.loading'),
+  empty: props.archiveAdapter.archiveGeneration === 4
+    ? props.locale === 'ru'
+      ? 'Новый архив v4 пока пуст. Старые локальные данные v3 не перенесены; историю можно заново собрать из ChatGPT.'
+      : 'The new v4 archive is empty. Previous local v3 data was not migrated; collect history again from ChatGPT.'
+    : t('reader.empty'),
+  noResults: t('reader.noResults'), untitled: t('identity.untitled'),
+  missingBranch: t('reader.branchMissing'),
+}))
 
 const filteredTurns = computed(() => {
   const term = textSearch.value.trim().toLocaleLowerCase()
@@ -708,36 +730,22 @@ onBeforeUnmount(() => {
     </header>
 
     <div class="booster-reader-layout">
-      <aside class="booster-reader-sidebar">
-        <input v-model="search" type="search" :aria-label="t('reader.search')" :placeholder="t('reader.search')" />
-        <p v-if="listLoading && !conversations.length" role="status" class="booster-note">{{ t('reader.loading') }}</p>
-        <p v-else-if="!conversations.length" class="booster-note">{{ archiveAdapter.archiveGeneration === 4 ? (locale === 'ru' ? 'Новый архив v4 пока пуст. Старые локальные данные v3 не перенесены; историю можно заново собрать из ChatGPT.' : 'The new v4 archive is empty. Previous local v3 data was not migrated; collect history again from ChatGPT.') : t('reader.empty') }}</p>
-        <p v-else-if="!groups.length" class="booster-note">{{ t('reader.noResults') }}</p>
-        <section v-for="group in groups" :key="group.id" class="booster-reader-group">
-          <div class="booster-reader-group-header">
-            <button class="booster-group-toggle" type="button" :aria-expanded="expanded.has(group.id) || !!search.trim()" @click="toggleGroup(group.id)">
-              <ChevronDown v-if="expanded.has(group.id) || search.trim()" class="size-4" />
-              <ChevronRight v-else class="size-4" />
-              <span>{{ group.label }}</span><small>{{ group.count }}</small>
-            </button>
-            <CopyIdentity v-if="group.id !== NONE" label="" :identifier="group.id" :locale="locale" />
-          </div>
-          <div v-if="expanded.has(group.id) || search.trim()" class="booster-reader-chat-list">
-            <button
-              v-for="entry in group.rows"
-              :key="entry.conversation.conversationId"
-              type="button"
-              :class="{ active: selectedId === entry.conversation.conversationId, 'is-branch': entry.branched }"
-              :style="{ paddingInlineStart: (10 + Math.min(entry.depth, 12) * 14) + 'px' }"
-              :title="entry.sourceMissing ? t('reader.branchMissing') : entry.conversation.title || t('identity.untitled')"
-              @click="select(entry.conversation.conversationId)"
-            >
-              <GitBranch v-if="entry.branched" class="booster-reader-branch-icon size-3.5" />
-              <span>{{ entry.conversation.title || t('identity.untitled') }}</span>
-            </button>
-          </div>
-        </section>
-      </aside>
+      <ArchiveConversationList
+        :groups="sidebarGroups"
+        :search="search"
+        :selected-id="selectedId"
+        :expanded-ids="expanded"
+        :conversation-count="conversations.length"
+        :loading="listLoading"
+        :copy="sidebarCopy"
+        @update:search="search = $event"
+        @toggle="toggleGroup"
+        @select="select"
+      >
+        <template #group-action="{ group }">
+          <CopyIdentity v-if="group.id !== NONE" label="" :identifier="group.id" :locale="locale" />
+        </template>
+      </ArchiveConversationList>
 
       <main class="booster-reader-main">
         <div class="booster-reader-pinned">

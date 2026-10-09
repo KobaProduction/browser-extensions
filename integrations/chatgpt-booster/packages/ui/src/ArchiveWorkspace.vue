@@ -3,6 +3,7 @@ import Archive from 'lucide-vue-next/dist/esm/icons/archive.js'
 import { OPEN_ARCHIVE_EVENT } from '@chatgpt-booster/core'
 import Maximize2 from 'lucide-vue-next/dist/esm/icons/maximize-2.js'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import {clamp,workspaceRect,workspaceRatios,dockedIconStyle,dockedIconRatios} from '@kobaproduction/browser-widgets'
 import type { ArchiveWindowSettings, SettingsAdapter, ArchiveMessageLocation } from '@chatgpt-booster/core'
 import ArchiveBrowser from './ArchiveBrowser.vue'
 import type { ArchiveDataAdapter } from './mount'
@@ -36,30 +37,13 @@ let drag:
   | { kind: 'move' | 'resize' | 'icon'; id: number; x: number; y: number; start: { x: number; y: number; width: number; height: number } }
   | undefined
 
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value))
-}
-function geometryFromSettings(value: ArchiveWindowSettings) {
-  const minWidth = Math.min(560, Math.max(320, viewport.value.width - 24))
-  const minHeight = Math.min(420, Math.max(280, viewport.value.height - 24))
-  const width = clamp(viewport.value.width * value.widthRatio, minWidth, Math.max(minWidth, viewport.value.width - 24))
-  const height = clamp(viewport.value.height * value.heightRatio, minHeight, Math.max(minHeight, viewport.value.height - 24))
-  return {
-    x: clamp(viewport.value.width * value.xRatio, 8, Math.max(8, viewport.value.width - width - 8)),
-    y: clamp(viewport.value.height * value.yRatio, 8, Math.max(8, viewport.value.height - height - 8)),
-    width,
-    height,
-  }
-}
 const geometry = computed(() =>
-  transient.value ?? geometryFromSettings(settings.value ?? {
+  transient.value ?? workspaceRect(settings.value ?? {
     xRatio: 0.08,
     yRatio: 0.08,
     widthRatio: 0.72,
     heightRatio: 0.82,
-    minimizedSide: 'right',
-    minimizedHeightRatio: 0.45,
-  }),
+  }, viewport.value),
 )
 const windowStyle = computed(() => ({
   left: `${geometry.value.x}px`,
@@ -67,31 +51,16 @@ const windowStyle = computed(() => ({
   width: `${geometry.value.width}px`,
   height: `${geometry.value.height}px`,
 }))
-const iconStyle = computed(() => {
-  const value = settings.value
-  const side = value?.minimizedSide ?? 'right'
-  const y = (viewport.value.height - 42) * (value?.minimizedHeightRatio ?? 0.45)
-  return {
-    left: side === 'left' ? '0px' : `${Math.max(0, viewport.value.width - 42)}px`,
-    top: `${clamp(y, 0, Math.max(0, viewport.value.height - 42))}px`,
-  }
-})
+const iconStyle = computed(() => dockedIconStyle(settings.value,viewport.value))
 
 async function persistGeometry(next = geometry.value) {
-  const patch = {
-    xRatio: next.x / Math.max(1, viewport.value.width),
-    yRatio: next.y / Math.max(1, viewport.value.height),
-    widthRatio: next.width / Math.max(1, viewport.value.width),
-    heightRatio: next.height / Math.max(1, viewport.value.height),
-  }
+  const patch = workspaceRatios(next,viewport.value)
   const updated = await props.settingsAdapter.update({ ui: { archiveWindow: patch } })
   settings.value = { ...updated.ui.archiveWindow }
 }
 async function persistMinimized(x: number, y: number) {
-  const side = x + 21 < viewport.value.width / 2 ? 'left' : 'right'
-  const heightRatio = y / Math.max(1, viewport.value.height - 42)
   const updated = await props.settingsAdapter.update({
-    ui: { archiveWindow: { minimizedSide: side, minimizedHeightRatio: clamp(heightRatio, 0, 1) } },
+    ui: { archiveWindow: dockedIconRatios(x,y,viewport.value) },
   })
   settings.value = { ...updated.ui.archiveWindow }
 }

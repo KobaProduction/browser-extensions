@@ -18,6 +18,7 @@
     "lucide-vue-next": "^0.545.0",
     "tailwind-merge": "^3.3.1",
     "vue": "^3.5.22",
-    "@kobaproduction/browser-ui": "file:../../../../packages/ui"
+    "@kobaproduction/browser-ui": "file:../../../../packages/ui",
+    "@kobaproduction/browser-widgets": "file:../../../../packages/widgets"
   }
 }
