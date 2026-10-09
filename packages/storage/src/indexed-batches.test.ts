@@ -67,7 +67,7 @@ function source(records: IndexedRow[]): IDBDatabase {
       })
       return tx as IDBTransaction
     },
-  } as IDBDatabase
+  } as unknown as IDBDatabase
 }
 const compareKeys = (a: IDBValidKey, b: IDBValidKey) => String(a).localeCompare(String(b))
 let savedRange: unknown
@@ -131,7 +131,7 @@ test('failed acknowledgement does not advance durable cursor and retry resumes c
       },
     }),
   ).rejects.toThrow('disk full')
-  expect(durableCursor).toBe('b')
+  expect(String(durableCursor)).toBe('b')
   const saved: number[] = []
   const resumed = await scanIndexedPages({
     ...common,

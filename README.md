@@ -57,7 +57,7 @@ packages/ui/            shared shadcn-vue primitives and design tokens
 packages/widgets/       provider-neutral Archive Manager form and progress
 packages/shell/         Booster-derived draggable shell and module views
 packages/adapters/      userscript/Chrome bridges, generic folder output and future proxy interfaces
-packages/storage/       generic IndexedDB transaction primitives
+packages/storage/       IndexedDB transactions, bounded cursors and staged migration orchestration
 modules/vk-booster/     VK-specific model and chat-export feature UI
 modules/proxy-switcher/ capability-gated future proxy adapter, not shipped
 apps/userscript/        module and all-in-one userscript entries
@@ -115,7 +115,7 @@ library yet. This refactor does not change released versions or channels.
 ## Static quality gates
 
 The VK exporter, provider, media mapper, viewer and regression fixtures are
-TypeScript-only. The first-party workspace uses strict TypeScript and
+TypeScript-only. Storage migration/cursor fixtures are also checked with strict TypeScript. The first-party workspace uses strict TypeScript and
 `tsconfig.vk-tests.json` for mock/type contracts. Biome is required by
 `bun run check` with errors **and warnings** treated as failures;
 `bun run lint:fix` applies safe formatting and import organization. Vue SFC scripts are also formatted/linted by Biome; unused-binding checks in SFCs are deferred to template-aware `vue-tsc` to avoid false positives.

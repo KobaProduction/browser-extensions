@@ -72,6 +72,28 @@ getAll requests from those two list queries. History revision proof still
 uses a single readonly transaction because a multi-transaction scan would
 weaken its evidence consistency contract.
 
+The generic migration boundary is now implemented as runStagedMigration
+and indexedMigrationDriver in packages/storage. It coordinates a source
+fingerprint, exclusive cross-tab lock, explicitly verified restorable backup,
+bounded source pages, transform/stage batches, durable journal/checkpoint,
+independent staging validation, and atomic active-generation activation.
+An IndexedDB staging transaction writes each generated record and its
+checkpoint together; generation-scoped records and store allowlists are
+mandatory. Failures retain the last acknowledged cursor and cannot replace
+the previous active manifest; recovery resumes the same generation.
+A subsequent migration plan may rotate a READY journal only when that
+journal matches the current active manifest. Any unfinished or incompatible
+journal remains a blocker; plans are independent identifiers supplied by
+each product rather than a forced v1/v2/v3/v4 conversion ladder.
+
+This is a reusable library contract, not an installed/archive-initializing
+migration service. The application adapter must define actual IndexedDB
+journal/manifest/staging schemas, source owner evidence, stage-key isolation,
+source fingerprints, backup and restore procedures, migration plan/version
+and acceptance proof. The library refuses to run without a cross-tab lock.
+The source workspace migrator and VK v2 output have NOT been rewritten to use
+it; no v3/v4 data have been migrated by this change.
+
 The original ChatGPT Booster source workspace has an in-progress canonical
 migration on its own branch. Its source-specific v3/v4 decoding, canonical
 ContentElements, account binding, generation activation and migration journal

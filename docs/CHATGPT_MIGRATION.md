@@ -55,6 +55,27 @@ The source repository is left unchanged.
   transaction; the shared scanner is not a replacement for evidence-level
   atomic snapshots.
 
+## Shared journaled migration mechanism
+
+packages/storage now owns a provider-neutral coordinator and IndexedDB driver
+with journaled batches, generation-scoped writes, pinned source fingerprint,
+explicit cross-tab Web Lock, mandatory backup verification and independent
+staged-generation validation before atomic manifest activation. Source
+conversion, ownership decisions and physical schema upgrades are delegated
+to product-specific adapters; on-disk stores must already exist with
+a scope-keyed journal and manifest. The driver also requires a caller-supplied
+staging record validator that prevents overwriting the previous generation.
+
+Completed plans may start another generation by replacing a READY journal,
+but only after it matches the currently active manifest. Running or failed
+plans cannot be silently overwritten with a new plan or fingerprint.
+
+The library implements recoverable checkpoints and a reusable physical
+transaction primitive. It is not wired into the concurrent canonical
+migrator or VK File System Access archives. No migration has been executed
+against user data, and independent runtime/database validation is still
+required before changing active storage generations.
+
 ## Observed concurrent migration boundary
 
 The separate ChatGPT Booster source working branch has an in-progress
