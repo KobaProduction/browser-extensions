@@ -123,3 +123,33 @@ export declare const ArchiveTranscript: DefineComponent<{
 }> & {
   new (): { $slots: { record(props: { record: ArchiveTranscriptRecord }): unknown } }
 }
+
+export interface ArchiveFocusRect {
+  top: number
+  bottom: number
+  height: number
+}
+export interface ArchiveFocusNode {
+  key: string
+  top: number
+  bottom: number
+}
+export interface ArchiveFocusResult {
+  key: string | null
+  retainsPin: boolean
+}
+export declare function selectArchiveFocus(
+  bounds: ArchiveFocusRect,
+  nodes: readonly ArchiveFocusNode[],
+  pinned: string | null,
+): ArchiveFocusResult
+export declare function useArchiveFocusTracker(
+  viewport: () => HTMLElement | null,
+  canTrack: () => boolean,
+): {
+  activeMessageKey: import('vue').Ref<string | null>
+  schedule: () => void
+  pin: (key: string) => void
+  reset: () => void
+  dispose: () => void
+}

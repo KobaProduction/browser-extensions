@@ -2,6 +2,8 @@ export { default as ArchiveConversationList } from './ArchiveConversationList.vu
 export { default as ArchiveManager } from './ArchiveManager.vue'
 export { default as ArchiveProgressBar } from './ArchiveProgressBar.vue'
 export { default as ArchiveTranscript } from './ArchiveTranscript.vue'
+export type { ArchiveFocusNode, ArchiveFocusRect, ArchiveFocusResult } from './archive-focus'
+export { selectArchiveFocus, useArchiveFocusTracker } from './archive-focus'
 export type {
   ArchiveConversationGroup,
   ArchiveConversationListCopy,

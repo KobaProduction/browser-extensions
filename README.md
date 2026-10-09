@@ -106,7 +106,9 @@ VK Booster preserves the existing v2 data format.
 The UI primitives, reusable archive widget and shared shell are separately owned.
 The shell handles Shadow DOM, draggable launcher, centered modal and navigation;
 the VK feature adapts its archive API/state to the widget inside that shell. ChatGPT Booster
-itself is not modified: its later adoption requires separate tests/review.
+source repository remains unchanged; its imported compatibility copy
+is being decomposed under integrations/chatgpt-booster. Full adoption still
+requires browser acceptance and independent review.
 The VK API/storage model remains transitional and is not a reusable archive
 library yet. This refactor does not change released versions or channels.
 

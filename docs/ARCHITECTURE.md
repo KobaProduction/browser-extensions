@@ -46,12 +46,16 @@ with an independent build and rollback path. Its Archive Browser delegates
 conversation list presentation to `packages/widgets/ArchiveConversationList`,
 neutral transcript layout to `ArchiveTranscript` with ChatGPT record slots,
 docked-window positioning to portable widget geometry, and export progress to
-`ArchiveProgressBar`, which VK Archive Manager also consumes.
+`ArchiveProgressBar`, which VK Archive Manager also consumes. The reusable
+useArchiveFocusTracker owns scroll focus/highlight selection;
+ChatGPT archive-window-session.ts owns account/revision-pinned reader state.
 The ChatGPT-specific export format/level/evidence form is a separate
 `ArchiveExportOptions.vue` feature view; source-specific options are not
 projected into VK. V4 archive entity/metadata types, physical database
 validation, indexed window reads, and account-scoped read/revision queries
-have separate owners. Source proof and transactional ingestion remain ChatGPT-owned. This is
+have separate owners. Revocable catalog/project writes and account cleanup
+are delegated into dedicated ChatGPT IndexedDB write adapters. Write tickets,
+source-proof and transactional message ingestion remain ChatGPT-owned. This is
 **source decomposition only**, not canonical migration, data move or
 ChatGPT browser acceptance.
 

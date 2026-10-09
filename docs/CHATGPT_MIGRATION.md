@@ -28,6 +28,11 @@ The source repository is left unchanged.
   now uses `ArchiveTranscript`, a neutral slot-based widget driven by keys and
   association states mapped in `archive-transcript-adapter.ts`. Its anchor/focus
   structure and CSS live with the shared widget; ChatGPT retains the renderer.
+  Shared useArchiveFocusTracker now owns active-message tracking, scroll
+  scheduling and explicit graph/fork selection; the ChatGPT reader retains
+  its native content renderer and provenance policy. The archive-window-session.ts
+  module owns the saved-revision/account pin, window cursors and source reset
+  outside the Archive Browser component.
   ChatGPT's native record presentation/branch graph remains ChatGPT-owned
   until the stable canonical ContentElement projection is implemented.
 - **Storage infrastructure**: reusable IndexedDB request and transaction
@@ -36,7 +41,12 @@ The source repository is left unchanged.
   isolated in `archive-v4-database.ts`, separate from v4 ingest/reader logic.
   Account-scoped project/conversation/message lookups and bounded revision
   evidence now live in `archive-v4-queries.ts`; the same `ArchiveV4Store`
-  methods delegate to them. The actual database identifiers, indexes and owner-scoped write contract
+  methods delegate to them. Account cleanup, revocable project upserts, and
+  consent-neutral catalog header updates are separated into
+  archive-v4-cleanup.ts, archive-v4-project-write.ts and
+  archive-v4-catalog-write.ts. ArchiveV4Store still owns write tickets,
+  source-proof gates and the post-commit change notifications. The actual
+  database identifiers, indexes and owner-scoped write contract
   are preserved; no database is opened, renamed or migrated by this import.
 
 ## Architecture and data protection
@@ -62,8 +72,8 @@ ChatGPT or already saved verified canonical reads.
    docked geometry and shared progress are extracted. The ChatGPT-only export option matrix is
    moved from `ArchiveExportDialog` to `ArchiveExportOptions.vue`;
    the parent owns preferences, readiness, cancellation and output.
-   Continue extracting async reader navigation/scroll lifecycles,
-   ChatGPT-specific `ArchiveRecord` content rendering, graph/fork handling
+   Continue extracting remaining asynchronous reader loading and bounded
+   scrolling, ChatGPT-specific `ArchiveRecord` content rendering, graph/fork handling
    and export-operation state behind accepted canonical read/output ports. Reuse
    canonical domain entities and explicit provider capabilities; do not
    equate VK linear offset pagination with ChatGPT verified branch history.

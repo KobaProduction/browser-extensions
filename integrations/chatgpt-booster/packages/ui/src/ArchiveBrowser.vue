@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ARCHIVE_UPDATED_EVENT, type ArchiveThreadView, type ArchiveMessageLocation, type ArchiveWindowRequest } from '@chatgpt-booster/core'
+import { ARCHIVE_UPDATED_EVENT, type ArchiveThreadView, type ArchiveMessageLocation } from '@chatgpt-booster/core'
 import ArrowLeft from 'lucide-vue-next/dist/esm/icons/arrow-left.js'
 import Search from 'lucide-vue-next/dist/esm/icons/search.js'
 import Info from 'lucide-vue-next/dist/esm/icons/info.js'
@@ -13,9 +13,10 @@ import Minus from 'lucide-vue-next/dist/esm/icons/minus.js'
 import RefreshCw from 'lucide-vue-next/dist/esm/icons/refresh-cw.js'
 import X from 'lucide-vue-next/dist/esm/icons/x.js'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ArchiveConversationList, ArchiveTranscript, type ArchiveConversationGroup } from '@kobaproduction/browser-widgets'
+import { ArchiveConversationList, ArchiveTranscript, useArchiveFocusTracker, type ArchiveConversationGroup } from '@kobaproduction/browser-widgets'
 import ArchiveRecord from './ArchiveRecord.vue'
 import {projectArchiveTranscript} from './archive-transcript-adapter'
+import {useArchiveWindowSession} from './archive-window-session'
 import ArchiveFlowGraph from './ArchiveFlowGraph.vue'
 import {
   archiveConversationForest,
@@ -32,7 +33,6 @@ import type {
   ArchiveProjectView,
   ArchiveCoverageView,
   ArchiveDataAdapter,
-  ArchiveWindowCursor,
   ArchiveThreadWindow,
 } from './mount'
 
@@ -66,12 +66,12 @@ const navigationError = ref<TranslationKey | null>(null)
 const requestedMessageId = ref<string | null>(null)
 const messageLookup = ref('')
 const messageLookupOpen = ref(false)
-const readSource = ref<'auto' | 'live' | 'saved'>('auto')
-const readAccountId = ref<string | null>(null)
-const readRevision = ref<number | null>(null)
-const readInstanceId = ref<string | null>(null)
-const unsequencedTarget = ref(false)
-const requestedLocation = ref<ArchiveMessageLocation | null>(null)
+const session=useArchiveWindowSession()
+const {
+  readSource,readAccountId,readRevision,readInstanceId,unsequencedTarget,requestedLocation,
+  olderStoredCursor,newerStoredCursor,hasOlderStored,hasNewerStored,
+  usingIndexedWindows,knownStoredCount,hasUnsequencedRecords,
+}=session
 let windowController: AbortController | undefined
 let sourceUnsubscribe: (() => void) | undefined
 let interruptedLoad = false
@@ -87,15 +87,10 @@ const windowCenter = ref<number | null>(null)
 const loadingOlder = ref(false)
 const loadingDirection = ref<'older' | 'newer'>('older')
 const loadedEdge = ref<'first' | 'latest'>('latest')
-const olderStoredCursor = ref<ArchiveWindowCursor | null>(null)
-const newerStoredCursor = ref<ArchiveWindowCursor | null>(null)
-const hasOlderStored = ref(false)
-const hasNewerStored = ref(false)
-const usingIndexedWindows = ref(false)
-const knownStoredCount = ref(0)
-const hasUnsequencedRecords = ref(false)
 const readingScroll = ref<HTMLElement | null>(null)
-const activeMessageKey = ref<string | null>(null)
+const focus=useArchiveFocusTracker(()=>readingScroll.value,()=>!resettingPosition)
+const {activeMessageKey}=focus
+const scheduleReadFocus=focus.schedule
 const expanded = ref(new Set<string>())
 const reasoningExpanded = ref(false)
 let alive = true
@@ -106,8 +101,6 @@ let initialized = false
 let resettingPosition = false
 let windowShiftRevision = 0
 let suppressSearchReset = false
-let readFocusFrame: number | null = null
-let explicitlyNavigatedTo: string | null = null
 let contextUnsubscribe: (() => void) | undefined
 let contextFallbackTimer: ReturnType<typeof setInterval> | undefined
 
@@ -193,32 +186,10 @@ const archiveStatusKey = computed<TranslationKey>(() =>
   coverage.value?.completeAtLastRead ? 'reader.savedToStart' : 'reader.savedPartial',
 )
 
-function windowRequest(controller: AbortController, pinRevision = true): ArchiveWindowRequest {
-  return {
-    source: readSource.value === 'saved' ? 'saved' : 'auto', signal: controller.signal,
-    ...(readAccountId.value ? { expectedAccountId: readAccountId.value } : {}),
-    ...(pinRevision && readSource.value === 'saved' && readRevision.value !== null
-      ? { expectedRevision: readRevision.value, expectedInstanceId: readInstanceId.value } : {}),
-  }
-}
-function acceptWindow(result: ArchiveThreadWindow) {
-  thread.value = result.thread
-  usingIndexedWindows.value = true
-  olderStoredCursor.value = result.olderCursor
-  newerStoredCursor.value = result.newerCursor
-  hasOlderStored.value = result.hasOlderStored
-  hasNewerStored.value = result.hasNewerStored
-  knownStoredCount.value = result.totalKnownRecordCount
-  hasUnsequencedRecords.value = result.hasUnsequencedRecords
-  readSource.value = result.source ?? readSource.value
-  readAccountId.value = result.accountId ?? readAccountId.value
-  readRevision.value = result.sourceRevision ?? null
-  readInstanceId.value = result.sourceInstanceId ?? null
-  unsequencedTarget.value = result.unsequencedTarget === true
-  if (requestedLocation.value && result.source === 'saved' && result.sourceRevision !== null &&
-      result.sourceRevision !== undefined && result.accountId === requestedLocation.value.accountId)
-    requestedLocation.value = { ...requestedLocation.value, sourceRevision: result.sourceRevision,
-      sourceInstanceId: result.sourceInstanceId ?? null }
+const windowRequest=session.windowRequest
+function acceptWindow(result:ArchiveThreadWindow){
+  thread.value=result.thread
+  session.acceptWindow(result)
 }
 function cancelWindowWork() {
   windowController?.abort()
@@ -259,8 +230,7 @@ async function focusMessage(messageId: string) {
   suppressSearchReset = false
   if (!owns()) return
   requestedMessageId.value = messageId
-  explicitlyNavigatedTo = item.record.messageKey
-  activeMessageKey.value = item.record.messageKey
+  focus.pin(item.record.messageKey)
   windowCenter.value = null
   visibleCount.value = thread.value.turns.length
   resettingPosition = true
@@ -285,11 +255,7 @@ async function openMessage(messageId: string, location?: ArchiveMessageLocation,
   requestedMessageId.value = messageId.trim()
   messageLookup.value = messageId.trim()
   if (location) {
-    requestedLocation.value = location
-    readAccountId.value = location.accountId
-    readSource.value = 'saved'
-    readRevision.value = refreshRevision ? null : location.sourceRevision
-    readInstanceId.value = refreshRevision ? null : location.sourceInstanceId ?? null
+    session.useSavedLocation(location,refreshRevision)
   } else {
     if (requestedLocation.value) requestedLocation.value = { ...requestedLocation.value, messageId: messageId.trim() }
     if (refreshRevision) { readRevision.value = null; readInstanceId.value = null }
@@ -421,46 +387,6 @@ async function loadAdjacent(direction: 'older' | 'newer') {
   }
 }
 
-function trackReadingPosition() {
-  const viewport = readingScroll.value
-  if (!viewport || resettingPosition) return
-  const bounds = viewport.getBoundingClientRect()
-  const anchorY = bounds.top + Math.min(140, bounds.height / 3)
-  // Keep explicit graph/fork selection while that exact saved message remains
-  // visible. Programmatic scrollIntoView fires scroll events too, and must not
-  // immediately replace the selected node with the nearest neighboring turn.
-  if (explicitlyNavigatedTo) {
-    const selectedElement = [...viewport.querySelectorAll<HTMLElement>('[data-archive-node]')]
-      .find((element) => element.dataset.archiveNode === explicitlyNavigatedTo)
-    const selectedBounds = selectedElement?.getBoundingClientRect()
-    if (selectedBounds && selectedBounds.bottom > bounds.top && selectedBounds.top < bounds.bottom) {
-      activeMessageKey.value = explicitlyNavigatedTo
-      return
-    }
-    explicitlyNavigatedTo = null
-  }
-
-  let closest: HTMLElement | null = null
-  let distance = Infinity
-  for (const element of viewport.querySelectorAll<HTMLElement>('[data-archive-node]')) {
-    const rect = element.getBoundingClientRect()
-    if (rect.bottom < bounds.top || rect.top > bounds.bottom) continue
-    const offset = Math.abs(Math.max(bounds.top, rect.top) - anchorY)
-    if (offset < distance) {
-      closest = element
-      distance = offset
-    }
-  }
-  if (closest?.dataset.archiveNode) activeMessageKey.value = closest.dataset.archiveNode
-}
-function scheduleReadFocus() {
-  if (readFocusFrame !== null) return
-  readFocusFrame = requestAnimationFrame(() => {
-    readFocusFrame = null
-    trackReadingPosition()
-  })
-}
-
 function onReadingScroll() {
   const viewport = readingScroll.value
   if (!viewport || resettingPosition || props.suspended || staleSavedWindow.value) return
@@ -526,8 +452,7 @@ async function navigateToNode(index: number) {
     turnIndex = filteredTurns.value.findIndex(turn => turn.messages.some(message => message.record.messageKey === item.record.messageKey))
   }
   if (turnIndex < 0) return
-  explicitlyNavigatedTo = item.record.messageKey
-  activeMessageKey.value = item.record.messageKey
+  focus.pin(item.record.messageKey)
   windowCenter.value = turnIndex
   await nextTick()
   const target = [...(readingScroll.value?.querySelectorAll<HTMLElement>('[data-archive-node]') ?? [])].find(x => x.dataset.archiveNode === item.record.messageKey)
@@ -548,8 +473,7 @@ watch(
   () => props.initialConversationId,
   (next) => {
     if (!next || next === selectedId.value || props.navigationTarget?.conversationId === next) return
-    requestedLocation.value = null
-    readSource.value = 'auto'; readAccountId.value = null; readRevision.value = null; readInstanceId.value = null
+    session.resetSource()
     selectedId.value = next
     textSearch.value = ''
     mobileList.value = false
@@ -566,12 +490,9 @@ async function loadThread(id: string | null, edge: 'first' | 'latest' = props.op
   windowController = controller
   requestedMessageId.value = focusId
   thread.value = { turns: [], messageCount: 0, recordCount: 0, detailCount: 0 }
-  activeMessageKey.value = null; explicitlyNavigatedTo = null; coverage.value = undefined
+  focus.reset(); coverage.value = undefined
   visibleCount.value = ARCHIVE_INITIAL_TURNS; windowCenter.value = null
-  olderStoredCursor.value = null; newerStoredCursor.value = null
-  hasOlderStored.value = false; hasNewerStored.value = false
-  usingIndexedWindows.value = false; knownStoredCount.value = 0; hasUnsequencedRecords.value = false
-  unsequencedTarget.value = false
+  session.clearWindow()
   if (!id) return
   bindSourceChanges(id)
   threadLoading.value = true; loadedEdge.value = edge
@@ -617,7 +538,7 @@ function returnToFirstKnown() {
   void loadThread(selectedId.value, 'first')
 }
 function select(id: string) {
-  requestedLocation.value = null; readSource.value = 'auto'; readAccountId.value = null; readRevision.value = null; readInstanceId.value = null
+  session.resetSource()
   ++windowShiftRevision
   selectedId.value = id
   mobileList.value = false
@@ -716,7 +637,7 @@ onBeforeUnmount(() => {
   windowShiftRevision++
   contextUnsubscribe?.()
   window.removeEventListener(ARCHIVE_UPDATED_EVENT, refreshConversationTitles)
-  if (readFocusFrame !== null) cancelAnimationFrame(readFocusFrame)
+  focus.dispose()
   if (contextFallbackTimer) clearInterval(contextFallbackTimer)
 })
 </script>

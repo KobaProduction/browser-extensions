@@ -13,6 +13,8 @@ import {
   type ArchiveSubmissionSnapshot,
   sameSubmissionSelection,
 } from './archive-source-contract'
+import { writeArchiveCatalogHeaders } from './archive-v4-catalog-write'
+import { eraseArchiveAccount } from './archive-v4-cleanup'
 import { ArchiveV4Database } from './archive-v4-database'
 import type {
   ArchiveV4Change,
@@ -36,6 +38,7 @@ import type {
 } from './archive-v4-entities'
 import { comparePoint, identity, key, sourceObject } from './archive-v4-identities'
 import { traceArchiveV4Path, traceArchiveV4PathIds } from './archive-v4-path'
+import { writeArchiveProject } from './archive-v4-project-write'
 import {
   getConversation as queryConversation,
   listConversations as queryConversations,
@@ -716,103 +719,18 @@ export class ArchiveV4Store {
     }
     const ticket = write.ticket ?? (await this.acquireWriteTicket(accountId))
     if (ticket.accountId !== accountId) throw new Error('archive.error.auth')
-    const db = await this.#db()
-    if (!allowed()) return
-    const tx = db.transaction(['projects', 'conversations', 'metadata'], 'readwrite')
-    const done = settled(tx)
-    const detach = guardArchiveTransaction(tx, write.signal)
-    const changes: ArchiveV4Change[] = []
-    try {
-      const conversations = tx.objectStore('conversations')
-      const projects = tx.objectStore('projects')
-      const [generation, stored] = await Promise.all([
-        req<ArchiveV4Metadata | undefined>(
-          tx.objectStore('metadata').get(key(key(accountId), 'write-generation')),
-        ),
-        Promise.all(
-          [...items.keys()].map((id) =>
-            req<ArchiveV4Conversation | undefined>(conversations.get(key(accountId, id))),
-          ),
-        ),
-      ])
-      if (!allowed() || !this.#ticketMatches(ticket, generation)) {
-        tx.abort()
-        await done.catch(() => undefined)
-        return
-      }
-      for (const previous of stored) {
-        if (!previous) continue
-        if (previous.accountId !== accountId) throw new Error('archive.error.auth')
-        const item = items.get(previous.conversationId)
-        if (!item) throw new Error('archive.error.sourceChanged')
-        this.sourceGate.assertCompatible(item.conversationId)
-        if (
-          startedAt <
-          Math.max(
-            previous.catalogReadStartedAt ?? -Infinity,
-            previous.headReadStartedAt ?? -Infinity,
-          )
-        )
-          continue
-        const projectId =
-          item.projectKnown === true ? item.projectId : (item.projectId ?? previous.projectId)
-        const title =
-          typeof item.title === 'string' && item.title.trim() ? item.title : previous.title
-        const changed = projectId !== previous.projectId || title !== previous.title
-        if (projectId) {
-          const projectKey = key(accountId, projectId)
-          const project = await req<ArchiveV4Project | undefined>(projects.get(projectKey))
-          if (!project)
-            projects.put({
-              key: projectKey,
-              projectId,
-              accountId,
-              title: null,
-              firstSeenAt: input.observedAt,
-              lastSeenAt: input.observedAt,
-            } satisfies ArchiveV4Project)
-          else if (project.accountId !== accountId) throw new Error('archive.error.auth')
-        }
-        if (changed || startedAt > (previous.catalogReadStartedAt ?? -Infinity)) {
-          conversations.put({
-            ...previous,
-            projectId,
-            title,
-            catalogReadStartedAt: startedAt,
-            ...(changed
-              ? {
-                  revision: previous.revision + 1,
-                  lastSeenAt: Math.max(previous.lastSeenAt, input.observedAt),
-                  verifiedPathRootId: null,
-                  verifiedPathTipId: null,
-                  verifiedPathReadId: null,
-                  verifiedPathRevision: null,
-                }
-              : {}),
-          } satisfies ArchiveV4Conversation)
-        }
-        if (changed)
-          changes.push({
-            kind: 'conversation',
-            accountId,
-            conversationId: previous.conversationId,
-            revision: previous.revision + 1,
-          })
-      }
-      if (!allowed()) throw new DOMException('Catalog write revoked', 'AbortError')
-      await done
-      for (const change of changes) this.#emit(change)
-    } catch (cause) {
-      try {
-        tx.abort()
-      } catch {
-        /* Already settled. */
-      }
-      await done.catch(() => undefined)
-      if (allowed()) throw cause
-    } finally {
-      detach()
-    }
+    const changes = await writeArchiveCatalogHeaders(
+      () => this.#db(),
+      accountId,
+      input,
+      items,
+      startedAt,
+      stillAuthorized,
+      write.signal,
+      (generation) => this.#ticketMatches(ticket, generation),
+      (conversationId) => this.sourceGate.assertCompatible(conversationId),
+    )
+    for (const change of changes ?? []) this.#emit(change)
   }
 
   /** Project observations share the same revocable account write barrier as pages. */
@@ -830,60 +748,18 @@ export class ArchiveV4Store {
     if (!Number.isFinite(observedAt)) throw new Error('Invalid project observation time')
     const ticket = write.ticket ?? (await this.acquireWriteTicket(accountId))
     if (ticket.accountId !== accountId) throw new Error('archive.error.auth')
-    const db = await this.#db()
-    if (!allowed()) return
-    const tx = db.transaction(['projects', 'metadata'], 'readwrite')
-    const done = settled(tx)
-    const detach = guardArchiveTransaction(tx, write.signal)
-    try {
-      const store = tx.objectStore('projects')
-      const [previous, generation] = await Promise.all([
-        req<ArchiveV4Project | undefined>(store.get(pk)),
-        req<ArchiveV4Metadata | undefined>(
-          tx.objectStore('metadata').get(key(key(accountId), 'write-generation')),
-        ),
-      ])
-      if (!allowed() || !this.#ticketMatches(ticket, generation)) {
-        tx.abort()
-        await done.catch(() => undefined)
-        return
-      }
-      if (previous && (previous.accountId !== accountId || previous.projectId !== projectId))
-        throw new Error('archive.error.auth')
-      if (previous && observedAt < previous.lastSeenAt) {
-        await done
-        return
-      }
-      const nextTitle =
-        typeof title === 'string' && title.trim() ? title : (previous?.title ?? null)
-      if (!previous || nextTitle !== previous.title || observedAt > previous.lastSeenAt)
-        store.put({
-          key: pk,
-          accountId,
-          projectId,
-          title: nextTitle,
-          firstSeenAt: previous?.firstSeenAt ?? observedAt,
-          lastSeenAt: observedAt,
-        } satisfies ArchiveV4Project)
-      if (!allowed()) {
-        tx.abort()
-        await done.catch(() => undefined)
-        return
-      }
-      await done
-      if (!previous || nextTitle !== previous.title)
-        this.#emit({ kind: 'project', accountId, projectId })
-    } catch (cause) {
-      try {
-        tx.abort()
-      } catch {
-        /* Already settled. */
-      }
-      await done.catch(() => undefined)
-      if (allowed()) throw cause
-    } finally {
-      detach()
-    }
+    const changed = await writeArchiveProject(
+      () => this.#db(),
+      pk,
+      accountId,
+      projectId,
+      title,
+      observedAt,
+      stillAuthorized,
+      write.signal,
+      (generation) => this.#ticketMatches(ticket, generation),
+    )
+    if (changed) this.#emit({ kind: 'project', accountId, projectId })
   }
 
   async listProjects(accountId: string): Promise<ArchiveV4Project[]> {
@@ -899,152 +775,10 @@ export class ArchiveV4Store {
     const owner = identity(accountId, 'accountId')
     const allowed = () => archiveWriteAllowed(signal, stillAuthorized)
     if (!allowed()) throw new DOMException('Archive cleanup cancelled', 'AbortError')
+    // Revoke local in-flight write tickets *before* awaiting the IndexedDB open.
     this.#writeEpochs.set(owner, (this.#writeEpochs.get(owner) ?? 0) + 1)
-    const db = await this.#db()
-    if (!allowed()) throw new DOMException('Archive cleanup cancelled', 'AbortError')
-    const tx = db.transaction(['projects', 'conversations', 'messages', 'metadata'], 'readwrite')
-    const done = settled(tx)
-    const detach = guardArchiveTransaction(tx, signal)
-    const projects = tx.objectStore('projects')
-    const conversations = tx.objectStore('conversations')
-    const messages = tx.objectStore('messages')
-    const metadata = tx.objectStore('metadata')
-    try {
-      // Delete by indexed primary-key cursors instead of getAllKeys(). A large
-      // account never materializes all Message/Metadata keys in browser RAM.
-      // All traversals and the durable generation marker share ONE transaction.
-      await new Promise<void>((resolve, reject) => {
-        let failed = false
-        const fail = (cause: unknown) => {
-          if (failed) return
-          failed = true
-          reject(cause)
-          try {
-            tx.abort()
-          } catch {
-            /* A revoked transaction may be closed. */
-          }
-        }
-        tx.addEventListener(
-          'abort',
-          () =>
-            fail(
-              signal?.aborted
-                ? new DOMException('Archive cleanup cancelled', 'AbortError')
-                : (tx.error ?? new Error('Archive cleanup transaction aborted')),
-            ),
-          { once: true },
-        )
-        const check = () => {
-          if (!allowed()) {
-            fail(new DOMException('Archive cleanup cancelled', 'AbortError'))
-            return false
-          }
-          return true
-        }
-        // The next request is scheduled synchronously in onsuccess: the IDB
-        // transaction cannot auto-commit between nested scans.
-        const erase = (
-          store: IDBObjectStore,
-          indexName: string,
-          indexedKey: IDBValidKey,
-          beforeDelete: (primaryKey: IDBValidKey, resume: () => void) => void,
-          complete: () => void,
-        ) => {
-          if (!check()) return
-          try {
-            const request = store.index(indexName).openKeyCursor(IDBKeyRange.only(indexedKey))
-            request.onerror = () =>
-              fail(request.error ?? new Error('Archive cleanup cursor failed'))
-            request.onsuccess = () => {
-              if (failed || !check()) return
-              const cursor = request.result
-              if (!cursor) {
-                try {
-                  complete()
-                } catch (cause) {
-                  fail(cause)
-                }
-                return
-              }
-              try {
-                beforeDelete(cursor.primaryKey, () => {
-                  if (failed || !check()) return
-                  try {
-                    // Key-only cursor has no deletable value: delete through
-                    // the owning store, then synchronously queue the next key.
-                    store.delete(cursor.primaryKey)
-                    cursor.continue()
-                  } catch (cause) {
-                    fail(cause)
-                  }
-                })
-              } catch (cause) {
-                fail(cause)
-              }
-            }
-          } catch (cause) {
-            fail(cause)
-          }
-        }
-        const eraseOwnedMetadata = (ownerKey: IDBValidKey, complete: () => void) =>
-          erase(metadata, 'byOwner', ownerKey, (_key, resume) => resume(), complete)
-        const eraseMessages = (conversationKey: IDBValidKey, complete: () => void) =>
-          erase(
-            messages,
-            'byConversation',
-            conversationKey,
-            (messageKey, resume) => eraseOwnedMetadata(messageKey, resume),
-            complete,
-          )
-        const eraseConversations = (complete: () => void) =>
-          erase(
-            conversations,
-            'byAccount',
-            owner,
-            (conversationKey, resume) =>
-              eraseMessages(conversationKey, () => eraseOwnedMetadata(conversationKey, resume)),
-            complete,
-          )
-        const eraseProjects = (complete: () => void) =>
-          erase(
-            projects,
-            'byAccount',
-            owner,
-            (projectKey, resume) => eraseOwnedMetadata(projectKey, resume),
-            complete,
-          )
-        eraseProjects(() =>
-          eraseConversations(() => {
-            if (!check()) return
-            // This marker invalidates tickets from other tabs issued before
-            // deletion. It is committed atomically with every removed key.
-            metadata.put({
-              key: key(key(owner), 'write-generation'),
-              ownerType: 'account',
-              ownerKey: key(owner),
-              kind: 'write-generation',
-              observedAt: Date.now(),
-              payload: { generation: crypto.randomUUID() },
-            } satisfies ArchiveV4Metadata)
-            resolve()
-          }),
-        )
-      })
-      if (!allowed()) throw new DOMException('Archive cleanup cancelled', 'AbortError')
-      await done
-      this.#emit({ kind: 'cleared', accountId: owner })
-    } catch (error) {
-      try {
-        tx.abort()
-      } catch {
-        // A failed transaction is already aborted.
-      }
-      await done.catch(() => undefined)
-      throw error
-    } finally {
-      detach()
-    }
+    await eraseArchiveAccount(() => this.#db(), owner, stillAuthorized, signal)
+    this.#emit({ kind: 'cleared', accountId: owner })
   }
 
   async getProject(accountId: string, projectId: string) {
