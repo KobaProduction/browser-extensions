@@ -1,13 +1,13 @@
 # Reusing Browser Core from ChatGPT Booster
 
-The packages `@kobaproduction/browser-core`, `@kobaproduction/browser-ui` and `@kobaproduction/browser-adapters` have explicit ESM/TypeScript entry points and are built independently of VK Booster. The registry accepts any host-specific module implementing the `Feature` interface.
+The packages `@kobaproduction/browser-core`, `@kobaproduction/browser-ui`, `@kobaproduction/browser-shell` and `@kobaproduction/browser-adapters` have explicit ESM/TypeScript entry points and are built independently of VK Booster. The registry accepts any host-specific module implementing the `Feature` interface.
 
 Example in ChatGPT Booster or a separate extension:
 
 ```ts
 import { FeatureRuntime, FeatureSettings, defaultCapabilities } from '@kobaproduction/browser-core'
 import { createSettingsStore } from '@kobaproduction/browser-adapters'
-import { mountControlCenter } from '@kobaproduction/browser-ui'
+import { mountControlCenter } from '@kobaproduction/browser-shell'
 import { myChatGptFeature } from './my-chatgpt-feature'
 
 const runtime = new FeatureRuntime([myChatGptFeature], {
@@ -23,7 +23,7 @@ const ui = mountControlCenter({ runtime, title: 'ChatGPT Booster', launcher: tru
 
 Do not import `modules/vk-booster` into ChatGPT Booster. Booster should import the core/UI/adapters only; host-specific modules remain independent.
 
-UI uses framework-neutral Shadow DOM primitives instead of copying Booster's Vue components; Vue-based hosts can invoke these through a small lifecycle wrapper. A future Vue adapter may reuse Booster's component recipes without requiring Vue in the headless core.
+The headless core is framework-neutral. The shared shell uses Vue 3 inside Shadow DOM and accepts feature views through the `views` option. The browser-ui package provides reusable shadcn-vue primitives, not the shell or a second window. A host integrating the shell must provide Vue and its compiled CSS dependencies.
 
 ### Using it before registry publication
 

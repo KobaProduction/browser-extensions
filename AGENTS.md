@@ -12,9 +12,10 @@
    from the target. Proposed packages/interfaces are not shipped features.
 4. Load task-specific `ai-agent-workflow` skills (FSD/frontend for UI
    ownership, DDD/software for domain and ports, Git for commits, etc.).
-5. Work on a non-protected working branch. Use PR + independent review
-   for architecture changes; never directly mutate `main` or merge your
-   own PR.
+5. Work on one non-protected local branch for the complete coherent change.
+   Do not open incremental PRs for documentation, package splits or fixes;
+   validate locally first, then publish one consolidated PR for independent
+   review. Never directly mutate `main` or merge your own PR.
 
 ## Package rules
 - `packages/core`: host-neutral contracts and state; no `window`, `chrome`, VK or ChatGPT selectors.
@@ -33,4 +34,4 @@
 - The CI `zoomies-linux-x64` runner is for trusted branch/main code; fork PRs must not run there.
 
 ## Known migration debt
-VK Booster is a real, tested v2 browser exporter wrapped behind typed `Feature` lifecycle. Its internal engine still has v2's legacy single-file implementation. Refactor the engine by adapter boundaries only after preserving its 3000-message, offline HTML, attachment and resumption tests; do not fork it between targets.
+VK Booster is a real, tested v2 browser exporter wrapped behind typed `Feature` lifecycle. Its VK API, media download/mapping, local folder IO and offline viewer have separate internal owners; sync/checkpoint orchestration remains VK-local until a real second consumer and an accepted common contract exist. Preserve 3000-message, offline HTML, attachment and resumption behavior; do not fork the engine between targets.

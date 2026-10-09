@@ -18,7 +18,7 @@ The target is approved as a direction, not yet fully implemented.
 | Proxy Switcher | Typed interface and capability boundary only | Future MV3 background | `modules/proxy-switcher/` |
 | All-in-one | Launcher with VK Booster; other modules can be enabled later | Tampermonkey, Chromium | `apps/` |
 
-VK Booster preserves source messages, attachments, photos, document names, voice messages and a self-contained offline HTML chat. Its form is a VK-specific Vue feature view inside the shared Control Center, without a second modal. The previous standalone userscript menu handler was removed, so installing a bundle does not register duplicate menus. The next migration step is extracting exporter state/files/media/UI into typed modules and moving its panel into the shared UI kit; v2 output format remains compatible.
+VK Booster preserves source messages, attachments, photos, document names, voice messages and a self-contained offline HTML chat. Its form is a VK-specific Vue feature view inside the shared Control Center, without a second modal. The previous standalone userscript menu handler was removed, so installing a bundle does not register duplicate menus. The VK-specific provider, media downloader/mapper, folder driver and offline HTML renderer are separate modules. Archive orchestration/checkpoints remain within the VK feature until a second real archive consumer can validate a shared controller; the v2 output format is preserved.
 
 ## Install and build
 

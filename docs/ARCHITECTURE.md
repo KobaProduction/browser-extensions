@@ -32,7 +32,7 @@ The platform separates **capability-gated feature logic** from **delivery target
 
 ## VK Booster migration
 
-The old single IIFE exporter is now wrapped as the first module. The duplicated top-level Tampermonkey menu action was removed; it registers with the common feature runtime. Its internal file logic and offline viewer are preserved while they are covered by existing tests. Future changes should extract source-specific authenticated VK API calls, media handling and file writer behind typed adapters. This is a **transitional implementation**, not a claim that all legacy internals were rewritten.
+The VK archive engine is wrapped as a `Feature` and used by both Tampermonkey and MV3. The duplicate Tampermonkey menu was removed. Its internal VK API/authentication, VK attachment mapping/downloading, browser folder IO and offline HTML renderer are separate modules. Sync/checkpoints and the public v2 file format remain unchanged and VK-owned; the common source-neutral archive application has **not** been extracted or adopted by ChatGPT Booster. Regression checks cover the existing semantics, but Chrome/Tampermonkey/MV3 live acceptance is still outstanding.
 
 ## Proxy roadmap
 
