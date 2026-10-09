@@ -8,13 +8,10 @@ import {
   transactionComplete as settled,
 } from '@kobaproduction/browser-storage'
 import { type HistoryPageEvidence, historyCoverage } from './archive-coverage'
-import {
-  ArchiveSourceGate,
-  type ArchiveSubmissionSnapshot,
-  sameSubmissionSelection,
-} from './archive-source-contract'
+import { ArchiveSourceGate, type ArchiveSubmissionSnapshot } from './archive-source-contract'
 import { writeArchiveCatalogHeaders } from './archive-v4-catalog-write'
 import { eraseArchiveAccount } from './archive-v4-cleanup'
+import { reconcileArchiveConversationHead } from './archive-v4-conversation-head'
 import { ArchiveV4Database } from './archive-v4-database'
 import type {
   ArchiveV4Change,
@@ -36,7 +33,8 @@ import type {
   OwnerType,
   Source,
 } from './archive-v4-entities'
-import { comparePoint, identity, key, sourceObject } from './archive-v4-identities'
+import { identity, key, sourceObject } from './archive-v4-identities'
+import { writeArchiveMessages } from './archive-v4-message-write'
 import { traceArchiveV4Path, traceArchiveV4PathIds } from './archive-v4-path'
 import { writeArchiveProject } from './archive-v4-project-write'
 import {
@@ -47,6 +45,8 @@ import {
   getProject as queryProject,
   listProjects as queryProjects,
 } from './archive-v4-queries'
+import { collectArchiveSourceRecords } from './archive-v4-source-records'
+import { writeArchiveSubmissionEvidence } from './archive-v4-submission-write'
 import { readChronologyWindow, readMessageWindow } from './archive-v4-windows'
 import {
   archiveWriteAllowed,
@@ -224,25 +224,11 @@ export class ArchiveV4Store {
     const readStartedAt = detail.readStartedAt ?? observedAt
     if (!Number.isFinite(observedAt) || !Number.isFinite(readStartedAt))
       throw new Error('archive.error.incompatibleSource')
-    const received = (detail.payload.messages as unknown[]).map(sourceObject)
-    const seen = new Map<string, string>()
-    const allRecords: { raw: Source; canonical: string; capture: boolean; fingerprint: string }[] =
-      []
-    for (const raw of received) {
-      const messageId = identity(raw.id as string, 'messageId')
-      if (
-        raw.create_time !== null &&
-        (typeof raw.create_time !== 'number' || !Number.isFinite(raw.create_time))
-      )
-        throw new Error('archive.error.incompatibleSource')
-      const canonical = canonicalSourceJson(raw)
-      const previous = seen.get(messageId)
-      if (previous !== undefined && previous !== canonical)
-        throw new Error('archive.error.sourceChanged')
-      if (previous === undefined)
-        allRecords.push({ raw, canonical, capture: shouldCapture(raw), fingerprint: '' })
-      seen.set(messageId, canonical)
-    }
+    const {
+      records: allRecords,
+      receivedCount,
+      uniqueCount,
+    } = collectArchiveSourceRecords(detail, shouldCapture)
     const ticket = write.ticket ?? (await this.acquireWriteTicket(accountId))
     if (ticket.accountId !== accountId) throw new Error('archive.error.auth')
     if (!allowed()) return undefined
@@ -348,232 +334,36 @@ export class ArchiveV4Store {
         await done
         return allowed() ? unchangedResult() : undefined
       }
-      const summary: ArchiveV4Conversation = previousConversation
-        ? { ...previousConversation }
-        : {
-            key: conversationKey,
-            accountId,
-            conversationId: detail.conversationId,
-            projectId,
-            title: null,
-            currentNodeId: null,
-            instanceId: crypto.randomUUID(),
-            headReadId: null,
-            headReadStartedAt: null,
-            latestReadId: null,
-            latestReadStartedAt: null,
-            latestReadConflicted: false,
-            knownMessageCount: 0,
-            unsequencedMessageCount: 0,
-            firstKnownMessageId: null,
-            lastKnownMessageId: null,
-            firstKnownTime: null,
-            lastKnownTime: null,
-            verifiedPathRootId: null,
-            verifiedPathTipId: null,
-            verifiedPathReadId: null,
-            verifiedPathRevision: null,
-            coverage: 'unverified',
-            revision: 0,
-            firstSeenAt: observedAt,
-            lastSeenAt: observedAt,
-          }
-      const latestStart = summary.latestReadStartedAt ?? summary.headReadStartedAt ?? null
-      const latestId = summary.latestReadId ?? summary.headReadId ?? null
-      if (latestStart === null || readStartedAt > latestStart) {
-        summary.latestReadId = detail.readId
-        summary.latestReadStartedAt = readStartedAt
-        summary.latestReadConflicted = false
-      } else if (readStartedAt === latestStart && latestId && latestId !== detail.readId) {
-        summary.latestReadConflicted = true
-      }
-      const canUpdateHead =
-        detail.isInitial === true &&
-        !summary.latestReadConflicted &&
-        summary.latestReadId === detail.readId &&
-        readStartedAt === summary.latestReadStartedAt &&
-        (summary.headReadId !== detail.readId ||
-          !previousPage ||
-          observedAt >= previousPage.observedAt)
-      if (canUpdateHead) {
-        if (readStartedAt >= (summary.catalogReadStartedAt ?? -Infinity)) {
-          if (Object.hasOwn(detail.payload, 'gizmo_id')) summary.projectId = projectId
-          if (Object.hasOwn(detail.payload, 'title'))
-            summary.title = typeof detail.payload.title === 'string' ? detail.payload.title : null
-        }
-        if (Object.hasOwn(detail.payload, 'current_node'))
-          summary.currentNodeId =
-            typeof detail.payload.current_node === 'string' ? detail.payload.current_node : null
-        summary.headReadId = detail.readId
-        summary.headReadStartedAt = readStartedAt
-      }
-      let inserted = 0,
-        changed = 0,
-        unchanged = 0,
-        staleRecordCount = 0
-      let submissionChanged = false
-      for (let i = 0; i < messages.length; i++) {
-        const item = messages[i]
-        if (!item) continue
-        const { raw, canonical, fingerprint } = item
-        const messageId = raw.id as string
-        const sourceCreateTime = raw.create_time as number | null
-        const previous = previousMessages[i]
-        if (
-          previous &&
-          (previous.conversationKey !== conversationKey || previous.messageId !== messageId)
-        )
-          throw new Error('archive.error.auth')
-        const identical =
-          !!previous &&
-          (previous.sourceFingerprint
-            ? previous.sourceFingerprint === fingerprint
-            : canonicalSourceJson(previous.raw) === canonical)
-        const previousStart = previous?.sourceReadStartedAt ?? previous?.lastSeenAt ?? -Infinity
-        const oldVersion =
-          previous && typeof previous.raw.update_time === 'number'
-            ? previous.raw.update_time
-            : previous?.sourceCreateTime
-        const newVersion = typeof raw.update_time === 'number' ? raw.update_time : sourceCreateTime
-        const older =
-          !!previous &&
-          (readStartedAt < previousStart ||
-            (readStartedAt === previousStart &&
-              !!previous.sourceReadId &&
-              previous.sourceReadId !== detail.readId) ||
-            observedAt < previous.lastSeenAt ||
-            (oldVersion != null && newVersion !== null && newVersion < oldVersion))
-        if (identical && previous) {
-          if (!older && (readStartedAt > previousStart || !previous.sourceFingerprint)) {
-            records.put({
-              ...previous,
-              sourceFingerprint: fingerprint,
-              sourceReadId: detail.readId,
-              sourceReadStartedAt: readStartedAt,
-              lastSeenAt: Math.max(previous.lastSeenAt, observedAt),
-            } satisfies ArchiveV4Message)
-          }
-          unchanged++
-          continue
-        }
-        if (older) {
-          staleRecordCount++
-          unchanged++
-          continue
-        }
-        if (previous && previous.sourceCreateTime !== sourceCreateTime)
-          throw new Error('archive.error.sourceChanged')
-        if (previous) {
-          metadata.put({
-            key: key(previous.key, 'snapshot', String(previous.revision)),
-            ownerType: 'message',
-            ownerKey: previous.key,
-            kind: 'message-snapshot',
-            observedAt: previous.lastSeenAt,
-            payload: {
-              raw: previous.raw,
-              revision: previous.revision,
-              sourceFingerprint: previous.sourceFingerprint ?? null,
-              sourceReadId: previous.sourceReadId ?? null,
-              sourceReadStartedAt: previous.sourceReadStartedAt ?? null,
-            },
-          } satisfies ArchiveV4Metadata)
-          // Evidence consumed by the compact writer stays tiny even when the
-          // retained original snapshot contains very large multimodal data.
-          // Both rows belong to the same all-or-nothing source transaction.
-          metadata.put({
-            key: key(previous.key, 'revision-evidence', String(previous.revision)),
-            ownerType: 'message',
-            ownerKey: previous.key,
-            kind: 'message-revision-evidence',
-            observedAt: previous.lastSeenAt,
-            payload: {
-              revision: previous.revision,
-              sourceReadId: previous.sourceReadId ?? null,
-              sourceReadStartedAt: previous.sourceReadStartedAt ?? null,
-            },
-          } satisfies ArchiveV4Metadata)
-          changed++
-        } else {
-          inserted++
-          summary.knownMessageCount++
-          if (sourceCreateTime === null) summary.unsequencedMessageCount++
-        }
-        const meta = sourceObject(raw.metadata)
-        records.put({
-          key: key(conversationKey, messageId),
-          conversationKey,
-          messageId,
-          parentId: typeof meta.parent_id === 'string' ? meta.parent_id : null,
-          parentKnown:
-            Object.hasOwn(meta, 'parent_id') &&
-            (meta.parent_id === null || typeof meta.parent_id === 'string'),
-          sourceCreateTime,
-          firstSeenAt: previous?.firstSeenAt ?? observedAt,
-          lastSeenAt: observedAt,
-          revision: (previous?.revision ?? 0) + 1,
-          sourceReadId: detail.readId,
-          sourceReadStartedAt: readStartedAt,
-          sourceFingerprint: fingerprint,
-          raw,
-        } satisfies ArchiveV4Message)
-        if (sourceCreateTime !== null) {
-          if (
-            summary.firstKnownTime === null ||
-            !summary.firstKnownMessageId ||
-            comparePoint(
-              sourceCreateTime,
-              messageId,
-              summary.firstKnownTime,
-              summary.firstKnownMessageId,
-            ) < 0
-          ) {
-            summary.firstKnownTime = sourceCreateTime
-            summary.firstKnownMessageId = messageId
-          }
-          if (
-            summary.lastKnownTime === null ||
-            !summary.lastKnownMessageId ||
-            comparePoint(
-              sourceCreateTime,
-              messageId,
-              summary.lastKnownTime,
-              summary.lastKnownMessageId,
-            ) > 0
-          ) {
-            summary.lastKnownTime = sourceCreateTime
-            summary.lastKnownMessageId = messageId
-          }
-        }
-      }
-      for (let i = 0; i < submissions.length; i++) {
-        const item = submissions[i]
-        if (!item) continue
-        const previous = previousSubmissions[i]
-        if (
-          previous &&
-          (previous.ownerType !== 'message' ||
-            previous.ownerKey !== item.ownerKey ||
-            previous.kind !== 'submission-selection' ||
-            typeof previous.payload.conflicted !== 'boolean')
-        )
-          throw new Error('archive.error.sourceChanged')
-        if (previous?.payload.conflicted === true) continue
-        const old = previous?.payload.selection as ConversationSubmissionSelection | undefined
-        if (old) this.sourceGate.inspectSubmissionSelection(detail.conversationId, old)
-        if (old && !item.conflicted && sameSubmissionSelection(old, item.selection)) continue
-        metadata.put({
-          key: key(item.ownerKey, 'submission-selection'),
-          ownerType: 'message',
-          ownerKey: item.ownerKey,
-          kind: 'submission-selection',
-          observedAt,
-          payload: previous
-            ? { selection: old, conflictingSelection: item.selection, conflicted: true }
-            : { selection: item.selection, conflicted: item.conflicted },
-        } satisfies ArchiveV4Metadata)
-        submissionChanged = true
-      }
+      const summary = reconcileArchiveConversationHead({
+        previousConversation,
+        previousPage,
+        detail,
+        accountId,
+        conversationKey,
+        projectId,
+        observedAt,
+        readId: detail.readId,
+        readStartedAt,
+      })
+      const { inserted, changed, unchanged, staleRecordCount } = writeArchiveMessages({
+        records,
+        metadata,
+        messages,
+        previousMessages,
+        summary,
+        conversationKey,
+        readId: detail.readId,
+        readStartedAt,
+        observedAt,
+      })
+      const submissionChanged = writeArchiveSubmissionEvidence({
+        metadata,
+        submissions,
+        previousSubmissions,
+        sourceGate: this.sourceGate,
+        conversationId: detail.conversationId,
+        observedAt,
+      })
       if (projectKey && projectId && !previousProject) {
         projects.put({
           key: projectKey,
@@ -590,10 +380,10 @@ export class ArchiveV4Store {
         sourceFingerprint: pageFingerprint,
         nativeEnvelope,
         messageIds: messages.map((item) => item.raw.id),
-        observedSourceRecordCount: received.length,
-        observedUniqueRecordCount: seen.size,
+        observedSourceRecordCount: receivedCount,
+        observedUniqueRecordCount: uniqueCount,
         storedRecordCount: messages.length,
-        omittedRecordCount: seen.size - messages.length,
+        omittedRecordCount: uniqueCount - messages.length,
         staleRecordCount,
         readId: detail.readId,
         readStartedAt,

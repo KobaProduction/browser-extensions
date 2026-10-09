@@ -54,10 +54,16 @@ The ChatGPT-specific export format/level/evidence form is a separate
 projected into VK. V4 archive entity/metadata types, physical database
 validation, indexed window reads, and account-scoped read/revision queries
 have separate owners. Revocable catalog/project writes and account cleanup
-are delegated into dedicated ChatGPT IndexedDB write adapters. Write tickets,
-source-proof and transactional message ingestion remain ChatGPT-owned. This is
-**source decomposition only**, not canonical migration, data move or
-ChatGPT browser acceptance.
+are delegated into dedicated ChatGPT IndexedDB write adapters. Write tickets, source-proof and transaction orchestration remain
+ChatGPT-owned. The native ingest pipeline is decomposed into
+archive-v4-source-records (strict input normalization/dedup),
+archive-v4-conversation-head (latest-read provenance precedence),
+archive-v4-message-write (stale/dedup/revision snapshots and chronology), and
+archive-v4-submission-write (selection evidence/conflict policy).
+These write policies run synchronously inside the SAME caller-owned IDB
+transaction; none can independently commit, bypass write-ticket checks or
+emit success before commit. This is **source decomposition only**,
+not canonical migration, data move or ChatGPT browser acceptance.
 
 ## Reusable storage and migration building blocks
 

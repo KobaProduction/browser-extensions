@@ -48,6 +48,13 @@ The source repository is left unchanged.
   source-proof gates and the post-commit change notifications. The actual
   database identifiers, indexes and owner-scoped write contract
   are preserved; no database is opened, renamed or migrated by this import.
+  The v4 native ingest now separates source dedup/capture decisions,
+  read-start/head precedence, message revision/snapshot updates and
+  submission-selection conflict evidence into four ChatGPT-owned modules.
+  The original Store still owns cross-tab write tickets, account revocation,
+  native source compatibility, the single all-or-nothing write transaction,
+  and publication of post-commit updates. No source v3/v4 format conversion
+  or split transaction is introduced by this refactor.
   Account-scoped v4 project and conversation listings now use bounded indexed
   batches from browser-storage. Imported v3 read-only lists use bounded
   plain-store pages for project and conversation lists with primary-key
