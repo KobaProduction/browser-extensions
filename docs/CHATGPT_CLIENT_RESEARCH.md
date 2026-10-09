@@ -2193,3 +2193,39 @@ Two separate short **normal Chat** turns were submitted and completed in one ded
 Both outgoing requests were `action=next`, `turn_attribution.turn_trigger=composer`, and contained no explicit `conversation_origin=tpp` Work marker. The first generated the expected brief reply; the second generated the expected distinct reply. The **test conversation** was `https://chatgpt.com/c/6ac6b567-96d4-83ed-a087-cd6cdcd033f5` (synthetic text only). Both messages and the restored **Very High / 4 of 5** selection remained visible after full page reload; the viewport also stayed at 1600×1000. No existing user conversations or the original Work test tab were modified.
 
 **Refactor rule:** do not map a current model from slider ordinal, a translated user-facing label, or an older snapshot of the GPT-5.6 payload matrix. The actual outbound transport fields are authoritative for the runtime. The old GPT-5.6 matrix is retained as dated product evidence, **not** as the current GPT-6 model map. Model-radio transitions (to GPT-5.6 Sol or GPT-5.5) and GPT-6 Instant/Medium/Pro outbound mappings still require separate acceptance.
+
+## 2026-10-09 — observed additional native history signatures (source adapter v2)
+
+An isolated Chromium MV3 run of `feature/archive-v4-foundation@f84a052` observed native
+ChatGPT history **without issuing private history requests**. The first observed
+initial page contained five messages; a second page contained 24. Only field names,
+outer types, discriminator values and counts were retained for diagnostics; no
+conversation identifiers, message text, signed URLs, or source bodies are stored here.
+
+- `message.metadata.serialization_metadata` was an object containing
+  `custom_symbol_offsets: []` (five instances in the first sample; two in the
+  second). The element structure of a non-empty array was **not** observed.
+- Observed additional message-metadata fields/types:
+  `is_free_thinking_preview_turn:boolean`,
+  `write_like_me_offer_policy:string`,
+  `tool_invoking_message:string`, `tool_invoked_message:string`,
+  `tool_hide_expanded_content:boolean`,
+  `connector_tool_payload:string`, `invoked_plugin:object`,
+  `invoked_resource:object`, `aggregate_result:object`, and
+  `conversation_followup_suggestions_eligible:boolean`.
+  `reasoning_titles` was observed as both array and null;
+  `reasoning_title` as both string and null.
+- The native history also contained `content_type:code` with string
+  `language` and `text`, and nullable `response_format_name`; and
+  `content_type:execution_output` with a string `text`.
+- The original v1 adapter rejected `metadata.serialization_metadata` with
+  `unexpected` before persistence. Native ChatGPT continued operating,
+  collection paused, and Export refused to produce a falsely complete file.
+
+Implementation scope: a separately registered v2 validator may accept only the
+enumerated observed shapes while retaining v1 as an explicit legacy signature.
+The `serialization_metadata.custom_symbol_offsets` array must be empty for this
+accepted v2 slice; non-empty elements, additional nested keys, unregistered
+content variants, and unknown metadata still fail closed. Source acceptance
+and full live Export/History Loader acceptance are separate proof levels;
+see Issue #54.

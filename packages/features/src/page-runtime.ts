@@ -11,11 +11,14 @@ import {
   type TransportDiagnosticsAdapter,
 } from '@chatgpt-booster/core'
 import type { OtlpTelemetryClient } from '@chatgpt-booster/telemetry'
-import { type MountedBoosterUi, mountBoosterUi } from '@chatgpt-booster/ui'
+import { type ArchiveDataAdapter, type MountedBoosterUi, mountBoosterUi } from '@chatgpt-booster/ui'
+import { ArchiveCollectionSession } from './archive-collection-session'
 import { ArchiveScopeControlsModule } from './archive-scope-controls'
-import { ConversationArchiveStore } from './archive-store'
-import { createArchiveUiAdapter } from './archive-ui-adapter'
-import { ConversationArchiveModule } from './conversation-archive'
+import { ArchiveSourceGate, NATIVE_HISTORY_CONTRACT_VERSION } from './archive-source-contract'
+import { ArchiveV4CaptureModule } from './archive-v4-capture'
+import { ArchiveV4Reader } from './archive-v4-reader'
+import { ArchiveV4Store } from './archive-v4-store'
+import { createArchiveV4UiAdapter } from './archive-v4-ui-adapter'
 import { ConversationDecoratorsModule } from './conversation-decorators'
 import { ConversationStateStore } from './conversation-state'
 import { HistoryLoaderModule } from './history-loader'
@@ -38,7 +41,9 @@ export interface BoosterTargetAdapter {
 
 export interface BoosterPageRuntimeOptions {
   target: BoosterTargetAdapter
-  archiveStore?: ConversationArchiveStore
+  archiveV4Store?: ArchiveV4Store
+  /** Explicit release configuration; unknown versions block archive operations, never fall back. */
+  nativeHistoryContractVersion?: string
 }
 
 class OverlayModule implements BoosterModule {
@@ -48,7 +53,7 @@ class OverlayModule implements BoosterModule {
 
   constructor(
     private readonly target: BoosterTargetAdapter,
-    private readonly archiveAdapter: ReturnType<typeof createArchiveUiAdapter>,
+    private readonly archiveAdapter: ArchiveDataAdapter,
   ) {}
 
   start() {
@@ -83,33 +88,48 @@ class OverlayModule implements BoosterModule {
 export function createBoosterPageRuntime(options: BoosterPageRuntimeOptions) {
   const target = options.target
   const pageBridgeWindow = target.pageBridgeWindow ?? window
-  const archiveStore = options.archiveStore ?? new ConversationArchiveStore()
+  const selectedContract = options.nativeHistoryContractVersion ?? NATIVE_HISTORY_CONTRACT_VERSION
+  // An injected store owns its gate. Reject conflicting composition instead of
+  // writing provenance for an adapter different from the one that validated RAM.
+  if (
+    options.archiveV4Store &&
+    options.nativeHistoryContractVersion !== undefined &&
+    options.archiveV4Store.sourceGate.version !== selectedContract
+  )
+    throw new Error('Archive source adapter configuration mismatch')
+  const archiveStore =
+    options.archiveV4Store ?? new ArchiveV4Store(new ArchiveSourceGate(false, selectedContract))
   const archiveWarmup = archiveStore.warmup().catch((error) => {
     console.warn(
-      '[ChatGPT Booster] Archive database warmup failed',
+      '[ChatGPT Booster] Archive v4 database warmup failed',
       error instanceof Error ? error.name : 'unknown',
     )
   })
   const conversationState = new ConversationStateStore(pageBridgeWindow, archiveStore.sourceGate)
   const settings = createCachedSettingsAdapter(target.settings)
   const runtimeTarget: BoosterTargetAdapter = { ...target, settings }
-  const archiveCapture = new ConversationArchiveModule(
+  const collectionSession = new ArchiveCollectionSession()
+  const archiveCapture = new ArchiveV4CaptureModule(
     archiveStore,
-    settings,
     conversationState,
-    pageBridgeWindow,
+    settings,
+    collectionSession,
   )
-  const archiveAdapter = createArchiveUiAdapter(archiveStore, archiveCapture, {
-    assetFetchTarget: pageBridgeWindow,
-    stateStore: conversationState,
-  })
+  const archiveReader = new ArchiveV4Reader(archiveStore, conversationState)
+  const archiveAdapter = createArchiveV4UiAdapter(
+    archiveStore,
+    archiveCapture,
+    archiveReader,
+    conversationState,
+    settings,
+  )
 
   const modules: BoosterModule[] = [
     conversationState,
     new OverlayModule(runtimeTarget, archiveAdapter),
     archiveCapture,
-    new ArchiveScopeControlsModule(settings, archiveStore, conversationState),
-    new HistoryLoaderModule(conversationState, archiveCapture, pageBridgeWindow, settings),
+    new ArchiveScopeControlsModule(settings, archiveAdapter, conversationState),
+    new HistoryLoaderModule(conversationState, archiveCapture, pageBridgeWindow, settings, false),
     new TransportObserverModule({
       settings,
       diagnostics: target.diagnostics,
@@ -118,7 +138,7 @@ export function createBoosterPageRuntime(options: BoosterPageRuntimeOptions) {
         : {}),
       ...(target.telemetry ? { telemetry: target.telemetry } : {}),
     }),
-    new ConversationDecoratorsModule(settings, archiveStore, conversationState),
+    new ConversationDecoratorsModule(settings, undefined, conversationState),
   ]
 
   const runtime = new BoosterRuntime(modules, (module, error) => {

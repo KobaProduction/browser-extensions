@@ -73,7 +73,7 @@ The Archive Browser is a separate read-only surface. The active/session-buffer c
 Settings entry points must not fork Control Center behavior. Archive/quick surfaces may consume settings and archive adapters, but must not duplicate target-specific persistence logic.
 
 
-For the **proposed, not-yet-implemented** archive data model, strict ChatGPT source-signature validation, migration and Issue-based delivery contract, see [Archive target architecture](ARCHIVE_TARGET_ARCHITECTURE.md). Current v3 behavior remains documented in [Conversation Archive](CONVERSATION_ARCHIVE.md).
+For the v4 archive source model, strict source-signature validation, local integration map and acceptance boundaries, see [Archive target architecture](ARCHIVE_TARGET_ARCHITECTURE.md). Local implementation does not imply rollout or acceptance; Issue #54 tracks those separately. The prior v3 behavior remains documented in [Conversation Archive](CONVERSATION_ARCHIVE.md).
 
 ## Feature model
 

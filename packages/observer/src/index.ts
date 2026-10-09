@@ -87,8 +87,7 @@ function beginArchiveRequest(
     typeof location === 'undefined' ? 'https://chatgpt.com/' : location.href,
   )
   const isInitial = !url.pathname.endsWith('/messages')
-  if (isInitial && archivePolicy.manualConversationId !== id)
-    archiveReads.set(id, { readId: requestId, readStartedAt: Date.now() })
+  if (isInitial) archiveReads.set(id, { readId: requestId, readStartedAt: Date.now() })
   const read = archiveReads.get(id) ?? { readId: requestId, readStartedAt: Date.now() }
   if (archiveReads.size > 128) {
     const oldest = archiveReads.keys().next().value
@@ -438,7 +437,38 @@ export function conversationRequestTimingFromBody(
     )
   }) as Record<string, unknown> | undefined
   const sourceStartedAt = sourceTimestampMs(user?.create_time)
+  const attribution = payload?.turn_attribution
+  const composer =
+    !!attribution &&
+    typeof attribution === 'object' &&
+    !Array.isArray(attribution) &&
+    (attribution as Record<string, unknown>).turn_trigger === 'composer'
+  const effortPresent = !!payload && Object.hasOwn(payload, 'thinking_effort')
+  // Do not infer model/effort from UI labels, ordinal power levels, prepare,
+  // missing conversation IDs or an unrelated generation/retry action.
+  const selection: ConversationSubmissionSelection | undefined =
+    payload?.action === 'next' &&
+    composer &&
+    typeof payload.conversation_id === 'string' &&
+    payload.conversation_id &&
+    typeof user?.id === 'string' &&
+    user.id &&
+    typeof payload.model === 'string' &&
+    payload.model &&
+    (!effortPresent || typeof payload.thinking_effort === 'string') &&
+    Number.isFinite(observedAt)
+      ? {
+          schema: SUBMISSION_SELECTION_SCHEMA,
+          messageId: user.id,
+          requestedModel: payload.model,
+          thinkingEffort: effortPresent ? (payload.thinking_effort as string) : null,
+          effortPresent,
+          observedAtMs: observedAt,
+          source: 'native-composer-submit',
+        }
+      : undefined
   return {
+    ...(selection ? { submissionSelection: selection } : {}),
     conversationId:
       typeof payload?.conversation_id === 'string'
         ? payload.conversation_id
@@ -456,10 +486,17 @@ export function conversationRequestTimingFromBody(
   }
 }
 
-function publishConversationRequest(detail: ConversationRequestEventDetail | null) {
+function publishConversationRequest(
+  detail: ConversationRequestEventDetail | null,
+  accountId: string | null,
+) {
   if (!observerTarget || !detail) return
   observerTarget.postMessage(
-    { channel: TRANSPORT_CHANNEL, type: CONVERSATION_REQUEST_EVENT, detail },
+    {
+      channel: TRANSPORT_CHANNEL,
+      type: CONVERSATION_REQUEST_EVENT,
+      detail: { ...detail, accountId },
+    },
     observerTarget.location.origin,
   )
 }
@@ -512,7 +549,8 @@ export function conversationCatalogFromPayload(
       {
         conversationId: record.id,
         title: typeof record.title === 'string' ? record.title : null,
-        projectId: gizmoId ?? routeProjectId,
+        projectId: Object.hasOwn(record, 'gizmo_id') ? gizmoId : routeProjectId,
+        projectKnown: Object.hasOwn(record, 'gizmo_id') || routeProjectId !== null,
         conversationOrigin:
           typeof record.conversation_origin === 'string' ? record.conversation_origin : null,
       },
@@ -535,6 +573,7 @@ function observeConversationCatalogResponse(
   accountId: string | null,
   requestEpoch: number,
   currentEpoch: () => number,
+  requestStartedAt: number,
 ) {
   if (!response.ok || !isConversationCatalogUrl(sourceUrl)) return
   const contentType = response.headers.get('content-type') ?? ''
@@ -545,7 +584,7 @@ function observeConversationCatalogResponse(
     .then((payload: unknown) => {
       if (currentEpoch() !== requestEpoch) return
       const detail = conversationCatalogFromPayload(sourceUrl, payload, Date.now())
-      if (detail) publishConversationCatalog({ ...detail, accountId })
+      if (detail) publishConversationCatalog({ ...detail, accountId, requestStartedAt })
     })
     .catch(() => undefined)
 }
@@ -603,7 +642,21 @@ export interface TransportEventDetail {
   errorClass?: 'aborted' | 'network' | 'stream' | 'socket' | undefined
 }
 
+/** Documented native composer submission fields only; never the prepare request. */
+export const SUBMISSION_SELECTION_SCHEMA = 'chatgpt-submit-selection-2026-10-v1'
+export interface ConversationSubmissionSelection {
+  schema: typeof SUBMISSION_SELECTION_SCHEMA
+  messageId: string
+  requestedModel: string
+  thinkingEffort: string | null
+  effortPresent: boolean
+  observedAtMs: number
+  source: 'native-composer-submit'
+}
+
 export interface ConversationRequestEventDetail {
+  accountId?: string | null
+  submissionSelection?: ConversationSubmissionSelection
   conversationId: string | null
   userMessageId: string | null
   conversationOrigin?: string | null
@@ -666,6 +719,7 @@ export type ConversationStreamEventDetail = (
 ) & { accountId?: string | null }
 
 export interface ConversationCatalogItem {
+  projectKnown?: boolean
   conversationId: string
   title?: string | null
   projectId: string | null
@@ -683,6 +737,7 @@ export interface ConversationAccountEventDetail {
 }
 
 export interface ConversationCatalogEventDetail {
+  requestStartedAt?: number
   items: ConversationCatalogItem[]
   observedAt: number
   accountId?: string | null
@@ -1082,7 +1137,13 @@ function observeConversationArchiveResponse(
       // Keep a small per-chat initial-page buffer. ChatGPT can resolve a prefetched initial
       // request just before SPA navigation commits the new /c/{id} URL. We still publish only
       // when that conversation is actually current, so sidebar/background prefetches stay inert.
-      if (read.isInitial) {
+      const buffered = bufferedInitialPages.get(conversationId)
+      if (
+        read.isInitial &&
+        (!buffered ||
+          read.readStartedAt > (buffered.readStartedAt ?? buffered.timestamp) ||
+          (read.readId === buffered.readId && detail.timestamp >= buffered.timestamp))
+      ) {
         bufferedInitialPages.delete(conversationId)
         bufferedInitialPages.set(conversationId, detail)
         while (bufferedInitialPages.size > 32) {
@@ -1154,9 +1215,11 @@ function observeFetchResponseBody(
 }
 
 let sequence = 0
+let observerIdentity: string | undefined
 function nextId(kind: TransportKind) {
+  observerIdentity ??= crypto.randomUUID()
   sequence += 1
-  return `${kind}-${Date.now()}-${sequence}`
+  return `${kind}-${observerIdentity}-${sequence}`
 }
 
 export function installTransportObserver(
@@ -1234,33 +1297,17 @@ export function installTransportObserver(
     const data = event.data
     if (data?.channel !== TRANSPORT_CHANNEL || data.type !== ARCHIVE_POLICY_EVENT || !data.detail)
       return
-    const previousManual = archivePolicy.manualConversationId
     archivePolicy = { ...DENY_ARCHIVE, ...data.detail }
-    const currentBuffered = pageConversationId()
-      ? bufferedInitialPages.get(pageConversationId() as string)
-      : undefined
-    if (currentBuffered) publishPreloadPage(currentBuffered)
-    const manual = archivePolicy.manualConversationId
-    if (manual && manual !== previousManual) {
-      const readStartedAt =
-        typeof archivePolicy.manualStartedAt === 'number' &&
-        Number.isFinite(archivePolicy.manualStartedAt)
-          ? archivePolicy.manualStartedAt
-          : Date.now()
-      const readId = `manual-${readStartedAt}`
-      archiveReads.set(manual, { readId, readStartedAt })
-      const bufferedManual = bufferedInitialPages.get(manual)
-      if (bufferedManual)
-        publishConversationPage({
-          ...bufferedManual,
-          readId,
-          readStartedAt,
-          isInitial: true,
-          requestedBefore: null,
-          timestamp: readStartedAt,
-        })
+    const id = pageConversationId()
+    const currentBuffered = id ? bufferedInitialPages.get(id) : undefined
+    if (currentBuffered) {
+      // Reuse exactly the observed source read. Manual consent is NOT a new
+      // native response and cannot advance its timestamp or invent a read ID.
+      publishPreloadPage(currentBuffered)
+      if (archivePolicy.manualConversationId === id) publishConversationPage(currentBuffered)
     }
   }
+
   target.addEventListener('message', onArchivePolicy)
   let config = { ...DEFAULT_CONFIG }
   const onConfig = (event: MessageEvent) => {
@@ -1424,6 +1471,7 @@ export function installTransportObserver(
         }
         publishConversationRequest(
           conversationRequestTimingFromBody(rawUrl, method, init?.body, requestBoundaryAt),
+          emittedAccountId,
         )
         const stopConversationId = conversationStopTargetFromBody(rawUrl, method, init?.body)
         if (stopConversationId)
@@ -1460,20 +1508,25 @@ export function installTransportObserver(
             })
           archiveNetwork(id, rawUrl, response.ok ? 'response' : 'error', response.status)
           observeConversationArchiveResponse(response, rawUrl, historyRead, () => accountEpoch)
-          if (response.ok)
-            observeAccountSelector(
+          if (accountCheckEpoch === accountEpoch) {
+            if (response.ok)
+              observeAccountSelector(
+                rawUrl,
+                method,
+                headers.get('chatgpt-account-id'),
+                requestBoundaryAt,
+              )
+            // Account confirmation caused by this request is allowed. A request
+            // spanning another account selection is discarded, including A→B→A.
+            observeConversationCatalogResponse(
+              response,
               rawUrl,
-              method,
-              headers.get('chatgpt-account-id'),
+              emittedAccountId,
+              accountEpoch,
+              () => accountEpoch,
               requestBoundaryAt,
             )
-          observeConversationCatalogResponse(
-            response,
-            rawUrl,
-            emittedAccountId,
-            accountEpoch,
-            () => accountEpoch,
-          )
+          }
           if (method.toUpperCase() === 'GET' && isAccountCheckUrl(rawUrl))
             verifyAccountCatalog(response, accountCheckEpoch)
           observeConversationStreamStatusResponse(response, rawUrl)
@@ -1589,6 +1642,7 @@ export function installTransportObserver(
     const requestBoundaryAt = Date.now()
     publishConversationRequest(
       conversationRequestTimingFromBody(meta.rawUrl, meta.method, body, requestBoundaryAt),
+      emittedAccountId,
     )
     const stopConversationId =
       meta.method.toUpperCase() === 'POST' && conversationStop ? conversationIdFromBody(body) : null

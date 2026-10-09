@@ -3,8 +3,14 @@ import type {
   ArchiveExportFormatDescriptor,
   ArchiveExportOptions,
   ArchiveExportOutcome,
+  ArchiveExportProgressListener,
+  ArchiveExportReadiness,
+  ArchiveMessageLocation,
   ArchiveThreadView,
+  ArchiveWindowRequest,
   DiagnosticsAdapter,
+  HistoryLoaderState,
+  HistoryLoaderStopRequest,
   PersistentDiagnosticsAdapter,
   SecretAdapter,
   SettingsAdapter,
@@ -69,24 +75,110 @@ export interface ArchiveCoverageView {
   lastFullReadAt: number | null
 }
 
+export interface ArchiveWindowCursor {
+  sourceCreateTime: number | null
+  messageId: string
+}
+
+export interface ArchiveThreadWindow {
+  thread: ArchiveThreadView
+  olderCursor: ArchiveWindowCursor | null
+  newerCursor: ArchiveWindowCursor | null
+  hasOlderStored: boolean
+  hasNewerStored: boolean
+  loadedRecordCount: number
+  totalKnownRecordCount: number
+  hasUnsequencedRecords: boolean
+  source?: 'live' | 'saved'
+  sourceRevision?: number | null
+  sourceInstanceId?: string | null
+  accountId?: string
+  focusedMessageId?: string
+  unsequencedTarget?: boolean
+}
+
+/** Lightweight source facts. Neither endpoint is automatically a verified branch root. */
+export interface ArchiveExportPreviewMessage {
+  location?: ArchiveMessageLocation
+  messageId: string
+  role: string | null
+  text: string
+}
+export interface ArchiveExportPreview {
+  earliest: ArchiveExportPreviewMessage[]
+  latest: ArchiveExportPreviewMessage[]
+  hiddenKnownCount: number
+  knownCount: number
+  hasUnsequencedMessages: boolean
+  selectedTipId: string | null
+  sourcePageContinuity: 'verified' | 'partial' | 'unknown'
+  captureCoverage: 'complete' | 'omitted' | 'unknown'
+  latestHeadMatches: boolean | null
+}
+
 export interface ArchiveDataAdapter {
   getCurrentContext(): Promise<ArchiveCurrentContext>
   currentConversationId(): string | null
   currentProjectId(): string | null
+  currentAccountId?(): string | null
   hasIncompatibleSource?(conversationId: string): boolean
+  /** Only the Export modal may start native collection in v4. */
+  collectionInsideExportOnly?: boolean
+  archiveGeneration?: 4
   subscribeContextChange?(listener: () => void): () => void
   getThread(conversationId: string): Promise<ArchiveThreadView>
+  /** v4 only: progressively materialize bounded IndexedDB windows. */
+  getThreadWindow?(
+    conversationId: string,
+    before?: ArchiveWindowCursor | null,
+    direction?: 'older' | 'newer' | 'first',
+    request?: ArchiveWindowRequest,
+  ): Promise<ArchiveThreadWindow>
+  getMessageWindow?(
+    conversationId: string,
+    messageId: string,
+    request?: ArchiveWindowRequest,
+  ): Promise<ArchiveThreadWindow>
   collectCurrent(): Promise<void>
+  getCollectionState?(): Readonly<HistoryLoaderState>
+  stopCollection?(request: HistoryLoaderStopRequest): void
   clearAll(): Promise<void>
   listExportFormats(): ArchiveExportFormatDescriptor[]
   exportConversation(
     conversationId: string,
     options: ArchiveExportOptions,
     signal?: AbortSignal,
+    onProgress?: ArchiveExportProgressListener,
   ): Promise<ArchiveExportOutcome>
   listProjects(): Promise<ArchiveProjectView[]>
   getConversation(conversationId: string): Promise<ArchiveConversationView | undefined>
-  getCoverage(conversationId: string): Promise<ArchiveCoverageView | undefined>
+  getCoverage(
+    conversationId: string,
+    request?: ArchiveWindowRequest,
+  ): Promise<ArchiveCoverageView | undefined>
+  getExportPreview?(conversationId: string): Promise<ArchiveExportPreview>
+  /** Passive saved-copy diagnostics; selected ancestry is still verified at Prepare. */
+  getExportReadiness?(
+    conversationId: string,
+    options: ArchiveExportOptions,
+    signal?: AbortSignal,
+  ): Promise<ArchiveExportReadiness>
+  subscribeExportChanges?(conversationId: string, listener: () => void): () => void
+  getExportPreferences?(
+    conversationId: string,
+    scope?: 'global' | 'project' | 'conversation',
+  ): Promise<{
+    options: ArchiveExportOptions
+    source: 'global' | 'project' | 'conversation'
+    projectId: string | null
+    accountId: string
+  }>
+  saveExportPreferences?(
+    conversationId: string,
+    scope: 'global' | 'project' | 'conversation',
+    options: ArchiveExportOptions | null,
+    context: { accountId: string; projectId: string | null },
+  ): Promise<void>
   listConversations(): Promise<ArchiveConversationView[]>
   listMessages(conversationId: string): Promise<ArchiveMessageView[]>
 }

@@ -297,6 +297,7 @@ describe('Work and subagent source observation', () => {
           conversationId: 'work-chat',
           title: null,
           projectId: null,
+          projectKnown: true,
           conversationOrigin: 'tpp',
         },
       ],

@@ -15,14 +15,24 @@ function initialEvidenceScore(page: HistoryPageEvidence): number {
 }
 
 export function historyCoverage(pages: HistoryPageEvidence[]) {
-  const initial = pages
-    .filter((page) => page.isInitial && page.readId)
-    .sort(
-      (a, b) =>
-        (b.readStartedAt ?? b.observedAt) - (a.readStartedAt ?? a.observedAt) ||
-        initialEvidenceScore(b) - initialEvidenceScore(a) ||
-        b.observedAt - a.observedAt,
-    )[0]
+  // Pick the newest initial using the same ordering as the former sort,
+  // without sorting or copying every page on each coverage inspection.
+  let initial: HistoryPageEvidence | undefined
+  for (const candidate of pages) {
+    if (!candidate.isInitial || !candidate.readId) continue
+    if (
+      !initial ||
+      (candidate.readStartedAt ?? candidate.observedAt) >
+        (initial.readStartedAt ?? initial.observedAt) ||
+      ((candidate.readStartedAt ?? candidate.observedAt) ===
+        (initial.readStartedAt ?? initial.observedAt) &&
+        (initialEvidenceScore(candidate) > initialEvidenceScore(initial) ||
+          (initialEvidenceScore(candidate) === initialEvidenceScore(initial) &&
+            candidate.observedAt > initial.observedAt)))
+    ) {
+      initial = candidate
+    }
+  }
   if (!initial)
     return {
       verified: false,
@@ -33,15 +43,32 @@ export function historyCoverage(pages: HistoryPageEvidence[]) {
       observedAt: null,
       oldestCursor: null,
     }
-  const sameRead = pages.filter((page) => page.readId === initial.readId)
+
+  // Each before-cursor identifies the next page in the same read. Newer
+  // observations win, just as the former per-step descending sort did.
+  const continuations = new Map<string, HistoryPageEvidence>()
+  for (const candidate of pages) {
+    if (
+      candidate.readId !== initial.readId ||
+      candidate.isInitial ||
+      candidate.requestedBefore == null ||
+      // A reused/malformed read ID is not enough to connect two different
+      // native request sessions. Optional historical timestamps stay nullable.
+      (initial.readStartedAt !== undefined &&
+        candidate.readStartedAt !== undefined &&
+        candidate.readStartedAt !== initial.readStartedAt)
+    )
+      continue
+    const previous = continuations.get(candidate.requestedBefore)
+    if (!previous || candidate.observedAt > previous.observedAt)
+      continuations.set(candidate.requestedBefore, candidate)
+  }
   let page = initial
   const seen = new Set<string>()
   let count = 1
   while (page.hasPreviousPage === true && page.startCursor && !seen.has(page.startCursor)) {
     seen.add(page.startCursor)
-    const previous = sameRead
-      .filter((candidate) => !candidate.isInitial && candidate.requestedBefore === page.startCursor)
-      .sort((a, b) => b.observedAt - a.observedAt)[0]
+    const previous = continuations.get(page.startCursor)
     if (!previous || previous.startCursor === page.startCursor) break
     page = previous
     count++

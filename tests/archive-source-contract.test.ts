@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   ArchiveContractError,
   ArchiveSourceGate,
+  NATIVE_HISTORY_CONTRACT_V1,
   NATIVE_HISTORY_CONTRACT_VERSION,
 } from '../packages/features/src/archive-source-contract'
 import { ConversationArchiveStore } from '../packages/features/src/archive-store'
@@ -61,7 +62,109 @@ describe('ChatGPT native page source contract', () => {
     gate.inspect(earlier)
     expect(JSON.stringify(first.payload)).toBe(raw)
     expect(gate.get('conversation')).toBeUndefined()
-    expect(NATIVE_HISTORY_CONTRACT_VERSION).toContain('v1')
+    expect(NATIVE_HISTORY_CONTRACT_VERSION).toContain('v2')
+  })
+
+  test('accepts observed nullable native creation timestamps unchanged', () => {
+    const incoming = page([message('undated', { create_time: null })])
+    const original = JSON.stringify(incoming.payload)
+    new ArchiveSourceGate().inspect(incoming)
+    expect(JSON.stringify(incoming.payload)).toBe(original)
+    expect((incoming.payload.messages as Record<string, unknown>[])[0]?.create_time).toBeNull()
+  })
+
+  test('v2 accepts observed native variants without changing original records', () => {
+    const records = [
+      message('code', {
+        content: {
+          content_type: 'code',
+          language: 'python',
+          response_format_name: null,
+          text: 'print(1)',
+        },
+        metadata: {
+          parent_id: null,
+          serialization_metadata: { custom_symbol_offsets: [] },
+          is_free_thinking_preview_turn: true,
+          write_like_me_offer_policy: 'observed-policy',
+          tool_invoking_message: 'tool-call',
+          tool_invoked_message: 'tool-call',
+          tool_hide_expanded_content: false,
+          connector_tool_payload: 'opaque',
+          invoked_plugin: {},
+          invoked_resource: {},
+          aggregate_result: {},
+          conversation_followup_suggestions_eligible: true,
+          reasoning_title: null,
+          reasoning_titles: null,
+        },
+      }),
+      message('output', {
+        content: { content_type: 'execution_output', text: '1' },
+        metadata: { reasoning_title: 'Observed', reasoning_titles: [] },
+      }),
+    ]
+    const incoming = page(records)
+    const original = JSON.stringify(incoming.payload)
+    const gate = new ArchiveSourceGate()
+    gate.inspect(incoming)
+    expect(JSON.stringify(incoming.payload)).toBe(original)
+    expect(gate.get('conversation')).toBeUndefined()
+    expect(gate.version).toBe(NATIVE_HISTORY_CONTRACT_VERSION)
+
+    const old = new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V1)
+    expect(() => old.inspect(incoming)).toThrow(ArchiveContractError)
+    expect(old.get('conversation')?.version).toBe(NATIVE_HISTORY_CONTRACT_V1)
+  })
+
+  test('v2 rejects unknown nested serialization and incompatible types', () => {
+    const candidates = [
+      message('nested', {
+        metadata: {
+          serialization_metadata: { custom_symbol_offsets: [{ start: 0 }] },
+        },
+      }),
+      message('extra', {
+        metadata: {
+          serialization_metadata: { custom_symbol_offsets: [], new: 1 },
+        },
+      }),
+      message('wrong', { metadata: { reasoning_titles: 'invalid' } }),
+      message('wrong-code', {
+        content: { content_type: 'code', language: 'python', text: 1 },
+      }),
+      message('new-key', { metadata: { future_field: true } }),
+    ]
+    for (const candidate of candidates) {
+      const gate = new ArchiveSourceGate()
+      const incoming = page([message('accepted'), candidate])
+      expect(() => gate.inspect(incoming)).toThrow(ArchiveContractError)
+      expect(gate.get('conversation')?.path).toContain('payload.messages[1]')
+      expect(() => gate.inspect(page())).toThrow(ArchiveContractError)
+    }
+  })
+
+  test('v2 stream validation uses the same explicit source registry', () => {
+    const gate = new ArchiveSourceGate()
+    gate.inspectStreamMessage(
+      'c1',
+      message('tool', {
+        content: { content_type: 'execution_output', text: 'result' },
+        metadata: { serialization_metadata: { custom_symbol_offsets: [] } },
+      }),
+    )
+    expect(gate.get('c1')).toBeUndefined()
+    expect(() =>
+      gate.inspectStreamMessage(
+        'c1',
+        message('bad-tool', {
+          metadata: {
+            serialization_metadata: { custom_symbol_offsets: [123] },
+          },
+        }),
+      ),
+    ).toThrow(ArchiveContractError)
+    expect(gate.get('c1')?.version).toBe(NATIVE_HISTORY_CONTRACT_VERSION)
   })
 
   test('rejects missing required native message and page fields', () => {

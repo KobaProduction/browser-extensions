@@ -55,11 +55,15 @@ function table() {
   return crcTable
 }
 
-function crc32(bytes: Uint8Array) {
-  let crc = 0xffffffff
+function crc32Update(initial: number, bytes: Uint8Array) {
+  let crc = initial
   const values = table()
   for (const byte of bytes) crc = (values[(crc ^ byte) & 0xff] ?? 0) ^ (crc >>> 8)
-  return (crc ^ 0xffffffff) >>> 0
+  return crc >>> 0
+}
+
+function crc32(bytes: Uint8Array) {
+  return (crc32Update(0xffffffff, bytes) ^ 0xffffffff) >>> 0
 }
 
 function view(size: number) {
@@ -156,6 +160,97 @@ export function createStoredZip(entries: ZipEntry[]): Blob {
   end.setUint32(16, offset, true)
   end.setUint16(20, 0, true)
   return new Blob([...locals, centralBytes, bytes(end)].map(asArrayBuffer), {
+    type: 'application/zip',
+  })
+}
+
+/**
+ * Store-only ZIP32 for Blob-backed exports. The archive does not need a
+ * second full Uint8Array copy of each document; CRC32 is computed over
+ * bounded 64 KiB Blob slices. Native-source/path data are still materialized
+ * by the caller, so this is not end-to-end streaming export.
+ */
+export async function createStoredZipFromBlobs(
+  entries: { path: string; blob: Blob }[],
+  signal?: AbortSignal,
+  onProgress?: (completedBytes: number, totalBytes: number) => void,
+): Promise<Blob> {
+  if (entries.length > 0xffff) throw new Error('export.tooManyFiles')
+  const assertActive = () => {
+    if (signal?.aborted) throw new DOMException('ZIP packaging cancelled', 'AbortError')
+  }
+  const totalBytes = entries.reduce((total, entry) => total + entry.blob.size, 0)
+  let completedBytes = 0
+  assertActive()
+  onProgress?.(0, totalBytes)
+  const parts: BlobPart[] = []
+  const centrals: Uint8Array[] = []
+  const stamp = dosDateTime()
+  let offset = 0
+  for (const entry of entries) {
+    assertActive()
+    const name = encoder.encode(entry.path)
+    if (name.byteLength > 0xffff || entry.blob.size > 0xffffffff)
+      throw new Error('export.fileTooLarge')
+    if (offset + 30 + name.byteLength + entry.blob.size > 0xffffffff)
+      throw new Error('export.packageTooLarge')
+    let crc = 0xffffffff
+    for (let position = 0; position < entry.blob.size; position += 64 * 1024) {
+      assertActive()
+      const block = new Uint8Array(
+        await entry.blob.slice(position, position + 64 * 1024).arrayBuffer(),
+      )
+      assertActive()
+      crc = crc32Update(crc, block)
+      completedBytes += block.byteLength
+      onProgress?.(completedBytes, totalBytes)
+      assertActive()
+    }
+    assertActive()
+    crc = (crc ^ 0xffffffff) >>> 0
+    const local = view(30)
+    local.setUint32(0, 0x04034b50, true)
+    local.setUint16(4, 20, true)
+    local.setUint16(6, 0x0800, true)
+    local.setUint16(8, 0, true)
+    local.setUint16(10, stamp.time, true)
+    local.setUint16(12, stamp.date, true)
+    local.setUint32(14, crc, true)
+    local.setUint32(18, entry.blob.size, true)
+    local.setUint32(22, entry.blob.size, true)
+    local.setUint16(26, name.byteLength, true)
+    local.setUint16(28, 0, true)
+    parts.push(asArrayBuffer(bytes(local)), asArrayBuffer(name), entry.blob)
+
+    const central = view(46)
+    central.setUint32(0, 0x02014b50, true)
+    central.setUint16(4, 20, true)
+    central.setUint16(6, 20, true)
+    central.setUint16(8, 0x0800, true)
+    central.setUint16(10, 0, true) // ZIP method 0 = stored; never encode the DOS time here
+    central.setUint16(12, stamp.time, true)
+    central.setUint16(14, stamp.date, true)
+    central.setUint32(16, crc, true)
+    central.setUint32(20, entry.blob.size, true)
+    central.setUint32(24, entry.blob.size, true)
+    central.setUint16(28, name.byteLength, true)
+    central.setUint32(42, offset, true)
+    centrals.push(concat([bytes(central), name]))
+    offset += 30 + name.byteLength + entry.blob.size
+  }
+  assertActive()
+  const centralBytes = concat(centrals)
+  if (offset + centralBytes.byteLength + 22 > 0xffffffff) throw new Error('export.packageTooLarge')
+  const end = view(22)
+  end.setUint32(0, 0x06054b50, true)
+  end.setUint16(4, 0, true)
+  end.setUint16(6, 0, true)
+  end.setUint16(8, entries.length, true)
+  end.setUint16(10, entries.length, true)
+  end.setUint32(12, centralBytes.byteLength, true)
+  end.setUint32(16, offset, true)
+  assertActive()
+  return new Blob([...parts, asArrayBuffer(centralBytes), asArrayBuffer(bytes(end))], {
     type: 'application/zip',
   })
 }

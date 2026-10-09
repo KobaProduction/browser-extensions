@@ -14,7 +14,7 @@ import Search from 'lucide-vue-next/dist/esm/icons/search.js'
 import TerminalSquare from 'lucide-vue-next/dist/esm/icons/square-terminal.js'
 import Wrench from 'lucide-vue-next/dist/esm/icons/wrench.js'
 import X from 'lucide-vue-next/dist/esm/icons/x.js'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import FloatingInfoPopover from './FloatingInfoPopover.vue'
 import JsonViewer from './JsonViewer.vue'
 import MarkdownContent from './MarkdownContent.vue'
@@ -24,11 +24,12 @@ import { translate, type SupportedLocale, type TranslationKey } from './i18n'
 import { omitRepeatedRecordHeading, parseArchiveStructuredText } from './archive-presentation'
 
 const props = withDefaults(
-  defineProps<{ item: ArchiveItemView; locale: SupportedLocale; expandReasoning?: boolean }>(),
+  defineProps<{ item: ArchiveItemView; locale: SupportedLocale; expandReasoning?: boolean; focused?: boolean }>(),
   { expandReasoning: false },
 )
 const expanded = ref(false)
 const rawOpen = ref(false)
+watch(() => props.focused, (focused) => { if (focused) expanded.value = true }, { immediate: true })
 const t = (key: TranslationKey) => translate(props.locale, key)
 
 const tool = computed(() => props.item.tool)

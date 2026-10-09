@@ -145,6 +145,15 @@ This is a release-blocking invariant, not a best-effort parser heuristic.
    single invented universal shape; do not accept a new form by silently
    coercing it to the old one.
 
+The selected native adapter is explicit and immutable for one page runtime.
+`archive-source-contract.ts` owns the allowlisted version registry and existing
+nullable structural paths. History pages and stream records dispatch to that
+same selection. Unknown adapter versions or payload signatures never trigger a
+fallback search. Page Metadata records the validating adapter version separately
+from its untouched native envelope. Export diagnostics expose only the selected
+version/capability, not private source data. A different release adapter requires
+an intentional code registration and final acceptance of observed fixtures.
+
 **Atomicity:** validate -> normalize to a separate projection -> commit source
 message(s), associated summary and evidence in one IndexedDB transaction ->
 notify readers. On validation or commit failure, no successful capture result
@@ -181,6 +190,112 @@ adjacent windows as needed, with visible skeleton/loading state. An arbitrary
 chronological minimum is not proof of the selected branch root. Earlier/middle
 windows load progressively rather than mounting millions of nodes.
 
+A saved Export preview location carries the verified owner, conversation ID,
+message ID and source revision. Opening it must read that saved namespace,
+not substitute current-chat RAM. A direct message lookup and its chronological
+neighbors share one readonly snapshot; a missing message or changed revision
+returns an explicit error. A record without source time can be inspected alone,
+never placed among invented chronological neighbors. The bounded Reader retains
+independent older/newer cursors, cancels superseded reads, and keeps its position
+when covered/minimized. Returning to Export restores the existing wizard rather
+than starting another export or changing the native selected conversation.
+
+## Integrated ingestion and consistency map
+
+This describes the local v4 source implementation, not an accepted deployment.
+Issue #54 remains the status/acceptance owner. Native schemas and transport
+contracts are owned by `archive-source-contract.ts` and the observed-client
+research; no additional endpoint is called to perform synchronization.
+
+| Entry / owner | Live path | Durable boundary and invalidation |
+| --- | --- | --- |
+| Initial and older native history — `observer` | Native read ID, start time and selected-account epoch are captured at request creation; `ConversationStateStore.ingestPage` validates and merges into RAM first. | Capture snapshots the permitted categories, account/context generation and optional manual run before queueing. `ArchiveV4Store.ingest` validates/fingerprints before opening one readwrite transaction over Project, Conversation, Message and Metadata. |
+| Preload/policy replay — `observer` and `ArchiveV4CaptureModule` | The exact cached native page is replayed, without changing its observation time, read ID or source envelope. | New explicit policy may authorize a new capture of existing evidence; it does not make that evidence a fresh server response. Identical stored content is a no-op for source revision and user-visible notifications. |
+| Stream and composer submission — `ConversationStateStore` | Stream lifecycle and current records stay RAM-first. The bounded native submission selection map is keyed by exact user-message ID and account epoch. | No partial stream or DOM fallback becomes a native persisted Message. Submission facts enter Message-owned Metadata only alongside a matching validated native history message and captured permission. |
+| Native catalog — `observer`, RAM catalog subscribers | Request-time account epoch and request-start ordering reject responses crossing an account switch, including A→B→A. All changed RAM headers are notified. | Only already archived, capture-enabled conversations are updated. A catalog cannot create an archive or borrow another manual run. Project/title changes never rewrite Message raw, establish parent links or claim pagination completeness. |
+| Native project title — `chatgpt` adapter / Capture | DOM-facing title lookup remains behind the existing adapter. | Project-only update uses the same account deletion-generation ticket and revoked-signal checks. A repeated title advances its observation fence without a rename event; a project rename does not rename conversations. |
+| Reader, Preview and Prepare — query services | Ordinary current-chat viewing is RAM-first; context-only callers use `header()` rather than copying/sorting a transcript. Explicit saved inspection stays saved-source. | Bounded windows, previews and selected path checks compare conversation instance ID, revision and head. The per-instance identity changes after deletion/recreation, preventing a new revision 1 from validating an old result. |
+| Explicit account cleanup — Capture / Store | Revoke pending capture and manual consent first. | One account-scoped transaction deletes saved entities via indexed key-only cursors (not getAllKeys arrays) and retains a Metadata write-generation tombstone; nested message/conversation/project metadata is deleted atomically. Old tickets from any tab cannot repopulate deleted state. Another account and the v3 namespace are untouched. |
+
+### Write ordering and source identity
+
+`archive-v4-write.ts` contains source identity and cancellation primitives.
+Canonical JSON is a derived representation: sorted object keys, original array
+order, no coercion, no accessors/cycles or non-JSON values. A SHA-256 fingerprint
+is computed before the readwrite transaction. The untouched parsed native raw
+object is still the stored Message source, and a changed accepted object retains
+its predecessor in Message-owned Metadata. The same transaction also stores a lightweight `message-revision-evidence`
+row; selective export reads these compact facts instead of duplicating previous
+raw message bodies. For earlier local v4 recordings containing only the
+source-native snapshot, the revision reader falls back on demand, without
+migrating or rewriting the saved source. A non-contiguous revision chain is
+rejected instead of presented as verified. Older snapshots with no fingerprint
+are compared canonically on demand; there is no v3 migration or bulk rewrite.
+
+Within the transaction, only affected primary keys, counters and edge pointers
+are read or updated. Identical observations can advance provenance fences but
+not the raw revision. A page with skipped stale conflicting records carries an
+explicit incomplete-capture marker. Native continuation pages with conflicting
+known request-start times cannot close a source-page gap, even if their read
+IDs are reused; older evidence with genuinely absent timestamps stays nullable.
+The most recent native read ID is tracked
+even when its initial page has not arrived; a prior completed read cannot
+revalidate it. Equal-start conflicting reads remain unverified until a later
+unambiguous read. Chronology tie-breaking uses IDB-compatible string ordering,
+not locale collation. Unknown timestamp changes do not invent new edges.
+
+Capture's permission scope is immutable for queued work. Master/capture-policy
+changes, native navigation, account epochs and teardown revoke the signal;
+manual work also carries the exact run's signal. Per-conversation cancellation
+controllers are reference-counted across pending page/catalog writes, so
+concurrent writes remain revocable together without retaining a controller for
+every historical conversation seen in a sidebar. Concurrent explicit account
+cleanup commands join one transaction and keep the no-capture barrier until
+settlement (including failure). A source-contract rejection
+aborts that conversation's outstanding scopes, without interrupting native
+ChatGPT. AbortSignal is connected to the pending transaction itself, not only
+to its eventual result. Already committed writes are not claimed to have been
+rolled back after a later cancellation. Failed or cancelled pending pages
+cannot be converted into successful collection completion.
+
+A durable account generation is stored as implementation-owned Metadata, not a
+fifth ChatGPT entity. Tickets record the generation and local acquisition time
+before queueing. They are checked again under the actual write lock, including
+the case where initial DB opening was delayed until after cleanup. Conflicting
+same-millisecond acquisition is refused conservatively. New capture after the
+cleanup boundary requires a new ticket; old work never inherits it.
+
+Changes are published only after transaction completion. Same-origin
+BroadcastChannel messages contain only typed IDs/revisions and are invalidation
+hints, never source records, permission or proof of completeness. Receivers do
+not rebroadcast them. Correctness still relies on transactional generation and
+snapshot checks when notifications are delayed or unavailable. The channel is
+owned by active subscribers and closed when the last subscriber leaves.
+
+### Source-level baseline comparison and pending acceptance
+
+The old v3 `archive-store.ts` ordinary `ingest` reads all `conversationPages`
+and messages through `getAll` before preparing its write; older preload and
+record helpers also read entire message sets. The active v4 composition in
+`page-runtime.ts` does not construct that store or use the legacy
+`ConversationStateStore.hydrate(...listMessages)` path. Native RAM observation
+has no awaited database operation. The retained legacy hydration helper now
+rejects results from an obsolete account epoch or replaced RAM state.
+
+Source-native parent tracing is a pure module (`archive-v4-path.ts`), reused by
+materialized inspection and ID-only export, and re-exported by the Store to
+preserve the existing public contract. This prevents IndexedDB transaction
+mechanics and path-proof rules from drifting into competing implementations.
+
+The v4 normal ingestion path performs page-bounded source work and keyed reads;
+project/catalog updates only read their affected headers. Header/preview/point
+navigation never uses whole-message `getAll`. Explicit account deletion traverses owner-indexed key cursors without materializing all keys, while explicit export may traverse its selected native lineage; neither is a normal per-message synchronization path. History Loader caches RAM-derived coverage and visible endpoints by account and conversation revision so ordinary scroll pulses avoid rebuilding the full thread.
+Source hashing adds per-page CPU work and bounded page copies; no claim is made
+that this has measured lower browser heap or latency. The earlier coverage CPU
+sample is not a measurement of these new paths. Exact transaction atomicity,
+blocked/open lifecycle, cancellation races, fingerprint fidelity and actual
+resource usage remain part of the final acceptance stage, not a completed test.
+
 ## Export design boundaries
 
 - Export is one **explicitly selected and verified path/version** (subject to
@@ -194,6 +309,20 @@ windows load progressively rather than mounting millions of nodes.
   it scrolls the actual ChatGPT tab behind the modal. Close/minimize, tab hide,
   chat navigation or user takeover pauses it safely. Explicit resumption
   revalidates conversation, account, path, capture policy and continuity.
+  Consent and lifecycle have one environment-neutral session owner. A run is
+  bound to a verified account, conversation and selected path; delayed work
+  carries its original run identity and cannot acquire a successor's consent.
+  Permission is memory-only: reload, page teardown or hidden-tab cancellation
+  cannot silently restore native scrolling from an old storage ticket.
+  The Export entry remains available for an active, not-yet-captured native
+conversation. This is the only way to explicitly initiate a first history
+collection when automatic capture has not stored a copy. The initial wizard
+shows the saved-copy-missing blocker and permits only native, consented
+collection; no unsaved conversation is directly exportable as verified.
+
+Native collection completion and persistence completion are separate: stop
+  scrolling first, settle the run's queued captures, then publish completion.
+  This is not a substitute for Export's independent selected-path validation.
 - Three content profiles: **Основные сообщения** (user/final assistant),
   **Выборочное содержание** (granular reasoning/tool/state/edit/attachments),
   **Техническая копия** (lossless source-native JSON only). Metadata/source
@@ -201,6 +330,23 @@ windows load progressively rather than mounting millions of nodes.
 - Compact projections may store baseline model/effort and only *confirmed*
   change events. Do not infer a human model switch from a resolved-model change,
   and do not infer a text edit only from `updateTime > createTime`.
+- Requested model/effort evidence is captured only from the already documented
+  native `POST /backend-api/f/conversation` composer submission (`action=next`,
+  `turn_attribution.turn_trigger=composer`, explicit conversation and user-message
+  IDs). No `prepare`, UI ordinal or model-label inference. These small source
+  facts are scoped to the observed account in RAM, then stored as Message-owned
+  Metadata only with a matching accepted native user message. No credentials or
+  request body are stored. Conflicting submissions for one ID are marked unknown.
+  Selective export emits the first observed baseline, later actual submitted
+  parameter changes and explicit observation gaps. It never turns an absent
+  effort field into an inferred setting or attributes an unobserved picker action.
+- Compact JSON declares `unix_seconds_utc` for all derived timestamp fields.
+  Native `create_time` is converted from seconds; local provenance observation
+  times are converted from milliseconds explicitly, never guessed by magnitude.
+  Unknown/nonrepresentable values remain null. Previous-version observation
+  time is not represented as the time or authorship of an edit. Technical JSON
+  and explicitly opted-in opaque native content preserve original precision
+  and source units rather than rewriting the source to fit the projection.
 - Presentation options (`json compact`, `json readable`, `md`, optional `txt`)
   are independent of container/compression (`none`, `zip`, `tar.gz`, etc.).
   Optional large-file export staging may use OPFS, subject to browser execution

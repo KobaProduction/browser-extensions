@@ -1408,6 +1408,13 @@
   width: 16px;
   height: 16px;
 }
+.booster-export-suboptions {
+  display: grid;
+  gap: 8px;
+  margin-inline-start: 22px;
+  padding-inline-start: 12px;
+  border-inline-start: 1px solid var(--border);
+}
 .booster-note {
   margin: 8px 0;
   color: var(--muted-foreground);
@@ -2501,6 +2508,149 @@
   color: var(--muted-foreground);
   font-size: 9px;
   line-height: 1.35;
+}
+
+/* Export defaults are Booster preferences, not ChatGPT source metadata. */
+.booster-export-preferences {
+  display: grid;
+  gap: 8px;
+}
+.booster-export-preferences > label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.booster-export-preferences > .booster-note {
+  margin: 0;
+}
+
+/* Message navigation is local to the bounded Archive surface. */
+.booster-reader-message-jump,
+.booster-reader-message-jump form,
+.booster-export-preview-record {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.booster-reader-message-jump input {
+  min-width: 160px;
+  flex: 1;
+}
+.booster-export-preview-record > span {
+  flex: 1 1 220px;
+  overflow-wrap: anywhere;
+}
+.booster-message-target {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+[data-archive-message] {
+  scroll-margin-block: 20px;
+}
+
+/* Saved-copy readiness belongs to the Export wizard, not native ChatGPT UI. */
+.booster-export-readiness {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.booster-export-readiness > header,
+.booster-export-recovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.booster-export-readiness > header {
+  justify-content: space-between;
+}
+.booster-export-readiness dl {
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+.booster-export-readiness dl > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  justify-content: space-between;
+}
+.booster-export-readiness dd {
+  margin: 0;
+  text-align: end;
+}
+.booster-export-readiness p {
+  margin: 0;
+}
+.booster-export-blockers {
+  margin: 0;
+  padding-inline-start: 18px;
+  display: grid;
+  gap: 6px;
+}
+.booster-export-blockers li {
+  overflow-wrap: anywhere;
+}
+
+/* One current export stage; counts are from the preparation job, not a timer. */
+.booster-export-progress {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.booster-export-progress > p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.booster-export-progress progress {
+  display: block;
+  width: 100%;
+  height: 8px;
+  accent-color: var(--primary);
+}
+
+/* Archive export previews are intentionally bounded and loaded on demand. */
+.booster-export-preview-content {
+  display: grid;
+  gap: 8px;
+  max-height: min(360px, 48vh);
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.booster-export-preview-content .booster-note {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.booster-export-preview-skeleton {
+  display: grid;
+  gap: 8px;
+}
+.booster-export-preview-skeleton > span {
+  display: block;
+  height: 30px;
+  border-radius: 6px;
+  background: var(--muted);
+}
+.booster-export-dialog input[type="text"] {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
 }
 
 /* Shared top-layer metadata popovers for archive and live ChatGPT decorators. */

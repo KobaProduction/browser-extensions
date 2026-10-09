@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { resolveExportPreferences, scopedExportPreferenceKey } from '../packages/core/src/archive'
 import {
   mergeSettings,
   normalizeSettings,
@@ -178,4 +179,98 @@ test('cached settings adapter coalesces reads and shares one upstream subscripti
   expect(seen).toEqual([false])
   stopA()
   stopB()
+})
+
+describe('account-scoped archive export preference inheritance', () => {
+  test('applies global, project and conversation overrides without sharing account keys', () => {
+    const scopedProject = scopedExportPreferenceKey('account-one', 'project-one')
+    const scopedChat = scopedExportPreferenceKey('account-one', 'chat-one')
+    const settings = mergeSettings(normalizeSettings(), {
+      export: { format: 'markdown', reasoning: false },
+      exportOverrides: {
+        projects: { [scopedProject]: { format: 'json-compact', packaging: 'zip', tools: false } },
+        conversations: { [scopedChat]: { reasoning: true } },
+      },
+    })
+    const own = resolveExportPreferences(
+      settings.export,
+      settings.exportOverrides,
+      'account-one',
+      'project-one',
+      'chat-one',
+    )
+    expect(own.source).toBe('conversation')
+    expect(own.options.format).toBe('json-compact')
+    expect(own.options.reasoning).toBe(true)
+    expect(own.options.tools).toBe(false)
+    expect(own.options.packaging).toBe('zip')
+    const other = resolveExportPreferences(
+      settings.export,
+      settings.exportOverrides,
+      'account-two',
+      'project-one',
+      'chat-one',
+    )
+    expect(other.source).toBe('global')
+    expect(other.options.format).toBe('markdown')
+    expect(other.options.reasoning).toBe(false)
+    expect(other.options.packaging).toBe('none')
+  })
+
+  test('deleting a conversation or project override restores inherited preferences', () => {
+    const project = scopedExportPreferenceKey('account-one', 'project-one')
+    const conversation = scopedExportPreferenceKey('account-one', 'chat-one')
+    const configured = mergeSettings(normalizeSettings(), {
+      exportOverrides: {
+        projects: { [project]: { format: 'json' } },
+        conversations: { [conversation]: { format: 'json-compact' } },
+      },
+    })
+    const resetChat = mergeSettings(configured, {
+      exportOverrides: { conversations: { [conversation]: null } },
+    })
+    const inheritedProject = resolveExportPreferences(
+      resetChat.export,
+      resetChat.exportOverrides,
+      'account-one',
+      'project-one',
+      'chat-one',
+    )
+    expect(inheritedProject.source).toBe('project')
+    expect(inheritedProject.options.format).toBe('json')
+    const resetProject = mergeSettings(resetChat, {
+      exportOverrides: { projects: { [project]: null } },
+    })
+    const inheritedGlobal = resolveExportPreferences(
+      resetProject.export,
+      resetProject.exportOverrides,
+      'account-one',
+      'project-one',
+      'chat-one',
+    )
+    expect(inheritedGlobal.source).toBe('global')
+    expect(inheritedGlobal.options.format).toBe(resetProject.export.format)
+  })
+
+  test('snapshots preserve owner scopes and reject malformed/unexpected override fields', () => {
+    const key = scopedExportPreferenceKey('account-one', 'chat-one')
+    const source = normalizeSettings({
+      exportOverrides: {
+        projects: {},
+        conversations: {
+          [key]: { format: 'json-compact', invalidRecord: 'secret' },
+          'chat-only-without-owner': { format: 'markdown' },
+        },
+      },
+    } as unknown as Partial<import('../packages/core/src/settings').BoosterSettings>)
+    const { snapshotSettings } =
+      require('../packages/core/src/settings') as typeof import('../packages/core/src/settings')
+    const snapshot = snapshotSettings(source)
+    expect(Object.keys(snapshot.exportOverrides.conversations)).toEqual([key])
+    expect(snapshot.exportOverrides.conversations[key]).toEqual({ format: 'json-compact' })
+    const patched = mergeSettings(snapshot, { features: { requestTimer: false } })
+    expect(patched.exportOverrides).toEqual(snapshot.exportOverrides)
+    expect(patched.features.requestTimer).toBe(false)
+    expect(() => scopedExportPreferenceKey('', 'chat-one')).toThrow()
+  })
 })

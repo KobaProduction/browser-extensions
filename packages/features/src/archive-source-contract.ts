@@ -1,15 +1,37 @@
 import { ARCHIVE_SOURCE_INCOMPATIBLE_EVENT } from '@chatgpt-booster/core'
-import type { ConversationArchiveEventDetail } from '@chatgpt-booster/observer'
+import {
+  type ConversationArchiveEventDetail,
+  type ConversationSubmissionSelection,
+  SUBMISSION_SELECTION_SCHEMA,
+} from '@chatgpt-booster/observer'
 
 /**
  * Source contracts are intentionally independent of IndexedDB and export schema versions.
  * The message's original JSON object is never rewritten by this validator.
  *
- * Version 1 covers native initial/older history pages and the content variants observed
- * in ChatGPT history. Nested values for known opaque metadata fields are preserved as-is;
- * additional top-level/schema-discriminating keys require another reviewed version.
+ * v1 remains available for previously observed history. v2 registers the additional
+ * native shapes observed in current ChatGPT, without relaxing v1 or accepting unknown
+ * keys. Database and export format versions remain independent.
  */
-export const NATIVE_HISTORY_CONTRACT_VERSION = 'chatgpt-history-2026-10-v1'
+export const NATIVE_HISTORY_CONTRACT_V1 = 'chatgpt-history-2026-10-v1'
+export const NATIVE_HISTORY_CONTRACT_VERSION = 'chatgpt-history-2026-10-v2'
+
+/** Retain ambiguity even if a repeated message ID is submitted before its first capture. */
+export interface ArchiveSubmissionSnapshot {
+  selection: ConversationSubmissionSelection
+  conflicted: boolean
+}
+export function sameSubmissionSelection(
+  left: ConversationSubmissionSelection,
+  right: ConversationSubmissionSelection,
+): boolean {
+  return (
+    left.messageId === right.messageId &&
+    left.requestedModel === right.requestedModel &&
+    left.effortPresent === right.effortPresent &&
+    left.thinkingEffort === right.thinkingEffort
+  )
+}
 
 export type ArchiveContractFailure = {
   conversationId: string
@@ -45,9 +67,16 @@ const messageKeys = new Set(
 const authorKeys = new Set('role name metadata'.split(' '))
 const pageInfoKeys = new Set('start_cursor end_cursor has_previous_page has_next_page'.split(' '))
 /** Recognized metadata field names and outer structural types from observed native history. */
-const metadataTypes: Readonly<
-  Record<string, 'string' | 'number' | 'boolean' | 'array' | 'object' | 'nullable-string'>
-> = {
+type MetadataFieldType =
+  | 'string'
+  | 'number'
+  | 'boolean'
+  | 'array'
+  | 'object'
+  | 'nullable-string'
+  | 'nullable-array'
+
+const metadataTypes: Readonly<Record<string, MetadataFieldType>> = {
   attachments: 'array',
   bidi_voice_fem_message: 'boolean',
   bidi_voice_mode_message: 'boolean',
@@ -115,7 +144,6 @@ const metadataTypes: Readonly<
   working_turn_id: 'string',
   writing_blocks: 'object',
 }
-const metaKeys = new Set(Object.keys(metadataTypes))
 const contentKeys: Readonly<Record<string, ReadonlySet<string>>> = {
   text: new Set(['content_type', 'parts']),
   multimodal_text: new Set(['content_type', 'parts']),
@@ -132,11 +160,93 @@ const contentKeys: Readonly<Record<string, ReadonlySet<string>>> = {
 const asObject = (v: unknown): Record<string, unknown> | null =>
   v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null
 
-function assertHistoryPage(detail: ConversationArchiveEventDetail, projected: boolean): void {
+const v2MetadataTypes: Readonly<Record<string, MetadataFieldType>> = {
+  ...metadataTypes,
+  aggregate_result: 'object',
+  connector_tool_payload: 'string',
+  conversation_followup_suggestions_eligible: 'boolean',
+  invoked_plugin: 'object',
+  invoked_resource: 'object',
+  is_free_thinking_preview_turn: 'boolean',
+  reasoning_title: 'nullable-string',
+  reasoning_titles: 'nullable-array',
+  serialization_metadata: 'object',
+  tool_hide_expanded_content: 'boolean',
+  tool_invoked_message: 'string',
+  tool_invoking_message: 'string',
+  write_like_me_offer_policy: 'string',
+}
+const v2ContentKeys: Readonly<Record<string, ReadonlySet<string>>> = {
+  ...contentKeys,
+  code: new Set(['content_type', 'language', 'response_format_name', 'text']),
+  execution_output: new Set(['content_type', 'text']),
+}
+
+interface NativeHistoryValidationProfile {
+  version: string
+  metadata: Readonly<Record<string, MetadataFieldType>>
+  content: Readonly<Record<string, ReadonlySet<string>>>
+}
+const v1Profile: NativeHistoryValidationProfile = {
+  version: NATIVE_HISTORY_CONTRACT_V1,
+  metadata: metadataTypes,
+  content: contentKeys,
+}
+const v2Profile: NativeHistoryValidationProfile = {
+  version: NATIVE_HISTORY_CONTRACT_VERSION,
+  metadata: v2MetadataTypes,
+  content: v2ContentKeys,
+}
+function metadataTypeMatches(expected: MetadataFieldType, value: unknown): boolean {
+  const actual = value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value
+  if (expected === 'nullable-string') return actual === 'null' || actual === 'string'
+  if (expected === 'nullable-array') return actual === 'null' || actual === 'array'
+  return (
+    actual === expected &&
+    (expected !== 'number' || (typeof value === 'number' && Number.isFinite(value)))
+  )
+}
+/**
+ * The only observed serialization_metadata structure has an empty offsets array.
+ * Non-empty offsets are a new source shape until their entry types are observed.
+ */
+function validateSerializationMetadata(
+  value: unknown,
+  path: string,
+  fail: (path: string, reason: ArchiveContractFailure['reason']) => never,
+) {
+  const entry = asObject(value)
+  if (!entry) fail(path, 'type')
+  for (const name of Object.keys(entry))
+    if (name !== 'custom_symbol_offsets') fail(`${path}.${name}`, 'unexpected')
+  if (!Array.isArray(entry.custom_symbol_offsets)) fail(`${path}.custom_symbol_offsets`, 'type')
+  if (entry.custom_symbol_offsets.length !== 0) fail(`${path}.custom_symbol_offsets`, 'unsupported')
+}
+function validateMetadata(
+  metadata: Record<string, unknown>,
+  path: string,
+  profile: NativeHistoryValidationProfile,
+  fail: (path: string, reason: ArchiveContractFailure['reason']) => never,
+) {
+  for (const [name, value] of Object.entries(metadata)) {
+    const fieldPath = `${path}.${name}`
+    const expected = profile.metadata[name]
+    if (!expected) fail(fieldPath, 'unexpected')
+    if (!metadataTypeMatches(expected, value)) fail(fieldPath, 'type')
+    if (profile === v2Profile && name === 'serialization_metadata')
+      validateSerializationMetadata(value, fieldPath, fail)
+  }
+}
+
+function assertHistoryPage(
+  detail: ConversationArchiveEventDetail,
+  projected: boolean,
+  profile: NativeHistoryValidationProfile,
+): void {
   const failure = (path: string, reason: ArchiveContractFailure['reason']): never => {
     throw new ArchiveContractError({
       conversationId: detail.conversationId,
-      version: NATIVE_HISTORY_CONTRACT_VERSION,
+      version: profile.version,
       path,
       reason,
     })
@@ -225,28 +335,22 @@ function assertHistoryPage(detail: ConversationArchiveEventDetail, projected: bo
     const content = obj(required(message, 'content', path), `${path}.content`)
     const type = required(content, 'content_type', `${path}.content`)
     string(type, `${path}.content.content_type`)
-    const schema = contentKeys[type as string]
+    const schema = profile.content[type as string]
     if (!schema) failure(`${path}.content.content_type`, 'unsupported')
     keys(content, schema as ReadonlySet<string>, `${path}.content`)
     if (type === 'text' || type === 'multimodal_text') {
       if (!Array.isArray(required(content, 'parts', `${path}.content`)))
         failure(`${path}.content.parts`, 'type')
     }
-    const metadata = obj(required(message, 'metadata', path), `${path}.metadata`)
-    keys(metadata, metaKeys, `${path}.metadata`)
-    for (const [key, value] of Object.entries(metadata)) {
-      const expected = metadataTypes[key]
-      const fieldPath = [path, 'metadata', key].join('.')
-      if (!expected) failure(fieldPath, 'unsupported')
-      const actual = value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value
-      if (
-        actual !== expected &&
-        !(expected === 'nullable-string' && (actual === 'null' || actual === 'string'))
-      )
-        failure(fieldPath, 'type')
-      if (expected === 'number' && typeof value === 'number' && !Number.isFinite(value))
-        failure(fieldPath, 'type')
+    if (profile === v2Profile && type === 'code') {
+      string(required(content, 'language', `${path}.content`), `${path}.content.language`)
+      string(required(content, 'text', `${path}.content`), `${path}.content.text`)
+      optional(content, 'response_format_name', `${path}.content`, 'string')
     }
+    if (profile === v2Profile && type === 'execution_output')
+      string(required(content, 'text', `${path}.content`), `${path}.content.text`)
+    const metadata = obj(required(message, 'metadata', path), `${path}.metadata`)
+    validateMetadata(metadata, `${path}.metadata`, profile, failure)
     for (const key of [
       'parent_id',
       'request_id',
@@ -267,6 +371,170 @@ function assertHistoryPage(detail: ConversationArchiveEventDetail, projected: bo
   }
 }
 
+function assertStreamMessage(
+  conversationId: string,
+  incoming: Record<string, unknown>,
+  profile: NativeHistoryValidationProfile,
+) {
+  const fail = (path: string, reason: ArchiveContractFailure['reason']): never => {
+    throw new ArchiveContractError({
+      conversationId,
+      version: profile.version,
+      path,
+      reason,
+    })
+  }
+  const object = (value: unknown, path: string) => asObject(value) ?? fail(path, 'type')
+  const allowed = (record: Record<string, unknown>, names: ReadonlySet<string>, path: string) => {
+    for (const field of Object.keys(record))
+      if (!names.has(field)) fail([path, field].join('.'), 'unexpected')
+  }
+  const message = object(incoming, 'stream.message')
+  allowed(message, messageKeys, 'stream.message')
+  if (typeof message.id !== 'string' || !message.id) fail('stream.message.id', 'identity')
+  const author = object(message.author, 'stream.message.author')
+  allowed(author, authorKeys, 'stream.message.author')
+  if (typeof author.role !== 'string' || !author.role) fail('stream.message.author.role', 'type')
+  const content = object(message.content, 'stream.message.content')
+  if (typeof content.content_type !== 'string') fail('stream.message.content.content_type', 'type')
+  const contentShape = profile.content[content.content_type as string]
+  if (!contentShape) fail('stream.message.content.content_type', 'unsupported')
+  allowed(content, contentShape as ReadonlySet<string>, 'stream.message.content')
+  if (
+    (content.content_type === 'text' || content.content_type === 'multimodal_text') &&
+    !Array.isArray(content.parts)
+  )
+    fail('stream.message.content.parts', 'type')
+  if (profile === v2Profile && content.content_type === 'code') {
+    if (
+      typeof content.language !== 'string' ||
+      typeof content.text !== 'string' ||
+      (content.response_format_name !== undefined &&
+        content.response_format_name !== null &&
+        typeof content.response_format_name !== 'string')
+    )
+      fail('stream.message.content', 'type')
+  }
+  if (
+    profile === v2Profile &&
+    content.content_type === 'execution_output' &&
+    typeof content.text !== 'string'
+  )
+    fail('stream.message.content.text', 'type')
+  if (message.metadata !== undefined) {
+    const metadata = object(message.metadata, 'stream.message.metadata')
+    validateMetadata(metadata, 'stream.message.metadata', profile, fail)
+  }
+  for (const [field, kind] of [
+    ['status', 'string'],
+    ['recipient', 'string'],
+    ['channel', 'string'],
+    ['create_time', 'number'],
+    ['update_time', 'number'],
+    ['weight', 'number'],
+    ['end_turn', 'boolean'],
+  ] as const) {
+    const value = message[field]
+    if (
+      value !== undefined &&
+      value !== null &&
+      (typeof value !== kind || (kind === 'number' && !Number.isFinite(value)))
+    )
+      fail(['stream.message', field].join('.'), 'type')
+  }
+}
+
+export interface NativeHistoryAdapterInfo {
+  readonly version: string
+  readonly evidenceDocument: string
+  readonly fixtureFile: string
+  readonly knownNullablePaths: readonly string[]
+}
+interface NativeHistoryAdapter extends NativeHistoryAdapterInfo {
+  readonly assertPage: (detail: ConversationArchiveEventDetail, projected: boolean) => void
+  readonly assertStream: (conversationId: string, incoming: Record<string, unknown>) => void
+}
+
+/** Only previously documented/implemented signatures may be registered here. */
+const nativeHistoryAdapters: Readonly<Record<string, NativeHistoryAdapter>> = Object.freeze({
+  [NATIVE_HISTORY_CONTRACT_V1]: Object.freeze({
+    version: NATIVE_HISTORY_CONTRACT_V1,
+    evidenceDocument: 'docs/CHATGPT_CLIENT_RESEARCH.md',
+    fixtureFile: 'tests/archive-source-contract.test.ts',
+    knownNullablePaths: Object.freeze([
+      'payload.title',
+      'payload.gizmo_id',
+      'payload.gizmo_type',
+      'payload.current_node',
+      'payload.default_model_slug',
+      'payload.page_info.start_cursor',
+      'payload.page_info.end_cursor',
+      'payload.page_info.has_previous_page',
+      'payload.page_info.has_next_page',
+      'message.author.name',
+      'message.create_time',
+      'message.update_time',
+      'message.weight',
+      'message.status',
+      'message.recipient',
+      'message.channel',
+      'message.end_turn',
+      'message.metadata.parent_id',
+    ]),
+    assertPage: (detail: ConversationArchiveEventDetail, projected: boolean) =>
+      assertHistoryPage(detail, projected, v1Profile),
+    assertStream: (id: string, incoming: Record<string, unknown>) =>
+      assertStreamMessage(id, incoming, v1Profile),
+  }),
+  [NATIVE_HISTORY_CONTRACT_VERSION]: Object.freeze({
+    version: NATIVE_HISTORY_CONTRACT_VERSION,
+    evidenceDocument: 'docs/CHATGPT_CLIENT_RESEARCH.md',
+    fixtureFile: 'tests/archive-source-contract.test.ts',
+    knownNullablePaths: Object.freeze([
+      'payload.title',
+      'payload.gizmo_id',
+      'payload.gizmo_type',
+      'payload.current_node',
+      'payload.default_model_slug',
+      'payload.page_info.start_cursor',
+      'payload.page_info.end_cursor',
+      'payload.page_info.has_previous_page',
+      'payload.page_info.has_next_page',
+      'message.author.name',
+      'message.create_time',
+      'message.update_time',
+      'message.weight',
+      'message.status',
+      'message.recipient',
+      'message.channel',
+      'message.end_turn',
+      'message.metadata.parent_id',
+      'message.metadata.message_source',
+      'message.metadata.reasoning_title',
+      'message.metadata.reasoning_titles',
+      'message.content.response_format_name',
+    ]),
+    assertPage: (detail: ConversationArchiveEventDetail, projected: boolean) =>
+      assertHistoryPage(detail, projected, v2Profile),
+    assertStream: (id: string, incoming: Record<string, unknown>) =>
+      assertStreamMessage(id, incoming, v2Profile),
+  }),
+})
+
+/** Safe capability facts, not runtime switches or a mechanism to bypass rejection. */
+export function registeredNativeHistoryAdapters(): readonly NativeHistoryAdapterInfo[] {
+  return Object.freeze(
+    Object.values(nativeHistoryAdapters).map((adapter) =>
+      Object.freeze({
+        version: adapter.version,
+        evidenceDocument: adapter.evidenceDocument,
+        fixtureFile: adapter.fixtureFile,
+        knownNullablePaths: adapter.knownNullablePaths,
+      }),
+    ),
+  )
+}
+
 /**
  * Unsupported native payloads lock capture/export for a conversation until a new
  * adapter is released (or the page runtime is restarted with a supported version).
@@ -274,8 +542,29 @@ function assertHistoryPage(detail: ConversationArchiveEventDetail, projected: bo
  */
 export class ArchiveSourceGate {
   #blocked = new Map<string, ArchiveContractFailure>()
-  // Synthetic fixtures need an explicit opt-in. Production uses the default false.
-  constructor(private readonly allowSyntheticFixtures = false) {}
+  // Selection is immutable for this runtime. A failed payload never tries another adapter.
+  constructor(
+    private readonly allowSyntheticFixtures = false,
+    readonly version: string = NATIVE_HISTORY_CONTRACT_VERSION,
+  ) {}
+
+  get registered(): boolean {
+    return Object.hasOwn(nativeHistoryAdapters, this.version)
+  }
+
+  #selectedAdapter(conversationId: string): NativeHistoryAdapter {
+    const selected = this.registered ? nativeHistoryAdapters[this.version] : undefined
+    if (!selected)
+      throw this.reject({
+        conversationId,
+        version: /^[a-zA-Z0-9_.-]{1,100}$/.test(this.version)
+          ? this.version
+          : 'unregistered-version',
+        path: 'adapter.version',
+        reason: 'unsupported',
+      })
+    return selected
+  }
 
   get(conversationId: string): ArchiveContractFailure | undefined {
     return this.#blocked.get(conversationId)
@@ -296,9 +585,10 @@ export class ArchiveSourceGate {
   inspect(detail: ConversationArchiveEventDetail, projected = false) {
     const existing = this.get(detail.conversationId)
     if (existing) throw new ArchiveContractError(existing)
+    const adapter = this.#selectedAdapter(detail.conversationId)
     if (this.allowSyntheticFixtures && detail.sourceUrl.startsWith('fixture://')) return
     try {
-      assertHistoryPage(detail, projected)
+      adapter.assertPage(detail, projected)
     } catch (cause) {
       if (cause instanceof ArchiveContractError) throw this.reject(cause.failure)
       throw cause
@@ -312,73 +602,63 @@ export class ArchiveSourceGate {
   inspectStreamMessage(conversationId: string, incoming: Record<string, unknown>) {
     this.assertCompatible(conversationId)
     if (this.allowSyntheticFixtures) return
-    const fail = (path: string, reason: ArchiveContractFailure['reason']): never => {
+    try {
+      this.#selectedAdapter(conversationId).assertStream(conversationId, incoming)
+    } catch (cause) {
+      if (cause instanceof ArchiveContractError) throw this.reject(cause.failure)
+      throw cause
+    }
+  }
+
+  /** Validate a bounded documented request projection before persisting any evidence. */
+  inspectSubmissionSelection(conversationId: string, selection: ConversationSubmissionSelection) {
+    this.assertCompatible(conversationId)
+    const fail = (path: string): never => {
       throw this.reject({
         conversationId,
-        version: NATIVE_HISTORY_CONTRACT_VERSION,
+        version: SUBMISSION_SELECTION_SCHEMA,
         path,
-        reason,
+        reason: 'type',
       })
     }
-    const object = (value: unknown, path: string) => asObject(value) ?? fail(path, 'type')
-    const allowed = (record: Record<string, unknown>, names: ReadonlySet<string>, path: string) => {
-      for (const field of Object.keys(record))
-        if (!names.has(field)) fail([path, field].join('.'), 'unexpected')
-    }
-    const message = object(incoming, 'stream.message')
-    allowed(message, messageKeys, 'stream.message')
-    if (typeof message.id !== 'string' || !message.id) fail('stream.message.id', 'identity')
-    const author = object(message.author, 'stream.message.author')
-    allowed(author, authorKeys, 'stream.message.author')
-    if (typeof author.role !== 'string' || !author.role) fail('stream.message.author.role', 'type')
-    const content = object(message.content, 'stream.message.content')
-    if (typeof content.content_type !== 'string')
-      fail('stream.message.content.content_type', 'type')
-    const contentShape = contentKeys[content.content_type as string]
-    if (!contentShape) fail('stream.message.content.content_type', 'unsupported')
-    allowed(content, contentShape as ReadonlySet<string>, 'stream.message.content')
+    const value = asObject(selection) ?? fail('submit.selection')
+    const keys = new Set([
+      'schema',
+      'messageId',
+      'requestedModel',
+      'thinkingEffort',
+      'effortPresent',
+      'observedAtMs',
+      'source',
+    ])
     if (
-      (content.content_type === 'text' || content.content_type === 'multimodal_text') &&
-      !Array.isArray(content.parts)
+      Object.keys(value).some((name) => !keys.has(name)) ||
+      keys.size !== Object.keys(value).length
     )
-      fail('stream.message.content.parts', 'type')
-    if (message.metadata !== undefined) {
-      const metadata = object(message.metadata, 'stream.message.metadata')
-      allowed(metadata, metaKeys, 'stream.message.metadata')
-      for (const [key, value] of Object.entries(metadata)) {
-        const expected = metadataTypes[key]
-        const observed = value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value
-        if (
-          !expected ||
-          (observed !== expected &&
-            !(expected === 'nullable-string' && (observed === 'null' || observed === 'string')))
-        )
-          fail(['stream.message.metadata', key].join('.'), 'type')
-        if (expected === 'number' && typeof value === 'number' && !Number.isFinite(value))
-          fail(['stream.message.metadata', key].join('.'), 'type')
-      }
-    }
-    for (const [field, kind] of [
-      ['status', 'string'],
-      ['recipient', 'string'],
-      ['channel', 'string'],
-      ['create_time', 'number'],
-      ['update_time', 'number'],
-      ['weight', 'number'],
-      ['end_turn', 'boolean'],
-    ] as const) {
-      const value = message[field]
-      if (
-        value !== undefined &&
-        value !== null &&
-        (typeof value !== kind || (kind === 'number' && !Number.isFinite(value)))
-      )
-        fail(['stream.message', field].join('.'), 'type')
-    }
+      fail('submit.selection.keys')
+    if (value.schema !== SUBMISSION_SELECTION_SCHEMA || value.source !== 'native-composer-submit')
+      fail('submit.selection.schema')
+    if (
+      typeof value.messageId !== 'string' ||
+      !value.messageId ||
+      typeof value.requestedModel !== 'string' ||
+      !value.requestedModel
+    )
+      fail('submit.selection.identity')
+    if (
+      typeof value.effortPresent !== 'boolean' ||
+      (value.effortPresent
+        ? typeof value.thinkingEffort !== 'string'
+        : value.thinkingEffort !== null)
+    )
+      fail('submit.selection.thinkingEffort')
+    if (typeof value.observedAtMs !== 'number' || !Number.isFinite(value.observedAtMs))
+      fail('submit.selection.observedAtMs')
   }
 
   assertCompatible(conversationId: string) {
     const failed = this.get(conversationId)
     if (failed) throw new ArchiveContractError(failed)
+    this.#selectedAdapter(conversationId)
   }
 }

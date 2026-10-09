@@ -20,8 +20,12 @@ import {
   resolveLocale,
   type ScopeArchiveControlModel,
 } from '@chatgpt-booster/ui'
-import type { ConversationArchiveStore } from './archive-store'
 import type { ConversationStateStore } from './conversation-state'
+
+interface ArchiveScopeListing {
+  listConversations(): Promise<{ conversationId: string; projectId: string | null }[]>
+  listProjects(): Promise<{ projectId: string; title: string | null }[]>
+}
 
 function sameCaptureRule(
   a: BoosterSettings['archive']['defaultRule'],
@@ -77,7 +81,7 @@ export class ArchiveScopeControlsModule implements BoosterModule {
 
   constructor(
     private settings: SettingsAdapter,
-    private store?: Pick<ConversationArchiveStore, 'listConversations' | 'listProjects'>,
+    private store?: ArchiveScopeListing,
     private stateStore?: ConversationStateStore,
   ) {}
 

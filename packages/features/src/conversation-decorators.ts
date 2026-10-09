@@ -155,7 +155,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
 
   constructor(
     private settingsAdapter: SettingsAdapter,
-    private store: ConversationArchiveStore,
+    private store: Pick<ConversationArchiveStore, 'listMessages'> | undefined,
     private stateStore: ConversationStateStore = new ConversationStateStore(),
   ) {}
 
@@ -540,6 +540,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
   #hydrateCurrentInBackground() {
     const conversationId = currentConversationId() ?? null
     if (!conversationId) return
+    if (!this.store) return // v4 current-chat rendering is RAM-first, no IndexedDB hydration gate.
     void this.stateStore.hydrate(conversationId, this.store).catch((error) => {
       console.warn('[ChatGPT Booster] Conversation state hydration failed', error)
     })

@@ -124,6 +124,15 @@ interface ActiveConversationScroll {
 
 const activeConversationScrolls = new WeakMap<HTMLElement, ActiveConversationScroll>()
 
+/** Abort an active Booster-owned burst immediately; never alter native scroll position. */
+export function cancelConversationScroll(container: HTMLElement | null | undefined): void {
+  if (!container) return
+  const active = activeConversationScrolls.get(container)
+  if (!active) return
+  cancelAnimationFrame(active.frame)
+  activeConversationScrolls.delete(container)
+}
+
 function easeInOutCubic(value: number) {
   return value < 0.5 ? 4 * value ** 3 : 1 - (-2 * value + 2) ** 3 / 2
 }

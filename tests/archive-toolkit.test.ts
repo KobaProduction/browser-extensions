@@ -790,6 +790,52 @@ describe('fresh contiguous pagination evidence', () => {
       ]).verified,
     ).toBe(false)
   })
+  test('long linked read ignores older sessions and picks latest duplicate cursor evidence', () => {
+    const steps = 160
+    const pages: HistoryPageEvidence[] = [
+      {
+        ...page({ readId: 'fresh', readStartedAt: 100, startCursor: `c${steps}` }),
+      },
+    ]
+    for (let index = steps; index > 0; index--) {
+      pages.push(
+        page({
+          readId: 'fresh',
+          readStartedAt: 100,
+          isInitial: false,
+          requestedBefore: `c${index}`,
+          startCursor: `c${index - 1}`,
+          hasPreviousPage: index !== 1,
+          observedAt: index + 10,
+        }),
+      )
+    }
+    pages.push(
+      page({
+        readId: 'fresh',
+        isInitial: false,
+        requestedBefore: 'c1',
+        startCursor: 'stale',
+        hasPreviousPage: true,
+        observedAt: 0,
+      }),
+    )
+    pages.push(
+      page({
+        readId: 'older',
+        readStartedAt: 5,
+        isInitial: true,
+        startCursor: 'old-root',
+        hasPreviousPage: false,
+        observedAt: 999,
+      }),
+    )
+    const coverage = historyCoverage(pages)
+    expect(coverage.verified).toBe(true)
+    expect(coverage.readId).toBe('fresh')
+    expect(coverage.pageCount).toBe(steps + 1)
+    expect(coverage.oldestCursor).toBe('c0')
+  })
   test('all linked pages from one read prove history to beginning', () => {
     expect(
       historyCoverage([
@@ -803,6 +849,21 @@ describe('fresh contiguous pagination evidence', () => {
         }),
       ]).verified,
     ).toBe(true)
+  })
+  test('a continuation with conflicting request-start identity cannot close a page gap', () => {
+    const initial = page({ readId: 'shared', readStartedAt: 100 })
+    const stale = page({
+      readId: 'shared',
+      readStartedAt: 90,
+      isInitial: false,
+      requestedBefore: 'm10',
+      startCursor: 'm0',
+      hasPreviousPage: false,
+    })
+    const mismatch = historyCoverage([initial, stale])
+    expect(mismatch.verified).toBe(false)
+    expect(mismatch.pageCount).toBe(1)
+    expect(historyCoverage([initial, { ...stale, readStartedAt: 100 }]).verified).toBe(true)
   })
   test('a new incomplete read invalidates stale completion', () => {
     expect(
@@ -831,12 +892,22 @@ describe('regressions: policy and read identity', () => {
     expect(settings.archive.defaultRule.enabled).toBe(false)
     const defaults = normalizeSettings()
     expect(Object.keys(defaults.export).sort()).toEqual([
+      'attachmentMetadata',
+      'dictationEditEvidence',
       'files',
       'format',
       'images',
       'internal',
       'level',
+      'modelEvidence',
+      'packaging',
       'reasoning',
+      'reasoningFull',
+      'reasoningRecap',
+      'sourceRevisions',
+      'toolCalls',
+      'toolResults',
+      'toolSourceContent',
       'tools',
     ])
   })

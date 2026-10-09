@@ -1,11 +1,13 @@
 import {
   type ArchiveExportOptions,
+  type ArchiveExportOverrides,
   type ArchiveSettings,
   type CaptureRule,
   DEFAULT_CAPTURE_RULE,
   DEFAULT_EXPORT_OPTIONS,
   normalizeCaptureRule,
   normalizeExportOptions,
+  normalizeExportOverrides,
 } from './archive'
 import { clampRatio, type DockSide } from './docking'
 export interface FeatureSettings {
@@ -82,6 +84,7 @@ export interface BoosterSettings {
   ui: UiSettings
   archive: ArchiveSettings
   export: ArchiveExportOptions
+  exportOverrides: ArchiveExportOverrides
 }
 
 export interface BoosterSettingsPatch {
@@ -104,9 +107,13 @@ export interface BoosterSettingsPatch {
     conversations?: Record<string, CaptureRule | null>
   }
   export?: Partial<ArchiveExportOptions>
+  exportOverrides?: {
+    projects?: Record<string, Partial<ArchiveExportOptions> | null>
+    conversations?: Record<string, Partial<ArchiveExportOptions> | null>
+  }
 }
 
-export const SETTINGS_SCHEMA_VERSION = 7
+export const SETTINGS_SCHEMA_VERSION = 8
 
 function clampWindowRatio(value: unknown, fallback: number, min: number, max: number) {
   return typeof value === 'number' && Number.isFinite(value)
@@ -154,6 +161,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
   },
   archive: { defaultRule: { ...DEFAULT_CAPTURE_RULE }, projects: {}, conversations: {} },
   export: { ...DEFAULT_EXPORT_OPTIONS },
+  exportOverrides: { projects: {}, conversations: {} },
   ui: {
     archiveStart: 'latest',
     activeSection: 'modules',
@@ -258,6 +266,7 @@ export function normalizeSettings(value?: Partial<BoosterSettings>): BoosterSett
       conversations: mergeCaptureRules({}, value?.archive?.conversations),
     },
     export: normalizeExportOptions(value?.export),
+    exportOverrides: normalizeExportOverrides(value?.exportOverrides),
     ui: {
       ...DEFAULT_SETTINGS.ui,
       ...value?.ui,
@@ -338,6 +347,20 @@ export function snapshotSettings(
       ),
     },
     export: { ...normalized.export },
+    exportOverrides: {
+      projects: Object.fromEntries(
+        Object.entries(normalized.exportOverrides.projects).map(([key, value]) => [
+          key,
+          { ...value },
+        ]),
+      ),
+      conversations: Object.fromEntries(
+        Object.entries(normalized.exportOverrides.conversations).map(([key, value]) => [
+          key,
+          { ...value },
+        ]),
+      ),
+    },
     ui: {
       archiveStart: normalized.ui.archiveStart,
       activeSection: normalized.ui.activeSection,
@@ -345,6 +368,28 @@ export function snapshotSettings(
       archiveWindow: { ...normalized.ui.archiveWindow },
     },
   }
+}
+
+function mergeExportOverrides(
+  current: ArchiveExportOverrides,
+  patch?: BoosterSettingsPatch['exportOverrides'],
+): ArchiveExportOverrides {
+  if (!patch) return current
+  const merge = (
+    previous: Record<string, Partial<ArchiveExportOptions>>,
+    incoming?: Record<string, Partial<ArchiveExportOptions> | null>,
+  ) => {
+    const result = { ...previous }
+    for (const [key, update] of Object.entries(incoming ?? {})) {
+      if (update === null) delete result[key]
+      else result[key] = { ...previous[key], ...update }
+    }
+    return result
+  }
+  return normalizeExportOverrides({
+    projects: merge(current.projects, patch.projects),
+    conversations: merge(current.conversations, patch.conversations),
+  })
 }
 
 export function mergeSettings(
@@ -392,6 +437,7 @@ export function mergeSettings(
       ),
     },
     export: { ...normalized.export, ...patch.export },
+    exportOverrides: mergeExportOverrides(normalized.exportOverrides, patch.exportOverrides),
     ui: {
       ...normalized.ui,
       ...patch.ui,

@@ -2,8 +2,8 @@
 import Archive from 'lucide-vue-next/dist/esm/icons/archive.js'
 import { OPEN_ARCHIVE_EVENT } from '@chatgpt-booster/core'
 import Maximize2 from 'lucide-vue-next/dist/esm/icons/maximize-2.js'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import type { ArchiveWindowSettings, SettingsAdapter } from '@chatgpt-booster/core'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import type { ArchiveWindowSettings, SettingsAdapter, ArchiveMessageLocation } from '@chatgpt-booster/core'
 import ArchiveBrowser from './ArchiveBrowser.vue'
 import type { ArchiveDataAdapter } from './mount'
 import type { SupportedLocale } from './i18n'
@@ -13,9 +13,13 @@ const props = defineProps<{
   archiveAdapter: ArchiveDataAdapter
   initialConversationId?: string | null | undefined
   locale: SupportedLocale
+  navigationTarget?: ArchiveMessageLocation | null
+  suspended?: boolean
+  canReturnToExport?: boolean
 }>()
 const emit = defineEmits<{
   close: []
+  returnExport: []
   export: [conversationId: string, title: string | null]
 }>()
 
@@ -25,6 +29,7 @@ const openPosition = ref<'first' | 'latest'>('latest')
 const viewport = ref({ width: innerWidth, height: innerHeight })
 const settings = ref<ArchiveWindowSettings>()
 const transient = ref<{ x: number; y: number; width: number; height: number }>()
+let alive = true
 let unsubscribe: (() => void) | undefined
 let iconMoved = false
 let drag:
@@ -183,8 +188,10 @@ function resizeViewport() {
   transient.value = undefined
 }
 
+watch(() => props.navigationTarget, (target) => { if (target) minimized.value = false })
 onMounted(async () => {
   const current = await props.settingsAdapter.get()
+  if (!alive) return
   settings.value = { ...current.ui.archiveWindow }
   openPosition.value = current.ui.archiveStart
   unsubscribe = props.settingsAdapter.subscribe((next) => {
@@ -197,6 +204,7 @@ onMounted(async () => {
   ready.value = true
 })
 onBeforeUnmount(() => {
+  alive = false
   unsubscribe?.()
   removeEventListener('resize', resizeViewport)
   removeEventListener(OPEN_ARCHIVE_EVENT, restoreFromDock)
@@ -220,7 +228,7 @@ onBeforeUnmount(() => {
     ><Archive class="size-5" /><Maximize2 class="booster-archive-dock-corner" /></button>
 
     <section
-      v-else
+      v-show="!minimized"
       class="booster-archive-workspace"
       :style="windowStyle"
       @pointerdown="pointerDown"
@@ -231,6 +239,10 @@ onBeforeUnmount(() => {
       <ArchiveBrowser
         :archive-adapter="archiveAdapter"
         :initial-conversation-id="initialConversationId"
+        :navigation-target="navigationTarget ?? null"
+        :suspended="!!suspended || minimized"
+        :can-return-to-export="canReturnToExport"
+        @return-export="emit('returnExport')"
         :open-position="openPosition"
         :locale="locale"
         windowed

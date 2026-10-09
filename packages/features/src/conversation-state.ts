@@ -24,7 +24,8 @@ import {
 import {
   ArchiveContractError,
   ArchiveSourceGate,
-  NATIVE_HISTORY_CONTRACT_VERSION,
+  type ArchiveSubmissionSnapshot,
+  sameSubmissionSelection,
 } from './archive-source-contract'
 import type { ArchivedMessage, ConversationArchiveStore } from './archive-store'
 import {
@@ -104,6 +105,11 @@ interface MutableConversationState {
   records: Map<string, ArchivedMessage>
   turnIndex: Map<string, Set<string>>
   pages: Map<string, ConversationArchiveEventDetail>
+  headReadId: string | null
+  headReadStartedAt: number | null
+  catalogReadStartedAt: number | null
+  recordReads: Map<string, { readId: string; startedAt: number }>
+  submissionSelections: Map<string, ArchiveSubmissionSnapshot>
   hydrated: boolean
   hydration: Promise<void> | undefined
 }
@@ -318,6 +324,9 @@ export class ConversationStateStore implements BoosterModule {
   #states = new Map<string, MutableConversationState>()
   #catalogOrigins = new Map<string, string | null>()
   #verifiedAccountId: string | null = null
+  #accountEpoch = 0
+  #catalogListeners = new Set<(detail: ConversationCatalogEventDetail) => void>()
+  #accountListeners = new Set<() => void>()
   #listeners = new Set<(change: ConversationStateChange) => void>()
   #pageListeners = new Set<(detail: ConversationArchiveEventDetail) => void>()
   #active = false
@@ -339,11 +348,21 @@ export class ConversationStateStore implements BoosterModule {
     window.removeEventListener('message', this.#onMessage)
     this.#listeners.clear()
     this.#pageListeners.clear()
+    this.#accountListeners.clear()
+    this.#catalogListeners.clear()
+    this.#accountEpoch++
   }
 
   /** Only the native catalog request selector matched against the account registry qualifies. */
   verifiedAccountId(): string | null {
     return this.#verifiedAccountId
+  }
+  accountEpoch(): number {
+    return this.#accountEpoch
+  }
+  subscribeCatalog(listener: (detail: ConversationCatalogEventDetail) => void): () => void {
+    this.#catalogListeners.add(listener)
+    return () => this.#catalogListeners.delete(listener)
   }
 
   ingestAccount(detail: ConversationAccountEventDetail) {
@@ -351,9 +370,22 @@ export class ConversationStateStore implements BoosterModule {
     if (next === this.#verifiedAccountId) return
     // Native history observed without a confirmed owner cannot be silently
     // attributed later. A switch also invalidates every prior RAM view.
+    this.#accountEpoch++
     this.#states.clear()
     this.#catalogOrigins.clear()
     this.#verifiedAccountId = next
+    for (const listener of this.#accountListeners) {
+      try {
+        listener()
+      } catch {
+        /* Local listeners must not interrupt native observation. */
+      }
+    }
+  }
+
+  subscribeAccount(listener: () => void): () => void {
+    this.#accountListeners.add(listener)
+    return () => this.#accountListeners.delete(listener)
   }
 
   subscribe(listener: (change: ConversationStateChange) => void) {
@@ -385,6 +417,23 @@ export class ConversationStateStore implements BoosterModule {
   subagents(conversationId: string): ConversationSubagentSnapshot[] {
     const state = this.#states.get(conversationId)
     return state ? subagentsFromRecords(state.records.values()) : []
+  }
+
+  /** Context-only access never copies or sorts the live transcript. */
+  header(conversationId: string) {
+    const state = this.#states.get(conversationId)
+    return state
+      ? {
+          conversationId,
+          projectId: state.projectId,
+          title: state.title,
+          currentNodeId: state.currentNodeId,
+          revision: state.revision,
+          lastObservedAt: state.lastObservedAt,
+          headReadId: state.headReadId,
+          headReadStartedAt: state.headReadStartedAt,
+        }
+      : undefined
   }
 
   snapshot(conversationId: string): ConversationMemorySnapshot | undefined {
@@ -447,36 +496,60 @@ export class ConversationStateStore implements BoosterModule {
   }
 
   ingestPage(detail: ConversationArchiveEventDetail) {
-    // Native page ownership is captured at request time. Discard a late reply
-    // from a previous verified account instead of merging it into this RAM scope.
-    if (
-      detail.accountId !== undefined &&
-      this.#verifiedAccountId !== null &&
-      detail.accountId !== this.#verifiedAccountId
-    )
-      return
+    if (detail.accountId !== undefined && detail.accountId !== this.#verifiedAccountId) return
     this.sourceGate.inspect(detail)
     const payload = detail.payload
     if (!payload || !Array.isArray(payload.messages)) return
     const conversationId =
       typeof payload.conversation_id === 'string' ? payload.conversation_id : detail.conversationId
     if (!conversationId || conversationId !== detail.conversationId) return
+    const observedAt = detail.timestamp
+    const readStartedAt = detail.readStartedAt ?? observedAt
+    if (!Number.isFinite(observedAt) || !Number.isFinite(readStartedAt)) return
     const state = this.#ensure(conversationId)
-    const observedAt = detail.timestamp || Date.now()
-    state.projectId = normalizeConversationProjectId(payload) ?? state.projectId
-    if (Object.hasOwn(payload, 'conversation_origin'))
-      state.conversationOrigin =
-        typeof payload.conversation_origin === 'string' ? payload.conversation_origin : null
-    state.title = typeof payload.title === 'string' ? payload.title : state.title
-    state.currentNodeId =
-      typeof payload.current_node === 'string' ? payload.current_node : state.currentNodeId
+    const initial = detail.isInitial === true || detail.isInitial === undefined
+    const freshHead =
+      initial &&
+      (state.headReadStartedAt === null ||
+        readStartedAt > state.headReadStartedAt ||
+        (readStartedAt === state.headReadStartedAt && (detail.readId ?? null) === state.headReadId))
+    if (freshHead) {
+      if (readStartedAt >= (state.catalogReadStartedAt ?? -Infinity)) {
+        if (Object.hasOwn(payload, 'gizmo_id'))
+          state.projectId = normalizeConversationProjectId(payload)
+        if (typeof payload.title === 'string') state.title = payload.title
+      }
+      if (Object.hasOwn(payload, 'conversation_origin'))
+        state.conversationOrigin =
+          typeof payload.conversation_origin === 'string' ? payload.conversation_origin : null
+      if (Object.hasOwn(payload, 'current_node'))
+        state.currentNodeId = typeof payload.current_node === 'string' ? payload.current_node : null
+      state.headReadId = detail.readId ?? null
+      state.headReadStartedAt = readStartedAt
+    }
     state.lastObservedAt = Math.max(state.lastObservedAt, observedAt)
-
     for (const value of payload.messages) {
       const raw = asRecord(value)
-      if (!raw) continue
-      const id = typeof raw.id === 'string' ? raw.id : null
-      const previous = id ? state.records.get(id) : undefined
+      if (!raw || typeof raw.id !== 'string') continue
+      const previous = state.records.get(raw.id)
+      const previousRead = state.recordReads.get(raw.id)
+      if (
+        previousRead &&
+        (readStartedAt < previousRead.startedAt ||
+          (readStartedAt === previousRead.startedAt &&
+            (detail.readId ?? '') !== previousRead.readId))
+      )
+        continue
+      const oldVersion = previous && (asRecord(previous.raw)?.update_time ?? previous.createTime)
+      const newVersion = raw.update_time ?? raw.create_time
+      if (
+        previous &&
+        (previous.lastSeenAt > observedAt ||
+          (typeof oldVersion === 'number' &&
+            typeof newVersion === 'number' &&
+            newVersion < oldVersion))
+      )
+        continue
       const normalized = normalizeConversationMessage(
         raw,
         conversationId,
@@ -486,9 +559,11 @@ export class ConversationStateStore implements BoosterModule {
       )
       if (!normalized) continue
       this.#mergeRecord(state, normalized)
+      state.recordReads.set(raw.id, { readId: detail.readId ?? '', startedAt: readStartedAt })
     }
-
-    state.pages.set(pageKey(detail), detail)
+    const id = pageKey(detail)
+    const oldPage = state.pages.get(id)
+    if (!oldPage || oldPage.timestamp <= observedAt) state.pages.set(id, detail)
     while (state.pages.size > MAX_PAGES_PER_CONVERSATION) {
       const oldest = [...state.pages.entries()].sort(
         (a, b) => a[1].timestamp - b[1].timestamp,
@@ -496,58 +571,124 @@ export class ConversationStateStore implements BoosterModule {
       if (!oldest) break
       state.pages.delete(oldest)
     }
-    this.#inferLifecycleFromPage(state, payload, observedAt)
+    // Older continuations cannot roll back lifecycle evidence from a newer native submit.
+    if (
+      freshHead &&
+      !(state.lifecycle.source === 'request' && state.lifecycle.updatedAt > readStartedAt)
+    )
+      this.#inferLifecycleFromPage(state, payload, observedAt)
     this.#touch(state, 'page')
-    for (const listener of this.#pageListeners) listener(detail)
+    for (const listener of this.#pageListeners) {
+      try {
+        listener(detail)
+      } catch {
+        /* Persistence must never interrupt native RAM observation. */
+      }
+    }
   }
 
   ingestCatalog(detail: ConversationCatalogEventDetail) {
-    if (
-      detail.accountId !== undefined &&
-      this.#verifiedAccountId !== null &&
-      detail.accountId !== this.#verifiedAccountId
-    )
-      return
-    let changedConversationId: string | null = null
+    if (detail.accountId !== undefined && detail.accountId !== this.#verifiedAccountId) return
+    const startedAt = detail.requestStartedAt ?? detail.observedAt
+    if (!Number.isFinite(startedAt)) return
+    const changes: ConversationStateChange[] = []
     for (const item of detail.items) {
+      const state = this.#states.get(item.conversationId)
+      if (
+        state &&
+        startedAt <
+          Math.max(state.catalogReadStartedAt ?? -Infinity, state.headReadStartedAt ?? -Infinity)
+      )
+        continue
       const previousOrigin = this.#catalogOrigins.get(item.conversationId)
       this.#catalogOrigins.set(item.conversationId, item.conversationOrigin)
-      const state = this.#states.get(item.conversationId)
       let changed = previousOrigin !== item.conversationOrigin
       if (state) {
-        const nextProjectId = item.projectId ?? state.projectId
+        const projectId =
+          item.projectKnown === true ? item.projectId : (item.projectId ?? state.projectId)
         changed ||=
-          nextProjectId !== state.projectId || item.conversationOrigin !== state.conversationOrigin
-        state.projectId = nextProjectId
+          projectId !== state.projectId || item.conversationOrigin !== state.conversationOrigin
+        state.projectId = projectId
         if (typeof item.title === 'string' && item.title.trim()) {
           changed ||= state.title !== item.title
           state.title = item.title
         }
+        state.catalogReadStartedAt = startedAt
         state.conversationOrigin = item.conversationOrigin
         state.lastObservedAt = Math.max(state.lastObservedAt, detail.observedAt)
-        if (changed) state.revision += 1
+        if (changed) state.revision++
       }
-      if (changed && !changedConversationId) changedConversationId = item.conversationId
+      if (changed)
+        changes.push({
+          conversationId: item.conversationId,
+          revision: state?.revision ?? 0,
+          reason: 'catalog',
+        })
     }
     while (this.#catalogOrigins.size > 200) {
-      const oldest = this.#catalogOrigins.keys().next().value
-      if (typeof oldest !== 'string') break
-      this.#catalogOrigins.delete(oldest)
+      const first = this.#catalogOrigins.keys().next().value
+      if (typeof first !== 'string') break
+      this.#catalogOrigins.delete(first)
     }
-    if (!changedConversationId) return
-    const state = this.#states.get(changedConversationId)
-    const change = {
-      conversationId: changedConversationId,
-      revision: state?.revision ?? 0,
-      reason: 'catalog' as const,
+    for (const change of changes)
+      for (const listener of this.#listeners) {
+        try {
+          listener(change)
+        } catch {
+          /* Display subscriptions cannot stop native catalog ingestion. */
+        }
+      }
+    for (const listener of this.#catalogListeners) {
+      try {
+        listener(detail)
+      } catch {
+        /* Optional persistence remains separate. */
+      }
     }
-    for (const listener of this.#listeners) listener(change)
+  }
+
+  submissionSelection(
+    conversationId: string,
+    messageId: string,
+  ): ArchiveSubmissionSnapshot | undefined {
+    const snapshot = this.#states.get(conversationId)?.submissionSelections.get(messageId)
+    return snapshot
+      ? { selection: { ...snapshot.selection }, conflicted: snapshot.conflicted }
+      : undefined
   }
 
   ingestRequest(detail: ConversationRequestEventDetail) {
     const conversationId = detail.conversationId ?? currentConversationId() ?? null
     if (!conversationId) return
+    if (detail.accountId !== undefined && detail.accountId !== this.#verifiedAccountId) return
     const state = this.#ensure(conversationId)
+    if (
+      detail.submissionSelection &&
+      this.#verifiedAccountId &&
+      detail.accountId === this.#verifiedAccountId &&
+      detail.conversationId === conversationId &&
+      detail.submissionSelection.messageId === detail.userMessageId
+    ) {
+      try {
+        this.sourceGate.inspectSubmissionSelection(conversationId, detail.submissionSelection)
+        const previous = state.submissionSelections.get(detail.submissionSelection.messageId)
+        state.submissionSelections.set(detail.submissionSelection.messageId, {
+          selection: { ...(previous?.selection ?? detail.submissionSelection) },
+          conflicted:
+            previous?.conflicted === true ||
+            (!!previous &&
+              !sameSubmissionSelection(previous.selection, detail.submissionSelection)),
+        })
+        while (state.submissionSelections.size > 256) {
+          const oldest = state.submissionSelections.keys().next().value
+          if (oldest === undefined) break
+          state.submissionSelections.delete(oldest)
+        }
+      } catch (cause) {
+        if (!(cause instanceof ArchiveContractError)) throw cause
+        // Archival evidence is rejected; the native lifecycle/timer still starts normally.
+      }
+    }
     if (Object.hasOwn(detail, 'conversationOrigin'))
       state.conversationOrigin =
         typeof detail.conversationOrigin === 'string' ? detail.conversationOrigin : null
@@ -799,11 +940,13 @@ export class ConversationStateStore implements BoosterModule {
 
   async hydrate(conversationId: string, archive: Pick<ConversationArchiveStore, 'listMessages'>) {
     const state = this.#ensure(conversationId)
+    const epoch = this.#accountEpoch
     if (state.hydrated) return
     if (state.hydration) return await state.hydration
     state.hydration = archive
       .listMessages(conversationId)
       .then((records) => {
+        if (epoch !== this.#accountEpoch || this.#states.get(conversationId) !== state) return
         for (const record of records) this.#mergeRecord(state, record, true)
         state.hydrated = true
         if (records.length) this.#touch(state, 'hydrate')
@@ -833,7 +976,7 @@ export class ConversationStateStore implements BoosterModule {
       if (typeof detail?.conversationId === 'string')
         this.sourceGate.reject({
           conversationId: detail.conversationId,
-          version: NATIVE_HISTORY_CONTRACT_VERSION,
+          version: this.sourceGate.registered ? this.sourceGate.version : 'unregistered-version',
           path: typeof detail.path === 'string' ? detail.path : 'payload',
           reason: 'unsupported',
         })
@@ -891,6 +1034,11 @@ export class ConversationStateStore implements BoosterModule {
       records: new Map(),
       turnIndex: new Map(),
       pages: new Map(),
+      headReadId: null,
+      headReadStartedAt: null,
+      catalogReadStartedAt: null,
+      recordReads: new Map(),
+      submissionSelections: new Map(),
       hydrated: false,
       hydration: undefined,
     }

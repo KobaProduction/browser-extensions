@@ -3,7 +3,7 @@ import {
   ARCHIVE_UPDATED_EVENT, ARCHIVE_SOURCE_INCOMPATIBLE_EVENT, dockFromDrop, dockPosition,
   HISTORY_LOADER_STATE_EVENT, HISTORY_LOADER_STOP_EVENT, normalizeSettings,
   OPEN_ARCHIVE_EVENT, OPEN_CAPTURE_SETTINGS_EVENT, OPEN_SETTINGS_EVENT, resolveCaptureRule,
-  snapshotSettings, type ArchiveCaptureContext, type ArchiveCurrentContext, type HistoryLoaderState,
+  snapshotSettings, type ArchiveCaptureContext, type ArchiveCurrentContext, type HistoryLoaderState, type ArchiveMessageLocation,
 } from '@chatgpt-booster/core'
 import Archive from 'lucide-vue-next/dist/esm/icons/archive.js'
 import Download from 'lucide-vue-next/dist/esm/icons/download.js'
@@ -30,7 +30,10 @@ const view = ref<'settings' | 'capture' | 'export' | null>(null)
 const context = ref<ArchiveCurrentContext>({ conversationId: null, conversationTitle: null, projectId: null, projectTitle: null })
 const coverage = ref<ArchiveCoverageView>()
 const captureContext = ref<ArchiveCaptureContext>()
+const exportCaptureOpen = ref(false)
+const archiveCoveredByExport = ref(false)
 const archiveInitial = ref<string | null>(null)
+const archiveNavigation = ref<ArchiveMessageLocation | null>(null)
 const exportTarget = ref<{ id: string; title: string | null; backToArchive: boolean }>()
 const error = ref<TranslationKey | null>(null)
 const viewport = ref({ width: window.innerWidth, height: window.innerHeight })
@@ -49,7 +52,7 @@ const side = computed(() => settings.value.launcher.side)
 const growsUp = computed(() => position.value.y > (viewport.value.height - SIZE) / 2)
 const shellMaxHeight = computed(() => Math.max(SIZE, (growsUp.value ? position.value.y + SIZE : viewport.value.height - position.value.y) - 8))
 const opened = computed(() => expanded.value || view.value !== null)
-const active = computed(() => ['preparing', 'scrolling', 'waiting_for_load', 'backoff'].includes(loader.value.phase) && loader.value.conversationId === context.value.conversationId)
+const active = computed(() => ['preparing', 'scrolling', 'waiting_for_load', 'backoff', 'saving'].includes(loader.value.phase) && loader.value.conversationId === context.value.conversationId)
 const cachedMessageCount = computed(() =>
   Math.max(coverage.value?.visibleMessageCount ?? 0, loader.value.knownMessageCount ?? 0),
 )
@@ -108,17 +111,27 @@ async function refreshContext() {
   loading.value = !coverage.value
   refreshAt = Date.now()
   try {
-    const [next, nextCoverage, stored] = await Promise.all([adapter.getCurrentContext(), currentId ? adapter.getCoverage(currentId) : undefined, currentId ? adapter.getConversation(currentId) : undefined])
+    const [next, nextCoverage, stored] = await Promise.all([
+      adapter.getCurrentContext(),
+      currentId ? adapter.getCoverage(currentId) : undefined,
+      // V4's Export wizard owns collection of a not-yet-saved chat. A header
+      // lookup must not decide whether that wizard can be opened at all.
+      currentId && !adapter.collectionInsideExportOnly ? adapter.getConversation(currentId) : undefined,
+    ])
     if (!alive || request !== revision || adapter.currentConversationId() !== currentId) return
     context.value = next; coverage.value = nextCoverage; savedChat.value = !!stored
     if (currentId && adapter.hasIncompatibleSource?.(currentId)) error.value = 'archive.error.incompatibleSource'
   } catch { if (alive && request === revision) error.value = 'archive.error.storage' }
   finally { if (alive && request === revision) loading.value = false }
 }
-function closeView() { view.value = null }
+function closeView() {
+  exportCaptureOpen.value = false
+  archiveCoveredByExport.value = false
+  view.value = null
+}
 function toggle() {
   if (ignoreClick) { ignoreClick = false; return }
-  if (view.value) { view.value = null; expanded.value = false; return }
+  if (view.value) { closeView(); expanded.value = false; return }
   expanded.value = !expanded.value
   if (expanded.value) void refreshContext()
 }
@@ -149,10 +162,39 @@ async function pointerUp(event: PointerEvent) {
 }
 function cancelPointer() { pointer = undefined; dragging.value = false; dragPosition.value = undefined }
 function resize() { viewport.value = { width: window.innerWidth, height: window.innerHeight }; cancelPointer() }
-function openArchive(id = context.value.conversationId) { if (archiveOpen.value) window.dispatchEvent(new Event('chatgpt-booster:restore-archive')); archiveInitial.value = id; archiveOpen.value = true; expanded.value = false }
-function openExport(id: string, title: string | null, fromArchive = false) { exportTarget.value = { id, title, backToArchive: fromArchive }; archiveInitial.value = id; expanded.value = false; view.value = 'export' }
-function openSettings() { captureContext.value = undefined; expanded.value = false; view.value = 'settings' }
+function openArchive(id = context.value.conversationId) { archiveNavigation.value = null; archiveCoveredByExport.value = false; if (archiveOpen.value) window.dispatchEvent(new Event('chatgpt-booster:restore-archive')); archiveInitial.value = id; archiveOpen.value = true; expanded.value = false }
+function openArchiveFromExport(id: string, location?: ArchiveMessageLocation) {
+  archiveNavigation.value = location && location.conversationId === id ? { ...location } : null
+  window.dispatchEvent(new Event('chatgpt-booster:restore-archive'))
+  exportCaptureOpen.value = false
+  archiveCoveredByExport.value = false
+  archiveInitial.value = id
+  archiveOpen.value = true
+  expanded.value = false
+}
+function openExport(id: string, title: string | null, fromArchive = false) {
+  exportCaptureOpen.value = false
+  archiveCoveredByExport.value = fromArchive && archiveOpen.value
+  exportTarget.value = { id, title, backToArchive: fromArchive }
+  archiveInitial.value = id
+  expanded.value = false
+  view.value = 'export'
+}
+function returnToExport() {
+  if (view.value !== 'export' || !exportTarget.value) return
+  exportCaptureOpen.value = false
+  archiveCoveredByExport.value = true
+}
+function openCaptureFromExport(scope: ArchiveCaptureContext) {
+  if (view.value !== 'export' || scope.scope !== 'conversation' ||
+      scope.id !== exportTarget.value?.id) return
+  captureContext.value = scope
+  exportCaptureOpen.value = true
+}
+function openSettings() { exportCaptureOpen.value = false; archiveCoveredByExport.value = false; captureContext.value = undefined; expanded.value = false; view.value = 'settings' }
 function openCapture(scope?: ArchiveCaptureContext) {
+  exportCaptureOpen.value = false
+  archiveCoveredByExport.value = false
   captureContext.value = scope
   expanded.value = false
   view.value = 'capture'
@@ -166,13 +208,21 @@ async function collect() {
     error.value = safeError(cause)
   }
 }
-function stop() { window.dispatchEvent(new Event(HISTORY_LOADER_STOP_EVENT)) }
+function stop() {
+  const request = {
+    ...(loader.value.conversationId ? { conversationId: loader.value.conversationId } : {}),
+    ...(loader.value.sessionId !== undefined ? { sessionId: loader.value.sessionId } : {}),
+    reason: 'user' as const,
+  }
+  if (props.archiveAdapter?.stopCollection) props.archiveAdapter.stopCollection(request)
+  else window.dispatchEvent(new CustomEvent(HISTORY_LOADER_STOP_EVENT, { detail: request }))
+}
 function onState(event: Event) {
   const next = (event as CustomEvent<HistoryLoaderState>).detail
-  if (!next || !['idle', 'preparing', 'scrolling', 'waiting_for_load', 'backoff', 'complete', 'cancelled', 'error'].includes(next.phase)) return
+  if (!next || !['idle', 'preparing', 'scrolling', 'waiting_for_load', 'backoff', 'saving', 'complete', 'cancelled', 'error'].includes(next.phase)) return
   const changed = next.pagesLoaded !== loader.value.pagesLoaded || next.phase === 'complete'
   loader.value = { ...next }
-  if (next.conversationId === props.archiveAdapter?.currentConversationId() && next.phase === 'preparing') {
+  if (!props.archiveAdapter?.collectionInsideExportOnly && next.conversationId === props.archiveAdapter?.currentConversationId() && next.phase === 'preparing') {
     expanded.value = true
     void refreshContext()
   } else if (changed && opened.value && Date.now() - refreshAt > 700) void refreshContext()
@@ -225,6 +275,7 @@ onMounted(async () => {
   if (!alive) return
   if (props.archiveAdapter?.subscribeContextChange)
     contextUnsubscribe = props.archiveAdapter.subscribeContextChange(() => {
+      exportCaptureOpen.value = false
       if (opened.value || archiveOpen.value) void refreshContext()
     })
   else
@@ -245,10 +296,11 @@ onBeforeUnmount(() => {
 </script>
 <template>
   <div class="booster-overlay-root" :lang="locale">
-    <ArchiveWorkspace v-if="archiveOpen && archiveAdapter" :settings-adapter="settingsAdapter" :archive-adapter="archiveAdapter" :initial-conversation-id="archiveInitial" :locale="locale" @close="archiveOpen = false" @export="(id, title) => openExport(id, title, true)" />
+    <ArchiveWorkspace v-if="archiveOpen && archiveAdapter" v-show="!archiveCoveredByExport" :settings-adapter="settingsAdapter" :archive-adapter="archiveAdapter" :initial-conversation-id="archiveInitial" :navigation-target="archiveNavigation" :suspended="archiveCoveredByExport" :can-return-to-export="view === 'export' && !!exportTarget" :locale="locale" @return-export="returnToExport" @close="archiveOpen = false" @export="(id, title) => openExport(id, title, true)" />
     <ModalSurface v-if="view === 'settings'" :label="t('dock.settings')" @close="view = null"><ControlCenterPanel v-bind="props" show-close @close="view = null" /></ModalSurface>
     <ModalSurface v-if="view === 'capture'" :label="t('capture.title')" @close="view = null"><CaptureSettingsSurface :settings-adapter="settingsAdapter" :archive-adapter="archiveAdapter" :context="captureContext" :locale="locale" @close="view = null" /></ModalSurface>
-    <ModalSurface v-if="view === 'export' && archiveAdapter && exportTarget" :label="t('export.title')" @close="closeView"><ArchiveExportDialog :archive-adapter="archiveAdapter" :settings-adapter="settingsAdapter" :conversation-id="exportTarget.id" :title="exportTarget.title" :locale="locale" @close="closeView" /></ModalSurface>
+    <ModalSurface v-if="view === 'export' && archiveAdapter && exportTarget" v-show="(!archiveOpen || archiveCoveredByExport) && !exportCaptureOpen" :label="t('export.title')" @close="closeView"><ArchiveExportDialog :key="exportTarget.id" :archive-adapter="archiveAdapter" :settings-adapter="settingsAdapter" :conversation-id="exportTarget.id" :title="exportTarget.title" :locale="locale" :suspended="(archiveOpen && !archiveCoveredByExport) || exportCaptureOpen" @close="closeView" @open-archive="openArchiveFromExport" @open-capture="openCaptureFromExport" /></ModalSurface>
+    <ModalSurface v-if="view === 'export' && exportCaptureOpen && archiveAdapter" :label="t('capture.title')" @close="exportCaptureOpen = false"><CaptureSettingsSurface :settings-adapter="settingsAdapter" :archive-adapter="archiveAdapter" :context="captureContext" :locale="locale" @close="exportCaptureOpen = false" /></ModalSurface>
     <div class="booster-dock" :class="[side, growsUp ? 'grow-up' : 'grow-down', { dragging }]" :style="{ left: position.x + 'px', top: position.y + 'px' }">
       <div v-if="expanded && !dragging" class="booster-dock-shell" :style="{ maxHeight: shellMaxHeight + 'px' }">
         <div class="booster-dock-content" :style="{ maxHeight: Math.max(0, shellMaxHeight - SIZE) + 'px' }">
@@ -263,8 +315,8 @@ onBeforeUnmount(() => {
           <div v-if="active" class="booster-dock-progress" role="status"><span>{{ t(`phase.${loader.phase}`) }} · {{ t('dock.messages') }}: {{ loader.knownMessageCount }} · {{ t('dock.pages') }}: {{ loader.pagesLoaded }}</span><button class="booster-icon-button" type="button" :aria-label="t('dock.stop')" @click="stop"><Square class="size-3" /></button></div>
           <p v-if="loader.phase === 'error' && loader.conversationId === context.conversationId" role="alert" class="booster-error">{{ t(safeError(new Error(loader.message))) }}</p><p v-if="error" class="booster-error" role="alert">{{ t(error) }}</p>
           <nav class="booster-dock-actions" :aria-label="t('dock.title')">
-            <button type="button" :disabled="!savedChat || !context.conversationId" @click="context.conversationId && openExport(context.conversationId, context.conversationTitle)"><Download class="size-4" />{{ t('dock.export') }}</button>
-            <button type="button" :disabled="!context.conversationId || active" @click="collect"><ArrowUpToLine class="size-4" />{{ t('dock.collect') }}</button>
+            <button type="button" :disabled="!archiveAdapter || !context.conversationId || (!archiveAdapter.collectionInsideExportOnly && !savedChat)" @click="context.conversationId && openExport(context.conversationId, context.conversationTitle)"><Download class="size-4" />{{ t('dock.export') }}</button>
+            <button v-if="!archiveAdapter?.collectionInsideExportOnly" type="button" :disabled="!context.conversationId || active" @click="collect"><ArrowUpToLine class="size-4" />{{ t('dock.collect') }}</button>
             <button type="button" :disabled="!archiveAdapter" @click="openArchive()"><Archive class="size-4" />{{ t('dock.archive') }}</button>
             <button type="button" @click="openSettings"><Settings class="size-4" />{{ t('dock.settings') }}</button>
           </nav>
