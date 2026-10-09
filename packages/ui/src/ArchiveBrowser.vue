@@ -70,6 +70,51 @@ let stopMigrationUpdates: (() => void) | undefined
 const migrationConfirmUnowned = ref(false)
 const migrationError = ref('')
 const recoveredSelected = ref(false)
+const reconciliationBusy = ref(false)
+const auditBusy = ref(false)
+const reconcileBindUnknown = ref(false)
+const reconciliationResult = ref<{
+  examined: number; inserted: number; changed: number; unchanged: number
+  skippedOwnership: number; conversationsTouched: number
+  checkpointApplied?: boolean
+} | null>(null)
+const auditResult = ref<{
+  legacyConversations: number; canonicalConversations: number
+  conversationCountShortfall: number; conversationsWithMessageShortfall: number
+  sourceMessageCount: number; canonicalMessageCount: number
+} | null>(null)
+async function runRecentReconciliation(hours: 48 | 168) {
+  if (reconciliationBusy.value || migrationBusy.value ||
+      !props.archiveAdapter.reconcileArchiveRecent) return
+  reconciliationBusy.value = true
+  reconciliationResult.value = null
+  migrationError.value = ''
+  try {
+    reconciliationResult.value = await props.archiveAdapter.reconcileArchiveRecent(
+      hours, reconcileBindUnknown.value,
+    )
+    await refresh()
+    await refreshMigrationOverview()
+  } catch (error) {
+    migrationError.value = error instanceof Error ? error.message : 'Archive reconciliation failed'
+  } finally {
+    reconciliationBusy.value = false
+  }
+}
+async function auditArchiveCoverage() {
+  if (auditBusy.value || migrationBusy.value ||
+      !props.archiveAdapter.auditArchiveCoverage) return
+  auditBusy.value = true
+  auditResult.value = null
+  migrationError.value = ''
+  try {
+    auditResult.value = await props.archiveAdapter.auditArchiveCoverage()
+  } catch (error) {
+    migrationError.value = error instanceof Error ? error.message : 'Archive audit failed'
+  } finally {
+    auditBusy.value = false
+  }
+}
 async function refreshMigrationOverview() {
   if (!props.archiveAdapter.getArchiveMigrationOverview) return
   // A native account registry can still be loading after Archive opens.
@@ -834,6 +879,28 @@ onBeforeUnmount(() => {
       <p v-if="migrationError" role="alert">{{ migrationError }}</p>
     </section>
     <p v-else-if="migrationError" role="alert" class="booster-note">{{ migrationError }}</p>
+    <section v-if="migrationOverview && migrationOverview.migratedConversations > 0" class="booster-note" role="region" :aria-label="locale === 'ru' ? 'Сверка сохранённого архива' : 'Saved archive reconciliation'">
+      <strong>{{ locale === 'ru' ? 'Сверка сохранённого архива' : 'Saved archive reconciliation' }}</strong>
+      <p>{{ locale === 'ru' ? 'Перенесённые чаты не копируются повторно. Сверка обрабатывает только сообщения, замеченные или изменённые за выбранный период.' : 'Already migrated history is not recopied. Reconciliation processes only messages observed or changed within the selected time range.' }}</p>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" class="booster-action-secondary" :disabled="reconciliationBusy || migrationBusy" @click="runRecentReconciliation(48)">{{ locale === 'ru' ? 'Быстро: изменения после переноса' : 'Fast: changes since import' }}</button>
+        <button type="button" class="booster-action-secondary" :disabled="reconciliationBusy || migrationBusy" @click="runRecentReconciliation(168)">{{ locale === 'ru' ? 'Подробно: последние 7 дней' : 'Thorough: last 7 days' }}</button>
+        <button type="button" class="booster-action-secondary" :disabled="auditBusy || reconciliationBusy || migrationBusy" @click="auditArchiveCoverage">{{ locale === 'ru' ? 'Проверить полноту по счётчикам' : 'Check record counts' }}</button>
+      </div>
+      <label><input v-model="reconcileBindUnknown" type="checkbox" :disabled="reconciliationBusy" /> {{ locale === 'ru' ? 'Разрешить привязку новых legacy-чатов без подтверждённого владельца (только если они мои)' : 'Allow newly found unverified-owner legacy chats (only if mine)' }}</label>
+      <p v-if="reconciliationBusy" role="status">{{ locale === 'ru' ? 'Сверка изменений…' : 'Reconciling changes…' }} {{ migrationCounts.messages }}</p>
+      <p v-if="reconciliationResult" role="status">{{ locale === 'ru'
+        ? `Проверено ${reconciliationResult.examined}; добавлено ${reconciliationResult.inserted}; обновлено ${reconciliationResult.changed}; без изменений ${reconciliationResult.unchanged}; без подтверждения владельца ${reconciliationResult.skippedOwnership}.`
+        : `Checked ${reconciliationResult.examined}; added ${reconciliationResult.inserted}; updated ${reconciliationResult.changed}; unchanged ${reconciliationResult.unchanged}; unverified owner ${reconciliationResult.skippedOwnership}.` }}</p>
+      <p v-if="reconciliationResult?.checkpointApplied" role="status">{{ locale === 'ru'
+        ? 'Быстрая сверка использует контрольную точку последнего переноса. Для более широкого охвата запусти подробную сверку.'
+        : 'Fast reconciliation uses the last migration checkpoint. Run thorough reconciliation for broader coverage.' }}</p>
+      <p v-if="auditBusy" role="status">{{ locale === 'ru' ? 'Сверяются индексы сохранённых записей…' : 'Comparing archived record indexes…' }}</p>
+      <p v-if="auditResult" role="status">{{ locale === 'ru'
+        ? `Диалогов v3 / канонических: ${auditResult.legacyConversations} / ${auditResult.canonicalConversations}. Недостающих диалогов: ${auditResult.conversationCountShortfall}; диалогов с меньшим числом сообщений: ${auditResult.conversationsWithMessageShortfall}. Это сверка количества, не содержимого.`
+        : `Legacy / canonical chats: ${auditResult.legacyConversations} / ${auditResult.canonicalConversations}. Missing chats: ${auditResult.conversationCountShortfall}; chats with fewer messages: ${auditResult.conversationsWithMessageShortfall}. Counts only, not content fidelity.` }}</p>
+      <p v-if="migrationError" role="alert">{{ migrationError }}</p>
+    </section>
     <p v-if="accountPending" role="status" class="booster-note">{{ locale === 'ru'
       ? 'Ожидание подтверждения аккаунта ChatGPT. Архив откроется автоматически после загрузки.'
       : 'Waiting for ChatGPT account verification. The archive will reopen automatically once available.' }}</p>

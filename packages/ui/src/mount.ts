@@ -134,6 +134,25 @@ export interface ArchiveDataAdapter {
     migratedConversations: number
   }>
   startArchiveMigration?(bindUnowned: boolean): Promise<void>
+  reconcileArchiveRecent?(
+    hours: 48 | 168,
+    bindUnknownLegacy: boolean,
+  ): Promise<{
+    examined: number
+    inserted: number
+    changed: number
+    unchanged: number
+    skippedOwnership: number
+    conversationsTouched: number
+  }>
+  auditArchiveCoverage?(): Promise<{
+    legacyConversations: number
+    canonicalConversations: number
+    conversationCountShortfall: number
+    conversationsWithMessageShortfall: number
+    sourceMessageCount: number
+    canonicalMessageCount: number
+  }>
   subscribeArchiveMigration?(listener: () => void): () => void
   exportRecoveredConversation?(
     conversationId: string,

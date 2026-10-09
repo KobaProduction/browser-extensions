@@ -277,6 +277,28 @@ export function createArchiveV4UiAdapter(
         migratedConversations: saved.length,
       }
     },
+    reconcileArchiveRecent: async (hours, bindUnknownLegacy) => {
+      const owner = account()
+      const epoch = memory.accountEpoch()
+      const report = await migrator.reconcileRecent(
+        owner,
+        Date.now() - hours * 60 * 60 * 1000,
+        bindUnknownLegacy,
+        hours === 48,
+      )
+      if (memory.accountEpoch() !== epoch || account() !== owner)
+        throw new Error('archive.error.auth')
+      reader.reset()
+      return report
+    },
+    auditArchiveCoverage: async () => {
+      const owner = account()
+      const epoch = memory.accountEpoch()
+      const audit = await migrator.auditCoverage(owner)
+      if (memory.accountEpoch() !== epoch || account() !== owner)
+        throw new Error('archive.error.auth')
+      return audit
+    },
     startArchiveMigration: async (bindUnowned) => {
       const owner = account()
       const epoch = memory.accountEpoch()

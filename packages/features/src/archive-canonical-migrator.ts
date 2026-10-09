@@ -32,6 +32,7 @@ export type CanonicalMigrationStatus =
   | 'ready'
   | 'failed_recoverable'
   | 'waiting_for_owner'
+  | 'reconciling'
 
 export interface CanonicalMigrationProgress {
   status: CanonicalMigrationStatus
@@ -60,6 +61,7 @@ export interface CanonicalStoredMessage {
   messageId: string
   sourceCreateTime: number | null
   sourceFingerprint: string
+  source?: 'legacy_v3' | 'legacy_v4' | 'native'
   generation: string
   projection: CanonicalMessageProjection
 }
@@ -126,6 +128,117 @@ async function* scan(db: IDBDatabase, table: string, index: string, query: IDBVa
     if (batch.rows.length < 128 || batch.last === null) return
     after = batch.last
   }
+}
+
+/** A single IndexedDB transaction per bounded page, not per original message. */
+async function* scanBatches(
+  db: IDBDatabase,
+  table: string,
+  index: string,
+  query: IDBValidKey,
+): AsyncGenerator<Row[]> {
+  let batch: Row[] = []
+  for await (const row of scan(db, table, index, query)) {
+    batch.push(row)
+    if (batch.length === 128) {
+      yield batch
+      batch = []
+    }
+  }
+  if (batch.length) yield batch
+}
+
+/** Read only rows changed since a caller-selected time. Resume by index key
+ * plus primary key; duplicate timestamps must not skip or repeat records. */
+async function* scanRecent(
+  db: IDBDatabase,
+  table: string,
+  index: string,
+  since: number,
+  until: number,
+): AsyncGenerator<Row[]> {
+  let lastIndexKey: IDBValidKey | null = null
+  let lastPrimaryKey: IDBValidKey | null = null
+  const range = IDBKeyRange.bound(since, until)
+  while (true) {
+    const tx = db.transaction(table, 'readonly')
+    const ix = tx.objectStore(table).index(index)
+    const batch = await new Promise<{
+      rows: Row[]
+      indexKey: IDBValidKey | null
+      primaryKey: IDBValidKey | null
+    }>((resolve, reject) => {
+      const rows: Row[] = []
+      let indexKey: IDBValidKey | null = null
+      let primaryKey: IDBValidKey | null = null
+      let jumped = false
+      const cursor = ix.openCursor(range)
+      cursor.onerror = () => reject(cursor.error ?? new Error('Recent-source cursor failed'))
+      cursor.onsuccess = () => {
+        const c = cursor.result
+        if (!c) {
+          resolve({ rows, indexKey, primaryKey })
+          return
+        }
+        if (lastIndexKey !== null && lastPrimaryKey !== null && !jumped) {
+          jumped = true
+          const keyOrder = indexedDB.cmp(c.key, lastIndexKey)
+          const primaryOrder = keyOrder === 0 ? indexedDB.cmp(c.primaryKey, lastPrimaryKey) : 0
+          if (keyOrder < 0 || (keyOrder === 0 && primaryOrder < 0)) {
+            c.continuePrimaryKey(lastIndexKey, lastPrimaryKey)
+            return
+          }
+        }
+        if (lastIndexKey !== null && lastPrimaryKey !== null) {
+          const keyOrder = indexedDB.cmp(c.key, lastIndexKey)
+          if (
+            keyOrder < 0 ||
+            (keyOrder === 0 && indexedDB.cmp(c.primaryKey, lastPrimaryKey) <= 0)
+          ) {
+            c.continue()
+            return
+          }
+        }
+        const v = object(c.value)
+        if (!v) {
+          reject(new Error('Recent-source row malformed'))
+          return
+        }
+        rows.push(v)
+        indexKey = c.key
+        primaryKey = c.primaryKey
+        if (rows.length === 128) resolve({ rows, indexKey, primaryKey })
+        else c.continue()
+      }
+    })
+    if (!batch.rows.length) return
+    yield batch.rows
+    if (batch.rows.length < 128 || batch.indexKey === null || batch.primaryKey === null) return
+    lastIndexKey = batch.indexKey
+    lastPrimaryKey = batch.primaryKey
+  }
+}
+
+export interface ArchiveReconciliationReport {
+  readonly sinceMs: number
+  readonly effectiveSinceMs: number
+  readonly checkpointApplied: boolean
+  readonly examined: number
+  readonly inserted: number
+  readonly changed: number
+  readonly unchanged: number
+  readonly skippedOwnership: number
+  readonly conversationsTouched: number
+}
+export interface ArchiveCoverageAudit {
+  readonly legacyConversations: number
+  readonly canonicalConversations: number
+  readonly conversationCountShortfall: number
+  readonly conversationsWithMessageShortfall: number
+  readonly sourceMessageCount: number
+  readonly canonicalMessageCount: number
+  /** Counts are structural, not a byte-for-byte content fingerprint audit. */
+  readonly kind: 'count_only_read_only'
 }
 async function existingSource(name: string): Promise<IDBDatabase | null> {
   if (typeof indexedDB.databases !== 'function') throw new Error('IndexedDB inspection unavailable')
@@ -288,57 +401,94 @@ export class ArchiveCanonicalMigrator {
             // a failed migration generation never becomes active.
             const ix = source === 'legacy_v3' ? 'conversationId' : 'byConversation'
             const query = source === 'legacy_v3' ? conversationId : scoped
-            for await (const row of scan(db, 'messages', ix, query)) {
-              const raw = object(row.raw)
-              if (!raw || typeof raw.id !== 'string' || !raw.id)
-                throw new Error('Legacy source record is malformed')
-              const projection = projectNativeMessage(raw, { accountId, conversationId })
-              const fingerprint = await sourceFingerprint(canonicalSourceJson(raw))
-              const messageKey = key(conversationKey, raw.id)
-              const snapKey = key(messageKey, source, fingerprint)
+            for await (const batch of scanBatches(db, 'messages', ix, query)) {
+              // CPU-heavy fingerprints are calculated outside any IndexedDB
+              // transaction, in parallel, for a bounded batch of 128.
+              const prepared = await Promise.all(
+                batch.map(async (row) => {
+                  const raw = object(row.raw)
+                  if (!raw || typeof raw.id !== 'string' || !raw.id)
+                    throw new Error('Legacy source record is malformed')
+                  const projection = projectNativeMessage(raw, { accountId, conversationId })
+                  const fingerprint = await sourceFingerprint(canonicalSourceJson(raw))
+                  const messageKey = key(conversationKey, raw.id)
+                  return {
+                    raw,
+                    projection,
+                    fingerprint,
+                    messageKey,
+                    snapKey: key(messageKey, source, fingerprint),
+                  }
+                }),
+              )
               const tx = target.transaction(
                 ['canonicalMessages', 'canonicalElements', 'sourceSnapshots'],
                 'readwrite',
               )
               const done = finish(tx)
               const table = tx.objectStore('canonicalMessages')
-              const existing = await request<CanonicalStoredMessage | undefined>(
-                table.get(messageKey),
-              )
-              // Prefer newer v4 snapshots where both databases contained the same
-              // message, without deleting earlier v3 evidence or faking versions.
-              if (!existing || source === 'legacy_v4') {
-                table.put({
-                  key: messageKey,
-                  conversationKey,
-                  accountId,
-                  conversationId,
-                  messageId: raw.id,
-                  sourceCreateTime: projection.sourceCreateTime,
-                  sourceFingerprint: fingerprint,
-                  generation,
-                  projection,
-                } satisfies CanonicalStoredMessage)
-                const els = tx.objectStore('canonicalElements')
-                // Generation-specific keys permit staging over earlier active data.
-                for (const element of projection.elements)
-                  els.put({
-                    ...element,
-                    elementId: key(generation, element.elementId),
-                    messageKey,
+              // The new staging generation has no v3 rows yet. Only v4
+              // source messages can conflict with already-staged v3 entries.
+              const previous =
+                source === 'legacy_v3'
+                  ? prepared.map(() => undefined)
+                  : await Promise.all(
+                      prepared.map((row) =>
+                        request<CanonicalStoredMessage | undefined>(table.get(row.messageKey)),
+                      ),
+                    )
+              const elements = tx.objectStore('canonicalElements')
+              const snapshots = tx.objectStore('sourceSnapshots')
+              const staleElements =
+                source === 'legacy_v4'
+                  ? await Promise.all(
+                      prepared.map((row, i) =>
+                        previous[i]
+                          ? request<IDBValidKey[]>(
+                              elements.index('byMessage').getAllKeys(row.messageKey),
+                            )
+                          : Promise.resolve([] as IDBValidKey[]),
+                      ),
+                    )
+                  : []
+              prepared.forEach((row, i) => {
+                if (!previous[i] || source === 'legacy_v4') {
+                  // A newer v4 revision may have fewer content elements.
+                  // Delete earlier staged elements atomically to avoid ghosts.
+                  for (const oldKey of staleElements[i] ?? []) elements.delete(oldKey)
+                  table.put({
+                    key: row.messageKey,
+                    conversationKey,
+                    accountId,
+                    conversationId,
+                    messageId: row.projection.messageId,
+                    sourceCreateTime: row.projection.sourceCreateTime,
+                    sourceFingerprint: row.fingerprint,
+                    source,
                     generation,
-                  })
-              }
-              tx.objectStore('sourceSnapshots').put({
-                key: snapKey,
-                messageKey,
-                generation,
-                fingerprint,
-                source,
-                raw: structuredClone(raw),
-              } satisfies CanonicalSourceSnapshot)
+                    projection: row.projection,
+                  } satisfies CanonicalStoredMessage)
+                  for (const element of row.projection.elements)
+                    elements.put({
+                      ...element,
+                      elementId: key(generation, element.elementId),
+                      messageKey: row.messageKey,
+                      generation,
+                    })
+                }
+                // IDB.put clones its argument; a second structuredClone(raw)
+                // would waste time and memory for every large native message.
+                snapshots.put({
+                  key: row.snapKey,
+                  messageKey: row.messageKey,
+                  generation,
+                  fingerprint: row.fingerprint,
+                  source,
+                  raw: row.raw,
+                } satisfies CanonicalSourceSnapshot)
+              })
               await done
-              this.#set({ messages: this.#progress.messages + 1 })
+              this.#set({ messages: this.#progress.messages + batch.length })
             }
             this.#set({ conversations: this.#progress.conversations + 1 })
           }
@@ -436,6 +586,426 @@ export class ArchiveCanonicalMigrator {
         sources[0]?.close()
       }
     })
+  }
+
+  /** Count-only coverage audit: never loads or writes a saved message body. */
+  async auditCoverage(accountId: string): Promise<ArchiveCoverageAudit> {
+    const generation = await this.active(accountId)
+    if (!generation) throw new Error('Canonical archive has not been activated')
+    const legacy = await existingSource(ARCHIVE_DB_NAME)
+    const target = await this.store.canonicalDatabase()
+    const current = await this.listConversations(accountId)
+    const canonicalIds = new Set(current.map((row) => row.conversationId))
+    if (!legacy)
+      return {
+        kind: 'count_only_read_only',
+        legacyConversations: 0,
+        canonicalConversations: current.length,
+        conversationCountShortfall: 0,
+        conversationsWithMessageShortfall: 0,
+        sourceMessageCount: 0,
+        canonicalMessageCount: 0,
+      }
+    try {
+      const requestHeaders = legacy
+        .transaction('conversations', 'readonly')
+        .objectStore('conversations')
+        .getAll()
+      const headers = await request<Row[]>(requestHeaders)
+      let missing = 0
+      let less = 0
+      let sourceMessages = 0
+      let destinationMessages = 0
+      // Indexed counts avoid decoding 100k+ native objects.
+      for (const header of headers) {
+        const id = header.conversationId
+        if (typeof id !== 'string' || !id) continue
+        if (!canonicalIds.has(id)) missing++
+        const readLegacy = legacy
+          .transaction('messages', 'readonly')
+          .objectStore('messages')
+          .index('conversationId')
+          .count(id)
+        const readCanonical = target
+          .transaction('canonicalMessages', 'readonly')
+          .objectStore('canonicalMessages')
+          .index('byConversation')
+          .count(key(generation, key(accountId, id)))
+        const [before, after] = await Promise.all([
+          request<number>(readLegacy),
+          request<number>(readCanonical),
+        ])
+        sourceMessages += before
+        destinationMessages += after
+        if (after < before) less++
+      }
+      return {
+        kind: 'count_only_read_only',
+        legacyConversations: headers.length,
+        canonicalConversations: current.length,
+        conversationCountShortfall: missing,
+        conversationsWithMessageShortfall: less,
+        sourceMessageCount: sourceMessages,
+        canonicalMessageCount: destinationMessages,
+      }
+    } finally {
+      legacy.close()
+    }
+  }
+
+  /**
+   * Fast opt-in reconciliation of recent v3/v4 writes only. The existing
+   * verified generation stays active; each bounded batch is atomic, retryable,
+   * and idempotent. Unsupported account ownership never auto-binds.
+   */
+  async reconcileRecent(
+    accountId: string,
+    sinceMs: number,
+    bindUnknownLegacy = false,
+    quickAfterLastImport = false,
+  ): Promise<ArchiveReconciliationReport> {
+    if (
+      !accountId.trim() ||
+      !Number.isSafeInteger(sinceMs) ||
+      sinceMs > Date.now() ||
+      sinceMs < Date.now() - 30 * 86_400_000
+    )
+      throw new Error('Invalid archive reconciliation scope')
+    if (this.#pending) throw new Error('Archive migration is already running')
+    const work = this.#reconcileRecentLocked(
+      accountId,
+      sinceMs,
+      bindUnknownLegacy,
+      quickAfterLastImport,
+    )
+    this.#pending = work.finally(() => {
+      this.#pending = null
+    })
+    try {
+      await this.#pending
+    } finally {
+      /* report is assigned by the locked executor */
+    }
+    if (!this.#recentReport) throw new Error('Archive reconciliation did not return a report')
+    return this.#recentReport
+  }
+  #recentReport: ArchiveReconciliationReport | null = null
+
+  async #reconcileRecentLocked(
+    accountId: string,
+    sinceMs: number,
+    bindUnknownLegacy: boolean,
+    quickAfterLastImport: boolean,
+  ): Promise<void> {
+    if (!navigator.locks?.request) throw new Error('Cross-tab archive lock is unavailable')
+    await navigator.locks.request(
+      'chatgpt-booster:canonical-migration-v1',
+      { mode: 'exclusive' },
+      async () => {
+        const generation = await this.active(accountId)
+        if (!generation) throw new Error('No activated canonical archive to reconcile')
+        this.#recentReport = null
+        this.#set({
+          status: 'reconciling',
+          messages: 0,
+          conversations: 0,
+          waitingForOwner: 0,
+          message: '',
+        })
+        const target = await this.store.canonicalDatabase()
+        const manifest = await request<Row | undefined>(
+          target
+            .transaction('migrationManifest', 'readonly')
+            .objectStore('migrationManifest')
+            .get(key(accountId)),
+        )
+        const checkpoint =
+          typeof manifest?.lastReconciledAt === 'number' &&
+          manifest.lastReconciledSkippedOwnership === 0
+            ? manifest.lastReconciledAt
+            : typeof manifest?.verifiedAt === 'number'
+              ? manifest.verifiedAt
+              : null
+        // This opt-in fast mode reconciles writes since the last activated
+        // generation (with a 15-minute overlap), not old already migrated
+        // history. The 7-day path remains an explicit broader recheck.
+        const effectiveSinceMs =
+          quickAfterLastImport && checkpoint !== null
+            ? Math.max(sinceMs, checkpoint - 15 * 60_000)
+            : sinceMs
+        const v3 = await existingSource(ARCHIVE_DB_NAME)
+        const changed = {
+          sinceMs,
+          effectiveSinceMs,
+          checkpointApplied: effectiveSinceMs > sinceMs,
+          examined: 0,
+          inserted: 0,
+          changed: 0,
+          unchanged: 0,
+          skippedOwnership: 0,
+          conversationsTouched: 0,
+        }
+        const touched = new Set<string>()
+        const until = Date.now()
+        // Existing account-bound conversation headers are the proof of the
+        // user's earlier explicit consent. Unknown new legacy headers are not.
+        const active = new Set(
+          (await this.listConversations(accountId)).map((row) => row.conversationId),
+        )
+        const writeBatch = async (
+          rows: Row[],
+          source: 'legacy_v3' | 'legacy_v4',
+          headers: ReadonlyMap<string, Row>,
+        ): Promise<void> => {
+          const prepared = await Promise.all(
+            rows.map(async (row) => {
+              const cid = row.conversationId
+              const raw = object(row.raw)
+              if (typeof cid !== 'string' || !cid || !raw || typeof raw.id !== 'string' || !raw.id)
+                throw new Error('Malformed recent archive source record')
+              const header = headers.get(cid)
+              if (!header) throw new Error('Recent source references unknown conversation')
+              if (
+                !active.has(cid) &&
+                source === 'legacy_v3' &&
+                legacyV3OwnerEvidence(header, accountId).status !== 'verified' &&
+                !bindUnknownLegacy
+              )
+                return null
+              if (source === 'legacy_v4' && header.accountId !== accountId) return null
+              const projection = projectNativeMessage(raw, { accountId, conversationId: cid })
+              const fingerprint = await sourceFingerprint(canonicalSourceJson(raw))
+              const conversationKey = key(generation, key(accountId, cid))
+              const messageKey = key(conversationKey, raw.id)
+              return {
+                cid,
+                raw,
+                header,
+                projection,
+                fingerprint,
+                conversationKey,
+                messageKey,
+                snapshotKey: key(messageKey, source, fingerprint),
+              }
+            }),
+          )
+          const valid = prepared.filter((row) => row !== null)
+          changed.examined += rows.length
+          changed.skippedOwnership += rows.length - valid.length
+          if (!valid.length) return
+          const tx = target.transaction(
+            ['canonicalMessages', 'canonicalElements', 'sourceSnapshots', 'canonicalConversations'],
+            'readwrite',
+          )
+          const done = finish(tx)
+          const messages = tx.objectStore('canonicalMessages')
+          const elements = tx.objectStore('canonicalElements')
+          const snapshots = tx.objectStore('sourceSnapshots')
+          const conversations = tx.objectStore('canonicalConversations')
+          const current = await Promise.all(
+            valid.map((v) =>
+              request<CanonicalStoredMessage | undefined>(messages.get(v.messageKey)),
+            ),
+          )
+          const previousHeaders = new Map<string, CanonicalStoredConversation | undefined>()
+          for (const row of valid) {
+            if (previousHeaders.has(row.cid)) continue
+            previousHeaders.set(
+              row.cid,
+              await request<CanonicalStoredConversation | undefined>(
+                conversations.get(row.conversationKey),
+              ),
+            )
+          }
+          let i = 0
+          for (const row of valid) {
+            const previous = current[i++]
+            const oldV4 =
+              source === 'legacy_v3' && previous && previous.source !== 'legacy_v3'
+                ? previous.source === 'legacy_v4' ||
+                  previous.source === 'native' ||
+                  (previous.source === undefined &&
+                    (
+                      await request<CanonicalSourceSnapshot[]>(
+                        snapshots.index('byMessage').getAll(row.messageKey),
+                      )
+                    ).some((s) => s.generation === generation && s.source !== 'legacy_v3'))
+                : false
+            if (previous?.sourceFingerprint === row.fingerprint || oldV4) {
+              // A matching v4 snapshot still wins source precedence. Without
+              // this marker, a later legacy-v3 recheck could overwrite it.
+              if (previous && source === 'legacy_v4' && previous.source !== 'legacy_v4' && !oldV4)
+                messages.put({ ...previous, source: 'legacy_v4' })
+              changed.unchanged++
+            } else {
+              // Old element count may differ after an edited message; remove
+              // stale nodes in the SAME transaction as the new projection.
+              const stale = await request<IDBValidKey[]>(
+                elements.index('byMessage').getAllKeys(row.messageKey),
+              )
+              for (const k of stale) elements.delete(k)
+              messages.put({
+                key: row.messageKey,
+                conversationKey: row.conversationKey,
+                accountId,
+                conversationId: row.cid,
+                messageId: row.projection.messageId,
+                sourceCreateTime: row.projection.sourceCreateTime,
+                sourceFingerprint: row.fingerprint,
+                source,
+                generation,
+                projection: row.projection,
+              } satisfies CanonicalStoredMessage)
+              for (const element of row.projection.elements)
+                elements.put({
+                  ...element,
+                  messageKey: row.messageKey,
+                  generation,
+                  elementId: key(generation, element.elementId),
+                })
+              if (previous) changed.changed++
+              else changed.inserted++
+            }
+            snapshots.put({
+              key: row.snapshotKey,
+              messageKey: row.messageKey,
+              generation,
+              fingerprint: row.fingerprint,
+              source,
+              raw: row.raw,
+            } satisfies CanonicalSourceSnapshot)
+            const prior = previousHeaders.get(row.cid)
+            conversations.put({
+              key: row.conversationKey,
+              accountId,
+              conversationId: row.cid,
+              projectId:
+                typeof row.header.projectId === 'string'
+                  ? row.header.projectId
+                  : (prior?.projectId ?? null),
+              title:
+                typeof row.header.title === 'string' && row.header.title.trim()
+                  ? row.header.title
+                  : (prior?.title ?? null),
+              currentNodeId:
+                typeof row.header.currentNodeId === 'string'
+                  ? row.header.currentNodeId
+                  : (prior?.currentNodeId ?? null),
+              lastSeenAt: Math.max(
+                prior?.lastSeenAt ?? 0,
+                typeof row.header.lastSeenAt === 'number' ? row.header.lastSeenAt : 0,
+              ),
+              source,
+              verifiedPagination: false,
+              generation,
+            } satisfies CanonicalStoredConversation)
+            touched.add(row.cid)
+          }
+          await done
+          for (const v of valid) active.add(v.cid)
+          this.#set({ messages: changed.examined, conversations: touched.size })
+        }
+        try {
+          if (v3) {
+            const headers = await request<Row[]>(
+              v3.transaction('conversations', 'readonly').objectStore('conversations').getAll(),
+            )
+            const byId = new Map(
+              headers
+                .filter((h) => typeof h.conversationId === 'string')
+                .map((h) => [h.conversationId as string, h]),
+            )
+            for await (const rows of scanRecent(
+              v3,
+              'messages',
+              'lastSeenAt',
+              effectiveSinceMs,
+              until,
+            ))
+              await writeBatch(rows, 'legacy_v3', byId)
+          }
+          const headers = await request<Row[]>(
+            target.transaction('conversations', 'readonly').objectStore('conversations').getAll(),
+          )
+          const byId = new Map(
+            headers
+              .filter((h) => h.accountId === accountId && typeof h.conversationId === 'string')
+              .map((h) => [h.conversationId as string, h]),
+          )
+          // v4 indexes chronology, not lastSeenAt. Only scan conversations
+          // whose header changed in the requested recent period.
+          for (const h of byId.values()) {
+            if (typeof h.lastSeenAt !== 'number' || h.lastSeenAt < effectiveSinceMs) continue
+            const cid = h.conversationId as string
+            const scoped = key(accountId, cid)
+            let batch: Row[] = []
+            for await (const row of scan(target, 'messages', 'byConversation', scoped)) {
+              batch.push({ ...row, conversationId: cid })
+              if (batch.length === 128) {
+                await writeBatch(batch, 'legacy_v4', byId)
+                batch = []
+              }
+            }
+            if (batch.length) await writeBatch(batch, 'legacy_v4', byId)
+          }
+          if ((await this.active(accountId)) !== generation)
+            throw new Error('Archive generation changed during reconciliation')
+          const tx = target.transaction(
+            [
+              'migrationManifest',
+              'canonicalMessages',
+              'sourceSnapshots',
+              'canonicalConversations',
+              'canonicalElements',
+            ],
+            'readwrite',
+          )
+          const done = finish(tx)
+          const manifestStore = tx.objectStore('migrationManifest')
+          const manifest = await request<Row | undefined>(manifestStore.get(key(accountId)))
+          if (!manifest || manifest.generation !== generation || manifest.status !== 'ready')
+            throw new Error('Archive manifest changed during reconciliation')
+          const [messages, snapshots, conversations, elements] = await Promise.all([
+            request<number>(
+              tx.objectStore('canonicalMessages').index('byGeneration').count(generation),
+            ),
+            request<number>(
+              tx.objectStore('sourceSnapshots').index('byGeneration').count(generation),
+            ),
+            request<number>(
+              tx.objectStore('canonicalConversations').index('byGeneration').count(generation),
+            ),
+            request<number>(
+              tx.objectStore('canonicalElements').index('byGeneration').count(generation),
+            ),
+          ])
+          manifestStore.put({
+            ...manifest,
+            messages,
+            sourceSnapshots: snapshots,
+            conversations,
+            contentElements: elements,
+            lastReconciledAt: Date.now(),
+            lastReconciledSince: sinceMs,
+            lastReconciledExamined: changed.examined,
+            lastReconciledMutated: changed.inserted + changed.changed,
+            lastReconciledSkippedOwnership: changed.skippedOwnership,
+          })
+          await done
+          changed.conversationsTouched = touched.size
+          this.#recentReport = { ...changed }
+          this.#set({ status: 'ready', message: '' })
+        } catch (error) {
+          this.#set({
+            status: 'failed_recoverable',
+            message: error instanceof Error ? error.message : 'Recent archive sync failed',
+          })
+          throw error
+        } finally {
+          v3?.close()
+        }
+      },
+    )
   }
 
   async listConversations(accountId: string): Promise<CanonicalStoredConversation[]> {
