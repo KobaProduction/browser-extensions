@@ -10,6 +10,7 @@ import {
 } from '@chatgpt-booster/core'
 import {
   requestResult as request,
+  scanStorePages,
   transactionComplete as transactionDone,
 } from '@kobaproduction/browser-storage'
 import { historyCoverage } from './archive-coverage'
@@ -623,8 +624,18 @@ export class ConversationArchiveStore {
 
   async listProjects(): Promise<ArchivedProject[]> {
     const db = await this.#db()
-    const tx = db.transaction('projects', 'readonly')
-    const items = await request<ArchivedProject[]>(tx.objectStore('projects').getAll())
+    const items: ArchivedProject[] = []
+    await scanStorePages<ArchivedProject>({
+      db,
+      store: 'projects',
+      pageSize: 128,
+      decode(value) {
+        return value as ArchivedProject
+      },
+      accept(page) {
+        items.push(...page.records)
+      },
+    })
     return items.sort((a, b) => a.title?.localeCompare(b.title ?? '') ?? 0)
   }
 
@@ -862,8 +873,18 @@ export class ConversationArchiveStore {
 
   async listConversations(): Promise<ArchivedConversation[]> {
     const db = await this.#db()
-    const tx = db.transaction('conversations', 'readonly')
-    const items = await request<ArchivedConversation[]>(tx.objectStore('conversations').getAll())
+    const items: ArchivedConversation[] = []
+    await scanStorePages<ArchivedConversation>({
+      db,
+      store: 'conversations',
+      pageSize: 128,
+      decode(value) {
+        return value as ArchivedConversation
+      },
+      accept(page) {
+        items.push(...page.records)
+      },
+    })
     return items.sort(
       (a, b) => serverTimeMs(b.updatedAt, b.lastSeenAt) - serverTimeMs(a.updatedAt, a.lastSeenAt),
     )

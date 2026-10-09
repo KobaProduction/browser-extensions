@@ -14,8 +14,9 @@ export interface IndexedPage<T> {
 export interface IndexedPageOptions<T> {
   readonly db: IDBDatabase
   readonly store: string
-  readonly index: string
-  readonly indexKey: IDBValidKey
+  /** Omit index AND indexKey to scan the object store by its primary keys. */
+  readonly index?: string
+  readonly indexKey?: IDBValidKey
   readonly afterPrimaryKey?: IDBValidKey | null
   readonly pageSize: number
   readonly decode: (value: unknown) => T
@@ -31,6 +32,8 @@ function aborted(): DOMException {
 export function readIndexedPage<T>(options: IndexedPageOptions<T>): Promise<IndexedPage<T>> {
   if (!Number.isSafeInteger(options.pageSize) || options.pageSize < 1 || options.pageSize > 1024)
     throw new RangeError('IndexedDB pageSize must be an integer from 1 to 1024')
+  if ((options.index === undefined) !== (options.indexKey === undefined))
+    throw new Error('IndexedDB scan requires index and indexKey together')
   if (options.signal?.aborted) return Promise.reject(aborted())
   const compare = options.compareKeys ?? ((a: IDBValidKey, b: IDBValidKey) => indexedDB.cmp(a, b))
   const tx = options.db.transaction(options.store, 'readonly')
@@ -88,10 +91,11 @@ export function readIndexedPage<T>(options: IndexedPageOptions<T>): Promise<Inde
       return
     }
     try {
-      const request = tx
-        .objectStore(options.store)
-        .index(options.index)
-        .openCursor(IDBKeyRange.only(options.indexKey))
+      const store = tx.objectStore(options.store)
+      const request =
+        options.index !== undefined && options.indexKey !== undefined
+          ? store.index(options.index).openCursor(IDBKeyRange.only(options.indexKey))
+          : store.openCursor()
       request.onerror = () => fail(request.error ?? new Error('IndexedDB cursor failed'))
       request.onsuccess = () => {
         if (finished) return
@@ -106,7 +110,9 @@ export function readIndexedPage<T>(options: IndexedPageOptions<T>): Promise<Inde
             jumped = true
             // continuePrimaryKey requires a *strictly later* target.
             if (compare(cursor.primaryKey, after) < 0) {
-              cursor.continuePrimaryKey(options.indexKey, after)
+              if (options.index !== undefined && options.indexKey !== undefined)
+                cursor.continuePrimaryKey(options.indexKey, after)
+              else cursor.continue(after)
               return
             }
           }
@@ -167,4 +173,14 @@ export async function scanIndexedPages<T>(options: IndexedScanOptions<T>): Promi
     }
   }
   return { lastPrimaryKey, exhausted, paused: !exhausted && !!options.stopped?.() }
+}
+
+/** Whole-store primary-key scan. No index is required; pages still complete before use. */
+export type StorePageOptions<T> = Omit<IndexedPageOptions<T>, 'index' | 'indexKey'>
+export type StoreScanOptions<T> = Omit<IndexedScanOptions<T>, 'index' | 'indexKey'>
+export function readStorePage<T>(options: StorePageOptions<T>): Promise<IndexedPage<T>> {
+  return readIndexedPage(options)
+}
+export function scanStorePages<T>(options: StoreScanOptions<T>): Promise<IndexedScanResult> {
+  return scanIndexedPages(options)
 }

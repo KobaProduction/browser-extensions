@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test'
-import { readIndexedPage, scanIndexedPages } from './indexed-batches'
+import { readIndexedPage, scanIndexedPages, scanStorePages } from './indexed-batches'
 
 // Minimal synthetic IDB cursor contract: all records share one non-unique index
 // key, which is precisely why the primary key must be the resume cursor.
@@ -24,9 +24,15 @@ function source(records: IndexedRow[]): IDBDatabase {
             ? ({
                 value: row.data,
                 primaryKey: row.pk,
-                continue() {
+                continue(from?: IDBValidKey) {
                   advanced = true
-                  deliver(index + 1)
+                  if (from === undefined) deliver(index + 1)
+                  else {
+                    const next = records.findIndex(
+                      (candidate, i) => i > index && candidate.pk >= String(from),
+                    )
+                    deliver(next < 0 ? records.length : next)
+                  }
                 },
                 continuePrimaryKey(_key: IDBValidKey, from: IDBValidKey) {
                   advanced = true
@@ -52,17 +58,12 @@ function source(records: IndexedRow[]): IDBDatabase {
           tx.dispatchEvent(new Event('abort'))
         },
         objectStore() {
-          return {
-            index() {
-              return {
-                openCursor() {
-                  request = { result: null, error: null, onsuccess: null, onerror: null }
-                  deliver(0)
-                  return request
-                },
-              }
-            },
+          const openCursor = () => {
+            request = { result: null, error: null, onsuccess: null, onerror: null }
+            deliver(0)
+            return request
           }
+          return { openCursor, index: () => ({ openCursor }) }
         },
       })
       return tx as IDBTransaction
@@ -160,4 +161,43 @@ test('malformed source row aborts before acknowledgement and preserves the speci
       },
     }),
   ).rejects.toThrow('malformed source')
+})
+
+test('unindexed object store uses primary-key continuation without duplicating boundary rows', async () => {
+  const db = source([
+    { pk: 'aa', data: 1 },
+    { pk: 'bb', data: 2 },
+    { pk: 'cc', data: 3 },
+    { pk: 'dd', data: 4 },
+    { pk: 'ee', data: 5 },
+  ])
+  const results: number[] = []
+  const cursors: IDBValidKey[] = []
+  const state = await scanStorePages({
+    db,
+    store: 'conversations',
+    pageSize: 2,
+    compareKeys,
+    decode: (value) => value as number,
+    async accept(page) {
+      results.push(...page.records)
+      if (page.lastPrimaryKey != null) cursors.push(page.lastPrimaryKey)
+    },
+  })
+  expect(results).toEqual([1, 2, 3, 4, 5])
+  expect(cursors).toEqual(['bb', 'dd', 'ee'])
+  expect(state).toEqual({ lastPrimaryKey: 'ee', exhausted: true, paused: false })
+})
+
+test('cannot accidentally combine whole-store and secondary-index pagination inputs', () => {
+  const db = source([])
+  expect(() =>
+    readIndexedPage({
+      db,
+      store: 'conversations',
+      index: 'byAccount',
+      pageSize: 3,
+      decode: (value) => value,
+    }),
+  ).toThrow('index and indexKey together')
 })

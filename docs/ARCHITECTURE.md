@@ -61,16 +61,23 @@ ChatGPT browser acceptance.
 
 ## Reusable storage and migration building blocks
 
-The packages/storage module now includes bounded IndexedDB index scanning via
-readIndexedPage and scanIndexedPages. The index key identifies an owner
-scope; the primary key identifies the exact resume position when the
-index is non-unique. Pages are read in separate completed readonly transactions;
-the caller acknowledges each batch before the resumable cursor advances.
-Account-scoped project/conversation listings in the imported ChatGPT v4
-compatibility reader already use this shared scanner. This removes unbounded
-getAll requests from those two list queries. History revision proof still
-uses a single readonly transaction because a multi-transaction scan would
-weaken its evidence consistency contract.
+The packages/storage module now includes bounded IndexedDB scanning via
+readIndexedPage/scanIndexedPages for non-unique indexes and
+readStorePage/scanStorePages for ordinary primary-key object stores.
+For indexed scans, the index key identifies an owner scope while the primary
+key identifies the exact resume position even when the index is non-unique.
+Pages are read in separate completed readonly transactions; the caller
+acknowledges each batch before the resumable cursor advances.
+The imported ChatGPT v4 reader uses bounded pages for account-scoped project
+and conversation listings. The v3 compatibility reader uses bounded
+object-store pages for projects and conversations, replacing their unbounded
+getAll requests. Legacy v3 listMessages still reads one coherent readonly
+transaction because its result may be used for a saved-chat transcript;
+breaking it into separate transactions without source-revision fencing could
+mix message revisions. Returned lists still materialize complete, sorted
+arrays; batching bounds individual transactions, not aggregate memory.
+History revision proof still uses a single readonly transaction because a
+multi-transaction scan would weaken its evidence consistency contract.
 
 The generic migration boundary is now implemented as runStagedMigration
 and indexedMigrationDriver in packages/storage. It coordinates a source

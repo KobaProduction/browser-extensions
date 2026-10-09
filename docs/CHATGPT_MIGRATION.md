@@ -48,9 +48,14 @@ The source repository is left unchanged.
   source-proof gates and the post-commit change notifications. The actual
   database identifiers, indexes and owner-scoped write contract
   are preserved; no database is opened, renamed or migrated by this import.
-  Account-scoped lists of stored projects and conversations now use bounded
-  indexed batches from the shared browser-storage package, with a composite
-  keyset resume position and acknowledgement before cursor advancement.
+  Account-scoped v4 project and conversation listings now use bounded indexed
+  batches from browser-storage. Imported v3 read-only lists use bounded
+  plain-store pages for project and conversation lists with primary-key
+  resume. It does not alter v3 messages/history read snapshot boundaries;
+  those require source-revision fencing before separate transaction batches.
+  No physical v3 storage schema or history completeness evidence is changed.
+  The existing list API still materializes complete returned arrays when
+  explicitly requested.
   Message-revision proof deliberately stays in its original single readonly
   transaction; the shared scanner is not a replacement for evidence-level
   atomic snapshots.
