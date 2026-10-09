@@ -30,8 +30,8 @@
       "@kobaproduction/browser-adapters": [
         "packages/adapters/src/index.ts"
       ],
-      "@kobaproduction/module-vk-archive": [
-        "modules/vk-archive/src/index.ts"
+      "@kobaproduction/module-vk-booster": [
+        "modules/vk-booster/src/index.ts"
       ]
     }
   },

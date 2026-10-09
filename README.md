@@ -6,11 +6,11 @@ Reusable browser-tool platform for **independent Tampermonkey userscripts**, **C
 
 | Module | Status | Targets | Source |
 | --- | --- | --- | --- |
-| VK Archive | Integrated v2 exporter; needs live browser acceptance | Tampermonkey, Chromium | `modules/vk-archive/` |
+| VK Booster | Integrated v2 exporter; needs live browser acceptance | Tampermonkey, Chromium | `modules/vk-booster/` |
 | Proxy Switcher | Typed interface and capability boundary only | Future MV3 background | `modules/proxy-switcher/` |
-| All-in-one | Launcher with VK Archive; other modules can be enabled later | Tampermonkey, Chromium | `apps/` |
+| All-in-one | Launcher with VK Booster; other modules can be enabled later | Tampermonkey, Chromium | `apps/` |
 
-VK Archive preserves source messages, attachments, photos, document names, voice messages and a self-contained offline HTML chat. It has its own native exporter panel for now, opened **through the shared control center**. The previous standalone userscript menu handler was removed, so installing a bundle does not register duplicate menus. The next migration step is extracting exporter state/files/media/UI into typed modules and moving its panel into the shared UI kit; v2 output format remains compatible.
+VK Booster preserves source messages, attachments, photos, document names, voice messages and a self-contained offline HTML chat. It has its own native exporter panel for now, opened **through the shared control center**. The previous standalone userscript menu handler was removed, so installing a bundle does not register duplicate menus. The next migration step is extracting exporter state/files/media/UI into typed modules and moving its panel into the shared UI kit; v2 output format remains compatible.
 
 ## Install and build
 
@@ -21,19 +21,19 @@ bun install --frozen-lockfile
 bun run check
 bun run build
 # Or target one module:
-bun scripts/build.ts --module vk-archive
+bun scripts/build.ts --module vk-booster
 ```
 
 Artifacts:
 
 ```text
-dist/vk-archive/vk-archive.user.js
- dist/vk-archive/vk-archive-extension.zip
+dist/vk-booster/vk-booster.user.js
+ dist/vk-booster/vk-booster-extension.zip
  dist/all-in-one/all-in-one.user.js
  dist/all-in-one/all-in-one-extension.zip
 ```
 
-Tampermonkey: install a generated `.user.js` (for the chat use `vk-archive.user.js`). Chromium: load the extracted `extension/` directory in Developer Mode or install the release ZIP once a signed store package is available. The shared Control Center opens a module-specific panel; no unrelated app has to be installed.
+Tampermonkey: install a generated `.user.js` (for the chat use `vk-booster.user.js`). Chromium: load the extracted `extension/` directory in Developer Mode or install the release ZIP once a signed store package is available. The shared Control Center opens a module-specific panel; no unrelated app has to be installed.
 
 ## Repository boundaries
 
@@ -41,7 +41,7 @@ Tampermonkey: install a generated `.user.js` (for the chat use `vk-archive.user.
 packages/core/          typed feature registry, lifecycle, settings, permissions
 packages/ui/            isolated Shadow DOM control center, shared visual tokens
 packages/adapters/      userscript/Chrome storage and future proxy interfaces
-modules/vk-archive/     VK-only behavior and existing archive engine
+modules/vk-booster/     VK-only behavior and existing archive engine
 modules/proxy-switcher/ capability-gated future proxy adapter, not shipped
 apps/userscript/        module and all-in-one userscript entries
 apps/extension/         MV3 content + popup entries, minimal manifest
@@ -53,9 +53,9 @@ Source modules declare hosts, capabilities, delivery targets and versions in `mo
 
 ## CI and independent releases
 
-CI checks types, tests and source contracts, then builds **only affected modules**. A change in `modules/vk-archive` builds VK Archive and the combiner; a change in `packages/core|ui|adapters` rebuilds all consumers. Main and trusted same-repository PRs use the `zoomies-linux-x64` runner from ChatGPT Booster; fork PRs use GitHub runners for isolation.
+CI checks types, tests and source contracts, then builds **only affected modules**. A change in `modules/vk-booster` builds VK Booster and the combiner; a change in `packages/core|ui|adapters` rebuilds all consumers. Main and trusted same-repository PRs use the `zoomies-linux-x64` runner from ChatGPT Booster; fork PRs use GitHub runners for isolation.
 
-After successful `main` CI, GitHub Actions computes an independent release plan for each releasable module. A module ships only when its `module.json` version has no existing release tag and its source or shared dependency changed since its previous tag. Releases use scoped tags, for example `vk-archive/v2.0.0`, with a userscript and a Chromium ZIP. `proxy-switcher` has `release:false` until implemented and tested. The release workflow does not republish unchanged versions. See `docs/RELEASES.md`.
+After successful `main` CI, GitHub Actions computes an independent release plan for each releasable module. A module ships only when its `module.json` version has no existing release tag and its source or shared dependency changed since its previous tag. Releases use scoped tags, for example `vk-booster/v2.1.0`, with a userscript and a Chromium ZIP. `proxy-switcher` has `release:false` until implemented and tested. The release workflow does not republish unchanged versions. See `docs/RELEASES.md`.
 
 ## Safety and limitations
 
@@ -65,3 +65,21 @@ After successful `main` CI, GitHub Actions computes an independent release plan 
 - Automated build/type tests are not a substitute for real VK/Tampermonkey browser acceptance, or for store signing/review.
 
 Architecture and integration guides: `docs/ARCHITECTURE.md`, `docs/INTEGRATION.md`, `docs/RELEASES.md`.
+
+## Tampermonkey installation and per-module updates
+
+Use VK Booster instead of the old VK Archive Tampermonkey script.
+
+Install/update URLs:
+- VK Booster: https://raw.githubusercontent.com/KobaProduction/browser-extensions/distribution/userscripts/vk-booster.user.js
+- All-in-one: https://raw.githubusercontent.com/KobaProduction/browser-extensions/distribution/userscripts/all-in-one.user.js
+
+Paste the URL in Tampermonkey Dashboard → Utilities → Install from URL.
+Both userscripts embed matching @updateURL and @downloadURL metadata.
+Each has a separate version and update channel; install only ONE on VK to avoid
+duplicate interfaces. Stable URLs are served from the dedicated distribution
+branch. New releases publish only changed modules after successful main CI.
+
+Disable the old VK Conversation Archive userscript from the Tampermonkey
+Dashboard before enabling VK Booster. Never delete the saved message archive:
+VK Booster preserves the existing v2 data format.

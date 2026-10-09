@@ -5,7 +5,7 @@ export function hasRelevantChange(paths:string[],scopes:string[]):boolean{
 }
 export async function releasePlan(){
  const result:ReleaseCandidate[]=[]
- const idList=['vk-archive','all-in-one']
+ const idList=['vk-booster','all-in-one']
  for(const id of idList){
   const m=await manifest(id),tag=`${id}/v${m.version}`
   const tags=await Bun.$`git tag --list ${tag}`.quiet().text()

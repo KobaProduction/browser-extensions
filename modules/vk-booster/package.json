@@ -1,0 +1,11 @@
+{
+  "name": "@kobaproduction/module-vk-booster",
+  "version": "2.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@kobaproduction/browser-core": "workspace:*"
+  }
+}

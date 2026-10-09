@@ -9,7 +9,7 @@ The platform separates **capability-gated feature logic** from **delivery target
               +-------------------+------------------+
               |                                      |
       browser-ui + adapters                     feature modules
-       (Shadow DOM, state)                  vk-archive | future proxy
+       (Shadow DOM, state)                  vk-booster | future proxy
               |                                      |
      +--------+------------+--------------+---------+
      |                     |                        |
@@ -25,7 +25,7 @@ The platform separates **capability-gated feature logic** from **delivery target
 - **Modules** own site-specific selectors, storage semantics, media/export logic, and immutable `module.json` manifests.
 - **Userscript/MV3** are packaging adapters; adding a new feature must not copy its business logic. Module registry controls loading and feature lifecycle.
 
-## VK Archive migration
+## VK Booster migration
 
 The old single IIFE exporter is now wrapped as the first module. The duplicated top-level Tampermonkey menu action was removed; it registers with the common feature runtime. Its internal file logic and offline viewer are preserved while they are covered by existing tests. Future changes should extract source-specific authenticated VK API calls, media handling and file writer behind typed adapters. This is a **transitional implementation**, not a claim that all legacy internals were rewritten.
 

@@ -21,4 +21,4 @@
 - The CI `zoomies-linux-x64` runner is for trusted branch/main code; fork PRs must not run there.
 
 ## Known migration debt
-VK Archive is a real, tested v2 browser exporter wrapped behind typed `Feature` lifecycle. Its internal engine still has v2's legacy single-file implementation. Refactor the engine by adapter boundaries only after preserving its 3000-message, offline HTML, attachment and resumption tests; do not fork it between targets.
+VK Booster is a real, tested v2 browser exporter wrapped behind typed `Feature` lifecycle. Its internal engine still has v2's legacy single-file implementation. Refactor the engine by adapter boundaries only after preserving its 3000-message, offline HTML, attachment and resumption tests; do not fork it between targets.

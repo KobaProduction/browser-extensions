@@ -8,7 +8,7 @@ process.chdir(root)
 const requested=process.argv.find(a=>a.startsWith('--module='))?.split('=')[1]??
  process.argv.slice(2).find((x,i,arr)=>arr[i-1]==='--module')??'all'
 const target=process.argv.find(a=>a.startsWith('--target='))?.split('=')[1]??'both'
-const ids=requested==='all'?['vk-archive','all-in-one']:
+const ids=requested==='all'?['vk-booster','all-in-one']:
  requested==='changed'?(await changedModules(process.env.BASE_SHA,process.env.HEAD_SHA||'HEAD')).filter(id=>id!=='proxy-switcher'):[requested]
 if(!['both','userscript','extension'].includes(target))throw Error('Invalid --target')
 async function pack(name:string){
@@ -23,7 +23,7 @@ async function pack(name:string){
    if(res.exitCode!==0)throw Error(`Declarations failed: ${new TextDecoder().decode(res.stderr).slice(-1200)}`)}
 }
 for(const name of ['core','adapters','ui'])await pack(name)
-const sourceFor=(id:string)=>id==='vk-archive'?'vk-archive':'all-in-one'
+const sourceFor=(id:string)=>id==='vk-booster'?'vk-booster':'all-in-one'
 for(const id of ids){
  const info=await manifest(id)
  if(!info.release)throw Error(`Module ${id} is not releasable yet`)
@@ -32,8 +32,11 @@ for(const id of ids){
    const src=join(root,'apps/userscript/src',sourceFor(id)+'.ts')
    const out=await Bun.build({entrypoints:[src],target:'browser',format:'iife',minify:false})
    if(!out.success)throw Error(out.logs.map(l=>l.message).join('\n'))
+   const updateUrl=`https://raw.githubusercontent.com/KobaProduction/browser-extensions/distribution/userscripts/${id}.user.js`
    const meta=['// ==UserScript==',`// @name         ${info.name}`,`// @namespace    https://github.com/KobaProduction/browser-extensions`,
      `// @version      ${info.version}`,`// @description  Reusable Koba Browser Tools / ${info.name}`,
+     `// @homepageURL   https://github.com/KobaProduction/browser-extensions`,
+     `// @updateURL    ${updateUrl}`,`// @downloadURL  ${updateUrl}`,
      '// @match        https://vk.ru/im*','// @match        https://vk.com/im*',
      '// @run-at       document-idle','// @grant        GM_registerMenuCommand','// @sandbox      raw','// ==/UserScript==',''].join('\n')
    await writeFile(join(dir,id+'.user.js'),meta+'\n'+await out.outputs[0]!.text())

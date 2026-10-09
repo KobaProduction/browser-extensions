@@ -1,6 +1,6 @@
 # Reusing Browser Core from ChatGPT Booster
 
-The packages `@kobaproduction/browser-core`, `@kobaproduction/browser-ui` and `@kobaproduction/browser-adapters` have explicit ESM/TypeScript entry points and are built independently of VK Archive. The registry accepts any host-specific module implementing the `Feature` interface.
+The packages `@kobaproduction/browser-core`, `@kobaproduction/browser-ui` and `@kobaproduction/browser-adapters` have explicit ESM/TypeScript entry points and are built independently of VK Booster. The registry accepts any host-specific module implementing the `Feature` interface.
 
 Example in ChatGPT Booster or a separate extension:
 
@@ -19,9 +19,9 @@ await runtime.start()
 const ui = mountControlCenter({ runtime, title: 'ChatGPT Booster', launcher: true })
 ```
 
-`@kobaproduction/browser-core` is prepared for publication to GitHub Packages using scope `@kobaproduction`. **It has not yet been published**, so `bun add @kobaproduction/browser-core` will only work after the first package release. Until then you can integrate it by workspace linking or a pinned git submodule and TypeScript/Vite alias. The core is standalone and is not coupled to the Browser Extensions bundle or the VK Archive IIFE.
+`@kobaproduction/browser-core` is prepared for publication to GitHub Packages using scope `@kobaproduction`. **It has not yet been published**, so `bun add @kobaproduction/browser-core` will only work after the first package release. Until then you can integrate it by workspace linking or a pinned git submodule and TypeScript/Vite alias. The core is standalone and is not coupled to the Browser Extensions bundle or the VK Booster IIFE.
 
-Do not import `modules/vk-archive` into ChatGPT Booster. Booster should import the core/UI/adapters only; host-specific modules remain independent.
+Do not import `modules/vk-booster` into ChatGPT Booster. Booster should import the core/UI/adapters only; host-specific modules remain independent.
 
 UI uses framework-neutral Shadow DOM primitives instead of copying Booster's Vue components; Vue-based hosts can invoke these through a small lifecycle wrapper. A future Vue adapter may reuse Booster's component recipes without requiring Vue in the headless core.
 
@@ -32,7 +32,7 @@ Build the shared packages locally first:
 ```sh
 cd browser-extensions
 bun install --frozen-lockfile
-bun scripts/build.ts --module vk-archive
+bun scripts/build.ts --module vk-booster
 ```
 
 From an adjacent ChatGPT Booster clone (or another Bun/Vite monorepo), use a local `file:` dependency on the built package (or pin a git subtree) until the GitHub Packages release channel is enabled:

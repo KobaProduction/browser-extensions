@@ -1,8 +1,8 @@
 import {FeatureRuntime,FeatureSettings,type Capability} from '@kobaproduction/browser-core'
 import {createSettingsStore} from '@kobaproduction/browser-adapters'
 import {mountControlCenter} from '@kobaproduction/browser-ui'
-import {vkArchiveFeature} from '@kobaproduction/module-vk-archive'
-const runtime=new FeatureRuntime([vkArchiveFeature],{
+import {vkBoosterFeature} from '@kobaproduction/module-vk-booster'
+const runtime=new FeatureRuntime([vkBoosterFeature],{
  target:'chromium',url:new URL(location.href),
  // The current manifest does not grant proxy or user-agent powers.
  capabilities:new Set<Capability>(['page-dom','origin-storage','local-files']),

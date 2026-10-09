@@ -15,7 +15,7 @@
     "test": "bun test",
     "validate": "bun scripts/validate.ts",
     "build": "bun scripts/build.ts --module all",
-    "build:vk": "bun scripts/build.ts --module vk-archive",
+    "build:vk": "bun scripts/build.ts --module vk-booster",
     "build:changed": "bun scripts/build.ts --module changed",
     "release:plan": "bun scripts/release-plan.ts"
   },

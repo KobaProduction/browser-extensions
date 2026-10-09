@@ -1,7 +1,7 @@
-/* VK Archive v2 — one standalone browser userscript; no external dependencies. */
+/* VK Booster v2 — one standalone browser userscript; no external dependencies. */
 export function installVkArchive() {
 'use strict';
-const VERSION='2.0.0', GLOBAL='VKExport';
+const VERSION='2.1.0', GLOBAL='VKExport';
 if(globalThis[GLOBAL]?.version===VERSION)return;
 const initialPeer=()=>Number(location.pathname.match(/\/im\/convo\/(\d+)/)?.[1])||0;
 const cfg={peerId:initialPeer(),mode:'recent',limit:10,from:'',through:'',pageSize:50,delay:450,media:true};
@@ -219,7 +219,7 @@ function viewerHTML(){
   forwards:(m.fwd_messages||[]).map(f=>({text:f.text||'',from:f.from_id}))}));
  const embed=JSON.stringify(snapshot).replace(/</g,'\\u003c');
  return `<!DOCTYPE html><html lang="ru"><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VK Archive — диалог ${cfg.peerId}</title><style>
+<title>VK Booster — диалог ${cfg.peerId}</title><style>
 :root{color-scheme:light;font:15px/1.5 system-ui,sans-serif;background:#f3f5fa;color:#202838}
 *{box-sizing:border-box}body{margin:0}.top{position:sticky;top:0;background:white;border-bottom:1px solid #d8deeb;padding:14px 18px;z-index:5}
 h1{font-size:19px;margin:0 0 8px}.stats{color:#68758b;font-size:13px}.search{width:100%;max-width:630px;border:1px solid #c4cee1;border-radius:9px;padding:10px}
@@ -227,7 +227,7 @@ main{max-width:860px;margin:18px auto;padding:0 14px}.msg{background:white;borde
 .msg.mine{margin-left:auto;background:#e6f0ff}.by{font-size:12px;color:#65738b;margin-bottom:5px}.content{white-space:pre-wrap}
 .file{display:block;margin-top:6px;color:#2154a5}.file img{display:block;max-width:min(100%,390px);max-height:360px;border-radius:8px}
 .file audio{width:min(100%,380px)}.quote{border-left:3px solid #8da9d8;padding-left:10px;color:#5b6881;margin:7px 0}
-</style><header class="top"><h1>Архив переписки VK</h1><div class="stats" id="stats"></div><input class="search" id="q" placeholder="Поиск по сообщениям…"></header><main id="list"></main>
+</style><header class="top"><h1>VK Booster · Архив переписки</h1><div class="stats" id="stats"></div><input class="search" id="q" placeholder="Поиск по сообщениям…"></header><main id="list"></main>
 <script>const entries=${embed};const list=document.getElementById('list'),q=document.getElementById('q'),stats=document.getElementById('stats');
 function elt(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n}
 function link(path){return path.split('/').map(encodeURIComponent).join('/')}
@@ -367,7 +367,7 @@ function mount(){
 #vk-archive-v2 .dim{color:#647084;font-size:12px}#vk-archive-v2 .track{height:11px;border-radius:20px;background:#e9edf5;overflow:hidden}
 #vk-archive-v2 #bar{height:100%;background:#315cad;width:0;transition:width .18s}#vk-archive-v2 details{border-top:1px solid #e4e9f1;padding-top:12px;margin-top:14px}
 #vk-archive-v2[hidden]{display:none}</style>
-<div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:19px">VK Archive</b><button id="hide">Закрыть</button></div>
+<div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:19px">VK Booster</b><button id="hide">Закрыть</button></div>
 <div class="dim" id="dialog"></div><p><button id="folder">Выбрать папку</button> <span id="folder-name" class="dim">Не выбрана</span></p>
 <div class="pair"><label>Что выгружать<select id="mode"><option value="recent">Последние N сообщений</option><option value="incremental">Только новые</option><option value="backfill">Продолжить историю</option></select></label><label>Количество<input id="limit" type="number" min="1" max="100000" value="10"></label></div>
 <div class="buttons"><button id="run" class="main">Начать</button><button id="stop">Пауза</button><button id="resume">Продолжить</button></div>
