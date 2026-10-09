@@ -15,10 +15,6 @@
         "lucide-vue-next": "^0.545.0",
         "tailwind-merge": "^3.3.1",
         "tailwindcss": "^4.1.14",
-        "clsx": "^2.1.1",
-        "lucide-vue-next": "^0.545.0",
-        "tailwind-merge": "^3.3.1",
-        "vue": "^3.5.22",
         "typescript": "^5.9.2",
         "vite": "^7.1.7",
         "vue": "^3.5.22",
@@ -58,7 +54,7 @@
     },
     "modules/vk-booster": {
       "name": "@kobaproduction/module-vk-booster",
-      "version": "2.2.0",
+      "version": "2.2.1",
       "dependencies": {
         "@kobaproduction/browser-adapters": "workspace:*",
         "@kobaproduction/browser-archive": "workspace:*",

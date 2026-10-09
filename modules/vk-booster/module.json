@@ -1,7 +1,7 @@
 {
   "id": "vk-booster",
   "name": "VK Booster",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "hosts": [
     "vk.ru",
     "vk.com"
