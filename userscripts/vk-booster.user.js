@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VK Booster
 // @namespace    https://github.com/KobaProduction/browser-extensions
-// @version      2.1.0
+// @version      2.1.1
 // @description  Reusable Koba Browser Tools / VK Booster
 // @homepageURL   https://github.com/KobaProduction/browser-extensions
 // @updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/distribution/userscripts/vk-booster.user.js
@@ -16,7 +16,7 @@
 (() => {
   // modules/vk-booster/src/archive-runtime.js
   function installVkArchive() {
-    const VERSION = "2.1.0", GLOBAL = "VKExport";
+    const VERSION = "2.1.1", GLOBAL = "VKExport";
     if (globalThis[GLOBAL]?.version === VERSION)
       return;
     const initialPeer = () => Number(location.pathname.match(/\/im\/convo\/(\d+)/)?.[1]) || 0;
@@ -755,12 +755,14 @@ q.addEventListener('input',render);render();</script></html>`;
   class FeatureRuntime {
     features;
     context;
+    telemetry;
     active = new Map;
     status = new Map;
     started = false;
-    constructor(features, context) {
+    constructor(features, context, telemetry) {
       this.features = features;
       this.context = context;
+      this.telemetry = telemetry;
       const names = new Set;
       for (const feature of features) {
         if (!/^[a-z][a-z0-9-]+$/.test(feature.id) || names.has(feature.id))
@@ -788,11 +790,14 @@ q.addEventListener('input',render);render();</script></html>`;
           continue;
         }
         try {
+          const begin = Date.now();
           await feature.start(this.context);
           this.active.set(feature.id, feature);
           this.status.set(feature.id, { ...base, state: "active" });
+          this.telemetry?.record("feature.started", feature.id, Date.now() - begin);
         } catch (error) {
           this.status.set(feature.id, { ...base, state: "failed", reason: error instanceof Error ? error.message : "Unknown startup error" });
+          this.telemetry?.record("feature.failed", feature.id);
         }
       }
     }
@@ -800,6 +805,7 @@ q.addEventListener('input',render);render();</script></html>`;
       for (const f of [...this.active.values()].reverse())
         try {
           await f.stop?.();
+          this.telemetry?.record("feature.stopped", f.id);
         } catch {}
       this.active.clear();
       this.started = false;
