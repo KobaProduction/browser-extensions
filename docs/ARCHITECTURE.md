@@ -44,3 +44,12 @@ Events are restricted to validated module IDs, lifecycle event names and
 durations; URLs, chat text, files, cookies, tokens and proxy credentials are
 never included. A sink error cannot stop any module. No external endpoint
 or always-on tracking is built into this repository.
+
+## Classic shared design system (v2.2)
+
+Both VK Booster's export panel and the shared Control Center use the same
+`packages/ui/src/theme.ts` design tokens, responsive layout, buttons, field
+styling, progress bar, dark-mode palette and inline vector brand mark. Each
+injected surface mounts its own Shadow DOM, so host-site CSS cannot mutate the
+visuals. The Chromium popup uses a matching independent static skin. Theme
+and UI interaction tests run in an isolated DOM; no user chat data is required.

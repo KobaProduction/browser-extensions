@@ -9,7 +9,7 @@
 | `packages/**`, `scripts/**`, dependency lockfile | All consumers |
 | `docs/**` | No extension rebuild |
 
-Each published module has its own `module.json` semver and GitHub Release tag, e.g. `vk-booster/v2.1.1` or `all-in-one/v0.1.0`. On a successful **main push** CI, `release.yml`:
+Each published module has its own `module.json` semver and GitHub Release tag, e.g. `vk-booster/v2.2.0` or `all-in-one/v0.1.0`. On a successful **main push** CI, `release.yml`:
 
 1. Confirms the upstream run was successful and originated from our main-branch push.
 2. Lists releases absent at the desired module version.

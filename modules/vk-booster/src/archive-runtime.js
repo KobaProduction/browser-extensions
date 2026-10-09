@@ -1,12 +1,14 @@
+import { brandMark, classicThemeCss } from '@kobaproduction/browser-ui'
 /* VK Booster v2 — one standalone browser userscript; no external dependencies. */
 export function installVkArchive() {
 'use strict';
-const VERSION='2.1.1', GLOBAL='VKExport';
+const VERSION='2.2.0', GLOBAL='VKExport';
 if(globalThis[GLOBAL]?.version===VERSION)return;
 const initialPeer=()=>Number(location.pathname.match(/\/im\/convo\/(\d+)/)?.[1])||0;
 const cfg={peerId:initialPeer(),mode:'recent',limit:10,from:'',through:'',pageSize:50,delay:450,media:true};
 let root=null,meta=null,rows=[],token='',busy=false,stopRequested=false,box=null;
 let prog={phase:'Ожидание',done:0,total:0,newCount:0,downloaded:0,failed:0};
+let uiError='';
 const ts=()=>new Date().toISOString(), sleep=ms=>globalThis.__VK_EXPORT_TEST_MODE?Promise.resolve():new Promise(r=>setTimeout(r,ms));
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const validDay=d=>!d||/^\d{4}-\d\d-\d\d$/.test(d)&&new Date(Date.parse(d+'T00:00:00+03:00')+10800000).toISOString().slice(0,10)===d;
@@ -333,67 +335,123 @@ async function run(options={}){
  }finally{busy=false;refresh()}
 }
 function refresh(){
- if(!box)return;
- const $=s=>box.querySelector(s);
- const ready=root?'Папка: '+root.name:'Выбери папку архива';
- $('#folder-name').textContent=ready;
- $('#state').textContent=prog.error||prog.phase;
- const pc=prog.total?Math.min(100,Math.floor(prog.done/prog.total*100)):prog.phase==='Готово'?100:0;
+ if(!box?.shadowRoot)return;
+ const $=id=>box.shadowRoot.querySelector('#'+id.replace(/^#/,''));
+ const current=meta?.checkpoint?.status;
+ const phase=prog.error?'Ошибка':busy?prog.phase:current==='paused'?'Приостановлено':current==='done'?'Готово':'Ожидание';
+ $('#folder-name').textContent=root?'Папка: '+root.name:'Папка не выбрана';
+ $('#state').textContent=prog.error||phase;
+ const pc=prog.total?Math.min(100,Math.floor(prog.done/prog.total*100)):phase==='Готово'?100:0;
  $('#percent').textContent=pc+'%';
  $('#bar').style.width=pc+'%';
- $('#counts').textContent=prog.done+' / '+prog.total+(prog.newCount!==undefined?' · новых '+prog.newCount:'')+
-  (prog.downloaded!==undefined?' · файлов '+prog.downloaded:'')+
-  (prog.failed?' · ошибок '+prog.failed:'');
+ $('#progress-track').setAttribute('aria-valuenow',String(pc));
+ $('#counts').textContent=prog.done+' из '+prog.total+' обработано';
+ $('#count-all').textContent=String(rows.length);
+ $('#count-new').textContent=String(prog.newCount??0);
+ $('#count-files').textContent=String(Object.values(meta?.files||{}).filter(x=>x.status==='saved').length);
  $('#run').disabled=busy||!root;
  $('#stop').disabled=!busy;
- $('#resume').disabled=busy||!root||meta?.checkpoint?.status!=='paused';
- $('#summary').textContent='Сохранено сообщений: '+rows.length+' · файлов: '+Object.values(meta?.files||{}).filter(x=>x.status==='saved').length;
+ $('#resume').disabled=busy||!root||current!=='paused';
+ $('#status-pill').textContent=busy?'В работе':current==='paused'?'Пауза':current==='done'?'Завершено':'Готов к запуску';
+ $('#status-pill').classList.toggle('kb-pill-good',phase==='Готово');
+ $('#error').textContent=uiError||prog.error||'';
 }
 function show(){
- if(!root && !busy){const p=initialPeer();if(p!==cfg.peerId)cfg.peerId=p}
+ if(!root&&!busy){const p=initialPeer();if(p!==cfg.peerId)cfg.peerId=p}
  if(!box)mount();
- if(box){box.hidden=false;box.querySelector('#dialog').textContent=cfg.peerId?'Диалог '+cfg.peerId:'Сначала открой диалог VK';refresh()}
+ if(box?.shadowRoot){
+  box.hidden=false;
+  box.shadowRoot.getElementById('dialog').textContent=cfg.peerId?'Диалог VK · '+cfg.peerId:'Откройте переписку VK';
+  refresh();
+ }
 }
 function hide(){if(box)box.hidden=true}
+const exporterCss = [
+ '.kb-export{width:min(490px,calc(100vw - 28px))}',
+ '.kb-export-host{position:fixed;right:20px;top:65px;z-index:2147483647}',
+ '.kb-file-picker{display:flex;align-items:center;justify-content:space-between;gap:12px}',
+ '.kb-file-meta{min-width:0;flex:1}',
+ '.kb-file-meta strong{display:block;font-size:13px;font-weight:720}',
+ '.kb-file-meta span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+ '.kb-progress-heading{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:12px}',
+ '.kb-progress-pct{font-weight:780;font-size:20px;font-variant-numeric:tabular-nums;color:var(--kb-accent)}',
+ '.kb-export-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:17px}',
+ '.kb-export-actions .kb-button-primary{flex:1}',
+ '.kb-stat-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:16px}',
+ '.kb-mini-stat{padding:12px 10px;background:var(--kb-bg-soft);border:1px solid var(--kb-border);border-radius:11px}',
+ '.kb-field-hint{font-size:11px;color:var(--kb-ink-light);margin:5px 0 0}',
+ '.kb-toggle-line{display:flex;flex-direction:row;align-items:center;gap:9px;color:var(--kb-ink);font-size:13px}',
+ '#folder-name{display:block;max-width:220px}',
+ '@media(max-width:520px){.kb-export-host{right:10px;top:10px}.kb-export{width:calc(100vw - 20px)}.kb-file-picker{flex-wrap:wrap}.kb-file-picker button{width:100%}.kb-stat-grid{gap:6px}.kb-mini-stat{padding:10px 6px}.kb-export-actions button{flex:1}}'
+].join('\n');
 function mount(){
  if(!document.body||box)return;
- const div=document.createElement('section');
- div.id='vk-archive-v2';
- div.style.cssText='position:fixed;z-index:2147483647;right:16px;top:55px;width:min(440px,calc(100vw - 32px));max-height:88vh;overflow:auto;font:14px system-ui,sans-serif;color:#202a3c;background:white;border:1px solid #d7e0f0;box-shadow:0 14px 50px #0004;border-radius:16px;padding:20px';
- div.innerHTML=`<style>#vk-archive-v2 *{box-sizing:border-box}#vk-archive-v2 button{border:0;border-radius:8px;padding:10px 13px;background:#e7edfa;color:#264479;cursor:pointer;font:inherit}
-#vk-archive-v2 button.main{background:#315cad;color:white}#vk-archive-v2 button:disabled{opacity:.45;cursor:default}
-#vk-archive-v2 label{display:flex;flex-direction:column;gap:5px;color:#647084;font-size:12px}#vk-archive-v2 input,#vk-archive-v2 select{border:1px solid #cbd5e5;border-radius:8px;padding:9px;color:#16233c;background:white;font:inherit;width:100%}
-#vk-archive-v2 .pair{display:grid;grid-template-columns:1fr 110px;gap:10px;margin:14px 0}#vk-archive-v2 .buttons{display:flex;gap:8px;flex-wrap:wrap}
-#vk-archive-v2 .dim{color:#647084;font-size:12px}#vk-archive-v2 .track{height:11px;border-radius:20px;background:#e9edf5;overflow:hidden}
-#vk-archive-v2 #bar{height:100%;background:#315cad;width:0;transition:width .18s}#vk-archive-v2 details{border-top:1px solid #e4e9f1;padding-top:12px;margin-top:14px}
-#vk-archive-v2[hidden]{display:none}</style>
-<div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:19px">VK Booster</b><button id="hide">Закрыть</button></div>
-<div class="dim" id="dialog"></div><p><button id="folder">Выбрать папку</button> <span id="folder-name" class="dim">Не выбрана</span></p>
-<div class="pair"><label>Что выгружать<select id="mode"><option value="recent">Последние N сообщений</option><option value="incremental">Только новые</option><option value="backfill">Продолжить историю</option></select></label><label>Количество<input id="limit" type="number" min="1" max="100000" value="10"></label></div>
-<div class="buttons"><button id="run" class="main">Начать</button><button id="stop">Пауза</button><button id="resume">Продолжить</button></div>
-<div style="margin:16px 0 7px;display:flex;justify-content:space-between"><b id="state">Ожидание</b><b id="percent">0%</b></div>
-<div class="track"><div id="bar"></div></div><p class="dim" id="counts">0 / 0</p><p class="dim" id="summary"></p>
-<details><summary style="cursor:pointer">Дополнительные настройки</summary><div class="pair" style="grid-template-columns:1fr 1fr"><label>С даты<input id="from" type="date"></label><label>По дату<input id="through" type="date"></label><label>Сообщений за запрос<input id="size" type="number" value="50" min="1" max="100"></label><label>Пауза, мс<input id="delay" type="number" value="450" min="300"></label></div><label><input id="media" type="checkbox" checked style="width:auto">Скачивать медиафайлы</label></details>
-<div id="error" style="color:#b42332;margin-top:9px;white-space:pre-wrap"></div><p class="dim">Архив: metadata.json · messages.json · index.html · media/</p>`;
- document.body.append(div);box=div;box.hidden=true;
- const $=id=>box.querySelector('#'+id);
+ const host=document.createElement('div');
+ host.id='vk-archive-v2';
+ host.className='kb-export-host';
+ host.style.cssText='position:fixed;z-index:2147483647;right:20px;top:65px';
+ const shadow=host.attachShadow({mode:'open'});
+ shadow.innerHTML='<style>'+classicThemeCss+exporterCss+'</style>'+[
+  "<article class='kb-window kb-export' role='dialog' aria-modal='false' aria-label='VK Booster'>",
+  "<header class='kb-header'><div class='kb-brand'><span class='kb-mark'>",brandMark,"</span>",
+  "<div class='kb-brand-copy'><div class='kb-eyebrow'>Koba Browser Tools</div><h2 class='kb-title'>VK Booster</h2></div></div>",
+  "<button type='button' class='kb-icon-button' id='hide' title='Закрыть' aria-label='Закрыть'>×</button></header>",
+  "<main class='kb-window-body'>",
+  "<section><div class='kb-row'><h3 class='kb-section-title'>Источник архива</h3><span class='kb-pill' id='status-pill'>Готов к запуску</span></div>",
+  "<p class='kb-description' id='dialog'>Диалог VK</p>",
+  "<div class='kb-card kb-file-picker' style='margin-top:12px'><div class='kb-file-meta'><strong>Локальное хранилище</strong>",
+  "<span class='kb-muted' id='folder-name'>Папка не выбрана</span></div>",
+  "<button type='button' class='kb-button' id='folder'>Выбрать папку</button></div></section>",
+  "<section class='kb-section'><h3 class='kb-section-title'>Настройки экспорта</h3>",
+  "<div class='kb-grid kb-grid-wide'><label class='kb-label'>Режим<select class='kb-select' id='mode'>",
+  "<option value='recent'>Последние N сообщений</option><option value='incremental'>Только новые</option>",
+  "<option value='backfill'>Продолжить историю</option></select></label>",
+  "<label class='kb-label'>Количество<input class='kb-input' id='limit' type='number' min='1' max='100000' value='10'></label></div>",
+  "<p class='kb-field-hint'>N — число сообщений в диапазоне, включая уже сохранённые.</p></section>",
+  "<section class='kb-section'><div class='kb-progress-heading'><div>",
+  "<h3 class='kb-section-title' style='margin:0'>Ход экспорта</h3>",
+  "<span class='kb-muted' id='state' role='status' aria-live='polite'>Ожидание</span></div>",
+  "<strong class='kb-progress-pct' id='percent'>0%</strong></div>",
+  "<div class='kb-progress-track' id='progress-track' role='progressbar' aria-label='Прогресс' aria-valuemin='0' aria-valuemax='100' aria-valuenow='0'><div id='bar' class='kb-progress-fill'></div></div>",
+  "<div class='kb-muted' id='counts' style='margin-top:8px'>0 из 0 обработано</div>",
+  "<div class='kb-stat-grid'><div class='kb-mini-stat'><div id='count-all' class='kb-stat-number'>0</div><div class='kb-stat-label'>В архиве</div></div>",
+  "<div class='kb-mini-stat'><div id='count-new' class='kb-stat-number'>0</div><div class='kb-stat-label'>Новых</div></div>",
+  "<div class='kb-mini-stat'><div id='count-files' class='kb-stat-number'>0</div><div class='kb-stat-label'>Файлов</div></div></div>",
+  "<div class='kb-export-actions'><button type='button' class='kb-button kb-button-primary' id='run'>Начать выгрузку</button>",
+  "<button type='button' class='kb-button' id='stop'>Пауза</button><button type='button' class='kb-button' id='resume'>Продолжить</button></div>",
+  "<p class='kb-error' id='error' role='alert' aria-live='polite'></p></section>",
+  "<section class='kb-section'><details class='kb-details'><summary>Дополнительные настройки</summary>",
+  "<div class='kb-grid'><label class='kb-label'>С даты<input id='from' class='kb-input' type='date'></label>",
+  "<label class='kb-label'>По дату<input id='through' class='kb-input' type='date'></label>",
+  "<label class='kb-label'>Размер пачки<input id='size' class='kb-input' type='number' min='1' max='100' value='50'></label>",
+  "<label class='kb-label'>Пауза, мс<input id='delay' class='kb-input' type='number' min='300' value='450'></label></div>",
+  "<label class='kb-toggle-line' style='margin-top:15px'><input id='media' class='kb-checkbox' type='checkbox' checked> Сохранять файлы и медиа</label>",
+  "</details></section></main>",
+  "<footer class='kb-footer'>metadata.json · messages.json · index.html · media/</footer></article>"
+ ].join('');
+ document.body.append(host);
+ document.addEventListener('keydown',onEscape);
+ box=host;
+ host.hidden=true;
+ const $=id=>shadow.querySelector('#'+id.replace(/^#/,''));
  $('hide').onclick=hide;
- $('folder').onclick=()=>{selectFolder().catch(e=>{$('error').textContent=e.message});};
+ $('folder').onclick=()=>{uiError='';selectFolder().catch(e=>{uiError=e.message;refresh()});};
  $('stop').onclick=stop;
  $('run').onclick=()=>execute(false);
  $('resume').onclick=()=>execute(true);
  async function execute(resume){
-  $('error').textContent='';
+  uiError='';$('error').textContent='';
   try{
    const v=resume?{resume:true}:{mode:$('mode').value,limit:Number($('limit').value),from:$('from').value,
       through:$('through').value,pageSize:Number($('size').value),delay:Number($('delay').value),media:$('media').checked};
    await run(v);
-  }catch(e){$('error').textContent=String(e.message||e).slice(0,250)}
+  }catch(e){uiError=String(e.message||e).slice(0,250)}
   refresh();
  }
  refresh();
 }
-const apiObject={version:VERSION,configure,selectFolder,useFolder,run,resume:()=>run({resume:true}),stop,status,show,hide,buildViewer,getMessages:()=>[...rows],destroy(){box?.remove();box=null;if(globalThis[GLOBAL]===apiObject)delete globalThis[GLOBAL]}};
+function onEscape(event){if(event.key==='Escape'&&!box?.hidden)hide()}
+const apiObject={version:VERSION,configure,selectFolder,useFolder,run,resume:()=>run({resume:true}),stop,status,show,hide,buildViewer,getMessages:()=>[...rows],destroy(){document?.removeEventListener?.('keydown',onEscape);box?.remove();box=null;if(globalThis[GLOBAL]===apiObject)delete globalThis[GLOBAL]}};
 globalThis[GLOBAL]=Object.freeze(apiObject);
 // Entry points live in @kobaproduction/browser-ui and target adapters.
 if(!globalThis.__VK_EXPORT_TEST_MODE){
