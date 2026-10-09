@@ -15,3 +15,8 @@ export function affectedModules(paths:string[]):ModuleId[]{
  const all=paths.some(p=>p.startsWith('apps/'))
  return KNOWN_MODULES.filter(id=>universal||(id==='vk-booster'&&vk)||(id==='proxy-switcher'&&proxy)||(id==='all-in-one'&&(vk||all)))
 }
+
+export function userscriptChannelUrl(id:string):string {
+ if (!/^[a-z][a-z0-9-]+$/.test(id))throw Error('Invalid userscript module ID')
+ return 'https://raw.githubusercontent.com/KobaProduction/browser-extensions/distribution/userscripts/'+id+'.user.js'
+}

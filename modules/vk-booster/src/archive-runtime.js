@@ -1,7 +1,7 @@
 /* VK Booster v2 — one standalone browser userscript; no external dependencies. */
 export function installVkArchive() {
 'use strict';
-const VERSION='2.1.0', GLOBAL='VKExport';
+const VERSION='2.1.1', GLOBAL='VKExport';
 if(globalThis[GLOBAL]?.version===VERSION)return;
 const initialPeer=()=>Number(location.pathname.match(/\/im\/convo\/(\d+)/)?.[1])||0;
 const cfg={peerId:initialPeer(),mode:'recent',limit:10,from:'',through:'',pageSize:50,delay:450,media:true};

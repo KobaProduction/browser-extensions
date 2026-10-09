@@ -55,7 +55,7 @@ Source modules declare hosts, capabilities, delivery targets and versions in `mo
 
 CI checks types, tests and source contracts, then builds **only affected modules**. A change in `modules/vk-booster` builds VK Booster and the combiner; a change in `packages/core|ui|adapters` rebuilds all consumers. Main and trusted same-repository PRs use the `zoomies-linux-x64` runner from ChatGPT Booster; fork PRs use GitHub runners for isolation.
 
-After successful `main` CI, GitHub Actions computes an independent release plan for each releasable module. A module ships only when its `module.json` version has no existing release tag and its source or shared dependency changed since its previous tag. Releases use scoped tags, for example `vk-booster/v2.1.0`, with a userscript and a Chromium ZIP. `proxy-switcher` has `release:false` until implemented and tested. The release workflow does not republish unchanged versions. See `docs/RELEASES.md`.
+After successful `main` CI, GitHub Actions computes an independent release plan for each releasable module. A module ships only when its `module.json` version has no existing release tag and its source or shared dependency changed since its previous tag. Releases use scoped tags, for example `vk-booster/v2.1.1`, with a userscript and a Chromium ZIP. `proxy-switcher` has `release:false` until implemented and tested. The release workflow does not republish unchanged versions. See `docs/RELEASES.md`.
 
 ## Safety and limitations
 

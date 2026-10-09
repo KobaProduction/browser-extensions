@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile, copyFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { spawn } from 'node:child_process'
-import { manifest } from './catalog'
+import { manifest,userscriptChannelUrl } from './catalog'
 import { changedModules } from './changed'
 const root=resolve(import.meta.dir,'..')
 process.chdir(root)
@@ -32,7 +32,7 @@ for(const id of ids){
    const src=join(root,'apps/userscript/src',sourceFor(id)+'.ts')
    const out=await Bun.build({entrypoints:[src],target:'browser',format:'iife',minify:false})
    if(!out.success)throw Error(out.logs.map(l=>l.message).join('\n'))
-   const updateUrl=`https://raw.githubusercontent.com/KobaProduction/browser-extensions/distribution/userscripts/${id}.user.js`
+   const updateUrl=userscriptChannelUrl(id)
    const meta=['// ==UserScript==',`// @name         ${info.name}`,`// @namespace    https://github.com/KobaProduction/browser-extensions`,
      `// @version      ${info.version}`,`// @description  Reusable Koba Browser Tools / ${info.name}`,
      `// @homepageURL   https://github.com/KobaProduction/browser-extensions`,

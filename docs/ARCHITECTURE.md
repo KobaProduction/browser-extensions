@@ -34,3 +34,13 @@ The old single IIFE exporter is now wrapped as the first module. The duplicated 
 The future Proxy Switcher must be implemented as an **extension-only background service** with explicit `proxy` permissions, not as page injection. Configure per-host routing through Chrome's `proxy.settings` PAC support when permission is granted; maintain a typed profile store with `HTTP`, `HTTPS`, `SOCKS4`, `SOCKS5` and bypass lists. Credentials require a separate safe storage/authentication model. Userscript builds expose an unsupported status rather than simulating the feature. User-Agent switching likewise needs MV3 request rules or API support and user-granted permissions, not DOM navigator spoofing alone. Ad blocking should eventually be isolated behind `declarativeNetRequest` plus its own permissions and rule bundles.
 
 This capability model prevents all-in-one packaging from automatically acquiring every dangerous browser permission. Each future feature declares the permissions it needs, and target manifests should request them only when included and explicitly enabled by the user.
+
+## Optional shared telemetry
+
+The headless core exposes TelemetryBus and a single TelemetrySink interface,
+which ChatGPT Booster or other apps can implement with its existing OTLP
+transport. Telemetry is **off by default** and requires explicit opt-in.
+Events are restricted to validated module IDs, lifecycle event names and
+durations; URLs, chat text, files, cookies, tokens and proxy credentials are
+never included. A sink error cannot stop any module. No external endpoint
+or always-on tracking is built into this repository.
