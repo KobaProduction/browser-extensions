@@ -1,9 +1,20 @@
 # Browser Extensions repository map
 
-## Start
-1. Read `README.md` and `docs/ARCHITECTURE.md` before changing package boundaries.
-2. Respect the universal agent workflow (`ai-agent-workflow`) for engineering, Git and CI changes.
-3. Work on a non-protected feature/fix branch. Open a PR; do not directly mutate `main` or merge your own PR.
+## Start (mandatory before substantive work)
+
+1. Read `README.md` for repository navigation and product scope.
+2. **MUST read `docs/TARGET_ARCHITECTURE.md` in full** before any
+   substantive implementation, UI, refactoring, package-boundary, target,
+   permission or release change. It is the mandatory approved target for
+   DDD + FSD + Ports & Adapters, reusable features/widgets and shared
+   application shells. A previous chat summary is not a substitute.
+3. Read `docs/ARCHITECTURE.md` to distinguish currently implemented code
+   from the target. Proposed packages/interfaces are not shipped features.
+4. Load task-specific `ai-agent-workflow` skills (FSD/frontend for UI
+   ownership, DDD/software for domain and ports, Git for commits, etc.).
+5. Work on a non-protected working branch. Use PR + independent review
+   for architecture changes; never directly mutate `main` or merge your
+   own PR.
 
 ## Package rules
 - `packages/core`: host-neutral contracts and state; no `window`, `chrome`, VK or ChatGPT selectors.

@@ -1,4 +1,9 @@
-# Architecture and host permission model
+# Current architecture and host permission model
+
+> This page describes **current/transitional implementation**. The
+> approved **target** architecture is [TARGET_ARCHITECTURE.md](TARGET_ARCHITECTURE.md)
+> (DDD + FSD + Ports & Adapters; reusable archive/widgets and app shells).
+> This is not a claim that the target is already implemented.
 
 The platform separates **capability-gated feature logic** from **delivery targets**. ChatGPT Booster is the reference implementation for a shared Shadow DOM control center, modular feature lifecycle, settings and two entry points (Tampermonkey + MV3); this repository uses the same architectural concepts but exposes a separate, reusable platform API.
 

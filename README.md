@@ -2,6 +2,14 @@
 
 Reusable browser-tool platform for **independent Tampermonkey userscripts**, **Chromium Manifest V3 extensions** and a future **all-in-one tool suite**. The core is separated from website-specific modules and can be reused by ChatGPT Booster or other projects.
 
+## Architectural authority
+
+**Mandatory for contributors and agents:** [Target architecture](docs/TARGET_ARCHITECTURE.md)
+defines DDD + FSD + Ports & Adapters, package boundaries, reusable features
+and widgets, the archive engine, shared application shell and compatibility
+rules. [Current architecture](docs/ARCHITECTURE.md) describes **running code**.
+The target is approved as a direction, not yet fully implemented.
+
 ## Current modules
 
 | Module | Status | Targets | Source |
