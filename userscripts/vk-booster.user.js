@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VK Booster
 // @namespace    https://github.com/KobaProduction/browser-extensions
-// @version      2.1.1
+// @version      2.2.0
 // @description  Reusable Koba Browser Tools / VK Booster
 // @homepageURL   https://github.com/KobaProduction/browser-extensions
 // @updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/distribution/userscripts/vk-booster.user.js
@@ -14,15 +14,235 @@
 // ==/UserScript==
 
 (() => {
+  // packages/ui/src/theme.ts
+  var brandMark = `<svg viewBox="0 0 44 44" width="28" height="28" fill="none" aria-hidden="true">
+<rect x="1" y="1" width="42" height="42" rx="12" fill="#315AA7"/>
+<path d="M13 13v18m18-18L18.8 25.2M24 13l-11 11 11 7" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="31" cy="13" r="2.8" fill="#B9DBFF"/></svg>`;
+  var classicThemeCss = `
+:host {
+  all: initial; color-scheme: light;
+  --kb-bg:#fff;--kb-bg-soft:#f6f8fc;--kb-ink:#182337;
+  --kb-ink-light:#54627a;--kb-accent:#315aa7;--kb-border:#e1e6f0;
+  --kb-shadow:0 22px 80px rgb(16 34 63 / 19%),0 4px 14px rgb(16 34 63 / 8%);
+  font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  color:var(--kb-ink);
+}
+*,*::before,*::after{box-sizing:border-box}
+:host([hidden]){display:none!important}
+[hidden]{display:none!important}
+button,input,select{font:inherit}
+button{cursor:pointer}
+button:disabled{opacity:.46;cursor:not-allowed}
+button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid #82a9f3;outline-offset:2px}
+.kb-window{background:var(--kb-bg);color:var(--kb-ink);border:1px solid var(--kb-border);border-radius:18px;box-shadow:var(--kb-shadow);overflow:hidden;max-height:min(88vh,850px)}
+.kb-window-body{padding:22px 24px;overflow-y:auto;max-height:calc(88vh - 145px)}
+.kb-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 22px;border-bottom:1px solid var(--kb-border);background:linear-gradient(110deg,var(--kb-bg) 65%,var(--kb-bg-soft))}
+.kb-brand{display:flex;align-items:center;gap:11px;min-width:0}
+.kb-mark{display:flex;align-items:center;flex:none}
+.kb-brand-copy{min-width:0}
+.kb-eyebrow{font-size:10px;letter-spacing:.105em;font-weight:800;text-transform:uppercase;color:var(--kb-accent)}
+.kb-title{font-size:17px;line-height:1.26;letter-spacing:-.025em;font-weight:730;margin:3px 0 0;color:var(--kb-ink)}
+.kb-icon-button{border:1px solid var(--kb-border);background:var(--kb-bg);color:var(--kb-ink-light);border-radius:9px;width:35px;height:35px;display:inline-flex;justify-content:center;align-items:center;flex:none}
+.kb-icon-button:hover{background:var(--kb-bg-soft);color:var(--kb-ink)}
+.kb-section{margin-top:21px}
+.kb-section:first-child{margin-top:0}
+.kb-section-title{font-size:12px;font-weight:780;letter-spacing:.065em;text-transform:uppercase;color:var(--kb-ink-light);margin:0 0 10px}
+.kb-description{color:var(--kb-ink-light);font-size:12px;line-height:1.55;margin:6px 0 0}
+.kb-row{display:flex;gap:10px;align-items:center;justify-content:space-between}
+.kb-row+.kb-row{margin-top:9px}
+.kb-muted{color:var(--kb-ink-light);font-size:12px}
+.kb-card{background:var(--kb-bg-soft);border:1px solid var(--kb-border);border-radius:12px;padding:14px}
+.kb-card+.kb-card{margin-top:10px}
+.kb-label{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:640;color:var(--kb-ink-light);min-width:0}
+.kb-input,.kb-select{width:100%;background:var(--kb-bg);color:var(--kb-ink);border:1px solid #cdd5e2;border-radius:9px;padding:10px 11px;min-height:40px;min-width:0;font-size:13px;outline-offset:2px}
+.kb-input:hover,.kb-select:hover{border-color:#92a8d3}
+.kb-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.kb-grid-wide{grid-template-columns:minmax(0,1.75fr) minmax(0,1fr)}
+.kb-button{border:1px solid var(--kb-border);background:var(--kb-bg);color:var(--kb-ink);border-radius:9px;min-height:38px;padding:9px 13px;font-weight:660;font-size:13px;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:7px}
+.kb-button:hover:not(:disabled){background:var(--kb-bg-soft);border-color:#becde7}
+.kb-button-primary{color:#fff;background:var(--kb-accent);border-color:var(--kb-accent)}
+.kb-button-primary:hover:not(:disabled){background:#264b91;border-color:#264b91}
+.kb-button-link{border-color:transparent;background:transparent;color:var(--kb-accent)}
+.kb-pill{border-radius:999px;border:1px solid var(--kb-border);padding:4px 9px;font-size:11px;font-weight:650;color:var(--kb-ink-light);white-space:nowrap;background:var(--kb-bg)}
+.kb-pill-good{background:#e8f6ef;color:#176745;border-color:#cbe8d9}
+.kb-divider{border-top:1px solid var(--kb-border);margin:18px 0}
+.kb-progress-track{height:9px;background:#e7edf6;border-radius:99px;overflow:hidden}
+.kb-progress-fill{height:100%;width:0;background:var(--kb-accent);border-radius:inherit;transition:width 180ms ease}
+.kb-stat-number{font-size:23px;line-height:1.15;font-weight:760;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+.kb-stat-label{color:var(--kb-ink-light);font-size:11px;margin-top:4px}
+.kb-footer{padding:12px 22px;border-top:1px solid var(--kb-border);background:var(--kb-bg-soft);color:var(--kb-ink-light);font-size:11px}
+.kb-error{color:#af2734;font-size:12px;white-space:pre-wrap}
+.kb-checkbox{accent-color:var(--kb-accent)}
+.kb-details{border:1px solid var(--kb-border);border-radius:11px;padding:12px 13px}
+.kb-details summary{cursor:pointer;color:var(--kb-ink);font-size:13px;font-weight:670}
+.kb-details[open] summary{margin-bottom:13px}
+@media(prefers-color-scheme:dark){
+  :host{color-scheme:dark;--kb-bg:#1d2736;--kb-bg-soft:#253246;--kb-ink:#edf2fb;--kb-ink-light:#abb9d0;--kb-accent:#92b5f7;--kb-border:#3a4a62;--kb-shadow:0 22px 80px rgb(0 0 0 / 38%)}
+  .kb-input,.kb-select{border-color:#4a5d79}
+  .kb-button-primary{background:#577ece;border-color:#577ece;color:#fff}
+  .kb-button-primary:hover:not(:disabled){background:#4c72bf;border-color:#4c72bf}
+  .kb-pill-good{background:#183f32;color:#a0e5c4;border-color:#295540}
+  .kb-progress-track{background:#34455d}
+}
+@media(max-width:520px){
+  .kb-header{padding:14px 16px}
+  .kb-window-body{padding:16px}
+  .kb-footer{padding:11px 16px}
+  .kb-grid,.kb-grid-wide{grid-template-columns:1fr}
+}
+`;
+
+  // packages/ui/src/index.ts
+  var localCss = `
+.kb-shell{position:fixed;bottom:20px;right:20px;pointer-events:auto;z-index:2147483647}
+.kb-control{width:min(440px,calc(100vw - 30px))}
+.kb-feature-head{display:flex;gap:10px;justify-content:space-between;align-items:center}
+.kb-feature-name{font-size:14px;font-weight:730;line-height:1.3}
+.kb-feature-description{margin:6px 0 11px;color:var(--kb-ink-light);font-size:12px}
+.kb-feature-actions{display:flex;align-items:center;gap:11px;justify-content:space-between}
+.kb-toggle{appearance:none;width:38px;height:22px;border-radius:22px;background:#cbd4e4;position:relative;cursor:pointer;transition:background .15s}
+.kb-toggle::before{content:'';position:absolute;background:#fff;top:3px;left:3px;width:16px;height:16px;border-radius:50%;transition:transform .15s}
+.kb-toggle:checked{background:var(--kb-accent)}
+.kb-toggle:checked::before{transform:translateX(16px)}
+.kb-toggle:disabled{opacity:.4}
+.kb-launcher{display:flex;align-items:center;gap:9px;margin-left:auto;background:var(--kb-accent);color:#fff;border:0;padding:9px 15px;border-radius:13px;box-shadow:0 8px 24px rgb(30 62 110 / 23%);font-size:12px;font-weight:690}
+.kb-launcher svg{width:20px;height:20px}
+.kb-empty{padding:22px 5px;text-align:center;color:var(--kb-ink-light);font-size:13px}
+@media(max-width:520px){.kb-shell{bottom:12px;right:12px}.kb-control{width:calc(100vw - 24px)}}
+`;
+  function element(tag, className = "", text = "") {
+    const node = document.createElement(tag);
+    if (className)
+      node.className = className;
+    if (text)
+      node.textContent = text;
+    return node;
+  }
+  function mountControlCenter(options) {
+    document.getElementById("koba-browser-tools-root")?.remove();
+    const host = element("div");
+    host.id = "koba-browser-tools-root";
+    host.style.cssText = "position:fixed;inset:0;width:0;height:0;z-index:2147483646;pointer-events:none";
+    const shadow = host.attachShadow({ mode: "open" });
+    shadow.innerHTML = "<style>" + classicThemeCss + localCss + "</style>";
+    const shell = element("section", "kb-shell");
+    const panel = element("article", "kb-window kb-control");
+    const header = element("header", "kb-header");
+    const brand = element("div", "kb-brand");
+    const mark = element("span", "kb-mark");
+    mark.innerHTML = brandMark;
+    const brandCopy = element("div", "kb-brand-copy");
+    brandCopy.append(element("div", "kb-eyebrow", "Koba tools"));
+    brandCopy.append(element("h2", "kb-title", options.title ?? "Browser Tools"));
+    brand.append(mark, brandCopy);
+    const closeButton = element("button", "kb-icon-button", "×");
+    closeButton.type = "button";
+    closeButton.setAttribute("aria-label", "Закрыть центр управления");
+    header.append(brand, closeButton);
+    const body = element("div", "kb-window-body");
+    const summary = element("p", "kb-description");
+    summary.style.marginTop = "0";
+    const list = element("div", "kb-section");
+    body.append(summary, list);
+    const footer = element("footer", "kb-footer", "Модули управляются независимо · данные остаются в браузере");
+    panel.append(header, body, footer);
+    panel.hidden = true;
+    shell.append(panel);
+    const launcher = element("button", "kb-launcher");
+    launcher.type = "button";
+    launcher.innerHTML = '<span aria-hidden="true">' + brandMark + "</span><span>Инструменты</span>";
+    launcher.hidden = !options.launcher;
+    shell.append(launcher);
+    shadow.append(shell);
+    document.documentElement.append(host);
+    let opened = false;
+    function render() {
+      panel.hidden = !opened;
+      const statuses = options.runtime.list();
+      const active = statuses.filter((item) => item.state === "active").length;
+      summary.textContent = "Для этого сайта: " + active + " из " + statuses.length + " модулей готовы к работе.";
+      list.replaceChildren();
+      if (!statuses.length) {
+        list.append(element("p", "kb-empty", "Здесь пока нет доступных модулей"));
+        return;
+      }
+      for (const item of statuses)
+        list.append(renderFeature(item));
+    }
+    function renderFeature(item) {
+      const card = element("section", "kb-card");
+      const head = element("div", "kb-feature-head");
+      head.append(element("strong", "kb-feature-name", item.title));
+      const badge = element("span", "kb-pill" + (item.state === "active" ? " kb-pill-good" : ""));
+      badge.textContent = item.state === "active" ? "Готово" : item.state === "disabled" ? "Выключен" : item.state === "unsupported" ? "Недоступен" : "Ошибка";
+      badge.title = item.reason ?? "";
+      head.append(badge);
+      const description = element("p", "kb-feature-description", item.reason && item.state === "failed" ? item.reason : item.description);
+      const actions = element("div", "kb-feature-actions");
+      const toggleLabel = element("label", "kb-row");
+      const toggle = element("input", "kb-toggle");
+      toggle.type = "checkbox";
+      toggle.checked = item.state !== "disabled";
+      toggle.disabled = item.state === "unsupported";
+      toggle.setAttribute("aria-label", "Включить " + item.title);
+      const toggleText = element("span", "kb-muted", "Включён");
+      toggle.onchange = async () => {
+        toggle.disabled = true;
+        try {
+          await options.runtime.setEnabled(item.id, toggle.checked);
+        } finally {
+          render();
+        }
+      };
+      toggleLabel.append(toggle, toggleText);
+      const openButton = element("button", "kb-button kb-button-primary", "Открыть модуль");
+      openButton.type = "button";
+      openButton.disabled = item.state !== "active";
+      openButton.onclick = () => {
+        close();
+        options.runtime.open(item.id);
+      };
+      actions.append(toggleLabel, openButton);
+      card.append(head, description, actions);
+      return card;
+    }
+    function open() {
+      opened = true;
+      render();
+    }
+    function close() {
+      opened = false;
+      panel.hidden = true;
+    }
+    const onKeyDown = (event) => {
+      if (event.key === "Escape" && opened)
+        close();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    closeButton.onclick = close;
+    launcher.onclick = () => opened ? close() : open();
+    render();
+    return {
+      open,
+      close,
+      destroy() {
+        document.removeEventListener("keydown", onKeyDown);
+        host.remove();
+      }
+    };
+  }
+
   // modules/vk-booster/src/archive-runtime.js
   function installVkArchive() {
-    const VERSION = "2.1.1", GLOBAL = "VKExport";
+    const VERSION = "2.2.0", GLOBAL = "VKExport";
     if (globalThis[GLOBAL]?.version === VERSION)
       return;
     const initialPeer = () => Number(location.pathname.match(/\/im\/convo\/(\d+)/)?.[1]) || 0;
     const cfg = { peerId: initialPeer(), mode: "recent", limit: 10, from: "", through: "", pageSize: 50, delay: 450, media: true };
     let root = null, meta = null, rows = [], token = "", busy = false, stopRequested = false, box = null;
     let prog = { phase: "Ожидание", done: 0, total: 0, newCount: 0, downloaded: 0, failed: 0 };
+    let uiError = "";
     const ts = () => new Date().toISOString(), sleep = (ms) => globalThis.__VK_EXPORT_TEST_MODE ? Promise.resolve() : new Promise((r) => setTimeout(r, ms));
     const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
     const validDay = (d) => !d || /^\d{4}-\d\d-\d\d$/.test(d) && new Date(Date.parse(d + "T00:00:00+03:00") + 10800000).toISOString().slice(0, 10) === d;
@@ -617,20 +837,27 @@ q.addEventListener('input',render);render();</script></html>`;
       }
     }
     function refresh() {
-      if (!box)
+      if (!box?.shadowRoot)
         return;
-      const $ = (s) => box.querySelector(s);
-      const ready = root ? "Папка: " + root.name : "Выбери папку архива";
-      $("#folder-name").textContent = ready;
-      $("#state").textContent = prog.error || prog.phase;
-      const pc = prog.total ? Math.min(100, Math.floor(prog.done / prog.total * 100)) : prog.phase === "Готово" ? 100 : 0;
+      const $ = (id) => box.shadowRoot.querySelector("#" + id.replace(/^#/, ""));
+      const current = meta?.checkpoint?.status;
+      const phase = prog.error ? "Ошибка" : busy ? prog.phase : current === "paused" ? "Приостановлено" : current === "done" ? "Готово" : "Ожидание";
+      $("#folder-name").textContent = root ? "Папка: " + root.name : "Папка не выбрана";
+      $("#state").textContent = prog.error || phase;
+      const pc = prog.total ? Math.min(100, Math.floor(prog.done / prog.total * 100)) : phase === "Готово" ? 100 : 0;
       $("#percent").textContent = pc + "%";
       $("#bar").style.width = pc + "%";
-      $("#counts").textContent = prog.done + " / " + prog.total + (prog.newCount !== undefined ? " · новых " + prog.newCount : "") + (prog.downloaded !== undefined ? " · файлов " + prog.downloaded : "") + (prog.failed ? " · ошибок " + prog.failed : "");
+      $("#progress-track").setAttribute("aria-valuenow", String(pc));
+      $("#counts").textContent = prog.done + " из " + prog.total + " обработано";
+      $("#count-all").textContent = String(rows.length);
+      $("#count-new").textContent = String(prog.newCount ?? 0);
+      $("#count-files").textContent = String(Object.values(meta?.files || {}).filter((x) => x.status === "saved").length);
       $("#run").disabled = busy || !root;
       $("#stop").disabled = !busy;
-      $("#resume").disabled = busy || !root || meta?.checkpoint?.status !== "paused";
-      $("#summary").textContent = "Сохранено сообщений: " + rows.length + " · файлов: " + Object.values(meta?.files || {}).filter((x) => x.status === "saved").length;
+      $("#resume").disabled = busy || !root || current !== "paused";
+      $("#status-pill").textContent = busy ? "В работе" : current === "paused" ? "Пауза" : current === "done" ? "Завершено" : "Готов к запуску";
+      $("#status-pill").classList.toggle("kb-pill-good", phase === "Готово");
+      $("#error").textContent = uiError || prog.error || "";
     }
     function show() {
       if (!root && !busy) {
@@ -640,9 +867,9 @@ q.addEventListener('input',render);render();</script></html>`;
       }
       if (!box)
         mount();
-      if (box) {
+      if (box?.shadowRoot) {
         box.hidden = false;
-        box.querySelector("#dialog").textContent = cfg.peerId ? "Диалог " + cfg.peerId : "Сначала открой диалог VK";
+        box.shadowRoot.getElementById("dialog").textContent = cfg.peerId ? "Диалог VK · " + cfg.peerId : "Откройте переписку VK";
         refresh();
       }
     }
@@ -650,41 +877,91 @@ q.addEventListener('input',render);render();</script></html>`;
       if (box)
         box.hidden = true;
     }
+    const exporterCss = [
+      ".kb-export{width:min(490px,calc(100vw - 28px))}",
+      ".kb-export-host{position:fixed;right:20px;top:65px;z-index:2147483647}",
+      ".kb-file-picker{display:flex;align-items:center;justify-content:space-between;gap:12px}",
+      ".kb-file-meta{min-width:0;flex:1}",
+      ".kb-file-meta strong{display:block;font-size:13px;font-weight:720}",
+      ".kb-file-meta span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+      ".kb-progress-heading{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:12px}",
+      ".kb-progress-pct{font-weight:780;font-size:20px;font-variant-numeric:tabular-nums;color:var(--kb-accent)}",
+      ".kb-export-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:17px}",
+      ".kb-export-actions .kb-button-primary{flex:1}",
+      ".kb-stat-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:16px}",
+      ".kb-mini-stat{padding:12px 10px;background:var(--kb-bg-soft);border:1px solid var(--kb-border);border-radius:11px}",
+      ".kb-field-hint{font-size:11px;color:var(--kb-ink-light);margin:5px 0 0}",
+      ".kb-toggle-line{display:flex;flex-direction:row;align-items:center;gap:9px;color:var(--kb-ink);font-size:13px}",
+      "#folder-name{display:block;max-width:220px}",
+      "@media(max-width:520px){.kb-export-host{right:10px;top:10px}.kb-export{width:calc(100vw - 20px)}.kb-file-picker{flex-wrap:wrap}.kb-file-picker button{width:100%}.kb-stat-grid{gap:6px}.kb-mini-stat{padding:10px 6px}.kb-export-actions button{flex:1}}"
+    ].join(`
+`);
     function mount() {
       if (!document.body || box)
         return;
-      const div = document.createElement("section");
-      div.id = "vk-archive-v2";
-      div.style.cssText = "position:fixed;z-index:2147483647;right:16px;top:55px;width:min(440px,calc(100vw - 32px));max-height:88vh;overflow:auto;font:14px system-ui,sans-serif;color:#202a3c;background:white;border:1px solid #d7e0f0;box-shadow:0 14px 50px #0004;border-radius:16px;padding:20px";
-      div.innerHTML = `<style>#vk-archive-v2 *{box-sizing:border-box}#vk-archive-v2 button{border:0;border-radius:8px;padding:10px 13px;background:#e7edfa;color:#264479;cursor:pointer;font:inherit}
-#vk-archive-v2 button.main{background:#315cad;color:white}#vk-archive-v2 button:disabled{opacity:.45;cursor:default}
-#vk-archive-v2 label{display:flex;flex-direction:column;gap:5px;color:#647084;font-size:12px}#vk-archive-v2 input,#vk-archive-v2 select{border:1px solid #cbd5e5;border-radius:8px;padding:9px;color:#16233c;background:white;font:inherit;width:100%}
-#vk-archive-v2 .pair{display:grid;grid-template-columns:1fr 110px;gap:10px;margin:14px 0}#vk-archive-v2 .buttons{display:flex;gap:8px;flex-wrap:wrap}
-#vk-archive-v2 .dim{color:#647084;font-size:12px}#vk-archive-v2 .track{height:11px;border-radius:20px;background:#e9edf5;overflow:hidden}
-#vk-archive-v2 #bar{height:100%;background:#315cad;width:0;transition:width .18s}#vk-archive-v2 details{border-top:1px solid #e4e9f1;padding-top:12px;margin-top:14px}
-#vk-archive-v2[hidden]{display:none}</style>
-<div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:19px">VK Booster</b><button id="hide">Закрыть</button></div>
-<div class="dim" id="dialog"></div><p><button id="folder">Выбрать папку</button> <span id="folder-name" class="dim">Не выбрана</span></p>
-<div class="pair"><label>Что выгружать<select id="mode"><option value="recent">Последние N сообщений</option><option value="incremental">Только новые</option><option value="backfill">Продолжить историю</option></select></label><label>Количество<input id="limit" type="number" min="1" max="100000" value="10"></label></div>
-<div class="buttons"><button id="run" class="main">Начать</button><button id="stop">Пауза</button><button id="resume">Продолжить</button></div>
-<div style="margin:16px 0 7px;display:flex;justify-content:space-between"><b id="state">Ожидание</b><b id="percent">0%</b></div>
-<div class="track"><div id="bar"></div></div><p class="dim" id="counts">0 / 0</p><p class="dim" id="summary"></p>
-<details><summary style="cursor:pointer">Дополнительные настройки</summary><div class="pair" style="grid-template-columns:1fr 1fr"><label>С даты<input id="from" type="date"></label><label>По дату<input id="through" type="date"></label><label>Сообщений за запрос<input id="size" type="number" value="50" min="1" max="100"></label><label>Пауза, мс<input id="delay" type="number" value="450" min="300"></label></div><label><input id="media" type="checkbox" checked style="width:auto">Скачивать медиафайлы</label></details>
-<div id="error" style="color:#b42332;margin-top:9px;white-space:pre-wrap"></div><p class="dim">Архив: metadata.json · messages.json · index.html · media/</p>`;
-      document.body.append(div);
-      box = div;
-      box.hidden = true;
-      const $ = (id) => box.querySelector("#" + id);
+      const host = document.createElement("div");
+      host.id = "vk-archive-v2";
+      host.className = "kb-export-host";
+      host.style.cssText = "position:fixed;z-index:2147483647;right:20px;top:65px";
+      const shadow = host.attachShadow({ mode: "open" });
+      shadow.innerHTML = "<style>" + classicThemeCss + exporterCss + "</style>" + [
+        "<article class='kb-window kb-export' role='dialog' aria-modal='false' aria-label='VK Booster'>",
+        "<header class='kb-header'><div class='kb-brand'><span class='kb-mark'>",
+        brandMark,
+        "</span>",
+        "<div class='kb-brand-copy'><div class='kb-eyebrow'>Koba Browser Tools</div><h2 class='kb-title'>VK Booster</h2></div></div>",
+        "<button type='button' class='kb-icon-button' id='hide' title='Закрыть' aria-label='Закрыть'>×</button></header>",
+        "<main class='kb-window-body'>",
+        "<section><div class='kb-row'><h3 class='kb-section-title'>Источник архива</h3><span class='kb-pill' id='status-pill'>Готов к запуску</span></div>",
+        "<p class='kb-description' id='dialog'>Диалог VK</p>",
+        "<div class='kb-card kb-file-picker' style='margin-top:12px'><div class='kb-file-meta'><strong>Локальное хранилище</strong>",
+        "<span class='kb-muted' id='folder-name'>Папка не выбрана</span></div>",
+        "<button type='button' class='kb-button' id='folder'>Выбрать папку</button></div></section>",
+        "<section class='kb-section'><h3 class='kb-section-title'>Настройки экспорта</h3>",
+        "<div class='kb-grid kb-grid-wide'><label class='kb-label'>Режим<select class='kb-select' id='mode'>",
+        "<option value='recent'>Последние N сообщений</option><option value='incremental'>Только новые</option>",
+        "<option value='backfill'>Продолжить историю</option></select></label>",
+        "<label class='kb-label'>Количество<input class='kb-input' id='limit' type='number' min='1' max='100000' value='10'></label></div>",
+        "<p class='kb-field-hint'>N — число сообщений в диапазоне, включая уже сохранённые.</p></section>",
+        "<section class='kb-section'><div class='kb-progress-heading'><div>",
+        "<h3 class='kb-section-title' style='margin:0'>Ход экспорта</h3>",
+        "<span class='kb-muted' id='state' role='status' aria-live='polite'>Ожидание</span></div>",
+        "<strong class='kb-progress-pct' id='percent'>0%</strong></div>",
+        "<div class='kb-progress-track' id='progress-track' role='progressbar' aria-label='Прогресс' aria-valuemin='0' aria-valuemax='100' aria-valuenow='0'><div id='bar' class='kb-progress-fill'></div></div>",
+        "<div class='kb-muted' id='counts' style='margin-top:8px'>0 из 0 обработано</div>",
+        "<div class='kb-stat-grid'><div class='kb-mini-stat'><div id='count-all' class='kb-stat-number'>0</div><div class='kb-stat-label'>В архиве</div></div>",
+        "<div class='kb-mini-stat'><div id='count-new' class='kb-stat-number'>0</div><div class='kb-stat-label'>Новых</div></div>",
+        "<div class='kb-mini-stat'><div id='count-files' class='kb-stat-number'>0</div><div class='kb-stat-label'>Файлов</div></div></div>",
+        "<div class='kb-export-actions'><button type='button' class='kb-button kb-button-primary' id='run'>Начать выгрузку</button>",
+        "<button type='button' class='kb-button' id='stop'>Пауза</button><button type='button' class='kb-button' id='resume'>Продолжить</button></div>",
+        "<p class='kb-error' id='error' role='alert' aria-live='polite'></p></section>",
+        "<section class='kb-section'><details class='kb-details'><summary>Дополнительные настройки</summary>",
+        "<div class='kb-grid'><label class='kb-label'>С даты<input id='from' class='kb-input' type='date'></label>",
+        "<label class='kb-label'>По дату<input id='through' class='kb-input' type='date'></label>",
+        "<label class='kb-label'>Размер пачки<input id='size' class='kb-input' type='number' min='1' max='100' value='50'></label>",
+        "<label class='kb-label'>Пауза, мс<input id='delay' class='kb-input' type='number' min='300' value='450'></label></div>",
+        "<label class='kb-toggle-line' style='margin-top:15px'><input id='media' class='kb-checkbox' type='checkbox' checked> Сохранять файлы и медиа</label>",
+        "</details></section></main>",
+        "<footer class='kb-footer'>metadata.json · messages.json · index.html · media/</footer></article>"
+      ].join("");
+      document.body.append(host);
+      document.addEventListener("keydown", onEscape);
+      box = host;
+      host.hidden = true;
+      const $ = (id) => shadow.querySelector("#" + id.replace(/^#/, ""));
       $("hide").onclick = hide;
       $("folder").onclick = () => {
+        uiError = "";
         selectFolder().catch((e) => {
-          $("error").textContent = e.message;
+          uiError = e.message;
+          refresh();
         });
       };
       $("stop").onclick = stop;
       $("run").onclick = () => execute(false);
       $("resume").onclick = () => execute(true);
       async function execute(resume) {
+        uiError = "";
         $("error").textContent = "";
         try {
           const v = resume ? { resume: true } : {
@@ -698,13 +975,18 @@ q.addEventListener('input',render);render();</script></html>`;
           };
           await run(v);
         } catch (e) {
-          $("error").textContent = String(e.message || e).slice(0, 250);
+          uiError = String(e.message || e).slice(0, 250);
         }
         refresh();
       }
       refresh();
     }
+    function onEscape(event) {
+      if (event.key === "Escape" && !box?.hidden)
+        hide();
+    }
     const apiObject = { version: VERSION, configure, selectFolder, useFolder, run, resume: () => run({ resume: true }), stop, status, show, hide, buildViewer, getMessages: () => [...rows], destroy() {
+      document?.removeEventListener?.("keydown", onEscape);
       box?.remove();
       box = null;
       if (globalThis[GLOBAL] === apiObject)
@@ -855,118 +1137,6 @@ q.addEventListener('input',render);render();</script></html>`;
         localStorage.setItem(`${namespace}:${key}`, String(enabled));
       }
     };
-  }
-
-  // packages/ui/src/index.ts
-  var CSS = `
-:host{all:initial;font:14px/1.5 system-ui,-apple-system,sans-serif;color:#182437;--bg:#fff;--muted:#657187;--border:#dce3ef;--accent:#365ba2}
-*{box-sizing:border-box}
-.shell{position:fixed;right:18px;bottom:18px;z-index:2147483647;font:inherit;pointer-events:auto}
-.launch{border:1px solid var(--border);border-radius:16px;background:var(--accent);color:#fff;padding:12px;box-shadow:0 10px 30px #0003;cursor:pointer}
-.panel{width:min(410px,calc(100vw - 32px));border:1px solid var(--border);background:var(--bg);box-shadow:0 22px 55px #0004;border-radius:18px;padding:18px;margin-bottom:10px}
-.head{display:flex;align-items:center;justify-content:space-between;gap:10px}.title{font-size:17px;font-weight:700}
-.sub{font-size:12px;color:var(--muted);margin:6px 0 14px}.feature{padding:12px 0;border-top:1px solid var(--border)}
-.row{display:flex;align-items:center;justify-content:space-between;gap:10px}.feature b{font-size:14px}
-.feature p{font-size:12px;color:var(--muted);margin:4px 0 8px}
-button{font:inherit;cursor:pointer;border:1px solid var(--border);background:#f1f4fb;border-radius:9px;padding:6px 10px;color:inherit}button:disabled{opacity:.5;cursor:not-allowed}
-.primary{background:var(--accent);color:#fff;border-color:var(--accent)}.badge{font-size:11px;color:var(--muted)}
-@media(prefers-color-scheme:dark){:host{--bg:#202734;--muted:#a4b3c8;--border:#49556b;--accent:#789bd6;color:#eef3ff}.launch{color:#0d1b34}button{background:#303c51;color:#fff}.primary{color:#0c1a34}}
-`;
-  function mountControlCenter(opts) {
-    const host = document.createElement("div");
-    host.id = "koba-browser-tools-root";
-    host.style.cssText = "position:fixed;inset:0;width:0;height:0;z-index:2147483646;pointer-events:none";
-    const shadow = host.attachShadow({ mode: "open" });
-    const style = document.createElement("style");
-    style.textContent = CSS;
-    shadow.append(style);
-    const shell = document.createElement("section");
-    shell.className = "shell";
-    shadow.append(shell);
-    let opened = false;
-    const refresh = () => {
-      shell.replaceChildren();
-      const panel = document.createElement("div");
-      panel.className = "panel";
-      panel.hidden = !opened;
-      const header = document.createElement("div");
-      header.className = "head";
-      const title = document.createElement("strong");
-      title.className = "title";
-      title.textContent = opts.title ?? "Koba Browser Tools";
-      header.append(title);
-      const closeBtn = document.createElement("button");
-      closeBtn.textContent = "Закрыть";
-      closeBtn.onclick = () => {
-        opened = false;
-        refresh();
-      };
-      header.append(closeBtn);
-      panel.append(header);
-      const sub = document.createElement("p");
-      sub.className = "sub";
-      sub.textContent = "Модули текущего сайта · единый центр управления";
-      panel.append(sub);
-      for (const status of opts.runtime.list())
-        panel.append(featureRow(status));
-      shell.append(panel);
-      if (opts.launcher) {
-        const launcher = document.createElement("button");
-        launcher.className = "launch";
-        launcher.textContent = "Инструменты";
-        launcher.title = "Открыть Koba Browser Tools";
-        launcher.onclick = () => {
-          opened = !opened;
-          refresh();
-        };
-        shell.append(launcher);
-      }
-    };
-    const featureRow = (st) => {
-      const container = document.createElement("article");
-      container.className = "feature";
-      const row = document.createElement("div");
-      row.className = "row";
-      const name = document.createElement("b");
-      name.textContent = st.title;
-      row.append(name);
-      const badge = document.createElement("span");
-      badge.className = "badge";
-      badge.textContent = st.state === "active" ? "Готово" : st.reason ?? st.state;
-      row.append(badge);
-      container.append(row);
-      const desc = document.createElement("p");
-      desc.textContent = st.description;
-      container.append(desc);
-      const controls = document.createElement("div");
-      controls.className = "row";
-      const enable = document.createElement("input");
-      enable.type = "checkbox";
-      enable.checked = st.state !== "disabled";
-      enable.disabled = st.state === "unsupported";
-      enable.setAttribute("aria-label", `Включить ${st.title}`);
-      enable.onchange = () => void opts.runtime.setEnabled(st.id, enable.checked).then(refresh);
-      controls.append(enable);
-      const open = document.createElement("button");
-      open.className = "primary";
-      open.textContent = "Открыть";
-      open.disabled = st.state !== "active";
-      open.onclick = () => void opts.runtime.open(st.id);
-      controls.append(open);
-      container.append(controls);
-      return container;
-    };
-    document.documentElement.append(host);
-    refresh();
-    return { open() {
-      opened = true;
-      refresh();
-    }, close() {
-      opened = false;
-      refresh();
-    }, destroy() {
-      host.remove();
-    } };
   }
 
   // apps/userscript/src/runtime.ts
