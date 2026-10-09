@@ -1,4 +1,4 @@
-import { requestResult as req } from '@kobaproduction/browser-storage'
+import { requestResult as req, scanIndexedPages } from '@kobaproduction/browser-storage'
 import type {
   ArchiveV4Conversation,
   ArchiveV4Message,
@@ -14,11 +14,25 @@ export async function listProjects(
   openDatabase: () => Promise<IDBDatabase>,
   accountId: string,
 ): Promise<ArchiveV4Project[]> {
+  const owner = identity(accountId, 'accountId')
   const db = await openDatabase()
-  const tx = db.transaction('projects', 'readonly')
-  return req<ArchiveV4Project[]>(
-    tx.objectStore('projects').index('byAccount').getAll(identity(accountId, 'accountId')),
-  )
+  const projects: ArchiveV4Project[] = []
+  await scanIndexedPages<ArchiveV4Project>({
+    db,
+    store: 'projects',
+    index: 'byAccount',
+    indexKey: owner,
+    pageSize: 128,
+    decode(value) {
+      const row = value as ArchiveV4Project
+      if (row.accountId !== owner) throw new Error('archive.error.auth')
+      return row
+    },
+    accept(page) {
+      projects.push(...page.records)
+    },
+  })
+  return projects
 }
 
 export async function getProject(
@@ -52,12 +66,26 @@ export async function getConversation(
 export async function listConversations(
   openDatabase: () => Promise<IDBDatabase>,
   accountId: string,
-) {
+): Promise<ArchiveV4Conversation[]> {
+  const owner = identity(accountId, 'accountId')
   const db = await openDatabase()
-  const tx = db.transaction('conversations', 'readonly')
-  return req<ArchiveV4Conversation[]>(
-    tx.objectStore('conversations').index('byAccount').getAll(identity(accountId, 'accountId')),
-  )
+  const conversations: ArchiveV4Conversation[] = []
+  await scanIndexedPages<ArchiveV4Conversation>({
+    db,
+    store: 'conversations',
+    index: 'byAccount',
+    indexKey: owner,
+    pageSize: 128,
+    decode(value) {
+      const row = value as ArchiveV4Conversation
+      if (row.accountId !== owner) throw new Error('archive.error.auth')
+      return row
+    },
+    accept(page) {
+      conversations.push(...page.records)
+    },
+  })
+  return conversations
 }
 
 export async function getMessage(

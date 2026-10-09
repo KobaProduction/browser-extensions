@@ -59,6 +59,30 @@ source-proof and transactional message ingestion remain ChatGPT-owned. This is
 **source decomposition only**, not canonical migration, data move or
 ChatGPT browser acceptance.
 
+## Reusable storage and migration building blocks
+
+The packages/storage module now includes bounded IndexedDB index scanning via
+readIndexedPage and scanIndexedPages. The index key identifies an owner
+scope; the primary key identifies the exact resume position when the
+index is non-unique. Pages are read in separate completed readonly transactions;
+the caller acknowledges each batch before the resumable cursor advances.
+Account-scoped project/conversation listings in the imported ChatGPT v4
+compatibility reader already use this shared scanner. This removes unbounded
+getAll requests from those two list queries. History revision proof still
+uses a single readonly transaction because a multi-transaction scan would
+weaken its evidence consistency contract.
+
+The original ChatGPT Booster source workspace has an in-progress canonical
+migration on its own branch. Its source-specific v3/v4 decoding, canonical
+ContentElements, account binding, generation activation and migration journal
+are not imported as a reusable implementation. Inspection showed its
+current draft still scans all conversation headers with getAll; this is a
+separate migration-integration change after the active agent has stabilized
+the contract. The current uncommitted legacy binding logic
+also conflates unknown ownership and explicit account mismatches; activation
+requires independently verified account isolation before integration. Generic cursor mechanics are available for reuse, not a claim
+of completed migrations or crash-safe cross-tab database upgrades.
+
 ## VK Booster migration
 
 The VK archive engine is wrapped as a `Feature` and used by both Tampermonkey and MV3. The duplicate Tampermonkey menu was removed. Its internal VK API/authentication, VK attachment mapping/downloading and offline HTML renderer are separate modules. Linear page selection and an acknowledgement-gated page-scan application service for exact-N/incremental/backfill use `@kobaproduction/browser-archive` with VK-supplied source and commit ports. Its bounded binary response reader also verifies media MIME, length and SHA-256, while VK-specific media URL selection/fallback remains in its provider adapter. Generic directory writes use `@kobaproduction/browser-adapters`. VK-owned checkpoint format, on-disk serialization, media iteration and the public v2 file format remain unchanged. The VK commit adapter stages its next records/checkpoint and publishes them in memory only after both file writes are acknowledged (the browser File System Access API does not provide a multi-file ACID transaction); a complete shared multi-source ArchiveController/Repository/Output has **not** been extracted or adopted by ChatGPT Booster. Selecting an invalid or unreadable archive folder fails closed and restores the previously active folder/data instead of redirecting later writes. Regression checks cover existing semantics, but Chrome/Tampermonkey/MV3 live acceptance is still outstanding.

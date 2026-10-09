@@ -48,6 +48,30 @@ The source repository is left unchanged.
   source-proof gates and the post-commit change notifications. The actual
   database identifiers, indexes and owner-scoped write contract
   are preserved; no database is opened, renamed or migrated by this import.
+  Account-scoped lists of stored projects and conversations now use bounded
+  indexed batches from the shared browser-storage package, with a composite
+  keyset resume position and acknowledgement before cursor advancement.
+  Message-revision proof deliberately stays in its original single readonly
+  transaction; the shared scanner is not a replacement for evidence-level
+  atomic snapshots.
+
+## Observed concurrent migration boundary
+
+The separate ChatGPT Booster source working branch has an in-progress
+canonical v3/v4-to-canonical migration. The draft uses a cross-tab Web Locks
+guard and generation-scoped staging, but is not a validated or imported
+canonical migration. It currently reads conversation headers with unbounded
+getAll(), an identified migration performance/correctness review item.
+The inspected uncommitted migrator also uses one bindUnowned boolean to pass
+both waiting_for_owner and explicit mismatch from legacyV3OwnerEvidence.
+Known conflicting ownership must never be treated as merely missing identity.
+This is an unresolved account-isolation acceptance blocker for the migration
+agent. It does not invalidate the neutral cursor package, and no migration
+is launched here.
+Do not copy its current version numbers or uncommitted files into the
+shared packages. Reuse the bounded IndexedDB cursor and durable-acceptance
+port only after its owner-specific backup, journal, lease/fence and activation
+contracts have been accepted. This repository does not initiate any migration.
 
 ## Architecture and data protection
 

@@ -25,3 +25,11 @@ export function transactionComplete(tx: IDBTransaction): Promise<void> {
   void done.catch(() => undefined)
   return done
 }
+
+export type {
+  IndexedPage,
+  IndexedPageOptions,
+  IndexedScanOptions,
+  IndexedScanResult,
+} from './indexed-batches'
+export { readIndexedPage, scanIndexedPages } from './indexed-batches'

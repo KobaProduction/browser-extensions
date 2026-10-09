@@ -24,7 +24,7 @@
 - `packages/widgets`: provider-neutral Archive Manager, conversation navigator, transcript, progress and dock geometry; emit actions/receive props, never query provider data or own persistence. Widgets own their portable styles; target-specific CSS uses existing Shadow DOM style entries.
 - `packages/shell`: common draggable launcher, center modal, Shadow DOM and module slots.
 - `packages/adapters`: permission-checked user-script/Chrome bridges and source-neutral File System Access output.
-- `packages/storage`: framework-neutral IndexedDB request/transaction completion; physical schemas and migrations remain owned by their domain integrations.
+- packages/storage: framework-neutral IndexedDB transactions and bounded indexed-page scanning with primary-key resume and post-acknowledgement checkpoint advancement; physical schemas, source ownership, backups, leases and migration plans remain with their domain integrations.
 - `modules/<id>`: host-specific code, capabilities and a `module.json` contract.
 - `integrations/chatgpt-booster`: isolated clean ChatGPT application baseline; read its AGENTS.md and canonical archive authority before changes; preserve v3/v4 databases and do not import uncommitted source changes blindly.
 - `apps/userscript` / `apps/extension`: delivery adapters only, no copied feature code.
