@@ -1,3 +1,4 @@
+import {readArchiveMedia} from '@kobaproduction/browser-archive'
 /* VK media metadata mapping and byte downloader (provider-specific). */
 const safe=s=>{
   const raw=String(s||'file').normalize('NFC').replace(/[\\/:*?"<>|\x00-\x1f]/g,'_').replace(/^\.+/,'_').trim();
@@ -55,25 +56,15 @@ export async function download(a,{meta,dir,write,sleep}){
  for(const v of a.choices){
   try{
    const response=await fetch(v.url,{method:'GET',credentials:'omit',signal:AbortSignal.timeout(60000)});
-   if(!response.ok)throw Error('HTTP '+response.status);
-   if((response.headers.get('content-type')||'').includes('text/html'))throw Error('Вместо файла HTML');
-   const cap=64*1048576,reader=response.body?.getReader();if(!reader)throw Error('Нет файла');
-   const chunks=[];let n=0;while(true){
-    const {done,value}=await reader.read();if(done)break;
-    n+=value.byteLength;if(n>cap){await reader.cancel();throw Error('Превышен размер 64 МБ')}
-    chunks.push(value);
-   }
-   if(!n||(v.size!==null&&v.size!==n))throw Error('Размер не совпал');
-   const bytes=new Uint8Array(n);let pos=0;for(const b of chunks){bytes.set(b,pos);pos+=b.length}
-   const digest=await crypto.subtle.digest('SHA-256',bytes);
-   const hash=Array.from(new Uint8Array(digest),x=>x.toString(16).padStart(2,'0')).join('');
+   const payload=await readArchiveMedia(response,{maxBytes:64*1048576,expectedBytes:v.size});
+   const {bytes,size:n,sha256:hash,mime}=payload;
    const media=await dir(String(a.rootId),await dir('media'));
    let name=v.name,index=2;
    const occupied=new Set(Object.entries(meta.files).filter(([k,f])=>k!==a.key&&f.message_id===a.rootId&&f.status==='saved').map(([,f])=>f.name));
    while(occupied.has(name)){const i=v.name.lastIndexOf('.');name=i>0?v.name.slice(0,i)+' ('+index+++')'+v.name.slice(i):v.name+' ('+index+++')'}
    await write(name,bytes,media);
    Object.assign(result,{status:'saved',name,size:n,sha256:hash,
-     path:join('media',String(a.rootId),name),mime:response.headers.get('content-type')||''});
+     path:join('media',String(a.rootId),name),mime});
    meta.files[a.key]=result;return 'saved';
   }catch{failures++}
   await sleep(300);

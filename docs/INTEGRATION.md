@@ -59,7 +59,7 @@ after its own runtime/CI checks; provider integrations are not copied.
 `@kobaproduction/browser-archive` exports `selectArchivePage`, a provider-neutral
 **linear-descending** page selector: recent exact-N counting, incremental
 first-known boundary, backfill skipping, date bounds and accurate consumed count.
-It does not implement network requests, IndexedDB, media, checkpoint durability,
+It does not implement network requests, IndexedDB or checkpoint durability,
 ChatGPT branching, or a multi-source ArchiveController. VK Booster consumes it
 today. ChatGPT Booster's v4 source-of-truth and branch-lineage contracts take
 precedence; its adoption requires an evidence-backed projection and separate
@@ -75,3 +75,15 @@ The shared shell remains the **only** modal and launcher.
 ChatGPT Booster must map its own v4 contract and explicitly supported
 actions before adopting this view; this is not evidence of a working
 ChatGPT archive adapter or branch-aware controller.
+
+## Portable binary response reader (implemented)
+
+`readArchiveMedia(response, {maxBytes, expectedBytes})` from
+`@kobaproduction/browser-archive` validates an already-fetched successful
+`Response`, rejects HTML and oversize/empty/truncated-original-size bodies,
+collects bounded bytes and computes SHA-256 before handing them to the caller.
+It does **not** obtain media URLs, credentials, scope permission, refresh signed
+links, persist bytes or claim that provider-specific binaries exist. VK uses the
+reader behind its own attachment mapping and fallback logic. ChatGPT v4 has
+not established binary-asset completeness, so this utility alone does not
+authorize or implement ChatGPT asset export.

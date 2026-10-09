@@ -88,8 +88,9 @@ This is a **proposed ownership map**, not an already implemented tree:
 **Actual layout today:** packages/core, packages/archive (linear page selector only),
 packages/ui, packages/widgets (Archive Manager presentation), packages/shell,
 packages/adapters (including folder output),
-modules/*, apps/userscript and apps/extension. The multi-source archive
-controller/repository/output and shared Archive Manager widget are still targets.
+modules/*, apps/userscript and apps/extension. A presentation-only Archive
+Manager widget is implemented; a multi-source archive controller/repository/output,
+validated ChatGPT adapter and source-independent archival domain are still targets.
 Existing code and tests continue to govern behavior until reviewed migration.
 
 ### Package responsibilities

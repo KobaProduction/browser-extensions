@@ -60,3 +60,6 @@ export function selectArchivePage<T>(input: ArchivePageScan<T>): ArchivePageSele
   }
   return { consumed, matched, added, boundaryReached }
 }
+
+export {readArchiveMedia} from './media'
+export type {ArchiveMediaReadOptions,ArchiveMediaResult} from './media'

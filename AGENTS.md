@@ -19,7 +19,7 @@
 
 ## Package rules
 - `packages/core`: host-neutral contracts and state; no `window`, `chrome`, VK or ChatGPT selectors.
-- `packages/archive`: source-neutral page selection for descending linear history, with no provider credentials, DOM, storage or ChatGPT branch assumptions.
+- `packages/archive`: source-neutral linear page selection and bounded binary response decoding/checksums; no provider credentials, DOM, persistence, or ChatGPT branch assumptions.
 - `packages/ui`: reusable shadcn-vue primitives with no provider knowledge.
 - `packages/widgets`: source-neutral archive-management presentation; emit actions, never query provider data or own persistence.
 - `packages/shell`: common draggable launcher, center modal, Shadow DOM and module slots.
