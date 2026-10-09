@@ -1237,6 +1237,9 @@ export function installTransportObserver(
   let confirmedCatalogAccountId: string | null = null
   let emittedAccountId: string | null = null
   let accountEpoch = 0
+  // Selection changes, not request count or page-load timing, govern whether
+  // a native account-registry response is still attributable to this account.
+  let accountSelectionSerial = 0
 
   const publishAccount = (accountId: string | null, observedAt: number) => {
     if (emittedAccountId === accountId) return
@@ -1259,7 +1262,7 @@ export function installTransportObserver(
 
   const verifyAccountCatalog = (
     response: Response,
-    requestEpoch: number,
+    selectionSerialAtRequest: number,
     selectedAtRequest: string | null,
   ) => {
     if (!response.ok || !/json/i.test(response.headers.get('content-type') ?? '')) return
@@ -1267,17 +1270,18 @@ export function installTransportObserver(
       .clone()
       .json()
       .then((value: unknown) => {
-        // The account registry and the first conversation catalog normally
-        // load concurrently. A null -> selected-account transition advances
-        // accountEpoch while the registry response is in flight. Accept ONLY
-        // that one initial selection, never a stale request across A -> B or
-        // A -> B -> A; a successful catalog response is still required.
+        // Native registry and conversation catalog requests can overlap and
+        // complete in either order. Accept one initial null -> selected account
+        // transition, but not a response which spans another selection (even
+        // an A -> B -> A change that returns to the same string).
+        const unchanged =
+          accountSelectionSerial === selectionSerialAtRequest &&
+          selectedAtRequest === selectedAccountId
         const initialSelection =
           selectedAtRequest === null &&
           selectedAccountId !== null &&
-          emittedAccountId === null &&
-          accountEpoch === requestEpoch + 1
-        if (requestEpoch !== accountEpoch && !initialSelection) return
+          accountSelectionSerial === selectionSerialAtRequest + 1
+        if (!unchanged && !initialSelection) return
         const root = requestPayload(value)
         const accounts = requestPayload(root?.accounts)
         if (!accounts) return
@@ -1288,13 +1292,19 @@ export function installTransportObserver(
           if (typeof account?.account_id === 'string' && account.account_id === key) ids.add(key)
         }
         verifiedAccountIds = ids
-        const confirmed =
+        const confirmedByCatalog =
           selectedAccountId &&
           confirmedCatalogAccountId === selectedAccountId &&
           ids.has(selectedAccountId)
             ? selectedAccountId
             : null
-        publishAccount(confirmed, Date.now())
+        // Some ChatGPT routes hydrate the sidebar without a conversation
+        // catalog request. The native registry itself identifies the owner
+        // unambiguously if it contains exactly one validated account. Do not
+        // infer a preferred owner when multiple accounts exist.
+        const confirmedByUniqueRegistry =
+          selectedAccountId === null && ids.size === 1 ? (ids.values().next().value ?? null) : null
+        publishAccount(confirmedByCatalog ?? confirmedByUniqueRegistry, Date.now())
       })
       .catch(() => undefined)
   }
@@ -1476,6 +1486,7 @@ export function installTransportObserver(
             : undefined
         const requestBoundaryAt = Date.now()
         const accountSelectedAtRequest = selectedAccountId
+        const selectionSerialAtRequest = accountSelectionSerial
         const headers = new Headers(request?.headers)
         if (init?.headers)
           new Headers(init.headers).forEach((value, key) => {
@@ -1487,6 +1498,7 @@ export function installTransportObserver(
           const candidate = headers.get('chatgpt-account-id')?.trim() || null
           if (candidate !== selectedAccountId) {
             selectedAccountId = candidate
+            accountSelectionSerial++
             confirmedCatalogAccountId = null
             if (emittedAccountId === null) accountEpoch += 1
             publishAccount(null, requestBoundaryAt)
@@ -1551,7 +1563,7 @@ export function installTransportObserver(
             )
           }
           if (method.toUpperCase() === 'GET' && isAccountCheckUrl(rawUrl))
-            verifyAccountCatalog(response, accountCheckEpoch, accountSelectedAtRequest)
+            verifyAccountCatalog(response, selectionSerialAtRequest, accountSelectedAtRequest)
           observeConversationStreamStatusResponse(response, rawUrl)
           if (method.toUpperCase() === 'POST' && isConversationRequestUrl(rawUrl))
             observeConversationStreamResponse(

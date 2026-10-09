@@ -330,7 +330,8 @@ export const archiveMessages = {
       'No new history pages were observed. The archive is not marked complete.',
     'archive.error.network': 'This conversation’s history requests failed repeatedly.',
     'archive.error.storage': 'The local database could not save this conversation.',
-    'archive.error.auth': 'The history request was not authorized. Check the ChatGPT session.',
+    'archive.error.auth':
+      'The ChatGPT account could not be verified for this archive read or changed during it. Retry after the account finishes loading.',
     'archive.error.unknown': 'The operation failed. Existing archive data is preserved.',
     'common.cancel': 'Cancel',
     'common.saveError': 'Settings could not be saved.',
@@ -663,7 +664,8 @@ export const archiveMessages = {
     'archive.error.noProgress': 'Новые страницы истории не поступили. Архив не отмечен как полный.',
     'archive.error.network': 'Повторные ошибки загрузки истории этого диалога.',
     'archive.error.storage': 'Не удалось сохранить диалог в локальную базу.',
-    'archive.error.auth': 'Сервер не разрешил чтение истории. Проверьте сессию ChatGPT.',
+    'archive.error.auth':
+      'Не удалось подтвердить аккаунт для чтения архива или аккаунт изменился во время операции. Повторите после загрузки ChatGPT.',
     'archive.error.unknown': 'Операция не выполнена. Существующий архив сохранён.',
     'common.cancel': 'Отмена',
     'common.saveError': 'Не удалось сохранить настройки.',

@@ -61,6 +61,9 @@ const migrationOverview = ref<{
   conflictingConversations: number
   migratedConversations: number
 }>()
+// Account identity is established asynchronously from native ChatGPT traffic.
+// Waiting for it is not an HTTP authorization denial or a reason to reset DBs.
+const accountPending = ref(!props.archiveAdapter.currentAccountId?.())
 const migrationBusy = ref(false)
 const migrationCounts = ref({ conversations: 0, messages: 0 })
 let stopMigrationUpdates: (() => void) | undefined
@@ -674,12 +677,24 @@ async function refresh() {
   const revision = ++listRevision
   listLoading.value = true
   error.value = false
+  // An archive read must not start under an unknown account. The observer's
+  // verified account event will retry this read when the native client is ready.
+  const owner = props.archiveAdapter.currentAccountId?.() ?? null
+  accountPending.value = owner === null
+  if (!owner) {
+    navigationError.value = null
+    staleSavedWindow.value = false
+    listLoading.value = false
+    return
+  }
   try {
     const [cs, ps] = await Promise.all([
       props.archiveAdapter.listConversations(),
       props.archiveAdapter.listProjects(),
     ])
     if (!alive || revision !== listRevision) return
+    if (props.archiveAdapter.currentAccountId?.() !== owner) return
+    accountPending.value = false
     conversations.value = cs
     projects.value = ps
     if (!initialized) {
@@ -730,13 +745,16 @@ onMounted(async () => {
       sourceUnsubscribe?.(); sourceUnsubscribe = undefined
       conversations.value = []; projects.value = []; thread.value = { turns: [], messageCount: 0, recordCount: 0, detailCount: 0 }
       coverage.value = undefined
-      navigationError.value = 'archive.error.auth'
+      // An account switch invalidates in-flight archive reads, but is not
+      // itself a rejected server history request.
+      navigationError.value = null
       staleSavedWindow.value = false
-      // The native account selector can complete after the first Archive mount.
-      // Re-read only under the newly verified owner, not under a stale snapshot.
+      accountPending.value = nextOwner === null
       selectedId.value = null
       initialized = false
-      void refresh().then(() => refreshMigrationOverview()).catch(() => undefined)
+      current = next
+      if (nextOwner) void refresh().then(() => refreshMigrationOverview()).catch(() => undefined)
+      else migrationOverview.value = undefined
       return
     }
     if (!next || next === current) return
@@ -749,12 +767,17 @@ onMounted(async () => {
     void loadThread(next)
   }
   window.addEventListener(ARCHIVE_UPDATED_EVENT, refreshConversationTitles)
+  // Subscribe BEFORE the initial asynchronous Reader request. Native ChatGPT
+  // may confirm the account while that request is still pending.
   if (props.archiveAdapter.subscribeContextChange)
     contextUnsubscribe = props.archiveAdapter.subscribeContextChange(syncContext)
   else contextFallbackTimer = setInterval(syncContext, 450)
   await refresh()
+  if (!alive) return
   await refreshMigrationOverview()
+  if (!alive) return
   recoveredSelected.value = !!selectedId.value && !!(await props.archiveAdapter.isRecoveredConversation?.(selectedId.value))
+  if (!alive) return
   stopMigrationUpdates = props.archiveAdapter.subscribeArchiveMigration?.(() => {
     const progress = props.archiveAdapter.archiveMigrationProgress?.()
     if (progress) migrationCounts.value = {
@@ -811,6 +834,9 @@ onBeforeUnmount(() => {
       <p v-if="migrationError" role="alert">{{ migrationError }}</p>
     </section>
     <p v-else-if="migrationError" role="alert" class="booster-note">{{ migrationError }}</p>
+    <p v-if="accountPending" role="status" class="booster-note">{{ locale === 'ru'
+      ? 'Ожидание подтверждения аккаунта ChatGPT. Архив откроется автоматически после загрузки.'
+      : 'Waiting for ChatGPT account verification. The archive will reopen automatically once available.' }}</p>
     <div v-if="migrationBusy" role="status" class="booster-note">{{ locale === 'ru' ? 'Содержимое архива временно недоступно до окончания адаптации.' : 'Archive content is temporarily unavailable during adaptation.' }}</div>
     <div v-else class="booster-reader-layout">
       <aside class="booster-reader-sidebar">
