@@ -1,0 +1,113 @@
+name: Archive v3 Recovery Release
+
+on:
+  push:
+    branches:
+      - rollback/v3-archive-20261009
+
+permissions:
+  contents: write
+
+concurrency:
+  group: archive-v3-recovery-20261009
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'KobaProduction/chatgpt-booster'
+    runs-on: ubuntu-latest
+    env:
+      CHATGPT_BOOSTER_BUILD_VERSION: '0.8.92'
+      BOOSTER_BUILD_VERSION: '0.8.92'
+      CHATGPT_BOOSTER_BUILD_SHA: '7eba4efcb72a2c5e53c0938f82207671c9f87025'
+      CHATGPT_BOOSTER_ROLLING: '1'
+      RECOVERY_TAG: 'rollback-v3-20261009'
+    steps:
+      - name: Checkout pre-v4 archive source
+        uses: actions/checkout@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - name: Verify legacy v3 runtime
+        run: |
+          test -f packages/features/src/archive-store.ts
+          test ! -f packages/features/src/archive-v4-store.ts
+          test ! -f packages/features/src/archive-source-contract.ts
+          grep -q "ARCHIVE_DB_VERSION = 3" packages/features/src/archive-store.ts
+          grep -q "createArchiveUiAdapter" packages/features/src/page-runtime.ts
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Check
+        run: bun run check
+      - name: Test
+        run: bun run test
+      - name: Build pinned recovery artifacts
+        run: bun run build
+      - name: Pin rollback userscript update URLs
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('packages/userscript/dist/chatgpt-booster.dev.user.js')
+          s = p.read_text()
+          base = 'https://github.com/KobaProduction/chatgpt-booster/releases/download/'
+          name = 'chatgpt-booster.dev.user.js'
+          for field in ('updateURL', 'downloadURL'):
+              original = f'// @{field}    {base}dev-latest/{name}'
+              replacement = f'// @{field}    {base}rollback-v3-20261009/{name}'
+              assert s.count(original) == 1, f'Unexpected {field} metadata'
+              s = s.replace(original, replacement)
+          header = s.split('// ==/UserScript==', 1)[0]
+          assert '// @name         ChatGPT Booster Dev' in header
+          assert '// @version      0.8.92' in header
+          assert '// @booster-build 0.8.92' in header
+          p.write_text(s)
+          PY
+      - name: Package extension
+        run: |
+          cd packages/extension/dist
+          zip -q -r ../../../chatgpt-booster-v3-recovery-extension.zip .
+      - name: Write recovery build metadata
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          Path('chatgpt-booster-v3-recovery-build.json').write_text(
+              json.dumps({
+                  'version': '0.8.92',
+                  'sourceSha': '7eba4efcb72a2c5e53c0938f82207671c9f87025',
+                  'releaseBuildSha': os.environ['GITHUB_SHA'],
+                  'archiveStorage': 'chatgpt-booster-archive',
+                  'archiveSchemaVersion': 3,
+                  'rollback': True,
+                  'devBranchUntouched': True,
+                  'updateChannel': 'rollback-v3-20261009',
+              }, indent=2) + '\n'
+          )
+          PY
+      - name: Publish isolated recovery prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "${RECOVERY_TAG}" >/dev/null 2>&1; then
+            echo 'Recovery release already exists; refusing to overwrite its assets.'
+            exit 1
+          fi
+          cat > "$RUNNER_TEMP/recovery-notes.md" <<'EOF'
+          Pinned rollback for legacy ChatGPT Booster Archive v3 and its saved-chat export.
+          Application source is identical to pre-source-gate commit 7eba4ef.
+          Version 0.8.92 permits upgrading installed DEV userscript 0.8.91.
+          The userscript update/download URLs are pinned to this recovery release,
+          not dev-latest. No archive data is reset or migrated.
+          Do not run this userscript alongside a second Booster extension.
+          To return to current development, reinstall the regular dev-latest build.
+          EOF
+          gh release create "${RECOVERY_TAG}" \
+            --target "${GITHUB_SHA}" \
+            --prerelease \
+            --title "Archive v3 Recovery · 0.8.92" \
+            --notes-file "$RUNNER_TEMP/recovery-notes.md" \
+            chatgpt-booster-v3-recovery-extension.zip \
+            chatgpt-booster-v3-recovery-build.json \
+            packages/userscript/dist/chatgpt-booster.dev.user.js \
+            packages/userscript/dist/chatgpt-booster.dev.user.js.map
