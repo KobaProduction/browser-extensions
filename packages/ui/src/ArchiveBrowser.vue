@@ -162,6 +162,13 @@ const navigationNodes = computed(() =>
 const archiveStatusKey = computed<TranslationKey>(() =>
   coverage.value?.completeAtLastRead ? 'reader.savedToStart' : 'reader.savedPartial',
 )
+const emptyArchiveMessage = computed(() =>
+  props.archiveAdapter.archiveGeneration === 4
+    ? props.locale === 'ru'
+      ? 'Этот архив пока не содержит записей. Данные предыдущего архива не удалены; для их переноса требуется проверенная миграция.'
+      : 'This archive has no records yet. Previous archive data has not been deleted; a verified migration is required to transfer it.'
+    : t('reader.empty'),
+)
 
 function windowRequest(controller: AbortController, pinRevision = true): ArchiveWindowRequest {
   return {
@@ -711,7 +718,7 @@ onBeforeUnmount(() => {
       <aside class="booster-reader-sidebar">
         <input v-model="search" type="search" :aria-label="t('reader.search')" :placeholder="t('reader.search')" />
         <p v-if="listLoading && !conversations.length" role="status" class="booster-note">{{ t('reader.loading') }}</p>
-        <p v-else-if="!conversations.length" class="booster-note">{{ archiveAdapter.archiveGeneration === 4 ? (locale === 'ru' ? 'Новый архив v4 пока пуст. Старые локальные данные v3 не перенесены; историю можно заново собрать из ChatGPT.' : 'The new v4 archive is empty. Previous local v3 data was not migrated; collect history again from ChatGPT.') : t('reader.empty') }}</p>
+        <p v-else-if="!conversations.length" class="booster-note">{{ emptyArchiveMessage }}</p>
         <p v-else-if="!groups.length" class="booster-note">{{ t('reader.noResults') }}</p>
         <section v-for="group in groups" :key="group.id" class="booster-reader-group">
           <div class="booster-reader-group-header">
