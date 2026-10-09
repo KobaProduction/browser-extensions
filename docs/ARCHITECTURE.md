@@ -134,6 +134,21 @@ of completed migrations or crash-safe cross-tab database upgrades.
 
 The VK archive engine is wrapped as a `Feature` and used by both Tampermonkey and MV3. The duplicate Tampermonkey menu was removed. Its internal VK API/authentication, VK attachment mapping/downloading and offline HTML renderer are separate modules. Linear page selection and an acknowledgement-gated page-scan application service for exact-N/incremental/backfill use `@kobaproduction/browser-archive` with VK-supplied source and commit ports. Its bounded binary response reader also verifies media MIME, length and SHA-256, while VK-specific media URL selection/fallback remains in its provider adapter. Generic directory writes use `@kobaproduction/browser-adapters`. VK-owned checkpoint format, on-disk serialization, media iteration and the public v2 file format remain unchanged. The VK commit adapter stages its next records/checkpoint and publishes them in memory only after both file writes are acknowledged (the browser File System Access API does not provide a multi-file ACID transaction); a complete shared multi-source ArchiveController/Repository/Output has **not** been extracted or adopted by ChatGPT Booster. Selecting an invalid or unreadable archive folder fails closed and restores the previously active folder/data instead of redirecting later writes. Regression checks cover existing semantics, but Chrome/Tampermonkey/MV3 live acceptance is still outstanding.
 
+## VK in-app archive preview
+
+VK Booster 2.3.0 mounts a read-only VK ArchivePreview beneath the existing
+shared ArchiveManager. It uses the provider-neutral ArchiveTranscript layout
+with VK-specific text, sender, timestamp and attachment-count slots. The
+view requests only the latest 80 records initially, expands in 80-record
+increments up to 240, and searches existing in-memory archived text through
+a bounded VK projection API. It does not load remote history, media or
+IndexedDB and does not alter the v2 folder/file format. For the entire
+archive and saved media, index.html remains authoritative.
+
+A dedicated single-view installation opens directly to its VK section in
+the shared Control Center; multiple-view shells continue to show the module
+index by default. Neither path mounts a second launcher or dialog.
+
 ## Proxy roadmap
 
 The future Proxy Switcher must be implemented as an **extension-only background service** with explicit `proxy` permissions, not as page injection. Configure per-host routing through Chrome's `proxy.settings` PAC support when permission is granted; maintain a typed profile store with `HTTP`, `HTTPS`, `SOCKS4`, `SOCKS5` and bypass lists. Credentials require a separate safe storage/authentication model. Userscript builds expose an unsupported status rather than simulating the feature. User-Agent switching likewise needs MV3 request rules or API support and user-granted permissions, not DOM navigator spoofing alone. Ad blocking should eventually be isolated behind `declarativeNetRequest` plus its own permissions and rule bundles.

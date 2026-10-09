@@ -23,7 +23,7 @@ this does not imply ChatGPT v3/v4 data have been migrated.
 | Proxy Switcher | Typed interface and capability boundary only | Future MV3 background | `modules/proxy-switcher/` |
 | All-in-one | Launcher with VK Booster; other modules can be enabled later | Tampermonkey, Chromium | `apps/` |
 
-VK Booster preserves source messages, attachments, photos, document names, voice messages and a self-contained offline HTML chat. Its form is a VK-specific Vue presenter around a reusable Archive Manager widget inside the shared Control Center, without a second modal. The previous standalone userscript menu handler was removed, so installing a bundle does not register duplicate menus. The VK-specific API provider, attachment selection/fallback, and offline HTML renderer are separate modules. Neutral linear page selection, acknowledgement-gated scan orchestration and bounded binary response verification (MIME, size, SHA-256) are implemented in `packages/archive`; the File System Access writer is shared via `packages/adapters`. This does not imply that ChatGPT v4 binary asset contracts have been accepted. VK retains its v2 checkpoint persistence, provider-specific media and final HTML output; the shared scan service injects source and commit ports. No branch-aware, multi-source controller is claimed; the v2 output format is preserved.
+VK Booster preserves source messages, attachments, photos, document names, voice messages and a self-contained offline HTML chat. Its form is a VK-specific Vue presenter around a reusable Archive Manager widget inside the shared Control Center, without a second modal. The same panel now includes a bounded, searchable preview of messages already loaded from the selected v2 archive using the shared ArchiveTranscript widget. The preview renders at most 240 records; the original index.html remains the full offline viewer for older messages, files and voice records. The previous standalone userscript menu handler was removed, so installing a bundle does not register duplicate menus. The VK-specific API provider, attachment selection/fallback, and offline HTML renderer are separate modules. Neutral linear page selection, acknowledgement-gated scan orchestration and bounded binary response verification (MIME, size, SHA-256) are implemented in `packages/archive`; the File System Access writer is shared via `packages/adapters`. This does not imply that ChatGPT v4 binary asset contracts have been accepted. VK retains its v2 checkpoint persistence, provider-specific media and final HTML output; the shared scan service injects source and commit ports. No branch-aware, multi-source controller is claimed; the v2 output format is preserved.
 
 ## Install and build
 
@@ -100,6 +100,21 @@ branch. New releases publish only changed modules after successful main CI.
 Disable the old VK Conversation Archive userscript from the Tampermonkey
 Dashboard before enabling VK Booster. Never delete the saved message archive:
 VK Booster preserves the existing v2 data format.
+
+## VK product integration
+
+The current VK Booster 2.3.0 milestone prioritizes a working application over
+additional ChatGPT archive decomposition. A standalone single-module install
+opens directly into the VK archive panel in the shared Shadow DOM Control
+Center; the all-in-one shell retains multi-feature navigation when more than
+one view is registered. Bounded local preview, export options, progress and
+resume controls all consume existing VK v2 archive state. Searching preview
+messages does not contact VK, rewrite the archive or reload saved media.
+
+This is a local development build, not a published release or a successful
+browser acceptance. Runtime acceptance still requires VK login/permissions,
+selecting an existing v2 folder, an exact-N export and resume, media rendering,
+and keyboard/mobile inspection in Tampermonkey and Chromium MV3.
 
 ## Booster UI extraction (in progress)
 

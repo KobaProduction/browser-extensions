@@ -2,6 +2,7 @@ import { createArchiveFiles } from '@kobaproduction/browser-adapters'
 import { scanLinearArchive } from '@kobaproduction/browser-archive'
 import { assets, download as downloadVkAsset } from '../api/vk-media'
 import { createVkProvider } from '../api/vk-provider'
+import { selectVkArchivePreview } from './archive-preview'
 import { viewerHTML } from './offline-viewer'
 import type {
   ArchiveApi,
@@ -16,7 +17,7 @@ import type {
 } from './types'
 /* VK Booster v2 provider composition; neutral paging, storage and UI live in shared packages. */
 export function installVkArchive(): void {
-  const VERSION = '2.2.1'
+  const VERSION = '2.3.0'
   if (globalThis.VKExport?.version === VERSION) return
   const initialPeer = () => Number(location.pathname.match(/\/im\/convo\/(\d+)/)?.[1]) || 0
   const cfg: ArchiveOptions = {
@@ -453,6 +454,7 @@ export function installVkArchive(): void {
     subscribe,
     buildViewer,
     getMessages: () => [...rows],
+    previewMessages: (options) => selectVkArchivePreview(rows, options),
     destroy() {
       subscribers.clear()
       if (globalThis.VKExport === apiObject) delete globalThis.VKExport

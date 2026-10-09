@@ -17,7 +17,12 @@ const props = defineProps<{
   launcher: boolean
 }>()
 const open = ref(false)
-const selectedSection = ref('modules')
+// A dedicated single-module Booster opens directly to its feature.
+// Multi-module installations keep the module index as their entry point.
+const configuredSections = Object.keys(props.views)
+const selectedSection = ref(
+  configuredSections.length === 1 ? (configuredSections[0] ?? 'modules') : 'modules',
+)
 const position = ref({ x: 0, y: 0 })
 const dragging = ref(false)
 const BUTTON_SIZE = 46,

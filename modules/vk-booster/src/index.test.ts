@@ -19,7 +19,7 @@ test('VK feature is site scoped and can cleanly restart', async () => {
       __VK_EXPORT_TEST_MODE: true,
     })
     await vkBoosterFeature.start({} as never)
-    expect(globalThis.VKExport?.version).toBe('2.2.1')
+    expect(globalThis.VKExport?.version).toBe('2.3.0')
     await vkBoosterFeature.stop?.()
     expect(globalThis.VKExport).toBeUndefined()
     await vkBoosterFeature.start({} as never)

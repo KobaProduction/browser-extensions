@@ -207,6 +207,10 @@ test('exact N=3000 even if previously saved, and only two JSON outputs', async (
   expect(md.checkpoint?.status).toBe('done')
   expect([...folder.files.keys()].sort()).toEqual(['index.html', 'messages.json', 'metadata.json'])
   expect(a.status().progress.done).toBe(3000)
+  const preview = a.previewMessages({ limit: 80 })
+  expect(preview.messages).toHaveLength(80)
+  expect(preview.matching).toBe(3000)
+  expect(preview.messages.at(-1)?.id).toBe(m.messages.at(-1)?.id)
 })
 test('repeat last N does not terminate on first existing ID or create duplicates', async () => {
   const before = mediaCalls

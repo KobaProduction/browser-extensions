@@ -127,6 +127,10 @@ export interface ArchiveApi {
   hide(): void
   buildViewer(): Promise<{ messages: number }>
   getMessages(): VkMessage[]
+  previewMessages(options: { limit: number; query?: string }): {
+    messages: VkMessage[]
+    matching: number
+  }
   destroy(): void
 }
 export interface LegacyVkArchive {

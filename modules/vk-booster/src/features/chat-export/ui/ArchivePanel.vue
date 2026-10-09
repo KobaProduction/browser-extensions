@@ -8,10 +8,12 @@ import {
 } from '@kobaproduction/browser-widgets'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { type ArchiveStatus, archiveApi } from '../model/types'
+import ArchivePreview from './ArchivePreview.vue'
 
 const api = archiveApi()
 const status = ref<ArchiveStatus | null>(api?.status() ?? null)
 const error = ref('')
+const previewOpen = ref(false)
 let unsubscribe: (() => void) | undefined
 const view = computed<ArchiveManagerState | null>(() => {
   const current = status.value
@@ -67,5 +69,18 @@ async function resume() {
   <ArchiveManager v-if="status && view" :state="view" :initial="status.options" :error="error"
     title="Архив переписки VK" @choose-folder="chooseFolder" @start="start"
     @stop="api?.stop()" @resume="resume"/>
-  <section v-else class="booster-setting-card"><span>Модуль VK Booster ещё не инициализирован.</span></section>
+  <template v-if="api && status?.folder && status.messages > 0">
+    <div class="flex justify-end">
+      <button
+        type="button"
+        class="booster-disclosure"
+        :aria-expanded="previewOpen"
+        @click="previewOpen = !previewOpen"
+      >{{ previewOpen ? 'Скрыть сохранённые сообщения' : 'Просмотр сохранённых сообщений' }}</button>
+    </div>
+    <div v-if="previewOpen" id="vk-archive-preview">
+      <ArchivePreview :api="api" :status="status" />
+    </div>
+  </template>
+  <section v-if="!status || !view" class="booster-setting-card"><span>Модуль VK Booster ещё не инициализирован.</span></section>
 </template>

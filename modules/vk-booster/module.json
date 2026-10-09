@@ -1,7 +1,7 @@
 {
   "id": "vk-booster",
   "name": "VK Booster",
-  "version": "2.2.1",
+  "version": "2.3.0",
   "hosts": ["vk.ru", "vk.com"],
   "targets": ["userscript", "chromium"],
   "capabilities": ["page-dom", "origin-storage", "local-files"],
