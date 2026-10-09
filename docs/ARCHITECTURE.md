@@ -73,7 +73,7 @@ The Archive Browser is a separate read-only surface. The active/session-buffer c
 Settings entry points must not fork Control Center behavior. Archive/quick surfaces may consume settings and archive adapters, but must not duplicate target-specific persistence logic.
 
 
-For the v4 archive source model, strict source-signature validation, local integration map and acceptance boundaries, see [Archive target architecture](ARCHIVE_TARGET_ARCHITECTURE.md). Local implementation does not imply rollout or acceptance; Issue #54 tracks those separately. The prior v3 behavior remains documented in [Conversation Archive](CONVERSATION_ARCHIVE.md).
+For the **Booster-owned canonical archive, typed content-element order, versioned schema migrations, preservation of v3/v4, source-signature adapters and rollout gates**, see [Archive target architecture](ARCHIVE_TARGET_ARCHITECTURE.md). The 2026-10-09 canonical-migration decision supersedes the earlier clean-reset policy. Existing DEV v4 source storage is not yet that target; Issue #54 owns the implementation and acceptance. Previous v3 behavior remains documented in [Conversation Archive](CONVERSATION_ARCHIVE.md).
 
 ## Feature model
 

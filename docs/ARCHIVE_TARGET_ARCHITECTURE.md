@@ -1,8 +1,10 @@
 # Archive target architecture and delivery contract
 
-Status: **target design / not yet implemented**. The currently deployed IndexedDB v3,
-History Loader, and export v1 remain the implemented baseline until a **clean
-new database rollout** and runtime acceptance explicitly prove otherwise.
+Status: **active architecture / migration implementation pending**. The DEV build
+currently writes source-native messages into isolated v4 IndexedDB. This is
+not yet the stable canonical archive described below. User-approved decision
+2026-10-09 supersedes the former no-migration, clean-cutover policy. Data in
+v3 and v4 must remain intact until a separately verified conversion is committed.
 
 This document defines durable design constraints. **One GitHub Issue
 [#54 — ARCHIVE & EXPORT](https://github.com/KobaProduction/chatgpt-booster/issues/54)
@@ -25,18 +27,27 @@ message; integrates safe capture, collection and configurable export; and stops
 archive-dependent processing **before writing** when a ChatGPT API signature is
 incompatible with its explicitly supported contract.
 
-- **No loss of original ChatGPT message structure.** The source message is the
-  primary record; display/search/export projections are derived and rebuildable.
-- **No legacy migrations.** The new database starts empty: v3 archives and v1
-  exported files are not converted, imported or supported by the new schema.
-  Unknown account identities, incompatible API signatures, pagination gaps and
-  unverified branch parents must never be converted into authoritative values.
+- **Provider-independent archive.** Booster owns the primary canonical message,
+  ordered content-element and branch/relationship schema. ChatGPT responses
+  enter only through versioned adapters; no UI or ordinary saved export should
+  require the current native ChatGPT schema to read already archived data.
+- **Lossless source provenance.** Preserve original source-native records and
+  their versioned signatures as immutable companion evidence, separate from
+  canonical entities and presentation indexes. Raw JSON is not the sole or
+  primary saved representation.
+- **Preserve and migrate legacy data.** Existing v3 and v4 archives remain
+  readable and untouched during a controlled migration into the canonical
+  model. Never silently assign unknown owners, infer pagination/parent proof,
+  overwrite conflicting records or drop unrecognized elements. Only committed
+  and verified migrated data becomes authoritative.
 - **No private ChatGPT history requests.** Collect by observing the native client
   while it loads its own pages. Live UI remains memory-first through
   `ConversationStateStore`; IndexedDB must never block live decorators, timers,
   activity or normal ChatGPT behavior.
-- **No immediate feature replacement.** Keep the interim branch inspector and
-  existing archive/export functional while safely introducing new contracts.
+- **No destructive cutover.** Keep existing source databases intact and offer
+  read-only legacy access while preparing migration. During the actual archive
+  migration, block archive writes, archive export and canonical Reader access
+  until the committed schema is verified; native ChatGPT remains operational.
 - **No binary asset completeness claim** until independently verified against
   actual file types, signed URLs, expiration, size, quota and runtime behavior.
 
@@ -75,13 +86,19 @@ stores without becoming competing domain entities.
 
 - Scoped to one conversation by stable `(conversationId, messageId)` identity;
   cross-conversation branches can reuse raw message IDs.
-- **Immutable original ChatGPT message object** (entire source envelope and
-  nested structure, unchanged field names, presence, types and values). Never
-  inject Booster fields into this object, strip unknown fields, rewrite
-  timestamps, rearrange content or save a sanitized copy as the original.
-- Normalized fields (parent IDs, role, channel, indexes, render text, tool and
-  reasoning summaries, source provenance, observed timestamps) are separate,
-  explicitly versioned **projections**, not replacement source messages.
+- Stable Booster Message fields are the canonical, versioned domain identity,
+  including role, selected author, timestamps with source units/provenance,
+  optional verified parent/branch relations, lifecycle and message category.
+- Original ChatGPT message objects remain immutable **SourceSnapshots**.
+  Never inject Booster fields, strip unknown values, rewrite original timestamps
+  or reserialize a projection as the original source.
+- A Message owns ordered **ContentElements** (text, rich-text spans, reasoning,
+  tool call/result, code, attachments, media, internal/unknown source markers).
+  Each element carries a stable local ID, parent/container, sibling position,
+  semantic kind and source/reference provenance. These are canonical *structural*
+  positions, not transient DOM coordinates, CSS selectors or pixel positions.
+  Source-defined order is retained where observed; unverifiable relations stay
+  explicit unknowns, not manufactured topology.
 - Content-type variants and streamed/DOM-derived fallback data are distinct
   source classes. Do not present a synthetic DOM fallback as an authentic
   server message. If byte-for-byte transport identity is required, it needs a
@@ -114,6 +131,117 @@ explicit conversation override), UI state, export jobs and temporary workspace
 state are Booster-specific and may use their own tables. They refer to domain
 identities rather than embedding or duplicating original ChatGPT records.
 
+## Canonical archive, schema evolution and migration (decision 2026-10-09)
+
+This section **supersedes** all former "no v3 migration", clean-reset and
+"native raw is the primary model" statements in earlier archive documents.
+It is a new delivery requirement; previous 42/44 acceptance describes only
+the historical v4 source implementation, not this canonical-migration project.
+
+### Stable ownership and content layout
+
+- **Canonical model v1:** Project, Conversation, Message and typed Metadata
+  remain the four main domain aggregates. Message content consists of
+  versioned child ContentElements indexed by account, conversation, message
+  and stable sibling position. Element fields include `elementId`,
+  `parentElementId`, `order`, `kind`, `visibility`, typed body/reference
+  and `provenance`. An ordered tree supports visible text segments, formatting
+  spans, reasoning, code, tool calls/results, image/file references and
+  intentionally opaque unsupported elements. Use bounded indexes, not a
+  monolithic denormalized transcript or duplicated project titles.
+- **Source provenance:** an immutable SourceSnapshot stores the original
+  native parsed object, source signature, observed-at/read ID, fingerprint and
+  link to the canonical Message revision. An unsupported native variant may
+  be quarantined without changing the last usable canonical projection.
+  A legacy v3 source record is never represented as a *new* confirmed server
+  read. Raw source and opaque metadata may be preserved even when the canonical
+  renderer cannot interpret an element.
+- **Relations/proof:** parent/branch links, source page continuity, selected
+  head, element order and record completeness have independent evidence states.
+  Importing v3 `archiveState=complete` is not by itself proof of native
+  selected-path completeness under the current v4 verifier. A canonical
+  conversation remains browsable even if complete export lacks proof.
+- **Stable reader/export:** Archive Browser, search, bounded pagination and
+  ordinary saved export depend on canonical entities and ContentElements, not
+  on a ChatGPT response or whichever source adapter was installed most
+  recently. Technical export can separately include immutable SourceSnapshots.
+  Unsupported **new ingestion** stops at its own adapter boundary without
+  hiding or invalidating already verified saved data.
+
+### Independent version axes
+
+Track **four independent versions**, never one overloaded "archive version":
+
+1. `storageSchemaVersion` — physical IndexedDB stores/indexes/transaction
+   shape, upgraded using an explicit registered ordered migration.
+2. `canonicalModelVersion` — stable domain and ContentElement semantics;
+   stored per-record/projection and as a database manifest.
+3. `sourceAdapterVersion` — external ChatGPT native input signature. A new
+   adapter maps accepted inputs into the *same* canonical model where possible.
+4. `migrationPlanVersion` — versioned, idempotent conversion/verification
+   recipe with `from`/`to`, implementation identity and acceptance evidence.
+   Export serialization has its own pre-existing format/version contract.
+
+The **existing** `chatgpt-booster-archive-v4` namespace is retained and
+evolved rather than introducing yet another empty archive on each update.
+IndexedDB version changes only define structural upgrades. Content backfills
+and older-archive imports run as journaled application migrations; they are
+not attempted as one huge `onupgradeneeded` transaction.
+
+### Migration coordinator and user experience
+
+- On startup, read the database manifest first. Compare physical schema,
+  canonical model, supported migrator path and target version. If a migration
+  is required, acquire a cross-tab exclusive migration lease/fence, revoke
+  pending archive writes/collection, and display an *archive-scoped blocking
+  screen*: **"Адаптация архива. Подождите…"** with current phase and measured
+  progress where available. This does **not** block native ChatGPT or unrelated
+  Booster features. Prevent stale tabs from writing an older schema.
+- State machine: `checking → backup_verified → staging → transforming →
+  validating → activating → ready`, with explicit `waiting_for_owner`,
+  `paused`, `failed_recoverable` and `unsupported_version` states.
+  Percentage requires a grounded count of source records/bytes; unknown work
+  shows an indeterminate indicator. No success screen until target is
+  independently readable and the activation marker is durable.
+- Before mutation, create/check a restorable backup/snapshot. Stage conversions
+  into a separate generation/namespace or partition without overwriting
+  committed records. A durable journal/checkpoint covers target version,
+  source version/fingerprint, scanned/converted/rejected counts, owner scope
+  and activation fence. Small batches are atomic and retryable; crashes,
+  quota exhaustion, tab closure and multi-tab contention resume/rollback
+  without reapplying already committed rows.
+- Validate identities, counts, source hashes, canonical element order,
+  parent references, account isolation and indexes. Atomically activate
+  the fully validated generation. After activation, old source archives and
+  backups remain untouched until a **separate**, user-authorized retention/
+  cleanup decision. Never call `indexedDB.deleteDatabase` as migration.
+- If migration is unsupported, corrupted, incomplete or missing permissions,
+  **do not** show an empty archive as if all data were lost. Show an actionable
+  recoverable status (retry, verified backup, legacy read-only access,
+  account-binding step). Do not fall through to an empty new archive.
+- Manual one-time **v3 → canonical** recovery is a separately reviewed,
+  opt-in import using verified native owner evidence. The observed v3
+  conversation `raw.owner` is present only for some chats; a missing owner
+  requires explicit user binding to the verified account or quarantine.
+  Existing v4 source messages must also be included/deduplicated by scoped
+  identity and fingerprint. Preserve conflicts and unknown parent/page
+  linkage as unverified; do not forge records or claim complete export.
+  Source v3/v4 databases stay unchanged throughout this import.
+- Future **canonical schema** upgrades use the registered migration scripts
+  automatically where the supported chain and resource preflight succeed.
+  A native ChatGPT source adapter update ordinarily **does not** require a
+  database migration: it changes only input decoding and proof metadata.
+
+### Acceptance boundaries
+
+Track this new scope **inside Issue #54**, not in historical phase issues.
+Require independently verified backup+restore, v3/v4 count reconciliation,
+owner ambiguity/quarantine, idempotent resume, rollback/failure and
+cross-tab fencing, canonical element order/fidelity and independent
+reader/export of saved data during an incompatible *new* ChatGPT signature.
+Verify actual UX blocking/unblocking for a supported migration. These checks
+are new requirements; do not silently count the old 42/44 as their acceptance.
+
 ## ChatGPT API compatibility: strict, versioned, fail-closed
 
 This is a release-blocking invariant, not a best-effort parser heuristic.
@@ -132,11 +260,12 @@ This is a release-blocking invariant, not a best-effort parser heuristic.
    record invalidates the batch. No partially accepted page, successful
    coverage flag, updated counts, derived raw data or subsequent export on
    that incompatible source.
-4. Transition the affected archive ingestion/reconciliation/export capability
-   to `incompatible_source_contract`, raise a visible actionable diagnostic
-   with source kind, signature/version and safe structural diff (no private
-   content/credentials in telemetry). Preserve existing IndexedDB unmodified.
-   Native ChatGPT and independent Booster features must continue working.
+4. Stop **new ingestion and any export claiming verification of that rejected
+   source** with `incompatible_source_contract`. Show a safe source-signature
+   diagnostic (no private content/credentials in telemetry), preserve saved
+   canonical data and keep independent **already saved** reading/eligible
+   export operational. Native ChatGPT remains unaffected. Do not confuse an
+   adapter mismatch with a canonical database migration requirement.
 5. Introduce a new adapter version only after examining observed native samples,
    confirming only currently supported native schema fixtures and focused tests.
    Record the selected native/adapter signature and evidence provenance.
@@ -157,8 +286,9 @@ an intentional code registration and final acceptance of observed fixtures.
 **Atomicity:** validate -> normalize to a separate projection -> commit source
 message(s), associated summary and evidence in one IndexedDB transaction ->
 notify readers. On validation or commit failure, no successful capture result
-is exposed. A new internal database version must never rewrite the immutable
-source payloads or reset the database because a ChatGPT API signature changed.
+is exposed. A new internal database version must never rewrite immutable
+source snapshots or reset the database because a ChatGPT API signature changed.
+Canonical records evolve only through an explicit verified versioned migration.
 
 ## Incremental ingestion and materialized reads
 
@@ -226,11 +356,12 @@ is computed before the readwrite transaction. The untouched parsed native raw
 object is still the stored Message source, and a changed accepted object retains
 its predecessor in Message-owned Metadata. The same transaction also stores a lightweight `message-revision-evidence`
 row; selective export reads these compact facts instead of duplicating previous
-raw message bodies. For earlier local v4 recordings containing only the
-source-native snapshot, the revision reader falls back on demand, without
-migrating or rewriting the saved source. A non-contiguous revision chain is
-rejected instead of presented as verified. Older snapshots with no fingerprint
-are compared canonically on demand; there is no v3 migration or bulk rewrite.
+raw message bodies. For earlier local v4 recordings containing only source-native snapshots,
+the transition backfill must produce canonical records in a staged generation,
+retaining the original source objects unchanged. Until that stage is verified,
+legacy read-only access remains available. A non-contiguous revision chain is
+rejected instead of presented as verified; older snapshots without a
+fingerprint are compared canonically on demand, never guessed.
 
 Within the transaction, only affected primary keys, counters and edge pointers
 are read or updated. Identical observations can advance provenance fences but
@@ -353,34 +484,23 @@ Native collection completion and persistence completion are separate: stop
   context/quota/cancellation/cleanup verification. Binary assets remain
   experimental until independently accepted.
 
-## Clean database reset and acceptance rules
+## Preservation and acceptance rules
 
-- **Deliberate clean cutover.** Instead of supporting IndexedDB v3 migrations,
-  initialize a new isolated database/namespace with the accepted schema. Old
-  local v3 archive data will not be carried over and must be re-collected from
-  normal ChatGPT UI if needed. Communicate this loss of local-only history
-  before switching. Prefer a new namespace over overwriting existing v3 in
-  place; subsequent explicit cleanup of an obsolete namespace is separate.
-- Do **not** clear any browser profile as part of documentation work. A later
-  controlled reset applies only to the targeted Booster archive database, not
-  ChatGPT site data, browser cookies, unrelated IndexedDB stores or other
-  accounts/profiles. Reject unsupported new schema versions safely without
-  silently deleting contents. A mismatching **ChatGPT source API signature**
-  always stops archive writes; it never triggers any reset or re-creation.
-- Do not implement compatibility bridges for old archive v3, export v1 or their
-  historical cases. Test only the new contract's essential invariants: accepted
-  source messages remain exact, rejected batches perform no writes, account
-  isolation holds, fresh initialization is stable and current data/query/export
-  paths work. Avoid redundant legacy, migration and exhaustive matrix suites.
+- **No archive reset.** Do not delete, silently orphan or truncate v3, existing
+  v4, ChatGPT site data, cookies, unrelated accounts or browser profiles.
+  A new release that needs migration must show the migration state and preserve
+  read-only access to the old archive until a verified conversion is active.
+- v3 and v4 preservation is a release-blocking requirement; schema upgrades
+  must validate and retain old data rather than causing an empty Reader.
+  Source compatibility failure is never grounds for storage reset.
+- Focus tests on model conversion fidelity, typed content-element order,
+  migration idempotency, owner isolation, staged atomicity and failure/
+  recovery. Do not add broad speculative UI suites; perform targeted live
+  browser acceptance on a safe copy before enabling automatic upgrades.
 - Validate real archive *shapes* using safe aggregate observations without
-  committing real content, identifiers or private URLs to Git, logs or issues.
-  Use focused redacted fixtures for supported signatures, partial history and
-  new-schema recovery rather than exhaustive speculative test families.
-- Separate validation levels: source audit, unit/schema tests, build/CI,
-  browser runtime, live Free/Pro acceptance. CI green or synthetic fixtures do
-  not by themselves authorize production claims or issue closure.
-- Persist no private identifiers, personal messages, credentials or signed
-  asset URLs in repository documentation or issue bodies.
+  committing actual messages, IDs, credentials, private URLs or signed asset
+  links to Git, logs or issues. Distinguish source/static/build/isolated
+  browser/live account acceptance.
 
 ## Agent execution and single-Issue workflow
 
