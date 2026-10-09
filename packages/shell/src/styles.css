@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "tw-animate-css";
 @source "./**/*.{vue,ts}";
 @source "../../ui/src/**/*.{vue,ts}";
 @source "../../../modules/vk-booster/src/**/*.{vue,ts}";
