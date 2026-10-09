@@ -43,24 +43,30 @@ function configure(v={}){
 async function useFolder(handle){
  if(!cfg.peerId)throw Error('Открой диалог VK перед выбором папки');
  if(busy)throw Error('Выгрузка идёт');
- root=handle;const previous=await json('metadata.json');
- if(!previous){
-  // v1 stores state.json and pages; reject before creating v2 files.
-  try{await root.getFileHandle('state.json');root=null;throw Error('Обнаружен старый архив v1. Используй отдельную утилиту миграции.')}
-  catch(e){if(e.name!=='NotFoundError')throw e}
-  try{await root.getDirectoryHandle('pages');root=null;throw Error('Обнаружен старый каталог pages/. Сначала выполни миграцию.')}
-  catch(e){if(e.name!=='NotFoundError')throw e}
+ const previousRoot=root, previousMeta=meta, previousRows=rows;
+ root=handle;
+ try{
+  const previous=await json('metadata.json');
+  if(!previous){
+   // v1 stores state.json and pages; reject before creating v2 files.
+   try{await root.getFileHandle('state.json');throw Error('Обнаружен старый архив v1. Используй отдельную утилиту миграции.')}
+   catch(e){if(e.name!=='NotFoundError')throw e}
+   try{await root.getDirectoryHandle('pages');throw Error('Обнаружен старый каталог pages/. Сначала выполни миграцию.')}
+   catch(e){if(e.name!=='NotFoundError')throw e}
+  }
+  if(previous && (previous.schema!==2||previous.peer_id!==cfg.peerId))
+   throw Error('Старая папка несовместима. Мигрируй её отдельной утилитой в новую папку.');
+  const existing=await json('messages.json');
+  if(existing && (existing.schema!==2||existing.peer_id!==cfg.peerId||!Array.isArray(existing.messages)))
+   throw Error('Неверный формат messages.json');
+  meta=previous||blank();rows=existing?.messages||[];sorted();
+  if(!previous)await checkpoint();
+  refresh();return status();
+ }catch(error){
+  // Failed selection must never redirect the old archive state into a new folder.
+  root=previousRoot;meta=previousMeta;rows=previousRows;
+  refresh();throw error;
  }
- if(previous && (previous.schema!==2||previous.peer_id!==cfg.peerId)){
-  root=null;throw Error('Старая папка несовместима. Мигрируй её отдельной утилитой в новую папку.');
- }
- meta=previous||blank();const existing=await json('messages.json');
- if(existing && (existing.schema!==2||existing.peer_id!==cfg.peerId||!Array.isArray(existing.messages))){
-  root=null;throw Error('Неверный формат messages.json');
- }
- rows=existing?.messages||[];sorted();
- if(!previous)await checkpoint();
- refresh();return status();
 }
 async function selectFolder(){
  if(!globalThis.showDirectoryPicker)throw Error('Нужен Chrome и HTTPS');

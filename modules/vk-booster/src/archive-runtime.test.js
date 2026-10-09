@@ -132,3 +132,17 @@ test('v1 folder with state.json and pages is rejected before v2 files are create
  expect([...old.files.keys()]).toEqual(['state.json']);
  expect([...old.dirs.keys()]).toEqual(['pages']);
 });
+
+test('rejecting malformed new folder preserves previously selected archive',async()=>{
+ a=reload();await a.useFolder(folder);
+ const before=a.status();
+ const invalid=new MockDir('bad-metadata');
+ const writer=await (await invalid.getFileHandle('metadata.json',{create:true})).createWritable();
+ await writer.write('{not-json');await writer.close();
+ await expect(a.useFolder(invalid)).rejects.toThrow();
+ expect(a.status().folder).toBe(before.folder);
+ expect(a.status().messages).toBe(before.messages);
+ expect([...invalid.files.keys()]).toEqual(['metadata.json']);
+ const result=await a.run({mode:'recent',limit:2,pageSize:2,media:false,delay:300});
+ expect(result.saved).toBe(before.messages);
+});
