@@ -4,6 +4,7 @@ import type {
   ArchiveThreadView,
   ArchiveWindowRequest,
 } from '@chatgpt-booster/core'
+import { readPinnedSnapshot, verifyPinnedResult } from '@kobaproduction/browser-storage'
 import type { ArchiveV4Message, ArchiveV4Store } from './archive-v4-store'
 import { normalizeConversationMessage } from './conversation-records'
 import type { ConversationStateStore } from './conversation-state'
@@ -262,17 +263,26 @@ export class ArchiveV4Reader {
       request.expectedInstanceId !== (found.conversation.instanceId ?? null)
     )
       throw new Error('archive.error.sourceChanged')
-    const latest = await this.store.getConversation(accountId, conversationId)
-    requireCurrent()
-    this.#requireRequest(accountId, conversationId, token)
-    if (
-      !latest ||
-      latest.revision !== found.conversation.revision ||
-      latest.currentNodeId !== found.conversation.currentNodeId ||
-      latest.projectId !== found.conversation.projectId ||
-      (latest.instanceId ?? null) !== (found.conversation.instanceId ?? null)
-    )
-      throw new Error('archive.error.sourceChanged')
+    const { stamp: latest } = await verifyPinnedResult({
+      stamp: found.conversation,
+      result: found,
+      readStamp: async () => {
+        const current = await this.store.getConversation(accountId, conversationId)
+        if (!current) throw new Error('archive.error.sourceChanged')
+        return current
+      },
+      sameStamp: (first, current) =>
+        current.revision === first.revision &&
+        current.currentNodeId === first.currentNodeId &&
+        current.projectId === first.projectId &&
+        (current.instanceId ?? null) === (first.instanceId ?? null),
+      assertCurrent: () => {
+        requireCurrent()
+        this.#requireRequest(accountId, conversationId, token)
+      },
+      ...(request.signal ? { signal: request.signal } : {}),
+      conflictError: () => new Error('archive.error.sourceChanged'),
+    })
     const session = newSession(
       latest.revision,
       latest.currentNodeId,
@@ -380,51 +390,55 @@ export class ArchiveV4Reader {
       )
     }
 
-    const conversation = await this.store.getConversation(accountId, conversationId)
-    if (this.memory.verifiedAccountId() !== accountId) throw new Error('archive.error.auth')
-    requireCurrent()
-    const revision = conversation?.revision ?? null
-    if (request.expectedRevision !== undefined && revision !== request.expectedRevision)
-      throw new Error('archive.error.sourceChanged')
-    if (
-      request.expectedInstanceId !== undefined &&
-      request.expectedInstanceId !== (conversation?.instanceId ?? null)
-    )
-      throw new Error('archive.error.sourceChanged')
     const previous = this.#sessions.get(key)
-    if (
-      continuing &&
-      (!previous ||
-        previous.revision !== revision ||
-        previous.instanceId !== (conversation?.instanceId ?? null) ||
-        previous.head !== (conversation?.currentNodeId ?? null) ||
-        previous.projectId !== (conversation?.projectId ?? null) ||
-        JSON.stringify(this.#boundary(previous, advancing)) !== JSON.stringify(before))
-    ) {
-      this.#sessions.delete(key)
-      throw new Error('archive.error.sourceChanged')
-    }
-    const page = await this.store.readWindow(
-      accountId,
-      conversationId,
-      maximum + 1,
-      forward ? 'oldest' : 'newest',
-      before ?? undefined,
-      request.signal,
-    )
-    const latest = await this.store.getConversation(accountId, conversationId)
-    if (this.memory.verifiedAccountId() !== accountId) throw new Error('archive.error.auth')
-    requireCurrent()
-    this.#requireRequest(accountId, conversationId, requestToken)
-    if (
-      (latest?.revision ?? null) !== revision ||
-      latest?.currentNodeId !== conversation?.currentNodeId ||
-      latest?.projectId !== conversation?.projectId ||
-      (latest?.instanceId ?? null) !== (conversation?.instanceId ?? null)
-    ) {
-      this.#sessions.delete(key)
-      throw new Error('archive.error.sourceChanged')
-    }
+    const { stamp: conversation, result: page } = await readPinnedSnapshot({
+      readStamp: () => this.store.getConversation(accountId, conversationId),
+      read: () =>
+        this.store.readWindow(
+          accountId,
+          conversationId,
+          maximum + 1,
+          forward ? 'oldest' : 'newest',
+          before ?? undefined,
+          request.signal,
+        ),
+      ...(request.signal ? { signal: request.signal } : {}),
+      assertCurrent: () => {
+        if (this.memory.verifiedAccountId() !== accountId) throw new Error('archive.error.auth')
+        requireCurrent()
+        this.#requireRequest(accountId, conversationId, requestToken)
+      },
+      acceptStamp: (stamp) => {
+        const revision = stamp?.revision ?? null
+        if (request.expectedRevision !== undefined && revision !== request.expectedRevision)
+          throw new Error('archive.error.sourceChanged')
+        if (
+          request.expectedInstanceId !== undefined &&
+          request.expectedInstanceId !== (stamp?.instanceId ?? null)
+        )
+          throw new Error('archive.error.sourceChanged')
+        if (
+          continuing &&
+          (!previous ||
+            previous.revision !== revision ||
+            previous.instanceId !== (stamp?.instanceId ?? null) ||
+            previous.head !== (stamp?.currentNodeId ?? null) ||
+            previous.projectId !== (stamp?.projectId ?? null) ||
+            JSON.stringify(this.#boundary(previous, advancing)) !== JSON.stringify(before))
+        ) {
+          this.#sessions.delete(key)
+          throw new Error('archive.error.sourceChanged')
+        }
+      },
+      sameStamp: (first, latest) =>
+        (first?.revision ?? null) === (latest?.revision ?? null) &&
+        first?.currentNodeId === latest?.currentNodeId &&
+        first?.projectId === latest?.projectId &&
+        (first?.instanceId ?? null) === (latest?.instanceId ?? null),
+      onConflict: () => this.#sessions.delete(key),
+      conflictError: () => new Error('archive.error.sourceChanged'),
+    })
+    const revision = conversation?.revision ?? null
     const session =
       continuing && previous
         ? previous

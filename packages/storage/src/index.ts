@@ -26,3 +26,5 @@ export type {
   WorkingMigrationPhase,
 } from './migration'
 export { browserMigrationLock, runStagedMigration } from './migration'
+export type { PinnedReadOptions, VerifyPinnedResultOptions } from './pinned-read'
+export { readPinnedSnapshot, verifyPinnedResult } from './pinned-read'

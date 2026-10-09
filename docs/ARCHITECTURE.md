@@ -79,6 +79,18 @@ arrays; batching bounds individual transactions, not aggregate memory.
 History revision proof still uses a single readonly transaction because a
 multi-transaction scan would weaken its evidence consistency contract.
 
+A separate readPinnedSnapshot/verifyPinnedResult primitive now checks
+provider-supplied durable source stamps around async page reads. ChatGPT v4
+saved thread windows use the before/after form; saved message-target windows
+reuse their own initial transaction-stamped result and reread the header after
+that transaction. Their adapter compares conversation revision, recreation
+instanceId, selected head and project; request-token and verified-account
+guards are also checked before results are returned. A mismatched stamp fails
+closed with sourceChanged rather than combining windows across revisions.
+This is NOT a cross-transaction snapshot without the provider guarantee
+that its stamp changes for every relevant mutation. Legacy v3 message
+transcripts therefore remain on their existing single-transaction read path.
+
 The generic migration boundary is now implemented as runStagedMigration
 and indexedMigrationDriver in packages/storage. It coordinates a source
 fingerprint, exclusive cross-tab lock, explicitly verified restorable backup,

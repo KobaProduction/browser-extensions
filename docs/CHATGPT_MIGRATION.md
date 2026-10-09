@@ -59,6 +59,13 @@ The source repository is left unchanged.
   Message-revision proof deliberately stays in its original single readonly
   transaction; the shared scanner is not a replacement for evidence-level
   atomic snapshots.
+  The shared pinned-read guard is now used by both saved-window pagination
+  and direct saved-message navigation in ArchiveV4Reader. ChatGPT supplies
+  durable revision, recreation instance identity, head/project comparisons,
+  account-epoch and request-token checks. It rejects changed or stale pages
+  instead of silently reloading another saved generation. Other products
+  must supply equally durable stamps or keep their original transactional
+  read boundaries; no canonical migration is implied.
 
 ## Shared journaled migration mechanism
 
