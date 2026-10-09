@@ -3,6 +3,7 @@ import {
   legacyV3OwnerEvidence,
   planArchiveMigrations,
 } from '../packages/features/src/archive-migration-plan'
+import { inspectExistingArchiveForMigration } from '../packages/features/src/archive-migration-preflight'
 
 describe('canonical archive migration planning', () => {
   const manifest = {
@@ -48,5 +49,24 @@ describe('canonical archive migration planning', () => {
     expect(
       legacyV3OwnerEvidence({ raw: { owner: { user_email: 'not-an-id' } } }, 'confirmed-a').status,
     ).toBe('waiting_for_owner')
+  })
+
+  test('preflight never creates absent databases or assigns an unverified owner', async () => {
+    let opens = 0
+    const factory = {
+      databases: async () => [],
+      open: () => {
+        opens++
+        throw new Error('must not open absent legacy stores')
+      },
+    } as unknown as IDBFactory
+    const report = await inspectExistingArchiveForMigration('account-a', factory)
+    expect(report.kind).toBe('non_authoritative_read_only_inventory')
+    expect(report.sources).toHaveLength(2)
+    expect(report.sources.every((s) => !s.present && s.messages === 0)).toBe(true)
+    expect(opens).toBe(0)
+    await expect(inspectExistingArchiveForMigration('', factory)).rejects.toThrow(
+      'Verified archive owner required',
+    )
   })
 })
