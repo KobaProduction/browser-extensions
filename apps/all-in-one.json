@@ -3,7 +3,5 @@
   "name": "Koba Browser Tools",
   "version": "0.3.1",
   "release": true,
-  "dependencies": [
-    "vk-booster"
-  ]
+  "dependencies": ["vk-booster"]
 }

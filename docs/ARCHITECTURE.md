@@ -30,6 +30,15 @@ The platform separates **capability-gated feature logic** from **delivery target
 - **Modules** own site-specific selectors, storage semantics, media/export logic, and immutable `module.json` manifests.
 - **Userscript/MV3** are packaging adapters; adding a new feature must not copy its business logic. Module registry controls loading and feature lifecycle.
 
+## Static quality boundary
+
+VK runtime, provider integration, media mapping, offline HTML and regression
+fixtures are now TypeScript with explicit source/archive/checkpoint contracts.
+Strict compiler checks cover the VK fixtures separately; Biome is enforced
+for the first-party workspace. The imported ChatGPT workspace keeps its own
+quality gate until its compatibility migration is complete. Type safety
+does not replace live VK browser acceptance or solve v2 multi-file atomicity.
+
 ## VK Booster migration
 
 The VK archive engine is wrapped as a `Feature` and used by both Tampermonkey and MV3. The duplicate Tampermonkey menu was removed. Its internal VK API/authentication, VK attachment mapping/downloading and offline HTML renderer are separate modules. Linear page selection and an acknowledgement-gated page-scan application service for exact-N/incremental/backfill use `@kobaproduction/browser-archive` with VK-supplied source and commit ports. Its bounded binary response reader also verifies media MIME, length and SHA-256, while VK-specific media URL selection/fallback remains in its provider adapter. Generic directory writes use `@kobaproduction/browser-adapters`. VK-owned checkpoint format, on-disk serialization, media iteration and the public v2 file format remain unchanged. The VK commit adapter stages its next records/checkpoint and publishes them in memory only after both file writes are acknowledged (the browser File System Access API does not provide a multi-file ACID transaction); a complete shared multi-source ArchiveController/Repository/Output has **not** been extracted or adopted by ChatGPT Booster. Selecting an invalid or unreadable archive folder fails closed and restores the previously active folder/data instead of redirecting later writes. Regression checks cover existing semantics, but Chrome/Tampermonkey/MV3 live acceptance is still outstanding.

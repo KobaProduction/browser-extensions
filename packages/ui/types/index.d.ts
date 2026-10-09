@@ -9,8 +9,15 @@ export declare const Badge: DefineComponent<{
   variant?: 'default' | 'secondary' | 'outline'
 }>
 
-export declare const ModalSurface: DefineComponent<{label:string;wide?:boolean;surfaceClass?:string}>
-export declare const JsonViewer: DefineComponent<{value:unknown}>
+export declare const ModalSurface: DefineComponent<{
+  label: string
+  wide?: boolean
+  surfaceClass?: string
+}>
+export declare const JsonViewer: DefineComponent<{ value: unknown }>
 export declare const FloatingInfoPopover: DefineComponent<{
-  label:string; mode?:'hover'|'click'|'hover-click'; align?:'start'|'end';triggerClass?:string
+  label: string
+  mode?: 'hover' | 'click' | 'hover-click'
+  align?: 'start' | 'end'
+  triggerClass?: string
 }>

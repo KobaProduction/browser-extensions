@@ -1,4 +1,4 @@
-import {selectArchivePage, type ArchivePageSelection, type ArchiveScanMode} from './linear-selection'
+import { type ArchivePageSelection, type ArchiveScanMode, selectArchivePage } from './linear-selection'
 
 /** Cursor accounting for one descending, linear archive run. Domain/provider payload stays opaque. */
 export interface LinearScanState {
@@ -10,7 +10,7 @@ export interface LinearScanState {
 
 export interface LinearArchiveSource<T> {
   /** Provider adapter validates native data/auth and returns a descending page. */
-  readPage(offset: number, count: number): Promise<{items: readonly T[]; count: number}>
+  readPage(offset: number, count: number): Promise<{ items: readonly T[]; count: number }>
 }
 
 export interface LinearArchiveCommit<T> {
@@ -46,22 +46,29 @@ export interface LinearScanResult {
 
 /** Orchestrates a linear source only; does not infer ChatGPT branches/verification or implement storage. */
 export async function scanLinearArchive<T>(options: LinearScanOptions<T>): Promise<LinearScanResult> {
-  if (!Number.isSafeInteger(options.target) || options.target < 1 ||
-      !Number.isSafeInteger(options.pageSize) || options.pageSize < 1 ||
-      !Number.isSafeInteger(options.initial.offset) || options.initial.offset < 0 ||
-      !Number.isSafeInteger(options.initial.matched) || options.initial.matched < 0 ||
-      options.initial.matched > options.target ||
-      !Number.isSafeInteger(options.initial.scanned) || options.initial.scanned < 0 ||
-      !Number.isSafeInteger(options.initial.newCount) || options.initial.newCount < 0)
+  if (
+    !Number.isSafeInteger(options.target) ||
+    options.target < 1 ||
+    !Number.isSafeInteger(options.pageSize) ||
+    options.pageSize < 1 ||
+    !Number.isSafeInteger(options.initial.offset) ||
+    options.initial.offset < 0 ||
+    !Number.isSafeInteger(options.initial.matched) ||
+    options.initial.matched < 0 ||
+    options.initial.matched > options.target ||
+    !Number.isSafeInteger(options.initial.scanned) ||
+    options.initial.scanned < 0 ||
+    !Number.isSafeInteger(options.initial.newCount) ||
+    options.initial.newCount < 0
+  )
     throw new Error('Invalid linear archive scan state')
 
-  let state: LinearScanState = {...options.initial}
+  let state: LinearScanState = { ...options.initial }
   let sourceTotal: number | null = null
   let exhausted = state.matched >= options.target
   while (!options.stopped() && state.matched < options.target) {
     const page = await options.source.readPage(state.offset, options.pageSize)
-    if (!page || !Array.isArray(page.items) ||
-        !Number.isSafeInteger(page.count) || page.count < 0)
+    if (!page || !Array.isArray(page.items) || !Number.isSafeInteger(page.count) || page.count < 0)
       throw new Error('Invalid linear archive source page')
     sourceTotal = page.count
     if (!page.items.length || state.offset >= page.count) {
@@ -86,15 +93,19 @@ export async function scanLinearArchive<T>(options: LinearScanOptions<T>): Promi
       newCount: state.newCount + selection.added.length,
     }
     // The repository must acknowledge the page/checkpoint before the cursor or known IDs advance.
-    await options.commit({selection, previous: state, next, sourceTotal: page.count})
+    await options.commit({ selection, previous: state, next, sourceTotal: page.count })
     for (const item of selection.added) options.knownKeys.add(options.keyOf(item))
     state = next
-    if (selection.boundaryReached || state.offset >= page.count ||
-        page.items.length < options.pageSize || state.matched >= options.target) {
+    if (
+      selection.boundaryReached ||
+      state.offset >= page.count ||
+      page.items.length < options.pageSize ||
+      state.matched >= options.target
+    ) {
       exhausted = true
       break
     }
     if (!options.stopped()) await options.delay?.()
   }
-  return {state,sourceTotal,paused:options.stopped(),exhausted}
+  return { state, sourceTotal, paused: options.stopped(), exhausted }
 }

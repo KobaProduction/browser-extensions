@@ -11,9 +11,15 @@ export function requestResult<T>(request: IDBRequest<T>): Promise<T> {
 /** Resolves only after the complete event, rejecting transaction aborts and errors. */
 export function transactionComplete(tx: IDBTransaction): Promise<void> {
   const done = new Promise<void>((resolve, reject) => {
-    tx.addEventListener('complete', () => resolve(), {once: true})
-    tx.addEventListener('error', () => reject(tx.error ?? new Error('IndexedDB transaction failed')), {once: true})
-    tx.addEventListener('abort', () => reject(tx.error ?? new DOMException('IndexedDB transaction aborted', 'AbortError')), {once: true})
+    tx.addEventListener('complete', () => resolve(), { once: true })
+    tx.addEventListener('error', () => reject(tx.error ?? new Error('IndexedDB transaction failed')), {
+      once: true,
+    })
+    tx.addEventListener(
+      'abort',
+      () => reject(tx.error ?? new DOMException('IndexedDB transaction aborted', 'AbortError')),
+      { once: true },
+    )
   })
   // Prevent unhandled rejections if the caller is awaiting an earlier failed request.
   void done.catch(() => undefined)

@@ -31,6 +31,11 @@
 - Proxy routing must use privileged extension background APIs after permission; a userscript cannot set browser proxy settings.
 - Never log, commit or export browser cookies, access tokens or private conversation data. Testing fixtures must be synthetic; real personal content belongs only in ignored local files.
 
+## TypeScript and lint gates
+- First-party Browser Extensions runtime, adapters and VK export are TypeScript-only; do not introduce unchecked JavaScript into product code or tests.
+- Keep TypeScript strict and VK regression mocks checked under `tsconfig.vk-tests.json`.
+- Run `bun run check` (strict typechecks, Biome with warnings as failures, tests, catalog validation) and `bun run build` before review. Root Biome covers TypeScript and Vue SFCs; Vue template-referenced imports/variables are verified by `vue-tsc` instead of Biome unused checks, which cannot see template bindings. The independently maintained `integrations/chatgpt-booster` workspace has its own TS/Biome checks.
+
 ## Release rules
 - Independent semver in each releasable `module.json`; use `module-name/vX.Y.Z` tags.
 - If a shared package change affects a distributed module, bump that module's version intentionally to trigger a release.

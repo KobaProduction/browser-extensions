@@ -1,10 +1,22 @@
+import type { VkAttachmentView, VkMessage } from './types'
 /* Offline HTML viewer: render-only, never fetches sibling JSON over file://. */
-export function viewerHTML(rows,peerId,attachmentView){
- const snapshot=rows.map(m=>({id:m.id,author:m.from_id,out:!!m.out,date:m.date,text:m.text||'',
-  media:attachmentView(m),reply:m.reply_message?{text:m.reply_message.text||'',from:m.reply_message.from_id}:null,
-  forwards:(m.fwd_messages||[]).map(f=>({text:f.text||'',from:f.from_id}))}));
- const embed=JSON.stringify(snapshot).replace(/</g,'\\u003c');
- return `<!DOCTYPE html><html lang="ru"><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+export function viewerHTML(
+  rows: readonly VkMessage[],
+  peerId: number,
+  attachmentView: (message: VkMessage) => VkAttachmentView[],
+): string {
+  const snapshot = rows.map((m) => ({
+    id: m.id,
+    author: m.from_id,
+    out: !!m.out,
+    date: m.date,
+    text: m.text || '',
+    media: attachmentView(m),
+    reply: m.reply_message ? { text: m.reply_message.text || '', from: m.reply_message.from_id } : null,
+    forwards: (m.fwd_messages || []).map((f) => ({ text: f.text || '', from: f.from_id })),
+  }))
+  const embed = JSON.stringify(snapshot).replace(/</g, '\\u003c')
+  return `<!DOCTYPE html><html lang="ru"><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>VK Booster — диалог ${peerId}</title><style>
 :root{color-scheme:light;font:15px/1.5 system-ui,sans-serif;background:#f3f5fa;color:#202838}
 *{box-sizing:border-box}body{margin:0}.top{position:sticky;top:0;background:white;border-bottom:1px solid #d8deeb;padding:14px 18px;z-index:5}
@@ -35,5 +47,5 @@ else box.append(elt('div','by','Вложение ('+a.type+'): '+a.status));
 if(a.transcript)box.append(elt('div','quote','Расшифровка: '+a.transcript))}
 fragment.append(box)}
 list.append(fragment);stats.textContent=found.length+' / '+entries.length+' сообщений · локальный архив'}
-q.addEventListener('input',render);render();</script></html>`;
+q.addEventListener('input',render);render();</script></html>`
 }

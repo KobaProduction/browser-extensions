@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+
 const props = defineProps<{ value: unknown }>()
 function escapeHtml(value: string) {
   return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
 }
 function highlight(value: unknown) {
   const source = JSON.stringify(value, null, 2) ?? 'null'
-  const token = /"(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(?=\s*:)?|"(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"|\b(?:true|false|null)\b|-?\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b/g
+  const token =
+    /"(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(?=\s*:)?|"(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"|\b(?:true|false|null)\b|-?\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b/g
   let output = ''
   let last = 0
   for (const match of source.matchAll(token)) {

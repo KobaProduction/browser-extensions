@@ -1,2 +1,2 @@
-export { mountControlCenter } from './mount'
 export type { ControlCenter, ControlCenterOptions } from './mount'
+export { mountControlCenter } from './mount'

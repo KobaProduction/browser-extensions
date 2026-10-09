@@ -17,13 +17,13 @@ export async function readArchiveMedia(
   options: ArchiveMediaReadOptions,
 ): Promise<ArchiveMediaResult> {
   const { maxBytes, expectedBytes = null } = options
-  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1)
-    throw new Error('Invalid media limit')
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) throw new Error('Invalid media limit')
   if (expectedBytes !== null && (!Number.isSafeInteger(expectedBytes) || expectedBytes < 0))
     throw new Error('Invalid expected media size')
   if (!response.ok) throw new Error('Media HTTP ' + response.status)
-  const mime = (response.headers.get('content-type') || 'application/octet-stream')
-    .split(';', 1)[0]!.trim().toLowerCase()
+  const mime =
+    (response.headers.get('content-type') || 'application/octet-stream').split(';', 1)[0] ??
+    'application/octet-stream'.trim().toLowerCase()
   if (mime === 'text/html' || mime === 'application/xhtml+xml')
     throw new Error('HTML returned instead of media')
   const lengthHeader = response.headers.get('content-length')
@@ -32,11 +32,15 @@ export async function readArchiveMedia(
   if (!response.body) throw new Error('Missing media stream')
   const reader = response.body.getReader()
   const chunks: Uint8Array[] = []
-  let size = 0, complete = false
+  let size = 0,
+    complete = false
   try {
     while (true) {
-      const {done, value} = await reader.read()
-      if (done) {complete = true; break}
+      const { done, value } = await reader.read()
+      if (done) {
+        complete = true
+        break
+      }
       size += value.byteLength
       if (size > maxBytes) throw new Error('Media exceeds size limit')
       chunks.push(value)
@@ -49,8 +53,11 @@ export async function readArchiveMedia(
     throw new Error('Invalid original media size')
   const bytes = new Uint8Array(size)
   let offset = 0
-  for (const chunk of chunks) {bytes.set(chunk, offset); offset += chunk.byteLength}
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))
-  const sha256 = Array.from(digest, x => x.toString(16).padStart(2, '0')).join('')
-  return {bytes, size, sha256, mime}
+  const sha256 = Array.from(digest, (x) => x.toString(16).padStart(2, '0')).join('')
+  return { bytes, size, sha256, mime }
 }

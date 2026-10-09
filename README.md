@@ -31,7 +31,7 @@ Requirements: Bun 1.4.2, Node.js 22, `zip`.
 
 ```bash
 bun install --frozen-lockfile
-bun run check
+bun run check   # strict TypeScript (including VK tests), Biome and regressions
 bun run build
 # Or target one module:
 bun scripts/build.ts --module vk-booster
@@ -109,3 +109,14 @@ the VK feature adapts its archive API/state to the widget inside that shell. Cha
 itself is not modified: its later adoption requires separate tests/review.
 The VK API/storage model remains transitional and is not a reusable archive
 library yet. This refactor does not change released versions or channels.
+
+## Static quality gates
+
+The VK exporter, provider, media mapper, viewer and regression fixtures are
+TypeScript-only. The first-party workspace uses strict TypeScript and
+`tsconfig.vk-tests.json` for mock/type contracts. Biome is required by
+`bun run check` with errors **and warnings** treated as failures;
+`bun run lint:fix` applies safe formatting and import organization. Vue SFC scripts are also formatted/linted by Biome; unused-binding checks in SFCs are deferred to template-aware `vue-tsc` to avoid false positives.
+The isolated ChatGPT Booster compatibility application under
+`integrations/chatgpt-booster` has its own independent strict TypeScript/Biome
+checks and is not implicitly modified by first-party lint commands.

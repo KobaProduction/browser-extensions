@@ -11,11 +11,15 @@ export function createArchiveFiles(getRoot: () => FileSystemDirectoryHandle) {
   }
 
   async function write(name: string, data: unknown, parent = getRoot()): Promise<void> {
-    const file = await parent.getFileHandle(name, {create:true})
+    const file = await parent.getFileHandle(name, { create: true })
     const writer = await file.createWritable()
     try {
-      const payload = data instanceof Uint8Array ? new Uint8Array(data)
-        : typeof data === 'string' || data instanceof Blob ? data : JSON.stringify(data, null, 2) + '\n'
+      const payload =
+        data instanceof Uint8Array
+          ? new Uint8Array(data)
+          : typeof data === 'string' || data instanceof Blob
+            ? data
+            : JSON.stringify(data, null, 2) + '\n'
       await writer.write(payload)
       await writer.close()
     } catch (error) {
@@ -25,8 +29,8 @@ export function createArchiveFiles(getRoot: () => FileSystemDirectoryHandle) {
   }
 
   async function dir(name: string, parent = getRoot()): Promise<FileSystemDirectoryHandle> {
-    return parent.getDirectoryHandle(name, {create:true})
+    return parent.getDirectoryHandle(name, { create: true })
   }
 
-  return {json, write, dir}
+  return { json, write, dir }
 }

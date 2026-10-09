@@ -1,30 +1,46 @@
 <script setup lang="ts">
-import {computed, ref} from 'vue'
-import {FolderOpen, Download, Pause, Play, Settings2, Archive} from 'lucide-vue-next'
-import {Button, Badge} from '@kobaproduction/browser-ui'
-import type {ArchiveManagerMode, ArchiveManagerOptions, ArchiveManagerState} from './types'
+import { Badge, Button } from '@kobaproduction/browser-ui'
+import { Archive, Download, FolderOpen, Pause, Play, Settings2 } from 'lucide-vue-next'
+import { computed, ref } from 'vue'
+import type { ArchiveManagerMode, ArchiveManagerOptions, ArchiveManagerState } from './types'
 
-const props=defineProps<{state:ArchiveManagerState; initial:ArchiveManagerOptions; error?:string; title?:string}>()
-const emit=defineEmits<{
-  (event:'choose-folder'):void
-  (event:'start',options:ArchiveManagerOptions):void
-  (event:'stop'):void
-  (event:'resume'):void
+const props = defineProps<{
+  state: ArchiveManagerState
+  initial: ArchiveManagerOptions
+  error?: string
+  title?: string
 }>()
-const mode=ref<ArchiveManagerMode>(props.initial.mode)
-const limit=ref(props.initial.limit)
-const from=ref(props.initial.from)
-const through=ref(props.initial.through)
-const pageSize=ref(props.initial.pageSize)
-const delay=ref(props.initial.delay)
-const media=ref(props.initial.media)
-const advanced=ref(false)
-const percent=computed(()=>props.state.total?
-  Math.min(100,Math.floor(props.state.done/props.state.total*100)):
-  props.state.phase==='Готово'?100:0)
-function start(){
-  emit('start',{mode:mode.value,limit:Number(limit.value),from:from.value,through:through.value,
-    pageSize:Number(pageSize.value),delay:Number(delay.value),media:media.value})
+const emit = defineEmits<{
+  (event: 'choose-folder'): void
+  (event: 'start', options: ArchiveManagerOptions): void
+  (event: 'stop'): void
+  (event: 'resume'): void
+}>()
+const mode = ref<ArchiveManagerMode>(props.initial.mode)
+const limit = ref(props.initial.limit)
+const from = ref(props.initial.from)
+const through = ref(props.initial.through)
+const pageSize = ref(props.initial.pageSize)
+const delay = ref(props.initial.delay)
+const media = ref(props.initial.media)
+const advanced = ref(false)
+const percent = computed(() =>
+  props.state.total
+    ? Math.min(100, Math.floor((props.state.done / props.state.total) * 100))
+    : props.state.phase === 'Готово'
+      ? 100
+      : 0,
+)
+function start() {
+  emit('start', {
+    mode: mode.value,
+    limit: Number(limit.value),
+    from: from.value,
+    through: through.value,
+    pageSize: Number(pageSize.value),
+    delay: Number(delay.value),
+    media: media.value,
+  })
 }
 </script>
 <template>

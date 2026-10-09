@@ -33,14 +33,15 @@ export function selectArchivePage<T>(input: ArchivePageScan<T>): ArchivePageSele
     throw new Error('Timestamp accessor required for date-filtered selection')
   const seenNew = new Set<string>()
   const added: T[] = []
-  let consumed = 0, matched = 0, boundaryReached = false
+  let consumed = 0,
+    matched = 0,
+    boundaryReached = false
   for (const item of input.records) {
     if (matched >= input.remaining) break
     consumed++
     if (input.fromInclusive != null || input.toExclusive != null) {
-      const time = input.timestampOf!(item)
-      if (time === null || !Number.isFinite(time))
-        throw new Error('Invalid archive source timestamp')
+      const time = input.timestampOf?.(item)
+      if (time == null || !Number.isFinite(time)) throw new Error('Invalid archive source timestamp')
       if (input.toExclusive != null && time >= input.toExclusive) continue
       if (input.fromInclusive != null && time < input.fromInclusive) {
         boundaryReached = true
@@ -55,7 +56,10 @@ export function selectArchivePage<T>(input: ArchivePageScan<T>): ArchivePageSele
       break
     }
     if (input.mode === 'backfill' && present) continue
-    if (!present) { seenNew.add(key); added.push(item) }
+    if (!present) {
+      seenNew.add(key)
+      added.push(item)
+    }
     matched++
   }
   return { consumed, matched, added, boundaryReached }

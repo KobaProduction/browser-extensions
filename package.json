@@ -10,8 +10,8 @@
     "apps/*"
   ],
   "scripts": {
-    "check": "bun run typecheck && bun run test && bun run validate",
-    "typecheck": "tsc --noEmit -p tsconfig.json && vue-tsc --noEmit -p packages/shell/tsconfig.json && vue-tsc --noEmit -p modules/vk-booster/tsconfig.json && vue-tsc --noEmit -p packages/widgets/tsconfig.json",
+    "check": "bun run typecheck && bun run lint && bun run test && bun run validate",
+    "typecheck": "tsc --noEmit -p tsconfig.json && vue-tsc --noEmit -p packages/shell/tsconfig.json && vue-tsc --noEmit -p modules/vk-booster/tsconfig.json && vue-tsc --noEmit -p packages/widgets/tsconfig.json && tsc --noEmit -p tsconfig.vk-tests.json",
     "test": "bun test --path-ignore-patterns=\"**/integrations/chatgpt-booster/**\"",
     "validate": "bun scripts/validate.ts",
     "build": "bun scripts/build.ts --module all",
@@ -20,7 +20,9 @@
     "release:plan": "bun scripts/release-plan.ts",
     "check:chatgpt": "cd integrations/chatgpt-booster && bun run check",
     "test:chatgpt": "cd integrations/chatgpt-booster && bun test",
-    "build:chatgpt": "cd integrations/chatgpt-booster && bun run build"
+    "build:chatgpt": "cd integrations/chatgpt-booster && bun run build",
+    "lint": "biome check --error-on-warnings .",
+    "lint:fix": "biome check --write ."
   },
   "devDependencies": {
     "@types/bun": "^1.3.0",
@@ -36,6 +38,7 @@
     "vue": "^3.5.22",
     "lucide-vue-next": "^0.545.0",
     "clsx": "^2.1.1",
-    "tailwind-merge": "^3.3.1"
+    "tailwind-merge": "^3.3.1",
+    "@biomejs/biome": "2.5.15"
   }
 }
