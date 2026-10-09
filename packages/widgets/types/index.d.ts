@@ -97,3 +97,29 @@ export declare const ArchiveProgressBar: DefineComponent<{
   percentLabel?: string
   compact?: boolean
 }>
+
+export interface ArchiveTranscriptRecord {
+  key: string
+  messageId: string
+}
+export interface ArchiveTranscriptTurn {
+  id: string
+  association: 'linked' | 'adjacency' | 'unassigned'
+  users: readonly ArchiveTranscriptRecord[]
+  details: readonly ArchiveTranscriptRecord[]
+  replies: readonly ArchiveTranscriptRecord[]
+}
+export interface ArchiveTranscriptCopy {
+  empty: string
+  unassigned: string
+  adjacency: string
+  details: string
+}
+export declare const ArchiveTranscript: DefineComponent<{
+  turns: readonly ArchiveTranscriptTurn[]
+  isEmpty: boolean
+  targetMessageId: string | null
+  copy: ArchiveTranscriptCopy
+}> & {
+  new (): { $slots: { record(props: { record: ArchiveTranscriptRecord }): unknown } }
+}

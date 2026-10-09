@@ -96,6 +96,14 @@ async function pack(name: string) {
       'tailwind-merge',
     ])
     await copyFile(join(root, 'packages', name, 'types/index.d.ts'), join(dir, 'index.d.ts'))
+    if (name === 'widgets') {
+      const widgetsSrc = join(root, 'packages', name, 'src')
+      const css = await Promise.all([
+        readFile(join(widgetsSrc, 'archive-conversation-list.css'), 'utf8'),
+        readFile(join(widgetsSrc, 'archive-transcript.css'), 'utf8'),
+      ])
+      await writeFile(join(dir, 'styles.css'), css.join('\n'))
+    }
   } else {
     const compiled = await Bun.build({
       entrypoints: [src],

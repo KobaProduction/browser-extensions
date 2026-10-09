@@ -21,7 +21,7 @@
 - `packages/core`: host-neutral contracts and state; no `window`, `chrome`, VK or ChatGPT selectors.
 - `packages/archive`: source-neutral linear page selection, paged-scan application ports, and bounded binary verification; no provider credentials, DOM, persistence implementation, or ChatGPT branch assumptions.
 - `packages/ui`: reusable shadcn-vue primitives with no provider knowledge.
-- `packages/widgets`: provider-neutral Archive Manager, conversation navigator, progress and dock geometry; emit actions/receive props, never query provider data or own persistence. Widgets own their portable styles; target-specific CSS uses existing Shadow DOM style entries.
+- `packages/widgets`: provider-neutral Archive Manager, conversation navigator, transcript, progress and dock geometry; emit actions/receive props, never query provider data or own persistence. Widgets own their portable styles; target-specific CSS uses existing Shadow DOM style entries.
 - `packages/shell`: common draggable launcher, center modal, Shadow DOM and module slots.
 - `packages/adapters`: permission-checked user-script/Chrome bridges and source-neutral File System Access output.
 - `packages/storage`: framework-neutral IndexedDB request/transaction completion; physical schemas and migrations remain owned by their domain integrations.

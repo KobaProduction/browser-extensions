@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import "../../widgets/src/archive-conversation-list.css";
+@import "@kobaproduction/browser-widgets/styles.css";
 @source "./**/*.{vue,ts}";
 @source "../../ui/src/**/*.{vue,ts}";
 @source "../../widgets/src/**/*.{vue,ts}";

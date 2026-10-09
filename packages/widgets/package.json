@@ -2,7 +2,9 @@
   "name": "@kobaproduction/browser-widgets",
   "version": "0.1.0",
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./dist/styles.css"
+  ],
   "files": [
     "dist"
   ],
@@ -10,7 +12,8 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./styles.css": "./dist/styles.css"
   },
   "dependencies": {
     "vue": "^3.5.22",

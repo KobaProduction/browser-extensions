@@ -18,9 +18,9 @@
     "build:vk": "bun scripts/build.ts --module vk-booster",
     "build:changed": "bun scripts/build.ts --module changed",
     "release:plan": "bun scripts/release-plan.ts",
-    "check:chatgpt": "bun run build:shared && cd integrations/chatgpt-booster && bun run check",
-    "test:chatgpt": "bun run build:shared && cd integrations/chatgpt-booster && bun test",
-    "build:chatgpt": "bun run build:shared && cd integrations/chatgpt-booster && bun run build",
+    "check:chatgpt": "bun run build:shared && cd integrations/chatgpt-booster && bun install --force --frozen-lockfile && bun run check",
+    "test:chatgpt": "bun run build:shared && cd integrations/chatgpt-booster && bun install --force --frozen-lockfile && bun test",
+    "build:chatgpt": "bun run build:shared && cd integrations/chatgpt-booster && bun install --force --frozen-lockfile && bun run build",
     "lint": "biome check --error-on-warnings .",
     "lint:fix": "biome check --write .",
     "build:shared": "bun scripts/build.ts --module packages"

@@ -24,14 +24,19 @@ The source repository is left unchanged.
   and imported by the ChatGPT and VK Shadow DOM stylesheet entries.
   The docked ArchiveWorkspace's ratio/clamp logic lives in generic
   `window-geometry`, and `ArchiveProgressBar` is consumed by both
-  ChatGPT Export and the VK Archive Manager.
+  ChatGPT Export and the VK Archive Manager. The Archive Browser turn layout
+  now uses `ArchiveTranscript`, a neutral slot-based widget driven by keys and
+  association states mapped in `archive-transcript-adapter.ts`. Its anchor/focus
+  structure and CSS live with the shared widget; ChatGPT retains the renderer.
   ChatGPT's native record presentation/branch graph remains ChatGPT-owned
   until the stable canonical ContentElement projection is implemented.
 - **Storage infrastructure**: reusable IndexedDB request and transaction
   completion functions now live in `packages/storage`. Both imported v3 and
   v4 stores consume them. The v4 physical IndexedDB schema/open/validation is
   isolated in `archive-v4-database.ts`, separate from v4 ingest/reader logic.
-  The actual database identifiers, indexes and owner-scoped write contract
+  Account-scoped project/conversation/message lookups and bounded revision
+  evidence now live in `archive-v4-queries.ts`; the same `ArchiveV4Store`
+  methods delegate to them. The actual database identifiers, indexes and owner-scoped write contract
   are preserved; no database is opened, renamed or migrated by this import.
 
 ## Architecture and data protection
@@ -53,13 +58,13 @@ ChatGPT or already saved verified canonical reads.
 
 ## Remaining extraction boundaries
 
-1. **Archive interface**: the conversation sidebar, docked geometry, and
-   shared progress are extracted. The ChatGPT-only export option matrix is
+1. **Archive interface**: the conversation sidebar, transcript layout,
+   docked geometry and shared progress are extracted. The ChatGPT-only export option matrix is
    moved from `ArchiveExportDialog` to `ArchiveExportOptions.vue`;
    the parent owns preferences, readiness, cancellation and output.
-   Continue splitting `ArchiveBrowser` message/graph presentation,
-   `ArchiveRecord`, export readiness, and source-aware navigation into
-   shared canonical reader/export contracts and a ChatGPT presentation adapter. Reuse
+   Continue extracting async reader navigation/scroll lifecycles,
+   ChatGPT-specific `ArchiveRecord` content rendering, graph/fork handling
+   and export-operation state behind accepted canonical read/output ports. Reuse
    canonical domain entities and explicit provider capabilities; do not
    equate VK linear offset pagination with ChatGPT verified branch history.
 2. **Canonical storage and migration**: move domain/message-element contracts
@@ -83,7 +88,9 @@ The copied application has its own Bun workspace. Its root has a local
 Bun override for `@kobaproduction/browser-ui`; `browser-widgets` declares
 `browser-ui` as a versioned peer dependency. Root `bun run check:chatgpt`,
 `bun run test:chatgpt` and `bun run build:chatgpt` compile the shared
-packages first. No source copies or registry fetch are needed for local use.
+packages first, then refresh the imported workspace's file-dependency snapshots before the target command. This is necessary
+because Bun file dependencies can retain previously compiled declaration files;
+it does not copy any source into the repository or fetch a new package.
 Generated outputs stay ignored. Root Browser Extensions checks explicitly ignore the copied application
 so that two independent application test suites do not share mutable global
 mocks. The imported ChatGPT application is validated by its own commands. No PR, push or release occurs until the integrated migration is accepted.

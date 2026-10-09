@@ -13,8 +13,9 @@ import Minus from 'lucide-vue-next/dist/esm/icons/minus.js'
 import RefreshCw from 'lucide-vue-next/dist/esm/icons/refresh-cw.js'
 import X from 'lucide-vue-next/dist/esm/icons/x.js'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ArchiveConversationList, type ArchiveConversationGroup } from '@kobaproduction/browser-widgets'
+import { ArchiveConversationList, ArchiveTranscript, type ArchiveConversationGroup } from '@kobaproduction/browser-widgets'
 import ArchiveRecord from './ArchiveRecord.vue'
+import {projectArchiveTranscript} from './archive-transcript-adapter'
 import ArchiveFlowGraph from './ArchiveFlowGraph.vue'
 import {
   archiveConversationForest,
@@ -177,6 +178,13 @@ const displayedTurns = computed(() => {
   }
   return archiveTurnWindow(filteredTurns.value, visibleCount.value, readingOrder.value)
 })
+const transcript = computed(() => projectArchiveTranscript(displayedTurns.value))
+const transcriptCopy = computed(() => ({
+  empty:t('reader.noResults'),
+  unassigned:t('reader.unassigned'),
+  adjacency:t('reader.adjacency'),
+  details:t('reader.details'),
+}))
 const forkChoices = computed(() => archiveForkChoices(thread.value))
 const navigationNodes = computed(() =>
   thread.value.turns.flatMap(turn => turn.messages.filter(item => item.kind === 'user' || item.kind === 'answer')),
@@ -821,19 +829,15 @@ onBeforeUnmount(() => {
           <div ref="readingScroll" class="booster-reader-scroll" @scroll.passive="onReadingScroll">
             <p v-if="threadLoading" role="status" class="booster-reader-loading"><LoaderCircle class="size-4 booster-reader-spinner" />{{ t('reader.loading') }}<button type="button" class="booster-action-secondary" @click="cancelNavigation">{{ t('reader.cancelNavigation') }}</button></p>
             <template v-else-if="selected">
-              <div class="booster-reader-exchanges">
-                <p v-if="!filteredTurns.length" class="booster-note">{{ t('reader.noResults') }}</p>
-                <article v-for="turn in displayedTurns" :key="turn.id" class="booster-exchange">
-                  <p v-if="turn.association === 'unassigned'" class="booster-note">{{ t('reader.unassigned') }}</p>
-                  <p v-else-if="turn.association === 'adjacency'" class="booster-note">{{ t('reader.adjacency') }}</p>
-                  <div v-for="item in turn.messages.filter(i => i.kind === 'user')" :key="item.record.messageKey" :data-archive-node="item.record.messageKey" :data-archive-message="item.record.messageId" :class="{ 'booster-message-target': requestedMessageId === item.record.messageId }" tabindex="-1"><ArchiveRecord :item="item" :locale="locale" :expand-reasoning="reasoningExpanded" :focused="requestedMessageId === item.record.messageId" /></div>
-                  <div v-if="turn.details.length" class="booster-exchange-details">
-                    <div class="booster-exchange-details-label">{{ t('reader.details') }} · {{ turn.details.length }}</div>
-                    <div v-for="item in turn.details" :key="item.record.messageKey" :data-archive-node="item.record.messageKey" :data-archive-message="item.record.messageId" :class="{ 'booster-message-target': requestedMessageId === item.record.messageId }" tabindex="-1"><ArchiveRecord :item="item" :locale="locale" :expand-reasoning="reasoningExpanded" :focused="requestedMessageId === item.record.messageId" /></div>
-                  </div>
-                  <div v-for="item in turn.messages.filter(i => i.kind !== 'user')" :key="item.record.messageKey" :data-archive-node="item.record.messageKey" :data-archive-message="item.record.messageId" :class="{ 'booster-message-target': requestedMessageId === item.record.messageId }" tabindex="-1"><ArchiveRecord :item="item" :locale="locale" :expand-reasoning="reasoningExpanded" :focused="requestedMessageId === item.record.messageId" /></div>
-                </article>
-              </div>
+              <ArchiveTranscript :turns="transcript.turns" :is-empty="!filteredTurns.length"
+                :target-message-id="requestedMessageId" :copy="transcriptCopy">
+                <template #record="{record}">
+                  <ArchiveRecord v-if="transcript.byKey.get(record.key)"
+                    :item="transcript.byKey.get(record.key)!"
+                    :locale="locale" :expand-reasoning="reasoningExpanded"
+                    :focused="requestedMessageId===record.messageId"/>
+                </template>
+              </ArchiveTranscript>
             </template>
             <p v-else-if="!listLoading" class="booster-note">{{ t('reader.missing') }}</p>
           </div>

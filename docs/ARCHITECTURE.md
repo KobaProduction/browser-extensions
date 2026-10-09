@@ -44,12 +44,14 @@ does not replace live VK browser acceptance or solve v2 multi-file atomicity.
 The imported ChatGPT DEV application remains under `integrations/chatgpt-booster`
 with an independent build and rollback path. Its Archive Browser delegates
 conversation list presentation to `packages/widgets/ArchiveConversationList`,
-docked-window positioning to portable widget geometry, and export progress
-to `ArchiveProgressBar`, which VK Archive Manager also consumes.
+neutral transcript layout to `ArchiveTranscript` with ChatGPT record slots,
+docked-window positioning to portable widget geometry, and export progress to
+`ArchiveProgressBar`, which VK Archive Manager also consumes.
 The ChatGPT-specific export format/level/evidence form is a separate
 `ArchiveExportOptions.vue` feature view; source-specific options are not
 projected into VK. V4 archive entity/metadata types, physical database
-validation and indexed window reads have separate owners. This is
+validation, indexed window reads, and account-scoped read/revision queries
+have separate owners. Source proof and transactional ingestion remain ChatGPT-owned. This is
 **source decomposition only**, not canonical migration, data move or
 ChatGPT browser acceptance.
 
