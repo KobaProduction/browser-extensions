@@ -24,7 +24,9 @@
 - `packages/widgets`: source-neutral archive-management presentation; emit actions, never query provider data or own persistence.
 - `packages/shell`: common draggable launcher, center modal, Shadow DOM and module slots.
 - `packages/adapters`: permission-checked user-script/Chrome bridges and source-neutral File System Access output.
+- `packages/storage`: framework-neutral IndexedDB request/transaction completion; physical schemas and migrations remain owned by their domain integrations.
 - `modules/<id>`: host-specific code, capabilities and a `module.json` contract.
+- `integrations/chatgpt-booster`: isolated clean ChatGPT application baseline; read its AGENTS.md and canonical archive authority before changes; preserve v3/v4 databases and do not import uncommitted source changes blindly.
 - `apps/userscript` / `apps/extension`: delivery adapters only, no copied feature code.
 - Proxy routing must use privileged extension background APIs after permission; a userscript cannot set browser proxy settings.
 - Never log, commit or export browser cookies, access tokens or private conversation data. Testing fixtures must be synthetic; real personal content belongs only in ignored local files.

@@ -90,11 +90,14 @@
         "vue": "^3.5.22",
       },
     },
+    "packages/storage": {
+      "name": "@kobaproduction/browser-storage",
+      "version": "0.1.0",
+    },
     "packages/ui": {
       "name": "@kobaproduction/browser-ui",
       "version": "0.1.0",
       "dependencies": {
-        "@kobaproduction/browser-core": "workspace:*",
         "clsx": "^2.1.1",
         "tailwind-merge": "^3.3.1",
         "vue": "^3.5.22",
@@ -190,6 +193,8 @@
     "@kobaproduction/browser-extension": ["@kobaproduction/browser-extension@workspace:apps/extension"],
 
     "@kobaproduction/browser-shell": ["@kobaproduction/browser-shell@workspace:packages/shell"],
+
+    "@kobaproduction/browser-storage": ["@kobaproduction/browser-storage@workspace:packages/storage"],
 
     "@kobaproduction/browser-ui": ["@kobaproduction/browser-ui@workspace:packages/ui"],
 

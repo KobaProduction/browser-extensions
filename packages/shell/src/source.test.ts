@@ -6,7 +6,11 @@ test('shared launcher uses the ChatGPT Booster draggable overlay contract',async
  expect(source).toContain('onPointerDown')
  expect(source).toContain('onPointerMove')
  expect(source).toContain('savePosition')
- expect(source).toContain('booster-modal-backdrop')
+ expect(source).toContain('ModalSurface')
+ expect(source).toContain('surface-class="booster-modal-surface"')
+ const modal=await read('../../ui/src/components/booster/ModalSurface.vue')
+ expect(modal).toContain('booster-modal-backdrop')
+ expect(modal).toContain('aria-modal="true"')
  expect(source).toContain('ControlCenterPanel')
 })
 test('central shell allows supplied feature views without provider-specific imports',async()=>{

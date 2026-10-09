@@ -57,7 +57,7 @@ async function pack(name:string){
   emitTypes(name,src,dir)
  }
 }
-for(const name of ['core','adapters','archive','ui','widgets','shell'])await pack(name)
+for(const name of ['core','adapters','storage','archive','ui','widgets','shell'])await pack(name)
 for(const id of ids){
  const info=await manifest(id)
  if(!info.release)throw Error('Module '+id+' is not releasable')

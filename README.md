@@ -10,6 +10,11 @@ and widgets, the archive engine, shared application shell and compatibility
 rules. [Current architecture](docs/ARCHITECTURE.md) describes **running code**.
 The target is approved as a direction, not yet fully implemented.
 
+The ChatGPT Booster application is being migrated under
+`integrations/chatgpt-booster/`. It has its own local build and current
+canonical-archive migration requirements. See [migration status](docs/CHATGPT_MIGRATION.md);
+this does not imply ChatGPT v3/v4 data have been migrated.
+
 ## Current modules
 
 | Module | Status | Targets | Source |
@@ -52,6 +57,7 @@ packages/ui/            shared shadcn-vue primitives and design tokens
 packages/widgets/       provider-neutral Archive Manager form and progress
 packages/shell/         Booster-derived draggable shell and module views
 packages/adapters/      userscript/Chrome bridges, generic folder output and future proxy interfaces
+packages/storage/       generic IndexedDB transaction primitives
 modules/vk-booster/     VK-specific model and chat-export feature UI
 modules/proxy-switcher/ capability-gated future proxy adapter, not shipped
 apps/userscript/        module and all-in-one userscript entries

@@ -88,8 +88,9 @@ This is a **proposed ownership map**, not an already implemented tree:
 **Actual layout today:** packages/core, packages/archive (linear selector,
 acknowledgement-gated scan loop, and bounded media reader),
 packages/ui, packages/widgets (Archive Manager presentation), packages/shell,
-packages/adapters (including folder output),
-modules/*, apps/userscript and apps/extension. A presentation-only Archive
+packages/adapters (including folder output), packages/storage (generic IndexedDB),
+modules/*, apps/userscript and apps/extension; the imported ChatGPT compatibility
+app and its legacy v3/v4 archive are under integrations/chatgpt-booster/. A presentation-only Archive
 Manager widget is implemented; a multi-source archive controller/repository/output,
 validated ChatGPT adapter and source-independent archival domain are still targets.
 Existing code and tests continue to govern behavior until reviewed migration.

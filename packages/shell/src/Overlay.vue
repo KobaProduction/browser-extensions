@@ -8,6 +8,7 @@ import type { FeatureRuntime } from '@kobaproduction/browser-core'
 import { GripVertical } from 'lucide-vue-next'
 import { onMounted, onBeforeUnmount, ref, computed, type Component } from 'vue'
 import ControlCenterPanel from './ControlCenterPanel.vue'
+import {ModalSurface} from '@kobaproduction/browser-ui'
 
 const props = defineProps<{
   runtime: FeatureRuntime
@@ -87,11 +88,9 @@ onBeforeUnmount(()=>{
 
 <template>
   <div class="booster-overlay-root">
-    <div v-if="open" class="booster-modal-backdrop" @click.self="open = false">
-      <div class="booster-modal-surface">
-        <ControlCenterPanel :runtime="runtime" :views="views" :title="title" :selected-section="selectedSection" @close="closePanel" />
-      </div>
-    </div>
+    <ModalSurface v-if="open" :label="title" surface-class="booster-modal-surface" @close="closePanel">
+      <ControlCenterPanel :runtime="runtime" :views="views" :title="title" :selected-section="selectedSection" @close="closePanel" />
+    </ModalSurface>
     <button
       v-if="launcher"
       class="booster-launcher"
