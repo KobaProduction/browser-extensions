@@ -87,3 +87,31 @@ links, persist bytes or claim that provider-specific binaries exist. VK uses the
 reader behind its own attachment mapping and fallback logic. ChatGPT v4 has
 not established binary-asset completeness, so this utility alone does not
 authorize or implement ChatGPT asset export.
+
+## Linear archive scan application port (implemented)
+
+`scanLinearArchive` coordinates a descending **linear** source through the
+`source.readPage(offset, count)` port and calls `commit({selection, previous,
+next, sourceTotal})` before advancing its internal cursor, known IDs or
+requesting another page. It also supports stop/pause checks and delay between
+pages; the caller supplies validated source records, stable identity and
+timestamp mapping, persistent checkpoint semantics and final output. VK Booster
+now uses this application loop, retaining its v2 JSON files, media handling and
+pause/resume state.
+
+The VK port builds the next records/checkpoint snapshot separately and
+publishes it in memory only after the File System Access driver confirms its
+writes. This avoids advancing the visible cursor after a failed write; it
+does **not** claim a multi-file atomic transaction for `messages.json` and
+`metadata.json`. A crash between those writes still needs v2 recovery.
+
+The archive package exposes Bun's TypeScript source entry (included in its
+package contents) and compiled JavaScript/declaration entries for other
+consumers. It is tested through the actual local package manifest; no external
+registry publication has occurred.
+
+This is not a complete multi-source archive controller. In particular it
+neither verifies a ChatGPT branch lineage nor satisfies the v4 account,
+source-version, immutable-message and single-transaction store contracts.
+ChatGPT v4 adoption requires an independently verified integration, not a
+blind replacement of its collection pipeline.

@@ -1,4 +1,4 @@
-import {selectArchivePage} from '@kobaproduction/browser-archive'
+import {scanLinearArchive} from '@kobaproduction/browser-archive'
 import {createArchiveFiles} from '@kobaproduction/browser-adapters'
 import {viewerHTML} from './offline-viewer.js'
 import {createVkProvider} from '../api/vk-provider.js'
@@ -21,11 +21,17 @@ const known=()=>new Map(rows.map(m=>[m.id,m]));
 const blank=()=>({schema:2,version:VERSION,peer_id:cfg.peerId,updated:ts(),total:0,checkpoint:null,files:{},runs:[],conversation:null});
 const {json,write,dir}=createArchiveFiles(()=>root);
 const sorted=()=>rows.sort((a,b)=>a.date-b.date||a.id-b.id);
+async function persistSnapshot(nextRows,nextMeta){
+ const ordered=[...nextRows].sort((a,b)=>a.date-b.date||a.id-b.id);
+ const savedMeta={...nextMeta,total:ordered.length,updated:ts(),
+  lastMessageDate:ordered.length?new Date(ordered.at(-1).date*1000).toISOString():null};
+ await write('messages.json',{schema:2,peer_id:cfg.peerId,messages:ordered});
+ await write('metadata.json',savedMeta);
+ return {ordered,savedMeta};
+}
 async function checkpoint(){
- sorted();meta.total=rows.length;meta.updated=ts();
- meta.lastMessageDate=rows.length?new Date(rows.at(-1).date*1000).toISOString():null;
- await write('messages.json',{schema:2,peer_id:cfg.peerId,messages:rows});
- await write('metadata.json',meta);
+ const {ordered,savedMeta}=await persistSnapshot(rows,meta);
+ rows=ordered;meta=savedMeta;
  refresh();
 }
 function status(){return {version:VERSION,folder:root?.name||null,busy,options:{...cfg},
@@ -99,7 +105,7 @@ async function run(options={}){
  if(!await auth())throw Error('Не удалось авторизовать VK API из хранилища');
  busy=true;stopRequested=false;
  if(resume && meta.checkpoint?.settings)Object.assign(cfg,meta.checkpoint.settings);
- const index=known(),identities=new Set([...index.keys()].map(String));
+ let index=known();const identities=new Set([...index.keys()].map(String));
  const lower=unixDay(cfg.from),upper=cfg.through?unixDay(cfg.through)+86400:null;
  const countTarget=cfg.limit;
  let cp=resume&&meta.checkpoint&&['paused','running'].includes(meta.checkpoint.status)
@@ -111,30 +117,32 @@ async function run(options={}){
  try{
   if(!meta.conversation && vk.hasToken()){try{meta.conversation=await api('messages.getConversationsById',{peer_ids:String(cfg.peerId),extended:0})}catch{}}
   if(cp.phase==='messages'){
-   while(!stopRequested && cp.matched<cp.target){
-    const batch=await history(cp.offset,cfg.pageSize);
-    cp.totalVK=batch.count;
-    if(!batch.items.length||cp.offset>=batch.count){cp.phase='media';break}
-    const selection=selectArchivePage({
-      mode:cp.mode,records:batch.items,knownKeys:identities,
-      keyOf:m=>String(m.id),timestampOf:m=>m.date,
-      fromInclusive:lower,toExclusive:upper,remaining:cp.target-cp.matched
-    });
-    cp.scanned+=selection.consumed;
-    cp.matched+=selection.matched;
-    for(const item of selection.added){index.set(item.id,item);identities.add(String(item.id));cp.newCount++}
-    cp.offset+=selection.consumed;
-    rows=[...index.values()];sorted();
-    if(cp.mode==='backfill')meta.backfillOffset=cp.offset;
-    if(cp.mode==='incremental')meta.backfillOffset=(meta.backfillOffset||0)+cp.newCount-(cp.shifted||0);
-    if(cp.mode==='recent')meta.backfillOffset=Math.max(meta.backfillOffset||0,cp.offset);
-    cp.shifted=cp.newCount;
-    cp.status='running';meta.checkpoint=cp;
-    await checkpoint();progress('Сообщения',cp.matched,cp.target,{newCount:cp.newCount,scanned:cp.scanned});
-    if(selection.boundaryReached||cp.offset>=batch.count||batch.items.length<cfg.pageSize){cp.phase='media';break}
-    if(!stopRequested)await sleep(cfg.delay);
-   }
-   if(cp.matched>=cp.target)cp.phase='media';
+   const result=await scanLinearArchive({
+    mode:cp.mode,target:cp.target,pageSize:cfg.pageSize,knownKeys:identities,
+    keyOf:m=>String(m.id),timestampOf:m=>m.date,fromInclusive:lower,toExclusive:upper,
+    initial:{offset:cp.offset,matched:cp.matched,scanned:cp.scanned,newCount:cp.newCount},
+    source:{readPage:(offset,count)=>history(offset,count)},
+    stopped:()=>stopRequested,
+    delay:()=>sleep(cfg.delay),
+    async commit({selection,next,sourceTotal}){
+     const candidateIndex=new Map(index);
+     for(const item of selection.added)candidateIndex.set(item.id,item);
+     const nextCp={...cp,totalVK:sourceTotal,offset:next.offset,matched:next.matched,
+      scanned:next.scanned,newCount:next.newCount,shifted:next.newCount,status:'running'};
+     let backfillOffset=meta.backfillOffset||0;
+     if(cp.mode==='backfill')backfillOffset=next.offset;
+     if(cp.mode==='incremental')backfillOffset+=next.newCount-(cp.shifted||0);
+     if(cp.mode==='recent')backfillOffset=Math.max(backfillOffset,next.offset);
+     const {ordered,savedMeta}=await persistSnapshot(
+      [...candidateIndex.values()],{...meta,backfillOffset,checkpoint:nextCp});
+     // Only publish the page and its checkpoint after the folder driver acknowledges both writes.
+     index=candidateIndex;rows=ordered;meta=savedMeta;cp=nextCp;
+     refresh();
+     progress('Сообщения',cp.matched,cp.target,{newCount:cp.newCount,scanned:cp.scanned});
+    }
+   });
+   if(result.sourceTotal!==null)cp.totalVK=result.sourceTotal;
+   if(!result.paused)cp.phase='media';
   }
   if(stopRequested){cp.status='paused';await checkpoint();return {paused:true,progress:status().progress}}
   if(cp.phase==='media'){

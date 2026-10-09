@@ -146,3 +146,26 @@ test('rejecting malformed new folder preserves previously selected archive',asyn
  const result=await a.run({mode:'recent',limit:2,pageSize:2,media:false,delay:300});
  expect(result.saved).toBe(before.messages);
 });
+
+test('failed metadata commit does not advance visible cursor or silently keep unsaved rows',async()=>{
+ a=reload();
+ const scratch=new MockDir('write-failure');
+ await a.useFolder(scratch);
+ const md=await scratch.getFileHandle('metadata.json');
+ const originalWritable=md.createWritable.bind(md);
+ let failOnce=true;
+ md.createWritable=async()=>{
+  const writer=await originalWritable();
+  return {...writer,async write(data){
+   if(failOnce){failOnce=false;throw Error('synthetic metadata disk failure')}
+   await writer.write(data);
+  }}
+ };
+ await expect(a.run({mode:'recent',limit:12,pageSize:12,media:false,delay:300})).rejects.toThrow('synthetic metadata disk failure');
+ expect(a.status().messages).toBe(0);
+ expect((await (await scratch.getFileHandle('messages.json')).getFile().then(f=>f.text())).includes('"messages": []')).toBe(true);
+ const cp=(await (await scratch.getFileHandle('metadata.json')).getFile().then(f=>f.text()));
+ expect(JSON.parse(cp).checkpoint.offset).toBe(0);
+ const resumed=await a.resume();
+ expect(resumed.saved).toBe(12);
+});

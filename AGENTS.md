@@ -19,7 +19,7 @@
 
 ## Package rules
 - `packages/core`: host-neutral contracts and state; no `window`, `chrome`, VK or ChatGPT selectors.
-- `packages/archive`: source-neutral linear page selection and bounded binary response decoding/checksums; no provider credentials, DOM, persistence, or ChatGPT branch assumptions.
+- `packages/archive`: source-neutral linear page selection, paged-scan application ports, and bounded binary verification; no provider credentials, DOM, persistence implementation, or ChatGPT branch assumptions.
 - `packages/ui`: reusable shadcn-vue primitives with no provider knowledge.
 - `packages/widgets`: source-neutral archive-management presentation; emit actions, never query provider data or own persistence.
 - `packages/shell`: common draggable launcher, center modal, Shadow DOM and module slots.
@@ -36,4 +36,4 @@
 - The CI `zoomies-linux-x64` runner is for trusted branch/main code; fork PRs must not run there.
 
 ## Known migration debt
-VK Booster is a real, tested v2 browser exporter wrapped behind typed `Feature` lifecycle. Its VK API, media mapping and offline viewer have separate internal owners. Linear page selection uses browser-archive, folder writes browser-adapters, and the archive form browser-widgets. Sync/checkpoint orchestration remains VK-local until a real second consumer and an accepted common contract exist. Preserve 3000-message, offline HTML, attachment and resumption behavior; do not fork the engine between targets.
+VK Booster is a real, tested v2 browser exporter wrapped behind typed `Feature` lifecycle. Its VK API, media mapping and offline viewer have separate internal owners. Linear page selection and the acknowledgement-gated scan loop use browser-archive; folder writes use browser-adapters, and the archive form uses browser-widgets. VK still owns v2 checkpoint format, media work, provider authentication and storage. The complete branch-aware, multi-source archive controller remains unimplemented. Preserve 3000-message, offline HTML, attachment and resumption behavior; do not fork the engine between targets.

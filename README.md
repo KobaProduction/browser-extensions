@@ -18,7 +18,7 @@ The target is approved as a direction, not yet fully implemented.
 | Proxy Switcher | Typed interface and capability boundary only | Future MV3 background | `modules/proxy-switcher/` |
 | All-in-one | Launcher with VK Booster; other modules can be enabled later | Tampermonkey, Chromium | `apps/` |
 
-VK Booster preserves source messages, attachments, photos, document names, voice messages and a self-contained offline HTML chat. Its form is a VK-specific Vue presenter around a reusable Archive Manager widget inside the shared Control Center, without a second modal. The previous standalone userscript menu handler was removed, so installing a bundle does not register duplicate menus. The VK-specific API provider, attachment selection/fallback, and offline HTML renderer are separate modules. Neutral linear page selection and bounded binary response verification (MIME, size, SHA-256) are implemented in `packages/archive`; the File System Access writer is shared via `packages/adapters`. This does not imply that ChatGPT v4 binary asset contracts have been accepted. Archive orchestration/checkpoints remain within the VK feature until a second real archive consumer can validate a shared controller; the v2 output format is preserved.
+VK Booster preserves source messages, attachments, photos, document names, voice messages and a self-contained offline HTML chat. Its form is a VK-specific Vue presenter around a reusable Archive Manager widget inside the shared Control Center, without a second modal. The previous standalone userscript menu handler was removed, so installing a bundle does not register duplicate menus. The VK-specific API provider, attachment selection/fallback, and offline HTML renderer are separate modules. Neutral linear page selection, acknowledgement-gated scan orchestration and bounded binary response verification (MIME, size, SHA-256) are implemented in `packages/archive`; the File System Access writer is shared via `packages/adapters`. This does not imply that ChatGPT v4 binary asset contracts have been accepted. VK retains its v2 checkpoint persistence, provider-specific media and final HTML output; the shared scan service injects source and commit ports. No branch-aware, multi-source controller is claimed; the v2 output format is preserved.
 
 ## Install and build
 
@@ -47,7 +47,7 @@ Tampermonkey: install a generated `.user.js` (for the chat use `vk-booster.user.
 
 ```text
 packages/core/          typed feature registry, lifecycle, settings, permissions
-packages/archive/       linear page selection and bounded binary response verification
+packages/archive/       linear paging/scanning application and bounded media verification
 packages/ui/            shared shadcn-vue primitives and design tokens
 packages/widgets/       provider-neutral Archive Manager form and progress
 packages/shell/         Booster-derived draggable shell and module views
