@@ -1,6 +1,6 @@
 # Reusing Browser Core from ChatGPT Booster
 
-The packages `@kobaproduction/browser-core`, `@kobaproduction/browser-ui`, `@kobaproduction/browser-shell` and `@kobaproduction/browser-adapters` have explicit ESM/TypeScript entry points and are built independently of VK Booster. The registry accepts any host-specific module implementing the `Feature` interface.
+The packages `@kobaproduction/browser-core`, `@kobaproduction/browser-archive`, `@kobaproduction/browser-ui`, `@kobaproduction/browser-widgets`, `@kobaproduction/browser-shell` and `@kobaproduction/browser-adapters` have explicit ESM/TypeScript entry points and are built independently of VK Booster. The registry accepts any host-specific module implementing the `Feature` interface.
 
 Example in ChatGPT Booster or a separate extension:
 
@@ -53,3 +53,25 @@ Browser UI exports generic shadcn-vue components. Browser Shell exports a
 common Control Center accepting FeatureRuntime and module views. ChatGPT
 Booster remains an independent repository and may adopt these public APIs
 after its own runtime/CI checks; provider integrations are not copied.
+
+## Portable archive selection (implemented)
+
+`@kobaproduction/browser-archive` exports `selectArchivePage`, a provider-neutral
+**linear-descending** page selector: recent exact-N counting, incremental
+first-known boundary, backfill skipping, date bounds and accurate consumed count.
+It does not implement network requests, IndexedDB, media, checkpoint durability,
+ChatGPT branching, or a multi-source ArchiveController. VK Booster consumes it
+today. ChatGPT Booster's v4 source-of-truth and branch-lineage contracts take
+precedence; its adoption requires an evidence-backed projection and separate
+compatibility acceptance. No ChatGPT migration is implied by this package.
+
+## Reusable Archive Manager (implemented presentation only)
+
+`@kobaproduction/browser-widgets` exposes `ArchiveManager`, taking a
+provider-neutral view state and initial options and emitting choose-folder,
+start, stop and resume actions. It does not call VK APIs or access archives.
+The VK feature supplies the first presenter through `ArchivePanel.vue`.
+The shared shell remains the **only** modal and launcher.
+ChatGPT Booster must map its own v4 contract and explicitly supported
+actions before adopting this view; this is not evidence of a working
+ChatGPT archive adapter or branch-aware controller.

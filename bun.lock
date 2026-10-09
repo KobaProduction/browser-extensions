@@ -10,7 +10,10 @@
         "@types/chrome": "^0.1.3",
         "@types/node": "^22.0.0",
         "@vitejs/plugin-vue": "^6.0.0",
+        "clsx": "^2.1.1",
         "happy-dom": "^20.14.6",
+        "lucide-vue-next": "^0.545.0",
+        "tailwind-merge": "^3.3.1",
         "tailwindcss": "^4.1.14",
         "clsx": "^2.1.1",
         "lucide-vue-next": "^0.545.0",
@@ -18,6 +21,7 @@
         "vue": "^3.5.22",
         "typescript": "^5.9.2",
         "vite": "^7.1.7",
+        "vue": "^3.5.22",
         "vue-tsc": "^3.0.7",
       },
     },
@@ -56,8 +60,11 @@
       "name": "@kobaproduction/module-vk-booster",
       "version": "2.2.0",
       "dependencies": {
+        "@kobaproduction/browser-adapters": "workspace:*",
+        "@kobaproduction/browser-archive": "workspace:*",
         "@kobaproduction/browser-core": "workspace:*",
         "@kobaproduction/browser-ui": "workspace:*",
+        "@kobaproduction/browser-widgets": "workspace:*",
         "lucide-vue-next": "^0.545.0",
         "vue": "^3.5.22",
       },
@@ -68,6 +75,10 @@
       "dependencies": {
         "@kobaproduction/browser-core": "workspace:*",
       },
+    },
+    "packages/archive": {
+      "name": "@kobaproduction/browser-archive",
+      "version": "0.1.0",
     },
     "packages/core": {
       "name": "@kobaproduction/browser-core",
@@ -90,6 +101,15 @@
         "@kobaproduction/browser-core": "workspace:*",
         "clsx": "^2.1.1",
         "tailwind-merge": "^3.3.1",
+        "vue": "^3.5.22",
+      },
+    },
+    "packages/widgets": {
+      "name": "@kobaproduction/browser-widgets",
+      "version": "0.1.0",
+      "dependencies": {
+        "@kobaproduction/browser-ui": "workspace:*",
+        "lucide-vue-next": "^0.545.0",
         "vue": "^3.5.22",
       },
     },
@@ -167,6 +187,8 @@
 
     "@kobaproduction/browser-adapters": ["@kobaproduction/browser-adapters@workspace:packages/adapters"],
 
+    "@kobaproduction/browser-archive": ["@kobaproduction/browser-archive@workspace:packages/archive"],
+
     "@kobaproduction/browser-core": ["@kobaproduction/browser-core@workspace:packages/core"],
 
     "@kobaproduction/browser-extension": ["@kobaproduction/browser-extension@workspace:apps/extension"],
@@ -176,6 +198,8 @@
     "@kobaproduction/browser-ui": ["@kobaproduction/browser-ui@workspace:packages/ui"],
 
     "@kobaproduction/browser-userscript": ["@kobaproduction/browser-userscript@workspace:apps/userscript"],
+
+    "@kobaproduction/browser-widgets": ["@kobaproduction/browser-widgets@workspace:packages/widgets"],
 
     "@kobaproduction/module-proxy-switcher": ["@kobaproduction/module-proxy-switcher@workspace:modules/proxy-switcher"],
 

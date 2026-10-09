@@ -18,7 +18,7 @@ The target is approved as a direction, not yet fully implemented.
 | Proxy Switcher | Typed interface and capability boundary only | Future MV3 background | `modules/proxy-switcher/` |
 | All-in-one | Launcher with VK Booster; other modules can be enabled later | Tampermonkey, Chromium | `apps/` |
 
-VK Booster preserves source messages, attachments, photos, document names, voice messages and a self-contained offline HTML chat. Its form is a VK-specific Vue feature view inside the shared Control Center, without a second modal. The previous standalone userscript menu handler was removed, so installing a bundle does not register duplicate menus. The VK-specific provider, media downloader/mapper, folder driver and offline HTML renderer are separate modules. Archive orchestration/checkpoints remain within the VK feature until a second real archive consumer can validate a shared controller; the v2 output format is preserved.
+VK Booster preserves source messages, attachments, photos, document names, voice messages and a self-contained offline HTML chat. Its form is a VK-specific Vue presenter around a reusable Archive Manager widget inside the shared Control Center, without a second modal. The previous standalone userscript menu handler was removed, so installing a bundle does not register duplicate menus. The VK-specific provider, media downloader/mapper and offline HTML renderer are separate modules. Neutral linear page-selection is implemented in `packages/archive`; the File System Access writer is shared via `packages/adapters`. Archive orchestration/checkpoints remain within the VK feature until a second real archive consumer can validate a shared controller; the v2 output format is preserved.
 
 ## Install and build
 
@@ -47,9 +47,11 @@ Tampermonkey: install a generated `.user.js` (for the chat use `vk-booster.user.
 
 ```text
 packages/core/          typed feature registry, lifecycle, settings, permissions
+packages/archive/       generic page-selection use case for descending linear sources
 packages/ui/            shared shadcn-vue primitives and design tokens
+packages/widgets/       provider-neutral Archive Manager form and progress
 packages/shell/         Booster-derived draggable shell and module views
-packages/adapters/      userscript/Chrome storage and future proxy interfaces
+packages/adapters/      userscript/Chrome bridges, generic folder output and future proxy interfaces
 modules/vk-booster/     VK-specific model and chat-export feature UI
 modules/proxy-switcher/ capability-gated future proxy adapter, not shipped
 apps/userscript/        module and all-in-one userscript entries
@@ -62,7 +64,7 @@ Source modules declare hosts, capabilities, delivery targets and versions in `mo
 
 ## CI and independent releases
 
-CI checks types, tests and source contracts, then builds **only affected modules**. A change in `modules/vk-booster` builds VK Booster and the combiner; a change in `packages/core|ui|adapters` rebuilds all consumers. Main and trusted same-repository PRs use the `zoomies-linux-x64` runner from ChatGPT Booster; fork PRs use GitHub runners for isolation.
+CI checks types, tests and source contracts, then builds **only affected modules**. A change in `modules/vk-booster` builds VK Booster and the combiner; a change in `packages/*` rebuilds the known dependent modules conservatively. Main and trusted same-repository PRs use the `zoomies-linux-x64` runner from ChatGPT Booster; fork PRs use GitHub runners for isolation.
 
 After successful `main` CI, GitHub Actions computes an independent release plan for each releasable module. A module ships only when its `module.json` version has no existing release tag and its source or shared dependency changed since its previous tag. Releases use scoped tags, for example `vk-booster/v2.2.0`, with a userscript and a Chromium ZIP. `proxy-switcher` has `release:false` until implemented and tested. The release workflow does not republish unchanged versions. See `docs/RELEASES.md`.
 
@@ -95,9 +97,9 @@ VK Booster preserves the existing v2 data format.
 
 ## Booster UI extraction (in progress)
 
-The UI primitives and shared shell are separately owned. The shell handles
-Shadow DOM, draggable launcher, centered modal and navigation, while
-VK-specific export UI is a feature injected into that shell. ChatGPT Booster
+The UI primitives, reusable archive widget and shared shell are separately owned.
+The shell handles Shadow DOM, draggable launcher, centered modal and navigation;
+the VK feature adapts its archive API/state to the widget inside that shell. ChatGPT Booster
 itself is not modified: its later adoption requires separate tests/review.
 The VK API/storage model remains transitional and is not a reusable archive
 library yet. This refactor does not change released versions or channels.

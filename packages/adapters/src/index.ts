@@ -1,3 +1,4 @@
+export { createArchiveFiles } from './folder-archive'
 import type { SettingsStore, DeliveryTarget } from '@kobaproduction/browser-core'
 export function createSettingsStore(target:DeliveryTarget, namespace='koba-browser'):SettingsStore {
   if(target==='chromium') return {

@@ -19,9 +19,11 @@
 
 ## Package rules
 - `packages/core`: host-neutral contracts and state; no `window`, `chrome`, VK or ChatGPT selectors.
+- `packages/archive`: source-neutral page selection for descending linear history, with no provider credentials, DOM, storage or ChatGPT branch assumptions.
 - `packages/ui`: reusable shadcn-vue primitives with no provider knowledge.
+- `packages/widgets`: source-neutral archive-management presentation; emit actions, never query provider data or own persistence.
 - `packages/shell`: common draggable launcher, center modal, Shadow DOM and module slots.
-- `packages/adapters`: permission-checked user-script and Chrome bridges.
+- `packages/adapters`: permission-checked user-script/Chrome bridges and source-neutral File System Access output.
 - `modules/<id>`: host-specific code, capabilities and a `module.json` contract.
 - `apps/userscript` / `apps/extension`: delivery adapters only, no copied feature code.
 - Proxy routing must use privileged extension background APIs after permission; a userscript cannot set browser proxy settings.
@@ -34,4 +36,4 @@
 - The CI `zoomies-linux-x64` runner is for trusted branch/main code; fork PRs must not run there.
 
 ## Known migration debt
-VK Booster is a real, tested v2 browser exporter wrapped behind typed `Feature` lifecycle. Its VK API, media download/mapping, local folder IO and offline viewer have separate internal owners; sync/checkpoint orchestration remains VK-local until a real second consumer and an accepted common contract exist. Preserve 3000-message, offline HTML, attachment and resumption behavior; do not fork the engine between targets.
+VK Booster is a real, tested v2 browser exporter wrapped behind typed `Feature` lifecycle. Its VK API, media mapping and offline viewer have separate internal owners. Linear page selection uses browser-archive, folder writes browser-adapters, and the archive form browser-widgets. Sync/checkpoint orchestration remains VK-local until a real second consumer and an accepted common contract exist. Preserve 3000-message, offline HTML, attachment and resumption behavior; do not fork the engine between targets.

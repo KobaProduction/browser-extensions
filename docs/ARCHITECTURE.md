@@ -32,7 +32,7 @@ The platform separates **capability-gated feature logic** from **delivery target
 
 ## VK Booster migration
 
-The VK archive engine is wrapped as a `Feature` and used by both Tampermonkey and MV3. The duplicate Tampermonkey menu was removed. Its internal VK API/authentication, VK attachment mapping/downloading, browser folder IO and offline HTML renderer are separate modules. Sync/checkpoints and the public v2 file format remain unchanged and VK-owned; the common source-neutral archive application has **not** been extracted or adopted by ChatGPT Booster. Regression checks cover the existing semantics, but Chrome/Tampermonkey/MV3 live acceptance is still outstanding.
+The VK archive engine is wrapped as a `Feature` and used by both Tampermonkey and MV3. The duplicate Tampermonkey menu was removed. Its internal VK API/authentication, VK attachment mapping/downloading and offline HTML renderer are separate modules. Linear page selection and exact-N/incremental/backfill modes use `@kobaproduction/browser-archive`, while generic directory writes use `@kobaproduction/browser-adapters`. Sync/checkpoints and the public v2 file format remain VK-owned; a shared multi-source ArchiveController/Repository/Output has **not** been extracted or adopted by ChatGPT Booster. Regression checks cover the existing semantics, but Chrome/Tampermonkey/MV3 live acceptance is still outstanding.
 
 ## Proxy roadmap
 
@@ -52,7 +52,9 @@ or always-on tracking is built into this repository.
 
 ## Booster-derived shared UI (ongoing refactor)
 
-Shared UI exposes Booster shadcn-vue primitives. A separate shell owns
-Shadow DOM, draggable launcher, centered modal and section navigation.
-VK export is rendered inside one Control Center as an FSD feature view.
+Shared UI exposes Booster shadcn-vue primitives. The `browser-widgets` package
+owns a provider-neutral Archive Manager form/progress/actions; VK's feature view
+only adapts `VKExport` to it. A separate shell owns Shadow DOM, draggable
+launcher, centered modal and section navigation. VK export is rendered inside
+one Control Center, not a second modal.
 This implementation still needs browser acceptance and independent review.

@@ -38,6 +38,12 @@
       ],
       "@kobaproduction/module-vk-booster/ui": [
         "modules/vk-booster/src/features/chat-export/ui/index.ts"
+      ],
+      "@kobaproduction/browser-archive": [
+        "packages/archive/src/index.ts"
+      ],
+      "@kobaproduction/browser-widgets": [
+        "packages/widgets/src/index.ts"
       ]
     }
   },

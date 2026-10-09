@@ -46,7 +46,7 @@ async function pack(name:string){
  const src=join(root,'packages',name,'src','index.ts')
  const dir=join(root,'packages',name,'dist')
  await mkdir(dir,{recursive:true})
- if(name==='ui'||name==='shell'){
+ if(name==='ui'||name==='shell'||name==='widgets'){
   await viteBundle(src,dir,'index.js','es',
     ['vue','lucide-vue-next','@kobaproduction/browser-core','@kobaproduction/browser-ui','clsx','tailwind-merge'])
   await copyFile(join(root,'packages',name,'types/index.d.ts'),join(dir,'index.d.ts'))
@@ -57,7 +57,7 @@ async function pack(name:string){
   emitTypes(name,src,dir)
  }
 }
-for(const name of ['core','adapters','ui','shell'])await pack(name)
+for(const name of ['core','adapters','archive','ui','widgets','shell'])await pack(name)
 for(const id of ids){
  const info=await manifest(id)
  if(!info.release)throw Error('Module '+id+' is not releasable')

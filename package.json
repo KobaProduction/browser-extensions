@@ -11,7 +11,7 @@
   ],
   "scripts": {
     "check": "bun run typecheck && bun test && bun run validate",
-    "typecheck": "tsc --noEmit -p tsconfig.json && vue-tsc --noEmit -p packages/shell/tsconfig.json && vue-tsc --noEmit -p modules/vk-booster/tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && vue-tsc --noEmit -p packages/shell/tsconfig.json && vue-tsc --noEmit -p modules/vk-booster/tsconfig.json && vue-tsc --noEmit -p packages/widgets/tsconfig.json",
     "test": "bun test",
     "validate": "bun scripts/validate.ts",
     "build": "bun scripts/build.ts --module all",

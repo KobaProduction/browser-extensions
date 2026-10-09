@@ -85,9 +85,12 @@ This is a **proposed ownership map**, not an already implemented tree:
       scripts/                   change-impact builds and per-module releases
       docs/                      architectural and public contract authorities
 
-**Actual layout today:** packages/core, packages/ui, packages/adapters,
-modules/*, apps/userscript and apps/extension. Existing code and tests continue
-to govern behavior until a reviewed migration replaces the implementation.
+**Actual layout today:** packages/core, packages/archive (linear page selector only),
+packages/ui, packages/widgets (Archive Manager presentation), packages/shell,
+packages/adapters (including folder output),
+modules/*, apps/userscript and apps/extension. The multi-source archive
+controller/repository/output and shared Archive Manager widget are still targets.
+Existing code and tests continue to govern behavior until reviewed migration.
 
 ### Package responsibilities
 

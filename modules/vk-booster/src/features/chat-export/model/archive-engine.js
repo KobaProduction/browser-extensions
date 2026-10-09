@@ -1,4 +1,5 @@
-import {createArchiveFiles} from './archive-files.js'
+import {selectArchivePage} from '@kobaproduction/browser-archive'
+import {createArchiveFiles} from '@kobaproduction/browser-adapters'
 import {viewerHTML} from './offline-viewer.js'
 import {createVkProvider} from '../api/vk-provider.js'
 import {assets,download as downloadVkAsset} from '../api/vk-media.js'
@@ -92,7 +93,8 @@ async function run(options={}){
  if(!await auth())throw Error('Не удалось авторизовать VK API из хранилища');
  busy=true;stopRequested=false;
  if(resume && meta.checkpoint?.settings)Object.assign(cfg,meta.checkpoint.settings);
- const index=known(),lower=unixDay(cfg.from),upper=cfg.through?unixDay(cfg.through)+86400:null;
+ const index=known(),identities=new Set([...index.keys()].map(String));
+ const lower=unixDay(cfg.from),upper=cfg.through?unixDay(cfg.through)+86400:null;
  const countTarget=cfg.limit;
  let cp=resume&&meta.checkpoint&&['paused','running'].includes(meta.checkpoint.status)
    ? meta.checkpoint : {
@@ -107,28 +109,23 @@ async function run(options={}){
     const batch=await history(cp.offset,cfg.pageSize);
     cp.totalVK=batch.count;
     if(!batch.items.length||cp.offset>=batch.count){cp.phase='media';break}
-    let consumed=0,end=false;
-    for(const m of batch.items){
-     consumed++;cp.scanned++;
-     if(upper!==null&&m.date>=upper)continue; // skip newer than selected range
-     if(lower!==null&&m.date<lower){end=true;break}
-     const present=index.has(m.id);
-     if(cp.mode==='incremental'&&present){end=true;break}
-     if(cp.mode==='backfill'&&present)continue;
-     cp.matched++;
-     if(!present){index.set(m.id,m);cp.newCount++}
-     if(cp.matched>=cp.target)break;
-    }
-    cp.offset+=consumed;
+    const selection=selectArchivePage({
+      mode:cp.mode,records:batch.items,knownKeys:identities,
+      keyOf:m=>String(m.id),timestampOf:m=>m.date,
+      fromInclusive:lower,toExclusive:upper,remaining:cp.target-cp.matched
+    });
+    cp.scanned+=selection.consumed;
+    cp.matched+=selection.matched;
+    for(const item of selection.added){index.set(item.id,item);identities.add(String(item.id));cp.newCount++}
+    cp.offset+=selection.consumed;
     rows=[...index.values()];sorted();
     if(cp.mode==='backfill')meta.backfillOffset=cp.offset;
-    if(cp.mode==='incremental'){meta.backfillOffset=(meta.backfillOffset||0)+cp.newCount-(cp.shifted||0);cp.shifted=cp.newCount}
+    if(cp.mode==='incremental')meta.backfillOffset=(meta.backfillOffset||0)+cp.newCount-(cp.shifted||0);
     if(cp.mode==='recent')meta.backfillOffset=Math.max(meta.backfillOffset||0,cp.offset);
-    if(cp.mode==='incremental')meta.backfillOffset=(meta.backfillOffset||0)+Math.max(0,cp.newCount-(cp.shifted||0));
     cp.shifted=cp.newCount;
     cp.status='running';meta.checkpoint=cp;
     await checkpoint();progress('Сообщения',cp.matched,cp.target,{newCount:cp.newCount,scanned:cp.scanned});
-    if(end||cp.offset>=batch.count||batch.items.length<cfg.pageSize){cp.phase='media';break}
+    if(selection.boundaryReached||cp.offset>=batch.count||batch.items.length<cfg.pageSize){cp.phase='media';break}
     if(!stopRequested)await sleep(cfg.delay);
    }
    if(cp.matched>=cp.target)cp.phase='media';
