@@ -21,6 +21,8 @@ import type {
   ArchiveDataAdapter,
   ArchiveExportPreviewMessage,
 } from '@chatgpt-booster/ui'
+import { ArchiveCanonicalMigrator } from './archive-canonical-migrator'
+import { inspectExistingArchiveForMigration } from './archive-migration-preflight'
 import type { ArchiveV4CaptureModule } from './archive-v4-capture'
 import { type ArchiveV4OutputFormat, prepareArchiveV4Export } from './archive-v4-export'
 import type { ArchiveV4Reader } from './archive-v4-reader'
@@ -37,6 +39,7 @@ export function createArchiveV4UiAdapter(
   memory: ConversationStateStore,
   settingsAdapter: SettingsAdapter,
 ): ArchiveDataAdapter {
+  const migrator = new ArchiveCanonicalMigrator(store)
   const account = () => {
     const id = memory.verifiedAccountId()
     if (!id) throw new Error('archive.error.auth')
@@ -85,6 +88,22 @@ export function createArchiveV4UiAdapter(
     const owner = account()
     const epoch = memory.accountEpoch()
     const saved = await store.getConversation(owner, id)
+    if (!saved) {
+      const recovered = (await migrator.listConversations(owner)).find(
+        (x) => x.conversationId === id,
+      )
+      if (recovered)
+        return {
+          conversationId: id,
+          projectId: recovered.projectId,
+          title: recovered.title,
+          updatedAt: null,
+          lastSeenAt: recovered.lastSeenAt,
+          archiveState: 'partial' as const,
+          branchSourceConversationId: null,
+          branchSourceTitle: null,
+        }
+    }
     if (memory.accountEpoch() !== epoch || account() !== owner)
       throw new Error('archive.error.auth')
     return savedView(saved)
@@ -231,6 +250,51 @@ export function createArchiveV4UiAdapter(
     getCollectionState: () => capture.collectionSession.snapshot(),
     stopCollection: (request) => capture.stopCollection(request),
     archiveGeneration: 4,
+    getArchiveMigrationOverview: async () => {
+      const owner = account()
+      const [inventory, saved] = await Promise.all([
+        inspectExistingArchiveForMigration(owner),
+        migrator.listConversations(owner),
+      ])
+      if (account() !== owner) throw new Error('archive.error.auth')
+      return {
+        status: migrator.snapshot().status,
+        legacyConversations: inventory.sources.reduce(
+          (sum, source) =>
+            sum +
+            source.verifiedOwnerConversations +
+            (source.namespace === 'v3'
+              ? source.unboundOwnerConversations + source.conflictingOwnerConversations
+              : 0),
+          0,
+        ),
+        unboundConversations:
+          inventory.sources.find((source) => source.namespace === 'v3')
+            ?.unboundOwnerConversations ?? 0,
+        conflictingConversations:
+          inventory.sources.find((source) => source.namespace === 'v3')
+            ?.conflictingOwnerConversations ?? 0,
+        migratedConversations: saved.length,
+      }
+    },
+    startArchiveMigration: async (bindUnowned) => {
+      const owner = account()
+      const epoch = memory.accountEpoch()
+      await migrator.migrate(owner, bindUnowned)
+      if (memory.accountEpoch() !== epoch || account() !== owner)
+        throw new Error('archive.error.auth')
+      reader.reset()
+    },
+    subscribeArchiveMigration: (handler) => migrator.subscribe(() => handler()),
+    isRecoveredConversation: async (id) => migrator.hasConversation(account(), id),
+    archiveMigrationProgress: () => migrator.snapshot(),
+    exportRecoveredConversation: async (id, format) => {
+      const owner = account()
+      if (!(await migrator.hasConversation(owner, id))) return null
+      const result = await migrator.exportKnownRecords(owner, id, format)
+      if (owner !== account()) throw new Error('archive.error.auth')
+      return result
+    },
     subscribeContextChange: (handler) => {
       const navigation = observeChatGptNavigation(handler)
       const identity = memory.subscribeAccount(handler)
@@ -284,6 +348,26 @@ export function createArchiveV4UiAdapter(
     },
     getConversation: (id) => view(id),
     getCoverage: async (id, request) => {
+      const owner = account()
+      if (
+        (request?.source === 'saved' || currentConversationId() !== id) &&
+        (await migrator.hasConversation(owner, id))
+      ) {
+        const records = await migrator.readMessages(owner, id)
+        return {
+          conversationId: id,
+          knownMessageCount: records.length,
+          visibleMessageCount: records.length,
+          internalRecordCount: 0,
+          historyPageCount: 0,
+          verifiedAt: null,
+          hasOlderServerHistory: null,
+          completeAtLastRead: false,
+          lastFullReadAt: null,
+          oldestKnownVisibleMessageId: records[0]?.messageId ?? null,
+          newestKnownVisibleMessageId: records.at(-1)?.messageId ?? null,
+        }
+      }
       if (request?.expectedAccountId !== undefined && request.expectedAccountId !== account())
         throw new Error('archive.error.auth')
       if (request?.signal?.aborted)
@@ -307,7 +391,6 @@ export function createArchiveV4UiAdapter(
           lastFullReadAt: null,
         }
       }
-      const owner = account()
       const ownerEpoch = memory.accountEpoch()
       const evidence = await store.getExportEvidence(owner, id, request?.signal)
       if (account() !== owner || memory.accountEpoch() !== ownerEpoch)
@@ -344,7 +427,10 @@ export function createArchiveV4UiAdapter(
     listConversations: async () => {
       const owner = account()
       const ownerEpoch = memory.accountEpoch()
-      const stored = await store.listConversations(owner)
+      const [stored, imported] = await Promise.all([
+        store.listConversations(owner),
+        migrator.listConversations(owner),
+      ])
       if (account() !== owner || memory.accountEpoch() !== ownerEpoch)
         throw new Error('archive.error.auth')
       const byId = new Map<string, ArchiveConversationView>()
@@ -352,6 +438,17 @@ export function createArchiveV4UiAdapter(
         const candidate = savedView(item)
         if (candidate) byId.set(item.conversationId, candidate)
       }
+      for (const item of imported)
+        byId.set(item.conversationId, {
+          conversationId: item.conversationId,
+          projectId: item.projectId,
+          title: item.title,
+          lastSeenAt: item.lastSeenAt,
+          updatedAt: null,
+          archiveState: 'partial',
+          branchSourceConversationId: null,
+          branchSourceTitle: null,
+        })
       const activeId = currentConversationId()
       if (activeId) {
         const current = liveView(activeId)
@@ -460,13 +557,43 @@ export function createArchiveV4UiAdapter(
           live?.currentNodeId && selectedTipId ? live.currentNodeId === selectedTipId : null,
       }
     },
-    getThreadWindow: (id, cursor, direction, request) =>
-      reader.readThreadWindow(account(), id, cursor, 40, direction, request),
-    getMessageWindow: (id, messageId, request) =>
-      reader.readMessageWindow(account(), id, messageId, request),
-    getThread: async (id) => (await reader.readThreadWindow(account(), id)).thread,
+    getThreadWindow: async (id, cursor, direction, request) => {
+      const owner = account()
+      if (
+        (request?.source === 'saved' || currentConversationId() !== id) &&
+        (await migrator.hasConversation(owner, id))
+      )
+        return migrator.threadWindow(
+          owner,
+          id,
+          cursor ?? null,
+          direction ?? 'older',
+          request?.signal,
+        )
+      return reader.readThreadWindow(owner, id, cursor, 40, direction, request)
+    },
+    getMessageWindow: async (id, messageId, request) => {
+      const owner = account()
+      if (
+        (request?.source === 'saved' || currentConversationId() !== id) &&
+        (await migrator.hasConversation(owner, id))
+      )
+        return migrator.threadWindow(owner, id, null, 'older', request?.signal, messageId)
+      return reader.readMessageWindow(owner, id, messageId, request)
+    },
+    getThread: async (id) => {
+      const owner = account()
+      if (currentConversationId() !== id && (await migrator.hasConversation(owner, id)))
+        return (await migrator.threadWindow(owner, id)).thread
+      return (await reader.readThreadWindow(owner, id)).thread
+    },
     listMessages: async (id) => {
-      const thread = (await reader.readThreadWindow(account(), id)).thread
+      const owner = account()
+      const thread = (
+        await (currentConversationId() !== id && (await migrator.hasConversation(owner, id))
+          ? migrator.threadWindow(owner, id)
+          : reader.readThreadWindow(owner, id))
+      ).thread
       return thread.turns.flatMap((turn) =>
         [...turn.messages, ...turn.details].map((item) => item.record),
       )

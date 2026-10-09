@@ -54,6 +54,70 @@ const emit = defineEmits<{
 }>()
 const t = (key: TranslationKey) => translate(props.locale, key)
 const conversations = ref<ArchiveConversationView[]>([])
+const migrationOverview = ref<{
+  status: string
+  legacyConversations: number
+  unboundConversations: number
+  conflictingConversations: number
+  migratedConversations: number
+}>()
+const migrationBusy = ref(false)
+const migrationCounts = ref({ conversations: 0, messages: 0 })
+let stopMigrationUpdates: (() => void) | undefined
+const migrationConfirmUnowned = ref(false)
+const migrationError = ref('')
+const recoveredSelected = ref(false)
+async function refreshMigrationOverview() {
+  if (!props.archiveAdapter.getArchiveMigrationOverview) return
+  // A native account registry can still be loading after Archive opens.
+  // Do not report an archive-storage failure for missing account evidence.
+  if (!props.archiveAdapter.currentAccountId?.()) {
+    migrationOverview.value = undefined
+    migrationError.value = ''
+    return
+  }
+  try {
+    migrationOverview.value = await props.archiveAdapter.getArchiveMigrationOverview()
+    migrationError.value = ''
+  } catch {
+    migrationError.value = props.locale === 'ru'
+      ? 'Не удалось проверить существующие архивы.'
+      : 'Could not inspect existing archives.'
+  }
+}
+async function migrateArchive() {
+  if (migrationBusy.value || !props.archiveAdapter.startArchiveMigration) return
+  migrationBusy.value = true
+  migrationError.value = ''
+  try {
+    await props.archiveAdapter.startArchiveMigration(migrationConfirmUnowned.value)
+    await refreshMigrationOverview()
+    await refresh()
+  } catch (error) {
+    migrationError.value = error instanceof Error ? error.message : 'Archive migration failed'
+  } finally {
+    migrationBusy.value = false
+  }
+}
+async function downloadRecovered(format: 'json' | 'markdown' = 'json') {
+  if (!selectedId.value || !props.archiveAdapter.exportRecoveredConversation) return
+  try {
+    const blob = await props.archiveAdapter.exportRecoveredConversation(selectedId.value, format)
+    if (!blob) return
+    const url = URL.createObjectURL(blob)
+    try {
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `booster-recovered-partial.${format === 'markdown' ? 'md' : 'json'}`
+      a.click()
+    } finally {
+      // Deferred revocation is not needed by this single synchronous download action.
+      setTimeout(() => URL.revokeObjectURL(url), 30_000)
+    }
+  } catch (error) {
+    migrationError.value = error instanceof Error ? error.message : 'Recovery export failed'
+  }
+}
 const projects = ref<ArchiveProjectView[]>([])
 const selectedId = ref<string | null>(props.initialConversationId ?? null)
 const thread = ref<ArchiveThreadView>({ turns: [], messageCount: 0, recordCount: 0, detailCount: 0 })
@@ -515,6 +579,9 @@ async function navigateToNode(index: number) {
   }
   onReadingScroll()
 }
+watch(selectedId, async (id) => {
+  recoveredSelected.value = !!id && !!(await props.archiveAdapter.isRecoveredConversation?.(id))
+})
 watch(textSearch, () => { if (!suppressSearchReset) void resetReadingPosition() })
 watch(readingOrder, () => {
   if (requestedMessageId.value && !textSearch.value) void focusMessage(requestedMessageId.value).catch(() => undefined)
@@ -665,6 +732,11 @@ onMounted(async () => {
       coverage.value = undefined
       navigationError.value = 'archive.error.auth'
       staleSavedWindow.value = false
+      // The native account selector can complete after the first Archive mount.
+      // Re-read only under the newly verified owner, not under a stale snapshot.
+      selectedId.value = null
+      initialized = false
+      void refresh().then(() => refreshMigrationOverview()).catch(() => undefined)
       return
     }
     if (!next || next === current) return
@@ -681,10 +753,19 @@ onMounted(async () => {
     contextUnsubscribe = props.archiveAdapter.subscribeContextChange(syncContext)
   else contextFallbackTimer = setInterval(syncContext, 450)
   await refresh()
+  await refreshMigrationOverview()
+  recoveredSelected.value = !!selectedId.value && !!(await props.archiveAdapter.isRecoveredConversation?.(selectedId.value))
+  stopMigrationUpdates = props.archiveAdapter.subscribeArchiveMigration?.(() => {
+    const progress = props.archiveAdapter.archiveMigrationProgress?.()
+    if (progress) migrationCounts.value = {
+      conversations: progress.conversations, messages: progress.messages,
+    }
+  })
   if (alive) syncContext()
 })
 onBeforeUnmount(() => {
   alive = false
+  stopMigrationUpdates?.()
   cancelWindowWork()
   sourceUnsubscribe?.()
   listRevision++
@@ -708,13 +789,30 @@ onBeforeUnmount(() => {
       </div>
       <div class="booster-header-actions">
         <button v-if="canReturnToExport" type="button" class="booster-action-secondary" @click="emit('returnExport')"><ArrowLeft class="size-4" />{{ t('reader.returnExport') }}</button>
+        <button v-if="recoveredSelected" type="button" class="booster-action-secondary" @click="downloadRecovered('markdown')">{{ locale === 'ru' ? 'Скачать Markdown (неполный)' : 'Download Markdown (partial)' }}</button>
+        <button v-if="recoveredSelected" type="button" class="booster-action-secondary" @click="downloadRecovered('json')">{{ locale === 'ru' ? 'Скачать сохранённые записи (неполные)' : 'Download saved records (partial)' }}</button>
         <button type="button" class="booster-icon-button" :disabled="listLoading" :title="t('reader.refresh')" :aria-label="t('reader.refresh')" @click="retryLocation"><RefreshCw class="size-4" /></button>
         <button v-if="windowed" type="button" class="booster-icon-button" :title="t('reader.minimize')" :aria-label="t('reader.minimize')" @click="emit('minimize')"><Minus class="size-4" /></button>
         <button type="button" class="booster-icon-button" :aria-label="t('reader.close')" @click="emit('close')"><X class="size-4" /></button>
       </div>
     </header>
 
-    <div class="booster-reader-layout">
+    <section v-if="migrationOverview && migrationOverview.legacyConversations > migrationOverview.migratedConversations" class="booster-note" role="region" :aria-label="locale === 'ru' ? 'Адаптация архива' : 'Archive adaptation'">
+      <strong>{{ locale === 'ru' ? 'Адаптация архива' : 'Archive adaptation' }}</strong>
+      <p>{{ locale === 'ru' ? 'Предыдущие данные сохранены. Перенос создаёт проверяемую копию без удаления старых сообщений.' : 'Previous records are retained. Migration makes a separate copy without deleting existing messages.' }}</p>
+      <p v-if="migrationBusy" role="status">{{ locale === 'ru' ? 'Адаптация приложения, подождите…' : 'Adapting archive, please wait…' }} {{ migrationCounts.conversations }} / {{ migrationCounts.messages }}</p>
+      <p v-if="migrationOverview.conflictingConversations > 0" role="status">
+        {{ locale === 'ru'
+          ? `Для ${migrationOverview.conflictingConversations} старых диалогов владелец не сопоставлен с текущим аккаунтом. Автоматически они не переносятся; доступна только явная ручная привязка.`
+          : `${migrationOverview.conflictingConversations} legacy conversations have unmatched owners. Original records are preserved; automatic migration is excluded.` }}
+      </p>
+      <label v-if="migrationOverview.unboundConversations + migrationOverview.conflictingConversations > 0"><input v-model="migrationConfirmUnowned" type="checkbox" :disabled="migrationBusy" /> {{ locale === 'ru' ? 'Подтверждаю, что все старые локальные диалоги v3, включая записи без владельца и с несовпадающим идентификатором, принадлежат моему текущему аккаунту. Это ручная привязка.' : 'I confirm all local legacy v3 chats, including missing or mismatched owner IDs, belong to my currently verified account. This explicitly rebinds them.' }}</label>
+      <button v-if="migrationOverview.legacyConversations > migrationOverview.migratedConversations" type="button" class="booster-action-secondary" :disabled="migrationBusy || (migrationOverview.unboundConversations + migrationOverview.conflictingConversations > 0 && !migrationConfirmUnowned)" @click="migrateArchive">{{ locale === 'ru' ? 'Перенести сохранённую историю' : 'Migrate saved history' }}</button>
+      <p v-if="migrationError" role="alert">{{ migrationError }}</p>
+    </section>
+    <p v-else-if="migrationError" role="alert" class="booster-note">{{ migrationError }}</p>
+    <div v-if="migrationBusy" role="status" class="booster-note">{{ locale === 'ru' ? 'Содержимое архива временно недоступно до окончания адаптации.' : 'Archive content is temporarily unavailable during adaptation.' }}</div>
+    <div v-else class="booster-reader-layout">
       <aside class="booster-reader-sidebar">
         <input v-model="search" type="search" :aria-label="t('reader.search')" :placeholder="t('reader.search')" />
         <p v-if="listLoading && !conversations.length" role="status" class="booster-note">{{ t('reader.loading') }}</p>

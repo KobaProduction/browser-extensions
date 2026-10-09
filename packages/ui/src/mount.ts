@@ -125,6 +125,22 @@ export interface ArchiveDataAdapter {
   /** Only the Export modal may start native collection in v4. */
   collectionInsideExportOnly?: boolean
   archiveGeneration?: 4
+  /** Canonical archive recovery is explicit and does not mutate native ChatGPT. */
+  getArchiveMigrationOverview?(): Promise<{
+    status: string
+    legacyConversations: number
+    unboundConversations: number
+    conflictingConversations: number
+    migratedConversations: number
+  }>
+  startArchiveMigration?(bindUnowned: boolean): Promise<void>
+  subscribeArchiveMigration?(listener: () => void): () => void
+  exportRecoveredConversation?(
+    conversationId: string,
+    format?: 'json' | 'markdown',
+  ): Promise<Blob | null>
+  isRecoveredConversation?(conversationId: string): Promise<boolean>
+  archiveMigrationProgress?(): { status: string; conversations: number; messages: number }
   subscribeContextChange?(listener: () => void): () => void
   getThread(conversationId: string): Promise<ArchiveThreadView>
   /** v4 only: progressively materialize bounded IndexedDB windows. */

@@ -1234,6 +1234,7 @@ export function installTransportObserver(
   archivePolicy = { ...DENY_ARCHIVE }
   let verifiedAccountIds = new Set<string>()
   let selectedAccountId: string | null = null
+  let confirmedCatalogAccountId: string | null = null
   let emittedAccountId: string | null = null
   let accountEpoch = 0
 
@@ -1256,13 +1257,27 @@ export function installTransportObserver(
     )
   }
 
-  const verifyAccountCatalog = (response: Response, requestEpoch: number) => {
+  const verifyAccountCatalog = (
+    response: Response,
+    requestEpoch: number,
+    selectedAtRequest: string | null,
+  ) => {
     if (!response.ok || !/json/i.test(response.headers.get('content-type') ?? '')) return
     void response
       .clone()
       .json()
       .then((value: unknown) => {
-        if (requestEpoch !== accountEpoch) return
+        // The account registry and the first conversation catalog normally
+        // load concurrently. A null -> selected-account transition advances
+        // accountEpoch while the registry response is in flight. Accept ONLY
+        // that one initial selection, never a stale request across A -> B or
+        // A -> B -> A; a successful catalog response is still required.
+        const initialSelection =
+          selectedAtRequest === null &&
+          selectedAccountId !== null &&
+          emittedAccountId === null &&
+          accountEpoch === requestEpoch + 1
+        if (requestEpoch !== accountEpoch && !initialSelection) return
         const root = requestPayload(value)
         const accounts = requestPayload(root?.accounts)
         if (!accounts) return
@@ -1273,7 +1288,12 @@ export function installTransportObserver(
           if (typeof account?.account_id === 'string' && account.account_id === key) ids.add(key)
         }
         verifiedAccountIds = ids
-        const confirmed = selectedAccountId && ids.has(selectedAccountId) ? selectedAccountId : null
+        const confirmed =
+          selectedAccountId &&
+          confirmedCatalogAccountId === selectedAccountId &&
+          ids.has(selectedAccountId)
+            ? selectedAccountId
+            : null
         publishAccount(confirmed, Date.now())
       })
       .catch(() => undefined)
@@ -1287,6 +1307,7 @@ export function installTransportObserver(
   ) => {
     if (method.toUpperCase() !== 'GET' || !isConversationCatalogUrl(sourceUrl)) return
     if ((headerValue?.trim() || null) !== selectedAccountId) return
+    confirmedCatalogAccountId = selectedAccountId
     const confirmed =
       selectedAccountId && verifiedAccountIds.has(selectedAccountId) ? selectedAccountId : null
     publishAccount(confirmed, observedAt)
@@ -1454,6 +1475,7 @@ export function installTransportObserver(
             ? sanitizeBodyPreview(init?.body, config.maxBodyChars)
             : undefined
         const requestBoundaryAt = Date.now()
+        const accountSelectedAtRequest = selectedAccountId
         const headers = new Headers(request?.headers)
         if (init?.headers)
           new Headers(init.headers).forEach((value, key) => {
@@ -1465,6 +1487,7 @@ export function installTransportObserver(
           const candidate = headers.get('chatgpt-account-id')?.trim() || null
           if (candidate !== selectedAccountId) {
             selectedAccountId = candidate
+            confirmedCatalogAccountId = null
             if (emittedAccountId === null) accountEpoch += 1
             publishAccount(null, requestBoundaryAt)
           }
@@ -1528,7 +1551,7 @@ export function installTransportObserver(
             )
           }
           if (method.toUpperCase() === 'GET' && isAccountCheckUrl(rawUrl))
-            verifyAccountCatalog(response, accountCheckEpoch)
+            verifyAccountCatalog(response, accountCheckEpoch, accountSelectedAtRequest)
           observeConversationStreamStatusResponse(response, rawUrl)
           if (method.toUpperCase() === 'POST' && isConversationRequestUrl(rawUrl))
             observeConversationStreamResponse(

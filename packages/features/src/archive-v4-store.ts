@@ -1,3 +1,4 @@
+import { projectNativeMessage } from '@chatgpt-booster/core'
 import type {
   ConversationArchiveEventDetail,
   ConversationCatalogEventDetail,
@@ -25,7 +26,7 @@ export { traceArchiveV4Path, traceArchiveV4PathIds } from './archive-v4-path'
  * Four ChatGPT domain entities; UI preferences and export jobs are independent.
  */
 export const ARCHIVE_V4_DB_NAME = 'chatgpt-booster-archive-v4'
-export const ARCHIVE_V4_DB_VERSION = 1
+export const ARCHIVE_V4_DB_VERSION = 2
 
 type Source = Record<string, unknown>
 type OwnerType = 'project' | 'conversation' | 'message' | 'account'
@@ -357,22 +358,40 @@ export class ArchiveV4Store {
           return
         }
         const db = open.result
-        // A partial/unknown schema is never implicitly cleared or reconstructed.
-        if (db.objectStoreNames.length > 0) {
+        if (db.objectStoreNames.length === 0) {
+          const projects = db.createObjectStore('projects', { keyPath: 'key' })
+          projects.createIndex('byAccount', 'accountId')
+          const conversations = db.createObjectStore('conversations', { keyPath: 'key' })
+          conversations.createIndex('byAccount', 'accountId')
+          conversations.createIndex('byProject', ['accountId', 'projectId'])
+          const messages = db.createObjectStore('messages', { keyPath: 'key' })
+          messages.createIndex('byConversation', 'conversationKey')
+          messages.createIndex('byChronology', ['conversationKey', 'sourceCreateTime', 'messageId'])
+          const metadata = db.createObjectStore('metadata', { keyPath: 'key' })
+          metadata.createIndex('byOwner', 'ownerKey')
+          metadata.createIndex('byKind', ['ownerKey', 'kind'])
+        } else if (
+          !['projects', 'conversations', 'messages', 'metadata'].every((name) =>
+            db.objectStoreNames.contains(name),
+          )
+        ) {
           open.transaction?.abort()
           return
         }
-        const projects = db.createObjectStore('projects', { keyPath: 'key' })
-        projects.createIndex('byAccount', 'accountId')
-        const conversations = db.createObjectStore('conversations', { keyPath: 'key' })
-        conversations.createIndex('byAccount', 'accountId')
-        conversations.createIndex('byProject', ['accountId', 'projectId'])
-        const messages = db.createObjectStore('messages', { keyPath: 'key' })
-        messages.createIndex('byConversation', 'conversationKey')
-        messages.createIndex('byChronology', ['conversationKey', 'sourceCreateTime', 'messageId'])
-        const metadata = db.createObjectStore('metadata', { keyPath: 'key' })
-        metadata.createIndex('byOwner', 'ownerKey')
-        metadata.createIndex('byKind', ['ownerKey', 'kind'])
+        const cc = db.createObjectStore('canonicalConversations', { keyPath: 'key' })
+        cc.createIndex('byAccount', 'accountId')
+        cc.createIndex('byGeneration', 'generation')
+        const cm = db.createObjectStore('canonicalMessages', { keyPath: 'key' })
+        cm.createIndex('byConversation', 'conversationKey')
+        cm.createIndex('byGeneration', 'generation')
+        cm.createIndex('byChronology', ['conversationKey', 'sourceCreateTime', 'messageId'])
+        const ce = db.createObjectStore('canonicalElements', { keyPath: 'elementId' })
+        ce.createIndex('byMessage', 'messageKey')
+        ce.createIndex('byGeneration', 'generation')
+        const ss = db.createObjectStore('sourceSnapshots', { keyPath: 'key' })
+        ss.createIndex('byMessage', 'messageKey')
+        ss.createIndex('byGeneration', 'generation')
+        db.createObjectStore('migrationManifest', { keyPath: 'key' })
       }
       open.onsuccess = () => {
         const db = open.result
@@ -400,6 +419,27 @@ export class ArchiveV4Store {
             keyPath: 'key',
             indexes: { byOwner: 'ownerKey', byKind: ['ownerKey', 'kind'] },
           },
+          canonicalConversations: {
+            keyPath: 'key',
+            indexes: { byAccount: 'accountId', byGeneration: 'generation' },
+          },
+          canonicalMessages: {
+            keyPath: 'key',
+            indexes: {
+              byConversation: 'conversationKey',
+              byGeneration: 'generation',
+              byChronology: ['conversationKey', 'sourceCreateTime', 'messageId'],
+            },
+          },
+          canonicalElements: {
+            keyPath: 'elementId',
+            indexes: { byMessage: 'messageKey', byGeneration: 'generation' },
+          },
+          sourceSnapshots: {
+            keyPath: 'key',
+            indexes: { byMessage: 'messageKey', byGeneration: 'generation' },
+          },
+          migrationManifest: { keyPath: 'key', indexes: {} },
         }
         try {
           if (db.objectStoreNames.length !== Object.keys(required).length)
@@ -453,6 +493,10 @@ export class ArchiveV4Store {
 
   async warmup(): Promise<void> {
     await this.#db()
+  }
+
+  async canonicalDatabase(): Promise<IDBDatabase> {
+    return this.#db()
   }
 
   /** Validate/fingerprint outside the transaction; publish only a committed semantic delta. */
@@ -526,7 +570,20 @@ export class ArchiveV4Store {
     const db = await this.#db()
     if (!allowed()) return undefined
     this.sourceGate.assertCompatible(detail.conversationId)
-    const tx = db.transaction(['projects', 'conversations', 'messages', 'metadata'], 'readwrite')
+    const tx = db.transaction(
+      [
+        'projects',
+        'conversations',
+        'messages',
+        'metadata',
+        'migrationManifest',
+        'canonicalConversations',
+        'canonicalMessages',
+        'canonicalElements',
+        'sourceSnapshots',
+      ],
+      'readwrite',
+    )
     const done = settled(tx)
     const detach = guardArchiveTransaction(tx, write.signal)
     try {
@@ -549,6 +606,7 @@ export class ArchiveV4Store {
         previousMessages,
         previousSubmissions,
         generation,
+        migration,
       ] = await Promise.all([
         req<ArchiveV4Conversation | undefined>(conversations.get(conversationKey)),
         projectKey
@@ -568,7 +626,12 @@ export class ArchiveV4Store {
           ),
         ),
         req<ArchiveV4Metadata | undefined>(metadata.get(key(key(accountId), 'write-generation'))),
+        req<{ status: string; generation: string } | undefined>(
+          tx.objectStore('migrationManifest').get(key(accountId)),
+        ),
       ])
+      if (migration?.status === 'transforming' || migration?.status === 'validating')
+        throw new Error('archive.error.migrating')
       if (!allowed() || !this.#ticketMatches(ticket, generation)) {
         tx.abort()
         await done.catch(() => undefined)
@@ -769,6 +832,41 @@ export class ArchiveV4Store {
           sourceFingerprint: fingerprint,
           raw,
         } satisfies ArchiveV4Message)
+        if (migration?.status === 'ready' && typeof migration.generation === 'string') {
+          const projection = projectNativeMessage(raw, {
+            accountId,
+            conversationId: detail.conversationId,
+          })
+          const canonicalKey = key(migration.generation, conversationKey)
+          const messageKey = key(canonicalKey, messageId)
+          tx.objectStore('canonicalMessages').put({
+            key: messageKey,
+            conversationKey: canonicalKey,
+            accountId,
+            conversationId: detail.conversationId,
+            messageId,
+            sourceCreateTime,
+            sourceFingerprint: fingerprint,
+            generation: migration.generation,
+            projection,
+          })
+          const elements = tx.objectStore('canonicalElements')
+          for (const element of projection.elements)
+            elements.put({
+              ...element,
+              elementId: key(migration.generation, element.elementId),
+              messageKey,
+              generation: migration.generation,
+            })
+          tx.objectStore('sourceSnapshots').put({
+            key: key(messageKey, 'native', fingerprint),
+            messageKey,
+            generation: migration.generation,
+            fingerprint,
+            source: 'native',
+            raw: structuredClone(raw),
+          })
+        }
         if (sourceCreateTime !== null) {
           if (
             summary.firstKnownTime === null ||
@@ -892,6 +990,21 @@ export class ArchiveV4Store {
           observedAt,
           payload: nextPayload,
         } satisfies ArchiveV4Metadata)
+      if (migration?.status === 'ready' && typeof migration.generation === 'string') {
+        const canonicalKey = key(migration.generation, conversationKey)
+        tx.objectStore('canonicalConversations').put({
+          key: canonicalKey,
+          accountId,
+          conversationId: detail.conversationId,
+          projectId: summary.projectId,
+          title: summary.title,
+          currentNodeId: summary.currentNodeId,
+          lastSeenAt: summary.lastSeenAt,
+          verifiedPagination: false,
+          source: 'legacy_v4',
+          generation: migration.generation,
+        })
+      }
       if (mutated) {
         summary.verifiedPathRootId = null
         summary.verifiedPathTipId = null
@@ -973,14 +1086,17 @@ export class ArchiveV4Store {
     if (ticket.accountId !== accountId) throw new Error('archive.error.auth')
     const db = await this.#db()
     if (!allowed()) return
-    const tx = db.transaction(['projects', 'conversations', 'metadata'], 'readwrite')
+    const tx = db.transaction(
+      ['projects', 'conversations', 'metadata', 'migrationManifest'],
+      'readwrite',
+    )
     const done = settled(tx)
     const detach = guardArchiveTransaction(tx, write.signal)
     const changes: ArchiveV4Change[] = []
     try {
       const conversations = tx.objectStore('conversations')
       const projects = tx.objectStore('projects')
-      const [generation, stored] = await Promise.all([
+      const [generation, stored, migration] = await Promise.all([
         req<ArchiveV4Metadata | undefined>(
           tx.objectStore('metadata').get(key(key(accountId), 'write-generation')),
         ),
@@ -989,7 +1105,12 @@ export class ArchiveV4Store {
             req<ArchiveV4Conversation | undefined>(conversations.get(key(accountId, id))),
           ),
         ),
+        req<{ status: string } | undefined>(
+          tx.objectStore('migrationManifest').get(key(accountId)),
+        ),
       ])
+      if (migration?.status === 'transforming' || migration?.status === 'validating')
+        throw new Error('archive.error.migrating')
       if (!allowed() || !this.#ticketMatches(ticket, generation)) {
         tx.abort()
         await done.catch(() => undefined)
@@ -1087,17 +1208,22 @@ export class ArchiveV4Store {
     if (ticket.accountId !== accountId) throw new Error('archive.error.auth')
     const db = await this.#db()
     if (!allowed()) return
-    const tx = db.transaction(['projects', 'metadata'], 'readwrite')
+    const tx = db.transaction(['projects', 'metadata', 'migrationManifest'], 'readwrite')
     const done = settled(tx)
     const detach = guardArchiveTransaction(tx, write.signal)
     try {
       const store = tx.objectStore('projects')
-      const [previous, generation] = await Promise.all([
+      const [previous, generation, migration] = await Promise.all([
         req<ArchiveV4Project | undefined>(store.get(pk)),
         req<ArchiveV4Metadata | undefined>(
           tx.objectStore('metadata').get(key(key(accountId), 'write-generation')),
         ),
+        req<{ status: string } | undefined>(
+          tx.objectStore('migrationManifest').get(key(accountId)),
+        ),
       ])
+      if (migration?.status === 'transforming' || migration?.status === 'validating')
+        throw new Error('archive.error.migrating')
       if (!allowed() || !this.#ticketMatches(ticket, generation)) {
         tx.abort()
         await done.catch(() => undefined)
@@ -1161,7 +1287,10 @@ export class ArchiveV4Store {
     this.#writeEpochs.set(owner, (this.#writeEpochs.get(owner) ?? 0) + 1)
     const db = await this.#db()
     if (!allowed()) throw new DOMException('Archive cleanup cancelled', 'AbortError')
-    const tx = db.transaction(['projects', 'conversations', 'messages', 'metadata'], 'readwrite')
+    const tx = db.transaction(
+      ['projects', 'conversations', 'messages', 'metadata', 'migrationManifest'],
+      'readwrite',
+    )
     const done = settled(tx)
     const detach = guardArchiveTransaction(tx, signal)
     const projects = tx.objectStore('projects')
@@ -1169,6 +1298,12 @@ export class ArchiveV4Store {
     const messages = tx.objectStore('messages')
     const metadata = tx.objectStore('metadata')
     try {
+      const manifest = await req<{ status: string } | undefined>(
+        tx.objectStore('migrationManifest').get(key(owner)),
+      )
+      // Until canonical removal joins this same transaction, refuse deletion
+      // rather than leaving a silently orphaned active canonical copy.
+      if (manifest) throw new Error('archive.error.migrating')
       // Delete by indexed primary-key cursors instead of getAllKeys(). A large
       // account never materializes all Message/Metadata keys in browser RAM.
       // All traversals and the durable generation marker share ONE transaction.
