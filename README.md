@@ -18,7 +18,7 @@ The target is approved as a direction, not yet fully implemented.
 | Proxy Switcher | Typed interface and capability boundary only | Future MV3 background | `modules/proxy-switcher/` |
 | All-in-one | Launcher with VK Booster; other modules can be enabled later | Tampermonkey, Chromium | `apps/` |
 
-VK Booster preserves source messages, attachments, photos, document names, voice messages and a self-contained offline HTML chat. It has its own native exporter panel for now, opened **through the shared control center**. The previous standalone userscript menu handler was removed, so installing a bundle does not register duplicate menus. The next migration step is extracting exporter state/files/media/UI into typed modules and moving its panel into the shared UI kit; v2 output format remains compatible.
+VK Booster preserves source messages, attachments, photos, document names, voice messages and a self-contained offline HTML chat. Its form is a VK-specific Vue feature view inside the shared Control Center, without a second modal. The previous standalone userscript menu handler was removed, so installing a bundle does not register duplicate menus. The next migration step is extracting exporter state/files/media/UI into typed modules and moving its panel into the shared UI kit; v2 output format remains compatible.
 
 ## Install and build
 
@@ -47,9 +47,10 @@ Tampermonkey: install a generated `.user.js` (for the chat use `vk-booster.user.
 
 ```text
 packages/core/          typed feature registry, lifecycle, settings, permissions
-packages/ui/            isolated Shadow DOM control center, shared visual tokens
+packages/ui/            shared shadcn-vue primitives and design tokens
+packages/shell/         Booster-derived draggable shell and module views
 packages/adapters/      userscript/Chrome storage and future proxy interfaces
-modules/vk-booster/     VK-only behavior and existing archive engine
+modules/vk-booster/     VK-specific model and chat-export feature UI
 modules/proxy-switcher/ capability-gated future proxy adapter, not shipped
 apps/userscript/        module and all-in-one userscript entries
 apps/extension/         MV3 content + popup entries, minimal manifest
@@ -91,3 +92,12 @@ branch. New releases publish only changed modules after successful main CI.
 Disable the old VK Conversation Archive userscript from the Tampermonkey
 Dashboard before enabling VK Booster. Never delete the saved message archive:
 VK Booster preserves the existing v2 data format.
+
+## Booster UI extraction (in progress)
+
+The UI primitives and shared shell are separately owned. The shell handles
+Shadow DOM, draggable launcher, centered modal and navigation, while
+VK-specific export UI is a feature injected into that shell. ChatGPT Booster
+itself is not modified: its later adoption requires separate tests/review.
+The VK API/storage model remains transitional and is not a reusable archive
+library yet. This refactor does not change released versions or channels.

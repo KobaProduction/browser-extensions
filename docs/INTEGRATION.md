@@ -46,3 +46,10 @@ From an adjacent ChatGPT Booster clone (or another Bun/Vite monorepo), use a loc
 ```
 
 This uses the same `FeatureRuntime` API shown above, with the compiled `dist/index.js` and `.d.ts`. For production cross-repository dependencies, publish a semver-pinned `@kobaproduction/browser-core` to the GitHub npm package registry, then replace the file dependency with a version range. A local `file:` link is for development only, not for a published Booster release.
+
+## Booster shared UI package adoption
+
+Browser UI exports generic shadcn-vue components. Browser Shell exports a
+common Control Center accepting FeatureRuntime and module views. ChatGPT
+Booster remains an independent repository and may adopt these public APIs
+after its own runtime/CI checks; provider integrations are not copied.

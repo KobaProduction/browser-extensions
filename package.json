@@ -11,7 +11,7 @@
   ],
   "scripts": {
     "check": "bun run typecheck && bun test && bun run validate",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && vue-tsc --noEmit -p packages/shell/tsconfig.json && vue-tsc --noEmit -p modules/vk-booster/tsconfig.json",
     "test": "bun test",
     "validate": "bun scripts/validate.ts",
     "build": "bun scripts/build.ts --module all",
@@ -24,6 +24,11 @@
     "@types/chrome": "^0.1.3",
     "@types/node": "^22.0.0",
     "happy-dom": "^20.14.6",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "@vitejs/plugin-vue": "^6.0.0",
+    "@tailwindcss/vite": "^4.1.14",
+    "vite": "^7.1.7",
+    "vue-tsc": "^3.0.7",
+    "tailwindcss": "^4.1.14"
   }
 }

@@ -32,6 +32,12 @@
       ],
       "@kobaproduction/module-vk-booster": [
         "modules/vk-booster/src/index.ts"
+      ],
+      "@kobaproduction/browser-shell": [
+        "packages/shell/src/index.ts"
+      ],
+      "@kobaproduction/module-vk-booster/ui": [
+        "modules/vk-booster/src/features/chat-export/ui/index.ts"
       ]
     }
   },

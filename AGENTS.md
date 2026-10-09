@@ -18,7 +18,8 @@
 
 ## Package rules
 - `packages/core`: host-neutral contracts and state; no `window`, `chrome`, VK or ChatGPT selectors.
-- `packages/ui`: reusable visual components mounted through Shadow DOM; never assume host CSS.
+- `packages/ui`: reusable shadcn-vue primitives with no provider knowledge.
+- `packages/shell`: common draggable launcher, center modal, Shadow DOM and module slots.
 - `packages/adapters`: permission-checked user-script and Chrome bridges.
 - `modules/<id>`: host-specific code, capabilities and a `module.json` contract.
 - `apps/userscript` / `apps/extension`: delivery adapters only, no copied feature code.
