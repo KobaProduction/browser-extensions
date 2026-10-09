@@ -1,0 +1,49 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "chrome",
+      "bun",
+      "node"
+    ],
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": false,
+    "baseUrl": ".",
+    "paths": {
+      "@kobaproduction/browser-core": [
+        "packages/core/src/index.ts"
+      ],
+      "@kobaproduction/browser-ui": [
+        "packages/ui/src/index.ts"
+      ],
+      "@kobaproduction/browser-adapters": [
+        "packages/adapters/src/index.ts"
+      ],
+      "@kobaproduction/module-vk-archive": [
+        "modules/vk-archive/src/index.ts"
+      ]
+    }
+  },
+  "include": [
+    "packages/**/*.ts",
+    "modules/**/*.ts",
+    "apps/**/*.ts",
+    "scripts/**/*.ts"
+  ],
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.test.js",
+    "**/dist/**"
+  ]
+}
