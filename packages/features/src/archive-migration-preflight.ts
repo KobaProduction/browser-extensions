@@ -8,7 +8,8 @@ export interface ArchiveLegacyInventory {
   readonly physicalVersion: number | null
   readonly conversations: number
   readonly messages: number
-  readonly originalRecordsMissing: number
+  /** Null means a large source was counted, not exhaustively decoded. */
+  readonly originalRecordsMissing: number | null
   readonly verifiedOwnerConversations: number
   readonly unboundOwnerConversations: number
   readonly conflictingOwnerConversations: number
@@ -19,7 +20,8 @@ export interface ArchiveMigrationPreflight {
   /** No data is copied, deleted, linked or marked verified by this report. */
   readonly sources: readonly ArchiveLegacyInventory[]
   readonly needsOwnerBinding: boolean
-  readonly sourceRecordDefects: boolean
+  /** Null means that large legacy message bodies were not checked yet. */
+  readonly sourceRecordDefects: boolean | null
 }
 
 /** Iterate without materializing message bodies or emitting source identifiers. */
@@ -43,6 +45,14 @@ async function scanRows(
       if (value && typeof value === 'object' && !Array.isArray(value)) item.continue()
     }
     cursor.onerror = () => reject(cursor.error ?? new Error('Legacy archive cursor failed'))
+  })
+}
+
+function requestCount(store: IDBObjectStore): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const req = store.count()
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error ?? new Error('Legacy archive count failed'))
   })
 }
 
@@ -73,7 +83,7 @@ async function inspectSource(
     physicalVersion: null as number | null,
     conversations: 0,
     messages: 0,
-    originalRecordsMissing: 0,
+    originalRecordsMissing: 0 as number | null,
     verifiedOwnerConversations: 0,
     unboundOwnerConversations: 0,
     conflictingOwnerConversations: 0,
@@ -84,6 +94,13 @@ async function inspectSource(
     summary.physicalVersion = db.version
     if (!db.objectStoreNames.contains('conversations') || !db.objectStoreNames.contains('messages'))
       throw new Error('Legacy archive schema unrecognized')
+    // Count first in a separate short-lived transaction. Keeping a transaction
+    // open across an await before its cursors are scheduled risks it closing.
+    const messageCount = await requestCount(
+      db.transaction('messages', 'readonly').objectStore('messages'),
+    )
+    summary.messages = messageCount
+    if (messageCount > 2048) summary.originalRecordsMissing = null
     const tx = db.transaction(['conversations', 'messages'], 'readonly')
     // Subscribe before the final cursor request can complete the IDB transaction.
     const settled = new Promise<void>((resolve, reject) => {
@@ -99,7 +116,11 @@ async function inspectSource(
         { once: true },
       )
     })
-    const counts = Promise.all([
+    // Count large message stores in IndexedDB without materializing every raw
+    // ChatGPT object into page JavaScript. A user's legacy archive may contain
+    // hundreds of thousands of records; exhaustive inspection belongs inside
+    // the staged migration with bounded cursors and recoverable checkpoints.
+    const counts = [
       scanRows(tx, 'conversations', (row) => {
         summary.conversations++
         if (namespace === 'v3') {
@@ -110,13 +131,16 @@ async function inspectSource(
         } else if (row.accountId === verifiedAccountId) summary.verifiedOwnerConversations++
         else if (typeof row.accountId !== 'string') summary.unboundOwnerConversations++
       }),
-      scanRows(tx, 'messages', (row) => {
-        summary.messages++
-        if (!row.raw || typeof row.raw !== 'object' || Array.isArray(row.raw))
-          summary.originalRecordsMissing++
-      }),
-    ])
-    await Promise.all([counts, settled])
+      ...(messageCount <= 2048
+        ? [
+            scanRows(tx, 'messages', (row) => {
+              if (!row.raw || typeof row.raw !== 'object' || Array.isArray(row.raw))
+                summary.originalRecordsMissing = (summary.originalRecordsMissing ?? 0) + 1
+            }),
+          ]
+        : []),
+    ]
+    await Promise.all([...counts, settled])
     return summary
   } finally {
     db.close()
@@ -151,6 +175,8 @@ export async function inspectExistingArchiveForMigration(
     needsOwnerBinding: sources.some(
       (source) => source.unboundOwnerConversations > 0 || source.conflictingOwnerConversations > 0,
     ),
-    sourceRecordDefects: sources.some((source) => source.originalRecordsMissing > 0),
+    sourceRecordDefects: sources.some((source) => source.originalRecordsMissing === null)
+      ? null
+      : sources.some((source) => (source.originalRecordsMissing ?? 0) > 0),
   }
 }

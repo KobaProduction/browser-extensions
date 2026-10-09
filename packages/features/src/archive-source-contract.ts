@@ -9,12 +9,13 @@ import {
  * Source contracts are intentionally independent of IndexedDB and export schema versions.
  * The message's original JSON object is never rewritten by this validator.
  *
- * v1 remains available for previously observed history. v2 registers the additional
- * native shapes observed in current ChatGPT, without relaxing v1 or accepting unknown
- * keys. Database and export format versions remain independent.
+ * v1 and v2 remain registered as their original strict signatures. v3 only
+ * adds field names and structural types observed in native ChatGPT history
+ * on 2026-10-09. Database and export versions remain independent.
  */
 export const NATIVE_HISTORY_CONTRACT_V1 = 'chatgpt-history-2026-10-v1'
-export const NATIVE_HISTORY_CONTRACT_VERSION = 'chatgpt-history-2026-10-v2'
+export const NATIVE_HISTORY_CONTRACT_V2 = 'chatgpt-history-2026-10-v2'
+export const NATIVE_HISTORY_CONTRACT_VERSION = 'chatgpt-history-2026-10-v3'
 
 /** Retain ambiguity even if a repeated message ID is submitted before its first capture. */
 export interface ArchiveSubmissionSnapshot {
@@ -176,6 +177,23 @@ const v2MetadataTypes: Readonly<Record<string, MetadataFieldType>> = {
   tool_invoking_message: 'string',
   write_like_me_offer_policy: 'string',
 }
+// Observed in a live, already-authorized ChatGPT native history response
+// (510 messages). Preserve the fields unmodified and accept only recorded
+// outer types; never admit unrecognized future metadata.
+const v3MetadataTypes: Readonly<Record<string, MetadataFieldType>> = {
+  ...v2MetadataTypes,
+  thinking_effort: 'string',
+  gizmo_id: 'string',
+  reasoning_group_id: 'string',
+  model_dil_v2: 'object',
+  view_state: 'object',
+  summary_type: 'string',
+  is_merged_message: 'boolean',
+  source_message_ids: 'array',
+  continuation_message_id: 'string',
+  logical_answer_prefix_activity: 'object',
+  genui_components: 'array',
+}
 const v2ContentKeys: Readonly<Record<string, ReadonlySet<string>>> = {
   ...contentKeys,
   code: new Set(['content_type', 'language', 'response_format_name', 'text']),
@@ -193,8 +211,13 @@ const v1Profile: NativeHistoryValidationProfile = {
   content: contentKeys,
 }
 const v2Profile: NativeHistoryValidationProfile = {
-  version: NATIVE_HISTORY_CONTRACT_VERSION,
+  version: NATIVE_HISTORY_CONTRACT_V2,
   metadata: v2MetadataTypes,
+  content: v2ContentKeys,
+}
+const v3Profile: NativeHistoryValidationProfile = {
+  version: NATIVE_HISTORY_CONTRACT_VERSION,
+  metadata: v3MetadataTypes,
   content: v2ContentKeys,
 }
 function metadataTypeMatches(expected: MetadataFieldType, value: unknown): boolean {
@@ -233,7 +256,7 @@ function validateMetadata(
     const expected = profile.metadata[name]
     if (!expected) fail(fieldPath, 'unexpected')
     if (!metadataTypeMatches(expected, value)) fail(fieldPath, 'type')
-    if (profile === v2Profile && name === 'serialization_metadata')
+    if (profile !== v1Profile && name === 'serialization_metadata')
       validateSerializationMetadata(value, fieldPath, fail)
   }
 }
@@ -342,12 +365,12 @@ function assertHistoryPage(
       if (!Array.isArray(required(content, 'parts', `${path}.content`)))
         failure(`${path}.content.parts`, 'type')
     }
-    if (profile === v2Profile && type === 'code') {
+    if (profile !== v1Profile && type === 'code') {
       string(required(content, 'language', `${path}.content`), `${path}.content.language`)
       string(required(content, 'text', `${path}.content`), `${path}.content.text`)
       optional(content, 'response_format_name', `${path}.content`, 'string')
     }
-    if (profile === v2Profile && type === 'execution_output')
+    if (profile !== v1Profile && type === 'execution_output')
       string(required(content, 'text', `${path}.content`), `${path}.content.text`)
     const metadata = obj(required(message, 'metadata', path), `${path}.metadata`)
     validateMetadata(metadata, `${path}.metadata`, profile, failure)
@@ -405,7 +428,7 @@ function assertStreamMessage(
     !Array.isArray(content.parts)
   )
     fail('stream.message.content.parts', 'type')
-  if (profile === v2Profile && content.content_type === 'code') {
+  if (profile !== v1Profile && content.content_type === 'code') {
     if (
       typeof content.language !== 'string' ||
       typeof content.text !== 'string' ||
@@ -416,7 +439,7 @@ function assertStreamMessage(
       fail('stream.message.content', 'type')
   }
   if (
-    profile === v2Profile &&
+    profile !== v1Profile &&
     content.content_type === 'execution_output' &&
     typeof content.text !== 'string'
   )
@@ -486,8 +509,8 @@ const nativeHistoryAdapters: Readonly<Record<string, NativeHistoryAdapter>> = Ob
     assertStream: (id: string, incoming: Record<string, unknown>) =>
       assertStreamMessage(id, incoming, v1Profile),
   }),
-  [NATIVE_HISTORY_CONTRACT_VERSION]: Object.freeze({
-    version: NATIVE_HISTORY_CONTRACT_VERSION,
+  [NATIVE_HISTORY_CONTRACT_V2]: Object.freeze({
+    version: NATIVE_HISTORY_CONTRACT_V2,
     evidenceDocument: 'docs/CHATGPT_CLIENT_RESEARCH.md',
     fixtureFile: 'tests/archive-source-contract.test.ts',
     knownNullablePaths: Object.freeze([
@@ -518,6 +541,17 @@ const nativeHistoryAdapters: Readonly<Record<string, NativeHistoryAdapter>> = Ob
       assertHistoryPage(detail, projected, v2Profile),
     assertStream: (id: string, incoming: Record<string, unknown>) =>
       assertStreamMessage(id, incoming, v2Profile),
+  }),
+  [NATIVE_HISTORY_CONTRACT_VERSION]: Object.freeze({
+    version: NATIVE_HISTORY_CONTRACT_VERSION,
+    evidenceDocument: 'docs/CHATGPT_CLIENT_RESEARCH.md',
+    fixtureFile: 'tests/archive-source-contract.test.ts',
+    // No additional nullable forms were observed in the new metadata keys.
+    knownNullablePaths: Object.freeze([]),
+    assertPage: (detail: ConversationArchiveEventDetail, projected: boolean) =>
+      assertHistoryPage(detail, projected, v3Profile),
+    assertStream: (id: string, incoming: Record<string, unknown>) =>
+      assertStreamMessage(id, incoming, v3Profile),
   }),
 })
 

@@ -3,6 +3,7 @@ import {
   ArchiveContractError,
   ArchiveSourceGate,
   NATIVE_HISTORY_CONTRACT_V1,
+  NATIVE_HISTORY_CONTRACT_V2,
   NATIVE_HISTORY_CONTRACT_VERSION,
 } from '../packages/features/src/archive-source-contract'
 import { ConversationArchiveStore } from '../packages/features/src/archive-store'
@@ -62,7 +63,7 @@ describe('ChatGPT native page source contract', () => {
     gate.inspect(earlier)
     expect(JSON.stringify(first.payload)).toBe(raw)
     expect(gate.get('conversation')).toBeUndefined()
-    expect(NATIVE_HISTORY_CONTRACT_VERSION).toContain('v2')
+    expect(NATIVE_HISTORY_CONTRACT_VERSION).toContain('v3')
   })
 
   test('accepts observed nullable native creation timestamps unchanged', () => {
@@ -112,9 +113,52 @@ describe('ChatGPT native page source contract', () => {
     expect(gate.get('conversation')).toBeUndefined()
     expect(gate.version).toBe(NATIVE_HISTORY_CONTRACT_VERSION)
 
+    new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V2).inspect(incoming)
     const old = new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V1)
     expect(() => old.inspect(incoming)).toThrow(ArchiveContractError)
     expect(old.get('conversation')?.version).toBe(NATIVE_HISTORY_CONTRACT_V1)
+  })
+
+  test('v3 accepts exactly the observed new native metadata fields and types', () => {
+    const metadata = {
+      parent_id: null,
+      thinking_effort: 'high',
+      gizmo_id: 'example-project',
+      reasoning_group_id: 'observed-group',
+      model_dil_v2: {},
+      view_state: {},
+      summary_type: 'observed',
+      is_merged_message: false,
+      source_message_ids: ['source-a'],
+      continuation_message_id: 'source-a',
+      logical_answer_prefix_activity: {},
+      genui_components: [{}],
+    }
+    const incoming = page([message('observed', { metadata })])
+    const raw = JSON.stringify(incoming.payload)
+    new ArchiveSourceGate().inspect(incoming)
+    expect(JSON.stringify(incoming.payload)).toBe(raw)
+    const previous = new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V2)
+    expect(() => previous.inspect(incoming)).toThrow(ArchiveContractError)
+    expect(previous.get('conversation')?.path).toBe('payload.messages[0].metadata.thinking_effort')
+    expect(previous.get('conversation')?.reason).toBe('unexpected')
+  })
+
+  test('v3 still rejects unknown future keys and changed observed metadata types', () => {
+    for (const metadata of [
+      { thinking_effort: 42 },
+      { gizmo_id: null },
+      { source_message_ids: 'not-array' },
+      { model_dil_v2: [] },
+      { genui_components: null },
+      { unexpected_new_native_field: true },
+    ]) {
+      const gate = new ArchiveSourceGate()
+      expect(() => gate.inspect(page([message('changed', { metadata })]))).toThrow(
+        ArchiveContractError,
+      )
+      expect(gate.get('conversation')?.path).toContain('.metadata.')
+    }
   })
 
   test('v2 rejects unknown nested serialization and incompatible types', () => {
