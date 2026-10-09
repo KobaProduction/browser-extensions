@@ -52,9 +52,9 @@ jobs:
           s = p.read_text()
           base = 'https://github.com/KobaProduction/chatgpt-booster/releases/download/'
           name = 'chatgpt-booster.dev.user.js'
-          for field in ('updateURL', 'downloadURL'):
-              original = f'// @{field}    {base}dev-latest/{name}'
-              replacement = f'// @{field}    {base}rollback-v3-20261009/{name}'
+          for field, spacing in (('updateURL', '    '), ('downloadURL', '  ')):
+              original = f'// @{field}{spacing}{base}dev-latest/{name}'
+              replacement = f'// @{field}{spacing}{base}rollback-v3-20261009/{name}'
               assert s.count(original) == 1, f'Unexpected {field} metadata'
               s = s.replace(original, replacement)
           header = s.split('// ==/UserScript==', 1)[0]
