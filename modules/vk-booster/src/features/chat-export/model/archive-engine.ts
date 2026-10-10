@@ -18,7 +18,7 @@ import type {
 } from './types'
 /* VK Booster v2 provider composition; neutral paging, storage and UI live in shared packages. */
 export function installVkArchive(): void {
-  const VERSION = '2.3.3'
+  const VERSION = '2.3.4'
   if (globalThis.VKExport?.version === VERSION) return
   const currentPeer = () => conversationPeerFromPath(location.pathname)
   const cfg: ArchiveOptions = {
@@ -282,9 +282,24 @@ export function installVkArchive(): void {
       name: currentMeta().files[a.key]?.name || a.choices[0]?.name || a.type,
     }))
   }
+  function archiveReadable(): boolean {
+    return (
+      !folderLoading &&
+      !folderPickerOpen &&
+      root !== null &&
+      meta !== null &&
+      meta.peer_id === cfg.peerId &&
+      currentPeer() === cfg.peerId
+    )
+  }
   // Local file:// pages cannot fetch JSON from neighbouring files without browser flags.
   // Embed a *render-only* snapshot in index.html; messages.json remains authoritative.
   async function buildViewer() {
+    if (folderLoading || folderPickerOpen) throw Error('Выбор папки ещё не завершён')
+    if (!root || !meta) throw Error('Сначала выбери папку')
+    const reason = archiveContextBlock(cfg.peerId, currentPeer())
+    if (reason || meta.peer_id !== cfg.peerId)
+      throw Error(reason ?? 'Папка принадлежит другому диалогу VK')
     sorted()
     await write('index.html', viewerHTML(rows, cfg.peerId, attachmentView))
     return { messages: rows.length }
@@ -530,8 +545,14 @@ export function installVkArchive(): void {
     hide,
     subscribe,
     buildViewer,
-    getMessages: () => [...rows],
-    previewMessages: (options) => selectVkArchivePreview(rows, options),
+    // Public readers receive independent JSON-shaped snapshots; callers cannot mutate
+    // the in-memory rows that the next v2 checkpoint will persist.
+    getMessages: () => (archiveReadable() ? structuredClone(rows) : []),
+    previewMessages: (options) => {
+      if (!archiveReadable()) return { messages: [], matching: 0 }
+      const result = selectVkArchivePreview(rows, options)
+      return { ...result, messages: structuredClone(result.messages) }
+    },
     destroy() {
       subscribers.clear()
       if (globalThis.VKExport === apiObject) delete globalThis.VKExport

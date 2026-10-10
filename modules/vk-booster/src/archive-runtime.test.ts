@@ -222,6 +222,19 @@ test('exact N=3000 even if previously saved, and only two JSON outputs', async (
   expect(preview.messages).toHaveLength(80)
   expect(preview.matching).toBe(3000)
   expect(preview.messages.at(-1)?.id).toBe(m.messages.at(-1)?.id)
+  const exposed = a.getMessages()
+  const first = exposed[0]
+  if (!first) throw Error('Expected archived message')
+  const originalText = first.text
+  first.text = 'Changed by public caller'
+  expect(a.getMessages()[0]?.text).toBe(originalText)
+  const latest = preview.messages.at(-1)
+  if (!latest) throw Error('Expected preview message')
+  const latestId = latest.id
+  const latestText = latest.text
+  latest.text = 'Changed by preview caller'
+  expect(a.previewMessages({ limit: 1 }).messages[0]?.id).toBe(latestId)
+  expect(a.previewMessages({ limit: 1 }).messages[0]?.text).toBe(latestText)
 })
 test('repeat last N does not terminate on first existing ID or create duplicates', async () => {
   const before = mediaCalls
@@ -410,6 +423,15 @@ test('soft-navigation to another chat blocks export and never binds its folder t
     expect(mismatch.options.peerId).toBe(peer)
     expect(mismatch.activePeerId).toBe(another)
     expect(mismatch.blockedReason).toContain('другая переписка')
+    expect(a.getMessages()).toEqual([])
+    expect(a.previewMessages({ limit: 80 })).toEqual({ messages: [], matching: 0 })
+    const viewerBefore = await (await folder.getFileHandle('index.html'))
+      .getFile()
+      .then((file) => file.text())
+    await expect(a.buildViewer()).rejects.toThrow('другая переписка')
+    expect(await (await folder.getFileHandle('index.html')).getFile().then((file) => file.text())).toBe(
+      viewerBefore,
+    )
     await expect(
       a.run({ mode: 'recent', limit: 2, pageSize: 2, media: false, delay: 300 }),
     ).rejects.toThrow('Выбран другой диалог VK')
@@ -478,6 +500,9 @@ test('folder loading cannot expose mixed chat data or overlap with a new export'
     expect(state.folder).toBeNull()
     expect(state.messages).toBe(0)
     expect(state.blockedReason).toContain('Читаю')
+    expect(a.getMessages()).toEqual([])
+    expect(a.previewMessages({ limit: 80 })).toEqual({ messages: [], matching: 0 })
+    await expect(a.buildViewer()).rejects.toThrow('Выбор папки')
     await expect(
       a.run({ mode: 'recent', limit: 2, pageSize: 2, media: false, delay: 300 }),
     ).rejects.toThrow('Выбор папки')
@@ -511,6 +536,9 @@ test('folder picker reserves the archive before user permission and rejects a ch
       messages: 0,
     })
     expect(a.status().blockedReason).toContain('Выбор папки')
+    expect(a.getMessages()).toEqual([])
+    expect(a.previewMessages({ limit: 80 })).toEqual({ messages: [], matching: 0 })
+    await expect(a.buildViewer()).rejects.toThrow('Выбор папки')
     await expect(a.run({ mode: 'recent', limit: 2 })).rejects.toThrow('Выбор папки')
     await expect(a.useFolder(folderHandle(folder))).rejects.toThrow('Другая операция')
     await expect(a.selectFolder()).rejects.toThrow('Другая операция')
