@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT Booster [DEV]
 // @namespace    https://github.com/KobaProduction/browser-extensions/dev/chatgpt-booster
-// @version      2.0.2-dev.1
+// @version      2.0.3-dev.3
 // @description  ChatGPT Booster — archive and browser tools
 // @updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/chatgpt-booster.user.js
 // @downloadURL  https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/chatgpt-booster.user.js
@@ -846,8 +846,8 @@
     }
     return Object.fromEntries(entries);
   }
-  const BOOSTER_BASE_VERSION = "2.0.2";
-  const injectedVersion = "2.0.2".trim();
+  const BOOSTER_BASE_VERSION = "2.0.3";
+  const injectedVersion = "2.0.3".trim();
   const BOOSTER_BUILD_VERSION = injectedVersion || BOOSTER_BASE_VERSION;
   const BOOSTER_VERSION = BOOSTER_BUILD_VERSION;
   // @__NO_SIDE_EFFECTS__
@@ -14796,8 +14796,8 @@
         try {
           await paintLoadingStatus();
           if (!owns()) return;
-          const request2 = windowRequest(controller);
-          const loaded = focusId && props.archiveAdapter.getMessageWindow ? await props.archiveAdapter.getMessageWindow(id, focusId, request2) : props.archiveAdapter.getThreadWindow ? await props.archiveAdapter.getThreadWindow(id, null, edge === "first" ? "first" : "older", request2) : await props.archiveAdapter.getThread(id);
+          const request = windowRequest(controller);
+          const loaded = focusId && props.archiveAdapter.getMessageWindow ? await props.archiveAdapter.getMessageWindow(id, focusId, request) : props.archiveAdapter.getThreadWindow ? await props.archiveAdapter.getThreadWindow(id, null, edge === "first" ? "first" : "older", request) : await props.archiveAdapter.getThread(id);
           if (!owns()) return;
           if ("thread" in loaded) acceptWindow(loaded);
           else thread.value = loaded;
@@ -19023,7 +19023,10 @@
   };
   const twMerge = /* @__PURE__ */ createTailwindMerge(getDefaultConfig);
   const _hoisted_1$3$1 = ["aria-busy"];
-  const _hoisted_2$8 = { class: "flex items-center justify-between gap-2" };
+  const _hoisted_2$8 = {
+    key: 0,
+    class: "flex items-center justify-between gap-2"
+  };
   const _hoisted_3$7 = {
     role: "status",
     "aria-live": "polite"
@@ -19034,11 +19037,11 @@
   };
   const _hoisted_5$7 = ["value", "aria-label"];
   const _hoisted_6$7 = {
-    key: 0,
+    key: 1,
     class: "text-xs text-muted-foreground"
   };
   const _hoisted_7$7 = {
-    key: 1,
+    key: 2,
     role: "alert",
     class: "text-sm text-destructive"
   };
@@ -19051,6 +19054,7 @@
       detail: { default: null },
       error: { default: null },
       busy: { type: Boolean, default: false },
+      compact: { type: Boolean, default: false },
       ariaLabel: {}
     },
     setup(__props) {
@@ -19062,10 +19066,10 @@
       });
       return (_ctx, _cache) => {
         return openBlock(), createElementBlock("section", {
-          class: "booster-shared-archive-progress",
+          class: normalizeClass(__props.compact ? "w-full" : "booster-shared-archive-progress"),
           "aria-busy": __props.busy
         }, [
-          createBaseVNode("div", _hoisted_2$8, [
+          !__props.compact ? (openBlock(), createElementBlock("div", _hoisted_2$8, [
             createBaseVNode(
               "span",
               _hoisted_3$7,
@@ -19080,7 +19084,7 @@
               1
               /* TEXT */
             )) : createCommentVNode("v-if", true)
-          ]),
+          ])) : createCommentVNode("v-if", true),
           createBaseVNode("progress", {
             class: "w-full",
             value: progress.value ?? void 0,
@@ -19102,7 +19106,7 @@
             /* TEXT */
           )) : createCommentVNode("v-if", true),
           renderSlot(_ctx.$slots, "default")
-        ], 8, _hoisted_1$3$1);
+        ], 10, _hoisted_1$3$1);
       };
     }
   });
@@ -19775,13 +19779,13 @@
       }, { deep: true });
       function stopCollection(reason = "user") {
         if (!props.archiveAdapter.collectionInsideExportOnly || !collecting.value) return;
-        const request2 = {
+        const request = {
           conversationId: props.conversationId,
           reason,
           ...collectionSessionId.value !== void 0 ? { sessionId: collectionSessionId.value } : {}
         };
-        if (props.archiveAdapter.stopCollection) props.archiveAdapter.stopCollection(request2);
-        else window.dispatchEvent(new CustomEvent(HISTORY_LOADER_STOP_EVENT, { detail: request2 }));
+        if (props.archiveAdapter.stopCollection) props.archiveAdapter.stopCollection(request);
+        else window.dispatchEvent(new CustomEvent(HISTORY_LOADER_STOP_EVENT, { detail: request }));
         if (!props.archiveAdapter.getCollectionState) {
           collecting.value = false;
           refreshing.value = false;
@@ -26376,21 +26380,21 @@
       };
       const wrapped = ((input, init) => {
         if (fetchCallDepth > 0) return upstream.call(target, input, init);
-        const request2 = input instanceof Request ? input : void 0;
-        const rawUrl = request2?.url ?? String(input);
+        const request = input instanceof Request ? input : void 0;
+        const rawUrl = request?.url ?? String(input);
         if (!transportEmissionEnabled && !isArchiveObservedUrl(rawUrl) && !isConversationRequestUrl(rawUrl) && !isConversationStopUrl(rawUrl) && !isConversationStreamStatusUrl(rawUrl) && !isConversationCatalogUrl(rawUrl) && !isAccountCheckUrl(rawUrl))
           return callUpstream(input, init);
         return (async () => {
           const diagnosticsEnabled = transportEmissionEnabled;
           const id = nextId("fetch");
           const started = diagnosticsEnabled ? performance.now() : 0;
-          const method = init?.method ?? request2?.method ?? "GET";
+          const method = init?.method ?? request?.method ?? "GET";
           const url = diagnosticsEnabled ? sanitizeTransportUrl(rawUrl) : "";
           const body = diagnosticsEnabled && config.captureBodies ? sanitizeBodyPreview(init?.body, config.maxBodyChars) : void 0;
           const requestBoundaryAt = Date.now();
           const accountSelectedAtRequest = selectedAccountId;
           const selectionSerialAtRequest = accountSelectionSerial;
-          const headers = new Headers(request2?.headers);
+          const headers = new Headers(request?.headers);
           if (init?.headers)
             new Headers(init.headers).forEach((value, key2) => {
               headers.set(key2, value);
@@ -27737,7 +27741,7 @@
     const spinner = document.createElement("span");
     spinner.className = "booster-request-spinner";
     spinner.setAttribute("aria-hidden", "true");
-    const request2 = document.createElement("span");
+    const request = document.createElement("span");
     const requestLabel = document.createElement("span");
     requestLabel.className = "booster-request-status-label";
     const requestTimer = document.createElement("strong");
@@ -27745,9 +27749,9 @@
     const reasoningLabel = document.createElement("span");
     reasoningLabel.className = "booster-request-status-label";
     const reasoningTimer = document.createElement("strong");
-    request2.append(requestLabel, requestTimer);
+    request.append(requestLabel, requestTimer);
     reasoning.append(reasoningLabel, reasoningTimer);
-    bar.append(spinner, request2, reasoning);
+    bar.append(spinner, request, reasoning);
     shadow.append(bar);
     let snapshot = initial;
     let currentNow = Date.now();
@@ -29239,6 +29243,204 @@
       this.#selectedAdapter(conversationId);
     }
   }
+  function aborted() {
+    return new DOMException("IndexedDB scan cancelled", "AbortError");
+  }
+  function readIndexedPage(options) {
+    if (!Number.isSafeInteger(options.pageSize) || options.pageSize < 1 || options.pageSize > 1024)
+      throw new RangeError("IndexedDB pageSize must be an integer from 1 to 1024");
+    if (options.index === void 0 !== (options.indexKey === void 0))
+      throw new Error("IndexedDB scan requires index and indexKey together");
+    if (options.signal?.aborted)
+      return Promise.reject(aborted());
+    const compare = options.compareKeys ?? ((a, b) => indexedDB.cmp(a, b));
+    const tx = options.db.transaction(options.store, "readonly");
+    return new Promise((resolve2, reject) => {
+      const records = [];
+      let lastPrimaryKey = null;
+      let exhausted = false;
+      let finished = false;
+      let jumped = false;
+      const cleanup = () => options.signal?.removeEventListener("abort", onAbort);
+      const rejectOnce = (reason) => {
+        if (finished)
+          return;
+        finished = true;
+        cleanup();
+        reject(reason);
+      };
+      const fail = (reason) => {
+        if (finished)
+          return;
+        rejectOnce(reason);
+        try {
+          tx.abort();
+        } catch {
+        }
+      };
+      const onAbort = () => fail(aborted());
+      tx.addEventListener("complete", () => {
+        if (finished)
+          return;
+        finished = true;
+        cleanup();
+        resolve2({ records, lastPrimaryKey, exhausted });
+      }, { once: true });
+      tx.addEventListener("abort", () => rejectOnce(options.signal?.aborted ? aborted() : tx.error ?? new Error("IndexedDB indexed page aborted")), { once: true });
+      tx.addEventListener("error", () => rejectOnce(tx.error ?? new Error("IndexedDB indexed page failed")), { once: true });
+      options.signal?.addEventListener("abort", onAbort, { once: true });
+      if (options.signal?.aborted) {
+        onAbort();
+        return;
+      }
+      try {
+        const store = tx.objectStore(options.store);
+        const request = options.index !== void 0 && options.indexKey !== void 0 ? store.index(options.index).openCursor(IDBKeyRange.only(options.indexKey)) : store.openCursor();
+        request.onerror = () => fail(request.error ?? new Error("IndexedDB cursor failed"));
+        request.onsuccess = () => {
+          if (finished)
+            return;
+          const cursor = request.result;
+          if (!cursor) {
+            exhausted = true;
+            return;
+          }
+          try {
+            const after = options.afterPrimaryKey;
+            if (after != null && !jumped) {
+              jumped = true;
+              if (compare(cursor.primaryKey, after) < 0) {
+                if (options.index !== void 0 && options.indexKey !== void 0)
+                  cursor.continuePrimaryKey(options.indexKey, after);
+                else
+                  cursor.continue(after);
+                return;
+              }
+            }
+            if (after != null && compare(cursor.primaryKey, after) <= 0) {
+              cursor.continue();
+              return;
+            }
+            records.push(options.decode(cursor.value));
+            lastPrimaryKey = cursor.primaryKey;
+            if (records.length < options.pageSize)
+              cursor.continue();
+          } catch (reason) {
+            fail(reason);
+          }
+        };
+      } catch (reason) {
+        fail(reason);
+      }
+    });
+  }
+  function readStorePage(options) {
+    return readIndexedPage(options);
+  }
+  function requestResult(request) {
+    return new Promise((resolve2, reject) => {
+      request.onsuccess = () => resolve2(request.result);
+      request.onerror = () => reject(request.error ?? new Error("IndexedDB request failed"));
+    });
+  }
+  function transactionComplete(tx) {
+    const done = new Promise((resolve2, reject) => {
+      tx.addEventListener("complete", () => resolve2(), { once: true });
+      tx.addEventListener("error", () => reject(tx.error ?? new Error("IndexedDB transaction failed")), {
+        once: true
+      });
+      tx.addEventListener("abort", () => reject(tx.error ?? new DOMException("IndexedDB transaction aborted", "AbortError")), { once: true });
+    });
+    done.catch(() => {
+      return;
+    });
+    return done;
+  }
+  function readIndexedRangePage(options) {
+    if (!Number.isSafeInteger(options.pageSize) || options.pageSize < 1 || options.pageSize > 1024)
+      throw new RangeError("IndexedDB range pageSize must be an integer from 1 to 1024");
+    const aborted2 = () => new DOMException("IndexedDB range scan cancelled", "AbortError");
+    if (options.signal?.aborted)
+      return Promise.reject(aborted2());
+    const compare = options.compareKeys ?? ((a, b) => indexedDB.cmp(a, b));
+    const tx = options.db.transaction(options.store, "readonly");
+    return new Promise((resolve2, reject) => {
+      const records = [];
+      let last = null;
+      let exhausted = false;
+      let finished = false;
+      let jumped = false;
+      const cleanup = () => options.signal?.removeEventListener("abort", onAbort);
+      const rejectOnce = (error) => {
+        if (finished)
+          return;
+        finished = true;
+        cleanup();
+        reject(error);
+      };
+      const fail = (error) => {
+        if (finished)
+          return;
+        rejectOnce(error);
+        try {
+          tx.abort();
+        } catch {
+        }
+      };
+      const onAbort = () => fail(aborted2());
+      tx.addEventListener("complete", () => {
+        if (finished)
+          return;
+        finished = true;
+        cleanup();
+        resolve2({ records, last, exhausted });
+      }, { once: true });
+      tx.addEventListener("abort", () => rejectOnce(options.signal?.aborted ? aborted2() : tx.error ?? new Error("IndexedDB range transaction aborted")), { once: true });
+      tx.addEventListener("error", () => rejectOnce(tx.error ?? new Error("IndexedDB range transaction failed")), { once: true });
+      options.signal?.addEventListener("abort", onAbort, { once: true });
+      if (options.signal?.aborted) {
+        onAbort();
+        return;
+      }
+      try {
+        const request = tx.objectStore(options.store).index(options.index).openCursor(options.range);
+        request.onerror = () => fail(request.error ?? new Error("IndexedDB range cursor failed"));
+        request.onsuccess = () => {
+          if (finished)
+            return;
+          const cursor = request.result;
+          if (!cursor) {
+            exhausted = true;
+            return;
+          }
+          try {
+            const after = options.after;
+            if (after) {
+              const order = compare(cursor.key, after.indexKey);
+              const primary = order === 0 ? compare(cursor.primaryKey, after.primaryKey) : 0;
+              if (!jumped && (order < 0 || order === 0 && primary < 0)) {
+                jumped = true;
+                cursor.continuePrimaryKey(after.indexKey, after.primaryKey);
+                return;
+              }
+              if (order < 0 || order === 0 && primary <= 0) {
+                cursor.continue();
+                return;
+              }
+            }
+            records.push(options.decode(cursor.value));
+            last = { indexKey: cursor.key, primaryKey: cursor.primaryKey };
+            if (records.length < options.pageSize)
+              cursor.continue();
+          } catch (cause) {
+            fail(cause);
+          }
+        };
+      } catch (cause) {
+        fail(cause);
+      }
+    });
+  }
   function initialEvidenceScore(page) {
     return Number(page.hasPreviousPage !== null) + Number(page.hasNextPage !== null);
   }
@@ -29365,19 +29567,6 @@
   }
   function booleanOrNull(value) {
     return typeof value === "boolean" ? value : null;
-  }
-  function request$1(req2) {
-    return new Promise((resolve2, reject) => {
-      req2.onsuccess = () => resolve2(req2.result);
-      req2.onerror = () => reject(req2.error ?? new Error("IndexedDB request failed"));
-    });
-  }
-  function transactionDone(tx) {
-    return new Promise((resolve2, reject) => {
-      tx.oncomplete = () => resolve2();
-      tx.onerror = () => reject(tx.error ?? new Error("IndexedDB transaction failed"));
-      tx.onabort = () => reject(tx.error ?? new Error("IndexedDB transaction aborted"));
-    });
   }
   function deleteExpiredPreloadPages(store, now) {
     return new Promise((resolve2, reject) => {
@@ -29614,7 +29803,7 @@
       if (!entries.size) return;
       const db = await this.#db();
       const tx = db.transaction("preloadPages", "readwrite");
-      const done = transactionDone(tx);
+      const done = transactionComplete(tx);
       const store = tx.objectStore("preloadPages");
       const conversations = /* @__PURE__ */ new Set();
       const compacted = /* @__PURE__ */ new Set();
@@ -29640,7 +29829,7 @@
     async listPreloadPages(conversationId) {
       const db = await this.#db();
       const tx = db.transaction("preloadPages", "readonly");
-      const items = await request$1(
+      const items = await requestResult(
         tx.objectStore("preloadPages").index("conversationId").getAll(IDBKeyRange.only(conversationId))
       );
       const now = Date.now();
@@ -29725,7 +29914,7 @@
       const stores = Array.from(db.objectStoreNames);
       if (stores.length) {
         const tx = db.transaction(stores, "readwrite");
-        const done = transactionDone(tx);
+        const done = transactionComplete(tx);
         for (const name of stores) tx.objectStore(name).clear();
         await done;
       }
@@ -29739,20 +29928,20 @@
     async listProjects() {
       const db = await this.#db();
       const tx = db.transaction("projects", "readonly");
-      const items = await request$1(tx.objectStore("projects").getAll());
+      const items = await requestResult(tx.objectStore("projects").getAll());
       return items.sort((a, b) => a.title?.localeCompare(b.title ?? "") ?? 0);
     }
     async getProject(projectId) {
       const db = await this.#db();
       const tx = db.transaction("projects", "readonly");
-      return await request$1(tx.objectStore("projects").get(projectId));
+      return await requestResult(tx.objectStore("projects").get(projectId));
     }
     async upsertProject(projectId, title) {
       const db = await this.#db();
       const tx = db.transaction("projects", "readwrite");
-      const done = transactionDone(tx);
+      const done = transactionComplete(tx);
       const store = tx.objectStore("projects");
-      const previous = await request$1(store.get(projectId));
+      const previous = await requestResult(store.get(projectId));
       const now = Date.now();
       store.put({
         projectId,
@@ -29781,10 +29970,10 @@
       if (!metadata.size) return [];
       const db = await this.#db();
       const tx = db.transaction("assets", "readwrite");
-      const done = transactionDone(tx);
+      const done = transactionComplete(tx);
       const store = tx.objectStore("assets");
       const previous = await Promise.all(
-        [...metadata.keys()].map((assetId) => request$1(store.get(assetId)))
+        [...metadata.keys()].map((assetId) => requestResult(store.get(assetId)))
       );
       const now = Date.now();
       const results = [];
@@ -29815,11 +30004,11 @@
       if (!downloadUrl) return false;
       const db = await this.#db();
       const tx = db.transaction(["assets", "messages"], "readwrite");
-      const done = transactionDone(tx);
+      const done = transactionComplete(tx);
       const store = tx.objectStore("assets");
       const [previous, messages2] = await Promise.all([
-        request$1(store.get(detail.assetId)),
-        request$1(
+        requestResult(store.get(detail.assetId)),
+        requestResult(
           tx.objectStore("messages").index("conversationId").getAll(IDBKeyRange.only(conversationId))
         )
       ]);
@@ -29870,12 +30059,12 @@
       const db = await this.#db();
       const tx = db.transaction("assets", "readonly");
       const store = tx.objectStore("assets");
-      return (await Promise.all(ids.map((id) => request$1(store.get(id))))).filter((item) => Boolean(item));
+      return (await Promise.all(ids.map((id) => requestResult(store.get(id))))).filter((item) => Boolean(item));
     }
     async getCaptureEvidence(conversationId, readId) {
       const db = await this.#db();
       const tx = db.transaction("conversationPages", "readonly");
-      const pages = await request$1(
+      const pages = await requestResult(
         tx.objectStore("conversationPages").index("conversationId").getAll(conversationId)
       );
       const selected = readId ? pages.filter((page) => page.readId === readId) : [];
@@ -29894,14 +30083,14 @@
     async getCoverage(conversationId) {
       const db = await this.#db();
       const tx = db.transaction("conversationCoverage", "readonly");
-      return await request$1(
+      return await requestResult(
         tx.objectStore("conversationCoverage").get(conversationId)
       );
     }
     async getConversation(conversationId) {
       const db = await this.#db();
       const tx = db.transaction("conversations", "readonly");
-      return await request$1(
+      return await requestResult(
         tx.objectStore("conversations").get(conversationId)
       );
     }
@@ -29909,9 +30098,9 @@
       if (!title.trim()) return false;
       const db = await this.#db();
       const tx = db.transaction("conversations", "readwrite");
-      const done = transactionDone(tx);
+      const done = transactionComplete(tx);
       const store = tx.objectStore("conversations");
-      const previous = await request$1(store.get(conversationId));
+      const previous = await requestResult(store.get(conversationId));
       if (!previous || previous.title === title) {
         await done;
         return false;
@@ -29927,11 +30116,11 @@
       if (!titles.size) return 0;
       const db = await this.#db();
       const tx = db.transaction("conversations", "readwrite");
-      const done = transactionDone(tx);
+      const done = transactionComplete(tx);
       const store = tx.objectStore("conversations");
       const entries = [...titles];
       const previous = await Promise.all(
-        entries.map(([id]) => request$1(store.get(id)))
+        entries.map(([id]) => requestResult(store.get(id)))
       );
       let changed = 0;
       for (let i = 0; i < entries.length; i++) {
@@ -29947,7 +30136,7 @@
     async listConversations() {
       const db = await this.#db();
       const tx = db.transaction("conversations", "readonly");
-      const items = await request$1(tx.objectStore("conversations").getAll());
+      const items = await requestResult(tx.objectStore("conversations").getAll());
       return items.sort(
         (a, b) => serverTimeMs(b.updatedAt, b.lastSeenAt) - serverTimeMs(a.updatedAt, a.lastSeenAt)
       );
@@ -29956,7 +30145,7 @@
       const db = await this.#db();
       const tx = db.transaction("messages", "readonly");
       const index = tx.objectStore("messages").index("conversationId");
-      const items = await request$1(index.getAll(IDBKeyRange.only(conversationId)));
+      const items = await requestResult(index.getAll(IDBKeyRange.only(conversationId)));
       return items.sort(
         (a, b) => serverTimeMs(a.createTime, a.firstSeenAt) - serverTimeMs(b.createTime, b.firstSeenAt) || a.messageId.localeCompare(b.messageId)
       );
@@ -29985,24 +30174,24 @@
         ["conversations", "messages", "conversationCoverage", "conversationPages"],
         "readwrite"
       );
-      const writeDone = transactionDone(readTx);
-      const previousPagesPromise = request$1(
+      const writeDone = transactionComplete(readTx);
+      const previousPagesPromise = requestResult(
         readTx.objectStore("conversationPages").index("conversationId").getAll(conversationId)
       );
-      const allMessagesPromise = request$1(
+      const allMessagesPromise = requestResult(
         readTx.objectStore("messages").index("conversationId").getAll(conversationId)
       );
-      const conversationPromise = request$1(
+      const conversationPromise = requestResult(
         readTx.objectStore("conversations").get(conversationId)
       );
-      const coveragePromise = request$1(
+      const coveragePromise = requestResult(
         readTx.objectStore("conversationCoverage").get(conversationId)
       );
       const messageStore = readTx.objectStore("messages");
       const previousMessagesPromise = Promise.all(
         rawMessages.map((message) => {
           const id = stringOrNull(message.id);
-          return id ? request$1(messageStore.get(`${conversationId}:${id}`)) : Promise.resolve(void 0);
+          return id ? requestResult(messageStore.get(`${conversationId}:${id}`)) : Promise.resolve(void 0);
         })
       );
       const [oldConversation, oldCoverage, previousMessages, previousPages, allMessages] = await Promise.all([
@@ -31289,12 +31478,12 @@
     #onStopRequested = (event) => {
       this.stopCollection(event.detail);
     };
-    stopCollection(request2 = {}) {
+    stopCollection(request = {}) {
       const run = this.collectionSession.current();
       if (!run) return;
-      if (request2?.conversationId && request2.conversationId !== run.conversationId) return;
-      if (request2?.sessionId !== void 0 && request2.sessionId !== run.id) return;
-      const reason = request2?.reason;
+      if (request?.conversationId && request.conversationId !== run.conversationId) return;
+      if (request?.sessionId !== void 0 && request.sessionId !== run.id) return;
+      const reason = request?.reason;
       this.collectionSession.pause(
         reason === "export_closed" || reason === "export_suspended" || reason === "tab_hidden" || reason === "navigation" ? reason : "user",
         run
@@ -31746,14 +31935,14 @@
       fidelity: "parsed JSON objects; not original response bytes"
     };
   }
-  function technicalBlobWriter(path, request2) {
-    if (path.status !== "verified" || !path.rootId || path.conversationRevision === null || path.selectedTipId !== request2.selectedTipId)
+  function technicalBlobWriter(path, request) {
+    if (path.status !== "verified" || !path.rootId || path.conversationRevision === null || path.selectedTipId !== request.selectedTipId)
       throw new Error("archive.error.unverifiedPath");
-    if (request2.format !== "json-compact" && request2.format !== "json-readable")
+    if (request.format !== "json-compact" && request.format !== "json-readable")
       throw new Error("archive.error.technicalRequiresJson");
-    const pretty = request2.format === "json-readable";
+    const pretty = request.format === "json-readable";
     const skeleton = JSON.stringify(
-      technicalDocument(path, request2.conversationId, []),
+      technicalDocument(path, request.conversationId, []),
       null,
       pretty ? 2 : void 0
     );
@@ -31781,9 +31970,9 @@
       }
     };
   }
-  async function createArchiveV4TechnicalBlobFromIndex(path, request2, lookup, assertActive = () => void 0, onRecord) {
+  async function createArchiveV4TechnicalBlobFromIndex(path, request, lookup, assertActive = () => void 0, onRecord) {
     if (!path.messageIds.length) throw new Error("archive.error.unverifiedPath");
-    const writer = technicalBlobWriter(path, request2);
+    const writer = technicalBlobWriter(path, request);
     for (let i = 0; i < path.messageIds.length; i++) {
       assertActive();
       const messageId = path.messageIds[i];
@@ -31803,10 +31992,10 @@
     const seconds = Math.floor(unit === "milliseconds" ? value / 1e3 : value);
     return Number.isSafeInteger(seconds) ? seconds : null;
   }
-  function projectArchiveV4CompactEntry(message, request2) {
+  function projectArchiveV4CompactEntry(message, request) {
     const normalized = normalizeConversationMessage(
       message.raw,
-      request2.conversationId,
+      request.conversationId,
       null,
       message.lastSeenAt
     );
@@ -31814,13 +32003,13 @@
     const kind = archiveRecordKind(normalized);
     const visible = kind === "user" || kind === "answer";
     const isRecap = normalized.contentType === "reasoning_recap";
-    const include = visible || request2.mode === "selective" && (kind === "reasoning" && request2.reasoning === true && (isRecap ? request2.reasoningRecap !== false : request2.reasoningFull !== false) || kind === "tool_call" && request2.tools === true && request2.toolCalls !== false || kind === "tool_result" && request2.tools === true && request2.toolResults !== false || kind === "internal" && request2.internal === true);
+    const include = visible || request.mode === "selective" && (kind === "reasoning" && request.reasoning === true && (isRecap ? request.reasoningRecap !== false : request.reasoningFull !== false) || kind === "tool_call" && request.tools === true && request.toolCalls !== false || kind === "tool_result" && request.tools === true && request.toolResults !== false || kind === "internal" && request.internal === true);
     if (!include) return [];
     const sourceMetadata2 = message.raw.metadata;
     const metadata = sourceMetadata2 && typeof sourceMetadata2 === "object" && !Array.isArray(sourceMetadata2) ? sourceMetadata2 : null;
-    const nativeToolContent = (kind === "tool_call" || kind === "tool_result") && request2.mode === "selective" && request2.toolSourceContent === true && (request2.format === "json-compact" || request2.format === "json-readable") ? message.raw.content : void 0;
-    const explicitDictationEdit = request2.mode === "selective" && request2.dictationEditEvidence === true && metadata?.dictation_edited === true;
-    const attachments = request2.mode === "selective" && request2.attachmentMetadata === true ? archiveRecordAttachments(normalized) : [];
+    const nativeToolContent = (kind === "tool_call" || kind === "tool_result") && request.mode === "selective" && request.toolSourceContent === true && (request.format === "json-compact" || request.format === "json-readable") ? message.raw.content : void 0;
+    const explicitDictationEdit = request.mode === "selective" && request.dictationEditEvidence === true && metadata?.dictation_edited === true;
+    const attachments = request.mode === "selective" && request.attachmentMetadata === true ? archiveRecordAttachments(normalized) : [];
     const time = message.raw.create_time;
     return [
       {
@@ -31829,7 +32018,7 @@
         role: normalized.role,
         timestampUtcSeconds: compactUtcSeconds(time, "seconds"),
         text: archiveRecordText(normalized),
-        ...request2.mode === "selective" ? { channel: normalized.channel, recipient: normalized.recipient } : {},
+        ...request.mode === "selective" ? { channel: normalized.channel, recipient: normalized.recipient } : {},
         ...nativeToolContent !== void 0 ? {
           sourceToolContent: nativeToolContent,
           sourceToolContentFidelity: "parsed native content object; not a reconstructed invocation"
@@ -31897,12 +32086,12 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
     );
     return lines.join("\n");
   }
-  async function createArchiveV4CompactBlobFromIndex(path, request2, lookup, assertActive = () => void 0, revisionEvidence, onRecord, submissionEvidence) {
-    if (path.status !== "verified" || !path.rootId || !path.messageIds.length || path.conversationRevision === null || path.selectedTipId !== request2.selectedTipId)
+  async function createArchiveV4CompactBlobFromIndex(path, request, lookup, assertActive = () => void 0, revisionEvidence, onRecord, submissionEvidence) {
+    if (path.status !== "verified" || !path.rootId || !path.messageIds.length || path.conversationRevision === null || path.selectedTipId !== request.selectedTipId)
       throw new Error("archive.error.unverifiedPath");
-    if (request2.mode === "technical") throw new Error("archive.error.unverifiedPath");
-    const human = request2.format === "markdown" || request2.format === "text";
-    const readable = request2.format === "json-readable";
+    if (request.mode === "technical") throw new Error("archive.error.unverifiedPath");
+    const human = request.format === "markdown" || request.format === "text";
+    const readable = request.format === "json-readable";
     const collector = modelObservationCollector();
     const bodyParts = [];
     let buffer = "";
@@ -31915,7 +32104,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
       const message = await lookup(messageId);
       assertActive();
       if (!message || message.messageId !== messageId) throw new Error("archive.error.sourceChanged");
-      if (request2.mode === "selective" && request2.modelEvidence !== false) {
+      if (request.mode === "selective" && request.modelEvidence !== false) {
         collector.observe(message);
         if (isUserSource(message.raw)) {
           const submission = submissionEvidence ? await submissionEvidence(messageId) : { status: "unobserved", selection: null };
@@ -31923,10 +32112,10 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
           collector.observeSubmission(messageId, submission);
         }
       }
-      const projected = projectArchiveV4CompactEntry(message, request2);
-      const revisionWindow = projected.length && request2.mode === "selective" && request2.sourceRevisions === true && message.revision > 1 ? await revisionEvidence?.(messageId) : void 0;
+      const projected = projectArchiveV4CompactEntry(message, request);
+      const revisionWindow = projected.length && request.mode === "selective" && request.sourceRevisions === true && message.revision > 1 ? await revisionEvidence?.(messageId) : void 0;
       assertActive();
-      if (request2.mode === "selective" && request2.sourceRevisions === true && !revisionEvidence)
+      if (request.mode === "selective" && request.sourceRevisions === true && !revisionEvidence)
         throw new Error("archive.error.sourceChanged");
       if (revisionWindow && (revisionWindow.previous.at(-1)?.previousRevision !== message.revision - 1 || !revisionWindow.olderRevisionsOmitted && revisionWindow.previous[0]?.previousRevision !== 1))
         throw new Error("archive.error.sourceChanged");
@@ -31939,7 +32128,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
           if (previousHuman !== null) buffer += `${previousHuman}
 
 `;
-          previousHuman = humanArchiveV4Entry(entry, request2.format === "markdown");
+          previousHuman = humanArchiveV4Entry(entry, request.format === "markdown");
         } else {
           const record2 = JSON.stringify(entry, null, readable ? 2 : void 0);
           buffer += readable ? `${included ? "," : ""}
@@ -31958,7 +32147,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
     assertActive();
     const modelEvidence = collector.result();
     if (human) {
-      const details = request2.mode === "selective" && request2.modelEvidence !== false ? humanModelEvidence(modelEvidence, request2.format === "markdown") : "";
+      const details = request.mode === "selective" && request.modelEvidence !== false ? humanModelEvidence(modelEvidence, request.format === "markdown") : "";
       const parts2 = [];
       if (details) parts2.push(details, previousHuman === null ? "\n" : "\n\n");
       parts2.push(...bodyParts);
@@ -31967,21 +32156,21 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
       else if (!details) parts2.push("\n");
       return {
         blob: new Blob(parts2, {
-          type: request2.format === "markdown" ? "text/markdown;charset=utf-8" : "text/plain;charset=utf-8"
+          type: request.format === "markdown" ? "text/markdown;charset=utf-8" : "text/plain;charset=utf-8"
         }),
-        extension: request2.format === "markdown" ? "md" : "txt"
+        extension: request.format === "markdown" ? "md" : "txt"
       };
     }
     if (buffer) bodyParts.push(buffer);
     const document2 = {
       schema: ARCHIVE_V4_EXPORT_SCHEMA,
-      mode: request2.mode,
-      conversationId: request2.conversationId,
+      mode: request.mode,
+      conversationId: request.conversationId,
       selectedTipId: path.selectedTipId,
       verifiedRootId: path.rootId,
       sourceReadId: path.coverageReadId,
       binaryAssetsIncluded: false,
-      ...request2.mode === "selective" && request2.modelEvidence !== false ? { observedModelEvidence: modelEvidence } : {},
+      ...request.mode === "selective" && request.modelEvidence !== false ? { observedModelEvidence: modelEvidence } : {},
       timestampTimebase: "unix_seconds_utc",
       timestampScope: "derived_fields; explicitly included native fragments retain source units",
       messages: []
@@ -32010,24 +32199,24 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
     depth_limit: "depth_limit",
     source_changed: "source_changed"
   };
-  async function prepareArchiveV4Export(store, request2) {
+  async function prepareArchiveV4Export(store, request) {
     const assertActive = () => {
-      assertNotCancelled(request2.signal);
-      if (request2.stillAuthorized && !request2.stillAuthorized()) throw new Error("archive.error.auth");
-      store.sourceGate.assertCompatible(request2.conversationId);
+      assertNotCancelled(request.signal);
+      if (request.stillAuthorized && !request.stillAuthorized()) throw new Error("archive.error.auth");
+      store.sourceGate.assertCompatible(request.conversationId);
     };
     let lastPhase;
     let lastPublishedAt = 0;
     const report = (progress) => {
       assertActive();
-      if (!request2.onProgress) return;
+      if (!request.onProgress) return;
       const now = performance.now();
       const reachedEnd = progress.total !== null && progress.completed !== null && progress.completed === progress.total;
       if (progress.phase !== lastPhase || reachedEnd || now - lastPublishedAt >= 100) {
         lastPhase = progress.phase;
         lastPublishedAt = now;
         try {
-          request2.onProgress(Object.freeze({ ...progress }));
+          request.onProgress(Object.freeze({ ...progress }));
         } catch {
         }
         assertActive();
@@ -32035,11 +32224,11 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
     };
     report({ phase: "checking", unit: null, completed: null, total: null });
     const selected = await store.readSelectedPathIndex(
-      request2.accountId,
-      request2.conversationId,
-      request2.selectedTipId,
+      request.accountId,
+      request.conversationId,
+      request.selectedTipId,
       5e4,
-      request2.signal,
+      request.signal,
       (completed) => report({ phase: "tracing", unit: "records", completed, total: null })
     );
     assertActive();
@@ -32047,9 +32236,9 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
       throw new ArchiveExportBlockedError(pathBlockers[selected.status]);
     if (selected.conversationRevision === null) throw new ArchiveExportBlockedError("source_changed");
     const assertSnapshot = async () => {
-      const current = await store.getConversation(request2.accountId, request2.conversationId);
+      const current = await store.getConversation(request.accountId, request.conversationId);
       assertActive();
-      if (!current || current.revision !== selected.conversationRevision || (current.instanceId ?? null) !== (selected.conversationInstanceId ?? null) || current.currentNodeId !== request2.selectedTipId)
+      if (!current || current.revision !== selected.conversationRevision || (current.instanceId ?? null) !== (selected.conversationInstanceId ?? null) || current.currentNodeId !== request.selectedTipId)
         throw new Error("archive.error.sourceChanged");
     };
     await assertSnapshot();
@@ -32061,42 +32250,42 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
       total: recordCount
     });
     serializedRecord(0);
-    const lookup = (id) => store.getMessage(request2.accountId, request2.conversationId, id);
+    const lookup = (id) => store.getMessage(request.accountId, request.conversationId, id);
     const readRevisionEvidence = store.getMessageRevisionEvidence?.bind(store);
     const readSubmission = store.getMessageSubmission?.bind(store);
-    const sourceFile = request2.mode === "technical" ? {
+    const sourceFile = request.mode === "technical" ? {
       extension: "json",
       blob: await createArchiveV4TechnicalBlobFromIndex(
         selected,
-        request2,
+        request,
         lookup,
         assertActive,
         serializedRecord
       )
     } : await createArchiveV4CompactBlobFromIndex(
       selected,
-      request2,
+      request,
       lookup,
       assertActive,
-      request2.mode === "selective" && request2.sourceRevisions === true && readRevisionEvidence ? (id) => readRevisionEvidence(request2.accountId, request2.conversationId, id) : void 0,
+      request.mode === "selective" && request.sourceRevisions === true && readRevisionEvidence ? (id) => readRevisionEvidence(request.accountId, request.conversationId, id) : void 0,
       serializedRecord,
-      request2.mode === "selective" && request2.modelEvidence !== false && readSubmission ? (id) => readSubmission(request2.accountId, request2.conversationId, id) : void 0
+      request.mode === "selective" && request.modelEvidence !== false && readSubmission ? (id) => readSubmission(request.accountId, request.conversationId, id) : void 0
     );
     assertActive();
     let blob = sourceFile.blob;
     let extension = sourceFile.extension;
-    const packaged = request2.packaging === "zip" || request2.packaging === "gzip";
-    if (request2.packaging === "gzip") {
-      blob = await createGzipFromBlob(sourceFile.blob, request2.signal);
+    const packaged = request.packaging === "zip" || request.packaging === "gzip";
+    if (request.packaging === "gzip") {
+      blob = await createGzipFromBlob(sourceFile.blob, request.signal);
       assertActive();
       extension = `${sourceFile.extension}.gz`;
-    } else if (request2.packaging === "zip") {
+    } else if (request.packaging === "zip") {
       const filename = `conversation.${sourceFile.extension}`;
       const manifest = {
         schema: "chatgpt-booster.archive-package.v2",
         contentSchema: ARCHIVE_V4_EXPORT_SCHEMA,
         path: filename,
-        contentFormat: request2.format,
+        contentFormat: request.format,
         sourceReadId: selected.coverageReadId,
         sourcePathVerified: selected.status === "verified",
         binaryAssetsIncluded: false,
@@ -32107,7 +32296,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
           { path: filename, blob: sourceFile.blob },
           { path: "archive-manifest.json", blob: new Blob([JSON.stringify(manifest, null, 2)]) }
         ],
-        request2.signal,
+        request.signal,
         (completed, total) => report({ phase: "packaging", unit: "bytes", completed, total })
       );
       extension = "zip";
@@ -32210,19 +32399,19 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
         hasUnsequencedRecords
       };
     }
-    #requireOwner(accountId, request2) {
-      if (request2.signal?.aborted) throw new DOMException("Archive read cancelled", "AbortError");
-      if (this.memory.verifiedAccountId() !== accountId || request2.expectedAccountId !== void 0 && request2.expectedAccountId !== accountId)
+    #requireOwner(accountId, request) {
+      if (request.signal?.aborted) throw new DOMException("Archive read cancelled", "AbortError");
+      if (this.memory.verifiedAccountId() !== accountId || request.expectedAccountId !== void 0 && request.expectedAccountId !== accountId)
         throw new Error("archive.error.auth");
     }
-    #guardOwner(accountId, request2) {
+    #guardOwner(accountId, request) {
       const epoch = this.memory.accountEpoch();
       if (this.#ownerEpoch !== epoch) {
         this.reset();
         this.#ownerEpoch = epoch;
       }
       const current = () => {
-        this.#requireOwner(accountId, request2);
+        this.#requireOwner(accountId, request);
         if (this.memory.accountEpoch() !== epoch) throw new Error("archive.error.auth");
       };
       current();
@@ -32245,12 +32434,12 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
         throw new Error("archive.error.sourceChanged");
     }
     /** Resolve a concrete source ID rather than scrolling a latest-only buffer. */
-    async readMessageWindow(accountId, conversationId, messageId, request2 = {}) {
-      const requireCurrent = this.#guardOwner(accountId, request2);
+    async readMessageWindow(accountId, conversationId, messageId, request = {}) {
+      const requireCurrent = this.#guardOwner(accountId, request);
       if (!messageId.trim() || messageId.length > 1024)
         throw new Error("archive.error.messageMissing");
       const token = this.#beginRequest(accountId, conversationId);
-      const live = request2.source !== "saved" && this.activeConversationId() === conversationId ? this.memory.listMessages(conversationId) : [];
+      const live = request.source !== "saved" && this.activeConversationId() === conversationId ? this.memory.listMessages(conversationId) : [];
       const at = live.findIndex((record2) => record2.messageId === messageId);
       if (at >= 0) {
         const session2 = newSession(null, null, null);
@@ -32286,13 +32475,13 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
         conversationId,
         messageId,
         20,
-        request2.signal
+        request.signal
       );
       requireCurrent();
       this.#requireRequest(accountId, conversationId, token);
-      if (request2.expectedRevision !== void 0 && found.conversation.revision !== request2.expectedRevision)
+      if (request.expectedRevision !== void 0 && found.conversation.revision !== request.expectedRevision)
         throw new Error("archive.error.sourceChanged");
-      if (request2.expectedInstanceId !== void 0 && request2.expectedInstanceId !== (found.conversation.instanceId ?? null))
+      if (request.expectedInstanceId !== void 0 && request.expectedInstanceId !== (found.conversation.instanceId ?? null))
         throw new Error("archive.error.sourceChanged");
       const latest = await this.store.getConversation(accountId, conversationId);
       requireCurrent();
@@ -32337,15 +32526,15 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
         unsequencedTarget: found.unsequencedTarget
       };
     }
-    async readThreadWindow(accountId, conversationId, before, limit = 40, direction = "older", request2 = {}) {
+    async readThreadWindow(accountId, conversationId, before, limit = 40, direction = "older", request = {}) {
       const maximum = Number.isFinite(limit) ? Math.max(1, Math.min(199, Math.floor(limit))) : 40;
-      const requireCurrent = this.#guardOwner(accountId, request2);
+      const requireCurrent = this.#guardOwner(accountId, request);
       const forward = direction === "newer" || direction === "first";
       const advancing = forward ? "newer" : "older";
       if (direction === "first" && before) throw new Error("archive.error.sourceChanged");
       const continuing = !!before && direction !== "first";
       const active = this.activeConversationId() === conversationId;
-      const live = active && request2.source !== "saved" ? this.memory.listMessages(conversationId) : [];
+      const live = active && request.source !== "saved" ? this.memory.listMessages(conversationId) : [];
       const key2 = JSON.stringify([accountId, conversationId, live.length ? "live" : "saved"]);
       const requestToken = this.#beginRequest(accountId, conversationId);
       if (live.length) {
@@ -32392,9 +32581,9 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
       if (this.memory.verifiedAccountId() !== accountId) throw new Error("archive.error.auth");
       requireCurrent();
       const revision = conversation?.revision ?? null;
-      if (request2.expectedRevision !== void 0 && revision !== request2.expectedRevision)
+      if (request.expectedRevision !== void 0 && revision !== request.expectedRevision)
         throw new Error("archive.error.sourceChanged");
-      if (request2.expectedInstanceId !== void 0 && request2.expectedInstanceId !== (conversation?.instanceId ?? null))
+      if (request.expectedInstanceId !== void 0 && request.expectedInstanceId !== (conversation?.instanceId ?? null))
         throw new Error("archive.error.sourceChanged");
       const previous = this.#sessions.get(key2);
       if (continuing && (!previous || previous.revision !== revision || previous.instanceId !== (conversation?.instanceId ?? null) || previous.head !== (conversation?.currentNodeId ?? null) || previous.projectId !== (conversation?.projectId ?? null) || JSON.stringify(this.#boundary(previous, advancing)) !== JSON.stringify(before))) {
@@ -32407,7 +32596,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
         maximum + 1,
         forward ? "oldest" : "newest",
         before ?? void 0,
-        request2.signal
+        request.signal
       );
       const latest = await this.store.getConversation(accountId, conversationId);
       if (this.memory.verifiedAccountId() !== accountId) throw new Error("archive.error.auth");
@@ -32453,6 +32642,41 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
         "saved"
       );
     }
+  }
+  function key$3(...values) {
+    return archiveCompositeKey(...values);
+  }
+  function identity(value, label) {
+    if (!value || value.trim() !== value) throw new Error("Invalid value: ".concat(label));
+    return value;
+  }
+  function sourceObject(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value))
+      throw new Error("Invalid source message object");
+    return value;
+  }
+  function comparePoint(aTime, aId, bTime, bId) {
+    return aTime - bTime || (aId < bId ? -1 : aId > bId ? 1 : 0);
+  }
+  async function listProjects(db, accountId) {
+    const owner = identity(accountId, "accountId");
+    return requestResult(db.transaction("projects", "readonly").objectStore("projects").index("byAccount").getAll(owner));
+  }
+  async function getProject(db, accountId, projectId) {
+    return requestResult(db.transaction("projects", "readonly").objectStore("projects").get(key$3(identity(accountId, "accountId"), identity(projectId, "projectId"))));
+  }
+  async function getConversation(db, accountId, conversationId) {
+    return requestResult(db.transaction("conversations", "readonly").objectStore("conversations").get(key$3(identity(accountId, "accountId"), identity(conversationId, "conversationId"))));
+  }
+  async function listConversations(db, accountId) {
+    const owner = identity(accountId, "accountId");
+    return requestResult(db.transaction("conversations", "readonly").objectStore("conversations").index("byAccount").getAll(owner));
+  }
+  async function getMessage(db, accountId, conversationId, messageId) {
+    return requestResult(db.transaction("messages", "readonly").objectStore("messages").get(key$3(
+      key$3(identity(accountId, "accountId"), identity(conversationId, "conversationId")),
+      identity(messageId, "messageId")
+    )));
   }
   async function traceArchiveV4Parents(selectedTipId, lookup, project, maxDepth = 5e4, signal, onVisited) {
     const depth = Number.isFinite(maxDepth) ? Math.max(1, Math.min(maxDepth, 1e5)) : 5e4;
@@ -32504,39 +32728,6 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
   }
   const ARCHIVE_V4_DB_NAME = instanceKey("chatgpt-booster-archive-v4", "chatgpt-booster:prod");
   const ARCHIVE_V4_DB_VERSION = 2;
-  function key$3(...values) {
-    return JSON.stringify(values);
-  }
-  function identity(value, label) {
-    if (!value || value.trim() !== value) throw new Error("Invalid value: ".concat(label));
-    return value;
-  }
-  function req(request2) {
-    return new Promise((resolve2, reject) => {
-      request2.onsuccess = () => resolve2(request2.result);
-      request2.onerror = () => reject(request2.error ?? new Error("IndexedDB request failed"));
-    });
-  }
-  function settled(tx) {
-    const done = new Promise((resolve2, reject) => {
-      tx.addEventListener("complete", () => resolve2(), { once: true });
-      tx.addEventListener(
-        "abort",
-        () => reject(tx.error ?? new DOMException("Archive transaction aborted", "AbortError")),
-        { once: true }
-      );
-    });
-    void done.catch(() => void 0);
-    return done;
-  }
-  function sourceObject(value) {
-    if (!value || typeof value !== "object" || Array.isArray(value))
-      throw new Error("Invalid source message object");
-    return value;
-  }
-  function comparePoint(aTime, aId, bTime, bId) {
-    return aTime - bTime || (aId < bId ? -1 : aId > bId ? 1 : 0);
-  }
   class ArchiveV4Store {
     constructor(sourceGate = new ArchiveSourceGate()) {
       this.sourceGate = sourceGate;
@@ -32603,7 +32794,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
       const localEpoch = this.#writeEpochs.get(accountId) ?? 0;
       const requestedAt = Date.now();
       const db = await this.#db();
-      const value = await req(
+      const value = await requestResult(
         db.transaction("metadata", "readonly").objectStore("metadata").get(key$3(key$3(accountId), "write-generation"))
       );
       return Object.freeze({
@@ -32840,7 +33031,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
         ],
         "readwrite"
       );
-      const done = settled(tx);
+      const done = transactionComplete(tx);
       const detach = guardArchiveTransaction(tx, write2.signal);
       try {
         const projects = tx.objectStore("projects");
@@ -32864,23 +33055,23 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
           generation,
           migration
         ] = await Promise.all([
-          req(conversations.get(conversationKey)),
-          projectKey ? req(projects.get(projectKey)) : Promise.resolve(void 0),
-          req(metadata.get(pageKey2)),
+          requestResult(conversations.get(conversationKey)),
+          projectKey ? requestResult(projects.get(projectKey)) : Promise.resolve(void 0),
+          requestResult(metadata.get(pageKey2)),
           Promise.all(
             messages2.map(
-              ({ raw }) => req(records.get(key$3(conversationKey, raw.id)))
+              ({ raw }) => requestResult(records.get(key$3(conversationKey, raw.id)))
             )
           ),
           Promise.all(
             submissions.map(
-              (item) => req(
+              (item) => requestResult(
                 metadata.get(key$3(item.ownerKey, "submission-selection"))
               )
             )
           ),
-          req(metadata.get(key$3(key$3(accountId), "write-generation"))),
-          req(
+          requestResult(metadata.get(key$3(key$3(accountId), "write-generation"))),
+          requestResult(
             tx.objectStore("migrationManifest").get(key$3(accountId))
           )
         ]);
@@ -33062,7 +33253,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
               projection
             });
             const elements = tx.objectStore("canonicalElements");
-            const stale = await req(elements.index("byMessage").getAllKeys(messageKey));
+            const stale = await requestResult(elements.index("byMessage").getAllKeys(messageKey));
             for (const staleKey of stale) elements.delete(staleKey);
             for (const element of projection.elements)
               elements.put({
@@ -33268,22 +33459,22 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
         ["projects", "conversations", "metadata", "migrationManifest"],
         "readwrite"
       );
-      const done = settled(tx);
+      const done = transactionComplete(tx);
       const detach = guardArchiveTransaction(tx, write2.signal);
       const changes = [];
       try {
         const conversations = tx.objectStore("conversations");
         const projects = tx.objectStore("projects");
         const [generation, stored, migration] = await Promise.all([
-          req(
+          requestResult(
             tx.objectStore("metadata").get(key$3(key$3(accountId), "write-generation"))
           ),
           Promise.all(
             [...items.keys()].map(
-              (id) => req(conversations.get(key$3(accountId, id)))
+              (id) => requestResult(conversations.get(key$3(accountId, id)))
             )
           ),
-          req(
+          requestResult(
             tx.objectStore("migrationManifest").get(key$3(accountId))
           )
         ]);
@@ -33310,7 +33501,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
           const changed = projectId !== previous.projectId || title !== previous.title;
           if (projectId) {
             const projectKey = key$3(accountId, projectId);
-            const project = await req(projects.get(projectKey));
+            const project = await requestResult(projects.get(projectKey));
             if (!project)
               projects.put({
                 key: projectKey,
@@ -33371,16 +33562,16 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
       const db = await this.#db();
       if (!allowed2()) return;
       const tx = db.transaction(["projects", "metadata", "migrationManifest"], "readwrite");
-      const done = settled(tx);
+      const done = transactionComplete(tx);
       const detach = guardArchiveTransaction(tx, write2.signal);
       try {
         const store = tx.objectStore("projects");
         const [previous, generation, migration] = await Promise.all([
-          req(store.get(pk)),
-          req(
+          requestResult(store.get(pk)),
+          requestResult(
             tx.objectStore("metadata").get(key$3(key$3(accountId), "write-generation"))
           ),
-          req(
+          requestResult(
             tx.objectStore("migrationManifest").get(key$3(accountId))
           )
         ]);
@@ -33427,11 +33618,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
       }
     }
     async listProjects(accountId) {
-      const db = await this.#db();
-      const tx = db.transaction("projects", "readonly");
-      return req(
-        tx.objectStore("projects").index("byAccount").getAll(identity(accountId, "accountId"))
-      );
+      return listProjects(await this.#db(), accountId);
     }
     /** Explicit account-scoped cleanup; never deletes other accounts or the v3 DB. */
     async clearAccount(accountId, stillAuthorized = () => true, signal) {
@@ -33445,14 +33632,14 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
         ["projects", "conversations", "messages", "metadata", "migrationManifest"],
         "readwrite"
       );
-      const done = settled(tx);
+      const done = transactionComplete(tx);
       const detach = guardArchiveTransaction(tx, signal);
       const projects = tx.objectStore("projects");
       const conversations = tx.objectStore("conversations");
       const messages2 = tx.objectStore("messages");
       const metadata = tx.objectStore("metadata");
       try {
-        const manifest = await req(
+        const manifest = await requestResult(
           tx.objectStore("migrationManifest").get(key$3(owner))
         );
         if (manifest) throw new Error("archive.error.migrating");
@@ -33484,11 +33671,11 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
           const erase = (store, indexName, indexedKey, beforeDelete, complete) => {
             if (!check()) return;
             try {
-              const request2 = store.index(indexName).openKeyCursor(IDBKeyRange.only(indexedKey));
-              request2.onerror = () => fail(request2.error ?? new Error("Archive cleanup cursor failed"));
-              request2.onsuccess = () => {
+              const request = store.index(indexName).openKeyCursor(IDBKeyRange.only(indexedKey));
+              request.onerror = () => fail(request.error ?? new Error("Archive cleanup cursor failed"));
+              request.onsuccess = () => {
                 if (failed || !check()) return;
-                const cursor = request2.result;
+                const cursor = request.result;
                 if (!cursor) {
                   try {
                     complete();
@@ -33567,37 +33754,16 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
       }
     }
     async getProject(accountId, projectId) {
-      const db = await this.#db();
-      const tx = db.transaction("projects", "readonly");
-      return req(
-        tx.objectStore("projects").get(key$3(identity(accountId, "accountId"), identity(projectId, "projectId")))
-      );
+      return getProject(await this.#db(), accountId, projectId);
     }
     async getConversation(accountId, conversationId) {
-      const db = await this.#db();
-      const tx = db.transaction("conversations", "readonly");
-      return req(
-        tx.objectStore("conversations").get(key$3(identity(accountId, "accountId"), identity(conversationId, "conversationId")))
-      );
+      return getConversation(await this.#db(), accountId, conversationId);
     }
     async listConversations(accountId) {
-      const db = await this.#db();
-      const tx = db.transaction("conversations", "readonly");
-      return req(
-        tx.objectStore("conversations").index("byAccount").getAll(identity(accountId, "accountId"))
-      );
+      return listConversations(await this.#db(), accountId);
     }
     async getMessage(accountId, conversationId, messageId) {
-      const db = await this.#db();
-      const tx = db.transaction("messages", "readonly");
-      return req(
-        tx.objectStore("messages").get(
-          key$3(
-            key$3(identity(accountId, "accountId"), identity(conversationId, "conversationId")),
-            identity(messageId, "messageId")
-          )
-        )
-      );
+      return getMessage(await this.#db(), accountId, conversationId, messageId);
     }
     /** Evidence is stored only once its native user message belongs to this archive. */
     async getMessageSubmission(accountId, conversationId, messageId) {
@@ -33607,7 +33773,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
       );
       this.sourceGate.assertCompatible(conversationId);
       const db = await this.#db();
-      const value = await req(
+      const value = await requestResult(
         db.transaction("metadata", "readonly").objectStore("metadata").get(key$3(ownerKey, "submission-selection"))
       );
       if (!value) return { status: "unobserved", selection: null };
@@ -33780,7 +33946,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
       const db = await this.#db();
       if (signal?.aborted) throw new DOMException("Archive navigation cancelled", "AbortError");
       const tx = db.transaction(["conversations", "messages"], "readonly");
-      const done = settled(tx);
+      const done = transactionComplete(tx);
       void done.catch(() => void 0);
       const abort = () => {
         try {
@@ -33792,8 +33958,8 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
       try {
         const store = tx.objectStore("messages");
         const [conversation, target] = await Promise.all([
-          req(tx.objectStore("conversations").get(scoped)),
-          req(store.get(key$3(scoped, sourceId)))
+          requestResult(tx.objectStore("conversations").get(scoped)),
+          requestResult(store.get(key$3(scoped, sourceId)))
         ]);
         if (!conversation || !target) throw new Error("archive.error.messageMissing");
         if (conversation.accountId !== owner || conversation.conversationId !== id || target.conversationKey !== scoped || target.messageId !== sourceId)
@@ -33966,11 +34132,11 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
       if (signal?.aborted) throw new DOMException("Path checkpoint cancelled", "AbortError");
       const db = await this.#db();
       const tx = db.transaction("conversations", "readwrite");
-      const done = settled(tx);
+      const done = transactionComplete(tx);
       const detach = guardArchiveTransaction(tx, signal);
       try {
         const store = tx.objectStore("conversations");
-        const previous = await req(
+        const previous = await requestResult(
           store.get(key$3(accountId, conversationId))
         );
         if (signal?.aborted) {
@@ -34099,6 +34265,78 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
       return (await this.readHistoryEvidence(accountId, conversationId)).pages;
     }
   }
+  const object$1 = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : null;
+  async function* scan$1(db, table2, index, query, batchLimit = 128) {
+    let after = null;
+    while (true) {
+      const page = await readIndexedPage({
+        db,
+        store: table2,
+        index,
+        indexKey: query,
+        afterPrimaryKey: after,
+        pageSize: batchLimit,
+        decode(value) {
+          const row = object$1(value);
+          if (!row) throw new Error("Legacy source row malformed");
+          return row;
+        }
+      });
+      for (const row of page.records) yield row;
+      if (page.exhausted || !page.records.length) return;
+      if (page.lastPrimaryKey === null) throw new Error("Legacy source scan did not advance");
+      after = page.lastPrimaryKey;
+    }
+  }
+  async function* scanBatches(db, table2, index, query) {
+    let batch2 = [];
+    for await (const row of scan$1(db, table2, index, query)) {
+      batch2.push(row);
+      if (batch2.length === 128) {
+        yield batch2;
+        batch2 = [];
+      }
+    }
+    if (batch2.length) yield batch2;
+  }
+  async function* scanRecent(db, table2, index, since, until) {
+    const range = IDBKeyRange.bound(since, until);
+    let after = null;
+    while (true) {
+      const page = await readIndexedRangePage({
+        db,
+        store: table2,
+        index,
+        range,
+        after,
+        pageSize: 128,
+        decode(value) {
+          const row = object$1(value);
+          if (!row) throw new Error("Recent-source row malformed");
+          return row;
+        }
+      });
+      if (!page.records.length) return;
+      yield [...page.records];
+      if (page.exhausted) return;
+      if (!page.last) throw new Error("Recent-source scan did not advance");
+      after = page.last;
+    }
+  }
+  async function existingSource(name) {
+    if (typeof indexedDB.databases !== "function") throw new Error("IndexedDB inspection unavailable");
+    const known = await indexedDB.databases();
+    if (!known.some((x) => x.name === name)) return null;
+    return new Promise((resolve2, reject) => {
+      const req = indexedDB.open(name);
+      req.onupgradeneeded = () => {
+        req.transaction?.abort();
+        reject(new Error("Legacy source was missing"));
+      };
+      req.onsuccess = () => resolve2(req.result);
+      req.onerror = () => reject(req.error ?? new Error("Failed to open legacy source"));
+    });
+  }
   const VERSION = "booster-native-source-transfer-v2";
   const LEGACY_VERSION = "booster-native-source-transfer-v1";
   const SOURCE_SCHEMA = {
@@ -34117,14 +34355,6 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
     v3: Object.keys(SOURCE_SCHEMA.v3),
     v4: Object.keys(SOURCE_SCHEMA.v4)
   };
-  const read$3 = (request2) => new Promise((resolve2, reject) => {
-    request2.onsuccess = () => resolve2(request2.result);
-    request2.onerror = () => reject(request2.error ?? new Error("Native source transfer failed"));
-  });
-  const committed = (tx) => new Promise((resolve2, reject) => {
-    tx.oncomplete = () => resolve2();
-    tx.onabort = () => reject(tx.error ?? new Error("Native source transfer write aborted"));
-  });
   function record(value) {
     if (!value || typeof value !== "object" || Array.isArray(value))
       throw new Error("Native source backup row must be an object");
@@ -34158,38 +34388,29 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
   async function existing(name) {
     if (!(await indexedDB.databases()).some((entry) => entry.name === name)) return null;
     return new Promise((resolve2, reject) => {
-      const request2 = indexedDB.open(name);
-      request2.onsuccess = () => resolve2(request2.result);
-      request2.onerror = () => reject(request2.error ?? new Error("Native source unavailable"));
-      request2.onupgradeneeded = () => {
-        request2.transaction?.abort();
+      const request = indexedDB.open(name);
+      request.onsuccess = () => resolve2(request.result);
+      request.onerror = () => reject(request.error ?? new Error("Native source unavailable"));
+      request.onupgradeneeded = () => {
+        request.transaction?.abort();
         reject(new Error("Read-only backup must not create absent databases"));
       };
     });
   }
-  async function* scan$1(db, table2) {
-    let after;
+  async function* scan(db, table2) {
+    let after = null;
     while (true) {
-      const batch2 = await new Promise((resolve2, reject) => {
-        const values = [];
-        let last;
-        const request2 = db.transaction(table2, "readonly").objectStore(table2).openCursor(after === void 0 ? void 0 : IDBKeyRange.lowerBound(after, true));
-        request2.onerror = () => reject(request2.error ?? new Error("Native source cursor failed"));
-        request2.onsuccess = () => {
-          const cursor = request2.result;
-          if (!cursor || values.length >= 32) {
-            resolve2({ values, last });
-            return;
-          }
-          values.push(record(cursor.value));
-          last = cursor.primaryKey;
-          if (values.length >= 32) resolve2({ values, last });
-          else cursor.continue();
-        };
+      const page = await readStorePage({
+        db,
+        store: table2,
+        pageSize: 32,
+        afterPrimaryKey: after,
+        decode: record
       });
-      for (const row of batch2.values) yield row;
-      if (batch2.values.length < 32 || batch2.last === void 0) return;
-      after = batch2.last;
+      for (const row of page.records) yield row;
+      if (page.exhausted || !page.records.length) return;
+      if (page.lastPrimaryKey === null) throw new Error("Native source scan did not advance");
+      after = page.lastPrimaryKey;
     }
   }
   async function exportNativeSourceBackup(store, verifiedAccount) {
@@ -34222,7 +34443,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
             if (!db.objectStoreNames.contains(table2)) continue;
             const name = `${source}/${table2}`;
             totals[name] = 0;
-            for await (const value of scan$1(db, table2)) {
+            for await (const value of scan(db, table2)) {
               let row = { kind: "record", source, table: table2, value };
               try {
                 assertJsonSafe(value);
@@ -34355,7 +34576,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
       const verifyExisting = async (row) => {
         if (row.kind !== "record") return;
         const { db, storeName, value, key: key2 } = target(row);
-        const previous = await read$3(db.transaction(storeName, "readonly").objectStore(storeName).get(key2));
+        const previous = await requestResult(db.transaction(storeName, "readonly").objectStore(storeName).get(key2));
         if (previous !== void 0) {
           let identical;
           try {
@@ -34375,9 +34596,9 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
           if (!stillAuthorized()) throw new Error("Account changed before native source write");
           const { db, storeName, value, key: key2 } = target(row);
           const tx = db.transaction(storeName, "readwrite");
-          const done = committed(tx);
+          const done = transactionComplete(tx);
           const table2 = tx.objectStore(storeName);
-          const previous = await read$3(table2.get(key2));
+          const previous = await requestResult(table2.get(key2));
           if (previous !== void 0) {
             if (row.encoding !== "structured") {
               assertJsonSafe(previous);
@@ -34407,11 +34628,11 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
   }
   const key$2 = archiveCompositeKey;
   const asObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value) ? value : null;
-  const read$2 = (request2) => new Promise((resolve2, reject) => {
-    request2.onsuccess = () => resolve2(request2.result);
-    request2.onerror = () => reject(request2.error ?? new Error("Canonical backup database read failed"));
+  const read$2 = (request) => new Promise((resolve2, reject) => {
+    request.onsuccess = () => resolve2(request.result);
+    request.onerror = () => reject(request.error ?? new Error("Canonical backup database read failed"));
   });
-  const finish$1 = (tx) => new Promise((resolve2, reject) => {
+  const finish = (tx) => new Promise((resolve2, reject) => {
     tx.oncomplete = () => resolve2();
     tx.onabort = () => reject(tx.error ?? new Error("Canonical backup transaction aborted"));
   });
@@ -34592,7 +34813,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
             };
           }
           const tx = db.transaction("migrationManifest", "readwrite");
-          const done = finish$1(tx);
+          const done = finish(tx);
           tx.objectStore("migrationManifest").put(restored);
           await done;
           previous = restored;
@@ -34627,7 +34848,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
               throw new Error("Backup schema or verified account mismatch");
             started = true;
             const tx2 = db.transaction("migrationManifest", "readwrite");
-            const done2 = finish$1(tx2);
+            const done2 = finish(tx2);
             tx2.objectStore("migrationManifest").put({
               key: key$2(accountId),
               accountId,
@@ -34650,7 +34871,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
             const id = data.conversationId;
             knownConversations.add(id);
             const tx2 = db.transaction("canonicalConversations", "readwrite");
-            const done2 = finish$1(tx2);
+            const done2 = finish(tx2);
             tx2.objectStore("canonicalConversations").put({
               key: key$2(generation, key$2(accountId, id)),
               accountId,
@@ -34692,7 +34913,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
             ["canonicalMessages", "canonicalElements", "sourceSnapshots"],
             "readwrite"
           );
-          const done = finish$1(tx);
+          const done = finish(tx);
           tx.objectStore("canonicalMessages").put({
             key: messageKey,
             conversationKey,
@@ -34746,7 +34967,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
             ["canonicalMessages", "canonicalConversations", "sourceSnapshots", "migrationManifest"],
             "readwrite"
           );
-          const done = finish$1(tx);
+          const done = finish(tx);
           const [actualMessages, actualConversations, actualSnapshots] = await Promise.all([
             read$2(tx.objectStore("canonicalMessages").index("byGeneration").count(generation)),
             read$2(
@@ -34787,7 +35008,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
         } catch (error) {
           if (fenced) {
             const tx = db.transaction("migrationManifest", "readwrite");
-            const done = finish$1(tx);
+            const done = finish(tx);
             const manifest = await read$2(
               tx.objectStore("migrationManifest").get(key$2(accountId))
             );
@@ -34818,7 +35039,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
     await navigator.locks.request("chatgpt-booster:canonical-migration-v1", { mode: "exclusive" }, async () => {
       const db = await store.canonicalDatabase();
       const tx = db.transaction(["migrationManifest", "canonicalConversations", "canonicalMessages", "sourceSnapshots"], "readwrite");
-      const done = finish$1(tx);
+      const done = finish(tx);
       const manifests = tx.objectStore("migrationManifest");
       const active = await read$2(manifests.get(key$2(accountId)));
       if (active?.status !== "ready" || typeof active.generation !== "string" || typeof active.previousGeneration !== "string" || typeof active.restoredFromBackupAt !== "number" || active.generation === active.previousGeneration || typeof active.lastReconciledAt === "number" && active.lastReconciledAt > active.restoredFromBackupAt) {
@@ -34861,10 +35082,10 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
     return ownerRecord.user_id === verifiedAccountId ? { status: "verified", accountId: verifiedAccountId } : { status: "mismatch", accountId: null };
   }
   const key$1 = archiveCompositeKey;
-  const object$1 = (value) => value !== null && typeof value === "object" && !Array.isArray(value) ? value : null;
-  const read$1 = (request2) => new Promise((resolve2, reject) => {
-    request2.onsuccess = () => resolve2(request2.result);
-    request2.onerror = () => reject(request2.error ?? new Error("Archive integrity read failed"));
+  const object = (value) => value !== null && typeof value === "object" && !Array.isArray(value) ? value : null;
+  const read$1 = (request) => new Promise((resolve2, reject) => {
+    request.onsuccess = () => resolve2(request.result);
+    request.onerror = () => reject(request.error ?? new Error("Archive integrity read failed"));
   });
   async function auditCanonicalSourceIntegrity(store, accountId, generation) {
     if (!accountId || !generation) throw new Error("Verified canonical account required");
@@ -34939,7 +35160,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
             );
             for (const item of batch2.rows) {
               report.sourceRecords++;
-              const raw = object$1(item.raw);
+              const raw = object(item.raw);
               if (!raw || typeof raw.id !== "string" || !raw.id) {
                 report.invalidSourceRecords++;
                 problem(id, title, source, "invalid_source");
@@ -35054,144 +35275,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
       }
     );
   }
-  const object = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : null;
-  const request = (req2) => new Promise((resolve2, reject) => {
-    req2.onsuccess = () => resolve2(req2.result);
-    req2.onerror = () => reject(req2.error ?? new Error("Archive migration request failed"));
-  });
-  const finish = (tx) => new Promise((resolve2, reject) => {
-    tx.oncomplete = () => resolve2();
-    tx.onabort = () => reject(tx.error ?? new Error("Archive migration transaction aborted"));
-  });
   const key = archiveCompositeKey;
-  async function* scan(db, table2, index, query, batchLimit = 128) {
-    let after = null;
-    while (true) {
-      const tx = db.transaction(table2, "readonly");
-      const ix = tx.objectStore(table2).index(index);
-      const batch2 = await new Promise(
-        (resolve2, reject) => {
-          const rows = [];
-          let last = null;
-          let resumed = false;
-          const cursorRequest = ix.openCursor(IDBKeyRange.only(query));
-          cursorRequest.onerror = () => reject(cursorRequest.error ?? new Error("Legacy cursor failed"));
-          cursorRequest.onsuccess = () => {
-            const cursor = cursorRequest.result;
-            if (!cursor) {
-              resolve2({ rows, last });
-              return;
-            }
-            if (after !== null && !resumed) {
-              resumed = true;
-              cursor.continuePrimaryKey(query, after);
-              return;
-            }
-            if (after !== null && indexedDB.cmp(cursor.primaryKey, after) <= 0) {
-              cursor.continue();
-              return;
-            }
-            const value = object(cursor.value);
-            if (!value) {
-              reject(new Error("Legacy source row malformed"));
-              return;
-            }
-            rows.push(value);
-            last = cursor.primaryKey;
-            if (rows.length >= batchLimit) {
-              resolve2({ rows, last });
-              return;
-            }
-            cursor.continue();
-          };
-        }
-      );
-      if (!batch2.rows.length) return;
-      for (const row of batch2.rows) yield row;
-      if (batch2.rows.length < batchLimit || batch2.last === null) return;
-      after = batch2.last;
-    }
-  }
-  async function* scanBatches(db, table2, index, query) {
-    let batch2 = [];
-    for await (const row of scan(db, table2, index, query)) {
-      batch2.push(row);
-      if (batch2.length === 128) {
-        yield batch2;
-        batch2 = [];
-      }
-    }
-    if (batch2.length) yield batch2;
-  }
-  async function* scanRecent(db, table2, index, since, until) {
-    let lastIndexKey = null;
-    let lastPrimaryKey = null;
-    const range = IDBKeyRange.bound(since, until);
-    while (true) {
-      const tx = db.transaction(table2, "readonly");
-      const ix = tx.objectStore(table2).index(index);
-      const batch2 = await new Promise((resolve2, reject) => {
-        const rows = [];
-        let indexKey = null;
-        let primaryKey = null;
-        let jumped = false;
-        const cursor = ix.openCursor(range);
-        cursor.onerror = () => reject(cursor.error ?? new Error("Recent-source cursor failed"));
-        cursor.onsuccess = () => {
-          const c = cursor.result;
-          if (!c) {
-            resolve2({ rows, indexKey, primaryKey });
-            return;
-          }
-          if (lastIndexKey !== null && lastPrimaryKey !== null && !jumped) {
-            jumped = true;
-            const keyOrder = indexedDB.cmp(c.key, lastIndexKey);
-            const primaryOrder = keyOrder === 0 ? indexedDB.cmp(c.primaryKey, lastPrimaryKey) : 0;
-            if (keyOrder < 0 || keyOrder === 0 && primaryOrder < 0) {
-              c.continuePrimaryKey(lastIndexKey, lastPrimaryKey);
-              return;
-            }
-          }
-          if (lastIndexKey !== null && lastPrimaryKey !== null) {
-            const keyOrder = indexedDB.cmp(c.key, lastIndexKey);
-            if (keyOrder < 0 || keyOrder === 0 && indexedDB.cmp(c.primaryKey, lastPrimaryKey) <= 0) {
-              c.continue();
-              return;
-            }
-          }
-          const v = object(c.value);
-          if (!v) {
-            reject(new Error("Recent-source row malformed"));
-            return;
-          }
-          rows.push(v);
-          indexKey = c.key;
-          primaryKey = c.primaryKey;
-          if (rows.length === 128) resolve2({ rows, indexKey, primaryKey });
-          else c.continue();
-        };
-      });
-      if (!batch2.rows.length) return;
-      yield batch2.rows;
-      if (batch2.rows.length < 128 || batch2.indexKey === null || batch2.primaryKey === null) return;
-      lastIndexKey = batch2.indexKey;
-      lastPrimaryKey = batch2.primaryKey;
-    }
-  }
-  async function existingSource(name) {
-    if (typeof indexedDB.databases !== "function") throw new Error("IndexedDB inspection unavailable");
-    const known = await indexedDB.databases();
-    if (!known.some((x) => x.name === name)) return null;
-    return new Promise((resolve2, reject) => {
-      const req2 = indexedDB.open(name);
-      req2.onupgradeneeded = () => {
-        req2.transaction?.abort();
-        reject(new Error("Legacy source was missing"));
-      };
-      req2.onsuccess = () => resolve2(req2.result);
-      req2.onerror = () => reject(req2.error ?? new Error("Failed to open legacy source"));
-    });
-  }
   class ArchiveCanonicalMigrator {
     constructor(store) {
       this.store = store;
@@ -35219,7 +35303,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
     }
     async active(accountId) {
       const db = await this.store.canonicalDatabase();
-      const row = await request(
+      const row = await requestResult(
         db.transaction("migrationManifest", "readonly").objectStore("migrationManifest").get(key(accountId))
       );
       return row?.status === "ready" && typeof row.generation === "string" ? row.generation : row?.status === "transforming" && typeof row.previousGeneration === "string" ? row.previousGeneration : null;
@@ -35249,7 +35333,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
         const sources = [await existingSource(ARCHIVE_DB_NAME), target];
         const generation = crypto.randomUUID();
         const manifestKey = key(accountId);
-        const previous = await request(
+        const previous = await requestResult(
           target.transaction("migrationManifest", "readonly").objectStore("migrationManifest").get(manifestKey)
         );
         if (previous?.status === "ready")
@@ -35257,7 +35341,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
         const fallbackGeneration = previous?.status === "ready" ? previous.generation : previous?.previousGeneration;
         try {
           const begin = target.transaction("migrationManifest", "readwrite");
-          const beginDone = finish(begin);
+          const beginDone = transactionComplete(begin);
           begin.objectStore("migrationManifest").put({
             key: manifestKey,
             accountId,
@@ -35275,7 +35359,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
             if (!db) continue;
             const source = sourceIndex === 0 ? "legacy_v3" : "legacy_v4";
             const conversations2 = db.transaction("conversations", "readonly").objectStore("conversations");
-            const headers = await request(conversations2.getAll());
+            const headers = await requestResult(conversations2.getAll());
             for (const header of headers) {
               const conversationId = header.conversationId;
               if (typeof conversationId !== "string" || !conversationId) continue;
@@ -35290,9 +35374,9 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
               const scoped = key(accountId, conversationId);
               const conversationKey = key(generation, scoped);
               const txHeader = target.transaction("canonicalConversations", "readwrite");
-              const hdrDone = finish(txHeader);
+              const hdrDone = transactionComplete(txHeader);
               const headers2 = txHeader.objectStore("canonicalConversations");
-              const previous2 = await request(
+              const previous2 = await requestResult(
                 headers2.get(conversationKey)
               );
               headers2.put({
@@ -35316,7 +35400,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
               for await (const batch2 of scanBatches(db, "messages", ix, query)) {
                 const prepared = await Promise.all(
                   batch2.map(async (row) => {
-                    const raw = object(row.raw);
+                    const raw = object$1(row.raw);
                     if (!raw || typeof raw.id !== "string" || !raw.id)
                       throw new Error("Legacy source record is malformed");
                     const projection = projectNativeMessage(raw, { accountId, conversationId });
@@ -35335,18 +35419,18 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
                   ["canonicalMessages", "canonicalElements", "sourceSnapshots"],
                   "readwrite"
                 );
-                const done2 = finish(tx2);
+                const done2 = transactionComplete(tx2);
                 const table2 = tx2.objectStore("canonicalMessages");
                 const previous3 = source === "legacy_v3" ? prepared.map(() => void 0) : await Promise.all(
                   prepared.map(
-                    (row) => request(table2.get(row.messageKey))
+                    (row) => requestResult(table2.get(row.messageKey))
                   )
                 );
                 const elements2 = tx2.objectStore("canonicalElements");
                 const snapshots2 = tx2.objectStore("sourceSnapshots");
                 const staleElements = source === "legacy_v4" ? await Promise.all(
                   prepared.map(
-                    (row, i) => previous3[i] ? request(
+                    (row, i) => previous3[i] ? requestResult(
                       elements2.index("byMessage").getAllKeys(row.messageKey)
                     ) : Promise.resolve([])
                   )
@@ -35400,18 +35484,18 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
             ],
             "readwrite"
           );
-          const done = finish(tx);
+          const done = transactionComplete(tx);
           const [conversations, messages2, elements, snapshots] = await Promise.all([
-            request(
+            requestResult(
               tx.objectStore("canonicalConversations").index("byGeneration").count(generation)
             ),
-            request(
+            requestResult(
               tx.objectStore("canonicalMessages").index("byGeneration").count(generation)
             ),
-            request(
+            requestResult(
               tx.objectStore("canonicalElements").index("byGeneration").count(generation)
             ),
-            request(
+            requestResult(
               tx.objectStore("sourceSnapshots").index("byGeneration").count(generation)
             )
           ]);
@@ -35424,7 +35508,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
             tx.abort();
             throw new Error("Staged canonical archive verification failed");
           }
-          const current = await request(
+          const current = await requestResult(
             tx.objectStore("migrationManifest").get(manifestKey)
           );
           if (current?.generation !== generation || current.status !== "transforming")
@@ -35448,7 +35532,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
           this.#set({ status: "ready" });
         } catch (error) {
           const tx = target.transaction("migrationManifest", "readwrite");
-          const done = finish(tx);
+          const done = transactionComplete(tx);
           tx.objectStore("migrationManifest").put(
             typeof fallbackGeneration === "string" ? {
               key: manifestKey,
@@ -35496,7 +35580,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
     async canUndoBackupRestore(accountId) {
       if (!accountId) return false;
       const db = await this.store.canonicalDatabase();
-      const manifest = await request(db.transaction("migrationManifest", "readonly").objectStore("migrationManifest").get(key(accountId)));
+      const manifest = await requestResult(db.transaction("migrationManifest", "readonly").objectStore("migrationManifest").get(key(accountId)));
       return manifest?.status === "ready" && typeof manifest.generation === "string" && typeof manifest.previousGeneration === "string" && manifest.previousGeneration !== manifest.generation && typeof manifest.restoredFromBackupAt === "number";
     }
     async undoBackupRestore(accountId, stillAuthorized) {
@@ -35519,14 +35603,14 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
       const ids = /* @__PURE__ */ new Map();
       try {
         if (v3) {
-          const headers = await request(
+          const headers = await requestResult(
             v3.transaction("conversations", "readonly").objectStore("conversations").getAll()
           );
           for (const header of headers) {
             const id = header.conversationId;
             if (typeof id !== "string" || !id) continue;
             const evidence = legacyV3OwnerEvidence(header, accountId);
-            const count = await request(
+            const count = await requestResult(
               v3.transaction("messages", "readonly").objectStore("messages").index("conversationId").count(id)
             );
             ids.set(id, {
@@ -35537,13 +35621,13 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
             });
           }
         }
-        const v4 = await request(
+        const v4 = await requestResult(
           target.transaction("conversations", "readonly").objectStore("conversations").index("byAccount").getAll(accountId)
         );
         for (const header of v4) {
           const id = header.conversationId;
           if (typeof id !== "string" || !id) continue;
-          const count = await request(
+          const count = await requestResult(
             target.transaction("messages", "readonly").objectStore("messages").index("byConversation").count(key(accountId, id))
           );
           const previous = ids.get(id);
@@ -35558,7 +35642,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
         let missing = 0, less = 0, before = 0, after = 0;
         const missingDetails = [];
         for (const [id, old] of ids) {
-          const count = await request(
+          const count = await requestResult(
             target.transaction("canonicalMessages", "readonly").objectStore("canonicalMessages").index("byConversation").count(key(generation, key(accountId, id)))
           );
           const sourceMax = Math.max(old.v3Count, old.v4Count);
@@ -35614,7 +35698,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
       const target = await this.store.canonicalDatabase();
       const generation = await this.active(accountId);
       if (!generation) throw new Error("Canonical archive has not been activated");
-      const manifest = await request(
+      const manifest = await requestResult(
         target.transaction("migrationManifest", "readonly").objectStore("migrationManifest").get(key(accountId))
       );
       const checkpoint = typeof manifest?.lastReconciledAt === "number" && manifest.lastReconciledSkippedOwnership === 0 ? manifest.lastReconciledAt : typeof manifest?.verifiedAt === "number" ? manifest.verifiedAt : null;
@@ -35626,7 +35710,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
       if (!legacy)
         return { examined: 0, skippedMessages: 0, skippedConversations: [], sinceMs: effectiveSince };
       try {
-        const headers = await request(
+        const headers = await requestResult(
           legacy.transaction("conversations", "readonly").objectStore("conversations").getAll()
         );
         const reasons = /* @__PURE__ */ new Map();
@@ -35657,7 +35741,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
               const target2 = reasons.get(id);
               if (!target2) continue;
               const old = groups.get(id);
-              const rawId = typeof object(row.raw)?.id === "string" ? object(row.raw)?.id : null;
+              const rawId = typeof object$1(row.raw)?.id === "string" ? object$1(row.raw)?.id : null;
               const entry = {
                 conversationId: id,
                 title: typeof target2.header.title === "string" ? target2.header.title : null,
@@ -35696,7 +35780,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
       const skippedConversations = [];
       let examined = 0;
       try {
-        const headers = await request(
+        const headers = await requestResult(
           legacy.transaction("conversations", "readonly").objectStore("conversations").getAll()
         );
         for (const header of headers) {
@@ -35705,7 +35789,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
           const owner = legacyV3OwnerEvidence(header, accountId);
           if (owner.status === "verified") continue;
           const index = legacy.transaction("messages", "readonly").objectStore("messages").index("conversationId");
-          const messages2 = await request(index.count(id));
+          const messages2 = await requestResult(index.count(id));
           examined += messages2;
           skippedConversations.push({
             conversationId: id,
@@ -35733,16 +35817,16 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
      * never activates the interrupted staging generation or deletes its rows. */
     async #restoreInterruptedManifest(db, accountId, generation) {
       const tx = db.transaction(["migrationManifest", "canonicalConversations"], "readwrite");
-      const done = finish(tx);
+      const done = transactionComplete(tx);
       const manifest = tx.objectStore("migrationManifest");
-      const current = await request(manifest.get(key(accountId)));
+      const current = await requestResult(manifest.get(key(accountId)));
       if (current?.status !== "transforming") {
         await done;
         return;
       }
       if (current.previousGeneration !== generation || current.generation === generation)
         throw new Error("Archive recovery fence mismatch");
-      const confirmed = await request(
+      const confirmed = await requestResult(
         tx.objectStore("canonicalConversations").index("byGeneration").count(generation)
       );
       if (confirmed === 0) throw new Error("Previous archive generation is not readable");
@@ -35804,7 +35888,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
           });
           const target = await this.store.canonicalDatabase();
           await this.#restoreInterruptedManifest(target, accountId, generation);
-          const manifest = await request(
+          const manifest = await requestResult(
             target.transaction("migrationManifest", "readonly").objectStore("migrationManifest").get(key(accountId))
           );
           const checkpoint = typeof manifest?.lastReconciledAt === "number" && manifest.lastReconciledSkippedOwnership === 0 ? manifest.lastReconciledAt : typeof manifest?.verifiedAt === "number" ? manifest.verifiedAt : null;
@@ -35852,7 +35936,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
             const prepared = await Promise.all(
               rows.map(async (row) => {
                 const cid = row.conversationId;
-                const raw = object(row.raw);
+                const raw = object$1(row.raw);
                 if (typeof cid !== "string" || !cid || !raw || typeof raw.id !== "string" || !raw.id)
                   throw new Error("Malformed recent archive source record");
                 const header = headers.get(cid);
@@ -35894,17 +35978,17 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
               ["canonicalMessages", "canonicalElements", "sourceSnapshots", "canonicalConversations"],
               "readwrite"
             );
-            const done = finish(tx);
+            const done = transactionComplete(tx);
             const messages2 = tx.objectStore("canonicalMessages");
             const elements = tx.objectStore("canonicalElements");
             const snapshots = tx.objectStore("sourceSnapshots");
             const conversations = tx.objectStore("canonicalConversations");
             const existingSnapshotKeys = await Promise.all(
-              valid.map((row) => request(snapshots.getKey(row.snapshotKey)))
+              valid.map((row) => requestResult(snapshots.getKey(row.snapshotKey)))
             );
             const current = await Promise.all(
               valid.map(
-                (v) => request(messages2.get(v.messageKey))
+                (v) => requestResult(messages2.get(v.messageKey))
               )
             );
             const previousHeaders = /* @__PURE__ */ new Map();
@@ -35912,7 +35996,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
               if (previousHeaders.has(row.cid)) continue;
               previousHeaders.set(
                 row.cid,
-                await request(
+                await requestResult(
                   conversations.get(row.conversationKey)
                 )
               );
@@ -35920,7 +36004,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
             let i = 0;
             for (const row of valid) {
               const previous = current[i++];
-              const oldV4 = source === "legacy_v3" && previous && previous.source !== "legacy_v3" ? previous.source === "legacy_v4" || previous.source === "native" || previous.source === void 0 && (await request(
+              const oldV4 = source === "legacy_v3" && previous && previous.source !== "legacy_v3" ? previous.source === "legacy_v4" || previous.source === "native" || previous.source === void 0 && (await requestResult(
                 snapshots.index("byMessage").getAll(row.messageKey)
               )).some((s) => s.generation === generation && s.source !== "legacy_v3") : false;
               if (previous?.sourceFingerprint === row.fingerprint || oldV4) {
@@ -35928,7 +36012,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
                   messages2.put({ ...previous, source: "legacy_v4" });
                 changed.unchanged++;
               } else {
-                const stale = await request(
+                const stale = await requestResult(
                   elements.index("byMessage").getAllKeys(row.messageKey)
                 );
                 for (const k of stale) elements.delete(k);
@@ -35987,7 +36071,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
           };
           try {
             if (v3) {
-              const headers2 = await request(
+              const headers2 = await requestResult(
                 v3.transaction("conversations", "readonly").objectStore("conversations").getAll()
               );
               const byId2 = new Map(
@@ -35996,7 +36080,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
               if (allHistory) {
                 for (const id of byId2.keys()) {
                   let batch2 = [];
-                  for await (const row of scan(v3, "messages", "conversationId", id)) {
+                  for await (const row of scan$1(v3, "messages", "conversationId", id)) {
                     batch2.push(row);
                     if (batch2.length === 128) {
                       await writeBatch(batch2, "legacy_v3", byId2);
@@ -36016,7 +36100,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
                   await writeBatch(rows, "legacy_v3", byId2);
               }
             }
-            const headers = await request(
+            const headers = await requestResult(
               target.transaction("conversations", "readonly").objectStore("conversations").getAll()
             );
             const byId = new Map(
@@ -36028,7 +36112,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
               const cid = h2.conversationId;
               const scoped = key(accountId, cid);
               let batch2 = [];
-              for await (const row of scan(target, "messages", "byConversation", scoped)) {
+              for await (const row of scan$1(target, "messages", "byConversation", scoped)) {
                 batch2.push({ ...row, conversationId: cid });
                 if (batch2.length === 128) {
                   await writeBatch(batch2, "legacy_v4", byId);
@@ -36049,22 +36133,22 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
               ],
               "readwrite"
             );
-            const done = finish(tx);
+            const done = transactionComplete(tx);
             const manifestStore = tx.objectStore("migrationManifest");
-            const manifest2 = await request(manifestStore.get(key(accountId)));
+            const manifest2 = await requestResult(manifestStore.get(key(accountId)));
             if (!manifest2 || manifest2.generation !== generation || manifest2.status !== "ready")
               throw new Error("Archive manifest changed during reconciliation");
             const [messages2, snapshots, conversations, elements] = await Promise.all([
-              request(
+              requestResult(
                 tx.objectStore("canonicalMessages").index("byGeneration").count(generation)
               ),
-              request(
+              requestResult(
                 tx.objectStore("sourceSnapshots").index("byGeneration").count(generation)
               ),
-              request(
+              requestResult(
                 tx.objectStore("canonicalConversations").index("byGeneration").count(generation)
               ),
-              request(
+              requestResult(
                 tx.objectStore("canonicalElements").index("byGeneration").count(generation)
               )
             ]);
@@ -36103,7 +36187,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
       const generation = await this.active(accountId);
       if (!generation) return [];
       const db = await this.store.canonicalDatabase();
-      const all = await request(
+      const all = await requestResult(
         db.transaction("canonicalConversations", "readonly").objectStore("canonicalConversations").index("byAccount").getAll(accountId)
       );
       return all.filter((entry) => entry.generation === generation);
@@ -36113,7 +36197,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
       if (!generation) return [];
       const db = await this.store.canonicalDatabase();
       const conversationKey = key(generation, key(accountId, conversationId));
-      const all = await request(
+      const all = await requestResult(
         db.transaction("canonicalMessages", "readonly").objectStore("canonicalMessages").index("byConversation").getAll(conversationKey)
       );
       return all.sort(
@@ -36212,7 +36296,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
       const generation = await this.active(accountId);
       if (!generation) return false;
       const db = await this.store.canonicalDatabase();
-      const row = await request(
+      const row = await requestResult(
         db.transaction("canonicalConversations", "readonly").objectStore("canonicalConversations").get(key(generation, key(accountId, conversationId)))
       );
       return row?.generation === generation && row.accountId === accountId;
@@ -36233,7 +36317,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
       let knownCount;
       let unsequenced = false;
       if (focus) {
-        const found = await request(
+        const found = await requestResult(
           db.transaction("canonicalMessages", "readonly").objectStore("canonicalMessages").get(key(conversationKey, focus))
         );
         if (!found || found.generation !== generation || found.accountId !== accountId)
@@ -36243,7 +36327,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
         const newer = [];
         let olderCount = 0, newerCount = 0;
         unsequenced = false;
-        for await (const entry of scan(
+        for await (const entry of scan$1(
           db,
           "canonicalMessages",
           "byConversation",
@@ -36275,7 +36359,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
         const table2 = tx.objectStore("canonicalMessages");
         const byConversation = table2.index("byConversation");
         const chrono = table2.index("byChronology");
-        const done = finish(tx);
+        const done = transactionComplete(tx);
         const start = [conversationKey];
         const end = [conversationKey, []];
         let range;
@@ -36300,8 +36384,8 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
           };
         });
         const [total, timedCount, obtained] = await Promise.all([
-          request(byConversation.count(conversationKey)),
-          request(chrono.count(IDBKeyRange.bound(start, end))),
+          requestResult(byConversation.count(conversationKey)),
+          requestResult(chrono.count(IDBKeyRange.bound(start, end))),
           bounded
         ]);
         await done;
@@ -36323,12 +36407,12 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
       if (await this.active(accountId) !== generation)
         throw new Error("archive.error.sourceChanged");
       const snapshotsTx = db.transaction("sourceSnapshots", "readonly");
-      const snapshotsDone = finish(snapshotsTx);
+      const snapshotsDone = transactionComplete(snapshotsTx);
       const snapshots = snapshotsTx.objectStore("sourceSnapshots");
       const records = await Promise.all(
         rows.map(async (row) => {
           const preferredSource = row.source ?? "native";
-          const snapshot = await request(
+          const snapshot = await requestResult(
             snapshots.get(key(row.key, preferredSource, row.sourceFingerprint))
           );
           if (!snapshot || snapshot.generation !== generation || snapshot.fingerprint !== row.sourceFingerprint || snapshot.messageKey !== row.key || snapshot.raw.id !== row.messageId)
@@ -36359,7 +36443,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
       const generation = await this.active(accountId);
       if (!generation) throw new Error("Archive migration is not active");
       const db = await this.store.canonicalDatabase();
-      const header = await request(
+      const header = await requestResult(
         db.transaction("canonicalConversations", "readonly").objectStore("canonicalConversations").get(key(generation, key(accountId, conversationId)))
       );
       if (!header || header.accountId !== accountId) throw new Error("Archive conversation missing");
@@ -36395,7 +36479,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
       if (!generation) throw new Error("Canonical archive has not been activated");
       const db = await this.store.canonicalDatabase();
       const conversationKey = key(generation, key(accountId, conversationId));
-      const header = await request(
+      const header = await requestResult(
         db.transaction("canonicalConversations", "readonly").objectStore("canonicalConversations").get(conversationKey)
       );
       if (!header || header.accountId !== accountId || header.generation !== generation)
@@ -36421,7 +36505,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
         if (buffered) parts.push(buffered);
         buffered = "";
       };
-      for await (const source of scan(
+      for await (const source of scan$1(
         db,
         "canonicalMessages",
         "byConversation",
@@ -36432,7 +36516,7 @@ ${entry.text}${edited}${replacementSummary}${attachments}`;
         if (row.generation !== generation || row.accountId !== accountId || row.conversationId !== conversationId || !row.messageId)
           throw new Error("Canonical source identity mismatch");
         const tx = db.transaction("sourceSnapshots", "readonly");
-        const stored = await request(
+        const stored = await requestResult(
           tx.objectStore("sourceSnapshots").index("byMessage").getAll(row.key)
         );
         const versions = stored.filter(
@@ -36511,21 +36595,21 @@ ${archiveRecordText(record2)}
   }
   function requestCount(store) {
     return new Promise((resolve2, reject) => {
-      const req2 = store.count();
-      req2.onsuccess = () => resolve2(req2.result);
-      req2.onerror = () => reject(req2.error ?? new Error("Legacy archive count failed"));
+      const req = store.count();
+      req.onsuccess = () => resolve2(req.result);
+      req.onerror = () => reject(req.error ?? new Error("Legacy archive count failed"));
     });
   }
   function openExisting(factory, name) {
     return new Promise((resolve2, reject) => {
-      const req2 = factory.open(name);
-      req2.onsuccess = () => resolve2(req2.result);
-      req2.onerror = () => reject(req2.error ?? new Error("Legacy archive open failed"));
-      req2.onupgradeneeded = () => {
-        req2.transaction?.abort();
+      const req = factory.open(name);
+      req.onsuccess = () => resolve2(req.result);
+      req.onerror = () => reject(req.error ?? new Error("Legacy archive open failed"));
+      req.onupgradeneeded = () => {
+        req.transaction?.abort();
         reject(new Error("Legacy archive missing during preflight"));
       };
-      req2.onblocked = () => reject(new Error("Legacy archive blocked during preflight"));
+      req.onblocked = () => reject(new Error("Legacy archive blocked during preflight"));
     });
   }
   async function inspectSource(factory, namespace, name, verifiedAccountId, exists) {
@@ -36552,7 +36636,7 @@ ${archiveRecordText(record2)}
       summary.messages = messageCount;
       if (messageCount > 2048) summary.originalRecordsMissing = null;
       const tx = db.transaction(["conversations", "messages"], "readonly");
-      const settled2 = new Promise((resolve2, reject) => {
+      const settled = new Promise((resolve2, reject) => {
         tx.addEventListener("complete", () => resolve2(), { once: true });
         tx.addEventListener(
           "abort",
@@ -36583,7 +36667,7 @@ ${archiveRecordText(record2)}
           })
         ] : []
       ];
-      await Promise.all([...counts, settled2]);
+      await Promise.all([...counts, settled]);
       return summary;
     } finally {
       db.close();
@@ -36794,7 +36878,7 @@ ${archiveRecordText(record2)}
       hasIncompatibleSource: (id) => !!store.sourceGate.get(id),
       collectionInsideExportOnly: true,
       getCollectionState: () => capture.collectionSession.snapshot(),
-      stopCollection: (request2) => capture.stopCollection(request2),
+      stopCollection: (request) => capture.stopCollection(request),
       archiveGeneration: 4,
       getArchiveMigrationOverview: async () => {
         const owner = account();
@@ -37003,17 +37087,17 @@ ${archiveRecordText(record2)}
         return [...byId.values()];
       },
       getConversation: (id) => view2(id),
-      getCoverage: async (id, request2) => {
+      getCoverage: async (id, request) => {
         const owner = account();
         const epoch = memory.accountEpoch();
-        if (request2?.expectedAccountId !== void 0 && request2.expectedAccountId !== owner)
+        if (request?.expectedAccountId !== void 0 && request.expectedAccountId !== owner)
           throw new Error("archive.error.auth");
-        if (request2?.signal?.aborted)
+        if (request?.signal?.aborted)
           throw new DOMException("Archive coverage cancelled", "AbortError");
-        if ((request2?.source === "saved" || currentConversationId() !== id) && await migrator.hasConversation(owner, id)) {
+        if ((request?.source === "saved" || currentConversationId() !== id) && await migrator.hasConversation(owner, id)) {
           const counts = await migrator.conversationCounts(owner, id);
           guardOwner(owner, epoch);
-          if (request2?.signal?.aborted)
+          if (request?.signal?.aborted)
             throw new DOMException("Archive coverage cancelled", "AbortError");
           return {
             conversationId: id,
@@ -37029,11 +37113,11 @@ ${archiveRecordText(record2)}
             newestKnownVisibleMessageId: counts.lastId
           };
         }
-        if (request2?.expectedAccountId !== void 0 && request2.expectedAccountId !== account())
+        if (request?.expectedAccountId !== void 0 && request.expectedAccountId !== account())
           throw new Error("archive.error.auth");
-        if (request2?.signal?.aborted)
+        if (request?.signal?.aborted)
           throw new DOMException("Archive coverage cancelled", "AbortError");
-        const live = request2?.source !== "saved" && currentConversationId() === id ? memory.snapshot(id) : void 0;
+        const live = request?.source !== "saved" && currentConversationId() === id ? memory.snapshot(id) : void 0;
         if (live?.records.length) {
           return {
             conversationId: id,
@@ -37049,14 +37133,14 @@ ${archiveRecordText(record2)}
           };
         }
         const ownerEpoch = memory.accountEpoch();
-        const evidence = await store.getExportEvidence(owner, id, request2?.signal);
+        const evidence = await store.getExportEvidence(owner, id, request?.signal);
         if (account() !== owner || memory.accountEpoch() !== ownerEpoch)
           throw new Error("archive.error.auth");
         const stored = evidence.conversation;
         if (!stored) return void 0;
-        if (request2?.expectedRevision !== void 0 && request2.expectedRevision !== stored.revision)
+        if (request?.expectedRevision !== void 0 && request.expectedRevision !== stored.revision)
           throw new Error("archive.error.sourceChanged");
-        if (request2?.expectedInstanceId !== void 0 && request2.expectedInstanceId !== (stored.instanceId ?? null))
+        if (request?.expectedInstanceId !== void 0 && request.expectedInstanceId !== (stored.instanceId ?? null))
           throw new Error("archive.error.sourceChanged");
         const coverage = evidence.pages;
         const count = stored.knownMessageCount;
@@ -37198,42 +37282,42 @@ ${archiveRecordText(record2)}
           latestHeadMatches: live?.currentNodeId && selectedTipId ? live.currentNodeId === selectedTipId : null
         };
       },
-      getThreadWindow: async (id, cursor, direction, request2) => {
+      getThreadWindow: async (id, cursor, direction, request) => {
         const owner = account();
         const epoch = memory.accountEpoch();
-        if (request2?.expectedAccountId !== void 0 && request2.expectedAccountId !== owner)
+        if (request?.expectedAccountId !== void 0 && request.expectedAccountId !== owner)
           throw new Error("archive.error.auth");
-        if ((request2?.source === "saved" || currentConversationId() !== id) && await migrator.hasConversation(owner, id)) {
+        if ((request?.source === "saved" || currentConversationId() !== id) && await migrator.hasConversation(owner, id)) {
           const window2 = await migrator.threadWindow(
             owner,
             id,
             cursor ?? null,
             direction ?? "older",
-            request2?.signal
+            request?.signal
           );
           guardOwner(owner, epoch);
           return window2;
         }
-        return reader.readThreadWindow(owner, id, cursor, 40, direction, request2);
+        return reader.readThreadWindow(owner, id, cursor, 40, direction, request);
       },
-      getMessageWindow: async (id, messageId, request2) => {
+      getMessageWindow: async (id, messageId, request) => {
         const owner = account();
         const epoch = memory.accountEpoch();
-        if (request2?.expectedAccountId !== void 0 && request2.expectedAccountId !== owner)
+        if (request?.expectedAccountId !== void 0 && request.expectedAccountId !== owner)
           throw new Error("archive.error.auth");
-        if ((request2?.source === "saved" || currentConversationId() !== id) && await migrator.hasConversation(owner, id)) {
+        if ((request?.source === "saved" || currentConversationId() !== id) && await migrator.hasConversation(owner, id)) {
           const window2 = await migrator.threadWindow(
             owner,
             id,
             null,
             "older",
-            request2?.signal,
+            request?.signal,
             messageId
           );
           guardOwner(owner, epoch);
           return window2;
         }
-        return reader.readMessageWindow(owner, id, messageId, request2);
+        return reader.readMessageWindow(owner, id, messageId, request);
       },
       getThread: async (id) => {
         const owner = account();
