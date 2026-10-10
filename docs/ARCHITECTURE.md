@@ -70,3 +70,23 @@ VK/ChatGPT archive engine. The VK v2 exporter remains an independent, unchanged
 implementation pending its separate compatibility acceptance. Source and
 runtime verification levels are recorded in
 [CHATGPT_BOOSTER_MIGRATION.md](CHATGPT_BOOSTER_MIGRATION.md).
+
+## Archive page reconciliation shared by both products
+
+The source-neutral `packages/archive` exposes actual dual-consumer page folding
+(including VK exact-N/incremental/backfill and ChatGPT strict source snapshot
+comparison), record identity, composite keys, SHA-256, and GZIP output.
+Provider-specific auth, native DTO validation, storage/checkpoint transactions
+and media resolution remain behind their owning module boundaries. Neither
+VK v2 folder files nor ChatGPT v3/v4 IDB schema is rewritten by this stage.
+
+## Browser profile / extension-ID source preservation
+
+The native ChatGPT source-transfer adapter in
+`modules/chatgpt-booster/packages/features/src/archive-source-transfer.ts`
+reads and restores historical v3/v4 **JSON-compatible local source tables**
+without rebinding legacy owners. Shared archive infrastructure provides
+streaming GZIP and checksums; browser IndexedDB schemas stay provider-owned.
+A verified canonical backup is an independent, explicit artifact. Neither
+transfer silently migrates binary assets, changes extension identity or
+claims that all server history is complete.

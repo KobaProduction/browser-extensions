@@ -1,3 +1,4 @@
+import { foldArchivePage } from '@kobaproduction/browser-archive'
 import { projectNativeMessage } from '@chatgpt-booster/core'
 import type {
   ConversationArchiveEventDetail,
@@ -521,24 +522,27 @@ export class ArchiveV4Store {
     if (!Number.isFinite(observedAt) || !Number.isFinite(readStartedAt))
       throw new Error('archive.error.incompatibleSource')
     const received = (detail.payload.messages as unknown[]).map(sourceObject)
-    const seen = new Map<string, string>()
-    const allRecords: { raw: Source; canonical: string; capture: boolean; fingerprint: string }[] =
-      []
-    for (const raw of received) {
-      const messageId = identity(raw.id as string, 'messageId')
+    const candidates = received.map((raw) => {
+      identity(raw.id as string, 'messageId')
       if (
         raw.create_time !== null &&
         (typeof raw.create_time !== 'number' || !Number.isFinite(raw.create_time))
       )
         throw new Error('archive.error.incompatibleSource')
-      const canonical = canonicalSourceJson(raw)
-      const previous = seen.get(messageId)
-      if (previous !== undefined && previous !== canonical)
-        throw new Error('archive.error.sourceChanged')
-      if (previous === undefined)
-        allRecords.push({ raw, canonical, capture: shouldCapture(raw), fingerprint: '' })
-      seen.set(messageId, canonical)
+      return { raw, canonical: canonicalSourceJson(raw) }
+    })
+    const seen = new Map<string, (typeof candidates)[number]>()
+    try {
+      foldArchivePage(candidates, seen, {
+        mode: 'snapshot', identity: ({ raw }) => raw.id as string,
+        same: (previous, incoming) => previous.canonical === incoming.canonical,
+      })
+    } catch {
+      throw new Error('archive.error.sourceChanged')
     }
+    const allRecords = [...seen.values()].map(({ raw, canonical }) => ({
+      raw, canonical, capture: shouldCapture(raw), fingerprint: '',
+    }))
     const ticket = write.ticket ?? (await this.acquireWriteTicket(accountId))
     if (ticket.accountId !== accountId) throw new Error('archive.error.auth')
     if (!allowed()) return undefined

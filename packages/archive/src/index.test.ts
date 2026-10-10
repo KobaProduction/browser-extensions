@@ -21,3 +21,24 @@ test('shared SHA-256 has identical output for source text and binary media', asy
   expect(await archiveSha256Hex(text)).toBe(await archiveSha256Hex(new TextEncoder().encode(text)))
   expect(await archiveSha256Hex(text)).toMatch(/^[0-9a-f]{64}$/)
 })
+
+test('streaming GZIP round-trips an archive without creating an uncompressed whole-file Blob', async () => {
+  async function* source() {
+    for (let i = 0; i < 48; i++)
+      yield new TextEncoder().encode(JSON.stringify({ row: i, content: 'tool-output'.repeat(2048) }) + '\n')
+  }
+  const { createGzipFromChunks } = await import('./index')
+  const zipped = await createGzipFromChunks(source())
+  expect(zipped.size).toBeLessThan(50_000)
+  const expanded = await new Response(zipped.stream().pipeThrough(new DecompressionStream('gzip'))).text()
+  expect(expanded.trim().split('\n')).toHaveLength(48)
+  expect(JSON.parse(expanded.trim().split('\n')[47]!).row).toBe(47)
+})
+
+test('streaming GZIP rejects a revoked export before starting', async () => {
+  const { createGzipFromChunks } = await import('./index')
+  const controller = new AbortController()
+  controller.abort()
+  async function* source() { yield new TextEncoder().encode('secret-test') }
+  await expect(createGzipFromChunks(source(), controller.signal)).rejects.toThrow()
+})

@@ -146,6 +146,24 @@ The interrupted staged rows are retained for forensic inspection and never
 silently activated. The retry stages into a fresh generation and promotes it
 only after the same owner/fingerprint/footer checks as an ordinary import.
 
+## Shared archive page application (2026-10-10)
+
+`packages/archive/src/page-fold.ts` now owns a provider-neutral, pure page
+reconciliation use case consumed by **both** products. VK binds numeric IDs,
+date-window rules and the exact-N `recent`/`incremental`/`backfill` semantics
+through a provider-specific callback; it persists its unchanged v2 checkpoints
+and media outputs **after** folding. ChatGPT binds native message IDs and
+canonical source equality through strict `snapshot` mode, rejecting conflicting
+source duplicates rather than arbitrarily selecting one. Provider auth,
+network requests, native payloads and IndexedDB remain outside the shared
+package. Six new tests cover count/offset/stop/duplicate invariants, and
+existing 3,000-message VK and ChatGPT source contract regression tests still
+execute as before.
+
+This is an actual dual-consumer archive application operation. It is **not** a
+claim that VK's File System Access persistence and ChatGPT's IndexedDB storage
+are interchangeable or that the products have identical completeness proofs.
+
 ## Shared conversation export progress (2026-10-10)
 
 `packages/ui` now exports one `ArchiveProgress` widget used by both
@@ -155,3 +173,31 @@ Providers supply localized phase, source-specific counters and errors; the
 shared component owns accessible live progress and bounded percentage.
 There is no provider check, source DTO import or storage operation in the UI.
 All 232 applicable monorepo tests pass after this refactor.
+
+## Portable original-source transfer for retiring the old installation
+
+The Archive Maintenance tools now include a **separate** native v3/v4 source
+backup and import. It exports the original local JSON-compatible records from
+all available v3 and v4 source tables, including chats with unverified owners.
+The file stores the original account/owner metadata unchanged and does **not**
+implicitly authorize ownership or merge unrelated accounts. It excludes the
+canonical generation and original binary attachment bytes, which must be
+backed up using their respective workflows.
+
+The source format uses indexed bounded reads, shared streaming GZIP output and
+a complete SHA-256/footer/count verification pass before creating a missing v3
+source database or committing any records. Restore then runs a read-only
+conflict preflight on *all* existing rows before inserting only absent rows,
+rechecking conflicts atomically per row. A transfer interruption can be
+retried idempotently. Unsupported non-JSON typed/binary source records cause
+an explicit error rather than a falsely "complete" backup. This transfer is
+not an authenticated/signed source; users should only import backups they
+created or trust explicitly.
+
+Synthetic isolated Chromium acceptance (new origin): truncated gzip rejected
+before v3 source database creation; all 4 v3/v4 fixture rows restored into a
+clean installation; repeated import inserted no duplicates; an existing-row
+conflict was rejected before even an unrelated earlier row could be committed;
+an owner-unverified v3 chat remained quarantined until selected manually;
+canonical SHA-256 source parity then passed without touching native originals.
+The portable canonical backup remains a separate file and owner gate.

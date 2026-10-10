@@ -95,3 +95,47 @@ export async function archiveSha256Hex(bytes: ArrayBuffer | Uint8Array | string)
   const digest = await crypto.subtle.digest('SHA-256', safeBytes)
   return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('')
 }
+
+export { foldArchivePage } from './page-fold'
+export type { ArchivePageMode, ArchivePageFoldOptions, ArchivePageFoldResult } from './page-fold'
+
+/** Bounded, streaming, lossless output for asynchronous archive JSONL records.
+ * Unlike compressing an already-materialized Blob, this never retains an
+ * uncompressed archive copy in memory. The caller owns final user download. */
+export async function createGzipFromChunks(
+  input: AsyncIterable<Uint8Array>, signal?: AbortSignal,
+): Promise<Blob> {
+  if (typeof CompressionStream !== 'function')
+    throw new Error('Streaming GZIP is unavailable in this browser')
+  if (signal?.aborted) throw new DOMException('Archive export aborted', 'AbortError')
+  const iterator = input[Symbol.asyncIterator]()
+  const chunks = new ReadableStream<BufferSource>({
+    async pull(controller) {
+      try {
+        if (signal?.aborted) throw new DOMException('Archive export aborted', 'AbortError')
+        const next = await iterator.next()
+        if (next.done) controller.close()
+        else {
+          const safe: Uint8Array<ArrayBuffer> = next.value.buffer instanceof ArrayBuffer
+            ? next.value as Uint8Array<ArrayBuffer> : new Uint8Array(next.value)
+          controller.enqueue(safe)
+        }
+      } catch (error) { controller.error(error) }
+    },
+    async cancel() { await iterator.return?.(undefined) },
+  })
+  const reader = chunks.pipeThrough(new CompressionStream('gzip')).getReader()
+  const parts: BlobPart[] = []
+  try {
+    while (true) {
+      if (signal?.aborted) throw new DOMException('Archive export aborted', 'AbortError')
+      const next = await reader.read()
+      if (next.done) break
+      parts.push(next.value)
+    }
+  } catch (error) {
+    void reader.cancel(error).catch(() => undefined)
+    throw error
+  } finally { reader.releaseLock() }
+  return new Blob(parts, { type: 'application/gzip' })
+}

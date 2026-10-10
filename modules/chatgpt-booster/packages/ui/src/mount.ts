@@ -191,6 +191,12 @@ export interface ArchiveDataAdapter {
   }>
   canUndoCanonicalBackupRestore?(): Promise<boolean>
   undoCanonicalBackupRestore?(): Promise<void>
+  exportNativeSourceBackup?(): Promise<Blob>
+  importNativeSourceBackup?(file: Blob): Promise<{
+    inserted: number
+    identical: number
+    tables: Record<string, number>
+  }>
   exportCanonicalBackup?(): Promise<Blob>
   restoreCanonicalBackup?(file: Blob): Promise<{
     conversations: number

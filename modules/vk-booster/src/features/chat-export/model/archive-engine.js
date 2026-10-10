@@ -1,5 +1,5 @@
 /* VK Booster v2 — provider adapter with stable v2 folder/storage contract. */
-import { indexArchiveRecords, archiveSha256Hex } from '@kobaproduction/browser-archive'
+import { indexArchiveRecords, archiveSha256Hex, foldArchivePage } from '@kobaproduction/browser-archive'
 import { SHELL_OPEN_FEATURE_EVENT } from '@kobaproduction/browser-core'
 export function installVkArchive() {
 'use strict';
@@ -281,19 +281,14 @@ async function run(options={}){
     const batch=await history(cp.offset,cfg.pageSize);
     cp.totalVK=batch.count;
     if(!batch.items.length||cp.offset>=batch.count){cp.phase='media';break}
-    let consumed=0,end=false;
-    for(const m of batch.items){
-     consumed++;cp.scanned++;
-     if(upper!==null&&m.date>=upper)continue; // skip newer than selected range
-     if(lower!==null&&m.date<lower){end=true;break}
-     const present=index.has(m.id);
-     if(cp.mode==='incremental'&&present){end=true;break}
-     if(cp.mode==='backfill'&&present)continue;
-     cp.matched++;
-     if(!present){index.set(m.id,m);cp.newCount++}
-     if(cp.matched>=cp.target)break;
-    }
-    cp.offset+=consumed;
+    const page=foldArchivePage(batch.items,index,{
+      mode:cp.mode,identity:m=>m.id,remaining:cp.target-cp.matched,
+      skip:m=>upper!==null&&m.date>=upper,
+      stop:m=>lower!==null&&m.date<lower,
+    });
+    cp.scanned+=page.consumed;cp.matched+=page.matched;cp.newCount+=page.inserted;
+    const end=page.stopReason==='range_end'||page.stopReason==='known_record';
+    cp.offset+=page.consumed;
     rows=[...index.values()];sorted();
     if(cp.mode==='backfill')meta.backfillOffset=cp.offset;
     if(cp.mode==='incremental'){meta.backfillOffset=(meta.backfillOffset||0)+cp.newCount-(cp.shifted||0);cp.shifted=cp.newCount}

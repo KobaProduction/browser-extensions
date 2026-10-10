@@ -328,6 +328,24 @@ export function createArchiveV4UiAdapter(
         throw new Error('archive.error.auth')
       return result
     },
+    exportNativeSourceBackup: async () => {
+      const owner = account()
+      const epoch = memory.accountEpoch()
+      const blob = await migrator.exportSources(owner)
+      if (memory.accountEpoch() !== epoch || account() !== owner)
+        throw new Error('archive.error.auth')
+      return blob
+    },
+    importNativeSourceBackup: async (file) => {
+      const owner = account()
+      const epoch = memory.accountEpoch()
+      const result = await migrator.restoreSources(owner, file,
+        () => memory.accountEpoch() === epoch && account() === owner)
+      if (memory.accountEpoch() !== epoch || account() !== owner)
+        throw new Error('archive.error.auth')
+      reader.reset()
+      return result
+    },
     exportCanonicalBackup: async () => {
       const owner = account()
       const epoch = memory.accountEpoch()

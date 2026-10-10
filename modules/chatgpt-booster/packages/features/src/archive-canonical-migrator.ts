@@ -1,3 +1,4 @@
+import { exportNativeSourceBackup, importNativeSourceBackup } from './archive-source-transfer'
 import { archiveCompositeKey } from '@kobaproduction/browser-archive'
 import { archiveRecordText, buildArchiveThread } from '@chatgpt-booster/chatgpt'
 import {
@@ -643,6 +644,14 @@ export class ArchiveCanonicalMigrator {
         sources[0]?.close()
       }
     })
+  }
+
+  async exportSources(accountId: string): Promise<Blob> {
+    return exportNativeSourceBackup(this.store, accountId)
+  }
+
+  async restoreSources(accountId: string, backup: Blob, stillAuthorized?: () => boolean) {
+    return importNativeSourceBackup(this.store, accountId, backup, stillAuthorized)
   }
 
   async exportBackup(accountId: string): Promise<Blob> {

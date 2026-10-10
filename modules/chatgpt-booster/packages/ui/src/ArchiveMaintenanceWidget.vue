@@ -26,10 +26,52 @@ const report = ref<Delta>()
 const audit = ref<Audit>()
 const integrity = ref<Awaited<ReturnType<NonNullable<ArchiveDataAdapter['auditArchiveIntegrity']>>>>()
 const canUndoBackup = ref(false)
+const nativeSourceFile = ref<File | null>(null)
+const nativeSourceApproved = ref(false)
+const nativeSourceResult = ref<{ inserted: number; identical: number; tables: Record<string, number> }>()
+const nativeSourceMessage = ref('')
 const backupFile = ref<File | null>(null)
 const backupApproved = ref(false)
 const backupMessage = ref('')
 const backupRestoreResult = ref<{ conversations: number; messages: number; snapshots: number }>()
+function onNativeSourceFile(event: Event) {
+  nativeSourceFile.value = (event.target as HTMLInputElement).files?.[0] ?? null
+  nativeSourceApproved.value = false
+  nativeSourceMessage.value = ''
+}
+function saveNativeSourceBackup() {
+  if (!props.archiveAdapter.exportNativeSourceBackup) return
+  void work(async () => {
+    const blob = await props.archiveAdapter.exportNativeSourceBackup!()
+    if (!blob.size) throw new Error('Original source backup is empty')
+    const url = URL.createObjectURL(blob)
+    try {
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `booster-native-sources-${new Date().toISOString().slice(0, 10)}.ndjson.gz`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      nativeSourceMessage.value = label('Исходные записи подготовлены. Проверь сохранение файла браузером.',
+        'Native source records prepared. Verify that the browser saved the file.')
+    } finally { setTimeout(() => URL.revokeObjectURL(url), 30_000) }
+  })
+}
+function restoreNativeSourceBackup() {
+  if (!nativeSourceFile.value || !nativeSourceApproved.value ||
+      !props.archiveAdapter.importNativeSourceBackup) return
+  const file = nativeSourceFile.value
+  void work(async () => {
+    nativeSourceResult.value = await props.archiveAdapter.importNativeSourceBackup!(file)
+    nativeSourceApproved.value = false
+    nativeSourceFile.value = null
+    ownerInspection.value = undefined
+    audit.value = undefined
+    integrity.value = undefined
+    emit('updated')
+    await inspect()
+  })
+}
 function onBackupFile(event: Event) {
   backupFile.value = (event.target as HTMLInputElement).files?.[0] ?? null
   backupApproved.value = false
@@ -329,6 +371,34 @@ onBeforeUnmount(() => { alive = false; ++requestId; unsubscribe?.() })
                 {{ label('Восстановлено', 'Restored') }}: {{ backupRestoreResult.conversations }} {{ label('диалогов', 'chats') }},
                 {{ backupRestoreResult.messages }} {{ label('сообщений', 'messages') }},
                 {{ backupRestoreResult.snapshots }} SourceSnapshots.
+              </p>
+            </details>
+          </section>
+
+          <section class="booster-maintenance-section">
+            <details class="booster-maintenance-backup-tools">
+              <summary>{{ label('Исходные базы v3/v4: перенос между установками', 'Original v3/v4 databases: transfer between installations') }}</summary>
+              <p>{{ label('Отдельная сжатая копия всех локальных исходных JSON-записей v3/v4, включая диалоги с неподтверждённым владельцем. Указание владельца не меняется. Канонические поколения и бинарные файлы сохраняются отдельно.',
+                'Separate compressed backup of all local source JSON records, including unverified owners. No ownership is reassigned. Canonical generations and binary files are backed up separately.') }}</p>
+              <button type="button" class="booster-action-secondary" :disabled="busy || !archiveAdapter.exportNativeSourceBackup"
+                @click="saveNativeSourceBackup">{{ label('Сохранить исходные записи .gz', 'Save original source records .gz') }}</button>
+              <div class="booster-maintenance-backup-restore">
+                <label>{{ label('Файл исходных записей', 'Original source backup file') }}
+                  <input type="file" accept=".gz,.ndjson.gz,application/gzip" :disabled="busy" @change="onNativeSourceFile" />
+                </label>
+                <label class="booster-maintenance-check">
+                  <input v-model="nativeSourceApproved" type="checkbox" :disabled="busy || !nativeSourceFile" />
+                  {{ label('Проверить весь файл и добавить только отсутствующие исходные записи. Существующие записи не перезаписывать; чужих владельцев не привязывать.',
+                    'Verify the entire file and add missing source records only. Never overwrite existing records or assign ownership.') }}
+                </label>
+                <button type="button" class="booster-action-secondary"
+                  :disabled="busy || !nativeSourceApproved || !nativeSourceFile || !archiveAdapter.importNativeSourceBackup"
+                  @click="restoreNativeSourceBackup">{{ label('Проверить и импортировать исходные записи', 'Verify and import original records') }}</button>
+              </div>
+              <p v-if="nativeSourceMessage" role="status" class="booster-note">{{ nativeSourceMessage }}</p>
+              <p v-if="nativeSourceResult" role="status" class="booster-note">
+                {{ label('Новых записей', 'Inserted records') }}: {{ nativeSourceResult.inserted }} ·
+                {{ label('Уже совпадают', 'Already identical') }}: {{ nativeSourceResult.identical }}
               </p>
             </details>
           </section>

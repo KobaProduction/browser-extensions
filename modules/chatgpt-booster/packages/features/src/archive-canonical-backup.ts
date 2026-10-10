@@ -1,3 +1,4 @@
+import { createGzipFromChunks } from '@kobaproduction/browser-archive'
 import { archiveCompositeKey } from '@kobaproduction/browser-archive'
 import { projectNativeMessage } from '@chatgpt-booster/core'
 import type { ArchiveV4Store } from './archive-v4-store'
@@ -197,33 +198,7 @@ export async function exportCanonicalBackup(
             '\n',
         )
       }
-      const iterator = lines()
-      const stream = new ReadableStream<BufferSource>({
-        async pull(controller) {
-          try {
-            const next = await iterator.next()
-            if (next.done) controller.close()
-            else controller.enqueue(next.value)
-          } catch (cause) {
-            controller.error(cause)
-          }
-        },
-        async cancel() {
-          await iterator.return(undefined)
-        },
-      })
-      const reader = stream.pipeThrough(new CompressionStream('gzip')).getReader()
-      const parts: BlobPart[] = []
-      try {
-        while (true) {
-          const next = await reader.read()
-          if (next.done) break
-          parts.push(next.value)
-        }
-      } finally {
-        reader.releaseLock()
-      }
-      return new Blob(parts, { type: 'application/gzip' })
+      return createGzipFromChunks(lines())
     },
   )
 }
