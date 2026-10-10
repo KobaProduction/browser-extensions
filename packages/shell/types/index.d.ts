@@ -1,5 +1,5 @@
-import type { Component } from 'vue'
 import type { FeatureRuntime } from '@kobaproduction/browser-core'
+import type { Component } from 'vue'
 export interface ControlCenterOptions {
   runtime: FeatureRuntime
   title?: string

@@ -167,7 +167,7 @@ export interface ArchiveExportReadiness {
 
 /** Preserve the previous safe error message while exposing a precise local cause. */
 export class ArchiveExportBlockedError extends Error {
-  readonly name = 'ArchiveExportBlockedError'
+  override readonly name = 'ArchiveExportBlockedError'
   constructor(readonly reason: ArchiveExportBlocker) {
     super(
       reason === 'source_changed' ? 'archive.error.sourceChanged' : 'archive.error.unverifiedPath',

@@ -1,0 +1,86 @@
+/* ArchiveConversationList owns its portable visual layout; hosts supply semantic theme tokens. */
+.booster-reader-sidebar {
+  min-width: 0;
+  overflow: auto;
+  padding: 12px;
+  border-right: 1px solid var(--border);
+  background: var(--card);
+  overscroll-behavior: contain;
+}
+.booster-reader-group {
+  margin-top: 12px;
+}
+.booster-reader-group-header {
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+  gap: 2px;
+}
+.booster-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  font-size: 12px;
+}
+.booster-group-toggle svg {
+  flex-shrink: 0;
+}
+.booster-group-toggle span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.booster-group-toggle small {
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.booster-reader-chat-list {
+  display: grid;
+  gap: 3px;
+  padding-left: 10px;
+}
+.booster-reader-chat-list > button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.booster-reader-chat-list > button:hover,
+.booster-reader-chat-list > button.active {
+  background: var(--muted);
+  border-color: var(--border);
+}
+.booster-reader-chat-list > button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.booster-reader-chat-list > button.is-branch {
+  border-inline-start: 2px solid color-mix(in oklab, var(--primary) 35%, transparent);
+}
+.booster-reader-branch-icon {
+  flex: 0 0 auto;
+  opacity: 0.66;
+}

@@ -1,14 +1,19 @@
 name: Independent module releases
 on:
-  workflow_run:
-    workflows: ['Validate modules (Zoomies)']
-    types: [completed]
+  workflow_dispatch:
+    inputs:
+      approve_release:
+        description: 'Explicit approval to publish accepted module versions after installed-product checks'
+        type: boolean
+        required: true
+        default: false
 permissions:
   contents: write
 jobs:
   release:
-    # Publish only a successful CI of our own main-branch push. No untrusted PR code.
-    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository }}
+    # An integration merge is not an authorized public release. A human must
+    # explicitly approve after installing and inspecting the new binaries.
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.approve_release == true }}
     runs-on: zoomies-linux-x64
     concurrency:
       group: browser-tools-distribution
@@ -17,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
         with: {bun-version: '1.4.2'}
@@ -28,7 +33,7 @@ jobs:
       - name: Publish only new module versions with relevant changes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_SHA: ${{ github.event.workflow_run.head_sha }}
+          GITHUB_SHA: ${{ github.sha }}
         shell: bash
         run: |
           set -euo pipefail

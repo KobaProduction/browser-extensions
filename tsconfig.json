@@ -6,79 +6,44 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
-    "lib": [
-      "ES2022",
-      "DOM",
-      "DOM.Iterable"
-    ],
-    "types": [
-      "chrome",
-      "bun",
-      "node"
-    ],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["chrome", "bun", "node"],
     "noEmit": true,
-    "allowJs": true,
-    "checkJs": false,
+    "allowJs": false,
     "baseUrl": ".",
     "paths": {
-      "@kobaproduction/browser-core": [
-        "packages/core/src/index.ts"
-      ],
-      "@kobaproduction/browser-ui": [
-        "packages/ui/src/index.ts"
-      ],
-      "@kobaproduction/browser-adapters": [
-        "packages/adapters/src/index.ts"
-      ],
-      "@kobaproduction/module-vk-booster": [
-        "modules/vk-booster/src/index.ts"
-      ],
-      "@kobaproduction/browser-shell": [
-        "packages/shell/src/index.ts"
-      ],
+      "@kobaproduction/browser-core": ["packages/core/src/index.ts"],
+      "@kobaproduction/browser-ui": ["packages/ui/src/index.ts"],
+      "@kobaproduction/browser-adapters": ["packages/adapters/src/index.ts"],
+      "@kobaproduction/module-vk-booster": ["modules/vk-booster/src/index.ts"],
+      "@kobaproduction/browser-shell": ["packages/shell/src/index.ts"],
       "@kobaproduction/module-vk-booster/ui": [
         "modules/vk-booster/src/features/chat-export/ui/index.ts"
       ],
-      "@chatgpt-booster/core": [
-        "modules/chatgpt-booster/packages/core/src/index.ts"
-      ],
-      "@chatgpt-booster/chatgpt": [
-        "modules/chatgpt-booster/packages/chatgpt/src/index.ts"
-      ],
-      "@chatgpt-booster/features": [
-        "modules/chatgpt-booster/packages/features/src/index.ts"
-      ],
-      "@chatgpt-booster/observer": [
-        "modules/chatgpt-booster/packages/observer/src/index.ts"
-      ],
-      "@chatgpt-booster/telemetry": [
-        "modules/chatgpt-booster/packages/telemetry/src/index.ts"
-      ],
-      "@chatgpt-booster/ui": [
-        "modules/chatgpt-booster/packages/ui/src/index.ts"
-      ],
-      "@kobaproduction/module-chatgpt-booster": [
-        "modules/chatgpt-booster/src/index.ts"
-      ],
+      "@kobaproduction/browser-archive": ["packages/archive/src/index.ts"],
+      "@kobaproduction/browser-widgets": ["packages/widgets/src/index.ts"],
+      "@chatgpt-booster/core": ["modules/chatgpt-booster/packages/core/src/index.ts"],
+      "@chatgpt-booster/chatgpt": ["modules/chatgpt-booster/packages/chatgpt/src/index.ts"],
+      "@chatgpt-booster/features": ["modules/chatgpt-booster/packages/features/src/index.ts"],
+      "@chatgpt-booster/observer": ["modules/chatgpt-booster/packages/observer/src/index.ts"],
+      "@chatgpt-booster/telemetry": ["modules/chatgpt-booster/packages/telemetry/src/index.ts"],
+      "@chatgpt-booster/ui": ["modules/chatgpt-booster/packages/ui/src/index.ts"],
+      "@kobaproduction/module-chatgpt-booster": ["modules/chatgpt-booster/src/index.ts"],
       "@kobaproduction/module-chatgpt-booster/ui": [
         "modules/chatgpt-booster/src/features/archive/ui/index.ts"
-      ],
-      "@kobaproduction/browser-archive": [
-        "packages/archive/src/index.ts"
       ]
-    }
+    },
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "useUnknownInCatchVariables": true
   },
   "include": [
     "packages/**/*.ts",
-    "modules/*/src/**/*.ts",
+    "modules/**/*.ts",
     "apps/**/*.ts",
     "scripts/**/*.ts",
-    "modules/**/*.vue",
-    "modules/chatgpt-booster/packages/*/src/**/*.ts"
+    "modules/chatgpt-booster/packages/*/src/**/*.ts",
+    "modules/chatgpt-booster/packages/*/src/**/*.vue"
   ],
-  "exclude": [
-    "**/*.test.ts",
-    "**/*.test.js",
-    "**/dist/**"
-  ]
+  "exclude": ["**/*.test.ts", "**/*.test.js", "**/dist/**", "modules/chatgpt-booster/tests/browser/**"]
 }

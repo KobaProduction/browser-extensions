@@ -2,9 +2,11 @@
   "name": "@kobaproduction/browser-archive",
   "version": "0.1.0",
   "type": "module",
-  "private": false,
+  "sideEffects": false,
   "files": [
-    "dist"
+    "dist",
+    "src",
+    "!src/**/*.test.ts"
   ],
   "exports": {
     ".": {
@@ -13,6 +15,10 @@
       "default": "./dist/index.js"
     }
   },
+  "scripts": {
+    "build": "bun build ./src/index.ts --target=browser --format=esm --outdir=dist"
+  },
+  "private": false,
   "publishConfig": {
     "access": "public",
     "registry": "https://npm.pkg.github.com"

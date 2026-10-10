@@ -55,7 +55,9 @@ export async function createGzipFromBlob(
   } catch (error) {
     void reader.cancel(error).catch(() => undefined)
     throw error
-  } finally { reader.releaseLock() }
+  } finally {
+    reader.releaseLock()
+  }
   return new Blob(parts, { type: 'application/gzip' })
 }
 
@@ -88,22 +90,27 @@ export function archiveCompositeKey(...components: string[]): string {
 /** SHA-256 is shared by ChatGPT source fingerprints and VK media receipts.
  * Caller owns storage of hashes; this function never stores or logs bytes. */
 export async function archiveSha256Hex(bytes: ArrayBuffer | Uint8Array | string): Promise<string> {
-  const data = typeof bytes === 'string' ? new TextEncoder().encode(bytes)
-    : bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
-  const safeBytes: Uint8Array<ArrayBuffer> = data.buffer instanceof ArrayBuffer
-    ? data as Uint8Array<ArrayBuffer> : new Uint8Array(data)
+  const data =
+    typeof bytes === 'string'
+      ? new TextEncoder().encode(bytes)
+      : bytes instanceof Uint8Array
+        ? bytes
+        : new Uint8Array(bytes)
+  const safeBytes: Uint8Array<ArrayBuffer> =
+    data.buffer instanceof ArrayBuffer ? (data as Uint8Array<ArrayBuffer>) : new Uint8Array(data)
   const digest = await crypto.subtle.digest('SHA-256', safeBytes)
   return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('')
 }
 
+export type { ArchivePageFoldOptions, ArchivePageFoldResult, ArchivePageMode } from './page-fold'
 export { foldArchivePage } from './page-fold'
-export type { ArchivePageMode, ArchivePageFoldOptions, ArchivePageFoldResult } from './page-fold'
 
 /** Bounded, streaming, lossless output for asynchronous archive JSONL records.
  * Unlike compressing an already-materialized Blob, this never retains an
  * uncompressed archive copy in memory. The caller owns final user download. */
 export async function createGzipFromChunks(
-  input: AsyncIterable<Uint8Array>, signal?: AbortSignal,
+  input: AsyncIterable<Uint8Array>,
+  signal?: AbortSignal,
 ): Promise<Blob> {
   if (typeof CompressionStream !== 'function')
     throw new Error('Streaming GZIP is unavailable in this browser')
@@ -116,13 +123,19 @@ export async function createGzipFromChunks(
         const next = await iterator.next()
         if (next.done) controller.close()
         else {
-          const safe: Uint8Array<ArrayBuffer> = next.value.buffer instanceof ArrayBuffer
-            ? next.value as Uint8Array<ArrayBuffer> : new Uint8Array(next.value)
+          const safe: Uint8Array<ArrayBuffer> =
+            next.value.buffer instanceof ArrayBuffer
+              ? (next.value as Uint8Array<ArrayBuffer>)
+              : new Uint8Array(next.value)
           controller.enqueue(safe)
         }
-      } catch (error) { controller.error(error) }
+      } catch (error) {
+        controller.error(error)
+      }
     },
-    async cancel() { await iterator.return?.(undefined) },
+    async cancel() {
+      await iterator.return?.(undefined)
+    },
   })
   const reader = chunks.pipeThrough(new CompressionStream('gzip')).getReader()
   const parts: BlobPart[] = []
@@ -136,9 +149,23 @@ export async function createGzipFromChunks(
   } catch (error) {
     void reader.cancel(error).catch(() => undefined)
     throw error
-  } finally { reader.releaseLock() }
+  } finally {
+    reader.releaseLock()
+  }
   return new Blob(parts, { type: 'application/gzip' })
 }
 
-export { encodeArchiveClone, decodeArchiveClone } from './structured'
+export type { ArchivePageScan, ArchivePageSelection, ArchiveScanMode } from './linear-selection'
+export { selectArchivePage } from './linear-selection'
+export type { ArchiveMediaReadOptions, ArchiveMediaResult } from './media'
+export { readArchiveMedia } from './media'
+export type {
+  LinearArchiveCommit,
+  LinearArchiveSource,
+  LinearScanOptions,
+  LinearScanResult,
+  LinearScanState,
+} from './scan-linear'
+export { scanLinearArchive } from './scan-linear'
 export type { ArchiveCloneNode } from './structured'
+export { decodeArchiveClone, encodeArchiveClone } from './structured'

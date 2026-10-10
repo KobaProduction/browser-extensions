@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.zip
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Local agent/test workbench artifacts
+/.work/

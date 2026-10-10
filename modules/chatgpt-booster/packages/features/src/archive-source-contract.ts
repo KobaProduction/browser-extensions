@@ -41,7 +41,7 @@ export type ArchiveContractFailure = {
   reason: 'missing' | 'unexpected' | 'type' | 'identity' | 'unsupported'
 }
 export class ArchiveContractError extends Error {
-  readonly name = 'ArchiveContractError'
+  override readonly name = 'ArchiveContractError'
   constructor(readonly failure: ArchiveContractFailure) {
     super('archive.error.incompatibleSource')
   }

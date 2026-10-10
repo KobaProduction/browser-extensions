@@ -1,20 +1,37 @@
 <script setup lang="ts">
-import { computed, ref, watch, type Component } from 'vue'
 import type { FeatureRuntime } from '@kobaproduction/browser-core'
-import { Wrench, BarChart3, SlidersHorizontal, X, FolderArchive } from 'lucide-vue-next'
-import { Button } from '@kobaproduction/browser-ui'
-import { Badge } from '@kobaproduction/browser-ui'
+import { Badge, Button } from '@kobaproduction/browser-ui'
+import { BarChart3, FolderArchive, SlidersHorizontal, Wrench, X } from 'lucide-vue-next'
+import { type Component, computed, ref, watch } from 'vue'
 
-const props=defineProps<{ runtime:FeatureRuntime; views:Record<string,Component>; title:string; selectedSection:string }>()
-const emit=defineEmits<{close:[];select:[section:string]}>()
-const section=ref(props.selectedSection)
-watch(()=>props.selectedSection,value=>{section.value=value})
-const statuses=computed(()=>props.runtime.list())
-const activeFeatures=computed(()=>statuses.value.filter(s=>s.state==='active'))
-const currentView=computed(()=>props.views[section.value])
-async function enable(id:string,enabled:boolean){await props.runtime.setEnabled(id,enabled)}
-function selectSection(id:string){section.value=id;emit('select',id)}
-function openModule(id:string){if(props.views[id])selectSection(id);else void props.runtime.open(id)}
+const props = defineProps<{
+  runtime: FeatureRuntime
+  views: Record<string, Component>
+  title: string
+  selectedSection: string
+}>()
+const emit = defineEmits<{ close: []; select: [section: string] }>()
+const section = ref(props.selectedSection)
+watch(
+  () => props.selectedSection,
+  (value) => {
+    section.value = value
+  },
+)
+const statuses = computed(() => props.runtime.list())
+const activeFeatures = computed(() => statuses.value.filter((s) => s.state === 'active'))
+const currentView = computed(() => props.views[section.value])
+async function enable(id: string, enabled: boolean) {
+  await props.runtime.setEnabled(id, enabled)
+}
+function selectSection(id: string) {
+  section.value = id
+  emit('select', id)
+}
+function openModule(id: string) {
+  if (props.views[id]) selectSection(id)
+  else void props.runtime.open(id)
+}
 </script>
 <template>
   <section class="booster-control-center" lang="ru">

@@ -1,117 +1,106 @@
 <script setup lang="ts">
-/** FSD feature view. All export state stays in the model; no secondary overlay. */
+/** VK-only archive API adapter. Generic ArchiveManager owns presentation, never VK storage. */
+
+import {
+  ArchiveManager,
+  type ArchiveManagerOptions,
+  type ArchiveManagerState,
+} from '@kobaproduction/browser-widgets'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { FolderOpen, Download, Pause, Play, Settings2, Archive } from 'lucide-vue-next'
-import { Button, Badge, ArchiveProgress } from '@kobaproduction/browser-ui'
-import { archiveApi, type ArchiveMode, type ArchiveStatus } from '../model/types'
+import { type ArchiveStatus, archiveApi } from '../model/types'
+import ArchivePreview from './ArchivePreview.vue'
 
-const api=archiveApi()
-const status=ref<ArchiveStatus|null>(api?.status()??null)
-const mode=ref<ArchiveMode>(status.value?.options.mode??'recent')
-const limit=ref(status.value?.options.limit??10)
-const from=ref(status.value?.options.from??'')
-const through=ref(status.value?.options.through??'')
-const pageSize=ref(status.value?.options.pageSize??50)
-const delay=ref(status.value?.options.delay??450)
-const media=ref(status.value?.options.media??true)
-const error=ref('')
-const advanced=ref(false)
-const progress=computed(()=>status.value?.progress)
-const paused=computed(()=>status.value?.checkpoint?.status==='paused')
-const available=computed(()=>Boolean(status.value?.folder))
-let unsubscribe:(()=>void)|undefined
-
-onMounted(()=>{
-  unsubscribe=api?.subscribe(next=>{status.value=next})
+const api = archiveApi()
+const status = ref<ArchiveStatus | null>(api?.status() ?? null)
+const error = ref('')
+const previewOpen = ref(false)
+let unsubscribe: (() => void) | undefined
+let peerTimer: ReturnType<typeof setInterval> | undefined
+function refreshActiveConversation() {
+  const next = api?.status()
+  if (!next) return
+  const previous = status.value
+  if (
+    !previous ||
+    next.activePeerId !== previous.activePeerId ||
+    next.blockedReason !== previous.blockedReason ||
+    next.options.peerId !== previous.options.peerId
+  )
+    status.value = next
+}
+const view = computed<ArchiveManagerState | null>(() => {
+  const current = status.value
+  if (!current) return null
+  const p = current.progress
+  return {
+    context: 'Диалог ' + (current.options.peerId || 'не выбран'),
+    folder: current.folder,
+    messages: current.messages,
+    busy: current.busy,
+    folderPending: current.folderPending,
+    paused: current.checkpoint?.status === 'paused',
+    blockedReason: current.blockedReason,
+    phase: p.phase,
+    done: p.done,
+    total: p.total,
+    newCount: p.newCount ?? 0,
+    downloaded: p.downloaded ?? 0,
+    failed: p.failed ?? 0,
+    error: p.error,
+  }
 })
-onUnmounted(()=>unsubscribe?.())
-
-async function pickFolder(){
-  error.value=''
-  try {await api?.selectFolder()} catch(e) {error.value=e instanceof Error?e.message:String(e)}
+onMounted(() => {
+  unsubscribe = api?.subscribe((next) => {
+    status.value = next
+  })
+  // VK uses soft navigation; do not patch its History API or poll while closed.
+  peerTimer = setInterval(refreshActiveConversation, 1500)
+})
+onUnmounted(() => {
+  unsubscribe?.()
+  if (peerTimer !== undefined) clearInterval(peerTimer)
+})
+async function chooseFolder() {
+  error.value = ''
+  try {
+    await api?.selectFolder()
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  }
 }
-async function start(){
-  error.value=''
-  try{
-    await api?.run({mode:mode.value,limit:Number(limit.value),from:from.value,through:through.value,
-      pageSize:Number(pageSize.value),delay:Number(delay.value),media:media.value})
-  }catch(e){error.value=e instanceof Error?e.message:String(e)}
+async function start(options: ArchiveManagerOptions) {
+  error.value = ''
+  try {
+    await api?.run(options)
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  }
 }
-async function resume(){
-  error.value=''
-  try{await api?.resume()}catch(e){error.value=e instanceof Error?e.message:String(e)}
+async function resume() {
+  error.value = ''
+  try {
+    await api?.resume()
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  }
 }
 </script>
-
 <template>
-  <template v-if="status">
-    <section class="booster-setting-card">
-      <div class="booster-setting-copy">
-        <div class="flex items-center gap-2">
-          <Archive class="size-4"/><b>Архив переписки VK</b>
-          <Badge :variant="status.busy?'default':'outline'">{{status.busy?'Экспорт':'Ожидание'}}</Badge>
-        </div>
-        <span>Диалог {{status.options.peerId || 'не выбран'}} · Сообщений в архиве: {{status.messages}}</span>
-      </div>
-      <Button variant="outline" size="sm" :disabled="status.busy" @click="pickFolder">
-        <FolderOpen class="size-4"/>Папка
-      </Button>
-    </section>
-
-    <section class="booster-setting-card">
-      <div class="booster-setting-copy">
-        <b>Хранилище</b>
-        <span>{{status.folder || 'Выбери папку архива'}}</span>
-      </div>
-    </section>
-
-    <section class="booster-stack-card">
-      <div class="booster-setting-copy"><b>Что выгружать</b><span>Без дублирования уже сохранённых сообщений</span></div>
-      <div class="grid grid-cols-2 gap-3">
-        <label class="booster-field">
-          Режим
-          <select v-model="mode" class="booster-select w-full">
-            <option value="recent">Последние N</option>
-            <option value="incremental">Только новые</option>
-            <option value="backfill">Продолжить старые</option>
-          </select>
-        </label>
-        <label class="booster-field">
-          Количество сообщений
-          <input v-model.number="limit" class="booster-input" type="number" min="1" max="100000" />
-        </label>
-      </div>
-      <button class="booster-disclosure" type="button" :aria-expanded="advanced" @click="advanced=!advanced">
-        <span><b>Дополнительные настройки</b><small>Диапазон дат, пачка и медиафайлы</small></span>
-        <Settings2 class="size-4"/>
-      </button>
-      <div v-if="advanced" class="grid grid-cols-2 gap-3">
-        <label class="booster-field">С даты<input v-model="from" class="booster-input" type="date"/></label>
-        <label class="booster-field">По дату<input v-model="through" class="booster-input" type="date"/></label>
-        <label class="booster-field">Пачка<input v-model.number="pageSize" class="booster-input" type="number" min="1" max="100"/></label>
-        <label class="booster-field">Пауза, мс<input v-model.number="delay" class="booster-input" type="number" min="300"/></label>
-        <label class="booster-field col-span-2"><span class="flex items-center gap-2"><input v-model="media" type="checkbox"/>Сохранять файлы и голосовые</span></label>
-      </div>
-    </section>
-
-    <section class="booster-stack-card">
-      <div class="booster-setting-copy"><b>Прогресс экспорта</b></div>
-      <ArchiveProgress :label="progress?.phase || 'Ожидание'" aria-label="Прогресс экспорта"
-        :busy="status.busy" :completed="progress?.phase === 'Готово' ? progress?.total : progress?.done"
-        :total="progress?.total" :error="progress?.error" />
-      <div class="booster-counter-grid text-xs">
-        <span>Обработано <b>{{progress?.done??0}} / {{progress?.total??0}}</b></span>
-        <span>Новых <b>{{progress?.newCount??0}}</b></span>
-        <span>Файлов <b>{{progress?.downloaded??0}}</b></span>
-        <span>Ошибки <b>{{progress?.failed??0}}</b></span>
-      </div>
-      <div class="flex flex-wrap gap-2">
-        <Button :disabled="status.busy||!available" @click="start"><Download class="size-4"/>Выгрузить</Button>
-        <Button variant="outline" :disabled="!status.busy" @click="api?.stop()"><Pause class="size-4"/>Пауза</Button>
-        <Button variant="outline" :disabled="status.busy||!paused" @click="resume"><Play class="size-4"/>Продолжить</Button>
-      </div>
-      <p v-if="error" role="alert" class="text-sm text-destructive">{{error}}</p>
-    </section>
+  <ArchiveManager v-if="status && view" :state="view" :initial="status.options" :error="error"
+    title="Архив переписки VK" @choose-folder="chooseFolder" @start="start"
+    @stop="api?.stop()" @resume="resume"/>
+  <template v-if="api && status?.folder && !status.blockedReason && status.messages > 0">
+    <div class="flex justify-end">
+      <button
+        type="button"
+        class="booster-disclosure"
+        :aria-expanded="previewOpen"
+        @click="previewOpen = !previewOpen"
+      >{{ previewOpen ? 'Скрыть сохранённые сообщения' : 'Просмотр сохранённых сообщений' }}</button>
+    </div>
+    <div v-if="previewOpen" id="vk-archive-preview">
+      <ArchivePreview :api="api" :status="status" />
+    </div>
   </template>
-  <section v-else class="booster-setting-card"><span>Модуль VK Booster ещё не инициализирован.</span></section>
+  <section v-if="!status || !view" class="booster-setting-card"><span>Модуль VK Booster ещё не инициализирован.</span></section>
 </template>

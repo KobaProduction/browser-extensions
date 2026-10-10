@@ -1,6 +1,8 @@
 @import "tailwindcss";
+@import "@kobaproduction/browser-widgets/styles.css";
 @source "./**/*.{vue,ts}";
 @source "../../ui/src/**/*.{vue,ts}";
+@source "../../widgets/src/**/*.{vue,ts}";
 @source "../../../modules/vk-booster/src/**/*.{vue,ts}";
 
 :host {
@@ -589,8 +591,14 @@
 }
 
 /* Feature-selected, provider-neutral workspace sizing for long conversations. */
-.booster-modal-surface.booster-modal-surface-wide { width: min(1320px, calc(100vw - 32px)); }
-.booster-modal-surface-wide > .booster-control-center { width: 100%; }
+.booster-modal-surface.booster-modal-surface-wide {
+  width: min(1320px, calc(100vw - 32px));
+}
+.booster-modal-surface-wide > .booster-control-center {
+  width: 100%;
+}
 @media (max-width: 620px) {
-  .booster-modal-surface.booster-modal-surface-wide { width: calc(100vw - 20px); }
+  .booster-modal-surface.booster-modal-surface-wide {
+    width: calc(100vw - 20px);
+  }
 }

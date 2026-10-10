@@ -1,0 +1,59 @@
+{
+  "observedAt": "2026-10-03T20:30:30.093Z",
+  "scope": "real Chromium and IndexedDB; synthetic local transport and DOM fixture; not live ChatGPT acceptance",
+  "storage": [
+    { "name": "duplicate page and IDs: idempotent upsert with accurate summary", "pass": true },
+    {
+      "name": "concurrent ingestion uses real serial IndexedDB read/write transactions",
+      "pass": true
+    },
+    { "name": "revocation while DB reads are in flight produces no put", "pass": true },
+    { "name": "concurrent null project title never erases an observed name", "pass": true },
+    { "name": "project removal updates all normalized message links", "pass": true },
+    {
+      "name": "basic export excludes conversation raw and nested records with real stored objects",
+      "pass": true
+    },
+    {
+      "name": "selective/manual capture and cancellation: local event fixture, no network",
+      "pass": true
+    }
+  ],
+  "loader": [
+    { "name": "late complete after stop must not report success", "pass": true },
+    { "name": "late complete after navigation must not report success", "pass": true }
+  ],
+  "scroll": {
+    "name": "scroll and wait for linked page",
+    "pass": true,
+    "scrolled": true,
+    "noCompletionFromTop": true,
+    "completesAfterIngest": true,
+    "countsInitialPage": true
+  },
+  "ui": [
+    {
+      "name": "right edge and stable toggle, no host layout shift, repeated click closes",
+      "pass": true,
+      "detail": {
+        "viewport": [390, 844],
+        "anchor": { "x": 346, "y": 520, "width": 44, "height": 44, "right": 390, "bottom": 564 }
+      }
+    },
+    {
+      "name": "pointer handler drop snaps left and persists height ratio (synthetic pointer)",
+      "pass": true,
+      "detail": { "side": "left", "ratio": 0.2 }
+    },
+    {
+      "name": "archive opens current project only, nested records are lazy, no composer",
+      "pass": true,
+      "detail": {
+        "initialExchanges": 40,
+        "expandedExchanges": 55,
+        "replyCount": 110,
+        "nestedCount": 55
+      }
+    }
+  ]
+}
