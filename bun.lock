@@ -100,6 +100,7 @@
         "@chatgpt-booster/observer": "workspace:*",
         "@chatgpt-booster/telemetry": "workspace:*",
         "@chatgpt-booster/ui": "workspace:*",
+        "@kobaproduction/browser-core": "workspace:*",
         "vue": "^3.5.22",
       },
     },

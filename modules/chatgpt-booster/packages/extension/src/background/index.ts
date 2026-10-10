@@ -1,3 +1,4 @@
+import { instanceKey } from '@kobaproduction/browser-core'
 import {
   applyTransportCounterEvent,
   type BoosterSettings,
@@ -247,6 +248,7 @@ chrome.runtime.onMessage.addListener(
 )
 
 const CHATGPT_MATCH = 'https://chatgpt.com/*'
+const ownShellRootId = instanceKey('koba-browser-tools-root')
 
 async function bootstrapExistingChatGptTabs(): Promise<void> {
   const tabs = await chrome.tabs.query({ url: CHATGPT_MATCH })
@@ -259,11 +261,11 @@ async function bootstrapExistingChatGptTabs(): Promise<void> {
             target: { tabId: tab.id },
             world: 'ISOLATED',
             injectImmediately: true,
-            func: () =>
-              Boolean(
-                document.getElementById('koba-browser-tools-root') ||
-                  document.querySelector('#chatgpt-booster-root, [data-chatgpt-booster]'),
-              ),
+            // A separate PROD, DEV or aggregate root is NOT this extension.
+            // Pass the build-owned root into the injected context explicitly:
+            // executeScript serializes the function without module closures.
+            func: (expectedRootId: string) => Boolean(document.getElementById(expectedRootId)),
+            args: [ownShellRootId],
           })
           if (presence?.result === true) return
 

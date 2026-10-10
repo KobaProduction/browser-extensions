@@ -1,4 +1,6 @@
 import { expect, test } from 'bun:test'
+import { readFile } from 'node:fs/promises'
+import { scopedIdentity } from '../packages/core/src/instance-scope'
 import { affectedModules } from './catalog'
 import {
   channelIdentity,
@@ -35,4 +37,17 @@ test('channel output changes only for affected products', () => {
     'all-in-one',
   ])
   expect(channelModuleIds(['docs/RELEASES.md'], affectedModules)).toEqual([])
+})
+
+test('ChatGPT startup only recognizes its own extension root, not the aggregate', async () => {
+  const source = await readFile(
+    'modules/chatgpt-booster/packages/extension/src/background/index.ts',
+    'utf8',
+  )
+  expect(source).toContain("instanceKey('koba-browser-tools-root')")
+  expect(source).toContain('args: [ownShellRootId]')
+  expect(source).not.toContain("document.querySelector('#chatgpt-booster-root, [data-chatgpt-booster]')")
+  expect(scopedIdentity('koba-browser-tools-root', 'chatgpt-booster:dev')).not.toBe(
+    scopedIdentity('koba-browser-tools-root', 'all-in-one:dev'),
+  )
 })
