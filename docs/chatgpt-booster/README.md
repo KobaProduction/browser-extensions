@@ -42,3 +42,25 @@ canonical migration, restore and live source parity. Track active defects and
 remaining acceptance in the targeted GitHub Issues, especially the current
 [ChatGPT archive migration ticket](https://github.com/KobaProduction/browser-extensions/issues/11).
 Do not copy universal architecture rules into those issues.
+
+## Historical stable checkpoint and development policy
+
+The only approved stable historical ChatGPT Booster recovery baseline is
+**0.8.92**, original source commit `6a4b00b99eb95f5f4090a2c780c511da4f28353a`.
+Publish its original production-target installer as the standard
+`chatgpt-booster/v0.8.92` release, with product name `ChatGPT Booster`,
+original Tampermonkey namespace and a version-pinned updater URL.
+Do not label this installer DEV or register it under a competing recovery
+identity.
+
+**0.8.98 is experimental, not approved for publication**. Its original
+source remains available in the `reference/chatgpt-legacy-recovery-v0.8.98`
+reference branch solely to recover implementation details and inspect
+regressions; do not publish its installers or promote it to stable/PROD.
+The unrelated monorepo 2.x stream remains under development and must not
+silently replace the historic stable 0.8.92 update channel.
+
+A successful historical source build is not installed-browser acceptance.
+Back up the original browser profile and v3/v4 IndexedDB data before using
+any historical build. See [environment isolation](../shared/ENVIRONMENTS_AND_STORAGE.md)
+and [backup/restore](../shared/BACKUP_AND_RESTORE.md).
