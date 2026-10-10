@@ -1,5 +1,6 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { impactedProductVersions } from './catalog'
+import { isVkBaseFrozen } from './version-freeze'
 
 export function bumpPatch(version: string): string {
   const parts = version.match(/^(\d+)\.(\d+)\.(\d+)$/)
@@ -15,10 +16,10 @@ export function planVersionBumps(
   versions: Readonly<Record<string, string>>,
 ): Record<string, string> {
   return Object.fromEntries(
-    impactedProductVersions(paths).map((id) => {
+    impactedProductVersions(paths).flatMap((id) => {
       const current = versions[id]
       if (!current) throw new Error(`Missing version for ${id}`)
-      return [id, bumpPatch(current)]
+      return isVkBaseFrozen(id, current) ? [] : [[id, bumpPatch(current)]]
     }),
   )
 }
@@ -64,17 +65,6 @@ if (import.meta.main) {
         file,
         original.replace(previous, `export const BOOSTER_BASE_VERSION = '${version}'`),
       )
-    }
-    if (id === 'vk-booster') {
-      for (const file of [
-        'modules/vk-booster/src/features/chat-export/model/archive-engine.ts',
-        'modules/vk-booster/src/index.test.ts',
-      ]) {
-        const source = await readFile(file, 'utf8')
-        if (!oldVersion || !source.includes(oldVersion))
-          throw Error(`Unexpected VK runtime/test version source in ${file}`)
-        await writeFile(file, source.replace(oldVersion, version))
-      }
     }
   }
   if (Object.keys(next).length) {

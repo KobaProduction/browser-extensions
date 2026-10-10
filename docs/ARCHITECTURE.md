@@ -37,7 +37,7 @@ fixtures are now TypeScript with explicit source/archive/checkpoint contracts.
 Strict compiler checks cover the VK fixtures separately; Biome is enforced
 for the first-party workspace. The imported ChatGPT workspace keeps its own
 quality gate until its compatibility migration is complete. Type safety
-does not replace live VK browser acceptance or solve v2 multi-file atomicity.
+does not replace live VK browser acceptance or prove extension data isolation.
 
 ## ChatGPT Booster compatibility decomposition
 
@@ -116,7 +116,7 @@ migration service. The application adapter must define actual IndexedDB
 journal/manifest/staging schemas, source owner evidence, stage-key isolation,
 source fingerprints, backup and restore procedures, migration plan/version
 and acceptance proof. The library refuses to run without a cross-tab lock.
-The source workspace migrator and VK v2 output have NOT been rewritten to use
+The source workspace migrator and native VK provider have NOT been rewritten to use
 it; no v3/v4 data have been migrated by this change.
 
 The original ChatGPT Booster source workspace has an in-progress canonical
@@ -130,84 +130,35 @@ also conflates unknown ownership and explicit account mismatches; activation
 requires independently verified account isolation before integration. Generic cursor mechanics are available for reuse, not a claim
 of completed migrations or crash-safe cross-tab database upgrades.
 
-## VK Booster migration
+## VK Booster 3: native archive and independent exporter
 
-The VK archive engine is wrapped as a `Feature` and used by both Tampermonkey and MV3. The duplicate Tampermonkey menu was removed. Its internal VK API/authentication, VK attachment mapping/downloading and offline HTML renderer are separate modules. Linear page selection and an acknowledgement-gated page-scan application service for exact-N/incremental/backfill use `@kobaproduction/browser-archive` with VK-supplied source and commit ports. Its bounded binary response reader also verifies media MIME, length and SHA-256, while VK-specific media URL selection/fallback remains in its provider adapter. Generic directory writes use `@kobaproduction/browser-adapters`. VK-owned checkpoint format, on-disk serialization, media iteration and the public v2 file format remain unchanged. The VK commit adapter stages its next records/checkpoint and publishes them in memory only after both file writes are acknowledged (the browser File System Access API does not provide a multi-file ACID transaction); a complete shared multi-source ArchiveController/Repository/Output has **not** been extracted or adopted by ChatGPT Booster. Selecting an invalid or unreadable archive folder fails closed and restores the previously active folder/data instead of redirecting later writes. Regression checks cover existing semantics, but Chrome/Tampermonkey/MV3 live acceptance is still outstanding.
+The previous VK v2 file-backed exporter and its old controls were **removed**
+on explicit product-owner instruction: VK has no existing user archive contract.
+The new module is owned by `modules/vk-booster/src/{api,model,infrastructure,ui}`.
+It is separate from ChatGPT v3/v4 persistence and does not transfer records
+between standalone and aggregate applications.
 
-## VK in-app archive preview
+- `api/vk-source.ts`: VK-specific authenticated history pages and on-demand
+  attachment resolution. No tokens, cookies or expiring CDN URLs are retained
+  in the normalized database or backups.
+- `model/service.ts`: complete history scan to the provider-reported end,
+  idempotent message IDs and commit-before-progress. Partial pages cannot
+  mark a conversation complete. Completed chats do not repeat capture unless
+  an explicit rescan is authorized in a future feature.
+- `infrastructure/indexeddb.ts`: independent stores for conversations, messages
+  and download receipts. Database name includes product + DEV/PROD channel.
+  Backup is read from a consistent readonly transaction, and restore validates
+  the scope before replacing rows in a single transaction.
+- `model/export.ts`: inclusive date-range export, selectable text and file types,
+  `chat.json`, `manifest.json`, and flat `attachments/`; SHA-256 receipts
+  allow audits for renamed, modified and missing assets.
+- `ui/ArchivePanel.vue`: independent chat viewer, complete capture, export and
+  archive backup/restore. A module view inside the shared shell—not a second UI.
+- `apps/dev-archive-lab`: synthetic offline Vue application with memory storage
+  and source-neutral paging fixtures from `packages/archive`.
 
-VK Booster 2.3.0 mounts a read-only VK ArchivePreview beneath the existing
-shared ArchiveManager. It uses the provider-neutral ArchiveTranscript layout
-with VK-specific text, sender, timestamp and attachment-count slots. The
-view requests only the latest 80 records initially, expands in 80-record
-increments up to 240, and searches existing in-memory archived text through
-a bounded VK projection API. It does not load remote history, media or
-IndexedDB and does not alter the v2 folder/file format. For the entire
-archive and saved media, index.html remains authoritative.
-
-A dedicated single-view installation opens directly to its VK section in
-the shared Control Center; multiple-view shells continue to show the module
-index by default. Neither path mounts a second launcher or dialog.
-
-VK Booster 2.3.1 adds a route-aware, fail-closed archive owner check for
-supported numeric VK /im/convo/{peer} pathnames. Opening another conversation
-does not mutate the pinned folder/account: the UI reports a blocked state,
-and the engine checks the current peer before authorization, history reads,
-checkpoint page commits, media iteration and export completion. Switching
-to a new peer is only possible by successfully selecting that peer's archive
-folder; failed folder validation restores the prior folder, data and peer.
-While a folder selection is pending, its transient handle and any previously
-loaded messages are hidden from the public status snapshot, and concurrent
-exports/folder selections are rejected. SPA changes are checked at action
-boundaries even when VK does not emit browser navigation events; the mounted
-VK view refreshes context while open without patching history APIs.
-
-VK Booster 2.3.2 reserves the folder-selection operation before opening the
-native directory picker or requesting permission. While the picker is pending,
-the shared Archive Manager shows the selection state instead of an export state,
-disables export/resume/stop and hides the previously bound folder and preview.
-If VK navigates to another conversation during the picker, selection fails
-before the new folder is opened for archive writes; cancellation restores the
-original folder and state. An existing archive preview is also hidden when the
-current conversation no longer matches the selected folder. The on-disk v2
-metadata, messages, media and HTML formats are unchanged.
-
-VK Booster 2.3.3 reserves an export before its first asynchronous authorization
-request. Another export or folder selection cannot overlap with pending VK
-authentication. On authorization failure or a conversation change, the reserved
-operation is released before creating a checkpoint, preserving the selected
-archive and its on-disk data. A stop requested during authorization is not
-cleared by a later auth response. The VK v2 archive format remains unchanged.
-
-VK Booster 2.3.4 applies the same active-conversation and folder-selection
-fence to direct archived-message/preview API reads and standalone offline-HTML
-regeneration. Public readers return independent snapshots, so mutations to
-returned records cannot alter in-memory data later saved by checkpoints.
-This is a compatible read/write boundary hardening, not an archive migration.
-
-VK Booster 2.3.5 checks the bound conversation after asynchronous media fetch,
-decode and before binary/archive metadata writes. Navigation mid-download stops
-the run without advancing the saved media cursor, allowing safe retry from the
-original chat. Loading a v2 folder also rejects records with an explicit
-peer_id different from the folder peer; records lacking peer_id remain
-compatible with earlier v2 exports.
-
-VK Booster 2.3.6 fixes the browser distribution build: emitted Vue bundles
-compile `process.env.NODE_ENV` to a literal before the code runs without Node.
-Built userscript and Chromium content outputs are now checked for unresolved
-Node environment globals, preventing a silent build-pass/runtime-crash
-regression. Version and v2 archive layout remain backward compatible.
-
-VK Booster 2.3.7 makes the shared draggable launcher operable via
-keyboard or assistive technology. Pointer-up remains responsible for
-distinguishing a tap from a drag; a synthetic/keyboard click toggles the panel
-only when its click detail is zero, avoiding double activation after a
-mouse/touch pointer-up. The launcher exposes its dialog expansion state.
-
-VK Booster 2.3.8 replaces the obsolete launcher letter B with the actual
-shared ChatGPT Booster Layers3 icon. The same shared shell shows a close icon
-when expanded; drag, pointer, keyboard, focus and modal behavior remain intact.
-No separate product launcher or second modal is added.
+This is source architecture and synthetic-fixture verification only until
+a separately reported authenticated VK API and six-way Chrome acceptance.
 
 ## Proxy roadmap
 
@@ -243,7 +194,7 @@ ChatGPT module; apps compose browser-specific transport and permissions. One
 portable gzip output implementation lives in `packages/archive`.
 
 This is a source-preserving adapter-first migration, not a completed common
-VK/ChatGPT archive engine. The VK v2 exporter remains an independent, unchanged
+VK/ChatGPT archive engine. The VK native archive remains an independent
 implementation pending its separate compatibility acceptance. Source and
 runtime verification levels are recorded in
 [CHATGPT_BOOSTER_MIGRATION.md](CHATGPT_BOOSTER_MIGRATION.md).
@@ -251,11 +202,11 @@ runtime verification levels are recorded in
 ## Archive page reconciliation shared by both products
 
 The source-neutral `packages/archive` exposes actual dual-consumer page folding
-(including VK exact-N/incremental/backfill and ChatGPT strict source snapshot
+(including VK complete history capture and ChatGPT strict source snapshot
 comparison), record identity, composite keys, SHA-256, and GZIP output.
 Provider-specific auth, native DTO validation, storage/checkpoint transactions
 and media resolution remain behind their owning module boundaries. Neither
-VK v2 folder files nor ChatGPT v3/v4 IDB schema is rewritten by this stage.
+ChatGPT v3/v4 IDB schemas are not rewritten by the VK native archive.
 
 ## Browser profile / extension-ID source preservation
 
@@ -268,7 +219,7 @@ A verified canonical backup is an independent, explicit artifact. Neither
 transfer silently migrates binary assets, changes extension identity or
 claims that all server history is complete.
 
-## Reconciliation with advanced VK Booster 2.3.7
+## Historical source reconciliation (pre-VK 3)
 
 The advanced VK 2.3.7 TypeScript engine, ArchiveManager/Transcript widgets,
 acknowledgement-gated folder output, bounded media verification and protected

@@ -1,36 +1,31 @@
 import { expect, test } from 'bun:test'
-import { vkBoosterFeature } from './index'
+import { createMemoryVkArchive } from './infrastructure/memory'
+import { initializeVkNativeArchive, peerFromPath, vkBoosterFeature } from './native-runtime'
 
-test('VK feature is site scoped and can cleanly restart', async () => {
+test('VK feature matches only VK conversations and owns no global legacy API', () => {
   expect(vkBoosterFeature.match(new URL('https://vk.ru/im/convo/123'))).toBe(true)
-  expect(vkBoosterFeature.match(new URL('https://chatgpt.com/'))).toBe(false)
-  expect(vkBoosterFeature.match(new URL('https://example.com/im'))).toBe(false)
-  const old = {
-    document: globalThis.document,
-    location: globalThis.location,
-    win: globalThis.window,
-    flag: globalThis.__VK_EXPORT_TEST_MODE,
+  expect(vkBoosterFeature.match(new URL('https://chatgpt.com/c/123'))).toBe(false)
+  expect(peerFromPath('/im/convo/2342')).toBe(2342)
+  expect(peerFromPath('/im/convo/nope')).toBeNull()
+  expect('VKExport' in globalThis).toBe(false)
+})
+test('standalone and aggregator native runtimes use distinct database names', () => {
+  const source = {
+    async history() {
+      return { total: 0, messages: [] }
+    },
   }
-  try {
-    Object.assign(globalThis, {
-      document: {},
-      location: { pathname: '/im/convo/7654321' },
-      window: globalThis,
-      __VK_EXPORT_TEST_MODE: true,
-    })
-    await vkBoosterFeature.start({} as never)
-    expect(globalThis.VKExport?.version).toBe('2.3.10')
-    await vkBoosterFeature.stop?.()
-    expect(globalThis.VKExport).toBeUndefined()
-    await vkBoosterFeature.start({} as never)
-    expect(globalThis.VKExport).toBeDefined()
-  } finally {
-    await vkBoosterFeature.stop?.()
-    Object.assign(globalThis, {
-      document: old.document,
-      location: old.location,
-      window: old.win,
-      __VK_EXPORT_TEST_MODE: old.flag,
-    })
-  }
+  const native = initializeVkNativeArchive(
+    createMemoryVkArchive('vk-booster:dev'),
+    source,
+    'vk-booster:dev',
+  )
+  const aggregate = initializeVkNativeArchive(
+    createMemoryVkArchive('all-in-one:dev'),
+    source,
+    'all-in-one:dev',
+  )
+  expect(native.database).not.toBe(aggregate.database)
+  expect(native.scope).toBe('vk-booster:dev')
+  expect(aggregate.scope).toBe('all-in-one:dev')
 })

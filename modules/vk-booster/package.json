@@ -1,10 +1,10 @@
 {
   "name": "@kobaproduction/module-vk-booster",
-  "version": "2.3.10",
+  "version": "3.0.0",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./ui": "./src/features/chat-export/ui/index.ts"
+    "./ui": "./src/ui/index.ts"
   },
   "dependencies": {
     "@kobaproduction/browser-core": "workspace:*",
