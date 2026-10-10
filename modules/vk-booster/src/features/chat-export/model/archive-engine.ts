@@ -3,6 +3,7 @@ import { scanLinearArchive } from '@kobaproduction/browser-archive'
 import { assets, download as downloadVkAsset } from '../api/vk-media'
 import { createVkProvider } from '../api/vk-provider'
 import { selectVkArchivePreview } from './archive-preview'
+import { archiveContextBlock, conversationPeerFromPath } from './conversation-context'
 import { viewerHTML } from './offline-viewer'
 import type {
   ArchiveApi,
@@ -17,11 +18,11 @@ import type {
 } from './types'
 /* VK Booster v2 provider composition; neutral paging, storage and UI live in shared packages. */
 export function installVkArchive(): void {
-  const VERSION = '2.3.0'
+  const VERSION = '2.3.1'
   if (globalThis.VKExport?.version === VERSION) return
-  const initialPeer = () => Number(location.pathname.match(/\/im\/convo\/(\d+)/)?.[1]) || 0
+  const currentPeer = () => conversationPeerFromPath(location.pathname)
   const cfg: ArchiveOptions = {
-    peerId: initialPeer(),
+    peerId: currentPeer() ?? 0,
     mode: 'recent',
     limit: 10,
     from: '',
@@ -34,7 +35,8 @@ export function installVkArchive(): void {
     meta: VkArchiveMeta | null = null,
     rows: VkMessage[] = [],
     busy = false,
-    stopRequested = false
+    stopRequested = false,
+    folderLoading = false
   let prog: ArchiveProgress = {
     phase: 'Ожидание',
     done: 0,
@@ -97,9 +99,25 @@ export function installVkArchive(): void {
     refresh()
   }
   function status(): ArchiveStatus {
+    const pagePeer = currentPeer()
+    if (folderLoading)
+      return {
+        version: VERSION,
+        folder: null,
+        activePeerId: pagePeer,
+        blockedReason: 'Читаю и проверяю папку архива…',
+        busy: true,
+        options: { ...cfg },
+        progress: { ...prog },
+        messages: 0,
+        checkpoint: null,
+      }
+    if (!root && !busy && pagePeer !== null) cfg.peerId = pagePeer
     return {
       version: VERSION,
       folder: root?.name || null,
+      activePeerId: pagePeer,
+      blockedReason: archiveContextBlock(cfg.peerId, pagePeer),
       busy,
       options: { ...cfg },
       progress: { ...prog },
@@ -108,8 +126,10 @@ export function installVkArchive(): void {
     }
   }
   function configure(v: Partial<ArchiveOptions> = {}): ArchiveStatus {
-    if (busy) throw Error('Заверши или приостанови выгрузку')
-    const o = { ...cfg, ...v }
+    if (busy || folderLoading) throw Error('Заверши текущую операцию с архивом')
+    const pagePeer = currentPeer()
+    const o = { ...cfg, ...v, peerId: v.peerId ?? (root ? cfg.peerId : (pagePeer ?? cfg.peerId)) }
+    if (pagePeer !== null && o.peerId !== pagePeer) throw Error('Выбран другой диалог VK')
     if (!['recent', 'incremental', 'backfill'].includes(o.mode)) throw Error('Режим')
     if (!Number.isSafeInteger(o.limit) || o.limit < 1 || o.limit > 100000)
       throw Error('Количество: 1–100000')
@@ -155,11 +175,15 @@ export function installVkArchive(): void {
     )
   }
   async function useFolder(handle: FileSystemDirectoryHandle): Promise<ArchiveStatus> {
-    if (!cfg.peerId) throw Error('Открой диалог VK перед выбором папки')
-    if (busy) throw Error('Выгрузка идёт')
+    const pagePeer = currentPeer()
+    if (pagePeer === null) throw Error('Открой диалог VK перед выбором папки')
+    if (busy || folderLoading) throw Error('Другая операция с папкой уже выполняется')
     const previousRoot = root,
       previousMeta = meta,
-      previousRows = rows
+      previousRows = rows,
+      previousPeer = cfg.peerId
+    folderLoading = true
+    cfg.peerId = pagePeer
     root = handle
     try {
       const previous = await json('metadata.json')
@@ -192,7 +216,9 @@ export function installVkArchive(): void {
       meta = loadedMeta
       rows = loadedMessages
       sorted()
+      if (currentPeer() !== pagePeer) throw Error('Диалог VK изменился при выборе папки')
       if (!previous) await checkpoint()
+      folderLoading = false
       refresh()
       return status()
     } catch (error) {
@@ -200,8 +226,12 @@ export function installVkArchive(): void {
       root = previousRoot
       meta = previousMeta
       rows = previousRows
+      cfg.peerId = previousPeer
+      folderLoading = false
       refresh()
       throw error
+    } finally {
+      folderLoading = false
     }
   }
   async function selectFolder(): Promise<ArchiveStatus> {
@@ -256,11 +286,18 @@ export function installVkArchive(): void {
     options: Partial<ArchiveOptions> & { resume?: boolean } = {},
   ): Promise<ArchiveRunResult> {
     if (busy) throw Error('Выгрузка уже запущена')
-    if (!cfg.peerId) throw Error('Открой диалог VK перед выгрузкой')
+    if (folderLoading) throw Error('Выбор папки ещё не завершён')
     if (!root) throw Error('Сначала выбери папку')
     const resume = options.resume === true
     if (!resume) configure(options)
+    const guard = () => {
+      const reason = archiveContextBlock(cfg.peerId, currentPeer())
+      if (reason || currentMeta().peer_id !== cfg.peerId)
+        throw Error(reason ?? 'Папка принадлежит другому диалогу VK')
+    }
+    guard()
     if (!(await auth())) throw Error('Не удалось авторизовать VK API из хранилища')
+    guard()
     busy = true
     stopRequested = false
     const storedSettings = currentMeta().checkpoint?.settings
@@ -317,10 +354,18 @@ export function installVkArchive(): void {
             scanned: cp.scanned,
             newCount: cp.newCount,
           },
-          source: { readPage: (offset, count) => history(offset, count) },
+          source: {
+            async readPage(offset, count) {
+              guard()
+              const page = await history(offset, count)
+              guard()
+              return page
+            },
+          },
           stopped: () => stopRequested,
           delay: () => sleep(cfg.delay),
           async commit({ selection, next, sourceTotal }) {
+            guard()
             const candidateIndex = new Map(index)
             for (const item of selection.added) candidateIndex.set(item.id, item)
             const nextCp: VkCheckpoint = {
@@ -364,6 +409,7 @@ export function installVkArchive(): void {
         progress('Файлы', cp.fileCursor, queue.length, { newCount: cp.newCount })
         for (let i = cp.fileCursor; i < queue.length; i++) {
           if (stopRequested) break
+          guard()
           const asset = queue[i]
           if (!asset) throw Error('Недоступен файл из очереди')
           const outcome = await download(asset)
@@ -384,6 +430,7 @@ export function installVkArchive(): void {
         await checkpoint()
         return { paused: true, progress: status().progress }
       }
+      guard()
       cp.status = 'done'
       cp.phase = 'done'
       cp.finished = ts()

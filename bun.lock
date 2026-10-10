@@ -55,7 +55,7 @@
     },
     "modules/vk-booster": {
       "name": "@kobaproduction/module-vk-booster",
-      "version": "2.3.0",
+      "version": "2.3.1",
       "dependencies": {
         "@kobaproduction/browser-adapters": "workspace:*",
         "@kobaproduction/browser-archive": "workspace:*",

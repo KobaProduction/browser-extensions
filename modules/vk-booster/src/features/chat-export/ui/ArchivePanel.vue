@@ -15,6 +15,19 @@ const status = ref<ArchiveStatus | null>(api?.status() ?? null)
 const error = ref('')
 const previewOpen = ref(false)
 let unsubscribe: (() => void) | undefined
+let peerTimer: ReturnType<typeof setInterval> | undefined
+function refreshActiveConversation() {
+  const next = api?.status()
+  if (!next) return
+  const previous = status.value
+  if (
+    !previous ||
+    next.activePeerId !== previous.activePeerId ||
+    next.blockedReason !== previous.blockedReason ||
+    next.options.peerId !== previous.options.peerId
+  )
+    status.value = next
+}
 const view = computed<ArchiveManagerState | null>(() => {
   const current = status.value
   if (!current) return null
@@ -25,6 +38,7 @@ const view = computed<ArchiveManagerState | null>(() => {
     messages: current.messages,
     busy: current.busy,
     paused: current.checkpoint?.status === 'paused',
+    blockedReason: current.blockedReason,
     phase: p.phase,
     done: p.done,
     total: p.total,
@@ -38,8 +52,13 @@ onMounted(() => {
   unsubscribe = api?.subscribe((next) => {
     status.value = next
   })
+  // VK uses soft navigation; do not patch its History API or poll while closed.
+  peerTimer = setInterval(refreshActiveConversation, 1500)
 })
-onUnmounted(() => unsubscribe?.())
+onUnmounted(() => {
+  unsubscribe?.()
+  if (peerTimer !== undefined) clearInterval(peerTimer)
+})
 async function chooseFolder() {
   error.value = ''
   try {

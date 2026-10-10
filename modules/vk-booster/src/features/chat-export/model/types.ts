@@ -103,6 +103,8 @@ export interface ArchiveProgress {
 export interface ArchiveStatus {
   version: string
   folder: string | null
+  activePeerId: number | null
+  blockedReason: string | null
   busy: boolean
   options: ArchiveOptions
   progress: ArchiveProgress

@@ -103,13 +103,22 @@ VK Booster preserves the existing v2 data format.
 
 ## VK product integration
 
-The current VK Booster 2.3.0 milestone prioritizes a working application over
+The current VK Booster 2.3.1 milestone prioritizes a working application over
 additional ChatGPT archive decomposition. A standalone single-module install
 opens directly into the VK archive panel in the shared Shadow DOM Control
 Center; the all-in-one shell retains multi-feature navigation when more than
 one view is registered. Bounded local preview, export options, progress and
 resume controls all consume existing VK v2 archive state. Searching preview
 messages does not contact VK, rewrite the archive or reload saved media.
+
+VK soft-navigation now has a fail-closed conversation context guard. The selected
+peer is refreshed from the current VK conversation only when no folder is
+bound; an open folder remains pinned to its own peer. Export/resume buttons
+are disabled while the selected VK conversation differs, and each VK history
+request and persistent page commit rechecks the live peer. A pending folder
+selection blocks parallel exports and hides transient cross-folder previews.
+Switching conversations requires selecting a matching folder before writing;
+legacy v2 files are not converted or silently reused for another peer.
 
 This is a local development build, not a published release or a successful
 browser acceptance. Runtime acceptance still requires VK login/permissions,

@@ -105,10 +105,11 @@ function start() {
       <span>Ошибки <b>{{state.failed}}</b></span>
     </div>
     <div class="flex flex-wrap gap-2">
-      <Button :disabled="state.busy||!state.folder" @click="start"><Download class="size-4"/>Выгрузить</Button>
+      <Button :disabled="state.busy||!state.folder||!!state.blockedReason" @click="start"><Download class="size-4"/>Выгрузить</Button>
       <Button variant="outline" :disabled="!state.busy" @click="emit('stop')"><Pause class="size-4"/>Пауза</Button>
-      <Button variant="outline" :disabled="state.busy||!state.paused" @click="emit('resume')"><Play class="size-4"/>Продолжить</Button>
+      <Button variant="outline" :disabled="state.busy||!state.paused||!!state.blockedReason" @click="emit('resume')"><Play class="size-4"/>Продолжить</Button>
     </div>
+    <p v-if="state.blockedReason" role="alert" class="text-sm text-destructive">{{state.blockedReason}}</p>
     <p v-if="error" role="alert" class="text-sm text-destructive">{{error}}</p>
   </section>
 </template>

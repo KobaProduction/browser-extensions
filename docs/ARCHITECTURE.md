@@ -149,6 +149,19 @@ A dedicated single-view installation opens directly to its VK section in
 the shared Control Center; multiple-view shells continue to show the module
 index by default. Neither path mounts a second launcher or dialog.
 
+VK Booster 2.3.1 adds a route-aware, fail-closed archive owner check for
+supported numeric VK /im/convo/{peer} pathnames. Opening another conversation
+does not mutate the pinned folder/account: the UI reports a blocked state,
+and the engine checks the current peer before authorization, history reads,
+checkpoint page commits, media iteration and export completion. Switching
+to a new peer is only possible by successfully selecting that peer's archive
+folder; failed folder validation restores the prior folder, data and peer.
+While a folder selection is pending, its transient handle and any previously
+loaded messages are hidden from the public status snapshot, and concurrent
+exports/folder selections are rejected. SPA changes are checked at action
+boundaries even when VK does not emit browser navigation events; the mounted
+VK view refreshes context while open without patching history APIs.
+
 ## Proxy roadmap
 
 The future Proxy Switcher must be implemented as an **extension-only background service** with explicit `proxy` permissions, not as page injection. Configure per-host routing through Chrome's `proxy.settings` PAC support when permission is granted; maintain a typed profile store with `HTTP`, `HTTPS`, `SOCKS4`, `SOCKS5` and bypass lists. Credentials require a separate safe storage/authentication model. Userscript builds expose an unsupported status rather than simulating the feature. User-Agent switching likewise needs MV3 request rules or API support and user-granted permissions, not DOM navigator spoofing alone. Ad blocking should eventually be isolated behind `declarativeNetRequest` plus its own permissions and rule bundles.

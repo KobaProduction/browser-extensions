@@ -139,7 +139,8 @@ Object.assign(globalThis, {
 })
 let apiCalls = 0,
   mediaCalls = 0,
-  pauseAfter = 0
+  pauseAfter = 0,
+  switchPeerDuringHistory: number | null = null
 Object.assign(globalThis, {
   fetch: async (url: RequestInfo | URL, o?: RequestInit) => {
     if (String(url).includes('/method/')) {
@@ -148,6 +149,14 @@ Object.assign(globalThis, {
       apiCalls++
       if (pauseAfter && apiCalls === pauseAfter) {
         queueMicrotask(() => globalThis.VKExport?.stop())
+      }
+      if (
+        switchPeerDuringHistory !== null &&
+        String(url).includes('messages.getHistory') &&
+        p.get('count') !== '1'
+      ) {
+        globalThis.location.pathname = '/im/convo/' + String(switchPeerDuringHistory)
+        switchPeerDuringHistory = null
       }
       const offset = Number(p.get('offset')),
         count = Number(p.get('count'))
@@ -385,4 +394,95 @@ test('failed metadata commit does not advance visible cursor or silently keep un
   expect(JSON.parse(cp).checkpoint.offset).toBe(0)
   const resumed = await completed(a.resume())
   expect(resumed.saved).toBe(12)
+})
+
+test('soft-navigation to another chat blocks export and never binds its folder to the previous chat', async () => {
+  a = reload()
+  await a.useFolder(folderHandle(folder))
+  const before = a.status()
+  const saved = await (await folder.getFileHandle('messages.json')).getFile().then((file) => file.text())
+  const another = 7654322
+  globalThis.location.pathname = '/im/convo/' + another
+  try {
+    const mismatch = a.status()
+    expect(mismatch.options.peerId).toBe(peer)
+    expect(mismatch.activePeerId).toBe(another)
+    expect(mismatch.blockedReason).toContain('другая переписка')
+    await expect(
+      a.run({ mode: 'recent', limit: 2, pageSize: 2, media: false, delay: 300 }),
+    ).rejects.toThrow('Выбран другой диалог VK')
+    await expect(a.resume()).rejects.toThrow('другая переписка')
+    await expect(a.useFolder(folderHandle(folder))).rejects.toThrow()
+    expect(a.status().folder).toBe(before.folder)
+    expect(a.status().options.peerId).toBe(peer)
+    expect(
+      await (await folder.getFileHandle('messages.json')).getFile().then((file) => file.text()),
+    ).toBe(saved)
+    const newFolder = new MockDir('other-conversation')
+    await a.useFolder(folderHandle(newFolder))
+    expect(a.status()).toMatchObject({
+      activePeerId: another,
+      options: { peerId: another },
+      messages: 0,
+      blockedReason: null,
+    })
+    const nextMeta = JSON.parse(
+      await (await newFolder.getFileHandle('metadata.json')).getFile().then((file) => file.text()),
+    )
+    expect(nextMeta.peer_id).toBe(another)
+    expect(a.previewMessages({ limit: 80 }).matching).toBe(0)
+  } finally {
+    globalThis.location.pathname = '/im/convo/' + peer
+    await a.useFolder(folderHandle(folder))
+  }
+})
+
+test('switching conversations while VK history is in flight cannot commit another chat', async () => {
+  a = reload()
+  await a.useFolder(folderHandle(folder))
+  const saved = await (await folder.getFileHandle('messages.json')).getFile().then((file) => file.text())
+  try {
+    switchPeerDuringHistory = peer + 1
+    await expect(
+      a.run({ mode: 'recent', limit: 2, pageSize: 2, media: false, delay: 300 }),
+    ).rejects.toThrow('другая переписка')
+    expect(a.status().checkpoint?.status).toBe('paused')
+    expect(
+      await (await folder.getFileHandle('messages.json')).getFile().then((file) => file.text()),
+    ).toBe(saved)
+  } finally {
+    switchPeerDuringHistory = null
+    globalThis.location.pathname = '/im/convo/' + peer
+  }
+})
+
+test('folder loading cannot expose mixed chat data or overlap with a new export', async () => {
+  a = reload()
+  await a.useFolder(folderHandle(folder))
+  const pending = new MockDir('pending-safe-selection')
+  const readFile = pending.getFileHandle.bind(pending)
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  pending.getFileHandle = async (name, options = {}) => {
+    if (name === 'metadata.json') await gate
+    return readFile(name, options)
+  }
+  const loading = a.useFolder(folderHandle(pending))
+  try {
+    const state = a.status()
+    expect(state.busy).toBe(true)
+    expect(state.folder).toBeNull()
+    expect(state.messages).toBe(0)
+    expect(state.blockedReason).toContain('Читаю')
+    await expect(
+      a.run({ mode: 'recent', limit: 2, pageSize: 2, media: false, delay: 300 }),
+    ).rejects.toThrow('Выбор папки')
+  } finally {
+    release()
+  }
+  await loading
+  expect(a.status()).toMatchObject({ folder: pending.name, busy: false, messages: 0 })
+  await a.useFolder(folderHandle(folder))
 })

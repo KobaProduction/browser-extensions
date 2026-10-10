@@ -15,6 +15,7 @@ export interface ArchiveManagerState {
   messages: number
   busy: boolean
   paused: boolean
+  blockedReason?: string | null
   phase: string
   done: number
   total: number
