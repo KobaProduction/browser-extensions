@@ -172,6 +172,13 @@ original folder and state. An existing archive preview is also hidden when the
 current conversation no longer matches the selected folder. The on-disk v2
 metadata, messages, media and HTML formats are unchanged.
 
+VK Booster 2.3.3 reserves an export before its first asynchronous authorization
+request. Another export or folder selection cannot overlap with pending VK
+authentication. On authorization failure or a conversation change, the reserved
+operation is released before creating a checkpoint, preserving the selected
+archive and its on-disk data. A stop requested during authorization is not
+cleared by a later auth response. The VK v2 archive format remains unchanged.
+
 ## Proxy roadmap
 
 The future Proxy Switcher must be implemented as an **extension-only background service** with explicit `proxy` permissions, not as page injection. Configure per-host routing through Chrome's `proxy.settings` PAC support when permission is granted; maintain a typed profile store with `HTTP`, `HTTPS`, `SOCKS4`, `SOCKS5` and bypass lists. Credentials require a separate safe storage/authentication model. Userscript builds expose an unsupported status rather than simulating the feature. User-Agent switching likewise needs MV3 request rules or API support and user-granted permissions, not DOM navigator spoofing alone. Ad blocking should eventually be isolated behind `declarativeNetRequest` plus its own permissions and rule bundles.

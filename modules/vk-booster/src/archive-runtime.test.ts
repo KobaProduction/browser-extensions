@@ -556,3 +556,59 @@ test('cancelling the folder picker restores the previously selected archive', as
     Object.assign(globalThis, { showDirectoryPicker: save.showDirectoryPicker })
   }
 })
+
+test('authorization reserves the export before VK replies and blocks other archive actions', async () => {
+  a = reload()
+  await a.useFolder(folderHandle(folder))
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const originalFetch = globalThis.fetch
+  Object.assign(globalThis, {
+    fetch: async (input: RequestInfo | URL, options?: RequestInit) => {
+      const args = new URLSearchParams(options?.body as string | URLSearchParams)
+      if (String(input).includes('messages.getHistory') && args.get('count') === '1') await gate
+      return originalFetch(input, options)
+    },
+  })
+  const exporting = a.run({ mode: 'recent', limit: 2, pageSize: 2, media: false, delay: 300 })
+  try {
+    expect(a.status().busy).toBe(true)
+    await expect(a.run({ mode: 'recent', limit: 2 })).rejects.toThrow('уже запущена')
+    await expect(a.useFolder(folderHandle(new MockDir('concurrent-destination')))).rejects.toThrow(
+      'Другая операция',
+    )
+    await expect(a.selectFolder()).rejects.toThrow()
+    release()
+    expect((await completed(exporting)).matched).toBe(2)
+    expect(a.status().busy).toBe(false)
+  } finally {
+    release()
+    globalThis.fetch = originalFetch
+    await exporting.catch(() => {})
+  }
+})
+
+test('failed VK authorization releases the reserved export without creating a checkpoint', async () => {
+  a = reload()
+  const safeFolder = new MockDir('offline-auth')
+  await a.useFolder(folderHandle(safeFolder))
+  const originalFetch = globalThis.fetch
+  Object.assign(globalThis, {
+    fetch: async () => {
+      throw Error('synthetic offline VK API')
+    },
+  })
+  try {
+    await expect(
+      a.run({ mode: 'recent', limit: 2, pageSize: 2, media: false, delay: 300 }),
+    ).rejects.toThrow('Не удалось авторизовать')
+    expect(a.status().busy).toBe(false)
+    expect(a.status().checkpoint).toBeNull()
+    expect(a.status().folder).toBe(safeFolder.name)
+    expect(a.status().progress.phase).toBe('Ожидание')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})

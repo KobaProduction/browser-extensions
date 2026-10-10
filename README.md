@@ -103,7 +103,7 @@ VK Booster preserves the existing v2 data format.
 
 ## VK product integration
 
-The current VK Booster 2.3.2 milestone prioritizes a working application over
+The current VK Booster 2.3.3 milestone prioritizes a working application over
 additional ChatGPT archive decomposition. A standalone single-module install
 opens directly into the VK archive panel in the shared Shadow DOM Control
 Center; the all-in-one shell retains multi-feature navigation when more than

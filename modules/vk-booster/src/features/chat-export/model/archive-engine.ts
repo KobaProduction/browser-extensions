@@ -18,7 +18,7 @@ import type {
 } from './types'
 /* VK Booster v2 provider composition; neutral paging, storage and UI live in shared packages. */
 export function installVkArchive(): void {
-  const VERSION = '2.3.2'
+  const VERSION = '2.3.3'
   if (globalThis.VKExport?.version === VERSION) return
   const currentPeer = () => conversationPeerFromPath(location.pathname)
   const cfg: ArchiveOptions = {
@@ -316,10 +316,20 @@ export function installVkArchive(): void {
         throw Error(reason ?? 'Папка принадлежит другому диалогу VK')
     }
     guard()
-    if (!(await auth())) throw Error('Не удалось авторизовать VK API из хранилища')
-    guard()
+    // Reserve the export before the first await. Authentication can take seconds
+    // and must not race a second export or a folder replacement.
     busy = true
     stopRequested = false
+    refresh()
+    try {
+      if (!(await auth())) throw Error('Не удалось авторизовать VK API из хранилища')
+      guard()
+    } catch (error) {
+      // No export checkpoint has been created yet; leave the selected archive intact.
+      busy = false
+      refresh()
+      throw error
+    }
     const storedSettings = currentMeta().checkpoint?.settings
     if (resume && storedSettings) Object.assign(cfg, storedSettings)
     let index = known()
