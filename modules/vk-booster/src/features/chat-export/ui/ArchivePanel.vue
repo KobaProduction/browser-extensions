@@ -2,7 +2,7 @@
 /** FSD feature view. All export state stays in the model; no secondary overlay. */
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { FolderOpen, Download, Pause, Play, Settings2, Archive } from 'lucide-vue-next'
-import { Button, Badge } from '@kobaproduction/browser-ui'
+import { Button, Badge, ArchiveProgress } from '@kobaproduction/browser-ui'
 import { archiveApi, type ArchiveMode, type ArchiveStatus } from '../model/types'
 
 const api=archiveApi()
@@ -17,10 +17,6 @@ const media=ref(status.value?.options.media??true)
 const error=ref('')
 const advanced=ref(false)
 const progress=computed(()=>status.value?.progress)
-const percent=computed(()=>{
-  const p=progress.value
-  return p?.total?Math.min(100,Math.floor(p.done/p.total*100)):p?.phase==='Готово'?100:0
-})
 const paused=computed(()=>status.value?.checkpoint?.status==='paused')
 const available=computed(()=>Boolean(status.value?.folder))
 let unsubscribe:(()=>void)|undefined
@@ -99,11 +95,10 @@ async function resume(){
     </section>
 
     <section class="booster-stack-card">
-      <div class="flex items-center justify-between gap-2">
-        <div class="booster-setting-copy"><b>Прогресс экспорта</b><span>{{progress?.error||progress?.phase||'Ожидание'}}</span></div>
-        <strong class="text-base font-semibold tabular-nums">{{percent}}%</strong>
-      </div>
-      <progress class="w-full" :value="percent" max="100" aria-label="Прогресс экспорта">{{percent}}%</progress>
+      <div class="booster-setting-copy"><b>Прогресс экспорта</b></div>
+      <ArchiveProgress :label="progress?.phase || 'Ожидание'" aria-label="Прогресс экспорта"
+        :busy="status.busy" :completed="progress?.phase === 'Готово' ? progress?.total : progress?.done"
+        :total="progress?.total" :error="progress?.error" />
       <div class="booster-counter-grid text-xs">
         <span>Обработано <b>{{progress?.done??0}} / {{progress?.total??0}}</b></span>
         <span>Новых <b>{{progress?.newCount??0}}</b></span>

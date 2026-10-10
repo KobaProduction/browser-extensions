@@ -25,6 +25,7 @@ import Download from 'lucide-vue-next/dist/esm/icons/download.js'
 import Info from 'lucide-vue-next/dist/esm/icons/info.js'
 import X from 'lucide-vue-next/dist/esm/icons/x.js'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { ArchiveProgress } from '@kobaproduction/browser-ui'
 import { translate, type SupportedLocale, type TranslationKey } from './i18n'
 import type { ArchiveCoverageView, ArchiveDataAdapter, ArchiveExportPreview } from './mount'
 const props = defineProps<{ archiveAdapter: ArchiveDataAdapter; settingsAdapter: SettingsAdapter; conversationId: string; title?: string | null; locale: SupportedLocale; suspended?: boolean }>()
@@ -154,12 +155,6 @@ const exportPhaseKeys: Record<ArchiveExportProgress['phase'], TranslationKey> = 
 }
 const exportPhaseLabel = computed(() => exportProgress.value
   ? t(exportPhaseKeys[exportProgress.value.phase]) : t('export.working'))
-const exportStagePercent = computed(() => {
-  const progress = exportProgress.value
-  if (!progress || progress.total === null || progress.completed === null || progress.total <= 0)
-    return null
-  return Math.min(100, Math.floor(100 * progress.completed / progress.total))
-})
 function formatExportBytes(value: number): string {
   const scale = value >= 1024 * 1024 ? 1024 * 1024 : value >= 1024 ? 1024 : 1
   const label = scale === 1 ? t('export.progressBytes') : scale === 1024 ? 'KiB' : 'MiB'
@@ -913,11 +908,8 @@ function cancelExport() {
       <p class="booster-note">{{ t('export.remember') }}</p>
       <p v-if="error && !incompatible" role="alert" class="booster-error">{{ t(error as TranslationKey) }}</p><p v-if="complete" role="status">{{ t(incomplete ? 'export.savedPartial' : 'export.saved') }}</p>
       <label>{{ locale === 'ru' ? 'Имя файла' : 'Filename' }} <input v-model="filename" type="text" :disabled="busy" maxlength="100" /></label>
-      <div v-if="busy && exportProgress" class="booster-export-progress">
-        <p role="status" aria-live="polite">{{ exportPhaseLabel }}</p>
-        <progress :value="exportStagePercent ?? undefined" max="100" :aria-label="exportPhaseLabel" />
-        <p v-if="exportCounter" class="booster-note">{{ exportCounter }}<template v-if="exportStagePercent !== null"> · {{ t('export.progressStage') }} {{ exportStagePercent }}%</template></p>
-      </div>
+      <ArchiveProgress v-if="busy && exportProgress" :label="exportPhaseLabel" :busy="busy"
+        :completed="exportProgress.completed" :total="exportProgress.total" :detail="exportCounter" />
       <p v-if="exportCancelled" class="booster-note" role="status">{{ t('export.cancelled') }}</p>
       <p v-if="preparedUrl && preparedBytes !== null" class="booster-note">{{ t('export.preparedSize') }}: {{ formatExportBytes(preparedBytes) }}</p>
       <a v-if="preparedUrl" class="booster-action-primary booster-export-ready" :href="prepareBlocked ? undefined : preparedUrl" :aria-disabled="prepareBlocked" :download="preparedName" @click="prepareBlocked && $event.preventDefault()"><Download class="size-4" />{{ t('export.readyDownload') }}</a>

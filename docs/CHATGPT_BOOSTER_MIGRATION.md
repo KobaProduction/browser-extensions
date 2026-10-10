@@ -145,3 +145,13 @@ and restores a readable previous manifest or the `failed_recoverable` state.
 The interrupted staged rows are retained for forensic inspection and never
 silently activated. The retry stages into a fresh generation and promotes it
 only after the same owner/fingerprint/footer checks as an ordinary import.
+
+## Shared conversation export progress (2026-10-10)
+
+`packages/ui` now exports one `ArchiveProgress` widget used by both
+`modules/vk-booster/src/features/chat-export/ui/ArchivePanel.vue` and
+`modules/chatgpt-booster/packages/ui/src/ArchiveExportDialog.vue`.
+Providers supply localized phase, source-specific counters and errors; the
+shared component owns accessible live progress and bounded percentage.
+There is no provider check, source DTO import or storage operation in the UI.
+All 232 applicable monorepo tests pass after this refactor.
