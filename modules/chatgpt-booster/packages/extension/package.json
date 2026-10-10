@@ -1,11 +1,11 @@
 {
   "name": "@chatgpt-booster/extension",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build",
-    "dev": "vite build --watch",
+    "build": "bun ../../../../scripts/build.ts --module chatgpt-booster --target=extension",
+    "dev": "bun ../../../../scripts/build.ts --module chatgpt-booster --target=extension --channel=dev --build-number=1",
     "typecheck": "vue-tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
