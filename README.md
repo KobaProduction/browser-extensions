@@ -74,6 +74,16 @@ scripts/                shared build, impact graph, validation, release plan
 
 Source modules declare hosts, capabilities, delivery targets and versions in `module.json`. Shared code does not contain VK/ChatGPT selectors, cookies or credentials. Module failures are isolated; enabling/disabling a module is persisted through the runtime adapter. Websites not matched by the feature do not start it.
 
+## Development and production channels
+
+Reviewed pushes to `main` automatically advance **prerelease-only** builds
+on the `dev` branch, restricted to impacted products. The `prod` branch,
+stable GitHub Releases and the backwards-compatible `distribution` updater
+are promoted only by explicit approval after real-browser acceptance. Versions
+and stored data are isolated by product and channel; existing standalone PROD
+ChatGPT v3/v4 databases are never migrated implicitly. See
+[the channel and co-installation contract](docs/DEV_PROD_CHANNELS.md).
+
 ## CI and independent releases
 
 CI checks types, tests and source contracts, then builds **only affected modules**. A change in `modules/vk-booster` builds VK Booster and the combiner; a change in `packages/*` rebuilds the known dependent modules conservatively. Main and trusted same-repository PRs use the `zoomies-linux-x64` runner from ChatGPT Booster; fork PRs use GitHub runners for isolation.

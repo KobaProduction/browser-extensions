@@ -1,3 +1,4 @@
+import { instanceKey } from '@kobaproduction/browser-core'
 import {
   archiveRecordKind,
   asRecord,
@@ -33,7 +34,7 @@ import {
 import type { ConversationArchiveStore } from './archive-store'
 import { ConversationStateStore } from './conversation-state'
 
-const TICKET_KEY = 'chatgpt-booster:manual-collection'
+const TICKET_KEY = instanceKey('chatgpt-booster:manual-collection', 'chatgpt-booster:prod')
 export interface CollectionTicket {
   conversationId: string
   startedAt: number

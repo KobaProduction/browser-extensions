@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process'
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { channelVersion, chromeVersion, type ReleaseChannel, userscriptChannelUrl } from './channels'
+import { devExtensionPublicKeys } from './extension-keys'
 
 type Bundle = (
   src: string,
@@ -12,7 +14,14 @@ type Bundle = (
 ) => Promise<string>
 
 /** One ChatGPT delivery artifact builder shared by module-scoped and aggregate builds. */
-export async function buildChatGptModule(root: string, target: string, version: string, bundle: Bundle) {
+export async function buildChatGptModule(
+  root: string,
+  target: string,
+  version: string,
+  bundle: Bundle,
+  channel: ReleaseChannel,
+  run: number,
+) {
   const id = 'chatgpt-booster'
   const dir = join(root, 'dist', id)
   const extRoot = join(root, 'modules', id, 'packages', 'extension')
@@ -28,12 +37,13 @@ export async function buildChatGptModule(root: string, target: string, version: 
     )
     const header = [
       '// ==UserScript==',
-      '// @name         ChatGPT Booster',
-      '// @namespace    https://github.com/KobaProduction/browser-extensions',
-      '// @version      ' + version,
+      '// @name         ChatGPT Booster' + (channel === 'dev' ? ' [DEV]' : ''),
+      '// @namespace    https://github.com/KobaProduction/browser-extensions' +
+        (channel === 'dev' ? '/dev/chatgpt-booster' : ''),
+      '// @version      ' + channelVersion(version, channel, run),
       '// @description  ChatGPT Booster — archive and browser tools',
-      '// @updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/distribution/userscripts/chatgpt-booster.user.js',
-      '// @downloadURL  https://raw.githubusercontent.com/KobaProduction/browser-extensions/distribution/userscripts/chatgpt-booster.user.js',
+      '// @updateURL    ' + userscriptChannelUrl(id, channel),
+      '// @downloadURL  ' + userscriptChannelUrl(id, channel),
       '// @match        https://chatgpt.com/*',
       '// @run-at       document-start',
       '// @grant        GM_registerMenuCommand',
@@ -95,8 +105,10 @@ export async function buildChatGptModule(root: string, target: string, version: 
     await writeFile(join(ext, 'popup.html'), html)
     const manifest = {
       manifest_version: 3,
-      name: 'ChatGPT Booster',
-      version,
+      name: 'ChatGPT Booster' + (channel === 'dev' ? ' [DEV]' : ''),
+      version: chromeVersion(version, channel, run),
+      version_name: channelVersion(version, channel, run),
+      ...(channel === 'dev' ? { key: devExtensionPublicKeys[id] } : {}),
       description: 'ChatGPT archive with shared browser tools shell',
       permissions: ['storage', 'scripting'],
       host_permissions: ['https://chatgpt.com/*'],

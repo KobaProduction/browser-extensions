@@ -79,11 +79,5 @@ export function affectedModules(paths: string[]): ModuleId[] {
   )
 }
 
-export function userscriptChannelUrl(id: string): string {
-  if (!/^[a-z][a-z0-9-]+$/.test(id)) throw Error('Invalid userscript module ID')
-  return (
-    'https://raw.githubusercontent.com/KobaProduction/browser-extensions/distribution/userscripts/' +
-    id +
-    '.user.js'
-  )
-}
+// Legacy name retained for older tooling; release channel is selected by build.
+export { userscriptChannelUrl } from './channels'

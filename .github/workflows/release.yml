@@ -7,6 +7,10 @@ on:
         type: boolean
         required: true
         default: false
+      repair_channel:
+        description: 'Repair PROD channel if stable release tag already exists'
+        type: boolean
+        default: false
       release_scope:
         description: 'Which independently-versioned product changed (automatically include all-in-one)'
         type: choice
@@ -21,6 +25,7 @@ on:
           - all
 permissions:
   contents: write
+  checks: read
 jobs:
   release:
     # An integration merge is not an authorized public release. A human must
@@ -42,25 +47,34 @@ jobs:
         with: {node-version: '22'}
       - name: Install
         run: bun install --frozen-lockfile
+      - name: Require successful CI for this exact PROD source commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          count="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs" --jq '[.check_runs[] | select(.name == "check" and .conclusion == "success")] | length')"
+          test "$count" -gt 0 || { echo "PROD source commit lacks a successful CI check" >&2; exit 1; }
       - name: Publish only new module versions with relevant changes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_SHA: ${{ github.sha }}
           RELEASE_SCOPE: ${{ inputs.release_scope }}
+          REPAIR_CHANNEL: ${{ inputs.repair_channel }}
         shell: bash
         run: |
           set -euo pipefail
           git fetch --tags --force
+          args=(--tsv --scope "$RELEASE_SCOPE")
+          if [[ "$REPAIR_CHANNEL" == true ]]; then args+=(--include-existing); fi
           while IFS='|' read -r id version tag; do
             test -n "$tag" || continue
-            bun scripts/build.ts --module "$id"
-            bun scripts/validate.ts --built --module "$id"
-            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-              echo "Already released: $tag"
-              continue
+            bun scripts/build.ts --module "$id" --channel=prod
+            bun scripts/validate.ts --built --module "$id" --channel=prod
+            if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              gh release create "$tag" "dist/$id/$id.user.js" "dist/$id/$id-extension.zip" \
+                --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+                --title "$id v$version" --generate-notes
             fi
-            gh release create "$tag" "dist/$id/$id.user.js" "dist/$id/$id-extension.zip" \
-              --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-              --title "$id v$version" --generate-notes
-            bash scripts/publish-channel.sh "$id"
-          done < <(bun scripts/release-plan.ts --tsv --scope "$RELEASE_SCOPE")
+            bash scripts/publish-channel.sh "$id" prod
+          done < <(bun scripts/release-plan.ts "${args[@]}")

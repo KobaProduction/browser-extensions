@@ -1,7 +1,11 @@
 export const TRANSPORT_EVENT = 'chatgpt-booster:transport-event'
 export const TRANSPORT_BATCH_EVENT = 'chatgpt-booster:transport-batch'
 export const TRANSPORT_CONFIG_EVENT = 'chatgpt-booster:transport-config'
-export const TRANSPORT_CHANNEL = 'chatgpt-booster:transport'
+declare const __BOOSTER_INSTANCE_SCOPE__: string | undefined
+const observerScope = typeof __BOOSTER_INSTANCE_SCOPE__ === 'string' ? __BOOSTER_INSTANCE_SCOPE__ : ''
+export const TRANSPORT_CHANNEL = observerScope && observerScope !== 'chatgpt-booster:prod'
+  ? 'chatgpt-booster:transport:' + observerScope
+  : 'chatgpt-booster:transport'
 export const ARCHIVE_POLICY_EVENT = 'chatgpt-booster:archive-policy'
 export const ARCHIVE_NETWORK_EVENT = 'chatgpt-booster:archive-network'
 export const ARCHIVE_CONTRACT_ERROR_EVENT = 'chatgpt-booster:archive-native-contract-error'

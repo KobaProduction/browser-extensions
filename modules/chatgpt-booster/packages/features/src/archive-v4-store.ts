@@ -1,3 +1,4 @@
+import { instanceKey } from '@kobaproduction/browser-core'
 import { foldArchivePage } from '@kobaproduction/browser-archive'
 import { projectNativeMessage } from '@chatgpt-booster/core'
 import type {
@@ -26,7 +27,7 @@ export { traceArchiveV4Path, traceArchiveV4PathIds } from './archive-v4-path'
  * Clean storage namespace. No upgrade, import, or deletion of legacy v3 data.
  * Four ChatGPT domain entities; UI preferences and export jobs are independent.
  */
-export const ARCHIVE_V4_DB_NAME = 'chatgpt-booster-archive-v4'
+export const ARCHIVE_V4_DB_NAME = instanceKey('chatgpt-booster-archive-v4', 'chatgpt-booster:prod')
 export const ARCHIVE_V4_DB_VERSION = 2
 
 type Source = Record<string, unknown>

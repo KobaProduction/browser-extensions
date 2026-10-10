@@ -1,3 +1,4 @@
+import { instanceKey } from '@kobaproduction/browser-core'
 export type ArchiveRecordKind =
   | 'user'
   | 'answer'
@@ -369,13 +370,13 @@ export function serverTimeMs(value: number | null | undefined, observedAt = 0): 
       : value
     : observedAt
 }
-export const ARCHIVE_UPDATED_EVENT = 'chatgpt-booster:archive-updated'
-export const ARCHIVE_SOURCE_INCOMPATIBLE_EVENT = 'chatgpt-booster:archive-contract-error'
-export const OPEN_ARCHIVE_EVENT = 'chatgpt-booster:open-archive'
-export const OPEN_CAPTURE_SETTINGS_EVENT = 'chatgpt-booster:open-capture-settings'
-export const HISTORY_LOADER_STATE_EVENT = 'chatgpt-booster:history-loader-state'
-export const HISTORY_LOADER_START_EVENT = 'chatgpt-booster:history-loader-start'
-export const HISTORY_LOADER_STOP_EVENT = 'chatgpt-booster:history-loader-stop'
+export const ARCHIVE_UPDATED_EVENT = instanceKey('chatgpt-booster:archive-updated', 'chatgpt-booster:prod')
+export const ARCHIVE_SOURCE_INCOMPATIBLE_EVENT = instanceKey('chatgpt-booster:archive-contract-error', 'chatgpt-booster:prod')
+export const OPEN_ARCHIVE_EVENT = instanceKey('chatgpt-booster:open-archive', 'chatgpt-booster:prod')
+export const OPEN_CAPTURE_SETTINGS_EVENT = instanceKey('chatgpt-booster:open-capture-settings', 'chatgpt-booster:prod')
+export const HISTORY_LOADER_STATE_EVENT = instanceKey('chatgpt-booster:history-loader-state', 'chatgpt-booster:prod')
+export const HISTORY_LOADER_START_EVENT = instanceKey('chatgpt-booster:history-loader-start', 'chatgpt-booster:prod')
+export const HISTORY_LOADER_STOP_EVENT = instanceKey('chatgpt-booster:history-loader-stop', 'chatgpt-booster:prod')
 export type HistoryCollectionStopReason =
   | 'user'
   | 'export_closed'

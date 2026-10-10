@@ -1,3 +1,4 @@
+import { instanceKey } from '@kobaproduction/browser-core'
 import {
   type ArchiveExportOptions,
   type ArchiveExportOverrides,
@@ -512,7 +513,7 @@ export function createCachedSettingsAdapter(source: SettingsAdapter): SettingsAd
   }
 }
 
-export const OPEN_SETTINGS_EVENT = 'chatgpt-booster:open-settings'
+export const OPEN_SETTINGS_EVENT = instanceKey('chatgpt-booster:open-settings', 'chatgpt-booster:prod')
 
 function mergeCaptureRules(
   current: Record<string, CaptureRule>,

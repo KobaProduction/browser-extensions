@@ -59,7 +59,9 @@ function clampPosition(x: number, y: number) {
 }
 function restore() {
   try {
-    const saved = JSON.parse(localStorage.getItem('koba-browser:launcher-position') || 'null')
+    const saved = JSON.parse(
+      localStorage.getItem(instanceKey('koba-browser:launcher-position')) || 'null',
+    )
     if (typeof saved?.x === 'number' && typeof saved?.y === 'number') {
       position.value = clampPosition(saved.x, saved.y)
       return
@@ -71,7 +73,7 @@ function restore() {
 }
 function savePosition() {
   try {
-    localStorage.setItem('koba-browser:launcher-position', JSON.stringify(position.value))
+    localStorage.setItem(instanceKey('koba-browser:launcher-position'), JSON.stringify(position.value))
   } catch {
     /* browser storage unavailable */
   }

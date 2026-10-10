@@ -1,5 +1,6 @@
 import { createArchiveFiles } from '@kobaproduction/browser-adapters'
 import { scanLinearArchive } from '@kobaproduction/browser-archive'
+import { instanceKey, instanceScope, SHELL_OPEN_FEATURE_EVENT } from '@kobaproduction/browser-core'
 import { assets, download as downloadVkAsset } from '../api/vk-media'
 import { createVkProvider } from '../api/vk-provider'
 import { selectVkArchivePreview } from './archive-preview'
@@ -18,8 +19,10 @@ import type {
 } from './types'
 /* VK Booster v2 provider composition; neutral paging, storage and UI live in shared packages. */
 export function installVkArchive(): void {
-  const VERSION = '2.3.8'
-  if (globalThis.VKExport?.version === VERSION) return
+  const VERSION = '2.3.9'
+  const apiKey = instanceKey('VKExport', 'vk-booster:prod')
+  const published = globalThis as Record<string, unknown>
+  if ((published[apiKey] as ArchiveApi | undefined)?.version === VERSION) return
   const currentPeer = () => conversationPeerFromPath(location.pathname)
   const cfg: ArchiveOptions = {
     peerId: currentPeer() ?? 0,
@@ -62,6 +65,7 @@ export function installVkArchive(): void {
     version: VERSION,
     peer_id: cfg.peerId,
     updated: ts(),
+    instance_scope: instanceScope() || 'vk-booster:prod',
     total: 0,
     checkpoint: null,
     files: {},
@@ -212,6 +216,15 @@ export function installVkArchive(): void {
       const loadedMeta = previous === null ? blank() : isMeta(previous) ? previous : null
       if (!loadedMeta || loadedMeta.peer_id !== cfg.peerId)
         throw Error('Старая папка несовместима. Мигрируй её отдельной утилитой в новую папку.')
+      // Existing legacy v2 folders remain usable only in the original prod
+      // standalone installation. Dev and aggregate must use an owned folder.
+      const owningScope = instanceScope() || 'vk-booster:prod'
+      if (
+        loadedMeta.instance_scope
+          ? loadedMeta.instance_scope !== owningScope
+          : owningScope !== 'vk-booster:prod'
+      )
+        throw Error('Папка уже принадлежит другой установке VK Booster или каналу.')
       const existing = await json('messages.json')
       const loadedMessages =
         existing === null
@@ -531,7 +544,7 @@ export function installVkArchive(): void {
     return () => subscribers.delete(listener)
   }
   function show() {
-    window.dispatchEvent(new CustomEvent('koba:open-feature', { detail: { id: 'vk-booster' } }))
+    window.dispatchEvent(new CustomEvent(SHELL_OPEN_FEATURE_EVENT, { detail: { id: 'vk-booster' } }))
   }
   function hide() {
     /* Single control-center shell owns visibility. */
@@ -559,9 +572,9 @@ export function installVkArchive(): void {
     },
     destroy() {
       subscribers.clear()
-      if (globalThis.VKExport === apiObject) delete globalThis.VKExport
+      if (published[apiKey] === apiObject) delete published[apiKey]
     },
   }
-  globalThis.VKExport = Object.freeze(apiObject)
+  published[apiKey] = Object.freeze(apiObject)
   // Entry points live in @kobaproduction/browser-ui and target adapters.
 }

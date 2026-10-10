@@ -250,6 +250,16 @@ never bump versions or publish bundles.
 Module-scoped tags and stable independent Tampermonkey update channels remain
 the release mechanism. Static checks/builds do not prove browser acceptance.
 
+## DEV/PROD release-channel ownership
+
+A successful reviewed source push advances only the affected DEV prerelease
+packages; PROD publishing is explicitly approved after live acceptance.
+Installed variants are identified by product and channel. Separate identities
+must include userscript updates, extension IDs, root DOM owners, browser
+storage, IndexedDB v3/v4, observer events and VK file-system output.
+Existing production archives must be readable without silently merging
+DEV or aggregate data into them. See [release channels](DEV_PROD_CHANNELS.md).
+
 ## Migration and acceptance gates
 
 This document records direction; it is **not** approval for one speculative
