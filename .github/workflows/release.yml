@@ -11,20 +11,21 @@ on:
         description: 'Which independently-versioned product changed (automatically include all-in-one)'
         type: choice
         required: true
-        default: all
+        default: none
         options:
-          - all
+          - none
           - chatgpt-booster
           - vk-booster
           - all-in-one
           - shared
+          - all
 permissions:
   contents: write
 jobs:
   release:
     # An integration merge is not an authorized public release. A human must
     # explicitly approve after installing and inspecting the new binaries.
-    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.approve_release == true }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.approve_release == true && inputs.release_scope != 'none' }}
     runs-on: zoomies-linux-x64
     concurrency:
       group: browser-tools-distribution

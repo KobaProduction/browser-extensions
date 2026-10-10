@@ -55,6 +55,8 @@ workflow with `approve_release=true`. ChatGPT 2.0.1 is now `release:true` for in
 - Shared `packages/` implementation changes affect all consumers. Documentation
   and CI-only changes do not bump product semver.
 
+The release scope defaults to `none` and requires explicit selection;
+manual approval alone cannot accidentally publish unrelated pending products.
 The `scripts/version-policy.ts` gate enforces versions on PRs and
 `scripts/bump-versions.ts` can generate explicit patch changes for specified
 implementation paths. `release.yml` offers per-product `release_scope`:
