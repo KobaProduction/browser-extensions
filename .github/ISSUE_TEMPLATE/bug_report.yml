@@ -1,0 +1,42 @@
+name: Bug report
+description: Report incorrect behavior in a specific browser extension or shared component
+title: "[Bug] "
+body:
+  - type: dropdown
+    id: target
+    attributes:
+      label: Target extension
+      description: Required owner of this issue. Choose Shared platform when several modules are affected by common code.
+      options:
+        - ChatGPT Booster
+        - VK Booster
+        - All-in-one
+        - Shared platform / multiple extensions
+        - Proxy Switcher (planned)
+        - Build / release infrastructure
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and expected behavior
+      description: Include what happens, what should happen, and a minimal reproduction.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Version, delivery target and channel
+      description: For example ChatGPT 2.0.5, Tampermonkey, DEV; or Chromium MV3, PROD
+    validations:
+      required: true
+  - type: textarea
+    id: affected
+    attributes:
+      label: Other affected extensions or shared packages
+      description: Required when selecting Shared platform or Build / release infrastructure. State exact impacted products.
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs and evidence
+      description: Do not include private chats, credentials, tokens or cookies.

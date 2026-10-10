@@ -1,0 +1,53 @@
+name: Assign issue target
+on:
+  issues:
+    types: [opened, edited, reopened]
+permissions:
+  contents: read
+  issues: write
+jobs:
+  target:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Synchronize target label from required issue-form dropdown
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labels = new Map([
+              ['ChatGPT Booster', ['target:chatgpt-booster', '1f6feb']],
+              ['VK Booster', ['target:vk-booster', '8250df']],
+              ['All-in-one', ['target:all-in-one', '0e8a16']],
+              ['Shared platform / multiple extensions', ['target:shared-platform', 'fbca04']],
+              ['Proxy Switcher (planned)', ['target:proxy-switcher', 'd93f0b']],
+              ['Build / release infrastructure', ['target:build-release', 'c5def5']],
+            ]);
+            const body = context.payload.issue.body || '';
+            const match = body.match(/^### Target extension\s*\r?\n+([^\r\n]+)/m);
+            const selected = match?.[1]?.trim();
+            const choice = labels.get(selected);
+            if (!choice) {
+              core.warning('Issue lacks a recognized target; check structured issue form.');
+              return;
+            }
+            const [wanted, color] = choice;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue_number = context.issue.number;
+            const knownTargets = new Set([...labels.values()].map(([name]) => name));
+            for (const label of context.payload.issue.labels) {
+              if (knownTargets.has(label.name) && label.name !== wanted) {
+                await github.rest.issues.removeLabel({ owner, repo, issue_number, name: label.name });
+              }
+            }
+            try {
+              await github.rest.issues.getLabel({ owner, repo, name: wanted });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              await github.rest.issues.createLabel({
+                owner, repo, name: wanted, color,
+                description: 'Issue target: ' + selected,
+              });
+            }
+            if (!context.payload.issue.labels.some(label => label.name === wanted)) {
+              await github.rest.issues.addLabels({ owner, repo, issue_number, labels: [wanted] });
+            }

@@ -1,0 +1,36 @@
+name: Feature request
+description: Propose a capability for one extension or the shared platform
+title: "[Feature] "
+body:
+  - type: dropdown
+    id: target
+    attributes:
+      label: Target extension
+      options:
+        - ChatGPT Booster
+        - VK Booster
+        - All-in-one
+        - Shared platform / multiple extensions
+        - Proxy Switcher (planned)
+        - Build / release infrastructure
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: User problem and expected result
+      description: Describe the behavior, not a speculative implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Include meaningful data, permission, compatibility or UI boundaries.
+    validations:
+      required: true
+  - type: textarea
+    id: affected
+    attributes:
+      label: Other affected extensions / dependencies
+      description: Explicitly enumerate consumers if shared code or aggregate packaging changes.
