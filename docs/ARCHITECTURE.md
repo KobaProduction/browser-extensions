@@ -246,7 +246,7 @@ This is a source-preserving adapter-first migration, not a completed common
 VK/ChatGPT archive engine. The VK v2 exporter remains an independent, unchanged
 implementation pending its separate compatibility acceptance. Source and
 runtime verification levels are recorded in
-[CHATGPT_BOOSTER_MIGRATION.md](CHATGPT_BOOSTER_MIGRATION.md).
+[CHATGPT_BOOSTER_MIGRATION.md](chatgpt-booster/MIGRATION.md).
 
 ## Archive page reconciliation shared by both products
 
@@ -294,7 +294,7 @@ ownership proof and native/canonical transaction policy remain source-owned.
 The VK export progress is now a thin adapter over the same `ArchiveProgress`
 primitive that renders ChatGPT archive/export progress, with each provider
 still owning its phase/total state. See
-[ARCHIVE_DECOMPOSITION.md](ARCHIVE_DECOMPOSITION.md) for precise boundaries.
+[ARCHIVE_DECOMPOSITION.md](chatgpt-booster/ARCHIVE_DECOMPOSITION.md) for precise boundaries.
 
 ## Canonical archive reading and migration responsibilities (2.0.4)
 
