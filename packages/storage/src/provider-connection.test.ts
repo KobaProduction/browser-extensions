@@ -53,3 +53,27 @@ test('rejects wrong provider, owner, channel and unsupported non-aggregate calle
     connectScopedArchive({ productId: 'vk-booster', channel: 'dev', ownerId: 'verified-A' }, p.source),
   ).toThrow('aggregate')
 })
+
+test('revocation during an in-flight provider read prevents snapshot delivery', async () => {
+  let finish: ((snapshot: Blob) => void) | undefined
+  const deferred = new Promise<Blob>((resolve) => {
+    finish = resolve
+  })
+  const source: ScopedArchiveReadProvider = {
+    scope: { productId: 'chatgpt-booster', channel: 'dev', ownerId: 'verified-A' },
+    async authorizeRead() {
+      return true
+    },
+    async readSnapshot() {
+      return deferred
+    },
+  }
+  const connection = connectScopedArchive(aggregate, source)
+  const result = connection.read()
+  // Allow consent verification and source read to start before revocation.
+  await Promise.resolve()
+  await Promise.resolve()
+  connection.revoke()
+  finish?.(new Blob(['private synthetic payload']))
+  await expect(result).rejects.toThrow('revoked')
+})

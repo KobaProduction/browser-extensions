@@ -42,7 +42,11 @@ export function connectScopedArchive(
         throw new Error('Archive connection lacks current user consent')
       if (consumer.ownerId !== provider.scope.ownerId || consumer.channel !== provider.scope.channel)
         throw new Error('Archive provider ownership changed')
-      return provider.readSnapshot()
+      const snapshot = await provider.readSnapshot()
+      if (revoked) throw new Error('Archive connection revoked')
+      if (consumer.ownerId !== provider.scope.ownerId || consumer.channel !== provider.scope.channel)
+        throw new Error('Archive provider ownership changed')
+      return snapshot
     },
     revoke() {
       revoked = true
