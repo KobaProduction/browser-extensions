@@ -1,0 +1,146 @@
+name: Restore only ChatGPT Booster 0.8.92 stable
+
+on:
+  workflow_dispatch:
+    inputs:
+      approve_092_release_and_cleanup:
+        description: Publish historical 0.8.92 stable and delete erroneous ChatGPT releases
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  stable:
+    if: ${{ github.ref == 'refs/heads/main' && inputs.approve_092_release_and_cleanup == true }}
+    runs-on: zoomies-linux-x64
+    concurrency:
+      group: chatgpt-historical-recovery-release
+      cancel-in-progress: false
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: reference/chatgpt-legacy-rollback-v0.8.92
+          fetch-depth: 1
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify original stable source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 6a4b00b99eb95f5f4090a2c780c511da4f28353a
+          test "$(node -p "require('./package.json').version")" = 0.8.0
+      - name: Check, test and build the original production target
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile
+          bun run check
+          bun run test
+          CHATGPT_BOOSTER_BUILD_VERSION=0.8.92 \
+            CHATGPT_BOOSTER_BUILD_SHA=6a4b00b99eb95f5f4090a2c780c511da4f28353a \
+            CHATGPT_BOOSTER_ROLLING=1 bun run build
+      - name: Produce stable 0.8.92 installers
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, hashlib
+          src = Path('packages/userscript/dist/chatgpt-booster.user.js')
+          payload = src.read_text(encoding='utf-8')
+          old_url = 'https://github.com/KobaProduction/chatgpt-booster/releases/latest/download/chatgpt-booster.user.js'
+          pinned = 'https://github.com/KobaProduction/browser-extensions/releases/download/chatgpt-booster%2Fv0.8.92/chatgpt-booster.user.js'
+          assert payload.count(old_url) == 2
+          assert payload.count('// @version      0.8.0') == 1
+          payload = payload.replace(old_url, pinned)
+          payload = payload.replace('// @version      0.8.0', '// @version      0.8.92', 1)
+          header = payload.split('// ==/UserScript==', 1)[0]
+          assert '// @name         ChatGPT Booster\n' in header
+          assert '// @namespace    https://github.com/KobaProduction/chatgpt-booster' in header
+          assert '// @version      0.8.92' in header
+          assert '// @booster-build 0.8.92' in header
+          assert header.count(pinned) == 2
+          assert 'ChatGPT Booster Dev' not in header
+          src.write_text(payload, encoding='utf-8')
+          manifest = json.loads(Path('packages/extension/dist/manifest.json').read_text())
+          assert manifest['version'] == '0.8.92'
+          assert manifest['version_name'] == '0.8.92'
+          Path('chatgpt-booster-build.json').write_text(json.dumps({
+            'product': 'ChatGPT Booster',
+            'version': '0.8.92',
+            'sourceSha': '6a4b00b99eb95f5f4090a2c780c511da4f28353a',
+            'releaseTag': 'chatgpt-booster/v0.8.92',
+            'stable': True,
+            'userscriptSha256': hashlib.sha256(src.read_bytes()).hexdigest(),
+            'autoUpgradeToExperimental': False,
+            'installedBrowserAcceptance': 'unverified for the rebuilt artifact',
+          }, indent=2) + '\n')
+          PY
+          cd packages/extension/dist
+          zip -qr "$GITHUB_WORKSPACE/chatgpt-booster-extension.zip" .
+      - name: Publish and verify only stable 0.8.92
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag='chatgpt-booster/v0.8.92'
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Stable 0.8.92 already published; checking identical binaries"
+          else
+            cat > "$RUNNER_TEMP/release-notes.md" <<'NOTES'
+          # ChatGPT Booster v0.8.92
+
+          Official stable historical archive-v3 recovery build, from original source 6a4b00b99eb95f5f4090a2c780c511da4f28353a.
+          This is the only stable historical recovery release. Version 0.8.98 remains experimental and must not be installed as stable.
+          The installer retains its original ChatGPT Booster name and Tampermonkey namespace; the updater is pinned to 0.8.92.
+          Back up the browser profile and preserve original v3/v4 IndexedDB before installing. Do not enable two Booster versions on one ChatGPT page.
+          Source tests and builds passed; installed browser/data recovery is not automatically confirmed.
+          NOTES
+            gh release create "$tag" \
+              packages/userscript/dist/chatgpt-booster.user.js \
+              chatgpt-booster-extension.zip \
+              chatgpt-booster-build.json \
+              --verify-tag \
+              --title 'ChatGPT Booster v0.8.92' \
+              --notes-file "$RUNNER_TEMP/release-notes.md" \
+              --latest=false
+          fi
+          gh release view "$tag" --json tagName,isPrerelease,isDraft,assets \
+            --jq 'select(.tagName=="chatgpt-booster/v0.8.92" and .isPrerelease==false and .isDraft==false and (([.assets[].name]|sort)==(["chatgpt-booster-build.json","chatgpt-booster-extension.zip","chatgpt-booster.user.js"]|sort))) | .tagName' \
+            | grep -Fx "$tag"
+          mkdir -p "$RUNNER_TEMP/verify"
+          gh release download "$tag" -p 'chatgpt-booster.user.js' -D "$RUNNER_TEMP/verify"
+          cmp "$RUNNER_TEMP/verify/chatgpt-booster.user.js" packages/userscript/dist/chatgpt-booster.user.js
+          curl --fail --location --silent --show-error \
+            'https://github.com/KobaProduction/browser-extensions/releases/download/chatgpt-booster%2Fv0.8.92/chatgpt-booster.user.js' \
+            -o "$RUNNER_TEMP/verified-update.js"
+          cmp "$RUNNER_TEMP/verified-update.js" packages/userscript/dist/chatgpt-booster.user.js
+      - name: Remove incorrect experimental releases after stable verification
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          for tag in \
+            'chatgpt-booster/v0.8.98' \
+            'chatgpt-booster-recovery-stable-v0.8.98' \
+            'chatgpt-booster-recovery-v0.8.98' \
+            'chatgpt-booster-recovery-v0.8.92'
+          do
+            if gh release view "$tag" >/dev/null 2>&1; then
+              gh release delete "$tag" --yes --cleanup-tag
+              echo "Deleted obsolete ChatGPT release: $tag"
+            fi
+          done
+          gh release view 'chatgpt-booster/v0.8.92' --json tagName,isPrerelease \
+            --jq 'select(.tagName=="chatgpt-booster/v0.8.92" and .isPrerelease==false) | .tagName' \
+            | grep -Fx 'chatgpt-booster/v0.8.92'
