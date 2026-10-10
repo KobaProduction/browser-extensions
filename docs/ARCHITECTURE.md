@@ -185,6 +185,13 @@ regeneration. Public readers return independent snapshots, so mutations to
 returned records cannot alter in-memory data later saved by checkpoints.
 This is a compatible read/write boundary hardening, not an archive migration.
 
+VK Booster 2.3.5 checks the bound conversation after asynchronous media fetch,
+decode and before binary/archive metadata writes. Navigation mid-download stops
+the run without advancing the saved media cursor, allowing safe retry from the
+original chat. Loading a v2 folder also rejects records with an explicit
+peer_id different from the folder peer; records lacking peer_id remain
+compatible with earlier v2 exports.
+
 ## Proxy roadmap
 
 The future Proxy Switcher must be implemented as an **extension-only background service** with explicit `proxy` permissions, not as page injection. Configure per-host routing through Chrome's `proxy.settings` PAC support when permission is granted; maintain a typed profile store with `HTTP`, `HTTPS`, `SOCKS4`, `SOCKS5` and bypass lists. Credentials require a separate safe storage/authentication model. Userscript builds expose an unsupported status rather than simulating the feature. User-Agent switching likewise needs MV3 request rules or API support and user-granted permissions, not DOM navigator spoofing alone. Ad blocking should eventually be isolated behind `declarativeNetRequest` plus its own permissions and rule bundles.

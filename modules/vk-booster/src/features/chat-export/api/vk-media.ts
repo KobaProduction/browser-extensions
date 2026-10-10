@@ -109,19 +109,25 @@ export interface MediaDownloadContext {
   dir(name: string, parent?: FileSystemDirectoryHandle): Promise<FileSystemDirectoryHandle>
   write(name: string, data: unknown, parent?: FileSystemDirectoryHandle): Promise<void>
   sleep(ms: number): Promise<void>
+  // VK owns the live route/peer contract. Recheck it across async media boundaries.
+  verifyContext(): void
 }
 export type MediaDownloadResult = 'saved' | 'existing' | 'failed' | 'link' | 'unavailable'
 export async function download(
   asset: VkAsset,
-  { meta, dir, write, sleep }: MediaDownloadContext,
+  { meta, dir, write, sleep, verifyContext }: MediaDownloadContext,
 ): Promise<MediaDownloadResult> {
+  verifyContext()
   const prev = meta.files[asset.key]
   if (prev?.status === 'saved' && prev.name) {
     try {
       const target = await dir(String(asset.rootId), await dir('media'))
+      verifyContext()
       const file = await (await target.getFileHandle(prev.name)).getFile()
+      verifyContext()
       if (file.size === prev.size) return 'existing'
     } catch {
+      verifyContext()
       /* stale file: redownload */
     }
   }
@@ -132,6 +138,7 @@ export async function download(
     status: 'unavailable',
   } as VkArchiveMeta['files'][string]
   if (asset.type === 'link') {
+    verifyContext()
     result.status = 'link'
     meta.files[asset.key] = result
     return 'link'
@@ -139,16 +146,20 @@ export async function download(
   let failures = 0
   for (const candidate of asset.choices) {
     try {
+      verifyContext()
       const response = await fetch(candidate.url, {
         method: 'GET',
         credentials: 'omit',
         signal: AbortSignal.timeout(60000),
       })
+      verifyContext()
       const payload = await readArchiveMedia(response, {
         maxBytes: 64 * 1048576,
         expectedBytes: candidate.size,
       })
+      verifyContext()
       const media = await dir(String(asset.rootId), await dir('media'))
+      verifyContext()
       let name = candidate.name,
         index = 2
       const occupied = new Set(
@@ -166,7 +177,9 @@ export async function download(
             ? candidate.name.slice(0, dot) + ' (' + index++ + ')' + candidate.name.slice(dot)
             : candidate.name + ' (' + index++ + ')'
       }
+      verifyContext()
       await write(name, payload.bytes, media)
+      verifyContext()
       Object.assign(result, {
         status: 'saved',
         name,
@@ -178,11 +191,16 @@ export async function download(
       meta.files[asset.key] = result
       return 'saved'
     } catch {
+      // A changed VK conversation is not a failed media candidate. Never
+      // retry or mark media failed in the previous conversation's archive.
+      verifyContext()
       /* retry next provider media choice */
     }
     failures++
     await sleep(300)
+    verifyContext()
   }
+  verifyContext()
   if (failures) result.status = 'failed'
   meta.files[asset.key] = result
   return result.status

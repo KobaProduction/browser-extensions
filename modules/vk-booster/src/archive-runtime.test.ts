@@ -461,6 +461,42 @@ test('soft-navigation to another chat blocks export and never binds its folder t
   }
 })
 
+test('v2 folder rejects records belonging to a different VK conversation without replacing current archive', async () => {
+  a = reload()
+  await a.useFolder(folderHandle(folder))
+  const previous = a.status()
+  const scratch = new MockDir('mixed-peer-data')
+  const metadata = await (
+    await scratch.getFileHandle('metadata.json', { create: true })
+  ).createWritable()
+  await metadata.write(
+    JSON.stringify({
+      schema: 2,
+      peer_id: peer,
+      files: {},
+      runs: [],
+      checkpoint: null,
+    }),
+  )
+  await metadata.close()
+  const messages = await (
+    await scratch.getFileHandle('messages.json', { create: true })
+  ).createWritable()
+  await messages.write(
+    JSON.stringify({
+      schema: 2,
+      peer_id: peer,
+      messages: [{ id: 42, date: 1791500000, peer_id: peer + 1, text: 'Foreign chat' }],
+    }),
+  )
+  await messages.close()
+  await expect(a.useFolder(folderHandle(scratch))).rejects.toThrow('Неверный формат messages.json')
+  expect(a.status().folder).toBe(previous.folder)
+  expect(a.status().options.peerId).toBe(peer)
+  expect(a.status().messages).toBe(previous.messages)
+  expect([...scratch.files.keys()].sort()).toEqual(['messages.json', 'metadata.json'])
+})
+
 test('switching conversations while VK history is in flight cannot commit another chat', async () => {
   a = reload()
   await a.useFolder(folderHandle(folder))
@@ -639,4 +675,47 @@ test('failed VK authorization releases the reserved export without creating a ch
   } finally {
     globalThis.fetch = originalFetch
   }
+})
+
+test('switching VK conversations during media fetch pauses without saving media or advancing its cursor', async () => {
+  a = reload()
+  const scratch = new MockDir('media-inflight-navigation')
+  await a.useFolder(folderHandle(scratch))
+  const originalFetch = globalThis.fetch
+  let navigated = false
+  Object.assign(globalThis, {
+    fetch: async (input: RequestInfo | URL, options?: RequestInit) => {
+      const response = await originalFetch(input, options)
+      if (!String(input).includes('/method/') && !navigated) {
+        navigated = true
+        globalThis.location.pathname = '/im/convo/' + (peer + 1)
+      }
+      return response
+    },
+  })
+  try {
+    await expect(
+      a.run({ mode: 'recent', limit: 12, pageSize: 20, media: true, delay: 300 }),
+    ).rejects.toThrow('другая переписка')
+    expect(navigated).toBe(true)
+    const state = a.status()
+    expect(state.checkpoint?.status).toBe('paused')
+    expect(state.checkpoint?.phase).toBe('media')
+    expect(state.checkpoint?.fileCursor).toBe(0)
+    const saved = JSON.parse(
+      await (await scratch.getFileHandle('metadata.json')).getFile().then((file) => file.text()),
+    ) as VkArchiveMeta
+    expect(Object.keys(saved.files)).toEqual([])
+    expect([...scratch.dirs.keys()]).toEqual([])
+  } finally {
+    globalThis.location.pathname = '/im/convo/' + peer
+    Object.assign(globalThis, { fetch: originalFetch })
+  }
+  const resumed = await completed(a.resume())
+  expect(resumed.matched).toBe(12)
+  const saved = JSON.parse(
+    await (await scratch.getFileHandle('metadata.json')).getFile().then((file) => file.text()),
+  ) as VkArchiveMeta
+  expect(Object.values(saved.files).filter((file) => file.status === 'saved')).toHaveLength(2)
+  expect(saved.checkpoint?.status).toBe('done')
 })

@@ -18,7 +18,7 @@ import type {
 } from './types'
 /* VK Booster v2 provider composition; neutral paging, storage and UI live in shared packages. */
 export function installVkArchive(): void {
-  const VERSION = '2.3.4'
+  const VERSION = '2.3.5'
   if (globalThis.VKExport?.version === VERSION) return
   const currentPeer = () => conversationPeerFromPath(location.pathname)
   const cfg: ArchiveOptions = {
@@ -174,7 +174,10 @@ export function installVkArchive(): void {
       v.schema === 2 &&
       typeof v.peer_id === 'number' &&
       Array.isArray(v.messages) &&
-      v.messages.every(isMessage)
+      v.messages.every(
+        (message: unknown) =>
+          isMessage(message) && (message.peer_id === undefined || message.peer_id === v.peer_id),
+      )
     )
   }
   async function useFolder(handle: FileSystemDirectoryHandle): Promise<ArchiveStatus> {
@@ -269,8 +272,8 @@ export function installVkArchive(): void {
   const auth = () => vk.auth()
   const history = (offset: number, count: number) => vk.history(offset, count)
   const api = (method: string, p: Record<string, string | number>) => vk.api(method, p)
-  const download = (a: ReturnType<typeof assets>[number]) =>
-    downloadVkAsset(a, { meta: currentMeta(), dir, write, sleep })
+  const download = (a: ReturnType<typeof assets>[number], verifyContext: () => void) =>
+    downloadVkAsset(a, { meta: currentMeta(), dir, write, sleep, verifyContext })
   function attachmentView(m: VkMessage): VkAttachmentView[] {
     return assets(m).map((a) => ({
       type: a.type,
@@ -457,7 +460,8 @@ export function installVkArchive(): void {
           guard()
           const asset = queue[i]
           if (!asset) throw Error('Недоступен файл из очереди')
-          const outcome = await download(asset)
+          const outcome = await download(asset, guard)
+          guard()
           cp.fileCursor = i + 1
           currentMeta().checkpoint = cp
           await write('metadata.json', currentMeta()) // file-by-file resume; messages are not re-written
