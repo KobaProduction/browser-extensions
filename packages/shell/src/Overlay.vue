@@ -6,7 +6,7 @@
  */
 import type { FeatureRuntime } from '@kobaproduction/browser-core'
 import { ModalSurface } from '@kobaproduction/browser-ui'
-import { GripVertical } from 'lucide-vue-next'
+import { Layers3, X } from 'lucide-vue-next'
 import { type Component, computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import ControlCenterPanel from './ControlCenterPanel.vue'
 
@@ -163,7 +163,8 @@ onBeforeUnmount(() => {
       @pointerup="onPointerUp"
       @pointercancel="dragStart=undefined;dragging=false"
     >
-      <GripVertical class="booster-launcher-grip" /><span>B</span>
+      <X v-if="open" class="booster-launcher-icon" aria-hidden="true" />
+      <Layers3 v-else class="booster-launcher-icon" aria-hidden="true" />
     </button>
   </div>
 </template>

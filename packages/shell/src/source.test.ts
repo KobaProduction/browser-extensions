@@ -23,6 +23,15 @@ test('draggable launcher supports keyboard activation without double-toggling po
   expect(source).toContain('aria-haspopup="dialog"')
 })
 
+test('launcher matches shared ChatGPT Booster icon rather than legacy B glyph', async () => {
+  const overlay = await read('./Overlay.vue')
+  const style = await read('./styles.css')
+  expect(overlay).toContain('<Layers3 v-else class="booster-launcher-icon"')
+  expect(overlay).toContain('<X v-if="open" class="booster-launcher-icon"')
+  expect(overlay).not.toContain('<span>B</span>')
+  expect(style).toContain('.booster-launcher-icon')
+})
+
 test('central shell allows supplied feature views without provider-specific imports', async () => {
   const source = await read('./ControlCenterPanel.vue')
   expect(source).toMatch(/views:\s*Record<string,\s*Component>/)
