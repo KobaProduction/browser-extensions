@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT Booster [DEV]
 // @namespace    https://github.com/KobaProduction/browser-extensions/dev/chatgpt-booster
-// @version      2.0.4-dev.5
+// @version      2.0.5-dev.9
 // @description  ChatGPT Booster — archive and browser tools
 // @updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/chatgpt-booster.user.js
 // @downloadURL  https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/chatgpt-booster.user.js
@@ -846,8 +846,8 @@
     }
     return Object.fromEntries(entries);
   }
-  const BOOSTER_BASE_VERSION = "2.0.4";
-  const injectedVersion = "2.0.4".trim();
+  const BOOSTER_BASE_VERSION = "2.0.5";
+  const injectedVersion = "2.0.5".trim();
   const BOOSTER_BUILD_VERSION = injectedVersion || BOOSTER_BASE_VERSION;
   const BOOSTER_VERSION = BOOSTER_BUILD_VERSION;
   // @__NO_SIDE_EFFECTS__
