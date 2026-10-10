@@ -1,0 +1,852 @@
+{
+  "metadata": {
+    "source_repository": "KobaProduction/chatgpt-booster",
+    "snapshot_date": "2026-10-10",
+    "note": "Public issue comments, inline PR review comments, and PR review decisions/comments; excludes Git commits and patches, releases/artifacts, private browser data and full review thread metadata.",
+    "issue_comment_count": 52,
+    "inline_pr_comment_count": 2,
+    "pull_request_review_count": 43
+  },
+  "issue_comments": [
+    {
+      "id": 5980686835,
+      "issue_number": 14,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-04T13:48:58Z",
+      "updated_at": "2026-10-04T13:48:58Z",
+      "body": "Закрываю как устаревший orchestration-task. После смены пользовательского режима работа ведётся напрямую одним Implementer; требование реального spawn больше не является активным acceptance-критерием. Функциональные требования разнесены и реализованы в дочерних issues/текущем dev.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/14#issuecomment-5980686835"
+    },
+    {
+      "id": 5980687573,
+      "issue_number": 15,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-04T13:49:02Z",
+      "updated_at": "2026-10-04T13:49:02Z",
+      "body": "Закрываю: продуктовый контракт фактически закреплён в docs/tasks/DOCKED_ARCHIVE_TOOLKIT.md и реализован в текущем dev: message/record разделены, dock toolkit единый, coverage имеет partial/verified semantics, IDs вынесены в copy/diagnostics, reader read-only, export имеет conversation/custom/full режимы.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/15#issuecomment-5980687573"
+    },
+    {
+      "id": 5980688327,
+      "issue_number": 16,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-04T13:49:07Z",
+      "updated_at": "2026-10-04T13:49:07Z",
+      "body": "Закрываю по текущему dev: Project/Conversation/Record модель, visible/internal/raw counters, parent/turn grouping, cursor evidence, idempotent IndexedDB ingest, time normalization и attachment metadata разделены. Старые TS/test failures из issue больше не воспроизводятся; соответствующие unit/browser scenarios присутствуют.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/16#issuecomment-5980688327"
+    },
+    {
+      "id": 5980689206,
+      "issue_number": 17,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-04T13:49:11Z",
+      "updated_at": "2026-10-04T13:49:11Z",
+      "body": "Закрываю по текущему dev: capture default-deny, project/chat precedence, inherit override removal, tab/chat/time-bounded manual ticket, category filtering и consent re-check перед IndexedDB puts реализованы. Не выбранные разговоры идут только во временный current-chat preload, а не в постоянный archive.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/17#issuecomment-5980689206"
+    },
+    {
+      "id": 5980690001,
+      "issue_number": 19,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-04T13:49:16Z",
+      "updated_at": "2026-10-04T13:49:16Z",
+      "body": "Закрываю: edge docking, left/right snap, height ratio persistence, stable toggle, unified close bar, repeat-click close, viewport clamping и no-host-layout-shift реализованы. Пользовательская проверка docking также подтверждала требуемое поведение.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/19#issuecomment-5980690001"
+    },
+    {
+      "id": 5980690819,
+      "issue_number": 20,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-04T13:49:21Z",
+      "updated_at": "2026-10-04T13:49:21Z",
+      "body": "Закрываю: Archive Browser/Workspace является отдельной read-only поверхностью, current project раскрывается, остальные группы независимы, message/details разделены, raw metadata открывается отдельно, stale async guarded, Markdown/tool/reasoning UI реализованы, composer/edit/delete отсутствуют.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/20#issuecomment-5980690819"
+    },
+    {
+      "id": 5980691908,
+      "issue_number": 21,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-04T13:49:27Z",
+      "updated_at": "2026-10-04T13:49:27Z",
+      "body": "Закрываю: Booster controls у project/chat DOM реализованы через chatgpt adapter, click не запускает native navigation, effective rule отражается и открывает scoped CaptureSettings, inherit удаляет override, observer/controls cleanup выполняется при stop.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/21#issuecomment-5980691908"
+    },
+    {
+      "id": 5980693040,
+      "issue_number": 22,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-04T13:49:33Z",
+      "updated_at": "2026-10-04T13:49:33Z",
+      "body": "Закрываю text-export scope: JSON/Markdown, conversation/custom/full composition, remembered format/options, per-category flags и export выбранного archived conversation реализованы. Binary package остаётся отдельным #23; runtime matrix остаётся в #24.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/22#issuecomment-5980693040"
+    },
+    {
+      "id": 5980826493,
+      "issue_number": 23,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-04T14:02:48Z",
+      "updated_at": "2026-10-04T14:02:48Z",
+      "body": "Закрываю по текущему dev dd253b2. Полный пакет уже использует только наблюдённые signed ChatGPT asset URLs, включает transcript + manifest, безопасные имена/коллизии и явные missing/fetch/size outcomes. Дополнительно закрыт оставшийся технический хвост: user cancel теперь abort'ит asset fetch вплоть до MAIN-world request, timeout тоже abort'ит запрос, fetch последовательный, суммарные вложения ограничены 512 MiB с manifest status package_limit. Регрессии archive toolkit: 31/31; observer/features/ui typecheck пройден; ZIP отдельно проверен системным unzip -t. Rolling Dev exact head dd253b2 завершён success. Runtime-матрица конкретных типов/targets остаётся в #24, а не в этом source/package issue.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/23#issuecomment-5980826493"
+    },
+    {
+      "id": 5980884208,
+      "issue_number": 18,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-04T14:09:58Z",
+      "updated_at": "2026-10-04T14:09:58Z",
+      "body": "Закрываю как исправленный history-loader механизм. Live-проверка на настоящем ChatGPT: найден фактический `group/scroll-root`; короткие `scrollBy` шаги двигают именно conversation container; на длинном техническом чате normal client при достижении верхнего threshold сам отправил `GET .../messages?before=<start_cursor>&num_turns=10` и получил 200; после ingest scroll anchoring/DOM выросли. В Booster preload initial и continuation имеют один readId, continuation.requestedBefore == initial.start_cursor, последняя страница имеет has_previous_page=false. Никаких synthetic private history calls не выполнялось. Current dev относительно v0.6.1 не менял conversation-scroll adapter; loader изменён только для корректного short-chat/no-overflow completion, observer усилен preload/buffering. Stop/navigation/background/scoped auth+storage и pagination gaps покрыты browser/unit fixtures. Отдельная runtime-матрица production userscript/dev userscript/extension остаётся #24 и не дублируется здесь.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/18#issuecomment-5980884208"
+    },
+    {
+      "id": 5980890688,
+      "issue_number": 24,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-04T14:10:48Z",
+      "updated_at": "2026-10-04T14:10:48Z",
+      "body": "Текущий статус exact dev dd253b2: Rolling Dev success; source check/test/build зелёные; archive regressions 31/31; live ChatGPT подтверждён настоящий long-chat continuation и связанный preload ingest. Открытым остаётся именно acceptance gate этого issue: в доступном persistent Chromium установлен только ChatGPT Booster extension, Tampermonkey/userscript runtime отсутствует, поэтому отдельные runtime результаты Production userscript + Dev userscript + extension на exact HEAD сейчас получить честно нельзя. Не закрываю #24 и не подменяю runtime сборкой.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/24#issuecomment-5980890688"
+    },
+    {
+      "id": 5980890982,
+      "issue_number": 25,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-04T14:10:50Z",
+      "updated_at": "2026-10-04T14:10:50Z",
+      "body": "Проверен текущий tool surface: отдельного collaboration.spawn_agent/subagent/reviewer executor в этой сессии нет. GitHub reviewer App доступен как identity, но по acceptance этого issue смена alias тем же исполнителем не является независимым review. Поэтому #25 остаётся открытым как реальный independent-review gate; фиктивный APPROVED не ставлю.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/25#issuecomment-5980890982"
+    },
+    {
+      "id": 5980891287,
+      "issue_number": 13,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-04T14:10:53Z",
+      "updated_at": "2026-10-04T14:10:53Z",
+      "body": "Backlog очищен по фактическому dev: закрыты #14 #15 #16 #17 #18 #19 #20 #21 #22 #23. В #23 дополнительно исправлены cancel/timeout-abort и aggregate 512 MiB asset limit; exact dd253b2 Rolling Dev success. Остались только реальные acceptance blockers: #24 требует отдельный runtime Production userscript/Dev userscript/extension на exact HEAD, но userscript runtime сейчас отсутствует; #25 требует отдельного reviewer executor, которого текущая сессия не предоставляет. Родитель #13 остаётся открыт до этих двух gates.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/13#issuecomment-5980891287"
+    },
+    {
+      "id": 5980992448,
+      "issue_number": 25,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-04T14:22:02Z",
+      "updated_at": "2026-10-04T14:22:02Z",
+      "body": "Закрываю по прямому решению пользователя. Independent reviewer gate снимается для этой итерации из-за практических лимитов текущего длинного чата/сессии. Это НЕ означает, что отдельный reviewer run был выполнен или что получен независимый APPROVED; требование явно waived пользователем. Source/CI/runtime evidence остаются раздельными, а оставшийся target-runtime acceptance отслеживается в #24.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/25#issuecomment-5980992448"
+    },
+    {
+      "id": 5980994140,
+      "issue_number": 13,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-04T14:22:15Z",
+      "updated_at": "2026-10-04T14:22:15Z",
+      "body": "Пользователь явно снял обязательность independent-review gate; #25 закрыт как waived, без заявления о фактически выполненном независимом review. После этого в родительской задаче остаётся только #24 — runtime acceptance по delivery targets.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/13#issuecomment-5980994140"
+    },
+    {
+      "id": 5981284119,
+      "issue_number": 24,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-04T14:54:04Z",
+      "updated_at": "2026-10-04T14:54:04Z",
+      "body": "Закрываю по browser acceptance.\n\nExact implementation ref: dd253b2f60aa029009833d882e9a7762daeae057.\nAcceptance report commit: 2013397ebdf73ec4d34568512fac61b635067e9f.\nRolling Dev для обоих refs завершён success. Полный отчёт: docs/tasks/ACCEPTANCE_REPORT.md.\n\nОтдельные runtime результаты получены для всех трёх delivery targets:\n- Chromium extension: rolling artifact version_name=0.6.1-gdd253b2f;\n- Production userscript: @booster-build 0.6.1-gdd253b2f;\n- Dev userscript: 0.6.1.18-gdd253b2f.\n\nНа реальном ChatGPT проверены dock geometry/fixed toggle/Escape/focus/resize/no host shift, SPA project+chat controls без дублей, scoped capture settings без native navigation, override -> inherit deletion, default-deny (persistent archive не пишется, current-chat preload сохраняется), реальный long-chat continuation messages?before=<cursor>, единая readId/cursor chain, manual collect до completeAtLastRead=true, read-only archive без composer/edit/send, full ZIP/custom Markdown routing и persistence export settings.\n\nProduction/Dev userscript проверялись отдельно от extension target: Booster extension был удалён из browser process. Chrome Web Store не позволяет установить Tampermonkey в этом Chromium, поэтому для userscript runtime использован официальный временный Violentmonkey 2.49.0 MV3 с Chromium Allow user scripts; после тестов manager удалён.\n\nHard-to-induce destructive cases (scoped auth/storage, Stop/navigation late callbacks, background pause/resume, pagination gaps, 429 backoff) остаются подтверждены существующими browser fixture/unit tests; live пользовательскую auth/storage/network намеренно не ломали.\n\nCleanup выполнен: временный userscript manager удалён, HTTP job остановлен, временные QA-файлы/вкладки убраны, исходный unpacked Booster 0.6.1 и исходные settings восстановлены, пользовательские данные не удалялись.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/24#issuecomment-5981284119"
+    },
+    {
+      "id": 5981286107,
+      "issue_number": 13,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-04T14:54:19Z",
+      "updated_at": "2026-10-04T14:54:19Z",
+      "body": "Закрываю родительскую Extension 2 задачу. Все дочерние issues #14-#25 закрыты; #25 закрыт как explicitly waived пользователем, без заявления о независимом review. Browser QA #24 принят на exact implementation ref dd253b2f60aa029009833d882e9a7762daeae057; acceptance evidence сохранён в docs/tasks/ACCEPTANCE_REPORT.md (report commit 2013397ebdf73ec4d34568512fac61b635067e9f), Rolling Dev на report HEAD завершён success. Stable release/tag этим закрытием не создавались и не переписывались.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/13#issuecomment-5981286107"
+    },
+    {
+      "id": 6026673778,
+      "issue_number": 29,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-06T22:33:19Z",
+      "updated_at": "2026-10-06T22:33:19Z",
+      "body": "Fixed in `dev` by commit `a616a0a2ebc69e735bc076826f5cfe5473f9d656` (`fix: trust source stream completion over stale DOM`). Full `bun run check && bun run test && bun run build` passed; full test suite: 85/85.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/29#issuecomment-6026673778"
+    },
+    {
+      "id": 6026674994,
+      "issue_number": 30,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-06T22:33:24Z",
+      "updated_at": "2026-10-06T22:33:24Z",
+      "body": "Fixed in `dev` by commit `a616a0a2ebc69e735bc076826f5cfe5473f9d656` (`fix: trust source stream completion over stale DOM`). Full `bun run check && bun run test && bun run build` passed; full test suite: 85/85.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/30#issuecomment-6026674994"
+    },
+    {
+      "id": 6044199535,
+      "issue_number": 32,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-07T18:26:06Z",
+      "updated_at": "2026-10-07T18:26:06Z",
+      "body": "Implemented source/build path on `dev` in `98e9130f`. The observer now normalizes the deployed ChatGPT stream-error shape (`error`, `error_code`, `can_retry`, `error_reason`), lifecycle stores a terminal cause, `conversation_too_large` maps to a dedicated source-driven exhaustion alert, and the critical tone is a repeated ~2.3s alarm deduplicated in session storage by conversation + user-message + cause. Generic network/stream failures do not map to the exhaustion alarm. Validation: workspace typecheck, 96/96 tests, extension build and prod/dev userscript builds pass; rolling publish check passed. Live ChatGPT exhaustion/audio acceptance remains separate because the exact incident is not currently reproducible with the available network/debug backend, so the issue remains open.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/32#issuecomment-6044199535"
+    },
+    {
+      "id": 6044207087,
+      "issue_number": 31,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-07T18:26:34Z",
+      "updated_at": "2026-10-07T18:26:34Z",
+      "body": "Implemented on `dev` in `98e9130f` (`fix: separate terminal conversation alerts`). Completion audio now gates on source lifecycle cause: confirmed `stopped`, cancelled, failed-stop recovery and generic failed states do not map to the normal completion alert; autonomous `complete` remains eligible. Regression coverage added. Validation: workspace typecheck, 96/96 tests, extension build and prod/dev userscript builds all pass; rolling publish check passed. Leaving the issue open until browser/runtime audio acceptance is completed.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/31#issuecomment-6044207087"
+    },
+    {
+      "id": 6048913458,
+      "issue_number": 33,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-07T23:27:25Z",
+      "updated_at": "2026-10-07T23:27:25Z",
+      "body": "### Cross-profile acceptance checkpoint — 2026-10-08\n\n- Rolling Dev `0.8.74` at `dev@6b9002f` is published, with PRs #35 (archive UI/exports) and #36 (nested-branch Chromium fixture) merged. Existing synthetic browser fixture previously passed **14/14** scenarios, including archive tail reading, scroll anchoring, pinned controls, reversed order, search and nested branch navigation.\n- This checkpoint re-confirmed that the **Free** managed Chromium still has Tampermonkey Booster Dev `0.8.74` installed. `chatgpt.com` conversation reload returned HTTP 200 and screenshot showed the Booster dock control. **No live Free Archive Browser control interaction was completed** because the present browser snapshot/click interface does not expose controls inside Booster's Shadow DOM.\n- **Pro remains untested for this build.** The separately documented external Playwright MCP at `192.168.1.11:8931` returns HTTP **403** to the current service/terminal execution environment with `Access is only allowed at 192.168.1.11, localhost, 127.0.0.1`. The corresponding Playwright connector is not exposed in this session. No source/body data from the Pro account was accessed, and the 403 was not bypassed.\n- Attempt to run a new synthetic renderer fixture through the managed browser was blocked by the browser tool's safety gate. Temporary fixture modifications were reverted; the development checkout remains clean.\n- Targeted source/unit regression was re-run: **53 passed, 0 failed**. This is source/unit validation, not live cross-profile acceptance.\n\n**Acceptance gate remains open:** repeat real archive open/scroll/search/reverse/export checks in both Free (`legacy-turn-v1`) and Pro (`search-unit-v2`) using authorized browser controls before closing this issue. Do not conflate synthetic Pro-style DOM tests with a live Pro session.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/33#issuecomment-6048913458"
+    },
+    {
+      "id": 6049593579,
+      "issue_number": 33,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-08T00:26:09Z",
+      "updated_at": "2026-10-08T00:26:09Z",
+      "body": "### Live Pro acceptance update — 2026-10-08 (Booster Dev 0.8.74)\n\nUsing **only the separately authorized external Playwright MCP Chrome profile** (not managed Free Chromium), after the user updated the existing Tampermonkey script through its built-in Settings → Update mechanism:\n\n- Live Booster Settings reported installed **0.8.74** after page reload. Project autosave remained on.\n- Opened Archive Browser on actual saved project conversation **Продолжение Extension 8**. New `.booster-reader-pinned` toolbar is outside `.booster-reader-scroll`; viewport was at latest saved tail. Sticky header stayed fixed while inner reading area scrolled 1,200 px.\n- Reverse-sort toggle switched to newest-first, scrolled to position 0 and first displayed exchange was most recent; switching back restored chronological order.\n- Per-conversation text search reduced visible exchanges from 22 to 2 on a matching test phrase, and clearing it restored results.\n- Export dialog opened and displayed Markdown/TXT/JSON plus readable/custom/technical composition options. Prior user's stored `JSON + custom` prefs were preserved, **no actual export/download performed**, and dialog closed without modifying settings.\n- Switched to larger real saved **MCP22 чат**: initial render 40 exchanges, with 143 messages in archive. Triggering scroll to the top loaded older entries, resulting in **74 rendered exchanges**; observed scroll container `scrollHeight=381251` and `scrollTop=241310`, consistent with scroll anchoring after older items were prepended. Pinned header position remained fixed.\n- Returned selection to original conversation. No user chat messages sent or modified; no browser profile reset.\n\n**Boundaries:** This establishes live Pro archive UI behavior; Free live UI and live true branch-of-branch provenance were not exercised here. Archive coverage itself explicitly reports partial historical chain; no claim of full history capture. Remaining work: Free live acceptance (when authorized), genuine branch graph fixture/live provenance, actual file-export byte-level confirmation if needed.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/33#issuecomment-6049593579"
+    },
+    {
+      "id": 6050062001,
+      "issue_number": 38,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-08T01:08:00Z",
+      "updated_at": "2026-10-08T01:08:00Z",
+      "body": "Visual prototype delivered in PR #40 (merged to `dev@dc0f8b51b3e1c73265ae684ad175de066a69400b`), Rolling Dev run 37711259451 successful, userscript release 0.8.75. New `archiveMessageGraph` creates visible user/assistant nodes and sibling-variant labels from explicit parent IDs, tested fork/missing-parent/cycle, 111 source tests passed and both targets built. This does **not** implement branch switching or fully linked DAG navigation. External Pro Chrome remains on an older installed userscript until Tampermonkey updates it; browser automator rejected direct `chrome-extension://.../options.html` navigation ('Not allowed'), so 0.8.75 live visual acceptance remains pending. Maintain this issue open for full graph semantics.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/38#issuecomment-6050062001"
+    },
+    {
+      "id": 6050532430,
+      "issue_number": 38,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-08T01:51:30Z",
+      "updated_at": "2026-10-08T01:51:30Z",
+      "body": "PR #42 merged to dev at 00e9cc5 (2026-10-08). Fixed independent side chronology replaces inline message-rail decorations, uses explicit parent-linked fork indicators and bounded fisheye checkpoint navigation, previews and UI windowing. Free-shaped synthetic fixture includes two internal forks (source/typed, NOT live Free-account acceptance). GitHub PR check and reviewer acceptance passed. Full message-DAG branch switching and coverage proof are not implemented, so issue remains open.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/38#issuecomment-6050532430"
+    },
+    {
+      "id": 6050532814,
+      "issue_number": 39,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-08T01:51:33Z",
+      "updated_at": "2026-10-08T01:51:33Z",
+      "body": "PR #42 merged to dev at 00e9cc5: compact reader with saved first/latest setting, bounded visual checkpoint windows (initial/fast jumps do not mount intervening entire stream), center loader with prepared/current counts, resumable adjacent windows, and minimized archive restore. Also catalog title synchronization. Source validation + PR CI successful. IMPORTANT: `getThread` still materializes all locally archived records from IndexedDB; true data-layer pagination and measured live large-conversation freeze acceptance remain unmet. External Pro browser could not reach synthetic Vite server due isolated networking; no live Free verification. Do not close this issue.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/39#issuecomment-6050532814"
+    },
+    {
+      "id": 6050901227,
+      "issue_number": 38,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-08T02:25:33Z",
+      "updated_at": "2026-10-08T02:25:33Z",
+      "body": "PR #43 merged into dev (5e900f6): server-side Chromium local branch fixture validated **15/15 browser UI scenarios** after fixing async reader readiness and context observer setup. A synthetic Free-shaped conversation with two edited-message fork points now renders explicit connector paths between checkpoints only when the entire `parentId` chain is observed; unknown parents remain gaps. Pure tests cover two sibling forks and missing ancestors. Server browser session is confirmed logged into ChatGPT Free, but the synthetic fixture is isolated from chatgpt.com: **not** a claim of live Free userscript injection or native version-switch acceptance. Full native branch switching and complete DAG verification remain open.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/38#issuecomment-6050901227"
+    },
+    {
+      "id": 6050903413,
+      "issue_number": 39,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-08T02:25:45Z",
+      "updated_at": "2026-10-08T02:25:45Z",
+      "body": "PR #43 landed in dev (5e900f6). Bounded initial archive rendering and initial SPA-context observer race were corrected and validated in managed Chromium fixture (15/15 UI scenarios); asynchronous readiness assertions now wait for actual rendered state. This does not implement IndexedDB pagination, so the full-thread materialization/performance gate and live long-archive freeze acceptance remain open.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/39#issuecomment-6050903413"
+    },
+    {
+      "id": 6051031055,
+      "issue_number": 38,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-08T02:37:23Z",
+      "updated_at": "2026-10-08T02:37:23Z",
+      "body": "PR #44 merged to dev at 6f03b22 and published in Rolling Dev 0.8.78. Archive Browser now exposes read-only sibling user-message variant choices for each explicitly observed fork; clicking one focuses its stored message in the bounded archive window. Dedupe and unknown-parent handling verified in three pure tests. Managed server Chromium synthetic two-fork fixture: 15/15 UI scenarios (including choosing an edited second-fork variant); full source checks/build and Rolling Dev CI successful. This is not native ChatGPT branch mutation/switching, and live Free userscript injection remains unverified. Keep #38 open for full branching completeness and native-client acceptance.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/38#issuecomment-6051031055"
+    },
+    {
+      "id": 6051103967,
+      "issue_number": 38,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-08T02:44:24Z",
+      "updated_at": "2026-10-08T02:44:24Z",
+      "body": "User-supplied Pro screenshot exposed a visual branch graph regression: despite stored fork relationships the narrow 54px navigator with 5px offsets and a forced centre spine looked like one vertical column. PR #45 merged into dev f9dffcc and released in Dev 0.8.79: 108px lane rail, 23px separation, SVG node/path axis alignment, no unconditional centre spine across missing ancestry. Managed server Chromium synthetic fixture 15/15 UI scenarios, all source checks, target builds and Rolling Dev CI succeeded. Still pending: review of actual Pro screenshot after update, full correct DAG semantics and native branch switching. Keep #38 open.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/38#issuecomment-6051103967"
+    },
+    {
+      "id": 6051207995,
+      "issue_number": 38,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-08T02:54:07Z",
+      "updated_at": "2026-10-08T02:54:07Z",
+      "body": "User supplied additional screenshots showing an overcrowded 63-message Intеns VPN timeline and inconsistent behavior when switching between archived chats. PR #46 merged into dev at 060e682 (Rolling Dev 0.8.80): bound regular timeline sampling to 36 checkpoints, retain both saved endpoints and explicit fork nodes, invalidate stale window-shift async work on conversation changes/unmount. Server Chromium synthetic 15/15 browser UI cases passed, including rapid long/short switching; typecheck/lint/tests/build and Rolling Dev CI successful. **Live Pro screenshot acceptance still pending**. Per-chat scroll-position restoration and full DAG/coverage remain separate work; do not close this issue.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/38#issuecomment-6051207995"
+    },
+    {
+      "id": 6051605681,
+      "issue_number": 38,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-08T03:32:15Z",
+      "updated_at": "2026-10-08T03:32:15Z",
+      "body": "PR #48 merged to `dev` at abf3c5f (Rolling Dev 0.8.82): replaced the homemade SVG checkpoint rail with MIT-licensed `@vue-flow/core@1.48.2` for interactive graph nodes/edges and `@dagrejs/dagre@3.1.1` for topology-aware top-down DAG layout. Edges only follow observed `parentId` ancestry including intermediate tool records; orphan records remain disconnected, malformed cycles excluded, and known sibling variants remain represented. Local check/tests/target builds and managed Chromium synthetic fixture 15/15 passed, PR build CI and independent reviewer passed. This is source/fixture acceptance only; the exact user Pro screenshot, huge graph performance, native branch switching, and complete history proof are not yet verified. Keep issue open.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/38#issuecomment-6051605681"
+    },
+    {
+      "id": 6057380748,
+      "issue_number": 38,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-08T09:58:57Z",
+      "updated_at": "2026-10-08T09:58:57Z",
+      "body": "PR #49 merged to dev commit f491494, Rolling Dev **0.8.83** published. Replaced the Vue Flow/Dagre block graph with MIT GitGraph.js core+SVG renderer. Adapter projects all stored user/assistant messages in ancestry/topological order into git2json with terminal refs (needed for GitGraph reachable-history rendering), preserves recorded parent IDs and traverses observed hidden/tool intermediate ancestry, does not invent merges. `VerticalReverse` yields old-to-new top-to-bottom with fixed row spacing and scrollable lanes, no `fitView`. Click-to-read local archive. Source check/tests/extension+userscript builds/browser fixture TypeScript passed; managed Chromium synthetic fixture 15/15 (includes internal forks and rapid chat switching); GitHub PR CI and rolling Dev CI passed. Not yet accepted on the user's actual Pro screenshot; server-historical completeness and paging are still open. Do not close issue.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/38#issuecomment-6057380748"
+    },
+    {
+      "id": 6057724859,
+      "issue_number": 38,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-08T10:19:11Z",
+      "updated_at": "2026-10-08T10:19:11Z",
+      "body": "## GitGraph review checkpoint — 2026-10-08 (review only; no source mutation)\n\nReviewed `feat/archive-gitgraph@98133a4` against `dev@f491494`. Local workspace is clean, no PR/merge for GitGraph yet.\n\n**Source/build acceptance:** `bun run check` exits 0 (Biome emits 49 warnings, 31 informational diagnostics), GitGraph projection unit cases 3/3 pass, MV3 and both userscript builds pass. The real Chromium synthetic Archive Browser UI suite passes 15/15; the fixture includes saved sibling forks and a navigation check. This is not live Pro acceptance.\n\n**Visual evidence:** in the actual production Archive Browser mounted in the synthetic Chromium fixture (55 exchanges, 110 visible messages), the narrow right GitGraph pane shows many short parallel disconnected lanes at the top and both horizontal/vertical scrollbars. The seeded fixture intentionally lacks parent edges *between* successive user/answer exchanges, so disconnected roots are **not** by themselves proof of data loss or an incorrect `parentId` resolver. The **presentation** is nevertheless misleading/unusable without a clear unknown-ancestry indication. Screenshot retained in persistent ignored workbench: `.work/gitgraph-fixture-preview.png`.\n\n**Specific gaps:**\n1. `archiveGitgraphData().unresolved` is computed but not displayed; a real alternate path, a missing parent and a corrupted cycle cannot be distinguished in the UI.\n2. GitGraph renders the *whole* saved graph with its own scroll independently of the bounded main reader; current reading position/selected node is not indicated or scrolled into view.\n3. Commit dots use `dot.size=4` and event delegation on SVG circles only; there is no keyboard-operable node control, focus treatment or accessible node label.\n4. With many unrelated roots, each terminal hash becomes a named ref and generates horizontal lane growth. No cap/grouping/summary of unknown fragments. Long archive performance and scroll acceptance have not been validated.\n5. The unit suite exercises topological relations, orphans and a cycle, but does not validate visual topology, selected-node sync, focus/click affordance, large numbers of roots or the exact persisted live Pro fork paths.\n\n**Acceptance remains open.** Before merging to `dev`, inspect the fork fixture visually and run real Free/Pro archive acceptance. Fix structural/accessibility/read-position UX, preserve recorded edges (no fabricated parent chains), and re-run relevant tests. This checkpoint should not be interpreted as GitGraph being released or approved.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/38#issuecomment-6057724859"
+    },
+    {
+      "id": 6068109277,
+      "issue_number": 54,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-08T20:07:34Z",
+      "updated_at": "2026-10-08T20:07:34Z",
+      "body": "## Architecture baseline published — 2026-10-08\n\n- Target specification: [`docs/ARCHIVE_TARGET_ARCHITECTURE.md`](https://github.com/KobaProduction/chatgpt-booster/blob/dev/docs/ARCHIVE_TARGET_ARCHITECTURE.md).\n- Single documentation PR: #61, independently reviewed, CI passed, merged into `dev` at `a6f713236286a3c562cc76ee237852a9f498e366`. Git tree matches the validated authoring revision.\n- Agent entry points updated: `AGENTS.md`, `README.md`, `docs/ARCHITECTURE.md`.\n- **Work stage now:** #55 native signature contract and fail-closed validation — **NOT STARTED**. After #55 acceptance: #56 → #57 → #58 → #59 → #60, per actual stage dependencies.\n- **Validation level:** documentation links/diff checked; CI/reviewer passed. This is not source implementation, database migration, runtime validation or acceptance of any child stage.\n- **Actors:** Implementer takes the first unmet checklist item from the stage; independent Reviewer checks the PR and contract; runtime/product Tester accepts live Free/Pro. No individual has been auto-assigned.\n- **Current blockers:** account identity evidence and actual versioned native contract variants must be resolved inside #55 before migration; branch visualization #53 remains deferred.\n\nKeep this Issue open. Update each child checklist only on evidence, and close the parent only after all mandatory stages and acceptance gates have passed.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/54#issuecomment-6068109277"
+    },
+    {
+      "id": 6068285175,
+      "issue_number": 54,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-08T20:18:16Z",
+      "updated_at": "2026-10-08T20:18:16Z",
+      "body": "## Architecture decision updated — clean cutover, no legacy (2026-10-08)\n\nUser direction: the current local IndexedDB v3 archive and old export v1 are **disposable for the new implementation**. Do not build v3 migrations, compatibility adapters, old-format import or redundant legacy regression suites.\n\n- Architecture amendment merged via #62, `dev` commit `1d64c096f5f628a12422067a61b8a2f4c01b123e` (independent review and CI passed).\n- #56 now owns **fresh empty database initialization** and account-isolated four-entity contracts instead of a v3 migration.\n- #55/#58/#59/#60 checklists updated to the clean schema and focused tests. #57 remains incremental ingestion, unchanged in intent.\n- **No deletion performed now.** At runtime rollout, use a clean isolated archive namespace and communicate that previous local-only history is not carried over; obsolete v3 cleanup is a distinct controlled action. Do not erase ChatGPT site storage, cookies, unrelated apps, or another browser profile.\n- Critical separation: changed/unknown **ChatGPT API signature** => **fail-closed write halt**, not reset or schema auto-recreation.\n- Essential tests remain: exact original Message retention, incompatible batch atomic failure, account isolation, fresh DB initialization and export behavior. No legacy suites.\n\nCurrent active slice remains #55, **not implemented**.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/54#issuecomment-6068285175"
+    },
+    {
+      "id": 6069091649,
+      "issue_number": 54,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-08T21:08:51Z",
+      "updated_at": "2026-10-08T21:08:51Z",
+      "body": "### Фаза 0 — локальный checkpoint (реализация, не приёмка)\n\n**Implementer:** локальная рабочая ветка `feature/archive-source-contract-v1`, коммит `8d4c081`, **ещё не опубликован** — PR отсутствует, независимого ревью нет.\n\nИзменено: строгий versioned-контракт нативных history pages/messages; явный реестр 66 имён/типов метаданных (сопоставлен с 229 реальными сохранёнными записями без выгрузки содержимого); проверка идентичности conversation в URL; целостность пачки до RAM/IndexedDB; чат-специфический fail-closed для архива/экспорта, видимое уведомление и отмена подготовки экспорта. Синтетические браузерные фикстуры изолированы тестовым режимом.\n\n**Локальная проверка перед коммитом:** все package typecheck и Biome успешно; Bun `141 pass / 0 fail`; Chromium extension + prod/dev userscript build успешно. Это только source/build validation, не live Free/Pro acceptance.\n\n**Осталось для фазы 0:** исследовать и проверить контракт потоковых сообщений и safe handling неизвестных stream variants, подтвердить надёжный источник account ID и правила привязки/изоляции перед новой БД; runtime проверка Free/Pro; независимый Reviewer. Галочки приёмки пока не ставить. Все дальнейшие коммиты/отчёты продолжаются в #54.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/54#issuecomment-6069091649"
+    },
+    {
+      "id": 6069277515,
+      "issue_number": 54,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-08T21:20:31Z",
+      "updated_at": "2026-10-08T21:20:31Z",
+      "body": "Фаза 0, локальный checkpoint 2026-10-08. Реализованы и проверены два **неопубликованных** коммита: `8d4c081` — строгий versioned native history message/page contract с fail-closed до RAM/IndexedDB и блокировкой экспорта; `292fabf` — отдельная проверка native SSE message envelopes и безопасный incompatibility event. Ветка `feature/archive-source-contract-v1`, рабочее дерево чистое. Перед последним коммитом пройдены `bun run check`, 143/143 Bun tests и `bun run build` для extension и prod/dev userscript. Это SOURCE/BUILD validation, не независимая ревизия и не live Free/Pro acceptance. В #54 пока нет новых выполненных пунктов.\n\nНовый evidence по account ID без сохранения идентификаторов: `Conversation.owner` null в 8/9 исследованных локальных чатов; `/backend-api/accounts/check` в штатном ChatGPT отвечает account metadata с `account.account_id`; родной запрос `GET /backend-api/conversations` имеет заголовок `chatgpt-account-id`, но отдельные initial/history message requests в исследованном сеансе заголовка не имели. Значит, активный account context должен быть доказан на уровне нормальной session/list traffic, а не угадан по `owner` либо первому/default account. Мультиаккаунтное переключение пока не проверено, поэтому Фаза 1 (новая БД) не начата. Дальше: подтвердить selected-account provenance, провести независимое ревью и live runtime acceptance до закрытия фазы 0. Подробный локальный checkpoint в `.work/archive-phase0-checkpoint-20261008.md`.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/54#issuecomment-6069277515"
+    },
+    {
+      "id": 6069423945,
+      "issue_number": 54,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-08T21:30:07Z",
+      "updated_at": "2026-10-08T21:30:07Z",
+      "body": "### Обязательная политика тестирования — внесено в единый Issue #54\n\n**Решение владельца:** никаких новых или выполняемых UI/browser/E2E/визуальных тестов; не тестировать изменчивые интерфейсы или неподтверждённые варианты ChatGPT API. Только минимальные unit-тесты устойчивых подтверждённых контрактов (source-сигнатуры и fail-closed, база/архив, экспорт/сериализация, детерминированные преобразования). Исторические UI-наборы не удалены, но исключены из штатного запуска. Скриншоты/Free-Pro UI-приёмка не являются обязательными критериями Issue #54 и отложенного #53.\n\n**Фундаментальная документация:** `docs/TESTING_POLICY.md`; обязательное чтение через `AGENTS.md`, а также обновлены `README.md` и `docs/ARCHIVE_TARGET_ARCHITECTURE.md`. Корневой `package.json` теперь выполняет **явно перечисленные unit-тесты**, отдельно фильтруя разрешённые логические группы старого `archive-toolkit`. CI использует штатный `bun run test`, поэтому также не запускает UI-наборы.\n\n**Локальный коммит:** `50fb2ea` на `feature/archive-source-contract-v1` (после `8d4c081` и `292fabf`), **ещё не отправлен**. Полный pre-push gate на этом дереве: `bun run check` OK, `bun run test` **99 pass / 0 fail** (61+38, 5 исключено фильтром), `bun run build` OK — extension и prod/dev userscript. Это подтверждает только source/unit/type/lint/build, не runtime/UI. Рабочее дерево чистое.\n\nНовые тестовые файлы для фиксации политики не создавались; прежние UI-тесты не изменены. Текущая фаза 0 остаётся открытой по источнику активного account ID и независимому review. Все дальнейшие отметки и отчёты — в #54.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/54#issuecomment-6069423945"
+    },
+    {
+      "id": 6069545871,
+      "issue_number": 54,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-08T21:38:16Z",
+      "updated_at": "2026-10-08T21:38:16Z",
+      "body": "Короткая корректировка подхода: отдельный `docs/TESTING_POLICY.md` удалён локальным коммитом `5ec823b`; в `AGENTS.md` осталось одно короткое правило — минимальные проверки нужных сервисных/интерфейсных сценариев, без разработки лишних тестовых наборов. Стандартный `bun run test` восстановлен, документация очищена от отдельной политики. Решение уже отражено в теле #54; отложенный #53 также больше не ссылается на удалённый файл.\n\nФункциональная работа продолжилась: локальный коммит `e57ce75` в `feature/archive-source-contract-v1` добавил **пассивную** привязку выбранного аккаунта из штатного ответа `/backend-api/accounts/check` к заголовку `chatgpt-account-id` нативного запроса списка чатов. Неизвестный/несовпадающий аккаунт не считается проверенным, при смене подтверждённого владельца сбрасывается старая RAM-область; новых private API запросов и новой IndexedDB нет. Перед локальным коммитом: `bun run check` OK, `bun run test` 143/143, `bun run build` OK (extension + userscripts). **Без push/PR и без претензии на runtime acceptance**; фаза 0 всё ещё открыта.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/54#issuecomment-6069545871"
+    },
+    {
+      "id": 6069931995,
+      "issue_number": 54,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-08T22:04:31Z",
+      "updated_at": "2026-10-08T22:04:31Z",
+      "body": "### Срез #54: фаза 0 опубликована, фаза 1 начата локально\n\n**Фаза 0:** PR #64 (исходные сигнатуры, fail-closed, account-scope в нативных событиях) прошёл CI и Reviewer, слит в `dev` коммитом `a5d232a`. Уровень проверки — source/type/lint/unit/build + code review, **не** утверждение о готовности всей системы. Legacy v3 пока остаётся действующим архивом и не обеспечивает требуемой аккаунтной изоляции на уровне хранения.\n\n**Фаза 1, локальная ветка:** `feature/archive-v4-foundation`, коммит `2db5889` **не опубликован**. Добавлен изолированный `ArchiveV4Store` под новым именем IndexedDB: четыре коллекции Project, Conversation, Message, Metadata; устойчивые составные ключи по подтверждённому account ID и parent Conversation; исходный Message хранится целиком без замены Booster-проекцией; изменённые исходные снимки сохраняются в Metadata. Инкрементальное атомарное поглощение страницы, summary первых/последних **известных** сообщений, пагинационные доказательства отдельно, запросы небольших окон через индекс, защита от stale records/дубликатов. **v3 не мигрируется, не очищается и не импортируется.**\n\nЛокальные `bun run check`, `bun run test` (**144/144**) и `bun run build` прошли. Но v4 ещё **не подключён к рабочему UI/захвату** и **не проверен в браузерном IndexedDB runtime**; поэтому этап 1 остаётся открытым и никакой «готовой миграции»/релизной приёмки не заявляется. Следующий шаг — подключение v4 к захвату и чтению без удвоения источников истины, после отдельной границы принятия архитектуры.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/54#issuecomment-6069931995"
+    },
+    {
+      "id": 6070015959,
+      "issue_number": 54,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-08T22:09:48Z",
+      "updated_at": "2026-10-08T22:09:48Z",
+      "body": "### #54 — фаза 1, текущий локальный срез\n\n`dev`: фаза 0 опубликована через PR #64, точный Git tree verified. Новая ветка `feature/archive-v4-foundation` — локальная, **не опубликована**. Три коммита: `2db5889` (новая account-scoped IndexedDB v4 с **Project/Conversation/Message/Metadata**, атомарным incremental ingest, сохранением оригинального Message и исторических снапшотов, компактной Conversation summary и индексированным чтением), `64ccae6` (события изменения после commit, переименование Project не переписывает заголовок Conversation), `a4e3531` (проверка полной исходной страницы перед селективным захватом; Metadata считает фактически сохранённые, уникальные и исключённые записи).\n\n**Верификация:** исходный v4-store компилируется; на ревизии `64ccae6` выполнены `bun run check`, `bun run test` **144/144** и `bun run build` для extension и обоих userscript. Проведён один короткий **сервисный** IndexedDB-прогон в отдельном Chromium test origin: атомарная запись, идемпотентность, разделение аккаунтов с одинаковым conversation ID, cursor/window и pagination coverage — **6/6 проверок успешно**. Тестовая база удалена, вкладка и сервер закрыты. Последний commit `a4e3531` изменил только обработку селективного захвата; TypeScript/Biome по пакету прошли, полный pre-push gate на этой ревизии ещё **не выполнялся**.\n\n**Статус:** фаза 1 **в работе**. V4 ещё не подключён к рабочему процессу захвата и интерфейсу, старый v3 остаётся без изменений. Нет миграции, удаления пользовательских данных, второй активной Issue или production-ready заявлений. Следующий шаг: связать источник захвата, V4 read model и экспорт, затем провести итоговую проверку перед единой публикацией.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/54#issuecomment-6070015959"
+    },
+    {
+      "id": 6070358874,
+      "issue_number": 54,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-08T22:30:50Z",
+      "updated_at": "2026-10-08T22:30:50Z",
+      "body": "**Implementer handoff — phase 1 isolated v4 foundation, 2026-10-09.**\n\n- PR #65: https://github.com/KobaProduction/chatgpt-booster/pull/65\n- Published head `e718753492fda0a31f446bbf4c4f0d7151b1311d`; Git tree `19d7f525a4cc083e2bb6589184c4b8ea6ee26bc2` exactly matches validated local tree. Existing local checkpoint remains `feature/archive-v4-foundation@fd26b1f` (4 commits ahead of `dev`, clean tree).\n- Foundation implements an isolated new DB with Project / Conversation / Message / Metadata, mandatory account scoping, native page validation before durable write, immutable original message payload and change snapshots, indexed bounded chronological reads, separate source pagination evidence, post-commit invalidations, safe schema recognition and strict no-v3-migration boundary. The v4 store is not connected to active capture.\n- Found and fixed: nullable native `create_time` incompatibility (retained without synthetic chronology; unsequenced count is explicit), stale metadata rollback, insufficient index-key schema checks, late write-authorization check. One focused native signature unit test added. No UI tests.\n- Exact-tree checks: `bun run check` PASS (existing nonfatal Biome warnings), `bun run test` **145 pass / 0 fail**, `bun run build` PASS for MV3/userscript. No runtime/live Free/Pro acceptance claimed. Independent Reviewer has not yet approved this PR.\n- **Do not mark phase 1 or global acceptance complete.** The next real boundary is independent review and integration decisions for account-scoped observation paths, project-title lifecycle, full v4 ingestion with safe cutover, and explicit user-facing warning that v3 local-only content will not be migrated. Until cutover, v3 remains active and untouched.\n- Issue #54 currently has stale per-phase `НЕ НАЧАТО` headings despite phase 0 PR #64 having merged and phase 1 implementation in progress. This comment documents the actual milestone; checklist acceptance boxes remain unmarked pending proof/review.\n- Deferred branch visualization #53 remains parked.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/54#issuecomment-6070358874"
+    },
+    {
+      "id": 6070581470,
+      "issue_number": 54,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-08T22:47:52Z",
+      "updated_at": "2026-10-08T22:47:52Z",
+      "body": "**Implementer milestone — review deferred to the end (2026-10-09).** Project owner confirmed full Archive & Export rewrite across active phases 0–5 as one implementation sequence; independent review happens once after the entire source/CI package is ready. PR #65 was parked/closed unmerged as a checkpoint and may be reopened at final review; no per-phase merge/review gating.\n\n**Local durable checkpoint:** `feature/archive-v4-foundation@8aeac55` (5 commits ahead of `origin/dev`, clean tree). New code: v4-only account-scoped capture orchestration (`archive-v4-capture.ts`, not yet started by page-runtime); native-page validation remains before capture filtering, permission/account rechecked per write, RAM path not blocked; v4 store now deduplicates identical pages, prevents stale source-page regressions, exposes bounded first/last preview and a conservative one-selected-path verification result. Missing/unknown native parent links, cycles, pagination gaps and omitted capture content cannot be labeled verified. One small logical path unit test file added; no browser/UI/E2E harness.\n\n**Validation:** `bun run check` PASS (existing nonfatal Biome warnings), `bun run test` 148 pass / 0 fail, `bun run build` PASS for extension and userscript on the pre-final cursor-preflight ordering; focused `features` TypeScript and Biome PASS on exact committed content. Not yet a production v4 rollout, independent Reviewer check or product acceptance. v3 DB/data and v1 Export remain untouched; no migration or reset occurred.\n\n**Next real implementation boundary:** replace archive reader and export wiring with the new v4 contracts, then controlled fresh namespace cutover with explicit warning about non-migrated local v3 archives. Continue implementation without intermediate PR review; only final consolidated diff is submitted for Reviewer.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/54#issuecomment-6070581470"
+    },
+    {
+      "id": 6070841232,
+      "issue_number": 54,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-08T23:09:08Z",
+      "updated_at": "2026-10-08T23:09:08Z",
+      "body": "Implementer handoff, 2026-10-09 — local `feature/archive-v4-foundation@8a47837` (6 commits ahead of `origin/dev`, clean tree). Rewired local page-runtime onto account-scoped Archive v4 capture/store/windowed reader and versioned Export v2. Active chat remains RAM-first; original IndexedDB v3 untouched and not migrated. Archive Browser starts with bounded newest window and loads older indexed windows on demand, exposes unknown chronology; export follows verified native parent linkage, technical JSON keeps original records once, and unverified binary files are unavailable. Export modal owns native history collection and pauses it on close/hidden tab; filename editable. Validated exact committed tree: `bun run check` pass, `bun run test` 152/152 pass, `bun run build` extension + userscript pass. Local logs `.work/archive-v4-final-pass-{check,test,build}.log`. Only source/test/build validation, not runtime acceptance. Next: close remaining wizard preview, path-coverage, account/catalog sync, preferences, verified compact events and packaging contracts; review **only after all active phases 0–5**, no intermediate PR/review. PR #65 remains closed/unmerged checkpoint. Do not close Issue #54.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/54#issuecomment-6070841232"
+    },
+    {
+      "id": 6070976105,
+      "issue_number": 54,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-08T23:20:07Z",
+      "updated_at": "2026-10-08T23:20:07Z",
+      "body": "Implementer checkpoint 2026-10-09: local `feature/archive-v4-foundation@7a31d7a` (7 commits ahead of `origin/dev`, clean tree). Implemented bounded Export preview (3 earliest + 3 latest indexed messages), independent page/capture evidence, explicit unsequenced/unknown lineage diagnostics, source/account checks, and a full-archive action preserving Export wizard state on return. Native collection pauses when leaving for Archive. Exact-tree `bun run check` and `bun run build` PASS (existing nonfatal Biome/sourcemap warnings); 152 existing and focused unit tests PASS before the final UI styling/context-invalidation edit. Source/build validation only, no live product acceptance. Review remains deferred until all active phases 0–5 are implemented, as agreed. No PR, merge or production rollout.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/54#issuecomment-6070976105"
+    },
+    {
+      "id": 6071120963,
+      "issue_number": 54,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-08T23:32:37Z",
+      "updated_at": "2026-10-08T23:32:37Z",
+      "body": "Implementer checkpoint 2026-10-09: local `feature/archive-v4-foundation@546d15e`, clean tree, 9 commits ahead of `origin/dev`. `2c9f821`: account-isolated Booster export preferences (global → project → conversation), override/reset, selected-scope loading, no cross-account scope writes. `546d15e`: format (JSON/Markdown/TXT) independent from packaging (none/ZIP stored without compression); ZIP includes output and archive-manifest.json, no binary attachments. Exact-tree gates PASS: `bun run check`; `bun run test` **156 pass, 0 fail**; `bun run build` both targets. Local ignored logs `.work/archive-v4-zip-exact-{check,tests,build}.log`. Not deployed, no runtime acceptance, no database migration. Remaining: path coverage reconciliation, evidenced model/effort events, large-output performance/quota, account race review, other #54 UX. One consolidated independent review **only after** phases 0–5. PR #65 remains closed/unmerged checkpoint; Issue #54 stays open.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/54#issuecomment-6071120963"
+    },
+    {
+      "id": 6071213771,
+      "issue_number": 54,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-08T23:40:49Z",
+      "updated_at": "2026-10-08T23:40:49Z",
+      "body": "Implementer checkpoint — 2026-10-09. Local `feature/archive-v4-foundation@bab3f44` (10 commits ahead of `origin/dev`, clean tree), following `546d15e`; no intermediate PR/review/merge. Closed two source-level correctness gaps: (1) `readSelectedPath` now rechecks Conversation revision and selected head after native-parent traversal; page/capture revisions cannot silently produce a mixed-version complete path. (2) export preparation rechecks verified account/tab/head context and source revision before yielding either a direct file or ZIP, with explicit `archive.error.sourceChanged` on invalidated source. Compact basic/selective export no longer repeats model fields on each message; selective mode records actual observed source `model_slug`/`resolved_model_slug` baseline and distinct value observations, without inferring a user-initiated model switch, requested model or thinking effort. Raw technical JSON fidelity unchanged. Three narrow tests added covering source races, owner epoch, and observed model provenance. Exact committed tree: `bun run check` PASS (50 nonfatal existing Biome warnings/32 infos), `bun run test` **159 passed, 0 failed** across 15 files, `bun run build` PASS Chromium MV3 + userscript (known sourcemap warning). Local ignored logs `.work/archive-v4-path-epoch-{check,tests,build}.log`. No live ChatGPT runtime/product acceptance or final Reviewer; #54 stays open. Next decision: source evidence to prove actual requested model/effort transitions, indexed page/path coverage under concurrent tabs, and bounded-memory packaging/performance; never infer unsupported user actions or claim production readiness.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/54#issuecomment-6071213771"
+    },
+    {
+      "id": 6071284010,
+      "issue_number": 54,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-08T23:46:48Z",
+      "updated_at": "2026-10-08T23:46:48Z",
+      "body": "Implementer checkpoint 2026-10-09 — local clean `feature/archive-v4-foundation@4ae37d8`, 11 commits ahead of `origin/dev`, not merged/published/reviewed. V4 indexed Archive Reader now binds each paginated saved-history session to one persisted Conversation revision and verified account. It checks owner before/after reads, rereads the header after IndexedDB window retrieval, and refuses to concatenate an older cursor after an update in another tab (`archive.error.sourceChanged`). Archive Browser shows explicit bilingual stale-window warning with a Refresh action. Bounded simultaneous cached Reader sessions to four; per-conversation accumulated message windows and large export memory are **not yet bounded** and remain in scope. Four focused data-contract tests cover stable cursor reads, write during retrieval, cross-tab revision change before older page and account change. Exact source gates: `bun run check` PASS (existing nonfatal Biome notices), `bun run test` 163 pass / 0 fail, `bun run build` Chromium MV3 and userscript PASS. Logs in ignored `.work/archive-v4-concurrent-windows-{check,tests,build}.log`. No real multiple-browser-tabs run or product acceptance claimed; tests only verify simulated confirmed reader contracts. Continue implementation across phases 0–5; one independent final review, no per-phase gate.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/54#issuecomment-6071284010"
+    },
+    {
+      "id": 6071321339,
+      "issue_number": 54,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-08T23:49:59Z",
+      "updated_at": "2026-10-08T23:49:59Z",
+      "body": "Implementer checkpoint 2026-10-09 — local clean `feature/archive-v4-foundation@a7ecdba`, **12 commits ahead of `origin/dev`**, no merge/release/intermediate review. Two new commits: `4ae37d8` prevents v4 saved Reader from merging indexed windows across Conversation revision/account changes (including simultaneous tabs); each window verifies header before and after read, old cursor fails closed with a Refresh notice. Limit cache to four *conversation sessions* (NOT message count within each session). Four focused data-contract tests. `a7ecdba` changes **unwrapped technical JSON** preparation from one giant JSON string to Blob parts batched over native records; exact byte-equivalence for compact and readable formats tested across 128-record boundaries. ZIP remains fully buffered and selected native message lineage is still entirely materialized: NO claim of end-to-end streaming or proven lower peak memory. Synthetic, no-private-data benchmark `.work/archive-v4-benchmark-after-blob.txt`: 5,000 artificial ~1KB messages => identical 6,623,066 bytes for compact technical output; Blob parts preparation ~19.1ms, full-string ~11.1ms in this run (not a real-client benchmark or a speedup claim). Exact committed source gates: `bun run check` PASS (existing nonfatal Biome diagnostics), `bun run test` **164 pass / 0 fail** over 16 files, `bun run build` Chromium MV3 and userscript PASS (known sourcemap warning). Ignored logs `.work/archive-v4-concurrent-windows-{check,tests,build}.log` and `.work/archive-v4-technical-blob-{check,tests,build}.log`. Remaining phase-3/5 concerns: per-conversation retained history window memory, bounded selected path traversal and ZIP peak RAM, real representative performance/quota evidence, cross-tab runtime acceptance, real Free/Pro contracts. Issue #54 stays open; one final independent review only after phases 0–5.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/54#issuecomment-6071321339"
+    },
+    {
+      "id": 6071576583,
+      "issue_number": 54,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-09T00:12:46Z",
+      "updated_at": "2026-10-09T00:12:46Z",
+      "body": "Implementer milestone, 2026-10-09 — **single unchanged implementation branch** `feature/archive-v4-foundation@0a59e30`, clean working tree, 14 commits ahead of `origin/dev`, no new branches, PRs or merges. Delta: `0c04672` caps each Archive V4 Reader session at **240 retained raw message records** (4 cached sessions), maintaining the older cursor while evicting offscreen newer records, adding return-to-latest and scroll-anchor preservation, and explicitly scoping text search / graph to loaded windows. Focused 360-record source-window test covers cap, cursor progression and restart. `0a59e30` changes v4 ZIP32 packaging to Blob-backed entries, incremental CRC over <=64 KiB chunks, cancellation and valid central-directory compression/date fields; direct and technical output share this path. **Independent Python `zipfile.testzip()` + extraction PASS** for synthetic archive; discovered previous ZIP central-directory defect through that check and fixed it in the v4 writer. The legacy v3 writer is not modified. Final exact-tree gates: `bun run check` PASS (50 pre-existing nonfatal warnings), `bun run test` **166/166 PASS** across 16 files, `bun run build` Chromium + userscript PASS (pre-existing sourcemap warning). Logs `.work/archive-v4-reader-bounded-{check,tests,build}.log`, `.work/archive-v4-blob-zip-{check,tests,build}.log`; synthetic interoperability ZIP under ignored `.work`. Scope caveat: only retained-record count and ZIP intermediate-block size bounded, **not** bytes per record, full selected-path read, or proven browser heap peak; ZIP32 size limit remains, no binary attachments, no production claim. Continue Phase 3/5 source/large-data work; final single independent review only after all phases 0–5.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/54#issuecomment-6071576583"
+    },
+    {
+      "id": 6071788445,
+      "issue_number": 54,
+      "author": "koba-ai-agent[bot]",
+      "created_at": "2026-10-09T00:31:50Z",
+      "updated_at": "2026-10-09T00:31:50Z",
+      "body": "Checkpoint 2026-10-09 — single local branch `feature/archive-v4-foundation@0740286` (15 commits ahead of `origin/dev`, clean; not pushed or merged). Technical v4 JSON/ZIP now uses two passes: verify selected root-to-tip ancestry retaining only message IDs, then read each original IndexedDB record individually into byte-compatible Blob parts. Strict pagination/capture, revision/head, account, missing-parent/record and abort gates retained; existing basic/selective export remains materialized. Exact-tree checks: `bun run check` PASS (pre-existing warnings), `bun run test` 169 PASS / 0 FAIL, `bun run build` Chromium MV3 + userscript PASS. Focused source checks: 259-record JSON equivalence, ZIP, missing record, cancellation and source-change handling. Ignored logs `.work/archive-v4-indexed-technical-{check,tests,build}.log`. Limits: extra message reads, all IDs and final Blob remain; browser heap/quota not measured. Next: bounded basic/selective writer plus measured browser large-export behavior. One final independent review after phases 0–5.",
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/issues/54#issuecomment-6071788445"
+    }
+  ],
+  "inline_pr_comments": [
+    {
+      "id": 4175215030,
+      "pull_request_number": 26,
+      "author": "koba-ai-reviewer[bot]",
+      "created_at": "2026-10-03T22:41:21Z",
+      "updated_at": "2026-10-03T22:41:21Z",
+      "body": "`references(thread)` currently walks all messages/details before applying only the image/file kind filter. In custom mode this can package attachments referenced by reasoning/tool/internal records that the user explicitly excluded. Build the attachment reference set from items passing `exportIncludes(item, options)`; full mode already makes that predicate true for all records.",
+      "path": "packages/features/src/archive-package.ts",
+      "line": 214,
+      "original_line": 206,
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/pull/26#discussion_r4175215030"
+    },
+    {
+      "id": 4175224910,
+      "pull_request_number": 26,
+      "author": "koba-ai-reviewer[bot]",
+      "created_at": "2026-10-03T22:44:19Z",
+      "updated_at": "2026-10-03T22:44:19Z",
+      "body": "Fixed in 6f5ff03: attachment references are now collected only from records passing `exportIncludes(item, transcriptOptions)`. Full mode still includes all records. A regression test verifies that custom export with tools disabled cannot package a tool-only attachment.",
+      "path": "packages/features/src/archive-package.ts",
+      "line": 214,
+      "original_line": 206,
+      "source_url": "https://github.com/KobaProduction/chatgpt-booster/pull/26#discussion_r4175224910"
+    }
+  ],
+  "pull_request_reviews": [
+    {
+      "pull_request_number": 28,
+      "id": 5405149714,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Reviewed exact v0.6.1 head 41ed02a after clean CI success. Checked floating/minimizable archive workspace and persisted geometry, Markdown escaping/rendering, compact reasoning/tool records, Raw/Run read-only modals, dedicated selective-saving surface, analytics dashboard, and version metadata. Live ChatGPT acceptance was also completed for selective-saving isolation, analytics, Raw/Run/Escape, and archive minimize/restore. No blocking findings on this revision.",
+      "submitted_at": "2026-10-04T08:59:58Z"
+    },
+    {
+      "pull_request_number": 27,
+      "id": 5404899981,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Reviewed the exact v0.6 polish head against the release/docked-archive-v0.6.0 base. Checked dock/UI changes, effective project/chat capture policy, injected scope controls, in-place manual collection, normal history-response buffering, first/latest visible-message boundaries, loader cancellation/background/error behavior, and stored-chain/update wording. CI for this head is green. Live ChatGPT acceptance separately demonstrated no reload, actual upward scroll, current-chat initial + continuation requests, first/latest ID match, project-scope settings targeting, and status/icon consistency. No blocking findings. This approval is for the incremental 0.6 branch only; no version bump/tag/release is implied.",
+      "submitted_at": "2026-10-04T07:48:53Z"
+    },
+    {
+      "pull_request_number": 26,
+      "id": 5403114149,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Reviewed the exact PR head and source diff. No blocking source-level findings remain. Capture consent is rechecked for conversation writes and now also scopes signed asset-resolution writes to the same permitted conversation; cross-chat asset resolution is rejected. History completion requires fresh linked pagination evidence, cancellation/ticket cleanup is scoped, pending composer attachments block reload-based collection, visible reply counts are separated from nested records, and full packages validate signed same-origin asset URLs, report missing/failed assets explicitly, and include size/hash evidence. CI build is green on this head. Local evidence additionally covers 45 Bun tests, the Chromium/IndexedDB fixture including scoped auth/storage/background handling, and live ChatGPT pagination/injection/pending-attachment/asset-resolver behavior. Approval is for the source change at this head; physical-touch acceptance and external inspection of a browser-saved blob ZIP are separate product/runtime validation levels, not silently promoted by this review.",
+      "submitted_at": "2026-10-03T22:29:16Z"
+    },
+    {
+      "pull_request_number": 26,
+      "id": 5403193156,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "CHANGES_REQUESTED",
+      "body": "One blocking export-selection issue remains: configurable binary export currently scans attachment references from every stored record in the thread, even when reasoning/tool/internal records are excluded by the selected export level. Binary selection must respect the same record-selection boundary as transcript export (full mode remains all records).",
+      "submitted_at": "2026-10-03T22:41:21Z"
+    },
+    {
+      "pull_request_number": 26,
+      "id": 5403211819,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "COMMENTED",
+      "body": "",
+      "submitted_at": "2026-10-03T22:44:19Z"
+    },
+    {
+      "pull_request_number": 26,
+      "id": 5403520124,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Independent review of head 9be166e: inspected archive/capture boundaries, history-loader cancellation and scoped errors, selective capture, export projection, attachment resolution/ZIP packaging, and the MAIN-world asset bridge. The bridge only accepts matching signed chatgpt.com estuary content URLs and does not synthesize private history requests. CI for this exact head is green. No code-blocking findings on this revision. Approval does not merge the draft PR or by itself assert release readiness beyond separately demonstrated runtime gates.",
+      "submitted_at": "2026-10-03T23:56:43Z"
+    },
+    {
+      "pull_request_number": 65,
+      "id": 5470226087,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Independent source review of the exact squash HEAD f84a052: code-level APPROVED. Reviewed native source validation, atomic account-scoped v4 writes, write-generation revocation, bounded IndexedDB reader/path verification, and export source fidelity. Local check/180 tests/build and GitHub Actions build are green. This is NOT live ChatGPT runtime or production acceptance; representative archive performance/size, product integration, and any outstanding required CI gates remain open in Issue #54. Do not merge until those gates are satisfied.",
+      "submitted_at": "2026-10-09T12:49:14Z"
+    },
+    {
+      "pull_request_number": 65,
+      "id": 5472043962,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Review of exact e5171a7 relative to previously approved f84a052 for DEV-only integration: v1 retained, v2 enumerates observed metadata/tool signatures, unknown fields and nonempty offsets remain fail-closed; no broad bypass. CI PASS includes strict checks, 183 tests and both builds. Live Chromium confirms initial partial ingestion and explicit Stop with preserved records. APPROVED only for rolling DEV prerelease/testing, NOT final Archive & Export acceptance. Issue #54 still tracks missing initial-page lineage proof and complete export. Do not claim product readiness.",
+      "submitted_at": "2026-10-09T15:24:08Z"
+    },
+    {
+      "pull_request_number": 64,
+      "id": 5463318256,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Reviewed the published 18-file source delta against Issue #54's phase-0 scope, including original message preservation, supported native-history/stream signature checks, fail-closed archive/error gates, native account registry/catalog evidence, and request-epoch isolation of stale history/stream/catalog responses. Exact remote tree matches the tested local tree; required GitHub build check passed and local typecheck/Biome, 144 focused/full existing tests and both build targets were reported passing. **This approves the incremental source-contract slice, not the overall archive rewrite or new-schema cutover.** Legacy v3 remains unscoped and cannot establish durable multi-account isolation; phase 1 must use a fresh account-keyed database before claiming persistent account isolation. No independent Free/Pro runtime acceptance has been demonstrated; the master Issue remains open.",
+      "submitted_at": "2026-10-08T21:57:16Z"
+    },
+    {
+      "pull_request_number": 63,
+      "id": 5462425297,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Independent docs-only review. The master #54 now contains all six original stage checklists and closure criteria; former #55–#60 are closed as historical. Repository routing and target architecture point to only #54 for active modernization work, with previously deferred #53 separate. Three-file diff, no runtime code or data changes; approve subject to required green CI.",
+      "submitted_at": "2026-10-08T20:24:34Z"
+    },
+    {
+      "pull_request_number": 62,
+      "id": 5462347324,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Reviewed the one-file documentation correction against #54 and revised #56/#60. It removes required IndexedDB v3 migration, legacy v1 export compatibility and redundant legacy-test commitments, while retaining explicit new-schema correctness and fail-closed API safety gates. A clean new DB cutover is separate from an API signature mismatch: the latter must never delete data. No runtime or database changes. Approval contingent on successful required CI before merge.",
+      "submitted_at": "2026-10-08T20:17:15Z"
+    },
+    {
+      "pull_request_number": 61,
+      "id": 5462233795,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Independent documentation review on exact four-file diff: runtime remains unchanged. The architecture explicitly distinguishes proposed target from deployed v3, preserves original ChatGPT messages and account isolation, specifies strict fail-closed source versioning and evidence-preserving migration, and makes Issues the sole live task/acceptance ledger. Parent #54 and stages #55–#60 are linked with deferred #53 separate. Relative doc links/diff checks are reported passing; CI must still be green before merge.",
+      "submitted_at": "2026-10-08T20:06:05Z"
+    },
+    {
+      "pull_request_number": 52,
+      "id": 5461013387,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Reviewed the four changed files: presentation-only history labels now remove observed opaque media pointers, markdown decoration, and citation markers; saved content, raw metadata, and exports are unchanged. Four unit tests, full source checks and both package builds passed locally (132 tests). Approval applies to this small UI label change; final rolling CI and real Free rendering remain separate gates.",
+      "submitted_at": "2026-10-08T18:14:46Z"
+    },
+    {
+      "pull_request_number": 51,
+      "id": 5460911407,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Reviewed the five-file UI-only redesign against dev. It restores full reader width, exposes a dismissible history inspector, retains exact observed GitGraph edges, and uses saved turn order when ancestry is sparse. Source check, 128 tests, builds and 16/16 synthetic Chromium UI acceptance passed; PR CI is green. Approved for rolling Dev integration and subsequent real-client validation, not claiming complete Free/Pro product acceptance.",
+      "submitted_at": "2026-10-08T18:05:24Z"
+    },
+    {
+      "pull_request_number": 50,
+      "id": 5455742119,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Reviewed the ten-file change against dev. Source/type/build checks and CI are green, and the synthetic Chromium acceptance ran 16/16. Approving integration into dev for immediate live acceptance; this review does not claim Free/Pro product-level acceptance.",
+      "submitted_at": "2026-10-08T11:19:06Z"
+    },
+    {
+      "pull_request_number": 49,
+      "id": 5454819398,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Reviewed replacement: uses GitGraph.js imported history via topologically ordered recorded parent links, terminal refs ensure branch visibility without fake merges, old block-diagram renderer removed, scrolling fixed-pixel SVG avoids fit-to-view minification, and archive navigation remains read-only. MIT licences. Local full check/tests/build/browser-fixture typecheck passed, managed Chromium synthetic UI fixture 15/15. Approval subject to CI and explicitly does not constitute real Pro screenshot acceptance or historical completeness validation.",
+      "submitted_at": "2026-10-08T09:57:10Z"
+    },
+    {
+      "pull_request_number": 48,
+      "id": 5451009916,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Reviewed PR head 29ae52b: Vue Flow owns node/edge interaction, Dagre ranks explicit parent-linked graph top-down instead of inferring direction from chronological array order. Unknown ancestors and malformed cycles do not receive speculative links. Sampling of long histories is bounded, old SVG rail no longer mounts, native conversation remains read-only, and both dependencies use MIT licences. Local all-package check/tests/target builds and managed Chromium synthetic UI fixture 15/15 passed. Approval for dev integration subject to GitHub CI; actual Pro UI/large-graph performance and full branch coverage remain separate acceptance gates.",
+      "submitted_at": "2026-10-08T03:30:47Z"
+    },
+    {
+      "pull_request_number": 47,
+      "id": 5450886887,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Reviewed mitigation: the source graph is chronological, and parent references occurring at or after descendants cannot be represented as forward links. Suppression preserves raw stored records and adds an explicit UI warning rather than falsely asserting missing data. Pure regression test covers inverted ancestry; local typecheck/lint/tests/build passed. Approval for dev integration subject to GitHub CI. Important: does not implement topology-aware layout or prove history completeness; issue #38 remains open.",
+      "submitted_at": "2026-10-08T03:06:40Z"
+    },
+    {
+      "pull_request_number": 46,
+      "id": 5450814068,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Reviewed archive-only fix: bounded sampled checkpoint count preserves both endpoints and all explicitly marked forks; navigation and ancestral paths retain underlying original message indices. Window-shift revision invalidation guards the old conversation's delayed UI continuation after cross-chat selection/unmount. Fixture acceptance checks rapid switching and restored bounded rail. Local full typecheck/lint/tests/build and managed Chromium 15/15 browser scenarios passed. Approval for dev integration subject to GitHub CI; actual Pro screenshot acceptance and storage pagination remain pending.",
+      "submitted_at": "2026-10-08T02:52:28Z"
+    },
+    {
+      "pull_request_number": 45,
+      "id": 5450764146,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Reviewed geometry-only rail fix. Expanded lane separation is consistent between SVG x axes and checkpoint CSS; removing unconditional spine avoids implying parent linkage through unknown gaps. No native mutation or persistence changes. Source checks/builds and managed Chromium 15/15 fixture passed. Live Pro screenshot acceptance remains pending after installed userscript update. Approve for dev integration subject to CI.",
+      "submitted_at": "2026-10-08T02:42:56Z"
+    },
+    {
+      "pull_request_number": 44,
+      "id": 5450726041,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Reviewed read-only archive fork choice logic and UI against archive boundaries: only explicit shared-parent user messages produce variant groups, duplicate IDs are excluded, selecting a saved variant navigates locally without mutating native ChatGPT. Pure tests and synthetic Free-shaped browser fixture 15/15 cover groups and choosing edited version. Local full typecheck, lint, Bun tests and both builds succeeded. Approval for dev integration subject to required GitHub CI; actual Free/Pro installed userscript branch switching remains unverified.",
+      "submitted_at": "2026-10-08T02:35:48Z"
+    },
+    {
+      "pull_request_number": 43,
+      "id": 5450665275,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Reviewed PR #43 head 6702c6b and relevant archive constraints. Checkpoint connectors are computed exclusively from observed parent-ID links and stop at unknown ancestors; no native ChatGPT modification or archive persistence change. Reader mount/SPAnavigation now initializes the observer before async archive reads and keeps bounded initial render. Regression coverage includes missing-parent gaps and a synthetic two-fork conversation. Local checks, unit suite, builds, and managed Chromium fixture 15/15 passed. Approval is for source integration subject to GitHub CI; synthetic fixture does not count as live Free userscript injection.",
+      "submitted_at": "2026-10-08T02:25:03Z"
+    },
+    {
+      "pull_request_number": 42,
+      "id": 5450456464,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Reviewed the current head 2ea071a against repository archive contracts. The reader remains read-only and retains raw data; the fixed timeline samples non-fork messages but preserves endpoints and exact shared-parent fork indicators. Archive position setting is normalized; catalog rename updates only already archived conversations, in one transaction. Regression cases cover long chains, bounded navigation, catalog title changes and synthetic Free-shaped forks. Source validation: workspace typechecks, 115 Bun tests, both userscript/MV3 builds and browser-fixture typecheck passed. Live UI acceptance and true paginated IndexedDB reads remain explicit boundaries, not release-readiness claims. Approval is for Rolling Dev integration, subject to required CI.",
+      "submitted_at": "2026-10-08T01:47:09Z"
+    },
+    {
+      "pull_request_number": 42,
+      "id": 5450481360,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Re-reviewed PR head 3bd768a after the CI formatting correction. The final delta is formatting only in CSS and browser fixture source. GitHub Actions build check on head 3bd768a completed successfully; all local checks/tests/builds succeeded. Read-only archive contract and outstanding true paginated storage/live UI acceptance boundaries unchanged.",
+      "submitted_at": "2026-10-08T01:51:08Z"
+    },
+    {
+      "pull_request_number": 41,
+      "id": 5450449827,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Reviewed the final two-commit diff. Trusted internal pushes/PRs use `zoomies-linux-x64`, while untrusted fork/Dependabot PRs remain hosted. Initial CI found a real runner-image Node 18 vs Rolldown compatibility issue; the writer added an explicit `actions/setup-node@v4` Node 22 step rather than changing the runner fleet. Post-fix PR run 37714093002 passed Bun check/test/build and both artifact uploads on ephemeral `zoomies-linux-x64-jitterbug-kym4pxx7` in runner group `zoomies`. Release workflow remains deliberately unchanged.",
+      "submitted_at": "2026-10-08T01:46:04Z"
+    },
+    {
+      "pull_request_number": 40,
+      "id": 5450222566,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Reviewed changed source/UI, exact-parent DAG classification and accompanying fork/cycle/missing-parent unit tests. Read-only presentation preserves raw archive records; no native ChatGPT mutation or data-store changes. Source unit suite 111/111 and both targets' builds passed. UI is explicitly scoped as a node-rail prototype, not full branch navigation or live browser acceptance. Full repo-wide Biome diagnostics remain outside this patch; track separately.",
+      "submitted_at": "2026-10-08T01:06:31Z"
+    },
+    {
+      "pull_request_number": 37,
+      "id": 5449833429,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Reviewed the isolated Zoomies DinD acceptance job. The change is scoped to the manual smoke workflow and exercises daemon access, image build/run, and multi-container networking without altering normal CI execution.",
+      "submitted_at": "2026-10-08T00:01:22Z"
+    },
+    {
+      "pull_request_number": 36,
+      "id": 5448909528,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Reviewed the single-file browser fixture acceptance delta at a0b7439. It keeps the mock list confined to the test, uses try/finally to restore the adapter, verifies nested branch rendering, depth, source markers, ancestor-aware search and selection, and does not modify product runtime or persistence. Chromium browser acceptance 14/14 and relevant static/unit checks passed. No blockers.",
+      "submitted_at": "2026-10-07T22:01:43Z"
+    },
+    {
+      "pull_request_number": 35,
+      "id": 5448874190,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Reviewed PR #35 at 9359a7f against archive ownership, source/state and read-only contracts. The change is restricted to presentation/export/fixture code, preserves raw records and capture policy, handles missing/cyclic branch provenance, and distinguishes progressive UI windowing from IndexedDB pagination. Local check/test/build and browser fixture acceptance are reported passing (13/13); these do not substitute for live ChatGPT acceptance. No blocking source issues found for merging into rolling dev. Follow up with live Tampermonkey acceptance before closing #33.",
+      "submitted_at": "2026-10-07T21:57:25Z"
+    },
+    {
+      "pull_request_number": 34,
+      "id": 5448701679,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Approved. The workflow is manual-only, isolated from existing CI, targets only the new `zoomies-linux-x64` pool, and performs a minimal runner identity/checkout smoke without Docker or release side effects.",
+      "submitted_at": "2026-10-07T21:40:28Z"
+    },
+    {
+      "pull_request_number": 12,
+      "id": 5392413434,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Independent review completed. The transport bridge now avoids Window-wrapper identity checks and validates same-origin/channel markers, while hooks remain installed independently of whether events are currently consumed. Current-tab and persisted all-time counters are separated cleanly. Settings state remembers section/disclosure state, the project-specific telemetry endpoint is removed from defaults/source, Chromium background validates telemetry against the saved user endpoint, and Tampermonkey/Chromium telemetry setup now includes a test flow. CI is green. No blocking findings.",
+      "submitted_at": "2026-10-02T13:34:35Z"
+    },
+    {
+      "pull_request_number": 11,
+      "id": 5391922656,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Independent review completed. The Tampermonkey DataCloneError is addressed by replacing structuredClone on Vue reactive settings with an explicit plain snapshot serializer. The settings path contains no structuredClone calls, persistence failures are caught and rolled back to stored state, and a Proxy-backed regression test covers the failure mode. Development bundles are intentionally unminified and the userscript carries an inline sourcemap for readable runtime traces. CI is green. No blocking findings.",
+      "submitted_at": "2026-10-02T12:44:59Z"
+    },
+    {
+      "pull_request_number": 10,
+      "id": 5391785164,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Independent review completed. Settings writes are now atomic nested patches, Chromium persistence is serialized through the background service worker so popup teardown cannot cancel the write path, and the UI guards optimistic local state against stale storage echoes while writes are pending. Existing storage subscriptions remain the live-update path for Tool Inspector and Transport Observer. Regression tests cover sequential master/module toggles and nested observer patches. CI is green. No blocking findings.",
+      "submitted_at": "2026-10-02T12:32:31Z"
+    },
+    {
+      "pull_request_number": 9,
+      "id": 5391482122,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Independent review completed. The observer runs in the page MAIN world, crosses into the isolated runtime through a structured-clone postMessage channel, and redacts URL/body data before leaving MAIN. Headers/cookies are not captured, body previews are opt-in and truncated, and bearer tokens remain in target-specific secret storage. Chromium exports through the background worker; Tampermonkey exports through GM_xmlhttpRequest. OTLP resource/service/scope contracts and redaction have regression tests. No blocking findings.",
+      "submitted_at": "2026-10-02T12:00:10Z"
+    },
+    {
+      "pull_request_number": 9,
+      "id": 5391503438,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Re-reviewed current head after the exactOptionalPropertyTypes fix. CI is green. The fix only makes optional UI adapter props explicitly accept undefined and does not change runtime behavior. Previous observer/telemetry review findings remain valid; no blocking findings.",
+      "submitted_at": "2026-10-02T12:03:11Z"
+    },
+    {
+      "pull_request_number": 8,
+      "id": 5391131998,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Independent review completed. The i18n layer is centralized, settings persist an auto/en/ru preference with backward-compatible defaults, browser-language detection maps ru* to Russian and falls back to English, and the shared Control Center, launcher, Tool Inspector, and Tampermonkey menu all consume the same locale contract. Local typecheck/build validation is green. No blocking findings.",
+      "submitted_at": "2026-10-02T11:15:15Z"
+    },
+    {
+      "pull_request_number": 7,
+      "id": 5391047573,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Independent review: the browser bundles now replace Node-style process.env references at build time, and the userscript finalizer rejects any unresolved process.env in the final artifact. Versioning is synchronized to 0.1.3. CI is green and the local runtime-artifact checks passed. No blocking findings.",
+      "submitted_at": "2026-10-02T11:04:21Z"
+    },
+    {
+      "pull_request_number": 6,
+      "id": 5390978629,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Independent review completed on the current head. The Control Center is now a single shared Vue surface used by Tampermonkey and the Chromium popup; the in-page launcher opens that same surface. Launcher position is backward-compatible, persisted through the existing settings adapters and clamped into the viewport. Tampermonkey menu registration is explicit in metadata via GM_registerMenuCommand. CI is green. No blocking findings.",
+      "submitted_at": "2026-10-02T10:54:40Z"
+    },
+    {
+      "pull_request_number": 5,
+      "id": 5390831616,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Independent review: the in-page Control Center remains mounted independently of the master feature switch, uses the existing settings adapters for both extension and userscript, preserves live Tool Inspector toggling, and synchronizes version 0.1.1 through package metadata, MV3 manifest and Tampermonkey @version. No blocking findings.",
+      "submitted_at": "2026-10-02T10:35:36Z"
+    },
+    {
+      "pull_request_number": 4,
+      "id": 5389048793,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Independent review completed on the current head. The ChatGPT-specific DOM logic is isolated behind an adapter, feature lifecycle and settings are shared by extension/userscript, injected UI remains Shadow-DOM isolated, generic Tools UI false positives were reduced, and module failures are isolated. CI is green. No blocking source/build findings. Authenticated ChatGPT desktop runtime acceptance remains explicitly open because the automated browser is blocked by Cloudflare.",
+      "submitted_at": "2026-10-02T06:57:28Z"
+    },
+    {
+      "pull_request_number": 3,
+      "id": 5388915580,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Reviewed the exact four-file userscript watch delta. Metadata finalization is now bound to Vite writeBundle, so both normal and watch builds produce an installable userscript. TypeScript configuration is scoped to this package. Independent CI succeeded on head abb3677ed20efbf82f5f1f1a4ff54c8ee546c338, and runtime build/watch artifact checks were performed from a fresh checkout. No blocking findings.",
+      "submitted_at": "2026-10-02T06:34:47Z"
+    },
+    {
+      "pull_request_number": 2,
+      "id": 5388870596,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Reviewed the exact one-commit delta. The change is limited to Tampermonkey packaging, preserves the shared runtime architecture, scopes the userscript to chatgpt.com, and makes metadata finalization deterministic. CI completed successfully on head 9f6f4b2f373ccd288db5f2914057e501bdf387a8. No blocking findings.",
+      "submitted_at": "2026-10-02T06:26:30Z"
+    },
+    {
+      "pull_request_number": 1,
+      "id": 5388852901,
+      "author": "koba-ai-reviewer[bot]",
+      "state": "APPROVED",
+      "body": "Independent bootstrap review: package boundaries are coherent, ChatGPT host scope is limited, injected UI is isolated with Shadow DOM, extension/userscript share the same core/UI, CI check is green, and release packaging is consistent with the userscript update URL. No blocking findings.",
+      "submitted_at": "2026-10-02T06:23:12Z"
+    }
+  ]
+}
