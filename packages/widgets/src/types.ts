@@ -14,6 +14,7 @@ export interface ArchiveManagerState {
   folder: string | null
   messages: number
   busy: boolean
+  folderPending?: boolean
   paused: boolean
   blockedReason?: string | null
   phase: string

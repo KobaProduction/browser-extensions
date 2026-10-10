@@ -106,6 +106,7 @@ export interface ArchiveStatus {
   activePeerId: number | null
   blockedReason: string | null
   busy: boolean
+  folderPending: boolean
   options: ArchiveOptions
   progress: ArchiveProgress
   messages: number

@@ -37,6 +37,7 @@ const view = computed<ArchiveManagerState | null>(() => {
     folder: current.folder,
     messages: current.messages,
     busy: current.busy,
+    folderPending: current.folderPending,
     paused: current.checkpoint?.status === 'paused',
     blockedReason: current.blockedReason,
     phase: p.phase,
@@ -88,7 +89,7 @@ async function resume() {
   <ArchiveManager v-if="status && view" :state="view" :initial="status.options" :error="error"
     title="Архив переписки VK" @choose-folder="chooseFolder" @start="start"
     @stop="api?.stop()" @resume="resume"/>
-  <template v-if="api && status?.folder && status.messages > 0">
+  <template v-if="api && status?.folder && !status.blockedReason && status.messages > 0">
     <div class="flex justify-end">
       <button
         type="button"

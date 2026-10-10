@@ -103,7 +103,7 @@ VK Booster preserves the existing v2 data format.
 
 ## VK product integration
 
-The current VK Booster 2.3.1 milestone prioritizes a working application over
+The current VK Booster 2.3.2 milestone prioritizes a working application over
 additional ChatGPT archive decomposition. A standalone single-module install
 opens directly into the VK archive panel in the shared Shadow DOM Control
 Center; the all-in-one shell retains multi-feature navigation when more than
@@ -120,8 +120,13 @@ selection blocks parallel exports and hides transient cross-folder previews.
 Switching conversations requires selecting a matching folder before writing;
 legacy v2 files are not converted or silently reused for another peer.
 
-This is a local development build, not a published release or a successful
-browser acceptance. Runtime acceptance still requires VK login/permissions,
+Opening the native folder picker now reserves the archive operation before
+permission is granted. The UI distinguishes folder selection from export,
+prevents concurrent actions, hides stale previews after VK navigation, and
+restores the previous selection after cancellation or mismatch.
+
+This is local development source, not a published release or a successful
+browser acceptance; distribution packaging must pass its own build gate. Runtime acceptance still requires VK login/permissions,
 selecting an existing v2 folder, an exact-N export and resume, media rendering,
 and keyboard/mobile inspection in Tampermonkey and Chromium MV3.
 

@@ -80,6 +80,7 @@ const save = {
   sessionStorage: globalThis.sessionStorage,
   fetch: globalThis.fetch,
   flag: globalThis.__VK_EXPORT_TEST_MODE,
+  showDirectoryPicker: globalThis.showDirectoryPicker,
 }
 globalThis.__VK_EXPORT_TEST_MODE = true
 Object.assign(globalThis, { document: {}, location: { pathname: '/im/convo/7654321' } })
@@ -192,6 +193,7 @@ afterAll(() => {
     sessionStorage: save.sessionStorage,
     fetch: save.fetch,
     __VK_EXPORT_TEST_MODE: save.flag,
+    showDirectoryPicker: save.showDirectoryPicker,
   })
   delete globalThis.VKExport
 })
@@ -485,4 +487,72 @@ test('folder loading cannot expose mixed chat data or overlap with a new export'
   await loading
   expect(a.status()).toMatchObject({ folder: pending.name, busy: false, messages: 0 })
   await a.useFolder(folderHandle(folder))
+})
+
+test('folder picker reserves the archive before user permission and rejects a changed VK conversation', async () => {
+  a = reload()
+  await a.useFolder(folderHandle(folder))
+  const before = a.status()
+  const nextFolder = new MockDir('different-peer-destination')
+  const handle = Object.assign(folderHandle(nextFolder), {
+    requestPermission: async (): Promise<PermissionState> => 'granted',
+  })
+  let select!: (folder: FileSystemDirectoryHandle) => void
+  const picker = new Promise<FileSystemDirectoryHandle>((resolve) => {
+    select = resolve
+  })
+  Object.assign(globalThis, { showDirectoryPicker: () => picker })
+  const choosing = a.selectFolder()
+  try {
+    expect(a.status()).toMatchObject({
+      busy: true,
+      folderPending: true,
+      folder: null,
+      messages: 0,
+    })
+    expect(a.status().blockedReason).toContain('Выбор папки')
+    await expect(a.run({ mode: 'recent', limit: 2 })).rejects.toThrow('Выбор папки')
+    await expect(a.useFolder(folderHandle(folder))).rejects.toThrow('Другая операция')
+    await expect(a.selectFolder()).rejects.toThrow('Другая операция')
+    globalThis.location.pathname = '/im/convo/' + (peer + 1)
+    select(handle)
+    await expect(choosing).rejects.toThrow('Диалог VK изменился при выборе папки')
+    expect(nextFolder.files.size).toBe(0)
+    expect(a.status().busy).toBe(false)
+    expect(a.status().folderPending).toBe(false)
+    expect(a.status().options.peerId).toBe(peer)
+    expect(a.status().messages).toBe(before.messages)
+  } finally {
+    select(handle)
+    globalThis.location.pathname = '/im/convo/' + peer
+    Object.assign(globalThis, { showDirectoryPicker: save.showDirectoryPicker })
+  }
+})
+
+test('cancelling the folder picker restores the previously selected archive', async () => {
+  a = reload()
+  await a.useFolder(folderHandle(folder))
+  const before = a.status()
+  let rejectPicker!: (error: Error) => void
+  const picker = new Promise<FileSystemDirectoryHandle>((_, reject) => {
+    rejectPicker = reject
+  })
+  Object.assign(globalThis, { showDirectoryPicker: () => picker })
+  const choosing = a.selectFolder()
+  try {
+    expect(a.status().folder).toBeNull()
+    const cancel = new Error('User cancelled')
+    cancel.name = 'AbortError'
+    rejectPicker(cancel)
+    await expect(choosing).rejects.toThrow('User cancelled')
+    expect(a.status()).toMatchObject({
+      busy: false,
+      folderPending: false,
+      folder: before.folder,
+      messages: before.messages,
+      options: { peerId: peer },
+    })
+  } finally {
+    Object.assign(globalThis, { showDirectoryPicker: save.showDirectoryPicker })
+  }
 })

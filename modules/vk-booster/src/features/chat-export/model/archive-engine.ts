@@ -18,7 +18,7 @@ import type {
 } from './types'
 /* VK Booster v2 provider composition; neutral paging, storage and UI live in shared packages. */
 export function installVkArchive(): void {
-  const VERSION = '2.3.1'
+  const VERSION = '2.3.2'
   if (globalThis.VKExport?.version === VERSION) return
   const currentPeer = () => conversationPeerFromPath(location.pathname)
   const cfg: ArchiveOptions = {
@@ -36,7 +36,8 @@ export function installVkArchive(): void {
     rows: VkMessage[] = [],
     busy = false,
     stopRequested = false,
-    folderLoading = false
+    folderLoading = false,
+    folderPickerOpen = false
   let prog: ArchiveProgress = {
     phase: 'Ожидание',
     done: 0,
@@ -100,13 +101,14 @@ export function installVkArchive(): void {
   }
   function status(): ArchiveStatus {
     const pagePeer = currentPeer()
-    if (folderLoading)
+    if (folderLoading || folderPickerOpen)
       return {
         version: VERSION,
         folder: null,
         activePeerId: pagePeer,
-        blockedReason: 'Читаю и проверяю папку архива…',
+        blockedReason: folderPickerOpen ? 'Выбор папки архива…' : 'Читаю и проверяю папку архива…',
         busy: true,
+        folderPending: true,
         options: { ...cfg },
         progress: { ...prog },
         messages: 0,
@@ -119,6 +121,7 @@ export function installVkArchive(): void {
       activePeerId: pagePeer,
       blockedReason: archiveContextBlock(cfg.peerId, pagePeer),
       busy,
+      folderPending: false,
       options: { ...cfg },
       progress: { ...prog },
       messages: rows.length,
@@ -126,7 +129,7 @@ export function installVkArchive(): void {
     }
   }
   function configure(v: Partial<ArchiveOptions> = {}): ArchiveStatus {
-    if (busy || folderLoading) throw Error('Заверши текущую операцию с архивом')
+    if (busy || folderLoading || folderPickerOpen) throw Error('Заверши текущую операцию с архивом')
     const pagePeer = currentPeer()
     const o = { ...cfg, ...v, peerId: v.peerId ?? (root ? cfg.peerId : (pagePeer ?? cfg.peerId)) }
     if (pagePeer !== null && o.peerId !== pagePeer) throw Error('Выбран другой диалог VK')
@@ -177,7 +180,8 @@ export function installVkArchive(): void {
   async function useFolder(handle: FileSystemDirectoryHandle): Promise<ArchiveStatus> {
     const pagePeer = currentPeer()
     if (pagePeer === null) throw Error('Открой диалог VK перед выбором папки')
-    if (busy || folderLoading) throw Error('Другая операция с папкой уже выполняется')
+    if (busy || folderLoading || folderPickerOpen)
+      throw Error('Другая операция с папкой уже выполняется')
     const previousRoot = root,
       previousMeta = meta,
       previousRows = rows,
@@ -236,14 +240,30 @@ export function installVkArchive(): void {
   }
   async function selectFolder(): Promise<ArchiveStatus> {
     if (!globalThis.showDirectoryPicker) throw Error('Нужен Chrome и HTTPS')
-    // This must run synchronously from a real user button click.
-    const h = await globalThis.showDirectoryPicker({ id: 'vk-archive-v2', mode: 'readwrite' })
-    const permitted = h as FileSystemDirectoryHandle & {
-      requestPermission(options: { mode: 'readwrite' }): Promise<PermissionState>
+    const pagePeer = currentPeer()
+    if (pagePeer === null) throw Error('Открой диалог VK перед выбором папки')
+    if (busy || folderLoading || folderPickerOpen)
+      throw Error('Другая операция с папкой уже выполняется')
+    // Reserve the operation before the picker opens: no export, preview or competing folder
+    // selection may use the previously bound archive while the user chooses a destination.
+    folderPickerOpen = true
+    refresh()
+    try {
+      // This call must remain synchronous with the human button gesture.
+      const h = await globalThis.showDirectoryPicker({ id: 'vk-archive-v2', mode: 'readwrite' })
+      const permitted = h as FileSystemDirectoryHandle & {
+        requestPermission(options: { mode: 'readwrite' }): Promise<PermissionState>
+      }
+      if ((await permitted.requestPermission({ mode: 'readwrite' })) !== 'granted')
+        throw Error('Нет разрешения на запись')
+      if (currentPeer() !== pagePeer) throw Error('Диалог VK изменился при выборе папки')
+      // useFolder takes ownership of the operation synchronously before its first await.
+      folderPickerOpen = false
+      return await useFolder(h)
+    } finally {
+      folderPickerOpen = false
+      refresh()
     }
-    if ((await permitted.requestPermission({ mode: 'readwrite' })) !== 'granted')
-      throw Error('Нет разрешения на запись')
-    return useFolder(h)
   }
   const vk = createVkProvider(cfg, { sleep, refresh })
   const auth = () => vk.auth()
@@ -286,7 +306,7 @@ export function installVkArchive(): void {
     options: Partial<ArchiveOptions> & { resume?: boolean } = {},
   ): Promise<ArchiveRunResult> {
     if (busy) throw Error('Выгрузка уже запущена')
-    if (folderLoading) throw Error('Выбор папки ещё не завершён')
+    if (folderLoading || folderPickerOpen) throw Error('Выбор папки ещё не завершён')
     if (!root) throw Error('Сначала выбери папку')
     const resume = options.resume === true
     if (!resume) configure(options)

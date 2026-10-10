@@ -49,7 +49,7 @@ function start() {
     <div class="booster-setting-copy">
       <div class="flex items-center gap-2">
         <Archive class="size-4"/><b>{{title || 'Архив переписки'}}</b>
-        <Badge :variant="state.busy?'default':'outline'">{{state.busy?'Экспорт':'Ожидание'}}</Badge>
+        <Badge :variant="state.busy?'default':'outline'">{{state.folderPending?'Выбор папки':state.busy?'Экспорт':'Ожидание'}}</Badge>
       </div>
       <span>{{state.context}} · Сообщений в архиве: {{state.messages}}</span>
     </div>
@@ -106,7 +106,7 @@ function start() {
     </div>
     <div class="flex flex-wrap gap-2">
       <Button :disabled="state.busy||!state.folder||!!state.blockedReason" @click="start"><Download class="size-4"/>Выгрузить</Button>
-      <Button variant="outline" :disabled="!state.busy" @click="emit('stop')"><Pause class="size-4"/>Пауза</Button>
+      <Button variant="outline" :disabled="!state.busy||state.folderPending" @click="emit('stop')"><Pause class="size-4"/>Пауза</Button>
       <Button variant="outline" :disabled="state.busy||!state.paused||!!state.blockedReason" @click="emit('resume')"><Play class="size-4"/>Продолжить</Button>
     </div>
     <p v-if="state.blockedReason" role="alert" class="text-sm text-destructive">{{state.blockedReason}}</p>
