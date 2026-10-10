@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VK Booster [DEV]
 // @namespace    https://github.com/KobaProduction/browser-extensions/dev/vk-booster
-// @version      2.3.9-dev.1
+// @version      2.3.10-dev.3
 // @description  Koba Browser Tools / VK Booster
 // @homepageURL   https://github.com/KobaProduction/browser-extensions
 // @updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/vk-booster.user.js
@@ -710,7 +710,7 @@ list.append(fragment);stats.textContent=found.length+' / '+entries.length+' со
 q.addEventListener('input',render);render();<\/script></html>`;
   }
   function installVkArchive() {
-    const VERSION = "2.3.9";
+    const VERSION = "2.3.10";
     const apiKey = instanceKey("VKExport", "vk-booster:prod");
     const published = globalThis;
     if (published[apiKey]?.version === VERSION) return;
@@ -11484,6 +11484,94 @@ q.addEventListener('input',render);render();<\/script></html>`;
     };
   };
   const twMerge = /* @__PURE__ */ createTailwindMerge(getDefaultConfig);
+  const _hoisted_1$3$1 = ["aria-busy"];
+  const _hoisted_2$5 = {
+    key: 0,
+    class: "flex items-center justify-between gap-2"
+  };
+  const _hoisted_3$4 = {
+    role: "status",
+    "aria-live": "polite"
+  };
+  const _hoisted_4$4 = {
+    key: 0,
+    class: "tabular-nums"
+  };
+  const _hoisted_5$3 = ["value", "aria-label"];
+  const _hoisted_6$3 = {
+    key: 1,
+    class: "text-xs text-muted-foreground"
+  };
+  const _hoisted_7$3 = {
+    key: 2,
+    role: "alert",
+    class: "text-sm text-destructive"
+  };
+  const _sfc_main$5 = /* @__PURE__ */ defineComponent({
+    __name: "ArchiveProgress",
+    props: {
+      label: {},
+      completed: { default: null },
+      total: { default: null },
+      detail: { default: null },
+      error: { default: null },
+      busy: { type: Boolean, default: false },
+      compact: { type: Boolean, default: false },
+      ariaLabel: {}
+    },
+    setup(__props) {
+      const props = __props;
+      const progress = computed(() => {
+        if (props.completed === null || props.completed === void 0 || props.total === null || props.total === void 0 || !Number.isFinite(props.completed) || !Number.isFinite(props.total) || props.total <= 0)
+          return null;
+        return Math.min(100, Math.max(0, Math.floor(props.completed / props.total * 100)));
+      });
+      return (_ctx, _cache) => {
+        return openBlock(), createElementBlock("section", {
+          class: normalizeClass(__props.compact ? "w-full" : "booster-shared-archive-progress"),
+          "aria-busy": __props.busy
+        }, [
+          !__props.compact ? (openBlock(), createElementBlock("div", _hoisted_2$5, [
+            createBaseVNode(
+              "span",
+              _hoisted_3$4,
+              toDisplayString(__props.label),
+              1
+              /* TEXT */
+            ),
+            progress.value !== null ? (openBlock(), createElementBlock(
+              "strong",
+              _hoisted_4$4,
+              toDisplayString(progress.value) + "%",
+              1
+              /* TEXT */
+            )) : createCommentVNode("v-if", true)
+          ])) : createCommentVNode("v-if", true),
+          createBaseVNode("progress", {
+            class: "w-full",
+            value: progress.value ?? void 0,
+            max: "100",
+            "aria-label": __props.ariaLabel || __props.label
+          }, null, 8, _hoisted_5$3),
+          __props.detail ? (openBlock(), createElementBlock(
+            "p",
+            _hoisted_6$3,
+            toDisplayString(__props.detail),
+            1
+            /* TEXT */
+          )) : createCommentVNode("v-if", true),
+          __props.error ? (openBlock(), createElementBlock(
+            "p",
+            _hoisted_7$3,
+            toDisplayString(__props.error),
+            1
+            /* TEXT */
+          )) : createCommentVNode("v-if", true),
+          renderSlot(_ctx.$slots, "default")
+        ], 10, _hoisted_1$3$1);
+      };
+    }
+  });
   const _hoisted_1$5 = ["aria-label"];
   const _sfc_main$2$2 = /* @__PURE__ */ defineComponent({
     __name: "ModalSurface",
@@ -11587,7 +11675,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
       };
     }
   });
-  const _sfc_main$5 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$6 = /* @__PURE__ */ defineComponent({
     __name: "Button",
     props: {
       variant: { default: "default" },
@@ -11621,16 +11709,6 @@ q.addEventListener('input',render);render();<\/script></html>`;
       };
     }
   });
-  const _hoisted_1$2$1 = {
-    key: 0,
-    role: "status",
-    "aria-live": "polite"
-  };
-  const _hoisted_2$2$1 = ["value", "aria-label"];
-  const _hoisted_3$2$1 = {
-    key: 1,
-    class: "booster-note"
-  };
   const _sfc_main$2$1 = /* @__PURE__ */ defineComponent({
     __name: "ArchiveProgressBar",
     props: {
@@ -11642,49 +11720,13 @@ q.addEventListener('input',render);render();<\/script></html>`;
     },
     setup(__props) {
       return (_ctx, _cache) => {
-        return openBlock(), createElementBlock(
-          "div",
-          {
-            class: normalizeClass(__props.compact ? "w-full" : "booster-export-progress")
-          },
-          [
-            !__props.compact ? (openBlock(), createElementBlock(
-              "p",
-              _hoisted_1$2$1,
-              toDisplayString(__props.label),
-              1
-              /* TEXT */
-            )) : createCommentVNode("v-if", true),
-            createBaseVNode("progress", {
-              class: normalizeClass(__props.compact ? "w-full" : void 0),
-              value: __props.percent ?? void 0,
-              max: "100",
-              "aria-label": __props.label
-            }, null, 10, _hoisted_2$2$1),
-            __props.counter ? (openBlock(), createElementBlock("p", _hoisted_3$2$1, [
-              createTextVNode(
-                toDisplayString(__props.counter),
-                1
-                /* TEXT */
-              ),
-              __props.percent !== null && __props.percentLabel ? (openBlock(), createElementBlock(
-                Fragment,
-                { key: 0 },
-                [
-                  createTextVNode(
-                    " · " + toDisplayString(__props.percentLabel) + " " + toDisplayString(__props.percent) + "%",
-                    1
-                    /* TEXT */
-                  )
-                ],
-                64
-                /* STABLE_FRAGMENT */
-              )) : createCommentVNode("v-if", true)
-            ])) : createCommentVNode("v-if", true)
-          ],
-          2
-          /* CLASS */
-        );
+        return openBlock(), createBlock(unref(_sfc_main$5), {
+          label: __props.label,
+          completed: __props.percent,
+          total: 100,
+          compact: __props.compact,
+          detail: __props.counter ? `${__props.counter}${__props.percent !== null && __props.percentLabel ? ` · ${__props.percentLabel} ${__props.percent}%` : ""}` : null
+        }, null, 8, ["label", "completed", "compact", "detail"]);
       };
     }
   });
@@ -11796,7 +11838,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
                   /* TEXT */
                 )
               ]),
-              createVNode(unref(_sfc_main$5), {
+              createVNode(unref(_sfc_main$6), {
                 variant: "outline",
                 size: "sm",
                 disabled: __props.state.busy,
@@ -12138,7 +12180,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
                 ])
               ]),
               createBaseVNode("div", _hoisted_23, [
-                createVNode(unref(_sfc_main$5), {
+                createVNode(unref(_sfc_main$6), {
                   disabled: __props.state.busy || !__props.state.folder || !!__props.state.blockedReason,
                   onClick: start
                 }, {
@@ -12153,7 +12195,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
                   _: 1
                   /* STABLE */
                 }, 8, ["disabled"]),
-                createVNode(unref(_sfc_main$5), {
+                createVNode(unref(_sfc_main$6), {
                   variant: "outline",
                   disabled: !__props.state.busy || __props.state.folderPending,
                   onClick: _cache[9] || (_cache[9] = ($event) => emit2("stop"))
@@ -12169,7 +12211,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
                   _: 1
                   /* STABLE */
                 }, 8, ["disabled"]),
-                createVNode(unref(_sfc_main$5), {
+                createVNode(unref(_sfc_main$6), {
                   variant: "outline",
                   disabled: __props.state.busy || !__props.state.paused || !!__props.state.blockedReason,
                   onClick: _cache[10] || (_cache[10] = ($event) => emit2("resume"))
@@ -12526,7 +12568,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
               -1
               /* CACHED */
             )),
-            result.value.matching > result.value.messages.length && visibleLimit.value < 240 ? (openBlock(), createBlock(unref(_sfc_main$5), {
+            result.value.matching > result.value.messages.length && visibleLimit.value < 240 ? (openBlock(), createBlock(unref(_sfc_main$6), {
               key: 0,
               variant: "outline",
               size: "sm",
@@ -12787,7 +12829,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
                 _: 1
                 /* STABLE */
               }),
-              createVNode(unref(_sfc_main$5), {
+              createVNode(unref(_sfc_main$6), {
                 variant: "ghost",
                 size: "icon",
                 class: "size-8",
@@ -12938,7 +12980,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
                           /* CACHED */
                         )
                       ])], 10, _hoisted_13),
-                      feature.state === "active" ? (openBlock(), createBlock(unref(_sfc_main$5), {
+                      feature.state === "active" ? (openBlock(), createBlock(unref(_sfc_main$6), {
                         key: 0,
                         variant: "outline",
                         size: "sm",
