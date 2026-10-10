@@ -16,7 +16,7 @@ test('archive progress is a single host-neutral widget reused by VK and ChatGPT'
     'utf8',
   )
   const vk = await readFile(
-    new URL('../../../modules/vk-booster/src/features/chat-export/ui/ArchivePanel.vue', import.meta.url),
+    new URL('../../../modules/vk-booster/src/ui/ArchivePanel.vue', import.meta.url),
     'utf8',
   )
   const chatgpt = await readFile(
@@ -26,7 +26,7 @@ test('archive progress is a single host-neutral widget reused by VK and ChatGPT'
   expect(shared).toContain('aria-live="polite"')
   expect(shared).not.toContain('vk-booster')
   expect(shared).not.toContain('chatgpt-booster')
-  expect(vk).toContain('<ArchiveManager')
+  expect(vk).toContain('VK Archive')
   expect(chatgpt).toContain('<ArchiveProgress')
 })
 

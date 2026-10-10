@@ -14,7 +14,7 @@ test('ChatGPT-only change bumps ChatGPT and aggregate, not VK', () => {
   expect(affectedModules(paths)).toEqual(['chatgpt-booster', 'all-in-one'])
 })
 test('VK-only change bumps VK and aggregate, not ChatGPT', () => {
-  const paths = ['modules/vk-booster/src/features/chat-export/model/archive-engine.ts']
+  const paths = ['modules/vk-booster/src/model/service.ts']
   expect(impactedProductVersions(paths)).toEqual(['vk-booster', 'all-in-one'])
   expect(planVersionBumps(paths, versions)).toEqual({ 'vk-booster': '2.3.9', 'all-in-one': '0.5.1' })
   expect(affectedModules(paths)).toEqual(['vk-booster', 'all-in-one'])

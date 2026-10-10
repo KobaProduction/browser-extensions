@@ -42,7 +42,7 @@ A version bump is required; already-published tags are not republished.
 
 ## Integration freeze / explicit approval
 
-The combined VK v2 and ChatGPT source relocation was
+The earlier VK prototype and ChatGPT source relocation was
 **code-only**. The old `workflow_run` automatic main-branch publication was
 replaced with explicit `workflow_dispatch` approval on `main` to avoid silently
 updating installed VK users before post-relocation browser acceptance. The

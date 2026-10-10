@@ -21,12 +21,27 @@ Browser profile/extension-ID data migration is not automatic.
 
 | Module | Status | Targets | Source |
 | --- | --- | --- | --- |
-| VK Booster 2.3.10 | Independent v2 exporter; preserved v2 archive format | Tampermonkey, Chromium | `modules/vk-booster/` |
-| ChatGPT Booster 2.0.5 | Independent release-enabled module; installed-product cutover still gated | Tampermonkey, Chromium | `modules/chatgpt-booster/` |
-| Proxy Switcher | Typed interface and capability boundary only | Future MV3 background | `modules/proxy-switcher/` |
-| All-in-one 0.5.4 | VK + ChatGPT site-specific composition in one installer | Tampermonkey, Chromium | `apps/` |
+| VK Booster 3 | Native IndexedDB archive + independent JSON/file export, source/browser QA pending | Tampermonkey, Chromium | `modules/vk-booster/` |
+| ChatGPT Booster | Distinct v3/v4 archive and provider runtime; migration acceptance separate | Tampermonkey, Chromium | `modules/chatgpt-booster/` |
+| All-in-one | Shared Control Center, VK + ChatGPT in isolated channels | Tampermonkey, Chromium | `apps/` |
+| Proxy Switcher | Capability contract only | Not shipped | `modules/proxy-switcher/` |
 
-VK Booster preserves source messages, attachments, photos, document names, voice messages and a self-contained offline HTML chat. Its form is a VK-specific Vue presenter around a reusable Archive Manager widget inside the shared Control Center, without a second modal. The same panel now includes a bounded, searchable preview of messages already loaded from the selected v2 archive using the shared ArchiveTranscript widget. The preview renders at most 240 records; the original index.html remains the full offline viewer for older messages, files and voice records. The previous standalone userscript menu handler was removed, so installing a bundle does not register duplicate menus. The VK-specific API provider, attachment selection/fallback, and offline HTML renderer are separate modules. Neutral linear page selection, acknowledgement-gated scan orchestration and bounded binary response verification (MIME, size, SHA-256) are implemented in `packages/archive`; the File System Access writer is shared via `packages/adapters`. This does not imply that ChatGPT v4 binary asset contracts have been accepted. VK retains its v2 checkpoint persistence, provider-specific media and final HTML output; the shared scan service injects source and commit ports. No branch-aware, multi-source controller is claimed; the v2 output format is preserved.
+VK Archive 3 first captures **every available message** through the VK API
+into its own `koba-vk-native-v1:<product>:<channel>` IndexedDB. No attachment
+binary is included in capture. The separate export path filters saved messages
+by inclusive dates and text/file selections; output is `chat.json`,
+`manifest.json`, and a flat `attachments/` directory with collision-free
+numeric filename prefixes. A separate receipt ledger stores SHA-256, size and
+folder identity, and an audit flags missing, renamed or modified files.
+Independent JSON backup/restore is scoped and atomic. The old VK v2
+file-export prototype was removed; it has no installed-user migration contract.
+
+A local browser-only archive lab uses synthetic VK messages and a memory
+repository, without requiring a VK login or extension installation. Run
+`bun run dev:archive` and open `http://127.0.0.1:5187` to inspect the UI
+and exercise fixture capture, export and backup/restore. Reusable fixture
+primitives live in `scripts/dev-harness`, and provider-specific fixtures in
+`apps/dev-archive-lab`.
 
 ## Install and build
 
@@ -107,63 +122,17 @@ After installed-product verification, **explicit manual release approval** start
 
 Architecture and integration guides: `docs/ARCHITECTURE.md`, `docs/INTEGRATION.md`, `docs/RELEASES.md`.
 
-## Tampermonkey installation and per-module updates
+## Tampermonkey DEV installation
 
-Use VK Booster instead of the old VK Archive Tampermonkey script.
+DEV userscripts update from the `dev` artifact branch; PROD is separately
+approved. Install exactly the desired product variant:
 
-Install/update URLs:
-- VK Booster: https://raw.githubusercontent.com/KobaProduction/browser-extensions/distribution/userscripts/vk-booster.user.js
-- All-in-one: https://raw.githubusercontent.com/KobaProduction/browser-extensions/distribution/userscripts/all-in-one.user.js
+- VK: https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/vk-booster.user.js
+- ChatGPT: https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/chatgpt-booster.user.js
+- Aggregate: https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/all-in-one.user.js
 
-Paste the URL in Tampermonkey Dashboard → Utilities → Install from URL.
-Both userscripts embed matching @updateURL and @downloadURL metadata.
-Each has a separate version and update channel; install only ONE on VK to avoid
-duplicate interfaces. Stable URLs are served from the dedicated distribution
-branch. After installed-product acceptance, an explicitly approved manual release publishes only changed module versions.
-
-Disable the old VK Conversation Archive userscript from the Tampermonkey
-Dashboard before enabling VK Booster. Never delete the saved message archive:
-VK Booster preserves the existing v2 data format.
-
-## VK product integration
-
-The current VK Booster 2.3.10 milestone prioritizes a working application over
-additional ChatGPT archive decomposition. A standalone single-module install
-opens directly into the VK archive panel in the shared Shadow DOM Control
-Center; the all-in-one shell retains multi-feature navigation when more than
-one view is registered. Bounded local preview, export options, progress and
-resume controls all consume existing VK v2 archive state. Searching preview
-messages does not contact VK, rewrite the archive or reload saved media.
-
-VK soft-navigation now has a fail-closed conversation context guard. The selected
-peer is refreshed from the current VK conversation only when no folder is
-bound; an open folder remains pinned to its own peer. Export/resume buttons
-are disabled while the selected VK conversation differs, and each VK history
-request and persistent page commit rechecks the live peer. A pending folder
-selection blocks parallel exports and hides transient cross-folder previews.
-Switching conversations requires selecting a matching folder before writing;
-legacy v2 files are not converted or silently reused for another peer.
-
-Opening the native folder picker now reserves the archive operation before
-permission is granted. The UI distinguishes folder selection from export,
-prevents concurrent actions, hides stale previews after VK navigation, and
-restores the previous selection after cancellation or mismatch.
-
-This is local development source, not a published release or a successful
-browser acceptance; distribution packaging must pass its own build gate. Runtime acceptance still requires VK login/permissions,
-selecting an existing v2 folder, an exact-N export and resume, media rendering,
-and keyboard/mobile inspection in Tampermonkey and Chromium MV3.
-
-## Booster UI extraction (in progress)
-
-The UI primitives, reusable archive widget and shared shell are separately owned.
-The shell handles Shadow DOM, draggable launcher, centered modal and navigation;
-the VK feature adapts its archive API/state to the widget inside that shell. ChatGPT Booster
-source repository remains unchanged; its imported compatibility copy
-has a historical decomposition snapshot under integrations/chatgpt-booster; the executable now lives in modules/chatgpt-booster. The snapshot is not distributed. Full acceptance still
-requires browser acceptance and independent review.
-The VK API/storage model remains transitional and is not a reusable archive
-library yet. This refactor does not change released versions or channels.
+The aggregate owns **its own** archive database. Its storage does not inspect
+standalone extension databases. All product/channel scopes are independent.
 
 ## Static quality gates
 
@@ -178,9 +147,9 @@ checks and is not implicitly modified by first-party lint commands.
 
 ## Integration source boundary (2026-10-10)
 
-The VK Booster v2.3.10 typed source, bounded archive widgets and shared storage
+The VK Booster 3 native archive source and shared archive infrastructure
 utilities are included in the same tree as independent ChatGPT Booster
-2.0.4. Only `modules/*` application entries are distributed. The other
+2.0.5. Only `modules/*` application entries are distributed. The other
 ChatGPT baseline in `integrations/chatgpt-booster` is a read-only migration
 reference preserving advanced refactor files until source parity is verified;
 it is not registered as a second extension, bundle or release target. Browser
@@ -191,10 +160,11 @@ Source merge and authoritative ownership map: [VK/ChatGPT reconciliation](docs/I
 
 ## Independent product release graph
 
-ChatGPT Booster is release-enabled at **2.0.5**, VK Booster retains **2.3.10**,
-and the combined all-in-one package is **0.5.4**. Changes to either module
-require bumping that module plus the aggregate, but not the other module.
-Shared reusable implementation changes require bumping all consumers. PR CI
+ChatGPT Booster is release-enabled at **2.0.5**, VK Booster uses **3.0.0**,
+and the combined all-in-one package is **0.6.0**. Changes to ChatGPT require a ChatGPT and aggregate version bump. VK development
+changes rebuild VK DEV and advance the aggregate without changing the frozen
+VK 3.0.0 product version. Shared implementation changes bump other affected
+products while retaining the VK 3.0.0 base. PR CI
 checks this relationship; `scripts/bump-versions.ts` provides an explicit
 patch-bump utility. Module-scoped release tags and distribution userscripts
 remain independent. The manual release workflow can select one product and

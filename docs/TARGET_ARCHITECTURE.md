@@ -34,8 +34,9 @@ all six FSD layers; a domain engine should not have fake pages or widgets.
   or second launcher inside an already open shell.
 - Browser permissions are actual capabilities, never assumed by target name.
 - No private content, cookies, tokens or media in telemetry.
-- Maintain the v2 archive format, metadata, original media and resume behavior
-  until an explicitly reviewed migration is accepted.
+- VK has no installed-user legacy contract. The new native VK archive replaces
+  the prototype completely; do not preserve the former v2 files or exporter.
+  ChatGPT existing production v3/v4 archive identities remain protected.
 - Create a package or slice only when it has responsibility and a needed
   public contract; avoid generating directories just to fill a diagram.
 
@@ -177,7 +178,7 @@ into normalized archive records by an anti-corruption layer.
     }
 
 Domain owns records and invariants; application owns exact-N semantics,
-incremental/backfill/deduplication, checkpoints, retries and progress.
+complete capture, idempotent persistence, export filtering, retries and progress.
 Integrations own VK/ChatGPT auth, source paging and expiring media links.
 Storage/output adapters own physical bytes, checksums, folder and ZIP formats.
 Widgets merely display and control these use cases.
@@ -192,9 +193,10 @@ Widgets merely display and control these use cases.
   supported. Do not accumulate unbounded media duplicates in memory.
 - Missing binary attachments can be fetched lazily with documented state
   and retry; provider URLs may require refreshing via a source adapter.
-- VK archive v2 metadata.json, messages.json, index.html, media/, filenames
-  and resume semantics are backwards-compatibility requirements.
-  Breaking them needs a separately reviewed migration and regression tests.
+- VK native archive uses its own per-product/channel IndexedDB. It stores
+  message metadata and attachment references, not unlimited binary media.
+  Export uses chat.json + manifest.json + flat attachments/ filenames and
+  SHA-256 receipts; native archive JSON backups restore atomically.
 - A write is successful only after the storage adapter acknowledges it.
 
 The interfaces above do not mean IndexedDB migration, ChatGPT export or
@@ -241,10 +243,10 @@ impact graph rebuilds only affected consumers. A VK-only provider change
 does not rebuild unrelated products; a shared archive/widget change rebuilds
 dependents.
 
-VK Booster stays on **major version 2**. Compatible fixes and refactors
-use patch 2.x.y, backwards-compatible product functionality uses the next
-2.x minor. Version 3 is reserved for intentional incompatible public API or
-storage contracts, not a UI redesign or directory shuffle. Docs-only changes
+VK Booster **3.0.0** intentionally replaces the prototype's incompatible
+file-based API and archive format with a native IndexedDB-first archive and
+separate export. Future compatible changes follow standard patch/minor semver.
+ChatGPT versions remain independently managed. Docs-only changes
 never bump versions or publish bundles.
 
 Module-scoped tags and stable independent Tampermonkey update channels remain
@@ -279,9 +281,10 @@ rewrite or for deleting known-good data.
    responsive/light/dark UI and keyboard behavior.
 7. Obtain independent architecture/code review before merge or release.
 
-Archive regression gates include N=3000, incremental/backfill deduplication,
-pause/resume, original filenames, voice/media integrity, offline HTML and
-reopening an existing v2 archive. Browser testing is a separate runtime gate.
+VK acceptance includes full 3000+ message capture, source exhaustion
+evidence, fail-closed partial captures, sanitized export, filename collision
+handling, SHA-256 audit, backup/restore and six-way DEV/PROD isolation.
+Browser authentication/media testing is a separate runtime gate.
 
 **Forbidden shortcuts:** domain code in shared UI, widget-owned database or
 archive engine, nested settings windows, separate target-specific copies of
@@ -294,7 +297,7 @@ The user authorized consolidating ChatGPT Booster source into this monorepo.
 `modules/chatgpt-booster` is a transitional provider-owned import; common
 shell/feature lifecycle and gzip are extracted immediately. The eventual
 shared archive application/storage and widgets need separate verified ports
-and do **not** justify rewriting VK v2 semantics or destroying existing
+and do **not** justify rewriting independent VK native semantics or destroying existing
 ChatGPT v3/v4 archives. Migration parity and real-browser validation remain
 release blockers. See `CHATGPT_BOOSTER_MIGRATION.md`.
 

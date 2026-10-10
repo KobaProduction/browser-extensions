@@ -65,17 +65,6 @@ if (import.meta.main) {
         original.replace(previous, `export const BOOSTER_BASE_VERSION = '${version}'`),
       )
     }
-    if (id === 'vk-booster') {
-      for (const file of [
-        'modules/vk-booster/src/features/chat-export/model/archive-engine.ts',
-        'modules/vk-booster/src/index.test.ts',
-      ]) {
-        const source = await readFile(file, 'utf8')
-        if (!oldVersion || !source.includes(oldVersion))
-          throw Error(`Unexpected VK runtime/test version source in ${file}`)
-        await writeFile(file, source.replace(oldVersion, version))
-      }
-    }
   }
   if (Object.keys(next).length) {
     // Workspace package manifests are pinned by bun.lock. Keep them coherent

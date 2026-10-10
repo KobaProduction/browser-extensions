@@ -53,5 +53,17 @@ issues. Never treat historical standalone PRs as live monorepo merge targets.
 - Check `bun run check`, `bun run build` and `bun scripts/validate.ts --built` before publishing.
 - The CI `zoomies-linux-x64` runner is for trusted branch/main code; fork PRs must not run there.
 
-## Known migration debt
-VK Booster is a real, tested v2 browser exporter wrapped behind typed `Feature` lifecycle. Its VK API, media mapping and offline viewer have separate internal owners. Linear page selection and the acknowledgement-gated scan loop use browser-archive; folder writes use browser-adapters, and the archive form uses browser-widgets. VK still owns v2 checkpoint format, media work, provider authentication and storage. The complete branch-aware, multi-source archive controller remains unimplemented. Preserve 3000-message, offline HTML, attachment and resumption behavior; do not fork the engine between targets.
+## VK native archive contract (replaces the prototype)
+
+VK Booster 3 owns a new per-product/channel IndexedDB archive. There is **no
+VK v2 backwards-compatibility, migration, file checkpoint or repeat-"recent N"
+contract**. No VK users depend on the prototype. Remove obsolete VK v2 source,
+files, tests and UI rather than retaining a parallel exporter.
+
+The VK API adapter captures *complete* conversation messages without downloading
+media. Binary attachments are separate on-demand exports with a download
+receipt/SHA-256 ledger. Exports are sanitized JSON + attachments; backup/restore
+is scoped and transactional. The provider-neutral paging fixture and UI shell
+may be shared, but ChatGPT v3/v4 owner proofs and existing data must not change.
+Validate synthetic 3000+ message capture, full completion, export, file audits,
+backup/restore, independent DEV/PROD scope, and the local archive lab.

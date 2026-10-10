@@ -35,7 +35,7 @@ promotion from inventing source history or causing endless build-on-push loops.
 
 | Installed product | PROD | DEV |
 | --- | --- | --- |
-| VK Booster | Legacy standalone VK archive identity, isolated from others | Separate VK DEV scope |
+| VK Booster | Own native VK database in standalone PROD | Separate native VK DEV database |
 | ChatGPT Booster | Existing standalone v3/v4 IndexedDB names (no implicit migration) | Separate ChatGPT DEV scope and v3/v4 names |
 | All-in-one | Separate aggregate storage, root and events on both hosts | Separate aggregate DEV storage, root and events |
 
@@ -54,11 +54,10 @@ promotion from inventing source history or causing endless build-on-push loops.
 - Tampermonkey DEV script names/namespaces and updater URLs differ from PROD;
   existing PROD names/namespaces remain stable. Chrome users should not run
   a Tampermonkey and MV3 copy of the **same product and channel** together.
-- VK v2 folder archives keep their existing schema. New owned folders include
-  an `instance_scope` stamp. DEV and aggregate refuse unowned legacy folders
-  or a folder stamped for another installation; only the original PROD VK
-  standalone may reopen unstamped v2 archives. Never point two live instances
-  at the same archive output directory.
+- VK 3 has no v2 migration contract. Its product/channel IndexedDB names
+  differ, and file exports carry a scope-stamped manifest. An exporter
+  cannot claim a directory already stamped for a different instance.
+  Backup restoration rejects another product/channel.
 
 ## Acceptance / safety boundary
 
@@ -66,7 +65,7 @@ Static separation of names and compilation is **not** a live concurrency
 guarantee. Before advertising co-installation as accepted, test all six
 installable combinations in one browser profile, verify separate extension IDs,
 v3/v4 persistence, visible controls, page events, real user authorization,
-VK v2 folder guards, and restart/update/rollback. Do not publish an
+native VK export-folder scope guards, and restart/update/rollback. Do not publish an
 untested PROD change solely on source/build success. Existing browser data
 are never auto-migrated between extension IDs or channels.
 
