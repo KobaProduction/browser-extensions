@@ -11,7 +11,7 @@
 
 Each published module has its own `module.json` semver and GitHub Release tag, e.g. `vk-booster/v2.2.0` or `all-in-one/v0.1.0`. After a successful main-branch validation and an **explicitly approved manual workflow dispatch** on `main`, `release.yml`:
 
-1. Confirms the upstream run was successful and originated from our main-branch push.
+1. Requires explicit approval and a manual workflow run on validated `main`.
 2. Lists releases absent at the desired module version.
 3. Compares source/dependency scopes with the latest module tag; if unchanged, **skips** publishing.
 4. Builds and verifies only each eligible distributable, and creates a GitHub Release containing `*.user.js` and `*-extension.zip`.
@@ -23,7 +23,8 @@ This workflow does **not** publish Chrome Web Store packages, automatic Tampermo
 ## Stable Tampermonkey channels
 
 The distribution branch has a module-specific path for each installable
-userscript: userscripts/vk-booster.user.js and userscripts/all-in-one.user.js.
+userscript: userscripts/vk-booster.user.js, userscripts/chatgpt-booster.user.js
+and userscripts/all-in-one.user.js.
 
 Do NOT use releases/latest for userscript auto-updates: that URL is global to
 the repository, so a new release of a different module could hijack updates.
@@ -31,16 +32,33 @@ Instead each bundle embeds module-specific update/download URLs targeting
 the distribution branch. scripts/publish-channel.sh copies the selected
 verified userscript into this branch and pushes only on a byte change.
 
-Main's release workflow runs after successful trusted CI, creates immutable
+A manually approved release workflow on validated `main` creates immutable
 module-scoped GitHub Releases, and then advances that module's stable channel.
 A version bump is required; already-published tags are not republished.
 
 ## Integration freeze / explicit approval
 
-The combined VK 2.3.7 and experimental ChatGPT source relocation is
+The combined VK v2 and ChatGPT source relocation was
 **code-only**. The old `workflow_run` automatic main-branch publication was
 replaced with explicit `workflow_dispatch` approval on `main` to avoid silently
 updating installed VK users before post-relocation browser acceptance. The
 independent module release plan/tags and distribution channel mechanism remain
 unchanged; accepted versions may be published by manually starting the release
-workflow with `approve_release=true`. ChatGPT still has `release:false`.
+workflow with `approve_release=true`. ChatGPT 2.0.1 is now `release:true` for independently scoped builds; only a manually approved workflow may publish it after installed-product acceptance.
+
+## Version 2 release channels (2026-10-10)
+
+- VK Booster: `2.3.8` — changes in VK increment VK and all-in-one only.
+- ChatGPT Booster: `2.0.1` — changes in ChatGPT increment ChatGPT and all-in-one only.
+- All-in-one: `0.5.0` — aggregates both providers with independent feature
+  lifecycles, Tampermonkey and MV3 targets.
+- Shared `packages/` implementation changes affect all consumers. Documentation
+  and CI-only changes do not bump product semver.
+
+The `scripts/version-policy.ts` gate enforces versions on PRs and
+`scripts/bump-versions.ts` can generate explicit patch changes for specified
+implementation paths. `release.yml` offers per-product `release_scope`:
+`chatgpt-booster` publishes ChatGPT and its aggregator, `vk-booster` publishes
+VK and its aggregator, `all-in-one` publishes only the aggregator and
+`shared`/`all` covers all products. No release occurs without both
+`approve_release=true` and selection on the main branch.

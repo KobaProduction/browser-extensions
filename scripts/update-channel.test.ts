@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { manifest, userscriptChannelUrl } from './catalog'
 
-for (const id of ['vk-booster', 'all-in-one']) {
+for (const id of ['vk-booster', 'chatgpt-booster', 'all-in-one']) {
   test(id + ': stable Tampermonkey update channel independent of build artifacts', async () => {
     const data = await manifest(id)
     expect(data.release).toBe(true)

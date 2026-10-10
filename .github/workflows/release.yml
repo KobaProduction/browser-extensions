@@ -7,6 +7,17 @@ on:
         type: boolean
         required: true
         default: false
+      release_scope:
+        description: 'Which independently-versioned product changed (automatically include all-in-one)'
+        type: choice
+        required: true
+        default: all
+        options:
+          - all
+          - chatgpt-booster
+          - vk-booster
+          - all-in-one
+          - shared
 permissions:
   contents: write
 jobs:
@@ -34,6 +45,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_SHA: ${{ github.sha }}
+          RELEASE_SCOPE: ${{ inputs.release_scope }}
         shell: bash
         run: |
           set -euo pipefail
@@ -50,4 +62,4 @@ jobs:
               --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
               --title "$id v$version" --generate-notes
             bash scripts/publish-channel.sh "$id"
-          done < <(bun scripts/release-plan.ts --tsv)
+          done < <(bun scripts/release-plan.ts --tsv --scope "$RELEASE_SCOPE")

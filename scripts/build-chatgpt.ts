@@ -11,8 +11,7 @@ type Bundle = (
   productVersion?: string,
 ) => Promise<string>
 
-/** One verified implementation with distinct browser delivery adapters.
- * The experimental ChatGPT module never joins an automatic release plan. */
+/** One ChatGPT delivery artifact builder shared by module-scoped and aggregate builds. */
 export async function buildChatGptModule(root: string, target: string, version: string, bundle: Bundle) {
   const id = 'chatgpt-booster'
   const dir = join(root, 'dist', id)
@@ -20,7 +19,7 @@ export async function buildChatGptModule(root: string, target: string, version: 
   await mkdir(dir, { recursive: true })
   if (target !== 'extension') {
     const output = await bundle(
-      join(root, 'apps/userscript/src/chatgpt-booster.ts'),
+      join(root, 'apps/userscript/src/chatgpt-standalone.ts'),
       join(dir, '_userscript'),
       'bundle.js',
       'iife',
@@ -29,11 +28,12 @@ export async function buildChatGptModule(root: string, target: string, version: 
     )
     const header = [
       '// ==UserScript==',
-      '// @name         ChatGPT Booster (monorepo preview)',
+      '// @name         ChatGPT Booster',
       '// @namespace    https://github.com/KobaProduction/browser-extensions',
       '// @version      ' + version,
-      '// @description  ChatGPT Booster — shared platform preview',
-      // Preview artifacts are manually installed; no update channel before release.
+      '// @description  ChatGPT Booster — archive and browser tools',
+      '// @updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/distribution/userscripts/chatgpt-booster.user.js',
+      '// @downloadURL  https://raw.githubusercontent.com/KobaProduction/browser-extensions/distribution/userscripts/chatgpt-booster.user.js',
       '// @match        https://chatgpt.com/*',
       '// @run-at       document-start',
       '// @grant        GM_registerMenuCommand',
@@ -52,7 +52,7 @@ export async function buildChatGptModule(root: string, target: string, version: 
     const ext = join(dir, 'extension')
     await mkdir(ext, { recursive: true })
     await bundle(
-      join(root, 'apps/extension/src/chatgpt-content.ts'),
+      join(root, 'apps/extension/src/chatgpt-standalone.ts'),
       join(dir, '_content'),
       'bundle.js',
       'iife',
@@ -95,9 +95,9 @@ export async function buildChatGptModule(root: string, target: string, version: 
     await writeFile(join(ext, 'popup.html'), html)
     const manifest = {
       manifest_version: 3,
-      name: 'ChatGPT Booster (monorepo preview)',
+      name: 'ChatGPT Booster',
       version,
-      description: 'Source-preserving ChatGPT archive with one shared browser shell',
+      description: 'ChatGPT archive with shared browser tools shell',
       permissions: ['storage', 'scripting'],
       host_permissions: ['https://chatgpt.com/*'],
       // This is NOT granted on installation. Explicit user action is required for a configured HTTPS telemetry endpoint.
@@ -124,5 +124,5 @@ export async function buildChatGptModule(root: string, target: string, version: 
       child.once('error', fail)
     })
   }
-  console.log('Built experimental ChatGPT Booster', version, '(' + target + ')')
+  console.log('Built ChatGPT Booster', version, '(' + target + ')')
 }

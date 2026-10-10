@@ -29,3 +29,14 @@ test('scoped release plan skips unchanged modules', () => {
     true,
   )
 })
+
+test('ChatGPT updates rebuild only ChatGPT and all-in-one', () => {
+  expect(affectedModules(['modules/chatgpt-booster/packages/features/src/page-runtime.ts'])).toEqual([
+    'chatgpt-booster',
+    'all-in-one',
+  ])
+  expect(affectedModules(['apps/extension/src/chatgpt-content.ts'])).toEqual([
+    'chatgpt-booster',
+    'all-in-one',
+  ])
+})

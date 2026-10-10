@@ -1,7 +1,7 @@
 {
   "id": "chatgpt-booster",
   "name": "ChatGPT Booster",
-  "version": "0.8.99",
+  "version": "2.0.1",
   "hosts": [
     "chatgpt.com"
   ],
@@ -14,5 +14,5 @@
     "origin-storage",
     "local-files"
   ],
-  "release": false
+  "release": true
 }
