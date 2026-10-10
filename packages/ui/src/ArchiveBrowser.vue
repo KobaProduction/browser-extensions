@@ -12,10 +12,13 @@ import GitBranch from 'lucide-vue-next/dist/esm/icons/git-branch.js'
 import GripHorizontal from 'lucide-vue-next/dist/esm/icons/grip-horizontal.js'
 import LoaderCircle from 'lucide-vue-next/dist/esm/icons/loader-circle.js'
 import Minus from 'lucide-vue-next/dist/esm/icons/minus.js'
+import MoreHorizontal from 'lucide-vue-next/dist/esm/icons/ellipsis.js'
+import Wrench from 'lucide-vue-next/dist/esm/icons/wrench.js'
 import RefreshCw from 'lucide-vue-next/dist/esm/icons/refresh-cw.js'
 import X from 'lucide-vue-next/dist/esm/icons/x.js'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ArchiveRecord from './ArchiveRecord.vue'
+import ArchiveMaintenanceWidget from './ArchiveMaintenanceWidget.vue'
 import ArchiveFlowGraph from './ArchiveFlowGraph.vue'
 import {
   archiveConversationForest,
@@ -54,101 +57,34 @@ const emit = defineEmits<{
 }>()
 const t = (key: TranslationKey) => translate(props.locale, key)
 const conversations = ref<ArchiveConversationView[]>([])
-const migrationOverview = ref<{
-  status: string
-  legacyConversations: number
-  unboundConversations: number
-  conflictingConversations: number
-  migratedConversations: number
-}>()
-// Account identity is established asynchronously from native ChatGPT traffic.
-// Waiting for it is not an HTTP authorization denial or a reason to reset DBs.
+// Archive tools are intentionally opt-in. Opening the Reader never scans the
+// legacy database or displays migration controls unprompted.
 const accountPending = ref(!props.archiveAdapter.currentAccountId?.())
-const migrationBusy = ref(false)
-const migrationCounts = ref({ conversations: 0, messages: 0 })
-let stopMigrationUpdates: (() => void) | undefined
-const migrationConfirmUnowned = ref(false)
-const migrationError = ref('')
+const toolsMenuOpen = ref(false)
+const toolsArea = ref<HTMLElement | null>(null)
+function closeToolsOnOutsidePress(event: PointerEvent) {
+  if (toolsMenuOpen.value && toolsArea.value &&
+      !event.composedPath().includes(toolsArea.value))
+    toolsMenuOpen.value = false
+}
+function closeMaintenance() {
+  maintenanceOpen.value = false
+  void nextTick(() => toolsArea.value?.querySelector('button')?.focus())
+}
+const maintenanceOpen = ref(false)
 const recoveredSelected = ref(false)
-const reconciliationBusy = ref(false)
-const auditBusy = ref(false)
-const reconcileBindUnknown = ref(false)
-const reconciliationResult = ref<{
-  examined: number; inserted: number; changed: number; unchanged: number
-  skippedOwnership: number; conversationsTouched: number
-  checkpointApplied?: boolean
-} | null>(null)
-const auditResult = ref<{
-  legacyConversations: number; canonicalConversations: number
-  conversationCountShortfall: number; conversationsWithMessageShortfall: number
-  sourceMessageCount: number; canonicalMessageCount: number
-} | null>(null)
-async function runRecentReconciliation(hours: 48 | 168) {
-  if (reconciliationBusy.value || migrationBusy.value ||
-      !props.archiveAdapter.reconcileArchiveRecent) return
-  reconciliationBusy.value = true
-  reconciliationResult.value = null
-  migrationError.value = ''
-  try {
-    reconciliationResult.value = await props.archiveAdapter.reconcileArchiveRecent(
-      hours, reconcileBindUnknown.value,
-    )
-    await refresh()
-    await refreshMigrationOverview()
-  } catch (error) {
-    migrationError.value = error instanceof Error ? error.message : 'Archive reconciliation failed'
-  } finally {
-    reconciliationBusy.value = false
-  }
+const archiveToolError = ref('')
+function openMaintenance() {
+  toolsMenuOpen.value = false
+  maintenanceOpen.value = true
 }
-async function auditArchiveCoverage() {
-  if (auditBusy.value || migrationBusy.value ||
-      !props.archiveAdapter.auditArchiveCoverage) return
-  auditBusy.value = true
-  auditResult.value = null
-  migrationError.value = ''
-  try {
-    auditResult.value = await props.archiveAdapter.auditArchiveCoverage()
-  } catch (error) {
-    migrationError.value = error instanceof Error ? error.message : 'Archive audit failed'
-  } finally {
-    auditBusy.value = false
-  }
-}
-async function refreshMigrationOverview() {
-  if (!props.archiveAdapter.getArchiveMigrationOverview) return
-  // A native account registry can still be loading after Archive opens.
-  // Do not report an archive-storage failure for missing account evidence.
-  if (!props.archiveAdapter.currentAccountId?.()) {
-    migrationOverview.value = undefined
-    migrationError.value = ''
-    return
-  }
-  try {
-    migrationOverview.value = await props.archiveAdapter.getArchiveMigrationOverview()
-    migrationError.value = ''
-  } catch {
-    migrationError.value = props.locale === 'ru'
-      ? 'Не удалось проверить существующие архивы.'
-      : 'Could not inspect existing archives.'
-  }
-}
-async function migrateArchive() {
-  if (migrationBusy.value || !props.archiveAdapter.startArchiveMigration) return
-  migrationBusy.value = true
-  migrationError.value = ''
-  try {
-    await props.archiveAdapter.startArchiveMigration(migrationConfirmUnowned.value)
-    await refreshMigrationOverview()
-    await refresh()
-  } catch (error) {
-    migrationError.value = error instanceof Error ? error.message : 'Archive migration failed'
-  } finally {
-    migrationBusy.value = false
-  }
+function afterMaintenance() {
+  void refresh()
 }
 async function downloadRecovered(format: 'json' | 'markdown' = 'json') {
+  toolsMenuOpen.value = false
   if (!selectedId.value || !props.archiveAdapter.exportRecoveredConversation) return
+  archiveToolError.value = ''
   try {
     const blob = await props.archiveAdapter.exportRecoveredConversation(selectedId.value, format)
     if (!blob) return
@@ -159,11 +95,11 @@ async function downloadRecovered(format: 'json' | 'markdown' = 'json') {
       a.download = `booster-recovered-partial.${format === 'markdown' ? 'md' : 'json'}`
       a.click()
     } finally {
-      // Deferred revocation is not needed by this single synchronous download action.
       setTimeout(() => URL.revokeObjectURL(url), 30_000)
     }
-  } catch (error) {
-    migrationError.value = error instanceof Error ? error.message : 'Recovery export failed'
+  } catch (cause) {
+    archiveToolError.value = cause instanceof Error ? cause.message
+      : (props.locale === 'ru' ? 'Не удалось выгрузить архив.' : 'Archive download failed.')
   }
 }
 const projects = ref<ArchiveProjectView[]>([])
@@ -798,8 +734,9 @@ onMounted(async () => {
       selectedId.value = null
       initialized = false
       current = next
-      if (nextOwner) void refresh().then(() => refreshMigrationOverview()).catch(() => undefined)
-      else migrationOverview.value = undefined
+      maintenanceOpen.value = false
+      toolsMenuOpen.value = false
+      if (nextOwner) void refresh().catch(() => undefined)
       return
     }
     if (!next || next === current) return
@@ -812,6 +749,7 @@ onMounted(async () => {
     void loadThread(next)
   }
   window.addEventListener(ARCHIVE_UPDATED_EVENT, refreshConversationTitles)
+  window.addEventListener('pointerdown', closeToolsOnOutsidePress, true)
   // Subscribe BEFORE the initial asynchronous Reader request. Native ChatGPT
   // may confirm the account while that request is still pending.
   if (props.archiveAdapter.subscribeContextChange)
@@ -819,21 +757,12 @@ onMounted(async () => {
   else contextFallbackTimer = setInterval(syncContext, 450)
   await refresh()
   if (!alive) return
-  await refreshMigrationOverview()
-  if (!alive) return
   recoveredSelected.value = !!selectedId.value && !!(await props.archiveAdapter.isRecoveredConversation?.(selectedId.value))
   if (!alive) return
-  stopMigrationUpdates = props.archiveAdapter.subscribeArchiveMigration?.(() => {
-    const progress = props.archiveAdapter.archiveMigrationProgress?.()
-    if (progress) migrationCounts.value = {
-      conversations: progress.conversations, messages: progress.messages,
-    }
-  })
   if (alive) syncContext()
 })
 onBeforeUnmount(() => {
   alive = false
-  stopMigrationUpdates?.()
   cancelWindowWork()
   sourceUnsubscribe?.()
   listRevision++
@@ -842,6 +771,7 @@ onBeforeUnmount(() => {
   windowShiftRevision++
   contextUnsubscribe?.()
   window.removeEventListener(ARCHIVE_UPDATED_EVENT, refreshConversationTitles)
+  window.removeEventListener('pointerdown', closeToolsOnOutsidePress, true)
   if (readFocusFrame !== null) cancelAnimationFrame(readFocusFrame)
   if (contextFallbackTimer) clearInterval(contextFallbackTimer)
 })
@@ -857,55 +787,38 @@ onBeforeUnmount(() => {
       </div>
       <div class="booster-header-actions">
         <button v-if="canReturnToExport" type="button" class="booster-action-secondary" @click="emit('returnExport')"><ArrowLeft class="size-4" />{{ t('reader.returnExport') }}</button>
-        <button v-if="recoveredSelected" type="button" class="booster-action-secondary" @click="downloadRecovered('markdown')">{{ locale === 'ru' ? 'Скачать Markdown (неполный)' : 'Download Markdown (partial)' }}</button>
-        <button v-if="recoveredSelected" type="button" class="booster-action-secondary" @click="downloadRecovered('json')">{{ locale === 'ru' ? 'Скачать сохранённые записи (неполные)' : 'Download saved records (partial)' }}</button>
+        <div ref="toolsArea" class="booster-reader-tools" @keydown.esc.stop="toolsMenuOpen = false">
+          <button type="button" class="booster-icon-button"
+            :aria-label="locale === 'ru' ? 'Меню архива' : 'Archive menu'"
+            :title="locale === 'ru' ? 'Меню архива' : 'Archive menu'"
+            :aria-expanded="toolsMenuOpen" @click="toolsMenuOpen = !toolsMenuOpen">
+            <MoreHorizontal class="size-5" />
+          </button>
+          <div v-if="toolsMenuOpen" class="booster-reader-tools-menu" role="menu">
+            <button type="button" role="menuitem" @click="openMaintenance">
+              <Wrench class="size-4" />{{ locale === 'ru' ? 'Управление архивом' : 'Manage archive' }}
+            </button>
+            <template v-if="recoveredSelected">
+              <button type="button" role="menuitem" @click="downloadRecovered('markdown')">
+                <Download class="size-4" />{{ locale === 'ru' ? 'Markdown (неполный)' : 'Markdown (partial)' }}
+              </button>
+              <button type="button" role="menuitem" @click="downloadRecovered('json')">
+                <Download class="size-4" />{{ locale === 'ru' ? 'JSON (неполный)' : 'JSON (partial)' }}
+              </button>
+            </template>
+          </div>
+        </div>
         <button type="button" class="booster-icon-button" :disabled="listLoading" :title="t('reader.refresh')" :aria-label="t('reader.refresh')" @click="retryLocation"><RefreshCw class="size-4" /></button>
         <button v-if="windowed" type="button" class="booster-icon-button" :title="t('reader.minimize')" :aria-label="t('reader.minimize')" @click="emit('minimize')"><Minus class="size-4" /></button>
         <button type="button" class="booster-icon-button" :aria-label="t('reader.close')" @click="emit('close')"><X class="size-4" /></button>
       </div>
     </header>
 
-    <section v-if="migrationOverview && migrationOverview.legacyConversations > migrationOverview.migratedConversations" class="booster-note" role="region" :aria-label="locale === 'ru' ? 'Адаптация архива' : 'Archive adaptation'">
-      <strong>{{ locale === 'ru' ? 'Адаптация архива' : 'Archive adaptation' }}</strong>
-      <p>{{ locale === 'ru' ? 'Предыдущие данные сохранены. Перенос создаёт проверяемую копию без удаления старых сообщений.' : 'Previous records are retained. Migration makes a separate copy without deleting existing messages.' }}</p>
-      <p v-if="migrationBusy" role="status">{{ locale === 'ru' ? 'Адаптация приложения, подождите…' : 'Adapting archive, please wait…' }} {{ migrationCounts.conversations }} / {{ migrationCounts.messages }}</p>
-      <p v-if="migrationOverview.conflictingConversations > 0" role="status">
-        {{ locale === 'ru'
-          ? `Для ${migrationOverview.conflictingConversations} старых диалогов владелец не сопоставлен с текущим аккаунтом. Автоматически они не переносятся; доступна только явная ручная привязка.`
-          : `${migrationOverview.conflictingConversations} legacy conversations have unmatched owners. Original records are preserved; automatic migration is excluded.` }}
-      </p>
-      <label v-if="migrationOverview.unboundConversations + migrationOverview.conflictingConversations > 0"><input v-model="migrationConfirmUnowned" type="checkbox" :disabled="migrationBusy" /> {{ locale === 'ru' ? 'Подтверждаю, что все старые локальные диалоги v3, включая записи без владельца и с несовпадающим идентификатором, принадлежат моему текущему аккаунту. Это ручная привязка.' : 'I confirm all local legacy v3 chats, including missing or mismatched owner IDs, belong to my currently verified account. This explicitly rebinds them.' }}</label>
-      <button v-if="migrationOverview.legacyConversations > migrationOverview.migratedConversations" type="button" class="booster-action-secondary" :disabled="migrationBusy || (migrationOverview.unboundConversations + migrationOverview.conflictingConversations > 0 && !migrationConfirmUnowned)" @click="migrateArchive">{{ locale === 'ru' ? 'Перенести сохранённую историю' : 'Migrate saved history' }}</button>
-      <p v-if="migrationError" role="alert">{{ migrationError }}</p>
-    </section>
-    <p v-else-if="migrationError" role="alert" class="booster-note">{{ migrationError }}</p>
-    <section v-if="migrationOverview && migrationOverview.migratedConversations > 0" class="booster-note" role="region" :aria-label="locale === 'ru' ? 'Сверка сохранённого архива' : 'Saved archive reconciliation'">
-      <strong>{{ locale === 'ru' ? 'Сверка сохранённого архива' : 'Saved archive reconciliation' }}</strong>
-      <p>{{ locale === 'ru' ? 'Перенесённые чаты не копируются повторно. Сверка обрабатывает только сообщения, замеченные или изменённые за выбранный период.' : 'Already migrated history is not recopied. Reconciliation processes only messages observed or changed within the selected time range.' }}</p>
-      <div class="flex flex-wrap gap-2">
-        <button type="button" class="booster-action-secondary" :disabled="reconciliationBusy || migrationBusy" @click="runRecentReconciliation(48)">{{ locale === 'ru' ? 'Быстро: изменения после переноса' : 'Fast: changes since import' }}</button>
-        <button type="button" class="booster-action-secondary" :disabled="reconciliationBusy || migrationBusy" @click="runRecentReconciliation(168)">{{ locale === 'ru' ? 'Подробно: последние 7 дней' : 'Thorough: last 7 days' }}</button>
-        <button type="button" class="booster-action-secondary" :disabled="auditBusy || reconciliationBusy || migrationBusy" @click="auditArchiveCoverage">{{ locale === 'ru' ? 'Проверить полноту по счётчикам' : 'Check record counts' }}</button>
-      </div>
-      <label><input v-model="reconcileBindUnknown" type="checkbox" :disabled="reconciliationBusy" /> {{ locale === 'ru' ? 'Разрешить привязку новых legacy-чатов без подтверждённого владельца (только если они мои)' : 'Allow newly found unverified-owner legacy chats (only if mine)' }}</label>
-      <p v-if="reconciliationBusy" role="status">{{ locale === 'ru' ? 'Сверка изменений…' : 'Reconciling changes…' }} {{ migrationCounts.messages }}</p>
-      <p v-if="reconciliationResult" role="status">{{ locale === 'ru'
-        ? `Проверено ${reconciliationResult.examined}; добавлено ${reconciliationResult.inserted}; обновлено ${reconciliationResult.changed}; без изменений ${reconciliationResult.unchanged}; без подтверждения владельца ${reconciliationResult.skippedOwnership}.`
-        : `Checked ${reconciliationResult.examined}; added ${reconciliationResult.inserted}; updated ${reconciliationResult.changed}; unchanged ${reconciliationResult.unchanged}; unverified owner ${reconciliationResult.skippedOwnership}.` }}</p>
-      <p v-if="reconciliationResult?.checkpointApplied" role="status">{{ locale === 'ru'
-        ? 'Быстрая сверка использует контрольную точку последнего переноса. Для более широкого охвата запусти подробную сверку.'
-        : 'Fast reconciliation uses the last migration checkpoint. Run thorough reconciliation for broader coverage.' }}</p>
-      <p v-if="auditBusy" role="status">{{ locale === 'ru' ? 'Сверяются индексы сохранённых записей…' : 'Comparing archived record indexes…' }}</p>
-      <p v-if="auditResult" role="status">{{ locale === 'ru'
-        ? `Диалогов v3 / канонических: ${auditResult.legacyConversations} / ${auditResult.canonicalConversations}. Недостающих диалогов: ${auditResult.conversationCountShortfall}; диалогов с меньшим числом сообщений: ${auditResult.conversationsWithMessageShortfall}. Это сверка количества, не содержимого.`
-        : `Legacy / canonical chats: ${auditResult.legacyConversations} / ${auditResult.canonicalConversations}. Missing chats: ${auditResult.conversationCountShortfall}; chats with fewer messages: ${auditResult.conversationsWithMessageShortfall}. Counts only, not content fidelity.` }}</p>
-      <p v-if="migrationError" role="alert">{{ migrationError }}</p>
-    </section>
+    <p v-if="archiveToolError" role="alert" class="booster-error">{{ archiveToolError }}</p>
     <p v-if="accountPending" role="status" class="booster-note">{{ locale === 'ru'
-      ? 'Ожидание подтверждения аккаунта ChatGPT. Архив откроется автоматически после загрузки.'
-      : 'Waiting for ChatGPT account verification. The archive will reopen automatically once available.' }}</p>
-    <div v-if="migrationBusy" role="status" class="booster-note">{{ locale === 'ru' ? 'Содержимое архива временно недоступно до окончания адаптации.' : 'Archive content is temporarily unavailable during adaptation.' }}</div>
-    <div v-else class="booster-reader-layout">
+      ? 'Ожидание подтверждения аккаунта ChatGPT…'
+      : 'Waiting for ChatGPT account verification…' }}</p>
+    <div class="booster-reader-layout">
       <aside class="booster-reader-sidebar">
         <input v-model="search" type="search" :aria-label="t('reader.search')" :placeholder="t('reader.search')" />
         <p v-if="listLoading && !conversations.length" role="status" class="booster-note">{{ t('reader.loading') }}</p>
@@ -1030,5 +943,8 @@ onBeforeUnmount(() => {
         </div>
       </main>
     </div>
+    <ArchiveMaintenanceWidget v-if="maintenanceOpen"
+      :archive-adapter="archiveAdapter" :locale="locale"
+      @close="closeMaintenance" @updated="afterMaintenance" />
   </div>
 </template>

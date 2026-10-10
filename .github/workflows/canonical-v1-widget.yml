@@ -1,0 +1,153 @@
+name: Canonical Archive Management Widget
+
+on:
+  push:
+    branches:
+      - preview/canonical-v1-widget-20261010
+
+permissions:
+  contents: write
+
+concurrency:
+  group: canonical-preview-v1-widget-20261010
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'KobaProduction/chatgpt-booster'
+    runs-on: ubuntu-latest
+    env:
+      CHATGPT_BOOSTER_BUILD_VERSION: '0.8.97'
+      BOOSTER_BUILD_VERSION: '0.8.97'
+      CHATGPT_BOOSTER_BUILD_SHA: ${{ github.sha }}
+      CHATGPT_BOOSTER_ROLLING: '1'
+      CANONICAL_PREVIEW_TAG: 'canonical-v1-widget-20261010'
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - name: Verify canonical archive candidate
+        run: |
+          test -f packages/features/src/archive-canonical-migrator.ts
+          grep -q "chatgpt-history-2026-10-v3" packages/features/src/archive-source-contract.ts
+          grep -q "ARCHIVE_V4_DB_VERSION = 2" packages/features/src/archive-v4-store.ts
+          grep -q "startArchiveMigration" packages/features/src/archive-v4-ui-adapter.ts
+          grep -q "reconcileArchiveRecent" packages/features/src/archive-v4-ui-adapter.ts
+          grep -q "async auditCoverage" packages/features/src/archive-canonical-migrator.ts
+          test -f packages/ui/src/ArchiveMaintenanceWidget.vue
+          grep -q "booster-reader-tools-menu" packages/ui/src/styles.css
+          grep -q "canonicalMessages" packages/features/src/archive-v4-store.ts
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Check
+        run: bun run check
+      - name: Test
+        run: bun run test
+      - name: Build
+        run: bun run build
+      - name: Pin preview userscript updates
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('packages/userscript/dist/chatgpt-booster.dev.user.js')
+          source = path.read_text()
+          base = 'https://github.com/KobaProduction/chatgpt-booster/releases/download/'
+          name = 'chatgpt-booster.dev.user.js'
+          for field, spacing in (('updateURL', '    '), ('downloadURL', '  ')):
+              old = f'// @{field}{spacing}{base}dev-latest/{name}'
+              new = f'// @{field}{spacing}{base}canonical-v1-widget-20261010/{name}'
+              assert source.count(old) == 1, f'Unexpected {field} userscript metadata'
+              source = source.replace(old, new)
+          header = source.split('// ==/UserScript==', 1)[0]
+          assert '// @name         ChatGPT Booster Dev' in header
+          assert '// @version      0.8.97' in header
+          assert '// @booster-build 0.8.97' in header
+          assert 'dev-latest' not in header
+          path.write_text(source)
+          PY
+      - name: Package MV3 extension
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          manifest = json.loads(Path('packages/extension/dist/manifest.json').read_text())
+          assert manifest['manifest_version'] == 3
+          assert manifest['version'] == '0.8.97'
+          assert manifest['version_name'] == '0.8.97'
+          PY
+          cd packages/extension/dist
+          zip -q -r ../../../chatgpt-booster-canonical-v1-extension.zip .
+      - name: Write build identification
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          Path('chatgpt-booster-canonical-v1-build.json').write_text(json.dumps({
+              'version': '0.8.97',
+              'sourceSha': os.environ['GITHUB_SHA'],
+              'storageNamespace': 'chatgpt-booster-archive-v4',
+              'storageSchemaVersion': 2,
+              'canonicalModelVersion': 1,
+              'legacySourcePreservation': True,
+              'manualOwnerBindingRequired': True,
+              'releaseChannel': 'canonical-v1-widget-20261010',
+              'status': 'experimental DEV prerelease',
+          }, indent=2) + '\n')
+          PY
+      - name: Publish isolated prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "${CANONICAL_PREVIEW_TAG}" >/dev/null 2>&1; then
+            echo 'This exact preview release tag already exists; refusing to overwrite it.'
+            exit 1
+          fi
+          cat > "$RUNNER_TEMP/notes.md" <<'NOTES'
+          Experimental DEV UI update: compact archive management widget (0.8.97).
+
+          The Archive Reader opens immediately with messages. The migration
+          inventory and reconciliation UI are no longer loaded or displayed
+          automatically. Open Archive -> the ellipsis menu -> Manage archive
+          to inspect/migrate/reconcile on demand. Recovered partial JSON and
+          Markdown download actions are available from the same menu.
+          The dialog has bounded size, scrollable content, normal-size
+          checkboxes and user-invoked progress display.
+          All migration and reconciliation engine code remains in place.
+          Legacy v3 stores and canonical data are not deleted or reset.
+
+          Install either the Tampermonkey userscript or Chromium MV3 extension, not both.
+          Tampermonkey version 0.8.97 replaces the prior 0.8.96 canonical preview
+          when explicitly installed from this separate pinned prerelease.
+          Auto-updates remain pinned to this preview, not dev-latest.
+
+          To migrate, open ChatGPT -> Booster -> Local Archive -> Archive adaptation.
+          Review the legacy inventory and explicitly confirm that the old local chats
+          (including unknown or mismatched legacy owner IDs) belong to your currently
+          verified ChatGPT account; then click "Migrate saved history".
+          Without that confirmation, unknown/mismatched owner records remain excluded.
+          Old v3 and v4 original stores are retained; this preview does not delete them.
+          Download a recovered JSON/Markdown file from the Archive Reader afterwards.
+          Recovered exports are explicitly PARTIAL and do not claim verified page continuity.
+
+          Known limitations:
+          - This prerelease has no independently verified backup/restore package.
+          - On successful migration, the physical v4 database schema becomes version 2.
+            Do not reinstall old 0.8.91 against this upgraded v4 database.
+          - Full selected-path export acceptance is still outstanding.
+          - Test cautiously on your own browser profile and keep a separate browser/profile backup.
+
+          Fast fallback: reinstall rollback v3 Recovery 0.8.92 to read untouched v3 data.
+          The canonical preview does not alter dev, dev-latest or production.
+          NOTES
+          gh release create "${CANONICAL_PREVIEW_TAG}" \
+            --target "${GITHUB_SHA}" \
+            --prerelease \
+            --title "Canonical Archive Management Widget · 0.8.97" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            chatgpt-booster-canonical-v1-extension.zip \
+            chatgpt-booster-canonical-v1-build.json \
+            packages/userscript/dist/chatgpt-booster.dev.user.js \
+            packages/userscript/dist/chatgpt-booster.dev.user.js.map

@@ -4030,3 +4030,278 @@
     text-align: right;
   }
 }
+
+/* Canonical archive maintenance is a manual-only tool. It never consumes the
+   Reader's grid row or changes the document scroll position. */
+.booster-reader {
+  position: relative;
+}
+.booster-reader-heading {
+  min-width: 0;
+  justify-content: flex-start;
+}
+.booster-reader-heading > div {
+  min-width: 0;
+}
+.booster-reader-heading strong {
+  display: block;
+  line-height: 1.25;
+}
+.booster-reader > .booster-section-header > .booster-header-actions {
+  flex: 0 0 auto;
+  gap: 6px;
+}
+.booster-reader-tools {
+  position: relative;
+}
+.booster-reader-tools-menu {
+  position: absolute;
+  z-index: 12;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  min-width: 222px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--popover, var(--card));
+  box-shadow: 0 12px 30px rgb(0 0 0 / 28%);
+}
+.booster-reader-tools-menu button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+.booster-reader-tools-menu button:hover,
+.booster-reader-tools-menu button:focus-visible {
+  background: var(--accent);
+}
+.booster-maintenance-backdrop {
+  position: absolute;
+  z-index: 18;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: clamp(12px, 3vw, 28px);
+  background: rgb(0 0 0 / 70%);
+}
+.booster-maintenance-widget {
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 570px);
+  max-height: min(700px, 100%);
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--background);
+  box-shadow: 0 24px 70px rgb(0 0 0 / 35%);
+  color: var(--foreground);
+  font: inherit;
+}
+.booster-maintenance-heading {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 15px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.booster-maintenance-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 11px;
+}
+.booster-maintenance-title > div {
+  min-width: 0;
+}
+.booster-maintenance-title h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.booster-maintenance-title p {
+  margin: 3px 0 0;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.booster-maintenance-content {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 16px 18px;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.booster-maintenance-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.booster-maintenance-stats > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--muted);
+}
+.booster-maintenance-stats span {
+  font-size: 10px;
+  color: var(--muted-foreground);
+  line-height: 1.4;
+}
+.booster-maintenance-stats strong {
+  font-size: 20px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.booster-maintenance-section {
+  display: grid;
+  gap: 11px;
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.booster-maintenance-section-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.booster-maintenance-section h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+}
+.booster-maintenance-section p,
+.booster-maintenance-result p,
+.booster-maintenance-progress p {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.booster-maintenance-section .booster-maintenance-warning {
+  color: var(--foreground);
+  border-left: 2px solid #d97706;
+  padding-left: 10px;
+}
+.booster-maintenance-widget .booster-maintenance-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--muted-foreground);
+  line-height: 1.5;
+  cursor: pointer;
+}
+.booster-maintenance-widget .booster-maintenance-check input {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  min-height: 16px;
+  margin: 1px 0 0;
+  padding: 0;
+  accent-color: var(--primary);
+}
+.booster-maintenance-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.booster-maintenance-actions button {
+  flex: 1 1 170px;
+  min-width: 0;
+}
+.booster-maintenance-actions button small {
+  display: block;
+  font-size: 10px;
+  opacity: 0.8;
+}
+.booster-maintenance-section > button {
+  justify-self: start;
+  max-width: 100%;
+}
+.booster-maintenance-loading,
+.booster-maintenance-progress,
+.booster-maintenance-result {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.booster-maintenance-result svg,
+.booster-maintenance-progress svg {
+  flex: 0 0 auto;
+}
+.booster-maintenance-result strong,
+.booster-maintenance-progress strong {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 12px;
+}
+.booster-maintenance-error {
+  margin: 0;
+  padding: 10px;
+  border: 1px solid #c2410c;
+  border-radius: 8px;
+  color: var(--foreground);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.booster-maintenance-footer {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+}
+@media (max-width: 620px) {
+  .booster-maintenance-backdrop {
+    padding: 8px;
+  }
+  .booster-maintenance-heading {
+    padding: 12px;
+  }
+  .booster-maintenance-content {
+    padding: 12px;
+  }
+  .booster-maintenance-stats strong {
+    font-size: 17px;
+  }
+  .booster-maintenance-stats > div {
+    padding: 8px;
+  }
+  .booster-reader > .booster-section-header {
+    padding: 8px 10px;
+  }
+}
