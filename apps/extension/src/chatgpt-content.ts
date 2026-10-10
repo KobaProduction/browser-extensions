@@ -16,7 +16,10 @@ if (isChatGptPage()) {
     secrets: chromeSecrets, telemetry, telemetryControl: createChromeTelemetryControl(telemetry),
   })
   // MAIN-world observer is a separate manifest script at document_start.
-  void startEarly().catch(error => console.warn('[ChatGPT Booster] Early capture failed', error instanceof Error ? error.name : 'unknown'))
+  void new FeatureSettings(createSettingsStore('chromium'))
+    .enabled('chatgpt-booster')
+    .then((enabled) => enabled ? startEarly() : undefined)
+    .catch(error => console.warn('[ChatGPT Booster] Early capture failed', error instanceof Error ? error.name : 'unknown'))
   const runtime = new FeatureRuntime([feature], {
     target: 'chromium', url: new URL(location.href),
     capabilities: new Set<Capability>(['page-dom', 'origin-storage', 'local-files']),

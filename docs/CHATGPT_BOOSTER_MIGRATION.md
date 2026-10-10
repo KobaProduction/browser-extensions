@@ -40,3 +40,20 @@
 5. Independent reviewer acceptance of source equivalence, capability permissions, build artifact contents and ownership/dependency direction before merging.
 
 Do **not** delete the old repository or old browser databases until a separately accepted migration cutover with independently restorable user data.
+
+## Source documentation preservation
+
+The original ChatGPT Booster architecture, source-signature research, runtime
+contracts, archive target architecture, DOM adapters, product operations and
+historical acceptance checkpoints are retained verbatim under
+`modules/chatgpt-booster/docs/`. These documents remain **product-local**
+contracts, subordinate to this monorepo's approved architecture for ownership
+and package boundaries. Any dated old validation is historical evidence and
+not acceptance of the new binary or new extension identity.
+
+The canonical backup import UI is available on a newly installed ChatGPT
+module with no active canonical generation: it requires a manually selected
+GZIP file and an account-scoped explicit confirmation, validates every
+source fingerprint and the backup footer, stages all data in a new generation,
+and only then promotes it. It preserves existing generations and does not
+claim to import unbound v3-only records or binary attachment bytes.

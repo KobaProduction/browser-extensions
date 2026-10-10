@@ -248,8 +248,14 @@ export async function restoreCanonicalBackup(
           .objectStore('migrationManifest')
           .get(key(accountId)),
       )
-      if (previous?.status !== 'ready' || typeof previous.generation !== 'string')
-        throw new Error('A verified active generation is required before restore')
+      // A replacement extension/profile may have no canonical generation yet.
+      // Importing an owner-verified, checksum-verified file must be possible
+      // without initializing or deleting legacy source databases.
+      if (previous && previous.status !== 'ready' && previous.status !== 'failed_recoverable')
+        throw new Error('Another archive migration is active or unsupported')
+      if (previous?.status === 'ready' && typeof previous.generation !== 'string')
+        throw new Error('Existing canonical generation is malformed')
+      const previousGeneration = previous?.status === 'ready' ? previous.generation as string : null
       const generation = crypto.randomUUID()
       const reader = file.stream().pipeThrough(new DecompressionStream('gzip')).getReader()
       const decoder = new TextDecoder()
@@ -297,7 +303,7 @@ export async function restoreCanonicalBackup(
             accountId,
             status: 'transforming',
             generation,
-            previousGeneration: previous.generation,
+            previousGeneration,
             storageSchemaVersion: 2,
             canonicalModelVersion: 1,
             backupRestoreStartedAt: Date.now(),
@@ -466,7 +472,7 @@ export async function restoreCanonicalBackup(
           conversations,
           sourceSnapshots: snapshots,
           restoredFromBackupAt: Date.now(),
-          previousGeneration: previous.generation,
+          previousGeneration,
         })
         await done
         return { conversations, messages, snapshots }
@@ -478,10 +484,12 @@ export async function restoreCanonicalBackup(
             tx.objectStore('migrationManifest').get(key(accountId)),
           )
           if (manifest?.generation === generation && manifest.status === 'transforming')
-            tx.objectStore('migrationManifest').put({
-              ...previous,
-              failedBackupRestoreAt: Date.now(),
-            })
+            tx.objectStore('migrationManifest').put(previousGeneration && previous
+              ? { ...previous, failedBackupRestoreAt: Date.now() }
+              : { key: key(accountId), accountId, status: 'failed_recoverable',
+                  generation, previousGeneration: null,
+                  storageSchemaVersion: 2, canonicalModelVersion: 1,
+                  failedBackupRestoreAt: Date.now() })
           await done
         }
         throw error

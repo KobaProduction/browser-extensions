@@ -39,6 +39,8 @@ VK Booster is a real, tested v2 browser exporter wrapped behind typed `Feature` 
 
 For ChatGPT archive/export work, also read
 `docs/CHATGPT_BOOSTER_MIGRATION.md` and its source contracts under
+`modules/chatgpt-booster/docs/ARCHIVE_TARGET_ARCHITECTURE.md`,
+`modules/chatgpt-booster/docs/CHATGPT_RUNTIME_CONTRACTS.md` and
 `modules/chatgpt-booster/packages/core/src` and `features/src`. Use one
 shared `packages/shell` launcher; never activate the original `OverlayModule`
 when running inside this monorepo. Preserve the old v3/v4 IndexedDB keys,

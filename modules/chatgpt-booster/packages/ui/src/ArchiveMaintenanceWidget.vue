@@ -296,12 +296,12 @@ onBeforeUnmount(() => { alive = false; ++requestId; unsubscribe?.() })
               'Deep audit verifies saved source contents and fingerprints. Large archives can take time; records are never modified.') }}</p>
           </section>
 
-          <section v-if="inventory.activeGeneration" class="booster-maintenance-section">
+          <section class="booster-maintenance-section">
             <details class="booster-maintenance-backup-tools">
               <summary>{{ label('Резервная копия и восстановление', 'Backup and restore') }}</summary>
               <p>{{ label('Создаёт проверяемую сжатую копию только активных канонических записей. Исходные базы v3/v4 и непривязанные диалоги в этот файл не входят.',
                 'Creates a verifiable compressed copy of the active canonical generation only. Original v3/v4 stores and unbound chats are not included.') }}</p>
-              <button type="button" class="booster-action-secondary" :disabled="busy || !archiveAdapter.exportCanonicalBackup"
+              <button type="button" class="booster-action-secondary" :disabled="busy || !inventory.activeGeneration || !archiveAdapter.exportCanonicalBackup"
                 @click="saveBackup">{{ label('Сохранить копию .ndjson.gz', 'Save .ndjson.gz backup') }}</button>
               <div class="booster-maintenance-backup-restore">
                 <label>{{ label('Файл восстановимой копии', 'Restorable backup file') }}
@@ -310,8 +310,8 @@ onBeforeUnmount(() => { alive = false; ++requestId; unsubscribe?.() })
                 </label>
                 <label class="booster-maintenance-check">
                   <input v-model="backupApproved" type="checkbox" :disabled="busy || !backupFile" />
-                  {{ label('Подтверждаю восстановление в новое поколение текущего аккаунта. Предыдущее поколение останется сохранённым.',
-                    'I approve restoring this backup into a new generation of the current account. The existing generation will be retained.') }}
+                  {{ label('Подтверждаю импорт в новое поколение текущего аккаунта. Существующий архив, если есть, останется сохранённым.',
+                    'I approve importing this backup into a new generation of the current account. Any existing generation will be retained.') }}
                 </label>
                 <button type="button" class="booster-action-secondary"
                   :disabled="busy || !backupApproved || !backupFile || !archiveAdapter.restoreCanonicalBackup"
