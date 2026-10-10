@@ -5,6 +5,7 @@ import tailwindcss from '@tailwindcss/vite'
 import vue from '@vitejs/plugin-vue'
 import ts from 'typescript'
 import { build as viteBuild } from 'vite'
+import { buildChatGptModule } from './build-chatgpt'
 import { manifest, userscriptChannelUrl } from './catalog'
 import { changedModules } from './changed'
 
@@ -17,7 +18,7 @@ const requested =
 const target = process.argv.find((a) => a.startsWith('--target='))?.split('=')[1] ?? 'both'
 const ids =
   requested === 'all'
-    ? ['vk-booster', 'all-in-one']
+    ? ['vk-booster', 'chatgpt-booster', 'all-in-one']
     : requested === 'changed'
       ? (await changedModules(process.env.BASE_SHA, process.env.HEAD_SHA || 'HEAD')).filter(
           (id) => id !== 'proxy-switcher',
@@ -34,6 +35,7 @@ async function viteBundle(
   file: string,
   format: 'es' | 'iife' = 'iife',
   external: string[] = [],
+  productVersion?: string,
 ) {
   await viteBuild({
     configFile: false,
@@ -42,7 +44,12 @@ async function viteBundle(
     plugins: plugins(),
     // Browser bundles must not depend on Node globals. Vue's published runtime
     // still refers to process.env.NODE_ENV when bundled as an IIFE library.
-    define: { 'process.env.NODE_ENV': JSON.stringify('production') },
+    define: {
+      'process.env.NODE_ENV': JSON.stringify('production'),
+      'process.env': '{}',
+      __BOOSTER_BUILD_VERSION__: JSON.stringify(productVersion ?? ''),
+      __BOOSTER_BUILD_SHA__: JSON.stringify(process.env.GITHUB_SHA ?? ''),
+    },
     build: {
       outDir: dir,
       emptyOutDir: true,
@@ -130,7 +137,11 @@ if (requested === 'packages') {
 }
 for (const id of ids) {
   const info = await manifest(id)
-  if (!info.release) throw Error('Module ' + id + ' is not releasable')
+  if (!info.release && id !== 'chatgpt-booster') throw Error('Module ' + id + ' is not releasable')
+  if (id === 'chatgpt-booster') {
+    await buildChatGptModule(root, target, info.version, viteBundle)
+    continue
+  }
   const dir = join(root, 'dist', id)
   await mkdir(dir, { recursive: true })
   if (target !== 'extension') {

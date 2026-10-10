@@ -4,7 +4,11 @@
  * draggable side button, persisted/clamped position, central modal.
  * Adaptation: feature registry and module views instead of ChatGPT settings.
  */
-import type { FeatureRuntime } from '@kobaproduction/browser-core'
+import {
+  type FeatureRuntime,
+  SHELL_CLOSE_EVENT,
+  SHELL_OPEN_FEATURE_EVENT,
+} from '@kobaproduction/browser-core'
 import { ModalSurface } from '@kobaproduction/browser-ui'
 import { Layers3, X } from 'lucide-vue-next'
 import { type Component, computed, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -122,6 +126,11 @@ function onModuleOpen(event: Event) {
   open.value = true
 }
 const launcherStyle = computed(() => ({ left: position.value.x + 'px', top: position.value.y + 'px' }))
+const widePanel = computed(() =>
+  props.runtime.features.some(
+    (feature) => feature.id === selectedSection.value && feature.presentation?.panel === 'wide',
+  ),
+)
 function openPanel() {
   open.value = true
 }
@@ -132,20 +141,22 @@ defineExpose({ openPanel, closePanel })
 onMounted(() => {
   restore()
   window.addEventListener('resize', onResize)
-  window.addEventListener('koba:open-feature', onModuleOpen)
+  window.addEventListener(SHELL_OPEN_FEATURE_EVENT, onModuleOpen)
+  window.addEventListener(SHELL_CLOSE_EVENT, closePanel)
   document.addEventListener('keydown', onKeyDown)
 })
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onResize)
-  window.removeEventListener('koba:open-feature', onModuleOpen)
+  window.removeEventListener(SHELL_OPEN_FEATURE_EVENT, onModuleOpen)
+  window.removeEventListener(SHELL_CLOSE_EVENT, closePanel)
   document.removeEventListener('keydown', onKeyDown)
 })
 </script>
 
 <template>
   <div class="booster-overlay-root">
-    <ModalSurface v-if="open" :label="title" surface-class="booster-modal-surface" @close="closePanel">
-      <ControlCenterPanel :runtime="runtime" :views="views" :title="title" :selected-section="selectedSection" @close="closePanel" />
+    <ModalSurface v-if="open" :label="title"  :surface-class="widePanel ? 'booster-modal-surface booster-modal-surface-wide' : 'booster-modal-surface'" @close="closePanel">
+      <ControlCenterPanel :runtime="runtime" :views="views" :title="title" :selected-section="selectedSection" @select="selectedSection = $event" @close="closePanel" />
     </ModalSurface>
     <button
       v-if="launcher"

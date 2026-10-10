@@ -9,7 +9,7 @@
 | `packages/**`, `scripts/**`, dependency lockfile | All consumers |
 | `docs/**` | No extension rebuild |
 
-Each published module has its own `module.json` semver and GitHub Release tag, e.g. `vk-booster/v2.2.0` or `all-in-one/v0.1.0`. On a successful **main push** CI, `release.yml`:
+Each published module has its own `module.json` semver and GitHub Release tag, e.g. `vk-booster/v2.2.0` or `all-in-one/v0.1.0`. After a successful main-branch validation and an **explicitly approved manual workflow dispatch** on `main`, `release.yml`:
 
 1. Confirms the upstream run was successful and originated from our main-branch push.
 2. Lists releases absent at the desired module version.
@@ -18,7 +18,7 @@ Each published module has its own `module.json` semver and GitHub Release tag, e
 
 **A version bump is necessary for each intentional module release.** If a shared package changed but a consumer version was not bumped, its existing tag blocks duplicate publication. The combiner has its own version; it must be bumped when its bundled dependencies change. No release occurs for `release:false` modules. Scoped tag names are case-sensitive and independently versioned.
 
-This workflow does **not** publish Chrome Web Store packages, automatic Tampermonkey update channels or core npm packages yet; those require signing, registry credentials or a stable per-module update URL. It also does not merge PRs automatically. Release workflows will only be exercised after the initial PR is merged into main and GitHub recognizes the Zoomies runner for this repository.
+This workflow does **not** publish Chrome Web Store packages, automatic Tampermonkey update channels or core npm packages yet; those require signing, registry credentials or a stable per-module update URL. It also does not merge PRs automatically. Release workflows may only be exercised after installed-product acceptance and explicit `approve_release=true` dispatch on `main`; simply merging an integration PR cannot publish new VK binaries.
 
 ## Stable Tampermonkey channels
 
@@ -34,3 +34,13 @@ verified userscript into this branch and pushes only on a byte change.
 Main's release workflow runs after successful trusted CI, creates immutable
 module-scoped GitHub Releases, and then advances that module's stable channel.
 A version bump is required; already-published tags are not republished.
+
+## Integration freeze / explicit approval
+
+The combined VK 2.3.7 and experimental ChatGPT source relocation is
+**code-only**. The old `workflow_run` automatic main-branch publication was
+replaced with explicit `workflow_dispatch` approval on `main` to avoid silently
+updating installed VK users before post-relocation browser acceptance. The
+independent module release plan/tags and distribution channel mechanism remain
+unchanged; accepted versions may be published by manually starting the release
+workflow with `approve_release=true`. ChatGPT still has `release:false`.

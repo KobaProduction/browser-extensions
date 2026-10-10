@@ -1,0 +1,23 @@
+{
+  "name": "@chatgpt-booster/features",
+  "version": "0.8.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@chatgpt-booster/chatgpt": "workspace:*",
+    "@chatgpt-booster/core": "workspace:*",
+    "@chatgpt-booster/ui": "workspace:*",
+    "@chatgpt-booster/observer": "workspace:*",
+    "@chatgpt-booster/telemetry": "workspace:*",
+    "@kobaproduction/browser-archive": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}

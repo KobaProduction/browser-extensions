@@ -1,3 +1,10 @@
+> **Historical source-development checkpoint.** The active experimental
+> ChatGPT Booster is now `modules/chatgpt-booster`; the older
+> `integrations/chatgpt-booster` tree remains a non-distributed refactor
+> reference. For the actual VK/ChatGPT merge decisions read
+> [INTEGRATION_RECONCILIATION.md](INTEGRATION_RECONCILIATION.md) and
+> [CHATGPT_BOOSTER_MIGRATION.md](CHATGPT_BOOSTER_MIGRATION.md).
+
 # ChatGPT Booster migration into Browser Extensions
 
 Status: **local integration in progress — not deployed and not a canonical cutover**.

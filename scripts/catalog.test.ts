@@ -7,12 +7,14 @@ test('only Vk Archive and combiner rebuild when VK code changes', () =>
 test('changes to core force rebuilding every module', () =>
   expect(affectedModules(['packages/core/src/index.ts'])).toEqual([
     'vk-booster',
+    'chatgpt-booster',
     'proxy-switcher',
     'all-in-one',
   ]))
 test('shared archive selector changes rebuild consumers', () =>
   expect(affectedModules(['packages/archive/src/index.ts'])).toEqual([
     'vk-booster',
+    'chatgpt-booster',
     'proxy-switcher',
     'all-in-one',
   ]))

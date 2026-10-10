@@ -79,7 +79,7 @@ export function assets(message: VkMessage): VkAsset[] {
       } else if (type === 'video') {
         const files = Object.entries(record(v.files))
           .filter(([k, url]) => /^mp4_\d+$/.test(k) && typeof url === 'string')
-          .sort(([a], [b]) => parseInt(b.slice(4)) - parseInt(a.slice(4)))
+          .sort(([a], [b]) => parseInt(b.slice(4), 10) - parseInt(a.slice(4), 10))
         add(files[0]?.[1], 'Видео.mp4')
       }
       out.push({

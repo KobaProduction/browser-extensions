@@ -90,7 +90,7 @@ acknowledgement-gated scan loop, and bounded media reader),
 packages/ui, packages/widgets (Archive Manager presentation), packages/shell,
 packages/adapters (including folder output), packages/storage (generic IndexedDB),
 modules/*, apps/userscript and apps/extension; the imported ChatGPT compatibility
-app and its legacy v3/v4 archive are under integrations/chatgpt-booster/. A presentation-only Archive
+app and its source v3/v4 archive are under modules/chatgpt-booster/; the non-distributed integrations/chatgpt-booster/ tree is a development baseline only. A presentation-only Archive
 Manager widget is implemented; a multi-source archive controller/repository/output,
 validated ChatGPT adapter and source-independent archival domain are still targets.
 Existing code and tests continue to govern behavior until reviewed migration.
@@ -277,3 +277,27 @@ reopening an existing v2 archive. Browser testing is a separate runtime gate.
 archive engine, nested settings windows, separate target-specific copies of
 business logic, sibling FSD deep imports, overbroad public APIs, speculative
 empty scaffolding, unapproved telemetry and fake privileged capabilities.
+
+## Authorized ChatGPT product relocation checkpoint (2026-10-10)
+
+The user authorized consolidating ChatGPT Booster source into this monorepo.
+`modules/chatgpt-booster` is a transitional provider-owned import; common
+shell/feature lifecycle and gzip are extracted immediately. The eventual
+shared archive application/storage and widgets need separate verified ports
+and do **not** justify rewriting VK v2 semantics or destroying existing
+ChatGPT v3/v4 archives. Migration parity and real-browser validation remain
+release blockers. See `CHATGPT_BOOSTER_MIGRATION.md`.
+
+## Code relocation acceptance vs installed-product cutover (2026-10-10)
+
+The user explicitly authorized **completing and integrating the monorepo code
+relocation before browser acceptance**. A successful source/type/unit/build
+pipeline and independent code/architecture review are required to integrate
+this migration into the shared-refactor branch; manual testing of the newly
+installed extension is intentionally deferred to the post-relocation phase.
+This does **not** authorize a released update, destroying the previous
+extension's IndexedDB profile, deleting the standalone ChatGPT Booster
+repository, or claiming that installed-user data has been migrated.
+`modules/chatgpt-booster/module.json` remains `release:false` until the
+separately verified product cutover. Historical v3/v4 raw rows, quarantine and
+canonical backup remain preserved until those later gates are satisfied.

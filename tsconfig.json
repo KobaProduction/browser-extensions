@@ -21,12 +21,29 @@
         "modules/vk-booster/src/features/chat-export/ui/index.ts"
       ],
       "@kobaproduction/browser-archive": ["packages/archive/src/index.ts"],
-      "@kobaproduction/browser-widgets": ["packages/widgets/src/index.ts"]
+      "@kobaproduction/browser-widgets": ["packages/widgets/src/index.ts"],
+      "@chatgpt-booster/core": ["modules/chatgpt-booster/packages/core/src/index.ts"],
+      "@chatgpt-booster/chatgpt": ["modules/chatgpt-booster/packages/chatgpt/src/index.ts"],
+      "@chatgpt-booster/features": ["modules/chatgpt-booster/packages/features/src/index.ts"],
+      "@chatgpt-booster/observer": ["modules/chatgpt-booster/packages/observer/src/index.ts"],
+      "@chatgpt-booster/telemetry": ["modules/chatgpt-booster/packages/telemetry/src/index.ts"],
+      "@chatgpt-booster/ui": ["modules/chatgpt-booster/packages/ui/src/index.ts"],
+      "@kobaproduction/module-chatgpt-booster": ["modules/chatgpt-booster/src/index.ts"],
+      "@kobaproduction/module-chatgpt-booster/ui": [
+        "modules/chatgpt-booster/src/features/archive/ui/index.ts"
+      ]
     },
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
     "useUnknownInCatchVariables": true
   },
-  "include": ["packages/**/*.ts", "modules/**/*.ts", "apps/**/*.ts", "scripts/**/*.ts"],
-  "exclude": ["**/*.test.ts", "**/*.test.js", "**/dist/**"]
+  "include": [
+    "packages/**/*.ts",
+    "modules/**/*.ts",
+    "apps/**/*.ts",
+    "scripts/**/*.ts",
+    "modules/chatgpt-booster/packages/*/src/**/*.ts",
+    "modules/chatgpt-booster/packages/*/src/**/*.vue"
+  ],
+  "exclude": ["**/*.test.ts", "**/*.test.js", "**/dist/**", "modules/chatgpt-booster/tests/browser/**"]
 }

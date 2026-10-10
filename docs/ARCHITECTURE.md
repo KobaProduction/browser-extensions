@@ -41,7 +41,7 @@ does not replace live VK browser acceptance or solve v2 multi-file atomicity.
 
 ## ChatGPT Booster compatibility decomposition
 
-The imported ChatGPT DEV application remains under `integrations/chatgpt-booster`
+The non-distributed ChatGPT refactor baseline remains under `integrations/chatgpt-booster`; the actual experimental module is `modules/chatgpt-booster`
 with an independent build and rollback path. Its Archive Browser delegates
 conversation list presentation to `packages/widgets/ArchiveConversationList`,
 neutral transcript layout to `ArchiveTranscript` with ChatGPT record slots,
@@ -233,3 +233,50 @@ only adapts `VKExport` to it. A separate shell owns Shadow DOM, draggable
 launcher, centered modal and section navigation. VK export is rendered inside
 one Control Center, not a second modal.
 This implementation still needs browser acceptance and independent review.
+
+## ChatGPT Booster migration checkpoint (2026-10-10)
+
+The monorepo now includes an unreleased ChatGPT Booster module that reuses the
+platform FeatureRuntime and one Shadow DOM Control Center. The original native
+history/IndexedDB and product-facing Vue components are staged under the
+ChatGPT module; apps compose browser-specific transport and permissions. One
+portable gzip output implementation lives in `packages/archive`.
+
+This is a source-preserving adapter-first migration, not a completed common
+VK/ChatGPT archive engine. The VK v2 exporter remains an independent, unchanged
+implementation pending its separate compatibility acceptance. Source and
+runtime verification levels are recorded in
+[CHATGPT_BOOSTER_MIGRATION.md](CHATGPT_BOOSTER_MIGRATION.md).
+
+## Archive page reconciliation shared by both products
+
+The source-neutral `packages/archive` exposes actual dual-consumer page folding
+(including VK exact-N/incremental/backfill and ChatGPT strict source snapshot
+comparison), record identity, composite keys, SHA-256, and GZIP output.
+Provider-specific auth, native DTO validation, storage/checkpoint transactions
+and media resolution remain behind their owning module boundaries. Neither
+VK v2 folder files nor ChatGPT v3/v4 IDB schema is rewritten by this stage.
+
+## Browser profile / extension-ID source preservation
+
+The native ChatGPT source-transfer adapter in
+`modules/chatgpt-booster/packages/features/src/archive-source-transfer.ts`
+reads and restores historical v3/v4 structured-clone source tables
+without rebinding legacy owners. Shared archive infrastructure provides
+streaming GZIP and checksums; browser IndexedDB schemas stay provider-owned.
+A verified canonical backup is an independent, explicit artifact. Neither
+transfer silently migrates binary assets, changes extension identity or
+claims that all server history is complete.
+
+## Reconciliation with advanced VK Booster 2.3.7
+
+The advanced VK 2.3.7 TypeScript engine, ArchiveManager/Transcript widgets,
+acknowledgement-gated folder output, bounded media verification and protected
+SPA navigation have priority over the earlier monorepo VK 2.2.0 inline engine.
+The shared `selectArchivePage` compatibility API now delegates record identity,
+exact-N and duplicate selection to `foldArchivePage`, which is also consumed
+by the ChatGPT v4 native ingest adapter. VK alone owns its File System Access
+folder schema and checkpoint acknowledgement; ChatGPT alone owns account-
+verified canonical IndexedDB generations. The secondary
+`integrations/chatgpt-booster` tree is a non-distributed refactor/reference
+snapshot; only `modules/chatgpt-booster` is an executable product entry.

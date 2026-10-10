@@ -26,7 +26,7 @@
 - `packages/adapters`: permission-checked user-script/Chrome bridges and source-neutral File System Access output.
 - packages/storage: provider-neutral IndexedDB request/batch/transaction utilities, source-stamped async read guards and a journaled generation-staged migration coordinator with explicit lock, backup, validation and atomic staging/activation ports. Durable stamps must be backed by provider mutation invariants; the package does not own physical schemas, source versions, identity decisions, backups, migration plans or permissions.
 - `modules/<id>`: host-specific code, capabilities and a `module.json` contract.
-- `integrations/chatgpt-booster`: isolated clean ChatGPT application baseline; read its AGENTS.md and canonical archive authority before changes; preserve v3/v4 databases and do not import uncommitted source changes blindly.
+- `modules/chatgpt-booster`: active ChatGPT provider, installed target composition and canonical archive; preserve its v3/v4 storage identities and owner proofs. `integrations/chatgpt-booster` is a non-distributed historical source/refactor baseline imported by the advanced VK stream; inspect differences before consolidating and do not ship it as a second Booster.
 - `apps/userscript` / `apps/extension`: delivery adapters only, no copied feature code.
 - Proxy routing must use privileged extension background APIs after permission; a userscript cannot set browser proxy settings.
 - Never log, commit or export browser cookies, access tokens or private conversation data. Testing fixtures must be synthetic; real personal content belongs only in ignored local files.
@@ -34,7 +34,7 @@
 ## TypeScript and lint gates
 - First-party Browser Extensions runtime, adapters and VK export are TypeScript-only; do not introduce unchecked JavaScript into product code or tests.
 - Keep TypeScript strict and VK plus storage regression mocks checked under `tsconfig.vk-tests.json`.
-- Run `bun run check` (strict typechecks, Biome with warnings as failures, tests, catalog validation) and `bun run build` before review. Root Biome covers TypeScript and Vue SFCs; Vue template-referenced imports/variables are verified by `vue-tsc` instead of Biome unused checks, which cannot see template bindings. The independently maintained `integrations/chatgpt-booster` workspace has its own TS/Biome checks.
+- Run `bun run check` (strict typechecks, Biome with warnings as failures, tests, catalog validation) and `bun run build` before review. Root Biome covers TypeScript and Vue SFCs; Vue template-referenced imports/variables are verified by `vue-tsc` instead of Biome unused checks, which cannot see template bindings. The currently shipped ChatGPT module is validated through root TypeScript, Vue and test gates; the non-distributed integration baseline is deliberately excluded from root compilation until its additional refactors are reconciled.
 
 ## Release rules
 - Independent semver in each releasable `module.json`; use `module-name/vX.Y.Z` tags.

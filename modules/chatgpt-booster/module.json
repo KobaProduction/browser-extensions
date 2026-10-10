@@ -1,0 +1,18 @@
+{
+  "id": "chatgpt-booster",
+  "name": "ChatGPT Booster",
+  "version": "0.8.99",
+  "hosts": [
+    "chatgpt.com"
+  ],
+  "targets": [
+    "userscript",
+    "chromium"
+  ],
+  "capabilities": [
+    "page-dom",
+    "origin-storage",
+    "local-files"
+  ],
+  "release": false
+}

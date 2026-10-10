@@ -26,41 +26,41 @@ export interface ArchivePageSelection<T> {
   boundaryReached: boolean
 }
 
+import { foldArchivePage } from './page-fold'
+
 export function selectArchivePage<T>(input: ArchivePageScan<T>): ArchivePageSelection<T> {
   if (!Number.isSafeInteger(input.remaining) || input.remaining < 0)
     throw new Error('Invalid archive page selection limit')
   if ((input.fromInclusive != null || input.toExclusive != null) && !input.timestampOf)
     throw new Error('Timestamp accessor required for date-filtered selection')
-  const seenNew = new Set<string>()
-  const added: T[] = []
-  let consumed = 0,
-    matched = 0,
-    boundaryReached = false
-  for (const item of input.records) {
-    if (matched >= input.remaining) break
-    consumed++
-    if (input.fromInclusive != null || input.toExclusive != null) {
-      const time = input.timestampOf?.(item)
-      if (time == null || !Number.isFinite(time)) throw new Error('Invalid archive source timestamp')
-      if (input.toExclusive != null && time >= input.toExclusive) continue
-      if (input.fromInclusive != null && time < input.fromInclusive) {
-        boundaryReached = true
-        break
-      }
-    }
-    const key = input.keyOf(item)
-    if (!key) throw new Error('Empty archive source record identity')
-    const present = input.knownKeys.has(key) || seenNew.has(key)
-    if (input.mode === 'incremental' && present) {
-      boundaryReached = true
-      break
-    }
-    if (input.mode === 'backfill' && present) continue
-    if (!present) {
-      seenNew.add(key)
-      added.push(item)
-    }
-    matched++
+
+  // New rows live in a temporary page draft until the provider acknowledges
+  // file persistence. The complete previous archive remains in the immutable
+  // knownKeys port; no full-history in-memory Map is reconstructed.
+  const added = new Map<string, T>()
+  const timestamp = (record: T) => {
+    const value = input.timestampOf?.(record)
+    if (value == null || !Number.isFinite(value)) throw new Error('Invalid archive source timestamp')
+    return value
   }
-  return { consumed, matched, added, boundaryReached }
+  const toExclusive = input.toExclusive
+  const fromInclusive = input.fromInclusive
+  const result = foldArchivePage(input.records, added, {
+    mode: input.mode,
+    identity: (record) => {
+      const id = input.keyOf(record)
+      if (!id) throw new Error('Empty archive source record identity')
+      return id
+    },
+    isKnown: (id) => input.knownKeys.has(id),
+    remaining: input.remaining,
+    ...(toExclusive != null ? { skip: (record: T) => timestamp(record) >= toExclusive } : {}),
+    ...(fromInclusive != null ? { stop: (record: T) => timestamp(record) < fromInclusive } : {}),
+  })
+  return {
+    consumed: result.consumed,
+    matched: result.matched,
+    added: [...added.values()],
+    boundaryReached: result.stopReason === 'known_record' || result.stopReason === 'range_end',
+  }
 }

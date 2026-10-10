@@ -1,0 +1,1108 @@
+import { describe, expect, test } from 'bun:test'
+import {
+  archiveRecordKind,
+  archiveRecordMetadata,
+  buildArchiveThread,
+} from '../packages/chatgpt/src/archive-records'
+import {
+  parseStreamingToolStatus,
+  toolInvocationFromRecord,
+} from '../packages/chatgpt/src/tool-calls'
+import {
+  type ArchiveRecordView,
+  captureRuleFor,
+  captureRuleForOperation,
+  DEFAULT_CAPTURE_RULE,
+  DEFAULT_EXPORT_OPTIONS,
+  dockFromDrop,
+  dockPosition,
+  mergeSettings,
+  normalizeSettings,
+  serverTimeMs,
+  snapshotSettings,
+} from '../packages/core/src'
+import {
+  type HistoryPageEvidence,
+  historyCoverage,
+} from '../packages/features/src/archive-coverage'
+import {
+  ArchiveExportPipeline,
+  createArchiveExportPipeline,
+  serializeArchiveExport,
+} from '../packages/features/src/archive-export'
+import { createArchivePackage } from '../packages/features/src/archive-package'
+import { historyBackoffMs } from '../packages/features/src/history-loader'
+
+function record(
+  id: string,
+  role: string,
+  contentType = 'text',
+  patch: Partial<ArchiveRecordView> = {},
+): ArchiveRecordView {
+  return {
+    messageKey: `chat:${id}`,
+    messageId: id,
+    conversationId: 'chat',
+    role,
+    channel: role === 'assistant' ? 'final' : null,
+    contentType,
+    messageType: null,
+    recipient: 'all',
+    status: 'finished_successfully',
+    modelSlug: null,
+    parentId: null,
+    turnExchangeId: null,
+    createTime: 1,
+    raw: { content: { content_type: contentType, parts: [id] } },
+    ...patch,
+  }
+}
+const page = (patch: Partial<HistoryPageEvidence> = {}): HistoryPageEvidence => ({
+  readId: 'read',
+  isInitial: true,
+  requestedBefore: null,
+  startCursor: 'm10',
+  endCursor: 'm20',
+  hasPreviousPage: true,
+  hasNextPage: false,
+  observedAt: 1,
+  ...patch,
+})
+
+describe('dock persistence and settings migration', () => {
+  test('defaults to the right edge; no pixel geometry remains authoritative', () => {
+    const settings = normalizeSettings()
+    expect(settings.launcher.side).toBe('right')
+    expect(dockPosition('right', 0.5, 1200, 844)).toEqual({ x: 1156, y: 400 })
+    expect(dockPosition('right', 0.5, 1200, 444)).toEqual({ x: 1156, y: 200 })
+  })
+  test('drop chooses nearest edge and clamps vertical ratio', () => {
+    expect(dockFromDrop(100, 200, 1000, 444)).toEqual({ side: 'left', heightRatio: 0.5 })
+    expect(dockFromDrop(800, 900, 1000, 444)).toEqual({ side: 'right', heightRatio: 1 })
+  })
+  test('schema migration preserves configured telemetry and denies unsolicited capture', () => {
+    const previous = {
+      ...normalizeSettings(),
+      schemaVersion: 2,
+      telemetry: { enabled: true, endpoint: 'https://example.test/otlp' },
+    }
+    expect(normalizeSettings(previous).telemetry.endpoint).toBe(previous.telemetry.endpoint)
+    expect(normalizeSettings().archive.defaultRule.enabled).toBe(false)
+  })
+  test('scope patches preserve siblings and roundtrip export preferences', () => {
+    let settings = mergeSettings(normalizeSettings(), {
+      archive: { projects: { p1: { ...DEFAULT_CAPTURE_RULE, enabled: true } } },
+    })
+    settings = mergeSettings(settings, {
+      archive: { conversations: { c1: { ...DEFAULT_CAPTURE_RULE, enabled: false } } },
+      export: { format: 'markdown', level: 'custom' },
+    })
+    const saved = snapshotSettings(settings)
+    expect(captureRuleFor(saved.archive, 'other', 'p1').enabled).toBe(true)
+    expect(captureRuleFor(saved.archive, 'c1', 'p1').enabled).toBe(false)
+    expect(saved.export.format).toBe('markdown')
+    expect(saved.export.images).toBe(false)
+    expect(
+      normalizeSettings({
+        ...saved,
+        export: { ...saved.export, format: 'third-party.text' },
+      }).export.format,
+    ).toBe('third-party.text')
+  })
+})
+
+test('legacy pixel launcher geometry is discarded during schema 3 migration', () => {
+  const migrated = normalizeSettings({
+    schemaVersion: 2,
+    launcher: { x: 1730, y: 812 } as never,
+  })
+  expect(migrated.launcher).toEqual({
+    x: null,
+    y: null,
+    side: 'right',
+    heightRatio: 0.65,
+  })
+})
+
+describe('live tool status normalization', () => {
+  test('extracts browser search query from current ChatGPT streaming status', () => {
+    expect(parseStreamingToolStatus('Поиск по запросу «OpenAI news October 6 2026»')).toEqual({
+      name: 'web.search',
+      payload: { query: 'OpenAI news October 6 2026' },
+    })
+  })
+
+  test('keeps unknown native tool activity truthful instead of inventing arguments', () => {
+    expect(parseStreamingToolStatus('Using a connected tool')).toEqual({
+      name: 'tool.activity',
+      payload: { status: 'Using a connected tool' },
+    })
+  })
+})
+
+describe('conversation vs nested records', () => {
+  const records = [
+    record('q', 'user'),
+    record('r', 'assistant', 'thoughts', { parentId: 'q', channel: null }),
+    record('call', 'assistant', 'text', { parentId: 'r', recipient: 'tools.read', channel: null }),
+    record('result', 'tool', 'text', { parentId: 'call' }),
+    record('a', 'assistant', 'text', { parentId: 'result' }),
+    record('sys', 'system'),
+  ]
+  test('two visible replies, not six messages; all child records retained', () => {
+    const thread = buildArchiveThread(records)
+    expect(thread.messageCount).toBe(2)
+    expect(thread.recordCount).toBe(6)
+    expect(thread.detailCount).toBe(4)
+    expect(thread.turns.find((turn) => turn.id === 'user:q')?.details.length).toBe(3)
+  })
+  test('saved canonical windows keep unknown-time messages after dated records', () => {
+    const dated = record('dated', 'user', 'text', {
+      createTime: 1_800_000_000,
+      firstSeenAt: 1_800_000_000_000,
+    })
+    const undated = record('undated', 'user', 'text', {
+      createTime: null,
+      firstSeenAt: undefined,
+    })
+    const saved = buildArchiveThread([undated, dated], { unknownTimeLast: true })
+    expect(saved.turns.map((turn) => turn.messages[0]?.record.messageId)).toEqual([
+      'dated',
+      'undated',
+    ])
+    expect(saved.turns[1]?.messages[0]?.record.createTime).toBeNull()
+  })
+  test('deduplicates scoped record IDs, does not count status strings', () => {
+    expect(buildArchiveThread([...records, ...records]).messageCount).toBe(2)
+    expect(archiveRecordKind(record('ctx', 'assistant', 'model_editable_context'))).toBe('internal')
+  })
+  test('empty and hidden assistant records are not final replies', () => {
+    expect(
+      archiveRecordKind(record('e', 'assistant', 'text', { raw: { content: { parts: [''] } } })),
+    ).toBe('internal')
+    expect(
+      archiveRecordKind(
+        record('h', 'user', 'text', {
+          raw: { metadata: { is_visually_hidden_from_conversation: true } },
+        }),
+      ),
+    ).toBe('internal')
+  })
+  test('working-turn and turn-exchange IDs group records without using status', () => {
+    const records = [
+      record('user-a', 'user', 'text', { workingTurnId: 'work-a', turnExchangeId: 'turn-a' }),
+      record('detail-a', 'assistant', 'thoughts', {
+        workingTurnId: 'work-a',
+        status: 'in_progress',
+      }),
+      record('answer-a', 'assistant', 'text', {
+        turnExchangeId: 'turn-a',
+        status: 'finished_successfully',
+      }),
+      record('unlinked', 'system', 'text', { status: 'finished_successfully' }),
+    ]
+    const thread = buildArchiveThread(records)
+    const grouped = thread.turns.find((turn) => turn.id === 'user:user-a')
+    expect(grouped?.messages.map((item) => item.record.messageId).sort()).toEqual([
+      'answer-a',
+      'user-a',
+    ])
+    expect(grouped?.details.map((item) => item.record.messageId)).toEqual(['detail-a'])
+    expect(thread.turns.find((turn) => turn.id === 'unassigned')?.association).toBe('unassigned')
+  })
+
+  test('normalizes message metadata and nested MCP tool identity once for archive and live UI', () => {
+    const thread = buildArchiveThread([
+      record('q-meta', 'user', 'text', {
+        createTime: 1700000000,
+        updateTime: 1700000010,
+        raw: {
+          content: { content_type: 'text', parts: ['question'] },
+          metadata: { edited: true },
+        },
+      }),
+      record('call-meta', 'assistant', 'text', {
+        parentId: 'q-meta',
+        recipient: 'functions.exec',
+        createTime: 1700000020,
+        modelSlug: 'gpt-5.6-sol',
+        raw: {
+          content: { content_type: 'text', parts: [''] },
+          input: {
+            code: 'await tools.mcp__Koba_GitHub__github_agent_get_file({ repository: "fixture/repo" })',
+          },
+          metadata: { reasoning_effort: 'high' },
+        },
+      }),
+    ])
+    const user = thread.turns
+      .flatMap((turn) => turn.messages)
+      .find((item) => item.record.messageId === 'q-meta')
+    const tool = thread.turns
+      .flatMap((turn) => turn.details)
+      .find((item) => item.record.messageId === 'call-meta')
+    expect(user?.metadata.edited).toBe(true)
+    expect(user?.metadata.sentAt).toBe(1700000000)
+    expect(tool?.metadata.model).toBe('gpt-5.6-sol')
+    expect(tool?.metadata.thinking).toBe('high')
+    expect(tool?.tool?.provider).toBe('Koba GitHub')
+    expect(tool?.tool?.action).toBe('get file')
+    expect(tool?.tool?.label).toBe('Koba GitHub · get file')
+  })
+
+  test('handles parent cycles without recursion', () => {
+    const thread = buildArchiveThread([
+      record('a', 'tool', 'text', { parentId: 'b' }),
+      record('b', 'tool', 'text', { parentId: 'a' }),
+    ])
+    expect(thread.recordCount).toBe(2)
+    expect(thread.messageCount).toBe(0)
+  })
+  test('message metadata preserves sent, edited, model and thinking facts', () => {
+    const item = record('meta', 'assistant', 'text', {
+      createTime: 1700000000,
+      updateTime: 1700000001,
+      modelSlug: 'gpt-test',
+      raw: {
+        content: { content_type: 'text', parts: ['answer'] },
+        metadata: {
+          is_edited: true,
+          reasoning_effort: 'high',
+          model_slug: 'ignored-fallback',
+        },
+      },
+    })
+    expect(archiveRecordMetadata(item)).toEqual({
+      sentAt: 1700000000,
+      editedAt: 1700000001,
+      edited: true,
+      model: 'gpt-test',
+      thinking: 'high',
+    })
+  })
+
+  test('tool metadata parser resolves nested MCP provider/action once for archive and live UI', () => {
+    const item = record('tool', 'assistant', 'text', {
+      recipient: 'functions.exec',
+      raw: {
+        content: { content_type: 'text', parts: [''] },
+        metadata: {
+          input: {
+            call: 'await tools.mcp__Koba_GitHub__github_agent_get_file({})',
+          },
+          tool_icons: ['github'],
+        },
+      },
+    })
+    const tool = toolInvocationFromRecord(item)
+    expect(tool?.kind).toBe('mcp')
+    expect(tool?.provider).toBe('Koba GitHub')
+    expect(tool?.action).toBe('get file')
+    expect(tool?.label).toBe('Koba GitHub · get file')
+    expect(tool?.iconKey).toBe('github')
+  })
+
+  test('connector tool parser restores app, action, arguments, result and duration', () => {
+    const call = record('connector-call', 'assistant', 'code', {
+      recipient: 'api_tool.call_tool',
+      createTime: 1700000000,
+      updateTime: 1700000000,
+      raw: {
+        content: {
+          content_type: 'code',
+          text: JSON.stringify({
+            path: '/Koba Terminal/link_fixture/terminal_exec',
+            args: { workspace_id: 'chatgpt-booster', command: 'git status' },
+          }),
+        },
+        metadata: {
+          connector_tool_payload: JSON.stringify({
+            workspace_id: 'chatgpt-booster',
+            command: 'git status',
+          }),
+          tool_icons: ['terminal'],
+        },
+      },
+    })
+    const result = record('connector-result', 'tool', 'code', {
+      parentId: 'connector-call',
+      createTime: 1700000002,
+      raw: {
+        content: {
+          content_type: 'code',
+          text: JSON.stringify({ exit_code: 0, stdout: 'clean' }),
+        },
+      },
+    })
+    const tool = toolInvocationFromRecord(call, result)
+    expect(tool?.provider).toBe('Koba Terminal')
+    expect(tool?.action).toBe('terminal exec')
+    expect(tool?.path).toBe('/Koba Terminal/link_fixture/terminal_exec')
+    expect(tool?.payload).toEqual({ workspace_id: 'chatgpt-booster', command: 'git status' })
+    expect(tool?.result).toEqual({ exit_code: 0, stdout: 'clean' })
+    expect(tool?.durationMs).toBe(2000)
+    expect(tool?.finishedAt).toBe(1700000002)
+  })
+
+  test('tool timing never promotes local first-seen time into source duration', () => {
+    const call = record('no-source-time', 'assistant', 'code', {
+      recipient: 'api_tool.call_tool',
+      createTime: null,
+      firstSeenAt: 1700000000000,
+      raw: {
+        content: {
+          content_type: 'code',
+          text: JSON.stringify({ path: '/Koba Terminal/link_fixture/terminal_exec', args: {} }),
+        },
+      },
+    })
+    const result = record('no-source-result', 'tool', 'code', {
+      parentId: 'no-source-time',
+      createTime: 1700000002,
+    })
+    const tool = toolInvocationFromRecord(call, result)
+    expect(tool?.timestamp).toBeNull()
+    expect(tool?.durationMs).toBeNull()
+    expect(tool?.finishedAt).toBe(1700000002)
+  })
+
+  test('server seconds and observed milliseconds sort on the same scale', () => {
+    expect(serverTimeMs(1700000000)).toBe(1700000000000)
+    expect(serverTimeMs(null, 1700000001000)).toBe(1700000001000)
+  })
+  test('basic JSON excludes internal records and raw metadata', () => {
+    const json = serializeArchiveExport(
+      { conversationId: 'chat', title: 'Test', projectId: null },
+      buildArchiveThread(records),
+      { ...DEFAULT_EXPORT_OPTIONS, format: 'json' },
+      { verified: false },
+    ).text
+    const exported = JSON.parse(json)
+    expect(exported.turns.flatMap((turn: { details: unknown[] }) => turn.details)).toEqual([])
+    expect(json.includes('finished_successfully')).toBe(false)
+    expect(exported.binaryAttachmentsIncluded).toBe(false)
+  })
+  test('export format registry accepts external providers and falls back when a saved format is unavailable', () => {
+    const pipeline = new ArchiveExportPipeline(
+      [
+        {
+          descriptor: {
+            id: 'plain',
+            label: 'Plain text',
+            mimeType: 'text/plain',
+            fileExtension: 'txt',
+          },
+          serialize(document) {
+            return {
+              text: document.selection.format + ':' + document.conversation.title,
+              mime: 'text/plain',
+              extension: 'txt',
+            }
+          },
+        },
+      ],
+      'plain',
+    )
+    expect(pipeline.listFormats()).toEqual([
+      {
+        id: 'plain',
+        label: 'Plain text',
+        mimeType: 'text/plain',
+        fileExtension: 'txt',
+        isDefault: true,
+      },
+    ])
+    const result = pipeline.serialize(
+      { conversationId: 'chat', title: 'Test', projectId: null },
+      buildArchiveThread(records),
+      { ...DEFAULT_EXPORT_OPTIONS, format: 'removed-format' },
+      {},
+    )
+    expect(result.extension).toBe('txt')
+    expect(result.text).toBe('plain:Test')
+  })
+
+  test('pipeline factory extends built-ins without changing UI or package code', () => {
+    const pipeline = createArchiveExportPipeline([
+      {
+        descriptor: {
+          id: 'html',
+          label: 'HTML',
+          mimeType: 'text/html',
+          fileExtension: 'html',
+        },
+        serialize(document) {
+          return {
+            text: '<h1>' + document.conversation.title + '</h1>',
+            mime: 'text/html',
+            extension: 'html',
+          }
+        },
+      },
+    ])
+    expect(pipeline.listFormats().map((format) => format.id)).toEqual([
+      'markdown',
+      'text',
+      'json',
+      'html',
+    ])
+  })
+
+  test('ZIP transcript uses the same injected format pipeline', async () => {
+    const pipeline = new ArchiveExportPipeline(
+      [
+        {
+          descriptor: {
+            id: 'plain',
+            label: 'Plain text',
+            mimeType: 'text/plain',
+            fileExtension: 'txt',
+          },
+          serialize(document) {
+            return {
+              text: 'plain:' + document.conversation.title,
+              mime: 'text/plain',
+              extension: 'txt',
+            }
+          },
+        },
+      ],
+      'plain',
+    )
+    const result = await createArchivePackage(
+      { conversationId: 'chat', projectId: null, title: 'Test' } as never,
+      buildArchiveThread(records),
+      { ...DEFAULT_EXPORT_OPTIONS, level: 'full', format: 'plain' },
+      { verified: true, capture: { verified: true } },
+      [],
+      undefined,
+      undefined,
+      pipeline,
+    )
+    const zip = new TextDecoder().decode(await result.blob.arrayBuffer())
+    expect(zip).toContain('conversation.txt')
+    expect(zip).toContain('plain:Test')
+  })
+
+  test('readable Markdown omits coverage/raw JSON and plain text remains simple', () => {
+    const thread = buildArchiveThread(records)
+    const markdown = serializeArchiveExport(
+      { conversationId: 'chat', title: 'Test', projectId: null },
+      thread,
+      { ...DEFAULT_EXPORT_OPTIONS, format: 'markdown' },
+      { verified: false, capture: { readId: 'private-debug' } },
+    ).text
+    expect(markdown).toContain('## User')
+    expect(markdown).toContain('## Assistant')
+    expect(markdown).not.toContain('private-debug')
+    expect(markdown).not.toContain('originalRecord')
+    expect(markdown).not.toContain('### tool_result')
+    const plain = serializeArchiveExport(
+      { conversationId: 'chat', title: 'Test', projectId: null },
+      thread,
+      { ...DEFAULT_EXPORT_OPTIONS, format: 'text' },
+      {},
+    ).text
+    expect(plain).toContain('Assistant:')
+    expect(plain).not.toContain('originalRecord')
+  })
+
+  test('custom JSON does not copy large tool raw twice; full ZIP has only one raw transcript', async () => {
+    const payload = 'large-tool-response-'.repeat(5000)
+    const raw = {
+      id: 'tool-big',
+      author: { role: 'tool', name: 'fixture.tool' },
+      content: { content_type: 'text', parts: [payload] },
+      metadata: { model_slug: 'fixture-model' },
+    }
+    const thread = buildArchiveThread([
+      record('question', 'user'),
+      record('tool-big', 'tool', 'text', { raw }),
+      record('answer', 'assistant'),
+    ])
+    const chat = { conversationId: 'chat', title: 'Fixture', projectId: null }
+    const custom = JSON.parse(
+      serializeArchiveExport(
+        chat,
+        thread,
+        {
+          ...DEFAULT_EXPORT_OPTIONS,
+          format: 'json',
+          level: 'custom',
+          tools: true,
+        },
+        {},
+      ).text,
+    )
+    const tool = custom.turns
+      .flatMap((turn: { details: { id: string; originalRecord?: unknown }[] }) => turn.details)
+      .find((entry: { id: string }) => entry.id === 'tool-big')
+    expect(tool).toBeDefined()
+    expect(tool.originalRecord).toBeUndefined()
+    const customText = JSON.stringify(custom)
+    expect(customText.split(payload).length - 1).toBe(1)
+    const full = await createArchivePackage(
+      chat as never,
+      thread,
+      {
+        ...DEFAULT_EXPORT_OPTIONS,
+        format: 'json',
+        level: 'full',
+      },
+      { verified: true, capture: { verified: true } },
+      [],
+    )
+    const bytes = new TextDecoder().decode(await full.blob.arrayBuffer())
+    expect(bytes).not.toContain('records.raw.json')
+    expect(bytes).toContain('originalRecord')
+  })
+
+  test('custom Markdown includes only selected reasoning, not tool outputs', () => {
+    const text = serializeArchiveExport(
+      { conversationId: 'chat', title: 'Test', projectId: null },
+      buildArchiveThread(records),
+      {
+        ...DEFAULT_EXPORT_OPTIONS,
+        level: 'custom',
+        format: 'markdown',
+        tools: false,
+        reasoning: true,
+      },
+      {},
+    ).text
+    expect(text).toContain('### reasoning')
+    expect(text).not.toContain('### tool_result')
+  })
+  test('full transcript retains raw records but package truthfully reports missing assets', async () => {
+    const attachment = record('attachment', 'user', 'multimodal_text', {
+      raw: {
+        id: 'attachment',
+        author: { role: 'user' },
+        content: {
+          content_type: 'multimodal_text',
+          parts: [
+            {
+              content_type: 'image_asset_pointer',
+              asset_pointer: 'sediment://file_fixture',
+              mime_type: 'image/png',
+              size_bytes: 3,
+              width: 1,
+              height: 1,
+            },
+            'caption',
+          ],
+        },
+        metadata: { attachments: [{ id: 'file_fixture', name: 'fixture.png' }] },
+      },
+    })
+    const thread = buildArchiveThread([attachment])
+    const full = { ...DEFAULT_EXPORT_OPTIONS, level: 'full' as const }
+    const transcript = serializeArchiveExport(
+      { conversationId: 'chat', title: 'Test', projectId: null },
+      thread,
+      full,
+      {},
+    ).text
+    expect(transcript).toContain('Original record:')
+    expect(transcript).toContain('asset_pointer')
+    const conversation = {
+      conversationId: 'chat',
+      projectId: null,
+      title: 'Test',
+    } as never
+    const missing = await createArchivePackage(conversation, thread, full, {}, [])
+    expect(missing.manifest.complete).toBe(false)
+    expect(missing.manifest.assets[0]?.status).toBe('missing_url')
+    expect(missing.blob.type).toBe('application/zip')
+  })
+
+  test('custom binary package excludes attachments from unselected nested records', async () => {
+    const tool = record('tool-attachment', 'tool', 'text', {
+      raw: {
+        id: 'tool-attachment',
+        author: { role: 'tool', name: 'fixture.tool' },
+        content: {
+          content_type: 'multimodal_text',
+          parts: [
+            {
+              content_type: 'file_asset_pointer',
+              asset_pointer: 'sediment://file_tool_hidden',
+              mime_type: 'application/octet-stream',
+              size_bytes: 3,
+            },
+          ],
+        },
+        metadata: { attachments: [{ id: 'file_tool_hidden', name: 'hidden.bin' }] },
+      },
+    })
+    const thread = buildArchiveThread([
+      record('user-visible', 'user', 'text'),
+      tool,
+      record('answer-visible', 'assistant', 'text'),
+    ])
+    const result = await createArchivePackage(
+      { conversationId: 'chat', projectId: null, title: 'Test' } as never,
+      thread,
+      {
+        ...DEFAULT_EXPORT_OPTIONS,
+        level: 'custom',
+        tools: false,
+        internal: false,
+        reasoning: false,
+        files: true,
+      },
+      { verified: true, capture: { verified: true } },
+      [
+        {
+          assetId: 'file_tool_hidden',
+          fileName: 'hidden.bin',
+          mimeType: 'application/octet-stream',
+          sizeBytes: 3,
+          width: null,
+          height: null,
+          kind: 'file',
+          downloadUrl:
+            'https://chatgpt.com/backend-api/estuary/content?id=file_tool_hidden&sig=test',
+          resolverObservedAt: 1,
+          firstSeenAt: 1,
+          lastSeenAt: 1,
+        },
+      ],
+      async () => new Uint8Array([1, 2, 3]).buffer,
+    )
+    expect(result.manifest.assets).toEqual([])
+    expect(result.manifest.complete).toBe(true)
+  })
+
+  test('full package includes verified bytes and SHA-256 when a signed asset URL is available', async () => {
+    const attachment = record('attachment', 'user', 'multimodal_text', {
+      raw: {
+        id: 'attachment',
+        author: { role: 'user' },
+        content: {
+          content_type: 'multimodal_text',
+          parts: [
+            {
+              content_type: 'image_asset_pointer',
+              asset_pointer: 'sediment://file_fixture',
+              mime_type: 'image/png',
+              size_bytes: 3,
+            },
+          ],
+        },
+        metadata: { attachments: [{ id: 'file_fixture', name: 'fixture.png' }] },
+      },
+    })
+    const thread = buildArchiveThread([attachment])
+    const controller = new AbortController()
+    let receivedSignal: AbortSignal | undefined
+    const result = await createArchivePackage(
+      { conversationId: 'chat', projectId: null, title: 'Test' } as never,
+      thread,
+      { ...DEFAULT_EXPORT_OPTIONS, level: 'full' },
+      { verified: true, capture: { verified: true } },
+      [
+        {
+          assetId: 'file_fixture',
+          fileName: 'fixture.png',
+          mimeType: 'image/png',
+          sizeBytes: 3,
+          width: null,
+          height: null,
+          kind: 'image',
+          downloadUrl: 'https://chatgpt.com/backend-api/estuary/content?id=file_fixture&sig=test',
+          resolverObservedAt: 1,
+          firstSeenAt: 1,
+          lastSeenAt: 1,
+        },
+      ],
+      async (_url, _assetId, signal) => {
+        receivedSignal = signal
+        return new Uint8Array([1, 2, 3]).buffer
+      },
+      controller.signal,
+    )
+    expect(receivedSignal).toBe(controller.signal)
+    expect(result.manifest.complete).toBe(true)
+    expect(result.manifest.assets[0]?.status).toBe('included')
+    expect(result.manifest.assets[0]?.sha256).toHaveLength(64)
+    const zip = new Uint8Array(await result.blob.arrayBuffer())
+    expect([...zip.slice(0, 4)]).toEqual([0x50, 0x4b, 0x03, 0x04])
+  })
+
+  test('full package skips assets that would exceed the aggregate memory limit', async () => {
+    const attachment = record('limit-attachment', 'user', 'multimodal_text', {
+      raw: {
+        id: 'limit-attachment',
+        author: { role: 'user' },
+        content: {
+          content_type: 'multimodal_text',
+          parts: [
+            {
+              content_type: 'file_asset_pointer',
+              asset_pointer: 'sediment://file_limit',
+              mime_type: 'application/octet-stream',
+              size_bytes: 512 * 1024 * 1024 + 1,
+            },
+          ],
+        },
+        metadata: { attachments: [{ id: 'file_limit', name: 'too-large.bin' }] },
+      },
+    })
+    let fetches = 0
+    const result = await createArchivePackage(
+      { conversationId: 'chat', projectId: null, title: 'Test' } as never,
+      buildArchiveThread([attachment]),
+      { ...DEFAULT_EXPORT_OPTIONS, level: 'full' },
+      { verified: true, capture: { verified: true } },
+      [
+        {
+          assetId: 'file_limit',
+          fileName: 'too-large.bin',
+          mimeType: 'application/octet-stream',
+          sizeBytes: 512 * 1024 * 1024 + 1,
+          width: null,
+          height: null,
+          kind: 'file',
+          downloadUrl: 'https://chatgpt.com/backend-api/estuary/content?id=file_limit&sig=test',
+          resolverObservedAt: 1,
+          firstSeenAt: 1,
+          lastSeenAt: 1,
+        },
+      ],
+      async () => {
+        fetches += 1
+        return new ArrayBuffer(0)
+      },
+    )
+    expect(fetches).toBe(0)
+    expect(result.manifest.assets[0]?.status).toBe('package_limit')
+    expect(result.manifest.complete).toBe(false)
+  })
+
+  test('full package honors an aborted export before fetching assets', async () => {
+    const attachment = record('cancel-attachment', 'user', 'multimodal_text', {
+      raw: {
+        id: 'cancel-attachment',
+        author: { role: 'user' },
+        content: {
+          content_type: 'multimodal_text',
+          parts: [
+            {
+              content_type: 'file_asset_pointer',
+              asset_pointer: 'sediment://file_cancel',
+              mime_type: 'application/octet-stream',
+              size_bytes: 3,
+            },
+          ],
+        },
+        metadata: { attachments: [{ id: 'file_cancel', name: 'cancel.bin' }] },
+      },
+    })
+    const controller = new AbortController()
+    controller.abort(new DOMException('Aborted', 'AbortError'))
+    let fetches = 0
+    expect(
+      createArchivePackage(
+        { conversationId: 'chat', projectId: null, title: 'Test' } as never,
+        buildArchiveThread([attachment]),
+        { ...DEFAULT_EXPORT_OPTIONS, level: 'full' },
+        { verified: true, capture: { verified: true } },
+        [
+          {
+            assetId: 'file_cancel',
+            fileName: 'cancel.bin',
+            mimeType: 'application/octet-stream',
+            sizeBytes: 3,
+            width: null,
+            height: null,
+            kind: 'file',
+            downloadUrl: 'https://chatgpt.com/backend-api/estuary/content?id=file_cancel&sig=test',
+            resolverObservedAt: 1,
+            firstSeenAt: 1,
+            lastSeenAt: 1,
+          },
+        ],
+        async () => {
+          fetches += 1
+          return new Uint8Array([1, 2, 3]).buffer
+        },
+        controller.signal,
+      ),
+    ).rejects.toThrow('Aborted')
+    expect(fetches).toBe(0)
+  })
+})
+describe('fresh contiguous pagination evidence', () => {
+  test('oldest page alone does not prove complete history', () => {
+    expect(
+      historyCoverage([page({ isInitial: false, hasPreviousPage: false, hasNextPage: true })])
+        .verified,
+    ).toBe(false)
+  })
+  test('initial complete page proves current history snapshot', () => {
+    expect(historyCoverage([page({ hasPreviousPage: false })]).verified).toBe(true)
+  })
+  test('missing middle page prevents completion', () => {
+    expect(
+      historyCoverage([
+        page(),
+        page({
+          isInitial: false,
+          requestedBefore: 'm5',
+          startCursor: 'm0',
+          hasPreviousPage: false,
+        }),
+      ]).verified,
+    ).toBe(false)
+  })
+  test('long linked read ignores older sessions and picks latest duplicate cursor evidence', () => {
+    const steps = 160
+    const pages: HistoryPageEvidence[] = [
+      {
+        ...page({ readId: 'fresh', readStartedAt: 100, startCursor: `c${steps}` }),
+      },
+    ]
+    for (let index = steps; index > 0; index--) {
+      pages.push(
+        page({
+          readId: 'fresh',
+          readStartedAt: 100,
+          isInitial: false,
+          requestedBefore: `c${index}`,
+          startCursor: `c${index - 1}`,
+          hasPreviousPage: index !== 1,
+          observedAt: index + 10,
+        }),
+      )
+    }
+    pages.push(
+      page({
+        readId: 'fresh',
+        isInitial: false,
+        requestedBefore: 'c1',
+        startCursor: 'stale',
+        hasPreviousPage: true,
+        observedAt: 0,
+      }),
+    )
+    pages.push(
+      page({
+        readId: 'older',
+        readStartedAt: 5,
+        isInitial: true,
+        startCursor: 'old-root',
+        hasPreviousPage: false,
+        observedAt: 999,
+      }),
+    )
+    const coverage = historyCoverage(pages)
+    expect(coverage.verified).toBe(true)
+    expect(coverage.readId).toBe('fresh')
+    expect(coverage.pageCount).toBe(steps + 1)
+    expect(coverage.oldestCursor).toBe('c0')
+  })
+  test('all linked pages from one read prove history to beginning', () => {
+    expect(
+      historyCoverage([
+        page(),
+        page({
+          isInitial: false,
+          requestedBefore: 'm10',
+          startCursor: 'm0',
+          hasPreviousPage: false,
+          observedAt: 2,
+        }),
+      ]).verified,
+    ).toBe(true)
+  })
+  test('a continuation with conflicting request-start identity cannot close a page gap', () => {
+    const initial = page({ readId: 'shared', readStartedAt: 100 })
+    const stale = page({
+      readId: 'shared',
+      readStartedAt: 90,
+      isInitial: false,
+      requestedBefore: 'm10',
+      startCursor: 'm0',
+      hasPreviousPage: false,
+    })
+    const mismatch = historyCoverage([initial, stale])
+    expect(mismatch.verified).toBe(false)
+    expect(mismatch.pageCount).toBe(1)
+    expect(historyCoverage([initial, { ...stale, readStartedAt: 100 }]).verified).toBe(true)
+  })
+  test('a new incomplete read invalidates stale completion', () => {
+    expect(
+      historyCoverage([page({ hasPreviousPage: false }), page({ readId: 'new', observedAt: 3 })])
+        .verified,
+    ).toBe(false)
+  })
+})
+
+describe('regressions: policy and read identity', () => {
+  test('chat override can be removed to inherit project policy', () => {
+    const settings = normalizeSettings()
+    const configured = mergeSettings(settings, {
+      archive: {
+        projects: { project: { ...DEFAULT_CAPTURE_RULE, enabled: true } },
+        conversations: { chat: { ...DEFAULT_CAPTURE_RULE, enabled: false } },
+      },
+    })
+    expect(captureRuleFor(configured.archive, 'chat', 'project').enabled).toBe(false)
+    const inherited = mergeSettings(configured, { archive: { conversations: { chat: null } } })
+    expect(captureRuleFor(inherited.archive, 'chat', 'project').enabled).toBe(true)
+    expect(Object.hasOwn(inherited.archive.conversations, 'chat')).toBe(false)
+  })
+  test('malformed settings do not turn a string into capture consent', () => {
+    const settings = normalizeSettings({ archive: { defaultRule: { enabled: 'true' } } } as never)
+    expect(settings.archive.defaultRule.enabled).toBe(false)
+    const defaults = normalizeSettings()
+    expect(Object.keys(defaults.export).sort()).toEqual([
+      'attachmentMetadata',
+      'dictationEditEvidence',
+      'files',
+      'format',
+      'images',
+      'internal',
+      'level',
+      'modelEvidence',
+      'packaging',
+      'reasoning',
+      'reasoningFull',
+      'reasoningRecap',
+      'sourceRevisions',
+      'toolCalls',
+      'toolResults',
+      'toolSourceContent',
+      'tools',
+    ])
+  })
+  test('late response from an older read cannot prove a newer incomplete read', () => {
+    const old = {
+      readId: 'old',
+      readStartedAt: 10,
+      isInitial: true,
+      requestedBefore: null,
+      startCursor: 'old-start',
+      endCursor: 'old-end',
+      hasPreviousPage: false,
+      hasNextPage: false,
+      observedAt: 100,
+    }
+    const newer = {
+      ...old,
+      readId: 'new',
+      readStartedAt: 20,
+      hasPreviousPage: true,
+      startCursor: 'new-start',
+      observedAt: 50,
+    }
+    const result = historyCoverage([newer, old])
+    expect(result.verified).toBe(false)
+    expect(result.readId).toBe('new')
+    expect(result.readStartedAt).toBe(20)
+  })
+})
+
+describe('history loader retry policy', () => {
+  test('429 has a bounded longer delay while ordinary errors use capped exponential backoff', () => {
+    expect(historyBackoffMs(429, 1)).toBe(12_000)
+    expect(historyBackoffMs(0, 1)).toBe(2_000)
+    expect(historyBackoffMs(500, 3)).toBe(8_000)
+    expect(historyBackoffMs(500, 8)).toBe(8_000)
+  })
+})
+
+describe('resume regressions: consent, evidence and export boundaries', () => {
+  test('manual capture bypasses enablement but preserves category choices', () => {
+    const settings = mergeSettings(normalizeSettings(), {
+      archive: {
+        projects: {
+          project: {
+            enabled: false,
+            reasoning: false,
+            tools: true,
+            internal: false,
+          },
+        },
+      },
+    })
+    expect(captureRuleForOperation(settings.archive, 'chat', 'project', true, false)).toEqual({
+      enabled: true,
+      reasoning: false,
+      tools: true,
+      internal: false,
+    })
+    expect(captureRuleForOperation(settings.archive, 'chat', 'project', false, true).enabled).toBe(
+      false,
+    )
+    expect(captureRuleForOperation(settings.archive, 'other', null, false, true).enabled).toBe(
+      false,
+    )
+  })
+  test('same read and request time uses the latest observed initial evidence', () => {
+    const older = page({ readStartedAt: 10, observedAt: 20, hasPreviousPage: false })
+    const latest = page({ readStartedAt: 10, observedAt: 30, hasPreviousPage: true })
+    expect(historyCoverage([older, latest]).verified).toBe(false)
+    expect(historyCoverage([latest, older]).verified).toBe(false)
+  })
+  test('same-read DOM fallback cannot degrade explicit server completion evidence', () => {
+    const server = page({
+      readStartedAt: 10,
+      observedAt: 20,
+      hasPreviousPage: false,
+      hasNextPage: false,
+    })
+    const domFallback = page({
+      readStartedAt: 10,
+      observedAt: 30,
+      startCursor: null,
+      endCursor: null,
+      hasPreviousPage: null,
+      hasNextPage: null,
+    })
+    const result = historyCoverage([server, domFallback])
+    expect(result.verified).toBe(true)
+    expect(result.startReached).toBe(true)
+    expect(result.pageCount).toBe(1)
+  })
+  test('server retry cannot reuse an unrelated read to close a pagination gap', () => {
+    expect(
+      historyCoverage([
+        page({ readId: 'new', readStartedAt: 10 }),
+        page({
+          readId: 'old',
+          readStartedAt: 1,
+          isInitial: false,
+          requestedBefore: 'm10',
+          startCursor: 'm0',
+          hasPreviousPage: false,
+        }),
+      ]).verified,
+    ).toBe(false)
+  })
+  test('conversation projection does not leak storage raw into any export level', () => {
+    const stored = {
+      conversationId: 'chat',
+      title: 'Test',
+      projectId: null,
+      raw: { internal_context: 'PRIVATE_STORAGE_ONLY' },
+      owner: 'PRIVATE_OWNER',
+    }
+    for (const level of ['conversation', 'custom'] as const) {
+      const text = serializeArchiveExport(
+        stored,
+        buildArchiveThread([record('u', 'user')]),
+        { ...DEFAULT_EXPORT_OPTIONS, level, format: 'json' },
+        { verified: false },
+      ).text
+      expect(text).not.toContain('PRIVATE_STORAGE_ONLY')
+      expect(text).not.toContain('PRIVATE_OWNER')
+      expect(JSON.parse(text).conversation).toEqual({
+        conversationId: 'chat',
+        title: 'Test',
+        projectId: null,
+      })
+    }
+  })
+})

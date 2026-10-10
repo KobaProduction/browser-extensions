@@ -10,7 +10,7 @@ export interface ModuleManifest {
   dependencies?: string[]
 }
 export const DIST = 'dist'
-export const KNOWN_MODULES = ['vk-booster', 'proxy-switcher', 'all-in-one'] as const
+export const KNOWN_MODULES = ['vk-booster', 'chatgpt-booster', 'proxy-switcher', 'all-in-one'] as const
 export type ModuleId = (typeof KNOWN_MODULES)[number]
 export async function manifest(id: string): Promise<ModuleManifest> {
   const path = id === 'all-in-one' ? 'apps/all-in-one.json' : `modules/${id}/module.json`
@@ -26,12 +26,14 @@ export function affectedModules(paths: string[]): ModuleId[] {
     /^(packages\/|scripts\/|package\.json$|bun\.lock$|tsconfig\.json$|\.github\/)/.test(p),
   )
   const vk = paths.some((p) => p.startsWith('modules/vk-booster/'))
+  const chatgpt = paths.some((p) => p.startsWith('modules/chatgpt-booster/'))
   const proxy = paths.some((p) => p.startsWith('modules/proxy-switcher/'))
   const all = paths.some((p) => p.startsWith('apps/'))
   return KNOWN_MODULES.filter(
     (id) =>
       universal ||
       (id === 'vk-booster' && vk) ||
+      (id === 'chatgpt-booster' && chatgpt) ||
       (id === 'proxy-switcher' && proxy) ||
       (id === 'all-in-one' && (vk || all)),
   )

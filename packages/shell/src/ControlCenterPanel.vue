@@ -10,7 +10,7 @@ const props = defineProps<{
   title: string
   selectedSection: string
 }>()
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: []; select: [section: string] }>()
 const section = ref(props.selectedSection)
 watch(
   () => props.selectedSection,
@@ -24,8 +24,12 @@ const currentView = computed(() => props.views[section.value])
 async function enable(id: string, enabled: boolean) {
   await props.runtime.setEnabled(id, enabled)
 }
+function selectSection(id: string) {
+  section.value = id
+  emit('select', id)
+}
 function openModule(id: string) {
-  if (props.views[id]) section.value = id
+  if (props.views[id]) selectSection(id)
   else void props.runtime.open(id)
 }
 </script>
@@ -45,20 +49,20 @@ function openModule(id: string) {
     </header>
     <div class="booster-settings-layout">
       <nav class="booster-settings-nav" aria-label="Разделы">
-        <button type="button" :class="{active:section==='modules'}" @click="section='modules'">
+        <button type="button" :class="{active:section==='modules'}" @click="selectSection('modules')">
           <Wrench class="size-4"/>Модули
         </button>
         <button
           v-for="feature in statuses.filter(s=>Boolean(views[s.id]))"
           :key="feature.id" type="button" :class="{active:section===feature.id}"
-          @click="section=feature.id"
+          @click="selectSection(feature.id)"
         >
           <FolderArchive class="size-4"/>{{feature.title}}
         </button>
-        <button type="button" :class="{active:section==='analytics'}" @click="section='analytics'">
+        <button type="button" :class="{active:section==='analytics'}" @click="selectSection('analytics')">
           <BarChart3 class="size-4"/>Аналитика
         </button>
-        <button type="button" :class="{active:section==='settings'}" @click="section='settings'">
+        <button type="button" :class="{active:section==='settings'}" @click="selectSection('settings')">
           <SlidersHorizontal class="size-4"/>Настройки
         </button>
       </nav>

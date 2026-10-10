@@ -10,10 +10,12 @@ and widgets, the archive engine, shared application shell and compatibility
 rules. [Current architecture](docs/ARCHITECTURE.md) describes **running code**.
 The target is approved as a direction, not yet fully implemented.
 
-The ChatGPT Booster application is being migrated under
-`integrations/chatgpt-booster/`. It has its own local build and current
-canonical-archive migration requirements. See [migration status](docs/CHATGPT_MIGRATION.md);
-this does not imply ChatGPT v3/v4 data have been migrated.
+The executable experimental ChatGPT Booster is integrated under
+`modules/chatgpt-booster/` and built with both Tampermonkey and Chromium adapters.
+The development-only `integrations/chatgpt-booster/` tree is retained as a
+non-distributed reference for additional decomposition from the advanced VK
+branch, not a second runtime. See [migration status](docs/CHATGPT_BOOSTER_MIGRATION.md).
+Browser profile/extension-ID data migration is not automatic.
 
 ## Current modules
 
@@ -72,7 +74,7 @@ Source modules declare hosts, capabilities, delivery targets and versions in `mo
 
 CI checks types, tests and source contracts, then builds **only affected modules**. A change in `modules/vk-booster` builds VK Booster and the combiner; a change in `packages/*` rebuilds the known dependent modules conservatively. Main and trusted same-repository PRs use the `zoomies-linux-x64` runner from ChatGPT Booster; fork PRs use GitHub runners for isolation.
 
-After successful `main` CI, GitHub Actions computes an independent release plan for each releasable module. A module ships only when its `module.json` version has no existing release tag and its source or shared dependency changed since its previous tag. Releases use scoped tags, for example `vk-booster/v2.2.0`, with a userscript and a Chromium ZIP. `proxy-switcher` has `release:false` until implemented and tested. The release workflow does not republish unchanged versions. See `docs/RELEASES.md`.
+After installed-product verification, **explicit manual release approval** starts GitHub Actions independent release planning. Merging code into `main` does not publish untested browser updates. A module ships only when its `module.json` version has no existing release tag and its source or shared dependency changed since its previous tag. Releases use scoped tags, for example `vk-booster/v2.2.0`, with a userscript and a Chromium ZIP. `proxy-switcher` has `release:false` until implemented and tested. The release workflow does not republish unchanged versions. See `docs/RELEASES.md`.
 
 ## Safety and limitations
 
@@ -95,7 +97,7 @@ Paste the URL in Tampermonkey Dashboard → Utilities → Install from URL.
 Both userscripts embed matching @updateURL and @downloadURL metadata.
 Each has a separate version and update channel; install only ONE on VK to avoid
 duplicate interfaces. Stable URLs are served from the dedicated distribution
-branch. New releases publish only changed modules after successful main CI.
+branch. After installed-product acceptance, an explicitly approved manual release publishes only changed module versions.
 
 Disable the old VK Conversation Archive userscript from the Tampermonkey
 Dashboard before enabling VK Booster. Never delete the saved message archive:
@@ -136,7 +138,7 @@ The UI primitives, reusable archive widget and shared shell are separately owned
 The shell handles Shadow DOM, draggable launcher, centered modal and navigation;
 the VK feature adapts its archive API/state to the widget inside that shell. ChatGPT Booster
 source repository remains unchanged; its imported compatibility copy
-is being decomposed under integrations/chatgpt-booster. Full adoption still
+has a historical decomposition snapshot under integrations/chatgpt-booster; the executable now lives in modules/chatgpt-booster. The snapshot is not distributed. Full acceptance still
 requires browser acceptance and independent review.
 The VK API/storage model remains transitional and is not a reusable archive
 library yet. This refactor does not change released versions or channels.
@@ -151,3 +153,16 @@ TypeScript-only. Storage migration/cursor fixtures are also checked with strict 
 The isolated ChatGPT Booster compatibility application under
 `integrations/chatgpt-booster` has its own independent strict TypeScript/Biome
 checks and is not implicitly modified by first-party lint commands.
+
+## Integration source boundary (2026-10-10)
+
+The VK Booster 2.3.7 typed source, bounded archive widgets and shared storage
+utilities are included in the same tree as experimental ChatGPT Booster
+0.8.99. Only `modules/*` application entries are distributed. The other
+ChatGPT baseline in `integrations/chatgpt-booster` is a read-only migration
+reference preserving advanced refactor files until source parity is verified;
+it is not registered as a second extension, bundle or release target. Browser
+installation/cutover and independently approved module releases happen only
+after source integration.
+
+Source merge and authoritative ownership map: [VK/ChatGPT reconciliation](docs/INTEGRATION_RECONCILIATION.md).

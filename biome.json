@@ -2,7 +2,15 @@
   "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!**/node_modules", "!**/dist", "!**/.work", "!**/integrations", "!**/*.lock"]
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/dist",
+      "!**/.work",
+      "!**/integrations",
+      "!**/modules/chatgpt-booster",
+      "!**/*.lock"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -38,6 +46,9 @@
           "correctness": {
             "noUnusedVariables": "off",
             "noUnusedImports": "off"
+          },
+          "style": {
+            "useVueMultiWordComponentNames": "off"
           }
         }
       }
