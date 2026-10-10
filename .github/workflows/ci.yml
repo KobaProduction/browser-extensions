@@ -1,0 +1,39 @@
+name: Validate modules (Zoomies)
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    # Never execute fork PRs or Dependabot code on a privileged self-hosted runner.
+    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) && 'zoomies-linux-x64' || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: oven-sh/setup-bun@v2
+        with: {bun-version: '1.4.2'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Typecheck, test, validate
+        run: bun run check
+      - name: Build only impacted distribution modules
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: bun run build:changed
+      - name: Check generated outputs when modules changed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: bun run validate --built --module changed
+      - name: Upload requested build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: modular-browser-bundles
+          path: dist/**/*
+          if-no-files-found: ignore

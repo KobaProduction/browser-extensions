@@ -1,0 +1,9 @@
+{
+  "id": "proxy-switcher",
+  "name": "Proxy Switcher",
+  "version": "0.1.0",
+  "hosts": [],
+  "targets": ["chromium"],
+  "capabilities": ["proxy-settings", "request-routing"],
+  "release": false
+}

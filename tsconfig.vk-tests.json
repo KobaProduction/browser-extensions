@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["modules/vk-booster/src/**/*.ts", "packages/storage/src/**/*.ts"],
+  "exclude": ["**/dist/**"]
+}
