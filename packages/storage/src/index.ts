@@ -9,6 +9,8 @@ export type {
 export { readIndexedPage, readStorePage, scanIndexedPages, scanStorePages } from './indexed-batches'
 export type { IndexedMigrationStoreOptions } from './indexed-migration'
 export { indexedMigrationDriver } from './indexed-migration'
+export type { IndexedRangeOptions, IndexedRangePage, IndexedRangePosition } from './indexed-range'
+export { readIndexedRangePage } from './indexed-range'
 export { requestResult, transactionComplete } from './indexed-requests'
 export type {
   ActiveMigrationGeneration,

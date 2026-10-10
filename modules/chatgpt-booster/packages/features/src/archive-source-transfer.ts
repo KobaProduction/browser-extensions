@@ -1,3 +1,4 @@
+import { type IndexedPage, readStorePage, requestResult as read, transactionComplete as committed } from '@kobaproduction/browser-storage'
 import { archiveSha256Hex, createGzipFromChunks, encodeArchiveClone, decodeArchiveClone } from '@kobaproduction/browser-archive'
 import { ARCHIVE_DB_NAME, ConversationArchiveStore } from './archive-store'
 import { type ArchiveV4Store } from './archive-v4-store'
@@ -22,14 +23,6 @@ const SOURCE_STORES: Record<SourceKind, readonly string[]> = {
 type RecordRow = { kind: 'record'; source: SourceKind; table: string; value: unknown; encoding?: 'structured' }
 type DataRow = Record<string, unknown>
 type Totals = Record<string, number>
-const read = <T>(request: IDBRequest<T>): Promise<T> => new Promise((resolve, reject) => {
-  request.onsuccess = () => resolve(request.result)
-  request.onerror = () => reject(request.error ?? new Error('Native source transfer failed'))
-})
-const committed = (tx: IDBTransaction) => new Promise<void>((resolve, reject) => {
-  tx.oncomplete = () => resolve()
-  tx.onabort = () => reject(tx.error ?? new Error('Native source transfer write aborted'))
-})
 function record(value: unknown): DataRow {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new Error('Native source backup row must be an object')
@@ -77,27 +70,18 @@ async function existing(name: string): Promise<IDBDatabase | null> {
   })
 }
 
+/** Portable source export reads committed, bounded IDB pages. The user-owned
+ * source DB is never mutated or upgraded by this operation. */
 async function* scan(db: IDBDatabase, table: string): AsyncGenerator<DataRow> {
-  let after: IDBValidKey | undefined
+  let after: IDBValidKey | null = null
   while (true) {
-    const batch = await new Promise<{ values: DataRow[]; last?: IDBValidKey }>((resolve, reject) => {
-      const values: DataRow[] = []
-      let last: IDBValidKey | undefined
-      const request = db.transaction(table, 'readonly').objectStore(table)
-        .openCursor(after === undefined ? undefined : IDBKeyRange.lowerBound(after, true))
-      request.onerror = () => reject(request.error ?? new Error('Native source cursor failed'))
-      request.onsuccess = () => {
-        const cursor = request.result
-        if (!cursor || values.length >= 32) { resolve({ values, last }); return }
-        values.push(record(cursor.value))
-        last = cursor.primaryKey
-        if (values.length >= 32) resolve({ values, last })
-        else cursor.continue()
-      }
+    const page: IndexedPage<DataRow> = await readStorePage<DataRow>({
+      db, store: table, pageSize: 32, afterPrimaryKey: after, decode: record,
     })
-    for (const row of batch.values) yield row
-    if (batch.values.length < 32 || batch.last === undefined) return
-    after = batch.last
+    for (const row of page.records) yield row
+    if (page.exhausted || !page.records.length) return
+    if (page.lastPrimaryKey === null) throw new Error('Native source scan did not advance')
+    after = page.lastPrimaryKey
   }
 }
 

@@ -11,9 +11,10 @@ const props = withDefaults(
     detail?: string | null
     error?: string | null
     busy?: boolean
+    compact?: boolean
     ariaLabel?: string
   }>(),
-  { completed: null, total: null, detail: null, error: null, busy: false },
+  { completed: null, total: null, detail: null, error: null, busy: false, compact: false },
 )
 const progress = computed(() => {
   if (
@@ -30,8 +31,8 @@ const progress = computed(() => {
 })
 </script>
 <template>
-  <section class="booster-shared-archive-progress" :aria-busy="busy">
-    <div class="flex items-center justify-between gap-2">
+  <section :class="compact ? 'w-full' : 'booster-shared-archive-progress'" :aria-busy="busy">
+    <div v-if="!compact" class="flex items-center justify-between gap-2">
       <span role="status" aria-live="polite">{{ label }}</span>
       <strong v-if="progress !== null" class="tabular-nums">{{ progress }}%</strong>
     </div>

@@ -1,5 +1,8 @@
 <script setup lang="ts">
-/** Presentation only; null percentage means indeterminate rather than invented progress. */
+import { ArchiveProgress } from '@kobaproduction/browser-ui'
+
+/** VK-compatible adapter to the exact same provider-neutral progress widget
+ * used by ChatGPT backup/export. Zero remains known 0%, null indeterminate. */
 const props = withDefaults(
   defineProps<{
     label: string
@@ -12,9 +15,11 @@ const props = withDefaults(
 )
 </script>
 <template>
-  <div :class="compact ? 'w-full' : 'booster-export-progress'">
-    <p v-if="!compact" role="status" aria-live="polite">{{ label }}</p>
-    <progress :class="compact ? 'w-full' : undefined" :value="percent ?? undefined" max="100" :aria-label="label"/>
-    <p v-if="counter" class="booster-note">{{ counter }}<template v-if="percent !== null && percentLabel"> · {{ percentLabel }} {{ percent }}%</template></p>
-  </div>
+  <ArchiveProgress
+    :label="label"
+    :completed="percent"
+    :total="100"
+    :compact="compact"
+    :detail="counter ? `${counter}${percent !== null && percentLabel ? ` · ${percentLabel} ${percent}%` : ''}` : null"
+  />
 </template>

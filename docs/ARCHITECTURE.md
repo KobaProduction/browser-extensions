@@ -280,3 +280,18 @@ folder schema and checkpoint acknowledgement; ChatGPT alone owns account-
 verified canonical IndexedDB generations. The secondary
 `integrations/chatgpt-booster` tree is a non-distributed refactor/reference
 snapshot; only `modules/chatgpt-booster` is an executable product entry.
+
+## Shared source-storage refactor (2026-10-10)
+
+The platform exposes `packages/storage` IndexedDB request, completed
+transaction and bounded page primitives. ChatGPT now consumes them; VK
+continues to use the shared archive page/media use cases and File System
+Access adapters rather than introducing an unnecessary IndexedDB store. The ChatGPT canonical source reader also uses source-neutral indexed timestamp **range** continuation
+on the `(indexKey, primaryKey)` pair to avoid skipping records sharing a
+timestamp. ChatGPT's v4 types, identity rules and read-only queries now live
+in separate provider-owned files, while its v4 physical schema, write ticket,
+ownership proof and native/canonical transaction policy remain source-owned.
+The VK export progress is now a thin adapter over the same `ArchiveProgress`
+primitive that renders ChatGPT archive/export progress, with each provider
+still owning its phase/total state. See
+[ARCHIVE_DECOMPOSITION.md](ARCHIVE_DECOMPOSITION.md) for precise boundaries.

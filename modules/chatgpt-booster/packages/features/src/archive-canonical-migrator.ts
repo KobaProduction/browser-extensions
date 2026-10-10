@@ -1,3 +1,5 @@
+import { requestResult as request, transactionComplete as finish } from '@kobaproduction/browser-storage'
+import { type Row, object, scan, scanBatches, scanRecent, existingSource } from './archive-canonical-source-reader'
 import { exportNativeSourceBackup, importNativeSourceBackup } from './archive-source-transfer'
 import { archiveCompositeKey } from '@kobaproduction/browser-archive'
 import { archiveRecordText, buildArchiveThread } from '@chatgpt-booster/chatgpt'
@@ -21,19 +23,6 @@ import type { ArchiveV4Store } from './archive-v4-store'
 import { canonicalSourceJson, sourceFingerprint } from './archive-v4-write'
 import { normalizeConversationMessage } from './conversation-records'
 
-type Row = Record<string, unknown>
-const object = (v: unknown): Row | null =>
-  v && typeof v === 'object' && !Array.isArray(v) ? (v as Row) : null
-const request = <T>(req: IDBRequest<T>): Promise<T> =>
-  new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error ?? new Error('Archive migration request failed'))
-  })
-const finish = (tx: IDBTransaction): Promise<void> =>
-  new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve()
-    tx.onabort = () => reject(tx.error ?? new Error('Archive migration transaction aborted'))
-  })
 const key = archiveCompositeKey
 export type CanonicalMigrationStatus =
   | 'idle'
@@ -86,156 +75,6 @@ export interface CanonicalSourceSnapshot {
   raw: Row
 }
 
-/** Read at most 128 records in one readonly transaction before yielding work.
- * Composite cursor identity must include the primary key, because every record
- * in the conversation index has the same index key. */
-async function* scan(
-  db: IDBDatabase,
-  table: string,
-  index: string,
-  query: IDBValidKey,
-  batchLimit = 128,
-) {
-  let after: IDBValidKey | null = null
-  while (true) {
-    const tx = db.transaction(table, 'readonly')
-    const ix = tx.objectStore(table).index(index)
-    const batch = await new Promise<{ rows: Row[]; last: IDBValidKey | null }>(
-      (resolve, reject) => {
-        const rows: Row[] = []
-        let last: IDBValidKey | null = null
-        let resumed = false
-        const cursorRequest = ix.openCursor(IDBKeyRange.only(query))
-        cursorRequest.onerror = () =>
-          reject(cursorRequest.error ?? new Error('Legacy cursor failed'))
-        cursorRequest.onsuccess = () => {
-          const cursor = cursorRequest.result
-          if (!cursor) {
-            resolve({ rows, last })
-            return
-          }
-          if (after !== null && !resumed) {
-            resumed = true
-            cursor.continuePrimaryKey(query, after)
-            return
-          }
-          // continuePrimaryKey() is inclusive of its target; the last
-          // committed source row must not be counted a second time.
-          if (after !== null && indexedDB.cmp(cursor.primaryKey, after) <= 0) {
-            cursor.continue()
-            return
-          }
-          const value = object(cursor.value)
-          if (!value) {
-            reject(new Error('Legacy source row malformed'))
-            return
-          }
-          rows.push(value)
-          last = cursor.primaryKey
-          if (rows.length >= batchLimit) {
-            resolve({ rows, last })
-            return
-          }
-          cursor.continue()
-        }
-      },
-    )
-    if (!batch.rows.length) return
-    for (const row of batch.rows) yield row
-    if (batch.rows.length < batchLimit || batch.last === null) return
-    after = batch.last
-  }
-}
-
-/** A single IndexedDB transaction per bounded page, not per original message. */
-async function* scanBatches(
-  db: IDBDatabase,
-  table: string,
-  index: string,
-  query: IDBValidKey,
-): AsyncGenerator<Row[]> {
-  let batch: Row[] = []
-  for await (const row of scan(db, table, index, query)) {
-    batch.push(row)
-    if (batch.length === 128) {
-      yield batch
-      batch = []
-    }
-  }
-  if (batch.length) yield batch
-}
-
-/** Read only rows changed since a caller-selected time. Resume by index key
- * plus primary key; duplicate timestamps must not skip or repeat records. */
-async function* scanRecent(
-  db: IDBDatabase,
-  table: string,
-  index: string,
-  since: number,
-  until: number,
-): AsyncGenerator<Row[]> {
-  let lastIndexKey: IDBValidKey | null = null
-  let lastPrimaryKey: IDBValidKey | null = null
-  const range = IDBKeyRange.bound(since, until)
-  while (true) {
-    const tx = db.transaction(table, 'readonly')
-    const ix = tx.objectStore(table).index(index)
-    const batch = await new Promise<{
-      rows: Row[]
-      indexKey: IDBValidKey | null
-      primaryKey: IDBValidKey | null
-    }>((resolve, reject) => {
-      const rows: Row[] = []
-      let indexKey: IDBValidKey | null = null
-      let primaryKey: IDBValidKey | null = null
-      let jumped = false
-      const cursor = ix.openCursor(range)
-      cursor.onerror = () => reject(cursor.error ?? new Error('Recent-source cursor failed'))
-      cursor.onsuccess = () => {
-        const c = cursor.result
-        if (!c) {
-          resolve({ rows, indexKey, primaryKey })
-          return
-        }
-        if (lastIndexKey !== null && lastPrimaryKey !== null && !jumped) {
-          jumped = true
-          const keyOrder = indexedDB.cmp(c.key, lastIndexKey)
-          const primaryOrder = keyOrder === 0 ? indexedDB.cmp(c.primaryKey, lastPrimaryKey) : 0
-          if (keyOrder < 0 || (keyOrder === 0 && primaryOrder < 0)) {
-            c.continuePrimaryKey(lastIndexKey, lastPrimaryKey)
-            return
-          }
-        }
-        if (lastIndexKey !== null && lastPrimaryKey !== null) {
-          const keyOrder = indexedDB.cmp(c.key, lastIndexKey)
-          if (
-            keyOrder < 0 ||
-            (keyOrder === 0 && indexedDB.cmp(c.primaryKey, lastPrimaryKey) <= 0)
-          ) {
-            c.continue()
-            return
-          }
-        }
-        const v = object(c.value)
-        if (!v) {
-          reject(new Error('Recent-source row malformed'))
-          return
-        }
-        rows.push(v)
-        indexKey = c.key
-        primaryKey = c.primaryKey
-        if (rows.length === 128) resolve({ rows, indexKey, primaryKey })
-        else c.continue()
-      }
-    })
-    if (!batch.rows.length) return
-    yield batch.rows
-    if (batch.rows.length < 128 || batch.indexKey === null || batch.primaryKey === null) return
-    lastIndexKey = batch.indexKey
-    lastPrimaryKey = batch.primaryKey
-  }
-}
-
 export type LegacySkipReason = 'missing_owner' | 'owner_mismatch'
 export interface LegacySkippedConversation {
   readonly conversationId: string
@@ -283,21 +122,6 @@ export interface ArchiveCoverageAudit {
     ownerStatus: 'verified' | 'waiting_for_owner' | 'mismatch' | 'v4_only'
   }[]
 }
-async function existingSource(name: string): Promise<IDBDatabase | null> {
-  if (typeof indexedDB.databases !== 'function') throw new Error('IndexedDB inspection unavailable')
-  const known = await indexedDB.databases()
-  if (!known.some((x) => x.name === name)) return null
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(name)
-    req.onupgradeneeded = () => {
-      req.transaction?.abort()
-      reject(new Error('Legacy source was missing'))
-    }
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error ?? new Error('Failed to open legacy source'))
-  })
-}
-
 /**
  * One-time consented archive conversion. Both old DBs remain untouched.
  * Stage in generation-specific records; expose only the manifest's active generation.

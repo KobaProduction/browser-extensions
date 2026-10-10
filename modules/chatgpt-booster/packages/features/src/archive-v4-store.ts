@@ -1,3 +1,41 @@
+import { comparePoint, identity, key, sourceObject } from './archive-v4-identities'
+import { getConversation, getMessage, getProject, listConversations, listProjects } from './archive-v4-queries'
+import type {
+  Source,
+  ArchiveV4Project,
+  ArchiveV4Conversation,
+  ArchiveV4Message,
+  ArchiveV4Metadata,
+  ArchiveV4SourceRevisionEvidence,
+  ArchiveV4SourceRevisionWindow,
+  ArchiveV4SubmissionEvidence,
+  ArchiveV4Change,
+  ArchiveV4WriteTicket,
+  ArchiveV4WriteOptions,
+  ArchiveV4IngestResult,
+  ArchiveV4Preview,
+  ArchiveV4PathResult,
+  ArchiveV4PathIndex,
+} from './archive-v4-entities'
+export type {
+  Source,
+  ArchiveV4Project,
+  ArchiveV4Conversation,
+  ArchiveV4Message,
+  ArchiveV4Metadata,
+  ArchiveV4SourceRevisionEvidence,
+  ArchiveV4SourceRevisionWindow,
+  ArchiveV4SubmissionEvidence,
+  ArchiveV4Change,
+  ArchiveV4WriteTicket,
+  ArchiveV4WriteOptions,
+  ArchiveV4IngestResult,
+  ArchiveV4Preview,
+  ArchiveV4PathStatus,
+  ArchiveV4PathResult,
+  ArchiveV4PathIndex,
+} from './archive-v4-entities'
+import { requestResult as req, transactionComplete as settled } from '@kobaproduction/browser-storage'
 import { instanceKey } from '@kobaproduction/browser-core'
 import { foldArchivePage } from '@kobaproduction/browser-archive'
 import { projectNativeMessage } from '@chatgpt-booster/core'
@@ -29,211 +67,6 @@ export { traceArchiveV4Path, traceArchiveV4PathIds } from './archive-v4-path'
  */
 export const ARCHIVE_V4_DB_NAME = instanceKey('chatgpt-booster-archive-v4', 'chatgpt-booster:prod')
 export const ARCHIVE_V4_DB_VERSION = 2
-
-type Source = Record<string, unknown>
-type OwnerType = 'project' | 'conversation' | 'message' | 'account'
-type MetadataKind =
-  | 'history-page'
-  | 'message-snapshot'
-  | 'message-revision-evidence'
-  | 'submission-selection'
-  | 'write-generation'
-
-export interface ArchiveV4Project {
-  key: string
-  projectId: string
-  accountId: string
-  title: string | null
-  firstSeenAt: number
-  lastSeenAt: number
-}
-
-export interface ArchiveV4Conversation {
-  key: string
-  conversationId: string
-  accountId: string
-  projectId: string | null
-  title: string | null
-  currentNodeId: string | null
-  /** Newest native initial read allowed to update title/project/selected head. */
-  headReadId?: string | null
-  headReadStartedAt?: number | null
-  catalogReadStartedAt?: number | null
-  /** Changes on recreation, so deleting and recollecting cannot alias revision 1. */
-  instanceId?: string
-  latestReadId?: string | null
-  latestReadStartedAt?: number | null
-  latestReadConflicted?: boolean
-  knownMessageCount: number
-  // Native create_time may be null. These messages remain stored but have no proven chronology.
-  unsequencedMessageCount: number
-  firstKnownMessageId: string | null
-  lastKnownMessageId: string | null
-  firstKnownTime: number | null
-  lastKnownTime: number | null
-  // Source pagination proof does not prove selected branch ancestry.
-  verifiedPathRootId: string | null
-  verifiedPathTipId: string | null
-  /** The exact native history read and revision that established these boundaries. */
-  verifiedPathReadId?: string | null
-  verifiedPathRevision?: number | null
-  coverage: 'unverified'
-  revision: number
-  firstSeenAt: number
-  lastSeenAt: number
-}
-
-export interface ArchiveV4Message {
-  key: string
-  conversationKey: string
-  messageId: string
-  parentId: string | null
-  // Absent parent_id is not proof that this node is a root.
-  parentKnown: boolean
-  sourceCreateTime: number | null
-  firstSeenAt: number
-  lastSeenAt: number
-  revision: number
-  /** Snapshot provenance prevents a late older read overwriting fresher raw. */
-  sourceReadId?: string | null
-  sourceReadStartedAt?: number | null
-  sourceFingerprint?: string
-  // Entire original ChatGPT message. No Booster keys inserted or removed.
-  raw: Source
-}
-
-export interface ArchiveV4Metadata {
-  key: string
-  ownerType: OwnerType
-  ownerKey: string
-  kind: MetadataKind
-  observedAt: number
-  payload: Source
-}
-
-/** Previous stored source version; no claim about when or who edited it. */
-export interface ArchiveV4SourceRevisionEvidence {
-  previousRevision: number
-  previousLastSeenAtMs: number
-  sourceReadId: string | null
-  sourceReadStartedAtMs: number | null
-}
-
-export interface ArchiveV4SourceRevisionWindow {
-  previous: ArchiveV4SourceRevisionEvidence[]
-  /** Older revisions have been omitted to bound the exported evidence. */
-  olderRevisionsOmitted: boolean
-}
-
-export type ArchiveV4SubmissionEvidence =
-  | { status: 'unobserved' | 'conflicted'; selection: null }
-  | { status: 'observed'; selection: ConversationSubmissionSelection }
-
-export type ArchiveV4Change =
-  | { kind: 'conversation'; accountId: string; conversationId: string; revision: number }
-  | { kind: 'project'; accountId: string; projectId: string }
-  | { kind: 'cleared'; accountId: string }
-
-export interface ArchiveV4WriteTicket {
-  readonly accountId: string
-  readonly generation: string | null
-  readonly localEpoch: number
-  readonly requestedAt: number
-}
-export interface ArchiveV4WriteOptions {
-  ticket?: ArchiveV4WriteTicket
-  signal?: AbortSignal
-}
-
-export interface ArchiveV4IngestResult {
-  mutated: boolean
-  conversationKey: string
-  inserted: number
-  changed: number
-  unchanged: number
-  totalMessages: number
-  revision: number
-}
-
-/** A chronological preview is not proof of a complete message lineage. */
-export interface ArchiveV4Preview {
-  conversation: ArchiveV4Conversation | undefined
-  earliest: ArchiveV4Message[]
-  latest: ArchiveV4Message[]
-  hiddenKnownCount: number
-  hasUnsequencedMessages: boolean
-}
-
-export type ArchiveV4PathStatus =
-  | 'verified'
-  | 'conversation_missing'
-  | 'head_mismatch'
-  | 'pagination_incomplete'
-  | 'capture_omissions'
-  | 'tip_missing'
-  | 'parent_unknown'
-  | 'missing_parent'
-  | 'cyclic_parent'
-  | 'depth_limit'
-  | 'source_changed'
-
-export interface ArchiveV4PathResult {
-  status: ArchiveV4PathStatus
-  /** Ordered root -> selected tip for the confirmed subset only. */
-  messages: ArchiveV4Message[]
-  rootId: string | null
-  selectedTipId: string
-  // Raw provenance is never inferred from chronological adjacency.
-  coverageReadId: string | null
-  /** Conversation revision captured before tracing this native path. */
-  conversationRevision: number | null
-  conversationInstanceId?: string | null
-}
-
-/** Verified root-to-tip IDs without retaining every source-native raw message. */
-export type ArchiveV4PathIndex = Omit<ArchiveV4PathResult, 'messages'> & {
-  messageIds: string[]
-}
-
-function key(...values: string[]): string {
-  return JSON.stringify(values)
-}
-
-function identity(value: string, label: string): string {
-  if (!value || value.trim() !== value) throw new Error('Invalid value: '.concat(label))
-  return value
-}
-
-function req<T>(request: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error ?? new Error('IndexedDB request failed'))
-  })
-}
-
-function settled(tx: IDBTransaction): Promise<void> {
-  const done = new Promise<void>((resolve, reject) => {
-    tx.addEventListener('complete', () => resolve(), { once: true })
-    tx.addEventListener(
-      'abort',
-      () => reject(tx.error ?? new DOMException('Archive transaction aborted', 'AbortError')),
-      { once: true },
-    )
-  })
-  // Consumers may still be waiting for a failed request when abort is dispatched.
-  void done.catch(() => undefined)
-  return done
-}
-
-function sourceObject(value: unknown): Source {
-  if (!value || typeof value !== 'object' || Array.isArray(value))
-    throw new Error('Invalid source message object')
-  return value as Source
-}
-
-function comparePoint(aTime: number, aId: string, bTime: number, bId: string): number {
-  return aTime - bTime || (aId < bId ? -1 : aId > bId ? 1 : 0)
-}
 
 export class ArchiveV4Store {
   #opened: Promise<IDBDatabase> | undefined
@@ -1278,11 +1111,7 @@ export class ArchiveV4Store {
   }
 
   async listProjects(accountId: string): Promise<ArchiveV4Project[]> {
-    const db = await this.#db()
-    const tx = db.transaction('projects', 'readonly')
-    return req<ArchiveV4Project[]>(
-      tx.objectStore('projects').index('byAccount').getAll(identity(accountId, 'accountId')),
-    )
+    return listProjects(await this.#db(), accountId)
   }
 
   /** Explicit account-scoped cleanup; never deletes other accounts or the v3 DB. */
@@ -1452,46 +1281,19 @@ export class ArchiveV4Store {
   }
 
   async getProject(accountId: string, projectId: string) {
-    const db = await this.#db()
-    const tx = db.transaction('projects', 'readonly')
-    return req<ArchiveV4Project | undefined>(
-      tx
-        .objectStore('projects')
-        .get(key(identity(accountId, 'accountId'), identity(projectId, 'projectId'))),
-    )
+    return getProject(await this.#db(), accountId, projectId)
   }
 
   async getConversation(accountId: string, conversationId: string) {
-    const db = await this.#db()
-    const tx = db.transaction('conversations', 'readonly')
-    return req<ArchiveV4Conversation | undefined>(
-      tx
-        .objectStore('conversations')
-        .get(key(identity(accountId, 'accountId'), identity(conversationId, 'conversationId'))),
-    )
+    return getConversation(await this.#db(), accountId, conversationId)
   }
 
   async listConversations(accountId: string) {
-    const db = await this.#db()
-    const tx = db.transaction('conversations', 'readonly')
-    return req<ArchiveV4Conversation[]>(
-      tx.objectStore('conversations').index('byAccount').getAll(identity(accountId, 'accountId')),
-    )
+    return listConversations(await this.#db(), accountId)
   }
 
   async getMessage(accountId: string, conversationId: string, messageId: string) {
-    const db = await this.#db()
-    const tx = db.transaction('messages', 'readonly')
-    return req<ArchiveV4Message | undefined>(
-      tx
-        .objectStore('messages')
-        .get(
-          key(
-            key(identity(accountId, 'accountId'), identity(conversationId, 'conversationId')),
-            identity(messageId, 'messageId'),
-          ),
-        ),
-    )
+    return getMessage(await this.#db(), accountId, conversationId, messageId)
   }
 
   /** Evidence is stored only once its native user message belongs to this archive. */

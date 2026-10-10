@@ -1,3 +1,4 @@
+import { requestResult as request, transactionComplete as transactionDone } from '@kobaproduction/browser-storage'
 import { instanceKey } from '@kobaproduction/browser-core'
 import {
   archiveRecordAttachments,
@@ -194,21 +195,6 @@ function numberOrNull(value: unknown): number | null {
 
 function booleanOrNull(value: unknown): boolean | null {
   return typeof value === 'boolean' ? value : null
-}
-
-function request<T = undefined>(req: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error ?? new Error('IndexedDB request failed'))
-  })
-}
-
-function transactionDone(tx: IDBTransaction): Promise<void> {
-  return new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve()
-    tx.onerror = () => reject(tx.error ?? new Error('IndexedDB transaction failed'))
-    tx.onabort = () => reject(tx.error ?? new Error('IndexedDB transaction aborted'))
-  })
 }
 
 function deleteExpiredPreloadPages(store: IDBObjectStore, now: number): Promise<void> {

@@ -19,7 +19,7 @@ import type {
 } from './types'
 /* VK Booster v2 provider composition; neutral paging, storage and UI live in shared packages. */
 export function installVkArchive(): void {
-  const VERSION = '2.3.9'
+  const VERSION = '2.3.10'
   const apiKey = instanceKey('VKExport', 'vk-booster:prod')
   const published = globalThis as Record<string, unknown>
   if ((published[apiKey] as ArchiveApi | undefined)?.version === VERSION) return
