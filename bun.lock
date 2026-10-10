@@ -56,7 +56,7 @@
     },
     "modules/chatgpt-booster": {
       "name": "@kobaproduction/module-chatgpt-booster",
-      "version": "2.0.6",
+      "version": "2.0.7",
       "dependencies": {
         "@chatgpt-booster/chatgpt": "workspace:*",
         "@chatgpt-booster/core": "workspace:*",
@@ -73,7 +73,7 @@
     },
     "modules/chatgpt-booster/packages/chatgpt": {
       "name": "@chatgpt-booster/chatgpt",
-      "version": "2.0.6",
+      "version": "2.0.7",
       "dependencies": {
         "@chatgpt-booster/core": "workspace:*",
       },
@@ -83,7 +83,7 @@
     },
     "modules/chatgpt-booster/packages/core": {
       "name": "@chatgpt-booster/core",
-      "version": "2.0.6",
+      "version": "2.0.7",
       "dependencies": {
         "@kobaproduction/browser-core": "workspace:*",
       },
@@ -93,7 +93,7 @@
     },
     "modules/chatgpt-booster/packages/extension": {
       "name": "@chatgpt-booster/extension",
-      "version": "2.0.6",
+      "version": "2.0.7",
       "dependencies": {
         "@chatgpt-booster/core": "workspace:*",
         "@chatgpt-booster/features": "workspace:*",
@@ -106,7 +106,7 @@
     },
     "modules/chatgpt-booster/packages/features": {
       "name": "@chatgpt-booster/features",
-      "version": "2.0.6",
+      "version": "2.0.7",
       "dependencies": {
         "@chatgpt-booster/chatgpt": "workspace:*",
         "@chatgpt-booster/core": "workspace:*",
@@ -123,14 +123,14 @@
     },
     "modules/chatgpt-booster/packages/observer": {
       "name": "@chatgpt-booster/observer",
-      "version": "2.0.6",
+      "version": "2.0.7",
       "devDependencies": {
         "typescript": "^5.9.2",
       },
     },
     "modules/chatgpt-booster/packages/telemetry": {
       "name": "@chatgpt-booster/telemetry",
-      "version": "2.0.6",
+      "version": "2.0.7",
       "dependencies": {
         "@chatgpt-booster/core": "workspace:*",
       },
@@ -140,11 +140,13 @@
     },
     "modules/chatgpt-booster/packages/ui": {
       "name": "@chatgpt-booster/ui",
-      "version": "2.0.6",
+      "version": "2.0.7",
       "dependencies": {
         "@chatgpt-booster/core": "workspace:*",
         "@gitgraph/core": "1.5.0",
         "@gitgraph/js": "1.4.0",
+        "@kobaproduction/browser-core": "workspace:*",
+        "@kobaproduction/browser-storage": "workspace:*",
         "@kobaproduction/browser-ui": "workspace:*",
         "clsx": "^2.1.1",
         "lucide-vue-next": "^0.545.0",
@@ -154,7 +156,7 @@
     },
     "modules/chatgpt-booster/packages/userscript": {
       "name": "@chatgpt-booster/userscript",
-      "version": "2.0.6",
+      "version": "2.0.7",
       "dependencies": {
         "@chatgpt-booster/core": "workspace:*",
         "@chatgpt-booster/features": "workspace:*",

@@ -16,13 +16,21 @@ test('telemetry is opt-in, scoped and excludes all user data', async () => {
   expect(events[0]).toMatchObject({
     service: 'VK Booster Service',
     scope: 'vk-booster:dev',
+    serviceId: 'VK Booster Service',
+    productId: 'vk-booster',
+    channel: 'dev',
+    schemaVersion: 1,
     name: 'archive.capture.completed',
     count: 3000,
     durationMs: 1234,
   })
   expect(Object.keys(events[0] ?? {})).toEqual([
     'service',
+    'serviceId',
     'scope',
+    'productId',
+    'channel',
+    'schemaVersion',
     'name',
     'timestamp',
     'count',
