@@ -2228,4 +2228,4 @@ The `serialization_metadata.custom_symbol_offsets` array must be empty for this
 accepted v2 slice; non-empty elements, additional nested keys, unregistered
 content variants, and unknown metadata still fail closed. Source acceptance
 and full live Export/History Loader acceptance are separate proof levels;
-see Issue #54.
+see Issue #11.

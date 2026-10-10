@@ -1,16 +1,15 @@
 # Archive target architecture and delivery contract
 
-Status: **active architecture / migration implementation pending**. The DEV build
+Status: **active architecture / source implementation integrated; live acceptance pending**. The DEV build
 currently writes source-native messages into isolated v4 IndexedDB. This is
 not yet the stable canonical archive described below. User-approved decision
 2026-10-09 supersedes the former no-migration, clean-cutover policy. Data in
 v3 and v4 must remain intact until a separately verified conversion is committed.
 
 This document defines durable design constraints. **One GitHub Issue
-[#54 — ARCHIVE & EXPORT](https://github.com/KobaProduction/chatgpt-booster/issues/54)
-is the sole live work plan**: its six phase sections hold all implementation and
-acceptance checklists, dependencies, owners by role, progress evidence and closure
-criteria. Do not create separate Issues per phase or duplicate task checklists
+[#11 — ARCHIVE & EXPORT](https://github.com/KobaProduction/browser-extensions/issues/11)
+is the sole live work plan**: its acceptance checklist tracks remaining installed-product
+and release gates. The original six phases are historical implementation checkpoints. Do not create separate Issues per phase or duplicate task checklists
 in Markdown. See [Agent execution and issue workflow](#agent-execution-and-issue-workflow).
 
 References: [Architecture](ARCHITECTURE.md), [Conversation Archive](CONVERSATION_ARCHIVE.md),
@@ -277,7 +276,7 @@ user-profile-safe verification of the remaining gates.
 
 ### Acceptance boundaries
 
-Track this new scope **inside Issue #54**, not in historical phase issues.
+Track this new scope **inside Issue #11**, not in historical phase issues.
 Require independently verified backup+restore, v3/v4 count reconciliation,
 owner ambiguity/quarantine, idempotent resume, rollback/failure and
 cross-tab fencing, canonical element order/fidelity and independent
@@ -376,7 +375,7 @@ than starting another export or changing the native selected conversation.
 ## Integrated ingestion and consistency map
 
 This describes the local v4 source implementation, not an accepted deployment.
-Issue #54 remains the status/acceptance owner. Native schemas and transport
+Issue #11 remains the status/acceptance owner. Native schemas and transport
 contracts are owned by `archive-source-contract.ts` and the observed-client
 research; no additional endpoint is called to perform synchronization.
 
@@ -473,7 +472,7 @@ resource usage remain part of the final acceptance stage, not a completed test.
 ## Export design boundaries
 
 - Export is one **explicitly selected and verified path/version** (subject to
-  deferred [branch work](https://github.com/KobaProduction/chatgpt-booster/issues/53));
+  deferred [branch work](https://github.com/KobaProduction/browser-extensions/issues/12));
   refuse a false *complete* label when its ancestry is ambiguous.
 - Open export -> asynchronously hydrate local summary -> inspect source coverage
   and selected path -> choose options -> optional collapsed first/last preview
@@ -548,32 +547,31 @@ Native collection completion and persistence completion are separate: stop
 ## Agent execution and single-Issue workflow
 
 - **Authority:** this document defines target architecture; runtime/client
-  research defines observed evidence; repository code and `dev` define current
-  implementation. **Only [Issue #54](https://github.com/KobaProduction/chatgpt-booster/issues/54)
+  research defines observed evidence; repository code and reviewed `main` define current
+  implementation. **Only [Issue #11](https://github.com/KobaProduction/browser-extensions/issues/11)
   tracks work for archive storage, strict API contracts and export.** It contains
-  six phases (0–5), their dependencies, checklists, role ownership, blocking
-  findings and product acceptance. Former phase Issues #55–#60 are closed
+  remaining product/browser acceptance and independent review gates. Former phase Issues #55–#60 are closed
   historical records, **not** active task lists.
 - **Enter:** read repository `AGENTS.md`, this document, current git state and
-  the entire Issue #54. Identify the first unmet, unblocked phase/checklist item
-  **inside #54**. Never treat design prose as deployed capability.
+  the entire Issue #11. Identify the first unmet, unblocked phase/checklist item
+  **inside #11**. Never treat design prose as deployed capability.
 - **Execute:** Implementer owns the selected implementation slice and updates
-  the matching checkboxes **in #54 only** when supported by proof. Independent
+  the matching checkboxes **in #11 only** when supported by proof. Independent
   Reviewer verifies the exact diff/CI/contracts. Tester/product owner performs
   required live Free/Pro visual and runtime acceptance. No named assignee is
   invented where one is not actually appointed.
-- **Handoff:** comment on #54 with current phase/checkpoints, actor role,
+- **Handoff:** comment on #11 with current phase/checkpoints, actor role,
   branch/head/PR, changes, source/build/browser/live validation, open blockers,
   dependencies and the next decision. Keep sensitive ChatGPT records, IDs,
   credentials and signed URLs out of public issues and CI logs.
-- **Closure:** Issue #54 stays open until every mandatory phase and its
+- **Closure:** Issue #11 stays open until every mandatory phase and its
   independent/product acceptance is completed. Synthetic Chromium passing
   cannot substitute for live Free/Pro acceptance; do not check acceptance
   boxes without its actual evidence.
 - **PR hygiene:** one coherent PR per meaningful implementation slice, not per
   checkbox and not a separate Issue per PR. Use repository writer/reviewer
   authority and stop on architecture/API-signature contradictions.
-- **Deferred boundary:** existing [issue #53](https://github.com/KobaProduction/chatgpt-booster/issues/53)
+- **Deferred boundary:** existing [issue #12](https://github.com/KobaProduction/browser-extensions/issues/12)
   continues to track the previously requested unfinished branch visualization.
   The master export work may only claim a verified selected path; it must not
   silently solve missing parent links by invention.

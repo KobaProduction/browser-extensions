@@ -1,7 +1,9 @@
+> **Standalone retirement:** All future ChatGPT Booster development, issues and builds are owned by this monorepo. The old standalone GitHub repository is a historical source only; do not publish or track work there. The canonical archive product acceptance task is [issue #11](https://github.com/KobaProduction/browser-extensions/issues/11). Existing browser profiles are not implicitly migrated.
+
 > **Release-system update (2026-10-10):** this document includes historical
 > source-relocation checkpoints. The executable ChatGPT Booster is now
-> version **2.0.4** with `release:true` and independent userscript/MV3
-> artifacts. All-in-one **0.5.3** includes both ChatGPT and VK. Real-user
+> version **2.0.5** with `release:true` and independent userscript/MV3
+> artifacts. All-in-one **0.5.4** includes both ChatGPT and VK. Real-user
 > installation/backup cutover and public release remain gated separately.
 > See [independent releases](INDEPENDENT_RELEASES.md) for current authority.
 
