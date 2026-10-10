@@ -37,6 +37,7 @@ import { Button } from './components/ui/button'
 import { resolveLocale, translate } from './i18n'
 import CaptureSettings from './CaptureSettings.vue'
 import ModalSurface from './ModalSurface.vue'
+import { exportChatGptSettings, restoreChatGptSettings } from './settings-backup'
 import type { ArchiveDataAdapter } from './mount'
 
 const props = withDefaults(
@@ -64,6 +65,68 @@ const tokenConfigured = ref(false)
 const tokenEditing = ref(false)
 const telemetryTestState = ref<'idle' | 'testing' | 'success' | 'error'>('idle')
 const telemetryTestError = ref('')
+const settingsBackupBusy = ref(false)
+const settingsBackupError = ref('')
+const settingsBackupMessage = ref('')
+const settingsBackupFile = ref<File | null>(null)
+const settingsBackupApproved = ref(false)
+
+async function downloadSettingsBackup() {
+  if (settingsBackupBusy.value) return
+  settingsBackupBusy.value = true
+  settingsBackupError.value = ''
+  settingsBackupMessage.value = ''
+  try {
+    const blob = await exportChatGptSettings(props.settingsAdapter)
+    const url = URL.createObjectURL(blob)
+    try {
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'chatgpt-booster-settings-backup.json'
+      link.click()
+    } finally {
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    }
+    settingsBackupMessage.value = locale.value === 'ru'
+      ? 'Копия настроек подготовлена. Убедитесь, что файл сохранён.'
+      : 'Settings backup prepared. Confirm the browser saved the file.'
+  } catch {
+    settingsBackupError.value = locale.value === 'ru'
+      ? 'Не удалось экспортировать настройки.' : 'Settings export failed.'
+  } finally {
+    settingsBackupBusy.value = false
+  }
+}
+
+function selectSettingsBackupFile(event: Event) {
+  settingsBackupFile.value = (event.target as HTMLInputElement).files?.[0] ?? null
+  settingsBackupApproved.value = false
+  settingsBackupError.value = ''
+  settingsBackupMessage.value = ''
+}
+
+async function importSettingsBackup() {
+  if (!settingsBackupFile.value || !settingsBackupApproved.value || settingsBackupBusy.value) return
+  settingsBackupBusy.value = true
+  settingsBackupError.value = ''
+  settingsBackupMessage.value = ''
+  try {
+    await restoreChatGptSettings(props.settingsAdapter, settingsBackupFile.value)
+    settings.value = snapshotSettings(await props.settingsAdapter.get())
+    settingsBackupMessage.value = locale.value === 'ru'
+      ? 'Настройки восстановлены. Архивы и локальные правила сохранения не изменены.'
+      : 'Settings restored. Archives and account-specific capture rules were not changed.'
+    settingsBackupApproved.value = false
+    settingsBackupFile.value = null
+  } catch {
+    settingsBackupError.value = locale.value === 'ru'
+      ? 'Копия отклонена: проверьте целостность, версию, продукт и DEV/PROD.'
+      : 'Backup rejected: verify integrity, schema, product and DEV/PROD channel.'
+  } finally {
+    settingsBackupBusy.value = false
+  }
+}
+
 const archiveResetOpen = ref(false)
 const archiveResetting = ref(false)
 const archiveResetError = ref('')
@@ -608,6 +671,38 @@ async function testTelemetry() {
               <option value="en">{{ t('language.english') }}</option>
               <option value="ru">{{ t('language.russian') }}</option>
             </select>
+          </section>
+
+          <section class="booster-stack-card">
+            <div class="booster-telemetry-body">
+              <div class="booster-setting-copy">
+                <b>{{ locale === 'ru' ? 'Резервная копия настроек' : 'Settings backup' }}</b>
+                <small>{{ locale === 'ru'
+                  ? 'Отдельно от архива. Копия исключает токены, телеметрию и правила конкретных чатов.'
+                  : 'Separate from the archive. Tokens, telemetry and per-chat rules are excluded.' }}</small>
+              </div>
+              <Button variant="outline" size="sm" :disabled="settingsBackupBusy" @click="downloadSettingsBackup">
+                {{ locale === 'ru' ? 'Сохранить настройки' : 'Export settings' }}
+              </Button>
+              <label class="booster-field">
+                <span>{{ locale === 'ru' ? 'Восстановить настройки из JSON' : 'Restore settings from JSON' }}</span>
+                <input type="file" accept=".json,application/json" class="booster-input"
+                  :disabled="settingsBackupBusy" @change="selectSettingsBackupFile" />
+              </label>
+              <label class="booster-field flex items-center gap-2">
+                <input v-model="settingsBackupApproved" type="checkbox" :disabled="!settingsBackupFile || settingsBackupBusy" />
+                <span>{{ locale === 'ru'
+                  ? 'Подтверждаю замену общих настроек этого продукта и канала'
+                  : 'Confirm replacing global settings for this product and channel' }}</span>
+              </label>
+              <Button variant="outline" size="sm"
+                :disabled="settingsBackupBusy || !settingsBackupFile || !settingsBackupApproved"
+                @click="importSettingsBackup">
+                {{ locale === 'ru' ? 'Восстановить настройки' : 'Restore settings' }}
+              </Button>
+              <small v-if="settingsBackupError" role="alert">{{ settingsBackupError }}</small>
+              <small v-if="settingsBackupMessage" role="status">{{ settingsBackupMessage }}</small>
+            </div>
           </section>
 
           <section class="booster-stack-card">

@@ -1,4 +1,18 @@
 /** Pluggable, fail-open counters only. Never send provider records or URLs. */
+const APPROVED_SIGNALS = new Set<string>([
+  'archive.capture.started',
+  'archive.capture.completed',
+  'archive.capture.failed',
+  'archive.export.completed',
+  'archive.export.failed',
+  'archive.audit.completed',
+  'archive.backup.completed',
+  'archive.restore.completed',
+])
+export const SCOPED_TELEMETRY_SCHEMA_VERSION = 1 as const
+export function isScopedTelemetryName(name: string): name is ScopedTelemetryName {
+  return APPROVED_SIGNALS.has(name)
+}
 export type ScopedTelemetryName =
   | 'archive.capture.started'
   | 'archive.capture.completed'
@@ -10,7 +24,11 @@ export type ScopedTelemetryName =
   | 'archive.restore.completed'
 export interface ScopedTelemetryEvent {
   readonly service: string
+  readonly serviceId: string
   readonly scope: string
+  readonly productId: string
+  readonly channel: 'dev' | 'prod'
+  readonly schemaVersion: typeof SCOPED_TELEMETRY_SCHEMA_VERSION
   readonly name: ScopedTelemetryName
   readonly timestamp: number
   readonly count?: number
@@ -39,10 +57,14 @@ export class ScopedTelemetry {
     this.enabled = value && this.available()
   }
   async record(name: ScopedTelemetryName, count?: number, durationMs?: number): Promise<void> {
-    if (!this.isEnabled() || !this.sink) return
+    if (!this.isEnabled() || !this.sink || !isScopedTelemetryName(name)) return
     const event: ScopedTelemetryEvent = {
       service: this.service,
+      serviceId: this.service,
       scope: this.scope,
+      productId: this.scope.split(':')[0] ?? '',
+      channel: this.scope.endsWith(':dev') ? 'dev' : 'prod',
+      schemaVersion: SCOPED_TELEMETRY_SCHEMA_VERSION,
       name,
       timestamp: Date.now(),
       ...(Number.isFinite(count) && count !== undefined && count >= 0

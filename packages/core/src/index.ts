@@ -146,4 +146,8 @@ export function defaultCapabilities(_target: DeliveryTarget): ReadonlySet<Capabi
 }
 
 export type { ScopedTelemetryEvent, ScopedTelemetryName, ScopedTelemetrySink } from './scoped-telemetry'
-export { ScopedTelemetry } from './scoped-telemetry'
+export {
+  isScopedTelemetryName,
+  SCOPED_TELEMETRY_SCHEMA_VERSION,
+  ScopedTelemetry,
+} from './scoped-telemetry'

@@ -30,3 +30,17 @@ export type {
 export { browserMigrationLock, runStagedMigration } from './migration'
 export type { PinnedReadOptions, VerifyPinnedResultOptions } from './pinned-read'
 export { readPinnedSnapshot, verifyPinnedResult } from './pinned-read'
+export type { RevocableArchiveConnection, ScopedArchiveReadProvider } from './provider-connection'
+export { connectScopedArchive } from './provider-connection'
+export type {
+  FileOutputPort,
+  IndexedArchivePort,
+  PersistentSettingsPort,
+  ServiceCapabilityPorts,
+  ServiceScope,
+  SessionStatePort,
+  TelemetryPort,
+} from './service-contract'
+export { assertMatchingScope, assertServiceScope } from './service-contract'
+export type { SettingsBackup } from './settings-backup'
+export { exportSettingsBackup, restoreSettingsBackup, validateSettingsBackup } from './settings-backup'

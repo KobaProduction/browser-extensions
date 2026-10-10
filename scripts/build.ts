@@ -91,6 +91,7 @@ function emitTypes(name: string, src: string, dir: string) {
     paths: {
       ...parsed.options.paths,
       '@kobaproduction/browser-core': ['packages/core/dist/index.d.ts'],
+      '@kobaproduction/browser-storage': ['packages/storage/dist/index.d.ts'],
     },
     rootDir: join(root, 'packages', name, 'src'),
     outDir: dir,
@@ -148,7 +149,7 @@ async function pack(name: string) {
     emitTypes(name, src, dir)
   }
 }
-for (const name of ['core', 'adapters', 'storage', 'archive', 'ui', 'widgets', 'shell']) await pack(name)
+for (const name of ['core', 'storage', 'adapters', 'archive', 'ui', 'widgets', 'shell']) await pack(name)
 if (requested === 'packages') {
   console.log('Shared packages built')
   process.exit(0)
