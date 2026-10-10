@@ -134,3 +134,14 @@ when explicitly testing telemetry. The content script only reads the resulting
 permission state and never attempts privileged permission requests. Automatic
 telemetry remains off by default. Core archive functionality
 must remain unaffected by an unavailable telemetry endpoint.
+
+## Interrupted portable import recovery
+
+A restart after process termination may leave an imported generation fenced as
+`transforming` without running the normal error handler. Explicit retry of a
+canonical backup, under the exclusive migration lock, now recognizes its own
+`backupRestoreStartedAt` marker, verifies the old active generation if any,
+and restores a readable previous manifest or the `failed_recoverable` state.
+The interrupted staged rows are retained for forensic inspection and never
+silently activated. The retry stages into a fresh generation and promotes it
+only after the same owner/fingerprint/footer checks as an ordinary import.

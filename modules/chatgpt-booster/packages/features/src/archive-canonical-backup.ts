@@ -244,12 +244,39 @@ export async function restoreCanonicalBackup(
     { mode: 'exclusive' },
     async () => {
       const db = await store.canonicalDatabase()
-      const previous = await read<Row | undefined>(
+      let previous = await read<Row | undefined>(
         db
           .transaction('migrationManifest', 'readonly')
           .objectStore('migrationManifest')
           .get(key(accountId)),
       )
+      // An abrupt tab/process termination skips the catch block below. The
+      // exclusive lock proves no other importer remains active; recognize our
+      // own uncommitted backup staging by its marker and restore the prior
+      // active generation (or a recoverable empty state) without deleting rows.
+      if (previous?.status === 'transforming' &&
+          typeof previous.backupRestoreStartedAt === 'number') {
+        const prior = previous.previousGeneration
+        let restored: Row
+        if (typeof prior === 'string' && prior) {
+          const readable = await read<number>(db.transaction('canonicalConversations', 'readonly')
+            .objectStore('canonicalConversations').index('byGeneration').count(prior))
+          if (!readable) throw new Error('Backup recovery previous generation is missing')
+          restored = { ...previous, generation: prior, previousGeneration: null,
+            status: 'ready', interruptedBackupGeneration: previous.generation,
+            backupRestoreStartedAt: null, interruptedBackupRecoveredAt: Date.now() }
+        } else {
+          restored = { ...previous, status: 'failed_recoverable',
+            backupRestoreStartedAt: null, previousGeneration: null,
+            interruptedBackupGeneration: previous.generation,
+            interruptedBackupRecoveredAt: Date.now() }
+        }
+        const tx = db.transaction('migrationManifest', 'readwrite')
+        const done = finish(tx)
+        tx.objectStore('migrationManifest').put(restored)
+        await done
+        previous = restored
+      }
       // A replacement extension/profile may have no canonical generation yet.
       // Importing an owner-verified, checksum-verified file must be possible
       // without initializing or deleting legacy source databases.
