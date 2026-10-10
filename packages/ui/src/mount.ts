@@ -116,6 +116,15 @@ export interface ArchiveExportPreview {
   latestHeadMatches: boolean | null
 }
 
+/** Read-only source evidence; original ChatGPT owner identifiers are not returned. */
+export interface ArchiveSkippedOwnerEntry {
+  conversationId: string
+  title: string | null
+  reason: 'missing_owner' | 'owner_mismatch'
+  messages: number
+  messageIds: readonly string[]
+}
+
 export interface ArchiveDataAdapter {
   getCurrentContext(): Promise<ArchiveCurrentContext>
   currentConversationId(): string | null
@@ -136,14 +145,21 @@ export interface ArchiveDataAdapter {
   startArchiveMigration?(bindUnowned: boolean): Promise<void>
   reconcileArchiveRecent?(
     hours: 48 | 168,
-    bindUnknownLegacy: boolean,
+    approvedLegacy: boolean | readonly string[],
   ): Promise<{
     examined: number
     inserted: number
     changed: number
     unchanged: number
     skippedOwnership: number
+    skippedConversations: readonly ArchiveSkippedOwnerEntry[]
     conversationsTouched: number
+  }>
+  inspectSkippedOwnership?(hours: 48 | 168): Promise<{
+    examined: number
+    skippedMessages: number
+    skippedConversations: readonly ArchiveSkippedOwnerEntry[]
+    sinceMs: number
   }>
   auditArchiveCoverage?(): Promise<{
     legacyConversations: number

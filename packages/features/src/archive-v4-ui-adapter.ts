@@ -291,6 +291,18 @@ export function createArchiveV4UiAdapter(
       reader.reset()
       return report
     },
+    inspectSkippedOwnership: async (hours) => {
+      const owner = account()
+      const epoch = memory.accountEpoch()
+      const result = await migrator.inspectSkippedRecent(
+        owner,
+        Date.now() - hours * 60 * 60 * 1000,
+        hours === 48,
+      )
+      if (memory.accountEpoch() !== epoch || account() !== owner)
+        throw new Error('archive.error.auth')
+      return result
+    },
     auditArchiveCoverage: async () => {
       const owner = account()
       const epoch = memory.accountEpoch()

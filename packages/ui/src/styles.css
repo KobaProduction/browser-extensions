@@ -4305,3 +4305,75 @@
     padding: 8px 10px;
   }
 }
+.booster-maintenance-owner-list {
+  display: grid;
+  gap: 8px;
+  max-height: 290px;
+  overflow-y: auto;
+}
+.booster-maintenance-owner-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.booster-maintenance-owner-row > input[type="checkbox"] {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  padding: 0;
+  accent-color: var(--primary);
+}
+.booster-maintenance-owner-description {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+.booster-maintenance-owner-description > strong {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.booster-maintenance-owner-description > span,
+.booster-maintenance-owner-caution {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.booster-maintenance-owner-description details {
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.booster-maintenance-owner-description summary {
+  cursor: pointer;
+}
+.booster-maintenance-owner-description code {
+  display: block;
+  margin-top: 5px;
+  font:
+    10px / 1.4 ui-monospace,
+    monospace;
+  overflow-wrap: anywhere;
+}
+.booster-maintenance-owner-description small {
+  display: block;
+  margin-top: 6px;
+}
+.booster-maintenance-link {
+  justify-self: start;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 11px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.booster-maintenance-link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

@@ -219,6 +219,23 @@ async function* scanRecent(
   }
 }
 
+export type LegacySkipReason = 'missing_owner' | 'owner_mismatch'
+export interface LegacySkippedConversation {
+  readonly conversationId: string
+  readonly title: string | null
+  readonly reason: LegacySkipReason
+  readonly messages: number
+  /** Only IDs are exposed for inspection; no message text or owner identifier. */
+  readonly messageIds: readonly string[]
+}
+
+export interface ArchiveOwnerSkipInspection {
+  readonly examined: number
+  readonly skippedMessages: number
+  readonly skippedConversations: readonly LegacySkippedConversation[]
+  readonly sinceMs: number
+}
+
 export interface ArchiveReconciliationReport {
   readonly sinceMs: number
   readonly effectiveSinceMs: number
@@ -228,6 +245,7 @@ export interface ArchiveReconciliationReport {
   readonly changed: number
   readonly unchanged: number
   readonly skippedOwnership: number
+  readonly skippedConversations: readonly LegacySkippedConversation[]
   readonly conversationsTouched: number
 }
 export interface ArchiveCoverageAudit {
@@ -654,6 +672,126 @@ export class ArchiveCanonicalMigrator {
   }
 
   /**
+   * Inspect unmatched-owner records without changing v3, v4 or the canonical
+   * generation. Only titles/counts and bounded message IDs leave the storage
+   * adapter; native message bodies and old owner identifiers remain private.
+   */
+  async inspectSkippedRecent(
+    accountId: string,
+    sinceMs: number,
+    quickAfterLastImport = false,
+  ): Promise<ArchiveOwnerSkipInspection> {
+    if (
+      !accountId.trim() ||
+      !Number.isSafeInteger(sinceMs) ||
+      sinceMs > Date.now() ||
+      sinceMs < Date.now() - 30 * 86_400_000
+    )
+      throw new Error('Invalid archive inspection scope')
+    if (this.#pending) throw new Error('Archive reconciliation already running')
+    return navigator.locks?.request
+      ? navigator.locks.request('chatgpt-booster:canonical-migration-v1', { mode: 'shared' }, () =>
+          this.#inspectSkippedRecent(accountId, sinceMs, quickAfterLastImport),
+        )
+      : this.#inspectSkippedRecent(accountId, sinceMs, quickAfterLastImport)
+  }
+
+  async #inspectSkippedRecent(
+    accountId: string,
+    sinceMs: number,
+    quickAfterLastImport: boolean,
+  ): Promise<ArchiveOwnerSkipInspection> {
+    const target = await this.store.canonicalDatabase()
+    const generation = await this.active(accountId)
+    if (!generation) throw new Error('Canonical archive has not been activated')
+    const manifest = await request<Row | undefined>(
+      target
+        .transaction('migrationManifest', 'readonly')
+        .objectStore('migrationManifest')
+        .get(key(accountId)),
+    )
+    const checkpoint =
+      typeof manifest?.lastReconciledAt === 'number' &&
+      manifest.lastReconciledSkippedOwnership === 0
+        ? manifest.lastReconciledAt
+        : typeof manifest?.verifiedAt === 'number'
+          ? manifest.verifiedAt
+          : null
+    const effectiveSince =
+      quickAfterLastImport && checkpoint !== null
+        ? Math.max(sinceMs, checkpoint - 15 * 60_000)
+        : sinceMs
+    const active = new Set(
+      (await this.listConversations(accountId)).map((row) => row.conversationId),
+    )
+    const legacy = await existingSource(ARCHIVE_DB_NAME)
+    if (!legacy)
+      return { examined: 0, skippedMessages: 0, skippedConversations: [], sinceMs: effectiveSince }
+    try {
+      const headers = await request<Row[]>(
+        legacy.transaction('conversations', 'readonly').objectStore('conversations').getAll(),
+      )
+      const reasons = new Map<string, { header: Row; reason: LegacySkipReason }>()
+      for (const header of headers) {
+        const id = header.conversationId
+        if (typeof id !== 'string' || !id || active.has(id)) continue
+        const evidence = legacyV3OwnerEvidence(header, accountId)
+        if (evidence.status !== 'verified')
+          reasons.set(id, {
+            header,
+            reason: evidence.status === 'mismatch' ? 'owner_mismatch' : 'missing_owner',
+          })
+      }
+      const groups = new Map<string, LegacySkippedConversation>()
+      let examined = 0
+      if (reasons.size) {
+        for await (const batch of scanRecent(
+          legacy,
+          'messages',
+          'lastSeenAt',
+          effectiveSince,
+          Date.now(),
+        )) {
+          examined += batch.length
+          for (const row of batch) {
+            const id = row.conversationId
+            if (typeof id !== 'string') continue
+            const target = reasons.get(id)
+            if (!target) continue
+            const old = groups.get(id)
+            const rawId =
+              typeof object(row.raw)?.id === 'string' ? (object(row.raw)?.id as string) : null
+            const entry: LegacySkippedConversation = {
+              conversationId: id,
+              title: typeof target.header.title === 'string' ? target.header.title : null,
+              reason: target.reason,
+              messages: (old?.messages ?? 0) + 1,
+              messageIds:
+                rawId && (old?.messageIds.length ?? 0) < 10
+                  ? [...(old?.messageIds ?? []), rawId]
+                  : (old?.messageIds ?? []),
+            }
+            groups.set(id, entry)
+          }
+        }
+      }
+      if ((await this.active(accountId)) !== generation)
+        throw new Error('Archive owner changed while inspecting')
+      const skippedConversations = [...groups.values()].sort(
+        (a, b) => b.messages - a.messages || a.conversationId.localeCompare(b.conversationId),
+      )
+      return {
+        examined,
+        sinceMs: effectiveSince,
+        skippedMessages: skippedConversations.reduce((sum, row) => sum + row.messages, 0),
+        skippedConversations,
+      }
+    } finally {
+      legacy.close()
+    }
+  }
+
+  /**
    * Fast opt-in reconciliation of recent v3/v4 writes only. The existing
    * verified generation stays active; each bounded batch is atomic, retryable,
    * and idempotent. Unsupported account ownership never auto-binds.
@@ -661,7 +799,7 @@ export class ArchiveCanonicalMigrator {
   async reconcileRecent(
     accountId: string,
     sinceMs: number,
-    bindUnknownLegacy = false,
+    bindUnknownLegacy: boolean | readonly string[] = false,
     quickAfterLastImport = false,
   ): Promise<ArchiveReconciliationReport> {
     if (
@@ -694,7 +832,7 @@ export class ArchiveCanonicalMigrator {
   async #reconcileRecentLocked(
     accountId: string,
     sinceMs: number,
-    bindUnknownLegacy: boolean,
+    bindUnknownLegacy: boolean | readonly string[],
     quickAfterLastImport: boolean,
   ): Promise<void> {
     if (!navigator.locks?.request) throw new Error('Cross-tab archive lock is unavailable')
@@ -734,6 +872,36 @@ export class ArchiveCanonicalMigrator {
             ? Math.max(sinceMs, checkpoint - 15 * 60_000)
             : sinceMs
         const v3 = await existingSource(ARCHIVE_DB_NAME)
+        const skipDetails = new Map<string, LegacySkippedConversation>()
+        const approved = Array.isArray(bindUnknownLegacy) ? new Set(bindUnknownLegacy) : null
+        const allowUnknown = (id: string) =>
+          approved ? approved.has(id) : bindUnknownLegacy === true
+        const rememberSkip = (
+          cid: string,
+          header: Row,
+          reason: LegacySkipReason,
+          messageId: string,
+        ) => {
+          const existing = skipDetails.get(cid)
+          if (existing) {
+            skipDetails.set(cid, {
+              ...existing,
+              messages: existing.messages + 1,
+              messageIds:
+                existing.messageIds.length < 10
+                  ? [...existing.messageIds, messageId]
+                  : existing.messageIds,
+            })
+            return
+          }
+          skipDetails.set(cid, {
+            conversationId: cid,
+            title: typeof header.title === 'string' ? header.title : null,
+            reason,
+            messages: 1,
+            messageIds: [messageId],
+          })
+        }
         const changed = {
           sinceMs,
           effectiveSinceMs,
@@ -743,6 +911,7 @@ export class ArchiveCanonicalMigrator {
           changed: 0,
           unchanged: 0,
           skippedOwnership: 0,
+          skippedConversations: [] as LegacySkippedConversation[],
           conversationsTouched: 0,
         }
         const touched = new Set<string>()
@@ -765,13 +934,18 @@ export class ArchiveCanonicalMigrator {
                 throw new Error('Malformed recent archive source record')
               const header = headers.get(cid)
               if (!header) throw new Error('Recent source references unknown conversation')
-              if (
-                !active.has(cid) &&
-                source === 'legacy_v3' &&
-                legacyV3OwnerEvidence(header, accountId).status !== 'verified' &&
-                !bindUnknownLegacy
-              )
-                return null
+              if (!active.has(cid) && source === 'legacy_v3') {
+                const evidence = legacyV3OwnerEvidence(header, accountId)
+                if (evidence.status !== 'verified' && !allowUnknown(cid)) {
+                  rememberSkip(
+                    cid,
+                    header,
+                    evidence.status === 'mismatch' ? 'owner_mismatch' : 'missing_owner',
+                    raw.id,
+                  )
+                  return null
+                }
+              }
               if (source === 'legacy_v4' && header.accountId !== accountId) return null
               const projection = projectNativeMessage(raw, { accountId, conversationId: cid })
               const fingerprint = await sourceFingerprint(canonicalSourceJson(raw))
@@ -993,6 +1167,9 @@ export class ArchiveCanonicalMigrator {
           })
           await done
           changed.conversationsTouched = touched.size
+          changed.skippedConversations = [...skipDetails.values()].sort(
+            (a, b) => b.messages - a.messages || a.conversationId.localeCompare(b.conversationId),
+          )
           this.#recentReport = { ...changed }
           this.#set({ status: 'ready', message: '' })
         } catch (error) {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ArchiveDataAdapter } from './mount'
+import type { ArchiveDataAdapter, ArchiveSkippedOwnerEntry } from './mount'
 import type { SupportedLocale } from './i18n'
 import ArrowLeftRight from 'lucide-vue-next/dist/esm/icons/arrow-left-right.js'
 import CheckCircle2 from 'lucide-vue-next/dist/esm/icons/circle-check.js'
@@ -25,7 +25,18 @@ const error = ref('')
 const report = ref<Delta>()
 const audit = ref<Audit>()
 const consentLegacy = ref(false)
-const consentRecent = ref(false)
+const ownerInspection = ref<{
+  examined: number
+  skippedMessages: number
+  skippedConversations: readonly ArchiveSkippedOwnerEntry[]
+  sinceMs: number
+}>()
+const ownerInspectionHours = ref<48 | 168>(48)
+const lastReconcileHours = ref<48 | 168>(48)
+const selectedLegacyIds = ref<string[]>([])
+const skippedList = computed(() =>
+  ownerInspection.value?.skippedConversations ?? report.value?.skippedConversations ?? [])
+const selectedLegacyCount = computed(() => selectedLegacyIds.value.length)
 const progress = ref({ conversations: 0, messages: 0, status: 'idle' })
 const busy = computed(() => loading.value || active.value)
 const unverified = computed(() => (inventory.value?.unboundConversations ?? 0) +
@@ -72,12 +83,26 @@ function migrate() {
     await inspect()
   })
 }
-function reconcile(hours: 48 | 168) {
-  if (!props.archiveAdapter.reconcileArchiveRecent) return
+function reconcile(hours: 48 | 168, approveSelected = false) {
+  if (!props.archiveAdapter.reconcileArchiveRecent || (approveSelected && !selectedLegacyCount.value))
+    return
   void work(async () => {
-    report.value = await props.archiveAdapter.reconcileArchiveRecent!(hours, consentRecent.value)
+    lastReconcileHours.value = hours
+    const approved = approveSelected ? [...selectedLegacyIds.value] : []
+    report.value = await props.archiveAdapter.reconcileArchiveRecent!(hours, approved)
+    selectedLegacyIds.value = []
+    ownerInspection.value = undefined
     emit('updated')
     await inspect()
+  })
+}
+function inspectSkipped(hours: 48 | 168) {
+  if (!props.archiveAdapter.inspectSkippedOwnership) return
+  void work(async () => {
+    ownerInspectionHours.value = hours
+    selectedLegacyIds.value = []
+    ownerInspection.value = await props.archiveAdapter.inspectSkippedOwnership!(hours)
+    report.value = undefined
   })
 }
 function verifyCounts() {
@@ -169,11 +194,15 @@ onBeforeUnmount(() => { alive = false; ++requestId; unsubscribe?.() })
                 {{ label('За 7 дней', 'Last 7 days') }}
               </button>
             </div>
-            <label class="booster-maintenance-check">
-              <input v-model="consentRecent" type="checkbox" :disabled="busy" />
-              <span>{{ label('Разрешить добавление новых legacy-диалогов с неподтверждённым владельцем.',
-                'Allow new legacy chats with unverified ownership.') }}</span>
-            </label>
+            <button type="button" class="booster-action-secondary"
+              :disabled="busy || !archiveAdapter.inspectSkippedOwnership"
+              @click="inspectSkipped(48)">
+              {{ label('Показать пропущенные диалоги', 'Inspect skipped chats') }}
+            </button>
+            <button v-if="ownerInspection?.skippedMessages" type="button"
+              class="booster-maintenance-link" :disabled="busy" @click="inspectSkipped(168)">
+              {{ label('Проверить также за 7 дней', 'Inspect last 7 days too') }}
+            </button>
           </section>
 
           <section v-if="inventory.migratedConversations > 0" class="booster-maintenance-section">
@@ -188,6 +217,53 @@ onBeforeUnmount(() => { alive = false; ++requestId; unsubscribe?.() })
             </button>
           </section>
 
+          <section v-if="skippedList.length" class="booster-maintenance-section">
+            <div class="booster-maintenance-section-title">
+              <ClipboardCheck class="size-4" />
+              <h3>{{ label('Неопределённый владелец', 'Unverified owners') }}</h3>
+            </div>
+            <p>{{ label(
+              'Эти сообщения остались в исходной базе. Выбери только те диалоги, которые действительно принадлежат текущему аккаунту.',
+              'These messages remain in the original database. Select only chats that belong to your current account.',
+            ) }}</p>
+            <div class="booster-maintenance-owner-list">
+              <label v-for="chat in skippedList" :key="chat.conversationId"
+                class="booster-maintenance-owner-row">
+                <input v-model="selectedLegacyIds" type="checkbox"
+                  :disabled="busy" :value="chat.conversationId" />
+                <span class="booster-maintenance-owner-description">
+                  <strong>{{ chat.title || label('Без названия', 'Untitled') }}</strong>
+                  <span>{{ chat.messages }} {{ label('сообщений', 'messages') }} ·
+                    {{ chat.reason === 'missing_owner'
+                      ? label('владелец не записан', 'owner missing')
+                      : label('ID владельца отличается', 'different owner ID') }}</span>
+                  <details v-if="chat.messageIds.length" @click.stop>
+                    <summary>{{ label('Примеры ID сообщений', 'Sample message IDs') }}</summary>
+                    <code v-for="id in chat.messageIds" :key="id">{{ id }}</code>
+                    <small v-if="chat.messages > chat.messageIds.length">{{ label(
+                      'Показаны только первые 10 идентификаторов.',
+                      'Only the first 10 identifiers are shown.',
+                    ) }}</small>
+                  </details>
+                </span>
+              </label>
+            </div>
+            <button type="button" class="booster-action-primary"
+              :disabled="busy || !selectedLegacyCount"
+              @click="reconcile(ownerInspection ? ownerInspectionHours : lastReconcileHours, true)">
+              {{ label(`Привязать выбранные (${selectedLegacyCount})`,
+                `Bind selected (${selectedLegacyCount})`) }}
+            </button>
+            <p class="booster-maintenance-owner-caution">
+              {{ label('Привязка сохраняет accountId только в каноническом архиве. Исходный raw.owner не изменяется.',
+                'The canonical archive receives accountId. Original raw.owner is unchanged.') }}
+            </p>
+          </section>
+          <p v-if="ownerInspection && !ownerInspection.skippedMessages"
+            class="booster-maintenance-result" role="status">
+            {{ label('В выбранном периоде пропущенных по владельцу сообщений нет.',
+              'No messages skipped by ownership in this period.') }}
+          </p>
           <div v-if="active" role="status" class="booster-maintenance-progress">
             <LoaderCircle class="size-4 booster-reader-spinner" />
             <div>
@@ -204,7 +280,8 @@ onBeforeUnmount(() => { alive = false; ++requestId; unsubscribe?.() })
                 {{ label('Добавлено', 'Added') }} {{ report.inserted }} ·
                 {{ label('Изменено', 'Updated') }} {{ report.changed }} ·
                 {{ label('Без изменений', 'Unchanged') }} {{ report.unchanged }}</p>
-              <p v-if="report.skippedOwnership">{{ label('Пропущено из-за владельца', 'Skipped by ownership') }}: {{ report.skippedOwnership }}</p>
+              <p v-if="report.skippedOwnership">{{ label('Пропущено из-за владельца', 'Skipped by ownership') }}:
+                {{ report.skippedOwnership }} · {{ label('детали ниже', 'details below') }}</p>
             </div>
           </div>
           <div v-if="audit" class="booster-maintenance-result" role="status">
