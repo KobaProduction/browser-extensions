@@ -14,6 +14,15 @@ test('shared launcher uses the ChatGPT Booster draggable overlay contract', asyn
   expect(modal).toContain('aria-modal="true"')
   expect(source).toContain('ControlCenterPanel')
 })
+test('draggable launcher supports keyboard activation without double-toggling pointer clicks', async () => {
+  const source = await read('./Overlay.vue')
+  expect(source).toContain('@click="onLauncherClick"')
+  expect(source).toContain('event.detail === 0')
+  expect(source).toContain('@pointerup="onPointerUp"')
+  expect(source).toContain(':aria-expanded="open"')
+  expect(source).toContain('aria-haspopup="dialog"')
+})
+
 test('central shell allows supplied feature views without provider-specific imports', async () => {
   const source = await read('./ControlCenterPanel.vue')
   expect(source).toMatch(/views:\s*Record<string,\s*Component>/)

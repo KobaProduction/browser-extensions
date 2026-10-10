@@ -192,6 +192,18 @@ original chat. Loading a v2 folder also rejects records with an explicit
 peer_id different from the folder peer; records lacking peer_id remain
 compatible with earlier v2 exports.
 
+VK Booster 2.3.6 fixes the browser distribution build: emitted Vue bundles
+compile `process.env.NODE_ENV` to a literal before the code runs without Node.
+Built userscript and Chromium content outputs are now checked for unresolved
+Node environment globals, preventing a silent build-pass/runtime-crash
+regression. Version and v2 archive layout remain backward compatible.
+
+VK Booster 2.3.7 makes the shared draggable launcher operable via
+keyboard or assistive technology. Pointer-up remains responsible for
+distinguishing a tap from a drag; a synthetic/keyboard click toggles the panel
+only when its click detail is zero, avoiding double activation after a
+mouse/touch pointer-up. The launcher exposes its dialog expansion state.
+
 ## Proxy roadmap
 
 The future Proxy Switcher must be implemented as an **extension-only background service** with explicit `proxy` permissions, not as page injection. Configure per-host routing through Chrome's `proxy.settings` PAC support when permission is granted; maintain a typed profile store with `HTTP`, `HTTPS`, `SOCKS4`, `SOCKS5` and bypass lists. Credentials require a separate safe storage/authentication model. Userscript builds expose an unsupported status rather than simulating the feature. User-Agent switching likewise needs MV3 request rules or API support and user-granted permissions, not DOM navigator spoofing alone. Ad blocking should eventually be isolated behind `declarativeNetRequest` plus its own permissions and rule bundles.

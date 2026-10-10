@@ -45,6 +45,10 @@ if (process.argv.includes('--built'))
       !user.includes('@downloadURL')
     )
       throw Error('Invalid userscript: ' + id)
+    // A userscript/isolated content script does not have Node's process global.
+    // Bundles can typecheck and build successfully while throwing on first load.
+    if (/\bprocess\.env\.NODE_ENV\b/.test(user))
+      throw Error('Unresolved Node environment in userscript: ' + id)
     const chrome = await Bun.file(`${root}/extension/manifest.json`).json()
     if (
       chrome.manifest_version !== 3 ||
@@ -52,6 +56,9 @@ if (process.argv.includes('--built'))
       chrome.permissions.includes('proxy')
     )
       throw Error('Invalid extension manifest: ' + id)
+    const content = await Bun.file(`${root}/extension/content.js`).text()
+    if (/\bprocess\.env\.NODE_ENV\b/.test(content))
+      throw Error('Unresolved Node environment in extension content script: ' + id)
     for (const path of ['content.js', 'popup.js', 'popup.html', `${id}-extension.zip`]) {
       const file = path.endsWith('.zip') ? `${root}/${path}` : `${root}/extension/${path}`
       if (!(await Bun.file(file).exists())) throw Error('Missing artifact: ' + file)

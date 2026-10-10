@@ -40,6 +40,9 @@ async function viteBundle(
     root,
     logLevel: 'error',
     plugins: plugins(),
+    // Browser bundles must not depend on Node globals. Vue's published runtime
+    // still refers to process.env.NODE_ENV when bundled as an IIFE library.
+    define: { 'process.env.NODE_ENV': JSON.stringify('production') },
     build: {
       outDir: dir,
       emptyOutDir: true,

@@ -100,6 +100,12 @@ function onPointerUp(event: PointerEvent) {
   if (moved) savePosition()
   else open.value = !open.value
 }
+// Pointer activation is handled on pointerup to distinguish a drag from a tap.
+// Keyboard and assistive technology activate buttons through click (detail=0).
+// Ignore pointer-generated clicks so a mouse/touch tap never toggles twice.
+function onLauncherClick(event: MouseEvent) {
+  if (event.detail === 0) open.value = !open.value
+}
 function onResize() {
   const p = clampPosition(position.value.x, position.value.y)
   if (p.x !== position.value.x || p.y !== position.value.y) {
@@ -148,6 +154,10 @@ onBeforeUnmount(() => {
       :style="launcherStyle"
       type="button"
       title="Открыть Koba Browser Tools"
+      aria-label="Открыть или закрыть Koba Browser Tools"
+      aria-haspopup="dialog"
+      :aria-expanded="open"
+      @click="onLauncherClick"
       @pointerdown="onPointerDown"
       @pointermove="onPointerMove"
       @pointerup="onPointerUp"

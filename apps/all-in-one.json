@@ -1,7 +1,7 @@
 {
   "id": "all-in-one",
   "name": "Koba Browser Tools",
-  "version": "0.4.5",
+  "version": "0.4.7",
   "release": true,
   "dependencies": ["vk-booster"]
 }
