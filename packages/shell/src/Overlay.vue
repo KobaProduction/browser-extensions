@@ -6,6 +6,7 @@
  */
 import {
   type FeatureRuntime,
+  instanceKey,
   SHELL_CLOSE_EVENT,
   SHELL_OPEN_FEATURE_EVENT,
 } from '@kobaproduction/browser-core'
