@@ -59,7 +59,7 @@ workflow with `approve_release=true`. ChatGPT 2.0.1 is now `release:true` for in
 ## VK 3 development freeze and independent release channels (2026-10-11)
 
 - VK Booster: `3.0.0` — base frozen; VK source changes rebuild VK DEV and advance independently versioned all-in-one.
-- ChatGPT Booster: `2.0.5` — changes in ChatGPT increment ChatGPT and all-in-one only.
+- ChatGPT Booster: `2.0.6` — changes in ChatGPT increment ChatGPT and all-in-one only.
 - All-in-one: `0.6.0` — aggregates both providers with independent feature
   lifecycles, Tampermonkey and MV3 targets.
 - Shared `packages/` implementation changes affect all consumers. Documentation

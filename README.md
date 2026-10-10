@@ -149,7 +149,7 @@ checks and is not implicitly modified by first-party lint commands.
 
 The VK Booster 3 native archive source and shared archive infrastructure
 utilities are included in the same tree as independent ChatGPT Booster
-2.0.5. Only `modules/*` application entries are distributed. The other
+2.0.6. Only `modules/*` application entries are distributed. The other
 ChatGPT baseline in `integrations/chatgpt-booster` is a read-only migration
 reference preserving advanced refactor files until source parity is verified;
 it is not registered as a second extension, bundle or release target. Browser
@@ -160,7 +160,7 @@ Source merge and authoritative ownership map: [VK/ChatGPT reconciliation](docs/I
 
 ## Independent product release graph
 
-ChatGPT Booster is release-enabled at **2.0.5**, VK Booster uses **3.0.0**,
+ChatGPT Booster is release-enabled at **2.0.6**, VK Booster uses **3.0.0**,
 and the combined all-in-one package is **0.6.0**. Changes to ChatGPT require a ChatGPT and aggregate version bump. VK development
 changes rebuild VK DEV and advance the aggregate without changing the frozen
 VK 3.0.0 product version. Shared implementation changes bump other affected
