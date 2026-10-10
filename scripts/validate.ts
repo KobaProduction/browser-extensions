@@ -19,10 +19,22 @@ if(process.argv.includes('--built'))for(const id of checked){
  const m=await manifest(id)
  const root=`dist/${id}`
  const user=await Bun.file(`${root}/${id}.user.js`).text()
- if(!user.startsWith('// ==UserScript==')||!user.includes(`// @version      ${m.version}`)||!user.includes('GM_registerMenuCommand')||!user.includes(`@updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/distribution/userscripts/${id}.user.js`)||!user.includes('@downloadURL'))throw Error('Invalid userscript: '+id)
+ if(!user.startsWith('// ==UserScript==')||!user.includes(`// @version      ${m.version}`)||!user.includes('GM_registerMenuCommand'))throw Error('Invalid userscript: '+id)
+ if(m.release){
+  if(!user.includes(`@updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/distribution/userscripts/${id}.user.js`)||!user.includes('@downloadURL'))throw Error('Released module lost update channel: '+id)
+ }else if(user.includes('// @updateURL')||user.includes('// @downloadURL'))throw Error('Experimental module advertises an unapproved update channel: '+id)
+ if(id==='chatgpt-booster'&&(!user.includes('// @match        https://chatgpt.com/*')||!user.includes('// @grant        unsafeWindow')))throw Error('ChatGPT page observer grants missing')
  const chrome=await Bun.file(`${root}/extension/manifest.json`).json()
  if(chrome.manifest_version!==3||chrome.version!==m.version||chrome.permissions.includes('proxy'))throw Error('Invalid extension manifest: '+id)
- for(const path of ['content.js','popup.js','popup.html',`${id}-extension.zip`]){
+ if(id==='chatgpt-booster'){
+  const hosts=chrome.host_permissions as unknown
+  if(!Array.isArray(hosts)||hosts.length!==1||hosts[0]!=='https://chatgpt.com/*'||
+      chrome.background?.service_worker!=='background.js'||
+      !Array.isArray(chrome.content_scripts)||chrome.content_scripts.length!==2||
+      chrome.content_scripts[0]?.world!=='MAIN'||chrome.content_scripts[0]?.js?.[0]!=='observer.js'||
+      chrome.content_scripts[1]?.js?.[0]!=='content.js')throw Error('ChatGPT isolated observer/manifest contract changed')
+ }
+ for(const path of ['content.js','popup.js','popup.html',...(id==='chatgpt-booster'?['observer.js','background.js']:[]),`${id}-extension.zip`]){
   const file=path.endsWith('.zip')?`${root}/${path}`:`${root}/extension/${path}`
   if(!(await Bun.file(file).exists()))throw Error('Missing artifact: '+file)
  }

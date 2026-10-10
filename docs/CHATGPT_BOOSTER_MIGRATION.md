@@ -57,3 +57,24 @@ GZIP file and an account-scoped explicit confirmation, validates every
 source fingerprint and the backup footer, stages all data in a new generation,
 and only then promotes it. It preserves existing generations and does not
 claim to import unbound v3-only records or binary attachment bytes.
+
+## Source-equivalence inventory (verified on 2026-10-10)
+
+Relative to the prior `chatgpt-booster/packages/` directory, excluding
+intentionally removed standalone Vite/target entrypoints, generated
+`dist`/sourcemaps and disposable workbench files:
+
+- **112 files byte-identical**;
+- **15 files explicitly adapted** for monorepo configuration, shared output,
+  archive restoration, observer type compatibility and target composition;
+- **0 original source package files missing** in that scoped comparison.
+- The **26 files in the original `tests/` tree** are byte-identical in
+  `modules/chatgpt-booster/tests/` (includes 18 `*.test.ts` unit sources and
+  the browser harness); no copied test bodies were rewritten to inflate coverage.
+
+These are source-file inventory facts only: they do not prove correct bundle
+content, runtime authorization, installed storage continuity or usable UI.
+The original source package `userscript` and `extension` delivery entrypoints
+are replaced by monorepo `apps/*` entries; Chrome/Tampermonkey identity still
+needs separate cutover acceptance. Browser-only endpoint compatibility and
+backup import integrity remain independent gates.

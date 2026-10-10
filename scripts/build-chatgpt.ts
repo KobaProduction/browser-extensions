@@ -1,7 +1,6 @@
 import { mkdir, copyFile, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
-import { userscriptChannelUrl } from './catalog'
 
 type Bundle = (src:string, dir:string, file:string, format?: 'es'|'iife', external?:string[])=>Promise<string>
 
@@ -16,16 +15,15 @@ export async function buildChatGptModule(
  await mkdir(dir,{recursive:true})
  if(target!=='extension') {
   const output=await bundle(join(root,'apps/userscript/src/chatgpt-booster.ts'),join(dir,'_userscript'),'bundle.js')
-  const url=userscriptChannelUrl(id)
   const header=[
    '// ==UserScript==','// @name         ChatGPT Booster (monorepo preview)',
    '// @namespace    https://github.com/KobaProduction/browser-extensions',
    '// @version      '+version,'// @description  ChatGPT Booster — shared platform preview',
-   '// @updateURL    '+url,'// @downloadURL  '+url,
+   // Preview artifacts are manually installed; no update channel before release.
    '// @match        https://chatgpt.com/*','// @run-at       document-start',
    '// @grant        GM_registerMenuCommand','// @grant        GM_getValue',
    '// @grant        GM_setValue','// @grant        GM_xmlhttpRequest',
-   '// @grant        unsafeWindow','// @connect      *','// @sandbox      raw',
+   '// @grant        unsafeWindow','// @sandbox      raw',
    '// ==/UserScript==','',
   ].join('\n')
   await writeFile(join(dir,id+'.user.js'),header+'\n'+output)
