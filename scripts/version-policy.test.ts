@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { semverCompare, validateVersionPolicy } from './version-policy'
 
-const base = { 'vk-booster': '2.3.8', 'chatgpt-booster': '0.8.99', 'all-in-one': '0.4.7' }
+const base = { 'vk-booster': '2.3.8', 'chatgpt-booster': '0.8.99', 'all-in-one': '0.4.8' }
 const chatRelease = { ...base, 'chatgpt-booster': '2.0.1', 'all-in-one': '0.5.0' }
 test('initial ChatGPT v2 release and aggregate bump do not alter existing VK version', () => {
   expect(() =>
