@@ -23,12 +23,14 @@ if(process.argv.includes('--built'))for(const id of checked){
  if(m.release){
   if(!user.includes(`@updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/distribution/userscripts/${id}.user.js`)||!user.includes('@downloadURL'))throw Error('Released module lost update channel: '+id)
  }else if(user.includes('// @updateURL')||user.includes('// @downloadURL'))throw Error('Experimental module advertises an unapproved update channel: '+id)
- if(id==='chatgpt-booster'&&(!user.includes('// @match        https://chatgpt.com/*')||!user.includes('// @grant        unsafeWindow')))throw Error('ChatGPT page observer grants missing')
+ if(id==='chatgpt-booster'&&(!user.includes('// @match        https://chatgpt.com/*')||!user.includes('// @grant        unsafeWindow')||!user.includes('// @connect      *')))throw Error('ChatGPT observer/optional telemetry grants missing')
  const chrome=await Bun.file(`${root}/extension/manifest.json`).json()
  if(chrome.manifest_version!==3||chrome.version!==m.version||chrome.permissions.includes('proxy'))throw Error('Invalid extension manifest: '+id)
  if(id==='chatgpt-booster'){
   const hosts=chrome.host_permissions as unknown
   if(!Array.isArray(hosts)||hosts.length!==1||hosts[0]!=='https://chatgpt.com/*'||
+      !Array.isArray(chrome.optional_host_permissions)||chrome.optional_host_permissions.length!==1||
+      chrome.optional_host_permissions[0]!=='https://*/*'||
       chrome.background?.service_worker!=='background.js'||
       !Array.isArray(chrome.content_scripts)||chrome.content_scripts.length!==2||
       chrome.content_scripts[0]?.world!=='MAIN'||chrome.content_scripts[0]?.js?.[0]!=='observer.js'||

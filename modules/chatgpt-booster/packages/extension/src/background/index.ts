@@ -19,6 +19,11 @@ interface TelemetryMessage {
   body: string
 }
 
+interface TelemetryPermissionCheckMessage {
+  type: 'chatgpt-booster:telemetry-permission-check'
+  origin: string
+}
+
 interface SettingsSetMessage {
   type: 'chatgpt-booster:settings-set'
   settings: BoosterSettings
@@ -45,6 +50,7 @@ interface AnalyticsGetMessage {
 
 type BoosterMessage =
   | TelemetryMessage
+  | TelemetryPermissionCheckMessage
   | SettingsSetMessage
   | SettingsUpdateMessage
   | AnalyticsRecordMessage
@@ -183,6 +189,7 @@ chrome.runtime.onMessage.addListener(
     sendResponse: (response: {
       ok: boolean
       status?: number
+      granted?: boolean
       settings?: BoosterSettings
       counters?: TransportCounters
       error?: string
@@ -192,6 +199,18 @@ chrome.runtime.onMessage.addListener(
 
     void (async () => {
       try {
+        if (message.type === 'chatgpt-booster:telemetry-permission-check') {
+          const configured = normalizeSettings(
+            (await chrome.storage.local.get(SETTINGS_KEY))[SETTINGS_KEY] as
+              | Partial<BoosterSettings>
+              | undefined,
+          ).telemetry.endpoint.trim()
+          const origin = new URL(configured).origin
+          if (new URL(message.origin).origin !== origin || !origin.startsWith('https://'))
+            throw new Error('Telemetry permission origin does not match settings')
+          sendResponse({ ok: true, granted: await chrome.permissions.contains({ origins: [`${origin}/*`] }) })
+          return
+        }
         if (message.type === 'chatgpt-booster:settings-set') {
           sendResponse({ ok: true, settings: await replaceSettings(message.settings) })
           return

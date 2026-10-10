@@ -120,3 +120,17 @@ backup import integrity remain independent gates.
   creation rather than a stale fallback. The monorepo-wide build includes an
   experimental ChatGPT artifact, but does not activate an update channel or
   publish it without release acceptance.
+
+## Telemetry compatibility and permissions
+
+The original ChatGPT userscript's `GM_xmlhttpRequest` transport supports a
+user-configured HTTPS OTLP endpoint. Preserve its explicit Tampermonkey
+`@connect *` grant and user opt-in policy: removing that grant silently
+breaks existing optional telemetry. It is not an automatic transmission and
+content/credentials remain excluded from events. Chromium requests only ChatGPT host access on installation. It declares a
+separate *optional* HTTPS host capability for the configured OTLP origin, which
+is never auto-granted. A user can grant the endpoint from the extension popup
+when explicitly testing telemetry. The content script only reads the resulting
+permission state and never attempts privileged permission requests. Automatic
+telemetry remains off by default. Core archive functionality
+must remain unaffected by an unavailable telemetry endpoint.

@@ -23,7 +23,7 @@ export async function buildChatGptModule(
    '// @match        https://chatgpt.com/*','// @run-at       document-start',
    '// @grant        GM_registerMenuCommand','// @grant        GM_getValue',
    '// @grant        GM_setValue','// @grant        GM_xmlhttpRequest',
-   '// @grant        unsafeWindow','// @sandbox      raw',
+   '// @grant        unsafeWindow','// @connect      *','// @sandbox      raw',
    '// ==/UserScript==','',
   ].join('\n')
   await writeFile(join(dir,id+'.user.js'),header+'\n'+output)
@@ -45,6 +45,8 @@ export async function buildChatGptModule(
    manifest_version:3, name:'ChatGPT Booster (monorepo preview)', version,
    description:'Source-preserving ChatGPT archive with one shared browser shell',
    permissions:['storage','scripting'], host_permissions:['https://chatgpt.com/*'],
+   // This is NOT granted on installation. Explicit user action is required for a configured HTTPS telemetry endpoint.
+   optional_host_permissions:['https://*/*'],
    action:{default_title:'ChatGPT Booster',default_popup:'popup.html'},
    content_scripts:[
     {matches:['https://chatgpt.com/*'],js:['observer.js'],run_at:'document_start',world:'MAIN'},

@@ -13,7 +13,7 @@ if (isChatGptPage()) {
   const { feature, startEarly } = createChatGptBoosterFeature({
     label: 'Chromium', settings: chromeSettings,
     diagnostics: createDiagnosticsStore(), persistentDiagnostics: chromeAnalytics,
-    secrets: chromeSecrets, telemetry, telemetryControl: createChromeTelemetryControl(telemetry),
+    secrets: chromeSecrets, telemetry, telemetryControl: createChromeTelemetryControl(telemetry, chromeSettings),
   })
   // MAIN-world observer is a separate manifest script at document_start.
   void new FeatureSettings(createSettingsStore('chromium'))

@@ -15,6 +15,6 @@ mountControlCenter(host, {
   settingsAdapter: chromeSettings,
   persistentDiagnosticsAdapter: chromeAnalytics,
   secretAdapter: chromeSecrets,
-  telemetryControlAdapter: createChromeTelemetryControl(telemetry),
+  telemetryControlAdapter: createChromeTelemetryControl(telemetry, chromeSettings),
   targetLabel: 'Extension',
 })

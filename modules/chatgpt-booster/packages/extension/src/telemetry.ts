@@ -38,9 +38,31 @@ export function createChromeTelemetry(settings: SettingsAdapter): OtlpTelemetryC
 
 export function createChromeTelemetryControl(
   telemetry: OtlpTelemetryClient,
+  settings?: SettingsAdapter,
 ): TelemetryControlAdapter {
   return {
     async test() {
+      if (settings) {
+        const endpoint = (await settings.get()).telemetry.endpoint.trim()
+        if (!endpoint) throw new Error('Configure a telemetry endpoint first')
+        const parsed = new URL(endpoint)
+        if (parsed.protocol !== 'https:') throw new Error('Telemetry endpoint must use HTTPS')
+        const origin = `${parsed.origin}/*`
+        // permissions.request is only available in a privileged extension page.
+        // A page content script must not fake a permission prompt or expand hosts.
+        if (chrome.permissions?.contains && chrome.permissions.request) {
+          if (!(await chrome.permissions.contains({ origins: [origin] }))) {
+            const granted = await chrome.permissions.request({ origins: [origin] })
+            if (!granted) throw new Error('Telemetry host permission was not granted')
+          }
+        } else {
+          const state = (await chrome.runtime.sendMessage({
+            type: 'chatgpt-booster:telemetry-permission-check', origin: parsed.origin,
+          })) as { granted?: boolean }
+          if (!state?.granted)
+            throw new Error('Allow this telemetry endpoint in the ChatGPT Booster extension popup first')
+        }
+      }
       await telemetry.test()
     },
   }
