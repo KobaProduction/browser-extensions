@@ -53,6 +53,14 @@ dist/chatgpt-booster/chatgpt-booster.user.js
 
 Tampermonkey: install a generated `.user.js` (for the chat use `vk-booster.user.js`). Chromium: load the extracted `extension/` directory in Developer Mode or install the release ZIP once a signed store package is available. The shared Control Center opens a module-specific panel; no unrelated app has to be installed.
 
+## Issues and pull requests
+
+Open a [structured Issue](https://github.com/KobaProduction/browser-extensions/issues/new/choose)
+and select the required **Target extension** (VK, ChatGPT, All-in-one,
+Shared platform, Proxy Switcher or Build/release). An automation adds a
+matching target label; PRs declare the same owner and all affected products.
+[Ownership and legacy migration mapping](docs/ISSUE_ROUTING.md).
+
 ## Repository boundaries
 
 ```text

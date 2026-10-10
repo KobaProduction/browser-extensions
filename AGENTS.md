@@ -17,6 +17,17 @@
    validate locally first, then publish one consolidated PR for independent
    review. Never directly mutate `main` or merge your own PR.
 
+## Issue and PR target ownership
+
+All new issues MUST use `.github/ISSUE_TEMPLATE/` forms with required
+`Target extension`; do not implement unowned issues. The exact target
+determines the primary module/package owner and is synchronized to a
+`target:*` label by `.github/workflows/issue-targets.yml`. Imported/API
+issues must supply the same target field explicitly; `docs/ISSUE_ROUTING.md`
+defines allowed targets, affected consumers and legacy ChatGPT issue/PR
+mapping. Every new PR must list primary target, affected products and source
+issues. Never treat historical standalone PRs as live monorepo merge targets.
+
 ## Package rules
 - `packages/core`: host-neutral contracts and state; no `window`, `chrome`, VK or ChatGPT selectors.
 - `packages/archive`: source-neutral linear page selection, paged-scan application ports, and bounded binary verification; no provider credentials, DOM, persistence implementation, or ChatGPT branch assumptions.

@@ -1,0 +1,35 @@
+name: Engineering task or migration
+description: Track technical debt, migrations, compatibility or release work
+title: "[Task] "
+body:
+  - type: dropdown
+    id: target
+    attributes:
+      label: Target extension
+      options:
+        - ChatGPT Booster
+        - VK Booster
+        - All-in-one
+        - Shared platform / multiple extensions
+        - Proxy Switcher (planned)
+        - Build / release infrastructure
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and current state
+      description: Specify existing owner, source evidence and what is NOT yet accepted.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance and regression boundaries
+    validations:
+      required: true
+  - type: textarea
+    id: related
+    attributes:
+      label: Related issues, PRs and legacy sources
+      description: Reference older tickets and source branches when migrating work.
