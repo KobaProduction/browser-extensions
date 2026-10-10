@@ -1,13 +1,13 @@
+import { ArchiveCanonicalAudit, type ArchiveCoverageAudit, type ArchiveOwnerSkipInspection, type LegacySkipReason, type LegacySkippedConversation } from './archive-canonical-audit'
+export type { ArchiveCoverageAudit, ArchiveOwnerSkipInspection, LegacySkipReason, LegacySkippedConversation } from './archive-canonical-audit'
+import { ArchiveCanonicalReader } from './archive-canonical-reader'
+import type { CanonicalStoredConversation, CanonicalStoredMessage, CanonicalSourceSnapshot } from './archive-canonical-model'
+export type { CanonicalStoredConversation, CanonicalStoredMessage, CanonicalSourceSnapshot } from './archive-canonical-model'
 import { requestResult as request, transactionComplete as finish } from '@kobaproduction/browser-storage'
 import { type Row, object, scan, scanBatches, scanRecent, existingSource } from './archive-canonical-source-reader'
 import { exportNativeSourceBackup, importNativeSourceBackup } from './archive-source-transfer'
 import { archiveCompositeKey } from '@kobaproduction/browser-archive'
-import { archiveRecordText, buildArchiveThread } from '@chatgpt-booster/chatgpt'
-import {
-  type ArchiveRecordView,
-  type CanonicalMessageProjection,
-  projectNativeMessage,
-} from '@chatgpt-booster/core'
+import { projectNativeMessage } from '@chatgpt-booster/core'
 import type {
   ArchiveExportPreview,
   ArchiveThreadWindow,
@@ -17,11 +17,9 @@ import { exportCanonicalBackup, restoreCanonicalBackup, undoCanonicalBackupResto
 import type { ArchiveIntegrityReport } from './archive-canonical-integrity'
 import { auditCanonicalSourceIntegrity } from './archive-canonical-integrity'
 import { legacyV3OwnerEvidence } from './archive-migration-plan'
-import { createGzipFromBlob } from './archive-package'
 import { ARCHIVE_DB_NAME } from './archive-store'
 import type { ArchiveV4Store } from './archive-v4-store'
 import { canonicalSourceJson, sourceFingerprint } from './archive-v4-write'
-import { normalizeConversationMessage } from './conversation-records'
 
 const key = archiveCompositeKey
 export type CanonicalMigrationStatus =
@@ -41,57 +39,6 @@ export interface CanonicalMigrationProgress {
   waitingForOwner: number
   message: string
 }
-export interface CanonicalStoredConversation {
-  key: string
-  accountId: string
-  conversationId: string
-  projectId: string | null
-  title: string | null
-  currentNodeId: string | null
-  lastSeenAt: number
-  source: 'legacy_v3' | 'legacy_v4'
-  verifiedPagination: false
-  generation: string
-}
-export interface CanonicalStoredMessage {
-  key: string
-  conversationKey: string
-  accountId: string
-  conversationId: string
-  messageId: string
-  sourceCreateTime: number | null
-  sourceFingerprint: string
-  source?: 'legacy_v3' | 'legacy_v4' | 'native'
-  generation: string
-  projection: CanonicalMessageProjection
-}
-/** Never write source body into canonical projection rows. */
-export interface CanonicalSourceSnapshot {
-  key: string
-  messageKey: string
-  generation: string
-  fingerprint: string
-  source: 'legacy_v3' | 'legacy_v4' | 'native'
-  raw: Row
-}
-
-export type LegacySkipReason = 'missing_owner' | 'owner_mismatch'
-export interface LegacySkippedConversation {
-  readonly conversationId: string
-  readonly title: string | null
-  readonly reason: LegacySkipReason
-  readonly messages: number
-  /** Only IDs are exposed for inspection; no message text or owner identifier. */
-  readonly messageIds: readonly string[]
-}
-
-export interface ArchiveOwnerSkipInspection {
-  readonly examined: number
-  readonly skippedMessages: number
-  readonly skippedConversations: readonly LegacySkippedConversation[]
-  readonly sinceMs: number
-}
-
 export interface ArchiveReconciliationReport {
   readonly sinceMs: number
   readonly effectiveSinceMs: number
@@ -103,24 +50,6 @@ export interface ArchiveReconciliationReport {
   readonly skippedOwnership: number
   readonly skippedConversations: readonly LegacySkippedConversation[]
   readonly conversationsTouched: number
-}
-export interface ArchiveCoverageAudit {
-  readonly legacyConversations: number
-  readonly canonicalConversations: number
-  readonly conversationCountShortfall: number
-  readonly conversationsWithMessageShortfall: number
-  readonly sourceMessageCount: number
-  readonly canonicalMessageCount: number
-  /** Count comparisons do not prove message-ID, hash, page or branch identity. */
-  readonly kind: 'count_only_read_only'
-  readonly missingDetails: readonly {
-    conversationId: string
-    title: string | null
-    v3Count: number
-    v4Count: number
-    canonicalCount: number
-    ownerStatus: 'verified' | 'waiting_for_owner' | 'mismatch' | 'v4_only'
-  }[]
 }
 /**
  * One-time consented archive conversion. Both old DBs remain untouched.
@@ -137,7 +66,12 @@ export class ArchiveCanonicalMigrator {
     message: '',
   }
   #pending: Promise<void> | null = null
-  constructor(private readonly store: ArchiveV4Store) {}
+  readonly #reader: ArchiveCanonicalReader
+  readonly #audit: ArchiveCanonicalAudit
+  constructor(private readonly store: ArchiveV4Store) {
+    this.#reader = new ArchiveCanonicalReader(store, (accountId) => this.active(accountId))
+    this.#audit = new ArchiveCanonicalAudit(store, (accountId) => this.active(accountId), (accountId) => this.listConversations(accountId))
+  }
   subscribe(fn: (p: CanonicalMigrationProgress) => void) {
     this.#listeners.add(fn)
     return () => this.#listeners.delete(fn)
@@ -510,124 +444,8 @@ export class ArchiveCanonicalMigrator {
     return auditCanonicalSourceIntegrity(this.store, accountId, generation)
   }
 
-  /** Count-only inventory of the UNION of v3 and account-scoped v4 IDs.
-   * No native bodies are loaded and no archive is mutated. Overlapping v3/v4
-   * records may share message IDs, so source counts are not additive proofs. */
   async auditCoverage(accountId: string): Promise<ArchiveCoverageAudit> {
-    const generation = await this.active(accountId)
-    if (!generation) throw new Error('Canonical archive has not been activated')
-    const v3 = await existingSource(ARCHIVE_DB_NAME)
-    const target = await this.store.canonicalDatabase()
-    const current = await this.listConversations(accountId)
-    const ids = new Map<
-      string,
-      {
-        title: string | null
-        v3Count: number
-        v4Count: number
-        ownerStatus: 'verified' | 'waiting_for_owner' | 'mismatch' | 'v4_only'
-      }
-    >()
-    try {
-      if (v3) {
-        const headers = await request<Row[]>(
-          v3.transaction('conversations', 'readonly').objectStore('conversations').getAll(),
-        )
-        for (const header of headers) {
-          const id = header.conversationId
-          if (typeof id !== 'string' || !id) continue
-          const evidence = legacyV3OwnerEvidence(header, accountId)
-          const count = await request<number>(
-            v3
-              .transaction('messages', 'readonly')
-              .objectStore('messages')
-              .index('conversationId')
-              .count(id),
-          )
-          ids.set(id, {
-            title: typeof header.title === 'string' ? header.title : null,
-            v3Count: count,
-            v4Count: 0,
-            ownerStatus: evidence.status,
-          })
-        }
-      }
-      const v4 = await request<Row[]>(
-        target
-          .transaction('conversations', 'readonly')
-          .objectStore('conversations')
-          .index('byAccount')
-          .getAll(accountId),
-      )
-      for (const header of v4) {
-        const id = header.conversationId
-        if (typeof id !== 'string' || !id) continue
-        const count = await request<number>(
-          target
-            .transaction('messages', 'readonly')
-            .objectStore('messages')
-            .index('byConversation')
-            .count(key(accountId, id)),
-        )
-        const previous = ids.get(id)
-        ids.set(id, {
-          title: (typeof header.title === 'string' && header.title) || previous?.title || null,
-          v3Count: previous?.v3Count ?? 0,
-          v4Count: count,
-          ownerStatus: previous?.ownerStatus ?? 'v4_only',
-        })
-      }
-      const canonical = new Set(current.map((row) => row.conversationId))
-      let missing = 0,
-        less = 0,
-        before = 0,
-        after = 0
-      const missingDetails: ArchiveCoverageAudit['missingDetails'][number][] = []
-      for (const [id, old] of ids) {
-        const count = await request<number>(
-          target
-            .transaction('canonicalMessages', 'readonly')
-            .objectStore('canonicalMessages')
-            .index('byConversation')
-            .count(key(generation, key(accountId, id))),
-        )
-        const sourceMax = Math.max(old.v3Count, old.v4Count)
-        before += old.v3Count + old.v4Count
-        after += count
-        if (!canonical.has(id)) missing++
-        if (count < sourceMax) less++
-        if (!canonical.has(id) || count < sourceMax)
-          missingDetails.push({
-            conversationId: id,
-            title: old.title,
-            v3Count: old.v3Count,
-            v4Count: old.v4Count,
-            canonicalCount: count,
-            ownerStatus: old.ownerStatus,
-          })
-      }
-      if ((await this.active(accountId)) !== generation)
-        throw new Error('Archive generation changed during audit')
-      missingDetails.sort(
-        (a, b) =>
-          Math.max(b.v3Count, b.v4Count) -
-            b.canonicalCount -
-            (Math.max(a.v3Count, a.v4Count) - a.canonicalCount) ||
-          a.conversationId.localeCompare(b.conversationId),
-      )
-      return {
-        kind: 'count_only_read_only',
-        legacyConversations: ids.size,
-        canonicalConversations: current.length,
-        conversationCountShortfall: missing,
-        conversationsWithMessageShortfall: less,
-        sourceMessageCount: before,
-        canonicalMessageCount: after,
-        missingDetails,
-      }
-    } finally {
-      v3?.close()
-    }
+    return this.#audit.auditCoverage(accountId)
   }
 
   /**
@@ -650,149 +468,13 @@ export class ArchiveCanonicalMigrator {
     if (this.#pending) throw new Error('Archive reconciliation already running')
     return navigator.locks?.request
       ? navigator.locks.request('chatgpt-booster:canonical-migration-v1', { mode: 'shared' }, () =>
-          this.#inspectSkippedRecent(accountId, sinceMs, quickAfterLastImport),
+          this.#audit.inspectSkippedRecent(accountId, sinceMs, quickAfterLastImport),
         )
-      : this.#inspectSkippedRecent(accountId, sinceMs, quickAfterLastImport)
+      : this.#audit.inspectSkippedRecent(accountId, sinceMs, quickAfterLastImport)
   }
 
-  async #inspectSkippedRecent(
-    accountId: string,
-    sinceMs: number,
-    quickAfterLastImport: boolean,
-  ): Promise<ArchiveOwnerSkipInspection> {
-    const target = await this.store.canonicalDatabase()
-    const generation = await this.active(accountId)
-    if (!generation) throw new Error('Canonical archive has not been activated')
-    const manifest = await request<Row | undefined>(
-      target
-        .transaction('migrationManifest', 'readonly')
-        .objectStore('migrationManifest')
-        .get(key(accountId)),
-    )
-    const checkpoint =
-      typeof manifest?.lastReconciledAt === 'number' &&
-      manifest.lastReconciledSkippedOwnership === 0
-        ? manifest.lastReconciledAt
-        : typeof manifest?.verifiedAt === 'number'
-          ? manifest.verifiedAt
-          : null
-    const effectiveSince =
-      quickAfterLastImport && checkpoint !== null
-        ? Math.max(sinceMs, checkpoint - 15 * 60_000)
-        : sinceMs
-    const active = new Set(
-      (await this.listConversations(accountId)).map((row) => row.conversationId),
-    )
-    const legacy = await existingSource(ARCHIVE_DB_NAME)
-    if (!legacy)
-      return { examined: 0, skippedMessages: 0, skippedConversations: [], sinceMs: effectiveSince }
-    try {
-      const headers = await request<Row[]>(
-        legacy.transaction('conversations', 'readonly').objectStore('conversations').getAll(),
-      )
-      const reasons = new Map<string, { header: Row; reason: LegacySkipReason }>()
-      for (const header of headers) {
-        const id = header.conversationId
-        if (typeof id !== 'string' || !id || active.has(id)) continue
-        const evidence = legacyV3OwnerEvidence(header, accountId)
-        if (evidence.status !== 'verified')
-          reasons.set(id, {
-            header,
-            reason: evidence.status === 'mismatch' ? 'owner_mismatch' : 'missing_owner',
-          })
-      }
-      const groups = new Map<string, LegacySkippedConversation>()
-      let examined = 0
-      if (reasons.size) {
-        for await (const batch of scanRecent(
-          legacy,
-          'messages',
-          'lastSeenAt',
-          effectiveSince,
-          Date.now(),
-        )) {
-          examined += batch.length
-          for (const row of batch) {
-            const id = row.conversationId
-            if (typeof id !== 'string') continue
-            const target = reasons.get(id)
-            if (!target) continue
-            const old = groups.get(id)
-            const rawId =
-              typeof object(row.raw)?.id === 'string' ? (object(row.raw)?.id as string) : null
-            const entry: LegacySkippedConversation = {
-              conversationId: id,
-              title: typeof target.header.title === 'string' ? target.header.title : null,
-              reason: target.reason,
-              messages: (old?.messages ?? 0) + 1,
-              messageIds:
-                rawId && (old?.messageIds.length ?? 0) < 10
-                  ? [...(old?.messageIds ?? []), rawId]
-                  : (old?.messageIds ?? []),
-            }
-            groups.set(id, entry)
-          }
-        }
-      }
-      if ((await this.active(accountId)) !== generation)
-        throw new Error('Archive owner changed while inspecting')
-      const skippedConversations = [...groups.values()].sort(
-        (a, b) => b.messages - a.messages || a.conversationId.localeCompare(b.conversationId),
-      )
-      return {
-        examined,
-        sinceMs: effectiveSince,
-        skippedMessages: skippedConversations.reduce((sum, row) => sum + row.messages, 0),
-        skippedConversations,
-      }
-    } finally {
-      legacy.close()
-    }
-  }
-
-  /** All-time, read-only owner inventory. Unlike the recent-history scanner,
-   * this sees old conversations even when their messages were never modified. */
   async inspectSkippedAll(accountId: string): Promise<ArchiveOwnerSkipInspection> {
-    if (!accountId.trim()) throw new Error('Verified account required')
-    const generation = await this.active(accountId)
-    if (!generation) throw new Error('Canonical archive has not been activated')
-    const existing = new Set((await this.listConversations(accountId)).map((c) => c.conversationId))
-    const legacy = await existingSource(ARCHIVE_DB_NAME)
-    if (!legacy) return { examined: 0, skippedMessages: 0, skippedConversations: [], sinceMs: 0 }
-    const skippedConversations: LegacySkippedConversation[] = []
-    let examined = 0
-    try {
-      const headers = await request<Row[]>(
-        legacy.transaction('conversations', 'readonly').objectStore('conversations').getAll(),
-      )
-      for (const header of headers) {
-        const id = header.conversationId
-        if (typeof id !== 'string' || !id || existing.has(id)) continue
-        const owner = legacyV3OwnerEvidence(header, accountId)
-        if (owner.status === 'verified') continue
-        const index = legacy
-          .transaction('messages', 'readonly')
-          .objectStore('messages')
-          .index('conversationId')
-        const messages = await request<number>(index.count(id))
-        examined += messages
-        skippedConversations.push({
-          conversationId: id,
-          title: typeof header.title === 'string' ? header.title : null,
-          reason: owner.status === 'mismatch' ? 'owner_mismatch' : 'missing_owner',
-          messages,
-          messageIds: [],
-        })
-      }
-      if ((await this.active(accountId)) !== generation)
-        throw new Error('Archive generation changed during owner inspection')
-      skippedConversations.sort(
-        (a, b) => b.messages - a.messages || a.conversationId.localeCompare(b.conversationId),
-      )
-      return { examined, skippedMessages: examined, skippedConversations, sinceMs: 0 }
-    } finally {
-      legacy.close()
-    }
+    return this.#audit.inspectSkippedAll(accountId)
   }
 
   /** Explicit all-history reconciliation, including records older than 30 days.
@@ -1260,178 +942,21 @@ export class ArchiveCanonicalMigrator {
     )
   }
 
+  // Stable public facade: migration orchestration no longer owns read/query/export implementations.
   async listConversations(accountId: string): Promise<CanonicalStoredConversation[]> {
-    const generation = await this.active(accountId)
-    if (!generation) return []
-    const db = await this.store.canonicalDatabase()
-    const all = await request<CanonicalStoredConversation[]>(
-      db
-        .transaction('canonicalConversations', 'readonly')
-        .objectStore('canonicalConversations')
-        .index('byAccount')
-        .getAll(accountId),
-    )
-    return all.filter((entry) => entry.generation === generation)
-  }
-  async readMessages(accountId: string, conversationId: string): Promise<CanonicalStoredMessage[]> {
-    const generation = await this.active(accountId)
-    if (!generation) return []
-    const db = await this.store.canonicalDatabase()
-    const conversationKey = key(generation, key(accountId, conversationId))
-    const all = await request<CanonicalStoredMessage[]>(
-      db
-        .transaction('canonicalMessages', 'readonly')
-        .objectStore('canonicalMessages')
-        .index('byConversation')
-        .getAll(conversationKey),
-    )
-    return all.sort(
-      (a, b) =>
-        (a.sourceCreateTime ?? Infinity) - (b.sourceCreateTime ?? Infinity) ||
-        a.messageId.localeCompare(b.messageId),
-    )
-  }
-  /** Bounded count scan: do not materialize every saved message and its raw
-   * content just to display a Reader status line. */
-  async conversationCounts(
-    accountId: string,
-    conversationId: string,
-  ): Promise<{
-    total: number
-    visible: number
-    internal: number
-    firstId: string | null
-    lastId: string | null
-  }> {
-    const generation = await this.active(accountId)
-    if (!generation) return { total: 0, visible: 0, internal: 0, firstId: null, lastId: null }
-    const db = await this.store.canonicalDatabase()
-    const id = key(generation, key(accountId, conversationId))
-    return new Promise((resolve, reject) => {
-      let total = 0,
-        visible = 0,
-        internal = 0
-      let first: { id: string; time: number } | null = null
-      let last: { id: string; time: number } | null = null
-      const ix = db
-        .transaction('canonicalMessages', 'readonly')
-        .objectStore('canonicalMessages')
-        .index('byConversation')
-      const scan = ix.openCursor(IDBKeyRange.only(id))
-      scan.onerror = () => reject(scan.error ?? new Error('Canonical count cursor failed'))
-      scan.onsuccess = () => {
-        const cursor = scan.result
-        if (!cursor) {
-          resolve({
-            total,
-            visible,
-            internal,
-            firstId: first?.id ?? null,
-            lastId: last?.id ?? null,
-          })
-          return
-        }
-        const row = cursor.value as CanonicalStoredMessage
-        if (
-          row.generation !== generation ||
-          row.accountId !== accountId ||
-          row.conversationId !== conversationId
-        ) {
-          reject(new Error('Canonical account scope mismatch'))
-          return
-        }
-        total++
-        const p = row.projection
-        const shown =
-          p.role === 'user' ||
-          (p.role === 'assistant' &&
-            (p.channel === null || p.channel === 'final') &&
-            (p.recipient === null || p.recipient === 'all') &&
-            p.elements[0]?.kind !== 'reasoning')
-        if (shown) visible++
-        else internal++
-        if (shown && row.sourceCreateTime !== null) {
-          const time = row.sourceCreateTime
-          if (!first || time < first.time || (time === first.time && row.messageId < first.id))
-            first = { id: row.messageId, time }
-          if (!last || time > last.time || (time === last.time && row.messageId > last.id))
-            last = { id: row.messageId, time }
-        }
-        cursor.continue()
-      }
-    })
+    return this.#reader.listConversations(accountId)
   }
 
-  /** IndexedDB's chronology index excludes null timestamps. Only for such
-   * conversations, use a key-scoped cursor and a bounded top-41 selection.
-   * This scans O(n) records but never materializes O(n) bodies in JS memory. */
-  async #unsequencedWindow(
-    db: IDBDatabase,
-    conversationKey: string,
-    before: ArchiveWindowCursor | null,
-    direction: 'older' | 'newer' | 'first',
-    signal?: AbortSignal,
-  ): Promise<{ rows: CanonicalStoredMessage[]; hasOlder: boolean; hasNewer: boolean }> {
-    const compare = (
-      a: Pick<CanonicalStoredMessage, 'sourceCreateTime' | 'messageId'>,
-      b: Pick<ArchiveWindowCursor, 'sourceCreateTime' | 'messageId'>,
-    ) =>
-      (a.sourceCreateTime ?? Infinity) - (b.sourceCreateTime ?? Infinity) ||
-      a.messageId.localeCompare(b.messageId)
-    const backwards = direction === 'older'
-    return new Promise((resolve, reject) => {
-      const ranked: CanonicalStoredMessage[] = []
-      let count = 0
-      const cursorRequest = db
-        .transaction('canonicalMessages', 'readonly')
-        .objectStore('canonicalMessages')
-        .index('byConversation')
-        .openCursor(IDBKeyRange.only(conversationKey))
-      cursorRequest.onerror = () =>
-        reject(cursorRequest.error ?? new Error('Canonical cursor failed'))
-      cursorRequest.onsuccess = () => {
-        if (signal?.aborted) {
-          reject(new DOMException('Archive read cancelled', 'AbortError'))
-          return
-        }
-        const cursor = cursorRequest.result
-        if (!cursor) {
-          const extra = count > 40
-          resolve({
-            rows: backwards ? ranked.slice(-40) : ranked.slice(0, 40),
-            hasOlder: backwards ? extra : direction === 'newer' && !!before,
-            hasNewer: backwards ? !!before : extra,
-          })
-          return
-        }
-        const row = cursor.value as CanonicalStoredMessage
-        const diff = before ? compare(row, before) : 0
-        if (!before || (backwards ? diff < 0 : direction === 'first' || diff > 0)) {
-          count++
-          // Top/bottom 41 only; avoid O(history size) arrays for 100k+ chats.
-          const place = ranked.findIndex((candidate) => compare(row, candidate) < 0)
-          ranked.splice(place < 0 ? ranked.length : place, 0, row)
-          if (ranked.length > 41) {
-            if (backwards) ranked.shift()
-            else ranked.pop()
-          }
-        }
-        cursor.continue()
-      }
-    })
+  async readMessages(accountId: string, conversationId: string): Promise<CanonicalStoredMessage[]> {
+    return this.#reader.readMessages(accountId, conversationId)
+  }
+
+  async conversationCounts(accountId: string, conversationId: string) {
+    return this.#reader.conversationCounts(accountId, conversationId)
   }
 
   async hasConversation(accountId: string, conversationId: string): Promise<boolean> {
-    const generation = await this.active(accountId)
-    if (!generation) return false
-    const db = await this.store.canonicalDatabase()
-    const row = await request<CanonicalStoredConversation | undefined>(
-      db
-        .transaction('canonicalConversations', 'readonly')
-        .objectStore('canonicalConversations')
-        .get(key(generation, key(accountId, conversationId))),
-    )
-    return row?.generation === generation && row.accountId === accountId
+    return this.#reader.hasConversation(accountId, conversationId)
   }
 
   async threadWindow(
@@ -1442,325 +967,19 @@ export class ArchiveCanonicalMigrator {
     signal?: AbortSignal,
     focus?: string,
   ): Promise<ArchiveThreadWindow> {
-    if (signal?.aborted) throw new DOMException('Archive read cancelled', 'AbortError')
-    const generation = await this.active(accountId)
-    if (!generation) throw new Error('Archive migration is not active')
-    const db = await this.store.canonicalDatabase()
-    const conversationKey = key(generation, key(accountId, conversationId))
-    const point = (m: CanonicalStoredMessage) => ({
-      sourceCreateTime: m.sourceCreateTime,
-      messageId: m.messageId,
-    })
-    let rows: CanonicalStoredMessage[]
-    let hasOlderStored = false
-    let hasNewerStored = false
-    let knownCount: number
-    let unsequenced = false
-    if (focus) {
-      // Focused navigation must never getAll() an entire large conversation.
-      const found = await request<CanonicalStoredMessage | undefined>(
-        db
-          .transaction('canonicalMessages', 'readonly')
-          .objectStore('canonicalMessages')
-          .get(key(conversationKey, focus)),
-      )
-      if (!found || found.generation !== generation || found.accountId !== accountId)
-        throw new Error('archive.error.messageMissing')
-      const compare = (a: CanonicalStoredMessage, b: CanonicalStoredMessage) =>
-        (a.sourceCreateTime ?? Infinity) - (b.sourceCreateTime ?? Infinity) ||
-        a.messageId.localeCompare(b.messageId)
-      const older: CanonicalStoredMessage[] = []
-      const newer: CanonicalStoredMessage[] = []
-      let olderCount = 0,
-        newerCount = 0
-      unsequenced = false
-      for await (const entry of scan(
-        db,
-        'canonicalMessages',
-        'byConversation',
-        conversationKey,
-        16,
-      )) {
-        if (signal?.aborted) throw new DOMException('Archive read cancelled', 'AbortError')
-        const row = entry as unknown as CanonicalStoredMessage
-        if (row.sourceCreateTime === null) unsequenced = true
-        const order = compare(row, found)
-        if (order < 0) {
-          olderCount++
-          const position = older.findIndex((candidate) => compare(row, candidate) < 0)
-          older.splice(position < 0 ? older.length : position, 0, row)
-          if (older.length > 20) older.shift()
-        } else if (order > 0) {
-          newerCount++
-          const position = newer.findIndex((candidate) => compare(row, candidate) < 0)
-          newer.splice(position < 0 ? newer.length : position, 0, row)
-          if (newer.length > 19) newer.pop()
-        }
-      }
-      rows = [...older, found, ...newer]
-      knownCount = olderCount + 1 + newerCount
-      hasOlderStored = olderCount > older.length
-      hasNewerStored = newerCount > newer.length
-    } else {
-      const tx = db.transaction('canonicalMessages', 'readonly')
-      const table = tx.objectStore('canonicalMessages')
-      const byConversation = table.index('byConversation')
-      const chrono = table.index('byChronology')
-      const done = finish(tx)
-      const start = [conversationKey]
-      const end = [conversationKey, []]
-      let range: IDBKeyRange
-      if (before?.sourceCreateTime !== null && before?.sourceCreateTime !== undefined) {
-        const cursorPoint = [conversationKey, before.sourceCreateTime, before.messageId]
-        range =
-          direction === 'newer'
-            ? IDBKeyRange.bound(cursorPoint, end, true, false)
-            : IDBKeyRange.bound(start, cursorPoint, false, true)
-      } else range = IDBKeyRange.bound(start, end)
-      const backwards = direction !== 'first' && direction !== 'newer'
-      const bounded = new Promise<CanonicalStoredMessage[]>((resolve, reject) => {
-        const result: CanonicalStoredMessage[] = []
-        const cursor = chrono.openCursor(range, backwards ? 'prev' : 'next')
-        cursor.onerror = () => reject(cursor.error ?? new Error('Canonical cursor failed'))
-        cursor.onsuccess = () => {
-          const item = cursor.result
-          if (!item || result.length >= 41) {
-            resolve(result)
-            return
-          }
-          result.push(item.value as CanonicalStoredMessage)
-          if (result.length >= 41) resolve(result)
-          else item.continue()
-        }
-      })
-      const [total, timedCount, obtained] = await Promise.all([
-        request<number>(byConversation.count(conversationKey)),
-        request<number>(chrono.count(IDBKeyRange.bound(start, end))),
-        bounded,
-      ])
-      await done
-      knownCount = total
-      unsequenced = total > timedCount
-      const extra = obtained.length > 40
-      rows = obtained.slice(0, 40)
-      if (backwards) rows.reverse()
-      hasOlderStored = backwards ? extra : !!before && direction === 'newer'
-      hasNewerStored = backwards ? !!before : extra
-      if (unsequenced) {
-        // The chronological index excludes records with a null timestamp.
-        // Fall back to an all-message cursor, never an unbounded getAll().
-        const page = await this.#unsequencedWindow(db, conversationKey, before, direction, signal)
-        rows = page.rows
-        hasOlderStored = page.hasOlder
-        hasNewerStored = page.hasNewer
-      }
-    }
-    if (signal?.aborted) throw new DOMException('Archive read cancelled', 'AbortError')
-    if ((await this.active(accountId)) !== generation)
-      throw new Error('archive.error.sourceChanged')
-    // Read only this bounded window's matching immutable source snapshots.
-    // The native record is essential for model/tool/reasoning metadata and raw
-    // inspection. Synthesizing a fake native raw loses that information.
-    const snapshotsTx = db.transaction('sourceSnapshots', 'readonly')
-    const snapshotsDone = finish(snapshotsTx)
-    const snapshots = snapshotsTx.objectStore('sourceSnapshots')
-    const records: ArchiveRecordView[] = await Promise.all(
-      rows.map(async (row) => {
-        const preferredSource = row.source ?? 'native'
-        const snapshot = await request<CanonicalSourceSnapshot | undefined>(
-          snapshots.get(key(row.key, preferredSource, row.sourceFingerprint)),
-        )
-        if (
-          !snapshot ||
-          snapshot.generation !== generation ||
-          snapshot.fingerprint !== row.sourceFingerprint ||
-          snapshot.messageKey !== row.key ||
-          snapshot.raw.id !== row.messageId
-        )
-          throw new Error('archive.error.sourceChanged')
-        const record = normalizeConversationMessage(snapshot.raw, conversationId, null, 0)
-        if (!record) throw new Error('archive.error.sourceChanged')
-        return { ...record, messageKey: row.projection.messageKey }
-      }),
-    )
-    await snapshotsDone
-    return {
-      thread: buildArchiveThread(records, { unknownTimeLast: true }),
-      source: 'saved',
-      accountId,
-      sourceRevision: null,
-      sourceInstanceId: null,
-      olderCursor: hasOlderStored && rows[0] ? point(rows[0]) : null,
-      newerCursor:
-        hasNewerStored && rows.length
-          ? point(rows[rows.length - 1] as CanonicalStoredMessage)
-          : null,
-      hasOlderStored,
-      hasNewerStored,
-      loadedRecordCount: rows.length,
-      totalKnownRecordCount: knownCount,
-      hasUnsequencedRecords: unsequenced,
-    }
+    return this.#reader.threadWindow(accountId, conversationId, before, direction, signal, focus)
   }
 
-  /** Preview migrated local data independently from today's native adapter. */
   async preview(accountId: string, conversationId: string): Promise<ArchiveExportPreview> {
-    const generation = await this.active(accountId)
-    if (!generation) throw new Error('Archive migration is not active')
-    const db = await this.store.canonicalDatabase()
-    const header = await request<CanonicalStoredConversation | undefined>(
-      db
-        .transaction('canonicalConversations', 'readonly')
-        .objectStore('canonicalConversations')
-        .get(key(generation, key(accountId, conversationId))),
-    )
-    if (!header || header.accountId !== accountId) throw new Error('Archive conversation missing')
-    const [first, last] = await Promise.all([
-      this.threadWindow(accountId, conversationId, null, 'first'),
-      this.threadWindow(accountId, conversationId, null, 'older'),
-    ])
-    const mapWindow = (window: ArchiveThreadWindow) =>
-      window.thread.turns
-        .flatMap((turn) => [...turn.messages, ...turn.details])
-        .map((item) => ({
-          messageId: item.record.messageId,
-          role: item.record.role,
-          text: archiveRecordText(item.record).slice(0, 280),
-        }))
-    const earliest = mapWindow(first).slice(0, 3)
-    const latest = mapWindow(last).slice(-3)
-    const seen = new Set([...earliest, ...latest].map((item) => item.messageId))
-    return {
-      earliest,
-      latest,
-      hiddenKnownCount: Math.max(0, first.totalKnownRecordCount - seen.size),
-      knownCount: first.totalKnownRecordCount,
-      hasUnsequencedMessages: first.hasUnsequencedRecords,
-      selectedTipId: header.currentNodeId,
-      sourcePageContinuity: 'unknown',
-      captureCoverage: 'unknown',
-      latestHeadMatches: null,
-    }
+    return this.#reader.preview(accountId, conversationId)
   }
 
-  /** Stream known saved source snapshots in bounded batches. Never repeat the
-   * same large tool response as a projected text field AND a native raw object.
-   * A complete verified selected-path export is a separate capability. */
   async exportKnownRecords(
     accountId: string,
     conversationId: string,
     format: 'json' | 'markdown' | 'json-gzip' = 'json',
   ): Promise<Blob> {
-    const generation = await this.active(accountId)
-    if (!generation) throw new Error('Canonical archive has not been activated')
-    const db = await this.store.canonicalDatabase()
-    const conversationKey = key(generation, key(accountId, conversationId))
-    const header = await request<CanonicalStoredConversation | undefined>(
-      db
-        .transaction('canonicalConversations', 'readonly')
-        .objectStore('canonicalConversations')
-        .get(conversationKey),
-    )
-    if (!header || header.accountId !== accountId || header.generation !== generation)
-      throw new Error('Recovered conversation not found in active generation')
-    const parts: BlobPart[] = []
-    const markdown = format === 'markdown'
-    parts.push(
-      markdown
-        ? `# ${header.title ?? 'Восстановленный архив'}\n\n> Неполная история: пагинация и выбранная ветка не подтверждены.\n\n`
-        : JSON.stringify({
-            archiveFormat: 'booster-recovery-unverified-v2',
-            warning: 'Partial saved history: source pages and selected lineage unverified.',
-            conversationId,
-            canonicalModelVersion: 1,
-            sourceOriginals: null,
-          }).replace('"sourceOriginals":null}', '"sourceOriginals":['),
-    )
-    let buffered = ''
-    let included = 0
-    const flush = () => {
-      if (buffered) parts.push(buffered)
-      buffered = ''
-    }
-    for await (const source of scan(
-      db,
-      'canonicalMessages',
-      'byConversation',
-      conversationKey,
-      16,
-    )) {
-      const row = source as unknown as CanonicalStoredMessage
-      if (
-        row.generation !== generation ||
-        row.accountId !== accountId ||
-        row.conversationId !== conversationId ||
-        !row.messageId
-      )
-        throw new Error('Canonical source identity mismatch')
-      const tx = db.transaction('sourceSnapshots', 'readonly')
-      const stored = await request<CanonicalSourceSnapshot[]>(
-        tx.objectStore('sourceSnapshots').index('byMessage').getAll(row.key),
-      )
-      const versions = stored.filter(
-        (snap) =>
-          snap.generation === generation &&
-          snap.messageKey === row.key &&
-          snap.raw.id === row.messageId,
-      )
-      if (!versions.some((snap) => snap.fingerprint === row.sourceFingerprint))
-        throw new Error('Canonical source snapshot missing or mismatched')
-      if (markdown) {
-        const selected = versions.find(
-          (snap) =>
-            snap.fingerprint === row.sourceFingerprint && snap.source === (row.source ?? 'native'),
-        )
-        if (!selected) throw new Error('Canonical source snapshot missing')
-        const record = normalizeConversationMessage(
-          selected.raw,
-          conversationId,
-          header.projectId,
-          0,
-        )
-        if (!record) throw new Error('Canonical source message malformed')
-        const role = record.role ?? record.channel ?? 'unknown'
-        buffered += `## ${role}\n\n${archiveRecordText(record)}\n\n`
-      } else {
-        // Equal fingerprints represent the same source JSON; preserve source
-        // provenance labels without writing duplicate raw message bodies.
-        const byFingerprint = new Map<
-          string,
-          { fingerprint: string; sources: string[]; raw: Row }
-        >()
-        for (const snap of versions) {
-          const previous = byFingerprint.get(snap.fingerprint)
-          if (previous) {
-            if (!previous.sources.includes(snap.source)) previous.sources.push(snap.source)
-          } else
-            byFingerprint.set(snap.fingerprint, {
-              fingerprint: snap.fingerprint,
-              sources: [snap.source],
-              raw: snap.raw,
-            })
-        }
-        buffered +=
-          (included ? ',' : '') +
-          JSON.stringify({
-            messageId: row.messageId,
-            preferredFingerprint: row.sourceFingerprint,
-            snapshots: [...byFingerprint.values()],
-          })
-      }
-      included++
-      if (buffered.length >= 256 * 1024) flush()
-    }
-    if (!included) throw new Error('No migrated records in the selected conversation')
-    flush()
-    if (!markdown) parts.push(']}')
-    if ((await this.active(accountId)) !== generation)
-      throw new Error('Archive generation changed during export')
-    const blob = new Blob(parts, {
-      type: markdown ? 'text/markdown;charset=utf-8' : 'application/json;charset=utf-8',
-    })
-    return format === 'json-gzip' ? createGzipFromBlob(blob) : blob
+    return this.#reader.exportKnownRecords(accountId, conversationId, format)
   }
+
 }

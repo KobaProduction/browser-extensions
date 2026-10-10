@@ -69,3 +69,16 @@ v3/v4 persistence, visible controls, page events, real user authorization,
 VK v2 folder guards, and restart/update/rollback. Do not publish an
 untested PROD change solely on source/build success. Existing browser data
 are never auto-migrated between extension IDs or channels.
+
+## DEV candidate independence for private workspace version bumps
+
+Bun updates `bun.lock` when a private Booster's workspace packages change
+version, even if no shared dependency changed. The DEV channel planner now
+compares the old and new lockfile structurally: it ignores **only** an
+otherwise byte/structure-equivalent workspace-version-only change belonging
+to an explicitly changed product, allowing ChatGPT-only changes to advance
+ChatGPT DEV and all-in-one DEV without rebuilding VK DEV. A lockfile-only
+change, a shared dependency/config change, an unexpected workspace delta or
+a parsing error still triggers the conservative all-consumer path. This
+does **not** weaken build validation or alter the independent semver/PROD
+approval policy.
