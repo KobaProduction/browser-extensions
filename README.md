@@ -22,9 +22,9 @@ Browser profile/extension-ID data migration is not automatic.
 | Module | Status | Targets | Source |
 | --- | --- | --- | --- |
 | VK Booster 2.3.10 | Independent v2 exporter; preserved v2 archive format | Tampermonkey, Chromium | `modules/vk-booster/` |
-| ChatGPT Booster 2.0.3 | Independent release-enabled module; installed-product cutover still gated | Tampermonkey, Chromium | `modules/chatgpt-booster/` |
+| ChatGPT Booster 2.0.4 | Independent release-enabled module; installed-product cutover still gated | Tampermonkey, Chromium | `modules/chatgpt-booster/` |
 | Proxy Switcher | Typed interface and capability boundary only | Future MV3 background | `modules/proxy-switcher/` |
-| All-in-one 0.5.2 | VK + ChatGPT site-specific composition in one installer | Tampermonkey, Chromium | `apps/` |
+| All-in-one 0.5.3 | VK + ChatGPT site-specific composition in one installer | Tampermonkey, Chromium | `apps/` |
 
 VK Booster preserves source messages, attachments, photos, document names, voice messages and a self-contained offline HTML chat. Its form is a VK-specific Vue presenter around a reusable Archive Manager widget inside the shared Control Center, without a second modal. The same panel now includes a bounded, searchable preview of messages already loaded from the selected v2 archive using the shared ArchiveTranscript widget. The preview renders at most 240 records; the original index.html remains the full offline viewer for older messages, files and voice records. The previous standalone userscript menu handler was removed, so installing a bundle does not register duplicate menus. The VK-specific API provider, attachment selection/fallback, and offline HTML renderer are separate modules. Neutral linear page selection, acknowledgement-gated scan orchestration and bounded binary response verification (MIME, size, SHA-256) are implemented in `packages/archive`; the File System Access writer is shared via `packages/adapters`. This does not imply that ChatGPT v4 binary asset contracts have been accepted. VK retains its v2 checkpoint persistence, provider-specific media and final HTML output; the shared scan service injects source and commit ports. No branch-aware, multi-source controller is claimed; the v2 output format is preserved.
 
@@ -172,7 +172,7 @@ checks and is not implicitly modified by first-party lint commands.
 
 The VK Booster v2.3.10 typed source, bounded archive widgets and shared storage
 utilities are included in the same tree as independent ChatGPT Booster
-2.0.3. Only `modules/*` application entries are distributed. The other
+2.0.4. Only `modules/*` application entries are distributed. The other
 ChatGPT baseline in `integrations/chatgpt-booster` is a read-only migration
 reference preserving advanced refactor files until source parity is verified;
 it is not registered as a second extension, bundle or release target. Browser
@@ -183,8 +183,8 @@ Source merge and authoritative ownership map: [VK/ChatGPT reconciliation](docs/I
 
 ## Independent product release graph
 
-ChatGPT Booster is release-enabled at **2.0.3**, VK Booster retains **2.3.10**,
-and the combined all-in-one package is **0.5.2**. Changes to either module
+ChatGPT Booster is release-enabled at **2.0.4**, VK Booster retains **2.3.10**,
+and the combined all-in-one package is **0.5.3**. Changes to either module
 require bumping that module plus the aggregate, but not the other module.
 Shared reusable implementation changes require bumping all consumers. PR CI
 checks this relationship; `scripts/bump-versions.ts` provides an explicit
@@ -200,3 +200,12 @@ owns bounded IndexedDB pages, range scans, request and transaction lifecycle.
 ChatGPT v4 types/identity/read-only queries are separately owned from write
 transactions and canonical migration, with legacy DBs untouched.
 [Current decomposition and remaining boundaries](docs/ARCHIVE_DECOMPOSITION.md).
+
+## Canonical archive responsibilities
+
+ChatGPT's canonical migration coordinator delegates stored conversation reads,
+bounded/focused Reader windows and preview to `ArchiveCanonicalReader`,
+source-native export to a separate exporter, and read-only ownership/coverage
+inspection to `ArchiveCanonicalAudit`. Shared storage paging and the
+provider-owned v3/v4 database/write protocols remain unchanged. See
+[archive decomposition](docs/ARCHIVE_DECOMPOSITION.md).

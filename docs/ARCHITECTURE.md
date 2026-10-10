@@ -295,3 +295,15 @@ The VK export progress is now a thin adapter over the same `ArchiveProgress`
 primitive that renders ChatGPT archive/export progress, with each provider
 still owning its phase/total state. See
 [ARCHIVE_DECOMPOSITION.md](ARCHIVE_DECOMPOSITION.md) for precise boundaries.
+
+## Canonical archive reading and migration responsibilities (2.0.4)
+
+`ArchiveCanonicalMigrator` is now the staging, locking, generation activation,
+reconciliation and rollback coordinator only. `ArchiveCanonicalReader`
+provides generation-pinned saved Reader windows and previews;
+`archive-canonical-export` handles partial recovery export;
+`ArchiveCanonicalAudit` reports read-only coverage and ownership evidence.
+All use explicit data/active-generation ports. Original migrator methods and
+ChatGPT v3/v4 physical storage schemas remain unchanged. These services are
+ChatGPT-owned; the provider-neutral paging/transaction/renderer primitives
+are shared under `packages/`.

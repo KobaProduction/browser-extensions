@@ -51,3 +51,26 @@ test('ChatGPT startup only recognizes its own extension root, not the aggregate'
     scopedIdentity('koba-browser-tools-root', 'all-in-one:dev'),
   )
 })
+
+test('DEV channel does not publish unrelated VK for a ChatGPT-only private version lock update', async () => {
+  const { onlyProviderVersionLockChange } = await import('./channel-plan')
+  const oldLock = `{ "lockfileVersion": 2, "workspaces": { "modules/chatgpt-booster": {"version":"2.0.3",}, "modules/vk-booster": {"version":"2.3.10"}}, "packages":{} }`
+  const chatUpdated = oldLock.replace('"2.0.3"', '"2.0.4"')
+  const chatPaths = ['modules/chatgpt-booster/module.json', 'bun.lock']
+  expect(onlyProviderVersionLockChange(oldLock, chatUpdated, chatPaths)).toBe(true)
+  expect(affectedModules(chatPaths.filter((path) => path !== 'bun.lock'))).toEqual([
+    'chatgpt-booster',
+    'all-in-one',
+  ])
+  // A true shared dependency update cannot be mistaken for private metadata.
+  const dependencyChanged = chatUpdated.replace('"packages":{}', '"packages":{"shared":"1.0.1"}')
+  expect(onlyProviderVersionLockChange(oldLock, dependencyChanged, chatPaths)).toBe(false)
+  // Unknown / lockfile-only edits retain conservative shared-product handling.
+  expect(onlyProviderVersionLockChange(oldLock, chatUpdated, ['bun.lock'])).toBe(false)
+  expect(onlyProviderVersionLockChange('broken', chatUpdated, chatPaths)).toBe(false)
+  const vkUpdated = oldLock.replace('"2.3.10"', '"2.3.11"')
+  expect(
+    onlyProviderVersionLockChange(oldLock, vkUpdated, ['modules/vk-booster/module.json', 'bun.lock']),
+  ).toBe(true)
+  expect(onlyProviderVersionLockChange(oldLock, vkUpdated, chatPaths)).toBe(false)
+})

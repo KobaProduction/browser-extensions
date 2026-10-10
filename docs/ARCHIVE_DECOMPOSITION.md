@@ -2,9 +2,9 @@
 
 ## Implemented source architecture
 
-The VK Booster 2.3.10 and ChatGPT Booster 2.0.3 share real platform use
+The VK Booster 2.3.10 and ChatGPT Booster 2.0.4 share real platform use
 cases and adapters, not their provider-specific account or storage schemas.
-Their all-in-one consumer is 0.5.2. The versions changed together because
+Their all-in-one consumer is 0.5.3. The versions changed together because
 `packages/storage` was extended as a reusable platform contract used by
 ChatGPT; VK currently uses shared archive and file-output APIs rather than
 an IndexedDB database. A shared-package change conservatively bumps both
@@ -80,3 +80,36 @@ or silently migrate PROD native messages. This shared-storage refactor is
 compatible with the channel matrix in [DEV_PROD_CHANNELS.md](DEV_PROD_CHANNELS.md).
 Successful reviewed `main` CI may produce DEV prereleases through the new
 channel workflow; **PROD still requires explicit manual acceptance**.
+
+## Canonical read/audit/export service boundaries (2.0.4)
+
+The canonical migration coordinator formerly combined four independent
+responsibilities in one source file (~1,760 lines). They now have distinct
+provider-owned services with explicit ports:
+
+- `archive-canonical-model.ts`: canonical conversation/message and native
+  source-snapshot type contracts, re-exported at the original migrator path
+- `archive-canonical-reader.ts`: conversation listings and counts, native
+  snapshot verification, bounded focused/chronological windows, saved Reader
+  projections and export preview
+- `archive-canonical-export.ts`: separate user-triggered partial JSON,
+  Markdown and GZIP recovery export with owner/generation revalidation
+- `archive-canonical-audit.ts`: read-only v3/v4 inventory, coverage counts,
+  owner ambiguity inspection and bounded IDs; it cannot activate, stage,
+  rebind or delete records
+- `archive-canonical-migrator.ts`: the remaining ~990-line coordinator for
+  explicit owner-consented migration, cross-tab locking, stage/validate,
+  generation activation, reconciliation and rollback
+
+The old `ArchiveCanonicalMigrator` public methods remain compatible facade
+methods. Its constructor injects the active-generation check and database
+connection ports into read/audit services rather than allowing them to open
+or activate a canonical generation independently. Tests verify read-only
+services refuse non-active generations without touching the database. No
+physical schema or account/extension instance-scope keys change.
+
+This is a **ChatGPT-owned source decomposition**, so VK Booster remains
+**2.3.10**, ChatGPT moves to **2.0.4**, and all-in-one to **0.5.3**. The
+common `packages/archive`, `packages/storage`, `packages/shell`, and
+`packages/widgets` continue to serve both consumers without conflating
+ChatGPT's branch-aware canonical migration and VK's linear v2 folder output.
