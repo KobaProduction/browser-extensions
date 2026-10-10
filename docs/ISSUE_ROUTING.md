@@ -60,7 +60,10 @@ and independent build code in the monorepo are evidence of source presence,
 Historical titles, issue bodies, PR descriptions and source refs for **all 28
 issues and 38 PRs** are preserved in
 [`docs/legacy/chatgpt-booster-github-tracker.json`](legacy/chatgpt-booster-github-tracker.json).
-This metadata snapshot does not include discussion comments, inline reviews,
-Git diffs or old release artifacts. Preserve any still-needed source/review
-provenance before permanently deleting the old repository. Do not mistake
-a closed historical tracker for verified product acceptance.
+A companion [legacy discussion snapshot](legacy/chatgpt-booster-discussions.json)
+preserves 52 issue discussion comments, two inline PR code-review comments,
+and 43 PR review decisions/comments across all 38 former PRs. These JSON
+records do **not** archive old Git commit objects, PR patches, full review
+thread state or release artifacts. Keep the old GitHub repository available
+until unmerged source parity and any needed Git/release provenance are resolved.
+Do not mistake a closed historical tracker for verified product acceptance.
