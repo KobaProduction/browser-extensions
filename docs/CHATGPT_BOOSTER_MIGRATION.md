@@ -205,3 +205,15 @@ conflict was rejected before even an unrelated earlier row could be committed;
 an owner-unverified v3 chat remained quarantined until selected manually;
 canonical SHA-256 source parity then passed without touching native originals.
 The portable canonical backup remains a separate file and owner gate.
+
+## Current acceptance boundary: merge code first, test installed product second
+
+The user has explicitly moved manual browser acceptance **after** merging the
+source relocation into the monorepo. Code acceptance for the existing PR
+requires current clean workspace, TypeScript/Vue static checks, the full test
+suite, built VK/ChatGPT/all-in-one outputs and module manifest validation,
+plus independent code review. Browser UI and real-account history tests are
+tracked for the subsequent installed-product cutover rather than blocking the
+code-merge stage. The old repository and user profile sources must be retained
+until that later cutover, and the experimental ChatGPT module remains excluded
+from automated independent releases (`release:false`).

@@ -1,15 +1,24 @@
 import { archiveSha256Hex, createGzipFromChunks, encodeArchiveClone, decodeArchiveClone } from '@kobaproduction/browser-archive'
-import { ARCHIVE_DB_NAME, ARCHIVE_DB_VERSION, ConversationArchiveStore } from './archive-store'
-import { ARCHIVE_V4_DB_NAME, type ArchiveV4Store } from './archive-v4-store'
+import { ARCHIVE_DB_NAME, ConversationArchiveStore } from './archive-store'
+import { type ArchiveV4Store } from './archive-v4-store'
 
 const VERSION = 'booster-native-source-transfer-v2'
 const LEGACY_VERSION = 'booster-native-source-transfer-v1'
-const SOURCE_STORES = {
-  v3: ['conversations', 'messages', 'conversationPages', 'conversationCoverage',
-    'projects', 'assets', 'preloadPages'],
-  v4: ['projects', 'conversations', 'messages', 'metadata'],
+/** Historical IndexedDB source schema. Table ordering and keyPath are a
+ * single immutable authority: the legacy source writers still own migration. */
+const SOURCE_SCHEMA = {
+  v3: {
+    conversations: 'conversationId', messages: 'messageKey',
+    conversationPages: 'pageKey', conversationCoverage: 'conversationId',
+    projects: 'projectId', assets: 'assetId', preloadPages: 'pageKey',
+  },
+  v4: { projects: 'key', conversations: 'key', messages: 'key', metadata: 'key' },
 } as const
-export type SourceKind = keyof typeof SOURCE_STORES
+export type SourceKind = keyof typeof SOURCE_SCHEMA
+const SOURCE_STORES: Record<SourceKind, readonly string[]> = {
+  v3: Object.keys(SOURCE_SCHEMA.v3),
+  v4: Object.keys(SOURCE_SCHEMA.v4),
+}
 type RecordRow = { kind: 'record'; source: SourceKind; table: string; value: unknown; encoding?: 'structured' }
 type DataRow = Record<string, unknown>
 type Totals = Record<string, number>
@@ -32,23 +41,24 @@ function allowed(source: unknown, table: unknown): source is SourceKind {
 }
 function assertJsonSafe(value: unknown, seen = new Set<object>()): void {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return
-  if (typeof value === 'number' && Number.isFinite(value)) return
+  if (typeof value === 'number' && Number.isFinite(value) && !Object.is(value, -0)) return
   if (!value || typeof value !== 'object' || seen.has(value))
     throw new Error('Native source contains unsupported non-JSON or cyclic data')
-  if (Object.getPrototypeOf(value) !== Object.prototype &&
-      Object.getPrototypeOf(value) !== null && !Array.isArray(value))
-    throw new Error('Native source contains non-JSON binary or special object data')
+  if (Object.getPrototypeOf(value) !== Object.prototype && !Array.isArray(value))
+    throw new Error('Native source contains non-JSON prototype or special object data')
+  if (Array.isArray(value) && Object.getPrototypeOf(value) !== Array.prototype)
+    throw new Error('Native source contains non-standard array prototype')
   seen.add(value)
   if (Array.isArray(value)) {
+    for (const name of Object.keys(value))
+      if (!/^(0|[1-9]\d*)$/.test(name) || Number(name) >= value.length)
+        throw new Error('Native source array contains non-JSON properties')
     for (let i = 0; i < value.length; i++) {
       if (!Object.hasOwn(value, i)) throw new Error('Sparse native source array cannot be copied safely')
       assertJsonSafe(value[i], seen)
     }
   } else {
-    for (const [key, item] of Object.entries(value)) {
-      if (!key) continue
-      assertJsonSafe(item, seen)
-    }
+    for (const item of Object.values(value)) assertJsonSafe(item, seen)
   }
   // Do not forget visited objects: JSON.stringify duplicates shared aliases.
   // A transfer must refuse an identity graph it cannot preserve exactly.
@@ -168,6 +178,7 @@ export async function importNativeSourceBackup(
           while (lineBreak !== -1) {
             const line = tail.slice(0, lineBreak)
             tail = tail.slice(lineBreak + 1)
+            if (!stillAuthorized()) throw new Error('Account changed during native source import')
             if (line) await onRow(record(JSON.parse(line)))
             lineBreak = tail.indexOf('\n')
           }
@@ -179,6 +190,8 @@ export async function importNativeSourceBackup(
     let digest = 'start', header = false, completed = false
     let fileSchema: string | null = null
     const totals: Totals = {}
+    let previousOrder = -1
+    let previousKey: IDBValidKey | null = null
     await visit(async (row) => {
       if (completed) throw new Error('Unexpected data after native source footer')
       if (row.kind === 'footer') {
@@ -211,6 +224,20 @@ export async function importNativeSourceBackup(
       } else if (row.encoding !== undefined) throw new Error('Unknown native source encoding')
       else assertJsonSafe(row.value)
       const name = `${row.source}/${row.table}`
+      const source = row.source as SourceKind
+      const names = SOURCE_STORES[source] as readonly string[]
+      const sourceOrder = source === 'v3' ? 0 : 1
+      const order = sourceOrder * 100 + names.indexOf(row.table as string)
+      const keyPath = (SOURCE_SCHEMA[source] as Readonly<Record<string, string>>)[row.table as string]
+      const decoded = record(row.encoding === 'structured' ? decodeArchiveClone(row.value) : row.value)
+      const primaryKey = keyPath ? decoded[keyPath] : undefined
+      if (typeof primaryKey !== 'string' || !primaryKey ||
+          order < previousOrder ||
+          (order === previousOrder && previousKey !== null &&
+            indexedDB.cmp(previousKey, primaryKey) >= 0))
+        throw new Error('Native source rows are out of order, duplicated, or lack valid keys')
+      previousOrder = order
+      previousKey = primaryKey
       totals[name] = (totals[name] ?? 0) + 1
     })
     if (!completed) throw new Error('Native source backup footer is missing')
@@ -264,6 +291,7 @@ export async function importNativeSourceBackup(
       await visit(verifyExisting)
       await visit(async row => {
         if (row.kind !== 'record') return
+        if (!stillAuthorized()) throw new Error('Account changed before native source write')
         const { db, storeName, value, key } = target(row)
         const tx = db.transaction(storeName, 'readwrite')
         const done = committed(tx)
@@ -281,6 +309,11 @@ export async function importNativeSourceBackup(
           }
           result.identical++
         } else {
+          if (!stillAuthorized()) {
+            tx.abort()
+            await done.catch(() => undefined)
+            throw new Error('Account changed before native source write')
+          }
           table.put(value)
           result.inserted++
         }

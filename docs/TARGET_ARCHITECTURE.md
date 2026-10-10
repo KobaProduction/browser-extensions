@@ -281,3 +281,17 @@ shared archive application/storage and widgets need separate verified ports
 and do **not** justify rewriting VK v2 semantics or destroying existing
 ChatGPT v3/v4 archives. Migration parity and real-browser validation remain
 release blockers. See `CHATGPT_BOOSTER_MIGRATION.md`.
+
+## Code relocation acceptance vs installed-product cutover (2026-10-10)
+
+The user explicitly authorized **completing and integrating the monorepo code
+relocation before browser acceptance**. A successful source/type/unit/build
+pipeline and independent code/architecture review are required to integrate
+this migration into the shared-refactor branch; manual testing of the newly
+installed extension is intentionally deferred to the post-relocation phase.
+This does **not** authorize a released update, destroying the previous
+extension's IndexedDB profile, deleting the standalone ChatGPT Booster
+repository, or claiming that installed-user data has been migrated.
+`modules/chatgpt-booster/module.json` remains `release:false` until the
+separately verified product cutover. Historical v3/v4 raw rows, quarantine and
+canonical backup remain preserved until those later gates are satisfied.

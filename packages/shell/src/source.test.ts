@@ -24,3 +24,11 @@ test('shared shell supports a provider-neutral wide archive panel and explicit c
  expect(source).toContain('booster-modal-surface-wide')
  expect(source).not.toContain('chatgpt-booster')
 })
+
+test('shared shell tracks navigation state for wide vs standard module presentation', async()=>{
+ const modal = await read('./Overlay.vue')
+ const panel = await read('./ControlCenterPanel.vue')
+ expect(modal).toContain('@select="selectedSection = $event"')
+ expect(panel).toContain("emit('select',id)")
+ expect(panel).toContain('@click="selectSection(feature.id)"')
+})

@@ -92,7 +92,7 @@ onBeforeUnmount(()=>{
   <div class="booster-overlay-root">
     <div v-if="open" class="booster-modal-backdrop" @click.self="open = false">
       <div class="booster-modal-surface" :class="{ 'booster-modal-surface-wide': widePanel }">
-        <ControlCenterPanel :runtime="runtime" :views="views" :title="title" :selected-section="selectedSection" @close="closePanel" />
+        <ControlCenterPanel :runtime="runtime" :views="views" :title="title" :selected-section="selectedSection" @select="selectedSection = $event" @close="closePanel" />
       </div>
     </div>
     <button
