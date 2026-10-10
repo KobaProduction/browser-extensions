@@ -71,7 +71,15 @@ jobs:
             test -n "$tag" || continue
             bun scripts/build.ts --module "$id" --channel=prod
             bun scripts/validate.ts --built --module "$id" --channel=prod
-            if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              # A repaired PROD channel may ONLY re-publish byte-identical
+              # immutable release assets. Never republish HEAD under an old tag.
+              saved="$(mktemp -d)"
+              gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir "$saved"
+              cmp "dist/$id/$id.user.js" "$saved/$id.user.js"
+              cmp "dist/$id/$id-extension.zip" "$saved/$id-extension.zip"
+              rm -rf "$saved"
+            else
               gh release create "$tag" "dist/$id/$id.user.js" "dist/$id/$id-extension.zip" \
                 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
                 --title "$id v$version" --generate-notes
