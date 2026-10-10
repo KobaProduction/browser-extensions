@@ -7,6 +7,7 @@ import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 import { manifest, userscriptChannelUrl } from './catalog'
 import { changedModules } from './changed'
+import { buildChatGptModule } from './build-chatgpt'
 
 const root=resolve(import.meta.dir,'..')
 process.chdir(root)
@@ -57,10 +58,11 @@ async function pack(name:string){
   emitTypes(name,src,dir)
  }
 }
-for(const name of ['core','adapters','ui','shell'])await pack(name)
+for(const name of ['core','adapters','archive','ui','shell'])await pack(name)
 for(const id of ids){
  const info=await manifest(id)
- if(!info.release)throw Error('Module '+id+' is not releasable')
+ if(!info.release&&id!=='chatgpt-booster')throw Error('Module '+id+' is not releasable')
+ if(id==='chatgpt-booster'){await buildChatGptModule(root,target,info.version,viteBundle);continue}
  const dir=join(root,'dist',id);await mkdir(dir,{recursive:true})
  if(target!=='extension'){
   const src=join(root,'apps/userscript/src',id==='vk-booster'?'vk-booster.ts':'all-in-one.ts')

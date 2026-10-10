@@ -5,19 +5,21 @@
     "": {
       "name": "@koba/browser-extensions",
       "devDependencies": {
+        "@gitgraph/core": "1.5.0",
+        "@gitgraph/js": "1.4.0",
         "@tailwindcss/vite": "^4.1.14",
         "@types/bun": "^1.3.0",
         "@types/chrome": "^0.1.3",
         "@types/node": "^22.0.0",
         "@vitejs/plugin-vue": "^6.0.0",
-        "happy-dom": "^20.14.6",
-        "tailwindcss": "^4.1.14",
         "clsx": "^2.1.1",
+        "happy-dom": "^20.14.6",
         "lucide-vue-next": "^0.545.0",
         "tailwind-merge": "^3.3.1",
-        "vue": "^3.5.22",
+        "tailwindcss": "^4.1.14",
         "typescript": "^5.9.2",
         "vite": "^7.1.7",
+        "vue": "^3.5.22",
         "vue-tsc": "^3.0.7",
       },
     },
@@ -25,10 +27,14 @@
       "name": "@kobaproduction/browser-extension",
       "version": "0.1.0",
       "dependencies": {
+        "@chatgpt-booster/core": "workspace:*",
+        "@chatgpt-booster/observer": "workspace:*",
+        "@chatgpt-booster/ui": "workspace:*",
         "@kobaproduction/browser-adapters": "workspace:*",
         "@kobaproduction/browser-core": "workspace:*",
         "@kobaproduction/browser-shell": "workspace:*",
         "@kobaproduction/browser-ui": "workspace:*",
+        "@kobaproduction/module-chatgpt-booster": "workspace:*",
         "@kobaproduction/module-vk-booster": "workspace:*",
         "vue": "^3.5.22",
       },
@@ -37,11 +43,118 @@
       "name": "@kobaproduction/browser-userscript",
       "version": "0.1.0",
       "dependencies": {
+        "@chatgpt-booster/core": "workspace:*",
+        "@chatgpt-booster/observer": "workspace:*",
+        "@chatgpt-booster/ui": "workspace:*",
         "@kobaproduction/browser-adapters": "workspace:*",
         "@kobaproduction/browser-core": "workspace:*",
         "@kobaproduction/browser-shell": "workspace:*",
         "@kobaproduction/browser-ui": "workspace:*",
+        "@kobaproduction/module-chatgpt-booster": "workspace:*",
         "@kobaproduction/module-vk-booster": "workspace:*",
+        "vue": "^3.5.22",
+      },
+    },
+    "modules/chatgpt-booster": {
+      "name": "@kobaproduction/module-chatgpt-booster",
+      "version": "0.8.99",
+      "dependencies": {
+        "@chatgpt-booster/chatgpt": "workspace:*",
+        "@chatgpt-booster/core": "workspace:*",
+        "@chatgpt-booster/features": "workspace:*",
+        "@chatgpt-booster/observer": "workspace:*",
+        "@chatgpt-booster/telemetry": "workspace:*",
+        "@chatgpt-booster/ui": "workspace:*",
+        "@kobaproduction/browser-core": "workspace:*",
+        "@kobaproduction/browser-shell": "workspace:*",
+        "@kobaproduction/browser-ui": "workspace:*",
+        "lucide-vue-next": "^0.545.0",
+        "vue": "^3.5.22",
+      },
+    },
+    "modules/chatgpt-booster/packages/chatgpt": {
+      "name": "@chatgpt-booster/chatgpt",
+      "version": "0.8.0",
+      "dependencies": {
+        "@chatgpt-booster/core": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.9.2",
+      },
+    },
+    "modules/chatgpt-booster/packages/core": {
+      "name": "@chatgpt-booster/core",
+      "version": "0.8.0",
+      "devDependencies": {
+        "typescript": "^5.9.2",
+      },
+    },
+    "modules/chatgpt-booster/packages/extension": {
+      "name": "@chatgpt-booster/extension",
+      "version": "0.8.0",
+      "dependencies": {
+        "@chatgpt-booster/core": "workspace:*",
+        "@chatgpt-booster/features": "workspace:*",
+        "@chatgpt-booster/observer": "workspace:*",
+        "@chatgpt-booster/telemetry": "workspace:*",
+        "@chatgpt-booster/ui": "workspace:*",
+        "vue": "^3.5.22",
+      },
+    },
+    "modules/chatgpt-booster/packages/features": {
+      "name": "@chatgpt-booster/features",
+      "version": "0.8.0",
+      "dependencies": {
+        "@chatgpt-booster/chatgpt": "workspace:*",
+        "@chatgpt-booster/core": "workspace:*",
+        "@chatgpt-booster/observer": "workspace:*",
+        "@chatgpt-booster/telemetry": "workspace:*",
+        "@chatgpt-booster/ui": "workspace:*",
+        "@kobaproduction/browser-archive": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.9.2",
+      },
+    },
+    "modules/chatgpt-booster/packages/observer": {
+      "name": "@chatgpt-booster/observer",
+      "version": "0.8.0",
+      "devDependencies": {
+        "typescript": "^5.9.2",
+      },
+    },
+    "modules/chatgpt-booster/packages/telemetry": {
+      "name": "@chatgpt-booster/telemetry",
+      "version": "0.8.0",
+      "dependencies": {
+        "@chatgpt-booster/core": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.9.2",
+      },
+    },
+    "modules/chatgpt-booster/packages/ui": {
+      "name": "@chatgpt-booster/ui",
+      "version": "0.8.0",
+      "dependencies": {
+        "@chatgpt-booster/core": "workspace:*",
+        "@gitgraph/core": "1.5.0",
+        "@gitgraph/js": "1.4.0",
+        "clsx": "^2.1.1",
+        "lucide-vue-next": "^0.545.0",
+        "tailwind-merge": "^3.3.1",
+        "vue": "^3.5.22",
+      },
+    },
+    "modules/chatgpt-booster/packages/userscript": {
+      "name": "@chatgpt-booster/userscript",
+      "version": "0.8.0",
+      "dependencies": {
+        "@chatgpt-booster/core": "workspace:*",
+        "@chatgpt-booster/features": "workspace:*",
+        "@chatgpt-booster/observer": "workspace:*",
+        "@chatgpt-booster/telemetry": "workspace:*",
+        "@chatgpt-booster/ui": "workspace:*",
         "vue": "^3.5.22",
       },
     },
@@ -68,6 +181,10 @@
       "dependencies": {
         "@kobaproduction/browser-core": "workspace:*",
       },
+    },
+    "packages/archive": {
+      "name": "@kobaproduction/browser-archive",
+      "version": "0.1.0",
     },
     "packages/core": {
       "name": "@kobaproduction/browser-core",
@@ -102,6 +219,22 @@
     "@babel/parser": ["@babel/parser@7.29.9", "", { "dependencies": { "@babel/types": "^7.29.8" }, "bin": "./bin/babel-parser.js" }, "sha512-CjXrNHTnvqBVqHgdBysY3vk2T8tpJHb5/RMeHJBTyVa9xgugCB0CJTx/3oO8RV2QRQP391RWpB7D6hLjm8V9uA=="],
 
     "@babel/types": ["@babel/types@7.29.8", "", { "dependencies": { "@babel/helper-string-parser": "^7.29.7", "@babel/helper-validator-identifier": "^7.29.7" } }, "sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg=="],
+
+    "@chatgpt-booster/chatgpt": ["@chatgpt-booster/chatgpt@workspace:modules/chatgpt-booster/packages/chatgpt"],
+
+    "@chatgpt-booster/core": ["@chatgpt-booster/core@workspace:modules/chatgpt-booster/packages/core"],
+
+    "@chatgpt-booster/extension": ["@chatgpt-booster/extension@workspace:modules/chatgpt-booster/packages/extension"],
+
+    "@chatgpt-booster/features": ["@chatgpt-booster/features@workspace:modules/chatgpt-booster/packages/features"],
+
+    "@chatgpt-booster/observer": ["@chatgpt-booster/observer@workspace:modules/chatgpt-booster/packages/observer"],
+
+    "@chatgpt-booster/telemetry": ["@chatgpt-booster/telemetry@workspace:modules/chatgpt-booster/packages/telemetry"],
+
+    "@chatgpt-booster/ui": ["@chatgpt-booster/ui@workspace:modules/chatgpt-booster/packages/ui"],
+
+    "@chatgpt-booster/userscript": ["@chatgpt-booster/userscript@workspace:modules/chatgpt-booster/packages/userscript"],
 
     "@esbuild/aix-ppc64": ["@esbuild/aix-ppc64@0.28.2", "", { "os": "aix", "cpu": "ppc64" }, "sha512-XExcO+dvLKvVtNTibSTBej1NCAbaGhWn9Ww1ZPx80qsahhPFe/8jgWP0IchNe0F3HwkU7n8ejhH8bjonqht8mQ=="],
 
@@ -155,6 +288,10 @@
 
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.28.2", "", { "os": "win32", "cpu": "x64" }, "sha512-5ebpxr3nWMzrL/rnUI755Jkuee0bHL/Gq0WTF9lvcpv73wAp5eu8MfBUgWK9bhWvZjj7yX8etf/8tI8Ney695g=="],
 
+    "@gitgraph/core": ["@gitgraph/core@1.5.0", "", {}, "sha512-8CeeHbkKoFHM1y9vfjYiHyEpzl1mEhVrg5c/eFgDBsntOYswoDKU2yOf6DjtVINcE60wmcuynBSJqjMkQo07Ww=="],
+
+    "@gitgraph/js": ["@gitgraph/js@1.4.0", "", { "dependencies": { "@gitgraph/core": "1.5.0" } }, "sha512-7wxTTCFnRVjsqj+Zt09+3F79WhH4MK46ZS20AwbcB/MJFshSMeMH4nYmNDPa9McVsiL+cFsvW1pmZoquAOoHMw=="],
+
     "@jridgewell/gen-mapping": ["@jridgewell/gen-mapping@0.3.13", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.0", "@jridgewell/trace-mapping": "^0.3.24" } }, "sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA=="],
 
     "@jridgewell/remapping": ["@jridgewell/remapping@2.3.5", "", { "dependencies": { "@jridgewell/gen-mapping": "^0.3.5", "@jridgewell/trace-mapping": "^0.3.24" } }, "sha512-LI9u/+laYG4Ds1TDKSJW2YPrIlcVYOwi2fUC6xB43lueCjgxV4lffOCZCtYFiH6TNOX+tQKXx97T4IKHbhyHEQ=="],
@@ -167,6 +304,8 @@
 
     "@kobaproduction/browser-adapters": ["@kobaproduction/browser-adapters@workspace:packages/adapters"],
 
+    "@kobaproduction/browser-archive": ["@kobaproduction/browser-archive@workspace:packages/archive"],
+
     "@kobaproduction/browser-core": ["@kobaproduction/browser-core@workspace:packages/core"],
 
     "@kobaproduction/browser-extension": ["@kobaproduction/browser-extension@workspace:apps/extension"],
@@ -176,6 +315,8 @@
     "@kobaproduction/browser-ui": ["@kobaproduction/browser-ui@workspace:packages/ui"],
 
     "@kobaproduction/browser-userscript": ["@kobaproduction/browser-userscript@workspace:apps/userscript"],
+
+    "@kobaproduction/module-chatgpt-booster": ["@kobaproduction/module-chatgpt-booster@workspace:modules/chatgpt-booster"],
 
     "@kobaproduction/module-proxy-switcher": ["@kobaproduction/module-proxy-switcher@workspace:modules/proxy-switcher"],
 

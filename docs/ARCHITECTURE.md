@@ -56,3 +56,17 @@ Shared UI exposes Booster shadcn-vue primitives. A separate shell owns
 Shadow DOM, draggable launcher, centered modal and section navigation.
 VK export is rendered inside one Control Center as an FSD feature view.
 This implementation still needs browser acceptance and independent review.
+
+## ChatGPT Booster migration checkpoint (2026-10-10)
+
+The monorepo now includes an unreleased ChatGPT Booster module that reuses the
+platform FeatureRuntime and one Shadow DOM Control Center. The original native
+history/IndexedDB and product-facing Vue components are staged under the
+ChatGPT module; apps compose browser-specific transport and permissions. One
+portable gzip output implementation lives in `packages/archive`.
+
+This is a source-preserving adapter-first migration, not a completed common
+VK/ChatGPT archive engine. The VK v2 exporter remains an independent, unchanged
+implementation pending its separate compatibility acceptance. Source and
+runtime verification levels are recorded in
+[CHATGPT_BOOSTER_MIGRATION.md](CHATGPT_BOOSTER_MIGRATION.md).

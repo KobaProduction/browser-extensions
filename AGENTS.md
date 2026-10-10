@@ -34,3 +34,14 @@
 
 ## Known migration debt
 VK Booster is a real, tested v2 browser exporter wrapped behind typed `Feature` lifecycle. Its internal engine still has v2's legacy single-file implementation. Refactor the engine by adapter boundaries only after preserving its 3000-message, offline HTML, attachment and resumption tests; do not fork it between targets.
+
+## ChatGPT Booster transitional module
+
+For ChatGPT archive/export work, also read
+`docs/CHATGPT_BOOSTER_MIGRATION.md` and its source contracts under
+`modules/chatgpt-booster/packages/core/src` and `features/src`. Use one
+shared `packages/shell` launcher; never activate the original `OverlayModule`
+when running inside this monorepo. Preserve the old v3/v4 IndexedDB keys,
+source snapshots, verification labels and account boundaries. ChatGPT Booster
+is `release:false`; do not introduce it into the all-in-one distribution
+or enable automated updates until the migration acceptance gates pass.

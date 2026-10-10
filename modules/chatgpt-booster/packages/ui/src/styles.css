@@ -1,0 +1,4408 @@
+@import "tailwindcss";
+@source "./**/*.{vue,ts}";
+
+:host {
+  --background: oklch(0.985 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --border: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --radius: 0.625rem;
+
+  all: initial;
+  color: var(--foreground);
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :host {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --card-foreground: oklch(0.985 0 0);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --secondary: oklch(0.269 0 0);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --accent: oklch(0.269 0 0);
+    --accent-foreground: oklch(0.985 0 0);
+    --border: oklch(1 0 0 / 12%);
+    --ring: oklch(0.556 0 0);
+  }
+}
+
+* {
+  box-sizing: border-box;
+  border-color: var(--border);
+}
+
+.booster-shell {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 2147483647;
+}
+
+.booster-button {
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--card-foreground);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 20%);
+  cursor: pointer;
+  font: 700 15px / 1 inherit;
+}
+
+.booster-panel {
+  width: 300px;
+  margin-bottom: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+  color: var(--card-foreground);
+  box-shadow: 0 18px 45px rgb(0 0 0 / 24%);
+}
+
+.booster-panel h2 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.booster-panel p {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+}
+
+.booster-control-center {
+  width: min(760px, calc(100vw - 32px));
+  margin-bottom: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--card);
+  color: var(--card-foreground);
+  box-shadow: 0 22px 60px rgb(0 0 0 / 28%);
+}
+
+.booster-control-header,
+.booster-control-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.booster-control-header {
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.booster-control-header strong {
+  font-size: 14px;
+}
+
+.booster-control-header p {
+  margin: 3px 0 0;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.booster-control-body {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.booster-loading {
+  padding: 18px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.booster-section-label {
+  padding: 2px 2px 0;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.booster-setting-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background);
+}
+
+.booster-setting-card-stack {
+  display: grid;
+  align-items: stretch;
+}
+
+.booster-range-grid {
+  display: grid;
+  gap: 10px;
+  min-width: 220px;
+}
+.booster-range-grid label {
+  display: grid;
+  gap: 5px;
+}
+.booster-range-grid label > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.booster-range-grid label > span b {
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}
+.booster-range-grid input[type="range"] {
+  width: 100%;
+  accent-color: var(--primary);
+}
+
+.booster-setting-disabled {
+  opacity: 0.55;
+}
+
+.booster-setting-copy {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.booster-setting-copy b {
+  font-size: 12px;
+}
+
+.booster-setting-copy > span {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.booster-switch {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--muted);
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.booster-switch:disabled {
+  cursor: not-allowed;
+}
+
+.booster-switch > span {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--foreground);
+  transition: transform 120ms ease;
+}
+
+.booster-switch-on {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.booster-switch-on > span {
+  transform: translateX(16px);
+  background: var(--primary-foreground);
+}
+
+.booster-info-card {
+  padding: 11px 12px;
+  border-radius: 12px;
+  background: var(--muted);
+  color: var(--foreground);
+  font-size: 11px;
+}
+
+.booster-info-card ul {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0 18px;
+  padding: 0;
+  color: var(--muted-foreground);
+  line-height: 1.35;
+}
+
+.booster-control-footer {
+  padding-top: 2px;
+}
+
+.booster-save-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+
+.booster-overlay-root {
+  pointer-events: none;
+}
+
+.booster-launcher {
+  position: fixed;
+  z-index: 2147483647;
+  display: inline-flex;
+  width: 46px;
+  height: 46px;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  border: 2px solid color-mix(in oklab, var(--primary) 55%, transparent);
+  border-radius: 15px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow:
+    0 12px 36px rgb(0 0 0 / 28%),
+    0 0 0 3px color-mix(in oklab, var(--primary) 18%, transparent);
+  cursor: grab;
+  font: 800 17px / 1 inherit;
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+}
+
+.booster-launcher:hover {
+  transform: scale(1.04);
+}
+
+.booster-launcher-dragging {
+  cursor: grabbing;
+  transform: scale(1.06);
+}
+
+.booster-launcher-grip {
+  width: 11px;
+  height: 11px;
+  opacity: 0.7;
+}
+
+.booster-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(0 0 0 / 38%);
+  backdrop-filter: blur(3px);
+  pointer-events: auto;
+}
+
+.booster-modal-surface {
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+}
+
+.booster-modal-surface .booster-control-center {
+  width: 100%;
+  margin: 0;
+}
+
+.booster-popup-host {
+  min-width: 360px;
+  background: var(--background);
+}
+
+.booster-select {
+  min-width: 92px;
+  height: 32px;
+  flex: 0 0 auto;
+  padding: 0 28px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+  color: var(--foreground);
+  font: 500 12px / 1 inherit;
+  cursor: pointer;
+  outline: none;
+}
+
+.booster-select:focus {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.booster-stack-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background);
+}
+
+.booster-stack-card label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.booster-input {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+  color: var(--foreground);
+  font: 500 11px / 1 inherit;
+  outline: none;
+}
+
+.booster-input:focus {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.booster-counter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 12px;
+  margin-top: 8px;
+  color: var(--muted-foreground);
+}
+
+.booster-counter-grid span {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.booster-counter-grid b {
+  color: var(--foreground);
+}
+
+.booster-header-copy {
+  min-width: 0;
+}
+
+.booster-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.booster-header-toggle-label {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.booster-settings-layout {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  min-height: 360px;
+}
+
+.booster-settings-nav {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: 12px 8px;
+  border-right: 1px solid var(--border);
+  background: color-mix(in oklab, var(--muted) 58%, transparent);
+}
+
+.booster-settings-nav button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  font: 600 11px / 1.2 inherit;
+  text-align: left;
+}
+
+.booster-settings-nav button:hover,
+.booster-settings-nav button.active {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.booster-settings-content {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.booster-setting-card-flat {
+  padding: 0 0 10px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+}
+
+.booster-analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.booster-counter-card {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background);
+}
+
+.booster-counter-title {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.booster-disclosure {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  cursor: pointer;
+  text-align: left;
+}
+
+.booster-disclosure > span {
+  display: grid;
+  gap: 3px;
+}
+
+.booster-disclosure b {
+  font-size: 12px;
+}
+
+.booster-disclosure small {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.rotate-180 {
+  transform: rotate(180deg);
+}
+
+.booster-telemetry-body {
+  display: grid;
+  gap: 10px;
+  padding-top: 10px;
+}
+
+.booster-field {
+  display: grid;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.booster-telemetry-test-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.booster-test-success {
+  color: oklch(0.62 0.17 145);
+  font-size: 11px;
+}
+
+.booster-test-error {
+  min-width: 0;
+  overflow: hidden;
+  color: oklch(0.63 0.2 25);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.booster-modal-surface {
+  width: min(760px, calc(100vw - 32px));
+}
+
+@media (max-width: 620px) {
+  .booster-control-center,
+  .booster-modal-surface {
+    width: calc(100vw - 20px);
+  }
+
+  .booster-settings-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .booster-settings-nav {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .booster-settings-nav button {
+    justify-content: center;
+  }
+
+  .booster-analytics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.booster-launcher-icon {
+  width: 21px;
+  height: 21px;
+}
+
+.booster-launcher-open {
+  box-shadow:
+    0 14px 40px rgb(0 0 0 / 34%),
+    0 0 0 4px color-mix(in oklab, var(--primary) 24%, transparent);
+}
+
+.booster-quick-menu {
+  position: fixed;
+  z-index: 2147483647;
+  width: 330px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--card);
+  color: var(--card-foreground);
+  box-shadow: 0 22px 60px rgb(0 0 0 / 30%);
+  pointer-events: auto;
+}
+
+.booster-quick-header,
+.booster-loader-status,
+.booster-quick-actions,
+.booster-quick-context,
+.booster-quick-empty,
+.booster-loader-error {
+  padding: 12px 14px;
+}
+
+.booster-quick-header,
+.booster-loader-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.booster-quick-header {
+  border-bottom: 1px solid var(--border);
+}
+
+.booster-quick-header > div,
+.booster-loader-status > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.booster-quick-header strong,
+.booster-loader-status strong {
+  font-size: 13px;
+}
+
+.booster-quick-header span,
+.booster-loader-status span,
+.booster-quick-context code,
+.booster-quick-empty,
+.booster-loader-error {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.booster-icon-button {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  cursor: pointer;
+}
+
+.booster-icon-button:hover {
+  background: var(--accent);
+}
+
+.booster-quick-context {
+  display: grid;
+  gap: 7px;
+}
+
+.booster-quick-context > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.booster-quick-context code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.booster-quick-chips,
+.booster-archive-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.booster-quick-chips span,
+.booster-archive-meta span {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.booster-loader-status {
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in oklab, var(--secondary) 70%, transparent);
+}
+
+.booster-loader-error {
+  border-top: 1px solid var(--border);
+}
+
+.booster-spin {
+  animation: booster-spin 1.2s linear infinite;
+}
+
+@keyframes booster-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.booster-quick-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.booster-quick-primary,
+.booster-quick-secondary {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  cursor: pointer;
+  font: 600 11px / 1.2 inherit;
+}
+
+.booster-quick-primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.booster-quick-secondary {
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+}
+
+.booster-quick-primary:disabled,
+.booster-quick-secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.booster-archive-backdrop {
+  padding: 10px;
+}
+
+.booster-archive-surface {
+  width: min(1180px, calc(100vw - 20px));
+  height: min(820px, calc(100vh - 20px));
+  pointer-events: auto;
+}
+
+.booster-archive-browser {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--card);
+  color: var(--card-foreground);
+  box-shadow: 0 28px 80px rgb(0 0 0 / 38%);
+}
+
+.booster-archive-header {
+  display: flex;
+  min-height: 58px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.booster-archive-title,
+.booster-archive-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.booster-archive-title > div {
+  display: grid;
+  gap: 1px;
+}
+
+.booster-archive-title strong {
+  font-size: 14px;
+}
+
+.booster-archive-title span {
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+
+.booster-archive-layout {
+  display: grid;
+  min-height: 0;
+  grid-template-columns: 300px minmax(0, 1fr);
+}
+
+.booster-archive-sidebar {
+  overflow: auto;
+  padding: 10px;
+  border-right: 1px solid var(--border);
+  background: color-mix(in oklab, var(--secondary) 38%, var(--card));
+}
+
+.booster-archive-group {
+  margin-bottom: 12px;
+}
+
+.booster-archive-project {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 7px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.booster-archive-project span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.booster-archive-conversation {
+  display: grid;
+  width: 100%;
+  gap: 3px;
+  margin: 2px 0;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.booster-archive-conversation:hover,
+.booster-archive-conversation.active {
+  border-color: var(--border);
+  background: var(--card);
+}
+
+.booster-archive-conversation strong,
+.booster-archive-conversation span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.booster-archive-conversation strong {
+  font-size: 12px;
+}
+
+.booster-archive-conversation span {
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+
+.booster-archive-content {
+  min-width: 0;
+  overflow: auto;
+  background: var(--background);
+}
+
+.booster-archive-conversation-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in oklab, var(--card) 94%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.booster-archive-conversation-head > div:first-child {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 2px 8px;
+}
+
+.booster-archive-conversation-head strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.booster-archive-conversation-head span {
+  grid-column: 2;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.booster-archive-back {
+  display: inline-flex;
+  grid-row: 1 / span 2;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  cursor: pointer;
+}
+
+.booster-archive-messages {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px 40px;
+}
+
+.booster-archive-message {
+  max-width: 920px;
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+}
+
+.booster-archive-message.role-user {
+  margin-left: auto;
+  background: color-mix(in oklab, var(--secondary) 82%, var(--card));
+}
+
+.booster-archive-message.role-tool {
+  border-style: dashed;
+}
+
+.booster-archive-message-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  margin-bottom: 8px;
+  color: var(--muted-foreground);
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.booster-archive-message-head strong {
+  color: var(--foreground);
+}
+
+.booster-archive-message-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.booster-raw-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  font: 600 10px / 1 inherit;
+}
+
+.booster-archive-raw {
+  max-height: 360px;
+  overflow: auto;
+  margin: 9px 0 0;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--muted);
+  color: var(--foreground);
+  font:
+    10px / 1.45 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+  white-space: pre-wrap;
+}
+
+.booster-archive-empty,
+.booster-archive-error {
+  padding: 24px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.booster-archive-error {
+  color: #dc2626;
+}
+
+@media (max-width: 760px) {
+  .booster-archive-layout {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  .booster-quick-menu {
+    width: min(330px, calc(100vw - 24px));
+  }
+}
+
+.booster-identity {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  vertical-align: middle;
+}
+
+/* Edge-docked toolkit. Expanding changes the shell only, never the toggle anchor. */
+.booster-dock {
+  position: fixed;
+  width: 44px;
+  height: 44px;
+  z-index: 2147483647;
+  pointer-events: auto;
+}
+.booster-dock-toggle {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--border);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.booster-dock.right .booster-dock-toggle {
+  border-radius: 12px 0 0 12px;
+}
+.booster-dock.left .booster-dock-toggle {
+  border-radius: 0 12px 12px 0;
+}
+.booster-dock.dragging .booster-dock-toggle {
+  cursor: grabbing;
+}
+.booster-dock-shell {
+  position: absolute;
+  width: min(284px, 100vw);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--card-foreground);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 22%);
+}
+.booster-dock.right .booster-dock-shell {
+  right: 0;
+  border-radius: 16px 0 0 16px;
+}
+.booster-dock.left .booster-dock-shell {
+  left: 0;
+  border-radius: 0 16px 16px 0;
+}
+.booster-dock.grow-up .booster-dock-shell {
+  bottom: 0;
+  padding-bottom: 44px;
+}
+.booster-dock.grow-down .booster-dock-shell {
+  top: 0;
+  padding-top: 44px;
+}
+.booster-dock-content {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.booster-dock-close-bar {
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  padding: 0 12px;
+  border: 0;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font: 650 11px / 1 inherit;
+  letter-spacing: 0.01em;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.booster-dock.grow-up .booster-dock-close-bar {
+  bottom: -1px;
+  border-top: 1px solid color-mix(in oklab, var(--primary-foreground) 18%, transparent);
+}
+.booster-dock.grow-down .booster-dock-close-bar {
+  top: -1px;
+  border-bottom: 1px solid color-mix(in oklab, var(--primary-foreground) 18%, transparent);
+}
+.booster-dock.right .booster-dock-close-bar {
+  padding-inline: 12px;
+  justify-content: flex-start;
+}
+.booster-dock.left .booster-dock-close-bar {
+  padding-inline: 12px;
+  justify-content: flex-start;
+}
+.booster-dock-close-bar:hover {
+  filter: brightness(1.04);
+}
+.booster-dock-close-bar:active {
+  cursor: grabbing;
+}
+.booster-dock-close-bar svg {
+  flex: 0 0 auto;
+}
+.booster-dock-context {
+  display: grid;
+  gap: 5px;
+  padding: 11px 12px 7px;
+}
+.booster-dock-context > .booster-identity:first-child {
+  font-size: 13px;
+  font-weight: 650;
+}
+.booster-dock-context > .booster-identity {
+  font-size: 12px;
+}
+.booster-dock-context p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+.booster-dock-context time {
+  display: block;
+  font-size: 10px;
+}
+.booster-dock-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.booster-dock-counts b {
+  color: var(--foreground);
+  font-weight: 650;
+}
+.booster-capture-shortcut {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  background: transparent;
+  border: 0;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 10px;
+  text-align: left;
+  cursor: pointer;
+}
+.booster-dock-actions {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 5px 6px;
+  gap: 1px;
+}
+.booster-dock-actions > button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.booster-dock-actions > button:hover:not(:disabled) {
+  background: var(--muted);
+}
+.booster-dock-actions > button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.booster-dock.grow-down .booster-dock-content {
+  display: flex;
+  flex-direction: column-reverse;
+}
+.booster-dock.grow-down .booster-dock-actions {
+  flex-direction: column-reverse;
+}
+.booster-dock-progress {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-block: 1px solid var(--border);
+  font-size: 12px;
+}
+.booster-identity-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.booster-identity-copy {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  opacity: 0;
+}
+.booster-identity:hover .booster-identity-copy,
+.booster-identity:focus-within .booster-identity-copy,
+.booster-reader-group-header:hover .booster-identity-copy {
+  opacity: 1;
+}
+.booster-identity-copy:hover {
+  background: var(--muted);
+}
+.booster-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.booster-modal-backdrop {
+  backdrop-filter: none;
+}
+.booster-dialog {
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+  color: var(--card-foreground);
+  outline: none;
+  box-shadow: 0 20px 60px rgb(0 0 0 / 30%);
+  font-size: 14px;
+  pointer-events: auto;
+}
+.booster-dialog .booster-control-center {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.booster-dialog-wide {
+  width: min(1220px, calc(100vw - 32px));
+  height: min(860px, calc(100dvh - 32px));
+  overflow: hidden;
+}
+.booster-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 64px;
+  padding: 12px 18px;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.booster-section-header strong {
+  font-size: 15px;
+}
+.booster-section-header p {
+  margin: 3px 0 0;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.booster-form-body {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  line-height: 1.5;
+}
+.booster-form-body h2,
+.booster-capture-settings h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+}
+.booster-form-body > label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.booster-form-body select,
+.booster-reader input {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 12px;
+}
+.booster-checkboxes {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  margin: 0;
+}
+.booster-checkboxes label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.booster-checkboxes input {
+  width: 16px;
+  height: 16px;
+}
+.booster-export-suboptions {
+  display: grid;
+  gap: 8px;
+  margin-inline-start: 22px;
+  padding-inline-start: 12px;
+  border-inline-start: 1px solid var(--border);
+}
+.booster-note {
+  margin: 8px 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.booster-notice {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.booster-error {
+  margin: 8px 12px;
+  padding: 8px 10px;
+  border: 1px solid #c2410c;
+  border-radius: 8px;
+  color: var(--foreground);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.booster-action-primary,
+.booster-action-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 9px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+.booster-action-primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  text-decoration: none;
+}
+.booster-action-secondary {
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+}
+.booster-action-primary:disabled,
+.booster-action-secondary:disabled,
+.booster-icon-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.booster-capture-settings > .booster-form-body {
+  padding-inline: 0;
+}
+.booster-reader {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+}
+.booster-reader-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.booster-reader-layout {
+  display: grid;
+  grid-template-columns: minmax(210px, 27%) minmax(0, 1fr);
+  min-height: 0;
+}
+.booster-reader-sidebar {
+  min-width: 0;
+  overflow: auto;
+  padding: 12px;
+  border-right: 1px solid var(--border);
+  background: var(--card);
+  overscroll-behavior: contain;
+}
+.booster-reader-group {
+  margin-top: 12px;
+}
+.booster-reader-group-header {
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+  gap: 2px;
+}
+.booster-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  font-size: 12px;
+}
+.booster-group-toggle svg {
+  flex-shrink: 0;
+}
+.booster-group-toggle span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.booster-group-toggle small {
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.booster-reader-chat-list {
+  display: grid;
+  gap: 3px;
+  padding-left: 10px;
+}
+.booster-reader-chat-list > button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.booster-reader-chat-list > button:hover,
+.booster-reader-chat-list > button.active {
+  background: var(--muted);
+  border-color: var(--border);
+}
+.booster-reader-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--background);
+}
+.booster-reader-chat-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.booster-reader-chat-header > div {
+  min-width: 0;
+}
+.booster-reader-chat-header h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  line-height: 1.4;
+}
+.booster-reader-chat-header > div > .booster-identity {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.booster-reader-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-block: 10px 0;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.booster-reader-summary b {
+  color: var(--foreground);
+}
+.booster-reader-summary p {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  line-height: 1.5;
+}
+.booster-reader-exchanges {
+  display: grid;
+  gap: 20px;
+  margin-top: 0;
+}
+.booster-exchange {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 16px;
+}
+.booster-graph-message {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: stretch;
+  margin-left: calc(min(var(--graph-lane, 0), 3) * 15px);
+  min-width: 0;
+}
+.booster-graph-rail {
+  display: flex;
+  justify-content: center;
+  position: relative;
+  min-height: 40px;
+  background: linear-gradient(var(--border), var(--border)) center / 2px 100% no-repeat;
+}
+.booster-graph-dot {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--background);
+  outline: 2px solid var(--primary);
+  background: var(--primary);
+  border-radius: 50%;
+  position: sticky;
+  top: 12px;
+  align-self: flex-start;
+  margin-top: 14px;
+  z-index: 1;
+}
+.booster-graph-dot.is-assistant {
+  border-radius: 4px;
+  background: var(--secondary);
+  outline-color: var(--muted-foreground);
+}
+.booster-graph-message.is-fork .booster-graph-rail::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 50%;
+  top: 20px;
+  border-top: 2px solid var(--primary);
+  border-radius: 6px;
+}
+.booster-graph-content {
+  min-width: 0;
+  padding-bottom: 10px;
+}
+.booster-graph-branch-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  margin: 2px 0 8px 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.booster-mobile-back {
+  display: none;
+}
+.booster-dialog :is(button, input, select, summary):focus-visible,
+.booster-dock :is(button, summary):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+@media (hover: none) {
+  .booster-identity-copy {
+    opacity: 1;
+  }
+}
+@media (max-width: 640px) {
+  .booster-reader-layout {
+    display: block;
+  }
+  .booster-reader-sidebar,
+  .booster-reader-main {
+    height: 100%;
+  }
+  .booster-reader-sidebar {
+    display: none;
+  }
+  .booster-reader-list-mode .booster-reader-sidebar {
+    display: block;
+  }
+  .booster-reader-main {
+    padding: 0;
+  }
+  .booster-reader-list-mode .booster-reader-main {
+    display: none;
+  }
+  .booster-mobile-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    margin-bottom: 12px;
+  }
+  .booster-reader-chat-header {
+    flex-wrap: wrap;
+  }
+  .booster-dialog,
+  .booster-dialog-wide {
+    width: calc(100vw - 16px);
+    max-height: calc(100dvh - 16px);
+  }
+  .booster-modal-backdrop {
+    padding: 8px;
+  }
+}
+
+/* v0.6 archive workspace */
+.booster-archive-workspace-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483645;
+  pointer-events: none;
+}
+.booster-archive-workspace {
+  position: fixed;
+  min-width: 520px;
+  min-height: 360px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--background);
+  box-shadow: 0 22px 70px rgb(0 0 0 / 32%);
+  pointer-events: auto;
+  resize: none;
+}
+.booster-archive-workspace .booster-reader {
+  height: 100%;
+  overflow: hidden;
+  border-radius: inherit;
+  background: var(--background);
+}
+.booster-archive-workspace [data-archive-drag-handle] {
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+}
+.booster-archive-grip {
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+}
+.booster-archive-resize {
+  position: absolute;
+  z-index: 4;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  background: linear-gradient(
+    135deg,
+    transparent 0 48%,
+    var(--muted-foreground) 49% 54%,
+    transparent 55% 64%,
+    var(--muted-foreground) 65% 70%,
+    transparent 71%
+  );
+  opacity: 0.55;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+.booster-archive-dock-button {
+  position: fixed;
+  z-index: 2147483646;
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid color-mix(in oklab, var(--primary) 60%, var(--border));
+  border-radius: 10px 0 0 10px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 28%);
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+}
+.booster-archive-dock-button[style*="left: 0px"] {
+  border-radius: 0 10px 10px 0;
+}
+.booster-archive-dock-button:active {
+  cursor: grabbing;
+}
+.booster-archive-dock-corner {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 9px;
+  height: 9px;
+  opacity: 0.65;
+}
+.booster-reader-chat-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.booster-exchange-details {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 10px 12px;
+  padding: 8px 0 8px 12px;
+  border-left: 2px solid color-mix(in oklab, var(--border) 78%, var(--primary));
+}
+.booster-exchange-details-label {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Markdown rendered from archived assistant/user text. Raw HTML is escaped by the renderer. */
+.booster-markdown {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.booster-markdown > :first-child {
+  margin-top: 0;
+}
+.booster-markdown > :last-child {
+  margin-bottom: 0;
+}
+.booster-markdown p {
+  margin: 0.55em 0;
+}
+.booster-markdown h1,
+.booster-markdown h2,
+.booster-markdown h3,
+.booster-markdown h4,
+.booster-markdown h5,
+.booster-markdown h6 {
+  margin: 1em 0 0.45em;
+  color: var(--foreground);
+  font-weight: 700;
+  line-height: 1.3;
+}
+.booster-markdown h1 {
+  font-size: 1.45em;
+}
+.booster-markdown h2 {
+  font-size: 1.28em;
+}
+.booster-markdown h3 {
+  font-size: 1.14em;
+}
+.booster-markdown :is(ul, ol) {
+  margin: 0.6em 0;
+  padding-left: 1.45em;
+}
+.booster-markdown li {
+  margin: 0.22em 0;
+}
+.booster-markdown blockquote {
+  margin: 0.7em 0;
+  padding: 0.2em 0 0.2em 0.9em;
+  border-left: 3px solid var(--border);
+  color: var(--muted-foreground);
+}
+.booster-markdown code {
+  padding: 0.15em 0.35em;
+  border-radius: 5px;
+  background: var(--muted);
+  font:
+    0.92em / 1.45 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    monospace;
+}
+.booster-markdown pre {
+  max-width: 100%;
+  overflow: auto;
+  margin: 0.75em 0;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: color-mix(in oklab, var(--muted) 72%, var(--background));
+}
+.booster-markdown pre code {
+  padding: 0;
+  background: transparent;
+  white-space: pre;
+}
+.booster-markdown a {
+  color: color-mix(in oklab, var(--primary) 78%, #3b82f6);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.booster-markdown hr {
+  height: 1px;
+  margin: 1em 0;
+  border: 0;
+  background: var(--border);
+}
+.booster-markdown-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0.8em 0;
+}
+.booster-markdown table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.booster-markdown :is(th, td) {
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+.booster-markdown th {
+  background: var(--muted);
+}
+
+/* Archive record hierarchy */
+.booster-record {
+  margin-block: 7px;
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 11px;
+  background: var(--card);
+}
+.booster-record-user {
+  margin-left: min(52px, 8%);
+  background: var(--muted);
+}
+.booster-record-reasoning,
+.booster-record-tool_call,
+.booster-record-tool_result,
+.booster-record-internal {
+  margin-block: 4px;
+  padding: 8px 10px;
+  background: color-mix(in oklab, var(--muted) 45%, var(--background));
+}
+.booster-record-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  margin-bottom: 8px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.booster-record-header strong {
+  color: var(--foreground);
+  font-size: 11px;
+}
+.booster-record-internal-header {
+  justify-content: space-between;
+}
+.booster-record-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.booster-record-expand,
+.booster-record-meta-button,
+.booster-tool-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  font: 600 10px / 1.25 inherit;
+}
+.booster-record-expand:hover,
+.booster-record-meta-button:hover,
+.booster-tool-action:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.booster-record-meta-button {
+  margin-top: 7px;
+}
+.booster-reasoning-preview {
+  position: relative;
+  max-height: 76px;
+  overflow: hidden;
+  color: color-mix(in oklab, var(--foreground) 82%, var(--muted-foreground));
+}
+.booster-reasoning-preview:not(.expanded)::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 30px;
+  background: linear-gradient(
+    transparent,
+    color-mix(in oklab, var(--muted) 45%, var(--background))
+  );
+  content: "";
+  pointer-events: none;
+}
+.booster-reasoning-preview.expanded {
+  max-height: none;
+  overflow: visible;
+}
+.booster-reasoning-preview .booster-markdown {
+  font-size: 11px;
+  line-height: 1.55;
+}
+.booster-tool-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+.booster-tool-icon {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  object-fit: cover;
+  background: var(--background);
+}
+.booster-tool-icon-fallback {
+  display: grid;
+  place-items: center;
+  color: var(--muted-foreground);
+}
+.booster-tool-copy {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+.booster-tool-copy strong {
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.booster-tool-copy > span {
+  color: var(--muted-foreground);
+  font-size: 9px;
+}
+.booster-tool-copy p {
+  overflow: hidden;
+  margin: 2px 0 0;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.booster-tool-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.booster-json-viewer {
+  max-height: min(70vh, 620px);
+  overflow: auto;
+  margin: 0;
+  padding: 14px 16px 22px;
+  background: color-mix(in oklab, var(--background) 86%, #0f172a);
+  color: var(--foreground);
+  font:
+    11px / 1.55 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    monospace;
+  tab-size: 2;
+  white-space: pre;
+}
+.booster-tool-expanded {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.booster-tool-expanded .booster-markdown {
+  font-size: 11px;
+}
+
+.booster-tool-expanded .booster-json-viewer {
+  max-height: 260px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 10px;
+}
+.booster-internal-row {
+  display: grid;
+  width: 100%;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.booster-internal-row > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+}
+.booster-internal-preview {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.booster-record-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.booster-record-modal-header > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.booster-record-modal-header strong {
+  font-size: 13px;
+}
+.booster-record-modal-header span {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.booster-json-key {
+  color: #60a5fa;
+}
+.booster-json-string {
+  color: #86efac;
+}
+.booster-json-number {
+  color: #fbbf24;
+}
+.booster-json-boolean {
+  color: #c084fc;
+}
+.booster-json-null {
+  color: #94a3b8;
+}
+.booster-capture-surface {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--background);
+}
+.booster-capture-surface > .booster-capture-settings {
+  padding: 14px 16px 18px;
+}
+
+@media (max-width: 680px) {
+  .booster-archive-workspace {
+    min-width: 0;
+    min-height: 0;
+    border-radius: 10px;
+  }
+  .booster-tool-row {
+    grid-template-columns: 26px minmax(0, 1fr);
+  }
+  .booster-tool-actions {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+  .booster-reader-chat-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+.booster-analytics-dashboard {
+  display: grid;
+  gap: 12px;
+}
+.booster-analytics-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+.booster-analytics-header > div {
+  display: grid;
+  gap: 3px;
+}
+.booster-analytics-header strong {
+  font-size: 14px;
+}
+.booster-analytics-header span {
+  max-width: 520px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.booster-analytics-reset {
+  min-height: 30px;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+.booster-analytics-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.booster-analytics-metrics article {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: color-mix(in oklab, var(--background) 82%, var(--muted));
+}
+.booster-analytics-metrics :where(article > span),
+.booster-analytics-metrics :where(small) {
+  color: var(--muted-foreground);
+  font-size: 9px;
+  line-height: 1.35;
+}
+.booster-analytics-metrics strong {
+  margin-top: 2px;
+  font-size: 24px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.booster-analytics-metrics article.warning {
+  border-color: color-mix(in oklab, #ef4444 45%, var(--border));
+  background: color-mix(in oklab, #ef4444 8%, var(--background));
+}
+.booster-analytics-flow-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.booster-analytics-flow-card {
+  display: grid;
+  gap: 9px;
+  padding: 11px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--background);
+}
+.booster-analytics-flow-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+.booster-analytics-flow-card :where(header > span) {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted-foreground);
+}
+.booster-analytics-flow-card :where(header b) {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.booster-analytics-flow-row {
+  display: grid;
+  grid-template-columns: minmax(88px, 0.9fr) minmax(80px, 1.3fr) auto;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted-foreground);
+  font-size: 9px;
+}
+.booster-analytics-flow-row > div {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--muted);
+}
+.booster-analytics-flow-row i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+}
+.booster-analytics-flow-row b {
+  min-width: 24px;
+  color: var(--foreground);
+  font-size: 10px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.booster-analytics-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.booster-analytics-footer span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.booster-analytics-footer b {
+  color: var(--foreground);
+  font-weight: 650;
+}
+.booster-analytics-footer .warning {
+  color: #ef4444;
+}
+
+@media (max-width: 720px) {
+  .booster-analytics-metrics,
+  .booster-analytics-flow-grid {
+    grid-template-columns: 1fr;
+  }
+  .booster-analytics-header {
+    flex-direction: column;
+  }
+}
+
+/* v0.6 dev record polish */
+.booster-record-header {
+  min-width: 0;
+}
+.booster-record-header-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+.booster-record-icon-button {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted-foreground);
+}
+.booster-record-icon-button {
+  cursor: pointer;
+}
+.booster-record-icon-button:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.booster-record-edited {
+  color: var(--muted-foreground);
+  font-size: 9px;
+  white-space: nowrap;
+}
+.booster-record-raw-corner {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+}
+.booster-tool-row {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.booster-tool-row.is-clickable {
+  cursor: pointer;
+}
+.booster-tool-copy,
+.booster-tool-actions {
+  min-width: 0;
+}
+.booster-tool-actions {
+  flex: 0 0 auto;
+}
+.booster-tool-action {
+  flex: 0 0 auto;
+  text-decoration: none;
+}
+.booster-tool-expanded {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.booster-internal-row {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.booster-internal-row.disabled {
+  cursor: default;
+  opacity: 0.8;
+}
+.booster-internal-preview {
+  min-width: 0;
+  max-width: 100%;
+  padding-right: 2px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.booster-json-modal {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--background);
+}
+.booster-json-modal .booster-json-viewer {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  max-height: none;
+  flex: 1 1 auto;
+  box-sizing: border-box;
+  overflow: auto;
+}
+.booster-dialog-wide:has(.booster-json-modal) {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.booster-reader-main,
+.booster-reader-exchanges,
+.booster-exchange,
+.booster-exchange-details {
+  min-width: 0;
+  max-width: 100%;
+}
+.booster-reader-main {
+  overflow-x: hidden;
+}
+
+.booster-export-status {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--muted) 52%, var(--background));
+}
+.booster-export-status.warning {
+  border-color: color-mix(in oklab, #f59e0b 44%, var(--border));
+  background: color-mix(in oklab, #f59e0b 7%, var(--background));
+}
+.booster-export-status > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.booster-export-status strong {
+  font-size: 10px;
+  line-height: 1.4;
+}
+.booster-export-status span {
+  color: var(--muted-foreground);
+  font-size: 9px;
+}
+.booster-export-status .booster-action-secondary {
+  min-height: 30px;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+.booster-dock-context > .booster-dock-history-state {
+  color: var(--muted-foreground);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+/* Export defaults are Booster preferences, not ChatGPT source metadata. */
+.booster-export-preferences {
+  display: grid;
+  gap: 8px;
+}
+.booster-export-preferences > label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.booster-export-preferences > .booster-note {
+  margin: 0;
+}
+
+/* Message navigation is local to the bounded Archive surface. */
+.booster-reader-message-jump,
+.booster-reader-message-jump form,
+.booster-export-preview-record {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.booster-reader-message-jump input {
+  min-width: 160px;
+  flex: 1;
+}
+.booster-export-preview-record > span {
+  flex: 1 1 220px;
+  overflow-wrap: anywhere;
+}
+.booster-message-target {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+[data-archive-message] {
+  scroll-margin-block: 20px;
+}
+
+/* Saved-copy readiness belongs to the Export wizard, not native ChatGPT UI. */
+.booster-export-readiness {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.booster-export-readiness > header,
+.booster-export-recovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.booster-export-readiness > header {
+  justify-content: space-between;
+}
+.booster-export-readiness dl {
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+.booster-export-readiness dl > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  justify-content: space-between;
+}
+.booster-export-readiness dd {
+  margin: 0;
+  text-align: end;
+}
+.booster-export-readiness p {
+  margin: 0;
+}
+.booster-export-blockers {
+  margin: 0;
+  padding-inline-start: 18px;
+  display: grid;
+  gap: 6px;
+}
+.booster-export-blockers li {
+  overflow-wrap: anywhere;
+}
+
+/* One current export stage; counts are from the preparation job, not a timer. */
+.booster-export-progress {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.booster-export-progress > p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.booster-export-progress progress {
+  display: block;
+  width: 100%;
+  height: 8px;
+  accent-color: var(--primary);
+}
+
+/* Archive export previews are intentionally bounded and loaded on demand. */
+.booster-export-preview-content {
+  display: grid;
+  gap: 8px;
+  max-height: min(360px, 48vh);
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.booster-export-preview-content .booster-note {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.booster-export-preview-skeleton {
+  display: grid;
+  gap: 8px;
+}
+.booster-export-preview-skeleton > span {
+  display: block;
+  height: 30px;
+  border-radius: 6px;
+  background: var(--muted);
+}
+.booster-export-dialog input[type="text"] {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
+}
+
+/* Shared top-layer metadata popovers for archive and live ChatGPT decorators. */
+.booster-meta-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.booster-meta-badges.compact {
+  gap: 0;
+}
+.booster-meta-trigger {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: var(--muted-foreground);
+  cursor: help;
+  outline: none;
+}
+.booster-meta-trigger.is-clickable {
+  cursor: pointer;
+}
+.booster-meta-trigger:hover,
+.booster-meta-trigger:focus-visible {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.booster-meta-trigger:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+.booster-floating-popover {
+  position: fixed;
+  z-index: 2147483647;
+  inset: auto;
+  width: max-content;
+  min-width: 190px;
+  max-width: min(420px, calc(100vw - 16px));
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--border, rgb(148 163 184 / 26%));
+  border-radius: 10px;
+  background: var(--popover, #202020);
+  color: var(--popover-foreground, #f4f4f5);
+  box-shadow: 0 14px 38px rgb(0 0 0 / 42%);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+  letter-spacing: normal;
+  white-space: normal;
+  pointer-events: none;
+}
+.booster-floating-popover:has(.booster-message-meta-body),
+.booster-floating-popover:has(.booster-tool-detail-popover) {
+  border-color: rgb(74 222 128 / 32%);
+  box-shadow:
+    0 14px 38px rgb(0 0 0 / 42%),
+    0 0 0 1px rgb(34 197 94 / 5%);
+}
+.booster-floating-popover.is-interactive {
+  pointer-events: auto;
+}
+.booster-floating-popover:not(:popover-open):not(.is-open) {
+  display: none;
+}
+.booster-meta-lines {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 3px 10px;
+}
+.booster-meta-label {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 600;
+}
+.booster-meta-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--popover-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.booster-scope-popover {
+  display: grid;
+  min-width: 260px;
+  gap: 10px;
+}
+.booster-scope-popover > header {
+  display: grid;
+  gap: 1px;
+}
+.booster-scope-title {
+  max-width: 280px;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.booster-scope-kind {
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.booster-scope-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.booster-scope-actions button {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--background);
+  color: var(--foreground);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+}
+.booster-scope-actions button:hover {
+  background: var(--muted);
+}
+
+.booster-live-tool-row {
+  display: flex;
+  width: min(100%, 48rem);
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  color: var(--muted-foreground);
+}
+.booster-live-tool-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: baseline;
+  gap: 6px;
+}
+.booster-live-tool-name {
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 11px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.booster-live-tool-action-name {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.booster-live-tool-details {
+  margin-top: 4px;
+  width: min(100%, 48rem);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 10px;
+  color: var(--card-foreground);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+}
+
+/* Sidebar archive status: lightweight chat marker, bordered project control. */
+.booster-chat-save-marker {
+  display: block;
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 999px;
+  background: transparent;
+}
+.booster-chat-save-marker.is-enabled {
+  background: #22c55e;
+  box-shadow:
+    0 0 0 1px rgb(34 197 94 / 25%),
+    0 0 6px rgb(34 197 94 / 38%);
+}
+.booster-chat-save-marker.is-work {
+  background: #ef4444;
+  box-shadow:
+    0 0 0 1px rgb(239 68 68 / 32%),
+    0 0 8px rgb(239 68 68 / 55%);
+}
+.booster-project-status-badge {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgb(148 163 184 / 32%);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 3%);
+  color: #a1a1aa;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    color 120ms ease;
+}
+.booster-project-status-badge.is-enabled {
+  border-color: rgb(34 197 94 / 72%);
+  background: rgb(34 197 94 / 8%);
+  color: #4ade80;
+}
+.booster-project-status-badge.is-disabled {
+  border-color: rgb(239 68 68 / 58%);
+  background: rgb(239 68 68 / 7%);
+  color: #f87171;
+}
+
+/* Live agent activity clock. It remains visible while ChatGPT hides its native action row. */
+.booster-agent-activity {
+  display: inline-flex;
+  max-width: min(100%, 520px);
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 3px 8px;
+  border: 1px solid var(--border, rgb(148 163 184 / 22%));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--background, #202020) 88%, transparent);
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.2;
+  pointer-events: auto;
+}
+.booster-agent-activity[data-phase="tool"] {
+  border-style: dashed;
+}
+.booster-agent-activity > svg {
+  flex: 0 0 auto;
+}
+.booster-agent-activity-phase {
+  flex: 0 0 auto;
+  color: var(--foreground);
+  font-weight: 600;
+}
+.booster-agent-activity-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.booster-agent-activity-timer {
+  flex: 0 0 auto;
+  min-width: 3.2em;
+  margin-inline-start: auto;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+}
+
+.booster-danger-zone {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px;
+  border: 1px solid rgb(239 68 68 / 45%);
+  border-radius: 12px;
+  background: rgb(127 29 29 / 8%);
+}
+.booster-danger-zone .booster-setting-copy > div,
+.booster-danger-zone .booster-setting-copy b {
+  color: rgb(248 113 113);
+}
+.booster-destructive-button {
+  min-height: 34px;
+  flex: 0 0 auto;
+  padding: 7px 12px;
+  border: 1px solid rgb(239 68 68 / 55%);
+  border-radius: 8px;
+  background: rgb(185 28 28);
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.booster-destructive-button:hover:not(:disabled) {
+  background: rgb(153 27 27);
+}
+.booster-destructive-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.booster-destructive-dialog {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  padding: 22px;
+}
+.booster-destructive-dialog strong {
+  color: rgb(248 113 113);
+  font-size: 17px;
+  letter-spacing: 0.025em;
+}
+.booster-destructive-dialog p {
+  margin: 8px 0 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.booster-destructive-icon {
+  display: flex;
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgb(127 29 29 / 20%);
+  color: rgb(248 113 113);
+}
+.booster-destructive-warning {
+  color: rgb(248 113 113);
+  font-weight: 700;
+}
+.booster-destructive-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+/* One compact metadata control lives inside the native ChatGPT action row. */
+.booster-meta-trigger-time {
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  gap: 0;
+  padding: 0;
+  border: 1px solid rgb(74 222 128 / 42%);
+  background: rgb(34 197 94 / 9%);
+  color: #4ade80;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.booster-meta-trigger-time:hover,
+.booster-meta-trigger-time:focus-visible {
+  border-color: rgb(74 222 128 / 72%);
+  background: rgb(34 197 94 / 16%);
+  color: #86efac;
+}
+.booster-meta-time-text {
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+.booster-message-meta-popover {
+  max-width: min(420px, calc(100vw - 16px));
+}
+.booster-message-meta-body {
+  display: grid;
+  min-width: 260px;
+  gap: 12px;
+}
+.booster-message-meta-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--border);
+}
+.booster-message-meta-header strong {
+  color: var(--popover-foreground);
+  font-size: 12px;
+  font-weight: 650;
+}
+.booster-message-meta-header span {
+  color: #4ade80;
+  font-size: 10px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.booster-meta-raw-toggle {
+  width: fit-content;
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font: inherit;
+  cursor: pointer;
+}
+.booster-meta-raw-toggle:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.booster-message-meta-raw {
+  max-width: 390px;
+  max-height: 260px;
+  overflow: auto;
+  margin: 0;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgb(0 0 0 / 20%);
+  font:
+    10px / 1.4 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.booster-live-tool-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  border-radius: 999px;
+  object-fit: cover;
+}
+.booster-tool-time-chip {
+  width: auto;
+  min-width: 76px;
+  gap: 5px;
+  padding: 0 8px;
+  border: 1px solid rgb(168 85 247 / 46%);
+  background: rgb(126 34 206 / 11%);
+  color: #c084fc;
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.booster-tool-time-chip:hover,
+.booster-tool-time-chip:focus-visible {
+  border-color: rgb(192 132 252 / 76%);
+  background: rgb(126 34 206 / 19%);
+  color: #d8b4fe;
+}
+.booster-agent-activity[data-phase="thinking"],
+.booster-agent-activity[data-phase="tool"],
+.booster-agent-activity[data-phase="responding"],
+.booster-agent-activity[data-phase="complete"] {
+  border-color: rgb(74 222 128 / 48%);
+  background: rgb(34 197 94 / 9%);
+  color: #4ade80;
+}
+.booster-agent-activity[data-phase="thinking"] .booster-agent-activity-phase,
+.booster-agent-activity[data-phase="tool"] .booster-agent-activity-phase,
+.booster-agent-activity[data-phase="responding"] .booster-agent-activity-phase,
+.booster-agent-activity[data-phase="complete"] .booster-agent-activity-phase,
+.booster-agent-activity[data-phase="thinking"] .booster-agent-activity-timer,
+.booster-agent-activity[data-phase="tool"] .booster-agent-activity-timer,
+.booster-agent-activity[data-phase="responding"] .booster-agent-activity-timer,
+.booster-agent-activity[data-phase="complete"] .booster-agent-activity-timer {
+  color: currentColor;
+}
+
+.booster-tool-inspect-trigger {
+  width: 24px;
+  height: 24px;
+  border: 1px solid rgb(74 222 128 / 38%);
+  border-radius: 7px;
+  background: rgb(34 197 94 / 8%);
+  color: #4ade80;
+  pointer-events: auto;
+}
+.booster-tool-inspect-trigger:hover,
+.booster-tool-inspect-trigger:focus-visible {
+  border-color: rgb(74 222 128 / 68%);
+  background: rgb(34 197 94 / 15%);
+  color: #86efac;
+}
+.booster-tool-detail-popover {
+  display: grid;
+  width: min(390px, calc(100vw - 24px));
+  gap: 10px;
+}
+.booster-tool-detail-popover > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.booster-tool-detail-popover > header strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--popover-foreground);
+  font-size: 11px;
+}
+.booster-tool-detail-popover > header span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.booster-tool-payload {
+  display: grid;
+  gap: 5px;
+}
+.booster-tool-payload > strong,
+.booster-tool-evidence > summary {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 650;
+}
+.booster-tool-evidence > summary {
+  cursor: pointer;
+}
+.booster-tool-attributes {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 3px 8px;
+  margin: 8px 0 0;
+  font:
+    9px / 1.35 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    monospace;
+}
+.booster-tool-attributes dt {
+  color: var(--muted-foreground);
+}
+.booster-tool-attributes dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.booster-tool-evidence pre {
+  max-height: 180px;
+  overflow: auto;
+  margin: 8px 0 0;
+  padding: 7px;
+  border-radius: 7px;
+  background: rgb(0 0 0 / 20%);
+  font:
+    9px / 1.4 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.booster-tool-link {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  overflow-wrap: anywhere;
+  color: #4ade80;
+  text-decoration: none;
+}
+.booster-tool-link:hover {
+  color: #86efac;
+  text-decoration: underline;
+}
+
+.booster-work-mode-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 9px;
+  border: 1px solid rgb(239 68 68 / 55%);
+  border-radius: 999px;
+  background: rgb(239 68 68 / 10%);
+  color: #fca5a5;
+  font-family: inherit;
+  font-size: 10px;
+  line-height: 1.25;
+}
+.booster-work-mode-warning strong {
+  color: #f87171;
+  font-weight: 750;
+}
+.booster-work-mode-warning > span::before {
+  content: "·";
+  margin-inline-end: 7px;
+  color: rgb(248 113 113 / 72%);
+}
+
+.booster-request-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid rgb(74 222 128 / 28%);
+  border-radius: 999px;
+  background: rgb(34 197 94 / 7%);
+  color: #86efac;
+  font-family: inherit;
+  font-size: 10px;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+}
+.booster-request-spinner {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 11px;
+  border: 1.5px solid rgb(74 222 128 / 28%);
+  border-top-color: #4ade80;
+  border-radius: 50%;
+  animation: booster-request-spin 0.9s linear infinite;
+}
+@keyframes booster-request-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.booster-request-status > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.booster-request-status > span + span::before {
+  content: "·";
+  color: var(--muted-foreground);
+}
+.booster-request-status-label {
+  color: var(--muted-foreground);
+  font-weight: 500;
+}
+.booster-request-status strong {
+  color: #4ade80;
+  font-size: 10px;
+  font-weight: 700;
+}
+.booster-request-status[data-phase="tool"] strong {
+  color: #c084fc;
+}
+.booster-request-status[data-phase="responding"] strong {
+  color: #86efac;
+}
+
+.booster-alert-setting-actions {
+  display: grid;
+  grid-template-columns: auto minmax(180px, 1fr);
+  align-items: center;
+  gap: 14px;
+}
+.booster-alert-threshold {
+  display: grid;
+  gap: 5px;
+}
+.booster-alert-threshold > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.booster-alert-threshold b {
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}
+.booster-alert-threshold input[type="range"] {
+  width: 100%;
+  accent-color: var(--primary);
+}
+
+.booster-tool-path {
+  max-width: 280px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+}
+
+/* Archive reader: the title, actions, sorting, search and coverage stay fixed.
+   Only the exchange viewport scrolls; older turns render into that viewport. */
+.booster-reader-pinned {
+  flex: 0 0 auto;
+  min-width: 0;
+  max-height: 52%;
+  overflow: auto;
+  padding: 12px 20px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--background);
+}
+.booster-reader-reading-surface {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+}
+.booster-reader-scroll {
+  height: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 18px 20px 30px;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+.booster-reader-chat-header h2 {
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+.booster-reader-chat-actions {
+  margin-top: 9px;
+  justify-content: flex-start;
+}
+.booster-reader-find {
+  margin-top: 8px;
+}
+.booster-reader-find input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 12px;
+}
+.booster-reader-chat-list > button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.booster-reader-chat-list > button.is-branch {
+  border-inline-start: 2px solid color-mix(in oklab, var(--primary) 35%, transparent);
+}
+.booster-reader-branch-icon {
+  flex: 0 0 auto;
+  opacity: 0.66;
+}
+.booster-reader-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.booster-reader-older-loading {
+  position: absolute;
+  inset: 6px auto auto 50%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  transform: translateX(-50%);
+  z-index: 2;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  background: var(--card);
+  box-shadow: 0 3px 12px rgb(0 0 0 / 12%);
+  color: var(--foreground);
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.booster-reader-spinner {
+  flex: 0 0 auto;
+  animation: booster-archive-spin 0.9s linear infinite;
+}
+@keyframes booster-archive-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .booster-reader-spinner {
+    animation: none;
+  }
+}
+@media (max-width: 640px) {
+  .booster-reader-pinned {
+    padding: 10px 12px;
+  }
+  .booster-reader-scroll {
+    padding: 12px 12px 24px;
+  }
+}
+
+/* Separate fixed message navigator; never splice the timeline into message cards. */
+.booster-reader-reading-surface {
+  display: flex;
+}
+.booster-reader-reading-surface > .booster-reader-scroll {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.booster-reader-map {
+  order: 2;
+  width: 108px;
+  flex: 0 0 108px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 7px 3px;
+  border-left: 1px solid var(--border);
+  background: var(--card);
+}
+.booster-reader-map-track {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  position: relative;
+  background: linear-gradient(var(--border), var(--border)) center / 2px 100% no-repeat;
+}
+.booster-reader-map-node {
+  position: absolute;
+  left: calc(18px + min(var(--map-lane, 0), 3) * 23px);
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: 1px solid var(--background);
+  border-radius: 3px;
+  background: var(--muted-foreground);
+  cursor: pointer;
+  z-index: 1;
+}
+.booster-reader-map-node.is-user {
+  border-radius: 50%;
+  background: var(--primary);
+}
+.booster-reader-map-node.is-fork {
+  width: 12px;
+  height: 12px;
+  box-shadow: 0 0 0 2px var(--primary);
+}
+.booster-reader-map-node:hover,
+.booster-reader-map-node:focus-visible,
+.booster-reader-map-node.is-near {
+  width: 13px;
+  height: 13px;
+  outline: 1px solid var(--ring);
+  z-index: 4;
+}
+.booster-reader-map-position {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 19px;
+  transform: translateY(-50%);
+  border: 1px solid var(--ring);
+  background: color-mix(in oklab, var(--primary) 16%, transparent);
+  border-radius: 6px;
+  pointer-events: none;
+  z-index: 0;
+}
+.booster-reader-map-end {
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 15px;
+  cursor: pointer;
+}
+.booster-reader-pinned {
+  max-height: 35%;
+  padding: 8px 12px;
+}
+.booster-reader-summary {
+  margin-top: 4px;
+  align-items: center;
+}
+.booster-reader-coverage {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+}
+.booster-reader-project-label {
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+.booster-reader-chat-actions {
+  margin-top: 4px;
+}
+.booster-reader-chat-actions .booster-action-secondary {
+  padding: 5px 8px;
+}
+.booster-reader-heading {
+  justify-content: center;
+}
+.booster-reader-exchanges {
+  gap: 12px;
+}
+.booster-reader-map-node.is-fork::after {
+  content: "";
+  position: absolute;
+  right: 80%;
+  top: 50%;
+  width: calc(min(var(--map-lane, 0), 3) * 23px);
+  border-top: 2px solid var(--primary);
+}
+.booster-reader-loading {
+  justify-content: center;
+  min-height: 130px;
+  font-size: 13px;
+}
+
+.booster-reader-map-node {
+  transition:
+    top 100ms ease-out,
+    width 120ms ease-out,
+    height 120ms ease-out;
+}
+.booster-reader-map-node:hover::before,
+.booster-reader-map-node:focus-visible::before {
+  content: attr(data-preview);
+  position: absolute;
+  right: calc(100% + 15px);
+  top: -8px;
+  z-index: 12;
+  min-width: 170px;
+  width: 240px;
+  max-width: min(240px, 60vw);
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 7px 24px color-mix(in oklab, black 18%, transparent);
+  white-space: normal;
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 400;
+  text-align: left;
+  pointer-events: none;
+}
+.booster-reader .booster-section-header {
+  padding-block: 6px;
+  min-height: 42px;
+}
+.booster-reader-heading {
+  gap: 7px;
+}
+.booster-reader-heading strong {
+  font-size: 12px;
+}
+.booster-reader-heading p {
+  font-size: 10px;
+  margin: 0;
+  opacity: 0.7;
+}
+
+.booster-reader-older-loading {
+  inset: 50% auto auto 50%;
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+.booster-reader-map-links {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+.booster-reader-map-links path {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.58;
+}
+
+.booster-reader-fork-choices {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  max-height: 115px;
+  overflow: auto;
+  margin-top: 6px;
+}
+.booster-reader-fork-group {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  flex-wrap: wrap;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 5px 8px;
+  font-size: 11px;
+}
+.booster-reader-fork-group > span {
+  color: var(--muted-foreground);
+  font-weight: 600;
+}
+.booster-reader-fork-choice {
+  max-width: 180px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 6px;
+  cursor: pointer;
+  font-size: 11px;
+}
+.booster-reader-fork-choice:hover,
+.booster-reader-fork-choice:focus-visible {
+  border-color: var(--ring);
+}
+
+/* Git-style parallel lanes: do not draw an unconditional spine across unknown gaps. */
+.booster-reader-map-track {
+  background: none;
+}
+.booster-reader-map-links path {
+  stroke-width: 2.5;
+  opacity: 0.95;
+}
+.booster-reader-map-node.is-fork {
+  background: var(--primary);
+  box-shadow:
+    0 0 0 3px var(--card),
+    0 0 0 5px var(--primary);
+}
+.booster-reader-map-node.is-fork::after {
+  display: none;
+}
+@media (max-width: 700px) {
+  .booster-reader-map {
+    width: 88px;
+    flex-basis: 88px;
+  }
+  .booster-reader-map-node {
+    left: calc(12px + min(var(--map-lane, 0), 3) * 19px);
+  }
+}
+
+.booster-reader-map-warning {
+  width: 19px;
+  height: 19px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--foreground);
+  text-align: center;
+  font-size: 12px;
+  cursor: help;
+}
+
+/* GitGraph keeps one saved connected path per vertical segment. Unlinked
+   archive fragments are separated, not overlaid as invented Git branches. */
+.booster-archive-flow-graph {
+  overflow-x: auto;
+  scrollbar-gutter: stable;
+}
+.booster-gitgraph-content {
+  min-width: 0;
+  width: max-content;
+  padding: 4px 8px 10px;
+}
+.booster-gitgraph-segment {
+  width: max-content;
+}
+.booster-gitgraph-gap {
+  height: 21px;
+  padding: 1px 9px;
+  border-left: 2px dashed var(--border);
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 20px;
+}
+/* GitGraph draws each dot through an SVG <use> inside a focusable group.
+   Circles in <defs> are not interactive surfaces. */
+.booster-gitgraph-segment-canvas svg g[data-archive-graph-node] {
+  cursor: pointer;
+  outline: none;
+}
+.booster-gitgraph-segment-canvas svg g[data-archive-graph-node]:is(:hover, :focus-visible) > use {
+  filter: drop-shadow(0 0 3px var(--ring));
+}
+.booster-gitgraph-segment-canvas svg g[data-archive-graph-node][aria-current="true"] > use {
+  filter: drop-shadow(0 0 3px var(--foreground));
+}
+
+/* Archive history inspector: an optional, readable navigation surface.
+   The archive reader keeps the full available width when history is closed. */
+.booster-reader-reading-surface {
+  display: block;
+}
+.booster-reader-reading-surface > .booster-reader-scroll {
+  width: 100%;
+  height: 100%;
+}
+.booster-reader-history-toggle.active {
+  background: var(--muted);
+  border-color: var(--ring);
+}
+.booster-archive-flow-graph {
+  position: absolute;
+  z-index: 5;
+  inset: 8px 8px 8px auto;
+  order: unset;
+  display: block;
+  width: min(360px, calc(100% - 16px));
+  max-width: none;
+  height: auto;
+  flex: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background);
+  box-shadow: 0 10px 32px rgb(0 0 0 / 28%);
+  scrollbar-gutter: stable;
+}
+.booster-history-header {
+  position: sticky;
+  z-index: 3;
+  top: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 15px 14px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--background);
+}
+.booster-history-header > div {
+  min-width: 0;
+}
+.booster-history-heading {
+  font-weight: 650;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--foreground);
+}
+.booster-history-header p {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  margin: 3px 0 0;
+}
+.booster-history-close {
+  flex: 0 0 28px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--card);
+  color: var(--muted-foreground);
+  font-size: 19px;
+  cursor: pointer;
+}
+.booster-history-close:hover {
+  color: var(--foreground);
+  background: var(--muted);
+}
+.booster-history-state {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 12px 14px 0;
+  color: var(--foreground);
+  font-size: 11px;
+  font-weight: 550;
+}
+.booster-history-state-dot {
+  flex: 0 0 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--primary);
+}
+.booster-history-state-dot.is-unverified {
+  background: var(--muted-foreground);
+}
+.booster-history-range {
+  margin-left: auto;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+  white-space: nowrap;
+}
+.booster-history-explainer {
+  margin: 6px 14px 0;
+  color: var(--muted-foreground);
+  line-height: 1.45;
+  font-size: 11px;
+}
+.booster-history-evidence {
+  margin: 10px 14px 2px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.booster-gitgraph-content {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px 9px 16px;
+}
+.booster-gitgraph-segment {
+  width: 100%;
+  position: relative;
+}
+.booster-gitgraph-segment-canvas {
+  min-width: 0;
+}
+.booster-gitgraph-segment-labels {
+  position: absolute;
+  inset: 0 8px 0 80px;
+  height: 100%;
+  pointer-events: none;
+}
+.booster-graph-message {
+  position: absolute;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  width: 100%;
+  height: 28px;
+  padding: 1px 7px;
+  background: transparent;
+  color: var(--foreground);
+  border: 1px solid transparent;
+  border-radius: 5px;
+  text-align: left;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.booster-graph-message:hover,
+.booster-graph-message:focus-visible {
+  border-color: var(--border);
+  background: var(--muted);
+}
+.booster-graph-message[aria-current="true"] {
+  background: color-mix(in oklab, var(--primary) 12%, var(--card));
+  border-color: color-mix(in oklab, var(--primary) 35%, var(--border));
+}
+.booster-graph-message-role {
+  color: var(--muted-foreground);
+  font-size: 9px;
+  line-height: 12px;
+}
+.booster-graph-message-preview {
+  width: 100%;
+  overflow: hidden;
+  color: var(--foreground);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  line-height: 14px;
+}
+.booster-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 9px 14px;
+}
+.booster-history-list-row {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--foreground);
+  text-align: left;
+  cursor: pointer;
+}
+.booster-history-list-row:hover,
+.booster-history-list-row:focus-visible {
+  background: var(--muted);
+  border-color: var(--border);
+}
+.booster-history-list-row[aria-current="true"] {
+  background: color-mix(in oklab, var(--primary) 10%, var(--card));
+  border-color: color-mix(in oklab, var(--primary) 32%, var(--border));
+}
+.booster-history-list-rail {
+  flex: 0 0 12px;
+  display: flex;
+  justify-content: center;
+  padding-top: 7px;
+}
+.booster-history-list-dot {
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--muted-foreground);
+  border-radius: 50%;
+}
+.booster-history-list-dot.is-user {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.booster-history-list-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.booster-history-list-meta {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  line-height: 13px;
+}
+.booster-history-list-preview {
+  font-size: 11px;
+  line-height: 1.4;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+.booster-history-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--background);
+}
+.booster-history-footer button {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--card);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.booster-history-footer button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.booster-history-close:focus-visible,
+.booster-history-footer button:focus-visible,
+.booster-history-list-row:focus-visible,
+.booster-graph-message:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+@media (max-width: 700px) {
+  .booster-archive-flow-graph {
+    inset: 0;
+    width: 100%;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+@media (max-width: 700px) {
+  .booster-archive-flow-graph {
+    scrollbar-gutter: auto;
+  }
+  .booster-history-header {
+    padding-right: 16px;
+  }
+  .booster-history-state {
+    flex-wrap: wrap;
+  }
+  .booster-history-range {
+    flex: 1 1 100%;
+    text-align: right;
+  }
+}
+
+/* Canonical archive maintenance is a manual-only tool. It never consumes the
+   Reader's grid row or changes the document scroll position. */
+.booster-reader {
+  position: relative;
+}
+.booster-reader-heading {
+  min-width: 0;
+  justify-content: flex-start;
+}
+.booster-reader-heading > div {
+  min-width: 0;
+}
+.booster-reader-heading strong {
+  display: block;
+  line-height: 1.25;
+}
+.booster-reader > .booster-section-header > .booster-header-actions {
+  flex: 0 0 auto;
+  gap: 6px;
+}
+.booster-reader-tools {
+  position: relative;
+}
+.booster-reader-tools-menu {
+  position: absolute;
+  z-index: 12;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  min-width: 222px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--popover, var(--card));
+  box-shadow: 0 12px 30px rgb(0 0 0 / 28%);
+}
+.booster-reader-tools-menu button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+.booster-reader-tools-menu button:hover,
+.booster-reader-tools-menu button:focus-visible {
+  background: var(--accent);
+}
+.booster-maintenance-backdrop {
+  position: absolute;
+  z-index: 18;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: clamp(12px, 3vw, 28px);
+  background: rgb(0 0 0 / 70%);
+}
+.booster-maintenance-widget {
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 570px);
+  max-height: min(700px, 100%);
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--background);
+  box-shadow: 0 24px 70px rgb(0 0 0 / 35%);
+  color: var(--foreground);
+  font: inherit;
+}
+.booster-maintenance-heading {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 15px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.booster-maintenance-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 11px;
+}
+.booster-maintenance-title > div {
+  min-width: 0;
+}
+.booster-maintenance-title h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.booster-maintenance-title p {
+  margin: 3px 0 0;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.booster-maintenance-content {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 16px 18px;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.booster-maintenance-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.booster-maintenance-stats > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--muted);
+}
+.booster-maintenance-stats span {
+  font-size: 10px;
+  color: var(--muted-foreground);
+  line-height: 1.4;
+}
+.booster-maintenance-stats strong {
+  font-size: 20px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.booster-maintenance-section {
+  display: grid;
+  gap: 11px;
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.booster-maintenance-section-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.booster-maintenance-section h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+}
+.booster-maintenance-section p,
+.booster-maintenance-result p,
+.booster-maintenance-progress p {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.booster-maintenance-section .booster-maintenance-warning {
+  color: var(--foreground);
+  border-left: 2px solid #d97706;
+  padding-left: 10px;
+}
+.booster-maintenance-widget .booster-maintenance-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--muted-foreground);
+  line-height: 1.5;
+  cursor: pointer;
+}
+.booster-maintenance-widget .booster-maintenance-check input {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  min-height: 16px;
+  margin: 1px 0 0;
+  padding: 0;
+  accent-color: var(--primary);
+}
+.booster-maintenance-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.booster-maintenance-actions button {
+  flex: 1 1 170px;
+  min-width: 0;
+}
+.booster-maintenance-actions button small {
+  display: block;
+  font-size: 10px;
+  opacity: 0.8;
+}
+.booster-maintenance-section > button {
+  justify-self: start;
+  max-width: 100%;
+}
+.booster-maintenance-loading,
+.booster-maintenance-progress,
+.booster-maintenance-result {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.booster-maintenance-result svg,
+.booster-maintenance-progress svg {
+  flex: 0 0 auto;
+}
+.booster-maintenance-result strong,
+.booster-maintenance-progress strong {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 12px;
+}
+.booster-maintenance-error {
+  margin: 0;
+  padding: 10px;
+  border: 1px solid #c2410c;
+  border-radius: 8px;
+  color: var(--foreground);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.booster-maintenance-footer {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+}
+@media (max-width: 620px) {
+  .booster-maintenance-backdrop {
+    padding: 8px;
+  }
+  .booster-maintenance-heading {
+    padding: 12px;
+  }
+  .booster-maintenance-content {
+    padding: 12px;
+  }
+  .booster-maintenance-stats strong {
+    font-size: 17px;
+  }
+  .booster-maintenance-stats > div {
+    padding: 8px;
+  }
+  .booster-reader > .booster-section-header {
+    padding: 8px 10px;
+  }
+}
+.booster-maintenance-owner-list {
+  display: grid;
+  gap: 8px;
+  max-height: 290px;
+  overflow-y: auto;
+}
+.booster-maintenance-owner-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.booster-maintenance-owner-row > input[type="checkbox"] {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  padding: 0;
+  accent-color: var(--primary);
+}
+.booster-maintenance-owner-description {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+.booster-maintenance-owner-description > strong {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.booster-maintenance-owner-description > span,
+.booster-maintenance-owner-caution {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.booster-maintenance-owner-description details {
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.booster-maintenance-owner-description summary {
+  cursor: pointer;
+}
+.booster-maintenance-owner-description code {
+  display: block;
+  margin-top: 5px;
+  font:
+    10px / 1.4 ui-monospace,
+    monospace;
+  overflow-wrap: anywhere;
+}
+.booster-maintenance-owner-description small {
+  display: block;
+  margin-top: 6px;
+}
+.booster-maintenance-link {
+  justify-self: start;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 11px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.booster-maintenance-link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Disclosure keeps forensic archive controls out of the everyday export flow. */
+.booster-export-disclosure {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+}
+.booster-export-disclosure > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.booster-export-disclosure > summary small {
+  margin-inline-start: 8px;
+  font-weight: 400;
+  color: var(--muted-foreground);
+}
+.booster-export-disclosure[open] > section,
+.booster-export-disclosure[open] > label,
+.booster-export-disclosure[open] > p {
+  margin-block-start: 12px;
+}
+
+/* Optional manual canonical backup tools never take over the Reader surface. */
+.booster-maintenance-backup-tools > summary { cursor: pointer; font-weight: 600; }
+.booster-maintenance-backup-tools > p { margin-block: 10px; }
+.booster-maintenance-backup-restore { display: grid; gap: 12px; margin-block-start: 14px; }
+.booster-maintenance-backup-restore > label { display: grid; gap: 8px; }
+.booster-maintenance-backup-restore input[type="file"] { max-width: 100%; }

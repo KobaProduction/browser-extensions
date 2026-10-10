@@ -38,14 +38,43 @@
       ],
       "@kobaproduction/module-vk-booster/ui": [
         "modules/vk-booster/src/features/chat-export/ui/index.ts"
+      ],
+      "@chatgpt-booster/core": [
+        "modules/chatgpt-booster/packages/core/src/index.ts"
+      ],
+      "@chatgpt-booster/chatgpt": [
+        "modules/chatgpt-booster/packages/chatgpt/src/index.ts"
+      ],
+      "@chatgpt-booster/features": [
+        "modules/chatgpt-booster/packages/features/src/index.ts"
+      ],
+      "@chatgpt-booster/observer": [
+        "modules/chatgpt-booster/packages/observer/src/index.ts"
+      ],
+      "@chatgpt-booster/telemetry": [
+        "modules/chatgpt-booster/packages/telemetry/src/index.ts"
+      ],
+      "@chatgpt-booster/ui": [
+        "modules/chatgpt-booster/packages/ui/src/index.ts"
+      ],
+      "@kobaproduction/module-chatgpt-booster": [
+        "modules/chatgpt-booster/src/index.ts"
+      ],
+      "@kobaproduction/module-chatgpt-booster/ui": [
+        "modules/chatgpt-booster/src/features/archive/ui/index.ts"
+      ],
+      "@kobaproduction/browser-archive": [
+        "packages/archive/src/index.ts"
       ]
     }
   },
   "include": [
     "packages/**/*.ts",
-    "modules/**/*.ts",
+    "modules/*/src/**/*.ts",
     "apps/**/*.ts",
-    "scripts/**/*.ts"
+    "scripts/**/*.ts",
+    "modules/**/*.vue",
+    "modules/chatgpt-booster/packages/*/src/**/*.ts"
   ],
   "exclude": [
     "**/*.test.ts",

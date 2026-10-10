@@ -1,0 +1,1935 @@
+import { buildArchiveThread } from '../../packages/chatgpt/src/archive-records'
+import { mountArchiveScopeControls } from '../../packages/chatgpt/src/archive-scope-controls'
+import {
+  chatGptWorkSubagentActivity,
+  chatGptWorkSubagentUsageCount,
+} from '../../packages/chatgpt/src/chatgpt-dom-adapter'
+import { readConversationActivity } from '../../packages/chatgpt/src/conversation-activity'
+import {
+  findConversationMessageTargets,
+  observeConversationDecorations,
+} from '../../packages/chatgpt/src/conversation-decorators'
+import {
+  currentConversationMessageBounds,
+  findConversationScrollContainer,
+  scrollConversationTowardStart,
+} from '../../packages/chatgpt/src/conversation-scroll'
+import { findToolCallEvidence } from '../../packages/chatgpt/src/tool-calls'
+import {
+  type ArchiveExportOptions,
+  type BoosterSettings,
+  DEFAULT_CAPTURE_RULE,
+  HISTORY_LOADER_START_EVENT,
+  mergeSettings,
+  normalizeSettings,
+  type SettingsAdapter,
+  snapshotSettings,
+} from '../../packages/core/src'
+import {
+  DEFAULT_ARCHIVE_EXPORT_PIPELINE,
+  serializeArchiveExport,
+} from '../../packages/features/src/archive-export'
+import { ArchiveSourceGate } from '../../packages/features/src/archive-source-contract'
+import {
+  ARCHIVE_DB_NAME,
+  ConversationArchiveStore,
+} from '../../packages/features/src/archive-store'
+import { createArchiveUiAdapter } from '../../packages/features/src/archive-ui-adapter'
+import {
+  ConversationArchiveModule,
+  collectionTicket,
+} from '../../packages/features/src/conversation-archive'
+import { ConversationDecoratorsModule } from '../../packages/features/src/conversation-decorators'
+import { ConversationStateStore } from '../../packages/features/src/conversation-state'
+import { HistoryLoaderModule } from '../../packages/features/src/history-loader'
+import { ARCHIVE_ASSET_EVENT, ARCHIVE_EVENT, TRANSPORT_CHANNEL } from '../../packages/observer/src'
+import { mountMessageMetadata } from '../../packages/ui/src/message-metadata'
+import { mountBoosterUi } from '../../packages/ui/src/mount'
+import { mountScopeArchiveControl } from '../../packages/ui/src/scope-archive-control'
+import { mountWorkModeWarning } from '../../packages/ui/src/work-mode-warning'
+import { runLoaderCancellationTests, runLoaderIsolationTests, runLoaderScrollTest } from './loader'
+import { runUiTests } from './ui'
+
+const store = new ConversationArchiveStore(new ArchiveSourceGate(true))
+const projectA = 'g-p-11111111111111111111111111111111'
+const projectB = 'g-p-22222222222222222222222222222222'
+const listeners = new Set<(settings: BoosterSettings) => void>()
+let current = normalizeSettings(
+  JSON.parse(localStorage.getItem('fixture-settings') ?? 'null') ?? undefined,
+)
+const settings: SettingsAdapter = {
+  async get() {
+    return snapshotSettings(current)
+  },
+  async set(value) {
+    current = snapshotSettings(value)
+    localStorage.setItem('fixture-settings', JSON.stringify(current))
+    for (const listener of listeners) listener(snapshotSettings(current))
+  },
+  async update(patch) {
+    await this.set(mergeSettings(current, patch))
+    return snapshotSettings(current)
+  },
+  subscribe(listener) {
+    listeners.add(listener)
+    return () => listeners.delete(listener)
+  },
+}
+const context: {
+  conversationId: string
+  conversationTitle: string | null
+  projectId: string | null
+  projectTitle: string | null
+} = {
+  conversationId: 'fixture-current',
+  conversationTitle: 'Проверка панели и архива',
+  projectId: projectA,
+  projectTitle: 'Koba Infrastructure · тест',
+}
+function raw(id: string, role: string, text: string, parent?: string) {
+  return {
+    id,
+    author: { role },
+    recipient: 'all',
+    channel: role === 'assistant' ? 'final' : null,
+    content: { content_type: 'text', parts: [text] },
+    create_time: 1700000000,
+    metadata: parent ? { parent_id: parent } : {},
+    status: 'finished_successfully',
+  }
+}
+function page(
+  id: string,
+  messages: Record<string, unknown>[],
+  patch: Record<string, unknown> = {},
+) {
+  return {
+    kind: 'conversation-page' as const,
+    conversationId: id,
+    timestamp: Date.now(),
+    sourceUrl: 'fixture://history',
+    readId: 'fixture-read',
+    readStartedAt: Date.now(),
+    isInitial: true,
+    requestedBefore: null,
+    payload: {
+      conversation_id: id,
+      title: id,
+      gizmo_id: null,
+      ...patch,
+      messages,
+      page_info: {
+        start_cursor: 'start',
+        end_cursor: 'end',
+        has_previous_page: false,
+        has_next_page: false,
+        ...((patch.page_info as object) ?? {}),
+      },
+    },
+  }
+}
+const report: { name: string; pass: boolean; detail?: string }[] = []
+function assert(value: unknown, message: string): asserts value {
+  if (!value) throw new Error(message)
+}
+async function check(name: string, fn: () => Promise<void>) {
+  try {
+    await fn()
+    report.push({ name, pass: true })
+  } catch (error) {
+    report.push({
+      name,
+      pass: false,
+      detail: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+async function until(fn: () => Promise<boolean>, timeout = 2500) {
+  const started = Date.now()
+  while (!(await fn())) {
+    if (Date.now() - started > timeout) throw new Error('fixture wait timed out')
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+}
+async function runStorageTests() {
+  report.length = 0
+  const prefix = `runtime-${Date.now()}-`
+  await check('duplicate page and IDs: idempotent upsert with accurate summary', async () => {
+    const id = `${prefix}duplicate`,
+      u = raw('u', 'user', 'Hello'),
+      a = raw('a', 'assistant', 'Answer', 'u')
+    const payload = page(id, [u, u, a])
+    const first = await store.ingest(payload)
+    const second = await store.ingest(payload)
+    assert(
+      first?.insertedMessages === 2 && second?.insertedMessages === 0,
+      'duplicate insert count',
+    )
+    assert((await store.getCoverage(id))?.visibleMessageCount === 2, 'reply count')
+    assert((await store.listMessages(id)).length === 2, 'duplicate rows')
+    await store.ingest(page(id, [raw('a', 'assistant', 'Edited answer', 'u')]))
+    assert((await store.listMessages(id)).length === 2, 'semantic update duplicated ID')
+  })
+  await check(
+    'concurrent ingestion uses real serial IndexedDB read/write transactions',
+    async () => {
+      const id = `${prefix}concurrent`
+      await Promise.all(
+        Array.from({ length: 8 }, (_, i) =>
+          store.ingest(page(id, [raw(`u${i}`, 'user', `reply ${i}`)])),
+        ),
+      )
+      assert((await store.getCoverage(id))?.knownMessageCount === 8, 'lost record count')
+      assert((await store.listMessages(id)).length === 8, 'lost rows')
+    },
+  )
+  await check('revocation while DB reads are in flight produces no put', async () => {
+    let checks = 0
+    const id = `${prefix}revoked`
+    const result = await store.ingest(
+      page(id, [raw('u', 'user', 'Must not persist')]),
+      () => ++checks < 3,
+    )
+    assert(checks === 3 && result === undefined, 'commit guard did not run')
+    assert(!(await store.getConversation(id)), 'revoked conversation persisted')
+    assert((await store.listMessages(id)).length === 0, 'revoked messages persisted')
+  })
+  await check('concurrent null project title never erases an observed name', async () => {
+    const id = `${prefix}project`
+    await Promise.all([
+      store.upsertProject(id, 'Observed project'),
+      store.upsertProject(id, null),
+      store.upsertProject(id, '  '),
+    ])
+    assert(
+      (await store.listProjects()).find((p) => p.projectId === id)?.title === 'Observed project',
+      'lost name',
+    )
+  })
+  await check(
+    'catalog rename refreshes an existing saved title without creating new conversations',
+    async () => {
+      const id = `${prefix}renamed`
+      await store.ingest(page(id, [raw('u', 'user', 'Preserve body')], { title: 'Before' }))
+      assert(await store.updateExistingConversationTitle(id, 'After'), 'rename not persisted')
+      assert((await store.getConversation(id))?.title === 'After', 'saved title is stale')
+      assert(
+        (await store.updateExistingConversationTitles([
+          { conversationId: id, title: 'From native catalog' },
+          { conversationId: `${id}-unsaved`, title: 'Never create from catalog' },
+        ])) === 1,
+        'catalog batch did not update precisely one previously captured conversation',
+      )
+      assert(
+        (await store.getConversation(id))?.title === 'From native catalog',
+        'catalog title was not persisted',
+      )
+      assert(
+        !(await store.updateExistingConversationTitle(`${id}-unknown`, 'Do not create')),
+        'unsaved conversation was created',
+      )
+      assert((await store.listMessages(id)).length === 1, 'rename changed messages')
+    },
+  )
+  await check('project removal updates all normalized message links', async () => {
+    const id = `${prefix}move`
+    await store.ingest(
+      page(id, [raw('u', 'user', 'First'), raw('a', 'assistant', 'Second', 'u')], {
+        gizmo_id: projectA,
+        gizmo_type: 'snorlax',
+      }),
+    )
+    await store.ingest(page(id, [raw('u', 'user', 'First')], { gizmo_id: null }))
+    assert((await store.getConversation(id))?.projectId === null, 'stale conversation project')
+    assert(
+      (await store.listMessages(id)).every((message) => message.projectId === null),
+      'stale message project',
+    )
+  })
+  await check(
+    'basic export excludes conversation raw and nested records with real stored objects',
+    async () => {
+      const id = `${prefix}export`
+      await store.ingest(
+        page(
+          id,
+          [
+            raw('u', 'user', 'Public text'),
+            { ...raw('tool', 'tool', 'TOOL_PRIVATE'), recipient: 'tool.test' },
+          ],
+          { private_metadata: 'STORAGE_PRIVATE' },
+        ),
+      )
+      const conversation = await store.getConversation(id)
+      assert(conversation, 'missing export fixture')
+      const options = normalizeSettings().export
+      const result = serializeArchiveExport(
+        conversation,
+        buildArchiveThread(await store.listMessages(id)),
+        options,
+        { verified: false },
+      )
+      assert(
+        !result.text.includes('STORAGE_PRIVATE') && !result.text.includes('TOOL_PRIVATE'),
+        'basic export metadata leak',
+      )
+    },
+  )
+  await check('attachment metadata and only verified signed resolution are persisted', async () => {
+    const id = `${prefix}asset`
+    const assetId = `file_${prefix.replace(/[^a-z0-9]/gi, '')}`
+    await store.ingest(
+      page(id, [
+        {
+          ...raw('attachment', 'user', 'Attachment'),
+          content: {
+            content_type: 'multimodal_text',
+            parts: [
+              {
+                content_type: 'image_asset_pointer',
+                asset_pointer: `sediment://${assetId}`,
+                mime_type: 'image/png',
+                size_bytes: 3,
+                width: 1,
+                height: 1,
+              },
+              'Attachment',
+            ],
+          },
+          metadata: { attachments: [{ id: assetId, name: 'fixture.png', size: 3 }] },
+        },
+      ]),
+    )
+    const initial = (await store.getAssets([assetId]))[0]
+    assert(
+      initial?.fileName === 'fixture.png' && initial.downloadUrl === null,
+      'asset placeholder missing',
+    )
+    assert(
+      (await store.updateAssetResolution(
+        {
+          assetId,
+          downloadUrl: `https://chatgpt.com/backend-api/estuary/content?id=${assetId}&sig=fixture`,
+          fileName: 'fixture.png',
+          mimeType: 'image/png',
+          fileSizeBytes: 3,
+          observedAt: Date.now(),
+        },
+        id,
+      )) === true,
+      'valid signed URL was rejected',
+    )
+    assert(
+      (await store.getAssets([assetId]))[0]?.downloadUrl?.includes(`id=${assetId}`),
+      'resolution missing',
+    )
+    assert(
+      (await store.updateAssetResolution(
+        {
+          assetId,
+          downloadUrl: `https://chatgpt.com/backend-api/estuary/content?id=${assetId}&sig=other-chat`,
+          fileName: null,
+          mimeType: null,
+          fileSizeBytes: null,
+          observedAt: Date.now(),
+        },
+        `${prefix}different`,
+      )) === false,
+      'resolver from an unrelated conversation updated a stored asset',
+    )
+    assert(
+      (await store.updateAssetResolution(
+        {
+          assetId,
+          downloadUrl: 'https://example.com/not-allowed',
+          fileName: null,
+          mimeType: null,
+          fileSizeBytes: null,
+          observedAt: Date.now(),
+        },
+        id,
+      )) === false,
+      'foreign resolver URL accepted',
+    )
+  })
+  await check('asset resolver events respect capture consent', async () => {
+    const id = `${prefix}asset-consent`
+    const assetId = `file_${prefix.replace(/[^a-z0-9]/gi, '')}consent`
+    const href = location.href
+    const previous = snapshotSettings(current)
+    await store.ingest(
+      page(id, [
+        {
+          ...raw('attachment-consent', 'user', 'Attachment'),
+          content: {
+            content_type: 'multimodal_text',
+            parts: [
+              {
+                content_type: 'image_asset_pointer',
+                asset_pointer: `sediment://${assetId}`,
+                mime_type: 'image/png',
+                size_bytes: 3,
+              },
+            ],
+          },
+          metadata: { attachments: [{ id: assetId, name: 'consent.png', size: 3 }] },
+        },
+      ]),
+    )
+    const capture = new ConversationArchiveModule(store, settings)
+    try {
+      history.replaceState(null, '', `/c/${id}`)
+      await settings.set(normalizeSettings())
+      await capture.start()
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          origin: location.origin,
+          source: window,
+          data: {
+            channel: TRANSPORT_CHANNEL,
+            type: ARCHIVE_ASSET_EVENT,
+            detail: {
+              assetId,
+              downloadUrl: `https://chatgpt.com/backend-api/estuary/content?id=${assetId}&sig=denied`,
+              fileName: 'consent.png',
+              mimeType: 'image/png',
+              fileSizeBytes: 3,
+              observedAt: Date.now(),
+            },
+          },
+        }),
+      )
+      await new Promise((resolve) => setTimeout(resolve, 120))
+      assert(
+        (await store.getAssets([assetId]))[0]?.downloadUrl === null,
+        'disabled capture wrote asset URL',
+      )
+    } finally {
+      capture.stop()
+      history.replaceState(null, '', href)
+      await settings.set(previous)
+    }
+  })
+  await check(
+    'scope control injection is idempotent, inert to host navigation and cleans up',
+    async () => {
+      const href = location.href
+      const id = `${prefix}scope-control`
+      const nav = document.createElement('nav')
+      const row = document.createElement('li')
+      const link = document.createElement('a')
+      link.href = `/c/${id}`
+      link.textContent = 'Fixture scope chat'
+      row.append(link)
+      nav.append(row)
+      document.body.append(nav)
+      let opened = 0
+      try {
+        history.replaceState(null, '', `/c/${id}`)
+        const mount = (host: HTMLElement) => {
+          const shadow = host.attachShadow({ mode: 'open' })
+          const button = document.createElement('button')
+          button.type = 'button'
+          button.textContent = 'Archive status'
+          button.addEventListener('click', () => opened++)
+          shadow.append(button)
+          return { update() {}, unmount() {} }
+        }
+        const controls = mountArchiveScopeControls({ visible: () => true, mount })
+        const count = () =>
+          row.querySelectorAll('[data-chatgpt-booster="archive-scope-control"]').length
+        assert(count() === 1, 'scope control was not injected exactly once')
+        controls.update({ visible: () => true, mount })
+        controls.update({ visible: () => true, mount })
+        assert(count() === 1, 'scope control duplicated after update')
+        const host = row.querySelector<HTMLElement>(
+          '[data-chatgpt-booster="archive-scope-control"]',
+        )
+        const button = host?.shadowRoot?.querySelector<HTMLButtonElement>('button')
+        assert(button, 'scope control button missing')
+        const before = location.href
+        button.click()
+        assert(opened === 1, 'scope control action did not fire once')
+        assert(location.href === before, 'scope control click navigated the host')
+        controls.stop()
+        assert(count() === 0, 'scope control was not removed on stop')
+      } finally {
+        nav.remove()
+        history.replaceState(null, '', href)
+      }
+    },
+  )
+
+  await check(
+    'conversation decorators attach to native action rows, react to append changes and clean up',
+    async () => {
+      const href = location.href
+      const id = prefix + 'decorators'
+      const main = document.createElement('main')
+      const module = new ConversationDecoratorsModule(settings, store)
+      const turn = (messageId: string, role: 'user' | 'assistant') => {
+        const section = document.createElement('section')
+        section.dataset.testid = 'conversation-turn-' + messageId
+        const body = document.createElement('div')
+        body.dataset.messageId = messageId
+        body.dataset.messageAuthorRole = role
+        body.textContent = role === 'user' ? 'Fixture user' : 'Fixture assistant'
+        const actions = document.createElement('div')
+        const copy = document.createElement('button')
+        copy.dataset.testid = 'copy-turn-action-button'
+        copy.setAttribute('aria-label', role === 'user' ? 'Copy message' : 'Copy answer')
+        actions.append(copy)
+        section.append(body, actions)
+        return { section, body, actions }
+      }
+      try {
+        history.replaceState(null, '', '/c/' + id)
+        const first = turn('decorator-user', 'user')
+        main.append(first.section)
+        document.body.append(main)
+        await store.ingest(
+          page(id, [
+            {
+              ...raw('decorator-user', 'user', 'Fixture user'),
+              create_time: 1700000100,
+            },
+          ]),
+        )
+        await module.start()
+        await until(
+          async () =>
+            first.actions.querySelector('[data-chatgpt-booster="message-metadata"]') !== null,
+        )
+        assert(
+          first.actions.querySelectorAll('[data-chatgpt-booster="message-metadata"]').length === 1,
+          'initial message decorator duplicated',
+        )
+
+        const second = turn('decorator-answer', 'assistant')
+        await store.ingest(
+          page(id, [
+            {
+              ...raw('decorator-answer', 'assistant', 'Fixture assistant', 'decorator-user'),
+              create_time: 1700000101,
+              metadata: {
+                parent_id: 'decorator-user',
+                model_slug: 'gpt-5.6-sol',
+                reasoning_effort: 'high',
+              },
+            },
+          ]),
+        )
+        main.append(second.section)
+        await until(
+          async () =>
+            second.actions.querySelector('[data-chatgpt-booster="message-metadata"]') !== null,
+        )
+        const host = second.actions.querySelector<HTMLElement>(
+          '[data-chatgpt-booster="message-metadata"]',
+        )
+        assert(host?.shadowRoot, 'assistant metadata shadow root missing')
+        assert(
+          host.shadowRoot.querySelectorAll('.booster-meta-trigger').length === 2,
+          'assistant did not receive time and model metadata triggers',
+        )
+
+        second.body.append(document.createElement('span'))
+        await new Promise((resolve) => setTimeout(resolve, 220))
+        assert(
+          second.actions.querySelectorAll('[data-chatgpt-booster="message-metadata"]').length === 1,
+          'message mutation duplicated decorator',
+        )
+
+        module.stop()
+        assert(
+          main.querySelectorAll('[data-chatgpt-booster="message-metadata"]').length === 0,
+          'message decorators were not removed on stop',
+        )
+      } finally {
+        module.stop()
+        main.remove()
+        history.replaceState(null, '', href)
+      }
+    },
+  )
+
+  await check(
+    'search-unit v2 adapter resolves message targets, tool activity and conversation scroller',
+    async () => {
+      const displacedMains = [...document.querySelectorAll('main')].map((element) => {
+        const placeholder = document.createComment('search-unit-v2-main')
+        element.replaceWith(placeholder)
+        return { element, placeholder }
+      })
+      const main = document.createElement('main')
+      const scroller = document.createElement('div')
+      scroller.className = 'thread-scroll-container'
+      scroller.style.height = '120px'
+      scroller.style.overflowY = 'auto'
+      const content = document.createElement('div')
+      content.style.height = '1200px'
+      const turn = document.createElement('div')
+      turn.dataset.turnKey = 'v2-user'
+
+      const userUnit = document.createElement('div')
+      userUnit.dataset.chatgptSearchUnitKey = 'fallback-turn-0:0:user'
+      userUnit.dataset.chatgptSearchMessageIds = 'v2-user'
+      const userBubble = document.createElement('div')
+      userBubble.dataset.userMessageBubble = 'true'
+      userBubble.textContent = 'PRO user fixture'
+      const userActions = document.createElement('div')
+      userActions.className = 'turn-action-controls'
+      const userCopy = document.createElement('button')
+      userCopy.setAttribute('aria-label', 'Copy message')
+      userActions.append(userCopy)
+      userUnit.append(userBubble, userActions)
+
+      const assistantUnit = document.createElement('div')
+      assistantUnit.dataset.chatgptSearchUnitKey = 'fallback-turn-0:2:assistant'
+      assistantUnit.dataset.chatgptSearchMessageIds = 'v2-answer v2-answer'
+      const assistantMessage = document.createElement('div')
+      assistantMessage.dataset.chatgptSelectionMessageId = 'v2-answer'
+      assistantMessage.textContent = 'PRO assistant fixture'
+      assistantUnit.append(assistantMessage)
+
+      const turnState = document.createElement('div')
+      turnState.dataset.talvtTurnState = 'in_progress'
+      const reasoningHeader = document.createElement('div')
+      reasoningHeader.className = 'group/activity-header'
+      reasoningHeader.textContent = 'Thinking about fixture'
+      const reasoningToggle = document.createElement('button')
+      reasoningToggle.setAttribute('aria-expanded', 'true')
+      reasoningHeader.append(reasoningToggle)
+
+      const toolRow = document.createElement('div')
+      toolRow.className = 'group/activity-header'
+      toolRow.textContent = 'Used browser tool'
+      toolRow.append(document.createElement('img'))
+
+      const assistantActions = document.createElement('div')
+      assistantActions.className = 'turn-action-controls'
+      const assistantCopy = document.createElement('button')
+      assistantCopy.setAttribute('aria-label', 'Copy')
+      assistantActions.append(assistantCopy)
+
+      turn.append(userUnit, turnState, reasoningHeader, toolRow, assistantUnit, assistantActions)
+      content.append(turn)
+      scroller.append(content)
+      main.append(scroller)
+      document.body.append(main)
+
+      try {
+        const targets = findConversationMessageTargets(document)
+        assert(targets.length === 2, `expected two v2 message targets, got ${targets.length}`)
+        assert(
+          targets[0]?.messageId === 'v2-user' && targets[0].role === 'user',
+          'v2 user target mismatch',
+        )
+        assert(
+          targets[1]?.messageId === 'v2-answer' && targets[1].role === 'assistant',
+          'v2 assistant target mismatch',
+        )
+        assert(targets[0]?.actions === userActions, 'v2 user action row mismatch')
+        assert(targets[1]?.actions === assistantActions, 'v2 assistant action row mismatch')
+        assert(
+          targets[0]?.section === turn && targets[1]?.section === turn,
+          'v2 targets did not share the logical turn root',
+        )
+
+        const bounds = currentConversationMessageBounds(document)
+        assert(
+          bounds.firstMessageId === 'v2-user' && bounds.lastMessageId === 'v2-answer',
+          'v2 message bounds mismatch',
+        )
+        assert(findConversationScrollContainer(document) === scroller, 'v2 scroller was not found')
+        const scroll = scrollConversationTowardStart(document)
+        assert(
+          scroll.requested && scroll.container === scroller && scroll.distance > 0,
+          'v2 browser scroll pulse was not issued',
+        )
+
+        const tools = findToolCallEvidence(turn)
+        assert(tools.length === 1, `expected one v2 tool row, got ${tools.length}`)
+        assert(tools[0]?.element === toolRow, 'v2 tool row canonical target mismatch')
+
+        assert(readConversationActivity().active, 'v2 stable turn state was not active')
+        reasoningToggle.setAttribute('aria-expanded', 'false')
+        reasoningHeader.textContent = ''
+        reasoningHeader.append(reasoningToggle)
+        assert(
+          readConversationActivity().active,
+          'v2 reasoning collapse incorrectly ended the request lifecycle',
+        )
+        reasoningToggle.setAttribute('aria-expanded', 'true')
+        reasoningHeader.textContent = 'Thinking about fixture'
+        reasoningHeader.append(reasoningToggle)
+        assert(
+          readConversationActivity().active,
+          'v2 reasoning expand incorrectly restarted request activity',
+        )
+      } finally {
+        main.remove()
+        for (const { element, placeholder } of displacedMains) placeholder.replaceWith(element)
+      }
+    },
+  )
+
+  await check(
+    'request timer mounts from memory lifecycle before assistant DOM exists',
+    async () => {
+      const href = location.href
+      const id = `${prefix}request-before-assistant`
+      const userMessageId = 'request-before-assistant-user'
+      const main = document.createElement('main')
+      const turn = document.createElement('div')
+      turn.dataset.turnKey = userMessageId
+      const stateMarker = document.createElement('div')
+      stateMarker.setAttribute('data-talvt-turn-state', 'in_progress')
+      const unit = document.createElement('div')
+      unit.setAttribute('data-chatgpt-search-unit-key', 'fixture-turn:0:user')
+      unit.setAttribute('data-chatgpt-search-message-ids', userMessageId)
+      const bubble = document.createElement('div')
+      bubble.setAttribute('data-user-message-bubble', 'true')
+      bubble.textContent = 'Fixture request before assistant DOM'
+      unit.append(bubble)
+      turn.append(stateMarker, unit)
+      main.append(turn)
+      const disclaimer = document.createElement('div')
+      disclaimer.setAttribute('data-markdown-copy', 'exclude')
+      disclaimer.textContent = 'ChatGPT может допускать ошибки. Проверяйте важную информацию.'
+      document.body.append(main, disclaimer)
+
+      const memory = new ConversationStateStore(window, store.sourceGate)
+      const module = new ConversationDecoratorsModule(settings, store, memory)
+      const previous = snapshotSettings(current)
+      try {
+        history.replaceState(null, '', `/c/${id}`)
+        await settings.update({ enabled: true, features: { requestTimer: true } })
+        await module.start()
+        memory.ingestRequest({
+          conversationId: id,
+          userMessageId,
+          startedAt: Date.now() - 5_000,
+          observedAt: Date.now(),
+          source: 'message_create_time',
+        })
+        await until(
+          async () => document.querySelector('[data-chatgpt-booster="request-status"]') !== null,
+        )
+        const host = document.querySelector<HTMLElement>('[data-chatgpt-booster="request-status"]')
+        assert(host?.shadowRoot, 'request timer did not mount from memory lifecycle')
+        assert(
+          !turn.querySelector('[data-chatgpt-search-unit-key$=":assistant"]'),
+          'fixture unexpectedly created assistant DOM before request timer',
+        )
+        assert(
+          /(?:Запрос|Request)/i.test(host.shadowRoot.textContent ?? ''),
+          'request timer mounted without request label',
+        )
+      } finally {
+        module.stop()
+        await settings.set(previous)
+        disclaimer.remove()
+        main.remove()
+        history.replaceState(null, '', href)
+      }
+    },
+  )
+
+  await check(
+    'late Booster start recovers current chat into transient cache without pretending it is persisted',
+    async () => {
+      const href = location.href
+      const id = prefix + 'late-bootstrap'
+      const main = document.createElement('main')
+      const displacedMains = [...document.querySelectorAll('main')].map((element) => {
+        const placeholder = document.createComment('late-bootstrap-main')
+        element.replaceWith(placeholder)
+        return { element, placeholder }
+      })
+      const module = new ConversationDecoratorsModule(settings, store)
+      const transientCapture = new ConversationArchiveModule(store, settings)
+      const transientAdapter = createArchiveUiAdapter(store, transientCapture)
+      const turn = (messageId: string, role: 'user' | 'assistant', text: string) => {
+        const section = document.createElement('section')
+        section.dataset.testid = 'conversation-turn-' + messageId
+        const body = document.createElement('div')
+        body.dataset.messageId = messageId
+        body.dataset.messageAuthorRole = role
+        body.textContent = text
+        const actions = document.createElement('div')
+        const copy = document.createElement('button')
+        copy.dataset.testid = 'copy-turn-action-button'
+        copy.setAttribute('aria-label', role === 'user' ? 'Copy message' : 'Copy answer')
+        actions.append(copy)
+        section.append(body, actions)
+        return section
+      }
+      try {
+        history.replaceState(null, '', '/c/' + id)
+        main.append(
+          turn('late-user', 'user', 'Already rendered before Booster'),
+          turn('late-answer', 'assistant', 'Already rendered answer'),
+        )
+        document.body.append(main)
+
+        assert(
+          !(await store.getConversation(id)),
+          'late-start fixture unexpectedly persisted already',
+        )
+        await module.start()
+        await until(async () => {
+          const ids = new Set(
+            store.getDomSnapshot(id)?.records.map((record) => record.messageId) ?? [],
+          )
+          return ids.has('late-user') && ids.has('late-answer')
+        })
+
+        assert(
+          (await store.listMessages(id)).length === 0,
+          'DOM fallback leaked into persistent archive messages',
+        )
+        assert(
+          (await transientAdapter.listConversations()).some(
+            (conversation) => conversation.conversationId === id,
+          ),
+          'DOM fallback did not surface current conversation in archive cache',
+        )
+        assert(
+          (await transientAdapter.getThread(id)).messageCount === 2,
+          'DOM fallback did not surface visible messages in current thread',
+        )
+        assert(
+          (await transientAdapter.getCoverage(id))?.completeAtLastRead === false,
+          'DOM fallback incorrectly claimed complete history',
+        )
+
+        const server = page(id, [
+          { ...raw('late-user', 'user', 'Server user'), create_time: 1700000200 },
+          {
+            ...raw('late-answer', 'assistant', 'Server answer', 'late-user'),
+            create_time: 1700000201,
+          },
+        ])
+        await store.ingestPreload(server)
+        await until(async () => store.getDomSnapshot(id) === undefined)
+        assert(
+          (await transientAdapter.getThread(id)).messageCount === 2,
+          'server preload did not replace DOM fallback cleanly',
+        )
+      } finally {
+        module.stop()
+        main.remove()
+        for (const { element, placeholder } of displacedMains) placeholder.replaceWith(element)
+        history.replaceState(null, '', href)
+      }
+    },
+  )
+
+  await check('full-export capture evidence detects filtered and lossless reads', async () => {
+    const id = `${prefix}capture-evidence`
+    const legacy = page(id, [raw('u-legacy', 'user', 'Legacy')])
+    legacy.readId = `${id}-legacy`
+    await store.ingest(legacy)
+    const legacyEvidence = await store.getCaptureEvidence(id, legacy.readId)
+    assert(legacyEvidence.verified === false, 'legacy page without capture metadata was trusted')
+    assert(legacyEvidence.omittedRecordCount === null, 'legacy omission evidence should be unknown')
+
+    const filtered = page(id, [raw('u-filtered', 'user', 'Visible')])
+    filtered.readId = `${id}-filtered`
+    ;(filtered.payload as Record<string, unknown>).booster_capture = {
+      reasoning: false,
+      tools: false,
+      internal: false,
+      omittedRecords: 3,
+    }
+    await store.ingest(filtered)
+    const filteredEvidence = await store.getCaptureEvidence(id, filtered.readId)
+    assert(filteredEvidence.verified === false, 'filtered read was marked capture-complete')
+    assert(filteredEvidence.omittedRecordCount === 3, 'filtered omission count was lost')
+
+    const full = page(id, [raw('u-full', 'user', 'Visible again')])
+    full.readId = `${id}-full`
+    ;(full.payload as Record<string, unknown>).booster_capture = {
+      reasoning: true,
+      tools: true,
+      internal: true,
+      omittedRecords: 0,
+    }
+    await store.ingest(full)
+    const fullEvidence = await store.getCaptureEvidence(id, full.readId)
+    assert(fullEvidence.verified === true, 'lossless read was not capture-verified')
+    assert(fullEvidence.omittedRecordCount === 0, 'lossless omission count incorrect')
+  })
+
+  await check('manual collection starts in-place without reloading the tab', async () => {
+    const previous = await settings.get()
+    const href = location.href
+    const id = `${prefix}manual-no-reload`
+    const capture = new ConversationArchiveModule(store, settings)
+    let starts = 0
+    const onStart = () => starts++
+    try {
+      history.replaceState(null, '', `/c/${id}`)
+      await settings.update({ enabled: true })
+      await capture.start()
+      window.addEventListener(HISTORY_LOADER_START_EVENT, onStart)
+      const timeOrigin = performance.timeOrigin
+      await capture.collectCurrent()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      assert(performance.timeOrigin === timeOrigin, 'manual collection reloaded the document')
+      assert(starts === 1, 'history loader was not started directly')
+      assert(collectionTicket()?.conversationId === id, 'manual ticket was not scoped to this chat')
+      capture.finishCollection()
+    } finally {
+      window.removeEventListener(HISTORY_LOADER_START_EVENT, onStart)
+      capture.stop()
+      sessionStorage.removeItem('chatgpt-booster:manual-collection')
+      history.replaceState(null, '', href)
+      await settings.set(previous)
+    }
+  })
+  await check(
+    'preload caches the current chat while autosave is off and manual collection promotes it',
+    async () => {
+      const previous = await settings.get()
+      const href = location.href
+      const id = `${prefix}preload`
+      const capture = new ConversationArchiveModule(store, settings)
+      const preload = page(
+        id,
+        [
+          raw('preload-user', 'user', 'Preloaded question'),
+          raw('preload-answer', 'assistant', 'Preloaded answer', 'preload-user'),
+        ],
+        {
+          title: 'Preload fixture',
+          page_info: {
+            start_cursor: 'preload-start',
+            end_cursor: 'preload-end',
+            has_previous_page: true,
+            has_next_page: false,
+          },
+        },
+      )
+      try {
+        history.replaceState(null, '', `/c/${id}`)
+        await settings.update({
+          enabled: true,
+          archive: { defaultRule: { ...DEFAULT_CAPTURE_RULE, enabled: false } },
+        })
+        await store.ingestPreload({
+          ...preload,
+          readId: 'fixture-read-old',
+          readStartedAt: preload.readStartedAt - 5000,
+          timestamp: preload.timestamp - 5000,
+          payload: {
+            ...preload.payload,
+            messages: [raw('stale-preload', 'user', 'Old preload must not leak')],
+          },
+        })
+        await store.ingestPreload(preload)
+        assert(
+          !(await store.getConversation(id)),
+          'preload incorrectly became a persistent archive',
+        )
+        const initialSnapshot = await store.getPreloadSnapshot(id)
+        assert(
+          initialSnapshot?.coverage.visibleMessageCount === 2,
+          'initial preload message count is wrong',
+        )
+        await store.ingestPreload({
+          ...preload,
+          isInitial: false,
+          requestedBefore: 'preload-start',
+          timestamp: preload.timestamp + 100,
+          payload: {
+            ...preload.payload,
+            messages: [
+              raw('preload-older-user', 'user', 'Older question'),
+              raw('preload-older-answer', 'assistant', 'Older answer', 'preload-older-user'),
+            ],
+            page_info: {
+              start_cursor: 'preload-oldest',
+              end_cursor: 'preload-before',
+              has_previous_page: false,
+              has_next_page: true,
+            },
+          },
+        })
+        const snapshot = await store.getPreloadSnapshot(id)
+        assert(
+          snapshot?.coverage.visibleMessageCount === 4,
+          'preload did not grow after continuation',
+        )
+        assert(
+          !snapshot?.records.some((record) => record.messageId === 'stale-preload'),
+          'older preload read contaminated the current snapshot',
+        )
+        const ui = createArchiveUiAdapter(store, capture)
+        assert(
+          (await ui.getCoverage(id))?.visibleMessageCount === 4,
+          'UI does not expose growing preload count',
+        )
+        await capture.start()
+        await capture.collectCurrent()
+        assert(
+          (await store.getConversation(id))?.conversationId === id,
+          'manual collection did not promote preload',
+        )
+        assert((await store.listMessages(id)).length === 4, 'promoted preload records are missing')
+        capture.finishCollection()
+      } finally {
+        capture.stop()
+        sessionStorage.removeItem('chatgpt-booster:manual-collection')
+        history.replaceState(null, '', href)
+        await settings.set(previous)
+      }
+    },
+  )
+  await check('saved data survives policy changes and schema normalization', async () => {
+    const id = prefix + 'preserved'
+    await store.ingest(page(id, [raw('u', 'user', 'Keep me')]))
+    await settings.update({
+      archive: { conversations: { [id]: { ...DEFAULT_CAPTURE_RULE, enabled: false } } },
+    })
+    const normalized = normalizeSettings(await settings.get())
+    assert(normalized.archive.conversations[id]?.enabled === false, 'policy did not persist')
+    assert((await store.getConversation(id))?.conversationId === id, 'conversation was deleted')
+    assert((await store.listMessages(id)).length === 1, 'records were deleted')
+  })
+  await check('manual ticket is tab/chat/time scoped', async () => {
+    const ticketKey = 'chatgpt-booster:manual-collection'
+    const href = location.href
+    const now = Date.now()
+    const id = prefix + 'ticket'
+    try {
+      history.replaceState(null, '', '/c/' + id)
+      sessionStorage.setItem(
+        ticketKey,
+        JSON.stringify({
+          conversationId: prefix + 'different',
+          startedAt: now,
+          expiresAt: now + 60_000,
+        }),
+      )
+      assert(!collectionTicket(), 'ticket leaked to another chat')
+      sessionStorage.setItem(
+        ticketKey,
+        JSON.stringify({
+          conversationId: id,
+          startedAt: now - 31 * 60_000,
+          expiresAt: now + 60_000,
+        }),
+      )
+      assert(!collectionTicket(), 'overlong ticket accepted')
+      sessionStorage.setItem(
+        ticketKey,
+        JSON.stringify({
+          conversationId: id,
+          startedAt: now,
+          expiresAt: now + 60_000,
+        }),
+      )
+      assert(collectionTicket()?.conversationId === id, 'valid ticket rejected')
+    } finally {
+      sessionStorage.removeItem(ticketKey)
+      history.replaceState(null, '', href)
+    }
+  })
+  await check('late project title discovery is persisted to the project store', async () => {
+    const href = location.href
+    const project = 'g-p-' + 'a'.repeat(32)
+    const chat = prefix + 'late-title'
+    const link = document.createElement('a')
+    link.href = '/g/' + project + '-late-title/project'
+    link.textContent = 'Late project title'
+    document.body.append(link)
+    try {
+      history.replaceState(null, '', '/g/' + project + '-late-title/c/' + chat)
+      await store.upsertProject(project, null)
+      const ui = createArchiveUiAdapter(store, {
+        collectCurrent: async () => undefined,
+      } as ConversationArchiveModule)
+      const current = await ui.getCurrentContext()
+      assert(current.projectTitle === 'Late project title', 'DOM title not observed')
+      assert(
+        (await store.listProjects()).find((item) => item.projectId === project)?.title ===
+          'Late project title',
+        'late title not persisted',
+      )
+    } finally {
+      link.remove()
+      history.replaceState(null, '', href)
+    }
+  })
+  await check(
+    'selective/manual capture and cancellation: local event fixture, no network',
+    async () => {
+      const id = `${prefix}capture`
+      const href = location.href
+      const previous = snapshotSettings(current)
+      const capture = new ConversationArchiveModule(store, settings)
+      history.replaceState(null, '', `/c/${id}`)
+      await settings.set(normalizeSettings())
+      await capture.start()
+      const ticketKey = 'chatgpt-booster:manual-collection'
+      try {
+        const emitPage = (messages: Record<string, unknown>[]) =>
+          window.dispatchEvent(
+            new MessageEvent('message', {
+              origin: location.origin,
+              source: window,
+              data: { channel: TRANSPORT_CHANNEL, type: ARCHIVE_EVENT, detail: page(id, messages) },
+            }),
+          )
+        emitPage([raw('denied', 'user', 'No consent')])
+        await new Promise((resolve) => setTimeout(resolve, 100))
+        assert(!(await store.getConversation(id)), 'default-deny failed')
+        await settings.update({
+          archive: {
+            conversations: {
+              [id]: {
+                ...DEFAULT_CAPTURE_RULE,
+                enabled: false,
+                reasoning: false,
+                internal: false,
+                tools: true,
+              },
+            },
+          },
+        })
+        const startedAt = Date.now()
+        sessionStorage.setItem(
+          ticketKey,
+          JSON.stringify({ conversationId: id, startedAt, expiresAt: startedAt + 60000 }),
+        )
+        emitPage([
+          raw('u', 'user', 'Manual reply'),
+          { ...raw('r', 'assistant', 'REASONING_EXCLUDED', 'u'), channel: 'analysis' },
+          raw('t', 'tool', 'Tool result', 'u'),
+        ])
+        await until(async () => (await store.listMessages(id)).length === 2)
+        const records = await store.listMessages(id)
+        assert(!records.some((record) => record.messageId === 'r'), 'manual ignored categories')
+        capture.finishCollection()
+        emitPage([raw('after', 'user', 'After cancellation')])
+        await new Promise((resolve) => setTimeout(resolve, 100))
+        assert((await store.listMessages(id)).length === 2, 'cancelled capture continued')
+      } finally {
+        capture.stop()
+        sessionStorage.removeItem(ticketKey)
+        history.replaceState(null, '', href)
+        await settings.set(previous)
+      }
+    },
+  )
+  return report
+}
+async function seed() {
+  await Promise.all([
+    store.upsertProject(projectA, context.projectTitle),
+    store.upsertProject(projectB, 'Другой проект · тест'),
+  ])
+  const messages: Record<string, unknown>[] = []
+  for (let i = 0; i < 55; i++) {
+    const u = `user-${String(i).padStart(3, '0')}`
+    messages.push({ ...raw(u, 'user', `Вопрос ${i + 1}`), create_time: 1700000000 + i * 2 })
+    if (i === 0) {
+      messages.push({
+        ...raw(
+          'reasoning-0',
+          'assistant',
+          '### План\n\n**Проверить** данные и затем сравнить результат.',
+          u,
+        ),
+        channel: 'analysis',
+        content: {
+          content_type: 'thoughts',
+          thoughts: ['### План\n\n**Проверить** данные и затем сравнить результат.'],
+        },
+        create_time: 1700000000.05,
+      })
+      messages.push({
+        ...raw(
+          'tool-call-0',
+          'assistant',
+          'await tools.mcp__Koba_GitHub__github_agent_get_file({ repository: "fixture/repo" })',
+          u,
+        ),
+        channel: 'analysis',
+        recipient: 'functions.exec',
+        content: {
+          content_type: 'text',
+          parts: [
+            'await tools.mcp__Koba_GitHub__github_agent_get_file({ repository: "fixture/repo" })',
+          ],
+        },
+        metadata: {
+          parent_id: u,
+          reasoning_effort: 'high',
+          model_slug: 'gpt-5.6-sol',
+          tool_url: 'https://github.com/KobaProduction/chatgpt-booster',
+          tool_icons: [
+            'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"%3E%3Crect width="8" height="8" rx="2" fill="%23000"/%3E%3C/svg%3E',
+          ],
+        },
+        create_time: 1700000000.1,
+      })
+    }
+    messages.push({
+      ...raw(`tool-${i}`, 'tool', `Результат инструмента ${i + 1}`, u),
+      create_time: 1700000000 + i * 2 + 0.2,
+      author: { role: 'tool', name: 'fixture.lookup' },
+    })
+    messages.push({
+      ...raw(
+        `answer-${i}`,
+        'assistant',
+        i === 0
+          ? '## Ответ 1\n\nЭто **Markdown** с `code`.\n\n- первый пункт\n- второй пункт'
+          : `Ответ ${i + 1}: только тестовые данные.`,
+        u,
+      ),
+      create_time: 1700000000 + i * 2 + 1,
+      ...(i === 0
+        ? {
+            update_time: 1700000004,
+            metadata: {
+              parent_id: u,
+              model_slug: 'gpt-5.6-sol',
+              resolved_model_slug: 'gpt-5.6-sol',
+              reasoning_effort: 'high',
+              edited: true,
+            },
+          }
+        : {}),
+    })
+  }
+  await store.ingest(
+    page(context.conversationId, messages, {
+      title: context.conversationTitle,
+      gizmo_id: projectA,
+      gizmo_type: 'snorlax',
+    }),
+  )
+  // Free-renderer-shaped local archive example: two real message-level fork points.
+  // Independent of the live Pro account and without invoking any ChatGPT mutation API.
+  await store.ingest(
+    page(
+      'fixture-forks',
+      [
+        raw('f-u1', 'user', 'Начало экспериментального диалога'),
+        raw('f-a1', 'assistant', 'Начало подтверждено', 'f-u1'),
+        raw('f-u2', 'user', 'Вопрос 2 · исходный', 'f-a1'),
+        raw('f-a2', 'assistant', 'Ответ исходной цепочки', 'f-u2'),
+        raw('f-u2-edit', 'user', 'Вопрос 2 · редакция (ветка 1)', 'f-a1'),
+        raw('f-a2-edit', 'assistant', 'Альтернативный ответ', 'f-u2-edit'),
+        raw('f-u3', 'user', 'Вопрос 3 · исходный', 'f-a2'),
+        raw('f-a3', 'assistant', 'Продолжение исходной цепочки', 'f-u3'),
+        raw('f-u3-edit', 'user', 'Вопрос 3 · редакция (ветка 2)', 'f-a2'),
+        raw('f-a3-edit', 'assistant', 'Второй альтернативный ответ', 'f-u3-edit'),
+        raw('f-u4', 'user', 'Последний вопрос', 'f-a3'),
+        raw('f-a4', 'assistant', 'Последний ответ', 'f-u4'),
+      ],
+      { title: 'Две внутренние ветки · Free fixture', gizmo_id: projectA, gizmo_type: 'snorlax' },
+    ),
+  )
+  await store.ingest(
+    page('fixture-other', [raw('u', 'user', 'Other')], {
+      title: 'Другой диалог',
+      gizmo_id: projectB,
+      gizmo_type: 'snorlax',
+    }),
+  )
+}
+const exports: { text: string; mime: string; extension: string }[] = []
+async function appendCurrentExchange() {
+  const suffix = String(Date.now())
+  await store.ingest(
+    page(
+      context.conversationId,
+      [
+        {
+          ...raw('runtime-user-' + suffix, 'user', 'Runtime refresh question'),
+          create_time: 1800000000,
+        },
+        {
+          ...raw(
+            'runtime-answer-' + suffix,
+            'assistant',
+            'Runtime refresh answer',
+            'runtime-user-' + suffix,
+          ),
+          create_time: 1800000001,
+        },
+      ],
+      {
+        title: context.conversationTitle,
+        gizmo_id: context.projectId,
+        gizmo_type: context.projectId ? 'snorlax' : null,
+      },
+    ),
+  )
+}
+async function runPerformanceTests() {
+  const results: Array<Record<string, unknown> & { name: string; pass: boolean }> = []
+
+  {
+    const id = `perf-read-model-${Date.now()}`
+    await store.ingest(
+      page(id, [
+        raw('perf-user', 'user', 'Question'),
+        raw('perf-answer', 'assistant', 'Answer', 'perf-user'),
+      ]),
+    )
+    const originalListMessages = store.listMessages.bind(store)
+    const originalGetPreloadSnapshot = store.getPreloadSnapshot.bind(store)
+    const originalGetCoverage = store.getCoverage.bind(store)
+    let listMessagesCalls = 0
+    let preloadCalls = 0
+    let coverageCalls = 0
+    store.listMessages = async (conversationId) => {
+      listMessagesCalls += 1
+      return await originalListMessages(conversationId)
+    }
+    store.getPreloadSnapshot = async (conversationId) => {
+      preloadCalls += 1
+      return await originalGetPreloadSnapshot(conversationId)
+    }
+    store.getCoverage = async (conversationId) => {
+      coverageCalls += 1
+      return await originalGetCoverage(conversationId)
+    }
+    try {
+      const ui = createArchiveUiAdapter(store, new ConversationArchiveModule(store, settings))
+      const started = performance.now()
+      await Promise.all([ui.getThread(id), ui.getCoverage(id)])
+      await ui.getThread(id)
+      await ui.getCoverage(id)
+      const cachedReads = { listMessagesCalls, preloadCalls, coverageCalls }
+
+      await store.ingest(
+        page(id, [
+          raw('perf-user', 'user', 'Question'),
+          raw('perf-answer', 'assistant', 'Updated answer', 'perf-user'),
+        ]),
+      )
+      await ui.getThread(id)
+      const elapsedMs = performance.now() - started
+      const pass =
+        cachedReads.listMessagesCalls === 1 &&
+        cachedReads.preloadCalls === 1 &&
+        cachedReads.coverageCalls === 1 &&
+        listMessagesCalls === 2 &&
+        preloadCalls === 2 &&
+        coverageCalls === 2
+      results.push({
+        name: 'cache archive read model until conversation revision changes',
+        pass,
+        elapsedMs,
+        cachedReads,
+        invalidatedReads: { listMessagesCalls, preloadCalls, coverageCalls },
+      })
+    } finally {
+      store.listMessages = originalListMessages
+      store.getPreloadSnapshot = originalGetPreloadSnapshot
+      store.getCoverage = originalGetCoverage
+    }
+  }
+
+  {
+    const href = location.href
+    const id = `perf-current-${Date.now()}`
+    const project = `g-p-${'b'.repeat(32)}`
+    await store.ingest(
+      page(id, [raw('perf-current-user', 'user', 'Question')], { gizmo_id: project }),
+    )
+    await store.upsertProject(project, 'Performance Project')
+    const originalGetConversation = store.getConversation.bind(store)
+    const originalGetProject = store.getProject.bind(store)
+    const originalListProjects = store.listProjects.bind(store)
+    let conversationReads = 0
+    let projectReads = 0
+    let projectListReads = 0
+    store.getConversation = async (conversationId) => {
+      conversationReads += 1
+      return await originalGetConversation(conversationId)
+    }
+    store.getProject = async (projectId) => {
+      projectReads += 1
+      return await originalGetProject(projectId)
+    }
+    store.listProjects = async () => {
+      projectListReads += 1
+      return await originalListProjects()
+    }
+    try {
+      history.replaceState(null, '', `/g/${project}/c/${id}`)
+      const ui = createArchiveUiAdapter(store, new ConversationArchiveModule(store, settings))
+      const started = performance.now()
+      await Promise.all([ui.getCurrentContext(), ui.getConversation(id)])
+      await ui.getConversation(id)
+      const elapsedMs = performance.now() - started
+      results.push({
+        name: 'coalesce current context conversation and use keyed project read',
+        pass: conversationReads === 1 && projectReads === 1 && projectListReads === 0,
+        elapsedMs,
+        conversationReads,
+        projectReads,
+        projectListReads,
+      })
+    } finally {
+      history.replaceState(null, '', href)
+      store.getConversation = originalGetConversation
+      store.getProject = originalGetProject
+      store.listProjects = originalListProjects
+    }
+  }
+
+  {
+    const id = `perf-preload-${Date.now()}`
+    const preload = page(id, [raw('perf-preload-user', 'user', 'Preloaded question')], {
+      title: 'Performance preload',
+      page_info: {
+        start_cursor: 'perf-start',
+        end_cursor: 'perf-end',
+        has_previous_page: false,
+        has_next_page: false,
+      },
+    })
+    const originalGetAll = IDBObjectStore.prototype.getAll
+    let preloadGetAllCalls = 0
+    IDBObjectStore.prototype.getAll = function (
+      query?: IDBValidKey | IDBKeyRange | null,
+      count?: number,
+    ) {
+      if (this.name === 'preloadPages') preloadGetAllCalls += 1
+      return originalGetAll.call(this, query, count)
+    }
+    try {
+      const started = performance.now()
+      await store.ingestPreload(preload)
+      const elapsedMs = performance.now() - started
+      results.push({
+        name: 'preload ingest avoids full-store getAll materialization',
+        pass: preloadGetAllCalls === 0,
+        elapsedMs,
+        preloadGetAllCalls,
+      })
+    } finally {
+      IDBObjectStore.prototype.getAll = originalGetAll
+    }
+  }
+
+  {
+    const id = `perf-preload-batch-${Date.now()}`
+    const makeDetail = (
+      readId: string,
+      suffix: string,
+      before: string | null,
+      initial = false,
+      startedAt = Date.now(),
+    ) => ({
+      kind: 'conversation-page' as const,
+      readId,
+      readStartedAt: startedAt,
+      isInitial: initial,
+      requestedBefore: before,
+      timestamp: startedAt,
+      sourceUrl: 'fixture://history',
+      conversationId: id,
+      payload: page(id, [raw(`perf-batch-${suffix}`, 'user', suffix)], {
+        page_info: {
+          start_cursor: `start-${suffix}`,
+          end_cursor: `end-${suffix}`,
+          has_previous_page: !initial,
+          has_next_page: false,
+        },
+      }).payload,
+    })
+    const originalTransaction = IDBDatabase.prototype.transaction
+    let preloadTransactions = 0
+    IDBDatabase.prototype.transaction = function (storeNames, mode, options) {
+      const names = Array.isArray(storeNames) ? storeNames : [storeNames]
+      if (mode === 'readwrite' && names.includes('preloadPages')) preloadTransactions += 1
+      return originalTransaction.call(this, storeNames, mode, options)
+    }
+    try {
+      const startedAt = Date.now()
+      await store.ingestPreloadBatch([
+        makeDetail('old-read', 'old-initial', null, true, startedAt),
+        makeDetail('old-read', 'old-page', 'old-cursor', false, startedAt),
+        makeDetail('new-read', 'new-initial', null, true, startedAt + 1),
+        makeDetail('new-read', 'new-page', 'new-cursor', false, startedAt + 1),
+      ])
+      const retained = await store.listLatestPreloadPages(id)
+      results.push({
+        name: 'preload batch uses one transaction and drops superseded reads',
+        pass:
+          preloadTransactions === 1 &&
+          retained.length === 2 &&
+          retained.every((page) => page.readId === 'new-read'),
+        preloadTransactions,
+        retained: retained.length,
+        readIds: [...new Set(retained.map((page) => page.readId))],
+      })
+    } finally {
+      IDBDatabase.prototype.transaction = originalTransaction
+    }
+  }
+
+  {
+    const id = `perf-preload-retention-${Date.now()}`
+    const detail = (readId: string, timestamp: number) => ({
+      kind: 'conversation-page' as const,
+      readId,
+      readStartedAt: timestamp,
+      isInitial: true,
+      requestedBefore: null,
+      timestamp,
+      sourceUrl: 'fixture://history',
+      conversationId: id,
+      payload: page(id, [raw(`${readId}-user`, 'user', readId)], {
+        page_info: {
+          start_cursor: `${readId}-start`,
+          end_cursor: `${readId}-end`,
+          has_previous_page: false,
+          has_next_page: false,
+        },
+      }).payload,
+    })
+    await store.ingestPreload(detail('read-a', Date.now()))
+    await store.ingestPreload(detail('read-b', Date.now() + 1))
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const open = indexedDB.open(ARCHIVE_DB_NAME)
+      open.onsuccess = () => resolve(open.result)
+      open.onerror = () => reject(open.error)
+    })
+    const retained = await new Promise<number>((resolve, reject) => {
+      const request = db
+        .transaction('preloadPages', 'readonly')
+        .objectStore('preloadPages')
+        .index('conversationId')
+        .count(IDBKeyRange.only(id))
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    db.close()
+    results.push({
+      name: 'new initial preload read compacts superseded read payloads',
+      pass: retained === 1,
+      retained,
+    })
+  }
+
+  {
+    const href = location.href
+    const ui = createArchiveUiAdapter(store, new ConversationArchiveModule(store, settings))
+    let changes = 0
+    const unsubscribe = ui.subscribeContextChange(() => {
+      changes += 1
+    })
+    try {
+      history.replaceState(history.state, '', href)
+      await new Promise((resolve) => setTimeout(resolve, 40))
+      results.push({
+        name: 'archive adapter exposes event-driven SPA context changes',
+        pass: changes > 0,
+        changes,
+      })
+    } finally {
+      unsubscribe()
+      history.replaceState(history.state, '', href)
+    }
+  }
+
+  {
+    const main = document.querySelector<HTMLElement>('main')
+    const section = document.createElement('section')
+    section.dataset.testid = `conversation-turn-perf-stream-${Date.now()}`
+    const message = document.createElement('div')
+    message.dataset.messageId = `perf-stream-${Date.now()}`
+    message.dataset.messageAuthorRole = 'assistant'
+    message.textContent = 'Streaming performance turn'
+    const actions = document.createElement('div')
+    const copy = document.createElement('button')
+    copy.dataset.testid = 'copy-turn-action-button'
+    actions.append(copy)
+    section.append(message, actions)
+    main?.append(section)
+
+    let scans = 0
+    const targetCounts: number[] = []
+    const observer = observeConversationDecorations((targets) => {
+      scans += 1
+      targetCounts.push(targets.length)
+    })
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 420))
+      const initialScans = scans
+      for (let index = 0; index < 40; index += 1)
+        message.append(document.createTextNode(String(index)))
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      const afterStreaming = scans
+
+      const outside = document.createElement('div')
+      document.body.append(outside)
+      outside.append(document.createElement('span'))
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      const afterOutside = scans
+      outside.remove()
+
+      results.push({
+        name: 'decorator observer coalesces streaming mutations to one local turn scan',
+        pass:
+          initialScans === 1 &&
+          afterStreaming === 2 &&
+          afterOutside === afterStreaming &&
+          targetCounts.at(-1) === 1,
+        initialScans,
+        afterStreaming,
+        afterOutside,
+        finalTargetCount: targetCounts.at(-1) ?? null,
+      })
+    } finally {
+      observer.stop()
+      section.remove()
+    }
+  }
+
+  {
+    const id = `perf-scope-${Date.now()}`
+    const nav = document.createElement('nav')
+    const row = document.createElement('li')
+    const link = document.createElement('a')
+    link.href = `/c/${id}`
+    link.textContent = 'Performance scope chat'
+    row.append(link)
+    nav.append(row)
+    document.body.append(nav)
+
+    let updates = 0
+    const main = document.querySelector('main')
+    const streamingNode = document.createElement('span')
+    const controls = mountArchiveScopeControls({
+      visible: () => true,
+      mount: () => ({
+        update() {
+          updates += 1
+        },
+        unmount() {},
+      }),
+    })
+    try {
+      controls.refresh()
+      const beforeStreaming = updates
+      main?.append(streamingNode)
+      await new Promise((resolve) => setTimeout(resolve, 260))
+      const afterStreaming = updates
+
+      link.href = `/c/${id}-changed`
+      await new Promise((resolve) => setTimeout(resolve, 750))
+      const afterSidebar = updates
+
+      results.push({
+        name: 'scope controls ignore unrelated conversation mutations',
+        pass: afterStreaming === beforeStreaming && afterSidebar > afterStreaming,
+        beforeStreaming,
+        afterStreaming,
+        afterSidebar,
+      })
+    } finally {
+      controls.stop()
+      streamingNode.remove()
+      nav.remove()
+    }
+  }
+
+  {
+    const host = document.createElement('div')
+    document.body.append(host)
+    const metadata = mountMessageMetadata(
+      host,
+      {
+        sentAt: 1700000000,
+        editedAt: null,
+        edited: false,
+        model: 'fixture-model',
+        thinking: 'fixture-thinking',
+      },
+      'en',
+    )
+    try {
+      const shadow = metadata.element.shadowRoot
+      const vueRoots = [...(shadow?.querySelectorAll('*') ?? [])].filter(
+        (element) => '__vue_app__' in element,
+      ).length
+      const styleNodes = shadow?.querySelectorAll('style').length ?? 0
+      const adoptedSheets = shadow?.adoptedStyleSheets.length ?? 0
+      results.push({
+        name: 'message metadata avoids per-turn Vue and duplicated stylesheet nodes',
+        pass: vueRoots === 0 && styleNodes === 0 && adoptedSheets === 1,
+        vueRoots,
+        styleNodes,
+        adoptedSheets,
+      })
+    } finally {
+      metadata.unmount()
+      host.remove()
+    }
+  }
+
+  {
+    const chatHost = document.createElement('span')
+    document.body.append(chatHost)
+    const base = {
+      context: {
+        scope: 'conversation' as const,
+        id: 'perf-light-marker',
+        title: 'Performance chat',
+        projectId: null,
+      },
+      locale: 'en' as const,
+      archivedCount: 0,
+      effectiveEnabled: false,
+      workConversation: false,
+      source: 'default' as const,
+      hasOverride: false,
+      onSetEnabled() {},
+      onInherit() {},
+      onSettings() {},
+    }
+    const control = mountScopeArchiveControl(chatHost, base)
+    try {
+      const shadow = chatHost.shadowRoot
+      control.update({ ...base, effectiveEnabled: true })
+      const marker = chatHost.querySelector<HTMLElement>('span')
+      results.push({
+        name: 'conversation scope marker avoids Vue, stylesheet and shadow root',
+        pass: shadow === null && marker?.style.background === 'rgb(34, 197, 94)',
+        hasShadowRoot: shadow !== null,
+      })
+      control.update({ ...base, workConversation: true })
+      results.push({
+        name: 'Work conversation marker overrides archive green with warning red',
+        pass:
+          marker?.dataset.workConversation === 'true' &&
+          marker.style.background === 'rgb(239, 68, 68)',
+        markerBackground: marker?.style.background ?? null,
+      })
+    } finally {
+      control.unmount()
+      chatHost.remove()
+    }
+  }
+
+  {
+    const activity = document.createElement('section')
+    activity.dataset.testid = 'chatgpt-subagent-activity'
+    activity.setAttribute('aria-label', 'Активность субагента')
+    const label = document.createElement('span')
+    label.setAttribute('role', 'button')
+    label.textContent = 'Multiply 211 223'
+    activity.append(label, document.createTextNode(' начал(-и) работу'))
+    const summary = document.createElement('button')
+    summary.dataset.slot = 'thread-summary-panel-item-button'
+    const summaryLabel = document.createElement('span')
+    summaryLabel.dataset.slot = 'thread-summary-panel-item-label'
+    summaryLabel.textContent = 'Субагенты'
+    const summaryMeta = document.createElement('span')
+    summaryMeta.dataset.slot = 'thread-summary-panel-item-meta'
+    summaryMeta.textContent = 'Использовано: 5'
+    summary.append(summaryLabel, summaryMeta)
+    document.body.append(activity, summary)
+    try {
+      const parsed = chatGptWorkSubagentActivity(document)
+      const usageCount = chatGptWorkSubagentUsageCount(document)
+      results.push({
+        name: 'Work subagent DOM fallback recognizes native active activity',
+        pass:
+          parsed.length === 1 &&
+          parsed[0]?.displayName === 'Multiply 211 223' &&
+          parsed[0]?.status === 'working' &&
+          usageCount === 5,
+        parsed,
+        usageCount,
+      })
+    } finally {
+      activity.remove()
+      summary.remove()
+    }
+  }
+
+  {
+    const anchor = document.createElement('div')
+    document.body.append(anchor)
+    const warning = mountWorkModeWarning(
+      anchor,
+      [
+        { displayName: 'Multiply', status: 'done' },
+        { displayName: 'Primes', status: 'working' },
+      ],
+      'en',
+    )
+    try {
+      const text = warning.element.shadowRoot?.textContent ?? ''
+      results.push({
+        name: 'Work warning surfaces subagent total and active count',
+        pass:
+          text.includes('Work mode · browser inspection only') &&
+          text.includes('Subagents 2') &&
+          text.includes('active 1'),
+        text,
+      })
+      warning.update([
+        { displayName: 'Multiply', status: 'done' },
+        { displayName: 'Primes', status: 'done' },
+      ])
+      const completedText = warning.element.shadowRoot?.textContent ?? ''
+      results.push({
+        name: 'Work warning clears active count after all subagents complete',
+        pass: completedText.includes('Subagents 2') && completedText.includes('active 0'),
+        text: completedText,
+      })
+    } finally {
+      warning.unmount()
+      anchor.remove()
+    }
+  }
+
+  return results
+}
+
+const adapter = {
+  getCurrentContext: async () => ({ ...context }),
+  currentConversationId: () => context.conversationId,
+  currentProjectId: () => context.projectId,
+  listProjects: () => store.listProjects(),
+  listConversations: () => store.listConversations(),
+  getConversation: (id: string) => store.getConversation(id),
+  getCoverage: (id: string) => store.getCoverage(id),
+  listMessages: (id: string) => store.listMessages(id),
+  getThread: async (id: string) => buildArchiveThread(await store.listMessages(id)),
+  collectCurrent: async () => {
+    throw new Error('archive.error.noChat')
+  },
+  clearAll: () => store.clearAll(),
+  listExportFormats: () => DEFAULT_ARCHIVE_EXPORT_PIPELINE.listFormats(),
+  exportConversation: async (id: string, options: ArchiveExportOptions) => {
+    const c = await store.getConversation(id)
+    if (!c) throw new Error('archive.error.noChat')
+    const result = serializeArchiveExport(
+      c,
+      buildArchiveThread(await store.listMessages(id)),
+      options,
+      { verified: false, fixture: true },
+    )
+    exports.push(result)
+    return {
+      packaged: false,
+      complete: true,
+      includedAssets: 0,
+      missingAssets: 0,
+      blob: new Blob([result.text], { type: `${result.mime};charset=utf-8` }),
+      extension: result.extension,
+    }
+  },
+}
+await seed()
+mountBoosterUi({ settingsAdapter: settings, archiveAdapter: adapter, targetLabel: 'Tampermonkey' })
+Object.assign(window, {
+  extension2Harness: {
+    ready: true,
+    runStorageTests,
+    runUiTests: () => runUiTests(settings, adapter, context, appendCurrentExchange),
+    runLoaderCancellationTests,
+    runLoaderIsolationTests,
+    runLoaderScrollTest: () => runLoaderScrollTest(),
+    runPerformanceTests,
+    settings,
+    context,
+    exports,
+    store,
+    HistoryLoaderModule,
+    ConversationArchiveModule,
+    ConversationDecoratorsModule,
+  },
+})
+const status = document.querySelector('#fixture-status')
+if (status) status.textContent = 'Fixture ready. Use the edge toolkit.'
+
+// Developer-only acceptance control for browser tools without script-evaluation access.
+const runFixtureUi = document.querySelector<HTMLButtonElement>('#fixture-run-ui-tests')
+const fixtureResults = document.querySelector<HTMLElement>('#fixture-test-results')
+runFixtureUi?.addEventListener('click', async () => {
+  if (!fixtureResults || !runFixtureUi) return
+  runFixtureUi.disabled = true
+  fixtureResults.textContent = 'Running archive UI acceptance…'
+  try {
+    const results = await runUiTests(settings, adapter, context, appendCurrentExchange)
+    const failed = results.filter((entry) => !entry.pass)
+    fixtureResults.textContent = JSON.stringify(
+      {
+        passed: results.length - failed.length,
+        failed: failed.length,
+        failures: failed,
+      },
+      null,
+      2,
+    )
+  } catch (error) {
+    fixtureResults.textContent = 'Fixture failed: ' + String(error)
+  } finally {
+    runFixtureUi.disabled = false
+  }
+})
+
+// Preview production archive UI with persistent synthetic records for visual inspection.
+document.querySelector('#fixture-open-archive')?.addEventListener('click', () => {
+  window.dispatchEvent(
+    new CustomEvent('chatgpt-booster:open-archive', {
+      detail: { conversationId: 'fixture-current' },
+    }),
+  )
+})
+
+// Persistent free-account-shaped sibling branches, available for visual review.
+document.querySelector('#fixture-open-forks')?.addEventListener('click', () => {
+  window.dispatchEvent(
+    new CustomEvent('chatgpt-booster:open-archive', {
+      detail: { conversationId: 'fixture-forks' },
+    }),
+  )
+})
+
+// Long linked history for verifying the bounded graph and its earlier/later controls.
+document.querySelector('#fixture-open-long')?.addEventListener('click', async () => {
+  const history: Record<string, unknown>[] = []
+  let parent: string | undefined
+  for (let index = 0; index < 150; index++) {
+    const userId = `long-u-${index}`
+    const assistantId = `long-a-${index}`
+    history.push({
+      ...raw(userId, 'user', `Длинная история · вопрос ${index + 1}`, parent),
+      create_time: 1700000000 + index * 2,
+    })
+    history.push({
+      ...raw(assistantId, 'assistant', `Ответ ${index + 1}`, userId),
+      create_time: 1700000000 + index * 2 + 1,
+    })
+    parent = assistantId
+  }
+  await store.ingest(
+    page('fixture-long', history, {
+      title: 'Длинный связный диалог · 300 сообщений',
+      gizmo_id: projectA,
+      gizmo_type: 'snorlax',
+    }),
+  )
+  window.dispatchEvent(
+    new CustomEvent('chatgpt-booster:open-archive', {
+      detail: { conversationId: 'fixture-long' },
+    }),
+  )
+})

@@ -1,0 +1,102 @@
+export interface TransportCounters {
+  requestsSent: number
+  responsesReceived: number
+  messagesSent: number
+  messagesReceived: number
+  errors: number
+  lastEventAt: number | null
+}
+
+export const EMPTY_TRANSPORT_COUNTERS: TransportCounters = {
+  requestsSent: 0,
+  responsesReceived: 0,
+  messagesSent: 0,
+  messagesReceived: 0,
+  errors: 0,
+  lastEventAt: null,
+}
+
+export interface DiagnosticsAdapter {
+  getTransportCounters(): TransportCounters
+  subscribeTransport(listener: (counters: TransportCounters) => void): () => void
+  resetTransport(): void
+}
+
+export interface TransportDiagnosticsAdapter extends DiagnosticsAdapter {
+  recordTransport(event: TransportCounterEvent): void
+  recordTransportBatch(events: readonly TransportCounterEvent[]): void
+}
+
+export interface PersistentDiagnosticsAdapter {
+  getLifetimeTransportCounters(): Promise<TransportCounters>
+  recordTransport(event: TransportCounterEvent): Promise<void>
+  recordTransportBatch?(events: readonly TransportCounterEvent[]): Promise<void>
+  subscribeLifetimeTransport(listener: (counters: TransportCounters) => void): () => void
+}
+
+export interface TelemetryControlAdapter {
+  test(): Promise<void>
+}
+
+export interface TransportCounterEvent {
+  direction: 'outbound' | 'inbound'
+  phase: 'request' | 'response' | 'message' | 'open' | 'close' | 'error'
+  timestamp: number
+  errorClass?: 'aborted' | 'network' | 'stream' | 'socket' | undefined
+}
+
+export function applyTransportCounterEvent(
+  current: TransportCounters,
+  event: TransportCounterEvent,
+): TransportCounters {
+  const next = { ...current, lastEventAt: event.timestamp }
+  if (event.phase === 'error' && event.errorClass !== 'aborted') next.errors += 1
+  if (event.phase === 'request') next.requestsSent += 1
+  if (event.phase === 'response') next.responsesReceived += 1
+  if (event.phase === 'message' && event.direction === 'outbound') next.messagesSent += 1
+  if (event.phase === 'message' && event.direction === 'inbound') next.messagesReceived += 1
+  return next
+}
+
+export function createDiagnosticsStore(): TransportDiagnosticsAdapter {
+  let counters = { ...EMPTY_TRANSPORT_COUNTERS }
+  const listeners = new Set<(value: TransportCounters) => void>()
+  let publishTimer: ReturnType<typeof setTimeout> | undefined
+
+  const publish = () => {
+    if (publishTimer) {
+      clearTimeout(publishTimer)
+      publishTimer = undefined
+    }
+    const snapshot = { ...counters }
+    for (const listener of listeners) listener(snapshot)
+  }
+
+  const schedulePublish = () => {
+    if (publishTimer || listeners.size === 0) return
+    publishTimer = setTimeout(publish, 250)
+  }
+
+  return {
+    getTransportCounters() {
+      return { ...counters }
+    },
+    subscribeTransport(listener) {
+      listeners.add(listener)
+      listener({ ...counters })
+      return () => listeners.delete(listener)
+    },
+    resetTransport() {
+      counters = { ...EMPTY_TRANSPORT_COUNTERS }
+      publish()
+    },
+    recordTransport(event) {
+      counters = applyTransportCounterEvent(counters, event)
+      schedulePublish()
+    },
+    recordTransportBatch(events) {
+      for (const event of events) counters = applyTransportCounterEvent(counters, event)
+      schedulePublish()
+    },
+  }
+}

@@ -15,6 +15,7 @@ The target is approved as a direction, not yet fully implemented.
 | Module | Status | Targets | Source |
 | --- | --- | --- | --- |
 | VK Booster | Integrated v2 exporter; needs live browser acceptance | Tampermonkey, Chromium | `modules/vk-booster/` |
+| ChatGPT Booster | Source port with shared shell; experimental, not released | Tampermonkey, Chromium | `modules/chatgpt-booster/` |
 | Proxy Switcher | Typed interface and capability boundary only | Future MV3 background | `modules/proxy-switcher/` |
 | All-in-one | Launcher with VK Booster; other modules can be enabled later | Tampermonkey, Chromium | `apps/` |
 
@@ -50,7 +51,9 @@ packages/core/          typed feature registry, lifecycle, settings, permissions
 packages/ui/            shared shadcn-vue primitives and design tokens
 packages/shell/         Booster-derived draggable shell and module views
 packages/adapters/      userscript/Chrome storage and future proxy interfaces
+packages/archive/       provider-neutral archive contracts and shared gzip output
 modules/vk-booster/     VK-specific model and chat-export feature UI
+modules/chatgpt-booster/ ChatGPT-native runtime and archival adapter (experimental)
 modules/proxy-switcher/ capability-gated future proxy adapter, not shipped
 apps/userscript/        module and all-in-one userscript entries
 apps/extension/         MV3 content + popup entries, minimal manifest

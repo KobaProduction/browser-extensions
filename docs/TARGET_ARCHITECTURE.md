@@ -271,3 +271,13 @@ reopening an existing v2 archive. Browser testing is a separate runtime gate.
 archive engine, nested settings windows, separate target-specific copies of
 business logic, sibling FSD deep imports, overbroad public APIs, speculative
 empty scaffolding, unapproved telemetry and fake privileged capabilities.
+
+## Authorized ChatGPT product relocation checkpoint (2026-10-10)
+
+The user authorized consolidating ChatGPT Booster source into this monorepo.
+`modules/chatgpt-booster` is a transitional provider-owned import; common
+shell/feature lifecycle and gzip are extracted immediately. The eventual
+shared archive application/storage and widgets need separate verified ports
+and do **not** justify rewriting VK v2 semantics or destroying existing
+ChatGPT v3/v4 archives. Migration parity and real-browser validation remain
+release blockers. See `CHATGPT_BOOSTER_MIGRATION.md`.
