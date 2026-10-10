@@ -1,6 +1,6 @@
 {
   "name": "@chatgpt-booster/extension",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "private": true,
   "type": "module",
   "scripts": {
@@ -14,6 +14,7 @@
     "vue": "^3.5.22",
     "@chatgpt-booster/features": "workspace:*",
     "@chatgpt-booster/observer": "workspace:*",
-    "@chatgpt-booster/telemetry": "workspace:*"
+    "@chatgpt-booster/telemetry": "workspace:*",
+    "@kobaproduction/browser-core": "workspace:*"
   }
 }

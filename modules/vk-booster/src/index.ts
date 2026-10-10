@@ -1,5 +1,6 @@
 import type { Feature } from '@kobaproduction/browser-core'
 import { installVkArchive } from './archive-runtime'
+import { archiveApi } from './features/chat-export/model/types'
 
 export const vkBoosterFeature: Feature = {
   id: 'vk-booster',
@@ -12,9 +13,9 @@ export const vkBoosterFeature: Feature = {
     installVkArchive()
   },
   open() {
-    window.VKExport?.show()
+    archiveApi()?.show()
   },
   stop() {
-    window.VKExport?.destroy?.()
+    archiveApi()?.destroy?.()
   },
 }

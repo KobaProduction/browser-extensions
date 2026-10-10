@@ -2,9 +2,9 @@
 
 ## Implemented source architecture
 
-The VK Booster 2.3.9 and ChatGPT Booster 2.0.2 share real platform use
+The VK Booster 2.3.10 and ChatGPT Booster 2.0.3 share real platform use
 cases and adapters, not their provider-specific account or storage schemas.
-Their all-in-one consumer is 0.5.1. The versions changed together because
+Their all-in-one consumer is 0.5.2. The versions changed together because
 `packages/storage` was extended as a reusable platform contract used by
 ChatGPT; VK currently uses shared archive and file-output APIs rather than
 an IndexedDB database. A shared-package change conservatively bumps both
@@ -68,3 +68,15 @@ Static tests and build success do not establish actual installed browser
 acceptance, real-account migration/backup parity or permission prompt safety.
 Those are separate product/release gates. Public releases remain manually
 authorized, with product-scoped channels.
+
+### DEV/PROD channel integration
+
+`main` gained separately scoped DEV/PROD installations during this refactor.
+The advanced channel code, manifest build identities and instance-scoped
+ChatGPT IndexedDB names are preserved. The original standalone PROD account
+and database names remain unchanged by `instanceKey(..., 'chatgpt-booster:prod')`;
+DEV and all-in-one use their own storage namespaces and should not acquire
+or silently migrate PROD native messages. This shared-storage refactor is
+compatible with the channel matrix in [DEV_PROD_CHANNELS.md](DEV_PROD_CHANNELS.md).
+Successful reviewed `main` CI may produce DEV prereleases through the new
+channel workflow; **PROD still requires explicit manual acceptance**.

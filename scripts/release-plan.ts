@@ -23,12 +23,13 @@ export function releaseTargets(scope: string): string[] {
 
 export async function releasePlan(scope = 'all') {
   const result: ReleaseCandidate[] = []
+  const includeExisting = process.argv.includes('--include-existing')
   for (const id of releaseTargets(scope)) {
     const m = await manifest(id),
       tag = `${id}/v${m.version}`
     if (!m.release) continue
     const tags = await Bun.$`git tag --list ${tag}`.quiet().text()
-    if (tags.trim()) continue // exactly this release was published already
+    if (tags.trim() && !includeExisting) continue // exactly this release was published already
     const pattern = `${id}/v*`
     const previous = (await Bun.$`git tag --list ${pattern} --sort=-version:refname`.quiet().text())
       .trim()
@@ -40,7 +41,7 @@ export async function releasePlan(scope = 'all') {
       changed =
         diff.exitCode !== 0 || hasRelevantChange(diff.stdout.toString().trim().split('\n'), scopes)
     }
-    if (changed) result.push({ id, version: m.version, tag, changed })
+    if (changed || includeExisting) result.push({ id, version: m.version, tag, changed })
   }
   return result
 }

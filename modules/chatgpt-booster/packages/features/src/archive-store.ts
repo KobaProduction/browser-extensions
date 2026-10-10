@@ -1,4 +1,5 @@
 import { requestResult as request, transactionComplete as transactionDone } from '@kobaproduction/browser-storage'
+import { instanceKey } from '@kobaproduction/browser-core'
 import {
   archiveRecordAttachments,
   buildArchiveThread,
@@ -24,7 +25,7 @@ import {
   type ConversationArchiveEventDetail,
 } from '@chatgpt-booster/observer'
 
-export const ARCHIVE_DB_NAME = 'chatgpt-booster-archive'
+export const ARCHIVE_DB_NAME = instanceKey('chatgpt-booster-archive', 'chatgpt-booster:prod')
 export const ARCHIVE_DB_VERSION = 3
 
 export interface ArchivedConversation {

@@ -1,3 +1,7 @@
+# DEV / PROD independent releases
+
+See [DEV/PROD channels and simultaneous installation contract](DEV_PROD_CHANNELS.md).
+
 # Zoomies CI and selective releases
 
 `main` and trusted same-repository PRs run `zoomies-linux-x64` (matching ChatGPT Booster). Fork and Dependabot PRs run on GitHub's `ubuntu-latest` runner. `bun run check` verifies types/tests/contracts. The build impact graph builds only affected distributables:
@@ -48,9 +52,9 @@ workflow with `approve_release=true`. ChatGPT 2.0.1 is now `release:true` for in
 
 ## Version 2 release channels (2026-10-10)
 
-- VK Booster: `2.3.9` — changes in VK increment VK and all-in-one only.
-- ChatGPT Booster: `2.0.2` — changes in ChatGPT increment ChatGPT and all-in-one only.
-- All-in-one: `0.5.1` — aggregates both providers with independent feature
+- VK Booster: `2.3.10` — changes in VK increment VK and all-in-one only.
+- ChatGPT Booster: `2.0.3` — changes in ChatGPT increment ChatGPT and all-in-one only.
+- All-in-one: `0.5.2` — aggregates both providers with independent feature
   lifecycles, Tampermonkey and MV3 targets.
 - Shared `packages/` implementation changes affect all consumers. Documentation
   and CI-only changes do not bump product semver.

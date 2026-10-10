@@ -1,3 +1,6 @@
+import { instanceKey } from './instance-scope'
+
+export { instanceKey, instanceScope, scopedIdentity } from './instance-scope'
 export type { TelemetryEvent, TelemetryEventName, TelemetrySink } from './telemetry'
 export { TelemetryBus } from './telemetry'
 export type DeliveryTarget = 'userscript' | 'chromium'
@@ -10,8 +13,8 @@ export type Capability =
   | 'user-agent'
 export type FeatureId = string
 /** Browser shell events carry no chat data or provider-specific payloads. */
-export const SHELL_OPEN_FEATURE_EVENT = 'koba:open-feature'
-export const SHELL_CLOSE_EVENT = 'koba:close-shell'
+export const SHELL_OPEN_FEATURE_EVENT = instanceKey('koba:open-feature')
+export const SHELL_CLOSE_EVENT = instanceKey('koba:close-shell')
 
 export interface FeatureContext {
   readonly target: DeliveryTarget
