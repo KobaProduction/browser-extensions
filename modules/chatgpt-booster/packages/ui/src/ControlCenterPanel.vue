@@ -50,6 +50,7 @@ const props = withDefaults(
     telemetryControlAdapter?: TelemetryControlAdapter | undefined
     targetLabel: string
     showClose?: boolean
+    embedded?: boolean
   }>(),
   { showClose: false },
 )
@@ -253,8 +254,8 @@ async function testTelemetry() {
 </script>
 
 <template>
-  <section class="booster-control-center" :lang="locale">
-    <header class="booster-control-header">
+  <section class="booster-control-center" :class="{ 'booster-control-embedded': embedded }" :lang="locale">
+    <header v-if="!embedded" class="booster-control-header">
       <div class="booster-header-copy">
         <div class="flex items-center gap-2">
           <strong>{{ t('control.title') }}</strong>

@@ -14,7 +14,7 @@ for(const id of ids){
 const selector=process.argv[process.argv.indexOf('--module')+1]
 const checked=selector==='changed'?
  (await changedModules(process.env.BASE_SHA,process.env.HEAD_SHA||'HEAD')).filter(x=>x!=='proxy-switcher'):
- selector==='vk-booster'||selector==='chatgpt-booster'||selector==='all-in-one'?[selector]:['vk-booster','all-in-one']
+ selector==='vk-booster'||selector==='chatgpt-booster'||selector==='all-in-one'?[selector]:['vk-booster','chatgpt-booster','all-in-one']
 if(process.argv.includes('--built'))for(const id of checked){
  const m=await manifest(id)
  const root=`dist/${id}`

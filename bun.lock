@@ -169,6 +169,7 @@
       "name": "@kobaproduction/module-vk-booster",
       "version": "2.2.0",
       "dependencies": {
+        "@kobaproduction/browser-archive": "workspace:*",
         "@kobaproduction/browser-core": "workspace:*",
         "@kobaproduction/browser-ui": "workspace:*",
         "lucide-vue-next": "^0.545.0",

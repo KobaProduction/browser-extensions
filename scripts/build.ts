@@ -14,13 +14,20 @@ process.chdir(root)
 const requested=process.argv.find(a=>a.startsWith('--module='))?.split('=')[1] ??
  process.argv.slice(2).find((x,i,arr)=>arr[i-1]==='--module') ?? 'all'
 const target=process.argv.find(a=>a.startsWith('--target='))?.split('=')[1]??'both'
-const ids=requested==='all'?['vk-booster','all-in-one']:
+const ids=requested==='all'?['vk-booster','chatgpt-booster','all-in-one']:
  requested==='changed'?(await changedModules(process.env.BASE_SHA,process.env.HEAD_SHA||'HEAD')).filter(id=>id!=='proxy-switcher'):[requested]
 if(!['both','userscript','extension'].includes(target))throw Error('Invalid --target')
 
 function plugins(){return [vue(),tailwindcss()]}
-async function viteBundle(src:string,dir:string,file:string,format:'es'|'iife'='iife',external:string[]=[]){
- await viteBuild({configFile:false,root,logLevel:'error',plugins:plugins(),build:{
+async function viteBundle(src:string,dir:string,file:string,format:'es'|'iife'='iife',external:string[]=[],productVersion?:string){
+ await viteBuild({configFile:false,root,logLevel:'error',plugins:plugins(),
+   define: {
+     '__BOOSTER_BUILD_VERSION__': JSON.stringify(productVersion ?? ''),
+     '__BOOSTER_BUILD_SHA__': JSON.stringify(process.env.GITHUB_SHA ?? ''),
+     'process.env.NODE_ENV': JSON.stringify('production'),
+     'process.env': '{}',
+   },
+   build:{
    outDir:dir,emptyOutDir:true,minify:false,cssCodeSplit:false,
    lib:{entry:src,formats:[format],name:'KobaBrowserTools',fileName:()=>file},
    rollupOptions: external.length?{external}:undefined,

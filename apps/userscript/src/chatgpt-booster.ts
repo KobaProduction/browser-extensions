@@ -20,14 +20,13 @@ if (isChatGptPage()) {
     diagnostics: createDiagnosticsStore(), persistentDiagnostics: userscriptAnalytics,
     secrets: userscriptSecrets, telemetry, telemetryControl: createUserscriptTelemetryControl(telemetry),
     pageBridgeWindow: bridge,
-  })
+  }, { install: () => installTransportObserver(bridge) })
   // Respect the shared module switch before enabling any native history capture.
   // The active feature's start() also invokes startEarly() after a later enable.
   void new FeatureSettings(createSettingsStore('userscript'))
     .enabled('chatgpt-booster')
     .then((enabled) => {
       if (!enabled) return
-      installTransportObserver(bridge)
       return startEarly()
     })
     .catch(error => console.warn('[ChatGPT Booster] Early capture failed', error instanceof Error ? error.name : 'unknown'))

@@ -2,7 +2,7 @@ import { mkdir, copyFile, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 
-type Bundle = (src:string, dir:string, file:string, format?: 'es'|'iife', external?:string[])=>Promise<string>
+type Bundle = (src:string, dir:string, file:string, format?: 'es'|'iife', external?:string[], productVersion?:string)=>Promise<string>
 
 /** One verified implementation with distinct browser delivery adapters.
  * The experimental ChatGPT module never joins an automatic release plan. */
@@ -14,7 +14,7 @@ export async function buildChatGptModule(
  const extRoot=join(root,'modules',id,'packages','extension')
  await mkdir(dir,{recursive:true})
  if(target!=='extension') {
-  const output=await bundle(join(root,'apps/userscript/src/chatgpt-booster.ts'),join(dir,'_userscript'),'bundle.js')
+  const output=await bundle(join(root,'apps/userscript/src/chatgpt-booster.ts'),join(dir,'_userscript'),'bundle.js','iife',[],version)
   const header=[
    '// ==UserScript==','// @name         ChatGPT Booster (monorepo preview)',
    '// @namespace    https://github.com/KobaProduction/browser-extensions',
@@ -30,13 +30,13 @@ export async function buildChatGptModule(
  }
  if(target!=='userscript') {
   const ext=join(dir,'extension');await mkdir(ext,{recursive:true})
-  await bundle(join(root,'apps/extension/src/chatgpt-content.ts'),join(dir,'_content'),'bundle.js')
+  await bundle(join(root,'apps/extension/src/chatgpt-content.ts'),join(dir,'_content'),'bundle.js','iife',[],version)
   await copyFile(join(dir,'_content','bundle.js'),join(ext,'content.js'))
-  await bundle(join(extRoot,'src/observer/index.ts'),join(dir,'_observer'),'bundle.js')
+  await bundle(join(extRoot,'src/observer/index.ts'),join(dir,'_observer'),'bundle.js','iife',[],version)
   await copyFile(join(dir,'_observer','bundle.js'),join(ext,'observer.js'))
-  await bundle(join(extRoot,'src/background/index.ts'),join(dir,'_background'),'bundle.js','es')
+  await bundle(join(extRoot,'src/background/index.ts'),join(dir,'_background'),'bundle.js','es',[],version)
   await copyFile(join(dir,'_background','bundle.js'),join(ext,'background.js'))
-  await bundle(join(extRoot,'src/popup/main.ts'),join(dir,'_popup'),'bundle.js')
+  await bundle(join(extRoot,'src/popup/main.ts'),join(dir,'_popup'),'bundle.js','iife',[],version)
   await copyFile(join(dir,'_popup','bundle.js'),join(ext,'popup.js'))
   let html=await readFile(join(extRoot,'src/popup/index.html'),'utf8')
   html=html.replace('<script type="module" src="./main.ts"></script>','<script src="popup.js"></script>')

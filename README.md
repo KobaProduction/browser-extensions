@@ -104,3 +104,14 @@ VK-specific export UI is a feature injected into that shell. ChatGPT Booster
 itself is not modified: its later adoption requires separate tests/review.
 The VK API/storage model remains transitional and is not a reusable archive
 library yet. This refactor does not change released versions or channels.
+
+### ChatGPT Booster module migration
+
+The source-preserving ChatGPT Booster module is in `modules/chatgpt-booster/`.
+Normal `bun run build` now includes its **experimental** Tampermonkey and
+Chromium artifacts alongside VK and all-in-one. Its module manifest remains
+`release:false`: building is not publishing, and independent module releases
+are unchanged. `bun run build:chatgpt` builds ChatGPT alone. The portable
+archive core now serves both products for checksums and record identities;
+original provider-specific capture/storage stays isolated pending separately
+verified behavioral equivalence. See `docs/CHATGPT_BOOSTER_MIGRATION.md`.

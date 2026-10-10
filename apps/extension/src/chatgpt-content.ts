@@ -1,4 +1,4 @@
-import { FeatureRuntime, FeatureSettings, type Capability } from '@kobaproduction/browser-core'
+import { FeatureRuntime, FeatureSettings, SHELL_OPEN_FEATURE_EVENT, type Capability } from '@kobaproduction/browser-core'
 import { createSettingsStore } from '@kobaproduction/browser-adapters'
 import { mountControlCenter } from '@kobaproduction/browser-shell'
 import { createDiagnosticsStore, isChatGptPage } from '@chatgpt-booster/core'
@@ -32,7 +32,7 @@ if (isChatGptPage()) {
       if (message?.type === 'koba:open') { shell.open(); sendResponse({ ok: true }); return }
       if (message?.type === 'koba:open-feature' && message.id === 'chatgpt-booster') {
         shell.open()
-        window.dispatchEvent(new CustomEvent('koba:open-feature', { detail: { id: message.id } }))
+        window.dispatchEvent(new CustomEvent(SHELL_OPEN_FEATURE_EVENT, { detail: { id: message.id } }))
         sendResponse({ ok: true }); return
       }
       if (message?.type === 'koba:list') sendResponse({ features: runtime.list() })

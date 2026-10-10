@@ -78,3 +78,45 @@ The original source package `userscript` and `extension` delivery entrypoints
 are replaced by monorepo `apps/*` entries; Chrome/Tampermonkey identity still
 needs separate cutover acceptance. Browser-only endpoint compatibility and
 backup import integrity remain independent gates.
+
+## Shared archive extraction / product-hosted fixes
+
+- `packages/archive` is now exercised by both provider engines for stable record
+  identity, collision-free composite keys and SHA-256 checksums. VK v2 uses it
+  for its existing message index and original media digests; ChatGPT uses it
+  for canonical account/message/snapshot identity and native source fingerprints.
+  Neither source mapping nor VK disk format changed.
+- Shared shell events and panel sizing are defined by generic platform
+  contracts, not hard-coded per-provider checks in the shell. ChatGPT's Reader
+  close action exits the one shared shell. Embedded settings omit the legacy
+  duplicate window/header.
+- Explicit account-verified backup restore checks authorization throughout
+  staging and before activation; completed imports can switch back to the
+  previous generation only if that generation and the new one still match
+  verified counts and no newer reconciliation invalidates the rollback.
+- All these are *source and synthetic browser* acceptance layers; the installed
+  client/UI/extension identity still requires real-user browser inspection.
+
+## Integrated source and browser verification (2026-10-10)
+
+- Local complete `bun run check` succeeded after shared archive extraction:
+  **228 passing tests, 0 failing** across 29 files (before the last shell
+  navigation regression test). A subsequent local check succeeded with
+  **229 passing tests, 0 failures**, including VK v2 3,000-message,
+  incremental, pause/resume, original media name/hash, HTML and v1 refusal.
+- Isolated real Chromium IndexedDB acceptance from **monorepo code** (never
+  user data): v3+v4 upgrade, explicit per-chat owner selection, unknown-time
+  Reader record, original model/tool metadata, JSON.gz lossless export,
+  per-source SHA-256 parity, altered-source detection and reconciliation,
+  gzip backup/restore in a new generation, truncated file rejection,
+  fresh-profile import without existing canonical manifest, transactional
+  rollback to previous active generation and simulated mid-import account
+  revocation. Original v3 source rows remain untouched.
+- Browser tests ran against isolated synthetic origins and do not prove
+  installed ChatGPT extension identity, all server branches, user files or
+  real-account acceptance. Old archive databases and old repository remain
+  preserved.
+- Runtime build version is now resolved from the module manifest at bundle
+  creation rather than a stale fallback. The monorepo-wide build includes an
+  experimental ChatGPT artifact, but does not activate an update channel or
+  publish it without release acceptance.

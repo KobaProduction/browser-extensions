@@ -4,7 +4,7 @@
  * draggable side button, persisted/clamped position, central modal.
  * Adaptation: feature registry and module views instead of ChatGPT settings.
  */
-import type { FeatureRuntime } from '@kobaproduction/browser-core'
+import { SHELL_OPEN_FEATURE_EVENT, SHELL_CLOSE_EVENT, type FeatureRuntime } from '@kobaproduction/browser-core'
 import { GripVertical } from 'lucide-vue-next'
 import { onMounted, onBeforeUnmount, ref, computed, type Component } from 'vue'
 import ControlCenterPanel from './ControlCenterPanel.vue'
@@ -69,18 +69,21 @@ function onModuleOpen(event:Event){
  open.value=true
 }
 const launcherStyle=computed(()=>({left:position.value.x+'px',top:position.value.y+'px'}))
+const widePanel=computed(()=>props.runtime.features.find(feature=>feature.id===selectedSection.value)?.presentation?.panel==='wide')
 function openPanel(){open.value=true}
 function closePanel(){open.value=false}
 defineExpose({openPanel,closePanel})
 onMounted(()=>{
  restore()
  window.addEventListener('resize',onResize)
- window.addEventListener('koba:open-feature',onModuleOpen)
+ window.addEventListener(SHELL_OPEN_FEATURE_EVENT,onModuleOpen)
+ window.addEventListener(SHELL_CLOSE_EVENT,closePanel)
  document.addEventListener('keydown',onKeyDown)
 })
 onBeforeUnmount(()=>{
  window.removeEventListener('resize',onResize)
- window.removeEventListener('koba:open-feature',onModuleOpen)
+ window.removeEventListener(SHELL_OPEN_FEATURE_EVENT,onModuleOpen)
+ window.removeEventListener(SHELL_CLOSE_EVENT,closePanel)
  document.removeEventListener('keydown',onKeyDown)
 })
 </script>
@@ -88,7 +91,7 @@ onBeforeUnmount(()=>{
 <template>
   <div class="booster-overlay-root">
     <div v-if="open" class="booster-modal-backdrop" @click.self="open = false">
-      <div class="booster-modal-surface">
+      <div class="booster-modal-surface" :class="{ 'booster-modal-surface-wide': widePanel }">
         <ControlCenterPanel :runtime="runtime" :views="views" :title="title" :selected-section="selectedSection" @close="closePanel" />
       </div>
     </div>

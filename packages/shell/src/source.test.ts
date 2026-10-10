@@ -16,3 +16,11 @@ test('central shell allows supplied feature views without provider-specific impo
  expect(source).not.toContain('VKArchive')
  expect(source).not.toContain('chatgpt.com')
 })
+
+test('shared shell supports a provider-neutral wide archive panel and explicit close', async () => {
+ const source = await read('./Overlay.vue')
+ expect(source).toContain("presentation?.panel==='wide'")
+ expect(source).toContain('SHELL_CLOSE_EVENT')
+ expect(source).toContain('booster-modal-surface-wide')
+ expect(source).not.toContain('chatgpt-booster')
+})

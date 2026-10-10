@@ -1,4 +1,6 @@
-/* VK Booster v2 — one standalone browser userscript; no external dependencies. */
+/* VK Booster v2 — provider adapter with stable v2 folder/storage contract. */
+import { indexArchiveRecords, archiveSha256Hex } from '@kobaproduction/browser-archive'
+import { SHELL_OPEN_FEATURE_EVENT } from '@kobaproduction/browser-core'
 export function installVkArchive() {
 'use strict';
 const VERSION='2.2.0', GLOBAL='VKExport';
@@ -21,7 +23,7 @@ const safe=s=>{
 const ext=(s,fallback='bin')=>String(s||fallback).replace(/[^a-zA-Z0-9]/g,'').toLowerCase()||fallback;
 const fileStem=(name,fallback)=>safe(name||fallback);
 const join=(...x)=>x.join('/');
-const known=()=>new Map(rows.map(m=>[m.id,m]));
+const known=()=>indexArchiveRecords(rows,m=>m.id);
 const blank=()=>({schema:2,version:VERSION,peer_id:cfg.peerId,updated:ts(),total:0,checkpoint:null,files:{},runs:[],conversation:null});
 const json=async(name)=>{try{return JSON.parse(await (await (await root.getFileHandle(name)).getFile()).text())}catch(e){if(e.name==='NotFoundError')return null;throw e}};
 async function write(name,data,dir=root){
@@ -192,8 +194,7 @@ async function download(a){
    }
    if(!n||(v.size!==null&&v.size!==n))throw Error('Размер не совпал');
    const bytes=new Uint8Array(n);let pos=0;for(const b of chunks){bytes.set(b,pos);pos+=b.length}
-   const digest=await crypto.subtle.digest('SHA-256',bytes);
-   const hash=Array.from(new Uint8Array(digest),x=>x.toString(16).padStart(2,'0')).join('');
+   const hash=await archiveSha256Hex(bytes);
    const media=await dir(String(a.rootId),await dir('media'));
    let name=v.name,index=2;
    const occupied=new Set(Object.entries(meta.files).filter(([k,f])=>k!==a.key&&f.message_id===a.rootId&&f.status==='saved').map(([,f])=>f.name));
@@ -339,7 +340,7 @@ function refresh(){
  for(const listener of subscribers)try{listener(snapshot)}catch{}
 }
 function subscribe(listener){subscribers.add(listener);listener(status());return()=>subscribers.delete(listener)}
-function show(){window.dispatchEvent(new CustomEvent('koba:open-feature',{detail:{id:'vk-booster'}}))}
+function show(){window.dispatchEvent(new CustomEvent(SHELL_OPEN_FEATURE_EVENT,{detail:{id:'vk-booster'}}))}
 function hide(){/* Single control-center shell owns visibility. */}
 const apiObject={version:VERSION,configure,selectFolder,useFolder,run,resume:()=>run({resume:true}),stop,status,show,hide,subscribe,buildViewer,getMessages:()=>[...rows],destroy(){subscribers.clear();if(globalThis[GLOBAL]===apiObject)delete globalThis[GLOBAL]}};
 globalThis[GLOBAL]=Object.freeze(apiObject);

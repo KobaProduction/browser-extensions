@@ -1,3 +1,4 @@
+import { archiveSha256Hex } from '@kobaproduction/browser-archive'
 /** Derived identity only. Original parsed native JSON is never reordered or rewritten. */
 export function canonicalSourceJson(source: unknown): string {
   type Frame =
@@ -60,8 +61,7 @@ export function canonicalSourceJson(source: unknown): string {
 
 /** Hash before opening a readwrite transaction: crypto work is not an IDB request. */
 export async function sourceFingerprint(canonical: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical))
-  return `sha256-json-v1:${Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('')}`
+  return `sha256-json-v1:${await archiveSha256Hex(canonical)}`
 }
 
 export function archiveWriteAllowed(

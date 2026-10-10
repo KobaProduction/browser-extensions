@@ -189,6 +189,8 @@ export interface ArchiveDataAdapter {
       ownerStatus: 'verified' | 'waiting_for_owner' | 'mismatch' | 'v4_only'
     }[]
   }>
+  canUndoCanonicalBackupRestore?(): Promise<boolean>
+  undoCanonicalBackupRestore?(): Promise<void>
   exportCanonicalBackup?(): Promise<Blob>
   restoreCanonicalBackup?(file: Blob): Promise<{
     conversations: number

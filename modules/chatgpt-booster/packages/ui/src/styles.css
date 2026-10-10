@@ -4406,3 +4406,7 @@
 .booster-maintenance-backup-restore { display: grid; gap: 12px; margin-block-start: 14px; }
 .booster-maintenance-backup-restore > label { display: grid; gap: 8px; }
 .booster-maintenance-backup-restore input[type="file"] { max-width: 100%; }
+
+/* Hosted in the shared shell: one window, one header, no nested modal shell. */
+.booster-control-embedded { background: transparent; border: 0; box-shadow: none; width: 100%; max-width: none; }
+.booster-control-embedded > .booster-settings-layout { max-height: none; min-height: 0; }

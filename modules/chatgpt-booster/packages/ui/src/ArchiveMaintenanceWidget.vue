@@ -25,6 +25,7 @@ const error = ref('')
 const report = ref<Delta>()
 const audit = ref<Audit>()
 const integrity = ref<Awaited<ReturnType<NonNullable<ArchiveDataAdapter['auditArchiveIntegrity']>>>>()
+const canUndoBackup = ref(false)
 const backupFile = ref<File | null>(null)
 const backupApproved = ref(false)
 const backupMessage = ref('')
@@ -108,8 +109,14 @@ async function inspect() {
   loading.value = true
   error.value = ''
   try {
-    const result = await props.archiveAdapter.getArchiveMigrationOverview()
-    if (alive && id === requestId) inventory.value = result
+    const [result, rollback] = await Promise.all([
+      props.archiveAdapter.getArchiveMigrationOverview(),
+      props.archiveAdapter.canUndoCanonicalBackupRestore?.() ?? Promise.resolve(false),
+    ])
+    if (alive && id === requestId) {
+      inventory.value = result
+      canUndoBackup.value = rollback
+    }
   } catch (cause) {
     if (alive && id === requestId)
       error.value = cause instanceof Error ? cause.message : label('Не удалось проверить архив.', 'Archive check failed.')

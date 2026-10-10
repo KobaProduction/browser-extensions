@@ -1,9 +1,10 @@
+import { archiveCompositeKey } from '@kobaproduction/browser-archive'
 import { projectNativeMessage } from '@chatgpt-booster/core'
 import type { ArchiveV4Store } from './archive-v4-store'
 import { canonicalSourceJson, sourceFingerprint } from './archive-v4-write'
 
 type Row = Record<string, unknown>
-const key = (...parts: string[]) => JSON.stringify(parts)
+const key = archiveCompositeKey
 const asObject = (value: unknown): Row | null =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Row) : null
 const read = <T>(request: IDBRequest<T>): Promise<T> =>
@@ -234,8 +235,9 @@ export async function restoreCanonicalBackup(
   store: ArchiveV4Store,
   accountId: string,
   file: Blob,
+  stillAuthorized: () => boolean = () => true,
 ): Promise<{ conversations: number; messages: number; snapshots: number }> {
-  if (!accountId || !navigator.locks?.request || typeof DecompressionStream !== 'function')
+  if (!accountId || !stillAuthorized() || !navigator.locks?.request || typeof DecompressionStream !== 'function')
     throw new Error('Verified account, browser lock and gzip support required')
   return navigator.locks.request(
     'chatgpt-booster:canonical-migration-v1',
@@ -269,6 +271,7 @@ export async function restoreCanonicalBackup(
         snapshots = 0
       const knownConversations = new Set<string>()
       const apply = async (line: string) => {
+        if (!stillAuthorized()) throw new Error('Archive account changed during import')
         const row = asObject(JSON.parse(line))
         if (!row || typeof row.kind !== 'string') throw new Error('Invalid canonical backup record')
         if (footer) throw new Error('Unexpected records after backup footer')
@@ -433,7 +436,7 @@ export async function restoreCanonicalBackup(
           }
         }
         buffer += decoder.decode()
-        if (buffer || !footer) throw new Error('Canonical backup is incomplete')
+        if (buffer || !footer || !stillAuthorized()) throw new Error('Canonical backup is incomplete or the account changed')
         const tx = db.transaction(
           ['canonicalMessages', 'canonicalConversations', 'sourceSnapshots', 'migrationManifest'],
           'readwrite',
@@ -460,6 +463,10 @@ export async function restoreCanonicalBackup(
         if (manifest?.generation !== generation || manifest?.status !== 'transforming') {
           tx.abort()
           throw new Error('Archive restore lost its exclusive staging fence')
+        }
+        if (!stillAuthorized()) {
+          tx.abort()
+          throw new Error('Archive account changed before backup activation')
         }
         tx.objectStore('migrationManifest').put({
           key: key(accountId),
@@ -499,4 +506,50 @@ export async function restoreCanonicalBackup(
       }
     },
   )
+}
+
+/** A verified rollback swaps only the active manifest. No source bytes are
+ * deleted. It is refused after a newer reconciliation or native capture. */
+export async function undoCanonicalBackupRestore(
+  store: ArchiveV4Store,
+  accountId: string,
+  stillAuthorized: () => boolean = () => true,
+): Promise<void> {
+  if (!accountId || !stillAuthorized() || !navigator.locks?.request)
+    throw new Error('Verified account and cross-tab archive lock required')
+  await navigator.locks.request('chatgpt-booster:canonical-migration-v1', { mode: 'exclusive' }, async () => {
+    const db = await store.canonicalDatabase()
+    const tx = db.transaction(['migrationManifest', 'canonicalConversations', 'canonicalMessages', 'sourceSnapshots'], 'readwrite')
+    const done = finish(tx)
+    const manifests = tx.objectStore('migrationManifest')
+    const active = await read<Row | undefined>(manifests.get(key(accountId)))
+    if (active?.status !== 'ready' || typeof active.generation !== 'string' ||
+        typeof active.previousGeneration !== 'string' ||
+        typeof active.restoredFromBackupAt !== 'number' ||
+        active.generation === active.previousGeneration ||
+        (typeof active.lastReconciledAt === 'number' && active.lastReconciledAt > active.restoredFromBackupAt)) {
+      tx.abort()
+      throw new Error('No unchanged backup restoration is eligible for rollback')
+    }
+    const [priorConversations, priorMessages, priorSnapshots, currentMessages, currentSnapshots] = await Promise.all([
+      read<number>(tx.objectStore('canonicalConversations').index('byGeneration').count(active.previousGeneration)),
+      read<number>(tx.objectStore('canonicalMessages').index('byGeneration').count(active.previousGeneration)),
+      read<number>(tx.objectStore('sourceSnapshots').index('byGeneration').count(active.previousGeneration)),
+      read<number>(tx.objectStore('canonicalMessages').index('byGeneration').count(active.generation)),
+      read<number>(tx.objectStore('sourceSnapshots').index('byGeneration').count(active.generation)),
+    ])
+    if (!priorConversations || !priorMessages || currentMessages !== active.messages ||
+        currentSnapshots !== active.sourceSnapshots || !stillAuthorized()) {
+      tx.abort()
+      throw new Error('Archive changed or the previous generation is unavailable')
+    }
+    manifests.put({
+      ...active, generation: active.previousGeneration, previousGeneration: null,
+      restoredFromBackupAt: null, backupRestoreUndoneAt: Date.now(),
+      undoneRestoreGeneration: active.generation,
+      conversations: priorConversations, messages: priorMessages,
+      sourceSnapshots: priorSnapshots,
+    })
+    await done
+  })
 }

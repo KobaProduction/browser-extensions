@@ -587,3 +587,10 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Feature-selected, provider-neutral workspace sizing for long conversations. */
+.booster-modal-surface.booster-modal-surface-wide { width: min(1320px, calc(100vw - 32px)); }
+.booster-modal-surface-wide > .booster-control-center { width: 100%; }
+@media (max-width: 620px) {
+  .booster-modal-surface.booster-modal-surface-wide { width: calc(100vw - 20px); }
+}

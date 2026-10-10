@@ -1,4 +1,4 @@
-import type { Feature } from '@kobaproduction/browser-core'
+import { SHELL_OPEN_FEATURE_EVENT, type Feature } from '@kobaproduction/browser-core'
 import { createBoosterPageRuntime, type BoosterTargetAdapter } from '@chatgpt-booster/features'
 import { OPEN_ARCHIVE_EVENT, OPEN_SETTINGS_EVENT, OPEN_CAPTURE_SETTINGS_EVENT } from '@chatgpt-booster/core'
 import { shallowRef, ref } from 'vue'
@@ -19,13 +19,33 @@ export interface ChatGptViewContext {
 export const chatGptViewContext = shallowRef<ChatGptViewContext | null>(null)
 export const chatGptRequestedSection = ref<'archive' | 'settings' | 'capture' | null>(null)
 
-export function createChatGptBoosterFeature(target: BoosterTargetAdapter) {
+export interface ChatGptObserverLifecycle {
+  /** Install a reversible page-world transport observer only while enabled. */
+  install(): () => void
+}
+
+export function createChatGptBoosterFeature(
+  target: BoosterTargetAdapter,
+  observer?: ChatGptObserverLifecycle,
+) {
   const page = createBoosterPageRuntime({ target, mountUi: false })
   let early: Promise<void> | null = null
-  const startEarly = () => (early ??= page.startEarly())
+  let detachObserver: (() => void) | null = null
+  const startEarly = () => {
+    if (!early) {
+      detachObserver = observer?.install() ?? null
+      early = page.startEarly().catch(error => {
+        detachObserver?.()
+        detachObserver = null
+        early = null
+        throw error
+      })
+    }
+    return early
+  }
   const reveal = (section: 'archive' | 'settings' | 'capture') => {
     chatGptRequestedSection.value = section
-    window.dispatchEvent(new CustomEvent('koba:open-feature', { detail: { id: 'chatgpt-booster' } }))
+    window.dispatchEvent(new CustomEvent(SHELL_OPEN_FEATURE_EVENT, { detail: { id: 'chatgpt-booster' } }))
   }
   const onArchive = () => reveal('archive')
   const onSettings = () => reveal('settings')
@@ -36,6 +56,7 @@ export function createChatGptBoosterFeature(target: BoosterTargetAdapter) {
   const feature: Feature = {
     id: 'chatgpt-booster',
     title: 'ChatGPT Booster',
+    presentation: { panel: 'wide' },
     description: 'Архив диалогов, исходные метаданные, экспорт, инструменты и аналитика',
     targets: ['userscript', 'chromium'],
     requiredCapabilities: ['page-dom', 'origin-storage', 'local-files'],
@@ -63,9 +84,12 @@ export function createChatGptBoosterFeature(target: BoosterTargetAdapter) {
       window.removeEventListener(OPEN_SETTINGS_EVENT, onSettings)
       window.removeEventListener(OPEN_CAPTURE_SETTINGS_EVENT, onCapture)
       await page.runtime.stop()
+      detachObserver?.()
+      detachObserver = null
+      early = null
     },
     open() {
-      window.dispatchEvent(new CustomEvent('koba:open-feature', { detail: { id: 'chatgpt-booster' } }))
+      window.dispatchEvent(new CustomEvent(SHELL_OPEN_FEATURE_EVENT, { detail: { id: 'chatgpt-booster' } }))
     },
   }
   return { feature, startEarly }

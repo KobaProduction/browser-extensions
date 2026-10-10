@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { Archive, Download, Settings2 } from 'lucide-vue-next'
+import { SHELL_CLOSE_EVENT } from '@kobaproduction/browser-core'
 import { OPEN_ARCHIVE_EVENT, OPEN_CAPTURE_SETTINGS_EVENT, OPEN_SETTINGS_EVENT } from '@chatgpt-booster/core'
 import ArchiveBrowser from '../../../../packages/ui/src/ArchiveBrowser.vue'
 import ArchiveExportDialog from '../../../../packages/ui/src/ArchiveExportDialog.vue'
@@ -29,6 +30,7 @@ function selectExport(id: string, title: string | null) {
   tab.value = 'export'
 }
 function showArchive() { tab.value = 'archive' }
+function closePanel() { window.dispatchEvent(new Event(SHELL_CLOSE_EVENT)) }
 function showSettings() { tab.value = 'settings' }
 onMounted(() => {
   const root = document.getElementById('koba-browser-tools-root')?.shadowRoot
@@ -55,7 +57,7 @@ onBeforeUnmount(() => {
       <button class="booster-action-secondary" type="button" :aria-pressed="tab==='settings'" @click="tab='settings'"><Settings2 class="size-4" />{{ locale==='ru'?'Настройки':'Settings' }}</button>
     </nav>
     <div v-if="!context" role="status">{{ locale==='ru'?'Архив запускается…':'Loading archive…' }}</div>
-    <ArchiveBrowser v-else-if="tab==='archive'" :archive-adapter="context.archiveAdapter" :locale="locale" :windowed="false" @export="selectExport" />
+    <ArchiveBrowser v-else-if="tab==='archive'" :archive-adapter="context.archiveAdapter" :locale="locale" :windowed="false" @export="selectExport" @close="closePanel" />
     <ArchiveExportDialog v-else-if="tab==='export' && selectedChat" :key="selectedChat.id" :archive-adapter="context.archiveAdapter"
       :settings-adapter="context.settingsAdapter" :conversation-id="selectedChat.id" :title="selectedChat.title" :locale="locale"
       @close="tab='archive'" @open-archive="showArchive" @open-capture="showSettings" />
@@ -63,6 +65,6 @@ onBeforeUnmount(() => {
     <ControlCenter v-else :settings-adapter="context.settingsAdapter" :archive-adapter="context.archiveAdapter"
       :diagnostics-adapter="context.diagnosticsAdapter" :persistent-diagnostics-adapter="context.persistentDiagnosticsAdapter"
       :secret-adapter="context.secretAdapter" :telemetry-control-adapter="context.telemetryControlAdapter"
-      :target-label="context.targetLabel" :show-close="false" />
+      :target-label="context.targetLabel" :show-close="false" :embedded="true" />
   </div>
 </template>

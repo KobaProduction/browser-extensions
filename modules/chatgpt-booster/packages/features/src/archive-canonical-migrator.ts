@@ -1,3 +1,4 @@
+import { archiveCompositeKey } from '@kobaproduction/browser-archive'
 import { archiveRecordText, buildArchiveThread } from '@chatgpt-booster/chatgpt'
 import {
   type ArchiveRecordView,
@@ -9,7 +10,7 @@ import type {
   ArchiveThreadWindow,
   ArchiveWindowCursor,
 } from '@chatgpt-booster/ui'
-import { exportCanonicalBackup, restoreCanonicalBackup } from './archive-canonical-backup'
+import { exportCanonicalBackup, restoreCanonicalBackup, undoCanonicalBackupRestore } from './archive-canonical-backup'
 import type { ArchiveIntegrityReport } from './archive-canonical-integrity'
 import { auditCanonicalSourceIntegrity } from './archive-canonical-integrity'
 import { legacyV3OwnerEvidence } from './archive-migration-plan'
@@ -32,7 +33,7 @@ const finish = (tx: IDBTransaction): Promise<void> =>
     tx.oncomplete = () => resolve()
     tx.onabort = () => reject(tx.error ?? new Error('Archive migration transaction aborted'))
   })
-const key = (...parts: string[]) => JSON.stringify(parts)
+const key = archiveCompositeKey
 export type CanonicalMigrationStatus =
   | 'idle'
   | 'checking'
@@ -650,8 +651,24 @@ export class ArchiveCanonicalMigrator {
     return exportCanonicalBackup(this.store, accountId, generation)
   }
 
-  async restoreBackup(accountId: string, file: Blob) {
-    return restoreCanonicalBackup(this.store, accountId, file)
+  async restoreBackup(accountId: string, file: Blob, stillAuthorized?: () => boolean) {
+    return restoreCanonicalBackup(this.store, accountId, file, stillAuthorized)
+  }
+
+  async canUndoBackupRestore(accountId: string): Promise<boolean> {
+    if (!accountId) return false
+    const db = await this.store.canonicalDatabase()
+    const manifest = await request<Row | undefined>(db.transaction('migrationManifest', 'readonly')
+      .objectStore('migrationManifest').get(key(accountId)))
+    return manifest?.status === 'ready' &&
+      typeof manifest.generation === 'string' &&
+      typeof manifest.previousGeneration === 'string' &&
+      manifest.previousGeneration !== manifest.generation &&
+      typeof manifest.restoredFromBackupAt === 'number'
+  }
+
+  async undoBackupRestore(accountId: string, stillAuthorized?: () => boolean) {
+    return undoCanonicalBackupRestore(this.store, accountId, stillAuthorized)
   }
 
   async auditIntegrity(accountId: string): Promise<ArchiveIntegrityReport> {

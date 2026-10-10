@@ -339,11 +339,29 @@ export function createArchiveV4UiAdapter(
     restoreCanonicalBackup: async (file) => {
       const owner = account()
       const epoch = memory.accountEpoch()
-      const restored = await migrator.restoreBackup(owner, file)
+      const restored = await migrator.restoreBackup(owner, file,
+        () => memory.accountEpoch() === epoch && account() === owner)
       if (memory.accountEpoch() !== epoch || account() !== owner)
         throw new Error('archive.error.auth')
       reader.reset()
       return restored
+    },
+    canUndoCanonicalBackupRestore: async () => {
+      const owner = account()
+      const epoch = memory.accountEpoch()
+      const allowed = await migrator.canUndoBackupRestore(owner)
+      if (memory.accountEpoch() !== epoch || account() !== owner)
+        throw new Error('archive.error.auth')
+      return allowed
+    },
+    undoCanonicalBackupRestore: async () => {
+      const owner = account()
+      const epoch = memory.accountEpoch()
+      await migrator.undoBackupRestore(owner,
+        () => memory.accountEpoch() === epoch && account() === owner)
+      if (memory.accountEpoch() !== epoch || account() !== owner)
+        throw new Error('archive.error.auth')
+      reader.reset()
     },
     auditArchiveIntegrity: async () => {
       const owner = account()

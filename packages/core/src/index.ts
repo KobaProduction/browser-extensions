@@ -3,6 +3,10 @@ export type { TelemetryEvent, TelemetryEventName, TelemetrySink } from './teleme
 export type DeliveryTarget = 'userscript' | 'chromium'
 export type Capability = 'page-dom' | 'origin-storage' | 'local-files' | 'proxy-settings' | 'request-routing' | 'user-agent'
 export type FeatureId = string
+/** Browser shell events carry no chat data or provider-specific payloads. */
+export const SHELL_OPEN_FEATURE_EVENT = 'koba:open-feature'
+export const SHELL_CLOSE_EVENT = 'koba:close-shell'
+
 export interface FeatureContext {
   readonly target: DeliveryTarget
   readonly url: URL
@@ -13,6 +17,8 @@ export interface Feature {
   readonly id: FeatureId
   readonly title: string
   readonly description: string
+  /** Provider-independent view sizing; default is standard. */
+  readonly presentation?: { readonly panel: 'standard' | 'wide' }
   readonly match: (url: URL) => boolean
   readonly targets: readonly DeliveryTarget[]
   readonly requiredCapabilities: readonly Capability[]

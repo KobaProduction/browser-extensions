@@ -58,3 +58,40 @@ export async function createGzipFromBlob(
   } finally { reader.releaseLock() }
   return new Blob(parts, { type: 'application/gzip' })
 }
+
+/** Record identity is an archive concern, not a provider or UI concern. The
+ * last local update wins without reordering existing identities. */
+export function indexArchiveRecords<T>(
+  records: readonly T[],
+  identity: (record: T) => string | number,
+): Map<string | number, T> {
+  const indexed = new Map<string | number, T>()
+  for (const record of records) {
+    const id = identity(record)
+    if (typeof id !== 'string' && typeof id !== 'number')
+      throw new Error('Archive record requires a stable identity')
+    if (typeof id === 'number' && !Number.isSafeInteger(id))
+      throw new Error('Archive record identity is not a safe integer')
+    if (typeof id === 'string' && !id) throw new Error('Archive record identity is empty')
+    indexed.set(id, record)
+  }
+  return indexed
+}
+
+/** JSON tuple keys prevent delimiter collisions and are stable across targets. */
+export function archiveCompositeKey(...components: string[]): string {
+  if (components.some((value) => typeof value !== 'string'))
+    throw new Error('Archive key components must be strings')
+  return JSON.stringify(components)
+}
+
+/** SHA-256 is shared by ChatGPT source fingerprints and VK media receipts.
+ * Caller owns storage of hashes; this function never stores or logs bytes. */
+export async function archiveSha256Hex(bytes: ArrayBuffer | Uint8Array | string): Promise<string> {
+  const data = typeof bytes === 'string' ? new TextEncoder().encode(bytes)
+    : bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
+  const safeBytes: Uint8Array<ArrayBuffer> = data.buffer instanceof ArrayBuffer
+    ? data as Uint8Array<ArrayBuffer> : new Uint8Array(data)
+  const digest = await crypto.subtle.digest('SHA-256', safeBytes)
+  return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('')
+}

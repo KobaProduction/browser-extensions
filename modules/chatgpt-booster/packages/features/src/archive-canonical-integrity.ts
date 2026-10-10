@@ -1,3 +1,4 @@
+import { archiveCompositeKey } from '@kobaproduction/browser-archive'
 import { projectNativeMessage } from '@chatgpt-booster/core'
 import { legacyV3OwnerEvidence } from './archive-migration-plan'
 import { ARCHIVE_DB_NAME } from './archive-store'
@@ -5,7 +6,7 @@ import type { ArchiveV4Store } from './archive-v4-store'
 import { canonicalSourceJson, sourceFingerprint } from './archive-v4-write'
 
 type Row = Record<string, unknown>
-const key = (...parts: string[]) => JSON.stringify(parts)
+const key = archiveCompositeKey
 const object = (value: unknown): Row | null =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Row) : null
 const read = <T>(request: IDBRequest<T>): Promise<T> =>
