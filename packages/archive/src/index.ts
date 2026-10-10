@@ -139,3 +139,6 @@ export async function createGzipFromChunks(
   } finally { reader.releaseLock() }
   return new Blob(parts, { type: 'application/gzip' })
 }
+
+export { encodeArchiveClone, decodeArchiveClone } from './structured'
+export type { ArchiveCloneNode } from './structured'

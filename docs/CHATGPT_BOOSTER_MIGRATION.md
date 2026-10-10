@@ -179,18 +179,22 @@ All 232 applicable monorepo tests pass after this refactor.
 The Archive Maintenance tools now include a **separate** native v3/v4 source
 backup and import. It exports the original local JSON-compatible records from
 all available v3 and v4 source tables, including chats with unverified owners.
-The file stores the original account/owner metadata unchanged and does **not**
-implicitly authorize ownership or merge unrelated accounts. It excludes the
-canonical generation and original binary attachment bytes, which must be
-backed up using their respective workflows.
+The file stores original account/owner metadata unchanged and does **not**
+implicitly authorize ownership or merge unrelated accounts. Source transfer v2
+preserves structured IndexedDB values including Blob, File, ArrayBuffer,
+typed views, Date, Map, Set, explicit undefined and nonfinite numbers. The
+native *source database* is preserved; canonical generations and attachment
+files stored outside IndexedDB remain separate export workflows. Legacy v1
+JSON-only backups remain importable.
 
 The source format uses indexed bounded reads, shared streaming GZIP output and
 a complete SHA-256/footer/count verification pass before creating a missing v3
 source database or committing any records. Restore then runs a read-only
 conflict preflight on *all* existing rows before inserting only absent rows,
 rechecking conflicts atomically per row. A transfer interruption can be
-retried idempotently. Unsupported non-JSON typed/binary source records cause
-an explicit error rather than a falsely "complete" backup. This transfer is
+retried idempotently. Unsupported cyclic or arbitrary class instances cause an explicit error
+rather than silently degrading the backup; common structured clone types are
+round-tripped with collision-free type tags. This transfer is
 not an authenticated/signed source; users should only import backups they
 created or trust explicitly.
 

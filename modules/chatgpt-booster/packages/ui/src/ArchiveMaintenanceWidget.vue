@@ -378,8 +378,8 @@ onBeforeUnmount(() => { alive = false; ++requestId; unsubscribe?.() })
           <section class="booster-maintenance-section">
             <details class="booster-maintenance-backup-tools">
               <summary>{{ label('Исходные базы v3/v4: перенос между установками', 'Original v3/v4 databases: transfer between installations') }}</summary>
-              <p>{{ label('Отдельная сжатая копия всех локальных исходных JSON-записей v3/v4, включая диалоги с неподтверждённым владельцем. Указание владельца не меняется. Канонические поколения и бинарные файлы сохраняются отдельно.',
-                'Separate compressed backup of all local source JSON records, including unverified owners. No ownership is reassigned. Canonical generations and binary files are backed up separately.') }}</p>
+              <p>{{ label('Отдельная сжатая копия локальных исходных записей v3/v4, включая сохранённые Blob и диалоги с неподтверждённым владельцем. Владельцы не меняются; канонические поколения и файлы во внешних папках сохраняются отдельно.',
+                'Separate compressed backup of local source v3/v4 records, including stored Blob values and unverified owners. No ownership is reassigned. Canonical generations and files in external folders are backed up separately.') }}</p>
               <button type="button" class="booster-action-secondary" :disabled="busy || !archiveAdapter.exportNativeSourceBackup"
                 @click="saveNativeSourceBackup">{{ label('Сохранить исходные записи .gz', 'Save original source records .gz') }}</button>
               <div class="booster-maintenance-backup-restore">

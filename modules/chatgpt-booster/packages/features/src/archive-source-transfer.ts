@@ -1,15 +1,16 @@
-import { archiveSha256Hex, createGzipFromChunks } from '@kobaproduction/browser-archive'
+import { archiveSha256Hex, createGzipFromChunks, encodeArchiveClone, decodeArchiveClone } from '@kobaproduction/browser-archive'
 import { ARCHIVE_DB_NAME, ARCHIVE_DB_VERSION, ConversationArchiveStore } from './archive-store'
 import { ARCHIVE_V4_DB_NAME, type ArchiveV4Store } from './archive-v4-store'
 
-const VERSION = 'booster-native-source-transfer-v1'
+const VERSION = 'booster-native-source-transfer-v2'
+const LEGACY_VERSION = 'booster-native-source-transfer-v1'
 const SOURCE_STORES = {
   v3: ['conversations', 'messages', 'conversationPages', 'conversationCoverage',
     'projects', 'assets', 'preloadPages'],
   v4: ['projects', 'conversations', 'messages', 'metadata'],
 } as const
 export type SourceKind = keyof typeof SOURCE_STORES
-type RecordRow = { kind: 'record'; source: SourceKind; table: string; value: Record<string, unknown> }
+type RecordRow = { kind: 'record'; source: SourceKind; table: string; value: unknown; encoding?: 'structured' }
 type DataRow = Record<string, unknown>
 type Totals = Record<string, number>
 const read = <T>(request: IDBRequest<T>): Promise<T> => new Promise((resolve, reject) => {
@@ -111,7 +112,7 @@ export async function exportNativeSourceBackup(
     const records = async function* () {
       yield await encode({ kind: 'header', schema: VERSION, accountId: verifiedAccount,
         scope: 'all_local_sources_without_owner_rebinding', v3Version: v3?.version ?? null,
-        includesCanonical: false, includesBinary: false })
+        includesCanonical: false, includesBinary: true })
       for (const [source, db] of [['v3', v3], ['v4', v4]] as const) {
         if (!db) continue
         for (const table of SOURCE_STORES[source]) {
@@ -119,7 +120,13 @@ export async function exportNativeSourceBackup(
           const name = `${source}/${table}`
           totals[name] = 0
           for await (const value of scan(db, table)) {
-            yield await encode({ kind: 'record', source, table, value } satisfies RecordRow)
+            let row: RecordRow = { kind: 'record', source, table, value }
+            try { assertJsonSafe(value) }
+            catch {
+              row = { kind: 'record', source, table, encoding: 'structured',
+                value: await encodeArchiveClone(value) }
+            }
+            yield await encode(row)
             totals[name]++
           }
         }
@@ -169,6 +176,7 @@ export async function importNativeSourceBackup(
       } finally { void reader.cancel().catch(() => undefined); reader.releaseLock() }
     }
     let digest = 'start', header = false, completed = false
+    let fileSchema: string | null = null
     const totals: Totals = {}
     await visit(async (row) => {
       if (completed) throw new Error('Unexpected data after native source footer')
@@ -179,22 +187,28 @@ export async function importNativeSourceBackup(
           Number.isSafeInteger(value) && (value as number) >= 0 &&
           (totals[name] ?? 0) === value,
         ) && Object.keys(totals).every(name => Object.hasOwn(declared, name))
-        if (!header || row.schema !== VERSION || row.checksum !== digest || !validCounts)
+        if (!header || row.schema !== fileSchema || row.checksum !== digest || !validCounts)
           throw new Error('Native source checksum or row counts do not match')
         completed = true
         return
       }
       digest = await archiveSha256Hex(digest + '\n' + JSON.stringify(row))
       if (row.kind === 'header') {
-        if (header || row.schema !== VERSION || row.accountId !== accountId ||
-            row.scope !== 'all_local_sources_without_owner_rebinding' || row.includesCanonical !== false)
+        if (header || (row.schema !== VERSION && row.schema !== LEGACY_VERSION) ||
+            row.accountId !== accountId || row.scope !== 'all_local_sources_without_owner_rebinding' ||
+            row.includesCanonical !== false)
           throw new Error('Native source backup account or schema differs')
+        fileSchema = row.schema as string
         header = true
         return
       }
       if (!header || row.kind !== 'record' || !allowed(row.source, row.table))
         throw new Error('Invalid native source backup table')
-      assertJsonSafe(row.value)
+      if (row.encoding === 'structured') {
+        if (fileSchema !== VERSION) throw new Error('Unsupported native source encoding')
+        record(decodeArchiveClone(row.value))
+      } else if (row.encoding !== undefined) throw new Error('Unknown native source encoding')
+      else assertJsonSafe(row.value)
       const name = `${row.source}/${row.table}`
       totals[name] = (totals[name] ?? 0) + 1
     })
@@ -219,7 +233,7 @@ export async function importNativeSourceBackup(
       const storeName = row.table as string
       if (!db || !db.objectStoreNames.contains(storeName))
         throw new Error('Source store is unavailable in this browser')
-      const value = record(row.value)
+      const value = record(row.encoding === 'structured' ? decodeArchiveClone(row.value) : row.value)
       const path = db.transaction(storeName, 'readonly').objectStore(storeName).keyPath
       if (typeof path !== 'string' || !Object.hasOwn(value, path))
         throw new Error('Source record identity missing')
@@ -231,9 +245,16 @@ export async function importNativeSourceBackup(
       const previous = await read<unknown>(db.transaction(storeName, 'readonly')
         .objectStore(storeName).get(key))
       if (previous !== undefined) {
-        assertJsonSafe(previous)
-        if (JSON.stringify(previous) !== JSON.stringify(value))
-          throw new Error('Existing native source differs; refusing overwrite')
+        let identical: boolean
+        try {
+          assertJsonSafe(previous)
+          assertJsonSafe(value)
+          identical = JSON.stringify(previous) === JSON.stringify(value)
+        } catch {
+          identical = JSON.stringify(await encodeArchiveClone(previous)) ===
+            JSON.stringify(await encodeArchiveClone(value))
+        }
+        if (!identical) throw new Error('Existing native source differs; refusing overwrite')
       }
     }
     try {
@@ -248,10 +269,14 @@ export async function importNativeSourceBackup(
         const table = tx.objectStore(storeName)
         const previous = await read<unknown>(table.get(key))
         if (previous !== undefined) {
-          assertJsonSafe(previous)
-          if (JSON.stringify(previous) !== JSON.stringify(value)) {
-            tx.abort()
-            throw new Error('Existing native source differs; refusing overwrite')
+          // Binary/structured equality was verified for the entire file before
+          // any write. Never overwrite a newer existing source row here.
+          if (row.encoding !== 'structured') {
+            assertJsonSafe(previous)
+            if (JSON.stringify(previous) !== JSON.stringify(value)) {
+              tx.abort()
+              throw new Error('Existing native source differs; refusing overwrite')
+            }
           }
           result.identical++
         } else {

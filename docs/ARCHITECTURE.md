@@ -84,7 +84,7 @@ VK v2 folder files nor ChatGPT v3/v4 IDB schema is rewritten by this stage.
 
 The native ChatGPT source-transfer adapter in
 `modules/chatgpt-booster/packages/features/src/archive-source-transfer.ts`
-reads and restores historical v3/v4 **JSON-compatible local source tables**
+reads and restores historical v3/v4 structured-clone source tables
 without rebinding legacy owners. Shared archive infrastructure provides
 streaming GZIP and checksums; browser IndexedDB schemas stay provider-owned.
 A verified canonical backup is an independent, explicit artifact. Neither
