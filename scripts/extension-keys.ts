@@ -1,0 +1,12 @@
+/** Public RSA keys for stable, distinct unpacked DEV Chrome extension IDs.
+ * Only public keys are shipped. PROD keeps existing path-derived Chrome IDs
+ * until separately authorized migration, preserving installed extension data.
+ */
+export const devExtensionPublicKeys: Readonly<Record<string, string>> = {
+  'vk-booster':
+    'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu/JxNjKy9HPhWWnWfhHqDxUv9pS+GUFzJZ9t32/APTWLBd7iTdUS8SSvDFIlovrJ6SMupUNyzwmV1JLbAedP/rNj7m10+H/rKQk5UmXfPG9QtiP6DthYeJCsrm9GEPO2nfUrBhLWjuXqdD5RoKz5zXxZZ0NppX9Xlz0HHI5B8Uq1omXouYjKE3P7Dcri+iiTK/b/Hy02yVOODwa4ZGqBnz2W0whBIpBiyN4GqzfbkwPIp0jDqpXXcd6dgjUOPx6ysUN57rtBrumAQQ0URIABndzfke3ez6EWT03JU0QqoSp7NXfqyB1gAeCAK48EtMs18IvP7+p6gIgzqvaJQOORNwIDAQAB',
+  'chatgpt-booster':
+    'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5WQVG8DRSk/eWPhxDejgDb9Q3QUMs6j+pEgCcgagXsJpMYB/IsxPwEPrJ2kL/kzxH2NZ+DexZMBtiSefVHT7U/p4TehRIJJ1I9Ex4YhANB3IxvMGWudeiCvXwu2qoF/cQcZ+DtYz+25N3OCfhjZeHM1GNbq1fWB7Fv7K+VAVI2XkHFfpZuUkE6N2bZ3AuvkhHBhpf4XcvcFXcpqeCAXB7ymFqy8LdUvwZ2HPXrJA1rx+WYnKFAIucQDYRrJDfePQdEe+jV+rgnc8zBvfeQEPdNQmQNjdWNoFXJC6zFknnftHb3YlTYfiiIstdF2dlpXkoV7kMfIHI5TqpvOcbi+YZwIDAQAB',
+  'all-in-one':
+    'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2rennAz1WbR/YaGDi7foDOO2bk+Bts1XokwJPQXJNFCVdbCsjWPpUKhWvzKpshvohChKq2JkJ1VG8K8s24qXTySO99++rJir0J0FKk8QCziGH7EORITCVTfJC6ueNOEUpIv0cx8dEvKs0bVv+sCQU9Qg3Mjqz2qnXjpZi8nBFfTcU+Xq4NNFLcZNbT2XVu8ZTiBuQl9C798mxRDMGUh19o/Z9cc+CIymYG/CBBeJ6uO3XxCt3XaDmvZvQOzVOI2urKfh06JylKUh7qjX7jrGkcPwDlvN54yNUtAD7xgpwJoBF4EeOfPf0+Pp5UoL5Zi2k9g1zcV0y1pCIVM+m7PnvwIDAQAB',
+}

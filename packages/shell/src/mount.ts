@@ -1,4 +1,4 @@
-import type { FeatureRuntime } from '@kobaproduction/browser-core'
+import { type FeatureRuntime, instanceKey } from '@kobaproduction/browser-core'
 import { type App, type Component, createApp, h } from 'vue'
 import Overlay from './Overlay.vue'
 import styles from './styles.css?inline'
@@ -16,9 +16,9 @@ export interface ControlCenter {
 }
 
 export function mountControlCenter(options: ControlCenterOptions): ControlCenter {
-  document.getElementById('koba-browser-tools-root')?.remove()
+  document.getElementById(instanceKey('koba-browser-tools-root'))?.remove()
   const host = document.createElement('div')
-  host.id = 'koba-browser-tools-root'
+  host.id = instanceKey('koba-browser-tools-root')
   host.style.cssText =
     'position:fixed!important;inset:0!important;width:0!important;height:0!important;z-index:2147483647!important;pointer-events:none!important;overflow:visible!important'
   const shadow = host.attachShadow({ mode: 'open' })

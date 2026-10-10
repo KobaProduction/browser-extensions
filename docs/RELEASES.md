@@ -1,3 +1,7 @@
+# DEV / PROD independent releases
+
+See [DEV/PROD channels and simultaneous installation contract](DEV_PROD_CHANNELS.md).
+
 # Zoomies CI and selective releases
 
 `main` and trusted same-repository PRs run `zoomies-linux-x64` (matching ChatGPT Booster). Fork and Dependabot PRs run on GitHub's `ubuntu-latest` runner. `bun run check` verifies types/tests/contracts. The build impact graph builds only affected distributables:

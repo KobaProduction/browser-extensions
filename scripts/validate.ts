@@ -1,5 +1,7 @@
 import { manifest } from './catalog'
 import { changedModules } from './changed'
+import { channelVersion, chromeVersion, releaseChannel, userscriptChannelUrl } from './channels'
+import { devExtensionPublicKeys } from './extension-keys'
 
 const ids = ['vk-booster', 'chatgpt-booster', 'proxy-switcher', 'all-in-one'] as const
 const capabilities = [
@@ -11,6 +13,12 @@ const capabilities = [
   'user-agent',
 ]
 const names = new Set<string>()
+const channel = releaseChannel(process.argv.find((x) => x.startsWith('--channel='))?.split('=')[1])
+const run = Number(
+  process.argv.find((x) => x.startsWith('--build-number='))?.split('=')[1] ??
+    process.env.GITHUB_RUN_NUMBER ??
+    '1',
+)
 for (const id of ids) {
   const m = await manifest(id)
   if (m.id !== id || names.has(m.id) || !/^[a-z][a-z0-9-]+$/.test(m.id))
@@ -37,20 +45,15 @@ if (process.argv.includes('--built'))
     const user = await Bun.file(`${root}/${id}.user.js`).text()
     if (
       !user.startsWith('// ==UserScript==') ||
-      !user.includes(`// @version      ${m.version}`) ||
+      !user.includes(`// @version      ${channelVersion(m.version, channel, run)}`) ||
       !user.includes('GM_registerMenuCommand')
     )
       throw Error('Invalid userscript: ' + id)
-    if (m.release) {
-      if (
-        !user.includes(
-          `@updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/distribution/userscripts/${id}.user.js`,
-        ) ||
-        !user.includes('@downloadURL')
-      )
-        throw Error('Released module lost update channel: ' + id)
-    } else if (user.includes('// @updateURL') || user.includes('// @downloadURL'))
-      throw Error('Experimental module advertises an unapproved update channel: ' + id)
+    if (
+      !user.includes(`// @updateURL    ${userscriptChannelUrl(id, channel)}`) ||
+      !user.includes(`// @downloadURL  ${userscriptChannelUrl(id, channel)}`)
+    )
+      throw Error('Incorrect ' + channel + ' update channel: ' + id)
     if (
       id === 'chatgpt-booster' &&
       (!user.includes('// @match        https://chatgpt.com/*') ||
@@ -65,7 +68,10 @@ if (process.argv.includes('--built'))
     const chrome = await Bun.file(`${root}/extension/manifest.json`).json()
     if (
       chrome.manifest_version !== 3 ||
-      chrome.version !== m.version ||
+      chrome.version !== chromeVersion(m.version, channel, run) ||
+      chrome.version_name !== channelVersion(m.version, channel, run) ||
+      (channel === 'dev' && chrome.key !== devExtensionPublicKeys[id]) ||
+      (channel === 'prod' && Boolean(chrome.key)) ||
       chrome.permissions.includes('proxy')
     )
       throw Error('Invalid extension manifest: ' + id)

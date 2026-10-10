@@ -1,0 +1,50 @@
+name: Continuous dev prereleases
+on:
+  workflow_run:
+    workflows: ['Validate modules (Zoomies)']
+    types: [completed]
+permissions:
+  contents: write
+concurrency:
+  group: browser-extension-dev-channel
+  cancel-in-progress: false
+jobs:
+  dev:
+    # Only verified, repository-owned main commits are allowed to advance dev.
+    # Never publish unreviewed fork/PR code with a privileged release token.
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'push' &&
+          github.event.workflow_run.head_branch == 'main' &&
+          github.event.workflow_run.head_repository.full_name == github.repository }}
+    runs-on: zoomies-linux-x64
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with: {bun-version: '1.4.2'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: bun install --frozen-lockfile
+      - name: Publish affected products only to dev (prerelease)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_SHA: ${{ github.event.workflow_run.head_sha }}
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          while IFS='|' read -r id version; do
+            test -n "$id" || continue
+            bun scripts/build.ts --module="$id" --channel=dev --build-number="$BUILD_NUMBER"
+            bun scripts/validate.ts --built --module "$id" --channel=dev --build-number="$BUILD_NUMBER"
+            tag="$id/v$version-dev.$BUILD_NUMBER"
+            if ! gh release view "$tag" >/dev/null 2>&1; then
+              gh release create "$tag" "dist/$id/$id.user.js" "dist/$id/$id-extension.zip"                 --prerelease --target "$GITHUB_SHA" --title "$id v$version-dev.$BUILD_NUMBER"                 --notes "Continuous dev build from validated source $GITHUB_SHA"
+            fi
+            bash scripts/publish-channel.sh "$id" dev
+          done < <(bun scripts/channel-plan.ts "--base=${GITHUB_SHA}^" "--head=$GITHUB_SHA")

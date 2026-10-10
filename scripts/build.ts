@@ -6,8 +6,16 @@ import vue from '@vitejs/plugin-vue'
 import ts from 'typescript'
 import { build as viteBuild } from 'vite'
 import { buildChatGptModule } from './build-chatgpt'
-import { manifest, userscriptChannelUrl } from './catalog'
+import { manifest } from './catalog'
 import { changedModules } from './changed'
+import {
+  channelIdentity,
+  channelVersion,
+  chromeVersion,
+  releaseChannel,
+  userscriptChannelUrl,
+} from './channels'
+import { devExtensionPublicKeys } from './extension-keys'
 
 const root = resolve(import.meta.dir, '..')
 process.chdir(root)
@@ -16,6 +24,13 @@ const requested =
   process.argv.slice(2).find((_x, i, arr) => arr[i - 1] === '--module') ??
   'all'
 const target = process.argv.find((a) => a.startsWith('--target='))?.split('=')[1] ?? 'both'
+const channel = releaseChannel(process.argv.find((a) => a.startsWith('--channel='))?.split('=')[1])
+const run = Number(
+  process.argv.find((a) => a.startsWith('--build-number='))?.split('=')[1] ??
+    process.env.GITHUB_RUN_NUMBER ??
+    '1',
+)
+let currentProduct: string | null = null
 const ids =
   requested === 'all'
     ? ['vk-booster', 'chatgpt-booster', 'all-in-one']
@@ -49,6 +64,9 @@ async function viteBundle(
       'process.env': '{}',
       __BOOSTER_BUILD_VERSION__: JSON.stringify(productVersion ?? ''),
       __BOOSTER_BUILD_SHA__: JSON.stringify(process.env.GITHUB_SHA ?? ''),
+      __BOOSTER_INSTANCE_SCOPE__: JSON.stringify(
+        currentProduct ? channelIdentity(currentProduct, channel) : '',
+      ),
     },
     build: {
       outDir: dir,
@@ -136,10 +154,11 @@ if (requested === 'packages') {
   process.exit(0)
 }
 for (const id of ids) {
+  currentProduct = id
   const info = await manifest(id)
   if (!info.release) throw Error('Module ' + id + ' is not releasable')
   if (id === 'chatgpt-booster') {
-    await buildChatGptModule(root, target, info.version, viteBundle)
+    await buildChatGptModule(root, target, info.version, viteBundle, channel, run)
     continue
   }
   const dir = join(root, 'dist', id)
@@ -158,12 +177,13 @@ for (const id of ids) {
       [],
       id === 'all-in-one' ? (await manifest('chatgpt-booster')).version : undefined,
     )
-    const url = userscriptChannelUrl(id)
+    const url = userscriptChannelUrl(id, channel)
     const header = [
       '// ==UserScript==',
-      '// @name         ' + info.name,
-      '// @namespace    https://github.com/KobaProduction/browser-extensions',
-      '// @version      ' + info.version,
+      '// @name         ' + info.name + (channel === 'dev' ? ' [DEV]' : ''),
+      '// @namespace    https://github.com/KobaProduction/browser-extensions' +
+        (channel === 'dev' ? '/dev/' + id : ''),
+      '// @version      ' + channelVersion(info.version, channel, run),
       '// @description  Koba Browser Tools / ' + info.name,
       '// @homepageURL   https://github.com/KobaProduction/browser-extensions',
       '// @updateURL    ' + url,
@@ -211,8 +231,10 @@ for (const id of ids) {
     if (!popup.success || !popupOutput) throw Error('Popup build failed')
     await writeFile(join(ext, 'popup.js'), await popupOutput.text())
     const base = JSON.parse(await readFile('apps/extension/src/manifest.json', 'utf8'))
-    base.version = info.version
-    base.name = info.name
+    base.version = chromeVersion(info.version, channel, run)
+    base.version_name = channelVersion(info.version, channel, run)
+    if (channel === 'dev') base.key = devExtensionPublicKeys[id]
+    base.name = info.name + (channel === 'dev' ? ' [DEV]' : '')
     await writeFile(join(ext, 'manifest.json'), JSON.stringify(base, null, 2) + '\n')
     await copyFile(join(root, 'apps/extension/src/popup.html'), join(ext, 'popup.html'))
     if (id === 'all-in-one') {

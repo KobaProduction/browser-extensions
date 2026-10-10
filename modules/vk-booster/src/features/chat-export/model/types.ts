@@ -1,3 +1,4 @@
+import { instanceKey } from '@kobaproduction/browser-core'
 import type { ArchiveManagerOptions } from '@kobaproduction/browser-widgets'
 
 export type ArchiveMode = 'recent' | 'incremental' | 'backfill'
@@ -82,6 +83,7 @@ export interface VkArchiveMeta {
   version: string
   peer_id: number
   updated: string
+  instance_scope?: string
   total: number
   checkpoint: VkCheckpoint | null
   files: Record<string, VkStoredFile>
@@ -169,5 +171,6 @@ declare global {
     | undefined
 }
 export function archiveApi(): ArchiveApi | undefined {
-  return globalThis.VKExport
+  const key = instanceKey('VKExport', 'vk-booster:prod')
+  return (globalThis as Record<string, unknown>)[key] as ArchiveApi | undefined
 }

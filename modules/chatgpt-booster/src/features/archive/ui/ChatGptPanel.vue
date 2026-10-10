@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { instanceKey } from '@kobaproduction/browser-core'
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { Archive, Download, Settings2 } from 'lucide-vue-next'
 import { SHELL_CLOSE_EVENT } from '@kobaproduction/browser-core'
@@ -33,7 +34,7 @@ function showArchive() { tab.value = 'archive' }
 function closePanel() { window.dispatchEvent(new Event(SHELL_CLOSE_EVENT)) }
 function showSettings() { tab.value = 'settings' }
 onMounted(() => {
-  const root = document.getElementById('koba-browser-tools-root')?.shadowRoot
+  const root = document.getElementById(instanceKey('koba-browser-tools-root'))?.shadowRoot
   if (root) installBoosterShadowStyles(root)
   window.addEventListener(OPEN_ARCHIVE_EVENT, showArchive)
   window.addEventListener(OPEN_SETTINGS_EVENT, showSettings)

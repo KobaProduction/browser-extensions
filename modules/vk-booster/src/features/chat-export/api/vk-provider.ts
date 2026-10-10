@@ -1,3 +1,4 @@
+import { instanceScope } from '@kobaproduction/browser-core'
 import type { ArchiveOptions, LegacyVkArchive, VkHistoryResponse, VkMessage } from '../model/types'
 
 type JsonRecord = Record<string, unknown>
@@ -114,7 +115,7 @@ export function createVkProvider(
       }
     }
     token = ''
-    const legacy = globalThis.VKArchive
+    const legacy = ['', 'vk-booster:prod'].includes(instanceScope()) ? globalThis.VKArchive : undefined
     if (legacy?.state().authenticated && legacy.state().peer_id === cfg.peerId) return true
     refresh()
     return false
@@ -125,7 +126,9 @@ export function createVkProvider(
       if (!isHistory(value)) throw Error('Неверный ответ истории')
       return value
     }
-    const legacy: LegacyVkArchive | undefined = globalThis.VKArchive
+    const legacy: LegacyVkArchive | undefined = ['', 'vk-booster:prod'].includes(instanceScope())
+      ? globalThis.VKArchive
+      : undefined
     if (!legacy?.state().authenticated) throw Error('Не найдена авторизация VK')
     const from = '1970-01-01',
       through = '2099-12-31'
