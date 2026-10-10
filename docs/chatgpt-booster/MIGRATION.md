@@ -5,7 +5,7 @@
 > version **2.0.5** with `release:true` and independent userscript/MV3
 > artifacts. All-in-one **0.5.4** includes both ChatGPT and VK. Real-user
 > installation/backup cutover and public release remain gated separately.
-> See [independent releases](INDEPENDENT_RELEASES.md) for current authority.
+> See [independent releases](../INDEPENDENT_RELEASES.md) for current authority.
 
 # ChatGPT Booster migration to Browser Extensions
 

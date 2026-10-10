@@ -77,7 +77,7 @@ ChatGPT IndexedDB names are preserved. The original standalone PROD account
 and database names remain unchanged by `instanceKey(..., 'chatgpt-booster:prod')`;
 DEV and all-in-one use their own storage namespaces and should not acquire
 or silently migrate PROD native messages. This shared-storage refactor is
-compatible with the channel matrix in [DEV_PROD_CHANNELS.md](DEV_PROD_CHANNELS.md).
+compatible with the channel matrix in [DEV_PROD_CHANNELS.md](../DEV_PROD_CHANNELS.md).
 Successful reviewed `main` CI may produce DEV prereleases through the new
 channel workflow; **PROD still requires explicit manual acceptance**.
 

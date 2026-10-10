@@ -2,8 +2,8 @@
 > ChatGPT Booster is now `modules/chatgpt-booster`; the older
 > `integrations/chatgpt-booster` tree remains a non-distributed refactor
 > reference. For the actual VK/ChatGPT merge decisions read
-> [INTEGRATION_RECONCILIATION.md](INTEGRATION_RECONCILIATION.md) and
-> [CHATGPT_BOOSTER_MIGRATION.md](CHATGPT_BOOSTER_MIGRATION.md).
+> [INTEGRATION_RECONCILIATION.md](../INTEGRATION_RECONCILIATION.md) and
+> [CHATGPT_BOOSTER_MIGRATION.md](MIGRATION.md).
 
 # ChatGPT Booster migration into Browser Extensions
 

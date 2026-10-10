@@ -88,7 +88,7 @@ The subsequent cross-provider `packages/storage` change intentionally bumps
 VK Booster 2.3.10, ChatGPT Booster 2.0.3 and all-in-one 0.5.2. This is a
 shared implementation change, not a VK-only or ChatGPT-only version bump.
 The independent rules for future provider-only changes remain unchanged.
-See [ARCHIVE_DECOMPOSITION.md](ARCHIVE_DECOMPOSITION.md).
+See [ARCHIVE_DECOMPOSITION.md](chatgpt-booster/ARCHIVE_DECOMPOSITION.md).
 
 ## Provider-only canonical decomposition milestone
 
