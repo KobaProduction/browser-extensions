@@ -1,1 +1,16 @@
-{"manifest_version":3,"name":"Koba Browser Tools","version":"0.1.0","description":"Modular browser tools with shared control center","permissions":["storage","activeTab"],"host_permissions":["https://vk.ru/*","https://vk.com/*","https://web.api.vk.ru/*"],"action":{"default_title":"Koba Browser Tools","default_popup":"popup.html"},"content_scripts":[{"matches":["https://vk.ru/im*","https://vk.com/im*"],"js":["content.js"],"run_at":"document_idle"}]}
+{
+  "manifest_version": 3,
+  "name": "Koba Browser Tools",
+  "version": "0.1.0",
+  "description": "Modular browser tools with shared control center",
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": ["https://vk.ru/*", "https://vk.com/*", "https://web.api.vk.ru/*"],
+  "action": { "default_title": "Koba Browser Tools", "default_popup": "popup.html" },
+  "content_scripts": [
+    {
+      "matches": ["https://vk.ru/im*", "https://vk.com/im*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

@@ -1,0 +1,198 @@
+# Architecture
+
+ChatGPT Booster is one codebase with two browser delivery targets.
+
+```text
+                 packages/ui
+                     |
+                     v
+extension ------> packages/core <------ userscript
+    |                                   |
+    +------------ chatgpt.com ----------+
+```
+
+## Packages
+
+### core
+
+Environment-neutral contracts:
+
+- runtime/module lifecycle;
+- settings model;
+- ChatGPT host detection.
+
+It must not depend on Chrome APIs or Tampermonkey APIs.
+
+### chatgpt
+
+DOM-facing adapters. This package is the only place where ChatGPT-specific selectors and extraction heuristics should live.
+
+### features
+
+Reusable feature modules shared by extension and userscript targets. Features depend on explicit adapters and UI mounts rather than querying ChatGPT DOM directly.
+
+### ui
+
+Vue 3 UI used by the browser targets. It also has a standalone Vite dev page for UI work without loading the extension. Injected page UI is mounted into a Shadow DOM root so ChatGPT styles do not leak into Booster and Booster styles do not leak into ChatGPT.
+
+### extension
+
+Chromium Manifest V3 target.
+
+Responsibilities:
+
+- content-script bootstrap on ChatGPT;
+- Chrome storage adapter;
+- extension popup/settings surface.
+
+It uses an isolated-world content script. MAIN-world injection is not used unless a future feature has a documented need for page-JavaScript access.
+
+### userscript
+
+Tampermonkey-compatible target.
+
+Responsibilities:
+
+- userscript metadata;
+- page bootstrap;
+- localStorage settings adapter.
+
+The userscript and extension use the same core/UI feature implementation.
+
+## Settings and in-page surfaces
+
+The Control Center remains one Vue component with two direct settings entry points:
+
+- Tampermonkey menu command opens the in-page settings surface;
+- Chromium action popup mounts the same Control Center component.
+
+The movable in-page launcher is intentionally one level shallower. Clicking it opens a compact current-chat quick panel with archive coverage, History Loader controls, an Archive Browser entry point and a settings gear. The launcher position remains persisted and viewport-clamped.
+
+The Archive Browser is a separate read-only surface. The active/session-buffer conversation view is served from `ConversationStateStore` immediately; persisted projects and historical conversations are hydrated from the local Conversation Archive IndexedDB and merged behind the same adapter. It can render message records including tool/reasoning/system records and expandable raw metadata. It must not expose composer, edit, delete or private-API mutation actions.
+
+Settings entry points must not fork Control Center behavior. Archive/quick surfaces may consume settings and archive adapters, but must not duplicate target-specific persistence logic.
+
+
+For the v4 archive source model, strict source-signature validation, local integration map and acceptance boundaries, see [Archive target architecture](ARCHIVE_TARGET_ARCHITECTURE.md). Local implementation does not imply rollout or acceptance; Issue #54 tracks those separately. The prior v3 behavior remains documented in [Conversation Archive](CONVERSATION_ARCHIVE.md).
+
+## Feature model
+
+Features register as small modules with explicit start/stop lifecycle. A feature should own only its injected DOM and subscriptions. Failure of one feature must not prevent unrelated features from starting.
+
+## ChatGPT integration
+
+For the implementation-facing runtime state machine, endpoint/event catalog and source-precedence rules, read `docs/CHATGPT_RUNTIME_CONTRACTS.md`; this architecture file keeps only ownership and invariants.
+
+The current foundation only depends on the page host and normal DOM capabilities. Future DOM selectors must live behind a ChatGPT adapter instead of being scattered across feature code.
+
+Live ChatGPT UI augmentation follows the same passive-interception rule as transport observation:
+
+- `packages/chatgpt` owns DOM signatures, target discovery and MutationObserver slot detection only;
+- `packages/features` owns decorator lifecycle, settings/archive-preload joins, deduplication and cleanup;
+- `packages/ui` owns reusable Shadow-DOM badges, top-layer popovers and interactive detail surfaces;
+- extension/userscript targets only instantiate the shared feature modules.
+
+Conversation decorators append Booster-owned controls to existing ChatGPT action rows. They must not replace native handlers, move message content, synthesize native actions or make host navigation depend on Booster. DOM mutations are treated as invalidation signals: the adapter rescans the affected turn and the feature layer updates or reuses its existing mount rather than duplicating controls.
+
+ChatGPT conversation renderers are versioned behind `ChatGptDomAdapter`. Renderer selection is capability-based from the observed DOM, never plan-name based. The currently supported contracts are `legacy-turn-v1` and `search-unit-v2`; message discovery, activity/tool targets, message bounds and scroll hints must remain behind that interface. See `docs/CHATGPT_DOM_ADAPTERS.md`.
+Live timing is source-derived, not stopwatch-derived. Request start comes from the user message `create_time`; before archive records exist, the same value is read from the outbound `/backend-api/f/conversation` payload, with the actual outbound transport boundary as the only fallback when `create_time` is absent. The preceding `/backend-api/f/conversation/prepare` call is preflight only: its `partial_query.id` can differ from the final message id and its timestamp must not start the request timer. A fresh outbound `/f/conversation` for the current conversation starts a new run and supersedes any older stale active run, even if an older rendered turn still says `in_progress`. Reasoning start/end comes from ChatGPT reasoning metadata or explicit reasoning records; tool duration comes from call/result source timestamps; response completion comes from final response source timestamps. DOM observers may determine current phase/state but must not invent timing boundaries with local observation time. One configurable shared ticker may use the current clock only to render open-ended deltas and evaluate alerts. UI components must not create their own periodic timers.
+
+### Live conversation state
+
+The current conversation is **memory-first**. `ConversationStateStore` is the authoritative live read model for the active page runtime. Normal ChatGPT initial/history payloads, outbound conversation-request boundaries, stop lifecycle events and DOM fallback records enter this in-memory store immediately. A new outbound conversation request must replace the previous active-run identity for that conversation before renderer reconciliation; stale older `in_progress` DOM must never overwrite a newer request generation. It maintains message-id and turn-id indexes so decorators, activity/tool inspection, History Loader and current-chat export do not wait for IndexedDB.
+
+The data flow is intentionally one-way at the live boundary:
+
+`ChatGPT transport / initial payload -> ConversationStateStore (RAM) -> live UI`
+
+`ConversationStateStore / captured pages -> optional async IndexedDB persistence`
+
+`IndexedDB -> async hydrate -> ConversationStateStore`
+
+Archive policy controls persistence, not live observation. Disabling automatic archive capture must not disable current-chat metadata, timers, tool inspection, History Loader evidence or export of data already present in RAM. IndexedDB is a persistence/history source and hydration fallback; it is not the synchronization bus for current UI. A newly observed record must be usable from RAM before any database transaction completes.
+
+Stop is a two-phase lifecycle. Sending the normal ChatGPT `POST /backend-api/stop_conversation` moves the memory state to `stop_requested`; the request remains live and its elapsed time continues. Only a successful response confirms `stopped` and supplies the completion boundary. A failed stop returns the lifecycle to `in_progress`. Live acceptance confirmed the native request body `{ conversation_id, exclude_async_types: [] }` and a successful `200 { status: "ok", last_message_id: null }` response for a stopped recovery turn. The current renderer exposed the native control as `button[aria-label="Остановить"]` without the older stop test IDs. After the successful stop acknowledgement, one final recovery request pair was observed (`stream_status` aborted while the paired conversation refresh returned `429`), then no further recovery polling appeared during the following ~30-second observation window. Native buttons and DOM disappearance are not authoritative stop confirmations: the affected turn remained `data-talvt-turn-state="in_progress"` for at least the follow-up observation window after the server-confirmed stop.
+
+Generation lifecycle and transport health are orthogonal. A native turn may remain `in_progress` after its realtime stream is no longer usable. Verified live evidence includes a native `Resume stream unavailable` alert while the turn remained `in_progress`, the Stop control was absent, the WebSocket path had failed, and `/backend-api/f/conversation/resume` returned `404`. A reload of the same conversation reproduced the deeper server/client state: the initial conversation payload returned `async_status=3` (`STREAMING` in the observed client enum), `/f/conversation/resume` returned `404` with `code="tokenless_resume_unavailable"`, and repeated `/conversation/{id}/stream_status` polls still returned `IS_STREAMING`. The same incident later exhausted the client's recovery error budget (`F >= 30`) after repeated paired polling failures/`429` refreshes and transitioned to the native generic `A network error occurred...` alert while the turn still remained `in_progress`. Consequently, `ConversationStateStore` must not model transport recovery as a synonym for run state. It needs separate server-async-status and transport-health/recovery state so `STREAMING + resume unavailable` is not presented as ordinary healthy generation. Recovery/reconnection/unavailable/failure evidence comes from the ChatGPT transport contracts (`/conversation/{id}/stream_status`, `/f/conversation/resume`, WebSocket lifecycle and completion recovery), while DOM status is only corroborating UI evidence. See `docs/CHATGPT_CLIENT_RESEARCH.md`.
+
+Safety review is another orthogonal source-driven state. The live client emits `safety_review_update` with `active`, `conversation_id`, a user-facing `message`, and `protection_type` (`bio` or `cyber` in the observed schema). An active review may coexist with a healthy `in_progress` generation and native Stop control. It is not equivalent to reasoning, transport recovery, failure or a moderation block. `ConversationStateStore` should retain this state separately and UI/alert behavior must key from the stream event rather than localized DOM copy.
+History Loader requests older loaded content through small browser-native upward `scrollBy` pulses. It must not depend on `scrollTop` sign/range, reversed flex layouts, focus, or synthetic wheel/key events; pagination coverage remains the authority for collection completion.
+
+## Security and privacy
+
+- host scope is limited to `https://chatgpt.com/*`;
+- no remote code execution;
+- no chat content telemetry;
+- private ChatGPT traffic may be observed only for explicitly documented read-only features; Booster must not synthesize private history requests for the Conversation Archive;
+- archived chat content remains local in IndexedDB unless a future user-controlled export feature explicitly moves it;
+- extension permissions stay minimal and are added only for concrete features.
+
+## Validation levels
+
+- source/type/lint checks;
+- build output validation;
+- browser runtime smoke test;
+- feature acceptance in current ChatGPT UI.
+
+CI currently covers the first two. Runtime acceptance remains a separate gate.
+
+## Internationalization
+
+User-facing UI strings use the shared UI i18n layer. English and Russian are mandatory locales. The stored language preference is `auto`, `en`, or `ru`; `auto` resolves from browser language, preferring Russian for `ru*` locales and English otherwise. Feature modules must pass the resolved locale into isolated UI mounts rather than hard-coding copy.
+
+## Transport observation and telemetry
+
+Transport interception runs in the page MAIN world and is isolated in `@chatgpt-booster/observer`. It observes fetch, XHR, WebSocket and EventSource without blocking or replacing application semantics. Cross-world events use `window.postMessage` with a Booster channel marker.
+
+General transport diagnostics are opt-in. The page-world hooks stay installed because archive/history observation uses the same HAL, but diagnostic event emission is disabled unless the Transport Observer setting is enabled. Archive capture does not require transport diagnostics to be enabled.
+
+Credentials are never exposed to the page observer. Request headers/cookies are not captured. URL and body previews are redacted before leaving the page world, body capture is disabled by default, and previews are truncated.
+
+Telemetry is exported as OTLP/HTTP JSON through `@chatgpt-booster/telemetry`. Resource identity is `service.name=chatgpt-booster-extension`, `service.namespace=koba`, with instrumentation scopes `chatgpt-booster.runtime` and `chatgpt-booster.transport-observer`. Tampermonkey sends through `GM_xmlhttpRequest`; Chromium sends through the extension background worker. Bearer tokens are stored in target-specific secret storage and are never passed into the MAIN world.
+
+## Settings persistence
+
+Settings changes are applied as atomic nested patches rather than replacing a potentially stale full settings object. Chromium writes are serialized by the background service worker so persistence survives action-popup teardown; storage changes remain the live notification path for page modules. Tampermonkey applies the same patch contract synchronously to local storage and emits the existing settings-change event.
+
+## Development builds
+
+The production userscript is minified. The development userscript is emitted without JavaScript minification. A `.map` artifact is kept and published for offline debugging, but the finalized development userscript intentionally omits `sourceMappingURL` so ChatGPT CSP does not turn the debug aid into console noise. Chromium extension builds keep sourcemaps for runtime debugging.
+
+Rolling `dev` versions are monotonic per push. Package/manifest sources keep the series baseline (`0.8.0`), while `.github/workflows/rolling-dev.yml` derives `0.8.N` from the commit count after the fixed `version-series.json` base commit and injects that exact version into the extension manifest, userscript metadata, runtime UI and release metadata. Git SHA remains a separate diagnostic field and is not part of the displayed version.
+
+## Analytics persistence
+
+Transport hooks are installed for the lifetime of the page runtime. The observer enable switch controls whether events are consumed, counted, or exported; disabling it does not remove the underlying fetch/XHR/WebSocket/EventSource wrappers. Current-tab counters remain in memory. All-time counters use a separate persistent diagnostics adapter (`chrome.storage.local` through the Chromium background worker, local storage for the userscript) and are displayed in the Analytics settings section.
+
+The settings UI stores its active section and disclosure state alongside other settings. Telemetry endpoint configuration is user-provided; there is no project-specific default endpoint.
+## Conversation Archive
+
+The Conversation Archive is a local IndexedDB subsystem that records conversation/history data already fetched by the normal ChatGPT client. Lossless raw records are stored alongside normalized indexes for messages, turns, branches and coverage. The History Loader may drive normal UI scrolling to cause ChatGPT itself to load older pages, but it must not construct or send private history requests. See `docs/CONVERSATION_ARCHIVE.md` and `docs/CHATGPT_CLIENT_RESEARCH.md`.
+
+
+## Current docked archive/toolkit contract
+
+The launcher uses an edge (`left`/`right`) and a vertical fraction of available height,
+not saved screen pixels. Expansion keeps the toggle fixed and grows one integrated
+shell toward available space. It does not resize ChatGPT. Modal settings, archive and
+export surfaces remain Shadow-DOM isolated.
+
+`core/archive.ts` owns capture/export contracts. `chatgpt/archive-records.ts` derives
+visible replies, nested records and exchange grouping without changing raw identity.
+`features/archive-coverage.ts` requires a fresh initial read plus linked continuation
+cursors; reaching the top or retaining an old complete flag is insufficient.
+
+Automatic archive capture is opt-in by project/chat. A manual ticket temporarily enables
+only one current-tab conversation, retaining the user's selected record categories.
+Consent is rechecked after asynchronous database reads and before puts. Revoking a rule
+does not delete existing data. Project IDs remain relation keys, not display labels.
+Settings schema 7 is distinct from archive IndexedDB version 3. The archive database currently contains `conversations`, `messages`, `conversationPages`, `conversationCoverage`, `projects`, `assets`, and legacy-compatible `preloadPages`; new live preload pages remain in `ConversationStateStore` rather than being written there. Legacy archive version 1 is never silently erased during upgrade.
+
+JSON/Markdown export is a projection: basic mode must not serialize internal storage
+metadata or nested records. Configurable mode includes only selected categories; binary
+images/files are off by default. Full packaging may include attachment bytes only from a
+validated ChatGPT `backend-api/estuary/content` URL already observed by the normal client.
+Missing, expired, size-mismatched, or failed assets remain explicit in `manifest.json`; a
+package is complete only when history, capture, and requested assets are all verified.
+Manual collection runs in-place and refuses to start while there is a draft, pending
+composer attachment, or active generation.
