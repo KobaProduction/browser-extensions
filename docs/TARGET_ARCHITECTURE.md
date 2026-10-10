@@ -298,6 +298,9 @@ installed extension is intentionally deferred to the post-relocation phase.
 This does **not** authorize a released update, destroying the previous
 extension's IndexedDB profile, deleting the standalone ChatGPT Booster
 repository, or claiming that installed-user data has been migrated.
-`modules/chatgpt-booster/module.json` remains `release:false` until the
-separately verified product cutover. Historical v3/v4 raw rows, quarantine and
+The source integration originally kept ChatGPT at `release:false`.
+Subsequent release-system work enables independent ChatGPT Booster 2.0.1
+builds and tags, with actual public distribution still protected by manual
+workflow approval and installed-product acceptance. This change does not
+migrate existing user profiles or authorize automatic upgrades. Historical v3/v4 raw rows, quarantine and
 canonical backup remain preserved until those later gates are satisfied.

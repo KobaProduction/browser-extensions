@@ -137,7 +137,7 @@ if (requested === 'packages') {
 }
 for (const id of ids) {
   const info = await manifest(id)
-  if (!info.release && id !== 'chatgpt-booster') throw Error('Module ' + id + ' is not releasable')
+  if (!info.release) throw Error('Module ' + id + ' is not releasable')
   if (id === 'chatgpt-booster') {
     await buildChatGptModule(root, target, info.version, viteBundle)
     continue
@@ -150,7 +150,14 @@ for (const id of ids) {
       'apps/userscript/src',
       id === 'vk-booster' ? 'vk-booster.ts' : 'all-in-one.ts',
     )
-    const output = await viteBundle(src, join(dir, '_userscript'), 'bundle.js')
+    const output = await viteBundle(
+      src,
+      join(dir, '_userscript'),
+      'bundle.js',
+      'iife',
+      [],
+      id === 'all-in-one' ? (await manifest('chatgpt-booster')).version : undefined,
+    )
     const url = userscriptChannelUrl(id)
     const header = [
       '// ==UserScript==',
@@ -163,8 +170,18 @@ for (const id of ids) {
       '// @downloadURL  ' + url,
       '// @match        https://vk.ru/im*',
       '// @match        https://vk.com/im*',
-      '// @run-at       document-idle',
+      ...(id === 'all-in-one' ? ['// @match        https://chatgpt.com/*'] : []),
+      '// @run-at       ' + (id === 'all-in-one' ? 'document-start' : 'document-idle'),
       '// @grant        GM_registerMenuCommand',
+      ...(id === 'all-in-one'
+        ? [
+            '// @grant        GM_getValue',
+            '// @grant        GM_setValue',
+            '// @grant        GM_xmlhttpRequest',
+            '// @grant        unsafeWindow',
+            '// @connect      *',
+          ]
+        : []),
       '// @sandbox      raw',
       '// ==/UserScript==',
       '',
@@ -175,13 +192,18 @@ for (const id of ids) {
     const ext = join(dir, 'extension')
     await mkdir(ext, { recursive: true })
     const content = await viteBundle(
-      join(root, 'apps/extension/src/content.ts'),
+      join(root, 'apps/extension/src', id === 'all-in-one' ? 'all-in-one-content.ts' : 'content.ts'),
       join(dir, '_content'),
       'bundle.js',
+      'iife',
+      [],
+      id === 'all-in-one' ? (await manifest('chatgpt-booster')).version : undefined,
     )
     await writeFile(join(ext, 'content.js'), content)
     const popup = await Bun.build({
-      entrypoints: [join(root, 'apps/extension/src/popup.ts')],
+      entrypoints: [
+        join(root, 'apps/extension/src', id === 'all-in-one' ? 'all-in-one-popup.ts' : 'popup.ts'),
+      ],
       target: 'browser',
       format: 'esm',
     })
@@ -193,6 +215,42 @@ for (const id of ids) {
     base.name = info.name
     await writeFile(join(ext, 'manifest.json'), JSON.stringify(base, null, 2) + '\n')
     await copyFile(join(root, 'apps/extension/src/popup.html'), join(ext, 'popup.html'))
+    if (id === 'all-in-one') {
+      base.host_permissions.push('https://chatgpt.com/*')
+      base.permissions.push('scripting')
+      base.optional_host_permissions = ['https://*/*']
+      base.content_scripts.push(
+        {
+          matches: ['https://chatgpt.com/*'],
+          js: ['observer.js'],
+          run_at: 'document_start',
+          world: 'MAIN',
+        },
+        { matches: ['https://chatgpt.com/*'], js: ['content.js'], run_at: 'document_start' },
+      )
+      base.background = { service_worker: 'background.js', type: 'module' }
+      // MV3 observer/background are the same domain adapter used by the
+      // standalone ChatGPT extension, never a fork of archive business logic.
+      await viteBundle(
+        join(root, 'modules/chatgpt-booster/packages/extension/src/observer/index.ts'),
+        join(dir, '_observer'),
+        'bundle.js',
+        'iife',
+        [],
+        (await manifest('chatgpt-booster')).version,
+      )
+      await copyFile(join(dir, '_observer', 'bundle.js'), join(ext, 'observer.js'))
+      await viteBundle(
+        join(root, 'modules/chatgpt-booster/packages/extension/src/background/index.ts'),
+        join(dir, '_background'),
+        'bundle.js',
+        'es',
+        [],
+        (await manifest('chatgpt-booster')).version,
+      )
+      await copyFile(join(dir, '_background', 'bundle.js'), join(ext, 'background.js'))
+      await writeFile(join(ext, 'manifest.json'), JSON.stringify(base, null, 2) + '\n')
+    }
     const child = spawn('zip', ['-q', '-r', '../' + id + '-extension.zip', '.'], {
       cwd: ext,
       stdio: 'inherit',

@@ -1,6 +1,6 @@
 {
   "name": "@chatgpt-booster/observer",
-  "version": "0.8.0",
+  "version": "2.0.1",
   "private": true,
   "type": "module",
   "exports": {

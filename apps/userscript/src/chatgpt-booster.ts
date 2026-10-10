@@ -3,7 +3,6 @@ import { installTransportObserver } from '@chatgpt-booster/observer'
 import { createSettingsStore } from '@kobaproduction/browser-adapters'
 import { FeatureSettings } from '@kobaproduction/browser-core'
 import { createChatGptBoosterFeature } from '@kobaproduction/module-chatgpt-booster'
-import ChatGptPanel from '@kobaproduction/module-chatgpt-booster/ui'
 import { userscriptAnalytics } from '../../../modules/chatgpt-booster/packages/userscript/src/analytics'
 import { userscriptSettings } from '../../../modules/chatgpt-booster/packages/userscript/src/settings'
 import {
@@ -11,10 +10,12 @@ import {
   createUserscriptTelemetryControl,
   userscriptSecrets,
 } from '../../../modules/chatgpt-booster/packages/userscript/src/telemetry'
-import { bootstrapUserscript } from './runtime'
 
 declare const unsafeWindow: Window
-if (isChatGptPage()) {
+/** One delivery adapter for the standalone ChatGPT script and all-in-one.
+ * Creating it is allowed only on chatgpt.com; capture follows feature enablement. */
+export function createChatGptUserscriptFeature() {
+  if (!isChatGptPage()) throw new Error('ChatGPT feature requested on the wrong origin')
   const bridge = (typeof unsafeWindow !== 'undefined' ? unsafeWindow : window) as Window &
     typeof globalThis
   // Install observation before DOMContentLoaded; saved history must never wait
@@ -47,5 +48,5 @@ if (isChatGptPage()) {
         error instanceof Error ? error.name : 'unknown',
       ),
     )
-  bootstrapUserscript([feature], 'ChatGPT Booster', { 'chatgpt-booster': ChatGptPanel })
+  return feature
 }

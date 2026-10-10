@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import allInOne from '../apps/all-in-one.json' with { type: 'json' }
 export interface ModuleManifest {
   id: string
   name: string
@@ -17,25 +18,64 @@ export async function manifest(id: string): Promise<ModuleManifest> {
   return JSON.parse(await readFile(new URL('../' + path, import.meta.url), 'utf8')) as ModuleManifest
 }
 export function scopeFor(id: string): string[] {
+  const shared = ['packages/', 'scripts/', 'package.json', 'bun.lock']
   return id === 'all-in-one'
-    ? ['apps/', 'modules/vk-booster/', 'packages/', 'scripts/', 'package.json', 'bun.lock']
-    : ['modules/' + id + '/', 'packages/', 'scripts/', 'package.json', 'bun.lock']
+    ? ['apps/', ...allInOne.dependencies.map((dependency) => `modules/${dependency}/`), ...shared]
+    : [`modules/${id}/`, ...shared]
 }
+/** Only product-owned sources should bump product semver. Changes to shared
+ * implementation code affect all direct consumers; docs/CI alone never do. */
+export function impactedProductVersions(paths: readonly string[]): string[] {
+  const shared = paths.some(
+    (path) =>
+      path.startsWith('packages/') ||
+      path === 'tsconfig.json' ||
+      path === 'bun.lock' ||
+      path === 'package.json' ||
+      path === 'scripts/build.ts',
+  )
+  const vk =
+    shared ||
+    paths.some(
+      (path) =>
+        path.startsWith('modules/vk-booster/') ||
+        path === 'apps/userscript/src/vk-booster.ts' ||
+        path === 'apps/extension/src/content.ts',
+    )
+  const chatgpt =
+    shared ||
+    paths.some(
+      (path) =>
+        path.startsWith('modules/chatgpt-booster/') ||
+        /^apps\/(?:userscript|extension)\/src\/chatgpt[-.]/.test(path) ||
+        path === 'scripts/build-chatgpt.ts',
+    )
+  const aggregator =
+    shared ||
+    paths.some(
+      (path) =>
+        path === 'apps/all-in-one.json' ||
+        path === 'apps/userscript/src/all-in-one.ts' ||
+        path === 'apps/extension/src/all-in-one-content.ts' ||
+        path === 'apps/extension/src/all-in-one-popup.ts' ||
+        path === 'apps/extension/src/manifest.json',
+    ) ||
+    (vk && allInOne.dependencies.includes('vk-booster')) ||
+    (chatgpt && allInOne.dependencies.includes('chatgpt-booster'))
+  return ['vk-booster', 'chatgpt-booster', 'all-in-one'].filter((id) =>
+    id === 'vk-booster' ? vk : id === 'chatgpt-booster' ? chatgpt : aggregator,
+  )
+}
+/** Build impact includes catalog, tooling and manifest changes; product
+ * version impact above is intentionally narrower to avoid unrelated bumps. */
 export function affectedModules(paths: string[]): ModuleId[] {
   const universal = paths.some((p) =>
     /^(packages\/|scripts\/|package\.json$|bun\.lock$|tsconfig\.json$|\.github\/)/.test(p),
   )
-  const vk = paths.some((p) => p.startsWith('modules/vk-booster/'))
-  const chatgpt = paths.some((p) => p.startsWith('modules/chatgpt-booster/'))
-  const proxy = paths.some((p) => p.startsWith('modules/proxy-switcher/'))
-  const all = paths.some((p) => p.startsWith('apps/'))
+  const impacted = impactedProductVersions(paths)
+  const proxy = paths.some((path) => path.startsWith('modules/proxy-switcher/'))
   return KNOWN_MODULES.filter(
-    (id) =>
-      universal ||
-      (id === 'vk-booster' && vk) ||
-      (id === 'chatgpt-booster' && chatgpt) ||
-      (id === 'proxy-switcher' && proxy) ||
-      (id === 'all-in-one' && (vk || all)),
+    (id) => universal || impacted.includes(id) || (id === 'proxy-switcher' && proxy),
   )
 }
 

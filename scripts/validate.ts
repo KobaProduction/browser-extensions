@@ -69,6 +69,38 @@ if (process.argv.includes('--built'))
       chrome.permissions.includes('proxy')
     )
       throw Error('Invalid extension manifest: ' + id)
+    if (id === 'all-in-one') {
+      const dependencies = m.dependencies ?? []
+      if (!dependencies.includes('vk-booster') || !dependencies.includes('chatgpt-booster'))
+        throw Error('Aggregate distribution has lost its provider dependency graph')
+      if (
+        !user.includes('// @match        https://chatgpt.com/*') ||
+        !user.includes('// @match        https://vk.ru/im*') ||
+        !user.includes('// @grant        unsafeWindow') ||
+        !user.includes('// @connect      *')
+      )
+        throw Error('Aggregate userscript does not include both provider capabilities')
+      if (
+        !chrome.host_permissions?.includes('https://chatgpt.com/*') ||
+        !chrome.host_permissions?.includes('https://vk.ru/*') ||
+        chrome.background?.service_worker !== 'background.js' ||
+        !chrome.content_scripts?.some(
+          (entry: { world?: string; js?: string[] }) =>
+            entry.world === 'MAIN' && entry.js?.includes('observer.js'),
+        ) ||
+        !chrome.content_scripts?.some(
+          (entry: { matches?: string[]; js?: string[] }) =>
+            entry.matches?.includes('https://chatgpt.com/*') && entry.js?.includes('content.js'),
+        )
+      )
+        throw Error('Aggregate MV3 distribution does not include both host adapters')
+    }
+    if (
+      id === 'vk-booster' &&
+      (user.includes('// @match        https://chatgpt.com/*') ||
+        chrome.host_permissions?.includes('https://chatgpt.com/*'))
+    )
+      throw Error('VK standalone gained ChatGPT permissions or runtime')
     if (id === 'chatgpt-booster') {
       const hosts = chrome.host_permissions as unknown
       if (
@@ -88,13 +120,19 @@ if (process.argv.includes('--built'))
         throw Error('ChatGPT isolated browser observer/manifest contract changed')
     }
     const content = await Bun.file(`${root}/extension/content.js`).text()
+    if (id === 'all-in-one' && (!content.includes('chatgpt-booster') || !content.includes('vk-booster')))
+      throw Error('Aggregate MV3 content bundle does not contain both modules')
+    if (id === 'vk-booster' && content.includes('chatgpt-booster:telemetry-post'))
+      throw Error('VK-only binary contains ChatGPT telemetry transport')
+    if (id === 'all-in-one' && (!user.includes('chatgpt-booster') || !user.includes('VKExport')))
+      throw Error('Aggregate userscript does not contain both product features')
     if (/\bprocess\.env\.NODE_ENV\b/.test(content))
       throw Error('Unresolved Node environment in extension content script: ' + id)
     for (const path of [
       'content.js',
       'popup.js',
       'popup.html',
-      ...(id === 'chatgpt-booster' ? ['observer.js', 'background.js'] : []),
+      ...(id === 'chatgpt-booster' || id === 'all-in-one' ? ['observer.js', 'background.js'] : []),
       `${id}-extension.zip`,
     ]) {
       const file = path.endsWith('.zip') ? `${root}/${path}` : `${root}/extension/${path}`

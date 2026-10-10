@@ -1,3 +1,10 @@
+> **Release-system update (2026-10-10):** this document includes historical
+> source-relocation checkpoints. The executable ChatGPT Booster is now
+> version **2.0.1** with `release:true` and independent userscript/MV3
+> artifacts. All-in-one **0.5.0** includes both ChatGPT and VK. Real-user
+> installation/backup cutover and public release remain gated separately.
+> See [independent releases](INDEPENDENT_RELEASES.md) for current authority.
+
 # ChatGPT Booster migration to Browser Extensions
 
 **Scope:** source-preserving initial integration, branch `feat/chatgpt-booster-monorepo-migration`, based on `refactor/extract-shared-booster-platform@acfe36f`. The old `KobaProduction/chatgpt-booster` repository has **not** been deleted. No browser data is migrated merely by installing a new build.
