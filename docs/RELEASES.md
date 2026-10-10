@@ -20,6 +20,12 @@ Each published module has its own `module.json` semver and GitHub Release tag, e
 3. Compares source/dependency scopes with the latest module tag; if unchanged, **skips** publishing.
 4. Builds and verifies only each eligible distributable, and creates a GitHub Release containing `*.user.js` and `*-extension.zip`.
 
+**VK exception:** the product base remains exactly **3.0.0** throughout
+pre-acceptance development. Each changed DEV build uses a unique
+`3.0.0-dev.<run>` identifier. Do not create VK 3.0.1/3.1.0 or overwrite
+any stable VK 3.0.0 artifact. Only an explicit owner decision may lift this
+freeze; stable promotion still requires installed-product acceptance.
+
 **A version bump is necessary for each intentional module release.** If a shared package changed but a consumer version was not bumped, its existing tag blocks duplicate publication. The combiner has its own version; it must be bumped when its bundled dependencies change. No release occurs for `release:false` modules. Scoped tag names are case-sensitive and independently versioned.
 
 This workflow does **not** publish Chrome Web Store packages, automatic Tampermonkey update channels or core npm packages yet; those require signing, registry credentials or a stable per-module update URL. It also does not merge PRs automatically. Release workflows may only be exercised after installed-product acceptance and explicit `approve_release=true` dispatch on `main`; simply merging an integration PR cannot publish new VK binaries.
@@ -50,11 +56,11 @@ independent module release plan/tags and distribution channel mechanism remain
 unchanged; accepted versions may be published by manually starting the release
 workflow with `approve_release=true`. ChatGPT 2.0.1 is now `release:true` for independently scoped builds; only a manually approved workflow may publish it after installed-product acceptance.
 
-## Version 2 release channels (2026-10-10)
+## VK 3 development freeze and independent release channels (2026-10-11)
 
-- VK Booster: `2.3.10` — changes in VK increment VK and all-in-one only.
+- VK Booster: `3.0.0` — base frozen; VK source changes rebuild VK DEV and advance independently versioned all-in-one.
 - ChatGPT Booster: `2.0.5` — changes in ChatGPT increment ChatGPT and all-in-one only.
-- All-in-one: `0.5.4` — aggregates both providers with independent feature
+- All-in-one: `0.6.0` — aggregates both providers with independent feature
   lifecycles, Tampermonkey and MV3 targets.
 - Shared `packages/` implementation changes affect all consumers. Documentation
   and CI-only changes do not bump product semver.

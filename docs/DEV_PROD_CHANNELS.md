@@ -24,6 +24,9 @@ promotion from inventing source history or causing endless build-on-push loops.
   builds/versions VK and aggregate, but not ChatGPT; ChatGPT-only changes
   affect ChatGPT and aggregate; common runtime, packaging and storage
   changes affect all real consumers. Docs-only changes release nothing.
+- The VK Booster product base is frozen at **3.0.0** during development, even
+  when its sources change. DEV still advances `3.0.0-dev.<run>` for automatic
+  updates. Do not create `3.0.1` or a new VK minor release without explicit approval.
 - Base product semver remains independent. Only the build's DEV metadata
   receives `-dev.<run>` (Chromium `version` uses a legal fourth numeric
   component). A new stable `X.Y.Z` requires the product's own version bump.

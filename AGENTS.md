@@ -48,8 +48,9 @@ issues. Never treat historical standalone PRs as live monorepo merge targets.
 - Run `bun run check` (strict typechecks, Biome with warnings as failures, tests, catalog validation) and `bun run build` before review. Root Biome covers TypeScript and Vue SFCs; Vue template-referenced imports/variables are verified by `vue-tsc` instead of Biome unused checks, which cannot see template bindings. The currently shipped ChatGPT module is validated through root TypeScript, Vue and test gates; the non-distributed integration baseline is deliberately excluded from root compilation until its additional refactors are reconciled.
 
 ## Release rules
-- Independent semver in each releasable `module.json`; use `module-name/vX.Y.Z` tags.
-- If a shared package change affects a distributed module, bump that module's version intentionally to trigger a release.
+- **VK Booster base version is frozen at exactly 3.0.0** throughout ongoing development. Do not bump it for VK-only changes or shared runtime changes. Keep its `module.json` and `package.json` in sync at 3.0.0. An explicit new owner decision is required to change this. DEV `3.0.0-dev.<run>` changes are build identifiers, not product-version increments.
+- Independent semver in other releasable `module.json` manifests; use `module-name/vX.Y.Z` tags.
+- If a shared package change affects a distributed module, bump affected versions **except frozen VK 3.0.0**. VK DEV artifacts still update using their prerelease build counters.
 - Check `bun run check`, `bun run build` and `bun scripts/validate.ts --built` before publishing.
 - The CI `zoomies-linux-x64` runner is for trusted branch/main code; fork PRs must not run there.
 

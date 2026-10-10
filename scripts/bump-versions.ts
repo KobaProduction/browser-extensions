@@ -1,5 +1,6 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { impactedProductVersions } from './catalog'
+import { isVkBaseFrozen } from './version-freeze'
 
 export function bumpPatch(version: string): string {
   const parts = version.match(/^(\d+)\.(\d+)\.(\d+)$/)
@@ -15,10 +16,10 @@ export function planVersionBumps(
   versions: Readonly<Record<string, string>>,
 ): Record<string, string> {
   return Object.fromEntries(
-    impactedProductVersions(paths).map((id) => {
+    impactedProductVersions(paths).flatMap((id) => {
       const current = versions[id]
       if (!current) throw new Error(`Missing version for ${id}`)
-      return [id, bumpPatch(current)]
+      return isVkBaseFrozen(id, current) ? [] : [[id, bumpPatch(current)]]
     }),
   )
 }

@@ -245,9 +245,12 @@ dependents.
 
 VK Booster **3.0.0** intentionally replaces the prototype's incompatible
 file-based API and archive format with a native IndexedDB-first archive and
-separate export. Future compatible changes follow standard patch/minor semver.
-ChatGPT versions remain independently managed. Docs-only changes
-never bump versions or publish bundles.
+separate export. **The product version remains fixed at 3.0.0 throughout ongoing
+development**, including VK-only and shared-runtime edits, until the owner
+explicitly authorizes a new base version. Continuous DEV builds change only
+their prerelease identifiers (`3.0.0-dev.<run>`); those are not product-version
+increments. ChatGPT and all-in-one keep independent version policies.
+Docs-only changes never bump versions or publish bundles.
 
 Module-scoped tags and stable independent Tampermonkey update channels remain
 the release mechanism. Static checks/builds do not prove browser acceptance.

@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { impactedProductVersions } from './catalog'
+import { VK_FROZEN_BASE_VERSION } from './version-freeze'
 
 const versions = ['vk-booster', 'chatgpt-booster', 'all-in-one'] as const
 export type ProductVersion = (typeof versions)[number]
@@ -44,6 +45,15 @@ export function validateVersionPolicy(
       to = after[id]
     if (!from || !to) throw new Error(`Missing ${id} version metadata`)
     const cmp = semverCompare(to, from)
+    // Owner-approved VK 3.0.0 is intentionally frozen. This also validates
+    // the one-time transition from 2.x to 3.0.0 on an actual VK change.
+    // Future VK-only pushes still advance DEV -dev.<run> via channel-plan.
+    if (id === 'vk-booster' && (from === VK_FROZEN_BASE_VERSION || to === VK_FROZEN_BASE_VERSION)) {
+      if (to !== VK_FROZEN_BASE_VERSION) throw new Error('VK Booster base version is frozen at 3.0.0')
+      if (from !== VK_FROZEN_BASE_VERSION && !required.has(id))
+        throw new Error('VK 3.0.0 transition requires a VK source change')
+      continue
+    }
     if (required.has(id) && cmp <= 0)
       throw new Error(`${id} must bump its version for changed product sources (${from} -> ${to})`)
     if (!required.has(id) && cmp !== 0)

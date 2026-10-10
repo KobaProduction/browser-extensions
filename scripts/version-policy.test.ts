@@ -53,3 +53,42 @@ test('non-runtime only changes do not demand a bump', () => {
   ).not.toThrow()
   expect(semverCompare('2.0.1', '0.8.99')).toBe(1)
 })
+
+test('VK 3.0.0 is one-time authorized major transition, then immutable during development', () => {
+  const beforeMajor = {
+    'vk-booster': '2.3.10',
+    'chatgpt-booster': '2.0.4',
+    'all-in-one': '0.5.3',
+  }
+  const vk3 = { ...beforeMajor, 'vk-booster': '3.0.0', 'all-in-one': '0.6.0' }
+  const vkChange = ['modules/vk-booster/src/model/service.ts']
+  expect(() => validateVersionPolicy(vkChange, beforeMajor, vk3)).not.toThrow()
+  expect(() => validateVersionPolicy(['docs/README.md'], beforeMajor, vk3)).toThrow(
+    'requires a VK source change',
+  )
+
+  // An ordinary VK fix still rebuilds the aggregate, not the VK base version.
+  expect(() => validateVersionPolicy(vkChange, vk3, { ...vk3, 'all-in-one': '0.6.1' })).not.toThrow()
+  // Product isolation: a pure ChatGPT change never changes VK.
+  expect(() =>
+    validateVersionPolicy(['modules/chatgpt-booster/src/index.ts'], vk3, {
+      ...vk3,
+      'chatgpt-booster': '2.0.5',
+      'all-in-one': '0.6.1',
+    }),
+  ).not.toThrow()
+  // Shared runtime changes affect ChatGPT and aggregate; VK stays at 3.0.0.
+  expect(() =>
+    validateVersionPolicy(['packages/core/src/telemetry.ts'], vk3, {
+      ...vk3,
+      'chatgpt-booster': '2.0.5',
+      'all-in-one': '0.6.1',
+    }),
+  ).not.toThrow()
+  expect(() =>
+    validateVersionPolicy(vkChange, vk3, { ...vk3, 'vk-booster': '3.0.1', 'all-in-one': '0.6.1' }),
+  ).toThrow('frozen at 3.0.0')
+  expect(() =>
+    validateVersionPolicy(['docs/README.md'], vk3, { ...vk3, 'vk-booster': '3.0.1' }),
+  ).toThrow('frozen at 3.0.0')
+})

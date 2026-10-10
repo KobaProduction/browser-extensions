@@ -72,13 +72,20 @@ function collect() {
         : 'Переписка сохранена полностью: ' + r.stored + ' сообщений.',
   )
 }
+async function chooseOutputDirectory(mode: 'read' | 'readwrite'): Promise<FileSystemDirectoryHandle> {
+  const browser = window as Window & {
+    showDirectoryPicker?: (options: { mode: 'read' | 'readwrite' }) => Promise<FileSystemDirectoryHandle>
+  }
+  if (typeof browser.showDirectoryPicker !== 'function')
+    throw Error('Для экспорта нужна поддержка выбора папки в браузере')
+  return browser.showDirectoryPicker({ mode })
+}
 function exportFiles() {
-  if (!runtime || !peer.value) return
+  const id = peer.value
+  if (!runtime || !id) return
   void run(
     async () => {
-      if (!('showDirectoryPicker' in window))
-        throw Error('Для экспорта нужна поддержка выбора папки в браузере')
-      const folder = await window.showDirectoryPicker({ mode: 'readwrite' })
+      const folder = await chooseOutputDirectory('readwrite')
       return runtime.export(id, folder, {
         from: from.value,
         through: through.value,
@@ -92,10 +99,11 @@ function exportFiles() {
   )
 }
 function inspectFolder() {
-  if (!runtime || !peer.value) return
+  const id = peer.value
+  if (!runtime || !id) return
   void run(
     async () => {
-      const folder = await window.showDirectoryPicker({ mode: 'read' })
+      const folder = await chooseOutputDirectory('read')
       audit.value = await runtime.audit(id, folder)
       return audit.value
     },

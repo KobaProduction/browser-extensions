@@ -67,3 +67,18 @@ test('all internal ChatGPT private package versions match its release manifest',
   const source = await readFile('modules/chatgpt-booster/packages/core/src/version.ts', 'utf8')
   expect(source).toContain(`BOOSTER_BASE_VERSION = '${current}'`)
 })
+
+test('automatic VK bump skips frozen 3.0.0, while other affected products remain independent', () => {
+  const frozen = { 'vk-booster': '3.0.0', 'chatgpt-booster': '2.0.5', 'all-in-one': '0.6.0' }
+  expect(planVersionBumps(['modules/vk-booster/src/model/service.ts'], frozen)).toEqual({
+    'all-in-one': '0.6.1',
+  })
+  expect(planVersionBumps(['packages/core/src/telemetry.ts'], frozen)).toEqual({
+    'chatgpt-booster': '2.0.6',
+    'all-in-one': '0.6.1',
+  })
+  expect(planVersionBumps(['modules/chatgpt-booster/src/index.ts'], frozen)).toEqual({
+    'chatgpt-booster': '2.0.6',
+    'all-in-one': '0.6.1',
+  })
+})
