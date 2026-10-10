@@ -10,20 +10,36 @@
     "apps/*"
   ],
   "scripts": {
-    "check": "bun run typecheck && bun test && bun run validate",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "bun test",
+    "check": "bun run typecheck && bun run lint && bun run test && bun run validate",
+    "typecheck": "tsc --noEmit -p tsconfig.json && vue-tsc --noEmit -p packages/shell/tsconfig.json && vue-tsc --noEmit -p modules/vk-booster/tsconfig.json && vue-tsc --noEmit -p packages/widgets/tsconfig.json && tsc --noEmit -p tsconfig.vk-tests.json",
+    "test": "bun test --path-ignore-patterns=\"**/integrations/chatgpt-booster/**\"",
     "validate": "bun scripts/validate.ts",
     "build": "bun scripts/build.ts --module all",
     "build:vk": "bun scripts/build.ts --module vk-booster",
     "build:changed": "bun scripts/build.ts --module changed",
-    "release:plan": "bun scripts/release-plan.ts"
+    "release:plan": "bun scripts/release-plan.ts",
+    "check:chatgpt": "bun run build:shared && cd integrations/chatgpt-booster && bun install --force --frozen-lockfile && bun run check",
+    "test:chatgpt": "bun run build:shared && cd integrations/chatgpt-booster && bun install --force --frozen-lockfile && bun test",
+    "build:chatgpt": "bun run build:shared && cd integrations/chatgpt-booster && bun install --force --frozen-lockfile && bun run build",
+    "lint": "biome check --error-on-warnings .",
+    "lint:fix": "biome check --write .",
+    "build:shared": "bun scripts/build.ts --module packages"
   },
   "devDependencies": {
     "@types/bun": "^1.3.0",
     "@types/chrome": "^0.1.3",
     "@types/node": "^22.0.0",
     "happy-dom": "^20.14.6",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "@vitejs/plugin-vue": "^6.0.0",
+    "@tailwindcss/vite": "^4.1.14",
+    "vite": "^7.1.7",
+    "vue-tsc": "^3.0.7",
+    "tailwindcss": "^4.1.14",
+    "vue": "^3.5.22",
+    "lucide-vue-next": "^0.545.0",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.3.1",
+    "@biomejs/biome": "2.5.15"
   }
 }

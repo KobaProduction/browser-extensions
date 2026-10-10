@@ -1,1 +1,14 @@
-{"name":"@kobaproduction/browser-extension","version":"0.1.0","private":true,"type":"module","dependencies":{"@kobaproduction/browser-core":"workspace:*","@kobaproduction/browser-ui":"workspace:*","@kobaproduction/browser-adapters":"workspace:*","@kobaproduction/module-vk-booster":"workspace:*"}}
+{
+  "name": "@kobaproduction/browser-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@kobaproduction/browser-core": "workspace:*",
+    "@kobaproduction/browser-ui": "workspace:*",
+    "@kobaproduction/browser-adapters": "workspace:*",
+    "@kobaproduction/module-vk-booster": "workspace:*",
+    "@kobaproduction/browser-shell": "workspace:*",
+    "vue": "^3.5.22"
+  }
+}

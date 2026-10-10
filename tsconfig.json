@@ -6,44 +6,27 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
-    "lib": [
-      "ES2022",
-      "DOM",
-      "DOM.Iterable"
-    ],
-    "types": [
-      "chrome",
-      "bun",
-      "node"
-    ],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["chrome", "bun", "node"],
     "noEmit": true,
-    "allowJs": true,
-    "checkJs": false,
+    "allowJs": false,
     "baseUrl": ".",
     "paths": {
-      "@kobaproduction/browser-core": [
-        "packages/core/src/index.ts"
+      "@kobaproduction/browser-core": ["packages/core/src/index.ts"],
+      "@kobaproduction/browser-ui": ["packages/ui/src/index.ts"],
+      "@kobaproduction/browser-adapters": ["packages/adapters/src/index.ts"],
+      "@kobaproduction/module-vk-booster": ["modules/vk-booster/src/index.ts"],
+      "@kobaproduction/browser-shell": ["packages/shell/src/index.ts"],
+      "@kobaproduction/module-vk-booster/ui": [
+        "modules/vk-booster/src/features/chat-export/ui/index.ts"
       ],
-      "@kobaproduction/browser-ui": [
-        "packages/ui/src/index.ts"
-      ],
-      "@kobaproduction/browser-adapters": [
-        "packages/adapters/src/index.ts"
-      ],
-      "@kobaproduction/module-vk-booster": [
-        "modules/vk-booster/src/index.ts"
-      ]
-    }
+      "@kobaproduction/browser-archive": ["packages/archive/src/index.ts"],
+      "@kobaproduction/browser-widgets": ["packages/widgets/src/index.ts"]
+    },
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "useUnknownInCatchVariables": true
   },
-  "include": [
-    "packages/**/*.ts",
-    "modules/**/*.ts",
-    "apps/**/*.ts",
-    "scripts/**/*.ts"
-  ],
-  "exclude": [
-    "**/*.test.ts",
-    "**/*.test.js",
-    "**/dist/**"
-  ]
+  "include": ["packages/**/*.ts", "modules/**/*.ts", "apps/**/*.ts", "scripts/**/*.ts"],
+  "exclude": ["**/*.test.ts", "**/*.test.js", "**/dist/**"]
 }

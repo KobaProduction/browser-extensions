@@ -1,0 +1,19 @@
+{
+  "name": "@chatgpt-booster/extension",
+  "version": "0.8.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@chatgpt-booster/core": "workspace:*",
+    "@chatgpt-booster/ui": "workspace:*",
+    "vue": "^3.5.22",
+    "@chatgpt-booster/features": "workspace:*",
+    "@chatgpt-booster/observer": "workspace:*",
+    "@chatgpt-booster/telemetry": "workspace:*"
+  }
+}

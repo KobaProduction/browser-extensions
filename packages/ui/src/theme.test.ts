@@ -1,17 +1,11 @@
-import { test, expect } from 'bun:test'
-import { brandMark, classicThemeCss } from './theme'
+import { expect, test } from 'bun:test'
+import { readFile } from 'node:fs/promises'
 
-test('brand has independent vector mark without external image assets', () => {
-  expect(brandMark).toContain('<svg')
-  expect(brandMark).toContain('viewBox="0 0 44 44"')
-  expect(brandMark).not.toMatch(/https?:\/\//)
-})
-
-test('classic palette, focus, contrast and hidden host are part of shared skin', () => {
-  expect(classicThemeCss).toContain('--kb-bg')
-  expect(classicThemeCss).toContain('--kb-accent')
-  expect(classicThemeCss).toContain(':host([hidden]){display:none!important}')
-  expect(classicThemeCss).toContain('focus-visible')
-  expect(classicThemeCss).toContain('prefers-color-scheme:dark')
-  expect(classicThemeCss).toContain('max-width:520px')
+test('single shell style follows ChatGPT Booster semantic tokens rather than custom blue palette', async () => {
+  const css = await readFile(new URL('../../shell/src/styles.css', import.meta.url), 'utf8')
+  expect(css).toContain('--primary: oklch(')
+  expect(css).toContain('.booster-launcher')
+  expect(css).toContain('.booster-modal-backdrop')
+  expect(css).toContain('.booster-settings-nav')
+  expect(css).not.toContain('#315aa7')
 })

@@ -1,0 +1,39 @@
+/* Provider-neutral ordered exchange layout. Host controls text and record markup. */
+.booster-reader-exchanges {
+  display: grid;
+  gap: 12px;
+  margin-top: 0;
+}
+.booster-exchange {
+  min-width: 0;
+  max-width: 100%;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 16px;
+}
+.booster-exchange-details {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 10px 12px;
+  padding: 8px 0 8px 12px;
+  border-left: 2px solid color-mix(in oklab, var(--border) 78%, var(--primary));
+}
+.booster-exchange-details-label {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.booster-message-target {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+[data-archive-message] {
+  scroll-margin-block: 20px;
+}
+.booster-reader-exchanges,
+.booster-exchange-details {
+  min-width: 0;
+  max-width: 100%;
+}
