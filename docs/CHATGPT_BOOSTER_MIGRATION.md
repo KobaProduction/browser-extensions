@@ -192,7 +192,7 @@ a complete SHA-256/footer/count verification pass before creating a missing v3
 source database or committing any records. Restore then runs a read-only
 conflict preflight on *all* existing rows before inserting only absent rows,
 rechecking conflicts atomically per row. A transfer interruption can be
-retried idempotently. Unsupported cyclic or arbitrary class instances cause an explicit error
+retried idempotently. Unsupported cyclic, shared-reference identity graphs or arbitrary class instances cause an explicit error
 rather than silently degrading the backup; common structured clone types are
 round-tripped with collision-free type tags. This transfer is
 not an authenticated/signed source; users should only import backups they

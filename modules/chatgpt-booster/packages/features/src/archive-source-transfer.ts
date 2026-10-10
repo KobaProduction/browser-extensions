@@ -50,7 +50,8 @@ function assertJsonSafe(value: unknown, seen = new Set<object>()): void {
       assertJsonSafe(item, seen)
     }
   }
-  seen.delete(value)
+  // Do not forget visited objects: JSON.stringify duplicates shared aliases.
+  // A transfer must refuse an identity graph it cannot preserve exactly.
 }
 
 async function existing(name: string): Promise<IDBDatabase | null> {

@@ -48,9 +48,10 @@ export async function encodeArchiveClone(value: unknown): Promise<ArchiveCloneNo
     if (typeof input === 'bigint') return ['bigint', input.toString()]
     if (!input || typeof input !== 'object' || visited.has(input))
       throw new Error('Archive structured data contains a cycle or unsupported value')
+    // Keep every identity until the record is encoded; repeated references
+    // require a real reference graph and must never be cloned as distinct rows.
     visited.add(input)
-    try {
-      if (input instanceof Date) return ['date', Number.isFinite(input.getTime()) ? input.getTime() : 'NaN']
+    if (input instanceof Date) return ['date', Number.isFinite(input.getTime()) ? input.getTime() : 'NaN']
       if (input instanceof RegExp) return ['regexp', input.source, input.flags]
       if (typeof File !== 'undefined' && input instanceof File)
         return ['file', input.name, input.lastModified, input.type,
@@ -86,7 +87,6 @@ export async function encodeArchiveClone(value: unknown): Promise<ArchiveCloneNo
       for (const [key,item] of Object.entries(input))
         entries.push([key,await encode(item,depth+1)])
       return ['object',entries]
-    } finally { visited.delete(input) }
   }
   return encode(value,0)
 }

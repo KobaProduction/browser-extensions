@@ -70,3 +70,8 @@ test('portable codec retains file metadata, data views and regular expressions',
  expect(value.filter.source).toBe(raw.filter.source)
  expect(value.filter.flags).toBe('gi')
 })
+
+test('portable backup rejects shared object identity without graph reference support', async()=>{
+ const shared = { original:true }
+ await expect(encodeArchiveClone({ left:shared, right:shared })).rejects.toThrow()
+})
