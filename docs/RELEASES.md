@@ -48,9 +48,9 @@ workflow with `approve_release=true`. ChatGPT 2.0.1 is now `release:true` for in
 
 ## Version 2 release channels (2026-10-10)
 
-- VK Booster: `2.3.8` — changes in VK increment VK and all-in-one only.
-- ChatGPT Booster: `2.0.1` — changes in ChatGPT increment ChatGPT and all-in-one only.
-- All-in-one: `0.5.0` — aggregates both providers with independent feature
+- VK Booster: `2.3.9` — changes in VK increment VK and all-in-one only.
+- ChatGPT Booster: `2.0.2` — changes in ChatGPT increment ChatGPT and all-in-one only.
+- All-in-one: `0.5.1` — aggregates both providers with independent feature
   lifecycles, Tampermonkey and MV3 targets.
 - Shared `packages/` implementation changes affect all consumers. Documentation
   and CI-only changes do not bump product semver.

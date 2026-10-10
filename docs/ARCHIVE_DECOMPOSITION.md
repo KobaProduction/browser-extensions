@@ -1,0 +1,70 @@
+# Shared archive/storage decomposition (2026-10-10)
+
+## Implemented source architecture
+
+The VK Booster 2.3.9 and ChatGPT Booster 2.0.2 share real platform use
+cases and adapters, not their provider-specific account or storage schemas.
+Their all-in-one consumer is 0.5.1. The versions changed together because
+`packages/storage` was extended as a reusable platform contract used by
+ChatGPT; VK currently uses shared archive and file-output APIs rather than
+an IndexedDB database. A shared-package change conservatively bumps both
+consumers as required by the release impact graph.
+
+| Concern | Single shared owner | Provider adapter |
+| --- | --- | --- |
+| Linear recent, incremental and backfill page selection | `packages/archive`: page fold, scan linear | VK ID and timestamp mapping, v2 durable checkpoint |
+| Source-verified native message deduplication | `packages/archive`: strict snapshot fold, SHA-256 and composite keys | ChatGPT native branch/source fingerprints, v3/v4 schema |
+| IndexedDB request success and **completed transaction** | `packages/storage`: `requestResult`, `transactionComplete` | ChatGPT native v3 store, v4 source writer, canonical migrator, native source transfer |
+| Bounded cursor page, stable primary-key continuation | `packages/storage`: `readIndexedPage`, `readStorePage` | ChatGPT canonical indexed source scan and exact raw-row export |
+| Bounded indexed timestamp range with non-unique keys | `packages/storage`: `readIndexedRangePage` | ChatGPT recent reconciliation, lastSeenAt source index |
+| Browser file output and verified attachment bytes | `packages/adapters`, `packages/archive` | VK native File System Access v2 output, VK media selection |
+| UI layout, launcher, dialog and shared progress | `packages/shell`, `packages/ui`, `packages/widgets` | VK export/preview and ChatGPT archive/recovery now use the same `ArchiveProgress` primitive through a compatible VK widget adapter |
+
+### ChatGPT provider decomposition
+
+The former `archive-v4-store.ts` contained both the native entity model,
+identity/validation rules, direct IndexedDB requests and the write workflow.
+They now have separate owners:
+
+- `archive-v4-entities.ts`: version-stable v4 source and path contracts
+- `archive-v4-identities.ts`: source-native ID validation/chronology and the
+  **same** JSON composite-key format provided by `packages/archive`
+- `archive-v4-queries.ts`: read-only typed source DB queries with injected
+  DB connection, no migrations or writes
+- `archive-v4-store.ts`: exact v4 schema upgrade/version 2, write tickets,
+  account epoch, generation fencing, transaction orchestration, source capture
+- `archive-canonical-source-reader.ts`: provider-owned legacy DB inspection,
+  native source object validation and bounded indexed/time-range reading
+  through shared `packages/storage` cursor services
+- `archive-canonical-migrator.ts`: account-bound v3/v4 staging/activation,
+  rollback, reconciliation and recovery; source enumeration lives outside
+  its migration transaction coordinator
+- `archive-source-transfer.ts`: strict owner-preserving binary backup and
+  import with shared, bounded whole-store source scanning
+
+The historical `integrations/chatgpt-booster` v4 database helper targets
+**database version 1**, whereas the currently shipped ChatGPT source has
+**version 2** and canonical generation stores. That helper was not copied
+blindly. The live `archive-v4-store.ts` remains the only physical schema
+owner and no v3/v4 user data are modified by this code refactor.
+
+### Why the engines remain separate
+
+VK has a linear, descending history and the original v2 folder files:
+`metadata.json`, `messages.json`, `media/`, `index.html`, and checkpoints.
+ChatGPT has verified account ownership, native parent/branch graphs,
+old source v3/v4 IndexedDB and canonical generation activation/rollback.
+A provider-neutral linear scan must **not** decide ChatGPT ancestry, and a
+shared IndexedDB adapter must **not** bind ownerless rows or guess account
+identity. Sharing occurs at the bounded source/storage/output/application
+ports rather than by merging the provider archive controllers.
+
+### Validation boundary
+
+The update includes synthetic tests for index/primary-key pair resumption,
+identical timestamps, corruption and cancellation, plus the original
+VK 3000-message, media and resume regressions and ChatGPT canonical tests.
+Static tests and build success do not establish actual installed browser
+acceptance, real-account migration/backup parity or permission prompt safety.
+Those are separate product/release gates. Public releases remain manually
+authorized, with product-scoped channels.

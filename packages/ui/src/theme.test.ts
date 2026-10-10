@@ -29,3 +29,16 @@ test('archive progress is a single host-neutral widget reused by VK and ChatGPT'
   expect(vk).toContain('<ArchiveManager')
   expect(chatgpt).toContain('<ArchiveProgress')
 })
+
+test('VK and ChatGPT use the same provider-neutral progress presentation', async () => {
+  const { readFile } = await import('node:fs/promises')
+  const vk = await readFile(new URL('../../widgets/src/ArchiveProgressBar.vue', import.meta.url), 'utf8')
+  const shared = await readFile(
+    new URL('./components/archive/ArchiveProgress.vue', import.meta.url),
+    'utf8',
+  )
+  expect(vk).toContain('ArchiveProgress')
+  expect(vk).not.toContain('<progress')
+  expect(shared).toContain('compact')
+  expect(shared).toContain('<progress')
+})

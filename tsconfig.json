@@ -31,7 +31,8 @@
       "@kobaproduction/module-chatgpt-booster": ["modules/chatgpt-booster/src/index.ts"],
       "@kobaproduction/module-chatgpt-booster/ui": [
         "modules/chatgpt-booster/src/features/archive/ui/index.ts"
-      ]
+      ],
+      "@kobaproduction/browser-storage": ["packages/storage/src/index.ts"]
     },
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
