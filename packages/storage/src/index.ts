@@ -28,9 +28,23 @@ export type {
   WorkingMigrationPhase,
 } from './migration'
 export { browserMigrationLock, runStagedMigration } from './migration'
+export type { PiniaBackupOptions, PiniaPortableStore } from './pinia-backup-port'
+export { createPiniaBackupPort } from './pinia-backup-port'
 export type { PinnedReadOptions, VerifyPinnedResultOptions } from './pinned-read'
 export { readPinnedSnapshot, verifyPinnedResult } from './pinned-read'
-
+export type {
+  PortableBackupIndexedPort,
+  PortableBackupPorts,
+  PortableBackupRow,
+} from './portable-backup'
+export type {
+  BackupTarChoice,
+  BackupTarInspection,
+  BackupTarOptions,
+  BackupTarProgress,
+  BackupTarReporter,
+} from './portable-tar'
+export { exportBackupTar, inspectBackupTar, restoreBackupTar } from './portable-tar'
 export type { RevocableArchiveConnection, ScopedArchiveReadProvider } from './provider-connection'
 export { connectScopedArchive } from './provider-connection'
 export type {

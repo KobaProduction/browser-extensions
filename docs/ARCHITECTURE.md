@@ -367,18 +367,25 @@ bounded saved Reader and source-preserving gzip export to the fixed Dexie v1
 repository. Its old folder writer is no longer exposed via the user interface
 and accepts only the synthetic test-mode gate. Original media downloads and
 legacy offline HTML are retained in historic/test code, not a proven Dexie
-export capability. VK source is 1.0.0, ChatGPT source 2.0.13 and dependent
-All-in-one 0.5.14. Settings persistence/JSON restoration remains separate
-from canonical archive persistence and is not full archive backup.
+export capability. The integration checkpoint had VK 1.0.0, ChatGPT 2.0.13
+and all-in-one 0.5.14; current manifests remain the version authority.
+Settings persistence is separate from canonical archive persistence.
+
+## Portable TAR / TAR.GZ (source implementation; browser acceptance pending)
+
+`packages/storage` owns streaming POSIX ustar with a single GZIP stream,
+bounded plain JSONL chunks, exact IndexedDB schema and integrity manifest.
+The shared backup UI is only a presentation adapter. VK owns its Dexie
+message/source record validation. Large export and recovery have separate
+gates: current restore buffers at most 128 MiB, with no staged generation
+or cross-storage crash atomicity. Provider-neutral infrastructure is reusable
+without exposing low-level backups in ordinary user workflows.
 
 ## ChatGPT UI decomposition checkpoint (Extension 15)
 
-The shared `@kobaproduction/browser-ui` package owns the reusable
+The shared `@kobaproduction/browser-ui` package owns reusable
 `ModalSurface`, `FloatingInfoPopover` and `JsonViewer` Vue primitives. ChatGPT
-consumers import them via its public API instead of keeping private identical
-copies; the shared Shell already uses the same modal implementation. ChatGPT
-provider presentation owns `ChatGptArchiveActions` (navigation/menu state) and
-`ChatGptFixedArchiveSection` (scoped Dexie status/preview), while the parent
-`ChatGptPanel` retains archive permissions, owner checks and source operations.
-No VK provider/archive ownership or settings-backup contract changed. UI source
-integration is not installed-browser visual, interaction or data acceptance.
+consumers import them via the public API rather than retaining identical
+copies. ChatGPT owns `ChatGptArchiveActions` and `ChatGptFixedArchiveSection`
+as presentation; its parent `ChatGptPanel` owns provider operations and
+verification. This source refactor is not installed-browser acceptance.
