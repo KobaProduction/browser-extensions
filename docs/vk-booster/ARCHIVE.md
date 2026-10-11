@@ -56,8 +56,11 @@ may change without changing product semver.
 VK now has keyboard-accessible navigation in the existing Control Center:
 a persistent capture/export form, a read-only archived-message view and
 session-only preferences. Navigation fences hide archived messages on
-peer mismatch or during folder selection. This is not a ChatGPT-specific
-ArchiveBrowser, an IndexedDB migration UI or a second launcher. Browser
+peer mismatch or during folder selection. A blocked snapshot must not
+render stale folder names, message totals, progress counters or previous
+archive errors, although the v2 engine retains its state for safe resume.
+This is not a ChatGPT-specific ArchiveBrowser, an IndexedDB migration UI
+or a second launcher. Browser
 acceptance must still check keyboard/focus, mobile layout, installed
 DEV/PROD isolation and reopening real v2 folders.
 

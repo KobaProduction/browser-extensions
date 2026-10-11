@@ -54,9 +54,11 @@ test('capture form stays mounted during navigation and uses the existing v2 engi
 })
 
 test('reader fails closed on a changed VK conversation or an incomplete folder selection', () => {
-  expect(panel).toContain('!status.value.blockedReason')
-  expect(panel).toContain('!status.value.folderPending')
-  expect(panel).toContain('status.value.messages > 0')
+  expect(panel).toContain('presentVkArchive(status.value)')
+  expect(panel).toContain('v-if="visibleSummary"')
+  expect(panel).toContain('{{ visibleSummary.folder }} · Сообщений: {{ visibleSummary.messages }}')
+  expect(panel).toContain(':state="view"')
+  expect(panel).not.toContain('{{ status.folder }} · Сообщений: {{ status.messages }}')
   expect(panel).toContain('v-if="api && status && canReadArchive"')
   expect(panel).toContain('role="alert"')
   expect(reader).toContain('previewMessages')

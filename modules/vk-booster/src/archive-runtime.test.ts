@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test'
 import { installVkArchive } from './archive-runtime'
+import { presentVkArchive } from './features/chat-export/model/archive-presentation'
 import type {
   ArchiveApi,
   ArchiveRunResult,
@@ -242,6 +243,50 @@ test('exact N=3000 even if previously saved, and only two JSON outputs', async (
   expect(a.previewMessages({ limit: 1 }).messages[0]?.id).toBe(latestId)
   expect(a.previewMessages({ limit: 1 }).messages[0]?.text).toBe(latestText)
 })
+test('real v2 peer mismatch never exposes selected folder metadata in UI projections', () => {
+  const beforePath = globalThis.location.pathname
+  const matching = a.status()
+  expect(matching.folder).toBe('VK_Archive_v2')
+  expect(matching.messages).toBe(3000)
+  expect(matching.blockedReason).toBeNull()
+  const visible = presentVkArchive(matching)
+  expect(visible.summary).toEqual({ folder: 'VK_Archive_v2', messages: 3000 })
+  expect(visible.canRead).toBe(true)
+  try {
+    globalThis.location.pathname = '/im/convo/987654'
+    const actual = a.status()
+    // The engine deliberately retains the selected archive for safe resume,
+    // so its internal snapshot still references the other conversation.
+    expect(actual.folder).toBe('VK_Archive_v2')
+    expect(actual.messages).toBe(3000)
+    expect(actual.blockedReason).toContain('другая переписка')
+    const hidden = presentVkArchive(actual)
+    expect(hidden.summary).toBeNull()
+    expect(hidden.canRead).toBe(false)
+    expect(hidden.manager.folder).toBeNull()
+    expect(hidden.manager.messages).toBe(0)
+    expect(hidden.manager.context).not.toContain(String(peer))
+    expect(hidden.manager.context).not.toContain('VK_Archive_v2')
+    expect(hidden.manager.done).toBe(0)
+    expect(hidden.manager.total).toBe(0)
+    expect(hidden.manager.downloaded).toBe(0)
+    expect(hidden.manager.failed).toBe(0)
+    expect(hidden.manager.error).toBeUndefined()
+    // A pending folder picker also cannot show the previous archive.
+    const pending = presentVkArchive({
+      ...matching,
+      folderPending: true,
+      blockedReason: null,
+    })
+    expect(pending.summary).toBeNull()
+    expect(pending.manager.folder).toBeNull()
+    expect(pending.manager.messages).toBe(0)
+  } finally {
+    globalThis.location.pathname = beforePath
+  }
+  expect(presentVkArchive(a.status()).summary).toEqual(visible.summary)
+})
+
 test('repeat last N does not terminate on first existing ID or create duplicates', async () => {
   const before = mediaCalls
   const r = await completed(

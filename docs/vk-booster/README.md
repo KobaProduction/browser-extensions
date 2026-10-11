@@ -52,8 +52,11 @@ ChatGPT Booster by PR #25.
 
 The existing ArchiveManager form, exact-N, incremental/backfill,
 pause/resume and progress remain mounted across tab switches. The reader
-uses the shared ArchiveTranscript and hides previously selected folders
-on a mismatched conversation or pending folder picker. Keyboard navigation,
+uses the shared ArchiveTranscript. A fail-closed presentation boundary
+hides folder names, message counts, checkpoint/progress counters and
+read-only content whenever the active conversation differs from the
+selected archive, or a folder picker is pending. Engine state stays
+unchanged for safe resume after returning to the original conversation. Keyboard navigation,
 scoped tab IDs, and explicit empty/blocked states are supported. No
 ChatGPT v3/v4 migration, IndexedDB replacement, persistent VK preference
 store or new archive backup is introduced.

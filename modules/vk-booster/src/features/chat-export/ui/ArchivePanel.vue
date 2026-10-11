@@ -2,13 +2,10 @@
 /** VK-only archive API adapter. Generic ArchiveManager owns presentation, never VK storage. */
 
 import { Badge, Button } from '@kobaproduction/browser-ui'
-import {
-  ArchiveManager,
-  type ArchiveManagerOptions,
-  type ArchiveManagerState,
-} from '@kobaproduction/browser-widgets'
+import { ArchiveManager, type ArchiveManagerOptions } from '@kobaproduction/browser-widgets'
 import { Archive, Download, Settings2, ShieldAlert } from 'lucide-vue-next'
 import { computed, onMounted, onUnmounted, ref, useId } from 'vue'
+import { presentVkArchive } from '../model/archive-presentation'
 import { exportVkCaptureSettings, restoreVkCaptureSettings } from '../model/settings-backup'
 import { type ArchiveStatus, archiveApi } from '../model/types'
 import ArchivePreview from './ArchivePreview.vue'
@@ -28,14 +25,9 @@ const selectedStatus = computed(() => {
   if (current.checkpoint?.status === 'paused') return 'Приостановлено'
   return current.folder ? 'Папка подключена' : 'Папка не выбрана'
 })
-const canReadArchive = computed(() =>
-  Boolean(
-    status.value?.folder &&
-      !status.value.blockedReason &&
-      !status.value.folderPending &&
-      status.value.messages > 0,
-  ),
-)
+const presentation = computed(() => (status.value ? presentVkArchive(status.value) : null))
+const visibleSummary = computed(() => presentation.value?.summary ?? null)
+const canReadArchive = computed(() => presentation.value?.canRead ?? false)
 const tabs: { id: View; label: string; icon: typeof Archive }[] = [
   { id: 'capture', label: 'Выгрузка', icon: Download },
   { id: 'reader', label: 'Архив', icon: Archive },
@@ -127,27 +119,7 @@ function refreshActiveConversation() {
   )
     status.value = next
 }
-const view = computed<ArchiveManagerState | null>(() => {
-  const current = status.value
-  if (!current) return null
-  const p = current.progress
-  return {
-    context: 'Диалог ' + (current.options.peerId || 'не выбран'),
-    folder: current.folder,
-    messages: current.messages,
-    busy: current.busy,
-    folderPending: current.folderPending,
-    paused: current.checkpoint?.status === 'paused',
-    blockedReason: current.blockedReason,
-    phase: p.phase,
-    done: p.done,
-    total: p.total,
-    newCount: p.newCount ?? 0,
-    downloaded: p.downloaded ?? 0,
-    failed: p.failed ?? 0,
-    error: p.error,
-  }
-})
+const view = computed(() => presentation.value?.manager ?? null)
 onMounted(() => {
   unsubscribe = api?.subscribe((next) => {
     status.value = next
@@ -195,8 +167,8 @@ async function resume() {
             {{ selectedStatus }}
           </Badge>
         </div>
-        <span v-if="status?.folder && !status.folderPending" class="break-all">
-          {{ status.folder }} · Сообщений: {{ status.messages }}
+        <span v-if="visibleSummary" class="break-all">
+          {{ visibleSummary.folder }} · Сообщений: {{ visibleSummary.messages }}
         </span>
         <span v-else>История переписки хранится в выбранной папке на этом устройстве.</span>
       </div>
@@ -239,7 +211,7 @@ async function resume() {
         :key="preferencesRevision"
         :state="view"
         :initial="status.options"
-        :error="error"
+        :error="visibleSummary ? error : ''"
         title="Выгрузка VK Archive v2"
         @choose-folder="chooseFolder"
         @start="start"
