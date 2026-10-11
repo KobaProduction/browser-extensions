@@ -195,3 +195,16 @@ real original-profile data recovery remain unaccepted under Issue #11. No
 legacy-to-Dexie automatic import/migration exists. Existing v4 code/tests that
 are no longer reachable from the composition root are historical material, not
 a parallel live engine.
+
+
+## Platform integration workflow (2026-10-11)
+
+Platform and provider work is integrated through one long-lived ChatGPT
+workstream PR. The prior Dexie/archive PR chain is consolidated into that
+branch instead of continued stacked feature PRs. The shared Shell's floating
+workspace is a platform behavior; ChatGPT supplies only its feature's wide
+presentation. VK's separate workstream may incorporate shared contracts only
+after validating its own owner/peer/archive invariants. Main integration and
+automatic DEV distribution happen only after exact-head CI and independent
+review of the consolidated changes. See
+`../shared/PROJECT_RULES.md`.
