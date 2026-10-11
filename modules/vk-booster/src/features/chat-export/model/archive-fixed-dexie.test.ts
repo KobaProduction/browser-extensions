@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import { IDBKeyRange, indexedDB } from 'fake-indexeddb'
 import { FixedVkDexieRepository, fixedVkDatabaseName } from './archive-fixed-dexie'
+import type { VkMessage } from './types'
 
 const drivers = { indexedDB, IDBKeyRange }
 const scope = (channel: 'dev' | 'prod', installationId: string, ownerId: string) => ({
@@ -42,9 +43,9 @@ test('VK fixed database rejects unverified owner, wrong conversation and cross-c
   const a = new FixedVkDexieRepository(scope('dev', 'tm-other', 'owner-a'), drivers)
   const b = new FixedVkDexieRepository(scope('prod', 'tm-other', 'owner-a'), drivers)
   const c = new FixedVkDexieRepository(scope('dev', 'tm-other', 'owner-b'), drivers)
-  await expect(a.addOriginal(2, { id: 2, date: 5, out: 'unknown' }, 'source', 1)).rejects.toThrow(
-    'Unknown VK message direction',
-  )
+  await expect(
+    a.addOriginal(2, { id: 2, date: 5, out: 'unknown' } as unknown as VkMessage, 'source', 1),
+  ).rejects.toThrow('Unknown VK message direction')
   await expect(a.addOriginal(2, { id: 1, date: 5, peer_id: 3 }, 'source', 1)).rejects.toThrow(
     'Unverified',
   )
