@@ -126,7 +126,7 @@ export async function download(
       const file = await (await target.getFileHandle(prev.name)).getFile()
       verifyContext()
       if (file.size === prev.size) {
-        // Older v2 receipts may not contain hashes: retain legacy size-only
+        // Earlier file receipts may not contain hashes: retain legacy size-only
         // compatibility rather than rewriting unknown offline media.
         if (!prev.sha256) return 'existing'
         // The downloader never writes more than 64 MiB. Bound the read before

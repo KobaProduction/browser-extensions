@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test'
 import { installVkArchive } from './archive-runtime'
+import { presentVkArchive } from './features/chat-export/model/archive-presentation'
 import type {
   ArchiveApi,
   ArchiveRunResult,
@@ -188,7 +189,7 @@ const reload = (): ArchiveApi => {
 let a: ArchiveApi, folder: MockDir
 beforeAll(async () => {
   a = reload()
-  folder = new MockDir('VK_Archive_v2')
+  folder = new MockDir('VK_Archive_v1')
   await a.useFolder(folderHandle(folder))
 })
 afterAll(() => {
@@ -220,6 +221,8 @@ test('exact N=3000 even if previously saved, and only two JSON outputs', async (
   const m = await read('messages.json')
   expect(m.messages).toHaveLength(3000)
   const md = (await read('metadata.json')) as VkArchiveMeta
+  expect(md.schema).toBe(1)
+  expect(m.schema).toBe(1)
   expect(md.total).toBe(3000)
   expect(md.checkpoint?.status).toBe('done')
   expect([...folder.files.keys()].sort()).toEqual(['index.html', 'messages.json', 'metadata.json'])
@@ -228,6 +231,10 @@ test('exact N=3000 even if previously saved, and only two JSON outputs', async (
   expect(preview.messages).toHaveLength(80)
   expect(preview.matching).toBe(3000)
   expect(preview.messages.at(-1)?.id).toBe(m.messages.at(-1)?.id)
+  const oldPage = a.previewMessages({ limit: 80, offset: 80 })
+  expect(oldPage.matching).toBe(3000)
+  expect(oldPage.messages).toHaveLength(80)
+  expect(oldPage.messages.at(-1)?.id).toBe(m.messages.at(-81)?.id)
   const exposed = a.getMessages()
   const first = exposed[0]
   if (!first) throw Error('Expected archived message')
@@ -242,6 +249,50 @@ test('exact N=3000 even if previously saved, and only two JSON outputs', async (
   expect(a.previewMessages({ limit: 1 }).messages[0]?.id).toBe(latestId)
   expect(a.previewMessages({ limit: 1 }).messages[0]?.text).toBe(latestText)
 })
+test('real v1 peer mismatch never exposes selected folder metadata in UI projections', () => {
+  const beforePath = globalThis.location.pathname
+  const matching = a.status()
+  expect(matching.folder).toBe('VK_Archive_v1')
+  expect(matching.messages).toBe(3000)
+  expect(matching.blockedReason).toBeNull()
+  const visible = presentVkArchive(matching)
+  expect(visible.summary).toEqual({ folder: 'VK_Archive_v1', messages: 3000 })
+  expect(visible.canRead).toBe(true)
+  try {
+    globalThis.location.pathname = '/im/convo/987654'
+    const actual = a.status()
+    // The engine deliberately retains the selected archive for safe resume,
+    // so its internal snapshot still references the other conversation.
+    expect(actual.folder).toBe('VK_Archive_v1')
+    expect(actual.messages).toBe(3000)
+    expect(actual.blockedReason).toContain('другая переписка')
+    const hidden = presentVkArchive(actual)
+    expect(hidden.summary).toBeNull()
+    expect(hidden.canRead).toBe(false)
+    expect(hidden.manager.folder).toBeNull()
+    expect(hidden.manager.messages).toBe(0)
+    expect(hidden.manager.context).not.toContain(String(peer))
+    expect(hidden.manager.context).not.toContain('VK_Archive_v1')
+    expect(hidden.manager.done).toBe(0)
+    expect(hidden.manager.total).toBe(0)
+    expect(hidden.manager.downloaded).toBe(0)
+    expect(hidden.manager.failed).toBe(0)
+    expect(hidden.manager.error).toBeUndefined()
+    // A pending folder picker also cannot show the previous archive.
+    const pending = presentVkArchive({
+      ...matching,
+      folderPending: true,
+      blockedReason: null,
+    })
+    expect(pending.summary).toBeNull()
+    expect(pending.manager.folder).toBeNull()
+    expect(pending.manager.messages).toBe(0)
+  } finally {
+    globalThis.location.pathname = beforePath
+  }
+  expect(presentVkArchive(a.status()).summary).toEqual(visible.summary)
+})
+
 test('repeat last N does not terminate on first existing ID or create duplicates', async () => {
   const before = mediaCalls
   const r = await completed(
@@ -286,6 +337,35 @@ test('original names, offline HTML, media path and hashes', async () => {
   expect(saved.length).toBe(2)
   expect(saved.some((x) => x.name === originalName)).toBe(true)
   expect(saved.every((x) => typeof x.sha256 === 'string' && /^[0-9a-f]{64}$/.test(x.sha256))).toBe(true)
+  // VK Reader uses only bounded file-receipt metadata, not external URLs,
+  // local binary paths or a speculative disk-integrity claim.
+  const uiReceipts = a.previewAttachments([docMessage.id, voiceMessage.id, linkMessage.id, -1])
+  const documentReceipts = uiReceipts[String(docMessage.id)] ?? []
+  expect(documentReceipts).toEqual([
+    {
+      type: 'doc',
+      name: originalName,
+      status: 'saved',
+      checksumRecorded: true,
+    },
+  ])
+  expect(uiReceipts[String(voiceMessage.id)]).toContainEqual({
+    type: 'audio_message',
+    name: 'Голосовое.ogg',
+    status: 'saved',
+    checksumRecorded: true,
+  })
+  expect(uiReceipts[String(linkMessage.id)]).toContainEqual({
+    type: 'link',
+    name: 'link',
+    status: 'link',
+    checksumRecorded: false,
+  })
+  const receiptsText = JSON.stringify(uiReceipts)
+  expect(receiptsText).not.toContain('https://')
+  expect(receiptsText).not.toContain('/media/')
+  expect(receiptsText).not.toContain('test-origin-token')
+  expect(a.previewAttachments([987654321])).toEqual({})
   const voiceKey = Object.keys(md.files).find((x) => x.includes('audio_message'))
   if (!voiceKey) throw Error('No voice attachment')
   expect(md.files[voiceKey]?.name).toBe('Голосовое.ogg')
@@ -306,7 +386,7 @@ test('same-size media tampering is SHA-256 verified and repaired on explicit rer
   a = reload()
   await a.useFolder(folderHandle(folder))
   const media = folder.dirs.get('media')?.dirs.get(String(docMessage.id))?.files.get(originalName)
-  if (!media) throw Error('Original document is missing from v2 media folder')
+  if (!media) throw Error('Original document is missing from v1 media folder')
   const original = media.bytes.slice()
   const before = mediaCalls
   media.bytes[0] = (media.bytes[0] ?? 0) ^ 0xff // same byte length, different digest
@@ -334,7 +414,7 @@ test('media read errors preserve the saved receipt without speculative repair', 
   if (!media) throw Error('Expected a saved VK document')
   const before = (await read('metadata.json')) as VkArchiveMeta
   const item = Object.entries(before.files).find(([, value]) => value.name === originalName)
-  if (!item) throw Error('Expected an existing v2 media receipt')
+  if (!item) throw Error('Expected an existing v1 media receipt')
   const networkBefore = mediaCalls
   media.failRead = true
   try {
@@ -358,7 +438,7 @@ test('reconnect folder after simulated reload reads only two files', async () =>
   expect(a.status().messages).toBeGreaterThanOrEqual(3000)
   expect(a.status().checkpoint?.status).toBe('done')
 })
-test('legacy v1 folder rejected without deleting its contents', async () => {
+test('incomplete v1 folder rejected without deleting its contents', async () => {
   const d = new MockDir('old')
   const f = await d.getFileHandle('metadata.json', { create: true }),
     w = await f.createWritable()
@@ -366,6 +446,38 @@ test('legacy v1 folder rejected without deleting its contents', async () => {
   await w.close()
   await expect(a.useFolder(folderHandle(d))).rejects.toThrow()
 })
+test('existing schema-2 folder remains byte-for-byte intact and cannot be rewritten as v1', async () => {
+  a = reload()
+  const original = new MockDir('historical-v2')
+  const metaText = JSON.stringify({
+    schema: 2,
+    version: '2.3.10',
+    peer_id: peer,
+    files: {},
+    runs: [],
+    checkpoint: null,
+    instance_scope: 'vk-booster:prod',
+  })
+  const msgText = JSON.stringify({ schema: 2, peer_id: peer, messages: [{ id: 44, date: 1 }] })
+  for (const [name, content] of [
+    ['metadata.json', metaText],
+    ['messages.json', msgText],
+  ] as const) {
+    const file = await original.getFileHandle(name, { create: true })
+    const writer = await file.createWritable()
+    await writer.write(content)
+    await writer.close()
+  }
+  await expect(a.useFolder(folderHandle(original))).rejects.toThrow('архив схемы 2')
+  expect(await (await original.getFileHandle('metadata.json')).getFile().then((f) => f.text())).toBe(
+    metaText,
+  )
+  expect(await (await original.getFileHandle('messages.json')).getFile().then((f) => f.text())).toBe(
+    msgText,
+  )
+  expect([...original.files.keys()].sort()).toEqual(['messages.json', 'metadata.json'])
+})
+
 test('date filters include the full through day in Moscow timezone', async () => {
   const backup = [...all]
   const time = (s: string) => Math.floor(Date.parse(s) / 1000)
@@ -403,12 +515,12 @@ test('date filters include the full through day in Moscow timezone', async () =>
   }
 })
 
-test('v1 folder with state.json and pages is rejected before v2 files are created', async () => {
+test('historic state.json/pages folder is rejected before v1 files are created', async () => {
   a = reload()
   const old = new MockDir('original-v1')
   await old.getFileHandle('state.json', { create: true })
   await old.getDirectoryHandle('pages', { create: true })
-  await expect(a.useFolder(folderHandle(old))).rejects.toThrow('старый архив v1')
+  await expect(a.useFolder(folderHandle(old))).rejects.toThrow('старого формата')
   expect([...old.files.keys()]).toEqual(['state.json'])
   expect([...old.dirs.keys()]).toEqual(['pages'])
 })
@@ -480,6 +592,7 @@ test('soft-navigation to another chat blocks export and never binds its folder t
     expect(mismatch.blockedReason).toContain('другая переписка')
     expect(a.getMessages()).toEqual([])
     expect(a.previewMessages({ limit: 80 })).toEqual({ messages: [], matching: 0 })
+    expect(a.previewAttachments([docMessage.id, voiceMessage.id, linkMessage.id])).toEqual({})
     const viewerBefore = await (await folder.getFileHandle('index.html'))
       .getFile()
       .then((file) => file.text())
@@ -516,7 +629,7 @@ test('soft-navigation to another chat blocks export and never binds its folder t
   }
 })
 
-test('v2 folder rejects records belonging to a different VK conversation without replacing current archive', async () => {
+test('v1 folder rejects records belonging to a different VK conversation without replacing current archive', async () => {
   a = reload()
   await a.useFolder(folderHandle(folder))
   const previous = a.status()
@@ -526,7 +639,7 @@ test('v2 folder rejects records belonging to a different VK conversation without
   ).createWritable()
   await metadata.write(
     JSON.stringify({
-      schema: 2,
+      schema: 1,
       peer_id: peer,
       files: {},
       runs: [],
@@ -539,7 +652,7 @@ test('v2 folder rejects records belonging to a different VK conversation without
   ).createWritable()
   await messages.write(
     JSON.stringify({
-      schema: 2,
+      schema: 1,
       peer_id: peer,
       messages: [{ id: 42, date: 1791500000, peer_id: peer + 1, text: 'Foreign chat' }],
     }),
@@ -804,6 +917,11 @@ test('fixed Dexie VK capture reads verified owner, persists new history, preview
     expect(repeated).toMatchObject({ saved: 0, alreadySaved: 10 })
     const preview = await fresh.readFixed(10)
     expect(preview).toHaveLength(10)
+    const firstWindow = await fresh.readFixed(5)
+    const nextWindow = await fresh.readFixed(5, firstWindow.at(-1)?.id)
+    expect(firstWindow).toHaveLength(5)
+    expect(nextWindow).toHaveLength(5)
+    expect(new Set([...firstWindow, ...nextWindow].map((row) => row.id)).size).toBe(10)
     const archive = await fresh.exportFixed()
     const text = await new Response(archive.stream().pipeThrough(new DecompressionStream('gzip'))).text()
     const lines = text
@@ -818,7 +936,7 @@ test('fixed Dexie VK capture reads verified owner, persists new history, preview
     expect(lines.filter((row) => row.kind === 'message')).toHaveLength(10)
     expect(lines.at(-1)).toMatchObject({ kind: 'footer', count: 10 })
     // Dexie capture is not allowed to touch the existing file-backed archive.
-    expect(((await read('metadata.json')) as VkArchiveMeta).schema).toBe(2)
+    expect(((await read('metadata.json')) as VkArchiveMeta).schema).toBe(1)
     fresh.destroy()
   } finally {
     globalThis.fetch = previous
@@ -826,5 +944,17 @@ test('fixed Dexie VK capture reads verified owner, persists new history, preview
     Object.assign(globalThis, { indexedDB: oldIndexed, IDBKeyRange: oldRange })
     Dexie.dependencies.indexedDB = priorDexie.indexedDB
     Dexie.dependencies.IDBKeyRange = priorDexie.IDBKeyRange
+  }
+})
+
+test('VK file writer is unavailable unless running unbundled synthetic tests', async () => {
+  const previousTestMode = globalThis.__VK_EXPORT_TEST_MODE
+  globalThis.__VK_EXPORT_TEST_MODE = false
+  try {
+    await expect(a.selectFolder()).rejects.toThrow('Dexie')
+    await expect(a.useFolder(folderHandle(new MockDir('isolated-history')))).rejects.toThrow('Dexie')
+    await expect(a.run({ limit: 1 })).rejects.toThrow('Dexie')
+  } finally {
+    globalThis.__VK_EXPORT_TEST_MODE = previousTestMode
   }
 })

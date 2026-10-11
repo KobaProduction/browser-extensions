@@ -20,7 +20,8 @@ export function planVersionBumps(
       const current = versions[id]
       if (!current) throw new Error(`Missing version for ${id}`)
       if (id === 'vk-booster') {
-        if (current !== FROZEN_VK_VERSION) throw new Error(`VK v2 base must remain ${FROZEN_VK_VERSION}`)
+        if (current !== FROZEN_VK_VERSION)
+          throw new Error(`VK v1 pre-PROD base must remain ${FROZEN_VK_VERSION}`)
         return []
       }
       return [[id, bumpPatch(current)]]

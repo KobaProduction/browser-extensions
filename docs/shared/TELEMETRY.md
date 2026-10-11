@@ -37,7 +37,7 @@ full exception objects that may contain secrets.
 **Source implementation checkpoint:** `packages/core` now supplies a
 default-off allowlisted `ScopedTelemetry` emitter and `packages/adapters`
 exposes its product/channel-validated `TelemetryPort` binding. The same
-typed contract is reusable by VK v2 and ChatGPT without changing their
+typed contract is reusable by VK v1 and ChatGPT without changing their
 archives. Real sink transport, persisted consent, dashboards and installed
 browser acceptance remain missing; mocks do not prove live integration.
 

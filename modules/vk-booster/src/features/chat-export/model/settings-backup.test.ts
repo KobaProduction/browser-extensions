@@ -4,7 +4,9 @@ import {
   restoreSettingsBackup,
   validateSettingsBackup,
 } from '@kobaproduction/browser-storage'
+import { createVkPreferencesPersistence } from './durable-preferences'
 import {
+  restoreVkCaptureSettings,
   type VkCapturePreferences,
   validateVkCapturePreferences,
   vkCaptureSettingsPort,
@@ -23,8 +25,8 @@ function fixture() {
     media: true,
   }
   const status: ArchiveStatus = {
-    version: '2.3.10',
-    folder: 'VK_Archive_v2',
+    version: '1.0.0',
+    folder: 'VK_Archive_v1',
     activePeerId: options.peerId,
     blockedReason: null,
     busy: false,
@@ -54,14 +56,14 @@ function fixture() {
   }
 }
 
-test('VK v2 preset exports only seven non-sensitive options and exact scope', async () => {
+test('VK v1 preset exports only seven non-sensitive options and exact scope', async () => {
   const f = fixture()
   const port = vkCaptureSettingsPort(f.api, 'vk-booster:dev')
   const blob = await exportSettingsBackup(port)
   const raw = await blob.text()
   const parsed = await validateSettingsBackup(port, blob)
   expect(raw).not.toContain('123456')
-  expect(raw).not.toContain('VK_Archive_v2')
+  expect(raw).not.toContain('VK_Archive_v1')
   expect(raw).not.toContain('messages')
   expect(parsed.scope).toEqual({ productId: 'vk-booster', channel: 'dev' })
   expect(parsed.includes).toEqual({ settings: true, archive: false, attachments: false })
@@ -71,7 +73,7 @@ test('VK v2 preset exports only seven non-sensitive options and exact scope', as
   expect(f.changes).toBe(0)
 })
 
-test('restores capture options in memory while preserving peer and v2 archive folder', async () => {
+test('restores capture options in memory while preserving peer and v1 archive folder', async () => {
   const f = fixture()
   const port = vkCaptureSettingsPort(f.api, 'vk-booster:prod')
   const backup = await exportSettingsBackup(port)
@@ -79,7 +81,7 @@ test('restores capture options in memory while preserving peer and v2 archive fo
   f.status.options.mode = 'incremental'
   await restoreSettingsBackup(port, backup)
   expect(f.status.options).toMatchObject({ peerId: 123456, limit: 3000, mode: 'recent' })
-  expect(f.status.folder).toBe('VK_Archive_v2')
+  expect(f.status.folder).toBe('VK_Archive_v1')
   expect(f.status.messages).toBe(3000)
   expect(f.changes).toBe(1)
 })
@@ -169,4 +171,65 @@ test('rejects unknown runtime and valid-but-different installation scope', async
   await expect(
     restoreSettingsBackup(vkCaptureSettingsPort(f.api, 'all-in-one:prod'), backed),
   ).rejects.toThrow('mismatch')
+})
+
+test('validated backup restore updates the durable scoped value and live options together', async () => {
+  const f = fixture()
+  const records = new Map<string, string>()
+  const backend = {
+    async get(key: string) {
+      return records.get(key) ?? null
+    },
+    async set(key: string, value: string) {
+      records.set(key, value)
+    },
+  }
+  const stored = createVkPreferencesPersistence('userscript', 'vk-booster:dev', backend)
+  const backup = await exportSettingsBackup(vkCaptureSettingsPort(f.api, 'vk-booster:dev'))
+  f.status.options.limit = 9
+  await restoreVkCaptureSettings(f.api, backup, stored)
+  expect((await stored.read())?.limit).toBe(3000)
+  expect(f.status.options.limit).toBe(3000)
+  expect(f.status.options.peerId).toBe(123456)
+  expect(f.status.messages).toBe(3000)
+  const before = f.changes
+  const raw = JSON.parse(await backup.text()) as Record<string, unknown>
+  await expect(
+    restoreVkCaptureSettings(
+      f.api,
+      new Blob([JSON.stringify({ ...raw, checksum: '0'.repeat(64) })]),
+      stored,
+    ),
+  ).rejects.toThrow('integrity')
+  expect(f.changes).toBe(before)
+  expect((await stored.read())?.limit).toBe(3000)
+})
+
+test('failed persistent restore rolls the live configuration back and leaves previous stored data', async () => {
+  const f = fixture()
+  const values = new Map<string, string>()
+  const working = {
+    async get(key: string) {
+      return values.get(key) ?? null
+    },
+    async set(key: string, value: string) {
+      values.set(key, value)
+    },
+  }
+  const base = createVkPreferencesPersistence('chromium', 'vk-booster:prod', working)
+  await base.write({
+    ...(await vkCaptureSettingsPort(f.api, 'vk-booster:prod').exportSettings()),
+    limit: 9,
+  })
+  const failing = createVkPreferencesPersistence('chromium', 'vk-booster:prod', {
+    get: working.get,
+    async set() {
+      throw Error('storage denied')
+    },
+  })
+  const backup = await exportSettingsBackup(vkCaptureSettingsPort(f.api, 'vk-booster:prod'))
+  f.status.options.limit = 9
+  await expect(restoreVkCaptureSettings(f.api, backup, failing)).rejects.toThrow('storage denied')
+  expect(f.status.options.limit).toBe(9)
+  expect((await base.read())?.limit).toBe(9)
 })

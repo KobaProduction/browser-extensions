@@ -44,7 +44,9 @@ or ChatGPT origin, their persistent records and private events must not mix.
 **Implementation status:** Pinia persistence and Dexie are desired **shared
 interfaces/technology targets**, not presently proven integrated in all
 products. Existing first-party code uses Vue state, storage adapters and
-native IndexedDB; ChatGPT v3/v4 has established schemas and owner proofs.
+native IndexedDB; ChatGPT v3/v4 has established schemas and owner proofs. New VK file archives
+use schema 1; Dexie telemetry journal version 1 from PR #32 is an optional
+separate database and not a VK archive migration.
 Introduce Pinia/Dexie only behind ports after verifying migrations and source
 ownership. Never conflate dependency installation with data acceptance.
 

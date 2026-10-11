@@ -3,7 +3,9 @@ import {
   exportSettingsBackup,
   type PersistentSettingsPort,
   restoreSettingsBackup,
+  validateSettingsBackup,
 } from '@kobaproduction/browser-storage'
+import type { VkPreferencesPersistence } from './durable-preferences'
 import type { ArchiveApi, ArchiveOptions } from './types'
 
 /** Capture preferences only. No conversation, owner, checkpoint or folder identity. */
@@ -56,7 +58,7 @@ function withoutPeer(options: ArchiveOptions): VkCapturePreferences {
   return validateVkCapturePreferences(Object.fromEntries(fields.map((name) => [name, options[name]])))
 }
 
-/** A session preset, not persisted application settings and NOT a v2 archive backup.
+/** A session preset, not persisted application settings and NOT a v1 archive backup.
  * The selected VK peer and folder always remain under the archive engine's control. */
 export function vkCaptureSettingsPort(
   api: ArchiveApi,
@@ -87,7 +89,7 @@ export function vkCaptureSettingsPort(
     async restoreSettingsAtomically(value) {
       requireIdle()
       // configure validates the current peer and all options before changing live settings.
-      // Never pass peerId or write the v2 archive folder during preset import.
+      // Never pass peerId or write the v1 archive folder during preset import.
       api.configure(validateVkCapturePreferences(value))
     },
   }
@@ -97,6 +99,27 @@ export async function exportVkCaptureSettings(api: ArchiveApi): Promise<Blob> {
   return exportSettingsBackup(vkCaptureSettingsPort(api))
 }
 
-export async function restoreVkCaptureSettings(api: ArchiveApi, backup: Blob): Promise<void> {
-  await restoreSettingsBackup(vkCaptureSettingsPort(api), backup)
+export async function restoreVkCaptureSettings(
+  api: ArchiveApi,
+  backup: Blob,
+  persistence?: VkPreferencesPersistence,
+): Promise<void> {
+  const port = vkCaptureSettingsPort(api, persistence?.scopeId)
+  if (!persistence) return restoreSettingsBackup(port, backup)
+  // Preflight the entire file and the live conversation before any mutation.
+  const validated = await validateSettingsBackup(port, backup)
+  const before = withoutPeer(api.status().options)
+  await port.exportSettings()
+  // One storage.set is atomic; live configuration is rolled back on a failed write.
+  await port.restoreSettingsAtomically(validated.settings)
+  try {
+    await persistence.write(validated.settings)
+  } catch (error) {
+    try {
+      await port.restoreSettingsAtomically(before)
+    } catch {
+      throw Error('VK settings persistence failed and live rollback was blocked')
+    }
+    throw error
+  }
 }

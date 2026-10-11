@@ -7,11 +7,15 @@ import type { VkMessage } from './types'
  */
 export function selectVkArchivePreview(
   rows: readonly VkMessage[],
-  options: { limit: number; query?: string },
+  options: { limit: number; offset?: number; query?: string },
 ): { messages: VkMessage[]; matching: number } {
   const limit = Number.isFinite(options.limit)
     ? Math.max(1, Math.min(240, Math.floor(options.limit)))
     : 80
+  // Offset counts matching records from newest to oldest, not source rows.
+  // This allows browsing the whole saved archive without copying it into UI.
+  const requestedOffset = options.offset ?? 0
+  const offset = Number.isSafeInteger(requestedOffset) && requestedOffset > 0 ? requestedOffset : 0
   const query = (options.query ?? '').trim().toLocaleLowerCase('ru')
   const selected: VkMessage[] = []
   let matching = 0
@@ -22,7 +26,7 @@ export function selectVkArchivePreview(
     const row = rows[index]
     if (!row || (query && !(row.text ?? '').toLocaleLowerCase('ru').includes(query))) continue
     matching++
-    if (selected.length < limit) selected.push(row)
+    if (matching > offset && selected.length < limit) selected.push(row)
   }
   selected.reverse()
   return { messages: selected, matching }

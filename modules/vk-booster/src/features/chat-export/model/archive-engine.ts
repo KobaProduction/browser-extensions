@@ -24,12 +24,15 @@ import type {
   VkCheckpoint,
   VkMessage,
 } from './types'
-/* VK Booster v2 provider composition; neutral paging, storage and UI live in shared packages. */
+/* VK Booster initial v1 provider composition; shared paging and UI are source-neutral. */
 export function installVkArchive(target: DeliveryTarget = 'userscript'): void {
-  const VERSION = '2.3.10'
+  const VERSION = '1.0.0'
   const apiKey = instanceKey('VKExport', 'vk-booster:prod')
   const published = globalThis as Record<string, unknown>
   if ((published[apiKey] as ArchiveApi | undefined)?.version === VERSION) return
+  // Injected scopes are nonempty in production bundles. Test-only file output
+  // cannot be activated by a VK page setting the test-mode global.
+  const legacyFileTestOnly = () => instanceScope() === '' && globalThis.__VK_EXPORT_TEST_MODE === true
   const currentPeer = () => conversationPeerFromPath(location.pathname)
   const cfg: ArchiveOptions = {
     peerId: currentPeer() ?? 0,
@@ -59,7 +62,7 @@ export function installVkArchive(target: DeliveryTarget = 'userscript'): void {
   const subscribers = new Set<(status: ArchiveStatus) => void>()
   const ts = () => new Date().toISOString(),
     sleep = (ms: number): Promise<void> =>
-      globalThis.__VK_EXPORT_TEST_MODE ? Promise.resolve() : new Promise((r) => setTimeout(r, ms))
+      legacyFileTestOnly() ? Promise.resolve() : new Promise((r) => setTimeout(r, ms))
   const validDay = (d: string): boolean =>
     !d ||
     (/^\d{4}-\d\d-\d\d$/.test(d) &&
@@ -68,7 +71,7 @@ export function installVkArchive(target: DeliveryTarget = 'userscript'): void {
     d ? Math.floor(Date.parse(d + 'T00:00:00+03:00') / 1000) : null
   const known = () => new Map<number, VkMessage>(rows.map((m) => [m.id, m]))
   const blank = (): VkArchiveMeta => ({
-    schema: 2,
+    schema: 1,
     version: VERSION,
     peer_id: cfg.peerId,
     updated: ts(),
@@ -100,7 +103,7 @@ export function installVkArchive(target: DeliveryTarget = 'userscript'): void {
       updated: ts(),
       lastMessageDate: lastMessage ? new Date(lastMessage.date * 1000).toISOString() : null,
     }
-    await write('messages.json', { schema: 2, peer_id: cfg.peerId, messages: ordered })
+    await write('messages.json', { schema: 1, peer_id: cfg.peerId, messages: ordered })
     await write('metadata.json', savedMeta)
     return { ordered, savedMeta }
   }
@@ -172,17 +175,17 @@ export function installVkArchive(target: DeliveryTarget = 'userscript'): void {
   function isMeta(v: unknown): v is VkArchiveMeta {
     return (
       isRecord(v) &&
-      v.schema === 2 &&
+      v.schema === 1 &&
       typeof v.peer_id === 'number' &&
       isRecord(v.files) &&
       Array.isArray(v.runs) &&
       (v.checkpoint === null || isRecord(v.checkpoint))
     )
   }
-  function isMessagesFile(v: unknown): v is { schema: 2; peer_id: number; messages: VkMessage[] } {
+  function isMessagesFile(v: unknown): v is { schema: 1; peer_id: number; messages: VkMessage[] } {
     return (
       isRecord(v) &&
-      v.schema === 2 &&
+      v.schema === 1 &&
       typeof v.peer_id === 'number' &&
       Array.isArray(v.messages) &&
       v.messages.every(
@@ -192,6 +195,7 @@ export function installVkArchive(target: DeliveryTarget = 'userscript'): void {
     )
   }
   async function useFolder(handle: FileSystemDirectoryHandle): Promise<ArchiveStatus> {
+    if (!legacyFileTestOnly()) throw Error('Файловая папка не подключается в основном режиме Dexie.')
     const pagePeer = currentPeer()
     if (pagePeer === null) throw Error('Открой диалог VK перед выбором папки')
     if (busy || folderLoading || folderPickerOpen)
@@ -206,25 +210,30 @@ export function installVkArchive(target: DeliveryTarget = 'userscript'): void {
     try {
       const previous = await json('metadata.json')
       if (!previous) {
-        // v1 stores state.json and pages; reject before creating v2 files.
+        // Historic state.json/pages exports use an incompatible layout; reject before writes.
         try {
           await root.getFileHandle('state.json')
-          throw Error('Обнаружен старый архив v1. Используй отдельную утилиту миграции.')
+          throw Error('Обнаружен архив старого формата state.json/pages. Используй отдельную папку.')
         } catch (e) {
           if (!(e instanceof Error) || e.name !== 'NotFoundError') throw e
         }
         try {
           await root.getDirectoryHandle('pages')
-          throw Error('Обнаружен старый каталог pages/. Сначала выполни миграцию.')
+          throw Error('Обнаружен архив старого формата pages/. Используй отдельную папку.')
         } catch (e) {
           if (!(e instanceof Error) || e.name !== 'NotFoundError') throw e
         }
       }
+      // Do not reinterpret a historical v2 folder as v1 or rewrite its metadata.
+      if (isRecord(previous) && previous.schema === 2)
+        throw Error(
+          'Обнаружен архив схемы 2. Выбери отдельную папку для версии 1; старый архив не изменён.',
+        )
       const loadedMeta = previous === null ? blank() : isMeta(previous) ? previous : null
       if (!loadedMeta || loadedMeta.peer_id !== cfg.peerId)
-        throw Error('Старая папка несовместима. Мигрируй её отдельной утилитой в новую папку.')
-      // Existing legacy v2 folders remain usable only in the original prod
-      // standalone installation. Dev and aggregate must use an owned folder.
+        throw Error('Несовместимая папка архива. Используй новую папку; автоматической миграции нет.')
+      // A new owned v1 folder is scoped to this installation. Historic unscoped
+      // metadata is only accepted in original PROD; never in DEV/aggregate.
       const owningScope = instanceScope() || 'vk-booster:prod'
       if (
         loadedMeta.instance_scope
@@ -262,6 +271,8 @@ export function installVkArchive(target: DeliveryTarget = 'userscript'): void {
     }
   }
   async function selectFolder(): Promise<ArchiveStatus> {
+    if (!legacyFileTestOnly())
+      throw Error('Файловая папка больше не является основным архивом. Используй экспорт Dexie.')
     if (!globalThis.showDirectoryPicker) throw Error('Нужен Chrome и HTTPS')
     const pagePeer = currentPeer()
     if (pagePeer === null) throw Error('Открой диалог VK перед выбором папки')
@@ -273,7 +284,7 @@ export function installVkArchive(target: DeliveryTarget = 'userscript'): void {
     refresh()
     try {
       // This call must remain synchronous with the human button gesture.
-      const h = await globalThis.showDirectoryPicker({ id: 'vk-archive-v2', mode: 'readwrite' })
+      const h = await globalThis.showDirectoryPicker({ id: 'vk-archive-v1', mode: 'readwrite' })
       const permitted = h as FileSystemDirectoryHandle & {
         requestPermission(options: { mode: 'readwrite' }): Promise<PermissionState>
       }
@@ -343,6 +354,8 @@ export function installVkArchive(target: DeliveryTarget = 'userscript'): void {
   async function run(
     options: Partial<ArchiveOptions> & { resume?: boolean } = {},
   ): Promise<ArchiveRunResult> {
+    if (!legacyFileTestOnly())
+      throw Error('Историческая файловая выгрузка недоступна как основное хранилище. Используй Dexie.')
     if (busy) throw Error('Выгрузка уже запущена')
     if (folderLoading || folderPickerOpen) throw Error('Выбор папки ещё не завершён')
     if (!root) throw Error('Сначала выбери папку')
@@ -633,11 +646,11 @@ export function installVkArchive(target: DeliveryTarget = 'userscript'): void {
       repo.close()
     }
   }
-  async function readFixed(limit = 80): Promise<readonly VkMessage[]> {
+  async function readFixed(limit = 80, afterMessageId?: number): Promise<readonly VkMessage[]> {
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500)
       throw Error('Invalid fixed archive page size')
     return withFixed(async (repo, peerId) => {
-      const rows = await repo.listMessages(peerId, limit)
+      const rows = await repo.listMessages(peerId, limit, afterMessageId)
       const messages: VkMessage[] = []
       for (const row of rows) {
         const original = await repo.getOriginal(peerId, row.messageId)
@@ -720,16 +733,34 @@ export function installVkArchive(target: DeliveryTarget = 'userscript'): void {
     hide,
     subscribe,
     buildViewer,
-    // Public readers receive independent JSON-shaped snapshots; callers cannot mutate
-    // the in-memory rows that the next v2 checkpoint will persist.
     captureFixed,
     readFixed,
     exportFixed,
+    // Public readers receive independent JSON-shaped snapshots; callers cannot mutate
+    // the in-memory rows that the next v1 checkpoint will persist.
     getMessages: () => (archiveReadable() ? structuredClone(rows) : []),
     previewMessages: (options) => {
       if (!archiveReadable()) return { messages: [], matching: 0 }
       const result = selectVkArchivePreview(rows, options)
       return { ...result, messages: structuredClone(result.messages) }
+    },
+    previewAttachments: (messageIds) => {
+      // Source peer, folder permission and context checks match previewMessages.
+      if (!archiveReadable()) return {}
+      const ids = new Set(messageIds.slice(0, 240).filter((id) => Number.isSafeInteger(id) && id > 0))
+      const receipts: Record<string, import('./types').VkPreviewAttachment[]> = {}
+      for (const message of rows) {
+        if (!ids.has(message.id)) continue
+        receipts[String(message.id)] = attachmentView(message)
+          .slice(0, 32)
+          .map((view) => ({
+            type: view.type,
+            name: view.name,
+            status: view.type === 'link' ? 'link' : view.status,
+            checksumRecorded: Boolean(currentMeta().files[view.key]?.sha256),
+          }))
+      }
+      return receipts
     },
     destroy() {
       subscribers.clear()

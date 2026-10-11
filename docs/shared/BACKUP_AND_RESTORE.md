@@ -60,12 +60,14 @@ transaction abort, browser restart, and concurrent readers. Verify counts,
 metadata relations and original files after restore. Report whether the test
 used mocks, a real browser IndexedDB or installed extension data.
 
-**Existing source reality:** VK Booster main still persists the v2 folder
-archive; the incompatible IndexedDB replacement proposed in PR #10 is not
-accepted for integration. Its backup helpers may be reused only through a
-separate v2-compatible adapter with real data tests. ChatGPT has independent
-v3/v4 migration contracts. A settings-backup contract is now implemented for ChatGPT only; a universal
-provider archive backup and Dexie-backed cross-product recovery facade remain **unaccepted**.
+**Current first-release VK source:** new VK folders use schema-1
+`metadata.json`/`messages.json`, `index.html`, `media/`; historical schema-2
+folders remain untouched and are not imported without a separately accepted
+backup/migration. The incompatible IndexedDB replacement in PR #10 is not
+accepted. Dexie telemetry journals in PR #32 are separate from archive
+backup. ChatGPT has independent v3/v4 historical-data extraction contracts.
+The provider-neutral settings backup is used by ChatGPT and VK; a universal
+archive backup and Dexie-backed cross-product recovery facade remain **unaccepted**.
 
 ## Shared settings backup implementation checkpoint (source only)
 
@@ -77,9 +79,11 @@ this as an explicit export/import action in its Settings panel, excluding
 private capture rules, archives, credentials and telemetry endpoints.
 The returned file does **not** contain IndexedDB archives or media.
 
-The VK v2 folder archive and existing ChatGPT v3/v4 databases are untouched.
-A VK **session capture-preset** port and UI are also implemented, but they
-do not yet persist application settings or back up the v2 folder. Provider
+Historical VK schema-2 folders and existing ChatGPT v3/v4 databases are
+untouched. Fresh VK schema-1 folders are not a database migration. A VK
+**capture-preferences** port and UI now persist seven validated settings
+independently of Dexie and offer JSON settings-only backup/restore. They do
+not back up archive messages, receipts or attachment bytes. Provider
 archive round-trip, Dexie adoption and installed-browser recovery are
 **not yet accepted**.
 

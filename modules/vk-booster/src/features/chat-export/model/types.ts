@@ -61,6 +61,14 @@ export interface VkAttachmentView {
   transcript: string | null
   name: string
 }
+/** Read-only display receipts, not verified presence of bytes on disk.
+ * Never expose original remote URLs, local paths or secrets to the reader. */
+export interface VkPreviewAttachment {
+  type: string
+  name: string
+  status: VkStoredFile['status'] | 'missing'
+  checksumRecorded: boolean
+}
 export interface VkCheckpoint {
   mode: ArchiveMode
   target: number
@@ -79,7 +87,7 @@ export interface VkCheckpoint {
   error?: string
 }
 export interface VkArchiveMeta {
-  schema: 2
+  schema: 1
   version: string
   peer_id: number
   updated: string
@@ -132,13 +140,16 @@ export interface ArchiveApi {
   hide(): void
   buildViewer(): Promise<{ messages: number }>
   captureFixed(limit?: number): Promise<{ saved: number; alreadySaved: number; available: number }>
-  readFixed(limit?: number): Promise<readonly VkMessage[]>
+  readFixed(limit?: number, afterMessageId?: number): Promise<readonly VkMessage[]>
   exportFixed(): Promise<Blob>
   getMessages(): VkMessage[]
-  previewMessages(options: { limit: number; query?: string }): {
+  previewMessages(options: { limit: number; offset?: number; query?: string }): {
     messages: VkMessage[]
     matching: number
   }
+  /** Bounded receipt projection for visible messages, guarded by active VK peer.
+   * This is NOT a fresh disk-level media audit. */
+  previewAttachments(messageIds: readonly number[]): Record<string, VkPreviewAttachment[]>
   destroy(): void
 }
 export interface LegacyVkArchive {
