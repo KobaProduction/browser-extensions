@@ -1,14 +1,15 @@
 import { archiveSha256Hex, createGzipFromChunks, encodeArchiveClone } from '@kobaproduction/browser-archive'
-import { instanceScope } from '@kobaproduction/browser-core'
+import { instanceKey, instanceScope } from '@kobaproduction/browser-core'
 import { captureRuleForOperation, type BoosterModule, type SettingsAdapter } from '@chatgpt-booster/core'
-import { currentConversationId } from '@chatgpt-booster/chatgpt'
+import { currentConversationId, hasConversationDraft, hasPendingComposerAttachments, isConversationGenerating } from '@chatgpt-booster/chatgpt'
 import type { DexieOptions } from 'dexie'
-import type { ArchiveCollectionSession } from './archive-collection-session'
+import type { ArchiveCollectionRun, ArchiveCollectionSession } from './archive-collection-session'
 import type { ConversationArchiveEventDetail } from '@chatgpt-booster/observer'
 import { NATIVE_HISTORY_CONTRACT_VERSION } from './archive-source-contract'
 import { FixedCanonicalDexieRepository } from './archive-fixed-dexie'
 import type { ConversationStateStore } from './conversation-state'
-import { retainRawSource } from './archive-v4-capture'
+import { retainRawSource } from './archive-record-retention'
+import { exportLegacy092NativeV3, exportLegacyNativeV4 } from './archive-legacy092-extract'
 
 export interface FixedChatGptView {
   currentConversationId(): string | null
@@ -16,6 +17,18 @@ export interface FixedChatGptView {
   exportCurrent(): Promise<Blob>
   savedCurrent(): Promise<number>
   captureFailed(): boolean
+  listSavedConversations(): Promise<readonly { conversationId: string; projectId: string | null; title: string | null }[]>
+  listSavedProjects(): Promise<readonly { projectId: string; title: string | null }[]>
+  readConversation(id: string, limit?: number): Promise<readonly { id: string; raw: Record<string, unknown>; canonical: unknown; observedAtMs: number }[]>
+  exportConversation(id: string): Promise<Blob>
+  savedCount(id: string): Promise<number>
+  hasMessagesBefore(id: string, cursor: string): Promise<boolean>
+  hasMessagesAfter(id: string, cursor: string): Promise<boolean>
+  windowConversation(id: string, direction: 'older' | 'newer' | 'first', cursorId?: string): Promise<readonly { id: string; raw: Record<string, unknown>; observedAtMs: number }[]>
+  collectCurrent(): Promise<void>
+  stopCollection(): void
+  backupLegacyV3(): Promise<Blob>
+  backupLegacyV4(): Promise<Blob>
 }
 function scopeIdentity(label: string): { channel: 'dev' | 'prod'; installationId: string } {
   const compiled = instanceScope() || 'chatgpt-booster:prod'
@@ -44,7 +57,7 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
     private readonly state: ConversationStateStore,
     private readonly settings: SettingsAdapter,
     targetLabel: string,
-    private readonly collectionSession?: ArchiveCollectionSession,
+    readonly collectionSession: ArchiveCollectionSession,
     private readonly dbOptions?: DexieOptions,
   ) {
     this.identity = scopeIdentity(targetLabel)
@@ -75,6 +88,7 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
           console.warn('[ChatGPT Booster] Fixed archive capture:', this.failure.name)
         })
     }
+    this.enqueuePage = enqueue
     this.unsubscribe = this.state.subscribePages(enqueue)
     // Native pages observed during early capture are still in current-session RAM.
     // Replay RAM only, never old v3/v4 IndexedDB generations.
@@ -127,6 +141,119 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
     }
   }
   currentConversationId() { return currentConversationId() ?? null }
+  async collectCurrent() {
+    const account = this.state.verifiedAccountId()
+    const id = this.currentConversationId()
+    if (!account || !id || this.stopped) throw Error('Verified current conversation required')
+    const settings = await this.settings.get()
+    if (!settings.enabled || hasConversationDraft() || hasPendingComposerAttachments() ||
+        isConversationGenerating() || (typeof document !== 'undefined' && document.hidden))
+      throw Error('Manual archive collection is currently blocked')
+    const header = this.state.header(id)
+    const run = this.collectionSession.begin({
+      accountId: account, conversationId: id, projectId: header?.projectId ?? null,
+      selectedTipId: header?.currentNodeId ?? null,
+    })
+    this.collectionSession.requireCurrent(run)
+    for (const page of this.state.pages(id)) {
+      if (this.collectionSession.permits(run, account, id))
+        this.enqueuePage?.(page)
+    }
+  }
+  private enqueuePage?: (page: ConversationArchiveEventDetail) => void
+  stopCollection() { this.collectionSession.pause('user') }
+  async backupLegacyV3(): Promise<Blob> {
+    return (await exportLegacy092NativeV3()).blob
+  }
+  async backupLegacyV4(): Promise<Blob> {
+    return (await exportLegacyNativeV4(instanceKey('chatgpt-booster-archive-v4', 'chatgpt-booster:prod'))).blob
+  }
+  async completeCollection(run: ArchiveCollectionRun) {
+    this.collectionSession.requireCurrent(run)
+    this.collectionSession.update(run, { phase: 'saving', hasOlderServerHistory: false })
+    await this.collectionSession.waitFor(run, this.pending)
+    this.collectionSession.requireCurrent(run)
+    if (this.failure) {
+      this.collectionSession.fail(run, 'archive.error.unknown')
+      throw Error('Fixed Dexie capture has unresolved source conflicts')
+    }
+    this.collectionSession.complete(run)
+  }
+  async listSavedConversations() {
+    const owner = this.state.verifiedAccountId()
+    const epoch = this.state.accountEpoch()
+    if (!owner) throw Error('Unverified owner')
+    const items = await this.repo(owner).listConversations()
+    if (this.state.accountEpoch() !== epoch || this.state.verifiedAccountId() !== owner)
+      throw Error('Account changed during conversation read')
+    return items.map(({ conversationId, projectId, title }) => ({ conversationId, projectId, title }))
+  }
+  async listSavedProjects() {
+    const owner = this.state.verifiedAccountId()
+    const epoch = this.state.accountEpoch()
+    if (!owner) throw Error('Unverified owner')
+    const items = await this.repo(owner).listProjects()
+    if (this.state.accountEpoch() !== epoch || this.state.verifiedAccountId() !== owner)
+      throw Error('Account changed during project read')
+    return items.map(({ projectId, title }) => ({ projectId, title }))
+  }
+  async hasMessagesBefore(id: string, cursor: string) {
+    return this.boundary(id, cursor, 'before')
+  }
+  async hasMessagesAfter(id: string, cursor: string) {
+    return this.boundary(id, cursor, 'after')
+  }
+  private async boundary(id: string, cursor: string, side: 'before' | 'after') {
+    const owner = this.state.verifiedAccountId(), epoch = this.state.accountEpoch()
+    if (!owner) throw Error('Unverified owner')
+    const result = await this.repo(owner).hasMessageBoundary(id, cursor, side)
+    if (this.state.accountEpoch() !== epoch || this.state.verifiedAccountId() !== owner)
+      throw Error('Owner changed during saved pagination')
+    return result
+  }
+  async savedCount(id: string) {
+    const owner = this.state.verifiedAccountId(), epoch = this.state.accountEpoch()
+    if (!owner || !id) throw Error('Unverified owner or conversation')
+    const count = await this.repo(owner).countConversation(id)
+    if (this.state.accountEpoch() !== epoch || this.state.verifiedAccountId() !== owner)
+      throw Error('Account changed during saved count')
+    return count
+  }
+  async windowConversation(
+    id: string, direction: 'older' | 'newer' | 'first', cursorId?: string,
+  ) {
+    await this.pending
+    const owner = this.state.verifiedAccountId(), epoch = this.state.accountEpoch()
+    if (!owner || !id) throw Error('Unverified owner or conversation')
+    const repo = this.repo(owner)
+    const rows = await repo.windowMessages(id, direction, cursorId)
+    const result = []
+    for (const row of rows) {
+      const snapshot = await repo.getSourceSnapshot(id, row.messageId)
+      if (!snapshot) throw Error('Missing immutable source snapshot')
+      result.push({ id: row.messageId, raw: snapshot.raw, observedAtMs: snapshot.observedAtMs })
+    }
+    if (this.state.accountEpoch() !== epoch || this.state.verifiedAccountId() !== owner)
+      throw Error('Owner changed during saved window')
+    return result
+  }
+  async readConversation(id: string, limit = 500) {
+    await this.pending
+    const owner = this.state.verifiedAccountId()
+    const epoch = this.state.accountEpoch()
+    if (!owner || !id) throw Error('Verified owner and conversation required')
+    const rows = await this.repo(owner).listMessages(id, limit)
+    const result = []
+    for (const row of rows) {
+      const source = await this.repo(owner).getSourceSnapshot(id, row.messageId)
+      if (!source) throw Error('Canonical source missing')
+      result.push({ id: row.messageId, raw: source.raw, canonical: row.projection, observedAtMs: source.observedAtMs })
+    }
+    if (this.state.accountEpoch() !== epoch || this.state.verifiedAccountId() !== owner)
+      throw Error('Account changed during canonical read')
+    return result
+  }
+
   captureFailed() { return Boolean(this.failure) }
   async savedCurrent(): Promise<number> {
     await this.pending
@@ -157,16 +284,20 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
     }))
   }
   async exportCurrent(): Promise<Blob> {
+    const id = this.currentConversationId()
+    if (!id) throw Error('No current conversation')
+    return this.exportConversation(id)
+  }
+  async exportConversation(id: string): Promise<Blob> {
     await this.pending
     const owner = this.state.verifiedAccountId()
-    const id = this.currentConversationId()
-    if (!owner || !id) throw Error('Verified account and current conversation required')
+    if (!owner || !id) throw Error('Verified account and conversation required')
     const epoch = this.state.accountEpoch()
     const store = this.repo(owner)
     const assertOwner = () => {
       if (this.stopped || this.state.accountEpoch() !== epoch ||
-          this.state.verifiedAccountId() !== owner ||
-          this.currentConversationId() !== id) throw Error('Account or conversation changed during export')
+          this.state.verifiedAccountId() !== owner)
+        throw Error('Account changed during export')
     }
     let digest = 'start'
     let count = 0
@@ -203,6 +334,7 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
     this.stopped = true
     this.unsubscribe?.()
     this.unsubscribe = undefined
+    this.enqueuePage = undefined
     this.unsubscribeSettings?.()
     this.unsubscribeSettings = undefined
     await this.pending

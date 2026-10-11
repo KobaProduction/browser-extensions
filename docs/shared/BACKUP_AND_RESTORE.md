@@ -82,3 +82,14 @@ A VK **session capture-preset** port and UI are also implemented, but they
 do not yet persist application settings or back up the v2 folder. Provider
 archive round-trip, Dexie adoption and installed-browser recovery are
 **not yet accepted**.
+
+## Explicit retired v4 read-only extraction (2026-10-11)
+
+Retired ChatGPT v4 is not a working archive service. The physical native v4
+database remains at its original scope-derived IndexedDB name and is read only
+after an explicit owner action for a source backup, not for capture or Reader.
+The existing 0.8.92 v3 source has a separate read-only extractor. Both exports
+preserve original binary/unknown values without cross-version conversions,
+report schema/counts and use a chained gzip JSONL digest. No deletion or
+automatic restoration is authorized. Cross-store concurrent-write atomicity
+cannot be claimed; pause historical capture for a consistent export.

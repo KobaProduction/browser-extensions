@@ -1,6 +1,5 @@
-import {
-  archiveSha256Hex, createGzipFromChunks, encodeArchiveClone,
-} from '@kobaproduction/browser-archive'
+import { archiveSha256Hex, createGzipFromChunks, encodeArchiveClone } from '@kobaproduction/browser-archive'
+import { instanceKey } from '@kobaproduction/browser-core'
 
 /**
  * One-time original 0.8.92/v3 archival extraction, explicitly triggered by
@@ -19,8 +18,6 @@ async function openExistingLegacyDatabase(
   name: string,
   factory: IDBFactory,
 ): Promise<IDBDatabase> {
-  if (name !== LEGACY_092_V3_DATABASE)
-    throw Error('Only the historical stable v3 database can be extracted')
   if (typeof factory.databases !== 'function')
     throw Error('Browser cannot verify that the original archive database exists')
   const known = await factory.databases()
@@ -88,10 +85,18 @@ async function countNativeStore(db: IDBDatabase, name: string): Promise<number> 
 }
 
 /** No database mutation, automatic conversion, owner inference or network. */
-export async function exportLegacy092NativeV3(
+export async function exportNativeDatabaseReadOnly(
+  name: string,
+  expectedVersion: number | readonly number[],
+  format: string,
   factory: IDBFactory = indexedDB,
 ): Promise<Legacy092BackupResult> {
-  const db = await openExistingLegacyDatabase(LEGACY_092_V3_DATABASE, factory)
+  const currentV4Name = instanceKey('chatgpt-booster-archive-v4', 'chatgpt-booster:prod')
+  if (!(name === LEGACY_092_V3_DATABASE && format === LEGACY_092_BACKUP_FORMAT ||
+        name === currentV4Name && format === 'koba-native-v4-readonly-v1') ||
+      !/^koba-native-(v3|v4)-readonly-v1$/.test(format))
+    throw Error('Unsupported historical archive backup request')
+  const db = await openExistingLegacyDatabase(name, factory)
   const stores = [...db.objectStoreNames].sort()
   const sourceSchema = stores.map(name => {
     const table = db.transaction(name, 'readonly').objectStore(name)
@@ -104,9 +109,11 @@ export async function exportLegacy092NativeV3(
       }),
     }
   })
-  if (db.version !== 3 || !stores.includes('conversations') || !stores.includes('messages')) {
+  const acceptedVersions = Array.isArray(expectedVersion) ? expectedVersion : [expectedVersion]
+  if (!acceptedVersions.includes(db.version) ||
+      !stores.includes('conversations') || !stores.includes('messages')) {
     db.close()
-    throw Error('Unexpected 0.8.92 source schema; no backup was produced')
+    throw Error('Unexpected historical archive schema; no backup was produced')
   }
   const counts: Record<string, number> = {}
   const initialCounts: Record<string, number> = {}
@@ -120,8 +127,8 @@ export async function exportLegacy092NativeV3(
   }
   const content = async function* (): AsyncGenerator<Uint8Array> {
     yield await encodeLine({
-      kind: 'header', format: LEGACY_092_BACKUP_FORMAT,
-      originalDatabase: LEGACY_092_V3_DATABASE, originalDatabaseVersion: db.version,
+      kind: 'header', format,
+      originalDatabase: name, originalDatabaseVersion: db.version,
       stores, sourceSchema, owner: 'preserved_as_recorded_no_guessing',
       consistency: 'read_only_page_snapshots_no_cross_store_atomicity_pause_capture',
     })
@@ -138,11 +145,31 @@ export async function exportLegacy092NativeV3(
       if (counts[store] !== initialCounts[store] || counts[store] !== await countNativeStore(db, store))
         throw Error('Legacy archive changed during export; retry while capture is paused')
     }
-    yield await encodeLine({ kind: 'footer', format: LEGACY_092_BACKUP_FORMAT, counts, digest }, true)
+    yield await encodeLine({ kind: 'footer', format, counts, digest }, true)
   }
   try {
     return { blob: await createGzipFromChunks(content()), counts, databaseVersion: db.version }
   } finally {
     db.close()
   }
+}
+
+/** Original stable 0.8.92 source; never open newer native v4 implicitly. */
+export async function exportLegacy092NativeV3(
+  factory: IDBFactory = indexedDB,
+): Promise<Legacy092BackupResult> {
+  return exportNativeDatabaseReadOnly(
+    LEGACY_092_V3_DATABASE, 3, LEGACY_092_BACKUP_FORMAT, factory,
+  )
+}
+
+/** Existing native v4 is retained only as a user-triggered read-only backup source.
+ * No database creation/upgrade, import, conversion or live Reader fallback. */
+export async function exportLegacyNativeV4(
+  dbName: string,
+  factory: IDBFactory = indexedDB,
+): Promise<Legacy092BackupResult> {
+  if (!dbName.startsWith('chatgpt-booster-archive-v4'))
+    throw Error('Refusing unexpected v4 database')
+  return exportNativeDatabaseReadOnly(dbName, [1, 2], 'koba-native-v4-readonly-v1', factory)
 }

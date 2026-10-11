@@ -16,10 +16,7 @@ import { FixedChatGptCapture } from './archive-fixed-runtime'
 import { ArchiveCollectionSession } from './archive-collection-session'
 import { ArchiveScopeControlsModule } from './archive-scope-controls'
 import { ArchiveSourceGate, NATIVE_HISTORY_CONTRACT_VERSION } from './archive-source-contract'
-import { ArchiveV4CaptureModule } from './archive-v4-capture'
-import { ArchiveV4Reader } from './archive-v4-reader'
-import { ArchiveV4Store } from './archive-v4-store'
-import { createArchiveV4UiAdapter } from './archive-v4-ui-adapter'
+import { createFixedArchiveUiAdapter } from './archive-fixed-ui-adapter'
 import { ConversationDecoratorsModule } from './conversation-decorators'
 import { ConversationStateStore } from './conversation-state'
 import { HistoryLoaderModule } from './history-loader'
@@ -42,7 +39,6 @@ export interface BoosterTargetAdapter {
 
 export interface BoosterPageRuntimeOptions {
   target: BoosterTargetAdapter
-  archiveV4Store?: ArchiveV4Store
   /** Shared platform shell owns the launcher and modal for embedded modules. */
   mountUi?: boolean
   /** Explicit release configuration; unknown versions block archive operations, never fall back. */
@@ -92,51 +88,23 @@ export function createBoosterPageRuntime(options: BoosterPageRuntimeOptions) {
   const target = options.target
   const pageBridgeWindow = target.pageBridgeWindow ?? window
   const selectedContract = options.nativeHistoryContractVersion ?? NATIVE_HISTORY_CONTRACT_VERSION
-  // An injected store owns its gate. Reject conflicting composition instead of
-  // writing provenance for an adapter different from the one that validated RAM.
-  if (
-    options.archiveV4Store &&
-    options.nativeHistoryContractVersion !== undefined &&
-    options.archiveV4Store.sourceGate.version !== selectedContract
+  const conversationState = new ConversationStateStore(
+    pageBridgeWindow, new ArchiveSourceGate(false, selectedContract),
   )
-    throw new Error('Archive source adapter configuration mismatch')
-  const archiveStore =
-    options.archiveV4Store ?? new ArchiveV4Store(new ArchiveSourceGate(false, selectedContract))
-  const archiveWarmup = archiveStore.warmup().catch((error) => {
-    console.warn(
-      '[ChatGPT Booster] Archive v4 database warmup failed',
-      error instanceof Error ? error.name : 'unknown',
-    )
-  })
-  const conversationState = new ConversationStateStore(pageBridgeWindow, archiveStore.sourceGate)
   const settings = createCachedSettingsAdapter(target.settings)
   const runtimeTarget: BoosterTargetAdapter = { ...target, settings }
   const collectionSession = new ArchiveCollectionSession()
-  const archiveCapture = new ArchiveV4CaptureModule(
-    archiveStore,
-    conversationState,
-    settings,
-    collectionSession,
+  const fixedArchive = new FixedChatGptCapture(
+    conversationState, settings, target.label, collectionSession,
   )
-  const fixedArchive = ['Chromium', 'Tampermonkey'].includes(target.label)
-    ? new FixedChatGptCapture(conversationState, settings, target.label, collectionSession)
-    : undefined
-  const archiveReader = new ArchiveV4Reader(archiveStore, conversationState)
-  const archiveAdapter = createArchiveV4UiAdapter(
-    archiveStore,
-    archiveCapture,
-    archiveReader,
-    conversationState,
-    settings,
-  )
+  const archiveAdapter = createFixedArchiveUiAdapter(fixedArchive, conversationState)
 
   const modules: BoosterModule[] = [
     conversationState,
     ...(options.mountUi === false ? [] : [new OverlayModule(runtimeTarget, archiveAdapter)]),
-    archiveCapture,
-    ...(fixedArchive ? [fixedArchive] : []),
+    fixedArchive,
     new ArchiveScopeControlsModule(settings, archiveAdapter, conversationState),
-    new HistoryLoaderModule(conversationState, archiveCapture, pageBridgeWindow, settings, false),
+    new HistoryLoaderModule(conversationState, fixedArchive, pageBridgeWindow, settings, false),
     new TransportObserverModule({
       settings,
       diagnostics: target.diagnostics,
@@ -169,8 +137,7 @@ export function createBoosterPageRuntime(options: BoosterPageRuntimeOptions) {
     runtime,
     startEarly: async () => {
       conversationState.start()
-      void archiveWarmup
-      await archiveCapture.start()
+      await fixedArchive.start()
     },
     settings,
     archiveAdapter,

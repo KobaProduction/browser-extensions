@@ -22,3 +22,5 @@ export type { Legacy092BackupResult } from './archive-legacy092-extract'
 
 export { FixedChatGptCapture } from './archive-fixed-runtime'
 export type { FixedChatGptView } from './archive-fixed-runtime'
+
+export { createFixedArchiveUiAdapter } from './archive-fixed-ui-adapter'

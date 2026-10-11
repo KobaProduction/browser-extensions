@@ -88,3 +88,24 @@ test('revoked capture permission aborts an atomic fixed Dexie append without par
   })
   db.close()
 })
+
+test('fixed Reader pages saved messages by immutable source ID without silently truncating large archives', async () => {
+  const db = new FixedCanonicalDexieRepository(scope('dev', 'tm-window', 'account-a'), driver)
+  for (let i = 0; i < 265; i++) {
+    const id = 'msg-' + String(i).padStart(4, '0')
+    await db.addObservation(source('account-a', 'long-chat', id))
+  }
+  const latest = await db.windowMessages('long-chat', 'older', undefined, 160)
+  expect(latest).toHaveLength(160)
+  expect(latest[0]?.messageId).toBe('msg-0105')
+  expect(latest.at(-1)?.messageId).toBe('msg-0264')
+  const older = await db.windowMessages('long-chat', 'older', latest[0]?.messageId, 160)
+  expect(older).toHaveLength(105)
+  expect(older[0]?.messageId).toBe('msg-0000')
+  const first = await db.windowMessages('long-chat', 'first', undefined, 160)
+  expect(first[0]?.messageId).toBe('msg-0000')
+  expect(await db.hasMessageBoundary('long-chat', 'msg-0105', 'before')).toBe(true)
+  expect(await db.hasMessageBoundary('long-chat', 'msg-0264', 'after')).toBe(false)
+  expect(await db.countConversation('long-chat')).toBe(265)
+  db.close()
+})

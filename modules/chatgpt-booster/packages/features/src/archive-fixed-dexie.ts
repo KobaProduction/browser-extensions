@@ -185,6 +185,21 @@ export class FixedCanonicalDexieRepository {
     return messageKey
   }
 
+  async listProjects(): Promise<FixedProject[]> {
+    if (!this.scope.ownerId) throw Error('Verified owner required')
+    return this.db.projects.where('accountId').equals(this.scope.ownerId).toArray()
+  }
+  async listConversations(): Promise<FixedConversation[]> {
+    if (!this.scope.ownerId) throw Error('Verified owner required')
+    return this.db.conversations.where('accountId').equals(this.scope.ownerId).toArray()
+  }
+  async getConversation(id: string): Promise<FixedConversation | undefined> {
+    if (!this.scope.ownerId || !nonEmpty(id)) throw Error('Verified conversation required')
+    return this.db.conversations.get(JSON.stringify([this.scope.ownerId, id]))
+  }
+  async clearAccount(): Promise<void> {
+    throw Error('Clear of canonical data is disabled; export and verified backup required')
+  }
   async getMessage(conversationId: string, messageId: string): Promise<FixedMessage | undefined> {
     if (!nonEmpty(conversationId) || !nonEmpty(messageId))
       throw Error('Invalid canonical message identity')
@@ -210,6 +225,44 @@ export class FixedCanonicalDexieRepository {
       .between(start, end, afterMessageId === undefined, false).limit(limit).toArray()
   }
 
+  /** Stable source-ID cursor, independent of provider timestamp inference. */
+  async windowMessages(
+    conversationId: string,
+    direction: 'older' | 'newer' | 'first',
+    cursorId?: string,
+    limit = 160,
+  ): Promise<FixedMessage[]> {
+    const owner = this.scope.ownerId
+    if (!owner || !nonEmpty(conversationId) || (cursorId !== undefined && !nonEmpty(cursorId)) ||
+        !Number.isSafeInteger(limit) || limit < 1 || limit > 240)
+      throw Error('Invalid saved archive window')
+    const from = [owner, conversationId, '']
+    const to = [owner, conversationId, '\uffff']
+    const query = this.db.messages.where('[accountId+conversationId+messageId]')
+    if (direction === 'first')
+      return query.between(from, to).limit(limit).toArray()
+    if (direction === 'older')
+      return (await query.between(from,
+        cursorId ? [owner, conversationId, cursorId] : to,
+        true, !cursorId).reverse().limit(limit).toArray()).reverse()
+    return query.between(
+      cursorId ? [owner, conversationId, cursorId] : from,
+      to, !cursorId, false,
+    ).limit(limit).toArray()
+  }
+
+  async hasMessageBoundary(conversationId: string, messageId: string, side: 'before' | 'after') {
+    const owner = this.scope.ownerId
+    if (!owner || !nonEmpty(conversationId) || !nonEmpty(messageId))
+      throw Error('Saved archive boundary unverified')
+    const key = [owner, conversationId, messageId]
+    const from = [owner, conversationId, '']
+    const to = [owner, conversationId, '\uffff']
+    const range = side === 'before'
+      ? this.db.messages.where('[accountId+conversationId+messageId]').between(from, key, true, false)
+      : this.db.messages.where('[accountId+conversationId+messageId]').between(key, to, false, false)
+    return (await range.limit(1).count()) > 0
+  }
   async countConversation(conversationId: string): Promise<number> {
     if (!nonEmpty(conversationId) || !this.scope.ownerId) throw Error('Invalid conversation ownership')
     return this.db.messages.where('[accountId+conversationId]')

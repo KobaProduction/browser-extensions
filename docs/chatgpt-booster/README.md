@@ -89,7 +89,7 @@ separate validated portable settings backup/restore; it does not replace
 archive export or introduce another launcher. The pre-existing ChatGPT
 telemetry settings/diagnostic adapters remain owned by the ChatGPT provider;
 the common optional scoped telemetry port does not replace or implicitly
-enable its transport. All-in-one is 0.5.11, VK remains 2.3.10. None of these
+enable its transport. All-in-one is 0.5.12, VK remains 2.3.10. None of these
 source changes promotes stable 0.8.92 or proves installed-browser acceptance.
 
 ## Restoring user-facing archive controls
@@ -166,3 +166,32 @@ for existing users. This change introduces a verified live Dexie path, but
 does not declare a complete single-writer cutover, editing/revision support or
 installed-browser acceptance. Conflicting source revisions fail closed.
 PROD release and old 0.8.92 profile recovery require separate validation.
+
+## Active Dexie-only archive runtime; historical v4 is export-only (2026-10-11)
+
+The owner has retired the native v4 **runtime**. The page runtime now starts
+only the fixed canonical Dexie capture, source gate, account context, collection
+session, History Loader, single shared UI and the provider-neutral observer.
+It **does not create, warm up, write to, fall back to, or run a Reader against**
+the historical v4 IndexedDB. The active ArchiveBrowser uses the fixed Dexie
+adapter and bounded source-ID windows. Source IDs are stable, but not proof of
+native timeline or complete pagination; missing history remains unknown.
+The existing v4 schema/source code is preserved as historical reference only.
+
+The prior v4 database is retained unchanged for an explicit, read-only backup
+via the ChatGPT Control Center's **Historical backups** section. The export
+checks for a pre-existing database, verifies its physical version and original
+stores, records object-store indexes, primary keys and all structured-clone
+values, and emits checksum-verified gzip JSONL. It aborts rather than creating,
+upgrading or deleting the database. The same explicit interface permits a v3
+0.8.92 source export if that historical database is present in this browser
+storage origin. Files may contain multiple original local owners; a checkbox
+asks the user to confirm this before exporting. Pause other historical writers
+while exporting; pages are read-only but cannot guarantee a cross-store atomic
+snapshot across concurrent writes.
+
+This is SOURCE/TEST/BUILD behavior. Browser-installed backup usability and
+real original-profile data recovery remain unaccepted under Issue #11. No
+legacy-to-Dexie automatic import/migration exists. Existing v4 code/tests that
+are no longer reachable from the composition root are historical material, not
+a parallel live engine.

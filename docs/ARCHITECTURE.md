@@ -319,3 +319,15 @@ peer-scoped API in the same panel; the former v2 folder engine is retained
 and not migrated. Both products enforce product/channel/target and owner
 identity; their own schemas do not follow the ChatGPT/VK API response format.
 OTLP delivery remains deferred and opt-in under Issue #30.
+
+## Dexie archive-only runtime switch (2026-10-11)
+
+ChatGPT Booster source composition no longer instantiates ArchiveV4Store,
+ArchiveV4CaptureModule, ArchiveV4Reader or the v4 UI adapter. Its only
+application archive writer/Reader is FixedChatGptCapture backed by the
+owner-scoped Dexie v1 repository. History-loader session progress uses this
+capture service, with no active v4 commit or warmup. Old v4 source code and
+physical browser databases remain intact solely for the explicit read-only
+backup utility alongside the stable 0.8.92 v3 exporter. Future provider
+source changes are normalized to fixed v1 data; no automatic migration.
+VK remains on its separate development branch; OTLP network remains deferred.
