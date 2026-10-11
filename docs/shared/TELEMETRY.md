@@ -79,3 +79,13 @@ need application-owned settings/consent, service wiring and installed-browser
 permission and lifecycle acceptance. Do not claim centralized live logs until
 an endpoint and explicit upload consent have been configured and tested.
 Related implementation and decision task: Issue #30.
+
+## Owner ordering correction (2026-10-11)
+
+**Dexie application storage comes before network OTLP adoption.** The shared
+scoped OTLP API and its local technical journal exist as optional code; do not
+wire automatic exporter polling, select a collector, or copy legacy ChatGPT
+URLs/error text into it yet. ChatGPT and VK have independent first-party
+fixed-schema Dexie repositories under development. Real product telemetry
+capture, consent, server probes and remote delivery follow acceptance of the
+application persistence boundary and are tracked separately in Issue #30.

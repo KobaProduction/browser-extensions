@@ -1,5 +1,10 @@
 # Environments, identity and state/persistence contract
 
+## Dexie-first storage direction (newer owner decision 2026-10-11)
+
+New durable application data uses **fixed provider-owned Dexie schemas**, not automatic version chains. `packages/storage` exposes the generic Dexie-backed technical telemetry journal; ChatGPT and VK source modules now offer first-party, fixed-schema Dexie repositories for new messages and immutable original snapshots. Each physical store is scoped by product, channel and installation; owner is independently checked inside provider records. Do not silently open, rename, delete, convert or merge historical archives. The old statement below describing Dexie/Pinia only as a future target is **historical context** for the earlier runtime; it does not mean that every product's current capture engine has been switched to Dexie. Provider runtime cutover and installed-browser acceptance remain separate. OTLP transport can share an envelope and collector later, but no network collection is enabled by adding these stores.
+
+
 **Normative across VK Booster, ChatGPT Booster, all-in-one and future modules.**
 
 ## Non-negotiable environment boundary
