@@ -52,9 +52,11 @@ workflow with `approve_release=true`. ChatGPT 2.0.1 is now `release:true` for in
 
 ## Version 2 release channels (2026-10-10)
 
-- VK Booster: `2.3.10` — preserved v2 compatibility baseline. DEV
-  tags/titles start with `dev-` and their last component increments
-  (`dev-2.3.37`, `dev-2.3.38`) without changing source/PROD 2.3.10.
+- VK Booster: `1.0.0` — owner's first-PROD candidate, with Archive schema 1.
+  DEV tags/titles use independent third-component counters (`dev-1.0.1`,
+  `dev-1.0.2`), without a product semver bump. Existing historical stable
+  `2.3.8`/DEV `2.3.*` tags are retained; automated downgrade is NOT assumed.
+  No VK PROD publication until installed-browser and updater acceptance.
   VK source changes still advance all-in-one.
 - ChatGPT Booster: `2.0.7` — changes in ChatGPT increment ChatGPT and all-in-one only.
 - All-in-one: `0.5.7` — aggregates both providers with independent feature

@@ -162,7 +162,7 @@ async function resume() {
       <div class="booster-setting-copy min-w-0">
         <div class="flex flex-wrap items-center gap-2">
           <Archive class="size-4 shrink-0" aria-hidden="true" />
-          <b>VK Booster · Архив v2</b>
+          <b>VK Booster · Архив v1</b>
           <Badge :variant="status?.blockedReason ? 'secondary' : status?.busy ? 'default' : 'outline'" :class="status?.blockedReason ? 'text-destructive' : ''">
             {{ selectedStatus }}
           </Badge>
@@ -212,14 +212,14 @@ async function resume() {
         :state="view"
         :initial="status.options"
         :error="visibleSummary ? error : ''"
-        title="Выгрузка VK Archive v2"
+        title="Выгрузка VK Archive v1"
         @choose-folder="chooseFolder"
         @start="start"
         @stop="api?.stop()"
         @resume="resume"
       />
       <section v-else class="booster-setting-card" role="status">
-        <span>VK Archive v2 ещё не инициализирован.</span>
+        <span>VK Archive v1 ещё не инициализирован.</span>
       </section>
       <p class="m-0 text-xs text-muted-foreground">
         Повторная выгрузка сохраняет существующие сообщения, чекпоинты и файлы.
@@ -298,7 +298,7 @@ async function resume() {
       <section class="booster-stack-card">
         <div class="booster-setting-copy">
           <b>Архив и восстановление</b>
-          <span>Здесь сохраняются только параметры сессии. Полная резервная копия файлов архива v2 не создаётся.</span>
+          <span>Здесь сохраняются только параметры сессии. Полная резервная копия файлов архива v1 не создаётся.</span>
         </div>
         <p class="m-0 text-xs text-muted-foreground">
           Для сохранения архива используй папку с metadata.json, messages.json,

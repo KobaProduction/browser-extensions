@@ -10,7 +10,7 @@ export interface VkArchiveSummary {
  * state for pause/resume, but the page must never render it for another peer
  * or while permission/folder selection is pending.
  *
- * This is deliberately fail-closed and does not mutate the v2 archive. */
+ * This is deliberately fail-closed and does not mutate the v1 archive. */
 export function presentVkArchive(status: ArchiveStatus): {
   summary: VkArchiveSummary | null
   canRead: boolean

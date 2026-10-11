@@ -17,9 +17,9 @@ import type {
   VkCheckpoint,
   VkMessage,
 } from './types'
-/* VK Booster v2 provider composition; neutral paging, storage and UI live in shared packages. */
+/* VK Booster initial v1 provider composition; shared paging and UI are source-neutral. */
 export function installVkArchive(): void {
-  const VERSION = '2.3.10'
+  const VERSION = '1.0.0'
   const apiKey = instanceKey('VKExport', 'vk-booster:prod')
   const published = globalThis as Record<string, unknown>
   if ((published[apiKey] as ArchiveApi | undefined)?.version === VERSION) return
@@ -61,7 +61,7 @@ export function installVkArchive(): void {
     d ? Math.floor(Date.parse(d + 'T00:00:00+03:00') / 1000) : null
   const known = () => new Map<number, VkMessage>(rows.map((m) => [m.id, m]))
   const blank = (): VkArchiveMeta => ({
-    schema: 2,
+    schema: 1,
     version: VERSION,
     peer_id: cfg.peerId,
     updated: ts(),
@@ -93,7 +93,7 @@ export function installVkArchive(): void {
       updated: ts(),
       lastMessageDate: lastMessage ? new Date(lastMessage.date * 1000).toISOString() : null,
     }
-    await write('messages.json', { schema: 2, peer_id: cfg.peerId, messages: ordered })
+    await write('messages.json', { schema: 1, peer_id: cfg.peerId, messages: ordered })
     await write('metadata.json', savedMeta)
     return { ordered, savedMeta }
   }
@@ -165,17 +165,17 @@ export function installVkArchive(): void {
   function isMeta(v: unknown): v is VkArchiveMeta {
     return (
       isRecord(v) &&
-      v.schema === 2 &&
+      v.schema === 1 &&
       typeof v.peer_id === 'number' &&
       isRecord(v.files) &&
       Array.isArray(v.runs) &&
       (v.checkpoint === null || isRecord(v.checkpoint))
     )
   }
-  function isMessagesFile(v: unknown): v is { schema: 2; peer_id: number; messages: VkMessage[] } {
+  function isMessagesFile(v: unknown): v is { schema: 1; peer_id: number; messages: VkMessage[] } {
     return (
       isRecord(v) &&
-      v.schema === 2 &&
+      v.schema === 1 &&
       typeof v.peer_id === 'number' &&
       Array.isArray(v.messages) &&
       v.messages.every(
@@ -199,25 +199,30 @@ export function installVkArchive(): void {
     try {
       const previous = await json('metadata.json')
       if (!previous) {
-        // v1 stores state.json and pages; reject before creating v2 files.
+        // Historic state.json/pages exports use an incompatible layout; reject before writes.
         try {
           await root.getFileHandle('state.json')
-          throw Error('Обнаружен старый архив v1. Используй отдельную утилиту миграции.')
+          throw Error('Обнаружен архив старого формата state.json/pages. Используй отдельную папку.')
         } catch (e) {
           if (!(e instanceof Error) || e.name !== 'NotFoundError') throw e
         }
         try {
           await root.getDirectoryHandle('pages')
-          throw Error('Обнаружен старый каталог pages/. Сначала выполни миграцию.')
+          throw Error('Обнаружен архив старого формата pages/. Используй отдельную папку.')
         } catch (e) {
           if (!(e instanceof Error) || e.name !== 'NotFoundError') throw e
         }
       }
+      // Do not reinterpret a historical v2 folder as v1 or rewrite its metadata.
+      if (isRecord(previous) && previous.schema === 2)
+        throw Error(
+          'Обнаружен архив схемы 2. Выбери отдельную папку для версии 1; старый архив не изменён.',
+        )
       const loadedMeta = previous === null ? blank() : isMeta(previous) ? previous : null
       if (!loadedMeta || loadedMeta.peer_id !== cfg.peerId)
-        throw Error('Старая папка несовместима. Мигрируй её отдельной утилитой в новую папку.')
-      // Existing legacy v2 folders remain usable only in the original prod
-      // standalone installation. Dev and aggregate must use an owned folder.
+        throw Error('Несовместимая папка архива. Используй новую папку; автоматической миграции нет.')
+      // A new owned v1 folder is scoped to this installation. Historic unscoped
+      // metadata is only accepted in original PROD; never in DEV/aggregate.
       const owningScope = instanceScope() || 'vk-booster:prod'
       if (
         loadedMeta.instance_scope
@@ -266,7 +271,7 @@ export function installVkArchive(): void {
     refresh()
     try {
       // This call must remain synchronous with the human button gesture.
-      const h = await globalThis.showDirectoryPicker({ id: 'vk-archive-v2', mode: 'readwrite' })
+      const h = await globalThis.showDirectoryPicker({ id: 'vk-archive-v1', mode: 'readwrite' })
       const permitted = h as FileSystemDirectoryHandle & {
         requestPermission(options: { mode: 'readwrite' }): Promise<PermissionState>
       }
@@ -563,7 +568,7 @@ export function installVkArchive(): void {
     subscribe,
     buildViewer,
     // Public readers receive independent JSON-shaped snapshots; callers cannot mutate
-    // the in-memory rows that the next v2 checkpoint will persist.
+    // the in-memory rows that the next v1 checkpoint will persist.
     getMessages: () => (archiveReadable() ? structuredClone(rows) : []),
     previewMessages: (options) => {
       if (!archiveReadable()) return { messages: [], matching: 0 }

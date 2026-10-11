@@ -87,7 +87,7 @@ export interface VkCheckpoint {
   error?: string
 }
 export interface VkArchiveMeta {
-  schema: 2
+  schema: 1
   version: string
   peer_id: number
   updated: string

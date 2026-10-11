@@ -308,3 +308,16 @@ All use explicit data/active-generation ports. Original migrator methods and
 ChatGPT v3/v4 physical storage schemas remain unchanged. These services are
 ChatGPT-owned; the provider-neutral paging/transaction/renderer primitives
 are shared under `packages/`.
+
+## Revised VK first-release checkpoint (2026-10-11; source branch)
+
+The earlier VK 2.3.x/v2 historical notes above describe previous source
+iterations, not the newly accepted release contract. The VK development
+branch now produces folder-style Archive **schema 1** and freezes VK source
+semver at **1.0.0** for pre-first-PROD development, retaining the existing
+history capture, File System Access sink, media receipts, Control Center and
+offline HTML viewer. A historical schema-2 or state/pages folder is rejected
+without writes; no migration path or deployed downgrade is claimed.
+Shared Dexie telemetry and OTLP (PR #32) remain in a separate, unmerged
+source branch. They are neither VK's canonical IndexedDB archive nor a
+working runtime collector until provider opt-in/transport wiring is accepted.

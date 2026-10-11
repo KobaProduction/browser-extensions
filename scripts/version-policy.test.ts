@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { semverCompare, validateVersionPolicy } from './version-policy'
 
-const base = { 'vk-booster': '2.3.10', 'chatgpt-booster': '0.8.99', 'all-in-one': '0.4.8' }
+const base = { 'vk-booster': '1.0.0', 'chatgpt-booster': '0.8.99', 'all-in-one': '0.4.8' }
 const chatRelease = { ...base, 'chatgpt-booster': '2.0.1', 'all-in-one': '0.5.0' }
 test('initial ChatGPT v2 release and aggregate bump do not alter existing VK version', () => {
   expect(() =>
@@ -35,9 +35,9 @@ test('future ChatGPT-only source changes require ChatGPT and aggregate version b
       ...after,
       'vk-booster': '2.3.11',
     }),
-  ).toThrow('VK v2 base must remain')
+  ).toThrow('VK v1 pre-PROD base must remain')
 })
-test('VK v2 source change retains frozen VK base and advances aggregate', () => {
+test('VK v1 source change retains frozen VK base and advances aggregate', () => {
   const before = { ...chatRelease },
     after = { ...before, 'all-in-one': '0.5.1' }
   expect(() => validateVersionPolicy(['modules/vk-booster/src/index.ts'], before, after)).not.toThrow()
@@ -46,7 +46,7 @@ test('VK v2 source change retains frozen VK base and advances aggregate', () => 
       ...after,
       'vk-booster': '2.3.11',
     }),
-  ).toThrow('VK v2 base must remain')
+  ).toThrow('VK v1 pre-PROD base must remain')
   expect(() => validateVersionPolicy(['modules/vk-booster/src/index.ts'], before, before)).toThrow(
     'all-in-one',
   )
@@ -69,5 +69,20 @@ test('VK v3 is rejected even if no VK source file changed', () => {
       ...chatRelease,
       'vk-booster': '3.0.0',
     }),
-  ).toThrow('VK v2 base must remain')
+  ).toThrow('VK v1 pre-PROD base must remain')
+})
+
+test('explicit fresh VK v1 baseline transition requires actual VK source changes', () => {
+  const previous = { ...chatRelease, 'vk-booster': '2.3.10' }
+  const next = { ...previous, 'vk-booster': '1.0.0', 'all-in-one': '0.5.1' }
+  expect(() => validateVersionPolicy(['modules/vk-booster/src/index.ts'], previous, next)).not.toThrow()
+  expect(() => validateVersionPolicy(['docs/vk-booster/README.md'], previous, next)).toThrow(
+    'VK v1 pre-PROD base must remain',
+  )
+  expect(() =>
+    validateVersionPolicy(['modules/vk-booster/src/index.ts'], previous, {
+      ...next,
+      'vk-booster': '2.3.10',
+    }),
+  ).toThrow('VK v1 pre-PROD base must remain')
 })

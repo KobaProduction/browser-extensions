@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { impactedProductVersions } from './catalog'
-import { FROZEN_VK_VERSION } from './vk-version-freeze'
+import { FROZEN_VK_VERSION, HISTORICAL_VK_BASE } from './vk-version-freeze'
 
 const versions = ['vk-booster', 'chatgpt-booster', 'all-in-one'] as const
 export type ProductVersion = (typeof versions)[number]
@@ -22,7 +22,7 @@ export function semverCompare(left: string, right: string): number {
   }
   return 0
 }
-/** PR source-impact contract: VK v2 stays on its owner-frozen base while
+/** PR source-impact contract: VK v1 remains frozen before the first approved PROD while
  * aggregate and other genuinely affected products advance independently.
  * DEV build IDs, rather than product semver, identify VK test releases. */
 export function validateVersionPolicy(
@@ -45,8 +45,13 @@ export function validateVersionPolicy(
     if (!from || !to) throw new Error(`Missing ${id} version metadata`)
     const cmp = semverCompare(to, from)
     if (id === 'vk-booster') {
-      if (from !== FROZEN_VK_VERSION || to !== FROZEN_VK_VERSION)
-        throw new Error(`VK v2 base must remain ${FROZEN_VK_VERSION} (${from} -> ${to})`)
+      // One explicit pre-first-PROD baseline reset from the historical 2.3.10
+      // source is allowed only when VK source actually changes. Never treat
+      // docs-only edits as authorization to downgrade an installed product.
+      const firstV1 =
+        from === HISTORICAL_VK_BASE && to === FROZEN_VK_VERSION && required.has('vk-booster')
+      if (!firstV1 && (from !== FROZEN_VK_VERSION || to !== FROZEN_VK_VERSION))
+        throw new Error(`VK v1 pre-PROD base must remain ${FROZEN_VK_VERSION} (${from} -> ${to})`)
       continue
     }
     if (required.has(id) && cmp <= 0)

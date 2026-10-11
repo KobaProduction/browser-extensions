@@ -56,7 +56,7 @@ function withoutPeer(options: ArchiveOptions): VkCapturePreferences {
   return validateVkCapturePreferences(Object.fromEntries(fields.map((name) => [name, options[name]])))
 }
 
-/** A session preset, not persisted application settings and NOT a v2 archive backup.
+/** A session preset, not persisted application settings and NOT a v1 archive backup.
  * The selected VK peer and folder always remain under the archive engine's control. */
 export function vkCaptureSettingsPort(
   api: ArchiveApi,
@@ -87,7 +87,7 @@ export function vkCaptureSettingsPort(
     async restoreSettingsAtomically(value) {
       requireIdle()
       // configure validates the current peer and all options before changing live settings.
-      // Never pass peerId or write the v2 archive folder during preset import.
+      // Never pass peerId or write the v1 archive folder during preset import.
       api.configure(validateVkCapturePreferences(value))
     },
   }

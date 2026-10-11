@@ -23,7 +23,7 @@ test('VK uses the existing single shell and accessible archive/export/settings n
   const compiled = compileTemplate({
     source: descriptor.template?.content ?? '',
     filename: 'ArchivePanel.vue',
-    id: 'vk-v2-tabs',
+    id: 'vk-v1-tabs',
   })
   expect(compiled.errors).toHaveLength(0)
   expect(descriptor.template?.content).toContain('role="tablist"')
@@ -40,7 +40,7 @@ test('VK uses the existing single shell and accessible archive/export/settings n
   expect(feature).toContain("id: 'vk-booster'")
 })
 
-test('capture form stays mounted during navigation and uses the existing v2 engine', () => {
+test('capture form stays mounted during navigation and uses the initial v1 engine', () => {
   expect(panel).toContain('v-show="tab === \'capture\'"')
   expect(panel).toContain('<ArchiveManager')
   expect(panel).toContain(':key="preferencesRevision"')
@@ -80,6 +80,6 @@ test('settings remain session-only with validated import and no invented archive
   expect(panel).toContain('restoreVkCaptureSettings(api, preferencesFile.value)')
   expect(panel).toContain('preferencesConfirmed')
   expect(panel).toContain('status.folderPending || !!status.blockedReason')
-  expect(panel).toContain('Полная резервная копия файлов архива v2 не создаётся')
+  expect(panel).toContain('Полная резервная копия файлов архива v1 не создаётся')
   expect(panel).not.toContain('restoreCanonicalBackup')
 })

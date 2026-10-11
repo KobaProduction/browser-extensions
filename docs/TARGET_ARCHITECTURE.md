@@ -34,8 +34,10 @@ all six FSD layers; a domain engine should not have fake pages or widgets.
   or second launcher inside an already open shell.
 - Browser permissions are actual capabilities, never assumed by target name.
 - No private content, cookies, tokens or media in telemetry.
-- Maintain the v2 archive format, metadata, original media and resume behavior
-  until an explicitly reviewed migration is accepted.
+- For the owner's revised 2026-10-11 first-release plan, write only VK
+  Archive schema 1 while preserving metadata, originals and resume behavior.
+  Existing historical schema-2 folders must be rejected without writes and
+  retained independently. Any future migration requires review and backups.
 - Create a package or slice only when it has responsibility and a needed
   public contract; avoid generating directories just to fill a diagram.
 
@@ -192,9 +194,9 @@ Widgets merely display and control these use cases.
   supported. Do not accumulate unbounded media duplicates in memory.
 - Missing binary attachments can be fetched lazily with documented state
   and retry; provider URLs may require refreshing via a source adapter.
-- VK archive v2 metadata.json, messages.json, index.html, media/, filenames
-  and resume semantics are backwards-compatibility requirements.
-  Breaking them needs a separately reviewed migration and regression tests.
+- VK archive v1 metadata.json, messages.json, index.html, media/, filenames
+  and resume semantics are the first-release contract. Historical schema-2
+  outputs are not migrated automatically; do not delete or overwrite them.
 - A write is successful only after the storage adapter acknowledges it.
 
 The interfaces above do not mean IndexedDB migration, ChatGPT export or
@@ -241,12 +243,13 @@ impact graph rebuilds only affected consumers. A VK-only provider change
 does not rebuild unrelated products; a shared archive/widget change rebuilds
 dependents.
 
-VK Booster keeps its existing v2 archive and its current product base
-**2.3.10 remains the v2 compatibility baseline**. Compatible fixes and
-new development must not automatically advance the stable product patch,
-minor or major version. Independent DEV releases use three numeric parts,
-such as `dev-2.3.37`, without modifying source/PROD 2.3.10.
-A future stable product version requires separate review and approval.
+VK Booster's first-release source base is **1.0.0** with Archive schema 1
+and remains fixed during DEV until separately approved first PROD. Compatible
+changes must not bump product semver; independent DEV releases use three
+numeric components (`dev-vk-booster v1.0.N`). The old VK 2.3.x development
+and stable tags remain archived as recovery evidence. A first PROD cutover
+must address the fact that v1.0.0 is a semver downgrade from a historical
+2.3.8 stable tag and may not update an already installed extension.
 Docs-only changes never bump versions or publish bundles.
 
 Module-scoped tags and stable independent Tampermonkey update channels remain
@@ -283,7 +286,8 @@ rewrite or for deleting known-good data.
 
 Archive regression gates include N=3000, incremental/backfill deduplication,
 pause/resume, original filenames, voice/media integrity, offline HTML and
-reopening an existing v2 archive. Browser testing is a separate runtime gate.
+reopening an existing schema-1 archive, and fail-closed rejection of historical
+schema-2 folders. Browser testing is a separate runtime gate.
 
 **Forbidden shortcuts:** domain code in shared UI, widget-owned database or
 archive engine, nested settings windows, separate target-specific copies of
@@ -296,7 +300,7 @@ The user authorized consolidating ChatGPT Booster source into this monorepo.
 `modules/chatgpt-booster` is a transitional provider-owned import; common
 shell/feature lifecycle and gzip are extracted immediately. The eventual
 shared archive application/storage and widgets need separate verified ports
-and do **not** justify rewriting VK v2 semantics or destroying existing
+and do **not** justify destructive rewriting of historical VK archives or existing
 ChatGPT v3/v4 archives. Migration parity and real-browser validation remain
 release blockers. See `CHATGPT_BOOSTER_MIGRATION.md`.
 
