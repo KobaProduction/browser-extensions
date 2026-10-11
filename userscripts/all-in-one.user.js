@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Koba Browser Tools [DEV]
 // @namespace    https://github.com/KobaProduction/browser-extensions/dev/all-in-one
-// @version      0.5.5-dev.34
+// @version      0.5.6-dev.36
 // @description  Koba Browser Tools / Koba Browser Tools
 // @homepageURL   https://github.com/KobaProduction/browser-extensions
 // @updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/all-in-one.user.js
@@ -849,8 +849,8 @@
     }
     return Object.fromEntries(entries);
   }
-  const BOOSTER_BASE_VERSION = "2.0.6";
-  const injectedVersion = "2.0.6".trim();
+  const BOOSTER_BASE_VERSION = "2.0.7";
+  const injectedVersion = "2.0.7".trim();
   const BOOSTER_BUILD_VERSION = injectedVersion || BOOSTER_BASE_VERSION;
   const BOOSTER_VERSION = BOOSTER_BUILD_VERSION;
   // @__NO_SIDE_EFFECTS__
@@ -2789,11 +2789,11 @@
   }
   function formatProps(props) {
     const res = [];
-    const keys = Object.keys(props);
-    keys.slice(0, 3).forEach((key2) => {
+    const keys2 = Object.keys(props);
+    keys2.slice(0, 3).forEach((key2) => {
       res.push(...formatProp(key2, props[key2]));
     });
-    if (keys.length > 3) {
+    if (keys2.length > 3) {
       res.push(` ...`);
     }
     return res;
@@ -3558,10 +3558,10 @@
           (item, i) => renderItem(item, i, void 0, cached)
         );
       } else {
-        const keys = Object.keys(source);
-        ret = new Array(keys.length);
-        for (let i = 0, l = keys.length; i < l; i++) {
-          const key2 = keys[i];
+        const keys2 = Object.keys(source);
+        ret = new Array(keys2.length);
+        for (let i = 0, l = keys2.length; i < l; i++) {
+          const key2 = keys2[i];
           ret[i] = renderItem(source[key2], key2, i, cached);
         }
       }
@@ -4399,11 +4399,11 @@
     }
     let root = result;
     if (fallthroughAttrs && inheritAttrs !== false) {
-      const keys = Object.keys(fallthroughAttrs);
+      const keys2 = Object.keys(fallthroughAttrs);
       const { shapeFlag } = root;
-      if (keys.length) {
+      if (keys2.length) {
         if (shapeFlag & (1 | 6)) {
-          if (propsOptions && keys.some(isModelListener)) {
+          if (propsOptions && keys2.some(isModelListener)) {
             fallthroughAttrs = filterModelListeners(
               fallthroughAttrs,
               propsOptions
@@ -4738,9 +4738,9 @@
     if (!isFunction(comp)) {
       const extendProps = (raw2) => {
         hasExtends = true;
-        const [props, keys] = normalizePropsOptions(raw2, appContext, true);
+        const [props, keys2] = normalizePropsOptions(raw2, appContext, true);
         extend(normalized, props);
-        if (keys) needCastKeys.push(...keys);
+        if (keys2) needCastKeys.push(...keys2);
       };
       if (!asMixin && appContext.mixins.length) {
         appContext.mixins.forEach(extendProps);
@@ -9490,12 +9490,12 @@
   const _hoisted_2$i = { class: "booster-meta-label" };
   const _hoisted_3$h = { class: "booster-meta-value" };
   const _hoisted_4$h = { class: "booster-meta-label" };
-  const _hoisted_5$e = { class: "booster-meta-value" };
-  const _hoisted_6$e = { class: "booster-meta-lines" };
-  const _hoisted_7$e = { class: "booster-meta-label" };
-  const _hoisted_8$d = { class: "booster-meta-value" };
-  const _hoisted_9$d = { class: "booster-meta-label" };
-  const _hoisted_10$d = { class: "booster-meta-value" };
+  const _hoisted_5$f = { class: "booster-meta-value" };
+  const _hoisted_6$f = { class: "booster-meta-lines" };
+  const _hoisted_7$f = { class: "booster-meta-label" };
+  const _hoisted_8$e = { class: "booster-meta-value" };
+  const _hoisted_9$e = { class: "booster-meta-label" };
+  const _hoisted_10$e = { class: "booster-meta-value" };
   const _sfc_main$k = /* @__PURE__ */ defineComponent({
     __name: "RecordMetaBadges",
     props: {
@@ -9569,7 +9569,7 @@
                       ),
                       createBaseVNode(
                         "span",
-                        _hoisted_5$e,
+                        _hoisted_5$f,
                         toDisplayString(edited.value),
                         1
                         /* TEXT */
@@ -9591,21 +9591,21 @@
                 createVNode(unref(BrainCircuit), { class: "size-3.5" })
               ]),
               default: withCtx(() => [
-                createBaseVNode("div", _hoisted_6$e, [
+                createBaseVNode("div", _hoisted_6$f, [
                   __props.metadata.model ? (openBlock(), createElementBlock(
                     Fragment,
                     { key: 0 },
                     [
                       createBaseVNode(
                         "strong",
-                        _hoisted_7$e,
+                        _hoisted_7$f,
                         toDisplayString(t("reader.model")),
                         1
                         /* TEXT */
                       ),
                       createBaseVNode(
                         "span",
-                        _hoisted_8$d,
+                        _hoisted_8$e,
                         toDisplayString(__props.metadata.model),
                         1
                         /* TEXT */
@@ -9620,14 +9620,14 @@
                     [
                       createBaseVNode(
                         "strong",
-                        _hoisted_9$d,
+                        _hoisted_9$e,
                         toDisplayString(t("reader.thinking")),
                         1
                         /* TEXT */
                       ),
                       createBaseVNode(
                         "span",
-                        _hoisted_10$d,
+                        _hoisted_10$e,
                         toDisplayString(__props.metadata.thinking),
                         1
                         /* TEXT */
@@ -9673,16 +9673,16 @@
   };
   const _hoisted_3$g = { class: "booster-record-header-tools" };
   const _hoisted_4$g = ["title", "aria-label"];
-  const _hoisted_5$d = { class: "booster-record-header booster-record-internal-header" };
-  const _hoisted_6$d = { class: "booster-record-kind" };
-  const _hoisted_7$d = { class: "booster-meta-lines" };
-  const _hoisted_8$c = { class: "booster-meta-label" };
-  const _hoisted_9$c = { class: "booster-meta-value" };
-  const _hoisted_10$c = { class: "booster-meta-label" };
-  const _hoisted_11$c = { class: "booster-meta-value" };
-  const _hoisted_12$b = { class: "booster-record-header-tools" };
-  const _hoisted_13$a = ["title", "aria-label"];
-  const _hoisted_14$a = ["src"];
+  const _hoisted_5$e = { class: "booster-record-header booster-record-internal-header" };
+  const _hoisted_6$e = { class: "booster-record-kind" };
+  const _hoisted_7$e = { class: "booster-meta-lines" };
+  const _hoisted_8$d = { class: "booster-meta-label" };
+  const _hoisted_9$d = { class: "booster-meta-value" };
+  const _hoisted_10$d = { class: "booster-meta-label" };
+  const _hoisted_11$d = { class: "booster-meta-value" };
+  const _hoisted_12$c = { class: "booster-record-header-tools" };
+  const _hoisted_13$b = ["title", "aria-label"];
+  const _hoisted_14$b = ["src"];
   const _hoisted_15$a = {
     key: 1,
     class: "booster-tool-icon booster-tool-icon-fallback"
@@ -9818,8 +9818,8 @@
               Fragment,
               { key: 1 },
               [
-                createBaseVNode("header", _hoisted_5$d, [
-                  createBaseVNode("span", _hoisted_6$d, [
+                createBaseVNode("header", _hoisted_5$e, [
+                  createBaseVNode("span", _hoisted_6$e, [
                     reasoningInfo.value ? (openBlock(), createBlock(_sfc_main$o, {
                       key: 0,
                       label: reasoningInfo.value,
@@ -9829,21 +9829,21 @@
                         createVNode(unref(Brain), { class: "size-4" })
                       ]),
                       default: withCtx(() => [
-                        createBaseVNode("div", _hoisted_7$d, [
+                        createBaseVNode("div", _hoisted_7$e, [
                           __props.item.metadata.model ? (openBlock(), createElementBlock(
                             Fragment,
                             { key: 0 },
                             [
                               createBaseVNode(
                                 "strong",
-                                _hoisted_8$c,
+                                _hoisted_8$d,
                                 toDisplayString(t("reader.model")),
                                 1
                                 /* TEXT */
                               ),
                               createBaseVNode(
                                 "span",
-                                _hoisted_9$c,
+                                _hoisted_9$d,
                                 toDisplayString(__props.item.metadata.model),
                                 1
                                 /* TEXT */
@@ -9858,14 +9858,14 @@
                             [
                               createBaseVNode(
                                 "strong",
-                                _hoisted_10$c,
+                                _hoisted_10$d,
                                 toDisplayString(t("reader.thinking")),
                                 1
                                 /* TEXT */
                               ),
                               createBaseVNode(
                                 "span",
-                                _hoisted_11$c,
+                                _hoisted_11$d,
                                 toDisplayString(__props.item.metadata.thinking),
                                 1
                                 /* TEXT */
@@ -9890,7 +9890,7 @@
                       /* TEXT */
                     )
                   ]),
-                  createBaseVNode("span", _hoisted_12$b, [
+                  createBaseVNode("span", _hoisted_12$c, [
                     createBaseVNode("button", {
                       class: "booster-record-icon-button",
                       type: "button",
@@ -9899,7 +9899,7 @@
                       onClick: _cache[1] || (_cache[1] = ($event) => rawOpen.value = true)
                     }, [
                       createVNode(unref(FileJson2), { class: "size-3.5" })
-                    ], 8, _hoisted_13$a),
+                    ], 8, _hoisted_13$b),
                     hasText.value ? (openBlock(), createElementBlock("button", {
                       key: 0,
                       class: "booster-record-expand",
@@ -9954,7 +9954,7 @@
                       alt: "",
                       loading: "lazy",
                       referrerpolicy: "no-referrer"
-                    }, null, 8, _hoisted_14$a)) : (openBlock(), createElementBlock("span", _hoisted_15$a, [
+                    }, null, 8, _hoisted_14$b)) : (openBlock(), createElementBlock("span", _hoisted_15$a, [
                       (openBlock(), createBlock(resolveDynamicComponent(toolGlyph.value), { class: "size-4" }))
                     ])),
                     createBaseVNode("div", _hoisted_16$9, [
@@ -10144,29 +10144,29 @@
   const _hoisted_2$g = { class: "booster-maintenance-heading" };
   const _hoisted_3$f = { class: "booster-maintenance-title" };
   const _hoisted_4$f = ["disabled", "aria-label"];
-  const _hoisted_5$c = { class: "booster-maintenance-content" };
-  const _hoisted_6$c = {
+  const _hoisted_5$d = { class: "booster-maintenance-content" };
+  const _hoisted_6$d = {
     key: 0,
     class: "booster-maintenance-loading",
     role: "status"
   };
-  const _hoisted_7$c = { class: "booster-maintenance-stats" };
-  const _hoisted_8$b = {
+  const _hoisted_7$d = { class: "booster-maintenance-stats" };
+  const _hoisted_8$c = {
     key: 0,
     class: "booster-maintenance-section"
   };
-  const _hoisted_9$b = { class: "booster-maintenance-section-title" };
-  const _hoisted_10$b = {
+  const _hoisted_9$c = { class: "booster-maintenance-section-title" };
+  const _hoisted_10$c = {
     key: 0,
     class: "booster-maintenance-warning"
   };
-  const _hoisted_11$b = ["disabled"];
-  const _hoisted_12$a = {
+  const _hoisted_11$c = ["disabled"];
+  const _hoisted_12$b = {
     key: 1,
     class: "booster-maintenance-section"
   };
-  const _hoisted_13$9 = { class: "booster-maintenance-section-title" };
-  const _hoisted_14$9 = { class: "booster-maintenance-actions" };
+  const _hoisted_13$a = { class: "booster-maintenance-section-title" };
+  const _hoisted_14$a = { class: "booster-maintenance-actions" };
   const _hoisted_15$9 = ["disabled"];
   const _hoisted_16$8 = ["disabled"];
   const _hoisted_17$7 = ["disabled"];
@@ -10564,8 +10564,8 @@
                 createVNode(unref(X), { class: "size-4" })
               ], 8, _hoisted_4$f)
             ]),
-            createBaseVNode("div", _hoisted_5$c, [
-              loading.value ? (openBlock(), createElementBlock("div", _hoisted_6$c, [
+            createBaseVNode("div", _hoisted_5$d, [
+              loading.value ? (openBlock(), createElementBlock("div", _hoisted_6$d, [
                 createVNode(unref(LoaderCircle), { class: "size-4 booster-reader-spinner" }),
                 createTextVNode(
                   " " + toDisplayString(label("Проверка локальных записей…", "Inspecting local archive…")),
@@ -10576,7 +10576,7 @@
                 Fragment,
                 { key: 1 },
                 [
-                  createBaseVNode("div", _hoisted_7$c, [
+                  createBaseVNode("div", _hoisted_7$d, [
                     createBaseVNode("div", null, [
                       createBaseVNode(
                         "span",
@@ -10626,8 +10626,8 @@
                       )
                     ])
                   ]),
-                  isMigrationNeeded.value ? (openBlock(), createElementBlock("section", _hoisted_8$b, [
-                    createBaseVNode("div", _hoisted_9$b, [
+                  isMigrationNeeded.value ? (openBlock(), createElementBlock("section", _hoisted_8$c, [
+                    createBaseVNode("div", _hoisted_9$c, [
                       createVNode(unref(ArrowLeftRight), { class: "size-4" }),
                       createBaseVNode(
                         "h3",
@@ -10649,7 +10649,7 @@
                     ),
                     unverified.value ? (openBlock(), createElementBlock(
                       "p",
-                      _hoisted_10$b,
+                      _hoisted_10$c,
                       toDisplayString(label(
                         `Требуется подтверждение владельца: ${inventory.value.unboundConversations} без идентификатора, ${inventory.value.conflictingConversations} с отличающимся ID.`,
                         `Owner confirmation required: ${inventory.value.unboundConversations} unknown, ${inventory.value.conflictingConversations} mismatched.`
@@ -10662,10 +10662,10 @@
                       class: "booster-action-primary",
                       disabled: busy.value,
                       onClick: migrate
-                    }, toDisplayString(label("Перенести подтверждённые записи", "Migrate verified records")), 9, _hoisted_11$b)
+                    }, toDisplayString(label("Перенести подтверждённые записи", "Migrate verified records")), 9, _hoisted_11$c)
                   ])) : createCommentVNode("v-if", true),
-                  inventory.value.activeGeneration ? (openBlock(), createElementBlock("section", _hoisted_12$a, [
-                    createBaseVNode("div", _hoisted_13$9, [
+                  inventory.value.activeGeneration ? (openBlock(), createElementBlock("section", _hoisted_12$b, [
+                    createBaseVNode("div", _hoisted_13$a, [
                       createVNode(unref(RefreshCw), { class: "size-4" }),
                       createBaseVNode(
                         "h3",
@@ -10685,7 +10685,7 @@
                       1
                       /* TEXT */
                     ),
-                    createBaseVNode("div", _hoisted_14$9, [
+                    createBaseVNode("div", _hoisted_14$a, [
                       createBaseVNode("button", {
                         type: "button",
                         class: "booster-action-primary",
@@ -13517,22 +13517,22 @@
   const _hoisted_2$f = { class: "booster-history-header" };
   const _hoisted_3$e = { class: "booster-history-heading" };
   const _hoisted_4$e = ["aria-label"];
-  const _hoisted_5$b = { class: "booster-history-state" };
-  const _hoisted_6$b = { class: "booster-history-range" };
-  const _hoisted_7$b = { class: "booster-history-explainer" };
-  const _hoisted_8$a = {
+  const _hoisted_5$c = { class: "booster-history-state" };
+  const _hoisted_6$c = { class: "booster-history-range" };
+  const _hoisted_7$c = { class: "booster-history-explainer" };
+  const _hoisted_8$b = {
     key: 0,
     class: "booster-history-evidence"
   };
-  const _hoisted_9$a = { key: 0 };
-  const _hoisted_10$a = {
+  const _hoisted_9$b = { key: 0 };
+  const _hoisted_10$b = {
     key: 1,
     class: "booster-history-list"
   };
-  const _hoisted_11$a = ["aria-current", "data-archive-history-key", "onClick"];
-  const _hoisted_12$9 = { class: "booster-history-list-rail" };
-  const _hoisted_13$8 = { class: "booster-history-list-copy" };
-  const _hoisted_14$8 = { class: "booster-history-list-meta" };
+  const _hoisted_11$b = ["aria-current", "data-archive-history-key", "onClick"];
+  const _hoisted_12$a = { class: "booster-history-list-rail" };
+  const _hoisted_13$9 = { class: "booster-history-list-copy" };
+  const _hoisted_14$9 = { class: "booster-history-list-meta" };
   const _hoisted_15$8 = { class: "booster-history-list-preview" };
   const _hoisted_16$7 = { class: "booster-history-footer" };
   const _hoisted_17$6 = ["disabled", "aria-label"];
@@ -13819,7 +13819,7 @@
               onClick: _cache[0] || (_cache[0] = ($event) => emit2("close"))
             }, "×", 8, _hoisted_4$e)
           ]),
-          createBaseVNode("div", _hoisted_5$b, [
+          createBaseVNode("div", _hoisted_5$c, [
             createBaseVNode(
               "span",
               {
@@ -13838,7 +13838,7 @@
             ),
             createBaseVNode(
               "span",
-              _hoisted_6$b,
+              _hoisted_6$c,
               toDisplayString(pageStart.value + 1) + "–" + toDisplayString(pageEnd.value) + " / " + toDisplayString(ordered.value.length),
               1
               /* TEXT */
@@ -13846,12 +13846,12 @@
           ]),
           createBaseVNode(
             "p",
-            _hoisted_7$b,
+            _hoisted_7$c,
             toDisplayString(sparseHistory.value ? __props.locale === "ru" ? "Для этого диалога недостаточно подтверждённых связей. Показан порядок сохранённых сообщений, без вымышленных веток." : "Not enough verified ancestry. Showing saved messages in order, without invented branches." : __props.locale === "ru" ? "Нажмите на сообщение, чтобы перейти к нему. Линии показывают только сохранённые связи." : "Select a message to read it. Lines show recorded parent links only."),
             1
             /* TEXT */
           ),
-          data.value.missingParents || data.value.cyclicParents ? (openBlock(), createElementBlock("div", _hoisted_8$a, [
+          data.value.missingParents || data.value.cyclicParents ? (openBlock(), createElementBlock("div", _hoisted_8$b, [
             createTextVNode(
               toDisplayString(__props.locale === "ru" ? "Неизвестных родителей" : "Unknown parents") + ": " + toDisplayString(data.value.missingParents) + " ",
               1
@@ -13859,13 +13859,13 @@
             ),
             data.value.cyclicParents ? (openBlock(), createElementBlock(
               "span",
-              _hoisted_9$a,
+              _hoisted_9$b,
               " · " + toDisplayString(__props.locale === "ru" ? "Циклы" : "Cycles") + ": " + toDisplayString(data.value.cyclicParents),
               1
               /* TEXT */
             )) : createCommentVNode("v-if", true)
           ])) : createCommentVNode("v-if", true),
-          sparseHistory.value ? (openBlock(), createElementBlock("div", _hoisted_10$a, [
+          sparseHistory.value ? (openBlock(), createElementBlock("div", _hoisted_10$b, [
             (openBlock(true), createElementBlock(
               Fragment,
               null,
@@ -13878,7 +13878,7 @@
                   "data-archive-history-key": item.hash,
                   onClick: ($event) => emit2("navigate", messageKey(item.hash))
                 }, [
-                  createBaseVNode("span", _hoisted_12$9, [
+                  createBaseVNode("span", _hoisted_12$a, [
                     createBaseVNode(
                       "span",
                       {
@@ -13889,10 +13889,10 @@
                       /* CLASS */
                     )
                   ]),
-                  createBaseVNode("span", _hoisted_13$8, [
+                  createBaseVNode("span", _hoisted_13$9, [
                     createBaseVNode(
                       "span",
-                      _hoisted_14$8,
+                      _hoisted_14$9,
                       toDisplayString(messageLabel(item.hash)) + " · " + toDisplayString(pageStart.value + index + 1),
                       1
                       /* TEXT */
@@ -13905,7 +13905,7 @@
                       /* TEXT */
                     )
                   ])
-                ], 8, _hoisted_11$a);
+                ], 8, _hoisted_11$b);
               }),
               128
               /* KEYED_FRAGMENT */
@@ -14120,28 +14120,28 @@
   const _hoisted_2$d = ["data-archive-drag-handle"];
   const _hoisted_3$c = { class: "booster-reader-heading" };
   const _hoisted_4$c = { class: "booster-header-actions" };
-  const _hoisted_5$a = ["aria-label", "title", "aria-expanded"];
-  const _hoisted_6$a = {
+  const _hoisted_5$b = ["aria-label", "title", "aria-expanded"];
+  const _hoisted_6$b = {
     key: 0,
     class: "booster-reader-tools-menu",
     role: "menu"
   };
-  const _hoisted_7$a = ["disabled", "title", "aria-label"];
-  const _hoisted_8$9 = ["title", "aria-label"];
-  const _hoisted_9$9 = ["aria-label"];
-  const _hoisted_10$9 = {
+  const _hoisted_7$b = ["disabled", "title", "aria-label"];
+  const _hoisted_8$a = ["title", "aria-label"];
+  const _hoisted_9$a = ["aria-label"];
+  const _hoisted_10$a = {
     key: 0,
     role: "alert",
     class: "booster-error"
   };
-  const _hoisted_11$9 = {
+  const _hoisted_11$a = {
     key: 1,
     role: "status",
     class: "booster-note"
   };
-  const _hoisted_12$8 = { class: "booster-reader-layout" };
-  const _hoisted_13$7 = { class: "booster-reader-sidebar" };
-  const _hoisted_14$7 = ["aria-label", "placeholder"];
+  const _hoisted_12$9 = { class: "booster-reader-layout" };
+  const _hoisted_13$8 = { class: "booster-reader-sidebar" };
+  const _hoisted_14$8 = ["aria-label", "placeholder"];
   const _hoisted_15$7 = {
     key: 0,
     role: "status",
@@ -15050,8 +15050,8 @@
                     onClick: _cache[1] || (_cache[1] = ($event) => toolsMenuOpen.value = !toolsMenuOpen.value)
                   }, [
                     createVNode(unref(Ellipsis), { class: "size-5" })
-                  ], 8, _hoisted_5$a),
-                  toolsMenuOpen.value ? (openBlock(), createElementBlock("div", _hoisted_6$a, [
+                  ], 8, _hoisted_5$b),
+                  toolsMenuOpen.value ? (openBlock(), createElementBlock("div", _hoisted_6$b, [
                     createBaseVNode("button", {
                       type: "button",
                       role: "menuitem",
@@ -15122,7 +15122,7 @@
                 onClick: retryLocation
               }, [
                 createVNode(unref(RefreshCw), { class: "size-4" })
-              ], 8, _hoisted_7$a),
+              ], 8, _hoisted_7$b),
               __props.windowed ? (openBlock(), createElementBlock("button", {
                 key: 1,
                 type: "button",
@@ -15132,7 +15132,7 @@
                 onClick: _cache[6] || (_cache[6] = ($event) => emit2("minimize"))
               }, [
                 createVNode(unref(Minus), { class: "size-4" })
-              ], 8, _hoisted_8$9)) : createCommentVNode("v-if", true),
+              ], 8, _hoisted_8$a)) : createCommentVNode("v-if", true),
               createBaseVNode("button", {
                 type: "button",
                 class: "booster-icon-button",
@@ -15140,31 +15140,31 @@
                 onClick: _cache[7] || (_cache[7] = ($event) => emit2("close"))
               }, [
                 createVNode(unref(X), { class: "size-4" })
-              ], 8, _hoisted_9$9)
+              ], 8, _hoisted_9$a)
             ])
           ], 8, _hoisted_2$d),
           archiveToolError.value ? (openBlock(), createElementBlock(
             "p",
-            _hoisted_10$9,
+            _hoisted_10$a,
             toDisplayString(archiveToolError.value),
             1
             /* TEXT */
           )) : createCommentVNode("v-if", true),
           accountPending.value ? (openBlock(), createElementBlock(
             "p",
-            _hoisted_11$9,
+            _hoisted_11$a,
             toDisplayString(__props.locale === "ru" ? "Ожидание подтверждения аккаунта ChatGPT…" : "Waiting for ChatGPT account verification…"),
             1
             /* TEXT */
           )) : createCommentVNode("v-if", true),
-          createBaseVNode("div", _hoisted_12$8, [
-            createBaseVNode("aside", _hoisted_13$7, [
+          createBaseVNode("div", _hoisted_12$9, [
+            createBaseVNode("aside", _hoisted_13$8, [
               withDirectives(createBaseVNode("input", {
                 "onUpdate:modelValue": _cache[8] || (_cache[8] = ($event) => search.value = $event),
                 type: "search",
                 "aria-label": t("reader.search"),
                 placeholder: t("reader.search")
-              }, null, 8, _hoisted_14$7), [
+              }, null, 8, _hoisted_14$8), [
                 [vModelText, search.value]
               ]),
               listLoading.value && !conversations.value.length ? (openBlock(), createElementBlock(
@@ -19063,12 +19063,12 @@
     key: 0,
     class: "tabular-nums"
   };
-  const _hoisted_5$9 = ["value", "aria-label"];
-  const _hoisted_6$9 = {
+  const _hoisted_5$a = ["value", "aria-label"];
+  const _hoisted_6$a = {
     key: 1,
     class: "text-xs text-muted-foreground"
   };
-  const _hoisted_7$9 = {
+  const _hoisted_7$a = {
     key: 2,
     role: "alert",
     class: "text-sm text-destructive"
@@ -19118,17 +19118,17 @@
             value: progress.value ?? void 0,
             max: "100",
             "aria-label": __props.ariaLabel || __props.label
-          }, null, 8, _hoisted_5$9),
+          }, null, 8, _hoisted_5$a),
           __props.detail ? (openBlock(), createElementBlock(
             "p",
-            _hoisted_6$9,
+            _hoisted_6$a,
             toDisplayString(__props.detail),
             1
             /* TEXT */
           )) : createCommentVNode("v-if", true),
           __props.error ? (openBlock(), createElementBlock(
             "p",
-            _hoisted_7$9,
+            _hoisted_7$a,
             toDisplayString(__props.error),
             1
             /* TEXT */
@@ -19296,23 +19296,23 @@
     key: 0,
     class: "booster-export-readiness"
   };
-  const _hoisted_5$8 = { class: "booster-note" };
-  const _hoisted_6$8 = { class: "booster-export-recovery-actions" };
-  const _hoisted_7$8 = ["disabled"];
-  const _hoisted_8$8 = ["disabled"];
-  const _hoisted_9$8 = ["disabled"];
-  const _hoisted_10$8 = {
+  const _hoisted_5$9 = { class: "booster-note" };
+  const _hoisted_6$9 = { class: "booster-export-recovery-actions" };
+  const _hoisted_7$9 = ["disabled"];
+  const _hoisted_8$9 = ["disabled"];
+  const _hoisted_9$9 = ["disabled"];
+  const _hoisted_10$9 = {
     key: 0,
     role: "alert",
     class: "booster-error"
   };
-  const _hoisted_11$8 = {
+  const _hoisted_11$9 = {
     key: 1,
     class: "booster-form-body"
   };
-  const _hoisted_12$7 = { key: 0 };
-  const _hoisted_13$6 = { key: 1 };
-  const _hoisted_14$6 = ["disabled"];
+  const _hoisted_12$8 = { key: 0 };
+  const _hoisted_13$7 = { key: 1 };
+  const _hoisted_14$7 = ["disabled"];
   const _hoisted_15$6 = {
     key: 0,
     class: "booster-export-disclosure"
@@ -19506,9 +19506,9 @@
     key: 14,
     class: "booster-note"
   };
-  const _hoisted_97 = ["href", "aria-disabled", "download"];
-  const _hoisted_98 = ["disabled"];
-  const _hoisted_99 = {
+  const _hoisted_97$1 = ["href", "aria-disabled", "download"];
+  const _hoisted_98$1 = ["disabled"];
+  const _hoisted_99$1 = {
     key: 2,
     class: "booster-note"
   };
@@ -20260,12 +20260,12 @@
             ]),
             createBaseVNode(
               "p",
-              _hoisted_5$8,
+              _hoisted_5$9,
               toDisplayString(__props.locale === "ru" ? "Перенесённые записи доступны без подтверждённой полноты истории. Файл помечен как неполный; неизвестные страницы и вложения не считаются сохранёнными." : "Migrated records can be downloaded without verified history completeness. The file is marked partial; missing pages and attachment bytes are not claimed."),
               1
               /* TEXT */
             ),
-            createBaseVNode("div", _hoisted_6$8, [
+            createBaseVNode("div", _hoisted_6$9, [
               createBaseVNode("button", {
                 type: "button",
                 class: "booster-action-primary",
@@ -20278,7 +20278,7 @@
                   1
                   /* TEXT */
                 )
-              ], 8, _hoisted_7$8),
+              ], 8, _hoisted_7$9),
               createBaseVNode("button", {
                 type: "button",
                 class: "booster-action-secondary",
@@ -20291,7 +20291,7 @@
                   1
                   /* TEXT */
                 )
-              ], 8, _hoisted_8$8),
+              ], 8, _hoisted_8$9),
               createBaseVNode("button", {
                 type: "button",
                 class: "booster-action-secondary",
@@ -20304,17 +20304,17 @@
                   1
                   /* TEXT */
                 )
-              ], 8, _hoisted_9$8)
+              ], 8, _hoisted_9$9)
             ]),
             recoveredError.value ? (openBlock(), createElementBlock(
               "p",
-              _hoisted_10$8,
+              _hoisted_10$9,
               toDisplayString(recoveredError.value),
               1
               /* TEXT */
             )) : createCommentVNode("v-if", true)
           ])) : createCommentVNode("v-if", true),
-          ready.value ? (openBlock(), createElementBlock("div", _hoisted_11$8, [
+          ready.value ? (openBlock(), createElementBlock("div", _hoisted_11$9, [
             createBaseVNode(
               "div",
               {
@@ -20338,13 +20338,13 @@
                   ),
                   readiness.value ? (openBlock(), createElementBlock(
                     "span",
-                    _hoisted_12$7,
+                    _hoisted_12$8,
                     toDisplayString(t("export.savedRecordCount")) + ": " + toDisplayString(readiness.value.knownRecordCount),
                     1
                     /* TEXT */
                   )) : !__props.archiveAdapter.getExportReadiness && coverage.value ? (openBlock(), createElementBlock(
                     "span",
-                    _hoisted_13$6,
+                    _hoisted_13$7,
                     toDisplayString(t("dock.messages")) + ": " + toDisplayString(coverage.value.visibleMessageCount ?? 0) + " · " + toDisplayString(t("dock.details")) + ": " + toDisplayString(coverage.value.internalRecordCount ?? 0),
                     1
                     /* TEXT */
@@ -20363,7 +20363,7 @@
                     1
                     /* TEXT */
                   )
-                ], 8, _hoisted_14$6)) : createCommentVNode("v-if", true)
+                ], 8, _hoisted_14$7)) : createCommentVNode("v-if", true)
               ],
               2
               /* CLASS */
@@ -21501,7 +21501,7 @@
                 1
                 /* TEXT */
               )
-            ], 8, _hoisted_97)) : !recoveredAvailable.value || !prepareBlocked.value ? (openBlock(), createElementBlock("button", {
+            ], 8, _hoisted_97$1)) : !recoveredAvailable.value || !prepareBlocked.value ? (openBlock(), createElementBlock("button", {
               key: 16,
               class: "booster-action-primary",
               type: "button",
@@ -21514,7 +21514,7 @@
                 1
                 /* TEXT */
               )
-            ], 8, _hoisted_98)) : createCommentVNode("v-if", true),
+            ], 8, _hoisted_98$1)) : createCommentVNode("v-if", true),
             busy.value ? (openBlock(), createElementBlock(
               "button",
               {
@@ -21529,7 +21529,7 @@
             )) : createCommentVNode("v-if", true)
           ])) : (openBlock(), createElementBlock(
             "p",
-            _hoisted_99,
+            _hoisted_99$1,
             toDisplayString(t(error.value ? "common.saveError" : "control.loading")),
             1
             /* TEXT */
@@ -21545,19 +21545,19 @@
     class: "booster-form-body"
   };
   const _hoisted_4$9 = ["disabled"];
-  const _hoisted_5$7 = { value: "default" };
-  const _hoisted_6$7 = ["value"];
-  const _hoisted_7$7 = ["disabled"];
-  const _hoisted_8$7 = {
+  const _hoisted_5$8 = { value: "default" };
+  const _hoisted_6$8 = ["value"];
+  const _hoisted_7$8 = ["disabled"];
+  const _hoisted_8$8 = {
     key: 0,
     value: "inherit"
   };
-  const _hoisted_9$7 = { value: "on" };
-  const _hoisted_10$7 = { value: "off" };
-  const _hoisted_11$7 = ["disabled"];
-  const _hoisted_12$6 = { class: "booster-note" };
-  const _hoisted_13$5 = ["disabled"];
-  const _hoisted_14$5 = {
+  const _hoisted_9$8 = { value: "on" };
+  const _hoisted_10$8 = { value: "off" };
+  const _hoisted_11$8 = ["disabled"];
+  const _hoisted_12$7 = { class: "booster-note" };
+  const _hoisted_13$6 = ["disabled"];
+  const _hoisted_14$6 = {
     key: 1,
     role: "alert",
     class: "booster-error"
@@ -21691,7 +21691,7 @@
               }, [
                 createBaseVNode(
                   "option",
-                  _hoisted_5$7,
+                  _hoisted_5$8,
                   toDisplayString(t("capture.global")),
                   1
                   /* TEXT */
@@ -21703,7 +21703,7 @@
                     return openBlock(), createElementBlock("option", {
                       key: keyFor(scope),
                       value: keyFor(scope)
-                    }, toDisplayString(t(scope.scope === "project" ? "capture.project" : "capture.conversation")) + ": " + toDisplayString(scope.title || t(scope.scope === "project" ? "identity.unknownProject" : "identity.untitled")), 9, _hoisted_6$7);
+                    }, toDisplayString(t(scope.scope === "project" ? "capture.project" : "capture.conversation")) + ": " + toDisplayString(scope.title || t(scope.scope === "project" ? "identity.unknownProject" : "identity.untitled")), 9, _hoisted_6$8);
                   }),
                   128
                   /* KEYED_FRAGMENT */
@@ -21730,26 +21730,26 @@
               }, [
                 target.value ? (openBlock(), createElementBlock(
                   "option",
-                  _hoisted_8$7,
+                  _hoisted_8$8,
                   toDisplayString(t("capture.inherit")),
                   1
                   /* TEXT */
                 )) : createCommentVNode("v-if", true),
                 createBaseVNode(
                   "option",
-                  _hoisted_9$7,
+                  _hoisted_9$8,
                   toDisplayString(t("capture.on")),
                   1
                   /* TEXT */
                 ),
                 createBaseVNode(
                   "option",
-                  _hoisted_10$7,
+                  _hoisted_10$8,
                   toDisplayString(t("capture.off")),
                   1
                   /* TEXT */
                 )
-              ], 8, _hoisted_7$7), [
+              ], 8, _hoisted_7$8), [
                 [vModelSelect, mode2.value]
               ])
             ]),
@@ -21814,10 +21814,10 @@
                   /* TEXT */
                 )
               ])
-            ], 8, _hoisted_11$7),
+            ], 8, _hoisted_11$8),
             createBaseVNode(
               "p",
-              _hoisted_12$6,
+              _hoisted_12$7,
               toDisplayString(t("capture.scopeHint")),
               1
               /* TEXT */
@@ -21827,10 +21827,10 @@
               class: "booster-action-primary",
               disabled: busy.value,
               onClick: save
-            }, toDisplayString(t(busy.value ? "control.saving" : "capture.apply")), 9, _hoisted_13$5),
+            }, toDisplayString(t(busy.value ? "control.saving" : "capture.apply")), 9, _hoisted_13$6),
             error.value ? (openBlock(), createElementBlock(
               "p",
-              _hoisted_14$5,
+              _hoisted_14$6,
               toDisplayString(t("common.saveError")),
               1
               /* TEXT */
@@ -21981,6 +21981,337 @@
       };
     }
   });
+  function aborted() {
+    return new DOMException("IndexedDB scan cancelled", "AbortError");
+  }
+  function readIndexedPage(options) {
+    if (!Number.isSafeInteger(options.pageSize) || options.pageSize < 1 || options.pageSize > 1024)
+      throw new RangeError("IndexedDB pageSize must be an integer from 1 to 1024");
+    if (options.index === void 0 !== (options.indexKey === void 0))
+      throw new Error("IndexedDB scan requires index and indexKey together");
+    if (options.signal?.aborted)
+      return Promise.reject(aborted());
+    const compare = options.compareKeys ?? ((a, b) => indexedDB.cmp(a, b));
+    const tx = options.db.transaction(options.store, "readonly");
+    return new Promise((resolve2, reject) => {
+      const records = [];
+      let lastPrimaryKey = null;
+      let exhausted = false;
+      let finished = false;
+      let jumped = false;
+      const cleanup = () => options.signal?.removeEventListener("abort", onAbort);
+      const rejectOnce = (reason) => {
+        if (finished)
+          return;
+        finished = true;
+        cleanup();
+        reject(reason);
+      };
+      const fail = (reason) => {
+        if (finished)
+          return;
+        rejectOnce(reason);
+        try {
+          tx.abort();
+        } catch {
+        }
+      };
+      const onAbort = () => fail(aborted());
+      tx.addEventListener("complete", () => {
+        if (finished)
+          return;
+        finished = true;
+        cleanup();
+        resolve2({ records, lastPrimaryKey, exhausted });
+      }, { once: true });
+      tx.addEventListener("abort", () => rejectOnce(options.signal?.aborted ? aborted() : tx.error ?? new Error("IndexedDB indexed page aborted")), { once: true });
+      tx.addEventListener("error", () => rejectOnce(tx.error ?? new Error("IndexedDB indexed page failed")), { once: true });
+      options.signal?.addEventListener("abort", onAbort, { once: true });
+      if (options.signal?.aborted) {
+        onAbort();
+        return;
+      }
+      try {
+        const store = tx.objectStore(options.store);
+        const request = options.index !== void 0 && options.indexKey !== void 0 ? store.index(options.index).openCursor(IDBKeyRange.only(options.indexKey)) : store.openCursor();
+        request.onerror = () => fail(request.error ?? new Error("IndexedDB cursor failed"));
+        request.onsuccess = () => {
+          if (finished)
+            return;
+          const cursor = request.result;
+          if (!cursor) {
+            exhausted = true;
+            return;
+          }
+          try {
+            const after = options.afterPrimaryKey;
+            if (after != null && !jumped) {
+              jumped = true;
+              if (compare(cursor.primaryKey, after) < 0) {
+                if (options.index !== void 0 && options.indexKey !== void 0)
+                  cursor.continuePrimaryKey(options.indexKey, after);
+                else
+                  cursor.continue(after);
+                return;
+              }
+            }
+            if (after != null && compare(cursor.primaryKey, after) <= 0) {
+              cursor.continue();
+              return;
+            }
+            records.push(options.decode(cursor.value));
+            lastPrimaryKey = cursor.primaryKey;
+            if (records.length < options.pageSize)
+              cursor.continue();
+          } catch (reason) {
+            fail(reason);
+          }
+        };
+      } catch (reason) {
+        fail(reason);
+      }
+    });
+  }
+  function readStorePage(options) {
+    return readIndexedPage(options);
+  }
+  function requestResult(request) {
+    return new Promise((resolve2, reject) => {
+      request.onsuccess = () => resolve2(request.result);
+      request.onerror = () => reject(request.error ?? new Error("IndexedDB request failed"));
+    });
+  }
+  function transactionComplete(tx) {
+    const done = new Promise((resolve2, reject) => {
+      tx.addEventListener("complete", () => resolve2(), { once: true });
+      tx.addEventListener("error", () => reject(tx.error ?? new Error("IndexedDB transaction failed")), {
+        once: true
+      });
+      tx.addEventListener("abort", () => reject(tx.error ?? new DOMException("IndexedDB transaction aborted", "AbortError")), { once: true });
+    });
+    done.catch(() => {
+      return;
+    });
+    return done;
+  }
+  function readIndexedRangePage(options) {
+    if (!Number.isSafeInteger(options.pageSize) || options.pageSize < 1 || options.pageSize > 1024)
+      throw new RangeError("IndexedDB range pageSize must be an integer from 1 to 1024");
+    const aborted2 = () => new DOMException("IndexedDB range scan cancelled", "AbortError");
+    if (options.signal?.aborted)
+      return Promise.reject(aborted2());
+    const compare = options.compareKeys ?? ((a, b) => indexedDB.cmp(a, b));
+    const tx = options.db.transaction(options.store, "readonly");
+    return new Promise((resolve2, reject) => {
+      const records = [];
+      let last = null;
+      let exhausted = false;
+      let finished = false;
+      let jumped = false;
+      const cleanup = () => options.signal?.removeEventListener("abort", onAbort);
+      const rejectOnce = (error) => {
+        if (finished)
+          return;
+        finished = true;
+        cleanup();
+        reject(error);
+      };
+      const fail = (error) => {
+        if (finished)
+          return;
+        rejectOnce(error);
+        try {
+          tx.abort();
+        } catch {
+        }
+      };
+      const onAbort = () => fail(aborted2());
+      tx.addEventListener("complete", () => {
+        if (finished)
+          return;
+        finished = true;
+        cleanup();
+        resolve2({ records, last, exhausted });
+      }, { once: true });
+      tx.addEventListener("abort", () => rejectOnce(options.signal?.aborted ? aborted2() : tx.error ?? new Error("IndexedDB range transaction aborted")), { once: true });
+      tx.addEventListener("error", () => rejectOnce(tx.error ?? new Error("IndexedDB range transaction failed")), { once: true });
+      options.signal?.addEventListener("abort", onAbort, { once: true });
+      if (options.signal?.aborted) {
+        onAbort();
+        return;
+      }
+      try {
+        const request = tx.objectStore(options.store).index(options.index).openCursor(options.range);
+        request.onerror = () => fail(request.error ?? new Error("IndexedDB range cursor failed"));
+        request.onsuccess = () => {
+          if (finished)
+            return;
+          const cursor = request.result;
+          if (!cursor) {
+            exhausted = true;
+            return;
+          }
+          try {
+            const after = options.after;
+            if (after) {
+              const order = compare(cursor.key, after.indexKey);
+              const primary = order === 0 ? compare(cursor.primaryKey, after.primaryKey) : 0;
+              if (!jumped && (order < 0 || order === 0 && primary < 0)) {
+                jumped = true;
+                cursor.continuePrimaryKey(after.indexKey, after.primaryKey);
+                return;
+              }
+              if (order < 0 || order === 0 && primary <= 0) {
+                cursor.continue();
+                return;
+              }
+            }
+            records.push(options.decode(cursor.value));
+            last = { indexKey: cursor.key, primaryKey: cursor.primaryKey };
+            if (records.length < options.pageSize)
+              cursor.continue();
+          } catch (cause) {
+            fail(cause);
+          }
+        };
+      } catch (cause) {
+        fail(cause);
+      }
+    });
+  }
+  function assertServiceScope(scope) {
+    if (!/^[a-z][a-z0-9-]{1,63}$/.test(scope.productId) || scope.channel !== "dev" && scope.channel !== "prod" || scope.ownerId !== void 0 && (!scope.ownerId || scope.ownerId.length > 256) || scope.installationId !== void 0 && !/^[a-zA-Z0-9_-]{1,128}$/.test(scope.installationId)) {
+      throw new Error("Invalid product/channel/owner scope");
+    }
+    return scope;
+  }
+  function assertMatchingScope(expected, actual) {
+    assertServiceScope(expected);
+    assertServiceScope(actual);
+    if (expected.productId !== actual.productId || expected.channel !== actual.channel || expected.ownerId !== actual.ownerId || expected.installationId !== actual.installationId) {
+      throw new Error("Backup product, channel, owner or installation mismatch");
+    }
+  }
+  var FORMAT = "koba-settings-backup-v1";
+  var MAX_BYTES = 512 * 1024;
+  var isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+  async function checksum(text2) {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text2));
+    return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+  }
+  function settingsJson(value) {
+    const valueJson = JSON.stringify(value);
+    if (typeof valueJson !== "string" || valueJson.length === 0 || valueJson.length > MAX_BYTES)
+      throw new Error("Settings backup payload is invalid or oversized");
+    return valueJson;
+  }
+  async function exportSettingsBackup(port) {
+    assertServiceScope(port.scope);
+    if (!Number.isSafeInteger(port.schemaVersion) || port.schemaVersion < 1)
+      throw new Error("Invalid settings schema version");
+    const value = port.validateSettings(await port.exportSettings());
+    settingsJson(value);
+    const body = {
+      format: FORMAT,
+      schemaVersion: port.schemaVersion,
+      scope: { ...port.scope },
+      createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+      includes: { settings: true, archive: false, attachments: false },
+      settings: value
+    };
+    const backup = {
+      ...body,
+      checksum: await checksum(JSON.stringify(body))
+    };
+    const raw = JSON.stringify(backup);
+    if (new TextEncoder().encode(raw).byteLength > MAX_BYTES)
+      throw new Error("Settings backup exceeds maximum size");
+    return new Blob([raw], { type: "application/json" });
+  }
+  async function validateSettingsBackup(port, blob) {
+    if (blob.size === 0 || blob.size > MAX_BYTES)
+      throw new Error("Settings backup size rejected");
+    const raw = JSON.parse(await blob.text());
+    if (!isRecord(raw) || raw.format !== FORMAT || raw.schemaVersion !== port.schemaVersion || !isRecord(raw.scope) || !isRecord(raw.includes) || Object.keys(raw).sort().join(",") !== "checksum,createdAt,format,includes,schemaVersion,scope,settings" || Object.keys(raw.scope).some((key2) => !["productId", "channel", "ownerId", "installationId"].includes(key2)) || Object.keys(raw.includes).sort().join(",") !== "archive,attachments,settings" || raw.includes.settings !== true || raw.includes.archive !== false || raw.includes.attachments !== false || typeof raw.createdAt !== "string" || !Number.isFinite(Date.parse(raw.createdAt)) || typeof raw.checksum !== "string" || !/^[a-f0-9]{64}$/.test(raw.checksum)) {
+      throw new Error("Settings backup format or schema is unsupported");
+    }
+    const scope = {
+      productId: raw.scope.productId,
+      channel: raw.scope.channel,
+      ...raw.scope.ownerId === void 0 ? {} : { ownerId: raw.scope.ownerId },
+      ...raw.scope.installationId === void 0 ? {} : { installationId: raw.scope.installationId }
+    };
+    assertMatchingScope(port.scope, scope);
+    settingsJson(raw.settings);
+    const { checksum: expectedDigest, ...fields2 } = raw;
+    if (await checksum(JSON.stringify(fields2)) !== expectedDigest)
+      throw new Error("Settings backup integrity check failed");
+    const settings = port.validateSettings(raw.settings);
+    if (settingsJson(settings) !== settingsJson(raw.settings))
+      throw new Error("Settings backup contains unsupported or unnormalized values");
+    return {
+      format: FORMAT,
+      schemaVersion: port.schemaVersion,
+      scope,
+      createdAt: raw.createdAt,
+      includes: { settings: true, archive: false, attachments: false },
+      checksum: raw.checksum,
+      settings
+    };
+  }
+  async function restoreSettingsBackup(port, blob) {
+    const validated = await validateSettingsBackup(port, blob);
+    await port.restoreSettingsAtomically(validated.settings);
+  }
+  const portable = (settings) => ({
+    enabled: settings.enabled,
+    language: settings.language,
+    features: settings.features,
+    alerts: settings.alerts,
+    monitoring: settings.monitoring,
+    historyLoader: settings.historyLoader,
+    launcher: settings.launcher,
+    observer: settings.observer,
+    ui: settings.ui,
+    export: settings.export
+  });
+  const keys = ["enabled", "language", "features", "alerts", "monitoring", "historyLoader", "launcher", "observer", "ui", "export"];
+  function chatGptSettingsBackupPort(adapter, scopeId = instanceScope()) {
+    const [productId, channel, extra] = scopeId.split(":");
+    if (productId !== "chatgpt-booster" && productId !== "all-in-one")
+      throw new Error("ChatGPT settings backup requires a compiled ChatGPT or aggregate identity");
+    if (channel !== "dev" && channel !== "prod" || extra !== void 0)
+      throw new Error("Unknown ChatGPT settings backup channel");
+    return {
+      scope: { productId, channel },
+      schemaVersion: SETTINGS_SCHEMA_VERSION,
+      async exportSettings() {
+        return portable(snapshotSettings(await adapter.get()));
+      },
+      validateSettings(input) {
+        if (!input || typeof input !== "object" || Array.isArray(input))
+          throw Error("Unsupported settings payload");
+        const raw = input;
+        if (Object.keys(raw).sort().join(",") !== [...keys].sort().join(","))
+          throw Error("Unknown settings keys in backup");
+        const normalized = portable(snapshotSettings(raw));
+        if (JSON.stringify(normalized) !== JSON.stringify(input))
+          throw Error("Invalid or noncanonical settings in backup");
+        return normalized;
+      },
+      async restoreSettingsAtomically(value) {
+        const before = snapshotSettings(await adapter.get());
+        const next = snapshotSettings({ ...before, ...value });
+        await adapter.set(next);
+      }
+    };
+  }
+  async function exportChatGptSettings(adapter) {
+    return exportSettingsBackup(chatGptSettingsBackupPort(adapter));
+  }
+  async function restoreChatGptSettings(adapter, blob) {
+    return restoreSettingsBackup(chatGptSettingsBackupPort(adapter), blob);
+  }
   const _hoisted_1$8 = ["lang"];
   const _hoisted_2$8 = {
     key: 0,
@@ -21988,25 +22319,25 @@
   };
   const _hoisted_3$7 = { class: "booster-header-copy" };
   const _hoisted_4$7 = { class: "flex items-center gap-2" };
-  const _hoisted_5$6 = {
+  const _hoisted_5$7 = {
     key: 0,
     class: "booster-header-actions"
   };
-  const _hoisted_6$6 = { class: "booster-header-toggle-label" };
-  const _hoisted_7$6 = ["aria-pressed"];
-  const _hoisted_8$6 = {
+  const _hoisted_6$7 = { class: "booster-header-toggle-label" };
+  const _hoisted_7$7 = ["aria-pressed"];
+  const _hoisted_8$7 = {
     key: 1,
     class: "booster-loading"
   };
-  const _hoisted_9$6 = {
+  const _hoisted_9$7 = {
     key: 2,
     class: "booster-settings-layout"
   };
-  const _hoisted_10$6 = { class: "booster-settings-nav" };
-  const _hoisted_11$6 = { class: "booster-settings-content" };
-  const _hoisted_12$5 = { class: "booster-setting-card" };
-  const _hoisted_13$4 = { class: "booster-setting-copy" };
-  const _hoisted_14$4 = ["value"];
+  const _hoisted_10$7 = { class: "booster-settings-nav" };
+  const _hoisted_11$7 = { class: "booster-settings-content" };
+  const _hoisted_12$6 = { class: "booster-setting-card" };
+  const _hoisted_13$5 = { class: "booster-setting-copy" };
+  const _hoisted_14$5 = ["value"];
   const _hoisted_15$4 = { value: "latest" };
   const _hoisted_16$3 = { value: "first" };
   const _hoisted_17$3 = {
@@ -22076,40 +22407,55 @@
   const _hoisted_75 = { value: "en" };
   const _hoisted_76 = { value: "ru" };
   const _hoisted_77 = { class: "booster-stack-card" };
-  const _hoisted_78 = {
+  const _hoisted_78 = { class: "booster-telemetry-body" };
+  const _hoisted_79 = { class: "booster-setting-copy" };
+  const _hoisted_80 = { class: "booster-field" };
+  const _hoisted_81 = ["disabled"];
+  const _hoisted_82 = { class: "booster-field flex items-center gap-2" };
+  const _hoisted_83 = ["disabled"];
+  const _hoisted_84 = {
+    key: 0,
+    role: "alert"
+  };
+  const _hoisted_85 = {
+    key: 1,
+    role: "status"
+  };
+  const _hoisted_86 = { class: "booster-stack-card" };
+  const _hoisted_87 = {
     key: 0,
     class: "booster-telemetry-body"
   };
-  const _hoisted_79 = { class: "booster-setting-card booster-setting-card-flat" };
-  const _hoisted_80 = { class: "booster-setting-copy" };
-  const _hoisted_81 = { class: "booster-field" };
-  const _hoisted_82 = ["value", "placeholder"];
-  const _hoisted_83 = {
+  const _hoisted_88 = { class: "booster-setting-card booster-setting-card-flat" };
+  const _hoisted_89 = { class: "booster-setting-copy" };
+  const _hoisted_90 = { class: "booster-field" };
+  const _hoisted_91 = ["value", "placeholder"];
+  const _hoisted_92 = {
     key: 0,
     class: "booster-field"
   };
-  const _hoisted_84 = { class: "flex items-center justify-between gap-2" };
-  const _hoisted_85 = {
+  const _hoisted_93 = { class: "flex items-center justify-between gap-2" };
+  const _hoisted_94 = {
     key: 0,
     class: "flex gap-2"
   };
-  const _hoisted_86 = { class: "booster-telemetry-test-row" };
-  const _hoisted_87 = {
+  const _hoisted_95 = { class: "booster-telemetry-test-row" };
+  const _hoisted_96 = {
     key: 0,
     class: "booster-test-success"
   };
-  const _hoisted_88 = ["title"];
-  const _hoisted_89 = { class: "booster-control-footer" };
-  const _hoisted_90 = { class: "booster-save-state" };
-  const _hoisted_91 = { class: "booster-destructive-dialog" };
-  const _hoisted_92 = { class: "booster-destructive-icon" };
-  const _hoisted_93 = { class: "booster-destructive-warning" };
-  const _hoisted_94 = {
+  const _hoisted_97 = ["title"];
+  const _hoisted_98 = { class: "booster-control-footer" };
+  const _hoisted_99 = { class: "booster-save-state" };
+  const _hoisted_100 = { class: "booster-destructive-dialog" };
+  const _hoisted_101 = { class: "booster-destructive-icon" };
+  const _hoisted_102 = { class: "booster-destructive-warning" };
+  const _hoisted_103 = {
     key: 0,
     class: "booster-test-error"
   };
-  const _hoisted_95 = { class: "booster-destructive-actions" };
-  const _hoisted_96 = ["disabled"];
+  const _hoisted_104 = { class: "booster-destructive-actions" };
+  const _hoisted_105 = ["disabled"];
   const _sfc_main$8 = /* @__PURE__ */ defineComponent({
     __name: "ControlCenterPanel",
     props: {
@@ -22136,6 +22482,57 @@
       const tokenEditing = /* @__PURE__ */ ref(false);
       const telemetryTestState = /* @__PURE__ */ ref("idle");
       const telemetryTestError = /* @__PURE__ */ ref("");
+      const settingsBackupBusy = /* @__PURE__ */ ref(false);
+      const settingsBackupError = /* @__PURE__ */ ref("");
+      const settingsBackupMessage = /* @__PURE__ */ ref("");
+      const settingsBackupFile = /* @__PURE__ */ ref(null);
+      const settingsBackupApproved = /* @__PURE__ */ ref(false);
+      async function downloadSettingsBackup() {
+        if (settingsBackupBusy.value) return;
+        settingsBackupBusy.value = true;
+        settingsBackupError.value = "";
+        settingsBackupMessage.value = "";
+        try {
+          const blob = await exportChatGptSettings(props.settingsAdapter);
+          const url = URL.createObjectURL(blob);
+          try {
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "chatgpt-booster-settings-backup.json";
+            link.click();
+          } finally {
+            window.setTimeout(() => URL.revokeObjectURL(url), 1e3);
+          }
+          settingsBackupMessage.value = locale.value === "ru" ? "Копия настроек подготовлена. Убедитесь, что файл сохранён." : "Settings backup prepared. Confirm the browser saved the file.";
+        } catch {
+          settingsBackupError.value = locale.value === "ru" ? "Не удалось экспортировать настройки." : "Settings export failed.";
+        } finally {
+          settingsBackupBusy.value = false;
+        }
+      }
+      function selectSettingsBackupFile(event) {
+        settingsBackupFile.value = event.target.files?.[0] ?? null;
+        settingsBackupApproved.value = false;
+        settingsBackupError.value = "";
+        settingsBackupMessage.value = "";
+      }
+      async function importSettingsBackup() {
+        if (!settingsBackupFile.value || !settingsBackupApproved.value || settingsBackupBusy.value) return;
+        settingsBackupBusy.value = true;
+        settingsBackupError.value = "";
+        settingsBackupMessage.value = "";
+        try {
+          await restoreChatGptSettings(props.settingsAdapter, settingsBackupFile.value);
+          settings.value = snapshotSettings(await props.settingsAdapter.get());
+          settingsBackupMessage.value = locale.value === "ru" ? "Настройки восстановлены. Архивы и локальные правила сохранения не изменены." : "Settings restored. Archives and account-specific capture rules were not changed.";
+          settingsBackupApproved.value = false;
+          settingsBackupFile.value = null;
+        } catch {
+          settingsBackupError.value = locale.value === "ru" ? "Копия отклонена: проверьте целостность, версию, продукт и DEV/PROD." : "Backup rejected: verify integrity, schema, product and DEV/PROD channel.";
+        } finally {
+          settingsBackupBusy.value = false;
+        }
+      }
       const archiveResetOpen = /* @__PURE__ */ ref(false);
       const archiveResetting = /* @__PURE__ */ ref(false);
       const archiveResetError = /* @__PURE__ */ ref("");
@@ -22349,10 +22746,10 @@
                 /* TEXT */
               )
             ]),
-            settings.value ? (openBlock(), createElementBlock("div", _hoisted_5$6, [
+            settings.value ? (openBlock(), createElementBlock("div", _hoisted_5$7, [
               createBaseVNode(
                 "span",
-                _hoisted_6$6,
+                _hoisted_6$7,
                 toDisplayString(t("control.booster")),
                 1
                 /* TEXT */
@@ -22362,7 +22759,7 @@
                 class: normalizeClass(["booster-switch", { "booster-switch-on": settings.value.enabled }]),
                 "aria-pressed": settings.value.enabled,
                 onClick: _cache[0] || (_cache[0] = ($event) => applyPatch({ enabled: !settings.value.enabled }))
-              }, [..._cache[22] || (_cache[22] = [
+              }, [..._cache[23] || (_cache[23] = [
                 createBaseVNode(
                   "span",
                   null,
@@ -22370,7 +22767,7 @@
                   -1
                   /* CACHED */
                 )
-              ])], 10, _hoisted_7$6),
+              ])], 10, _hoisted_7$7),
               __props.showClose ? (openBlock(), createBlock(unref(_sfc_main$9), {
                 key: 0,
                 variant: "ghost",
@@ -22389,12 +22786,12 @@
           ])) : createCommentVNode("v-if", true),
           !ready.value || !settings.value ? (openBlock(), createElementBlock(
             "div",
-            _hoisted_8$6,
+            _hoisted_8$7,
             toDisplayString(t("control.loading")),
             1
             /* TEXT */
-          )) : (openBlock(), createElementBlock("div", _hoisted_9$6, [
-            createBaseVNode("nav", _hoisted_10$6, [
+          )) : (openBlock(), createElementBlock("div", _hoisted_9$7, [
+            createBaseVNode("nav", _hoisted_10$7, [
               createBaseVNode(
                 "button",
                 {
@@ -22464,13 +22861,13 @@
                 /* CLASS */
               )
             ]),
-            createBaseVNode("main", _hoisted_11$6, [
+            createBaseVNode("main", _hoisted_11$7, [
               activeSection.value === "archive" ? (openBlock(), createElementBlock(
                 Fragment,
                 { key: 0 },
                 [
-                  createBaseVNode("section", _hoisted_12$5, [
-                    createBaseVNode("div", _hoisted_13$4, [
+                  createBaseVNode("section", _hoisted_12$6, [
+                    createBaseVNode("div", _hoisted_13$5, [
                       createBaseVNode(
                         "b",
                         null,
@@ -22505,7 +22902,7 @@
                         1
                         /* TEXT */
                       )
-                    ], 40, _hoisted_14$4)
+                    ], 40, _hoisted_14$5)
                   ]),
                   createVNode(_sfc_main$c, {
                     "settings-adapter": __props.settingsAdapter,
@@ -22598,7 +22995,7 @@
                         class: normalizeClass(["booster-switch", { "booster-switch-on": settings.value.features.messageMetadata }]),
                         disabled: !settings.value.enabled,
                         onClick: _cache[8] || (_cache[8] = ($event) => applyPatch({ features: { messageMetadata: !settings.value.features.messageMetadata } }))
-                      }, [..._cache[23] || (_cache[23] = [
+                      }, [..._cache[24] || (_cache[24] = [
                         createBaseVNode(
                           "span",
                           null,
@@ -22654,7 +23051,7 @@
                         class: normalizeClass(["booster-switch", { "booster-switch-on": settings.value.features.activityIndicator }]),
                         disabled: !settings.value.enabled,
                         onClick: _cache[9] || (_cache[9] = ($event) => applyPatch({ features: { activityIndicator: !settings.value.features.activityIndicator } }))
-                      }, [..._cache[24] || (_cache[24] = [
+                      }, [..._cache[25] || (_cache[25] = [
                         createBaseVNode(
                           "span",
                           null,
@@ -22711,7 +23108,7 @@
                           class: normalizeClass(["booster-switch", { "booster-switch-on": settings.value.features.requestTimer }]),
                           disabled: !settings.value.enabled,
                           onClick: _cache[10] || (_cache[10] = ($event) => applyPatch({ features: { requestTimer: !settings.value.features.requestTimer } }))
-                        }, [..._cache[25] || (_cache[25] = [
+                        }, [..._cache[26] || (_cache[26] = [
                           createBaseVNode(
                             "span",
                             null,
@@ -22793,7 +23190,7 @@
                         class: normalizeClass(["booster-switch", { "booster-switch-on": settings.value.features.toolInspector }]),
                         disabled: !settings.value.enabled,
                         onClick: _cache[11] || (_cache[11] = ($event) => applyPatch({ features: { toolInspector: !settings.value.features.toolInspector } }))
-                      }, [..._cache[26] || (_cache[26] = [
+                      }, [..._cache[27] || (_cache[27] = [
                         createBaseVNode(
                           "span",
                           null,
@@ -22849,7 +23246,7 @@
                         class: normalizeClass(["booster-switch", { "booster-switch-on": settings.value.alerts.responseCompleteSound }]),
                         disabled: !settings.value.enabled,
                         onClick: _cache[12] || (_cache[12] = ($event) => applyPatch({ alerts: { responseCompleteSound: !settings.value.alerts.responseCompleteSound } }))
-                      }, [..._cache[27] || (_cache[27] = [
+                      }, [..._cache[28] || (_cache[28] = [
                         createBaseVNode(
                           "span",
                           null,
@@ -22906,7 +23303,7 @@
                           class: normalizeClass(["booster-switch", { "booster-switch-on": settings.value.alerts.longRunningSound }]),
                           disabled: !settings.value.enabled,
                           onClick: _cache[13] || (_cache[13] = ($event) => applyPatch({ alerts: { longRunningSound: !settings.value.alerts.longRunningSound } }))
-                        }, [..._cache[28] || (_cache[28] = [
+                        }, [..._cache[29] || (_cache[29] = [
                           createBaseVNode(
                             "span",
                             null,
@@ -23123,7 +23520,7 @@
                         class: normalizeClass(["booster-switch", { "booster-switch-on": settings.value.observer.enabled }]),
                         disabled: !settings.value.enabled,
                         onClick: _cache[14] || (_cache[14] = ($event) => applyPatch({ observer: { enabled: !settings.value.observer.enabled } }))
-                      }, [..._cache[29] || (_cache[29] = [
+                      }, [..._cache[30] || (_cache[30] = [
                         createBaseVNode(
                           "span",
                           null,
@@ -23166,7 +23563,7 @@
                         class: normalizeClass(["booster-switch", { "booster-switch-on": settings.value.observer.captureBodies }]),
                         disabled: !settings.value.observer.enabled,
                         onClick: _cache[15] || (_cache[15] = ($event) => applyPatch({ observer: { captureBodies: !settings.value.observer.captureBodies } }))
-                      }, [..._cache[30] || (_cache[30] = [
+                      }, [..._cache[31] || (_cache[31] = [
                         createBaseVNode(
                           "span",
                           null,
@@ -23535,6 +23932,104 @@
                     ], 40, _hoisted_73)
                   ]),
                   createBaseVNode("section", _hoisted_77, [
+                    createBaseVNode("div", _hoisted_78, [
+                      createBaseVNode("div", _hoisted_79, [
+                        createBaseVNode(
+                          "b",
+                          null,
+                          toDisplayString(locale.value === "ru" ? "Резервная копия настроек" : "Settings backup"),
+                          1
+                          /* TEXT */
+                        ),
+                        createBaseVNode(
+                          "small",
+                          null,
+                          toDisplayString(locale.value === "ru" ? "Отдельно от архива. Копия исключает токены, телеметрию и правила конкретных чатов." : "Separate from the archive. Tokens, telemetry and per-chat rules are excluded."),
+                          1
+                          /* TEXT */
+                        )
+                      ]),
+                      createVNode(unref(_sfc_main$9), {
+                        variant: "outline",
+                        size: "sm",
+                        disabled: settingsBackupBusy.value,
+                        onClick: downloadSettingsBackup
+                      }, {
+                        default: withCtx(() => [
+                          createTextVNode(
+                            toDisplayString(locale.value === "ru" ? "Сохранить настройки" : "Export settings"),
+                            1
+                            /* TEXT */
+                          )
+                        ]),
+                        _: 1
+                        /* STABLE */
+                      }, 8, ["disabled"]),
+                      createBaseVNode("label", _hoisted_80, [
+                        createBaseVNode(
+                          "span",
+                          null,
+                          toDisplayString(locale.value === "ru" ? "Восстановить настройки из JSON" : "Restore settings from JSON"),
+                          1
+                          /* TEXT */
+                        ),
+                        createBaseVNode("input", {
+                          type: "file",
+                          accept: ".json,application/json",
+                          class: "booster-input",
+                          disabled: settingsBackupBusy.value,
+                          onChange: selectSettingsBackupFile
+                        }, null, 40, _hoisted_81)
+                      ]),
+                      createBaseVNode("label", _hoisted_82, [
+                        withDirectives(createBaseVNode("input", {
+                          "onUpdate:modelValue": _cache[16] || (_cache[16] = ($event) => settingsBackupApproved.value = $event),
+                          type: "checkbox",
+                          disabled: !settingsBackupFile.value || settingsBackupBusy.value
+                        }, null, 8, _hoisted_83), [
+                          [vModelCheckbox, settingsBackupApproved.value]
+                        ]),
+                        createBaseVNode(
+                          "span",
+                          null,
+                          toDisplayString(locale.value === "ru" ? "Подтверждаю замену общих настроек этого продукта и канала" : "Confirm replacing global settings for this product and channel"),
+                          1
+                          /* TEXT */
+                        )
+                      ]),
+                      createVNode(unref(_sfc_main$9), {
+                        variant: "outline",
+                        size: "sm",
+                        disabled: settingsBackupBusy.value || !settingsBackupFile.value || !settingsBackupApproved.value,
+                        onClick: importSettingsBackup
+                      }, {
+                        default: withCtx(() => [
+                          createTextVNode(
+                            toDisplayString(locale.value === "ru" ? "Восстановить настройки" : "Restore settings"),
+                            1
+                            /* TEXT */
+                          )
+                        ]),
+                        _: 1
+                        /* STABLE */
+                      }, 8, ["disabled"]),
+                      settingsBackupError.value ? (openBlock(), createElementBlock(
+                        "small",
+                        _hoisted_84,
+                        toDisplayString(settingsBackupError.value),
+                        1
+                        /* TEXT */
+                      )) : createCommentVNode("v-if", true),
+                      settingsBackupMessage.value ? (openBlock(), createElementBlock(
+                        "small",
+                        _hoisted_85,
+                        toDisplayString(settingsBackupMessage.value),
+                        1
+                        /* TEXT */
+                      )) : createCommentVNode("v-if", true)
+                    ])
+                  ]),
+                  createBaseVNode("section", _hoisted_86, [
                     createBaseVNode("button", {
                       class: "booster-disclosure",
                       type: "button",
@@ -23560,9 +24055,9 @@
                         class: normalizeClass(["size-4 transition-transform", { "rotate-180": settings.value.ui.telemetryExpanded }])
                       }, null, 8, ["class"])
                     ]),
-                    settings.value.ui.telemetryExpanded ? (openBlock(), createElementBlock("div", _hoisted_78, [
-                      createBaseVNode("section", _hoisted_79, [
-                        createBaseVNode("div", _hoisted_80, [
+                    settings.value.ui.telemetryExpanded ? (openBlock(), createElementBlock("div", _hoisted_87, [
+                      createBaseVNode("section", _hoisted_88, [
+                        createBaseVNode("div", _hoisted_89, [
                           createBaseVNode(
                             "b",
                             null,
@@ -23576,9 +24071,9 @@
                           {
                             type: "button",
                             class: normalizeClass(["booster-switch", { "booster-switch-on": settings.value.telemetry.enabled }]),
-                            onClick: _cache[16] || (_cache[16] = ($event) => applyPatch({ telemetry: { enabled: !settings.value.telemetry.enabled } }))
+                            onClick: _cache[17] || (_cache[17] = ($event) => applyPatch({ telemetry: { enabled: !settings.value.telemetry.enabled } }))
                           },
-                          [..._cache[31] || (_cache[31] = [
+                          [..._cache[32] || (_cache[32] = [
                             createBaseVNode(
                               "span",
                               null,
@@ -23591,7 +24086,7 @@
                           /* CLASS */
                         )
                       ]),
-                      createBaseVNode("label", _hoisted_81, [
+                      createBaseVNode("label", _hoisted_90, [
                         createBaseVNode(
                           "span",
                           null,
@@ -23604,10 +24099,10 @@
                           class: "booster-input",
                           placeholder: t("control.telemetryEndpointPlaceholder"),
                           onChange: setTelemetryEndpoint
-                        }, null, 40, _hoisted_82)
+                        }, null, 40, _hoisted_91)
                       ]),
-                      __props.secretAdapter ? (openBlock(), createElementBlock("div", _hoisted_83, [
-                        createBaseVNode("span", _hoisted_84, [
+                      __props.secretAdapter ? (openBlock(), createElementBlock("div", _hoisted_92, [
+                        createBaseVNode("span", _hoisted_93, [
                           createTextVNode(
                             toDisplayString(t("control.telemetryToken")) + " ",
                             1
@@ -23627,11 +24122,11 @@
                             /* STABLE */
                           }, 8, ["variant"])
                         ]),
-                        !tokenConfigured.value || tokenEditing.value ? (openBlock(), createElementBlock("div", _hoisted_85, [
+                        !tokenConfigured.value || tokenEditing.value ? (openBlock(), createElementBlock("div", _hoisted_94, [
                           withDirectives(createBaseVNode(
                             "input",
                             {
-                              "onUpdate:modelValue": _cache[17] || (_cache[17] = ($event) => tokenDraft.value = $event),
+                              "onUpdate:modelValue": _cache[18] || (_cache[18] = ($event) => tokenDraft.value = $event),
                               class: "booster-input",
                               type: "password",
                               autocomplete: "off"
@@ -23662,7 +24157,7 @@
                             key: 0,
                             variant: "ghost",
                             size: "sm",
-                            onClick: _cache[18] || (_cache[18] = ($event) => {
+                            onClick: _cache[19] || (_cache[19] = ($event) => {
                               tokenEditing.value = false;
                               tokenDraft.value = "";
                             })
@@ -23682,7 +24177,7 @@
                           variant: "outline",
                           size: "sm",
                           class: "self-start",
-                          onClick: _cache[19] || (_cache[19] = ($event) => tokenEditing.value = true)
+                          onClick: _cache[20] || (_cache[20] = ($event) => tokenEditing.value = true)
                         }, {
                           default: withCtx(() => [
                             createTextVNode(
@@ -23695,7 +24190,7 @@
                           /* STABLE */
                         }))
                       ])) : createCommentVNode("v-if", true),
-                      createBaseVNode("div", _hoisted_86, [
+                      createBaseVNode("div", _hoisted_95, [
                         createVNode(unref(_sfc_main$9), {
                           variant: "outline",
                           size: "sm",
@@ -23714,7 +24209,7 @@
                         }, 8, ["disabled"]),
                         telemetryTestState.value === "success" ? (openBlock(), createElementBlock(
                           "span",
-                          _hoisted_87,
+                          _hoisted_96,
                           toDisplayString(t("control.telemetryTestSuccess")),
                           1
                           /* TEXT */
@@ -23723,7 +24218,7 @@
                           key: 1,
                           class: "booster-test-error",
                           title: telemetryTestError.value
-                        }, toDisplayString(t("control.telemetryTestFailed")) + ": " + toDisplayString(telemetryTestError.value), 9, _hoisted_88)) : createCommentVNode("v-if", true)
+                        }, toDisplayString(t("control.telemetryTestFailed")) + ": " + toDisplayString(telemetryTestError.value), 9, _hoisted_97)) : createCommentVNode("v-if", true)
                       ])
                     ])) : createCommentVNode("v-if", true)
                   ])
@@ -23731,8 +24226,8 @@
                 64
                 /* STABLE_FRAGMENT */
               )),
-              createBaseVNode("footer", _hoisted_89, [
-                createBaseVNode("span", _hoisted_90, [
+              createBaseVNode("footer", _hoisted_98, [
+                createBaseVNode("span", _hoisted_99, [
                   saved.value ? (openBlock(), createBlock(unref(Check), {
                     key: 0,
                     class: "size-3.5"
@@ -23749,11 +24244,11 @@
           archiveResetOpen.value ? (openBlock(), createBlock(_sfc_main$l, {
             key: 3,
             label: t("archiveReset.confirmTitle"),
-            onClose: _cache[21] || (_cache[21] = ($event) => !archiveResetting.value && (archiveResetOpen.value = false))
+            onClose: _cache[22] || (_cache[22] = ($event) => !archiveResetting.value && (archiveResetOpen.value = false))
           }, {
             default: withCtx(() => [
-              createBaseVNode("div", _hoisted_91, [
-                createBaseVNode("div", _hoisted_92, [
+              createBaseVNode("div", _hoisted_100, [
+                createBaseVNode("div", _hoisted_101, [
                   createVNode(unref(TriangleAlert), { class: "size-6" })
                 ]),
                 createBaseVNode("div", null, [
@@ -23773,24 +24268,24 @@
                   ),
                   createBaseVNode(
                     "p",
-                    _hoisted_93,
+                    _hoisted_102,
                     toDisplayString(t("archiveReset.irreversible")),
                     1
                     /* TEXT */
                   ),
                   archiveResetError.value ? (openBlock(), createElementBlock(
                     "p",
-                    _hoisted_94,
+                    _hoisted_103,
                     toDisplayString(archiveResetError.value),
                     1
                     /* TEXT */
                   )) : createCommentVNode("v-if", true)
                 ]),
-                createBaseVNode("div", _hoisted_95, [
+                createBaseVNode("div", _hoisted_104, [
                   createVNode(unref(_sfc_main$9), {
                     variant: "outline",
                     disabled: archiveResetting.value,
-                    onClick: _cache[20] || (_cache[20] = ($event) => archiveResetOpen.value = false)
+                    onClick: _cache[21] || (_cache[21] = ($event) => archiveResetOpen.value = false)
                   }, {
                     default: withCtx(() => [
                       createTextVNode(
@@ -23807,7 +24302,7 @@
                     class: "booster-destructive-button",
                     disabled: archiveResetting.value,
                     onClick: clearArchive
-                  }, toDisplayString(archiveResetting.value ? t("archiveReset.clearing") : t("archiveReset.confirm")), 9, _hoisted_96)
+                  }, toDisplayString(archiveResetting.value ? t("archiveReset.clearing") : t("archiveReset.confirm")), 9, _hoisted_105)
                 ])
               ])
             ]),
@@ -27308,34 +27803,34 @@
           return input;
         throw new Error("Invalid encoded archive primitive");
       }
-      const [tag2, ...fields] = input;
-      if (tag2 === "undefined" && !fields.length)
+      const [tag2, ...fields2] = input;
+      if (tag2 === "undefined" && !fields2.length)
         return;
-      if (tag2 === "number" && typeof fields[0] === "string") {
-        if (fields[0] === "NaN")
+      if (tag2 === "number" && typeof fields2[0] === "string") {
+        if (fields2[0] === "NaN")
           return Number.NaN;
-        if (fields[0] === "Infinity")
+        if (fields2[0] === "Infinity")
           return Infinity;
-        if (fields[0] === "-Infinity")
+        if (fields2[0] === "-Infinity")
           return -Infinity;
-        if (fields[0] === "0" || fields[0] === "-0")
+        if (fields2[0] === "0" || fields2[0] === "-0")
           return -0;
         throw new Error("Invalid encoded numeric value");
       }
-      if (tag2 === "bigint" && typeof fields[0] === "string")
-        return BigInt(fields[0]);
-      if (tag2 === "date" && (typeof fields[0] === "number" || fields[0] === "NaN"))
-        return new Date(fields[0] === "NaN" ? Number.NaN : fields[0]);
-      if (tag2 === "regexp" && typeof fields[0] === "string" && typeof fields[1] === "string")
-        return new RegExp(fields[0], fields[1]);
+      if (tag2 === "bigint" && typeof fields2[0] === "string")
+        return BigInt(fields2[0]);
+      if (tag2 === "date" && (typeof fields2[0] === "number" || fields2[0] === "NaN"))
+        return new Date(fields2[0] === "NaN" ? Number.NaN : fields2[0]);
+      if (tag2 === "regexp" && typeof fields2[0] === "string" && typeof fields2[1] === "string")
+        return new RegExp(fields2[0], fields2[1]);
       if (tag2 === "buffer")
-        return fromBase64(fields[0]).buffer;
-      if (tag2 === "blob" && typeof fields[0] === "string")
-        return new Blob([fromBase64(fields[1])], { type: fields[0] });
-      if (tag2 === "file" && typeof fields[0] === "string" && typeof fields[1] === "number" && typeof fields[2] === "string")
-        return new File([fromBase64(fields[3])], fields[0], { lastModified: fields[1], type: fields[2] });
+        return fromBase64(fields2[0]).buffer;
+      if (tag2 === "blob" && typeof fields2[0] === "string")
+        return new Blob([fromBase64(fields2[1])], { type: fields2[0] });
+      if (tag2 === "file" && typeof fields2[0] === "string" && typeof fields2[1] === "number" && typeof fields2[2] === "string")
+        return new File([fromBase64(fields2[3])], fields2[0], { lastModified: fields2[1], type: fields2[2] });
       if (tag2 === "view") {
-        const [name, offset, size, encoded] = fields;
+        const [name, offset, size, encoded] = fields2;
         if (typeof name !== "string" || !typed.has(name) || !Number.isSafeInteger(offset) || !Number.isSafeInteger(size) || offset < 0 || size < 0)
           throw new Error("Invalid portable typed view");
         const buffer = fromBase64(encoded).buffer;
@@ -27369,8 +27864,8 @@
         }
       }
       if (tag2 === "array") {
-        const length = fields[0];
-        const entries = fields[1];
+        const length = fields2[0];
+        const entries = fields2[1];
         if (!Number.isSafeInteger(length) || length < 0 || length > 2e7 || !Array.isArray(entries))
           throw new Error("Invalid portable archive array length");
         const result = new Array(length);
@@ -27386,7 +27881,7 @@
         }
         return result;
       }
-      const pairs = fields[0];
+      const pairs = fields2[0];
       if (!Array.isArray(pairs))
         throw new Error("Encoded archive collection is not an array");
       if (tag2 === "map") {
@@ -28119,13 +28614,13 @@
   const _hoisted_2$7 = { class: "booster-scope-title" };
   const _hoisted_3$6 = { class: "booster-scope-kind" };
   const _hoisted_4$6 = { class: "booster-meta-lines" };
-  const _hoisted_5$5 = { class: "booster-meta-label" };
-  const _hoisted_6$5 = { class: "booster-meta-value" };
-  const _hoisted_7$5 = { class: "booster-meta-label" };
-  const _hoisted_8$5 = { class: "booster-meta-value" };
-  const _hoisted_9$5 = { class: "booster-meta-label" };
-  const _hoisted_10$5 = { class: "booster-meta-value" };
-  const _hoisted_11$5 = { class: "booster-scope-actions" };
+  const _hoisted_5$6 = { class: "booster-meta-label" };
+  const _hoisted_6$6 = { class: "booster-meta-value" };
+  const _hoisted_7$6 = { class: "booster-meta-label" };
+  const _hoisted_8$6 = { class: "booster-meta-value" };
+  const _hoisted_9$6 = { class: "booster-meta-label" };
+  const _hoisted_10$6 = { class: "booster-meta-value" };
+  const _hoisted_11$6 = { class: "booster-scope-actions" };
   const _sfc_main$7 = /* @__PURE__ */ defineComponent({
     __name: "ScopeArchiveControl",
     props: {
@@ -28184,48 +28679,48 @@
               createBaseVNode("div", _hoisted_4$6, [
                 createBaseVNode(
                   "strong",
-                  _hoisted_5$5,
+                  _hoisted_5$6,
                   toDisplayString(t("scope.localArchive")),
                   1
                   /* TEXT */
                 ),
                 createBaseVNode(
                   "span",
-                  _hoisted_6$5,
+                  _hoisted_6$6,
                   toDisplayString(__props.model.archivedCount > 0 ? t("scope.archived") + " · " + __props.model.archivedCount : t("scope.notArchived")),
                   1
                   /* TEXT */
                 ),
                 createBaseVNode(
                   "strong",
-                  _hoisted_7$5,
+                  _hoisted_7$6,
                   toDisplayString(t("capture.policy")),
                   1
                   /* TEXT */
                 ),
                 createBaseVNode(
                   "span",
-                  _hoisted_8$5,
+                  _hoisted_8$6,
                   toDisplayString(t(__props.model.effectiveEnabled ? "dock.autoOn" : "dock.autoOff")),
                   1
                   /* TEXT */
                 ),
                 createBaseVNode(
                   "strong",
-                  _hoisted_9$5,
+                  _hoisted_9$6,
                   toDisplayString(t("scope.rule")),
                   1
                   /* TEXT */
                 ),
                 createBaseVNode(
                   "span",
-                  _hoisted_10$5,
+                  _hoisted_10$6,
                   toDisplayString(t("scope.source." + __props.model.source)),
                   1
                   /* TEXT */
                 )
               ]),
-              createBaseVNode("div", _hoisted_11$5, [
+              createBaseVNode("div", _hoisted_11$6, [
                 createBaseVNode(
                   "button",
                   {
@@ -28349,16 +28844,16 @@
   const _hoisted_2$6 = ["src"];
   const _hoisted_3$5 = { class: "min-w-0 flex-1" };
   const _hoisted_4$5 = { key: 0 };
-  const _hoisted_5$4 = { class: "booster-meta-lines" };
-  const _hoisted_6$4 = { class: "booster-meta-label" };
-  const _hoisted_7$4 = { class: "booster-meta-value" };
-  const _hoisted_8$4 = { class: "booster-meta-label" };
-  const _hoisted_9$4 = { class: "booster-meta-value" };
-  const _hoisted_10$4 = { class: "booster-meta-label" };
-  const _hoisted_11$4 = { class: "booster-meta-value" };
-  const _hoisted_12$4 = { class: "booster-meta-label" };
-  const _hoisted_13$3 = { class: "booster-meta-value" };
-  const _hoisted_14$3 = { class: "booster-meta-label" };
+  const _hoisted_5$5 = { class: "booster-meta-lines" };
+  const _hoisted_6$5 = { class: "booster-meta-label" };
+  const _hoisted_7$5 = { class: "booster-meta-value" };
+  const _hoisted_8$5 = { class: "booster-meta-label" };
+  const _hoisted_9$5 = { class: "booster-meta-value" };
+  const _hoisted_10$5 = { class: "booster-meta-label" };
+  const _hoisted_11$5 = { class: "booster-meta-value" };
+  const _hoisted_12$5 = { class: "booster-meta-label" };
+  const _hoisted_13$4 = { class: "booster-meta-value" };
+  const _hoisted_14$4 = { class: "booster-meta-label" };
   const _hoisted_15$3 = { class: "booster-meta-value" };
   const _hoisted_16$2 = { class: "booster-meta-label" };
   const _hoisted_17$2 = { class: "booster-meta-value" };
@@ -28494,21 +28989,21 @@
                   /* STABLE */
                 }, 8, ["title"])) : createCommentVNode("v-if", true)
               ]),
-              createBaseVNode("div", _hoisted_5$4, [
+              createBaseVNode("div", _hoisted_5$5, [
                 durationLabel.value ? (openBlock(), createElementBlock(
                   Fragment,
                   { key: 0 },
                   [
                     createBaseVNode(
                       "strong",
-                      _hoisted_6$4,
+                      _hoisted_6$5,
                       toDisplayString(t("tool.duration")),
                       1
                       /* TEXT */
                     ),
                     createBaseVNode(
                       "span",
-                      _hoisted_7$4,
+                      _hoisted_7$5,
                       toDisplayString(durationLabel.value),
                       1
                       /* TEXT */
@@ -28523,14 +29018,14 @@
                   [
                     createBaseVNode(
                       "strong",
-                      _hoisted_8$4,
+                      _hoisted_8$5,
                       toDisplayString(t("tool.provider")),
                       1
                       /* TEXT */
                     ),
                     createBaseVNode(
                       "span",
-                      _hoisted_9$4,
+                      _hoisted_9$5,
                       toDisplayString(__props.model.tool.provider),
                       1
                       /* TEXT */
@@ -28545,14 +29040,14 @@
                   [
                     createBaseVNode(
                       "strong",
-                      _hoisted_10$4,
+                      _hoisted_10$5,
                       toDisplayString(t("tool.action")),
                       1
                       /* TEXT */
                     ),
                     createBaseVNode(
                       "span",
-                      _hoisted_11$4,
+                      _hoisted_11$5,
                       toDisplayString(__props.model.tool.action),
                       1
                       /* TEXT */
@@ -28567,14 +29062,14 @@
                   [
                     createBaseVNode(
                       "strong",
-                      _hoisted_12$4,
+                      _hoisted_12$5,
                       toDisplayString(t("tool.startedAt")),
                       1
                       /* TEXT */
                     ),
                     createBaseVNode(
                       "span",
-                      _hoisted_13$3,
+                      _hoisted_13$4,
                       toDisplayString(startedAt.value),
                       1
                       /* TEXT */
@@ -28589,7 +29084,7 @@
                   [
                     createBaseVNode(
                       "strong",
-                      _hoisted_14$3,
+                      _hoisted_14$4,
                       toDisplayString(t("tool.finishedAt")),
                       1
                       /* TEXT */
@@ -29240,7 +29735,7 @@
       });
     };
     const obj = (value, path) => asObject$1(value) ?? failure(path, "type");
-    const keys = (value, allowed2, path) => {
+    const keys2 = (value, allowed2, path) => {
       for (const key2 of Object.keys(value))
         if (!allowed2.has(key2)) failure(`${path}.${key2}`, "unexpected");
     };
@@ -29272,7 +29767,7 @@
     const payload = obj(detail.payload, "payload");
     const initial = detail.isInitial === true;
     const allowedKeys = projected ? /* @__PURE__ */ new Set([...initial ? initialKeys : continuationKeys, "booster_capture"]) : initial ? initialKeys : continuationKeys;
-    keys(payload, allowedKeys, "payload");
+    keys2(payload, allowedKeys, "payload");
     if (initial) {
       string(required(payload, "conversation_id", "payload"), "payload.conversation_id");
       if (payload.conversation_id !== detail.conversationId)
@@ -29283,7 +29778,7 @@
     for (const key2 of ["title", "gizmo_id", "gizmo_type", "current_node", "default_model_slug"])
       optional(payload, key2, "payload", "string");
     const pageInfo = obj(required(payload, "page_info", "payload"), "payload.page_info");
-    keys(pageInfo, pageInfoKeys, "payload.page_info");
+    keys2(pageInfo, pageInfoKeys, "payload.page_info");
     for (const key2 of pageInfoKeys) required(pageInfo, key2, "payload.page_info");
     for (const key2 of ["has_previous_page", "has_next_page"])
       optional(pageInfo, key2, "payload.page_info", "boolean");
@@ -29295,25 +29790,25 @@
     for (let i = 0; i < entries.length; i++) {
       const path = `payload.messages[${i}]`;
       const message = obj(entries[i], path);
-      keys(message, messageKeys, path);
+      keys2(message, messageKeys, path);
       for (const key2 of messageKeys) required(message, key2, path);
       const id = required(message, "id", path);
       string(id, `${path}.id`);
       if (!id) failure(`${path}.id`, "identity");
       const author = obj(required(message, "author", path), `${path}.author`);
-      keys(author, authorKeys, `${path}.author`);
+      keys2(author, authorKeys, `${path}.author`);
       string(required(author, "role", `${path}.author`), `${path}.author.role`);
       optional(author, "name", `${path}.author`, "string");
       if (Object.hasOwn(author, "metadata")) {
         const authorMeta = obj(author.metadata, `${path}.author.metadata`);
-        keys(authorMeta, /* @__PURE__ */ new Set(["real_author"]), `${path}.author.metadata`);
+        keys2(authorMeta, /* @__PURE__ */ new Set(["real_author"]), `${path}.author.metadata`);
       }
       const content = obj(required(message, "content", path), `${path}.content`);
       const type = required(content, "content_type", `${path}.content`);
       string(type, `${path}.content.content_type`);
       const schema2 = profile.content[type];
       if (!schema2) failure(`${path}.content.content_type`, "unsupported");
-      keys(content, schema2, `${path}.content`);
+      keys2(content, schema2, `${path}.content`);
       if (type === "text" || type === "multimodal_text") {
         if (!Array.isArray(required(content, "parts", `${path}.content`)))
           failure(`${path}.content.parts`, "type");
@@ -29544,7 +30039,7 @@
         });
       };
       const value = asObject$1(selection) ?? fail("submit.selection");
-      const keys = /* @__PURE__ */ new Set([
+      const keys2 = /* @__PURE__ */ new Set([
         "schema",
         "messageId",
         "requestedModel",
@@ -29553,7 +30048,7 @@
         "observedAtMs",
         "source"
       ]);
-      if (Object.keys(value).some((name) => !keys.has(name)) || keys.size !== Object.keys(value).length)
+      if (Object.keys(value).some((name) => !keys2.has(name)) || keys2.size !== Object.keys(value).length)
         fail("submit.selection.keys");
       if (value.schema !== SUBMISSION_SELECTION_SCHEMA || value.source !== "native-composer-submit")
         fail("submit.selection.schema");
@@ -29569,204 +30064,6 @@
       if (failed) throw new ArchiveContractError(failed);
       this.#selectedAdapter(conversationId);
     }
-  }
-  function aborted() {
-    return new DOMException("IndexedDB scan cancelled", "AbortError");
-  }
-  function readIndexedPage(options) {
-    if (!Number.isSafeInteger(options.pageSize) || options.pageSize < 1 || options.pageSize > 1024)
-      throw new RangeError("IndexedDB pageSize must be an integer from 1 to 1024");
-    if (options.index === void 0 !== (options.indexKey === void 0))
-      throw new Error("IndexedDB scan requires index and indexKey together");
-    if (options.signal?.aborted)
-      return Promise.reject(aborted());
-    const compare = options.compareKeys ?? ((a, b) => indexedDB.cmp(a, b));
-    const tx = options.db.transaction(options.store, "readonly");
-    return new Promise((resolve2, reject) => {
-      const records = [];
-      let lastPrimaryKey = null;
-      let exhausted = false;
-      let finished = false;
-      let jumped = false;
-      const cleanup = () => options.signal?.removeEventListener("abort", onAbort);
-      const rejectOnce = (reason) => {
-        if (finished)
-          return;
-        finished = true;
-        cleanup();
-        reject(reason);
-      };
-      const fail = (reason) => {
-        if (finished)
-          return;
-        rejectOnce(reason);
-        try {
-          tx.abort();
-        } catch {
-        }
-      };
-      const onAbort = () => fail(aborted());
-      tx.addEventListener("complete", () => {
-        if (finished)
-          return;
-        finished = true;
-        cleanup();
-        resolve2({ records, lastPrimaryKey, exhausted });
-      }, { once: true });
-      tx.addEventListener("abort", () => rejectOnce(options.signal?.aborted ? aborted() : tx.error ?? new Error("IndexedDB indexed page aborted")), { once: true });
-      tx.addEventListener("error", () => rejectOnce(tx.error ?? new Error("IndexedDB indexed page failed")), { once: true });
-      options.signal?.addEventListener("abort", onAbort, { once: true });
-      if (options.signal?.aborted) {
-        onAbort();
-        return;
-      }
-      try {
-        const store = tx.objectStore(options.store);
-        const request = options.index !== void 0 && options.indexKey !== void 0 ? store.index(options.index).openCursor(IDBKeyRange.only(options.indexKey)) : store.openCursor();
-        request.onerror = () => fail(request.error ?? new Error("IndexedDB cursor failed"));
-        request.onsuccess = () => {
-          if (finished)
-            return;
-          const cursor = request.result;
-          if (!cursor) {
-            exhausted = true;
-            return;
-          }
-          try {
-            const after = options.afterPrimaryKey;
-            if (after != null && !jumped) {
-              jumped = true;
-              if (compare(cursor.primaryKey, after) < 0) {
-                if (options.index !== void 0 && options.indexKey !== void 0)
-                  cursor.continuePrimaryKey(options.indexKey, after);
-                else
-                  cursor.continue(after);
-                return;
-              }
-            }
-            if (after != null && compare(cursor.primaryKey, after) <= 0) {
-              cursor.continue();
-              return;
-            }
-            records.push(options.decode(cursor.value));
-            lastPrimaryKey = cursor.primaryKey;
-            if (records.length < options.pageSize)
-              cursor.continue();
-          } catch (reason) {
-            fail(reason);
-          }
-        };
-      } catch (reason) {
-        fail(reason);
-      }
-    });
-  }
-  function readStorePage(options) {
-    return readIndexedPage(options);
-  }
-  function requestResult(request) {
-    return new Promise((resolve2, reject) => {
-      request.onsuccess = () => resolve2(request.result);
-      request.onerror = () => reject(request.error ?? new Error("IndexedDB request failed"));
-    });
-  }
-  function transactionComplete(tx) {
-    const done = new Promise((resolve2, reject) => {
-      tx.addEventListener("complete", () => resolve2(), { once: true });
-      tx.addEventListener("error", () => reject(tx.error ?? new Error("IndexedDB transaction failed")), {
-        once: true
-      });
-      tx.addEventListener("abort", () => reject(tx.error ?? new DOMException("IndexedDB transaction aborted", "AbortError")), { once: true });
-    });
-    done.catch(() => {
-      return;
-    });
-    return done;
-  }
-  function readIndexedRangePage(options) {
-    if (!Number.isSafeInteger(options.pageSize) || options.pageSize < 1 || options.pageSize > 1024)
-      throw new RangeError("IndexedDB range pageSize must be an integer from 1 to 1024");
-    const aborted2 = () => new DOMException("IndexedDB range scan cancelled", "AbortError");
-    if (options.signal?.aborted)
-      return Promise.reject(aborted2());
-    const compare = options.compareKeys ?? ((a, b) => indexedDB.cmp(a, b));
-    const tx = options.db.transaction(options.store, "readonly");
-    return new Promise((resolve2, reject) => {
-      const records = [];
-      let last = null;
-      let exhausted = false;
-      let finished = false;
-      let jumped = false;
-      const cleanup = () => options.signal?.removeEventListener("abort", onAbort);
-      const rejectOnce = (error) => {
-        if (finished)
-          return;
-        finished = true;
-        cleanup();
-        reject(error);
-      };
-      const fail = (error) => {
-        if (finished)
-          return;
-        rejectOnce(error);
-        try {
-          tx.abort();
-        } catch {
-        }
-      };
-      const onAbort = () => fail(aborted2());
-      tx.addEventListener("complete", () => {
-        if (finished)
-          return;
-        finished = true;
-        cleanup();
-        resolve2({ records, last, exhausted });
-      }, { once: true });
-      tx.addEventListener("abort", () => rejectOnce(options.signal?.aborted ? aborted2() : tx.error ?? new Error("IndexedDB range transaction aborted")), { once: true });
-      tx.addEventListener("error", () => rejectOnce(tx.error ?? new Error("IndexedDB range transaction failed")), { once: true });
-      options.signal?.addEventListener("abort", onAbort, { once: true });
-      if (options.signal?.aborted) {
-        onAbort();
-        return;
-      }
-      try {
-        const request = tx.objectStore(options.store).index(options.index).openCursor(options.range);
-        request.onerror = () => fail(request.error ?? new Error("IndexedDB range cursor failed"));
-        request.onsuccess = () => {
-          if (finished)
-            return;
-          const cursor = request.result;
-          if (!cursor) {
-            exhausted = true;
-            return;
-          }
-          try {
-            const after = options.after;
-            if (after) {
-              const order = compare(cursor.key, after.indexKey);
-              const primary = order === 0 ? compare(cursor.primaryKey, after.primaryKey) : 0;
-              if (!jumped && (order < 0 || order === 0 && primary < 0)) {
-                jumped = true;
-                cursor.continuePrimaryKey(after.indexKey, after.primaryKey);
-                return;
-              }
-              if (order < 0 || order === 0 && primary <= 0) {
-                cursor.continue();
-                return;
-              }
-            }
-            records.push(options.decode(cursor.value));
-            last = { indexKey: cursor.key, primaryKey: cursor.primaryKey };
-            if (records.length < options.pageSize)
-              cursor.continue();
-          } catch (cause) {
-            fail(cause);
-          }
-        };
-      } catch (cause) {
-        fail(cause);
-      }
-    });
   }
   function initialEvidenceScore(page) {
     return Number(page.hasPreviousPage !== null) + Number(page.hasNextPage !== null);
@@ -30966,17 +31263,17 @@
     recordsForMessageIds(conversationId, messageIds) {
       const state = this.#states.get(conversationId);
       if (!state) return [];
-      const keys = /* @__PURE__ */ new Set();
+      const keys2 = /* @__PURE__ */ new Set();
       const direct = /* @__PURE__ */ new Set();
       for (const id of messageIds) {
         const item = state.records.get(id);
         if (!item) continue;
         direct.add(item.messageId);
-        if (item.turnExchangeId) keys.add(item.turnExchangeId);
-        if (item.workingTurnId) keys.add(item.workingTurnId);
+        if (item.turnExchangeId) keys2.add(item.turnExchangeId);
+        if (item.workingTurnId) keys2.add(item.workingTurnId);
       }
       const ids = new Set(direct);
-      for (const key2 of keys) for (const id of state.turnIndex.get(key2) ?? []) ids.add(id);
+      for (const key2 of keys2) for (const id of state.turnIndex.get(key2) ?? []) ids.add(id);
       return [...ids].map((id) => state.records.get(id)).filter((item) => Boolean(item)).sort(recordSort);
     }
     pages(conversationId) {
@@ -31578,10 +31875,10 @@
         throw new Error("archive.error.incompatibleSource");
       ancestors.add(value);
       stack2.push({ kind: "leave", object: value }, { kind: "text", text: array ? "]" : "}" });
-      const keys = array ? void 0 : Object.keys(value).sort();
-      const count = array ? value.length : keys?.length ?? 0;
+      const keys2 = array ? void 0 : Object.keys(value).sort();
+      const count = array ? value.length : keys2?.length ?? 0;
       for (let i = count - 1; i >= 0; i--) {
-        const name = array ? String(i) : keys?.[i];
+        const name = array ? String(i) : keys2?.[i];
         if (name === void 0) continue;
         const descriptor = Object.getOwnPropertyDescriptor(value, name);
         if (!descriptor || !Object.hasOwn(descriptor, "value"))
@@ -32198,16 +32495,16 @@
         if (!requestedBaseline) requestedBaseline = point;
         else if (!previousRequest) resumedBaselines.push(point);
         if (previousRequest) {
-          const fields = [];
-          if (previousRequest.requestedModel !== point.requestedModel) fields.push("requestedModel");
+          const fields2 = [];
+          if (previousRequest.requestedModel !== point.requestedModel) fields2.push("requestedModel");
           if (previousRequest.effortPresent !== point.effortPresent || previousRequest.thinkingEffort !== point.thinkingEffort)
-            fields.push("thinkingEffort");
-          if (fields.length)
+            fields2.push("thinkingEffort");
+          if (fields2.length)
             confirmedSubmissionChanges.push({
               kind: "submitted_selection_changed",
               before: previousRequest,
               after: point,
-              fields,
+              fields: fields2,
               selectorInteraction: "not_observed"
             });
         }
@@ -35368,12 +35665,12 @@ ${archiveRecordText(record2)}
     return navigator.locks.request("chatgpt-booster:native-source-transfer-v1", { mode: "shared" }, async () => {
       const v3 = await existing(ARCHIVE_DB_NAME);
       const v4 = await store.canonicalDatabase();
-      let checksum = "start";
+      let checksum2 = "start";
       const totals = {};
       const encode = async (row, footer = false) => {
         assertJsonSafe(row);
         const line = JSON.stringify(row);
-        if (!footer) checksum = await archiveSha256Hex(checksum + "\n" + line);
+        if (!footer) checksum2 = await archiveSha256Hex(checksum2 + "\n" + line);
         return new TextEncoder().encode(line + "\n");
       };
       const records = async function* () {
@@ -35410,7 +35707,7 @@ ${archiveRecordText(record2)}
             }
           }
         }
-        yield await encode({ kind: "footer", schema: VERSION, totals, checksum }, true);
+        yield await encode({ kind: "footer", schema: VERSION, totals, checksum: checksum2 }, true);
       };
       try {
         return await createGzipFromChunks(records());
@@ -39228,30 +39525,30 @@ ${archiveRecordText(record2)}
     key: 0,
     role: "status"
   };
-  const _hoisted_5$3 = {
+  const _hoisted_5$4 = {
     key: 1,
     class: "booster-dock-counts"
   };
-  const _hoisted_6$3 = {
+  const _hoisted_6$4 = {
     key: 2,
     class: "booster-dock-history-state"
   };
-  const _hoisted_7$3 = ["disabled"];
-  const _hoisted_8$3 = {
+  const _hoisted_7$4 = ["disabled"];
+  const _hoisted_8$4 = {
     key: 0,
     class: "booster-error",
     role: "alert"
   };
-  const _hoisted_9$3 = {
+  const _hoisted_9$4 = {
     key: 1,
     class: "booster-dock-progress",
     role: "status"
   };
-  const _hoisted_10$3 = ["aria-label"];
-  const _hoisted_11$3 = ["aria-label"];
-  const _hoisted_12$3 = ["aria-pressed"];
-  const _hoisted_13$2 = ["aria-pressed", "disabled"];
-  const _hoisted_14$2 = ["disabled"];
+  const _hoisted_10$4 = ["aria-label"];
+  const _hoisted_11$4 = ["aria-label"];
+  const _hoisted_12$4 = ["aria-pressed"];
+  const _hoisted_13$3 = ["aria-pressed", "disabled"];
+  const _hoisted_14$3 = ["disabled"];
   const _hoisted_15$2 = ["aria-pressed"];
   const _hoisted_16$1 = ["aria-pressed"];
   const _hoisted_17$1 = ["aria-label"];
@@ -39558,7 +39855,7 @@ ${archiveRecordText(record2)}
               1
               /* TEXT */
             )) : createCommentVNode("v-if", true),
-            coverage.value ? (openBlock(), createElementBlock("div", _hoisted_5$3, [
+            coverage.value ? (openBlock(), createElementBlock("div", _hoisted_5$4, [
               createBaseVNode("span", null, [
                 createTextVNode(
                   toDisplayString(tr("Сообщений", "Messages")) + ": ",
@@ -39583,7 +39880,7 @@ ${archiveRecordText(record2)}
             ])) : createCommentVNode("v-if", true),
             current.value.conversationId ? (openBlock(), createElementBlock(
               "div",
-              _hoisted_6$3,
+              _hoisted_6$4,
               toDisplayString(coverage.value?.hasOlderServerHistory === true ? tr("Есть более ранняя история", "Older server history available") : coverage.value?.hasOlderServerHistory === false ? tr("Начало истории достигнуто", "Start of history reached") : tr("Полнота истории не проверена", "History completeness unverified")),
               1
               /* TEXT */
@@ -39600,16 +39897,16 @@ ${archiveRecordText(record2)}
                 1
                 /* TEXT */
               )
-            ], 8, _hoisted_7$3)
+            ], 8, _hoisted_7$4)
           ]),
           error.value ? (openBlock(), createElementBlock(
             "p",
-            _hoisted_8$3,
+            _hoisted_8$4,
             toDisplayString(error.value),
             1
             /* TEXT */
           )) : createCommentVNode("v-if", true),
-          active.value ? (openBlock(), createElementBlock("div", _hoisted_9$3, [
+          active.value ? (openBlock(), createElementBlock("div", _hoisted_9$4, [
             createBaseVNode(
               "span",
               null,
@@ -39624,7 +39921,7 @@ ${archiveRecordText(record2)}
               onClick: stopCollection
             }, [
               createVNode(unref(Square), { class: "size-4" })
-            ], 8, _hoisted_10$3)
+            ], 8, _hoisted_10$4)
           ])) : createCommentVNode("v-if", true),
           createBaseVNode("nav", {
             class: "booster-export-recovery-actions",
@@ -39642,7 +39939,7 @@ ${archiveRecordText(record2)}
                 1
                 /* TEXT */
               )
-            ], 8, _hoisted_12$3),
+            ], 8, _hoisted_12$4),
             createBaseVNode("button", {
               class: "booster-action-secondary",
               type: "button",
@@ -39656,7 +39953,7 @@ ${archiveRecordText(record2)}
                 1
                 /* TEXT */
               )
-            ], 8, _hoisted_13$2),
+            ], 8, _hoisted_13$3),
             !context.value?.archiveAdapter.collectionInsideExportOnly ? (openBlock(), createElementBlock("button", {
               key: 0,
               class: "booster-action-secondary",
@@ -39670,7 +39967,7 @@ ${archiveRecordText(record2)}
                 1
                 /* TEXT */
               )
-            ], 8, _hoisted_14$2)) : createCommentVNode("v-if", true),
+            ], 8, _hoisted_14$3)) : createCommentVNode("v-if", true),
             createBaseVNode("button", {
               class: "booster-action-secondary",
               type: "button",
@@ -39785,7 +40082,7 @@ ${archiveRecordText(record2)}
               544
               /* NEED_HYDRATION, NEED_PATCH */
             )
-          ], 8, _hoisted_11$3),
+          ], 8, _hoisted_11$4),
           !context.value ? (openBlock(), createElementBlock(
             "div",
             _hoisted_20$1,
@@ -39986,9 +40283,23 @@ ${archiveRecordText(record2)}
         verifyContext();
         const file = await (await target.getFileHandle(prev.name)).getFile();
         verifyContext();
-        if (file.size === prev.size) return "existing";
-      } catch {
+        if (file.size === prev.size) {
+          if (!prev.sha256) return "existing";
+          if (file.size > 64 * 1048576) throw Error("Stored media exceeds verification limit");
+          if (!/^[0-9a-f]{64}$/.test(prev.sha256))
+            throw Error("Stored media receipt contains an invalid SHA-256");
+          const buffer = await file.arrayBuffer();
+          verifyContext();
+          const hash = Array.from(
+            new Uint8Array(await crypto.subtle.digest("SHA-256", buffer)),
+            (byte) => byte.toString(16).padStart(2, "0")
+          ).join("");
+          verifyContext();
+          if (hash === prev.sha256) return "existing";
+        }
+      } catch (error) {
         verifyContext();
+        if (!(error instanceof Error) || error.name !== "NotFoundError") throw error;
       }
     }
     const result = {
@@ -40275,7 +40586,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
     };
     const subscribers = /* @__PURE__ */ new Set();
     const ts = () => (/* @__PURE__ */ new Date()).toISOString(), sleep = (ms) => globalThis.__VK_EXPORT_TEST_MODE ? Promise.resolve() : new Promise((r2) => setTimeout(r2, ms));
-    const validDay = (d) => !d || /^\d{4}-\d\d-\d\d$/.test(d) && new Date(Date.parse(d + "T00:00:00+03:00") + 108e5).toISOString().slice(0, 10) === d;
+    const validDay2 = (d) => !d || /^\d{4}-\d\d-\d\d$/.test(d) && new Date(Date.parse(d + "T00:00:00+03:00") + 108e5).toISOString().slice(0, 10) === d;
     const unixDay = (d) => d ? Math.floor(Date.parse(d + "T00:00:00+03:00") / 1e3) : null;
     const known = () => new Map(rows.map((m) => [m.id, m]));
     const blank = () => ({
@@ -40358,24 +40669,24 @@ q.addEventListener('input',render);render();<\/script></html>`;
       if (!Number.isSafeInteger(o.pageSize) || o.pageSize < 1 || o.pageSize > 100)
         throw Error("Пачка: 1–100");
       if (!Number.isSafeInteger(o.delay) || o.delay < 300) throw Error("Пауза: от 300 мс");
-      if (!validDay(o.from) || !validDay(o.through) || o.from && o.through && o.from > o.through)
+      if (!validDay2(o.from) || !validDay2(o.through) || o.from && o.through && o.from > o.through)
         throw Error("Диапазон дат");
       if (root && o.peerId !== currentMeta().peer_id)
         throw Error("Для другого диалога нужна отдельная папка");
       Object.assign(cfg, o);
       return status();
     }
-    function isRecord(v) {
+    function isRecord2(v) {
       return v !== null && typeof v === "object" && !Array.isArray(v);
     }
     function isMessage(v) {
-      return isRecord(v) && typeof v.id === "number" && Number.isSafeInteger(v.id) && typeof v.date === "number" && Number.isFinite(v.date);
+      return isRecord2(v) && typeof v.id === "number" && Number.isSafeInteger(v.id) && typeof v.date === "number" && Number.isFinite(v.date);
     }
     function isMeta(v) {
-      return isRecord(v) && v.schema === 2 && typeof v.peer_id === "number" && isRecord(v.files) && Array.isArray(v.runs) && (v.checkpoint === null || isRecord(v.checkpoint));
+      return isRecord2(v) && v.schema === 2 && typeof v.peer_id === "number" && isRecord2(v.files) && Array.isArray(v.runs) && (v.checkpoint === null || isRecord2(v.checkpoint));
     }
     function isMessagesFile(v) {
-      return isRecord(v) && v.schema === 2 && typeof v.peer_id === "number" && Array.isArray(v.messages) && v.messages.every(
+      return isRecord2(v) && v.schema === 2 && typeof v.peer_id === "number" && Array.isArray(v.messages) && v.messages.every(
         (message) => isMessage(message) && (message.peer_id === void 0 || message.peer_id === v.peer_id)
       );
     }
@@ -40777,14 +41088,14 @@ q.addEventListener('input',render);render();<\/script></html>`;
   const _hoisted_7$1$1 = { class: "grid grid-cols-2 gap-3" };
   const _hoisted_8$1$1 = { class: "booster-field" };
   const _hoisted_9$1$1 = { class: "booster-field" };
-  const _hoisted_10$2 = ["aria-expanded"];
-  const _hoisted_11$2 = {
+  const _hoisted_10$3 = ["aria-expanded"];
+  const _hoisted_11$3 = {
     key: 0,
     class: "grid grid-cols-2 gap-3"
   };
-  const _hoisted_12$2 = { class: "booster-field" };
-  const _hoisted_13$1 = { class: "booster-field" };
-  const _hoisted_14$1 = { class: "booster-field" };
+  const _hoisted_12$3 = { class: "booster-field" };
+  const _hoisted_13$2 = { class: "booster-field" };
+  const _hoisted_14$2 = { class: "booster-field" };
   const _hoisted_15$1 = { class: "booster-field" };
   const _hoisted_16 = { class: "booster-field col-span-2" };
   const _hoisted_17 = { class: "flex items-center gap-2" };
@@ -41010,9 +41321,9 @@ q.addEventListener('input',render);render();<\/script></html>`;
                   /* CACHED */
                 )),
                 createVNode(unref(Settings2), { class: "size-4" })
-              ], 8, _hoisted_10$2),
-              advanced.value ? (openBlock(), createElementBlock("div", _hoisted_11$2, [
-                createBaseVNode("label", _hoisted_12$2, [
+              ], 8, _hoisted_10$3),
+              advanced.value ? (openBlock(), createElementBlock("div", _hoisted_11$3, [
+                createBaseVNode("label", _hoisted_12$3, [
                   _cache[17] || (_cache[17] = createTextVNode(
                     "С даты",
                     -1
@@ -41032,7 +41343,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
                     [vModelText, from.value]
                   ])
                 ]),
-                createBaseVNode("label", _hoisted_13$1, [
+                createBaseVNode("label", _hoisted_13$2, [
                   _cache[18] || (_cache[18] = createTextVNode(
                     "По дату",
                     -1
@@ -41052,7 +41363,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
                     [vModelText, through.value]
                   ])
                 ]),
-                createBaseVNode("label", _hoisted_14$1, [
+                createBaseVNode("label", _hoisted_14$2, [
                   _cache[19] || (_cache[19] = createTextVNode(
                     "Пачка",
                     -1
@@ -41301,14 +41612,14 @@ q.addEventListener('input',render);render();<\/script></html>`;
     key: 1,
     class: "booster-note"
   };
-  const _hoisted_5$2 = ["data-archive-node", "data-archive-message"];
-  const _hoisted_6$2 = {
+  const _hoisted_5$3 = ["data-archive-node", "data-archive-message"];
+  const _hoisted_6$3 = {
     key: 2,
     class: "booster-exchange-details"
   };
-  const _hoisted_7$2 = { class: "booster-exchange-details-label" };
-  const _hoisted_8$2 = ["data-archive-node", "data-archive-message"];
-  const _hoisted_9$2 = ["data-archive-node", "data-archive-message"];
+  const _hoisted_7$3 = { class: "booster-exchange-details-label" };
+  const _hoisted_8$3 = ["data-archive-node", "data-archive-message"];
+  const _hoisted_9$3 = ["data-archive-node", "data-archive-message"];
   const _sfc_main$4 = /* @__PURE__ */ defineComponent({
     __name: "ArchiveTranscript",
     props: {
@@ -41360,15 +41671,15 @@ q.addEventListener('input',render);render();<\/script></html>`;
                       tabindex: "-1"
                     }, [
                       renderSlot(_ctx.$slots, "record", { record: item })
-                    ], 10, _hoisted_5$2);
+                    ], 10, _hoisted_5$3);
                   }),
                   128
                   /* KEYED_FRAGMENT */
                 )),
-                turn.details.length ? (openBlock(), createElementBlock("div", _hoisted_6$2, [
+                turn.details.length ? (openBlock(), createElementBlock("div", _hoisted_6$3, [
                   createBaseVNode(
                     "div",
-                    _hoisted_7$2,
+                    _hoisted_7$3,
                     toDisplayString(__props.copy.details) + " · " + toDisplayString(turn.details.length),
                     1
                     /* TEXT */
@@ -41385,7 +41696,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
                         tabindex: "-1"
                       }, [
                         renderSlot(_ctx.$slots, "record", { record: item })
-                      ], 10, _hoisted_8$2);
+                      ], 10, _hoisted_8$3);
                     }),
                     128
                     /* KEYED_FRAGMENT */
@@ -41403,7 +41714,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
                       tabindex: "-1"
                     }, [
                       renderSlot(_ctx.$slots, "record", { record: item })
-                    ], 10, _hoisted_9$2);
+                    ], 10, _hoisted_9$3);
                   }),
                   128
                   /* KEYED_FRAGMENT */
@@ -41417,6 +41728,62 @@ q.addEventListener('input',render);render();<\/script></html>`;
       };
     }
   });
+  const fields = ["mode", "limit", "from", "through", "pageSize", "delay", "media"];
+  const fieldNames = [...fields].sort().join(",");
+  function validDay(value) {
+    if (!value) return true;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const millis = Date.parse(`${value}T00:00:00.000Z`);
+    return Number.isFinite(millis) && new Date(millis).toISOString().slice(0, 10) === value;
+  }
+  function validateVkCapturePreferences(input) {
+    if (!input || typeof input !== "object" || Array.isArray(input))
+      throw Error("Invalid VK capture preferences");
+    const value = input;
+    if (Object.keys(value).sort().join(",") !== fieldNames || !["recent", "incremental", "backfill"].includes(String(value.mode)) || !Number.isSafeInteger(value.limit) || value.limit < 1 || value.limit > 1e5 || !Number.isSafeInteger(value.pageSize) || value.pageSize < 1 || value.pageSize > 100 || !Number.isSafeInteger(value.delay) || value.delay < 300 || typeof value.media !== "boolean" || typeof value.from !== "string" || typeof value.through !== "string" || !validDay(value.from) || !validDay(value.through) || value.from && value.through && value.from > value.through)
+      throw Error("Invalid VK capture preferences");
+    return {
+      mode: value.mode,
+      limit: value.limit,
+      from: value.from,
+      through: value.through,
+      pageSize: value.pageSize,
+      delay: value.delay,
+      media: value.media
+    };
+  }
+  function withoutPeer(options) {
+    return validateVkCapturePreferences(Object.fromEntries(fields.map((name) => [name, options[name]])));
+  }
+  function vkCaptureSettingsPort(api, scopeId = instanceScope()) {
+    const [productId, channel, extra] = scopeId.split(":");
+    if (productId !== "vk-booster" && productId !== "all-in-one" || channel !== "dev" && channel !== "prod" || extra !== void 0)
+      throw Error("VK capture settings require a VK or aggregate product/channel scope");
+    function requireIdle() {
+      const status = api.status();
+      if (status.busy || status.folderPending) throw Error("Archive operation in progress");
+      if (status.blockedReason) throw Error("VK conversation does not match selected archive");
+      return status.options;
+    }
+    return {
+      scope: { productId, channel },
+      schemaVersion: 1,
+      async exportSettings() {
+        return withoutPeer(requireIdle());
+      },
+      validateSettings: validateVkCapturePreferences,
+      async restoreSettingsAtomically(value) {
+        requireIdle();
+        api.configure(validateVkCapturePreferences(value));
+      }
+    };
+  }
+  async function exportVkCaptureSettings(api) {
+    return exportSettingsBackup(vkCaptureSettingsPort(api));
+  }
+  async function restoreVkCaptureSettings(api, backup) {
+    await restoreSettingsBackup(vkCaptureSettingsPort(api), backup);
+  }
   const _hoisted_1$3 = {
     class: "booster-stack-card",
     "aria-label": "Просмотр сохранённой переписки"
@@ -41424,23 +41791,23 @@ q.addEventListener('input',render);render();<\/script></html>`;
   const _hoisted_2$3 = { class: "booster-setting-copy" };
   const _hoisted_3$2 = { class: "booster-field" };
   const _hoisted_4$2 = { class: "max-h-[420px] min-h-[130px] overflow-x-hidden overflow-y-auto rounded-lg border border-border bg-background p-3" };
-  const _hoisted_5$1 = { class: "mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground" };
-  const _hoisted_6$1 = { class: "text-foreground" };
-  const _hoisted_7$1 = { class: "m-0 whitespace-pre-wrap break-words text-sm text-foreground" };
-  const _hoisted_8$1 = {
+  const _hoisted_5$2 = { class: "mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground" };
+  const _hoisted_6$2 = { class: "text-foreground" };
+  const _hoisted_7$2 = { class: "m-0 whitespace-pre-wrap break-words text-sm text-foreground" };
+  const _hoisted_8$2 = {
     key: 0,
     class: "mt-2 border-l-2 border-border pl-2 text-xs text-muted-foreground"
   };
-  const _hoisted_9$1 = {
+  const _hoisted_9$2 = {
     key: 1,
     class: "mt-2 text-xs text-muted-foreground"
   };
-  const _hoisted_10$1 = {
+  const _hoisted_10$2 = {
     key: 2,
     class: "mt-2 text-xs text-muted-foreground"
   };
-  const _hoisted_11$1 = { class: "flex flex-wrap items-center justify-between gap-2" };
-  const _hoisted_12$1 = {
+  const _hoisted_11$2 = { class: "flex flex-wrap items-center justify-between gap-2" };
+  const _hoisted_12$2 = {
     key: 0,
     class: "m-0 text-xs text-muted-foreground"
   };
@@ -41545,10 +41912,10 @@ q.addEventListener('input',render);render();<\/script></html>`;
                     class: normalizeClass(["w-full min-w-0 rounded-lg border border-border bg-card p-3", { "bg-secondary": Boolean(messageMap.value.get(record2.key)?.out) }])
                   },
                   [
-                    createBaseVNode("div", _hoisted_5$1, [
+                    createBaseVNode("div", _hoisted_5$2, [
                       createBaseVNode(
                         "b",
-                        _hoisted_6$1,
+                        _hoisted_6$2,
                         toDisplayString(messageMap.value.get(record2.key)?.out ? "Вы" : "ID " + (messageMap.value.get(record2.key)?.from_id ?? "—")),
                         1
                         /* TEXT */
@@ -41563,28 +41930,28 @@ q.addEventListener('input',render);render();<\/script></html>`;
                     ]),
                     createBaseVNode(
                       "p",
-                      _hoisted_7$1,
+                      _hoisted_7$2,
                       toDisplayString(messageMap.value.get(record2.key)?.text || "Сообщение без текста"),
                       1
                       /* TEXT */
                     ),
                     messageMap.value.get(record2.key)?.reply_message ? (openBlock(), createElementBlock(
                       "p",
-                      _hoisted_8$1,
+                      _hoisted_8$2,
                       " Ответ: " + toDisplayString(messageMap.value.get(record2.key)?.reply_message?.text || "вложение"),
                       1
                       /* TEXT */
                     )) : createCommentVNode("v-if", true),
                     messageMap.value.get(record2.key)?.fwd_messages?.length ? (openBlock(), createElementBlock(
                       "p",
-                      _hoisted_9$1,
+                      _hoisted_9$2,
                       " Пересланных: " + toDisplayString(messageMap.value.get(record2.key)?.fwd_messages?.length),
                       1
                       /* TEXT */
                     )) : createCommentVNode("v-if", true),
                     attachmentCount(messageMap.value.get(record2.key)) ? (openBlock(), createElementBlock(
                       "p",
-                      _hoisted_10$1,
+                      _hoisted_10$2,
                       " Вложений: " + toDisplayString(attachmentCount(messageMap.value.get(record2.key))),
                       1
                       /* TEXT */
@@ -41598,7 +41965,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
               /* STABLE */
             }, 8, ["turns", "is-empty", "copy"])
           ]),
-          createBaseVNode("div", _hoisted_11$1, [
+          createBaseVNode("div", _hoisted_11$2, [
             _cache[4] || (_cache[4] = createBaseVNode(
               "span",
               { class: "text-xs text-muted-foreground" },
@@ -41623,7 +41990,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
               /* STABLE */
             })) : createCommentVNode("v-if", true)
           ]),
-          result.value.matching > result.value.messages.length && visibleLimit.value >= 240 ? (openBlock(), createElementBlock("p", _hoisted_12$1, " Показаны последние 240 совпадений. Уточни поиск, чтобы найти более ранние сообщения. ")) : createCommentVNode("v-if", true)
+          result.value.matching > result.value.messages.length && visibleLimit.value >= 240 ? (openBlock(), createElementBlock("p", _hoisted_12$2, " Показаны последние 240 совпадений. Уточни поиск, чтобы найти более ранние сообщения. ")) : createCommentVNode("v-if", true)
         ]);
       };
     }
@@ -41636,6 +42003,31 @@ q.addEventListener('input',render);render();<\/script></html>`;
   };
   const _hoisted_4$1 = {
     key: 2,
+    class: "booster-stack-card",
+    "aria-label": "Профиль параметров VK"
+  };
+  const _hoisted_5$1 = { class: "flex flex-wrap gap-2" };
+  const _hoisted_6$1 = ["disabled"];
+  const _hoisted_7$1 = { class: "booster-field" };
+  const _hoisted_8$1 = ["disabled"];
+  const _hoisted_9$1 = {
+    key: 0,
+    class: "booster-field"
+  };
+  const _hoisted_10$1 = ["disabled"];
+  const _hoisted_11$1 = ["disabled"];
+  const _hoisted_12$1 = {
+    key: 2,
+    role: "alert",
+    class: "text-sm text-destructive"
+  };
+  const _hoisted_13$1 = {
+    key: 3,
+    role: "status",
+    class: "text-sm"
+  };
+  const _hoisted_14$1 = {
+    key: 3,
     class: "booster-setting-card"
   };
   const _sfc_main$2 = /* @__PURE__ */ defineComponent({
@@ -41645,6 +42037,59 @@ q.addEventListener('input',render);render();<\/script></html>`;
       const status = /* @__PURE__ */ ref(api?.status() ?? null);
       const error = /* @__PURE__ */ ref("");
       const previewOpen = /* @__PURE__ */ ref(false);
+      const preferencesBusy = /* @__PURE__ */ ref(false);
+      const preferencesFile = /* @__PURE__ */ ref(null);
+      const preferencesConfirmed = /* @__PURE__ */ ref(false);
+      const preferencesError = /* @__PURE__ */ ref("");
+      const preferencesMessage = /* @__PURE__ */ ref("");
+      const preferencesRevision = /* @__PURE__ */ ref(0);
+      function selectPreferences(event) {
+        preferencesFile.value = event.target.files?.[0] ?? null;
+        preferencesConfirmed.value = false;
+        preferencesError.value = "";
+        preferencesMessage.value = "";
+      }
+      async function downloadPreferences() {
+        if (!api || preferencesBusy.value || status.value?.busy) return;
+        preferencesBusy.value = true;
+        preferencesError.value = "";
+        preferencesMessage.value = "";
+        try {
+          const blob = await exportVkCaptureSettings(api);
+          const url = URL.createObjectURL(blob);
+          try {
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "vk-booster-capture-preset.json";
+            link.click();
+          } finally {
+            window.setTimeout(() => URL.revokeObjectURL(url), 1e3);
+          }
+          preferencesMessage.value = "Профиль подготовлен. Убедись, что файл сохранился.";
+        } catch {
+          preferencesError.value = "Не удалось выгрузить профиль настроек.";
+        } finally {
+          preferencesBusy.value = false;
+        }
+      }
+      async function importPreferences() {
+        if (!api || !preferencesFile.value || !preferencesConfirmed.value || preferencesBusy.value) return;
+        preferencesBusy.value = true;
+        preferencesError.value = "";
+        preferencesMessage.value = "";
+        try {
+          await restoreVkCaptureSettings(api, preferencesFile.value);
+          status.value = api.status();
+          preferencesRevision.value++;
+          preferencesMessage.value = "Параметры применены к текущей сессии. Папка и сообщения не изменены.";
+          preferencesFile.value = null;
+          preferencesConfirmed.value = false;
+        } catch {
+          preferencesError.value = "Профиль отклонён: проверь целостность, формат и DEV/PROD канал.";
+        } finally {
+          preferencesBusy.value = false;
+        }
+      }
       let unsubscribe;
       let peerTimer;
       function refreshActiveConversation() {
@@ -41715,7 +42160,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
           null,
           [
             status.value && view2.value ? (openBlock(), createBlock(unref(_sfc_main$1$1), {
-              key: 0,
+              key: preferencesRevision.value,
               state: view2.value,
               initial: status.value.options,
               error: error.value,
@@ -41747,7 +42192,80 @@ q.addEventListener('input',render);render();<\/script></html>`;
               64
               /* STABLE_FRAGMENT */
             )) : createCommentVNode("v-if", true),
-            !status.value || !view2.value ? (openBlock(), createElementBlock("section", _hoisted_4$1, [..._cache[2] || (_cache[2] = [
+            unref(api) && status.value ? (openBlock(), createElementBlock("section", _hoisted_4$1, [
+              _cache[5] || (_cache[5] = createBaseVNode(
+                "div",
+                { class: "booster-setting-copy" },
+                [
+                  createBaseVNode("b", null, "Профиль параметров выгрузки"),
+                  createBaseVNode("small", null, "Только режим, диапазон, размер пачки и загрузка файлов. Без сообщений, токенов, ID диалога и архива. Импорт действует в текущей сессии.")
+                ],
+                -1
+                /* CACHED */
+              )),
+              createBaseVNode("div", _hoisted_5$1, [
+                createBaseVNode("button", {
+                  class: "booster-disclosure",
+                  type: "button",
+                  disabled: preferencesBusy.value || status.value.busy || !!status.value.blockedReason,
+                  onClick: downloadPreferences
+                }, "Сохранить профиль в JSON", 8, _hoisted_6$1),
+                createBaseVNode("label", _hoisted_7$1, [
+                  _cache[3] || (_cache[3] = createBaseVNode(
+                    "span",
+                    null,
+                    "Загрузить профиль JSON",
+                    -1
+                    /* CACHED */
+                  )),
+                  createBaseVNode("input", {
+                    type: "file",
+                    class: "booster-input",
+                    accept: ".json,application/json",
+                    disabled: preferencesBusy.value || status.value.busy,
+                    onChange: selectPreferences
+                  }, null, 40, _hoisted_8$1)
+                ])
+              ]),
+              preferencesFile.value ? (openBlock(), createElementBlock("label", _hoisted_9$1, [
+                createBaseVNode("span", null, [
+                  withDirectives(createBaseVNode("input", {
+                    "onUpdate:modelValue": _cache[2] || (_cache[2] = ($event) => preferencesConfirmed.value = $event),
+                    type: "checkbox",
+                    disabled: preferencesBusy.value
+                  }, null, 8, _hoisted_10$1), [
+                    [vModelCheckbox, preferencesConfirmed.value]
+                  ]),
+                  _cache[4] || (_cache[4] = createTextVNode(
+                    " Подтверждаю замену параметров текущей сессии",
+                    -1
+                    /* CACHED */
+                  ))
+                ])
+              ])) : createCommentVNode("v-if", true),
+              preferencesFile.value ? (openBlock(), createElementBlock("button", {
+                key: 1,
+                class: "booster-disclosure",
+                type: "button",
+                disabled: preferencesBusy.value || status.value.busy || !!status.value.blockedReason || !preferencesConfirmed.value,
+                onClick: importPreferences
+              }, "Применить профиль", 8, _hoisted_11$1)) : createCommentVNode("v-if", true),
+              preferencesError.value ? (openBlock(), createElementBlock(
+                "p",
+                _hoisted_12$1,
+                toDisplayString(preferencesError.value),
+                1
+                /* TEXT */
+              )) : createCommentVNode("v-if", true),
+              preferencesMessage.value ? (openBlock(), createElementBlock(
+                "p",
+                _hoisted_13$1,
+                toDisplayString(preferencesMessage.value),
+                1
+                /* TEXT */
+              )) : createCommentVNode("v-if", true)
+            ])) : createCommentVNode("v-if", true),
+            !status.value || !view2.value ? (openBlock(), createElementBlock("section", _hoisted_14$1, [..._cache[6] || (_cache[6] = [
               createBaseVNode(
                 "span",
                 null,
