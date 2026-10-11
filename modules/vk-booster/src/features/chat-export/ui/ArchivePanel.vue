@@ -6,11 +6,7 @@ import { ArchiveProgressBar } from '@kobaproduction/browser-widgets'
 import { Archive, Download, Settings2, ShieldAlert } from 'lucide-vue-next'
 import { computed, onMounted, onUnmounted, ref, useId } from 'vue'
 import { vkPreferencesLoadError, vkPreferencesPersistence } from '../model/durable-preferences'
-import {
-  exportVkCaptureSettings,
-  restoreVkCaptureSettings,
-  validateVkCapturePreferences,
-} from '../model/settings-backup'
+import { validateVkCapturePreferences } from '../model/settings-backup'
 import { type ArchiveStatus, archiveApi, type VkMessage } from '../model/types'
 
 const api = archiveApi()
@@ -126,63 +122,8 @@ function onTabKeydown(event: KeyboardEvent, active: View) {
   )
   target?.focus()
 }
-const preferencesBusy = ref(false)
-const preferencesFile = ref<File | null>(null)
-const preferencesConfirmed = ref(false)
-const preferencesError = ref('')
-const preferencesMessage = ref('')
 const durableSettingsError = ref(vkPreferencesLoadError())
 
-function selectPreferences(event: Event) {
-  preferencesFile.value = (event.target as HTMLInputElement).files?.[0] ?? null
-  preferencesConfirmed.value = false
-  preferencesError.value = ''
-  preferencesMessage.value = ''
-}
-async function downloadPreferences() {
-  if (!api || preferencesBusy.value || status.value?.busy) return
-  preferencesBusy.value = true
-  preferencesError.value = ''
-  preferencesMessage.value = ''
-  try {
-    const blob = await exportVkCaptureSettings(api)
-    const url = URL.createObjectURL(blob)
-    try {
-      const link = document.createElement('a')
-      link.href = url
-      link.download = 'vk-booster-capture-preset.json'
-      link.click()
-    } finally {
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-    }
-    preferencesMessage.value = 'Профиль подготовлен. Убедись, что файл сохранился.'
-  } catch {
-    preferencesError.value = 'Не удалось выгрузить профиль настроек.'
-  } finally {
-    preferencesBusy.value = false
-  }
-}
-async function importPreferences() {
-  if (!api || !preferencesFile.value || !preferencesConfirmed.value || preferencesBusy.value) return
-  preferencesBusy.value = true
-  preferencesError.value = ''
-  preferencesMessage.value = ''
-  try {
-    const port = vkPreferencesPersistence()
-    if (!port) throw Error('Persistent settings unavailable')
-    await restoreVkCaptureSettings(api, preferencesFile.value, port)
-    status.value = api.status()
-    fixedLimit.value = Math.min(3000, Math.max(1, api.status().options.limit))
-    preferencesMessage.value =
-      'Параметры восстановлены в текущей сессии и постоянном хранилище. Архив не изменён.'
-    preferencesFile.value = null
-    preferencesConfirmed.value = false
-  } catch {
-    preferencesError.value = 'Профиль отклонён: проверь целостность, формат и DEV/PROD канал.'
-  } finally {
-    preferencesBusy.value = false
-  }
-}
 let unsubscribe: (() => void) | undefined
 let peerTimer: ReturnType<typeof setInterval> | undefined
 function refreshActiveConversation() {
@@ -328,49 +269,12 @@ onUnmounted(() => {
       tabindex="0"
       class="flex min-w-0 flex-col gap-3"
     >
-      <section v-if="api && status" class="booster-stack-card" aria-label="Профиль параметров VK">
+      <section class="booster-stack-card" aria-label="Постоянные параметры VK">
         <div class="booster-setting-copy">
-          <b>Постоянные параметры и резервная копия</b>
-          <small>
-            Режим, количество, диапазон дат, размер пачки и медиа хранятся отдельно от архива.
-            При перезапуске они восстанавливаются автоматически; JSON создаёт переносимую резервную копию только этих параметров.
-            Сообщения, токены, ID диалога и данные папки не сохраняются.
-          </small>
+          <b>Параметры сохранения</b>
+          <small>Настройки захвата сохраняются автоматически и восстанавливаются при следующем запуске.</small>
         </div>
-        <div class="flex flex-wrap items-end gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            :disabled="preferencesBusy || status.busy || status.folderPending || !!status.blockedReason"
-            @click="downloadPreferences"
-          >Сохранить профиль JSON</Button>
-          <label class="booster-field min-w-0 flex-1">
-            <span>Восстановить параметры из JSON</span>
-            <input
-              type="file"
-              class="booster-input w-full"
-              accept=".json,application/json"
-              :disabled="preferencesBusy || status.busy || status.folderPending || !!status.blockedReason"
-              @change="selectPreferences"
-            />
-          </label>
-        </div>
-        <label v-if="preferencesFile" class="booster-field">
-          <span class="flex items-center gap-2">
-            <input v-model="preferencesConfirmed" type="checkbox" :disabled="preferencesBusy" />
-            Подтверждаю замену сохранённых и текущих параметров
-          </span>
-        </label>
-        <Button
-          v-if="preferencesFile"
-          variant="outline"
-          size="sm"
-          :disabled="preferencesBusy || status.busy || status.folderPending || !!status.blockedReason || !preferencesConfirmed"
-          @click="importPreferences"
-        >Применить профиль</Button>
         <p v-if="durableSettingsError" role="alert" class="m-0 text-sm text-destructive">{{ durableSettingsError }}</p>
-        <p v-if="preferencesError" role="alert" class="m-0 text-sm text-destructive">{{ preferencesError }}</p>
-        <p v-if="preferencesMessage" role="status" class="m-0 text-sm">{{ preferencesMessage }}</p>
       </section>
     </div>
   </section>

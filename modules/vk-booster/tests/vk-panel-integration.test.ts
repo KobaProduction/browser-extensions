@@ -60,12 +60,12 @@ test('peer-aware Dexie Reader retains only bounded local records and never expos
 
 test('ordinary settings omit internal full-database recovery controls', () => {
   expect(panel).toContain("tab === 'settings'")
-  expect(panel).toContain('exportVkCaptureSettings(api)')
-  expect(panel).toContain('restoreVkCaptureSettings(')
+  expect(panel).not.toContain('exportVkCaptureSettings(api)')
+  expect(panel).not.toContain('restoreVkCaptureSettings(')
   expect(panel).toContain('vkPreferencesPersistence()')
   expect(panel).toContain('await port.write(options)')
-  expect(panel).toContain('preferencesConfirmed')
-  expect(panel).toContain('status.folderPending || !!status.blockedReason')
+  expect(panel).not.toContain('preferencesConfirmed')
+  expect(panel).toContain('durableSettingsError')
   expect(panel).not.toContain('<PortableBackupPanel')
   expect(panel).not.toContain('api.backupPortable(')
   expect(panel).not.toContain('api.restorePortable(')

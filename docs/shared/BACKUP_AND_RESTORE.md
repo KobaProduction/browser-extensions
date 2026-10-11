@@ -35,8 +35,10 @@ physical databases remain untouched. Settings are an independent scope and
 require a validated persistent-settings adapter before inclusion.
 
 PR #38 initially exposed portable backup controls in VK settings. The
-ordinary VK Control Center now omits the full-archive backup widget; the
-internal provider ports and reusable widget remain available for operator tools. Installed-browser recovery and large-input staged restore
+ordinary VK and ChatGPT Control Centers no longer offer backup or restore
+controls for either persistent settings or full IndexedDB archives. Existing
+service-level settings and archive backup ports are retained for internal
+operator tooling; the provider-neutral widget is not mounted in these screens. Installed-browser recovery and large-input staged restore
 remain unaccepted.
 
 ## User-selected native backups, not migration engines (new owner decision 2026-10-11)

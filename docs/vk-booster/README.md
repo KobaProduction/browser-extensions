@@ -18,8 +18,8 @@ not yet implemented against the Dexie canonical source.
 The product has independently scoped durable capture defaults in
 userscript `localStorage` / MV3 `chrome.storage.local`. JSON settings export
 and restore reuse the generic checksum/scoping contract in `packages/storage`
-and do not include VK peer, account, tokens, archives or media. The UI never
-presents settings backup as full archive recovery.
+and do not include VK peer, account, tokens, archives or media. Settings backup and whole-archive recovery are internal operator facilities,
+not controls in the ordinary VK UI.
 
 See [archive/source contract](ARCHIVE.md),
 [environment isolation](../shared/ENVIRONMENTS_AND_STORAGE.md),

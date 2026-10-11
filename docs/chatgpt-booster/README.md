@@ -6,8 +6,8 @@ The fixed Dexie v1 ChatGPT repository can supply provider-validated rows to
 the merged shared single-stream TAR.GZ backup/recovery engine. Its five tables
 retain a verified account scope and original source snapshots; import must
 validate all relations and then commit that owner within one Dexie transaction.
-This is an **internal/operator** port, not a new everyday user-facing backup
-feature. External media bytes, historic native v3/v4 archives and automatic
+The existing settings-only backup and the new archive recovery adapter are
+**internal/operator** ports, not ordinary user-facing backup features. External media bytes, historic native v3/v4 archives and automatic
 migration are excluded. Cross-storage crash atomicity, huge restores and
 installed-browser recovery remain separate acceptance gates.
 
