@@ -23,24 +23,43 @@ Control Center and Archive Manager render the existing provider.
 
 **Owner decision (2026-10-11): keep the v2 product and freeze the base
 version at 2.3.10 until separately authorized.** DEV builds may advance
-`2.3.10-dev.N`; do not auto-bump patch/minor/major or replace the v2 folder
+`dev-vk-booster/v2.3.N`; do not auto-bump patch/minor/major or replace the v2 folder
 with a new incompatible archive. Previously created v2 archives must remain
 usable; there is no authorized destructive migration.
 
-## Unmerged implementation proposals
+## Closed incompatible proposals
 
 [PR #10](https://github.com/KobaProduction/browser-extensions/pull/10)
 proposed replacing v2 with IndexedDB Archive 3; its replacement/version
-decision was explicitly rejected by the product owner. It must not merge
-unchanged. Portable components (indexed repository, offline lab, filtered
+decision was explicitly rejected by the product owner; PR #10 was
+closed without merging. Portable components (indexed repository, offline lab, filtered
 export, hash receipts and viewer) may be adapted incrementally only after
 preserving the existing v2 contract and adding regression coverage.
 
 [PR #21](https://github.com/KobaProduction/browser-extensions/pull/21)
 contains shared scope, settings backup, telemetry and read-only provider ports,
-but is stacked on PR #10. Its useful pieces must be rebased or transplanted
-independently of the rejected v3 architecture. The PR's source/build approval
+but was stacked on PR #10. That PR was closed; compatible shared services
+were transplanted and merged through PR #26. The PR's source/build approval
 is not browser/data acceptance.
+
+## Unified VK Archive navigation (source integration)
+
+The VK module contributes to the **existing shared Control Center**,
+without a second launcher or standalone popup. Local navigation separates
+**Выгрузка**, **Архив** (read-only saved-message view) and **Параметры**
+(session-only JSON preset), following the shared navigation established for
+ChatGPT Booster by PR #25.
+
+The existing ArchiveManager form, exact-N, incremental/backfill,
+pause/resume and progress remain mounted across tab switches. The reader
+uses the shared ArchiveTranscript and hides previously selected folders
+on a mismatched conversation or pending folder picker. Keyboard navigation,
+scoped tab IDs, and explicit empty/blocked states are supported. No
+ChatGPT v3/v4 migration, IndexedDB replacement, persistent VK preference
+store or new archive backup is introduced.
+
+This is source/UI coverage only. Responsive and actual-browser/File System
+Access acceptance remain open in [ARCHIVE.md](ARCHIVE.md).
 
 ## Existing attachment integrity on v2 reruns
 

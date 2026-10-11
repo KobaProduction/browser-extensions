@@ -84,7 +84,7 @@ separate validated portable settings backup/restore; it does not replace
 archive export or introduce another launcher. The pre-existing ChatGPT
 telemetry settings/diagnostic adapters remain owned by the ChatGPT provider;
 the common optional scoped telemetry port does not replace or implicitly
-enable its transport. All-in-one is 0.5.6, VK remains 2.3.10. None of these
+enable its transport. All-in-one is 0.5.7, VK remains 2.3.10. None of these
 source changes promotes stable 0.8.92 or proves installed-browser acceptance.
 
 ## Restoring user-facing archive controls
