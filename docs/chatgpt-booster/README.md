@@ -64,3 +64,22 @@ A successful historical source build is not installed-browser acceptance.
 Back up the original browser profile and v3/v4 IndexedDB data before using
 any historical build. See [environment isolation](../shared/ENVIRONMENTS_AND_STORAGE.md)
 and [backup/restore](../shared/BACKUP_AND_RESTORE.md).
+
+## Restoring user-facing archive controls
+
+The current 2.x module integrates the original ChatGPT-only archive and export
+UI inside the **single shared Control Center**. Its provider panel must retain
+current-chat and project context, capture policy and controls, explicit
+collection/stop actions when supported by the provider, the source-backed
+Archive Reader, the full Export wizard and the manually opened migration and
+backup widget. Migration and owner reconciliation do not start automatically.
+
+The historical 0.8.98 source reference owns comparison evidence for the
+legacy floating Archive Workspace and navigation; it is **not** an accepted
+stable release. Current stable **0.8.92** remains untouched. UI source
+integration and a passing build do not prove that the user's original
+v3/v4 IndexedDB is present or successfully read in the installed profile.
+The floating window/minimize workflow and installed-browser export parity
+remain under [functional acceptance issue #16](https://github.com/KobaProduction/browser-extensions/issues/16).
+Data/owner reconciliation remains under
+[archive acceptance issue #11](https://github.com/KobaProduction/browser-extensions/issues/11).

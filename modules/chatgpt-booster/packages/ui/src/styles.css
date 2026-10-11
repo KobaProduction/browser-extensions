@@ -4410,3 +4410,67 @@
 /* Hosted in the shared shell: one window, one header, no nested modal shell. */
 .booster-control-embedded { background: transparent; border: 0; box-shadow: none; width: 100%; max-width: none; }
 .booster-control-embedded > .booster-settings-layout { max-height: none; min-height: 0; }
+
+/* ChatGPT's recovered archive controls live inside the ONE shared shell.
+   Keep the contextual actions readable without mounting the old second launcher. */
+.booster-chatgpt-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  width: 100%;
+}
+.booster-chatgpt-panel > .booster-dock-context {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  gap: 7px;
+}
+.booster-chatgpt-panel .booster-dock-context-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  min-width: 0;
+}
+.booster-chatgpt-panel .booster-dock-context-info .booster-identity {
+  min-width: 0;
+  max-width: 100%;
+}
+.booster-chatgpt-panel .booster-capture-shortcut {
+  width: fit-content;
+  min-height: 32px;
+  padding-inline: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.booster-chatgpt-panel > .booster-export-recovery-actions {
+  min-width: 0;
+  padding-block: 5px;
+  border-bottom: 1px solid var(--border);
+}
+.booster-chatgpt-panel > .booster-export-recovery-actions > button,
+.booster-chatgpt-panel > .booster-export-recovery-actions > .booster-reader-tools > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+}
+.booster-chatgpt-panel > .booster-reader,
+.booster-chatgpt-panel > .booster-capture-surface {
+  min-width: 0;
+}
+@media (max-width: 600px) {
+  .booster-chatgpt-panel > .booster-export-recovery-actions {
+    flex-wrap: wrap;
+  }
+  .booster-chatgpt-panel > .booster-export-recovery-actions > button {
+    flex: 1 1 auto;
+  }
+  .booster-chatgpt-panel .booster-reader-tools-menu {
+    right: 0;
+    min-width: min(260px, 85vw);
+  }
+}
