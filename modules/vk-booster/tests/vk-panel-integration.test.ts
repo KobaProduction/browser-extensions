@@ -63,6 +63,11 @@ test('reader fails closed on a changed VK conversation or an incomplete folder s
   expect(panel).toContain('role="alert"')
   expect(reader).toContain('previewMessages')
   expect(reader).toContain('ArchiveTranscript')
+  expect(reader).toContain('props.api.previewAttachments(')
+  expect(reader).toContain('Вложения (по записям архива)')
+  expect(reader).toContain('а не повторная проверка файла на диске')
+  expect(reader).not.toContain(':href="receipt.')
+  expect(reader).not.toContain(':src="receipt.')
   expect(panel).not.toContain('ArchiveCanonicalMigrator')
 })
 

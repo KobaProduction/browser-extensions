@@ -61,6 +61,12 @@ scoped tab IDs, and explicit empty/blocked states are supported. No
 ChatGPT v3/v4 migration, IndexedDB replacement, persistent VK preference
 store or new archive backup is introduced.
 
+The shared transcript reader now shows each recorded attachment's name,
+type and **stored v2 receipt status** (saved, missing, failed, unavailable
+or link), plus whether metadata contains a checksum. This is a bounded,
+read-only projection: it does not fetch bytes, open remote URLs, display
+local paths, or claim that a stored checksum proves the file currently exists.
+
 This is source/UI coverage only. Responsive and actual-browser/File System
 Access acceptance remain open in [ARCHIVE.md](ARCHIVE.md).
 

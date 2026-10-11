@@ -331,6 +331,35 @@ test('original names, offline HTML, media path and hashes', async () => {
   expect(saved.length).toBe(2)
   expect(saved.some((x) => x.name === originalName)).toBe(true)
   expect(saved.every((x) => typeof x.sha256 === 'string' && /^[0-9a-f]{64}$/.test(x.sha256))).toBe(true)
+  // VK Reader uses only bounded file-receipt metadata, not external URLs,
+  // local binary paths or a speculative disk-integrity claim.
+  const uiReceipts = a.previewAttachments([docMessage.id, voiceMessage.id, linkMessage.id, -1])
+  const documentReceipts = uiReceipts[String(docMessage.id)] ?? []
+  expect(documentReceipts).toEqual([
+    {
+      type: 'doc',
+      name: originalName,
+      status: 'saved',
+      checksumRecorded: true,
+    },
+  ])
+  expect(uiReceipts[String(voiceMessage.id)]).toContainEqual({
+    type: 'audio_message',
+    name: 'Голосовое.ogg',
+    status: 'saved',
+    checksumRecorded: true,
+  })
+  expect(uiReceipts[String(linkMessage.id)]).toContainEqual({
+    type: 'link',
+    name: 'link',
+    status: 'link',
+    checksumRecorded: false,
+  })
+  const receiptsText = JSON.stringify(uiReceipts)
+  expect(receiptsText).not.toContain('https://')
+  expect(receiptsText).not.toContain('/media/')
+  expect(receiptsText).not.toContain('test-origin-token')
+  expect(a.previewAttachments([987654321])).toEqual({})
   const voiceKey = Object.keys(md.files).find((x) => x.includes('audio_message'))
   if (!voiceKey) throw Error('No voice attachment')
   expect(md.files[voiceKey]?.name).toBe('Голосовое.ogg')
@@ -525,6 +554,7 @@ test('soft-navigation to another chat blocks export and never binds its folder t
     expect(mismatch.blockedReason).toContain('другая переписка')
     expect(a.getMessages()).toEqual([])
     expect(a.previewMessages({ limit: 80 })).toEqual({ messages: [], matching: 0 })
+    expect(a.previewAttachments([docMessage.id, voiceMessage.id, linkMessage.id])).toEqual({})
     const viewerBefore = await (await folder.getFileHandle('index.html'))
       .getFile()
       .then((file) => file.text())

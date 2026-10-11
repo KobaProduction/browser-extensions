@@ -570,6 +570,24 @@ export function installVkArchive(): void {
       const result = selectVkArchivePreview(rows, options)
       return { ...result, messages: structuredClone(result.messages) }
     },
+    previewAttachments: (messageIds) => {
+      // Source peer, folder permission and context checks match previewMessages.
+      if (!archiveReadable()) return {}
+      const ids = new Set(messageIds.slice(0, 240).filter((id) => Number.isSafeInteger(id) && id > 0))
+      const receipts: Record<string, import('./types').VkPreviewAttachment[]> = {}
+      for (const message of rows) {
+        if (!ids.has(message.id)) continue
+        receipts[String(message.id)] = attachmentView(message)
+          .slice(0, 32)
+          .map((view) => ({
+            type: view.type,
+            name: view.name,
+            status: view.type === 'link' ? 'link' : view.status,
+            checksumRecorded: Boolean(currentMeta().files[view.key]?.sha256),
+          }))
+      }
+      return receipts
+    },
     destroy() {
       subscribers.clear()
       if (published[apiKey] === apiObject) delete published[apiKey]

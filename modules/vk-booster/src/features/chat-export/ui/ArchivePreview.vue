@@ -3,7 +3,7 @@
 import { Button } from '@kobaproduction/browser-ui'
 import { ArchiveTranscript, type ArchiveTranscriptTurn } from '@kobaproduction/browser-widgets'
 import { computed, ref, watch } from 'vue'
-import type { ArchiveApi, ArchiveStatus, VkMessage } from '../model/types'
+import type { ArchiveApi, ArchiveStatus, VkPreviewAttachment } from '../model/types'
 
 const props = defineProps<{ api: ArchiveApi; status: ArchiveStatus }>()
 const query = ref('')
@@ -14,6 +14,20 @@ const result = computed(() => {
   return props.api.previewMessages({ limit: visibleLimit.value, query: query.value })
 })
 const messageMap = computed(() => new Map(result.value.messages.map((row) => [String(row.id), row])))
+const receiptMap = computed(() =>
+  props.api.previewAttachments(result.value.messages.map((message) => message.id)),
+)
+function receiptLabel(receipt: VkPreviewAttachment): string {
+  if (receipt.status === 'saved')
+    return receipt.checksumRecorded
+      ? 'По записи: сохранён · SHA-256'
+      : 'По записи: сохранён · без SHA-256'
+  if (receipt.status === 'link') return 'Ссылка (без локального файла)'
+  if (receipt.status === 'failed') return 'Ошибка предыдущей загрузки'
+  if (receipt.status === 'unavailable') return 'Недоступен в источнике'
+  return 'Локальный файл ещё не сохранён'
+}
+
 const turns = computed<ArchiveTranscriptTurn[]>(() =>
   result.value.messages.map((message) => {
     const record = { key: String(message.id), messageId: String(message.id) }
@@ -37,9 +51,6 @@ watch(query, () => {
 })
 function dateLabel(date: number): string {
   return Number.isFinite(date) ? new Date(date * 1000).toLocaleString('ru-RU') : 'Дата неизвестна'
-}
-function attachmentCount(message: VkMessage): number {
-  return Array.isArray(message.attachments) ? message.attachments.length : 0
 }
 function showMore(): void {
   visibleLimit.value = Math.min(240, visibleLimit.value + 80)
@@ -94,9 +105,22 @@ function showMore(): void {
             <p v-if="messageMap.get(record.key)?.fwd_messages?.length" class="mt-2 text-xs text-muted-foreground">
               Пересланных: {{ messageMap.get(record.key)?.fwd_messages?.length }}
             </p>
-            <p v-if="attachmentCount(messageMap.get(record.key)!)" class="mt-2 text-xs text-muted-foreground">
-              Вложений: {{ attachmentCount(messageMap.get(record.key)!) }}
-            </p>
+            <div v-if="receiptMap[record.key]?.length" class="mt-2 border-t border-border pt-2">
+              <b class="text-xs text-foreground">Вложения (по записям архива)</b>
+              <ul class="m-0 mt-1 flex flex-col gap-1 p-0" aria-label="Вложения сохранённого сообщения">
+                <li
+                  v-for="(receipt, index) in receiptMap[record.key]"
+                  :key="index"
+                  class="flex min-w-0 flex-col gap-0.5 text-xs text-muted-foreground"
+                >
+                  <span class="break-words text-foreground">{{ receipt.name }}</span>
+                  <span>{{ receiptLabel(receipt) }}</span>
+                </li>
+              </ul>
+              <p class="m-0 mt-1 text-xs text-muted-foreground">
+                Это статус из metadata.json, а не повторная проверка файла на диске.
+              </p>
+            </div>
           </div>
         </template>
       </ArchiveTranscript>
