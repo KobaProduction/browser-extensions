@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT Booster [DEV]
 // @namespace    https://github.com/KobaProduction/browser-extensions/dev/chatgpt-booster
-// @version      2.0.39
+// @version      2.0.40
 // @description  ChatGPT Booster — archive and browser tools
 // @updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/chatgpt-booster.user.js
 // @downloadURL  https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/chatgpt-booster.user.js
@@ -823,8 +823,8 @@
     }
     return Object.fromEntries(entries);
   }
-  const BOOSTER_BASE_VERSION = "2.0.12";
-  const injectedVersion = "2.0.12".trim();
+  const BOOSTER_BASE_VERSION = "2.0.13";
+  const injectedVersion = "2.0.13".trim();
   const BOOSTER_BUILD_VERSION = injectedVersion || BOOSTER_BASE_VERSION;
   const BOOSTER_VERSION = BOOSTER_BUILD_VERSION;
   // @__NO_SIDE_EFFECTS__
@@ -25723,6 +25723,10 @@
       throw new Error("Backup product, channel, owner or installation mismatch");
     }
   }
+  new TextEncoder();
+  new TextDecoder("utf-8", { fatal: true });
+  new TextEncoder();
+  new TextDecoder("utf-8", { fatal: true });
   var FORMAT = "koba-settings-backup-v1";
   var MAX_BYTES = 512 * 1024;
   var isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
