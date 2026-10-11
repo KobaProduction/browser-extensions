@@ -34,17 +34,31 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_SHA: ${{ github.event.workflow_run.head_sha }}
-          BUILD_NUMBER: ${{ github.run_number }}
         run: |
           set -euo pipefail
           git fetch --tags --force
+          # Command substitution propagates planner errors under set -e;
+          # process substitution would silently mask them.
+          candidates="$(bun scripts/channel-plan.ts "--base=${GITHUB_SHA}^" "--head=$GITHUB_SHA")"
           while IFS='|' read -r id version; do
             test -n "$id" || continue
-            bun scripts/build.ts --module="$id" --channel=dev --build-number="$BUILD_NUMBER"
-            bun scripts/validate.ts --built --module "$id" --channel=dev --build-number="$BUILD_NUMBER"
-            tag="$id/v$version-dev.$BUILD_NUMBER"
-            if ! gh release view "$tag" >/dev/null 2>&1; then
-              gh release create "$tag" "dist/$id/$id.user.js" "dist/$id/$id-extension.zip"                 --prerelease --target "$GITHUB_SHA" --title "$id v$version-dev.$BUILD_NUMBER"                 --notes "Continuous dev build from validated source $GITHUB_SHA"
+            # Use product-owned counters, continuing after legacy suffix tags.
+            release="$(bun scripts/dev-release.ts "$id" "$version")"
+            IFS='|' read -r build_number tag title reused <<< "$release"
+            bun scripts/build.ts --module="$id" --channel=dev --build-number="$build_number"
+            bun scripts/validate.ts --built --module "$id" --channel=dev --build-number="$build_number"
+            if gh release view "$tag" >/dev/null 2>&1; then
+              if [[ "$reused" != "1" ]]; then
+                echo "DEV release tag collision: $tag" >&2
+                exit 1
+              fi
+              echo "Reusing previous release from the same source: $tag"
+            else
+              gh release create "$tag" "dist/$id/$id.user.js" "dist/$id/$id-extension.zip" \
+                --prerelease --target "$GITHUB_SHA" --title "$title" \
+                --notes "Continuous dev build from validated source $GITHUB_SHA"
             fi
             bash scripts/publish-channel.sh "$id" dev
-          done < <(bun scripts/channel-plan.ts "--base=${GITHUB_SHA}^" "--head=$GITHUB_SHA")
+            # Include this tag before allocating another independent counter.
+            git fetch --tags --force
+          done <<< "$candidates"

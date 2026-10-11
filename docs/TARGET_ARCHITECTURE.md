@@ -242,10 +242,11 @@ does not rebuild unrelated products; a shared archive/widget change rebuilds
 dependents.
 
 VK Booster keeps its existing v2 archive and its current product base
-**2.3.10 is frozen** by the owner's 2026-10-11 decision. Compatible fixes and
-new development must not automatically advance the product patch, minor or
-major version; independent DEV build IDs may advance as `2.3.10-dev.N`.
-A future product version change requires a separate explicit owner decision.
+**2.3.10 remains the v2 compatibility baseline**. Compatible fixes and
+new development must not automatically advance the stable product patch,
+minor or major version. Independent DEV releases use three numeric parts,
+such as `dev-2.3.37`, without modifying source/PROD 2.3.10.
+A future stable product version requires separate review and approval.
 Docs-only changes never bump versions or publish bundles.
 
 Module-scoped tags and stable independent Tampermonkey update channels remain

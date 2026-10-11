@@ -59,7 +59,9 @@ runs independently and does not depend on a local Git hook.
 The [release/channel contract](docs/DEV_PROD_CHANNELS.md) defines continuous DEV
 prereleases and explicitly approved PROD publication. Different products can
 advance independently. **VK Booster's current 2.3.10 base is frozen during development**;
-DEV build identifiers may advance as `2.3.10-dev.N`. Existing v2 archives remain compatible.
+DEV releases use three numeric components, e.g. `dev-vk-booster v2.3.37`
+then `dev-vk-booster v2.3.38`. The source/PROD base stays 2.3.10;
+existing v2 archives remain compatible.
 
 Installation and environment-specific instructions live in the corresponding
 product README. Do not confuse a successful build or source review with
