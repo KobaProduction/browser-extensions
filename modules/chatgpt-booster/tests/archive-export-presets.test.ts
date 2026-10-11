@@ -29,4 +29,6 @@ test('unsupported source formats and unsupported archive packaging are rejected 
   expect(archiveExportPresetOptions(DEFAULT_EXPORT_OPTIONS, 'json', formats.slice(0, 1), 4)).toBeNull()
   expect(archiveExportPresetOptions(DEFAULT_EXPORT_OPTIONS, 'json-gzip', formats, 3)).toBeNull()
   expect(archiveExportPresetOptions(DEFAULT_EXPORT_OPTIONS, 'json-zip', formats, 3)).toBeNull()
+  expect(archiveExportPresetOptions(DEFAULT_EXPORT_OPTIONS, 'json-gzip', formats, undefined)).toBeNull()
+  expect(archiveExportPresetOptions(DEFAULT_EXPORT_OPTIONS, 'json-zip', formats, undefined)).toBeNull()
 })

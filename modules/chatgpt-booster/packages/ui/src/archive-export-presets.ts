@@ -8,7 +8,7 @@ export function archiveExportPresetOptions(
   current: ArchiveExportOptions,
   preset: ArchiveExportPreset,
   formats: readonly ArchiveExportFormatDescriptor[],
-  archiveGeneration: number,
+  archiveGeneration: number | undefined,
 ): ArchiveExportOptions | null {
   const format = preset === 'markdown' ? 'markdown' : 'json'
   if (!formats.some((available) => available.id === format)) return null
