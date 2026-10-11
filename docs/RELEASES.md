@@ -53,8 +53,8 @@ workflow with `approve_release=true`. ChatGPT 2.0.1 is now `release:true` for in
 ## Version 2 release channels (2026-10-10)
 
 - VK Booster: `2.3.10` — owner-frozen v2; DEV build IDs advance without changing the base product version. VK source changes still advance all-in-one.
-- ChatGPT Booster: `2.0.6` — changes in ChatGPT increment ChatGPT and all-in-one only.
-- All-in-one: `0.5.5` — aggregates both providers with independent feature
+- ChatGPT Booster: `2.0.7` — changes in ChatGPT increment ChatGPT and all-in-one only.
+- All-in-one: `0.5.6` — aggregates both providers with independent feature
   lifecycles, Tampermonkey and MV3 targets.
 - Shared `packages/` implementation changes affect all consumers. Documentation
   and CI-only changes do not bump product semver.

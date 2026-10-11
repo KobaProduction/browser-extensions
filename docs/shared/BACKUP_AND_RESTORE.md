@@ -67,7 +67,7 @@ provider archive backup and Dexie-backed cross-product recovery facade remain **
 `packages/storage` now provides `ServiceScope`, `PersistentSettingsPort`
 and portable JSON settings export/validate/restore with a 512 KiB input
 bound, SHA-256 integrity, schema and exact product/channel/owner checks
-before a single adapter-owned atomic restore. ChatGPT Booster 2.0.6 exposes
+before a single adapter-owned atomic restore. ChatGPT Booster 2.0.7 exposes
 this as an explicit export/import action in its Settings panel, excluding
 private capture rules, archives, credentials and telemetry endpoints.
 The returned file does **not** contain IndexedDB archives or media.
