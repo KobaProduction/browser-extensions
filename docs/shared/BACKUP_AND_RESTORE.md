@@ -1,5 +1,10 @@
 # Backup, import, restore and portability
 
+## User-selected native backups, not migration engines (new owner decision 2026-10-11)
+
+The **only historical ChatGPT data-recovery path requested now** is a non-destructive read-only export of the installed stable `0.8.92` native v3 IndexedDB, with exact source records and structured-clone values. The owner may provide the resulting backup for a separately validated one-off import into the fixed canonical Dexie model; there is **no requirement to automatically migrate source v3/v4 generations, switch canonical generations or guess missing API data**. Existing historic backup/migration features below remain implementation history and must not run without separate owner initiation. VK future capture is a new fixed Dexie model; no v2→v1 migration pipeline is being built.
+
+
 This is a common storage/recovery contract. Settings and large archives
 remain different data products even when the UI offers a unified wizard.
 
@@ -77,3 +82,14 @@ A VK **session capture-preset** port and UI are also implemented, but they
 do not yet persist application settings or back up the v2 folder. Provider
 archive round-trip, Dexie adoption and installed-browser recovery are
 **not yet accepted**.
+
+## Explicit retired v4 read-only extraction (2026-10-11)
+
+Retired ChatGPT v4 is not a working archive service. The physical native v4
+database remains at its original scope-derived IndexedDB name and is read only
+after an explicit owner action for a source backup, not for capture or Reader.
+The existing 0.8.92 v3 source has a separate read-only extractor. Both exports
+preserve original binary/unknown values without cross-version conversions,
+report schema/counts and use a chained gzip JSONL digest. No deletion or
+automatic restoration is authorized. Cross-store concurrent-write atomicity
+cannot be claimed; pause historical capture for a consistent export.

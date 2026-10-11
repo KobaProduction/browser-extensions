@@ -602,3 +602,76 @@
     width: calc(100vw - 20px);
   }
 }
+
+/* One floating shared workspace, not another provider popup or launcher. */
+.booster-modal-backdrop.booster-modal-backdrop-floating {
+  display: block;
+  background: transparent;
+  backdrop-filter: none;
+  pointer-events: none;
+  padding: 0;
+}
+.booster-modal-surface.booster-modal-surface-wide.booster-dialog-floating {
+  position: fixed;
+  max-height: none;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  pointer-events: auto;
+}
+.booster-dialog-floating > .booster-control-center {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+}
+.booster-floating-chrome {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 4px 8px 4px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--muted);
+  cursor: move;
+  touch-action: none;
+  user-select: none;
+}
+.booster-floating-chrome > span {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+}
+.booster-floating-chrome > button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.booster-floating-chrome > button:focus-visible,
+.booster-floating-resize:focus-visible {
+  outline: 2px solid var(--ring);
+}
+.booster-floating-resize {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  background: var(--muted);
+  cursor: nwse-resize;
+  touch-action: none;
+  border-top-left-radius: 7px;
+}

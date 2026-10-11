@@ -1,8 +1,15 @@
 import { createArchiveFiles } from '@kobaproduction/browser-adapters'
-import { scanLinearArchive } from '@kobaproduction/browser-archive'
+import {
+  archiveSha256Hex,
+  createGzipFromChunks,
+  encodeArchiveClone,
+  scanLinearArchive,
+} from '@kobaproduction/browser-archive'
+import type { DeliveryTarget } from '@kobaproduction/browser-core'
 import { instanceKey, instanceScope, SHELL_OPEN_FEATURE_EVENT } from '@kobaproduction/browser-core'
 import { assets, download as downloadVkAsset } from '../api/vk-media'
 import { createVkProvider } from '../api/vk-provider'
+import { FixedVkDexieRepository } from './archive-fixed-dexie'
 import { selectVkArchivePreview } from './archive-preview'
 import { archiveContextBlock, conversationPeerFromPath } from './conversation-context'
 import { viewerHTML } from './offline-viewer'
@@ -18,7 +25,7 @@ import type {
   VkMessage,
 } from './types'
 /* VK Booster v2 provider composition; neutral paging, storage and UI live in shared packages. */
-export function installVkArchive(): void {
+export function installVkArchive(target: DeliveryTarget = 'userscript'): void {
   const VERSION = '2.3.10'
   const apiKey = instanceKey('VKExport', 'vk-booster:prod')
   const published = globalThis as Record<string, unknown>
@@ -531,6 +538,157 @@ export function installVkArchive(): void {
       refresh()
     }
   }
+  // A fixed-schema native VK capture path independent from the historical
+  // file-backed v2 folder exporter. A verified VK API identity is mandatory.
+  async function openFixedArchive(peerId: number): Promise<FixedVkDexieRepository> {
+    const scope = instanceScope() || 'vk-booster:prod'
+    if (!/^(vk-booster|all-in-one):(dev|prod)$/.test(scope))
+      throw Error('Unsupported VK installation scope')
+    const user = await api('users.get', {})
+    const first = Array.isArray(user) ? user[0] : undefined
+    const owner = first && typeof first === 'object' ? (first as { id?: unknown }).id : undefined
+    if (typeof owner !== 'number' || !Number.isSafeInteger(owner) || owner <= 0)
+      throw Error('Authenticated VK account verification required for Dexie')
+    if (currentPeer() !== peerId) throw Error('VK peer changed during account verification')
+    return new FixedVkDexieRepository({
+      productId: 'vk-booster',
+      channel: scope.endsWith(':dev') ? 'dev' : 'prod',
+      installationId: scope.split(':')[0] + '-' + target,
+      ownerId: 'vk-user-' + owner,
+    })
+  }
+  async function captureFixed(
+    limit = 100,
+  ): Promise<{ saved: number; alreadySaved: number; available: number }> {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 3000)
+      throw Error('Dexie capture limit must be 1–3000')
+    const peerId = currentPeer()
+    if (!peerId || busy || folderLoading || folderPickerOpen)
+      throw Error('Select one VK conversation before saving')
+    cfg.peerId = peerId
+    busy = true
+    stopRequested = false
+    progress('Dexie: сообщения', 0, limit)
+    let repo: FixedVkDexieRepository | undefined
+    let saved = 0,
+      alreadySaved = 0,
+      available = 0
+    try {
+      if (!(await auth())) throw Error('VK API authorization unavailable')
+      repo = await openFixedArchive(peerId)
+      let offset = 0
+      while (offset < limit && !stopRequested) {
+        if (currentPeer() !== peerId) throw Error('VK peer changed during Dexie capture')
+        const requestSize = Math.min(100, limit - offset)
+        const page = await history(offset, requestSize)
+        if (currentPeer() !== peerId) throw Error('VK peer changed during Dexie capture')
+        available = page.count
+        if (!page.items.length) break
+        for (const item of page.items) {
+          if (stopRequested || currentPeer() !== peerId) break
+          if (item.peer_id !== undefined && item.peer_id !== peerId)
+            throw Error('VK source returned a different conversation')
+          const previous = await repo.getOriginal(peerId, item.id)
+          if (previous) {
+            if (JSON.stringify(previous.raw) !== JSON.stringify(item))
+              throw Error('VK message changed: explicit source revision required')
+            alreadySaved++
+          } else {
+            await repo.addOriginal(peerId, item, 'vk-history-current', Date.now())
+            saved++
+          }
+        }
+        offset += page.items.length
+        progress('Dexie: сообщения', Math.min(offset, limit), limit, { newCount: saved })
+        if (page.items.length < requestSize || offset >= page.count) break
+        await sleep(Math.max(450, cfg.delay))
+      }
+      progress(
+        stopRequested ? 'Dexie: остановлено' : 'Dexie: сохранено',
+        saved + alreadySaved,
+        Math.min(limit, available),
+        { newCount: saved },
+      )
+      if (currentPeer() !== peerId) throw Error('VK peer changed before capture completion')
+      return { saved, alreadySaved, available }
+    } finally {
+      repo?.close()
+      busy = false
+      refresh()
+    }
+  }
+  async function withFixed<T>(
+    operation: (repo: FixedVkDexieRepository, peerId: number) => Promise<T>,
+  ): Promise<T> {
+    const peerId = currentPeer()
+    if (!peerId || busy || folderPickerOpen) throw Error('VK conversation is not available')
+    cfg.peerId = peerId
+    if (!(await auth())) throw Error('VK API authorization unavailable')
+    const repo = await openFixedArchive(peerId)
+    try {
+      const result = await operation(repo, peerId)
+      if (currentPeer() !== peerId) throw Error('VK peer changed during fixed archive read')
+      return result
+    } finally {
+      repo.close()
+    }
+  }
+  async function readFixed(limit = 80): Promise<readonly VkMessage[]> {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500)
+      throw Error('Invalid fixed archive page size')
+    return withFixed(async (repo, peerId) => {
+      const rows = await repo.listMessages(peerId, limit)
+      const messages: VkMessage[] = []
+      for (const row of rows) {
+        const original = await repo.getOriginal(peerId, row.messageId)
+        if (!original) throw Error('Missing immutable VK source snapshot')
+        messages.push(original.raw)
+      }
+      return messages
+    })
+  }
+  async function exportFixed(): Promise<Blob> {
+    return withFixed(async (repo, peerId) => {
+      let cursor: number | undefined
+      let count = 0,
+        digest = 'start'
+      const encode = async (row: Record<string, unknown>, footer = false) => {
+        const line = JSON.stringify(row)
+        if (!footer) digest = await archiveSha256Hex(digest + '\n' + line)
+        return new TextEncoder().encode(line + '\n')
+      }
+      async function* records() {
+        yield await encode({
+          kind: 'header',
+          schema: 'koba-fixed-vk-v1',
+          peerId,
+          completeness: 'unknown',
+          source: 'verified-vk-history',
+        })
+        while (true) {
+          if (currentPeer() !== peerId) throw Error('VK peer changed during export')
+          const page = await repo.listMessages(peerId, 128, cursor)
+          if (!page.length) break
+          for (const message of page) {
+            if (currentPeer() !== peerId) throw Error('VK peer changed during export')
+            const original = await repo.getOriginal(peerId, message.messageId)
+            if (!original) throw Error('Missing immutable VK source')
+            yield await encode({
+              kind: 'message',
+              fixed: message,
+              snapshot: { ...original, raw: await encodeArchiveClone(original.raw) },
+            })
+            count++
+          }
+          cursor = page.at(-1)?.messageId
+          if (page.length < 128) break
+        }
+        yield await encode({ kind: 'footer', count, digest }, true)
+      }
+      return createGzipFromChunks(records())
+    })
+  }
+
   function refresh() {
     const snapshot = status()
     for (const listener of subscribers)
@@ -564,6 +722,9 @@ export function installVkArchive(): void {
     buildViewer,
     // Public readers receive independent JSON-shaped snapshots; callers cannot mutate
     // the in-memory rows that the next v2 checkpoint will persist.
+    captureFixed,
+    readFixed,
+    exportFixed,
     getMessages: () => (archiveReadable() ? structuredClone(rows) : []),
     previewMessages: (options) => {
       if (!archiveReadable()) return { messages: [], matching: 0 }

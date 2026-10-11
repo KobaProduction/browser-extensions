@@ -45,3 +45,9 @@ export type {
 export { assertMatchingScope, assertServiceScope } from './service-contract'
 export type { SettingsBackup } from './settings-backup'
 export { exportSettingsBackup, restoreSettingsBackup, validateSettingsBackup } from './settings-backup'
+export type { TelemetryEntry, TelemetryMetrics } from './telemetry-journal'
+export {
+  DexieTelemetryJournal,
+  isTechnicalTelemetryName,
+  telemetryDatabaseName,
+} from './telemetry-journal'

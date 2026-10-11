@@ -1,10 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { expect, test } from 'bun:test'
-import { parse } from 'vue/compiler-sfc'
+import { compileTemplate, parse } from 'vue/compiler-sfc'
 
 const panel = readFileSync(new URL('../src/features/archive/ui/ChatGptPanel.vue', import.meta.url), 'utf8')
 const reader = readFileSync(new URL('../packages/ui/src/ArchiveBrowser.vue', import.meta.url), 'utf8')
-const maintenance = readFileSync(new URL('../packages/ui/src/ArchiveMaintenanceWidget.vue', import.meta.url), 'utf8')
 const feature = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8')
 
 test('ChatGPT provider panel composes historical archive, capture, export and management views', () => {
@@ -12,25 +11,24 @@ test('ChatGPT provider panel composes historical archive, capture, export and ma
   expect(errors).toHaveLength(0)
   expect(descriptor.scriptSetup).toBeTruthy()
   for (const widget of [
-    'ArchiveBrowser', 'ArchiveExportDialog', 'CaptureSettingsSurface',
-    'ArchiveMaintenanceWidget', 'ControlCenter', 'CopyIdentity',
+    'ArchiveBrowser', 'CaptureSettingsSurface',
+    'ControlCenter', 'CopyIdentity',
   ]) {
     expect(descriptor.template?.content).toContain('<' + widget)
   }
-  expect(descriptor.template?.content).toContain('Управление архивом и миграция')
+  expect(descriptor.template?.content).toContain('Экспорт v3/v4 без изменений')
   expect(descriptor.template?.content).toContain('Собрать историю')
   expect(descriptor.template?.content).toContain('Остановить загрузку')
   expect(panel).toContain('installBoosterShadowStyles(root)')
 })
 
-test('migration remains manual and retained behind an explicit archive action', () => {
-  expect(panel).toContain('archiveMenuOpen=false; maintenanceOpen=true')
-  expect(panel).toContain('v-if="maintenanceOpen && context"')
+test('historical v3 and v4 are only available as explicit read-only exports', () => {
+  expect(panel).toContain("saveLegacyReadOnly('v3')")
+  expect(panel).toContain("saveLegacyReadOnly('v4')")
+  expect(panel).toContain('backupLegacyV3()')
+  expect(panel).toContain('backupLegacyV4()')
+  expect(panel).not.toContain('<ArchiveMaintenanceWidget')
   expect(reader).toContain('@click="openMaintenance"')
-  expect(maintenance).toContain('startArchiveMigration')
-  expect(maintenance).toContain('inspectSkippedOwnershipAll')
-  expect(maintenance).toContain('exportNativeSourceBackup')
-  expect(maintenance).toContain('restoreCanonicalBackup')
 })
 
 test('no extra launcher or owner-scope confusion in provider panel', () => {
@@ -43,14 +41,15 @@ test('no extra launcher or owner-scope confusion in provider panel', () => {
   expect(panel).toContain('ARCHIVE_SOURCE_INCOMPATIBLE_EVENT')
 })
 
-test('hosted export wizard exposes format profiles and native/canonical backup entry without another shell', () => {
-  const exporter = readFileSync(new URL('../packages/ui/src/ArchiveExportDialog.vue', import.meta.url), 'utf8')
-  const { descriptor, errors } = parse(exporter, { filename: 'ArchiveExportDialog.vue' })
+test('Dexie-first export and historical read-only backups use existing shell', () => {
+  const { descriptor, errors } = parse(panel, { filename: 'ChatGptPanel.vue' })
   expect(errors).toHaveLength(0)
-  expect(descriptor.template?.content).toContain('chooseExportPreset')
-  expect(descriptor.template?.content).toContain("emit('open-backups')")
-  expect(panel).toContain('@open-backups="archiveMenuOpen=false; maintenanceOpen=true"')
-  expect(exporter).not.toContain('<BoosterOverlay')
+  expect(descriptor.template?.content).toContain('exportSelectedDexie')
+  expect(panel).toContain('backupLegacyV3()')
+  expect(panel).toContain('backupLegacyV4()')
+  expect(panel).toContain('legacyBackupConfirmed')
+  expect(panel).not.toContain('<ArchiveExportDialog')
+  expect(panel).not.toContain('<ArchiveMaintenanceWidget')
 })
 
 test('merged archive shell retains settings-backup and existing telemetry capabilities', () => {
@@ -62,7 +61,7 @@ test('merged archive shell retains settings-backup and existing telemetry capabi
   expect(panel).toContain(`v-else-if="tab==='settings'"`)
   expect(panel).toContain(':telemetry-control-adapter="context.telemetryControlAdapter"')
   expect(panel).toContain(':persistent-diagnostics-adapter="context.persistentDiagnosticsAdapter"')
-  expect(panel).toContain('@open-backups="archiveMenuOpen=false; maintenanceOpen=true"')
+  expect(panel).toContain('archiveMenuOpen=false; maintenanceOpen=true')
   expect(settingsView).toContain("from './settings-backup'")
   expect(settingsView).toContain('exportChatGptSettings(props.settingsAdapter)')
   expect(settingsView).toContain('restoreChatGptSettings(props.settingsAdapter, settingsBackupFile.value)')
@@ -71,4 +70,20 @@ test('merged archive shell retains settings-backup and existing telemetry capabi
   expect(descriptor.template?.content).toContain('Восстановить настройки')
   expect(settingsView).toContain('props.telemetryControlAdapter.test()')
   expect(panel).not.toContain('<BoosterOverlay')
+})
+
+test('new ChatGPT Dexie Reader/export lives inside the existing shared panel', () => {
+  const { descriptor, errors } = parse(panel, { filename: 'ChatGptPanel.vue' })
+  expect(errors).toHaveLength(0)
+  const result = compileTemplate({
+    source: descriptor.template?.content ?? '',
+    filename: 'ChatGptPanel.vue',
+    id: 'chatgpt-fixed-dexie',
+  })
+  expect(result.errors).toHaveLength(0)
+  expect(panel).toContain('context?.fixedArchive')
+  expect(panel).toContain('fixed.listCurrent()')
+  expect(panel).toContain('fixed.exportCurrent()')
+  expect(panel).toContain('contains_opaque')
+  expect(panel).not.toContain('<ArchiveWorkspace')
 })

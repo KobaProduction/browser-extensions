@@ -52,4 +52,11 @@ export function proxyAvailable(target: DeliveryTarget, granted: ReadonlySet<stri
   return target === 'chromium' && granted.has('proxy')
 }
 
+export type { OtlpDeliveryConfiguration, OtlpRequest, OtlpSender } from './scoped-otlp'
+export {
+  resolveOtlpLogsEndpoint,
+  ScopedOtlpService,
+  scopedOtlpPayload,
+  sendOtlpRequest,
+} from './scoped-otlp'
 export { asTelemetryPort } from './telemetry-port'

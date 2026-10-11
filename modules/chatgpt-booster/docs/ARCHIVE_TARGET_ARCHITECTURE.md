@@ -1,5 +1,14 @@
 # Archive target architecture and delivery contract
 
+## Current owner decision — fixed canonical data, no archive-version migrations (2026-10-11)
+
+**This section supersedes the historical staged migration / v3→v4 conversion plans below.** New ChatGPT records use our own fixed `CanonicalMessageProjection` v1 with `CanonicalContentElement` and immutable native `SourceSnapshot`. The upstream ChatGPT API, HTTP responses and native export formats are NOT our database schema. Upstream changes are handled by explicit source adapters; missing values remain null/unknown and opaque content retains its original source snapshot. Do not guess missing ancestry, role, media or completeness.
+
+The new independent `FixedCanonicalDexieRepository` uses a v1 Dexie schema with projects, conversations, messages, content elements and source snapshots, verified owner + product/channel/installation fences, indexed bounded reading and atomic append of one fully verified observation. Revisions and duplicate messages are rejected until an explicit non-destructive revision policy is accepted; **no generation-based migration, legacy database scanning or automatic conversion is triggered by it**.
+
+Historical stable `0.8.92` can be extracted through `exportLegacy092NativeV3` on explicit user action in the original browser storage context. It exports source v3 records without changing the database, using lossless structured-clone encoding and a gzip integrity manifest. Real user data must be backed up before any one-time, explicitly validated import. The old migration machinery elsewhere in this tree is **legacy source/history, not a required active workflow**. It must not run merely because the fixed Dexie adapter exists. Archive v3/v4 source stores are retained untouched for manual recovery. Source tests do not prove an installed browser/profile or owner acceptance.
+
+
 Status: **active architecture / source implementation integrated; live acceptance pending**. The DEV build
 currently writes source-native messages into isolated v4 IndexedDB. This is
 not yet the stable canonical archive described below. User-approved decision

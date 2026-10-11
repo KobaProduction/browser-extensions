@@ -1,5 +1,10 @@
 # VK Archive v2 — preserved product contract and enhancement acceptance
 
+## New archive direction; previous v2 compatibility requirements remain historical (2026-10-11)
+
+The owner reports no personally used VK archive and now directs a **fixed Dexie-backed VK source model without any archive-version migration pipeline**. The new `FixedVkDexieRepository` introduces a v1 source projection and immutable original VK-message snapshot behind the existing provider boundary. The existing file-backed v2 engine is still present until explicitly replaced by a complete validated capture/export pipeline; it must not be reported as removed. Earlier instructions below to permanently retain v2 and build migration compatibility are **superseded for future implementation**. Do not delete old files or release a destructive conversion as a shortcut. Version `2.3.10` remains unchanged in the active distribution until an independently accepted release decision.
+
+
 This is the authoritative VK product contract after the owner's 2026-10-11
 correction. **The implemented VK Archive v2 is not replaced by the unmerged
 Archive 3 proposal.** The product base remains **2.3.10**, and DEV build IDs
@@ -90,3 +95,20 @@ may change without changing product semver.
 
 Do not interpret PR #10 synthetic tests as v2 compatibility evidence; that
 PR removed v2. Never bump VK above **2.3.10** without a new owner decision.
+
+## Explicit fixed Dexie capture/read/export path (2026-10-11)
+
+The VK provider now exposes `captureFixed`, `readFixed` and `exportFixed`
+from the existing single Control Center, independent of selecting a v2 folder.
+The new path verifies the current VK peer and user through the existing
+authenticated VK API, persists bounded pages into the new owner-scoped v1
+Dexie repository, retains source snapshots, and offers an explicit gzip JSONL
+export. Changing the VK peer or receiving conflicting source revisions blocks
+the operation. Export is marked completeness unknown and preserves original
+fields with structured-clone encoding.
+
+**Transitional boundary:** the pre-existing file-backed Archive v2 capture,
+media output and viewer remain available and unchanged. No v2 data is
+auto-imported or deleted. The new native Dexie path is supported by synthetic
+source integration tests, but has not yet passed real authenticated VK browser
+acceptance, File System Access or product cutover. VK base remains 2.3.10.

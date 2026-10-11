@@ -34,23 +34,8 @@ import { ArchiveSourceWriteRegistry, archiveWriteScope } from './archive-v4-writ
 import { normalizeConversationProjectId } from './conversation-records'
 import type { ConversationStateStore } from './conversation-state'
 
-function retainRawSource(raw: Readonly<Record<string, unknown>>, rule: CaptureRule): boolean {
-  const author = asRecord(raw.author)
-  const content = asRecord(raw.content)
-  const metadata = asRecord(raw.metadata)
-  const kind = archiveRecordKind({
-    raw,
-    role: author?.role ?? null,
-    recipient: raw.recipient ?? null,
-    channel: raw.channel ?? null,
-    contentType: content?.content_type ?? null,
-    messageType: metadata?.message_type ?? null,
-  } as Parameters<typeof archiveRecordKind>[0])
-  if (kind === 'user' || kind === 'answer') return true
-  if (kind === 'reasoning') return rule.reasoning
-  if (kind === 'tool_call' || kind === 'tool_result') return rule.tools
-  return rule.internal
-}
+import { retainRawSource } from './archive-record-retention'
+export { retainRawSource } from './archive-record-retention'
 
 interface CapturedPageWork {
   page: ConversationArchiveEventDetail

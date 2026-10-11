@@ -9,8 +9,8 @@ export const vkBoosterFeature: Feature = {
   targets: ['userscript', 'chromium'],
   requiredCapabilities: ['page-dom', 'origin-storage', 'local-files'],
   match: (url) => /^(vk\.ru|vk\.com)$/.test(url.hostname) && url.pathname.startsWith('/im'),
-  start() {
-    installVkArchive()
+  start(context) {
+    installVkArchive(context.target)
   },
   open() {
     archiveApi()?.show()
