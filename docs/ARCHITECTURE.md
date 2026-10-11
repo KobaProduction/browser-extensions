@@ -139,10 +139,9 @@ The VK archive engine is wrapped as a `Feature` and used by both Tampermonkey an
 VK Booster 2.3.0 mounts a read-only VK ArchivePreview beneath the existing
 shared ArchiveManager. It uses the provider-neutral ArchiveTranscript layout
 with VK-specific text, sender, timestamp and attachment-count slots. The
-view reads bounded 80-message pages, starting from the latest saved records,
-and can page back through the entire locally archived conversation (including
-filtered search matches) using an offset-based VK projection API. It does not
-load remote history, media or
+view requests only the latest 80 records initially, expands in 80-record
+increments up to 240, and searches existing in-memory archived text through
+a bounded VK projection API. It does not load remote history, media or
 IndexedDB and does not alter the v2 folder/file format. For the entire
 archive and saved media, index.html remains authoritative.
 
@@ -309,15 +308,26 @@ ChatGPT v3/v4 physical storage schemas remain unchanged. These services are
 ChatGPT-owned; the provider-neutral paging/transaction/renderer primitives
 are shared under `packages/`.
 
-## Revised VK first-release checkpoint (2026-10-11; source branch)
+## New Dexie runtime adapters (source checkpoint 2026-10-11)
 
-The earlier VK 2.3.x/v2 historical notes above describe previous source
-iterations, not the newly accepted release contract. The VK development
-branch now produces folder-style Archive **schema 1** and freezes VK source
-semver at **1.0.0** for pre-first-PROD development, retaining the existing
-history capture, File System Access sink, media receipts, Control Center and
-offline HTML viewer. A historical schema-2 or state/pages folder is rejected
-without writes; no migration path or deployed downgrade is claimed.
-Shared Dexie telemetry and OTLP (PR #32) remain in a separate, unmerged
-source branch. They are neither VK's canonical IndexedDB archive nor a
-working runtime collector until provider opt-in/transport wiring is accepted.
+ChatGPT's single Control Center composes a fixed canonical v1 capture
+subscriber, bounded Dexie read and explicit source-preserving export. The
+existing v4 archive path remains mounted for historical continuity; a
+single-writer runtime cutover is not yet accepted. VK now provides a separate
+explicit `captureFixed/readFixed/exportFixed` action through its authenticated
+peer-scoped API in the same panel; the former v2 folder engine is retained
+and not migrated. Both products enforce product/channel/target and owner
+identity; their own schemas do not follow the ChatGPT/VK API response format.
+OTLP delivery remains deferred and opt-in under Issue #30.
+
+## Dexie archive-only runtime switch (2026-10-11)
+
+ChatGPT Booster source composition no longer instantiates ArchiveV4Store,
+ArchiveV4CaptureModule, ArchiveV4Reader or the v4 UI adapter. Its only
+application archive writer/Reader is FixedChatGptCapture backed by the
+owner-scoped Dexie v1 repository. History-loader session progress uses this
+capture service, with no active v4 commit or warmup. Old v4 source code and
+physical browser databases remain intact solely for the explicit read-only
+backup utility alongside the stable 0.8.92 v3 exporter. Future provider
+source changes are normalized to fixed v1 data; no automatic migration.
+VK remains on its separate development branch; OTLP network remains deferred.

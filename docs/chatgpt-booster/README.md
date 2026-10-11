@@ -1,5 +1,10 @@
 # ChatGPT Booster
 
+## Fixed canonical model and 0.8.92 recovery direction (2026-10-11)
+
+The current implementation direction is fixed `CanonicalMessageProjection` v1 and `CanonicalContentElement` plus immutable original source evidence in a separate Dexie archive repository. ChatGPT upstream formats are handled by adapter code, **not by changing the stored schema or chaining archive generation migrations**. The historical stable `0.8.92` v3 database must first be read-only exported with its original unknown fields, primary keys and binary values. `0.8.98` remains an experimental source reference, not a release. Existing manual migration UI/services remain old source evidence and are not authorized automatic work. New code and tests do not prove real browser extraction or import. See Issue #11 and the provider archive target document.
+
+
 **Owner:** `modules/chatgpt-booster/`. The first-party module is the
 canonical product source for userscript/MV3 packaging. Historical standalone
 repositories, PRs and `integrations/chatgpt-booster/` are reference evidence,
@@ -7,7 +12,7 @@ not a second live product.
 
 ## Documentation hierarchy
 
-- [Migration and installed-product acceptance](MIGRATION.md) — source
+- [Historical relocation and installed-product acceptance](MIGRATION.md) — source
   consolidation, owner verification and acceptance gates.
 - [Migration history](MIGRATION_HISTORY.md) — older source checkpoints and
   reconciliation background.
@@ -84,7 +89,7 @@ separate validated portable settings backup/restore; it does not replace
 archive export or introduce another launcher. The pre-existing ChatGPT
 telemetry settings/diagnostic adapters remain owned by the ChatGPT provider;
 the common optional scoped telemetry port does not replace or implicitly
-enable its transport. All-in-one is 0.5.7, VK remains 2.3.10. None of these
+enable its transport. All-in-one is 0.5.12, VK remains 2.3.10. None of these
 source changes promotes stable 0.8.92 or proves installed-browser acceptance.
 
 ## Restoring user-facing archive controls
@@ -112,3 +117,94 @@ The floating window/minimize workflow and installed-browser export parity
 remain under [functional acceptance issue #16](https://github.com/KobaProduction/browser-extensions/issues/16).
 Data/owner reconciliation remains under
 [archive acceptance issue #11](https://github.com/KobaProduction/browser-extensions/issues/11).
+
+## Shared Dexie telemetry availability
+
+Shared Dexie/OTLP adapters are now available for a future single telemetry
+runtime. They are local-only/default-off until separately enabled and wired
+by the product composition root. ChatGPT's existing provider-specific OTLP
+client has **not** been silently replaced: its current transport and opt-in
+remain independent pending validated migration into the durable journal.
+ChatGPT v3/v4 native data and canonical archive are untouched. See
+`docs/shared/TELEMETRY.md` and Issue #30.
+
+## Explicit standalone extraction of historical 0.8.92
+
+The source tool `scripts/tools/chatgpt-092-readonly-extract.ts` bundles to a
+standalone browser script. Merely loading the script registers
+`KobaLegacy092Backup.exportReadOnly`; it does not read anything until the
+owner explicitly invokes that method in the **same browser storage origin**
+as the installed historical extension. The resulting file is named
+`chatgpt-booster-0.8.92-v3-original-readonly.jsonl.gz`. Its header records
+original schema version, table definitions and an explicit non-atomic
+read-only snapshot caveat; its footer contains counts and a chained digest.
+The exporter preserves original primary keys, extra unknown fields and
+structured-clone/binary values. It refuses a missing database, an unexpected
+schema version, unsupported values and observable concurrent row-count changes.
+Disable capture in all other old-extension tabs before extracting: count
+verification does not make concurrent editing fully atomic. Browser origins
+are isolated; ordinary `chatgpt.com` DevTools cannot read an MV3 extension's
+separate `chrome-extension://` IndexedDB. **Do not** reset a browser profile,
+import automatically, or upload private archive data to repository issues.
+The function and bundled helper have synthetic tests; real 0.8.92 profile
+access and user-owned file integrity are still unaccepted under Issue #11.
+
+## Fixed Dexie capture/read/export wiring checkpoint (2026-10-11)
+
+The provider runtime now registers `FixedChatGptCapture` alongside the
+historical v4 runtime and exposes a dedicated fixed-Dexie panel in the same
+ChatGPT Control Center. The new path receives **new, identity-verified native
+page observations only**, respects the same current automatic/manual capture
+rules, records canonical v1 messages with preserved original source snapshots,
+and lets the owner read and export their current conversation on explicit action.
+Export uses bounded indexed cursor pages with a gzip JSONL envelope, unknown
+completeness, chained checksum and lossless structured-clone encoding.
+No old v3/v4 source scans or automatic archive migration occur in this path.
+
+**Transitional boundary:** the historical v4 writer and Reader remain active
+for existing users. This change introduces a verified live Dexie path, but
+does not declare a complete single-writer cutover, editing/revision support or
+installed-browser acceptance. Conflicting source revisions fail closed.
+PROD release and old 0.8.92 profile recovery require separate validation.
+
+## Active Dexie-only archive runtime; historical v4 is export-only (2026-10-11)
+
+The owner has retired the native v4 **runtime**. The page runtime now starts
+only the fixed canonical Dexie capture, source gate, account context, collection
+session, History Loader, single shared UI and the provider-neutral observer.
+It **does not create, warm up, write to, fall back to, or run a Reader against**
+the historical v4 IndexedDB. The active ArchiveBrowser uses the fixed Dexie
+adapter and bounded source-ID windows. Source IDs are stable, but not proof of
+native timeline or complete pagination; missing history remains unknown.
+The existing v4 schema/source code is preserved as historical reference only.
+
+The prior v4 database is retained unchanged for an explicit, read-only backup
+via the ChatGPT Control Center's **Historical backups** section. The export
+checks for a pre-existing database, verifies its physical version and original
+stores, records object-store indexes, primary keys and all structured-clone
+values, and emits checksum-verified gzip JSONL. It aborts rather than creating,
+upgrading or deleting the database. The same explicit interface permits a v3
+0.8.92 source export if that historical database is present in this browser
+storage origin. Files may contain multiple original local owners; a checkbox
+asks the user to confirm this before exporting. Pause other historical writers
+while exporting; pages are read-only but cannot guarantee a cross-store atomic
+snapshot across concurrent writes.
+
+This is SOURCE/TEST/BUILD behavior. Browser-installed backup usability and
+real original-profile data recovery remain unaccepted under Issue #11. No
+legacy-to-Dexie automatic import/migration exists. Existing v4 code/tests that
+are no longer reachable from the composition root are historical material, not
+a parallel live engine.
+
+
+## Platform integration workflow (2026-10-11)
+
+Platform and provider work is integrated through one long-lived ChatGPT
+workstream PR. The prior Dexie/archive PR chain is consolidated into that
+branch instead of continued stacked feature PRs. The shared Shell's floating
+workspace is a platform behavior; ChatGPT supplies only its feature's wide
+presentation. VK's separate workstream may incorporate shared contracts only
+after validating its own owner/peer/archive invariants. Main integration and
+automatic DEV distribution happen only after exact-head CI and independent
+review of the consolidated changes. See
+`../shared/PROJECT_RULES.md`.
