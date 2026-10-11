@@ -47,7 +47,9 @@ may change without changing product semver.
   authorized downloader when corrupted. Old v2 receipts without hashes
   retain legacy size-only compatibility and remain **unverified**; a future
   explicit media audit must distinguish this status. Redownload only with
-  user permission and retained provenance.
+  user permission and retained provenance. Filesystem read errors, unusable
+  checksum receipts and unavailable hash verification fail closed, retaining
+  the prior saved media record instead of speculatively marking it failed.
 
 ## Backup, restore and integration
 - The VK capture-options JSON profile is intentionally limited to current

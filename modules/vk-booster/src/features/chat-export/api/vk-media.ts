@@ -132,20 +132,22 @@ export async function download(
         // The downloader never writes more than 64 MiB. Bound the read before
         // computing a digest, so corrupted metadata cannot force an unbounded load.
         if (file.size > 64 * 1048576) throw Error('Stored media exceeds verification limit')
-        if (/^[0-9a-f]{64}$/.test(prev.sha256)) {
-          const buffer = await file.arrayBuffer()
-          verifyContext()
-          const hash = Array.from(
-            new Uint8Array(await crypto.subtle.digest('SHA-256', buffer)),
-            (byte) => byte.toString(16).padStart(2, '0'),
-          ).join('')
-          verifyContext()
-          if (hash === prev.sha256) return 'existing'
-        }
+        if (!/^[0-9a-f]{64}$/.test(prev.sha256))
+          throw Error('Stored media receipt contains an invalid SHA-256')
+        const buffer = await file.arrayBuffer()
+        verifyContext()
+        const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', buffer)), (byte) =>
+          byte.toString(16).padStart(2, '0'),
+        ).join('')
+        verifyContext()
+        if (hash === prev.sha256) return 'existing'
       }
-    } catch {
+    } catch (error) {
       verifyContext()
-      /* stale file: redownload */
+      // Only a genuinely missing file is safely eligible for retry here.
+      // Permission, read and integrity-check failures must not overwrite a
+      // previously saved receipt with a speculative download failure.
+      if (!(error instanceof Error) || error.name !== 'NotFoundError') throw error
     }
   }
   const result = {

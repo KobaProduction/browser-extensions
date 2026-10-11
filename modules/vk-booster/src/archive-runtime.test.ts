@@ -9,8 +9,14 @@ import type {
 
 class MockFile {
   bytes: Uint8Array = new Uint8Array(0)
+  failRead = false
   readonly kind = 'file'
   async getFile() {
+    if (this.failRead) {
+      const error = new Error('Simulated filesystem read failure')
+      error.name = 'NotReadableError'
+      throw error
+    }
     const bytes = this.bytes
     return {
       size: bytes.length,
@@ -321,6 +327,30 @@ test('same-size media tampering is SHA-256 verified and repaired on explicit rer
   await completed(a.run({ mode: 'recent', limit: 12, pageSize: 20, media: true, delay: 300 }))
   expect(mediaCalls).toBe(again) // unmodified media retained without network redownload
 })
+test('media read errors preserve the saved receipt without speculative repair', async () => {
+  a = reload()
+  await a.useFolder(folderHandle(folder))
+  const media = folder.dirs.get('media')?.dirs.get(String(docMessage.id))?.files.get(originalName)
+  if (!media) throw Error('Expected a saved VK document')
+  const before = (await read('metadata.json')) as VkArchiveMeta
+  const item = Object.entries(before.files).find(([, value]) => value.name === originalName)
+  if (!item) throw Error('Expected an existing v2 media receipt')
+  const networkBefore = mediaCalls
+  media.failRead = true
+  try {
+    await expect(
+      a.run({ mode: 'recent', limit: 12, pageSize: 20, media: true, delay: 300 }),
+    ).rejects.toThrow('Simulated filesystem read failure')
+    expect(mediaCalls).toBe(networkBefore)
+    const after = (await read('metadata.json')) as VkArchiveMeta
+    expect(after.files[item[0]]).toEqual(before.files[item[0]])
+    expect(after.files[item[0]]?.status).toBe('saved')
+  } finally {
+    media.failRead = false
+    await completed(a.resume())
+  }
+})
+
 test('reconnect folder after simulated reload reads only two files', async () => {
   const old = folder
   a = reload()
