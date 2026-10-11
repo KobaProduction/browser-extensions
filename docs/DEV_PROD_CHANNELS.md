@@ -9,7 +9,9 @@ promotion from inventing source history or causing endless build-on-push loops.
 - Every successful, trusted `main` push CI triggers `.github/workflows/dev.yml`.
   The source diff from the first parent determines which products have changed.
   Each changed product is built, validated and published as a GitHub
-  **prerelease** with immutable tag `<product>/v<base>-dev.<run>`.
+  **prerelease** with immutable tag `dev-<product>/v<major>.<minor>.<counter>`.
+  Counters advance independently per published product, including across
+  source patch changes. Historical suffix-form DEV tags seed each counter.
   Its `dev/userscripts/<product>.user.js` and
   `dev/extensions/<product>-extension.zip` are advanced. Untouched products
   keep their existing channel files and version.
@@ -26,9 +28,13 @@ promotion from inventing source history or causing endless build-on-push loops.
   changes affect all real consumers. Docs-only changes release nothing.
 - Base product semver remains independent, except that VK is explicitly
   frozen at 2.3.10 during ongoing v2 work. Only the build's DEV metadata
-  receives `-dev.<run>` (Chromium `version` uses a legal fourth numeric
-  component). A new stable `X.Y.Z` requires the product's own version bump.
-  DEV run counters above Chromium's fourth-component limit fail closed.
+  receives an independent, increasing **third** numeric component:
+  `X.Y.<counter>`. A `dev-` prefix appears in release titles, GitHub tags
+  and the Chromium display name. No fourth component is used. The source/PROD
+  version remains `X.Y.Z`. Tampermonkey `@version` and MV3 `version` stay
+  numeric so update comparison works; MV3 `version_name` shows
+  `dev-X.Y.<counter>`. Counter overflow fails closed. A new stable `X.Y.Z`
+  requires a separate authorized product version bump.
 - Channel publication is serialized; neither workflow is authorized to
   commit to the reserved source branch.
 
@@ -52,6 +58,9 @@ promotion from inventing source history or causing endless build-on-push loops.
   are physically separate. PROD MV3 does **not** change legacy extension
   identity: keep the same unpacked installation directory for upgrades.
   No private signing keys are stored in source.
+- The installed Tampermonkey DEV `@name` and `@namespace` are preserved
+  for in-place upgrades, avoiding duplicate scripts. The `dev-` prefix applies
+  to the release title/tag and Chromium display name, not those identities.
 - Tampermonkey DEV script names/namespaces and updater URLs differ from PROD;
   existing PROD names/namespaces remain stable. Chrome users should not run
   a Tampermonkey and MV3 copy of the **same product and channel** together.

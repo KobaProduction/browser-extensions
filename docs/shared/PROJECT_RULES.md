@@ -67,10 +67,12 @@ Binding security/storage rules:
 - A provider-only change affects its consumer and the aggregate, not an
   unrelated standalone provider. Shared runtime changes affect actual
   dependents. Build-only changes do not imply a product version increase.
-- **VK Booster remains at 2.3.10 during development**, by the latest explicit
-  product-owner decision. No automatic VK patch/minor/major bump; DEV may
-  advance `2.3.10-dev.N`. Existing VK v2 archives and output semantics must
-  remain readable and writable. See [VK product rules](../vk-booster/README.md).
+- **VK Booster stays at 2.3.10** while retaining the v2 archive compatibility
+  contract. No automatic VK source patch/minor/major bump. DEV independently
+  increments the third numeric component (`dev-2.3.37`, `dev-2.3.38`)
+  without changing the stable base. Existing VK v2 archives and output
+  semantics remain readable and writable. See
+  [VK product rules](../vk-booster/README.md).
 - Historical ChatGPT PROD v3/v4 data and VK v2 archives must not be silently
   destroyed, converted or reassigned.
 - No private message data, credentials, access tokens, cookies or attachments

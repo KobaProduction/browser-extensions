@@ -1,7 +1,15 @@
 import { spawn } from 'node:child_process'
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { channelVersion, chromeVersion, type ReleaseChannel, userscriptChannelUrl } from './channels'
+import {
+  channelDisplayName,
+  channelVersion,
+  chromeVersion,
+  devDisplayVersion,
+  type ReleaseChannel,
+  userscriptChannelName,
+  userscriptChannelUrl,
+} from './channels'
 import { devExtensionPublicKeys } from './extension-keys'
 
 type Bundle = (
@@ -37,7 +45,7 @@ export async function buildChatGptModule(
     )
     const header = [
       '// ==UserScript==',
-      '// @name         ChatGPT Booster' + (channel === 'dev' ? ' [DEV]' : ''),
+      '// @name         ' + userscriptChannelName('ChatGPT Booster', channel),
       '// @namespace    https://github.com/KobaProduction/browser-extensions' +
         (channel === 'dev' ? '/dev/chatgpt-booster' : ''),
       '// @version      ' + channelVersion(version, channel, run),
@@ -105,9 +113,9 @@ export async function buildChatGptModule(
     await writeFile(join(ext, 'popup.html'), html)
     const manifest = {
       manifest_version: 3,
-      name: 'ChatGPT Booster' + (channel === 'dev' ? ' [DEV]' : ''),
+      name: channelDisplayName('ChatGPT Booster', channel),
       version: chromeVersion(version, channel, run),
-      version_name: channelVersion(version, channel, run),
+      version_name: devDisplayVersion(version, channel, run),
       ...(channel === 'dev' ? { key: devExtensionPublicKeys[id] } : {}),
       description: 'ChatGPT archive with shared browser tools shell',
       permissions: ['storage', 'scripting'],

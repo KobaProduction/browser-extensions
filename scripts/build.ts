@@ -9,10 +9,13 @@ import { buildChatGptModule } from './build-chatgpt'
 import { manifest } from './catalog'
 import { changedModules } from './changed'
 import {
+  channelDisplayName,
   channelIdentity,
   channelVersion,
   chromeVersion,
+  devDisplayVersion,
   releaseChannel,
+  userscriptChannelName,
   userscriptChannelUrl,
 } from './channels'
 import { devExtensionPublicKeys } from './extension-keys'
@@ -181,7 +184,7 @@ for (const id of ids) {
     const url = userscriptChannelUrl(id, channel)
     const header = [
       '// ==UserScript==',
-      '// @name         ' + info.name + (channel === 'dev' ? ' [DEV]' : ''),
+      '// @name         ' + userscriptChannelName(info.name, channel),
       '// @namespace    https://github.com/KobaProduction/browser-extensions' +
         (channel === 'dev' ? '/dev/' + id : ''),
       '// @version      ' + channelVersion(info.version, channel, run),
@@ -233,9 +236,9 @@ for (const id of ids) {
     await writeFile(join(ext, 'popup.js'), await popupOutput.text())
     const base = JSON.parse(await readFile('apps/extension/src/manifest.json', 'utf8'))
     base.version = chromeVersion(info.version, channel, run)
-    base.version_name = channelVersion(info.version, channel, run)
+    base.version_name = devDisplayVersion(info.version, channel, run)
     if (channel === 'dev') base.key = devExtensionPublicKeys[id]
-    base.name = info.name + (channel === 'dev' ? ' [DEV]' : '')
+    base.name = channelDisplayName(info.name, channel)
     await writeFile(join(ext, 'manifest.json'), JSON.stringify(base, null, 2) + '\n')
     await copyFile(join(root, 'apps/extension/src/popup.html'), join(ext, 'popup.html'))
     if (id === 'all-in-one') {

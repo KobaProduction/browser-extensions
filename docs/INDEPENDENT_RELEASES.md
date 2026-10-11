@@ -32,7 +32,10 @@ compiled for different distribution targets.
 
 Run `bun scripts/bump-versions.ts <changed implementation path>...` to plan
 and write product manifest **patch** bumps for affected products **except frozen VK 2.3.10**. VK's
-DEV artifact build ID advances independently of its manifest semver.
+DEV artifacts use an independent third numeric component (`dev-2.3.37`,
+then `dev-2.3.38`) while their manifest source semver remains unchanged.
+New DEV tags/titles begin with `dev-`; each product derives its counter
+from historical and new prerelease tags.
 Other affected private package metadata and Bun lockfile follow their owning
 product's version. Larger semver updates should be
 chosen deliberately; the first ChatGPT version-2 release is `2.0.1` and the

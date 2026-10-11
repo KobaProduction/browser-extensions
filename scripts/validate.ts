@@ -1,6 +1,14 @@
 import { manifest } from './catalog'
 import { changedModules } from './changed'
-import { channelVersion, chromeVersion, releaseChannel, userscriptChannelUrl } from './channels'
+import {
+  channelDisplayName,
+  channelVersion,
+  chromeVersion,
+  devDisplayVersion,
+  releaseChannel,
+  userscriptChannelName,
+  userscriptChannelUrl,
+} from './channels'
 import { devExtensionPublicKeys } from './extension-keys'
 
 const ids = ['vk-booster', 'chatgpt-booster', 'proxy-switcher', 'all-in-one'] as const
@@ -46,6 +54,7 @@ if (process.argv.includes('--built'))
     if (
       !user.startsWith('// ==UserScript==') ||
       !user.includes(`// @version      ${channelVersion(m.version, channel, run)}`) ||
+      !user.includes(`// @name         ${userscriptChannelName(m.name, channel)}`) ||
       !user.includes('GM_registerMenuCommand')
     )
       throw Error('Invalid userscript: ' + id)
@@ -69,7 +78,8 @@ if (process.argv.includes('--built'))
     if (
       chrome.manifest_version !== 3 ||
       chrome.version !== chromeVersion(m.version, channel, run) ||
-      chrome.version_name !== channelVersion(m.version, channel, run) ||
+      chrome.version_name !== devDisplayVersion(m.version, channel, run) ||
+      chrome.name !== channelDisplayName(m.name, channel) ||
       (channel === 'dev' && chrome.key !== devExtensionPublicKeys[id]) ||
       (channel === 'prod' && Boolean(chrome.key)) ||
       chrome.permissions.includes('proxy')
