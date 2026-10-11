@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT Booster [DEV]
 // @namespace    https://github.com/KobaProduction/browser-extensions/dev/chatgpt-booster
-// @version      2.0.6-dev.34
+// @version      2.0.7-dev.36
 // @description  ChatGPT Booster — archive and browser tools
 // @updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/chatgpt-booster.user.js
 // @downloadURL  https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/chatgpt-booster.user.js
@@ -846,8 +846,8 @@
     }
     return Object.fromEntries(entries);
   }
-  const BOOSTER_BASE_VERSION = "2.0.6";
-  const injectedVersion = "2.0.6".trim();
+  const BOOSTER_BASE_VERSION = "2.0.7";
+  const injectedVersion = "2.0.7".trim();
   const BOOSTER_BUILD_VERSION = injectedVersion || BOOSTER_BASE_VERSION;
   const BOOSTER_VERSION = BOOSTER_BUILD_VERSION;
   // @__NO_SIDE_EFFECTS__
@@ -2786,11 +2786,11 @@
   }
   function formatProps(props) {
     const res = [];
-    const keys = Object.keys(props);
-    keys.slice(0, 3).forEach((key2) => {
+    const keys2 = Object.keys(props);
+    keys2.slice(0, 3).forEach((key2) => {
       res.push(...formatProp(key2, props[key2]));
     });
-    if (keys.length > 3) {
+    if (keys2.length > 3) {
       res.push(` ...`);
     }
     return res;
@@ -3555,10 +3555,10 @@
           (item, i) => renderItem(item, i, void 0, cached)
         );
       } else {
-        const keys = Object.keys(source);
-        ret = new Array(keys.length);
-        for (let i = 0, l = keys.length; i < l; i++) {
-          const key2 = keys[i];
+        const keys2 = Object.keys(source);
+        ret = new Array(keys2.length);
+        for (let i = 0, l = keys2.length; i < l; i++) {
+          const key2 = keys2[i];
           ret[i] = renderItem(source[key2], key2, i, cached);
         }
       }
@@ -4396,11 +4396,11 @@
     }
     let root = result;
     if (fallthroughAttrs && inheritAttrs !== false) {
-      const keys = Object.keys(fallthroughAttrs);
+      const keys2 = Object.keys(fallthroughAttrs);
       const { shapeFlag } = root;
-      if (keys.length) {
+      if (keys2.length) {
         if (shapeFlag & (1 | 6)) {
-          if (propsOptions && keys.some(isModelListener)) {
+          if (propsOptions && keys2.some(isModelListener)) {
             fallthroughAttrs = filterModelListeners(
               fallthroughAttrs,
               propsOptions
@@ -4735,9 +4735,9 @@
     if (!isFunction(comp)) {
       const extendProps = (raw2) => {
         hasExtends = true;
-        const [props, keys] = normalizePropsOptions(raw2, appContext, true);
+        const [props, keys2] = normalizePropsOptions(raw2, appContext, true);
         extend(normalized, props);
-        if (keys) needCastKeys.push(...keys);
+        if (keys2) needCastKeys.push(...keys2);
       };
       if (!asMixin && appContext.mixins.length) {
         appContext.mixins.forEach(extendProps);
@@ -19481,9 +19481,9 @@
     key: 14,
     class: "booster-note"
   };
-  const _hoisted_97 = ["href", "aria-disabled", "download"];
-  const _hoisted_98 = ["disabled"];
-  const _hoisted_99 = {
+  const _hoisted_97$1 = ["href", "aria-disabled", "download"];
+  const _hoisted_98$1 = ["disabled"];
+  const _hoisted_99$1 = {
     key: 2,
     class: "booster-note"
   };
@@ -21476,7 +21476,7 @@
                 1
                 /* TEXT */
               )
-            ], 8, _hoisted_97)) : !recoveredAvailable.value || !prepareBlocked.value ? (openBlock(), createElementBlock("button", {
+            ], 8, _hoisted_97$1)) : !recoveredAvailable.value || !prepareBlocked.value ? (openBlock(), createElementBlock("button", {
               key: 16,
               class: "booster-action-primary",
               type: "button",
@@ -21489,7 +21489,7 @@
                 1
                 /* TEXT */
               )
-            ], 8, _hoisted_98)) : createCommentVNode("v-if", true),
+            ], 8, _hoisted_98$1)) : createCommentVNode("v-if", true),
             busy.value ? (openBlock(), createElementBlock(
               "button",
               {
@@ -21504,7 +21504,7 @@
             )) : createCommentVNode("v-if", true)
           ])) : (openBlock(), createElementBlock(
             "p",
-            _hoisted_99,
+            _hoisted_99$1,
             toDisplayString(t(error.value ? "common.saveError" : "control.loading")),
             1
             /* TEXT */
@@ -21956,6 +21956,337 @@
       };
     }
   });
+  function aborted() {
+    return new DOMException("IndexedDB scan cancelled", "AbortError");
+  }
+  function readIndexedPage(options) {
+    if (!Number.isSafeInteger(options.pageSize) || options.pageSize < 1 || options.pageSize > 1024)
+      throw new RangeError("IndexedDB pageSize must be an integer from 1 to 1024");
+    if (options.index === void 0 !== (options.indexKey === void 0))
+      throw new Error("IndexedDB scan requires index and indexKey together");
+    if (options.signal?.aborted)
+      return Promise.reject(aborted());
+    const compare = options.compareKeys ?? ((a, b) => indexedDB.cmp(a, b));
+    const tx = options.db.transaction(options.store, "readonly");
+    return new Promise((resolve2, reject) => {
+      const records = [];
+      let lastPrimaryKey = null;
+      let exhausted = false;
+      let finished = false;
+      let jumped = false;
+      const cleanup = () => options.signal?.removeEventListener("abort", onAbort);
+      const rejectOnce = (reason) => {
+        if (finished)
+          return;
+        finished = true;
+        cleanup();
+        reject(reason);
+      };
+      const fail = (reason) => {
+        if (finished)
+          return;
+        rejectOnce(reason);
+        try {
+          tx.abort();
+        } catch {
+        }
+      };
+      const onAbort = () => fail(aborted());
+      tx.addEventListener("complete", () => {
+        if (finished)
+          return;
+        finished = true;
+        cleanup();
+        resolve2({ records, lastPrimaryKey, exhausted });
+      }, { once: true });
+      tx.addEventListener("abort", () => rejectOnce(options.signal?.aborted ? aborted() : tx.error ?? new Error("IndexedDB indexed page aborted")), { once: true });
+      tx.addEventListener("error", () => rejectOnce(tx.error ?? new Error("IndexedDB indexed page failed")), { once: true });
+      options.signal?.addEventListener("abort", onAbort, { once: true });
+      if (options.signal?.aborted) {
+        onAbort();
+        return;
+      }
+      try {
+        const store = tx.objectStore(options.store);
+        const request = options.index !== void 0 && options.indexKey !== void 0 ? store.index(options.index).openCursor(IDBKeyRange.only(options.indexKey)) : store.openCursor();
+        request.onerror = () => fail(request.error ?? new Error("IndexedDB cursor failed"));
+        request.onsuccess = () => {
+          if (finished)
+            return;
+          const cursor = request.result;
+          if (!cursor) {
+            exhausted = true;
+            return;
+          }
+          try {
+            const after = options.afterPrimaryKey;
+            if (after != null && !jumped) {
+              jumped = true;
+              if (compare(cursor.primaryKey, after) < 0) {
+                if (options.index !== void 0 && options.indexKey !== void 0)
+                  cursor.continuePrimaryKey(options.indexKey, after);
+                else
+                  cursor.continue(after);
+                return;
+              }
+            }
+            if (after != null && compare(cursor.primaryKey, after) <= 0) {
+              cursor.continue();
+              return;
+            }
+            records.push(options.decode(cursor.value));
+            lastPrimaryKey = cursor.primaryKey;
+            if (records.length < options.pageSize)
+              cursor.continue();
+          } catch (reason) {
+            fail(reason);
+          }
+        };
+      } catch (reason) {
+        fail(reason);
+      }
+    });
+  }
+  function readStorePage(options) {
+    return readIndexedPage(options);
+  }
+  function requestResult(request) {
+    return new Promise((resolve2, reject) => {
+      request.onsuccess = () => resolve2(request.result);
+      request.onerror = () => reject(request.error ?? new Error("IndexedDB request failed"));
+    });
+  }
+  function transactionComplete(tx) {
+    const done = new Promise((resolve2, reject) => {
+      tx.addEventListener("complete", () => resolve2(), { once: true });
+      tx.addEventListener("error", () => reject(tx.error ?? new Error("IndexedDB transaction failed")), {
+        once: true
+      });
+      tx.addEventListener("abort", () => reject(tx.error ?? new DOMException("IndexedDB transaction aborted", "AbortError")), { once: true });
+    });
+    done.catch(() => {
+      return;
+    });
+    return done;
+  }
+  function readIndexedRangePage(options) {
+    if (!Number.isSafeInteger(options.pageSize) || options.pageSize < 1 || options.pageSize > 1024)
+      throw new RangeError("IndexedDB range pageSize must be an integer from 1 to 1024");
+    const aborted2 = () => new DOMException("IndexedDB range scan cancelled", "AbortError");
+    if (options.signal?.aborted)
+      return Promise.reject(aborted2());
+    const compare = options.compareKeys ?? ((a, b) => indexedDB.cmp(a, b));
+    const tx = options.db.transaction(options.store, "readonly");
+    return new Promise((resolve2, reject) => {
+      const records = [];
+      let last = null;
+      let exhausted = false;
+      let finished = false;
+      let jumped = false;
+      const cleanup = () => options.signal?.removeEventListener("abort", onAbort);
+      const rejectOnce = (error) => {
+        if (finished)
+          return;
+        finished = true;
+        cleanup();
+        reject(error);
+      };
+      const fail = (error) => {
+        if (finished)
+          return;
+        rejectOnce(error);
+        try {
+          tx.abort();
+        } catch {
+        }
+      };
+      const onAbort = () => fail(aborted2());
+      tx.addEventListener("complete", () => {
+        if (finished)
+          return;
+        finished = true;
+        cleanup();
+        resolve2({ records, last, exhausted });
+      }, { once: true });
+      tx.addEventListener("abort", () => rejectOnce(options.signal?.aborted ? aborted2() : tx.error ?? new Error("IndexedDB range transaction aborted")), { once: true });
+      tx.addEventListener("error", () => rejectOnce(tx.error ?? new Error("IndexedDB range transaction failed")), { once: true });
+      options.signal?.addEventListener("abort", onAbort, { once: true });
+      if (options.signal?.aborted) {
+        onAbort();
+        return;
+      }
+      try {
+        const request = tx.objectStore(options.store).index(options.index).openCursor(options.range);
+        request.onerror = () => fail(request.error ?? new Error("IndexedDB range cursor failed"));
+        request.onsuccess = () => {
+          if (finished)
+            return;
+          const cursor = request.result;
+          if (!cursor) {
+            exhausted = true;
+            return;
+          }
+          try {
+            const after = options.after;
+            if (after) {
+              const order = compare(cursor.key, after.indexKey);
+              const primary = order === 0 ? compare(cursor.primaryKey, after.primaryKey) : 0;
+              if (!jumped && (order < 0 || order === 0 && primary < 0)) {
+                jumped = true;
+                cursor.continuePrimaryKey(after.indexKey, after.primaryKey);
+                return;
+              }
+              if (order < 0 || order === 0 && primary <= 0) {
+                cursor.continue();
+                return;
+              }
+            }
+            records.push(options.decode(cursor.value));
+            last = { indexKey: cursor.key, primaryKey: cursor.primaryKey };
+            if (records.length < options.pageSize)
+              cursor.continue();
+          } catch (cause) {
+            fail(cause);
+          }
+        };
+      } catch (cause) {
+        fail(cause);
+      }
+    });
+  }
+  function assertServiceScope(scope) {
+    if (!/^[a-z][a-z0-9-]{1,63}$/.test(scope.productId) || scope.channel !== "dev" && scope.channel !== "prod" || scope.ownerId !== void 0 && (!scope.ownerId || scope.ownerId.length > 256) || scope.installationId !== void 0 && !/^[a-zA-Z0-9_-]{1,128}$/.test(scope.installationId)) {
+      throw new Error("Invalid product/channel/owner scope");
+    }
+    return scope;
+  }
+  function assertMatchingScope(expected, actual) {
+    assertServiceScope(expected);
+    assertServiceScope(actual);
+    if (expected.productId !== actual.productId || expected.channel !== actual.channel || expected.ownerId !== actual.ownerId || expected.installationId !== actual.installationId) {
+      throw new Error("Backup product, channel, owner or installation mismatch");
+    }
+  }
+  var FORMAT = "koba-settings-backup-v1";
+  var MAX_BYTES = 512 * 1024;
+  var isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+  async function checksum(text) {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+  }
+  function settingsJson(value) {
+    const valueJson = JSON.stringify(value);
+    if (typeof valueJson !== "string" || valueJson.length === 0 || valueJson.length > MAX_BYTES)
+      throw new Error("Settings backup payload is invalid or oversized");
+    return valueJson;
+  }
+  async function exportSettingsBackup(port) {
+    assertServiceScope(port.scope);
+    if (!Number.isSafeInteger(port.schemaVersion) || port.schemaVersion < 1)
+      throw new Error("Invalid settings schema version");
+    const value = port.validateSettings(await port.exportSettings());
+    settingsJson(value);
+    const body = {
+      format: FORMAT,
+      schemaVersion: port.schemaVersion,
+      scope: { ...port.scope },
+      createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+      includes: { settings: true, archive: false, attachments: false },
+      settings: value
+    };
+    const backup = {
+      ...body,
+      checksum: await checksum(JSON.stringify(body))
+    };
+    const raw = JSON.stringify(backup);
+    if (new TextEncoder().encode(raw).byteLength > MAX_BYTES)
+      throw new Error("Settings backup exceeds maximum size");
+    return new Blob([raw], { type: "application/json" });
+  }
+  async function validateSettingsBackup(port, blob) {
+    if (blob.size === 0 || blob.size > MAX_BYTES)
+      throw new Error("Settings backup size rejected");
+    const raw = JSON.parse(await blob.text());
+    if (!isRecord(raw) || raw.format !== FORMAT || raw.schemaVersion !== port.schemaVersion || !isRecord(raw.scope) || !isRecord(raw.includes) || Object.keys(raw).sort().join(",") !== "checksum,createdAt,format,includes,schemaVersion,scope,settings" || Object.keys(raw.scope).some((key2) => !["productId", "channel", "ownerId", "installationId"].includes(key2)) || Object.keys(raw.includes).sort().join(",") !== "archive,attachments,settings" || raw.includes.settings !== true || raw.includes.archive !== false || raw.includes.attachments !== false || typeof raw.createdAt !== "string" || !Number.isFinite(Date.parse(raw.createdAt)) || typeof raw.checksum !== "string" || !/^[a-f0-9]{64}$/.test(raw.checksum)) {
+      throw new Error("Settings backup format or schema is unsupported");
+    }
+    const scope = {
+      productId: raw.scope.productId,
+      channel: raw.scope.channel,
+      ...raw.scope.ownerId === void 0 ? {} : { ownerId: raw.scope.ownerId },
+      ...raw.scope.installationId === void 0 ? {} : { installationId: raw.scope.installationId }
+    };
+    assertMatchingScope(port.scope, scope);
+    settingsJson(raw.settings);
+    const { checksum: expectedDigest, ...fields } = raw;
+    if (await checksum(JSON.stringify(fields)) !== expectedDigest)
+      throw new Error("Settings backup integrity check failed");
+    const settings = port.validateSettings(raw.settings);
+    if (settingsJson(settings) !== settingsJson(raw.settings))
+      throw new Error("Settings backup contains unsupported or unnormalized values");
+    return {
+      format: FORMAT,
+      schemaVersion: port.schemaVersion,
+      scope,
+      createdAt: raw.createdAt,
+      includes: { settings: true, archive: false, attachments: false },
+      checksum: raw.checksum,
+      settings
+    };
+  }
+  async function restoreSettingsBackup(port, blob) {
+    const validated = await validateSettingsBackup(port, blob);
+    await port.restoreSettingsAtomically(validated.settings);
+  }
+  const portable = (settings) => ({
+    enabled: settings.enabled,
+    language: settings.language,
+    features: settings.features,
+    alerts: settings.alerts,
+    monitoring: settings.monitoring,
+    historyLoader: settings.historyLoader,
+    launcher: settings.launcher,
+    observer: settings.observer,
+    ui: settings.ui,
+    export: settings.export
+  });
+  const keys = ["enabled", "language", "features", "alerts", "monitoring", "historyLoader", "launcher", "observer", "ui", "export"];
+  function chatGptSettingsBackupPort(adapter, scopeId = instanceScope()) {
+    const [productId, channel, extra] = scopeId.split(":");
+    if (productId !== "chatgpt-booster" && productId !== "all-in-one")
+      throw new Error("ChatGPT settings backup requires a compiled ChatGPT or aggregate identity");
+    if (channel !== "dev" && channel !== "prod" || extra !== void 0)
+      throw new Error("Unknown ChatGPT settings backup channel");
+    return {
+      scope: { productId, channel },
+      schemaVersion: SETTINGS_SCHEMA_VERSION,
+      async exportSettings() {
+        return portable(snapshotSettings(await adapter.get()));
+      },
+      validateSettings(input) {
+        if (!input || typeof input !== "object" || Array.isArray(input))
+          throw Error("Unsupported settings payload");
+        const raw = input;
+        if (Object.keys(raw).sort().join(",") !== [...keys].sort().join(","))
+          throw Error("Unknown settings keys in backup");
+        const normalized = portable(snapshotSettings(raw));
+        if (JSON.stringify(normalized) !== JSON.stringify(input))
+          throw Error("Invalid or noncanonical settings in backup");
+        return normalized;
+      },
+      async restoreSettingsAtomically(value) {
+        const before = snapshotSettings(await adapter.get());
+        const next = snapshotSettings({ ...before, ...value });
+        await adapter.set(next);
+      }
+    };
+  }
+  async function exportChatGptSettings(adapter) {
+    return exportSettingsBackup(chatGptSettingsBackupPort(adapter));
+  }
+  async function restoreChatGptSettings(adapter, blob) {
+    return restoreSettingsBackup(chatGptSettingsBackupPort(adapter), blob);
+  }
   const _hoisted_1$5 = ["lang"];
   const _hoisted_2$5 = {
     key: 0,
@@ -22051,40 +22382,55 @@
   const _hoisted_75 = { value: "en" };
   const _hoisted_76 = { value: "ru" };
   const _hoisted_77 = { class: "booster-stack-card" };
-  const _hoisted_78 = {
+  const _hoisted_78 = { class: "booster-telemetry-body" };
+  const _hoisted_79 = { class: "booster-setting-copy" };
+  const _hoisted_80 = { class: "booster-field" };
+  const _hoisted_81 = ["disabled"];
+  const _hoisted_82 = { class: "booster-field flex items-center gap-2" };
+  const _hoisted_83 = ["disabled"];
+  const _hoisted_84 = {
+    key: 0,
+    role: "alert"
+  };
+  const _hoisted_85 = {
+    key: 1,
+    role: "status"
+  };
+  const _hoisted_86 = { class: "booster-stack-card" };
+  const _hoisted_87 = {
     key: 0,
     class: "booster-telemetry-body"
   };
-  const _hoisted_79 = { class: "booster-setting-card booster-setting-card-flat" };
-  const _hoisted_80 = { class: "booster-setting-copy" };
-  const _hoisted_81 = { class: "booster-field" };
-  const _hoisted_82 = ["value", "placeholder"];
-  const _hoisted_83 = {
+  const _hoisted_88 = { class: "booster-setting-card booster-setting-card-flat" };
+  const _hoisted_89 = { class: "booster-setting-copy" };
+  const _hoisted_90 = { class: "booster-field" };
+  const _hoisted_91 = ["value", "placeholder"];
+  const _hoisted_92 = {
     key: 0,
     class: "booster-field"
   };
-  const _hoisted_84 = { class: "flex items-center justify-between gap-2" };
-  const _hoisted_85 = {
+  const _hoisted_93 = { class: "flex items-center justify-between gap-2" };
+  const _hoisted_94 = {
     key: 0,
     class: "flex gap-2"
   };
-  const _hoisted_86 = { class: "booster-telemetry-test-row" };
-  const _hoisted_87 = {
+  const _hoisted_95 = { class: "booster-telemetry-test-row" };
+  const _hoisted_96 = {
     key: 0,
     class: "booster-test-success"
   };
-  const _hoisted_88 = ["title"];
-  const _hoisted_89 = { class: "booster-control-footer" };
-  const _hoisted_90 = { class: "booster-save-state" };
-  const _hoisted_91 = { class: "booster-destructive-dialog" };
-  const _hoisted_92 = { class: "booster-destructive-icon" };
-  const _hoisted_93 = { class: "booster-destructive-warning" };
-  const _hoisted_94 = {
+  const _hoisted_97 = ["title"];
+  const _hoisted_98 = { class: "booster-control-footer" };
+  const _hoisted_99 = { class: "booster-save-state" };
+  const _hoisted_100 = { class: "booster-destructive-dialog" };
+  const _hoisted_101 = { class: "booster-destructive-icon" };
+  const _hoisted_102 = { class: "booster-destructive-warning" };
+  const _hoisted_103 = {
     key: 0,
     class: "booster-test-error"
   };
-  const _hoisted_95 = { class: "booster-destructive-actions" };
-  const _hoisted_96 = ["disabled"];
+  const _hoisted_104 = { class: "booster-destructive-actions" };
+  const _hoisted_105 = ["disabled"];
   const _sfc_main$5 = /* @__PURE__ */ defineComponent({
     __name: "ControlCenterPanel",
     props: {
@@ -22111,6 +22457,57 @@
       const tokenEditing = /* @__PURE__ */ ref(false);
       const telemetryTestState = /* @__PURE__ */ ref("idle");
       const telemetryTestError = /* @__PURE__ */ ref("");
+      const settingsBackupBusy = /* @__PURE__ */ ref(false);
+      const settingsBackupError = /* @__PURE__ */ ref("");
+      const settingsBackupMessage = /* @__PURE__ */ ref("");
+      const settingsBackupFile = /* @__PURE__ */ ref(null);
+      const settingsBackupApproved = /* @__PURE__ */ ref(false);
+      async function downloadSettingsBackup() {
+        if (settingsBackupBusy.value) return;
+        settingsBackupBusy.value = true;
+        settingsBackupError.value = "";
+        settingsBackupMessage.value = "";
+        try {
+          const blob = await exportChatGptSettings(props.settingsAdapter);
+          const url = URL.createObjectURL(blob);
+          try {
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "chatgpt-booster-settings-backup.json";
+            link.click();
+          } finally {
+            window.setTimeout(() => URL.revokeObjectURL(url), 1e3);
+          }
+          settingsBackupMessage.value = locale.value === "ru" ? "Копия настроек подготовлена. Убедитесь, что файл сохранён." : "Settings backup prepared. Confirm the browser saved the file.";
+        } catch {
+          settingsBackupError.value = locale.value === "ru" ? "Не удалось экспортировать настройки." : "Settings export failed.";
+        } finally {
+          settingsBackupBusy.value = false;
+        }
+      }
+      function selectSettingsBackupFile(event) {
+        settingsBackupFile.value = event.target.files?.[0] ?? null;
+        settingsBackupApproved.value = false;
+        settingsBackupError.value = "";
+        settingsBackupMessage.value = "";
+      }
+      async function importSettingsBackup() {
+        if (!settingsBackupFile.value || !settingsBackupApproved.value || settingsBackupBusy.value) return;
+        settingsBackupBusy.value = true;
+        settingsBackupError.value = "";
+        settingsBackupMessage.value = "";
+        try {
+          await restoreChatGptSettings(props.settingsAdapter, settingsBackupFile.value);
+          settings.value = snapshotSettings(await props.settingsAdapter.get());
+          settingsBackupMessage.value = locale.value === "ru" ? "Настройки восстановлены. Архивы и локальные правила сохранения не изменены." : "Settings restored. Archives and account-specific capture rules were not changed.";
+          settingsBackupApproved.value = false;
+          settingsBackupFile.value = null;
+        } catch {
+          settingsBackupError.value = locale.value === "ru" ? "Копия отклонена: проверьте целостность, версию, продукт и DEV/PROD." : "Backup rejected: verify integrity, schema, product and DEV/PROD channel.";
+        } finally {
+          settingsBackupBusy.value = false;
+        }
+      }
       const archiveResetOpen = /* @__PURE__ */ ref(false);
       const archiveResetting = /* @__PURE__ */ ref(false);
       const archiveResetError = /* @__PURE__ */ ref("");
@@ -22337,7 +22734,7 @@
                 class: normalizeClass(["booster-switch", { "booster-switch-on": settings.value.enabled }]),
                 "aria-pressed": settings.value.enabled,
                 onClick: _cache[0] || (_cache[0] = ($event) => applyPatch({ enabled: !settings.value.enabled }))
-              }, [..._cache[22] || (_cache[22] = [
+              }, [..._cache[23] || (_cache[23] = [
                 createBaseVNode(
                   "span",
                   null,
@@ -22573,7 +22970,7 @@
                         class: normalizeClass(["booster-switch", { "booster-switch-on": settings.value.features.messageMetadata }]),
                         disabled: !settings.value.enabled,
                         onClick: _cache[8] || (_cache[8] = ($event) => applyPatch({ features: { messageMetadata: !settings.value.features.messageMetadata } }))
-                      }, [..._cache[23] || (_cache[23] = [
+                      }, [..._cache[24] || (_cache[24] = [
                         createBaseVNode(
                           "span",
                           null,
@@ -22629,7 +23026,7 @@
                         class: normalizeClass(["booster-switch", { "booster-switch-on": settings.value.features.activityIndicator }]),
                         disabled: !settings.value.enabled,
                         onClick: _cache[9] || (_cache[9] = ($event) => applyPatch({ features: { activityIndicator: !settings.value.features.activityIndicator } }))
-                      }, [..._cache[24] || (_cache[24] = [
+                      }, [..._cache[25] || (_cache[25] = [
                         createBaseVNode(
                           "span",
                           null,
@@ -22686,7 +23083,7 @@
                           class: normalizeClass(["booster-switch", { "booster-switch-on": settings.value.features.requestTimer }]),
                           disabled: !settings.value.enabled,
                           onClick: _cache[10] || (_cache[10] = ($event) => applyPatch({ features: { requestTimer: !settings.value.features.requestTimer } }))
-                        }, [..._cache[25] || (_cache[25] = [
+                        }, [..._cache[26] || (_cache[26] = [
                           createBaseVNode(
                             "span",
                             null,
@@ -22768,7 +23165,7 @@
                         class: normalizeClass(["booster-switch", { "booster-switch-on": settings.value.features.toolInspector }]),
                         disabled: !settings.value.enabled,
                         onClick: _cache[11] || (_cache[11] = ($event) => applyPatch({ features: { toolInspector: !settings.value.features.toolInspector } }))
-                      }, [..._cache[26] || (_cache[26] = [
+                      }, [..._cache[27] || (_cache[27] = [
                         createBaseVNode(
                           "span",
                           null,
@@ -22824,7 +23221,7 @@
                         class: normalizeClass(["booster-switch", { "booster-switch-on": settings.value.alerts.responseCompleteSound }]),
                         disabled: !settings.value.enabled,
                         onClick: _cache[12] || (_cache[12] = ($event) => applyPatch({ alerts: { responseCompleteSound: !settings.value.alerts.responseCompleteSound } }))
-                      }, [..._cache[27] || (_cache[27] = [
+                      }, [..._cache[28] || (_cache[28] = [
                         createBaseVNode(
                           "span",
                           null,
@@ -22881,7 +23278,7 @@
                           class: normalizeClass(["booster-switch", { "booster-switch-on": settings.value.alerts.longRunningSound }]),
                           disabled: !settings.value.enabled,
                           onClick: _cache[13] || (_cache[13] = ($event) => applyPatch({ alerts: { longRunningSound: !settings.value.alerts.longRunningSound } }))
-                        }, [..._cache[28] || (_cache[28] = [
+                        }, [..._cache[29] || (_cache[29] = [
                           createBaseVNode(
                             "span",
                             null,
@@ -23098,7 +23495,7 @@
                         class: normalizeClass(["booster-switch", { "booster-switch-on": settings.value.observer.enabled }]),
                         disabled: !settings.value.enabled,
                         onClick: _cache[14] || (_cache[14] = ($event) => applyPatch({ observer: { enabled: !settings.value.observer.enabled } }))
-                      }, [..._cache[29] || (_cache[29] = [
+                      }, [..._cache[30] || (_cache[30] = [
                         createBaseVNode(
                           "span",
                           null,
@@ -23141,7 +23538,7 @@
                         class: normalizeClass(["booster-switch", { "booster-switch-on": settings.value.observer.captureBodies }]),
                         disabled: !settings.value.observer.enabled,
                         onClick: _cache[15] || (_cache[15] = ($event) => applyPatch({ observer: { captureBodies: !settings.value.observer.captureBodies } }))
-                      }, [..._cache[30] || (_cache[30] = [
+                      }, [..._cache[31] || (_cache[31] = [
                         createBaseVNode(
                           "span",
                           null,
@@ -23510,6 +23907,104 @@
                     ], 40, _hoisted_73)
                   ]),
                   createBaseVNode("section", _hoisted_77, [
+                    createBaseVNode("div", _hoisted_78, [
+                      createBaseVNode("div", _hoisted_79, [
+                        createBaseVNode(
+                          "b",
+                          null,
+                          toDisplayString(locale.value === "ru" ? "Резервная копия настроек" : "Settings backup"),
+                          1
+                          /* TEXT */
+                        ),
+                        createBaseVNode(
+                          "small",
+                          null,
+                          toDisplayString(locale.value === "ru" ? "Отдельно от архива. Копия исключает токены, телеметрию и правила конкретных чатов." : "Separate from the archive. Tokens, telemetry and per-chat rules are excluded."),
+                          1
+                          /* TEXT */
+                        )
+                      ]),
+                      createVNode(unref(_sfc_main$6), {
+                        variant: "outline",
+                        size: "sm",
+                        disabled: settingsBackupBusy.value,
+                        onClick: downloadSettingsBackup
+                      }, {
+                        default: withCtx(() => [
+                          createTextVNode(
+                            toDisplayString(locale.value === "ru" ? "Сохранить настройки" : "Export settings"),
+                            1
+                            /* TEXT */
+                          )
+                        ]),
+                        _: 1
+                        /* STABLE */
+                      }, 8, ["disabled"]),
+                      createBaseVNode("label", _hoisted_80, [
+                        createBaseVNode(
+                          "span",
+                          null,
+                          toDisplayString(locale.value === "ru" ? "Восстановить настройки из JSON" : "Restore settings from JSON"),
+                          1
+                          /* TEXT */
+                        ),
+                        createBaseVNode("input", {
+                          type: "file",
+                          accept: ".json,application/json",
+                          class: "booster-input",
+                          disabled: settingsBackupBusy.value,
+                          onChange: selectSettingsBackupFile
+                        }, null, 40, _hoisted_81)
+                      ]),
+                      createBaseVNode("label", _hoisted_82, [
+                        withDirectives(createBaseVNode("input", {
+                          "onUpdate:modelValue": _cache[16] || (_cache[16] = ($event) => settingsBackupApproved.value = $event),
+                          type: "checkbox",
+                          disabled: !settingsBackupFile.value || settingsBackupBusy.value
+                        }, null, 8, _hoisted_83), [
+                          [vModelCheckbox, settingsBackupApproved.value]
+                        ]),
+                        createBaseVNode(
+                          "span",
+                          null,
+                          toDisplayString(locale.value === "ru" ? "Подтверждаю замену общих настроек этого продукта и канала" : "Confirm replacing global settings for this product and channel"),
+                          1
+                          /* TEXT */
+                        )
+                      ]),
+                      createVNode(unref(_sfc_main$6), {
+                        variant: "outline",
+                        size: "sm",
+                        disabled: settingsBackupBusy.value || !settingsBackupFile.value || !settingsBackupApproved.value,
+                        onClick: importSettingsBackup
+                      }, {
+                        default: withCtx(() => [
+                          createTextVNode(
+                            toDisplayString(locale.value === "ru" ? "Восстановить настройки" : "Restore settings"),
+                            1
+                            /* TEXT */
+                          )
+                        ]),
+                        _: 1
+                        /* STABLE */
+                      }, 8, ["disabled"]),
+                      settingsBackupError.value ? (openBlock(), createElementBlock(
+                        "small",
+                        _hoisted_84,
+                        toDisplayString(settingsBackupError.value),
+                        1
+                        /* TEXT */
+                      )) : createCommentVNode("v-if", true),
+                      settingsBackupMessage.value ? (openBlock(), createElementBlock(
+                        "small",
+                        _hoisted_85,
+                        toDisplayString(settingsBackupMessage.value),
+                        1
+                        /* TEXT */
+                      )) : createCommentVNode("v-if", true)
+                    ])
+                  ]),
+                  createBaseVNode("section", _hoisted_86, [
                     createBaseVNode("button", {
                       class: "booster-disclosure",
                       type: "button",
@@ -23535,9 +24030,9 @@
                         class: normalizeClass(["size-4 transition-transform", { "rotate-180": settings.value.ui.telemetryExpanded }])
                       }, null, 8, ["class"])
                     ]),
-                    settings.value.ui.telemetryExpanded ? (openBlock(), createElementBlock("div", _hoisted_78, [
-                      createBaseVNode("section", _hoisted_79, [
-                        createBaseVNode("div", _hoisted_80, [
+                    settings.value.ui.telemetryExpanded ? (openBlock(), createElementBlock("div", _hoisted_87, [
+                      createBaseVNode("section", _hoisted_88, [
+                        createBaseVNode("div", _hoisted_89, [
                           createBaseVNode(
                             "b",
                             null,
@@ -23551,9 +24046,9 @@
                           {
                             type: "button",
                             class: normalizeClass(["booster-switch", { "booster-switch-on": settings.value.telemetry.enabled }]),
-                            onClick: _cache[16] || (_cache[16] = ($event) => applyPatch({ telemetry: { enabled: !settings.value.telemetry.enabled } }))
+                            onClick: _cache[17] || (_cache[17] = ($event) => applyPatch({ telemetry: { enabled: !settings.value.telemetry.enabled } }))
                           },
-                          [..._cache[31] || (_cache[31] = [
+                          [..._cache[32] || (_cache[32] = [
                             createBaseVNode(
                               "span",
                               null,
@@ -23566,7 +24061,7 @@
                           /* CLASS */
                         )
                       ]),
-                      createBaseVNode("label", _hoisted_81, [
+                      createBaseVNode("label", _hoisted_90, [
                         createBaseVNode(
                           "span",
                           null,
@@ -23579,10 +24074,10 @@
                           class: "booster-input",
                           placeholder: t("control.telemetryEndpointPlaceholder"),
                           onChange: setTelemetryEndpoint
-                        }, null, 40, _hoisted_82)
+                        }, null, 40, _hoisted_91)
                       ]),
-                      __props.secretAdapter ? (openBlock(), createElementBlock("div", _hoisted_83, [
-                        createBaseVNode("span", _hoisted_84, [
+                      __props.secretAdapter ? (openBlock(), createElementBlock("div", _hoisted_92, [
+                        createBaseVNode("span", _hoisted_93, [
                           createTextVNode(
                             toDisplayString(t("control.telemetryToken")) + " ",
                             1
@@ -23602,11 +24097,11 @@
                             /* STABLE */
                           }, 8, ["variant"])
                         ]),
-                        !tokenConfigured.value || tokenEditing.value ? (openBlock(), createElementBlock("div", _hoisted_85, [
+                        !tokenConfigured.value || tokenEditing.value ? (openBlock(), createElementBlock("div", _hoisted_94, [
                           withDirectives(createBaseVNode(
                             "input",
                             {
-                              "onUpdate:modelValue": _cache[17] || (_cache[17] = ($event) => tokenDraft.value = $event),
+                              "onUpdate:modelValue": _cache[18] || (_cache[18] = ($event) => tokenDraft.value = $event),
                               class: "booster-input",
                               type: "password",
                               autocomplete: "off"
@@ -23637,7 +24132,7 @@
                             key: 0,
                             variant: "ghost",
                             size: "sm",
-                            onClick: _cache[18] || (_cache[18] = ($event) => {
+                            onClick: _cache[19] || (_cache[19] = ($event) => {
                               tokenEditing.value = false;
                               tokenDraft.value = "";
                             })
@@ -23657,7 +24152,7 @@
                           variant: "outline",
                           size: "sm",
                           class: "self-start",
-                          onClick: _cache[19] || (_cache[19] = ($event) => tokenEditing.value = true)
+                          onClick: _cache[20] || (_cache[20] = ($event) => tokenEditing.value = true)
                         }, {
                           default: withCtx(() => [
                             createTextVNode(
@@ -23670,7 +24165,7 @@
                           /* STABLE */
                         }))
                       ])) : createCommentVNode("v-if", true),
-                      createBaseVNode("div", _hoisted_86, [
+                      createBaseVNode("div", _hoisted_95, [
                         createVNode(unref(_sfc_main$6), {
                           variant: "outline",
                           size: "sm",
@@ -23689,7 +24184,7 @@
                         }, 8, ["disabled"]),
                         telemetryTestState.value === "success" ? (openBlock(), createElementBlock(
                           "span",
-                          _hoisted_87,
+                          _hoisted_96,
                           toDisplayString(t("control.telemetryTestSuccess")),
                           1
                           /* TEXT */
@@ -23698,7 +24193,7 @@
                           key: 1,
                           class: "booster-test-error",
                           title: telemetryTestError.value
-                        }, toDisplayString(t("control.telemetryTestFailed")) + ": " + toDisplayString(telemetryTestError.value), 9, _hoisted_88)) : createCommentVNode("v-if", true)
+                        }, toDisplayString(t("control.telemetryTestFailed")) + ": " + toDisplayString(telemetryTestError.value), 9, _hoisted_97)) : createCommentVNode("v-if", true)
                       ])
                     ])) : createCommentVNode("v-if", true)
                   ])
@@ -23706,8 +24201,8 @@
                 64
                 /* STABLE_FRAGMENT */
               )),
-              createBaseVNode("footer", _hoisted_89, [
-                createBaseVNode("span", _hoisted_90, [
+              createBaseVNode("footer", _hoisted_98, [
+                createBaseVNode("span", _hoisted_99, [
                   saved.value ? (openBlock(), createBlock(unref(Check), {
                     key: 0,
                     class: "size-3.5"
@@ -23724,11 +24219,11 @@
           archiveResetOpen.value ? (openBlock(), createBlock(_sfc_main$i, {
             key: 3,
             label: t("archiveReset.confirmTitle"),
-            onClose: _cache[21] || (_cache[21] = ($event) => !archiveResetting.value && (archiveResetOpen.value = false))
+            onClose: _cache[22] || (_cache[22] = ($event) => !archiveResetting.value && (archiveResetOpen.value = false))
           }, {
             default: withCtx(() => [
-              createBaseVNode("div", _hoisted_91, [
-                createBaseVNode("div", _hoisted_92, [
+              createBaseVNode("div", _hoisted_100, [
+                createBaseVNode("div", _hoisted_101, [
                   createVNode(unref(TriangleAlert), { class: "size-6" })
                 ]),
                 createBaseVNode("div", null, [
@@ -23748,24 +24243,24 @@
                   ),
                   createBaseVNode(
                     "p",
-                    _hoisted_93,
+                    _hoisted_102,
                     toDisplayString(t("archiveReset.irreversible")),
                     1
                     /* TEXT */
                   ),
                   archiveResetError.value ? (openBlock(), createElementBlock(
                     "p",
-                    _hoisted_94,
+                    _hoisted_103,
                     toDisplayString(archiveResetError.value),
                     1
                     /* TEXT */
                   )) : createCommentVNode("v-if", true)
                 ]),
-                createBaseVNode("div", _hoisted_95, [
+                createBaseVNode("div", _hoisted_104, [
                   createVNode(unref(_sfc_main$6), {
                     variant: "outline",
                     disabled: archiveResetting.value,
-                    onClick: _cache[20] || (_cache[20] = ($event) => archiveResetOpen.value = false)
+                    onClick: _cache[21] || (_cache[21] = ($event) => archiveResetOpen.value = false)
                   }, {
                     default: withCtx(() => [
                       createTextVNode(
@@ -23782,7 +24277,7 @@
                     class: "booster-destructive-button",
                     disabled: archiveResetting.value,
                     onClick: clearArchive
-                  }, toDisplayString(archiveResetting.value ? t("archiveReset.clearing") : t("archiveReset.confirm")), 9, _hoisted_96)
+                  }, toDisplayString(archiveResetting.value ? t("archiveReset.clearing") : t("archiveReset.confirm")), 9, _hoisted_105)
                 ])
               ])
             ]),
@@ -29085,7 +29580,7 @@
       });
     };
     const obj = (value, path) => asObject$1(value) ?? failure(path, "type");
-    const keys = (value, allowed2, path) => {
+    const keys2 = (value, allowed2, path) => {
       for (const key2 of Object.keys(value))
         if (!allowed2.has(key2)) failure(`${path}.${key2}`, "unexpected");
     };
@@ -29117,7 +29612,7 @@
     const payload = obj(detail.payload, "payload");
     const initial = detail.isInitial === true;
     const allowedKeys = projected ? /* @__PURE__ */ new Set([...initial ? initialKeys : continuationKeys, "booster_capture"]) : initial ? initialKeys : continuationKeys;
-    keys(payload, allowedKeys, "payload");
+    keys2(payload, allowedKeys, "payload");
     if (initial) {
       string(required(payload, "conversation_id", "payload"), "payload.conversation_id");
       if (payload.conversation_id !== detail.conversationId)
@@ -29128,7 +29623,7 @@
     for (const key2 of ["title", "gizmo_id", "gizmo_type", "current_node", "default_model_slug"])
       optional(payload, key2, "payload", "string");
     const pageInfo = obj(required(payload, "page_info", "payload"), "payload.page_info");
-    keys(pageInfo, pageInfoKeys, "payload.page_info");
+    keys2(pageInfo, pageInfoKeys, "payload.page_info");
     for (const key2 of pageInfoKeys) required(pageInfo, key2, "payload.page_info");
     for (const key2 of ["has_previous_page", "has_next_page"])
       optional(pageInfo, key2, "payload.page_info", "boolean");
@@ -29140,25 +29635,25 @@
     for (let i = 0; i < entries.length; i++) {
       const path = `payload.messages[${i}]`;
       const message = obj(entries[i], path);
-      keys(message, messageKeys, path);
+      keys2(message, messageKeys, path);
       for (const key2 of messageKeys) required(message, key2, path);
       const id = required(message, "id", path);
       string(id, `${path}.id`);
       if (!id) failure(`${path}.id`, "identity");
       const author = obj(required(message, "author", path), `${path}.author`);
-      keys(author, authorKeys, `${path}.author`);
+      keys2(author, authorKeys, `${path}.author`);
       string(required(author, "role", `${path}.author`), `${path}.author.role`);
       optional(author, "name", `${path}.author`, "string");
       if (Object.hasOwn(author, "metadata")) {
         const authorMeta = obj(author.metadata, `${path}.author.metadata`);
-        keys(authorMeta, /* @__PURE__ */ new Set(["real_author"]), `${path}.author.metadata`);
+        keys2(authorMeta, /* @__PURE__ */ new Set(["real_author"]), `${path}.author.metadata`);
       }
       const content = obj(required(message, "content", path), `${path}.content`);
       const type = required(content, "content_type", `${path}.content`);
       string(type, `${path}.content.content_type`);
       const schema2 = profile.content[type];
       if (!schema2) failure(`${path}.content.content_type`, "unsupported");
-      keys(content, schema2, `${path}.content`);
+      keys2(content, schema2, `${path}.content`);
       if (type === "text" || type === "multimodal_text") {
         if (!Array.isArray(required(content, "parts", `${path}.content`)))
           failure(`${path}.content.parts`, "type");
@@ -29389,7 +29884,7 @@
         });
       };
       const value = asObject$1(selection) ?? fail("submit.selection");
-      const keys = /* @__PURE__ */ new Set([
+      const keys2 = /* @__PURE__ */ new Set([
         "schema",
         "messageId",
         "requestedModel",
@@ -29398,7 +29893,7 @@
         "observedAtMs",
         "source"
       ]);
-      if (Object.keys(value).some((name) => !keys.has(name)) || keys.size !== Object.keys(value).length)
+      if (Object.keys(value).some((name) => !keys2.has(name)) || keys2.size !== Object.keys(value).length)
         fail("submit.selection.keys");
       if (value.schema !== SUBMISSION_SELECTION_SCHEMA || value.source !== "native-composer-submit")
         fail("submit.selection.schema");
@@ -29414,204 +29909,6 @@
       if (failed) throw new ArchiveContractError(failed);
       this.#selectedAdapter(conversationId);
     }
-  }
-  function aborted() {
-    return new DOMException("IndexedDB scan cancelled", "AbortError");
-  }
-  function readIndexedPage(options) {
-    if (!Number.isSafeInteger(options.pageSize) || options.pageSize < 1 || options.pageSize > 1024)
-      throw new RangeError("IndexedDB pageSize must be an integer from 1 to 1024");
-    if (options.index === void 0 !== (options.indexKey === void 0))
-      throw new Error("IndexedDB scan requires index and indexKey together");
-    if (options.signal?.aborted)
-      return Promise.reject(aborted());
-    const compare = options.compareKeys ?? ((a, b) => indexedDB.cmp(a, b));
-    const tx = options.db.transaction(options.store, "readonly");
-    return new Promise((resolve2, reject) => {
-      const records = [];
-      let lastPrimaryKey = null;
-      let exhausted = false;
-      let finished = false;
-      let jumped = false;
-      const cleanup = () => options.signal?.removeEventListener("abort", onAbort);
-      const rejectOnce = (reason) => {
-        if (finished)
-          return;
-        finished = true;
-        cleanup();
-        reject(reason);
-      };
-      const fail = (reason) => {
-        if (finished)
-          return;
-        rejectOnce(reason);
-        try {
-          tx.abort();
-        } catch {
-        }
-      };
-      const onAbort = () => fail(aborted());
-      tx.addEventListener("complete", () => {
-        if (finished)
-          return;
-        finished = true;
-        cleanup();
-        resolve2({ records, lastPrimaryKey, exhausted });
-      }, { once: true });
-      tx.addEventListener("abort", () => rejectOnce(options.signal?.aborted ? aborted() : tx.error ?? new Error("IndexedDB indexed page aborted")), { once: true });
-      tx.addEventListener("error", () => rejectOnce(tx.error ?? new Error("IndexedDB indexed page failed")), { once: true });
-      options.signal?.addEventListener("abort", onAbort, { once: true });
-      if (options.signal?.aborted) {
-        onAbort();
-        return;
-      }
-      try {
-        const store = tx.objectStore(options.store);
-        const request = options.index !== void 0 && options.indexKey !== void 0 ? store.index(options.index).openCursor(IDBKeyRange.only(options.indexKey)) : store.openCursor();
-        request.onerror = () => fail(request.error ?? new Error("IndexedDB cursor failed"));
-        request.onsuccess = () => {
-          if (finished)
-            return;
-          const cursor = request.result;
-          if (!cursor) {
-            exhausted = true;
-            return;
-          }
-          try {
-            const after = options.afterPrimaryKey;
-            if (after != null && !jumped) {
-              jumped = true;
-              if (compare(cursor.primaryKey, after) < 0) {
-                if (options.index !== void 0 && options.indexKey !== void 0)
-                  cursor.continuePrimaryKey(options.indexKey, after);
-                else
-                  cursor.continue(after);
-                return;
-              }
-            }
-            if (after != null && compare(cursor.primaryKey, after) <= 0) {
-              cursor.continue();
-              return;
-            }
-            records.push(options.decode(cursor.value));
-            lastPrimaryKey = cursor.primaryKey;
-            if (records.length < options.pageSize)
-              cursor.continue();
-          } catch (reason) {
-            fail(reason);
-          }
-        };
-      } catch (reason) {
-        fail(reason);
-      }
-    });
-  }
-  function readStorePage(options) {
-    return readIndexedPage(options);
-  }
-  function requestResult(request) {
-    return new Promise((resolve2, reject) => {
-      request.onsuccess = () => resolve2(request.result);
-      request.onerror = () => reject(request.error ?? new Error("IndexedDB request failed"));
-    });
-  }
-  function transactionComplete(tx) {
-    const done = new Promise((resolve2, reject) => {
-      tx.addEventListener("complete", () => resolve2(), { once: true });
-      tx.addEventListener("error", () => reject(tx.error ?? new Error("IndexedDB transaction failed")), {
-        once: true
-      });
-      tx.addEventListener("abort", () => reject(tx.error ?? new DOMException("IndexedDB transaction aborted", "AbortError")), { once: true });
-    });
-    done.catch(() => {
-      return;
-    });
-    return done;
-  }
-  function readIndexedRangePage(options) {
-    if (!Number.isSafeInteger(options.pageSize) || options.pageSize < 1 || options.pageSize > 1024)
-      throw new RangeError("IndexedDB range pageSize must be an integer from 1 to 1024");
-    const aborted2 = () => new DOMException("IndexedDB range scan cancelled", "AbortError");
-    if (options.signal?.aborted)
-      return Promise.reject(aborted2());
-    const compare = options.compareKeys ?? ((a, b) => indexedDB.cmp(a, b));
-    const tx = options.db.transaction(options.store, "readonly");
-    return new Promise((resolve2, reject) => {
-      const records = [];
-      let last = null;
-      let exhausted = false;
-      let finished = false;
-      let jumped = false;
-      const cleanup = () => options.signal?.removeEventListener("abort", onAbort);
-      const rejectOnce = (error) => {
-        if (finished)
-          return;
-        finished = true;
-        cleanup();
-        reject(error);
-      };
-      const fail = (error) => {
-        if (finished)
-          return;
-        rejectOnce(error);
-        try {
-          tx.abort();
-        } catch {
-        }
-      };
-      const onAbort = () => fail(aborted2());
-      tx.addEventListener("complete", () => {
-        if (finished)
-          return;
-        finished = true;
-        cleanup();
-        resolve2({ records, last, exhausted });
-      }, { once: true });
-      tx.addEventListener("abort", () => rejectOnce(options.signal?.aborted ? aborted2() : tx.error ?? new Error("IndexedDB range transaction aborted")), { once: true });
-      tx.addEventListener("error", () => rejectOnce(tx.error ?? new Error("IndexedDB range transaction failed")), { once: true });
-      options.signal?.addEventListener("abort", onAbort, { once: true });
-      if (options.signal?.aborted) {
-        onAbort();
-        return;
-      }
-      try {
-        const request = tx.objectStore(options.store).index(options.index).openCursor(options.range);
-        request.onerror = () => fail(request.error ?? new Error("IndexedDB range cursor failed"));
-        request.onsuccess = () => {
-          if (finished)
-            return;
-          const cursor = request.result;
-          if (!cursor) {
-            exhausted = true;
-            return;
-          }
-          try {
-            const after = options.after;
-            if (after) {
-              const order = compare(cursor.key, after.indexKey);
-              const primary = order === 0 ? compare(cursor.primaryKey, after.primaryKey) : 0;
-              if (!jumped && (order < 0 || order === 0 && primary < 0)) {
-                jumped = true;
-                cursor.continuePrimaryKey(after.indexKey, after.primaryKey);
-                return;
-              }
-              if (order < 0 || order === 0 && primary <= 0) {
-                cursor.continue();
-                return;
-              }
-            }
-            records.push(options.decode(cursor.value));
-            last = { indexKey: cursor.key, primaryKey: cursor.primaryKey };
-            if (records.length < options.pageSize)
-              cursor.continue();
-          } catch (cause) {
-            fail(cause);
-          }
-        };
-      } catch (cause) {
-        fail(cause);
-      }
-    });
   }
   function initialEvidenceScore(page) {
     return Number(page.hasPreviousPage !== null) + Number(page.hasNextPage !== null);
@@ -30811,17 +31108,17 @@
     recordsForMessageIds(conversationId, messageIds) {
       const state = this.#states.get(conversationId);
       if (!state) return [];
-      const keys = /* @__PURE__ */ new Set();
+      const keys2 = /* @__PURE__ */ new Set();
       const direct = /* @__PURE__ */ new Set();
       for (const id of messageIds) {
         const item = state.records.get(id);
         if (!item) continue;
         direct.add(item.messageId);
-        if (item.turnExchangeId) keys.add(item.turnExchangeId);
-        if (item.workingTurnId) keys.add(item.workingTurnId);
+        if (item.turnExchangeId) keys2.add(item.turnExchangeId);
+        if (item.workingTurnId) keys2.add(item.workingTurnId);
       }
       const ids = new Set(direct);
-      for (const key2 of keys) for (const id of state.turnIndex.get(key2) ?? []) ids.add(id);
+      for (const key2 of keys2) for (const id of state.turnIndex.get(key2) ?? []) ids.add(id);
       return [...ids].map((id) => state.records.get(id)).filter((item) => Boolean(item)).sort(recordSort);
     }
     pages(conversationId) {
@@ -31423,10 +31720,10 @@
         throw new Error("archive.error.incompatibleSource");
       ancestors.add(value);
       stack2.push({ kind: "leave", object: value }, { kind: "text", text: array ? "]" : "}" });
-      const keys = array ? void 0 : Object.keys(value).sort();
-      const count = array ? value.length : keys?.length ?? 0;
+      const keys2 = array ? void 0 : Object.keys(value).sort();
+      const count = array ? value.length : keys2?.length ?? 0;
       for (let i = count - 1; i >= 0; i--) {
-        const name = array ? String(i) : keys?.[i];
+        const name = array ? String(i) : keys2?.[i];
         if (name === void 0) continue;
         const descriptor = Object.getOwnPropertyDescriptor(value, name);
         if (!descriptor || !Object.hasOwn(descriptor, "value"))
@@ -35213,12 +35510,12 @@ ${archiveRecordText(record2)}
     return navigator.locks.request("chatgpt-booster:native-source-transfer-v1", { mode: "shared" }, async () => {
       const v3 = await existing(ARCHIVE_DB_NAME);
       const v4 = await store.canonicalDatabase();
-      let checksum = "start";
+      let checksum2 = "start";
       const totals = {};
       const encode = async (row, footer = false) => {
         assertJsonSafe(row);
         const line = JSON.stringify(row);
-        if (!footer) checksum = await archiveSha256Hex(checksum + "\n" + line);
+        if (!footer) checksum2 = await archiveSha256Hex(checksum2 + "\n" + line);
         return new TextEncoder().encode(line + "\n");
       };
       const records = async function* () {
@@ -35255,7 +35552,7 @@ ${archiveRecordText(record2)}
             }
           }
         }
-        yield await encode({ kind: "footer", schema: VERSION, totals, checksum }, true);
+        yield await encode({ kind: "footer", schema: VERSION, totals, checksum: checksum2 }, true);
       };
       try {
         return await createGzipFromChunks(records());
