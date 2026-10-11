@@ -36,3 +36,12 @@ not real VK authorization, installed multi-profile isolation, missing media
 recovery, archive import/restore or first-PROD readiness. Historical VK
 `2.3.x` distributions are numerically newer than first-release source
 `1.0.0`; explicit updater and user-data acceptance remains necessary.
+
+## Local portable TAR.GZ backup work
+
+An unpublished branch experiments with a single portable `.tar.gz` backup
+of persistent settings and VK Dexie v1. Plain JSONL chunks, schema and a
+final manifest share one GZIP stream. Sections and chunk sizes are selected
+in the shared Control Center with visible progress. Tab/session storage and
+external attachment files are excluded. The feature is not PROD-accepted.
+See [shared backup contract](../shared/BACKUP_AND_RESTORE.md).

@@ -356,3 +356,16 @@ legacy offline HTML are retained in historic/test code, not a proven Dexie
 export capability. VK source is 1.0.0, ChatGPT source 2.0.12 and dependent
 All-in-one 0.5.13. Settings persistence/JSON restoration remains separate
 from canonical archive persistence and is not full archive backup.
+
+## Portable TAR / TAR.GZ backup (local-only prototype)
+
+`packages/storage` provides a streaming POSIX ustar writer/reader and a
+single outer GZIP compressor for plain JSONL record chunks, exact schema,
+settings and integrity manifests. Repeated API strings are compressed in
+the same GZIP stream without ZIP-in-ZIP or individually compressed chunks.
+The writer can stream directly to an explicitly selected File System Access
+file without holding the output Blob. `packages/widgets` owns a single
+provider-neutral backup form, while VK owns the data codecs and Dexie
+transaction. Large export and safe large restore are distinct acceptance
+levels. The current 128 MiB in-memory restore transaction is not a durable
+staged-generation import for arbitrary huge archives.

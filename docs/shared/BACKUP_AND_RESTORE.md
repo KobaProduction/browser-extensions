@@ -97,3 +97,60 @@ preserve original binary/unknown values without cross-version conversions,
 report schema/counts and use a chained gzip JSONL digest. No deletion or
 automatic restoration is authorized. Cross-store concurrent-write atomicity
 cannot be claimed; pause historical capture for a consistent export.
+
+## Single-stream TAR / TAR.GZ backup (unpublished local branch)
+
+The local VK worktree replaces the experimental nested-compression ZIP
+with a **single POSIX ustar file**, optionally wrapped by **one GZIP stream**.
+The browser IndexedDB API cannot copy a physical LevelDB database file; the
+provider must read records through scoped indexed queries. The TAR payload
+contains *only ordinary uncompressed files*, never nested ZIP/GZIP archives:
+
+```text
+vk-portable-v1.tar.gz
+  persistent/settings.json              persistent app settings (optional)
+  indexeddb/schema.json                 exact table names, primary keys and indexes
+  indexeddb/messages/00000000.jsonl     rows 1..N, plain JSONL
+  indexeddb/messages/00000001.jsonl     next bounded chunk
+  indexeddb/snapshots/00000000.jsonl    immutable original VK payloads
+  manifest.json                         owner/scope/schema/counts/chunk hashes
+```
+
+- A **single** native browser CompressionStream('gzip') compresses *all*
+  TAR bytes in order, so repetitive API field names and common message
+  constructions share the normal DEFLATE 32 KiB history window across TAR
+  file boundaries; there is no second compression pass. The standard browser
+  API does not support a configurable GZIP level, custom dictionary or larger
+  history window. Additional codec tuning requires a separate tested library
+  and actual compression benchmarks rather than inventing unsupported flags.
+- User controls independent persistent settings/IndexedDB inclusion, gzip on
+  or off, and chunk size 64–2,048 records (default 1,024). Session/tab RAM and
+  sessionStorage never enter backups. Per-chunk plain JSONL buffers are
+  bounded to 8 MiB, but there is **no arbitrary total backup-record or TAR
+  file-size cap** when writing to a file sink. Counted records and chunk
+  totals drive phases, X/Y records, percentage and TAR entry count.
+- Writes go through one backpressure-aware File System Access WritableStream
+  when available (on user gesture), with no giant output Blob. When this
+  browser capability is unavailable, a download Blob fallback is retained
+  and **limited to 128 MiB in memory**; the application cannot silently
+  obtain OS filesystem permissions just because it is installed locally.
+- TAR uses ordinary ustar files with header checksums, safe relative paths,
+  padding and end-of-archive blocks, independently readable by standard tar
+  tools. The final manifest includes exact owner/product/channel/installation,
+  table index schema, per-table totals and SHA-256 for each JSONL chunk.
+  Restore scans and checks the *whole* archive before changing any records.
+- VK implements owner-scoped fixed Dexie messages+snapshots and keyset page
+  continuation (no `OFFSET` scan cost). Restoring the currently active rows
+  uses one Dexie transaction only after provider-specific consistency checks.
+  A selected combined settings+DB restore attempts rollback on DB failure,
+  but separate storage backends cannot guarantee crash-atomicity. The
+  current restore holds a bounded 128 MiB transaction input; larger restore
+  needs a separately designed staged generation switch. This is a restore
+  constraint, **not** a reason to restrict streaming export size.
+- Binary files outside IndexedDB are not automatically included; original
+  structured-clone values stored *inside* IndexedDB remain portable. An
+  external media-copy port and installed browser acceptance are separate.
+- Generic TAR stream, restoration, progress and Pinia ports live under
+  `packages/storage`; the shared widget stays presentation-only; VK schemas
+  and source snapshots remain entirely VK-owned. No unfinished ChatGPT
+  migration implementation was imported.

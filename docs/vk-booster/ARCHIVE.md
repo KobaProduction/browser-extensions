@@ -69,3 +69,16 @@ read-only backup is a separate source-extraction feature, not VK restore.
 - Shared scoped telemetry/OTLP infrastructure merged through PR #36 but
   remote delivery stays disabled by default and out of this VK integration.
   No chat text, URLs, paths or authentication material in telemetry.
+
+## Single-stream TAR.GZ backup prototype (unpublished local branch)
+
+VK now adapts its fixed owner-scoped Dexie v1 message/snapshot tables to a
+shared portable TAR writer and Reader. The TAR contains only plain JSONL
+chunks, schema, optional durable settings and a final integrity manifest;
+**one GZIP stream** compresses the whole TAR. No nested compression or raw
+physical IndexedDB file copies. The interface selects sections, chunk size,
+progress and local file output; the restore validates exact owner/channel,
+physical table schema and hashes before the provider performs one IndexedDB
+transaction. External media and tab/session storage are excluded. This is
+not yet accepted as crash-safe installed-browser recovery. See the
+[shared backup contract](../shared/BACKUP_AND_RESTORE.md).
