@@ -38,10 +38,10 @@ GitHub Issues track only current tasks/evidence, never the sole rule authority.
 - DEV and PROD **never** share writable data, settings, IndexedDB or events.
   The aggregate may request access only to same-channel services, through
   an explicit capability, valid owner identity and user consent.
-- VK Booster product base stays **3.0.0**, not `3.0.1` etc. Development
-  build IDs may advance without raising the base version.
-- Protect ChatGPT v3/v4 existing PROD archives; VK's abandoned v2 prototype
-  is not a compatibility requirement.
+- VK Booster remains at the current **2.3.10** product base during development;
+  DEV build IDs may advance without a product-version bump. The v2 archive
+  format is preserved; replacing it with Archive 3 is not authorized.
+- Protect ChatGPT v3/v4 existing PROD archives and existing VK v2 folders.
 - Never store credentials or personal conversations in Git, telemetry,
   synthetic fixtures or CI logs.
 - Work on a non-protected branch. Run strict typecheck, Biome, tests and

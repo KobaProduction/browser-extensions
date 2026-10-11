@@ -34,6 +34,15 @@ A same-channel aggregate may request a read-only snapshot only through an
 explicit capability and owner-validated consent, not by guessing a database
 name. See the shared contracts linked above.
 
+## Portable settings backup (source-level)
+
+The ChatGPT Settings view offers separate export and explicit-confirmation
+restore of non-secret preferences using the shared 512 KiB, SHA-256-verified
+settings-backup format. The adapter enforces exact product and DEV/PROD scope,
+retains per-chat capture rules, and does not touch v3/v4/canonical archives.
+This feature is not an archive backup and does not imply installed-product
+acceptance. The owner-scoped native archive migration remains separately gated.
+
 ## Acceptance boundary
 
 Builds and source integration are not proof of installed-browser migration.
@@ -64,6 +73,19 @@ A successful historical source build is not installed-browser acceptance.
 Back up the original browser profile and v3/v4 IndexedDB data before using
 any historical build. See [environment isolation](../shared/ENVIRONMENTS_AND_STORAGE.md)
 and [backup/restore](../shared/BACKUP_AND_RESTORE.md).
+
+## Reconciled 2.0.7 source scope
+
+After PR #25 merged, the integrated 2.0.7 development source retains its
+single Control Center, current conversation/project context, manual archive
+collection/stop, native/canonical recovery and export-format presets. The
+Settings section continues to use the existing `ControlCenterPanel` and its
+separate validated portable settings backup/restore; it does not replace
+archive export or introduce another launcher. The pre-existing ChatGPT
+telemetry settings/diagnostic adapters remain owned by the ChatGPT provider;
+the common optional scoped telemetry port does not replace or implicitly
+enable its transport. All-in-one is 0.5.6, VK remains 2.3.10. None of these
+source changes promotes stable 0.8.92 or proves installed-browser acceptance.
 
 ## Restoring user-facing archive controls
 

@@ -241,11 +241,12 @@ impact graph rebuilds only affected consumers. A VK-only provider change
 does not rebuild unrelated products; a shared archive/widget change rebuilds
 dependents.
 
-VK Booster stays on **major version 2**. Compatible fixes and refactors
-use patch 2.x.y, backwards-compatible product functionality uses the next
-2.x minor. Version 3 is reserved for intentional incompatible public API or
-storage contracts, not a UI redesign or directory shuffle. Docs-only changes
-never bump versions or publish bundles.
+VK Booster keeps its existing v2 archive and its current product base
+**2.3.10 is frozen** by the owner's 2026-10-11 decision. Compatible fixes and
+new development must not automatically advance the product patch, minor or
+major version; independent DEV build IDs may advance as `2.3.10-dev.N`.
+A future product version change requires a separate explicit owner decision.
+Docs-only changes never bump versions or publish bundles.
 
 Module-scoped tags and stable independent Tampermonkey update channels remain
 the release mechanism. Static checks/builds do not prove browser acceptance.

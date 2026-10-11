@@ -52,3 +52,23 @@ test('hosted export wizard exposes format profiles and native/canonical backup e
   expect(panel).toContain('@open-backups="archiveMenuOpen=false; maintenanceOpen=true"')
   expect(exporter).not.toContain('<BoosterOverlay')
 })
+
+test('merged archive shell retains settings-backup and existing telemetry capabilities', () => {
+  const settingsView = readFileSync(new URL('../packages/ui/src/ControlCenterPanel.vue', import.meta.url), 'utf8')
+  const { descriptor, errors } = parse(settingsView, { filename: 'ControlCenterPanel.vue' })
+  expect(errors).toHaveLength(0)
+  // The PR #25 archive/export navigation must continue to host the settings
+  // component augmented by PR #26, without another launcher.
+  expect(panel).toContain(`v-else-if="tab==='settings'"`)
+  expect(panel).toContain(':telemetry-control-adapter="context.telemetryControlAdapter"')
+  expect(panel).toContain(':persistent-diagnostics-adapter="context.persistentDiagnosticsAdapter"')
+  expect(panel).toContain('@open-backups="archiveMenuOpen=false; maintenanceOpen=true"')
+  expect(settingsView).toContain("from './settings-backup'")
+  expect(settingsView).toContain('exportChatGptSettings(props.settingsAdapter)')
+  expect(settingsView).toContain('restoreChatGptSettings(props.settingsAdapter, settingsBackupFile.value)')
+  expect(descriptor.template?.content).toContain('settingsBackupApproved')
+  expect(descriptor.template?.content).toContain('Сохранить настройки')
+  expect(descriptor.template?.content).toContain('Восстановить настройки')
+  expect(settingsView).toContain('props.telemetryControlAdapter.test()')
+  expect(panel).not.toContain('<BoosterOverlay')
+})

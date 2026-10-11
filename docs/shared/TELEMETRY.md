@@ -34,11 +34,12 @@ full exception objects that may contain secrets.
 - Support a local/mock sink in the development archive lab; no real data
   leaves the environment during tests.
 
-**Current evidence:** VK native PR #10 supplies an optional
-`ScopedTelemetry` interface and synthetic counter tests. A real telemetry
-backend/transport, aggregation dashboards, consent persistence and installed
-browser acceptance are still missing. Other services must adopt the common
-contract deliberately, not pretend a VK mock proves their integration.
+**Source implementation checkpoint:** `packages/core` now supplies a
+default-off allowlisted `ScopedTelemetry` emitter and `packages/adapters`
+exposes its product/channel-validated `TelemetryPort` binding. The same
+typed contract is reusable by VK v2 and ChatGPT without changing their
+archives. Real sink transport, persisted consent, dashboards and installed
+browser acceptance remain missing; mocks do not prove live integration.
 
 See [environment isolation](ENVIRONMENTS_AND_STORAGE.md) and
 [project rules](PROJECT_RULES.md).

@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { semverCompare, validateVersionPolicy } from './version-policy'
 
-const base = { 'vk-booster': '2.3.8', 'chatgpt-booster': '0.8.99', 'all-in-one': '0.4.8' }
+const base = { 'vk-booster': '2.3.10', 'chatgpt-booster': '0.8.99', 'all-in-one': '0.4.8' }
 const chatRelease = { ...base, 'chatgpt-booster': '2.0.1', 'all-in-one': '0.5.0' }
 test('initial ChatGPT v2 release and aggregate bump do not alter existing VK version', () => {
   expect(() =>
@@ -33,18 +33,27 @@ test('future ChatGPT-only source changes require ChatGPT and aggregate version b
   expect(() =>
     validateVersionPolicy(['modules/chatgpt-booster/packages/features/src/index.ts'], before, {
       ...after,
-      'vk-booster': '2.3.9',
+      'vk-booster': '2.3.11',
     }),
-  ).toThrow('Unrelated vk-booster')
+  ).toThrow('VK v2 base must remain')
 })
-test('VK-only source change does not force a ChatGPT version bump', () => {
+test('VK v2 source change retains frozen VK base and advances aggregate', () => {
   const before = { ...chatRelease },
-    after = { ...before, 'vk-booster': '2.3.9', 'all-in-one': '0.5.1' }
+    after = { ...before, 'all-in-one': '0.5.1' }
   expect(() => validateVersionPolicy(['modules/vk-booster/src/index.ts'], before, after)).not.toThrow()
+  expect(() =>
+    validateVersionPolicy(['modules/vk-booster/src/index.ts'], before, {
+      ...after,
+      'vk-booster': '2.3.11',
+    }),
+  ).toThrow('VK v2 base must remain')
+  expect(() => validateVersionPolicy(['modules/vk-booster/src/index.ts'], before, before)).toThrow(
+    'all-in-one',
+  )
 })
-test('shared domain change requires every product and aggregator to bump', () => {
+test('shared domain change advances ChatGPT and aggregate but not frozen VK', () => {
   const before = { ...chatRelease },
-    after = { ...before, 'vk-booster': '2.3.9', 'chatgpt-booster': '2.0.2', 'all-in-one': '0.5.1' }
+    after = { ...before, 'chatgpt-booster': '2.0.2', 'all-in-one': '0.5.1' }
   expect(() => validateVersionPolicy(['packages/archive/src/index.ts'], before, after)).not.toThrow()
 })
 test('non-runtime only changes do not demand a bump', () => {
@@ -52,4 +61,13 @@ test('non-runtime only changes do not demand a bump', () => {
     validateVersionPolicy(['docs/README.md', '.github/workflows/ci.yml'], chatRelease, chatRelease),
   ).not.toThrow()
   expect(semverCompare('2.0.1', '0.8.99')).toBe(1)
+})
+
+test('VK v3 is rejected even if no VK source file changed', () => {
+  expect(() =>
+    validateVersionPolicy(['docs/vk-booster/README.md'], chatRelease, {
+      ...chatRelease,
+      'vk-booster': '3.0.0',
+    }),
+  ).toThrow('VK v2 base must remain')
 })

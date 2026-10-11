@@ -11,7 +11,8 @@
     }
   },
   "dependencies": {
-    "@kobaproduction/browser-core": "workspace:*"
+    "@kobaproduction/browser-core": "workspace:*",
+    "@kobaproduction/browser-storage": "workspace:*"
   },
   "files": [
     "dist"

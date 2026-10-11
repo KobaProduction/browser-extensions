@@ -67,11 +67,12 @@ Binding security/storage rules:
 - A provider-only change affects its consumer and the aggregate, not an
   unrelated standalone provider. Shared runtime changes affect actual
   dependents. Build-only changes do not imply a product version increase.
-- **VK Booster's base version is fixed at 3.0.0 during development**, by explicit
-  product-owner decision. Do not produce 3.0.1/3.1.0 automatically. DEV may
-  advance `3.0.0-dev.N`. See [VK product rules](../vk-booster/README.md).
-- Historical ChatGPT PROD v3/v4 data contracts must not be silently destroyed.
-  VK has no required prototype v2 compatibility.
+- **VK Booster remains at 2.3.10 during development**, by the latest explicit
+  product-owner decision. No automatic VK patch/minor/major bump; DEV may
+  advance `2.3.10-dev.N`. Existing VK v2 archives and output semantics must
+  remain readable and writable. See [VK product rules](../vk-booster/README.md).
+- Historical ChatGPT PROD v3/v4 data and VK v2 archives must not be silently
+  destroyed, converted or reassigned.
 - No private message data, credentials, access tokens, cookies or attachments
   in telemetry, build logs or tracked fixtures. Synthetic fixtures only.
 - Permissions are explicit capabilities. MV3 privileges are not assumed by
