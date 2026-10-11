@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Koba Browser Tools [DEV]
 // @namespace    https://github.com/KobaProduction/browser-extensions/dev/all-in-one
-// @version      0.5.38
+// @version      0.5.39
 // @description  Koba Browser Tools / Koba Browser Tools
 // @homepageURL   https://github.com/KobaProduction/browser-extensions
 // @updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/all-in-one.user.js
@@ -295,7 +295,7 @@
       language: null,
       sourcePath: "content"
     });
-    const append = (index, elementKind, sourcePath, text2, language = null) => {
+    const append = (index, elementKind, sourcePath, text, language = null) => {
       elements.push({
         elementId: JSON.stringify([key, "content", index]),
         messageKey: key,
@@ -303,7 +303,7 @@
         siblingOrder: index,
         kind: elementKind,
         visibility,
-        text: text2,
+        text,
         language,
         sourcePath
       });
@@ -3251,6 +3251,13 @@
       // by Rollup, so we have to wrap it in a pure-annotated IIFE.
       /* @__PURE__ */ (() => extend({ name: options.name }, extraOptions, { setup: options }))()
     ) : options;
+  }
+  function useId() {
+    const i = getCurrentInstance();
+    if (i) {
+      return (i.appContext.config.idPrefix || "v") + "-" + i.ids[0] + i.ids[1]++;
+    }
+    return "";
   }
   function markAsyncBoundary(instance) {
     instance.ids = [instance.ids[0] + instance.ids[2]++ + "-", 0, 0];
@@ -6543,11 +6550,11 @@
     }
     return cloned;
   }
-  function createTextVNode(text2 = " ", flag = 0) {
-    return createVNode(Text, null, text2, flag);
+  function createTextVNode(text = " ", flag = 0) {
+    return createVNode(Text, null, text, flag);
   }
-  function createCommentVNode(text2 = "", asBlock = false) {
-    return asBlock ? (openBlock(), createBlock(Comment, null, text2)) : createVNode(Comment, null, text2);
+  function createCommentVNode(text = "", asBlock = false) {
+    return asBlock ? (openBlock(), createBlock(Comment, null, text)) : createVNode(Comment, null, text);
   }
   function normalizeVNode(child) {
     if (child == null || typeof child === "boolean") {
@@ -6997,13 +7004,13 @@
       }
       return el;
     },
-    createText: (text2) => doc.createTextNode(text2),
-    createComment: (text2) => doc.createComment(text2),
-    setText: (node, text2) => {
-      node.nodeValue = text2;
+    createText: (text) => doc.createTextNode(text),
+    createComment: (text) => doc.createComment(text),
+    setText: (node, text) => {
+      node.nodeValue = text;
     },
-    setElementText: (el, text2) => {
-      el.textContent = text2;
+    setElementText: (el, text) => {
+      el.textContent = text;
     },
     parentNode: (node) => node.parentNode,
     nextSibling: (node) => node.nextSibling,
@@ -7455,13 +7462,13 @@
   }
   const assignKey = /* @__PURE__ */ Symbol("_assign");
   const initialValueKey = /* @__PURE__ */ Symbol("_initialValue");
-  function castValue(value, trim, number2) {
+  function castValue(value, trim, number) {
     if (trim) value = value.trim();
-    if (number2) value = looseToNumber(value);
+    if (number) value = looseToNumber(value);
     return value;
   }
   const vModelText = {
-    created(el, { modifiers: { lazy, trim, number: number2 } }, vnode) {
+    created(el, { modifiers: { lazy, trim, number } }, vnode) {
       if (el.parentNode) {
         if (el.type === "text") {
           el[initialValueKey] = el.defaultValue.replace(/[\r\n]/g, "");
@@ -7470,7 +7477,7 @@
         }
       }
       el[assignKey] = getModelAssigner(vnode);
-      const castToNumber = number2 || vnode.props && vnode.props.type === "number";
+      const castToNumber = number || vnode.props && vnode.props.type === "number";
       addEventListener$1(el, lazy ? "change" : "input", (e) => {
         if (e.target.composing) return;
         el[assignKey](castValue(el.value, trim, castToNumber));
@@ -7487,20 +7494,20 @@
       }
     },
     // set value on mounted so it's after min/max for type="range"
-    mounted(el, { value, modifiers: { trim, number: number2 } }) {
+    mounted(el, { value, modifiers: { trim, number } }) {
       const newValue = value == null ? "" : value;
       const initialValue = el[initialValueKey];
       delete el[initialValueKey];
       if (initialValue !== void 0 && (el.type === "text" || el.type === "textarea") && el.value !== initialValue) {
-        el[assignKey](castValue(el.value, trim, number2));
+        el[assignKey](castValue(el.value, trim, number));
       } else {
         el.value = newValue;
       }
     },
-    beforeUpdate(el, { value, oldValue, modifiers: { lazy, trim, number: number2 } }, vnode) {
+    beforeUpdate(el, { value, oldValue, modifiers: { lazy, trim, number } }, vnode) {
       el[assignKey] = getModelAssigner(vnode);
       if (el.composing) return;
-      const elValue = (number2 || el.type === "number") && !/^0\d/.test(el.value) ? looseToNumber(el.value) : el.value;
+      const elValue = (number || el.type === "number") && !/^0\d/.test(el.value) ? looseToNumber(el.value) : el.value;
       const newValue = value == null ? "" : value;
       if (elValue === newValue) {
         return;
@@ -7575,11 +7582,11 @@
   const vModelSelect = {
     // <select multiple> value need to be deep traversed
     deep: true,
-    created(el, { value, modifiers: { number: number2 } }, vnode) {
+    created(el, { value, modifiers: { number } }, vnode) {
       el._modelValue = value;
       addEventListener$1(el, "change", () => {
         const selectedVal = Array.prototype.filter.call(el.options, (o) => o.selected).map(
-          (o) => number2 ? looseToNumber(getValue(o)) : getValue(o)
+          (o) => number ? looseToNumber(getValue(o)) : getValue(o)
         );
         const multiple = el.multiple;
         const assignedValue = multiple ? isSet(el._modelValue) ? new Set(selectedVal) : selectedVal : selectedVal[0];
@@ -7994,15 +8001,6 @@
     ["path", { d: "M15 11v-1", key: "cntcp" }],
     ["path", { d: "M15 17v-2", key: "1279jj" }]
   ]);
-  const FolderOpen = createLucideIcon("folder-open", [
-    [
-      "path",
-      {
-        d: "m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2",
-        key: "usdka0"
-      }
-    ]
-  ]);
   const GitBranch = createLucideIcon("git-branch", [
     ["line", { x1: "6", x2: "6", y1: "3", y2: "15", key: "17qcm7" }],
     ["circle", { cx: "18", cy: "6", r: "3", key: "1h7g24" }],
@@ -8096,19 +8094,6 @@
     ["path", { d: "M21 12a9 9 0 1 1-6.219-8.56", key: "13zald" }]
   ]);
   const Minus = createLucideIcon("minus", [["path", { d: "M5 12h14", key: "1ays0h" }]]);
-  const Pause = createLucideIcon("pause", [
-    ["rect", { x: "14", y: "3", width: "5", height: "18", rx: "1", key: "kaeet6" }],
-    ["rect", { x: "5", y: "3", width: "5", height: "18", rx: "1", key: "1wsw3u" }]
-  ]);
-  const Play = createLucideIcon("play", [
-    [
-      "path",
-      {
-        d: "M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z",
-        key: "10ikf1"
-      }
-    ]
-  ]);
   const RefreshCcw = createLucideIcon("refresh-ccw", [
     ["path", { d: "M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8", key: "14sxne" }],
     ["path", { d: "M3 3v5h5", key: "1xhq8a" }],
@@ -8130,6 +8115,17 @@
     ["path", { d: "M19 7h-9", key: "6i9tg" }],
     ["circle", { cx: "17", cy: "17", r: "3", key: "18b49y" }],
     ["circle", { cx: "7", cy: "7", r: "3", key: "dfmy0x" }]
+  ]);
+  const ShieldAlert = createLucideIcon("shield-alert", [
+    [
+      "path",
+      {
+        d: "M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z",
+        key: "oel41y"
+      }
+    ],
+    ["path", { d: "M12 8v4", key: "1got3b" }],
+    ["path", { d: "M12 16h.01", key: "1drbdi" }]
   ]);
   const ShieldCheck = createLucideIcon("shield-check", [
     [
@@ -8184,8 +8180,8 @@
     ["path", { d: "M18 6 6 18", key: "1bl5f8" }],
     ["path", { d: "m6 6 12 12", key: "d8bk6v" }]
   ]);
-  const _hoisted_1$l = ["aria-label", "onKeydown"];
-  const _sfc_main$n = /* @__PURE__ */ defineComponent({
+  const _hoisted_1$j = ["aria-label", "onKeydown"];
+  const _sfc_main$l = /* @__PURE__ */ defineComponent({
     __name: "FloatingInfoPopover",
     props: {
       mode: { default: "hover" },
@@ -8332,7 +8328,7 @@
               ]
             }, [
               renderSlot(_ctx.$slots, "trigger")
-            ], 42, _hoisted_1$l),
+            ], 42, _hoisted_1$j),
             createBaseVNode(
               "div",
               {
@@ -8359,8 +8355,8 @@
       };
     }
   });
-  const _hoisted_1$k = ["innerHTML"];
-  const _sfc_main$m = /* @__PURE__ */ defineComponent({
+  const _hoisted_1$i = ["innerHTML"];
+  const _sfc_main$k = /* @__PURE__ */ defineComponent({
     __name: "JsonViewer",
     props: {
       value: {}
@@ -8393,12 +8389,12 @@
         return openBlock(), createElementBlock("pre", {
           class: "booster-json-viewer",
           innerHTML: html.value
-        }, null, 8, _hoisted_1$k);
+        }, null, 8, _hoisted_1$i);
       };
     }
   });
-  const _hoisted_1$j = ["innerHTML"];
-  const _sfc_main$l = /* @__PURE__ */ defineComponent({
+  const _hoisted_1$h = ["innerHTML"];
+  const _sfc_main$j = /* @__PURE__ */ defineComponent({
     __name: "MarkdownContent",
     props: {
       text: {}
@@ -8418,17 +8414,17 @@
       }
       function inline(value) {
         const code = [];
-        let text2 = value.replace(/`([^`]+)`/g, (_, content) => {
+        let text = value.replace(/`([^`]+)`/g, (_, content) => {
           const index = code.push(`<code>${escapeHtml(content)}</code>`) - 1;
           return `\0CODE${index}\0`;
         });
-        text2 = escapeHtml(text2);
-        text2 = text2.replace(/\[([^\]]+)\]\(([^\s)]+)(?:\s+&quot;[^&]*&quot;)?\)/g, (_, label, href) => {
-          const safe2 = safeLink(href.replaceAll("&amp;", "&"));
-          return safe2 ? `<a href="${escapeHtml(safe2)}" target="_blank" rel="noreferrer noopener">${label}</a>` : `${label} (${href})`;
+        text = escapeHtml(text);
+        text = text.replace(/\[([^\]]+)\]\(([^\s)]+)(?:\s+&quot;[^&]*&quot;)?\)/g, (_, label, href) => {
+          const safe = safeLink(href.replaceAll("&amp;", "&"));
+          return safe ? `<a href="${escapeHtml(safe)}" target="_blank" rel="noreferrer noopener">${label}</a>` : `${label} (${href})`;
         });
-        text2 = text2.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/__([^_]+)__/g, "<strong>$1</strong>").replace(/~~([^~]+)~~/g, "<del>$1</del>").replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>").replace(/(^|[^_])_([^_\n]+)_/g, "$1<em>$2</em>");
-        return text2.replace(/\u0000CODE(\d+)\u0000/g, (_, index) => code[Number(index)] ?? "");
+        text = text.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/__([^_]+)__/g, "<strong>$1</strong>").replace(/~~([^~]+)~~/g, "<del>$1</del>").replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>").replace(/(^|[^_])_([^_\n]+)_/g, "$1<em>$2</em>");
+        return text.replace(/\u0000CODE(\d+)\u0000/g, (_, index) => code[Number(index)] ?? "");
       }
       function table(lines, start) {
         if (start + 1 >= lines.length || !lines[start]?.includes("|")) return null;
@@ -8536,12 +8532,12 @@
         return openBlock(), createElementBlock("div", {
           class: "booster-markdown",
           innerHTML: html.value
-        }, null, 8, _hoisted_1$j);
+        }, null, 8, _hoisted_1$h);
       };
     }
   });
-  const _hoisted_1$i = ["aria-label"];
-  const _sfc_main$k = /* @__PURE__ */ defineComponent({
+  const _hoisted_1$g = ["aria-label"];
+  const _sfc_main$i = /* @__PURE__ */ defineComponent({
     __name: "ModalSurface",
     props: {
       label: {},
@@ -8561,8 +8557,8 @@
           return;
         }
         if (event.key !== "Tab" || !root.value) return;
-        const items2 = [...root.value.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]')].filter((item) => item.getClientRects().length);
-        const first = items2[0], last = items2.at(-1);
+        const items = [...root.value.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]')].filter((item) => item.getClientRects().length);
+        const first = items[0], last = items.at(-1);
         const active = root.value.getRootNode().activeElement;
         if (!first || !last) {
           event.preventDefault();
@@ -8602,7 +8598,7 @@
             onKeydown: key
           }, [
             renderSlot(_ctx.$slots, "default")
-          ], 42, _hoisted_1$i)
+          ], 42, _hoisted_1$g)
         ]);
       };
     }
@@ -9499,17 +9495,17 @@
   function translate(locale, key) {
     return messages[locale][key] ?? messages.en[key];
   }
-  const _hoisted_1$h = { class: "booster-meta-lines" };
-  const _hoisted_2$h = { class: "booster-meta-label" };
-  const _hoisted_3$g = { class: "booster-meta-value" };
-  const _hoisted_4$g = { class: "booster-meta-label" };
-  const _hoisted_5$e = { class: "booster-meta-value" };
-  const _hoisted_6$e = { class: "booster-meta-lines" };
-  const _hoisted_7$e = { class: "booster-meta-label" };
-  const _hoisted_8$d = { class: "booster-meta-value" };
-  const _hoisted_9$d = { class: "booster-meta-label" };
-  const _hoisted_10$d = { class: "booster-meta-value" };
-  const _sfc_main$j = /* @__PURE__ */ defineComponent({
+  const _hoisted_1$f = { class: "booster-meta-lines" };
+  const _hoisted_2$f = { class: "booster-meta-label" };
+  const _hoisted_3$e = { class: "booster-meta-value" };
+  const _hoisted_4$e = { class: "booster-meta-label" };
+  const _hoisted_5$c = { class: "booster-meta-value" };
+  const _hoisted_6$c = { class: "booster-meta-lines" };
+  const _hoisted_7$c = { class: "booster-meta-label" };
+  const _hoisted_8$b = { class: "booster-meta-value" };
+  const _hoisted_9$b = { class: "booster-meta-label" };
+  const _hoisted_10$b = { class: "booster-meta-value" };
+  const _sfc_main$h = /* @__PURE__ */ defineComponent({
     __name: "RecordMetaBadges",
     props: {
       metadata: {},
@@ -9549,22 +9545,22 @@
             class: normalizeClass(["booster-meta-badges", { compact: __props.compact }])
           },
           [
-            createVNode(_sfc_main$n, { label: timeLabel.value }, {
+            createVNode(_sfc_main$l, { label: timeLabel.value }, {
               trigger: withCtx(() => [
                 createVNode(unref(Clock3), { class: "size-3.5" })
               ]),
               default: withCtx(() => [
-                createBaseVNode("div", _hoisted_1$h, [
+                createBaseVNode("div", _hoisted_1$f, [
                   createBaseVNode(
                     "strong",
-                    _hoisted_2$h,
+                    _hoisted_2$f,
                     toDisplayString(t("reader.sentAt")),
                     1
                     /* TEXT */
                   ),
                   createBaseVNode(
                     "span",
-                    _hoisted_3$g,
+                    _hoisted_3$e,
                     toDisplayString(sent.value || t("reader.timeUnknown")),
                     1
                     /* TEXT */
@@ -9575,14 +9571,14 @@
                     [
                       createBaseVNode(
                         "strong",
-                        _hoisted_4$g,
+                        _hoisted_4$e,
                         toDisplayString(t("reader.editedAt")),
                         1
                         /* TEXT */
                       ),
                       createBaseVNode(
                         "span",
-                        _hoisted_5$e,
+                        _hoisted_5$c,
                         toDisplayString(edited.value),
                         1
                         /* TEXT */
@@ -9596,7 +9592,7 @@
               _: 1
               /* STABLE */
             }, 8, ["label"]),
-            __props.showModel && modelLabel.value ? (openBlock(), createBlock(_sfc_main$n, {
+            __props.showModel && modelLabel.value ? (openBlock(), createBlock(_sfc_main$l, {
               key: 0,
               label: modelLabel.value
             }, {
@@ -9604,21 +9600,21 @@
                 createVNode(unref(BrainCircuit), { class: "size-3.5" })
               ]),
               default: withCtx(() => [
-                createBaseVNode("div", _hoisted_6$e, [
+                createBaseVNode("div", _hoisted_6$c, [
                   __props.metadata.model ? (openBlock(), createElementBlock(
                     Fragment,
                     { key: 0 },
                     [
                       createBaseVNode(
                         "strong",
-                        _hoisted_7$e,
+                        _hoisted_7$c,
                         toDisplayString(t("reader.model")),
                         1
                         /* TEXT */
                       ),
                       createBaseVNode(
                         "span",
-                        _hoisted_8$d,
+                        _hoisted_8$b,
                         toDisplayString(__props.metadata.model),
                         1
                         /* TEXT */
@@ -9633,14 +9629,14 @@
                     [
                       createBaseVNode(
                         "strong",
-                        _hoisted_9$d,
+                        _hoisted_9$b,
                         toDisplayString(t("reader.thinking")),
                         1
                         /* TEXT */
                       ),
                       createBaseVNode(
                         "span",
-                        _hoisted_10$d,
+                        _hoisted_10$b,
                         toDisplayString(__props.metadata.thinking),
                         1
                         /* TEXT */
@@ -9661,16 +9657,16 @@
       };
     }
   });
-  function omitRepeatedRecordHeading(text2, heading) {
-    const trimmed = text2.trim();
+  function omitRepeatedRecordHeading(text, heading) {
+    const trimmed = text.trim();
     if (!trimmed || !heading.trim()) return trimmed;
     const lines = trimmed.split(/\r?\n/);
     const normalize = (value) => value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
     if (normalize(lines[0] ?? "") === normalize(heading)) return lines.slice(1).join("\n").trim();
     return trimmed;
   }
-  function parseArchiveStructuredText(text2) {
-    const trimmed = text2.trim();
+  function parseArchiveStructuredText(text) {
+    const trimmed = text.trim();
     if (!(trimmed.startsWith("{") || trimmed.startsWith("["))) return null;
     try {
       const parsed = JSON.parse(trimmed);
@@ -9679,48 +9675,48 @@
       return null;
     }
   }
-  const _hoisted_1$g = { class: "booster-record-header" };
-  const _hoisted_2$g = {
+  const _hoisted_1$e = { class: "booster-record-header" };
+  const _hoisted_2$e = {
     key: 0,
     class: "booster-record-edited"
   };
-  const _hoisted_3$f = { class: "booster-record-header-tools" };
-  const _hoisted_4$f = ["title", "aria-label"];
-  const _hoisted_5$d = { class: "booster-record-header booster-record-internal-header" };
-  const _hoisted_6$d = { class: "booster-record-kind" };
-  const _hoisted_7$d = { class: "booster-meta-lines" };
-  const _hoisted_8$c = { class: "booster-meta-label" };
-  const _hoisted_9$c = { class: "booster-meta-value" };
-  const _hoisted_10$c = { class: "booster-meta-label" };
-  const _hoisted_11$c = { class: "booster-meta-value" };
-  const _hoisted_12$b = { class: "booster-record-header-tools" };
-  const _hoisted_13$a = ["title", "aria-label"];
-  const _hoisted_14$a = ["src"];
-  const _hoisted_15$a = {
+  const _hoisted_3$d = { class: "booster-record-header-tools" };
+  const _hoisted_4$d = ["title", "aria-label"];
+  const _hoisted_5$b = { class: "booster-record-header booster-record-internal-header" };
+  const _hoisted_6$b = { class: "booster-record-kind" };
+  const _hoisted_7$b = { class: "booster-meta-lines" };
+  const _hoisted_8$a = { class: "booster-meta-label" };
+  const _hoisted_9$a = { class: "booster-meta-value" };
+  const _hoisted_10$a = { class: "booster-meta-label" };
+  const _hoisted_11$a = { class: "booster-meta-value" };
+  const _hoisted_12$9 = { class: "booster-record-header-tools" };
+  const _hoisted_13$9 = ["title", "aria-label"];
+  const _hoisted_14$9 = ["src"];
+  const _hoisted_15$9 = {
     key: 1,
     class: "booster-tool-icon booster-tool-icon-fallback"
   };
-  const _hoisted_16$9 = { class: "booster-tool-copy" };
-  const _hoisted_17$8 = ["title"];
-  const _hoisted_18$8 = { key: 0 };
-  const _hoisted_19$7 = ["href", "title"];
-  const _hoisted_20$7 = ["title"];
-  const _hoisted_21$7 = ["title"];
-  const _hoisted_22$7 = {
+  const _hoisted_16$8 = { class: "booster-tool-copy" };
+  const _hoisted_17$7 = ["title"];
+  const _hoisted_18$7 = { key: 0 };
+  const _hoisted_19$6 = ["href", "title"];
+  const _hoisted_20$6 = ["title"];
+  const _hoisted_21$6 = ["title"];
+  const _hoisted_22$6 = {
     key: 0,
     class: "booster-tool-expanded"
   };
-  const _hoisted_23$7 = ["disabled"];
-  const _hoisted_24$7 = { class: "booster-internal-preview" };
-  const _hoisted_25$6 = {
+  const _hoisted_23$6 = ["disabled"];
+  const _hoisted_24$6 = { class: "booster-internal-preview" };
+  const _hoisted_25$5 = {
     key: 0,
     class: "booster-tool-expanded"
   };
   const _hoisted_26$5 = ["title", "aria-label"];
-  const _hoisted_27$4 = { class: "booster-json-modal" };
-  const _hoisted_28$4 = { class: "booster-record-modal-header" };
-  const _hoisted_29$4 = ["aria-label"];
-  const _sfc_main$i = /* @__PURE__ */ defineComponent({
+  const _hoisted_27$5 = { class: "booster-json-modal" };
+  const _hoisted_28$5 = { class: "booster-record-modal-header" };
+  const _hoisted_29$5 = ["aria-label"];
+  const _sfc_main$g = /* @__PURE__ */ defineComponent({
     __name: "ArchiveRecord",
     props: {
       item: {},
@@ -9743,8 +9739,8 @@
       const toolDetails = computed(() => toolPayload.value ?? tool.value?.result ?? structuredText.value);
       const displayText = computed(() => {
         const heading = props.item.kind === "tool_call" || props.item.kind === "tool_result" ? toolName.value : t("reader." + props.item.kind);
-        const text2 = omitRepeatedRecordHeading(props.item.text, heading);
-        return (props.item.kind === "tool_call" || props.item.kind === "tool_result") && parseArchiveStructuredText(text2) !== null ? "" : text2;
+        const text = omitRepeatedRecordHeading(props.item.text, heading);
+        return (props.item.kind === "tool_call" || props.item.kind === "tool_result") && parseArchiveStructuredText(text) !== null ? "" : text;
       });
       const hasText = computed(() => {
         const value = displayText.value.trim();
@@ -9754,8 +9750,8 @@
         );
       });
       const preview = computed(() => {
-        const text2 = displayText.value.trim();
-        return text2.length > 220 ? text2.slice(0, 220).trimEnd() + "…" : text2;
+        const text = displayText.value.trim();
+        return text.length > 220 ? text.slice(0, 220).trimEnd() + "…" : text;
       });
       const isReasoningExpanded = computed(() => props.expandReasoning || expanded.value);
       const toolLink = computed(() => tool.value?.link ?? null);
@@ -9789,7 +9785,7 @@
               Fragment,
               { key: 0 },
               [
-                createBaseVNode("header", _hoisted_1$g, [
+                createBaseVNode("header", _hoisted_1$e, [
                   createBaseVNode(
                     "strong",
                     null,
@@ -9799,13 +9795,13 @@
                   ),
                   __props.item.metadata.edited ? (openBlock(), createElementBlock(
                     "span",
-                    _hoisted_2$g,
+                    _hoisted_2$e,
                     toDisplayString(t("reader.editedShort")),
                     1
                     /* TEXT */
                   )) : createCommentVNode("v-if", true),
-                  createBaseVNode("span", _hoisted_3$f, [
-                    createVNode(_sfc_main$j, {
+                  createBaseVNode("span", _hoisted_3$d, [
+                    createVNode(_sfc_main$h, {
                       metadata: __props.item.metadata,
                       locale: __props.locale,
                       "show-model": __props.item.kind === "answer"
@@ -9818,10 +9814,10 @@
                       onClick: _cache[0] || (_cache[0] = ($event) => rawOpen.value = true)
                     }, [
                       createVNode(unref(FileJson2), { class: "size-3.5" })
-                    ], 8, _hoisted_4$f)
+                    ], 8, _hoisted_4$d)
                   ])
                 ]),
-                createVNode(_sfc_main$l, {
+                createVNode(_sfc_main$j, {
                   text: __props.item.text || t("reader.noText")
                 }, null, 8, ["text"])
               ],
@@ -9831,9 +9827,9 @@
               Fragment,
               { key: 1 },
               [
-                createBaseVNode("header", _hoisted_5$d, [
-                  createBaseVNode("span", _hoisted_6$d, [
-                    reasoningInfo.value ? (openBlock(), createBlock(_sfc_main$n, {
+                createBaseVNode("header", _hoisted_5$b, [
+                  createBaseVNode("span", _hoisted_6$b, [
+                    reasoningInfo.value ? (openBlock(), createBlock(_sfc_main$l, {
                       key: 0,
                       label: reasoningInfo.value,
                       align: "start"
@@ -9842,21 +9838,21 @@
                         createVNode(unref(Brain), { class: "size-4" })
                       ]),
                       default: withCtx(() => [
-                        createBaseVNode("div", _hoisted_7$d, [
+                        createBaseVNode("div", _hoisted_7$b, [
                           __props.item.metadata.model ? (openBlock(), createElementBlock(
                             Fragment,
                             { key: 0 },
                             [
                               createBaseVNode(
                                 "strong",
-                                _hoisted_8$c,
+                                _hoisted_8$a,
                                 toDisplayString(t("reader.model")),
                                 1
                                 /* TEXT */
                               ),
                               createBaseVNode(
                                 "span",
-                                _hoisted_9$c,
+                                _hoisted_9$a,
                                 toDisplayString(__props.item.metadata.model),
                                 1
                                 /* TEXT */
@@ -9871,14 +9867,14 @@
                             [
                               createBaseVNode(
                                 "strong",
-                                _hoisted_10$c,
+                                _hoisted_10$a,
                                 toDisplayString(t("reader.thinking")),
                                 1
                                 /* TEXT */
                               ),
                               createBaseVNode(
                                 "span",
-                                _hoisted_11$c,
+                                _hoisted_11$a,
                                 toDisplayString(__props.item.metadata.thinking),
                                 1
                                 /* TEXT */
@@ -9903,7 +9899,7 @@
                       /* TEXT */
                     )
                   ]),
-                  createBaseVNode("span", _hoisted_12$b, [
+                  createBaseVNode("span", _hoisted_12$9, [
                     createBaseVNode("button", {
                       class: "booster-record-icon-button",
                       type: "button",
@@ -9912,7 +9908,7 @@
                       onClick: _cache[1] || (_cache[1] = ($event) => rawOpen.value = true)
                     }, [
                       createVNode(unref(FileJson2), { class: "size-3.5" })
-                    ], 8, _hoisted_13$a),
+                    ], 8, _hoisted_13$9),
                     hasText.value ? (openBlock(), createElementBlock("button", {
                       key: 0,
                       class: "booster-record-expand",
@@ -9941,7 +9937,7 @@
                     class: normalizeClass(["booster-reasoning-preview", { expanded: isReasoningExpanded.value }])
                   },
                   [
-                    createVNode(_sfc_main$l, { text: displayText.value }, null, 8, ["text"])
+                    createVNode(_sfc_main$j, { text: displayText.value }, null, 8, ["text"])
                   ],
                   2
                   /* CLASS */
@@ -9967,11 +9963,11 @@
                       alt: "",
                       loading: "lazy",
                       referrerpolicy: "no-referrer"
-                    }, null, 8, _hoisted_14$a)) : (openBlock(), createElementBlock("span", _hoisted_15$a, [
+                    }, null, 8, _hoisted_14$9)) : (openBlock(), createElementBlock("span", _hoisted_15$9, [
                       (openBlock(), createBlock(resolveDynamicComponent(toolGlyph.value), { class: "size-4" }))
                     ])),
-                    createBaseVNode("div", _hoisted_16$9, [
-                      createBaseVNode("strong", { title: toolName.value }, toDisplayString(toolName.value), 9, _hoisted_17$8),
+                    createBaseVNode("div", _hoisted_16$8, [
+                      createBaseVNode("strong", { title: toolName.value }, toDisplayString(toolName.value), 9, _hoisted_17$7),
                       createBaseVNode("span", null, [
                         createTextVNode(
                           toDisplayString(t("reader." + __props.item.kind)) + " ",
@@ -9994,7 +9990,7 @@
                       ]),
                       preview.value && !expanded.value ? (openBlock(), createElementBlock(
                         "p",
-                        _hoisted_18$8,
+                        _hoisted_18$7,
                         toDisplayString(preview.value),
                         1
                         /* TEXT */
@@ -10005,7 +10001,7 @@
                       onClick: _cache[5] || (_cache[5] = withModifiers(() => {
                       }, ["stop"]))
                     }, [
-                      createVNode(_sfc_main$j, {
+                      createVNode(_sfc_main$h, {
                         metadata: __props.item.metadata,
                         locale: __props.locale
                       }, null, 8, ["metadata", "locale"]),
@@ -10018,7 +10014,7 @@
                         title: t("reader.openTool") + ": " + toolLink.value
                       }, [
                         createVNode(unref(ExternalLink), { class: "size-3.5" })
-                      ], 8, _hoisted_19$7)) : createCommentVNode("v-if", true),
+                      ], 8, _hoisted_19$6)) : createCommentVNode("v-if", true),
                       hasToolDetails.value ? (openBlock(), createElementBlock("button", {
                         key: 1,
                         type: "button",
@@ -10027,7 +10023,7 @@
                         onClick: _cache[3] || (_cache[3] = ($event) => expanded.value = !expanded.value)
                       }, [
                         createVNode(unref(CodeXml), { class: "size-3.5" })
-                      ], 8, _hoisted_20$7)) : createCommentVNode("v-if", true),
+                      ], 8, _hoisted_20$6)) : createCommentVNode("v-if", true),
                       createBaseVNode("button", {
                         type: "button",
                         class: "booster-tool-action",
@@ -10035,17 +10031,17 @@
                         onClick: _cache[4] || (_cache[4] = ($event) => rawOpen.value = true)
                       }, [
                         createVNode(unref(FileJson2), { class: "size-3.5" })
-                      ], 8, _hoisted_21$7)
+                      ], 8, _hoisted_21$6)
                     ])
                   ],
                   2
                   /* CLASS */
                 ),
-                expanded.value && hasToolDetails.value ? (openBlock(), createElementBlock("div", _hoisted_22$7, [
-                  hasText.value ? (openBlock(), createBlock(_sfc_main$l, {
+                expanded.value && hasToolDetails.value ? (openBlock(), createElementBlock("div", _hoisted_22$6, [
+                  hasText.value ? (openBlock(), createBlock(_sfc_main$j, {
                     key: 0,
                     text: displayText.value
-                  }, null, 8, ["text"])) : (openBlock(), createBlock(_sfc_main$m, {
+                  }, null, 8, ["text"])) : (openBlock(), createBlock(_sfc_main$k, {
                     key: 1,
                     value: toolDetails.value
                   }, null, 8, ["value"]))
@@ -10075,7 +10071,7 @@
                   ]),
                   createBaseVNode(
                     "span",
-                    _hoisted_24$7,
+                    _hoisted_24$6,
                     toDisplayString(expanded.value ? "" : preview.value || __props.item.record.contentType || __props.item.record.messageType || t("reader.metadataOnly")),
                     1
                     /* TEXT */
@@ -10087,9 +10083,9 @@
                     key: 1,
                     class: "size-3.5"
                   })) : createCommentVNode("v-if", true)
-                ], 10, _hoisted_23$7),
-                expanded.value && hasText.value ? (openBlock(), createElementBlock("div", _hoisted_25$6, [
-                  createVNode(_sfc_main$l, { text: displayText.value }, null, 8, ["text"])
+                ], 10, _hoisted_23$6),
+                expanded.value && hasText.value ? (openBlock(), createElementBlock("div", _hoisted_25$5, [
+                  createVNode(_sfc_main$j, { text: displayText.value }, null, 8, ["text"])
                 ])) : createCommentVNode("v-if", true),
                 createBaseVNode("button", {
                   class: "booster-record-icon-button booster-record-raw-corner",
@@ -10104,15 +10100,15 @@
               64
               /* STABLE_FRAGMENT */
             )),
-            rawOpen.value ? (openBlock(), createBlock(_sfc_main$k, {
+            rawOpen.value ? (openBlock(), createBlock(_sfc_main$i, {
               key: 4,
               label: t("reader.raw"),
               wide: "",
               onClose: _cache[10] || (_cache[10] = ($event) => rawOpen.value = false)
             }, {
               default: withCtx(() => [
-                createBaseVNode("div", _hoisted_27$4, [
-                  createBaseVNode("header", _hoisted_28$4, [
+                createBaseVNode("div", _hoisted_27$5, [
+                  createBaseVNode("header", _hoisted_28$5, [
                     createBaseVNode("div", null, [
                       createBaseVNode(
                         "strong",
@@ -10136,9 +10132,9 @@
                       onClick: _cache[9] || (_cache[9] = ($event) => rawOpen.value = false)
                     }, [
                       createVNode(unref(X), { class: "size-4" })
-                    ], 8, _hoisted_29$4)
+                    ], 8, _hoisted_29$5)
                   ]),
-                  createVNode(_sfc_main$m, {
+                  createVNode(_sfc_main$k, {
                     value: __props.item.record.raw
                   }, null, 8, ["value"])
                 ])
@@ -10153,61 +10149,61 @@
       };
     }
   });
-  const _hoisted_1$f = ["aria-label", "onKeydown"];
-  const _hoisted_2$f = { class: "booster-maintenance-heading" };
-  const _hoisted_3$e = { class: "booster-maintenance-title" };
-  const _hoisted_4$e = ["disabled", "aria-label"];
-  const _hoisted_5$c = { class: "booster-maintenance-content" };
-  const _hoisted_6$c = {
+  const _hoisted_1$d = ["aria-label", "onKeydown"];
+  const _hoisted_2$d = { class: "booster-maintenance-heading" };
+  const _hoisted_3$c = { class: "booster-maintenance-title" };
+  const _hoisted_4$c = ["disabled", "aria-label"];
+  const _hoisted_5$a = { class: "booster-maintenance-content" };
+  const _hoisted_6$a = {
     key: 0,
     class: "booster-maintenance-loading",
     role: "status"
   };
-  const _hoisted_7$c = { class: "booster-maintenance-stats" };
-  const _hoisted_8$b = {
+  const _hoisted_7$a = { class: "booster-maintenance-stats" };
+  const _hoisted_8$9 = {
     key: 0,
     class: "booster-maintenance-section"
   };
-  const _hoisted_9$b = { class: "booster-maintenance-section-title" };
-  const _hoisted_10$b = {
+  const _hoisted_9$9 = { class: "booster-maintenance-section-title" };
+  const _hoisted_10$9 = {
     key: 0,
     class: "booster-maintenance-warning"
   };
-  const _hoisted_11$b = ["disabled"];
-  const _hoisted_12$a = {
+  const _hoisted_11$9 = ["disabled"];
+  const _hoisted_12$8 = {
     key: 1,
     class: "booster-maintenance-section"
   };
-  const _hoisted_13$9 = { class: "booster-maintenance-section-title" };
-  const _hoisted_14$9 = { class: "booster-maintenance-actions" };
-  const _hoisted_15$9 = ["disabled"];
-  const _hoisted_16$8 = ["disabled"];
-  const _hoisted_17$7 = ["disabled"];
-  const _hoisted_18$7 = ["disabled"];
-  const _hoisted_19$6 = ["disabled"];
-  const _hoisted_20$6 = {
+  const _hoisted_13$8 = { class: "booster-maintenance-section-title" };
+  const _hoisted_14$8 = { class: "booster-maintenance-actions" };
+  const _hoisted_15$8 = ["disabled"];
+  const _hoisted_16$7 = ["disabled"];
+  const _hoisted_17$6 = ["disabled"];
+  const _hoisted_18$6 = ["disabled"];
+  const _hoisted_19$5 = ["disabled"];
+  const _hoisted_20$5 = {
     key: 2,
     class: "booster-maintenance-section"
   };
-  const _hoisted_21$6 = { class: "booster-maintenance-section-title" };
-  const _hoisted_22$6 = { class: "booster-maintenance-actions" };
-  const _hoisted_23$6 = ["disabled"];
-  const _hoisted_24$6 = ["disabled"];
-  const _hoisted_25$5 = { class: "booster-note" };
+  const _hoisted_21$5 = { class: "booster-maintenance-section-title" };
+  const _hoisted_22$5 = { class: "booster-maintenance-actions" };
+  const _hoisted_23$5 = ["disabled"];
+  const _hoisted_24$5 = ["disabled"];
+  const _hoisted_25$4 = { class: "booster-note" };
   const _hoisted_26$4 = { class: "booster-maintenance-section" };
-  const _hoisted_27$3 = { class: "booster-maintenance-backup-tools" };
-  const _hoisted_28$3 = ["disabled"];
-  const _hoisted_29$3 = { class: "booster-maintenance-backup-restore" };
-  const _hoisted_30$3 = ["disabled"];
-  const _hoisted_31$3 = { class: "booster-maintenance-check" };
-  const _hoisted_32$3 = ["disabled"];
-  const _hoisted_33$3 = ["disabled"];
-  const _hoisted_34$3 = {
+  const _hoisted_27$4 = { class: "booster-maintenance-backup-tools" };
+  const _hoisted_28$4 = ["disabled"];
+  const _hoisted_29$4 = { class: "booster-maintenance-backup-restore" };
+  const _hoisted_30$4 = ["disabled"];
+  const _hoisted_31$4 = { class: "booster-maintenance-check" };
+  const _hoisted_32$4 = ["disabled"];
+  const _hoisted_33$4 = ["disabled"];
+  const _hoisted_34$4 = {
     key: 0,
     role: "status",
     class: "booster-maintenance-result"
   };
-  const _hoisted_35$3 = {
+  const _hoisted_35$4 = {
     key: 1,
     role: "status",
     class: "booster-maintenance-result"
@@ -10287,7 +10283,7 @@
   const _hoisted_67$1 = { class: "booster-maintenance-footer" };
   const _hoisted_68$1 = ["disabled"];
   const _hoisted_69$1 = ["disabled"];
-  const _sfc_main$h = /* @__PURE__ */ defineComponent({
+  const _sfc_main$f = /* @__PURE__ */ defineComponent({
     __name: "ArchiveMaintenanceWidget",
     props: {
       archiveAdapter: {},
@@ -10545,8 +10541,8 @@
             "aria-label": label("Управление архивом", "Archive management"),
             onKeydown: withKeys(withModifiers(close, ["stop", "prevent"]), ["esc"])
           }, [
-            createBaseVNode("header", _hoisted_2$f, [
-              createBaseVNode("div", _hoisted_3$e, [
+            createBaseVNode("header", _hoisted_2$d, [
+              createBaseVNode("div", _hoisted_3$c, [
                 createVNode(unref(Database), { class: "size-5" }),
                 createBaseVNode("div", null, [
                   createBaseVNode(
@@ -10575,10 +10571,10 @@
                 onClick: close
               }, [
                 createVNode(unref(X), { class: "size-4" })
-              ], 8, _hoisted_4$e)
+              ], 8, _hoisted_4$c)
             ]),
-            createBaseVNode("div", _hoisted_5$c, [
-              loading.value ? (openBlock(), createElementBlock("div", _hoisted_6$c, [
+            createBaseVNode("div", _hoisted_5$a, [
+              loading.value ? (openBlock(), createElementBlock("div", _hoisted_6$a, [
                 createVNode(unref(LoaderCircle), { class: "size-4 booster-reader-spinner" }),
                 createTextVNode(
                   " " + toDisplayString(label("Проверка локальных записей…", "Inspecting local archive…")),
@@ -10589,7 +10585,7 @@
                 Fragment,
                 { key: 1 },
                 [
-                  createBaseVNode("div", _hoisted_7$c, [
+                  createBaseVNode("div", _hoisted_7$a, [
                     createBaseVNode("div", null, [
                       createBaseVNode(
                         "span",
@@ -10639,8 +10635,8 @@
                       )
                     ])
                   ]),
-                  isMigrationNeeded.value ? (openBlock(), createElementBlock("section", _hoisted_8$b, [
-                    createBaseVNode("div", _hoisted_9$b, [
+                  isMigrationNeeded.value ? (openBlock(), createElementBlock("section", _hoisted_8$9, [
+                    createBaseVNode("div", _hoisted_9$9, [
                       createVNode(unref(ArrowLeftRight), { class: "size-4" }),
                       createBaseVNode(
                         "h3",
@@ -10662,7 +10658,7 @@
                     ),
                     unverified.value ? (openBlock(), createElementBlock(
                       "p",
-                      _hoisted_10$b,
+                      _hoisted_10$9,
                       toDisplayString(label(
                         `Требуется подтверждение владельца: ${inventory.value.unboundConversations} без идентификатора, ${inventory.value.conflictingConversations} с отличающимся ID.`,
                         `Owner confirmation required: ${inventory.value.unboundConversations} unknown, ${inventory.value.conflictingConversations} mismatched.`
@@ -10675,10 +10671,10 @@
                       class: "booster-action-primary",
                       disabled: busy.value,
                       onClick: migrate
-                    }, toDisplayString(label("Перенести подтверждённые записи", "Migrate verified records")), 9, _hoisted_11$b)
+                    }, toDisplayString(label("Перенести подтверждённые записи", "Migrate verified records")), 9, _hoisted_11$9)
                   ])) : createCommentVNode("v-if", true),
-                  inventory.value.activeGeneration ? (openBlock(), createElementBlock("section", _hoisted_12$a, [
-                    createBaseVNode("div", _hoisted_13$9, [
+                  inventory.value.activeGeneration ? (openBlock(), createElementBlock("section", _hoisted_12$8, [
+                    createBaseVNode("div", _hoisted_13$8, [
                       createVNode(unref(RefreshCw), { class: "size-4" }),
                       createBaseVNode(
                         "h3",
@@ -10698,7 +10694,7 @@
                       1
                       /* TEXT */
                     ),
-                    createBaseVNode("div", _hoisted_14$9, [
+                    createBaseVNode("div", _hoisted_14$8, [
                       createBaseVNode("button", {
                         type: "button",
                         class: "booster-action-primary",
@@ -10717,36 +10713,36 @@
                           1
                           /* TEXT */
                         )
-                      ], 8, _hoisted_15$9),
+                      ], 8, _hoisted_15$8),
                       createBaseVNode("button", {
                         type: "button",
                         class: "booster-action-secondary",
                         disabled: busy.value,
                         onClick: _cache[1] || (_cache[1] = ($event) => reconcile(168))
-                      }, toDisplayString(label("За 7 дней", "Last 7 days")), 9, _hoisted_16$8)
+                      }, toDisplayString(label("За 7 дней", "Last 7 days")), 9, _hoisted_16$7)
                     ]),
                     createBaseVNode("button", {
                       type: "button",
                       class: "booster-action-secondary",
                       disabled: busy.value || !__props.archiveAdapter.reconcileArchiveAll,
                       onClick: _cache[2] || (_cache[2] = ($event) => reconcileAll(false))
-                    }, toDisplayString(label("Сверить всю историю", "Reconcile all history")), 9, _hoisted_17$7),
+                    }, toDisplayString(label("Сверить всю историю", "Reconcile all history")), 9, _hoisted_17$6),
                     createBaseVNode("button", {
                       type: "button",
                       class: "booster-action-secondary",
                       disabled: busy.value || !__props.archiveAdapter.inspectSkippedOwnershipAll,
                       onClick: inspectAllSkipped
-                    }, toDisplayString(label("Показать все пропущенные диалоги", "Inspect all skipped chats")), 9, _hoisted_18$7),
+                    }, toDisplayString(label("Показать все пропущенные диалоги", "Inspect all skipped chats")), 9, _hoisted_18$6),
                     ownerInspection.value?.skippedMessages ? (openBlock(), createElementBlock("button", {
                       key: 0,
                       type: "button",
                       class: "booster-maintenance-link",
                       disabled: busy.value,
                       onClick: _cache[3] || (_cache[3] = ($event) => inspectSkipped(168))
-                    }, toDisplayString(label("Проверить также за 7 дней", "Inspect last 7 days too")), 9, _hoisted_19$6)) : createCommentVNode("v-if", true)
+                    }, toDisplayString(label("Проверить также за 7 дней", "Inspect last 7 days too")), 9, _hoisted_19$5)) : createCommentVNode("v-if", true)
                   ])) : createCommentVNode("v-if", true),
-                  inventory.value.activeGeneration ? (openBlock(), createElementBlock("section", _hoisted_20$6, [
-                    createBaseVNode("div", _hoisted_21$6, [
+                  inventory.value.activeGeneration ? (openBlock(), createElementBlock("section", _hoisted_20$5, [
+                    createBaseVNode("div", _hoisted_21$5, [
                       createVNode(unref(ClipboardCheck), { class: "size-4" }),
                       createBaseVNode(
                         "h3",
@@ -10766,23 +10762,23 @@
                       1
                       /* TEXT */
                     ),
-                    createBaseVNode("div", _hoisted_22$6, [
+                    createBaseVNode("div", _hoisted_22$5, [
                       createBaseVNode("button", {
                         type: "button",
                         class: "booster-action-secondary",
                         disabled: busy.value,
                         onClick: verifyCounts
-                      }, toDisplayString(label("Сверить количество", "Compare counts")), 9, _hoisted_23$6),
+                      }, toDisplayString(label("Сверить количество", "Compare counts")), 9, _hoisted_23$5),
                       createBaseVNode("button", {
                         type: "button",
                         class: "booster-action-secondary",
                         disabled: busy.value || !__props.archiveAdapter.auditArchiveIntegrity,
                         onClick: verifyIntegrity
-                      }, toDisplayString(label("Глубокая SHA-256 сверка", "Deep SHA-256 audit")), 9, _hoisted_24$6)
+                      }, toDisplayString(label("Глубокая SHA-256 сверка", "Deep SHA-256 audit")), 9, _hoisted_24$5)
                     ]),
                     createBaseVNode(
                       "p",
-                      _hoisted_25$5,
+                      _hoisted_25$4,
                       toDisplayString(label(
                         "Глубокая проверка читает исходные сообщения и проверяет их сохранённые копии. Для больших архивов может потребоваться длительная обработка, без изменения записей.",
                         "Deep audit verifies saved source contents and fingerprints. Large archives can take time; records are never modified."
@@ -10792,7 +10788,7 @@
                     )
                   ])) : createCommentVNode("v-if", true),
                   createBaseVNode("section", _hoisted_26$4, [
-                    createBaseVNode("details", _hoisted_27$3, [
+                    createBaseVNode("details", _hoisted_27$4, [
                       createBaseVNode(
                         "summary",
                         null,
@@ -10815,8 +10811,8 @@
                         class: "booster-action-secondary",
                         disabled: busy.value || !inventory.value.activeGeneration || !__props.archiveAdapter.exportCanonicalBackup,
                         onClick: saveBackup
-                      }, toDisplayString(label("Сохранить копию .ndjson.gz", "Save .ndjson.gz backup")), 9, _hoisted_28$3),
-                      createBaseVNode("div", _hoisted_29$3, [
+                      }, toDisplayString(label("Сохранить копию .ndjson.gz", "Save .ndjson.gz backup")), 9, _hoisted_28$4),
+                      createBaseVNode("div", _hoisted_29$4, [
                         createBaseVNode("label", null, [
                           createTextVNode(
                             toDisplayString(label("Файл восстановимой копии", "Restorable backup file")) + " ",
@@ -10828,14 +10824,14 @@
                             accept: ".gz,.ndjson.gz,application/gzip",
                             disabled: busy.value,
                             onChange: onBackupFile
-                          }, null, 40, _hoisted_30$3)
+                          }, null, 40, _hoisted_30$4)
                         ]),
-                        createBaseVNode("label", _hoisted_31$3, [
+                        createBaseVNode("label", _hoisted_31$4, [
                           withDirectives(createBaseVNode("input", {
                             "onUpdate:modelValue": _cache[4] || (_cache[4] = ($event) => backupApproved.value = $event),
                             type: "checkbox",
                             disabled: busy.value || !backupFile.value
-                          }, null, 8, _hoisted_32$3), [
+                          }, null, 8, _hoisted_32$4), [
                             [vModelCheckbox, backupApproved.value]
                           ]),
                           createTextVNode(
@@ -10852,18 +10848,18 @@
                           class: "booster-action-secondary",
                           disabled: busy.value || !backupApproved.value || !backupFile.value || !__props.archiveAdapter.restoreCanonicalBackup,
                           onClick: restoreBackupFile
-                        }, toDisplayString(label("Проверить и восстановить", "Verify and restore")), 9, _hoisted_33$3)
+                        }, toDisplayString(label("Проверить и восстановить", "Verify and restore")), 9, _hoisted_33$4)
                       ]),
                       backupMessage.value ? (openBlock(), createElementBlock(
                         "p",
-                        _hoisted_34$3,
+                        _hoisted_34$4,
                         toDisplayString(backupMessage.value),
                         1
                         /* TEXT */
                       )) : createCommentVNode("v-if", true),
                       backupRestoreResult.value ? (openBlock(), createElementBlock(
                         "p",
-                        _hoisted_35$3,
+                        _hoisted_35$4,
                         toDisplayString(label("Восстановлено", "Restored")) + ": " + toDisplayString(backupRestoreResult.value.conversations) + " " + toDisplayString(label("диалогов", "chats")) + ", " + toDisplayString(backupRestoreResult.value.messages) + " " + toDisplayString(label("сообщений", "messages")) + ", " + toDisplayString(backupRestoreResult.value.snapshots) + " SourceSnapshots. ",
                         1
                         /* TEXT */
@@ -11279,7 +11275,7 @@
                 onClick: close
               }, toDisplayString(label("Закрыть", "Close")), 9, _hoisted_69$1)
             ])
-          ], 40, _hoisted_1$f)
+          ], 40, _hoisted_1$d)
         ]);
       };
     }
@@ -12808,27 +12804,27 @@
     return g;
   }
   function createText(options) {
-    var text2 = document.createElementNS(SVG_NAMESPACE, "text");
-    text2.setAttribute("alignment-baseline", "central");
-    text2.setAttribute("dominant-baseline", "central");
-    text2.textContent = options.content;
+    var text = document.createElementNS(SVG_NAMESPACE, "text");
+    text.setAttribute("alignment-baseline", "central");
+    text.setAttribute("dominant-baseline", "central");
+    text.textContent = options.content;
     if (options.fill) {
-      text2.setAttribute("fill", options.fill);
+      text.setAttribute("fill", options.fill);
     }
     if (options.font) {
-      text2.setAttribute("style", "font: " + options.font);
+      text.setAttribute("style", "font: " + options.font);
     }
     if (options.anchor) {
-      text2.setAttribute("text-anchor", options.anchor);
+      text.setAttribute("text-anchor", options.anchor);
     }
     if (options.translate) {
-      text2.setAttribute("x", options.translate.x.toString());
-      text2.setAttribute("y", options.translate.y.toString());
+      text.setAttribute("x", options.translate.x.toString());
+      text.setAttribute("y", options.translate.y.toString());
     }
     if (options.onClick) {
-      text2.addEventListener("click", options.onClick);
+      text.addEventListener("click", options.onClick);
     }
-    return text2;
+    return text;
   }
   function createCircle(options) {
     var circle = document.createElementNS(SVG_NAMESPACE, "circle");
@@ -12913,7 +12909,7 @@
       stroke: branch2.style.label.strokeColor || commit2.style.color,
       fill: branch2.style.label.bgColor
     });
-    var text2 = createText({
+    var text = createText({
       content: branch2.name,
       translate: {
         x: PADDING_X$1,
@@ -12924,19 +12920,19 @@
     });
     var branchLabel = createG({ children: [rect] });
     var observer = new MutationObserver(function() {
-      var _a = text2.getBBox(), height = _a.height, width = _a.width;
+      var _a = text.getBBox(), height = _a.height, width = _a.width;
       var boxWidth = width + 2 * PADDING_X$1;
       var boxHeight = height + 2 * PADDING_Y$1;
       rect.setAttribute("width", boxWidth.toString());
       rect.setAttribute("height", boxHeight.toString());
-      text2.setAttribute("y", (boxHeight / 2).toString());
+      text.setAttribute("y", (boxHeight / 2).toString());
     });
     observer.observe(branchLabel, {
       attributes: false,
       subtree: false,
       childList: true
     });
-    branchLabel.appendChild(text2);
+    branchLabel.appendChild(text);
     return branchLabel;
   }
   var PADDING_X = 10;
@@ -12947,7 +12943,7 @@
       fill: tag2.style.bgColor,
       stroke: tag2.style.strokeColor
     });
-    var text2 = createText({
+    var text = createText({
       content: tag2.name,
       fill: tag2.style.color,
       font: tag2.style.font,
@@ -12956,7 +12952,7 @@
     var result = createG({ children: [path] });
     var offset = tag2.style.pointerWidth;
     var observer = new MutationObserver(function() {
-      var _a = text2.getBBox(), height = _a.height, width = _a.width;
+      var _a = text.getBBox(), height = _a.height, width = _a.width;
       if (height === 0 || width === 0)
         return;
       var radius = tag2.style.borderRadius;
@@ -12977,21 +12973,21 @@
         "z"
       ].join(" ");
       path.setAttribute("d", pathD.toString());
-      text2.setAttribute("x", (offset + PADDING_X).toString());
+      text.setAttribute("x", (offset + PADDING_X).toString());
     });
     observer.observe(result, {
       attributes: false,
       subtree: false,
       childList: true
     });
-    result.appendChild(text2);
+    result.appendChild(text);
     return result;
   }
   var PADDING = 10;
   var OFFSET = 10;
   function createTooltip(commit2) {
     var path = createPath({ d: "", fill: "#EEE" });
-    var text2 = createText({
+    var text = createText({
       translate: { x: OFFSET + PADDING, y: 0 },
       content: commit2.hashAbbrev + " - " + commit2.subject,
       fill: "#333"
@@ -13002,7 +12998,7 @@
       children: [path]
     });
     var observer = new MutationObserver(function() {
-      var width = text2.getBBox().width;
+      var width = text.getBBox().width;
       var radius = 5;
       var boxHeight = 50;
       var boxWidth = OFFSET + width + 2 * PADDING;
@@ -13027,7 +13023,7 @@
       subtree: false,
       childList: true
     });
-    tooltip.appendChild(text2);
+    tooltip.appendChild(text);
     return tooltip;
   }
   function createGitgraph(graphContainer, options) {
@@ -13219,7 +13215,7 @@
         setMessageRef(commit2, message);
         return message;
       }
-      var text2 = createText({
+      var text = createText({
         content: commit2.message,
         fill: commit2.style.message.color || "",
         font: commit2.style.message.font,
@@ -13227,7 +13223,7 @@
       });
       message = createG({
         translate: { x: 0, y: commit2.style.dot.size },
-        children: [text2]
+        children: [text]
       });
       if (commit2.body) {
         var body = createForeignObject({
@@ -13530,32 +13526,32 @@
     const result = source.replace(/\[image_asset_pointer\]\s*(?:sediment:\/\/\S+)?/gi, ` ${imageLabel} · `).replace(/\[(?:file|attachment)_asset_pointer\]\s*(?:sediment:\/\/\S+)?/gi, ` ${fileLabel} · `).replace(/\bsediment:\/\/\S+/gi, "").replace(/cite[^]*/g, "").replace(/!\[([^\]]*)\]\([^\n)]*\)/g, (_, name) => name || imageLabel).replace(/\[([^\]]+)\]\((?:https?:\/\/|mailto:)[^\s)]*(?:\s+"[^"]*")?\)/g, "$1").replace(/^(?:\s{0,3}#{1,6}\s+|\s{0,3}>\s*)/gm, "").replace(/\*\*([^*\n]+)\*\*/g, "$1").replace(new RegExp("(?<!\\w)[*_]([^*_\\n]+)[*_](?!\\w)", "g"), "$1").replace(/`([^`\n]+)`/g, "$1").replace(/[\r\n\t ]+/g, " ").trim();
     return result.slice(0, 180);
   }
-  const _hoisted_1$e = ["aria-label"];
-  const _hoisted_2$e = { class: "booster-history-header" };
-  const _hoisted_3$d = { class: "booster-history-heading" };
-  const _hoisted_4$d = ["aria-label"];
-  const _hoisted_5$b = { class: "booster-history-state" };
-  const _hoisted_6$b = { class: "booster-history-range" };
-  const _hoisted_7$b = { class: "booster-history-explainer" };
-  const _hoisted_8$a = {
+  const _hoisted_1$c = ["aria-label"];
+  const _hoisted_2$c = { class: "booster-history-header" };
+  const _hoisted_3$b = { class: "booster-history-heading" };
+  const _hoisted_4$b = ["aria-label"];
+  const _hoisted_5$9 = { class: "booster-history-state" };
+  const _hoisted_6$9 = { class: "booster-history-range" };
+  const _hoisted_7$9 = { class: "booster-history-explainer" };
+  const _hoisted_8$8 = {
     key: 0,
     class: "booster-history-evidence"
   };
-  const _hoisted_9$a = { key: 0 };
-  const _hoisted_10$a = {
+  const _hoisted_9$8 = { key: 0 };
+  const _hoisted_10$8 = {
     key: 1,
     class: "booster-history-list"
   };
-  const _hoisted_11$a = ["aria-current", "data-archive-history-key", "onClick"];
-  const _hoisted_12$9 = { class: "booster-history-list-rail" };
-  const _hoisted_13$8 = { class: "booster-history-list-copy" };
-  const _hoisted_14$8 = { class: "booster-history-list-meta" };
-  const _hoisted_15$8 = { class: "booster-history-list-preview" };
-  const _hoisted_16$7 = { class: "booster-history-footer" };
-  const _hoisted_17$6 = ["disabled", "aria-label"];
-  const _hoisted_18$6 = ["disabled", "aria-label"];
+  const _hoisted_11$8 = ["aria-current", "data-archive-history-key", "onClick"];
+  const _hoisted_12$7 = { class: "booster-history-list-rail" };
+  const _hoisted_13$7 = { class: "booster-history-list-copy" };
+  const _hoisted_14$7 = { class: "booster-history-list-meta" };
+  const _hoisted_15$7 = { class: "booster-history-list-preview" };
+  const _hoisted_16$6 = { class: "booster-history-footer" };
+  const _hoisted_17$5 = ["disabled", "aria-label"];
+  const _hoisted_18$5 = ["disabled", "aria-label"];
   const PAGE_SIZE = 140;
-  const _sfc_main$g = /* @__PURE__ */ defineComponent({
+  const _sfc_main$e = /* @__PURE__ */ defineComponent({
     __name: "ArchiveFlowGraph",
     props: {
       thread: {},
@@ -13580,17 +13576,17 @@
       const chronologicalItems = computed(() => {
         const byCommit = new Map(data.value.commits.map((commit2) => [commit2.hash, commit2]));
         const seen = /* @__PURE__ */ new Set();
-        const items2 = [];
+        const items = [];
         for (const turn of props.thread.turns) {
           for (const message of turn.messages) {
             const id = message.record.messageId;
             const commit2 = byCommit.get(id);
             if (!commit2 || seen.has(id)) continue;
             seen.add(id);
-            items2.push(commit2);
+            items.push(commit2);
           }
         }
-        return items2;
+        return items;
       });
       const displayItems = computed(() => sparseHistory.value ? chronologicalItems.value : ordered.value);
       const pageItems = computed(() => displayItems.value.slice(pageStart.value, pageEnd.value));
@@ -13812,11 +13808,11 @@
           "aria-label": __props.locale === "ru" ? "Навигатор сохранённой истории" : "Saved history navigator",
           onKeydown: _cache[3] || (_cache[3] = withKeys(withModifiers(($event) => emit2("close"), ["stop"]), ["esc"]))
         }, [
-          createBaseVNode("header", _hoisted_2$e, [
+          createBaseVNode("header", _hoisted_2$c, [
             createBaseVNode("div", null, [
               createBaseVNode(
                 "div",
-                _hoisted_3$d,
+                _hoisted_3$b,
                 toDisplayString(__props.locale === "ru" ? "История сообщений" : "Message history"),
                 1
                 /* TEXT */
@@ -13834,9 +13830,9 @@
               class: "booster-history-close",
               "aria-label": __props.locale === "ru" ? "Закрыть историю" : "Close history",
               onClick: _cache[0] || (_cache[0] = ($event) => emit2("close"))
-            }, "×", 8, _hoisted_4$d)
+            }, "×", 8, _hoisted_4$b)
           ]),
-          createBaseVNode("div", _hoisted_5$b, [
+          createBaseVNode("div", _hoisted_5$9, [
             createBaseVNode(
               "span",
               {
@@ -13855,7 +13851,7 @@
             ),
             createBaseVNode(
               "span",
-              _hoisted_6$b,
+              _hoisted_6$9,
               toDisplayString(pageStart.value + 1) + "–" + toDisplayString(pageEnd.value) + " / " + toDisplayString(ordered.value.length),
               1
               /* TEXT */
@@ -13863,12 +13859,12 @@
           ]),
           createBaseVNode(
             "p",
-            _hoisted_7$b,
+            _hoisted_7$9,
             toDisplayString(sparseHistory.value ? __props.locale === "ru" ? "Для этого диалога недостаточно подтверждённых связей. Показан порядок сохранённых сообщений, без вымышленных веток." : "Not enough verified ancestry. Showing saved messages in order, without invented branches." : __props.locale === "ru" ? "Нажмите на сообщение, чтобы перейти к нему. Линии показывают только сохранённые связи." : "Select a message to read it. Lines show recorded parent links only."),
             1
             /* TEXT */
           ),
-          data.value.missingParents || data.value.cyclicParents ? (openBlock(), createElementBlock("div", _hoisted_8$a, [
+          data.value.missingParents || data.value.cyclicParents ? (openBlock(), createElementBlock("div", _hoisted_8$8, [
             createTextVNode(
               toDisplayString(__props.locale === "ru" ? "Неизвестных родителей" : "Unknown parents") + ": " + toDisplayString(data.value.missingParents) + " ",
               1
@@ -13876,13 +13872,13 @@
             ),
             data.value.cyclicParents ? (openBlock(), createElementBlock(
               "span",
-              _hoisted_9$a,
+              _hoisted_9$8,
               " · " + toDisplayString(__props.locale === "ru" ? "Циклы" : "Cycles") + ": " + toDisplayString(data.value.cyclicParents),
               1
               /* TEXT */
             )) : createCommentVNode("v-if", true)
           ])) : createCommentVNode("v-if", true),
-          sparseHistory.value ? (openBlock(), createElementBlock("div", _hoisted_10$a, [
+          sparseHistory.value ? (openBlock(), createElementBlock("div", _hoisted_10$8, [
             (openBlock(true), createElementBlock(
               Fragment,
               null,
@@ -13895,7 +13891,7 @@
                   "data-archive-history-key": item.hash,
                   onClick: ($event) => emit2("navigate", messageKey(item.hash))
                 }, [
-                  createBaseVNode("span", _hoisted_12$9, [
+                  createBaseVNode("span", _hoisted_12$7, [
                     createBaseVNode(
                       "span",
                       {
@@ -13906,23 +13902,23 @@
                       /* CLASS */
                     )
                   ]),
-                  createBaseVNode("span", _hoisted_13$8, [
+                  createBaseVNode("span", _hoisted_13$7, [
                     createBaseVNode(
                       "span",
-                      _hoisted_14$8,
+                      _hoisted_14$7,
                       toDisplayString(messageLabel(item.hash)) + " · " + toDisplayString(pageStart.value + index + 1),
                       1
                       /* TEXT */
                     ),
                     createBaseVNode(
                       "span",
-                      _hoisted_15$8,
+                      _hoisted_15$7,
                       toDisplayString(messageText(item.hash) || "…"),
                       1
                       /* TEXT */
                     )
                   ])
-                ], 8, _hoisted_11$a);
+                ], 8, _hoisted_11$8);
               }),
               128
               /* KEYED_FRAGMENT */
@@ -13944,21 +13940,21 @@
           ), [
             [vShow, !sparseHistory.value]
           ]),
-          createBaseVNode("footer", _hoisted_16$7, [
+          createBaseVNode("footer", _hoisted_16$6, [
             createBaseVNode("button", {
               type: "button",
               disabled: pageStart.value === 0,
               "aria-label": __props.locale === "ru" ? "Ранее в графе" : "Earlier graph nodes",
               onClick: _cache[1] || (_cache[1] = ($event) => displayPage(pageStart.value - PAGE_SIZE))
-            }, "← " + toDisplayString(__props.locale === "ru" ? "Ранее" : "Earlier"), 9, _hoisted_17$6),
+            }, "← " + toDisplayString(__props.locale === "ru" ? "Ранее" : "Earlier"), 9, _hoisted_17$5),
             createBaseVNode("button", {
               type: "button",
               disabled: pageEnd.value >= ordered.value.length,
               "aria-label": __props.locale === "ru" ? "Позже в графе" : "Later graph nodes",
               onClick: _cache[2] || (_cache[2] = ($event) => displayPage(pageStart.value + PAGE_SIZE))
-            }, toDisplayString(__props.locale === "ru" ? "Позже" : "Later") + " →", 9, _hoisted_18$6)
+            }, toDisplayString(__props.locale === "ru" ? "Позже" : "Later") + " →", 9, _hoisted_18$5)
           ])
-        ], 40, _hoisted_1$e);
+        ], 40, _hoisted_1$c);
       };
     }
   });
@@ -14030,15 +14026,15 @@
     const latest = turns.slice(Math.max(0, turns.length - Math.max(1, visibleCount)));
     return order === "newest-first" ? latest.reverse() : latest;
   }
-  const _hoisted_1$d = { class: "booster-identity" };
-  const _hoisted_2$d = ["title"];
-  const _hoisted_3$c = ["aria-label", "title"];
-  const _hoisted_4$c = {
+  const _hoisted_1$b = { class: "booster-identity" };
+  const _hoisted_2$b = ["title"];
+  const _hoisted_3$a = ["aria-label", "title"];
+  const _hoisted_4$a = {
     key: 1,
     class: "booster-sr-only",
     role: "status"
   };
-  const _sfc_main$f = /* @__PURE__ */ defineComponent({
+  const _sfc_main$d = /* @__PURE__ */ defineComponent({
     __name: "CopyIdentity",
     props: {
       label: {},
@@ -14079,11 +14075,11 @@
       }
       onBeforeUnmount(() => clearTimeout(timer));
       return (_ctx, _cache) => {
-        return openBlock(), createElementBlock("span", _hoisted_1$d, [
+        return openBlock(), createElementBlock("span", _hoisted_1$b, [
           createBaseVNode("span", {
             class: "booster-identity-label",
             title: __props.label
-          }, toDisplayString(__props.label), 9, _hoisted_2$d),
+          }, toDisplayString(__props.label), 9, _hoisted_2$b),
           __props.identifier ? (openBlock(), createElementBlock("button", {
             key: 0,
             type: "button",
@@ -14099,10 +14095,10 @@
               key: 1,
               class: "size-3"
             }))
-          ], 8, _hoisted_3$c)) : createCommentVNode("v-if", true),
+          ], 8, _hoisted_3$a)) : createCommentVNode("v-if", true),
           state.value !== "copy" ? (openBlock(), createElementBlock(
             "span",
-            _hoisted_4$c,
+            _hoisted_4$a,
             toDisplayString(unref(translate)(__props.locale, `identity.${state.value}`)),
             1
             /* TEXT */
@@ -14123,9 +14119,9 @@
         group.push(item);
         groups.set(parentId, group);
       }
-    return [...groups.entries()].filter(([, items2]) => items2.length > 1).map(([id, items2]) => ({
+    return [...groups.entries()].filter(([, items]) => items.length > 1).map(([id, items]) => ({
       id,
-      variants: items2.map((item) => ({
+      variants: items.map((item) => ({
         key: item.record.messageKey,
         messageId: item.record.messageId,
         text: item.text,
@@ -14133,56 +14129,56 @@
       }))
     }));
   }
-  const _hoisted_1$c = ["lang"];
-  const _hoisted_2$c = ["data-archive-drag-handle"];
-  const _hoisted_3$b = { class: "booster-reader-heading" };
-  const _hoisted_4$b = { class: "booster-header-actions" };
-  const _hoisted_5$a = ["aria-label", "title", "aria-expanded"];
-  const _hoisted_6$a = {
+  const _hoisted_1$a = ["lang"];
+  const _hoisted_2$a = ["data-archive-drag-handle"];
+  const _hoisted_3$9 = { class: "booster-reader-heading" };
+  const _hoisted_4$9 = { class: "booster-header-actions" };
+  const _hoisted_5$8 = ["aria-label", "title", "aria-expanded"];
+  const _hoisted_6$8 = {
     key: 0,
     class: "booster-reader-tools-menu",
     role: "menu"
   };
-  const _hoisted_7$a = ["disabled", "title", "aria-label"];
-  const _hoisted_8$9 = ["title", "aria-label"];
-  const _hoisted_9$9 = ["aria-label"];
-  const _hoisted_10$9 = {
+  const _hoisted_7$8 = ["disabled", "title", "aria-label"];
+  const _hoisted_8$7 = ["title", "aria-label"];
+  const _hoisted_9$7 = ["aria-label"];
+  const _hoisted_10$7 = {
     key: 0,
     role: "alert",
     class: "booster-error"
   };
-  const _hoisted_11$9 = {
+  const _hoisted_11$7 = {
     key: 1,
     role: "status",
     class: "booster-note"
   };
-  const _hoisted_12$8 = { class: "booster-reader-layout" };
-  const _hoisted_13$7 = { class: "booster-reader-sidebar" };
-  const _hoisted_14$7 = ["aria-label", "placeholder"];
-  const _hoisted_15$7 = {
+  const _hoisted_12$6 = { class: "booster-reader-layout" };
+  const _hoisted_13$6 = { class: "booster-reader-sidebar" };
+  const _hoisted_14$6 = ["aria-label", "placeholder"];
+  const _hoisted_15$6 = {
     key: 0,
     role: "status",
     class: "booster-note"
   };
-  const _hoisted_16$6 = {
+  const _hoisted_16$5 = {
     key: 1,
     class: "booster-note"
   };
-  const _hoisted_17$5 = {
+  const _hoisted_17$4 = {
     key: 2,
     class: "booster-note"
   };
-  const _hoisted_18$5 = { class: "booster-reader-group-header" };
-  const _hoisted_19$5 = ["aria-expanded", "onClick"];
-  const _hoisted_20$5 = {
+  const _hoisted_18$4 = { class: "booster-reader-group-header" };
+  const _hoisted_19$4 = ["aria-expanded", "onClick"];
+  const _hoisted_20$4 = {
     key: 0,
     class: "booster-reader-chat-list"
   };
-  const _hoisted_21$5 = ["title", "onClick"];
-  const _hoisted_22$5 = { class: "booster-reader-main" };
-  const _hoisted_23$5 = { class: "booster-reader-pinned" };
-  const _hoisted_24$5 = { class: "booster-reader-chat-header" };
-  const _hoisted_25$4 = {
+  const _hoisted_21$4 = ["title", "onClick"];
+  const _hoisted_22$4 = { class: "booster-reader-main" };
+  const _hoisted_23$4 = { class: "booster-reader-pinned" };
+  const _hoisted_24$4 = { class: "booster-reader-chat-header" };
+  const _hoisted_25$3 = {
     key: 0,
     class: "booster-reader-project-label"
   };
@@ -14190,15 +14186,15 @@
     key: 0,
     class: "booster-note"
   };
-  const _hoisted_27$2 = { class: "booster-reader-chat-actions" };
-  const _hoisted_28$2 = ["disabled", "aria-expanded", "aria-label"];
-  const _hoisted_29$2 = ["aria-expanded"];
-  const _hoisted_30$2 = ["disabled"];
-  const _hoisted_31$2 = ["disabled"];
-  const _hoisted_32$2 = ["disabled"];
-  const _hoisted_33$2 = ["disabled"];
-  const _hoisted_34$2 = ["aria-expanded", "aria-label"];
-  const _hoisted_35$2 = ["aria-label"];
+  const _hoisted_27$3 = { class: "booster-reader-chat-actions" };
+  const _hoisted_28$3 = ["disabled", "aria-expanded", "aria-label"];
+  const _hoisted_29$3 = ["aria-expanded"];
+  const _hoisted_30$3 = ["disabled"];
+  const _hoisted_31$3 = ["disabled"];
+  const _hoisted_32$3 = ["disabled"];
+  const _hoisted_33$3 = ["disabled"];
+  const _hoisted_34$3 = ["aria-expanded", "aria-label"];
+  const _hoisted_35$3 = ["aria-label"];
   const _hoisted_36$2 = ["title", "onClick"];
   const _hoisted_37$2 = {
     key: 1,
@@ -14290,7 +14286,7 @@
     class: "booster-note"
   };
   const NONE = "__outside_projects__";
-  const _sfc_main$e = /* @__PURE__ */ defineComponent({
+  const _sfc_main$c = /* @__PURE__ */ defineComponent({
     __name: "ArchiveBrowser",
     props: {
       archiveAdapter: {},
@@ -14428,10 +14424,10 @@
           group.push(conversation);
           byProject.set(key, group);
         }
-        return [...byProject].flatMap(([id, items2]) => {
+        return [...byProject].flatMap(([id, items]) => {
           const label = projectLabel(id === NONE ? null : id);
-          const rows = archiveConversationForest(items2, search.value, label);
-          return rows.length ? [{ id, rows, count: items2.length, label }] : [];
+          const rows = archiveConversationForest(items, search.value, label);
+          return rows.length ? [{ id, rows, count: items.length, label }] : [];
         });
       });
       const filteredTurns = computed(() => {
@@ -14761,8 +14757,8 @@
       async function navigateToNode(index) {
         const total = navigationNodes.value.length;
         if (!total) return;
-        const safe2 = Math.max(0, Math.min(total - 1, index));
-        const item = navigationNodes.value[safe2];
+        const safe = Math.max(0, Math.min(total - 1, index));
+        const item = navigationNodes.value[safe];
         if (!item) return;
         let turnIndex = filteredTurns.value.findIndex((turn) => turn.messages.some((message) => message.record.messageKey === item.record.messageKey));
         if (turnIndex < 0 && textSearch.value) {
@@ -14781,7 +14777,7 @@
         if (target) target.scrollIntoView({ block: "center", behavior: "instant" });
         else if (readingScroll.value) {
           const viewport = readingScroll.value;
-          viewport.scrollTop = safe2 / Math.max(1, total - 1) * (viewport.scrollHeight - viewport.clientHeight);
+          viewport.scrollTop = safe / Math.max(1, total - 1) * (viewport.scrollHeight - viewport.clientHeight);
         }
         onReadingScroll();
       }
@@ -14936,9 +14932,9 @@
         const owner = props.archiveAdapter.currentAccountId?.();
         const revision = listRevision;
         try {
-          const items2 = await props.archiveAdapter.listConversations();
+          const items = await props.archiveAdapter.listConversations();
           if (alive && revision === listRevision && props.archiveAdapter.currentAccountId?.() === owner)
-            conversations.value = items2;
+            conversations.value = items;
         } catch {
         }
       }
@@ -15012,7 +15008,7 @@
             class: "booster-section-header",
             "data-archive-drag-handle": __props.windowed ? "" : void 0
           }, [
-            createBaseVNode("div", _hoisted_3$b, [
+            createBaseVNode("div", _hoisted_3$9, [
               __props.windowed ? (openBlock(), createBlock(unref(GripHorizontal), {
                 key: 0,
                 class: "booster-archive-grip size-4"
@@ -15035,7 +15031,7 @@
                 )
               ])
             ]),
-            createBaseVNode("div", _hoisted_4$b, [
+            createBaseVNode("div", _hoisted_4$9, [
               __props.canReturnToExport ? (openBlock(), createElementBlock("button", {
                 key: 0,
                 type: "button",
@@ -15067,8 +15063,8 @@
                     onClick: _cache[1] || (_cache[1] = ($event) => toolsMenuOpen.value = !toolsMenuOpen.value)
                   }, [
                     createVNode(unref(Ellipsis), { class: "size-5" })
-                  ], 8, _hoisted_5$a),
-                  toolsMenuOpen.value ? (openBlock(), createElementBlock("div", _hoisted_6$a, [
+                  ], 8, _hoisted_5$8),
+                  toolsMenuOpen.value ? (openBlock(), createElementBlock("div", _hoisted_6$8, [
                     __props.archiveAdapter.startArchiveMigration || __props.archiveAdapter.exportNativeSourceBackup ? (openBlock(), createElementBlock("button", {
                       key: 0,
                       type: "button",
@@ -15140,7 +15136,7 @@
                 onClick: retryLocation
               }, [
                 createVNode(unref(RefreshCw), { class: "size-4" })
-              ], 8, _hoisted_7$a),
+              ], 8, _hoisted_7$8),
               __props.windowed ? (openBlock(), createElementBlock("button", {
                 key: 1,
                 type: "button",
@@ -15150,7 +15146,7 @@
                 onClick: _cache[6] || (_cache[6] = ($event) => emit2("minimize"))
               }, [
                 createVNode(unref(Minus), { class: "size-4" })
-              ], 8, _hoisted_8$9)) : createCommentVNode("v-if", true),
+              ], 8, _hoisted_8$7)) : createCommentVNode("v-if", true),
               createBaseVNode("button", {
                 type: "button",
                 class: "booster-icon-button",
@@ -15158,48 +15154,48 @@
                 onClick: _cache[7] || (_cache[7] = ($event) => emit2("close"))
               }, [
                 createVNode(unref(X), { class: "size-4" })
-              ], 8, _hoisted_9$9)
+              ], 8, _hoisted_9$7)
             ])
-          ], 8, _hoisted_2$c),
+          ], 8, _hoisted_2$a),
           archiveToolError.value ? (openBlock(), createElementBlock(
             "p",
-            _hoisted_10$9,
+            _hoisted_10$7,
             toDisplayString(archiveToolError.value),
             1
             /* TEXT */
           )) : createCommentVNode("v-if", true),
           accountPending.value ? (openBlock(), createElementBlock(
             "p",
-            _hoisted_11$9,
+            _hoisted_11$7,
             toDisplayString(__props.locale === "ru" ? "Ожидание подтверждения аккаунта ChatGPT…" : "Waiting for ChatGPT account verification…"),
             1
             /* TEXT */
           )) : createCommentVNode("v-if", true),
-          createBaseVNode("div", _hoisted_12$8, [
-            createBaseVNode("aside", _hoisted_13$7, [
+          createBaseVNode("div", _hoisted_12$6, [
+            createBaseVNode("aside", _hoisted_13$6, [
               withDirectives(createBaseVNode("input", {
                 "onUpdate:modelValue": _cache[8] || (_cache[8] = ($event) => search.value = $event),
                 type: "search",
                 "aria-label": t("reader.search"),
                 placeholder: t("reader.search")
-              }, null, 8, _hoisted_14$7), [
+              }, null, 8, _hoisted_14$6), [
                 [vModelText, search.value]
               ]),
               listLoading.value && !conversations.value.length ? (openBlock(), createElementBlock(
                 "p",
-                _hoisted_15$7,
+                _hoisted_15$6,
                 toDisplayString(t("reader.loading")),
                 1
                 /* TEXT */
               )) : !conversations.value.length ? (openBlock(), createElementBlock(
                 "p",
-                _hoisted_16$6,
+                _hoisted_16$5,
                 toDisplayString(emptyArchiveMessage.value),
                 1
                 /* TEXT */
               )) : !groups.value.length ? (openBlock(), createElementBlock(
                 "p",
-                _hoisted_17$5,
+                _hoisted_17$4,
                 toDisplayString(t("reader.noResults")),
                 1
                 /* TEXT */
@@ -15212,7 +15208,7 @@
                     key: group.id,
                     class: "booster-reader-group"
                   }, [
-                    createBaseVNode("div", _hoisted_18$5, [
+                    createBaseVNode("div", _hoisted_18$4, [
                       createBaseVNode("button", {
                         class: "booster-group-toggle",
                         type: "button",
@@ -15240,15 +15236,15 @@
                           1
                           /* TEXT */
                         )
-                      ], 8, _hoisted_19$5),
-                      group.id !== NONE ? (openBlock(), createBlock(_sfc_main$f, {
+                      ], 8, _hoisted_19$4),
+                      group.id !== NONE ? (openBlock(), createBlock(_sfc_main$d, {
                         key: 0,
                         label: "",
                         identifier: group.id,
                         locale: __props.locale
                       }, null, 8, ["identifier", "locale"])) : createCommentVNode("v-if", true)
                     ]),
-                    expanded.value.has(group.id) || search.value.trim() ? (openBlock(), createElementBlock("div", _hoisted_20$5, [
+                    expanded.value.has(group.id) || search.value.trim() ? (openBlock(), createElementBlock("div", _hoisted_20$4, [
                       (openBlock(true), createElementBlock(
                         Fragment,
                         null,
@@ -15272,7 +15268,7 @@
                               1
                               /* TEXT */
                             )
-                          ], 14, _hoisted_21$5);
+                          ], 14, _hoisted_21$4);
                         }),
                         128
                         /* KEYED_FRAGMENT */
@@ -15284,8 +15280,8 @@
                 /* KEYED_FRAGMENT */
               ))
             ]),
-            createBaseVNode("main", _hoisted_22$5, [
-              createBaseVNode("div", _hoisted_23$5, [
+            createBaseVNode("main", _hoisted_22$4, [
+              createBaseVNode("div", _hoisted_23$4, [
                 createBaseVNode("button", {
                   class: "booster-mobile-back",
                   type: "button",
@@ -15302,24 +15298,24 @@
                   Fragment,
                   { key: 0 },
                   [
-                    createBaseVNode("header", _hoisted_24$5, [
+                    createBaseVNode("header", _hoisted_24$4, [
                       createBaseVNode("div", null, [
                         createBaseVNode("h2", null, [
                           selected.value.projectId ? (openBlock(), createElementBlock(
                             "span",
-                            _hoisted_25$4,
+                            _hoisted_25$3,
                             toDisplayString(projectLabel(selected.value.projectId)) + " / ",
                             1
                             /* TEXT */
                           )) : createCommentVNode("v-if", true),
-                          createVNode(_sfc_main$f, {
+                          createVNode(_sfc_main$d, {
                             label: selected.value.title || t("identity.untitled"),
                             identifier: selected.value.conversationId,
                             locale: __props.locale
                           }, null, 8, ["label", "identifier", "locale"])
                         ]),
                         selected.value.branchSourceConversationId ? (openBlock(), createElementBlock("p", _hoisted_26$3, [
-                          createVNode(_sfc_main$f, {
+                          createVNode(_sfc_main$d, {
                             label: t("reader.branch") + ": " + (selected.value.branchSourceTitle || t("identity.untitled")),
                             identifier: selected.value.branchSourceConversationId,
                             locale: __props.locale
@@ -15327,7 +15323,7 @@
                         ])) : createCommentVNode("v-if", true)
                       ])
                     ]),
-                    createBaseVNode("div", _hoisted_27$2, [
+                    createBaseVNode("div", _hoisted_27$3, [
                       createBaseVNode("button", {
                         class: "booster-action-secondary",
                         type: "button",
@@ -15366,7 +15362,7 @@
                           1
                           /* TEXT */
                         )
-                      ], 10, _hoisted_28$2),
+                      ], 10, _hoisted_28$3),
                       forkChoices.value.length ? (openBlock(), createElementBlock("button", {
                         key: 0,
                         class: "booster-action-secondary booster-reader-fork-toggle",
@@ -15380,35 +15376,35 @@
                           1
                           /* TEXT */
                         )
-                      ], 8, _hoisted_29$2)) : createCommentVNode("v-if", true),
+                      ], 8, _hoisted_29$3)) : createCommentVNode("v-if", true),
                       usingIndexedWindows.value && (hasOlderStored.value || unsequencedTarget.value) ? (openBlock(), createElementBlock("button", {
                         key: 1,
                         type: "button",
                         class: "booster-action-secondary",
                         disabled: threadLoading.value || loadingOlder.value,
                         onClick: returnToFirstKnown
-                      }, toDisplayString(t("reader.firstKnown")), 9, _hoisted_30$2)) : createCommentVNode("v-if", true),
+                      }, toDisplayString(t("reader.firstKnown")), 9, _hoisted_30$3)) : createCommentVNode("v-if", true),
                       hasOlderStored.value ? (openBlock(), createElementBlock("button", {
                         key: 2,
                         type: "button",
                         class: "booster-action-secondary",
                         disabled: threadLoading.value || loadingOlder.value || staleSavedWindow.value,
                         onClick: _cache[14] || (_cache[14] = ($event) => loadAdjacent("older"))
-                      }, toDisplayString(t("reader.moreOlder")), 9, _hoisted_31$2)) : createCommentVNode("v-if", true),
+                      }, toDisplayString(t("reader.moreOlder")), 9, _hoisted_31$3)) : createCommentVNode("v-if", true),
                       hasNewerStored.value ? (openBlock(), createElementBlock("button", {
                         key: 3,
                         type: "button",
                         class: "booster-action-secondary",
                         disabled: threadLoading.value || loadingOlder.value || staleSavedWindow.value,
                         onClick: _cache[15] || (_cache[15] = ($event) => loadAdjacent("newer"))
-                      }, toDisplayString(t("reader.moreNewer")), 9, _hoisted_32$2)) : createCommentVNode("v-if", true),
+                      }, toDisplayString(t("reader.moreNewer")), 9, _hoisted_32$3)) : createCommentVNode("v-if", true),
                       hasNewerStored.value || unsequencedTarget.value ? (openBlock(), createElementBlock("button", {
                         key: 4,
                         type: "button",
                         class: "booster-action-secondary",
                         disabled: threadLoading.value || loadingOlder.value,
                         onClick: returnToLatest
-                      }, toDisplayString(t("reader.returnLatest")), 9, _hoisted_33$2)) : createCommentVNode("v-if", true),
+                      }, toDisplayString(t("reader.returnLatest")), 9, _hoisted_33$3)) : createCommentVNode("v-if", true),
                       createBaseVNode("button", {
                         class: "booster-action-secondary",
                         type: "button",
@@ -15417,7 +15413,7 @@
                         onClick: _cache[16] || (_cache[16] = ($event) => searchOpen.value = !searchOpen.value)
                       }, [
                         createVNode(unref(Search), { class: "size-4" })
-                      ], 8, _hoisted_34$2)
+                      ], 8, _hoisted_34$3)
                     ]),
                     forksOpen.value && forkChoices.value.length ? (openBlock(), createElementBlock("div", {
                       key: 0,
@@ -15459,7 +15455,7 @@
                         128
                         /* KEYED_FRAGMENT */
                       ))
-                    ], 8, _hoisted_35$2)) : createCommentVNode("v-if", true),
+                    ], 8, _hoisted_35$3)) : createCommentVNode("v-if", true),
                     __props.archiveAdapter.getMessageWindow ? (openBlock(), createElementBlock("div", _hoisted_37$2, [
                       createBaseVNode("button", {
                         type: "button",
@@ -15630,7 +15626,7 @@
                   1
                   /* TEXT */
                 )) : createCommentVNode("v-if", true),
-                historyOpen.value && selected.value && navigationNodes.value.length && !threadLoading.value ? (openBlock(), createBlock(_sfc_main$g, {
+                historyOpen.value && selected.value && navigationNodes.value.length && !threadLoading.value ? (openBlock(), createBlock(_sfc_main$e, {
                   key: selectedId.value ?? "",
                   thread: thread.value,
                   locale: __props.locale,
@@ -15705,7 +15701,7 @@
                                   class: normalizeClass({ "booster-message-target": requestedMessageId.value === item.record.messageId }),
                                   tabindex: "-1"
                                 }, [
-                                  createVNode(_sfc_main$i, {
+                                  createVNode(_sfc_main$g, {
                                     item,
                                     locale: __props.locale,
                                     "expand-reasoning": reasoningExpanded.value,
@@ -15735,7 +15731,7 @@
                                     class: normalizeClass({ "booster-message-target": requestedMessageId.value === item.record.messageId }),
                                     tabindex: "-1"
                                   }, [
-                                    createVNode(_sfc_main$i, {
+                                    createVNode(_sfc_main$g, {
                                       item,
                                       locale: __props.locale,
                                       "expand-reasoning": reasoningExpanded.value,
@@ -15758,7 +15754,7 @@
                                   class: normalizeClass({ "booster-message-target": requestedMessageId.value === item.record.messageId }),
                                   tabindex: "-1"
                                 }, [
-                                  createVNode(_sfc_main$i, {
+                                  createVNode(_sfc_main$g, {
                                     item,
                                     locale: __props.locale,
                                     "expand-reasoning": reasoningExpanded.value,
@@ -15788,50 +15784,50 @@
               ])
             ])
           ]),
-          maintenanceOpen.value && (__props.archiveAdapter.startArchiveMigration || __props.archiveAdapter.exportNativeSourceBackup) ? (openBlock(), createBlock(_sfc_main$h, {
+          maintenanceOpen.value && (__props.archiveAdapter.startArchiveMigration || __props.archiveAdapter.exportNativeSourceBackup) ? (openBlock(), createBlock(_sfc_main$f, {
             key: 2,
             "archive-adapter": __props.archiveAdapter,
             locale: __props.locale,
             onClose: closeMaintenance,
             onUpdated: afterMaintenance
           }, null, 8, ["archive-adapter", "locale"])) : createCommentVNode("v-if", true)
-        ], 10, _hoisted_1$c);
+        ], 10, _hoisted_1$a);
       };
     }
   });
-  const _hoisted_1$b = { class: "booster-capture-settings" };
-  const _hoisted_2$b = { class: "booster-note" };
-  const _hoisted_3$a = {
+  const _hoisted_1$9 = { class: "booster-capture-settings" };
+  const _hoisted_2$9 = { class: "booster-note" };
+  const _hoisted_3$8 = {
     key: 0,
     class: "booster-form-body"
   };
-  const _hoisted_4$a = ["disabled"];
-  const _hoisted_5$9 = { value: "default" };
-  const _hoisted_6$9 = ["value"];
-  const _hoisted_7$9 = ["disabled"];
-  const _hoisted_8$8 = {
+  const _hoisted_4$8 = ["disabled"];
+  const _hoisted_5$7 = { value: "default" };
+  const _hoisted_6$7 = ["value"];
+  const _hoisted_7$7 = ["disabled"];
+  const _hoisted_8$6 = {
     key: 0,
     value: "inherit"
   };
-  const _hoisted_9$8 = { value: "on" };
-  const _hoisted_10$8 = { value: "off" };
-  const _hoisted_11$8 = ["disabled"];
-  const _hoisted_12$7 = { class: "booster-note" };
-  const _hoisted_13$6 = ["disabled"];
-  const _hoisted_14$6 = {
+  const _hoisted_9$6 = { value: "on" };
+  const _hoisted_10$6 = { value: "off" };
+  const _hoisted_11$6 = ["disabled"];
+  const _hoisted_12$5 = { class: "booster-note" };
+  const _hoisted_13$5 = ["disabled"];
+  const _hoisted_14$5 = {
     key: 1,
     role: "alert",
     class: "booster-error"
   };
-  const _hoisted_15$6 = {
+  const _hoisted_15$5 = {
     key: 2,
     role: "status"
   };
-  const _hoisted_16$5 = {
+  const _hoisted_16$4 = {
     key: 1,
     class: "booster-note"
   };
-  const _sfc_main$d = /* @__PURE__ */ defineComponent({
+  const _sfc_main$b = /* @__PURE__ */ defineComponent({
     __name: "CaptureSettings",
     props: {
       settingsAdapter: {},
@@ -15924,7 +15920,7 @@
         }
       }
       return (_ctx, _cache) => {
-        return openBlock(), createElementBlock("section", _hoisted_1$b, [
+        return openBlock(), createElementBlock("section", _hoisted_1$9, [
           createBaseVNode(
             "h3",
             null,
@@ -15934,12 +15930,12 @@
           ),
           createBaseVNode(
             "p",
-            _hoisted_2$b,
+            _hoisted_2$9,
             toDisplayString(t("capture.explanation")),
             1
             /* TEXT */
           ),
-          settings.value ? (openBlock(), createElementBlock("div", _hoisted_3$a, [
+          settings.value ? (openBlock(), createElementBlock("div", _hoisted_3$8, [
             createBaseVNode("label", null, [
               createTextVNode(
                 toDisplayString(t("capture.scope")),
@@ -15952,7 +15948,7 @@
               }, [
                 createBaseVNode(
                   "option",
-                  _hoisted_5$9,
+                  _hoisted_5$7,
                   toDisplayString(t("capture.global")),
                   1
                   /* TEXT */
@@ -15964,16 +15960,16 @@
                     return openBlock(), createElementBlock("option", {
                       key: keyFor(scope),
                       value: keyFor(scope)
-                    }, toDisplayString(t(scope.scope === "project" ? "capture.project" : "capture.conversation")) + ": " + toDisplayString(scope.title || t(scope.scope === "project" ? "identity.unknownProject" : "identity.untitled")), 9, _hoisted_6$9);
+                    }, toDisplayString(t(scope.scope === "project" ? "capture.project" : "capture.conversation")) + ": " + toDisplayString(scope.title || t(scope.scope === "project" ? "identity.unknownProject" : "identity.untitled")), 9, _hoisted_6$7);
                   }),
                   128
                   /* KEYED_FRAGMENT */
                 ))
-              ], 8, _hoisted_4$a), [
+              ], 8, _hoisted_4$8), [
                 [vModelSelect, selected.value]
               ])
             ]),
-            target.value ? (openBlock(), createBlock(_sfc_main$f, {
+            target.value ? (openBlock(), createBlock(_sfc_main$d, {
               key: 0,
               label: target.value.title || t(target.value.scope === "project" ? "identity.unknownProject" : "identity.untitled"),
               identifier: target.value.id,
@@ -15991,26 +15987,26 @@
               }, [
                 target.value ? (openBlock(), createElementBlock(
                   "option",
-                  _hoisted_8$8,
+                  _hoisted_8$6,
                   toDisplayString(t("capture.inherit")),
                   1
                   /* TEXT */
                 )) : createCommentVNode("v-if", true),
                 createBaseVNode(
                   "option",
-                  _hoisted_9$8,
+                  _hoisted_9$6,
                   toDisplayString(t("capture.on")),
                   1
                   /* TEXT */
                 ),
                 createBaseVNode(
                   "option",
-                  _hoisted_10$8,
+                  _hoisted_10$6,
                   toDisplayString(t("capture.off")),
                   1
                   /* TEXT */
                 )
-              ], 8, _hoisted_7$9), [
+              ], 8, _hoisted_7$7), [
                 [vModelSelect, mode2.value]
               ])
             ]),
@@ -16075,10 +16071,10 @@
                   /* TEXT */
                 )
               ])
-            ], 8, _hoisted_11$8),
+            ], 8, _hoisted_11$6),
             createBaseVNode(
               "p",
-              _hoisted_12$7,
+              _hoisted_12$5,
               toDisplayString(t("capture.scopeHint")),
               1
               /* TEXT */
@@ -16088,24 +16084,24 @@
               class: "booster-action-primary",
               disabled: busy.value,
               onClick: save
-            }, toDisplayString(t(busy.value ? "control.saving" : "capture.apply")), 9, _hoisted_13$6),
+            }, toDisplayString(t(busy.value ? "control.saving" : "capture.apply")), 9, _hoisted_13$5),
             error.value ? (openBlock(), createElementBlock(
               "p",
-              _hoisted_14$6,
+              _hoisted_14$5,
               toDisplayString(t("common.saveError")),
               1
               /* TEXT */
             )) : createCommentVNode("v-if", true),
             saved.value ? (openBlock(), createElementBlock(
               "p",
-              _hoisted_15$6,
+              _hoisted_15$5,
               toDisplayString(t("capture.saved")),
               1
               /* TEXT */
             )) : createCommentVNode("v-if", true)
           ])) : (openBlock(), createElementBlock(
             "p",
-            _hoisted_16$5,
+            _hoisted_16$4,
             toDisplayString(t(error.value ? "common.saveError" : "control.loading")),
             1
             /* TEXT */
@@ -16114,11 +16110,11 @@
       };
     }
   });
-  const _hoisted_1$a = ["lang"];
-  const _hoisted_2$a = { class: "booster-section-header" };
-  const _hoisted_3$9 = { class: "booster-reader-heading" };
-  const _hoisted_4$9 = ["aria-label"];
-  const _sfc_main$c = /* @__PURE__ */ defineComponent({
+  const _hoisted_1$8 = ["lang"];
+  const _hoisted_2$8 = { class: "booster-section-header" };
+  const _hoisted_3$7 = { class: "booster-reader-heading" };
+  const _hoisted_4$7 = ["aria-label"];
+  const _sfc_main$a = /* @__PURE__ */ defineComponent({
     __name: "CaptureSettingsSurface",
     props: {
       settingsAdapter: {},
@@ -16136,8 +16132,8 @@
           class: "booster-capture-surface",
           lang: __props.locale
         }, [
-          createBaseVNode("header", _hoisted_2$a, [
-            createBaseVNode("div", _hoisted_3$9, [
+          createBaseVNode("header", _hoisted_2$8, [
+            createBaseVNode("div", _hoisted_3$7, [
               createVNode(unref(ShieldCheck), { class: "size-5" }),
               createBaseVNode("div", null, [
                 createBaseVNode(
@@ -16163,15 +16159,15 @@
               onClick: _cache[0] || (_cache[0] = ($event) => emit2("close"))
             }, [
               createVNode(unref(X), { class: "size-4" })
-            ], 8, _hoisted_4$9)
+            ], 8, _hoisted_4$7)
           ]),
-          createVNode(_sfc_main$d, {
+          createVNode(_sfc_main$b, {
             "settings-adapter": __props.settingsAdapter,
             "archive-adapter": __props.archiveAdapter,
             context: __props.context,
             locale: __props.locale
           }, null, 8, ["settings-adapter", "archive-adapter", "context", "locale"])
-        ], 8, _hoisted_1$a);
+        ], 8, _hoisted_1$8);
       };
     }
   });
@@ -19447,7 +19443,7 @@
   function cn$1(...inputs) {
     return twMerge(clsx(inputs));
   }
-  const _sfc_main$b = /* @__PURE__ */ defineComponent({
+  const _sfc_main$9 = /* @__PURE__ */ defineComponent({
     __name: "Badge",
     props: {
       variant: {},
@@ -19475,7 +19471,7 @@
       };
     }
   });
-  const _sfc_main$a = /* @__PURE__ */ defineComponent({
+  const _sfc_main$8 = /* @__PURE__ */ defineComponent({
     __name: "Button",
     props: {
       variant: { default: "default" },
@@ -25749,15 +25745,15 @@
     }
   }
   var FORMAT = "koba-settings-backup-v1";
-  var MAX_BYTES = 512 * 1024;
+  var MAX_BYTES$1 = 512 * 1024;
   var isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
-  async function checksum(text2) {
-    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text2));
+  async function checksum(text) {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
     return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
   }
   function settingsJson(value) {
     const valueJson = JSON.stringify(value);
-    if (typeof valueJson !== "string" || valueJson.length === 0 || valueJson.length > MAX_BYTES)
+    if (typeof valueJson !== "string" || valueJson.length === 0 || valueJson.length > MAX_BYTES$1)
       throw new Error("Settings backup payload is invalid or oversized");
     return valueJson;
   }
@@ -25780,12 +25776,12 @@
       checksum: await checksum(JSON.stringify(body))
     };
     const raw = JSON.stringify(backup);
-    if (new TextEncoder().encode(raw).byteLength > MAX_BYTES)
+    if (new TextEncoder().encode(raw).byteLength > MAX_BYTES$1)
       throw new Error("Settings backup exceeds maximum size");
     return new Blob([raw], { type: "application/json" });
   }
   async function validateSettingsBackup(port, blob) {
-    if (blob.size === 0 || blob.size > MAX_BYTES)
+    if (blob.size === 0 || blob.size > MAX_BYTES$1)
       throw new Error("Settings backup size rejected");
     const raw = JSON.parse(await blob.text());
     if (!isRecord(raw) || raw.format !== FORMAT || raw.schemaVersion !== port.schemaVersion || !isRecord(raw.scope) || !isRecord(raw.includes) || Object.keys(raw).sort().join(",") !== "checksum,createdAt,format,includes,schemaVersion,scope,settings" || Object.keys(raw.scope).some((key) => !["productId", "channel", "ownerId", "installationId"].includes(key)) || Object.keys(raw.includes).sort().join(",") !== "archive,attachments,settings" || raw.includes.settings !== true || raw.includes.archive !== false || raw.includes.attachments !== false || typeof raw.createdAt !== "string" || !Number.isFinite(Date.parse(raw.createdAt)) || typeof raw.checksum !== "string" || !/^[a-f0-9]{64}$/.test(raw.checksum)) {
@@ -25887,56 +25883,56 @@
   async function restoreChatGptSettings(adapter, blob) {
     return restoreSettingsBackup(chatGptSettingsBackupPort(adapter), blob);
   }
-  const _hoisted_1$9 = ["lang"];
-  const _hoisted_2$9 = {
+  const _hoisted_1$7 = ["lang"];
+  const _hoisted_2$7 = {
     key: 0,
     class: "booster-control-header"
   };
-  const _hoisted_3$8 = { class: "booster-header-copy" };
-  const _hoisted_4$8 = { class: "flex items-center gap-2" };
-  const _hoisted_5$8 = {
+  const _hoisted_3$6 = { class: "booster-header-copy" };
+  const _hoisted_4$6 = { class: "flex items-center gap-2" };
+  const _hoisted_5$6 = {
     key: 0,
     class: "booster-header-actions"
   };
-  const _hoisted_6$8 = { class: "booster-header-toggle-label" };
-  const _hoisted_7$8 = ["aria-pressed"];
-  const _hoisted_8$7 = {
+  const _hoisted_6$6 = { class: "booster-header-toggle-label" };
+  const _hoisted_7$6 = ["aria-pressed"];
+  const _hoisted_8$5 = {
     key: 1,
     class: "booster-loading"
   };
-  const _hoisted_9$7 = {
+  const _hoisted_9$5 = {
     key: 2,
     class: "booster-settings-layout"
   };
-  const _hoisted_10$7 = { class: "booster-settings-nav" };
-  const _hoisted_11$7 = { class: "booster-settings-content" };
-  const _hoisted_12$6 = { class: "booster-setting-card" };
-  const _hoisted_13$5 = { class: "booster-setting-copy" };
-  const _hoisted_14$5 = ["value"];
-  const _hoisted_15$5 = { value: "latest" };
-  const _hoisted_16$4 = { value: "first" };
-  const _hoisted_17$4 = {
+  const _hoisted_10$5 = { class: "booster-settings-nav" };
+  const _hoisted_11$5 = { class: "booster-settings-content" };
+  const _hoisted_12$4 = { class: "booster-setting-card" };
+  const _hoisted_13$4 = { class: "booster-setting-copy" };
+  const _hoisted_14$4 = ["value"];
+  const _hoisted_15$4 = { value: "latest" };
+  const _hoisted_16$3 = { value: "first" };
+  const _hoisted_17$3 = {
     key: 0,
     class: "booster-danger-zone"
   };
-  const _hoisted_18$4 = { class: "booster-setting-copy" };
-  const _hoisted_19$4 = { class: "flex items-center gap-2" };
-  const _hoisted_20$4 = { class: "booster-setting-copy" };
-  const _hoisted_21$4 = { class: "flex items-center gap-2" };
-  const _hoisted_22$4 = ["disabled"];
-  const _hoisted_23$4 = { class: "booster-setting-copy" };
-  const _hoisted_24$4 = { class: "flex items-center gap-2" };
-  const _hoisted_25$3 = ["disabled"];
+  const _hoisted_18$3 = { class: "booster-setting-copy" };
+  const _hoisted_19$3 = { class: "flex items-center gap-2" };
+  const _hoisted_20$3 = { class: "booster-setting-copy" };
+  const _hoisted_21$3 = { class: "flex items-center gap-2" };
+  const _hoisted_22$3 = ["disabled"];
+  const _hoisted_23$3 = { class: "booster-setting-copy" };
+  const _hoisted_24$3 = { class: "flex items-center gap-2" };
+  const _hoisted_25$2 = ["disabled"];
   const _hoisted_26$2 = { class: "booster-setting-copy" };
-  const _hoisted_27$1 = { class: "flex items-center gap-2" };
-  const _hoisted_28$1 = { class: "booster-alert-setting-actions" };
-  const _hoisted_29$1 = ["disabled"];
-  const _hoisted_30$1 = { class: "booster-alert-threshold" };
-  const _hoisted_31$1 = ["value", "disabled"];
-  const _hoisted_32$1 = { class: "booster-setting-copy" };
-  const _hoisted_33$1 = { class: "flex items-center gap-2" };
-  const _hoisted_34$1 = ["disabled"];
-  const _hoisted_35$1 = { class: "booster-setting-copy" };
+  const _hoisted_27$2 = { class: "flex items-center gap-2" };
+  const _hoisted_28$2 = { class: "booster-alert-setting-actions" };
+  const _hoisted_29$2 = ["disabled"];
+  const _hoisted_30$2 = { class: "booster-alert-threshold" };
+  const _hoisted_31$2 = ["value", "disabled"];
+  const _hoisted_32$2 = { class: "booster-setting-copy" };
+  const _hoisted_33$2 = { class: "flex items-center gap-2" };
+  const _hoisted_34$2 = ["disabled"];
+  const _hoisted_35$2 = { class: "booster-setting-copy" };
   const _hoisted_36$1 = { class: "flex items-center gap-2" };
   const _hoisted_37$1 = ["disabled"];
   const _hoisted_38$1 = { class: "booster-setting-copy" };
@@ -26031,7 +26027,7 @@
   };
   const _hoisted_104 = { class: "booster-destructive-actions" };
   const _hoisted_105 = ["disabled"];
-  const _sfc_main$9 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$7 = /* @__PURE__ */ defineComponent({
     __name: "ControlCenterPanel",
     props: {
       settingsAdapter: {},
@@ -26277,9 +26273,9 @@
           class: normalizeClass(["booster-control-center", { "booster-control-embedded": __props.embedded }]),
           lang: locale.value
         }, [
-          !__props.embedded ? (openBlock(), createElementBlock("header", _hoisted_2$9, [
-            createBaseVNode("div", _hoisted_3$8, [
-              createBaseVNode("div", _hoisted_4$8, [
+          !__props.embedded ? (openBlock(), createElementBlock("header", _hoisted_2$7, [
+            createBaseVNode("div", _hoisted_3$6, [
+              createBaseVNode("div", _hoisted_4$6, [
                 createBaseVNode(
                   "strong",
                   null,
@@ -26287,7 +26283,7 @@
                   1
                   /* TEXT */
                 ),
-                createVNode(unref(_sfc_main$b), { variant: "outline" }, {
+                createVNode(unref(_sfc_main$9), { variant: "outline" }, {
                   default: withCtx(() => [
                     createTextVNode(
                       toDisplayString(__props.targetLabel),
@@ -26298,7 +26294,7 @@
                   _: 1
                   /* STABLE */
                 }),
-                createVNode(unref(_sfc_main$b), {
+                createVNode(unref(_sfc_main$9), {
                   variant: "outline",
                   title: unref(BOOSTER_VERSION)
                 }, {
@@ -26321,10 +26317,10 @@
                 /* TEXT */
               )
             ]),
-            settings.value ? (openBlock(), createElementBlock("div", _hoisted_5$8, [
+            settings.value ? (openBlock(), createElementBlock("div", _hoisted_5$6, [
               createBaseVNode(
                 "span",
-                _hoisted_6$8,
+                _hoisted_6$6,
                 toDisplayString(t("control.booster")),
                 1
                 /* TEXT */
@@ -26342,8 +26338,8 @@
                   -1
                   /* CACHED */
                 )
-              ])], 10, _hoisted_7$8),
-              __props.showClose ? (openBlock(), createBlock(unref(_sfc_main$a), {
+              ])], 10, _hoisted_7$6),
+              __props.showClose ? (openBlock(), createBlock(unref(_sfc_main$8), {
                 key: 0,
                 variant: "ghost",
                 size: "icon",
@@ -26361,12 +26357,12 @@
           ])) : createCommentVNode("v-if", true),
           !ready.value || !settings.value ? (openBlock(), createElementBlock(
             "div",
-            _hoisted_8$7,
+            _hoisted_8$5,
             toDisplayString(t("control.loading")),
             1
             /* TEXT */
-          )) : (openBlock(), createElementBlock("div", _hoisted_9$7, [
-            createBaseVNode("nav", _hoisted_10$7, [
+          )) : (openBlock(), createElementBlock("div", _hoisted_9$5, [
+            createBaseVNode("nav", _hoisted_10$5, [
               createBaseVNode(
                 "button",
                 {
@@ -26436,13 +26432,13 @@
                 /* CLASS */
               )
             ]),
-            createBaseVNode("main", _hoisted_11$7, [
+            createBaseVNode("main", _hoisted_11$5, [
               activeSection.value === "archive" ? (openBlock(), createElementBlock(
                 Fragment,
                 { key: 0 },
                 [
-                  createBaseVNode("section", _hoisted_12$6, [
-                    createBaseVNode("div", _hoisted_13$5, [
+                  createBaseVNode("section", _hoisted_12$4, [
+                    createBaseVNode("div", _hoisted_13$4, [
                       createBaseVNode(
                         "b",
                         null,
@@ -26465,29 +26461,29 @@
                     }, [
                       createBaseVNode(
                         "option",
-                        _hoisted_15$5,
+                        _hoisted_15$4,
                         toDisplayString(locale.value === "ru" ? "Конец истории" : "Latest messages"),
                         1
                         /* TEXT */
                       ),
                       createBaseVNode(
                         "option",
-                        _hoisted_16$4,
+                        _hoisted_16$3,
                         toDisplayString(locale.value === "ru" ? "Начало сохранённой истории" : "First saved messages"),
                         1
                         /* TEXT */
                       )
-                    ], 40, _hoisted_14$5)
+                    ], 40, _hoisted_14$4)
                   ]),
-                  createVNode(_sfc_main$d, {
+                  createVNode(_sfc_main$b, {
                     "settings-adapter": __props.settingsAdapter,
                     "archive-adapter": __props.archiveAdapter,
                     context: __props.captureContext,
                     locale: locale.value
                   }, null, 8, ["settings-adapter", "archive-adapter", "context", "locale"]),
-                  __props.archiveAdapter ? (openBlock(), createElementBlock("section", _hoisted_17$4, [
-                    createBaseVNode("div", _hoisted_18$4, [
-                      createBaseVNode("div", _hoisted_19$4, [
+                  __props.archiveAdapter ? (openBlock(), createElementBlock("section", _hoisted_17$3, [
+                    createBaseVNode("div", _hoisted_18$3, [
+                      createBaseVNode("div", _hoisted_19$3, [
                         createVNode(unref(TriangleAlert), { class: "size-4" }),
                         createBaseVNode(
                           "b",
@@ -26533,8 +26529,8 @@
                       class: normalizeClass(["booster-setting-card", { "booster-setting-disabled": !settings.value.enabled }])
                     },
                     [
-                      createBaseVNode("div", _hoisted_20$4, [
-                        createBaseVNode("div", _hoisted_21$4, [
+                      createBaseVNode("div", _hoisted_20$3, [
+                        createBaseVNode("div", _hoisted_21$3, [
                           createVNode(unref(Clock3), { class: "size-4" }),
                           createBaseVNode(
                             "b",
@@ -26543,7 +26539,7 @@
                             1
                             /* TEXT */
                           ),
-                          createVNode(unref(_sfc_main$b), {
+                          createVNode(unref(_sfc_main$9), {
                             variant: settings.value.features.messageMetadata && settings.value.enabled ? "default" : "secondary"
                           }, {
                             default: withCtx(() => [
@@ -26578,7 +26574,7 @@
                           -1
                           /* CACHED */
                         )
-                      ])], 10, _hoisted_22$4)
+                      ])], 10, _hoisted_22$3)
                     ],
                     2
                     /* CLASS */
@@ -26589,8 +26585,8 @@
                       class: normalizeClass(["booster-setting-card", { "booster-setting-disabled": !settings.value.enabled }])
                     },
                     [
-                      createBaseVNode("div", _hoisted_23$4, [
-                        createBaseVNode("div", _hoisted_24$4, [
+                      createBaseVNode("div", _hoisted_23$3, [
+                        createBaseVNode("div", _hoisted_24$3, [
                           createVNode(unref(Activity), { class: "size-4" }),
                           createBaseVNode(
                             "b",
@@ -26599,7 +26595,7 @@
                             1
                             /* TEXT */
                           ),
-                          createVNode(unref(_sfc_main$b), {
+                          createVNode(unref(_sfc_main$9), {
                             variant: settings.value.features.activityIndicator && settings.value.enabled ? "default" : "secondary"
                           }, {
                             default: withCtx(() => [
@@ -26634,7 +26630,7 @@
                           -1
                           /* CACHED */
                         )
-                      ])], 10, _hoisted_25$3)
+                      ])], 10, _hoisted_25$2)
                     ],
                     2
                     /* CLASS */
@@ -26646,7 +26642,7 @@
                     },
                     [
                       createBaseVNode("div", _hoisted_26$2, [
-                        createBaseVNode("div", _hoisted_27$1, [
+                        createBaseVNode("div", _hoisted_27$2, [
                           createVNode(unref(Clock3), { class: "size-4" }),
                           createBaseVNode(
                             "b",
@@ -26655,7 +26651,7 @@
                             1
                             /* TEXT */
                           ),
-                          createVNode(unref(_sfc_main$b), {
+                          createVNode(unref(_sfc_main$9), {
                             variant: settings.value.features.requestTimer && settings.value.enabled ? "default" : "secondary"
                           }, {
                             default: withCtx(() => [
@@ -26677,7 +26673,7 @@
                           /* TEXT */
                         )
                       ]),
-                      createBaseVNode("div", _hoisted_28$1, [
+                      createBaseVNode("div", _hoisted_28$2, [
                         createBaseVNode("button", {
                           type: "button",
                           class: normalizeClass(["booster-switch", { "booster-switch-on": settings.value.features.requestTimer }]),
@@ -26691,8 +26687,8 @@
                             -1
                             /* CACHED */
                           )
-                        ])], 10, _hoisted_29$1),
-                        createBaseVNode("label", _hoisted_30$1, [
+                        ])], 10, _hoisted_29$2),
+                        createBaseVNode("label", _hoisted_30$2, [
                           createBaseVNode("span", null, [
                             createTextVNode(
                               toDisplayString(t("control.monitoringInterval")) + " ",
@@ -26715,7 +26711,7 @@
                             value: settings.value.monitoring.intervalMs,
                             disabled: !settings.value.enabled,
                             onChange: setMonitoringInterval
-                          }, null, 40, _hoisted_31$1)
+                          }, null, 40, _hoisted_31$2)
                         ])
                       ])
                     ],
@@ -26728,8 +26724,8 @@
                       class: normalizeClass(["booster-setting-card", { "booster-setting-disabled": !settings.value.enabled }])
                     },
                     [
-                      createBaseVNode("div", _hoisted_32$1, [
-                        createBaseVNode("div", _hoisted_33$1, [
+                      createBaseVNode("div", _hoisted_32$2, [
+                        createBaseVNode("div", _hoisted_33$2, [
                           createVNode(unref(Wrench), { class: "size-4" }),
                           createBaseVNode(
                             "b",
@@ -26738,7 +26734,7 @@
                             1
                             /* TEXT */
                           ),
-                          createVNode(unref(_sfc_main$b), {
+                          createVNode(unref(_sfc_main$9), {
                             variant: settings.value.features.toolInspector && settings.value.enabled ? "default" : "secondary"
                           }, {
                             default: withCtx(() => [
@@ -26773,7 +26769,7 @@
                           -1
                           /* CACHED */
                         )
-                      ])], 10, _hoisted_34$1)
+                      ])], 10, _hoisted_34$2)
                     ],
                     2
                     /* CLASS */
@@ -26784,7 +26780,7 @@
                       class: normalizeClass(["booster-setting-card", { "booster-setting-disabled": !settings.value.enabled }])
                     },
                     [
-                      createBaseVNode("div", _hoisted_35$1, [
+                      createBaseVNode("div", _hoisted_35$2, [
                         createBaseVNode("div", _hoisted_36$1, [
                           createVNode(unref(Activity), { class: "size-4" }),
                           createBaseVNode(
@@ -26794,7 +26790,7 @@
                             1
                             /* TEXT */
                           ),
-                          createVNode(unref(_sfc_main$b), {
+                          createVNode(unref(_sfc_main$9), {
                             variant: settings.value.alerts.responseCompleteSound && settings.value.enabled ? "default" : "secondary"
                           }, {
                             default: withCtx(() => [
@@ -26850,7 +26846,7 @@
                             1
                             /* TEXT */
                           ),
-                          createVNode(unref(_sfc_main$b), {
+                          createVNode(unref(_sfc_main$9), {
                             variant: settings.value.alerts.longRunningSound && settings.value.enabled ? "default" : "secondary"
                           }, {
                             default: withCtx(() => [
@@ -27068,7 +27064,7 @@
                             1
                             /* TEXT */
                           ),
-                          createVNode(unref(_sfc_main$b), {
+                          createVNode(unref(_sfc_main$9), {
                             variant: settings.value.observer.enabled && settings.value.enabled ? "default" : "secondary"
                           }, {
                             default: withCtx(() => [
@@ -27524,7 +27520,7 @@
                           /* TEXT */
                         )
                       ]),
-                      createVNode(unref(_sfc_main$a), {
+                      createVNode(unref(_sfc_main$8), {
                         variant: "outline",
                         size: "sm",
                         disabled: settingsBackupBusy.value,
@@ -27572,7 +27568,7 @@
                           /* TEXT */
                         )
                       ]),
-                      createVNode(unref(_sfc_main$a), {
+                      createVNode(unref(_sfc_main$8), {
                         variant: "outline",
                         size: "sm",
                         disabled: settingsBackupBusy.value || !settingsBackupFile.value || !settingsBackupApproved.value,
@@ -27683,7 +27679,7 @@
                             1
                             /* TEXT */
                           ),
-                          createVNode(unref(_sfc_main$b), {
+                          createVNode(unref(_sfc_main$9), {
                             variant: tokenConfigured.value ? "default" : "secondary"
                           }, {
                             default: withCtx(() => [
@@ -27712,7 +27708,7 @@
                           ), [
                             [vModelText, tokenDraft.value]
                           ]),
-                          createVNode(unref(_sfc_main$a), {
+                          createVNode(unref(_sfc_main$8), {
                             variant: "outline",
                             size: "sm",
                             disabled: !tokenDraft.value.trim(),
@@ -27728,7 +27724,7 @@
                             _: 1
                             /* STABLE */
                           }, 8, ["disabled"]),
-                          tokenConfigured.value ? (openBlock(), createBlock(unref(_sfc_main$a), {
+                          tokenConfigured.value ? (openBlock(), createBlock(unref(_sfc_main$8), {
                             key: 0,
                             variant: "ghost",
                             size: "sm",
@@ -27747,7 +27743,7 @@
                             _: 1
                             /* STABLE */
                           })) : createCommentVNode("v-if", true)
-                        ])) : (openBlock(), createBlock(unref(_sfc_main$a), {
+                        ])) : (openBlock(), createBlock(unref(_sfc_main$8), {
                           key: 1,
                           variant: "outline",
                           size: "sm",
@@ -27766,7 +27762,7 @@
                         }))
                       ])) : createCommentVNode("v-if", true),
                       createBaseVNode("div", _hoisted_95, [
-                        createVNode(unref(_sfc_main$a), {
+                        createVNode(unref(_sfc_main$8), {
                           variant: "outline",
                           size: "sm",
                           disabled: telemetryTestState.value === "testing" || !settings.value.telemetry.endpoint || !tokenConfigured.value,
@@ -27816,7 +27812,7 @@
               ])
             ])
           ])),
-          archiveResetOpen.value ? (openBlock(), createBlock(_sfc_main$k, {
+          archiveResetOpen.value ? (openBlock(), createBlock(_sfc_main$i, {
             key: 3,
             label: t("archiveReset.confirmTitle"),
             onClose: _cache[22] || (_cache[22] = ($event) => !archiveResetting.value && (archiveResetOpen.value = false))
@@ -27857,7 +27853,7 @@
                   )) : createCommentVNode("v-if", true)
                 ]),
                 createBaseVNode("div", _hoisted_104, [
-                  createVNode(unref(_sfc_main$a), {
+                  createVNode(unref(_sfc_main$8), {
                     variant: "outline",
                     disabled: archiveResetting.value,
                     onClick: _cache[21] || (_cache[21] = ($event) => archiveResetOpen.value = false)
@@ -27884,11 +27880,11 @@
             _: 1
             /* STABLE */
           }, 8, ["label"])) : createCommentVNode("v-if", true)
-        ], 10, _hoisted_1$9);
+        ], 10, _hoisted_1$7);
       };
     }
   });
-  const styles$1 = '/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */\n@layer properties {\n  @supports (((-webkit-hyphens: none)) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color: rgb(from red r g b)))) {\n    *, :before, :after, ::backdrop {\n      --tw-rotate-x: initial;\n      --tw-rotate-y: initial;\n      --tw-rotate-z: initial;\n      --tw-skew-x: initial;\n      --tw-skew-y: initial;\n      --tw-border-style: solid;\n      --tw-leading: initial;\n      --tw-font-weight: initial;\n      --tw-ordinal: initial;\n      --tw-slashed-zero: initial;\n      --tw-numeric-figure: initial;\n      --tw-numeric-spacing: initial;\n      --tw-numeric-fraction: initial;\n      --tw-shadow: 0 0 #0000;\n      --tw-shadow-color: initial;\n      --tw-shadow-alpha: 100%;\n      --tw-inset-shadow: 0 0 #0000;\n      --tw-inset-shadow-color: initial;\n      --tw-inset-shadow-alpha: 100%;\n      --tw-ring-color: initial;\n      --tw-ring-shadow: 0 0 #0000;\n      --tw-inset-ring-color: initial;\n      --tw-inset-ring-shadow: 0 0 #0000;\n      --tw-ring-inset: initial;\n      --tw-ring-offset-width: 0px;\n      --tw-ring-offset-color: #fff;\n      --tw-ring-offset-shadow: 0 0 #0000;\n      --tw-outline-style: solid;\n      --tw-blur: initial;\n      --tw-brightness: initial;\n      --tw-contrast: initial;\n      --tw-grayscale: initial;\n      --tw-hue-rotate: initial;\n      --tw-invert: initial;\n      --tw-opacity: initial;\n      --tw-saturate: initial;\n      --tw-sepia: initial;\n      --tw-drop-shadow: initial;\n      --tw-drop-shadow-color: initial;\n      --tw-drop-shadow-alpha: 100%;\n      --tw-drop-shadow-size: initial;\n    }\n  }\n}\n\n@layer theme {\n  :root, :host {\n    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",\n      "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",\n      "Segoe UI Symbol", "Noto Color Emoji";\n    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",\n      "Courier New", monospace;\n    --spacing: .25rem;\n    --text-xs: .75rem;\n    --text-xs--line-height: calc(1 / .75);\n    --text-sm: .875rem;\n    --text-sm--line-height: calc(1.25 / .875);\n    --text-base: 1rem;\n    --text-base--line-height: calc(1.5 / 1);\n    --font-weight-medium: 500;\n    --font-weight-semibold: 600;\n    --default-transition-duration: .15s;\n    --default-transition-timing-function: cubic-bezier(.4, 0, .2, 1);\n    --default-font-family: var(--font-sans);\n    --default-mono-font-family: var(--font-mono);\n  }\n}\n\n@layer base {\n  *, :after, :before, ::backdrop {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  ::file-selector-button {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  html, :host {\n    -webkit-text-size-adjust: 100%;\n    tab-size: 4;\n    line-height: 1.5;\n    font-family: var(--default-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");\n    font-feature-settings: var(--default-font-feature-settings, normal);\n    font-variation-settings: var(--default-font-variation-settings, normal);\n    -webkit-tap-highlight-color: transparent;\n  }\n\n  hr {\n    height: 0;\n    color: inherit;\n    border-top-width: 1px;\n  }\n\n  abbr:where([title]) {\n    -webkit-text-decoration: underline dotted;\n    text-decoration: underline dotted;\n  }\n\n  h1, h2, h3, h4, h5, h6 {\n    font-size: inherit;\n    font-weight: inherit;\n  }\n\n  a {\n    color: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    text-decoration: inherit;\n  }\n\n  b, strong {\n    font-weight: bolder;\n  }\n\n  code, kbd, samp, pre {\n    font-family: var(--default-mono-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);\n    font-feature-settings: var(--default-mono-font-feature-settings, normal);\n    font-variation-settings: var(--default-mono-font-variation-settings, normal);\n    font-size: 1em;\n  }\n\n  small {\n    font-size: 80%;\n  }\n\n  sub, sup {\n    vertical-align: baseline;\n    font-size: 75%;\n    line-height: 0;\n    position: relative;\n  }\n\n  sub {\n    bottom: -.25em;\n  }\n\n  sup {\n    top: -.5em;\n  }\n\n  table {\n    text-indent: 0;\n    border-color: inherit;\n    border-collapse: collapse;\n  }\n\n  :-moz-focusring:where(:not(iframe)) {\n    outline: auto;\n  }\n\n  progress {\n    vertical-align: baseline;\n  }\n\n  summary {\n    display: list-item;\n  }\n\n  ol, ul, menu {\n    list-style: none;\n  }\n\n  img, svg, video, canvas, audio, iframe, embed, object {\n    vertical-align: middle;\n    display: block;\n  }\n\n  img, video {\n    max-width: 100%;\n    height: auto;\n  }\n\n  button, input, select, optgroup, textarea {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  ::file-selector-button {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  :where(select:is([multiple], [size])) optgroup {\n    font-weight: bolder;\n  }\n\n  :where(select:is([multiple], [size])) optgroup option {\n    padding-inline-start: 20px;\n  }\n\n  ::file-selector-button {\n    margin-inline-end: 4px;\n  }\n\n  ::placeholder {\n    opacity: 1;\n  }\n\n  @supports (not ((-webkit-appearance: -apple-pay-button))) or (contain-intrinsic-size: 1px) {\n    ::placeholder {\n      color: currentColor;\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      ::placeholder {\n        color: color-mix(in oklab, currentcolor 50%, transparent);\n      }\n    }\n  }\n\n  textarea {\n    resize: vertical;\n  }\n\n  ::-webkit-search-decoration {\n    -webkit-appearance: none;\n  }\n\n  ::-webkit-date-and-time-value {\n    min-height: 1lh;\n    text-align: inherit;\n  }\n\n  ::-webkit-datetime-edit {\n    display: inline-flex;\n  }\n\n  ::-webkit-datetime-edit-fields-wrapper {\n    padding: 0;\n  }\n\n  ::-webkit-datetime-edit {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-year-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-month-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-day-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-hour-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-minute-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-second-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-millisecond-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-meridiem-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-calendar-picker-indicator {\n    line-height: 1;\n  }\n\n  :-moz-ui-invalid {\n    box-shadow: none;\n  }\n\n  button, input:where([type="button"], [type="reset"], [type="submit"]) {\n    appearance: button;\n  }\n\n  ::file-selector-button {\n    appearance: button;\n  }\n\n  ::-webkit-inner-spin-button {\n    height: auto;\n  }\n\n  ::-webkit-outer-spin-button {\n    height: auto;\n  }\n\n  [hidden]:where(:not([hidden="until-found"])) {\n    display: none !important;\n  }\n}\n\n@layer components;\n\n@layer utilities {\n  .collapse {\n    visibility: collapse;\n  }\n\n  .invisible {\n    visibility: hidden;\n  }\n\n  .visible {\n    visibility: visible;\n  }\n\n  .absolute {\n    position: absolute;\n  }\n\n  .fixed {\n    position: fixed;\n  }\n\n  .relative {\n    position: relative;\n  }\n\n  .static {\n    position: static;\n  }\n\n  .sticky {\n    position: sticky;\n  }\n\n  .top-41 {\n    top: calc(var(--spacing) * 41);\n  }\n\n  .isolate {\n    isolation: isolate;\n  }\n\n  .col-span-2 {\n    grid-column: span 2 / span 2;\n  }\n\n  .container {\n    width: 100%;\n  }\n\n  @media (min-width: 40rem) {\n    .container {\n      max-width: 40rem;\n    }\n  }\n\n  @media (min-width: 48rem) {\n    .container {\n      max-width: 48rem;\n    }\n  }\n\n  @media (min-width: 64rem) {\n    .container {\n      max-width: 64rem;\n    }\n  }\n\n  @media (min-width: 80rem) {\n    .container {\n      max-width: 80rem;\n    }\n  }\n\n  @media (min-width: 96rem) {\n    .container {\n      max-width: 96rem;\n    }\n  }\n\n  .m-0 {\n    margin: 0;\n  }\n\n  .m-1 {\n    margin: var(--spacing);\n  }\n\n  .mt-2 {\n    margin-top: calc(var(--spacing) * 2);\n  }\n\n  .mb-2 {\n    margin-bottom: calc(var(--spacing) * 2);\n  }\n\n  .block {\n    display: block;\n  }\n\n  .contents {\n    display: contents;\n  }\n\n  .flex {\n    display: flex;\n  }\n\n  .grid {\n    display: grid;\n  }\n\n  .hidden {\n    display: none;\n  }\n\n  .inline {\n    display: inline;\n  }\n\n  .inline-flex {\n    display: inline-flex;\n  }\n\n  .table {\n    display: table;\n  }\n\n  .size-3 {\n    width: calc(var(--spacing) * 3);\n    height: calc(var(--spacing) * 3);\n  }\n\n  .size-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n    height: calc(var(--spacing) * 3.5);\n  }\n\n  .size-4 {\n    width: calc(var(--spacing) * 4);\n    height: calc(var(--spacing) * 4);\n  }\n\n  .size-5 {\n    width: calc(var(--spacing) * 5);\n    height: calc(var(--spacing) * 5);\n  }\n\n  .size-6 {\n    width: calc(var(--spacing) * 6);\n    height: calc(var(--spacing) * 6);\n  }\n\n  .size-7 {\n    width: calc(var(--spacing) * 7);\n    height: calc(var(--spacing) * 7);\n  }\n\n  .size-8 {\n    width: calc(var(--spacing) * 8);\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-7 {\n    height: calc(var(--spacing) * 7);\n  }\n\n  .h-8 {\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-9 {\n    height: calc(var(--spacing) * 9);\n  }\n\n  .max-h-60 {\n    max-height: calc(var(--spacing) * 60);\n  }\n\n  .max-h-\\[420px\\] {\n    max-height: 420px;\n  }\n\n  .min-h-\\[130px\\] {\n    min-height: 130px;\n  }\n\n  .w-full {\n    width: 100%;\n  }\n\n  .min-w-0 {\n    min-width: 0;\n  }\n\n  .flex-1 {\n    flex: 1;\n  }\n\n  .shrink-0 {\n    flex-shrink: 0;\n  }\n\n  .grow {\n    flex-grow: 1;\n  }\n\n  .rotate-180 {\n    rotate: 180deg;\n  }\n\n  .transform {\n    transform: var(--tw-rotate-x, ) var(--tw-rotate-y, ) var(--tw-rotate-z, ) var(--tw-skew-x, ) var(--tw-skew-y, );\n  }\n\n  .resize {\n    resize: both;\n  }\n\n  .grid-cols-2 {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }\n\n  .flex-wrap {\n    flex-wrap: wrap;\n  }\n\n  .items-center {\n    align-items: center;\n  }\n\n  .justify-between {\n    justify-content: space-between;\n  }\n\n  .justify-center {\n    justify-content: center;\n  }\n\n  .justify-end {\n    justify-content: flex-end;\n  }\n\n  .gap-2 {\n    gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-3 {\n    gap: calc(var(--spacing) * 3);\n  }\n\n  .self-start {\n    align-self: flex-start;\n  }\n\n  .truncate {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    overflow: hidden;\n  }\n\n  .overflow-x-hidden {\n    overflow-x: hidden;\n  }\n\n  .overflow-y-auto {\n    overflow-y: auto;\n  }\n\n  .rounded-lg {\n    border-radius: var(--radius);\n  }\n\n  .rounded-md {\n    border-radius: calc(var(--radius) - 2px);\n  }\n\n  .border {\n    border-style: var(--tw-border-style);\n    border-width: 1px;\n  }\n\n  .border-b {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 1px;\n  }\n\n  .border-l-2 {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 2px;\n  }\n\n  .border-border {\n    border-color: var(--border);\n  }\n\n  .border-transparent {\n    border-color: #0000;\n  }\n\n  .bg-background {\n    background-color: var(--background);\n  }\n\n  .bg-card {\n    background-color: var(--card);\n  }\n\n  .bg-primary {\n    background-color: var(--primary);\n  }\n\n  .bg-secondary {\n    background-color: var(--secondary);\n  }\n\n  .p-2 {\n    padding: calc(var(--spacing) * 2);\n  }\n\n  .p-3 {\n    padding: calc(var(--spacing) * 3);\n  }\n\n  .px-2 {\n    padding-inline: calc(var(--spacing) * 2);\n  }\n\n  .px-3 {\n    padding-inline: calc(var(--spacing) * 3);\n  }\n\n  .px-4 {\n    padding-inline: calc(var(--spacing) * 4);\n  }\n\n  .py-0\\.5 {\n    padding-block: calc(var(--spacing) * .5);\n  }\n\n  .py-2 {\n    padding-block: calc(var(--spacing) * 2);\n  }\n\n  .pl-2 {\n    padding-left: calc(var(--spacing) * 2);\n  }\n\n  .text-base {\n    font-size: var(--text-base);\n    line-height: var(--tw-leading, var(--text-base--line-height));\n  }\n\n  .text-sm {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n\n  .text-xs {\n    font-size: var(--text-xs);\n    line-height: var(--tw-leading, var(--text-xs--line-height));\n  }\n\n  .text-\\[11px\\] {\n    font-size: 11px;\n  }\n\n  .leading-4 {\n    --tw-leading: calc(var(--spacing) * 4);\n    line-height: calc(var(--spacing) * 4);\n  }\n\n  .font-medium {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n\n  .font-semibold {\n    --tw-font-weight: var(--font-weight-semibold);\n    font-weight: var(--font-weight-semibold);\n  }\n\n  .break-words {\n    overflow-wrap: break-word;\n  }\n\n  .whitespace-nowrap {\n    white-space: nowrap;\n  }\n\n  .whitespace-pre-wrap {\n    white-space: pre-wrap;\n  }\n\n  .text-foreground {\n    color: var(--foreground);\n  }\n\n  .text-muted-foreground {\n    color: var(--muted-foreground);\n  }\n\n  .text-primary-foreground {\n    color: var(--primary-foreground);\n  }\n\n  .text-secondary-foreground {\n    color: var(--secondary-foreground);\n  }\n\n  .ordinal {\n    --tw-ordinal: ordinal;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .tabular-nums {\n    --tw-numeric-spacing: tabular-nums;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .shadow {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .outline {\n    outline-style: var(--tw-outline-style);\n    outline-width: 1px;\n  }\n\n  .blur {\n    --tw-blur: blur(8px);\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .filter {\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .transition {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-colors {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-transform {\n    transition-property: transform, translate, scale, rotate;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .outline-none {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  @media (hover: hover) {\n    .hover\\:bg-accent:hover {\n      background-color: var(--accent);\n    }\n\n    .hover\\:bg-primary\\/90:hover {\n      background-color: var(--primary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-primary\\/90:hover {\n        background-color: color-mix(in oklab, var(--primary) 90%, transparent);\n      }\n    }\n\n    .hover\\:text-accent-foreground:hover {\n      color: var(--accent-foreground);\n    }\n  }\n\n  .focus-visible\\:ring-2:focus-visible {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus-visible\\:ring-ring:focus-visible {\n    --tw-ring-color: var(--ring);\n  }\n\n  .disabled\\:pointer-events-none:disabled {\n    pointer-events: none;\n  }\n\n  .disabled\\:opacity-50:disabled {\n    opacity: .5;\n  }\n}\n\n:host {\n  --background: oklch(98.5% 0 0);\n  --foreground: oklch(14.5% 0 0);\n  --card: oklch(100% 0 0);\n  --card-foreground: oklch(14.5% 0 0);\n  --primary: oklch(20.5% 0 0);\n  --primary-foreground: oklch(98.5% 0 0);\n  --secondary: oklch(97% 0 0);\n  --secondary-foreground: oklch(20.5% 0 0);\n  --muted: oklch(97% 0 0);\n  --muted-foreground: oklch(55.6% 0 0);\n  --accent: oklch(97% 0 0);\n  --accent-foreground: oklch(20.5% 0 0);\n  --border: oklch(92.2% 0 0);\n  --ring: oklch(70.8% 0 0);\n  --radius: .625rem;\n  all: initial;\n  color: var(--foreground);\n  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;\n}\n\n@media (prefers-color-scheme: dark) {\n  :host {\n    --background: oklch(14.5% 0 0);\n    --foreground: oklch(98.5% 0 0);\n    --card: oklch(20.5% 0 0);\n    --card-foreground: oklch(98.5% 0 0);\n    --primary: oklch(92.2% 0 0);\n    --primary-foreground: oklch(20.5% 0 0);\n    --secondary: oklch(26.9% 0 0);\n    --secondary-foreground: oklch(98.5% 0 0);\n    --muted: oklch(26.9% 0 0);\n    --muted-foreground: oklch(70.8% 0 0);\n    --accent: oklch(26.9% 0 0);\n    --accent-foreground: oklch(98.5% 0 0);\n    --border: oklch(100% 0 0 / .12);\n    --ring: oklch(55.6% 0 0);\n  }\n}\n\n* {\n  box-sizing: border-box;\n  border-color: var(--border);\n}\n\n.booster-shell {\n  z-index: 2147483647;\n  position: fixed;\n  bottom: 20px;\n  right: 20px;\n}\n\n.booster-button {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 42px;\n  height: 42px;\n  color: var(--card-foreground);\n  cursor: pointer;\n  border-radius: 14px;\n  font: 700 15px / 1 inherit;\n  box-shadow: 0 10px 30px #0003;\n}\n\n.booster-panel {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 300px;\n  color: var(--card-foreground);\n  border-radius: 16px;\n  margin-bottom: 10px;\n  padding: 14px;\n  box-shadow: 0 18px 45px #0000003d;\n}\n\n.booster-panel h2 {\n  margin: 0 0 6px;\n  font-size: 15px;\n  font-weight: 700;\n}\n\n.booster-panel p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.45;\n}\n\n.booster-control-center {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(760px, 100vw - 32px);\n  color: var(--card-foreground);\n  border-radius: 18px;\n  margin-bottom: 10px;\n  overflow: hidden;\n  box-shadow: 0 22px 60px #00000047;\n}\n\n.booster-control-header, .booster-control-footer {\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  display: flex;\n}\n\n.booster-control-header {\n  border-bottom: 1px solid var(--border);\n  padding: 14px 14px 12px;\n}\n\n.booster-control-header strong {\n  font-size: 14px;\n}\n\n.booster-control-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-control-body {\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-loading {\n  color: var(--muted-foreground);\n  padding: 18px;\n  font-size: 12px;\n}\n\n.booster-section-label {\n  color: var(--muted-foreground);\n  letter-spacing: .08em;\n  text-transform: uppercase;\n  padding: 2px 2px 0;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-setting-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 12px;\n  display: flex;\n}\n\n.booster-setting-card-stack {\n  align-items: stretch;\n  display: grid;\n}\n\n.booster-range-grid {\n  gap: 10px;\n  min-width: 220px;\n  display: grid;\n}\n\n.booster-range-grid label {\n  gap: 5px;\n  display: grid;\n}\n\n.booster-range-grid label > span {\n  color: var(--muted-foreground);\n  justify-content: space-between;\n  gap: 12px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-range-grid label > span b {\n  color: var(--foreground);\n  font-variant-numeric: tabular-nums;\n}\n\n.booster-range-grid input[type="range"] {\n  width: 100%;\n  accent-color: var(--primary);\n}\n\n.booster-setting-disabled {\n  opacity: .55;\n}\n\n.booster-setting-copy {\n  gap: 5px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-setting-copy b {\n  font-size: 12px;\n}\n\n.booster-setting-copy > span {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.4;\n}\n\n.booster-switch {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  cursor: pointer;\n  border-radius: 999px;\n  flex: none;\n  width: 36px;\n  height: 20px;\n  padding: 0;\n  transition: background .12s, border-color .12s;\n  position: relative;\n}\n\n.booster-switch:disabled {\n  cursor: not-allowed;\n}\n\n.booster-switch > span {\n  background: var(--foreground);\n  border-radius: 999px;\n  width: 14px;\n  height: 14px;\n  transition: transform .12s;\n  position: absolute;\n  top: 2px;\n  left: 2px;\n}\n\n.booster-switch-on {\n  background: var(--primary);\n  border-color: var(--primary);\n}\n\n.booster-switch-on > span {\n  background: var(--primary-foreground);\n  transform: translateX(16px);\n}\n\n.booster-info-card {\n  background: var(--muted);\n  color: var(--foreground);\n  border-radius: 12px;\n  padding: 11px 12px;\n  font-size: 11px;\n}\n\n.booster-info-card ul {\n  color: var(--muted-foreground);\n  gap: 4px;\n  margin: 8px 0 0 18px;\n  padding: 0;\n  line-height: 1.35;\n  display: grid;\n}\n\n.booster-control-footer {\n  padding-top: 2px;\n}\n\n.booster-save-state {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 5px;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-overlay-root {\n  pointer-events: none;\n}\n\n.booster-launcher {\n  z-index: 2147483647;\n  border: 2px solid var(--primary);\n  justify-content: center;\n  align-items: center;\n  gap: 1px;\n  width: 46px;\n  height: 46px;\n  display: inline-flex;\n  position: fixed;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher {\n    border: 2px solid color-mix(in oklab, var(--primary) 55%, transparent);\n  }\n}\n\n.booster-launcher {\n  background: var(--primary);\n  color: var(--primary-foreground);\n  box-shadow: 0 12px 36px #00000047, 0 0 0 3px var(--primary);\n  border-radius: 15px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher {\n    box-shadow: 0 12px 36px #00000047, 0 0 0 3px color-mix(in oklab, var(--primary) 18%, transparent);\n  }\n}\n\n.booster-launcher {\n  cursor: grab;\n  pointer-events: auto;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  font: 800 17px / 1 inherit;\n}\n\n.booster-launcher:hover {\n  transform: scale(1.04);\n}\n\n.booster-launcher-dragging {\n  cursor: grabbing;\n  transform: scale(1.06);\n}\n\n.booster-launcher-grip {\n  opacity: .7;\n  width: 11px;\n  height: 11px;\n}\n\n.booster-modal-backdrop {\n  z-index: 2147483646;\n  -webkit-backdrop-filter: blur(3px);\n  backdrop-filter: blur(3px);\n  pointer-events: auto;\n  background: #00000061;\n  place-items: center;\n  padding: 16px;\n  display: grid;\n  position: fixed;\n  inset: 0;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n  max-height: calc(100vh - 32px);\n  overflow: auto;\n}\n\n.booster-modal-surface .booster-control-center {\n  width: 100%;\n  margin: 0;\n}\n\n.booster-popup-host {\n  background: var(--background);\n  min-width: 360px;\n}\n\n.booster-select {\n  border: 1px solid var(--border);\n  background: var(--background);\n  min-width: 92px;\n  height: 32px;\n  color: var(--foreground);\n  cursor: pointer;\n  border-radius: 8px;\n  outline: none;\n  flex: none;\n  padding: 0 28px 0 10px;\n  font: 500 12px / 1 inherit;\n}\n\n.booster-select:focus {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-stack-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-stack-card label {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-input {\n  border: 1px solid var(--border);\n  background: var(--background);\n  width: 100%;\n  min-width: 0;\n  height: 32px;\n  color: var(--foreground);\n  border-radius: 8px;\n  outline: none;\n  padding: 0 10px;\n  font: 500 11px / 1 inherit;\n}\n\n.booster-input:focus {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-counter-grid {\n  color: var(--muted-foreground);\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 6px 12px;\n  margin-top: 8px;\n  display: grid;\n}\n\n.booster-counter-grid span {\n  justify-content: space-between;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-counter-grid b {\n  color: var(--foreground);\n}\n\n.booster-header-copy {\n  min-width: 0;\n}\n\n.booster-header-actions {\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-header-toggle-label {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  font-weight: 600;\n}\n\n.booster-settings-layout {\n  grid-template-columns: 150px minmax(0, 1fr);\n  min-height: 360px;\n  display: grid;\n}\n\n.booster-settings-nav {\n  border-right: 1px solid var(--border);\n  background: var(--muted);\n  align-content: start;\n  gap: 4px;\n  padding: 12px 8px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-settings-nav {\n    background: color-mix(in oklab, var(--muted) 58%, transparent);\n  }\n}\n\n.booster-settings-nav button {\n  width: 100%;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  border-radius: 9px;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 10px;\n  font: 600 11px / 1.2 inherit;\n  display: flex;\n}\n\n.booster-settings-nav button:hover, .booster-settings-nav button.active {\n  background: var(--background);\n  color: var(--foreground);\n}\n\n.booster-settings-content {\n  align-content: start;\n  gap: 10px;\n  min-width: 0;\n  padding: 14px;\n  display: grid;\n}\n\n.booster-setting-card-flat {\n  border: 0;\n  border-bottom: 1px solid var(--border);\n  border-radius: 0;\n  padding: 0 0 10px;\n}\n\n.booster-analytics-grid {\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 12px;\n  display: grid;\n}\n\n.booster-counter-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  padding: 12px;\n}\n\n.booster-counter-title {\n  margin-bottom: 8px;\n  font-size: 12px;\n  font-weight: 700;\n}\n\n.booster-disclosure {\n  width: 100%;\n  color: var(--foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 0;\n  display: flex;\n}\n\n.booster-disclosure > span {\n  gap: 3px;\n  display: grid;\n}\n\n.booster-disclosure b {\n  font-size: 12px;\n}\n\n.booster-disclosure small {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.rotate-180 {\n  transform: rotate(180deg);\n}\n\n.booster-telemetry-body {\n  gap: 10px;\n  padding-top: 10px;\n  display: grid;\n}\n\n.booster-field {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-telemetry-test-row {\n  align-items: center;\n  gap: 10px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-test-success {\n  color: oklch(62% .17 145);\n  font-size: 11px;\n}\n\n.booster-test-error {\n  color: oklch(63% .2 25);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n}\n\n@media (max-width: 620px) {\n  .booster-control-center, .booster-modal-surface {\n    width: calc(100vw - 20px);\n  }\n\n  .booster-settings-layout {\n    grid-template-columns: 1fr;\n  }\n\n  .booster-settings-nav {\n    border-right: 0;\n    border-bottom: 1px solid var(--border);\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n\n  .booster-settings-nav button {\n    justify-content: center;\n  }\n\n  .booster-analytics-grid {\n    grid-template-columns: 1fr;\n  }\n}\n\n.booster-launcher-icon {\n  width: 21px;\n  height: 21px;\n}\n\n.booster-launcher-open {\n  box-shadow: 0 14px 40px #00000057, 0 0 0 4px var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher-open {\n    box-shadow: 0 14px 40px #00000057, 0 0 0 4px color-mix(in oklab, var(--primary) 24%, transparent);\n  }\n}\n\n.booster-quick-menu {\n  z-index: 2147483647;\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 330px;\n  color: var(--card-foreground);\n  pointer-events: auto;\n  border-radius: 18px;\n  position: fixed;\n  overflow: hidden;\n  box-shadow: 0 22px 60px #0000004d;\n}\n\n.booster-quick-header, .booster-loader-status, .booster-quick-actions, .booster-quick-context, .booster-quick-empty, .booster-loader-error {\n  padding: 12px 14px;\n}\n\n.booster-quick-header, .booster-loader-status {\n  justify-content: space-between;\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-quick-header {\n  border-bottom: 1px solid var(--border);\n}\n\n.booster-quick-header > div, .booster-loader-status > div {\n  gap: 2px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-quick-header strong, .booster-loader-status strong {\n  font-size: 13px;\n}\n\n.booster-quick-header span, .booster-loader-status span, .booster-quick-context code, .booster-quick-empty, .booster-loader-error {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.booster-icon-button {\n  border: 1px solid var(--border);\n  background: var(--secondary);\n  width: 30px;\n  height: 30px;\n  color: var(--secondary-foreground);\n  cursor: pointer;\n  border-radius: 9px;\n  flex: none;\n  justify-content: center;\n  align-items: center;\n  display: inline-flex;\n}\n\n.booster-icon-button:hover {\n  background: var(--accent);\n}\n\n.booster-quick-context {\n  gap: 7px;\n  display: grid;\n}\n\n.booster-quick-context > strong {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 13px;\n  overflow: hidden;\n}\n\n.booster-quick-context code {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  overflow: hidden;\n}\n\n.booster-quick-chips, .booster-archive-meta {\n  flex-wrap: wrap;\n  gap: 5px;\n  display: flex;\n}\n\n.booster-quick-chips span, .booster-archive-meta span {\n  background: var(--muted);\n  max-width: 100%;\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  border-radius: 999px;\n  padding: 3px 6px;\n  font-size: 10px;\n  overflow: hidden;\n}\n\n.booster-loader-status {\n  border-top: 1px solid var(--border);\n  border-bottom: 1px solid var(--border);\n  background: var(--secondary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-loader-status {\n    background: color-mix(in oklab, var(--secondary) 70%, transparent);\n  }\n}\n\n.booster-loader-error {\n  border-top: 1px solid var(--border);\n}\n\n.booster-spin {\n  animation: 1.2s linear infinite booster-spin;\n}\n\n@keyframes booster-spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n.booster-quick-actions {\n  grid-template-columns: 1fr 1fr;\n  gap: 8px;\n  display: grid;\n}\n\n.booster-quick-primary, .booster-quick-secondary {\n  border: 1px solid var(--border);\n  cursor: pointer;\n  border-radius: 11px;\n  justify-content: center;\n  align-items: center;\n  gap: 7px;\n  min-height: 38px;\n  font: 600 11px / 1.2 inherit;\n  display: inline-flex;\n}\n\n.booster-quick-primary {\n  background: var(--primary);\n  color: var(--primary-foreground);\n}\n\n.booster-quick-secondary {\n  background: var(--secondary);\n  color: var(--secondary-foreground);\n}\n\n.booster-quick-primary:disabled, .booster-quick-secondary:disabled {\n  cursor: not-allowed;\n  opacity: .45;\n}\n\n.booster-archive-backdrop {\n  padding: 10px;\n}\n\n.booster-archive-surface {\n  pointer-events: auto;\n  width: min(1180px, 100vw - 20px);\n  height: min(820px, 100vh - 20px);\n}\n\n.booster-archive-browser {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 100%;\n  height: 100%;\n  color: var(--card-foreground);\n  border-radius: 20px;\n  grid-template-rows: auto minmax(0, 1fr);\n  display: grid;\n  overflow: hidden;\n  box-shadow: 0 28px 80px #00000061;\n}\n\n.booster-archive-header {\n  border-bottom: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  min-height: 58px;\n  padding: 10px 14px;\n  display: flex;\n}\n\n.booster-archive-title, .booster-archive-header-actions {\n  align-items: center;\n  gap: 9px;\n  display: flex;\n}\n\n.booster-archive-title > div {\n  gap: 1px;\n  display: grid;\n}\n\n.booster-archive-title strong {\n  font-size: 14px;\n}\n\n.booster-archive-title span {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-archive-layout {\n  grid-template-columns: 300px minmax(0, 1fr);\n  min-height: 0;\n  display: grid;\n}\n\n.booster-archive-sidebar {\n  border-right: 1px solid var(--border);\n  background: var(--secondary);\n  padding: 10px;\n  overflow: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-sidebar {\n    background: color-mix(in oklab, var(--secondary) 38%, var(--card));\n  }\n}\n\n.booster-archive-group {\n  margin-bottom: 12px;\n}\n\n.booster-archive-project {\n  color: var(--muted-foreground);\n  text-transform: uppercase;\n  align-items: center;\n  gap: 6px;\n  padding: 6px 7px;\n  font-size: 10px;\n  font-weight: 700;\n  display: flex;\n}\n\n.booster-archive-project span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-archive-conversation {\n  width: 100%;\n  color: inherit;\n  text-align: left;\n  cursor: pointer;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 11px;\n  gap: 3px;\n  margin: 2px 0;\n  padding: 9px 10px;\n  display: grid;\n}\n\n.booster-archive-conversation:hover, .booster-archive-conversation.active {\n  border-color: var(--border);\n  background: var(--card);\n}\n\n.booster-archive-conversation strong, .booster-archive-conversation span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  overflow: hidden;\n}\n\n.booster-archive-conversation strong {\n  font-size: 12px;\n}\n\n.booster-archive-conversation span {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-archive-content {\n  background: var(--background);\n  min-width: 0;\n  overflow: auto;\n}\n\n.booster-archive-conversation-head {\n  z-index: 2;\n  border-bottom: 1px solid var(--border);\n  background: var(--card);\n  justify-content: space-between;\n  align-items: flex-start;\n  gap: 14px;\n  padding: 12px 16px;\n  display: flex;\n  position: sticky;\n  top: 0;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-conversation-head {\n    background: color-mix(in oklab, var(--card) 94%, transparent);\n  }\n}\n\n.booster-archive-conversation-head {\n  -webkit-backdrop-filter: blur(10px);\n  backdrop-filter: blur(10px);\n}\n\n.booster-archive-conversation-head > div:first-child {\n  grid-template-columns: auto minmax(0, 1fr);\n  align-items: center;\n  gap: 2px 8px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-archive-conversation-head strong {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 13px;\n  overflow: hidden;\n}\n\n.booster-archive-conversation-head span {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  grid-column: 2;\n  font-size: 9px;\n  overflow: hidden;\n}\n\n.booster-archive-back {\n  background: var(--secondary);\n  width: 28px;\n  height: 28px;\n  color: var(--secondary-foreground);\n  cursor: pointer;\n  border: 0;\n  border-radius: 8px;\n  grid-row: 1 / span 2;\n  justify-content: center;\n  align-items: center;\n  display: inline-flex;\n}\n\n.booster-archive-messages {\n  gap: 10px;\n  padding: 14px 16px 40px;\n  display: grid;\n}\n\n.booster-archive-message {\n  border: 1px solid var(--border);\n  background: var(--card);\n  border-radius: 14px;\n  max-width: 920px;\n  padding: 11px 13px;\n}\n\n.booster-archive-message.role-user {\n  background: var(--secondary);\n  margin-left: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-message.role-user {\n    background: color-mix(in oklab, var(--secondary) 82%, var(--card));\n  }\n}\n\n.booster-archive-message.role-tool {\n  border-style: dashed;\n}\n\n.booster-archive-message-head {\n  color: var(--muted-foreground);\n  text-transform: uppercase;\n  flex-wrap: wrap;\n  gap: 5px 10px;\n  margin-bottom: 8px;\n  font-size: 9px;\n  display: flex;\n}\n\n.booster-archive-message-head strong {\n  color: var(--foreground);\n}\n\n.booster-archive-message-text {\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  font-size: 12px;\n  line-height: 1.55;\n}\n\n.booster-raw-toggle {\n  color: var(--muted-foreground);\n  cursor: pointer;\n  background: none;\n  border: 0;\n  align-items: center;\n  gap: 4px;\n  margin-top: 10px;\n  padding: 0;\n  font: 600 10px / 1 inherit;\n  display: inline-flex;\n}\n\n.booster-archive-raw {\n  background: var(--muted);\n  max-height: 360px;\n  color: var(--foreground);\n  white-space: pre-wrap;\n  border-radius: 10px;\n  margin: 9px 0 0;\n  padding: 10px;\n  font: 10px / 1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;\n  overflow: auto;\n}\n\n.booster-archive-empty, .booster-archive-error {\n  color: var(--muted-foreground);\n  padding: 24px;\n  font-size: 12px;\n}\n\n.booster-archive-error {\n  color: #dc2626;\n}\n\n@media (max-width: 760px) {\n  .booster-archive-layout {\n    grid-template-columns: 220px minmax(0, 1fr);\n  }\n\n  .booster-quick-menu {\n    width: min(330px, 100vw - 24px);\n  }\n}\n\n.booster-identity {\n  vertical-align: middle;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  max-width: 100%;\n  display: inline-flex;\n}\n\n.booster-dock {\n  z-index: 2147483647;\n  pointer-events: auto;\n  width: 44px;\n  height: 44px;\n  position: fixed;\n}\n\n.booster-dock-toggle {\n  z-index: 2;\n  border: 1px solid var(--border);\n  background: var(--primary);\n  width: 44px;\n  height: 44px;\n  color: var(--primary-foreground);\n  cursor: grab;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  justify-content: center;\n  align-items: center;\n  padding: 0;\n  display: flex;\n  position: relative;\n}\n\n.booster-dock.right .booster-dock-toggle {\n  border-radius: 12px 0 0 12px;\n}\n\n.booster-dock.left .booster-dock-toggle {\n  border-radius: 0 12px 12px 0;\n}\n\n.booster-dock.dragging .booster-dock-toggle {\n  cursor: grabbing;\n}\n\n.booster-dock-shell {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(284px, 100vw);\n  color: var(--card-foreground);\n  position: absolute;\n  overflow: hidden;\n  box-shadow: 0 12px 32px #00000038;\n}\n\n.booster-dock.right .booster-dock-shell {\n  border-radius: 16px 0 0 16px;\n  right: 0;\n}\n\n.booster-dock.left .booster-dock-shell {\n  border-radius: 0 16px 16px 0;\n  left: 0;\n}\n\n.booster-dock.grow-up .booster-dock-shell {\n  padding-bottom: 44px;\n  bottom: 0;\n}\n\n.booster-dock.grow-down .booster-dock-shell {\n  padding-top: 44px;\n  top: 0;\n}\n\n.booster-dock-content {\n  overscroll-behavior: contain;\n  overflow-y: auto;\n}\n\n.booster-dock-close-bar {\n  box-sizing: border-box;\n  background: var(--primary);\n  height: 44px;\n  color: var(--primary-foreground);\n  letter-spacing: .01em;\n  cursor: grab;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  border: 0;\n  align-items: center;\n  gap: 8px;\n  padding: 0 12px;\n  font: 650 11px / 1 inherit;\n  display: flex;\n  position: absolute;\n  left: -1px;\n  right: -1px;\n}\n\n.booster-dock.grow-up .booster-dock-close-bar {\n  border-top: 1px solid var(--primary-foreground);\n  bottom: -1px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-dock.grow-up .booster-dock-close-bar {\n    border-top: 1px solid color-mix(in oklab, var(--primary-foreground) 18%, transparent);\n  }\n}\n\n.booster-dock.grow-down .booster-dock-close-bar {\n  border-bottom: 1px solid var(--primary-foreground);\n  top: -1px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-dock.grow-down .booster-dock-close-bar {\n    border-bottom: 1px solid color-mix(in oklab, var(--primary-foreground) 18%, transparent);\n  }\n}\n\n.booster-dock.right .booster-dock-close-bar, .booster-dock.left .booster-dock-close-bar {\n  justify-content: flex-start;\n  padding-inline: 12px;\n}\n\n.booster-dock-close-bar:hover {\n  filter: brightness(1.04);\n}\n\n.booster-dock-close-bar:active {\n  cursor: grabbing;\n}\n\n.booster-dock-close-bar svg {\n  flex: none;\n}\n\n.booster-dock-context {\n  gap: 5px;\n  padding: 11px 12px 7px;\n  display: grid;\n}\n\n.booster-dock-context > .booster-identity:first-child {\n  font-size: 13px;\n  font-weight: 650;\n}\n\n.booster-dock-context > .booster-identity {\n  font-size: 12px;\n}\n\n.booster-dock-context p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 11px;\n  line-height: 1.5;\n}\n\n.booster-dock-context time {\n  font-size: 10px;\n  display: block;\n}\n\n.booster-dock-counts {\n  color: var(--muted-foreground);\n  flex-wrap: wrap;\n  gap: 6px 10px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-dock-counts b {\n  color: var(--foreground);\n  font-weight: 650;\n}\n\n.booster-capture-shortcut {\n  color: var(--muted-foreground);\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n  background: none;\n  border: 0;\n  align-items: center;\n  gap: 6px;\n  padding: 3px 0;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-dock-actions {\n  flex-direction: column;\n  gap: 1px;\n  padding: 4px 5px 6px;\n  display: flex;\n}\n\n.booster-dock-actions > button {\n  width: 100%;\n  min-height: 34px;\n  color: inherit;\n  text-align: left;\n  font: inherit;\n  cursor: pointer;\n  background: none;\n  border: 0;\n  border-radius: 8px;\n  align-items: center;\n  gap: 10px;\n  padding: 6px 9px;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-dock-actions > button:hover:not(:disabled) {\n  background: var(--muted);\n}\n\n.booster-dock-actions > button:disabled {\n  opacity: .4;\n  cursor: not-allowed;\n}\n\n.booster-dock.grow-down .booster-dock-content {\n  flex-direction: column-reverse;\n  display: flex;\n}\n\n.booster-dock.grow-down .booster-dock-actions {\n  flex-direction: column-reverse;\n}\n\n.booster-dock-progress {\n  border-block: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: center;\n  gap: 8px;\n  padding: 8px 12px;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-identity-label {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-identity-copy {\n  width: 24px;\n  height: 24px;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  opacity: 0;\n  background: none;\n  border: 0;\n  border-radius: 5px;\n  flex: none;\n  justify-content: center;\n  align-items: center;\n  padding: 4px;\n  display: inline-flex;\n}\n\n.booster-identity:hover .booster-identity-copy, .booster-identity:focus-within .booster-identity-copy, .booster-reader-group-header:hover .booster-identity-copy {\n  opacity: 1;\n}\n\n.booster-identity-copy:hover {\n  background: var(--muted);\n}\n\n.booster-sr-only {\n  clip-path: inset(50%);\n  white-space: nowrap;\n  width: 1px;\n  height: 1px;\n  position: absolute;\n  overflow: hidden;\n}\n\n.booster-modal-backdrop {\n  -webkit-backdrop-filter: none;\n  backdrop-filter: none;\n}\n\n.booster-dialog {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(760px, 100vw - 32px);\n  max-height: calc(100dvh - 32px);\n  color: var(--card-foreground);\n  pointer-events: auto;\n  border-radius: 16px;\n  outline: none;\n  font-size: 14px;\n  overflow: auto;\n  box-shadow: 0 20px 60px #0000004d;\n}\n\n.booster-dialog .booster-control-center {\n  width: 100%;\n  box-shadow: none;\n  border: 0;\n  border-radius: 0;\n  margin: 0;\n}\n\n.booster-dialog-wide {\n  width: min(1220px, 100vw - 32px);\n  height: min(860px, 100dvh - 32px);\n  overflow: hidden;\n}\n\n.booster-section-header {\n  border-bottom: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  min-height: 64px;\n  padding: 12px 18px;\n  display: flex;\n}\n\n.booster-section-header strong {\n  font-size: 15px;\n}\n\n.booster-section-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-form-body {\n  gap: 16px;\n  padding: 20px;\n  line-height: 1.5;\n  display: grid;\n}\n\n.booster-form-body h2, .booster-capture-settings h3 {\n  margin: 0;\n  font-size: 16px;\n  font-weight: 650;\n}\n\n.booster-form-body > label {\n  gap: 6px;\n  font-size: 12px;\n  font-weight: 600;\n  display: grid;\n}\n\n.booster-form-body select, .booster-reader input {\n  border: 1px solid var(--border);\n  background: var(--background);\n  width: 100%;\n  min-width: 0;\n  min-height: 38px;\n  color: var(--foreground);\n  font: inherit;\n  border-radius: 8px;\n  padding: 8px 10px;\n  font-size: 12px;\n}\n\n.booster-checkboxes {\n  border: 0;\n  gap: 10px;\n  margin: 0;\n  padding: 0;\n  display: grid;\n}\n\n.booster-checkboxes label {\n  align-items: center;\n  gap: 8px;\n  font-size: 13px;\n  display: flex;\n}\n\n.booster-checkboxes input {\n  width: 16px;\n  height: 16px;\n}\n\n.booster-export-suboptions {\n  border-inline-start: 1px solid var(--border);\n  gap: 8px;\n  margin-inline-start: 22px;\n  padding-inline-start: 12px;\n  display: grid;\n}\n\n.booster-note {\n  color: var(--muted-foreground);\n  overflow-wrap: anywhere;\n  margin: 8px 0;\n  font-size: 12px;\n  line-height: 1.6;\n}\n\n.booster-notice {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  border-radius: 8px;\n  margin: 0;\n  padding: 12px;\n  font-size: 12px;\n  line-height: 1.6;\n}\n\n.booster-error {\n  color: var(--foreground);\n  border: 1px solid #c2410c;\n  border-radius: 8px;\n  margin: 8px 12px;\n  padding: 8px 10px;\n  font-size: 12px;\n  line-height: 1.5;\n}\n\n.booster-action-primary, .booster-action-secondary {\n  border: 1px solid var(--border);\n  cursor: pointer;\n  min-height: 38px;\n  font: inherit;\n  border-radius: 8px;\n  justify-content: center;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 14px;\n  font-size: 12px;\n  display: inline-flex;\n}\n\n.booster-action-primary {\n  background: var(--primary);\n  color: var(--primary-foreground);\n  text-decoration: none;\n}\n\n.booster-action-secondary {\n  background: var(--secondary);\n  color: var(--secondary-foreground);\n}\n\n.booster-action-primary:disabled, .booster-action-secondary:disabled, .booster-icon-button:disabled {\n  opacity: .45;\n  cursor: not-allowed;\n}\n\n.booster-capture-settings > .booster-form-body {\n  padding-inline: 0;\n}\n\n.booster-reader {\n  grid-template-rows: auto minmax(0, 1fr);\n  height: 100%;\n  display: grid;\n}\n\n.booster-reader-heading {\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-reader-layout {\n  grid-template-columns: minmax(210px, 27%) minmax(0, 1fr);\n  min-height: 0;\n  display: grid;\n}\n\n.booster-reader-sidebar {\n  border-right: 1px solid var(--border);\n  background: var(--card);\n  overscroll-behavior: contain;\n  min-width: 0;\n  padding: 12px;\n  overflow: auto;\n}\n\n.booster-reader-group {\n  margin-top: 12px;\n}\n\n.booster-reader-group-header {\n  align-items: center;\n  gap: 2px;\n  min-height: 38px;\n  display: flex;\n}\n\n.booster-group-toggle {\n  min-width: 0;\n  color: inherit;\n  cursor: pointer;\n  text-align: left;\n  font: inherit;\n  background: none;\n  border: 0;\n  flex: 1;\n  align-items: center;\n  gap: 6px;\n  padding: 6px 0;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-group-toggle svg {\n  flex-shrink: 0;\n}\n\n.booster-group-toggle span {\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-group-toggle small {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-reader-chat-list {\n  gap: 3px;\n  padding-left: 10px;\n  display: grid;\n}\n\n.booster-reader-chat-list > button {\n  color: inherit;\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 8px;\n  align-items: center;\n  gap: 6px;\n  padding: 10px;\n  font-size: 12px;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-reader-chat-list > button:hover, .booster-reader-chat-list > button.active {\n  background: var(--muted);\n  border-color: var(--border);\n}\n\n.booster-reader-main {\n  background: var(--background);\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-reader-chat-header {\n  justify-content: space-between;\n  align-items: flex-start;\n  gap: 12px;\n  display: flex;\n}\n\n.booster-reader-chat-header > div {\n  min-width: 0;\n}\n\n.booster-reader-chat-header h2 {\n  margin: 0 0 4px;\n  font-size: 18px;\n  line-height: 1.4;\n}\n\n.booster-reader-chat-header > div > .booster-identity {\n  color: var(--muted-foreground);\n  font-size: 12px;\n}\n\n.booster-reader-summary {\n  color: var(--muted-foreground);\n  flex-wrap: wrap;\n  gap: 6px 14px;\n  margin-block: 10px 0;\n  font-size: 11px;\n  display: flex;\n}\n\n.booster-reader-summary b {\n  color: var(--foreground);\n}\n\n.booster-reader-summary p {\n  flex-basis: 100%;\n  margin: 2px 0 0;\n  line-height: 1.5;\n}\n\n.booster-reader-exchanges {\n  gap: 20px;\n  margin-top: 0;\n  display: grid;\n}\n\n.booster-exchange {\n  border-bottom: 1px solid var(--border);\n  padding-bottom: 16px;\n}\n\n.booster-graph-message {\n  margin-left: calc(min(var(--graph-lane, 0), 3) * 15px);\n  grid-template-columns: 34px minmax(0, 1fr);\n  align-items: stretch;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-graph-rail {\n  background: linear-gradient(var(--border), var(--border)) center / 2px 100% no-repeat;\n  justify-content: center;\n  min-height: 40px;\n  display: flex;\n  position: relative;\n}\n\n.booster-graph-dot {\n  border: 2px solid var(--background);\n  outline: 2px solid var(--primary);\n  background: var(--primary);\n  z-index: 1;\n  border-radius: 50%;\n  align-self: flex-start;\n  width: 12px;\n  height: 12px;\n  margin-top: 14px;\n  position: sticky;\n  top: 12px;\n}\n\n.booster-graph-dot.is-assistant {\n  background: var(--secondary);\n  outline-color: var(--muted-foreground);\n  border-radius: 4px;\n}\n\n.booster-graph-message.is-fork .booster-graph-rail:before {\n  content: "";\n  border-top: 2px solid var(--primary);\n  border-radius: 6px;\n  position: absolute;\n  top: 20px;\n  left: 0;\n  right: 50%;\n}\n\n.booster-graph-content {\n  min-width: 0;\n  padding-bottom: 10px;\n}\n\n.booster-graph-branch-label {\n  border: 1px solid var(--border);\n  color: var(--muted-foreground);\n  border-radius: 999px;\n  align-items: center;\n  gap: 5px;\n  margin: 2px 0 8px 4px;\n  padding: 3px 8px;\n  font-size: 11px;\n  display: inline-flex;\n}\n\n.booster-mobile-back {\n  display: none;\n}\n\n.booster-dialog :is(button, input, select, summary):focus-visible, .booster-dock :is(button, summary):focus-visible {\n  outline: 2px solid var(--ring);\n  outline-offset: 2px;\n}\n\n@media (hover: none) {\n  .booster-identity-copy {\n    opacity: 1;\n  }\n}\n\n@media (max-width: 640px) {\n  .booster-reader-layout {\n    display: block;\n  }\n\n  .booster-reader-sidebar, .booster-reader-main {\n    height: 100%;\n  }\n\n  .booster-reader-sidebar {\n    display: none;\n  }\n\n  .booster-reader-list-mode .booster-reader-sidebar {\n    display: block;\n  }\n\n  .booster-reader-main {\n    padding: 0;\n  }\n\n  .booster-reader-list-mode .booster-reader-main {\n    display: none;\n  }\n\n  .booster-mobile-back {\n    color: inherit;\n    font: inherit;\n    cursor: pointer;\n    background: none;\n    border: 0;\n    align-items: center;\n    gap: 6px;\n    margin-bottom: 12px;\n    padding: 6px 0;\n    font-size: 12px;\n    display: inline-flex;\n  }\n\n  .booster-reader-chat-header {\n    flex-wrap: wrap;\n  }\n\n  .booster-dialog, .booster-dialog-wide {\n    width: calc(100vw - 16px);\n    max-height: calc(100dvh - 16px);\n  }\n\n  .booster-modal-backdrop {\n    padding: 8px;\n  }\n}\n\n.booster-archive-workspace-root {\n  z-index: 2147483645;\n  pointer-events: none;\n  position: fixed;\n  inset: 0;\n}\n\n.booster-archive-workspace {\n  border: 1px solid var(--border);\n  background: var(--background);\n  pointer-events: auto;\n  resize: none;\n  border-radius: 14px;\n  min-width: 520px;\n  min-height: 360px;\n  position: fixed;\n  overflow: hidden;\n  box-shadow: 0 22px 70px #00000052;\n}\n\n.booster-archive-workspace .booster-reader {\n  border-radius: inherit;\n  background: var(--background);\n  height: 100%;\n  overflow: hidden;\n}\n\n.booster-archive-workspace [data-archive-drag-handle] {\n  cursor: move;\n  -webkit-user-select: none;\n  user-select: none;\n  touch-action: none;\n}\n\n.booster-archive-grip {\n  color: var(--muted-foreground);\n  flex: none;\n}\n\n.booster-archive-resize {\n  z-index: 4;\n  background: linear-gradient(135deg, transparent 0 48%, var(--muted-foreground) 49% 54%, transparent 55% 64%, var(--muted-foreground) 65% 70%, transparent 71%);\n  opacity: .55;\n  cursor: nwse-resize;\n  touch-action: none;\n  border: 0;\n  width: 18px;\n  height: 18px;\n  padding: 0;\n  position: absolute;\n  bottom: 0;\n  right: 0;\n}\n\n.booster-archive-dock-button {\n  z-index: 2147483646;\n  border: 1px solid var(--primary);\n  place-items: center;\n  width: 42px;\n  height: 42px;\n  padding: 0;\n  display: grid;\n  position: fixed;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-dock-button {\n    border: 1px solid color-mix(in oklab, var(--primary) 60%, var(--border));\n  }\n}\n\n.booster-archive-dock-button {\n  background: var(--primary);\n  color: var(--primary-foreground);\n  cursor: grab;\n  pointer-events: auto;\n  touch-action: none;\n  border-radius: 10px 0 0 10px;\n  box-shadow: 0 10px 30px #00000047;\n}\n\n.booster-archive-dock-button[style*="left: 0px"] {\n  border-radius: 0 10px 10px 0;\n}\n\n.booster-archive-dock-button:active {\n  cursor: grabbing;\n}\n\n.booster-archive-dock-corner {\n  opacity: .65;\n  width: 9px;\n  height: 9px;\n  position: absolute;\n  bottom: 3px;\n  right: 3px;\n}\n\n.booster-reader-chat-actions {\n  flex-wrap: wrap;\n  justify-content: flex-end;\n  gap: 6px;\n  display: flex;\n}\n\n.booster-exchange-details {\n  border-left: 2px solid var(--border);\n  gap: 6px;\n  margin: 10px 0 10px 12px;\n  padding: 8px 0 8px 12px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-exchange-details {\n    border-left: 2px solid color-mix(in oklab, var(--border) 78%, var(--primary));\n  }\n}\n\n.booster-exchange-details-label {\n  color: var(--muted-foreground);\n  letter-spacing: .04em;\n  text-transform: uppercase;\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-markdown {\n  overflow-wrap: anywhere;\n  font-size: 13px;\n  line-height: 1.65;\n}\n\n.booster-markdown > :first-child {\n  margin-top: 0;\n}\n\n.booster-markdown > :last-child {\n  margin-bottom: 0;\n}\n\n.booster-markdown p {\n  margin: .55em 0;\n}\n\n.booster-markdown h1, .booster-markdown h2, .booster-markdown h3, .booster-markdown h4, .booster-markdown h5, .booster-markdown h6 {\n  color: var(--foreground);\n  margin: 1em 0 .45em;\n  font-weight: 700;\n  line-height: 1.3;\n}\n\n.booster-markdown h1 {\n  font-size: 1.45em;\n}\n\n.booster-markdown h2 {\n  font-size: 1.28em;\n}\n\n.booster-markdown h3 {\n  font-size: 1.14em;\n}\n\n.booster-markdown :is(ul, ol) {\n  margin: .6em 0;\n  padding-left: 1.45em;\n}\n\n.booster-markdown li {\n  margin: .22em 0;\n}\n\n.booster-markdown blockquote {\n  border-left: 3px solid var(--border);\n  color: var(--muted-foreground);\n  margin: .7em 0;\n  padding: .2em 0 .2em .9em;\n}\n\n.booster-markdown code {\n  background: var(--muted);\n  border-radius: 5px;\n  padding: .15em .35em;\n  font: .92em / 1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n}\n\n.booster-markdown pre {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  border-radius: 9px;\n  max-width: 100%;\n  margin: .75em 0;\n  padding: 11px 12px;\n  overflow: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-markdown pre {\n    background: color-mix(in oklab, var(--muted) 72%, var(--background));\n  }\n}\n\n.booster-markdown pre code {\n  white-space: pre;\n  background: none;\n  padding: 0;\n}\n\n.booster-markdown a {\n  color: var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-markdown a {\n    color: color-mix(in oklab, var(--primary) 78%, #3b82f6);\n  }\n}\n\n.booster-markdown a {\n  text-underline-offset: 2px;\n  text-decoration: underline;\n}\n\n.booster-markdown hr {\n  background: var(--border);\n  border: 0;\n  height: 1px;\n  margin: 1em 0;\n}\n\n.booster-markdown-table-wrap {\n  max-width: 100%;\n  margin: .8em 0;\n  overflow-x: auto;\n}\n\n.booster-markdown table {\n  border-collapse: collapse;\n  width: max-content;\n  min-width: 100%;\n  font-size: 12px;\n}\n\n.booster-markdown :is(th, td) {\n  border: 1px solid var(--border);\n  text-align: left;\n  vertical-align: top;\n  padding: 6px 9px;\n}\n\n.booster-markdown th {\n  background: var(--muted);\n}\n\n.booster-record {\n  border: 1px solid var(--border);\n  background: var(--card);\n  border-radius: 11px;\n  min-width: 0;\n  max-width: 100%;\n  margin-block: 7px;\n  padding: 11px 13px;\n  position: relative;\n  overflow: hidden;\n}\n\n.booster-record-user {\n  background: var(--muted);\n  margin-left: min(52px, 8%);\n}\n\n.booster-record-reasoning, .booster-record-tool_call, .booster-record-tool_result, .booster-record-internal {\n  background: var(--muted);\n  margin-block: 4px;\n  padding: 8px 10px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-record-reasoning, .booster-record-tool_call, .booster-record-tool_result, .booster-record-internal {\n    background: color-mix(in oklab, var(--muted) 45%, var(--background));\n  }\n}\n\n.booster-record-header {\n  color: var(--muted-foreground);\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 5px 10px;\n  margin-bottom: 8px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-record-header strong {\n  color: var(--foreground);\n  font-size: 11px;\n}\n\n.booster-record-internal-header {\n  justify-content: space-between;\n}\n\n.booster-record-kind {\n  align-items: center;\n  gap: 6px;\n  display: inline-flex;\n}\n\n.booster-record-expand, .booster-record-meta-button, .booster-tool-action {\n  color: var(--muted-foreground);\n  cursor: pointer;\n  background: none;\n  border: 0;\n  border-radius: 6px;\n  align-items: center;\n  gap: 4px;\n  padding: 3px 6px;\n  font: 600 10px / 1.25 inherit;\n  display: inline-flex;\n}\n\n.booster-record-expand:hover, .booster-record-meta-button:hover, .booster-tool-action:hover {\n  background: var(--muted);\n  color: var(--foreground);\n}\n\n.booster-record-meta-button {\n  margin-top: 7px;\n}\n\n.booster-reasoning-preview {\n  max-height: 76px;\n  color: var(--foreground);\n  position: relative;\n  overflow: hidden;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reasoning-preview {\n    color: color-mix(in oklab, var(--foreground) 82%, var(--muted-foreground));\n  }\n}\n\n.booster-reasoning-preview:not(.expanded):after {\n  background: linear-gradient(transparent, var(--muted));\n  height: 30px;\n  position: absolute;\n  bottom: 0;\n  left: 0;\n  right: 0;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reasoning-preview:not(.expanded):after {\n    background: linear-gradient(transparent, color-mix(in oklab, var(--muted) 45%, var(--background)));\n  }\n}\n\n.booster-reasoning-preview:not(.expanded):after {\n  content: "";\n  pointer-events: none;\n}\n\n.booster-reasoning-preview.expanded {\n  max-height: none;\n  overflow: visible;\n}\n\n.booster-reasoning-preview .booster-markdown {\n  font-size: 11px;\n  line-height: 1.55;\n}\n\n.booster-tool-row {\n  grid-template-columns: 28px minmax(0, 1fr) auto;\n  align-items: center;\n  gap: 8px;\n  display: grid;\n}\n\n.booster-tool-icon {\n  border: 1px solid var(--border);\n  object-fit: cover;\n  background: var(--background);\n  border-radius: 7px;\n  width: 28px;\n  height: 28px;\n}\n\n.booster-tool-icon-fallback {\n  color: var(--muted-foreground);\n  place-items: center;\n  display: grid;\n}\n\n.booster-tool-copy {\n  gap: 1px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-tool-copy strong {\n  color: var(--foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n.booster-tool-copy > span {\n  color: var(--muted-foreground);\n  font-size: 9px;\n}\n\n.booster-tool-copy p {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  margin: 2px 0 0;\n  font-size: 10px;\n  overflow: hidden;\n}\n\n.booster-tool-actions {\n  align-items: center;\n  gap: 2px;\n  display: flex;\n}\n\n.booster-json-viewer {\n  background: var(--background);\n  max-height: min(70vh, 620px);\n  margin: 0;\n  padding: 14px 16px 22px;\n  overflow: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-json-viewer {\n    background: color-mix(in oklab, var(--background) 86%, #0f172a);\n  }\n}\n\n.booster-json-viewer {\n  color: var(--foreground);\n  tab-size: 2;\n  white-space: pre;\n  font: 11px / 1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n}\n\n.booster-tool-expanded {\n  border-top: 1px solid var(--border);\n  margin-top: 8px;\n  padding-top: 8px;\n}\n\n.booster-tool-expanded .booster-markdown {\n  font-size: 11px;\n}\n\n.booster-tool-expanded .booster-json-viewer {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  max-height: 260px;\n  font-size: 10px;\n}\n\n.booster-internal-row {\n  width: 100%;\n  color: inherit;\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  grid-template-columns: auto minmax(0, 1fr) auto;\n  align-items: center;\n  gap: 8px;\n  padding: 0;\n  display: grid;\n}\n\n.booster-internal-row > span:first-child {\n  align-items: center;\n  gap: 5px;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-internal-preview {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 10px;\n  overflow: hidden;\n}\n\n.booster-record-modal-header {\n  border-bottom: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: flex-start;\n  gap: 14px;\n  padding: 12px 14px;\n  display: flex;\n}\n\n.booster-record-modal-header > div {\n  gap: 2px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-record-modal-header strong {\n  font-size: 13px;\n}\n\n.booster-record-modal-header span {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 10px;\n  overflow: hidden;\n}\n\n.booster-json-key {\n  color: #60a5fa;\n}\n\n.booster-json-string {\n  color: #86efac;\n}\n\n.booster-json-number {\n  color: #fbbf24;\n}\n\n.booster-json-boolean {\n  color: #c084fc;\n}\n\n.booster-json-null {\n  color: #94a3b8;\n}\n\n.booster-capture-surface {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 14px;\n  overflow: hidden;\n}\n\n.booster-capture-surface > .booster-capture-settings {\n  padding: 14px 16px 18px;\n}\n\n@media (max-width: 680px) {\n  .booster-archive-workspace {\n    border-radius: 10px;\n    min-width: 0;\n    min-height: 0;\n  }\n\n  .booster-tool-row {\n    grid-template-columns: 26px minmax(0, 1fr);\n  }\n\n  .booster-tool-actions {\n    grid-column: 2;\n    justify-content: flex-start;\n  }\n\n  .booster-reader-chat-actions {\n    justify-content: flex-start;\n    width: 100%;\n  }\n}\n\n.booster-analytics-dashboard {\n  gap: 12px;\n  display: grid;\n}\n\n.booster-analytics-header {\n  justify-content: space-between;\n  align-items: flex-start;\n  gap: 14px;\n  display: flex;\n}\n\n.booster-analytics-header > div {\n  gap: 3px;\n  display: grid;\n}\n\n.booster-analytics-header strong {\n  font-size: 14px;\n}\n\n.booster-analytics-header span {\n  max-width: 520px;\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.45;\n}\n\n.booster-analytics-reset {\n  white-space: nowrap;\n  min-height: 30px;\n  padding: 5px 8px;\n}\n\n.booster-analytics-metrics {\n  grid-template-columns: repeat(3, minmax(0, 1fr));\n  gap: 8px;\n  display: grid;\n}\n\n.booster-analytics-metrics article {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 11px;\n  gap: 2px;\n  min-width: 0;\n  padding: 10px 11px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-analytics-metrics article {\n    background: color-mix(in oklab, var(--background) 82%, var(--muted));\n  }\n}\n\n.booster-analytics-metrics :where(article > span), .booster-analytics-metrics :where(small) {\n  color: var(--muted-foreground);\n  font-size: 9px;\n  line-height: 1.35;\n}\n\n.booster-analytics-metrics strong {\n  font-variant-numeric: tabular-nums;\n  margin-top: 2px;\n  font-size: 24px;\n  line-height: 1;\n}\n\n.booster-analytics-metrics article.warning {\n  border-color: #ef4444;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-analytics-metrics article.warning {\n    border-color: color-mix(in oklab, #ef4444 45%, var(--border));\n  }\n}\n\n.booster-analytics-metrics article.warning {\n  background: #ef4444;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-analytics-metrics article.warning {\n    background: color-mix(in oklab, #ef4444 8%, var(--background));\n  }\n}\n\n.booster-analytics-flow-grid {\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 8px;\n  display: grid;\n}\n\n.booster-analytics-flow-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 11px;\n  gap: 9px;\n  padding: 11px;\n  display: grid;\n}\n\n.booster-analytics-flow-card > header {\n  justify-content: space-between;\n  align-items: center;\n  gap: 8px;\n  font-size: 11px;\n  display: flex;\n}\n\n.booster-analytics-flow-card :where(header > span) {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 5px;\n  display: inline-flex;\n}\n\n.booster-analytics-flow-card :where(header b) {\n  font-variant-numeric: tabular-nums;\n  font-size: 12px;\n}\n\n.booster-analytics-flow-row {\n  color: var(--muted-foreground);\n  grid-template-columns: minmax(88px, .9fr) minmax(80px, 1.3fr) auto;\n  align-items: center;\n  gap: 7px;\n  font-size: 9px;\n  display: grid;\n}\n\n.booster-analytics-flow-row > div {\n  background: var(--muted);\n  border-radius: 999px;\n  height: 5px;\n  overflow: hidden;\n}\n\n.booster-analytics-flow-row i {\n  border-radius: inherit;\n  background: var(--primary);\n  height: 100%;\n  display: block;\n}\n\n.booster-analytics-flow-row b {\n  min-width: 24px;\n  color: var(--foreground);\n  text-align: right;\n  font-variant-numeric: tabular-nums;\n  font-size: 10px;\n}\n\n.booster-analytics-footer {\n  background: var(--muted);\n  color: var(--muted-foreground);\n  border-radius: 9px;\n  flex-wrap: wrap;\n  justify-content: space-between;\n  gap: 8px 16px;\n  padding: 8px 10px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-analytics-footer span {\n  align-items: center;\n  gap: 5px;\n  display: inline-flex;\n}\n\n.booster-analytics-footer b {\n  color: var(--foreground);\n  font-weight: 650;\n}\n\n.booster-analytics-footer .warning {\n  color: #ef4444;\n}\n\n@media (max-width: 720px) {\n  .booster-analytics-metrics, .booster-analytics-flow-grid {\n    grid-template-columns: 1fr;\n  }\n\n  .booster-analytics-header {\n    flex-direction: column;\n  }\n}\n\n.booster-record-header {\n  min-width: 0;\n}\n\n.booster-record-header-tools {\n  align-items: center;\n  gap: 2px;\n  margin-left: auto;\n  display: inline-flex;\n}\n\n.booster-record-icon-button {\n  width: 24px;\n  height: 24px;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  background: none;\n  border: 0;\n  border-radius: 6px;\n  flex: none;\n  justify-content: center;\n  align-items: center;\n  padding: 0;\n  display: inline-flex;\n}\n\n.booster-record-icon-button:hover {\n  background: var(--muted);\n  color: var(--foreground);\n}\n\n.booster-record-edited {\n  color: var(--muted-foreground);\n  white-space: nowrap;\n  font-size: 9px;\n}\n\n.booster-record-raw-corner {\n  position: absolute;\n  top: 5px;\n  right: 5px;\n}\n\n.booster-tool-row {\n  min-width: 0;\n  max-width: 100%;\n  overflow: hidden;\n}\n\n.booster-tool-row.is-clickable {\n  cursor: pointer;\n}\n\n.booster-tool-copy, .booster-tool-actions {\n  min-width: 0;\n}\n\n.booster-tool-actions {\n  flex: none;\n}\n\n.booster-tool-action {\n  flex: none;\n  text-decoration: none;\n}\n\n.booster-tool-expanded {\n  min-width: 0;\n  max-width: 100%;\n  overflow: auto hidden;\n}\n\n.booster-internal-row {\n  min-width: 0;\n  max-width: 100%;\n  overflow: hidden;\n}\n\n.booster-internal-row.disabled {\n  cursor: default;\n  opacity: .8;\n}\n\n.booster-internal-preview {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  max-width: 100%;\n  padding-right: 2px;\n}\n\n.booster-json-modal {\n  background: var(--background);\n  flex-direction: column;\n  width: 100%;\n  min-width: 0;\n  height: 100%;\n  min-height: 0;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-json-modal .booster-json-viewer {\n  box-sizing: border-box;\n  flex: auto;\n  width: 100%;\n  min-width: 0;\n  max-width: 100%;\n  max-height: none;\n  overflow: auto;\n}\n\n.booster-dialog-wide:has(.booster-json-modal) {\n  min-width: 0;\n  min-height: 0;\n  display: flex;\n}\n\n.booster-reader-main, .booster-reader-exchanges, .booster-exchange, .booster-exchange-details {\n  min-width: 0;\n  max-width: 100%;\n}\n\n.booster-reader-main {\n  overflow-x: hidden;\n}\n\n.booster-export-status {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  border-radius: 10px;\n  grid-template-columns: auto minmax(0, 1fr) auto;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 10px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-export-status {\n    background: color-mix(in oklab, var(--muted) 52%, var(--background));\n  }\n}\n\n.booster-export-status.warning {\n  border-color: #f59e0b;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-export-status.warning {\n    border-color: color-mix(in oklab, #f59e0b 44%, var(--border));\n  }\n}\n\n.booster-export-status.warning {\n  background: #f59e0b;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-export-status.warning {\n    background: color-mix(in oklab, #f59e0b 7%, var(--background));\n  }\n}\n\n.booster-export-status > div {\n  gap: 2px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-export-status strong {\n  font-size: 10px;\n  line-height: 1.4;\n}\n\n.booster-export-status span {\n  color: var(--muted-foreground);\n  font-size: 9px;\n}\n\n.booster-export-status .booster-action-secondary {\n  white-space: nowrap;\n  min-height: 30px;\n  padding: 5px 8px;\n}\n\n.booster-dock-context > .booster-dock-history-state {\n  color: var(--muted-foreground);\n  font-size: 9px;\n  line-height: 1.35;\n}\n\n.booster-export-preferences {\n  gap: 8px;\n  display: grid;\n}\n\n.booster-export-preferences > label {\n  gap: 6px;\n  font-size: 12px;\n  font-weight: 600;\n  display: grid;\n}\n\n.booster-export-preferences > .booster-note {\n  margin: 0;\n}\n\n.booster-reader-message-jump, .booster-reader-message-jump form, .booster-export-preview-record {\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-reader-message-jump input {\n  flex: 1;\n  min-width: 160px;\n}\n\n.booster-export-preview-record > span {\n  overflow-wrap: anywhere;\n  flex: 220px;\n}\n\n.booster-message-target {\n  outline: 2px solid var(--primary);\n  outline-offset: 2px;\n  border-radius: 6px;\n}\n\n[data-archive-message] {\n  scroll-margin-block: 20px;\n}\n\n.booster-export-readiness {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  gap: 10px;\n  padding: 12px;\n  font-size: 12px;\n  display: grid;\n}\n\n.booster-export-readiness > header, .booster-export-recovery-actions {\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-export-readiness > header {\n  justify-content: space-between;\n}\n\n.booster-export-readiness dl {\n  gap: 6px;\n  margin: 0;\n  display: grid;\n}\n\n.booster-export-readiness dl > div {\n  flex-wrap: wrap;\n  justify-content: space-between;\n  gap: 6px 12px;\n  display: flex;\n}\n\n.booster-export-readiness dd {\n  text-align: end;\n  margin: 0;\n}\n\n.booster-export-readiness p {\n  margin: 0;\n}\n\n.booster-export-blockers {\n  gap: 6px;\n  margin: 0;\n  padding-inline-start: 18px;\n  display: grid;\n}\n\n.booster-export-blockers li {\n  overflow-wrap: anywhere;\n}\n\n.booster-export-progress {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  gap: 8px;\n  padding: 10px;\n  display: grid;\n}\n\n.booster-export-progress > p {\n  overflow-wrap: anywhere;\n  margin: 0;\n  font-size: 12px;\n}\n\n.booster-export-progress progress {\n  width: 100%;\n  height: 8px;\n  accent-color: var(--primary);\n  display: block;\n}\n\n.booster-export-preview-content {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  gap: 8px;\n  max-height: min(360px, 48vh);\n  padding: 10px;\n  display: grid;\n  overflow: auto;\n}\n\n.booster-export-preview-content .booster-note {\n  white-space: pre-wrap;\n  margin: 0;\n}\n\n.booster-export-preview-skeleton {\n  gap: 8px;\n  display: grid;\n}\n\n.booster-export-preview-skeleton > span {\n  background: var(--muted);\n  border-radius: 6px;\n  height: 30px;\n  display: block;\n}\n\n.booster-export-dialog input[type="text"] {\n  border: 1px solid var(--border);\n  background: var(--background);\n  width: 100%;\n  min-height: 38px;\n  color: var(--foreground);\n  font: inherit;\n  border-radius: 8px;\n  padding: 8px 10px;\n}\n\n.booster-meta-badges {\n  align-items: center;\n  gap: 2px;\n  display: inline-flex;\n}\n\n.booster-meta-badges.compact {\n  gap: 0;\n}\n\n.booster-meta-trigger {\n  width: 28px;\n  height: 28px;\n  color: var(--muted-foreground);\n  cursor: help;\n  border-radius: 8px;\n  outline: none;\n  justify-content: center;\n  align-items: center;\n  display: inline-flex;\n}\n\n.booster-meta-trigger.is-clickable {\n  cursor: pointer;\n}\n\n.booster-meta-trigger:hover, .booster-meta-trigger:focus-visible {\n  background: var(--muted);\n  color: var(--foreground);\n}\n\n.booster-meta-trigger:focus-visible {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-floating-popover {\n  z-index: 2147483647;\n  border: 1px solid var(--border, #94a3b842);\n  background: var(--popover, #202020);\n  width: max-content;\n  min-width: 190px;\n  max-width: min(420px, 100vw - 16px);\n  color: var(--popover-foreground, #f4f4f5);\n  letter-spacing: normal;\n  white-space: normal;\n  pointer-events: none;\n  border-radius: 10px;\n  margin: 0;\n  padding: 9px 10px;\n  font-family: inherit;\n  font-size: 12px;\n  font-weight: 400;\n  line-height: 1.45;\n  position: fixed;\n  inset: auto;\n  box-shadow: 0 14px 38px #0000006b;\n}\n\n.booster-floating-popover:has(.booster-message-meta-body), .booster-floating-popover:has(.booster-tool-detail-popover) {\n  border-color: #4ade8052;\n  box-shadow: 0 14px 38px #0000006b, 0 0 0 1px #22c55e0d;\n}\n\n.booster-floating-popover.is-interactive {\n  pointer-events: auto;\n}\n\n.booster-floating-popover:not(:popover-open):not(.is-open) {\n  display: none;\n}\n\n.booster-meta-lines {\n  grid-template-columns: max-content minmax(0, 1fr);\n  gap: 3px 10px;\n  display: grid;\n}\n\n.booster-meta-label {\n  color: var(--muted-foreground);\n  font-size: 10px;\n  font-weight: 600;\n}\n\n.booster-meta-value {\n  overflow-wrap: anywhere;\n  min-width: 0;\n  color: var(--popover-foreground);\n  font-variant-numeric: tabular-nums;\n}\n\n.booster-scope-popover {\n  gap: 10px;\n  min-width: 260px;\n  display: grid;\n}\n\n.booster-scope-popover > header {\n  gap: 1px;\n  display: grid;\n}\n\n.booster-scope-title {\n  max-width: 280px;\n  color: var(--foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 12px;\n  overflow: hidden;\n}\n\n.booster-scope-kind {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-scope-actions {\n  flex-wrap: wrap;\n  gap: 5px;\n  display: flex;\n}\n\n.booster-scope-actions button {\n  border: 1px solid var(--border);\n  background: var(--background);\n  min-height: 28px;\n  color: var(--foreground);\n  cursor: pointer;\n  font: inherit;\n  border-radius: 7px;\n  align-items: center;\n  gap: 5px;\n  padding: 4px 8px;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-scope-actions button:hover {\n  background: var(--muted);\n}\n\n.booster-live-tool-row {\n  width: min(100%, 48rem);\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 6px;\n  padding: 4px 0;\n  display: flex;\n}\n\n.booster-live-tool-copy {\n  flex: auto;\n  align-items: baseline;\n  gap: 6px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-live-tool-name {\n  color: var(--foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 11px;\n  font-weight: 650;\n  overflow: hidden;\n}\n\n.booster-live-tool-action-name {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 10px;\n  overflow: hidden;\n}\n\n.booster-live-tool-details {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(100%, 48rem);\n  color: var(--card-foreground);\n  border-radius: 12px;\n  margin-top: 4px;\n  padding: 10px;\n  box-shadow: 0 8px 24px #0000001f;\n}\n\n.booster-chat-save-marker {\n  background: none;\n  border-radius: 999px;\n  flex: 0 0 6px;\n  width: 6px;\n  height: 6px;\n  display: block;\n}\n\n.booster-chat-save-marker.is-enabled {\n  background: #22c55e;\n  box-shadow: 0 0 0 1px #22c55e40, 0 0 6px #22c55e61;\n}\n\n.booster-chat-save-marker.is-work {\n  background: #ef4444;\n  box-shadow: 0 0 0 1px #ef444452, 0 0 8px #ef44448c;\n}\n\n.booster-project-status-badge {\n  color: #a1a1aa;\n  background: #ffffff08;\n  border: 1px solid #94a3b852;\n  border-radius: 8px;\n  justify-content: center;\n  align-items: center;\n  width: 24px;\n  height: 24px;\n  transition: border-color .12s, background-color .12s, color .12s;\n  display: inline-flex;\n}\n\n.booster-project-status-badge.is-enabled {\n  color: #4ade80;\n  background: #22c55e14;\n  border-color: #22c55eb8;\n}\n\n.booster-project-status-badge.is-disabled {\n  color: #f87171;\n  background: #ef444412;\n  border-color: #ef444494;\n}\n\n.booster-agent-activity {\n  border: 1px solid var(--border, #94a3b838);\n  background: var(--background, #202020);\n  border-radius: 999px;\n  align-items: center;\n  gap: 6px;\n  max-width: min(100%, 520px);\n  min-height: 28px;\n  padding: 3px 8px;\n  display: inline-flex;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-agent-activity {\n    background: color-mix(in srgb, var(--background, #202020) 88%, transparent);\n  }\n}\n\n.booster-agent-activity {\n  color: var(--muted-foreground);\n  pointer-events: auto;\n  font-size: 11px;\n  line-height: 1.2;\n}\n\n.booster-agent-activity[data-phase="tool"] {\n  border-style: dashed;\n}\n\n.booster-agent-activity > svg {\n  flex: none;\n}\n\n.booster-agent-activity-phase {\n  color: var(--foreground);\n  flex: none;\n  font-weight: 600;\n}\n\n.booster-agent-activity-label {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-agent-activity-timer {\n  min-width: 3.2em;\n  color: var(--foreground);\n  font-variant-numeric: tabular-nums;\n  text-align: end;\n  flex: none;\n  margin-inline-start: auto;\n}\n\n.booster-danger-zone {\n  background: #7f1d1d14;\n  border: 1px solid #ef444473;\n  border-radius: 12px;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 12px;\n  display: flex;\n}\n\n.booster-danger-zone .booster-setting-copy > div, .booster-danger-zone .booster-setting-copy b {\n  color: #f87171;\n}\n\n.booster-destructive-button {\n  color: #fff;\n  cursor: pointer;\n  background: #b91c1c;\n  border: 1px solid #ef44448c;\n  border-radius: 8px;\n  flex: none;\n  min-height: 34px;\n  padding: 7px 12px;\n  font-size: 12px;\n  font-weight: 700;\n}\n\n.booster-destructive-button:hover:not(:disabled) {\n  background: #991b1b;\n}\n\n.booster-destructive-button:disabled {\n  opacity: .55;\n  cursor: default;\n}\n\n.booster-destructive-dialog {\n  grid-template-columns: auto minmax(0, 1fr);\n  gap: 14px;\n  padding: 22px;\n  display: grid;\n}\n\n.booster-destructive-dialog strong {\n  color: #f87171;\n  letter-spacing: .025em;\n  font-size: 17px;\n}\n\n.booster-destructive-dialog p {\n  color: var(--muted-foreground);\n  margin: 8px 0 0;\n  font-size: 12px;\n  line-height: 1.55;\n}\n\n.booster-destructive-icon {\n  color: #f87171;\n  background: #7f1d1d33;\n  border-radius: 50%;\n  justify-content: center;\n  align-items: center;\n  width: 42px;\n  height: 42px;\n  display: flex;\n}\n\n.booster-destructive-warning {\n  color: #f87171;\n  font-weight: 700;\n}\n\n.booster-destructive-actions {\n  grid-column: 1 / -1;\n  justify-content: flex-end;\n  gap: 8px;\n  padding-top: 4px;\n  display: flex;\n}\n\n.booster-meta-trigger-time {\n  color: #4ade80;\n  font-variant-numeric: tabular-nums;\n  cursor: pointer;\n  background: #22c55e17;\n  border: 1px solid #4ade806b;\n  gap: 0;\n  width: 26px;\n  min-width: 26px;\n  height: 26px;\n  padding: 0;\n}\n\n.booster-meta-trigger-time:hover, .booster-meta-trigger-time:focus-visible {\n  color: #86efac;\n  background: #22c55e29;\n  border-color: #4ade80b8;\n}\n\n.booster-meta-time-text {\n  letter-spacing: .01em;\n  font-size: 9px;\n  font-weight: 650;\n}\n\n.booster-message-meta-popover {\n  max-width: min(420px, 100vw - 16px);\n}\n\n.booster-message-meta-body {\n  gap: 12px;\n  min-width: 260px;\n  display: grid;\n}\n\n.booster-message-meta-header {\n  border-bottom: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: baseline;\n  gap: 12px;\n  padding-bottom: 7px;\n  display: flex;\n}\n\n.booster-message-meta-header strong {\n  color: var(--popover-foreground);\n  font-size: 12px;\n  font-weight: 650;\n}\n\n.booster-message-meta-header span {\n  color: #4ade80;\n  font-variant-numeric: tabular-nums;\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-meta-raw-toggle {\n  border: 1px solid var(--border);\n  width: fit-content;\n  color: var(--muted-foreground);\n  font: inherit;\n  cursor: pointer;\n  background: none;\n  border-radius: 7px;\n  padding: 4px 7px;\n}\n\n.booster-meta-raw-toggle:hover {\n  background: var(--muted);\n  color: var(--foreground);\n}\n\n.booster-message-meta-raw {\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  background: #0003;\n  border-radius: 8px;\n  max-width: 390px;\n  max-height: 260px;\n  margin: 0;\n  padding: 8px;\n  font: 10px / 1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n  overflow: auto;\n}\n\n.booster-live-tool-icon {\n  object-fit: cover;\n  border-radius: 999px;\n  flex: 0 0 16px;\n  width: 16px;\n  height: 16px;\n}\n\n.booster-tool-time-chip {\n  color: #c084fc;\n  font-variant-numeric: tabular-nums;\n  background: #7e22ce1c;\n  border: 1px solid #a855f775;\n  gap: 5px;\n  width: auto;\n  min-width: 76px;\n  padding: 0 8px;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-tool-time-chip:hover, .booster-tool-time-chip:focus-visible {\n  color: #d8b4fe;\n  background: #7e22ce30;\n  border-color: #c084fcc2;\n}\n\n.booster-agent-activity[data-phase="thinking"], .booster-agent-activity[data-phase="tool"], .booster-agent-activity[data-phase="responding"], .booster-agent-activity[data-phase="complete"] {\n  color: #4ade80;\n  background: #22c55e17;\n  border-color: #4ade807a;\n}\n\n.booster-agent-activity[data-phase="thinking"] .booster-agent-activity-phase, .booster-agent-activity[data-phase="tool"] .booster-agent-activity-phase, .booster-agent-activity[data-phase="responding"] .booster-agent-activity-phase, .booster-agent-activity[data-phase="complete"] .booster-agent-activity-phase, .booster-agent-activity[data-phase="thinking"] .booster-agent-activity-timer, .booster-agent-activity[data-phase="tool"] .booster-agent-activity-timer, .booster-agent-activity[data-phase="responding"] .booster-agent-activity-timer, .booster-agent-activity[data-phase="complete"] .booster-agent-activity-timer {\n  color: currentColor;\n}\n\n.booster-tool-inspect-trigger {\n  color: #4ade80;\n  pointer-events: auto;\n  background: #22c55e14;\n  border: 1px solid #4ade8061;\n  border-radius: 7px;\n  width: 24px;\n  height: 24px;\n}\n\n.booster-tool-inspect-trigger:hover, .booster-tool-inspect-trigger:focus-visible {\n  color: #86efac;\n  background: #22c55e26;\n  border-color: #4ade80ad;\n}\n\n.booster-tool-detail-popover {\n  gap: 10px;\n  width: min(390px, 100vw - 24px);\n  display: grid;\n}\n\n.booster-tool-detail-popover > header {\n  align-items: center;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-tool-detail-popover > header strong {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  color: var(--popover-foreground);\n  font-size: 11px;\n  display: block;\n  overflow: hidden;\n}\n\n.booster-tool-detail-popover > header span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  color: var(--muted-foreground);\n  font-size: 10px;\n  display: block;\n  overflow: hidden;\n}\n\n.booster-tool-payload {\n  gap: 5px;\n  display: grid;\n}\n\n.booster-tool-payload > strong, .booster-tool-evidence > summary {\n  color: var(--muted-foreground);\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-tool-evidence > summary {\n  cursor: pointer;\n}\n\n.booster-tool-attributes {\n  grid-template-columns: max-content minmax(0, 1fr);\n  gap: 3px 8px;\n  margin: 8px 0 0;\n  font: 9px / 1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n  display: grid;\n}\n\n.booster-tool-attributes dt {\n  color: var(--muted-foreground);\n}\n\n.booster-tool-attributes dd {\n  overflow-wrap: anywhere;\n  min-width: 0;\n  margin: 0;\n}\n\n.booster-tool-evidence pre {\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  background: #0003;\n  border-radius: 7px;\n  max-height: 180px;\n  margin: 8px 0 0;\n  padding: 7px;\n  font: 9px / 1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n  overflow: auto;\n}\n\n.booster-tool-link {\n  overflow-wrap: anywhere;\n  color: #4ade80;\n  align-items: center;\n  gap: 4px;\n  min-width: 0;\n  text-decoration: none;\n  display: inline-flex;\n}\n\n.booster-tool-link:hover {\n  color: #86efac;\n  text-decoration: underline;\n}\n\n.booster-work-mode-warning {\n  color: #fca5a5;\n  background: #ef44441a;\n  border: 1px solid #ef44448c;\n  border-radius: 999px;\n  align-items: center;\n  gap: 7px;\n  padding: 4px 9px;\n  font-family: inherit;\n  font-size: 10px;\n  line-height: 1.25;\n  display: inline-flex;\n}\n\n.booster-work-mode-warning strong {\n  color: #f87171;\n  font-weight: 750;\n}\n\n.booster-work-mode-warning > span:before {\n  content: "·";\n  color: #f87171b8;\n  margin-inline-end: 7px;\n}\n\n.booster-request-status {\n  color: #86efac;\n  font-variant-numeric: tabular-nums;\n  background: #22c55e12;\n  border: 1px solid #4ade8047;\n  border-radius: 999px;\n  align-items: center;\n  gap: 6px;\n  padding: 3px 8px;\n  font-family: inherit;\n  font-size: 10px;\n  line-height: 1.25;\n  display: inline-flex;\n}\n\n.booster-request-spinner {\n  border: 1.5px solid #4ade8047;\n  border-top-color: #4ade80;\n  border-radius: 50%;\n  flex: 0 0 11px;\n  width: 11px;\n  height: 11px;\n  animation: .9s linear infinite booster-request-spin;\n}\n\n@keyframes booster-request-spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n.booster-request-status > span {\n  align-items: center;\n  gap: 4px;\n  display: inline-flex;\n}\n\n.booster-request-status > span + span:before {\n  content: "·";\n  color: var(--muted-foreground);\n}\n\n.booster-request-status-label {\n  color: var(--muted-foreground);\n  font-weight: 500;\n}\n\n.booster-request-status strong {\n  color: #4ade80;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-request-status[data-phase="tool"] strong {\n  color: #c084fc;\n}\n\n.booster-request-status[data-phase="responding"] strong {\n  color: #86efac;\n}\n\n.booster-alert-setting-actions {\n  grid-template-columns: auto minmax(180px, 1fr);\n  align-items: center;\n  gap: 14px;\n  display: grid;\n}\n\n.booster-alert-threshold {\n  gap: 5px;\n  display: grid;\n}\n\n.booster-alert-threshold > span {\n  color: var(--muted-foreground);\n  justify-content: space-between;\n  gap: 10px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-alert-threshold b {\n  color: var(--foreground);\n  font-variant-numeric: tabular-nums;\n}\n\n.booster-alert-threshold input[type="range"] {\n  width: 100%;\n  accent-color: var(--primary);\n}\n\n.booster-tool-path {\n  max-width: 280px;\n  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n  font-size: 9px;\n}\n\n.booster-reader-pinned {\n  border-bottom: 1px solid var(--border);\n  background: var(--background);\n  flex: none;\n  min-width: 0;\n  max-height: 52%;\n  padding: 12px 20px 10px;\n  overflow: auto;\n}\n\n.booster-reader-reading-surface {\n  flex: 1 1 0;\n  min-width: 0;\n  min-height: 0;\n  position: relative;\n}\n\n.booster-reader-scroll {\n  scrollbar-gutter: stable;\n  overscroll-behavior: contain;\n  min-width: 0;\n  height: 100%;\n  padding: 18px 20px 30px;\n  overflow: hidden auto;\n}\n\n.booster-reader-chat-header h2 {\n  overflow-wrap: anywhere;\n  font-size: 16px;\n}\n\n.booster-reader-chat-actions {\n  justify-content: flex-start;\n  margin-top: 9px;\n}\n\n.booster-reader-find {\n  margin-top: 8px;\n}\n\n.booster-reader-find input {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 100%;\n  min-width: 0;\n  color: var(--foreground);\n  font: inherit;\n  border-radius: 8px;\n  padding: 8px 10px;\n  font-size: 12px;\n  display: block;\n}\n\n.booster-reader-chat-list > button span {\n  text-overflow: ellipsis;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-reader-chat-list > button.is-branch {\n  border-inline-start: 2px solid var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reader-chat-list > button.is-branch {\n    border-inline-start: 2px solid color-mix(in oklab, var(--primary) 35%, transparent);\n  }\n}\n\n.booster-reader-branch-icon {\n  opacity: .66;\n  flex: none;\n}\n\n.booster-reader-loading {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 8px;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-reader-older-loading {\n  z-index: 2;\n  border: 1px solid var(--border);\n  background: var(--card);\n  color: var(--foreground);\n  white-space: nowrap;\n  pointer-events: none;\n  border-radius: 100px;\n  align-items: center;\n  gap: 7px;\n  padding: 8px 12px;\n  font-size: 11px;\n  display: flex;\n  position: absolute;\n  inset: 6px auto auto 50%;\n  transform: translateX(-50%);\n  box-shadow: 0 3px 12px #0000001f;\n}\n\n.booster-reader-spinner {\n  flex: none;\n  animation: .9s linear infinite booster-archive-spin;\n}\n\n@keyframes booster-archive-spin {\n  to {\n    rotate: 360deg;\n  }\n}\n\n@media (prefers-reduced-motion: reduce) {\n  .booster-reader-spinner {\n    animation: none;\n  }\n}\n\n@media (max-width: 640px) {\n  .booster-reader-pinned {\n    padding: 10px 12px;\n  }\n\n  .booster-reader-scroll {\n    padding: 12px 12px 24px;\n  }\n}\n\n.booster-reader-reading-surface > .booster-reader-scroll {\n  flex: auto;\n  min-width: 0;\n}\n\n.booster-reader-map {\n  border-left: 1px solid var(--border);\n  background: var(--card);\n  flex-direction: column;\n  flex: 0 0 108px;\n  order: 2;\n  align-items: center;\n  width: 108px;\n  padding: 7px 3px;\n  display: flex;\n}\n\n.booster-reader-map-track {\n  background: linear-gradient(var(--border), var(--border)) center / 2px 100% no-repeat;\n  flex: 1;\n  width: 100%;\n  min-height: 0;\n  position: relative;\n}\n\n.booster-reader-map-node {\n  left: calc(18px + min(var(--map-lane, 0), 3) * 23px);\n  border: 1px solid var(--background);\n  background: var(--muted-foreground);\n  cursor: pointer;\n  z-index: 1;\n  border-radius: 3px;\n  width: 8px;\n  height: 8px;\n  padding: 0;\n  position: absolute;\n  transform: translate(-50%, -50%);\n}\n\n.booster-reader-map-node.is-user {\n  background: var(--primary);\n  border-radius: 50%;\n}\n\n.booster-reader-map-node.is-fork {\n  width: 12px;\n  height: 12px;\n  box-shadow: 0 0 0 2px var(--primary);\n}\n\n.booster-reader-map-node:hover, .booster-reader-map-node:focus-visible, .booster-reader-map-node.is-near {\n  outline: 1px solid var(--ring);\n  z-index: 4;\n  width: 13px;\n  height: 13px;\n}\n\n.booster-reader-map-position {\n  border: 1px solid var(--ring);\n  background: var(--primary);\n  height: 19px;\n  position: absolute;\n  left: 0;\n  right: 0;\n  transform: translateY(-50%);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reader-map-position {\n    background: color-mix(in oklab, var(--primary) 16%, transparent);\n  }\n}\n\n.booster-reader-map-position {\n  pointer-events: none;\n  z-index: 0;\n  border-radius: 6px;\n}\n\n.booster-reader-map-end {\n  color: var(--foreground);\n  cursor: pointer;\n  background: none;\n  border: 0;\n  font-size: 15px;\n}\n\n.booster-reader-pinned {\n  max-height: 35%;\n  padding: 8px 12px;\n}\n\n.booster-reader-summary {\n  align-items: center;\n  margin-top: 4px;\n}\n\n.booster-reader-coverage {\n  align-items: center;\n  gap: 5px;\n  display: inline-flex;\n}\n\n.booster-reader-project-label {\n  color: var(--muted-foreground);\n  font-weight: 400;\n}\n\n.booster-reader-chat-actions {\n  margin-top: 4px;\n}\n\n.booster-reader-chat-actions .booster-action-secondary {\n  padding: 5px 8px;\n}\n\n.booster-reader-heading {\n  justify-content: center;\n}\n\n.booster-reader-exchanges {\n  gap: 12px;\n}\n\n.booster-reader-map-node.is-fork:after {\n  content: "";\n  width: calc(min(var(--map-lane, 0), 3) * 23px);\n  border-top: 2px solid var(--primary);\n  position: absolute;\n  top: 50%;\n  right: 80%;\n}\n\n.booster-reader-loading {\n  justify-content: center;\n  min-height: 130px;\n  font-size: 13px;\n}\n\n.booster-reader-map-node {\n  transition: top .1s ease-out, width .12s ease-out, height .12s ease-out;\n}\n\n.booster-reader-map-node:hover:before, .booster-reader-map-node:focus-visible:before {\n  content: attr(data-preview);\n  z-index: 12;\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 240px;\n  min-width: 170px;\n  max-width: min(240px, 60vw);\n  color: var(--foreground);\n  white-space: normal;\n  text-align: left;\n  pointer-events: none;\n  border-radius: 8px;\n  padding: 10px 12px;\n  font-size: 12px;\n  font-weight: 400;\n  line-height: 1.45;\n  position: absolute;\n  top: -8px;\n  right: calc(100% + 15px);\n  box-shadow: 0 7px 24px oklab(0% none none / .18);\n}\n\n.booster-reader .booster-section-header {\n  min-height: 42px;\n  padding-block: 6px;\n}\n\n.booster-reader-heading {\n  gap: 7px;\n}\n\n.booster-reader-heading strong {\n  font-size: 12px;\n}\n\n.booster-reader-heading p {\n  opacity: .7;\n  margin: 0;\n  font-size: 10px;\n}\n\n.booster-reader-older-loading {\n  border-radius: 10px;\n  font-size: 12px;\n  inset: 50% auto auto 50%;\n}\n\n.booster-reader-map-links {\n  pointer-events: none;\n  width: 100%;\n  height: 100%;\n  position: absolute;\n  inset: 0;\n  overflow: visible;\n}\n\n.booster-reader-map-links path {\n  fill: none;\n  stroke: var(--primary);\n  stroke-width: 1.5px;\n  vector-effect: non-scaling-stroke;\n  opacity: .58;\n}\n\n.booster-reader-fork-choices {\n  flex-wrap: wrap;\n  gap: 6px;\n  max-height: 115px;\n  margin-top: 6px;\n  display: flex;\n  overflow: auto;\n}\n\n.booster-reader-fork-group {\n  border: 1px solid var(--border);\n  border-radius: 7px;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 5px;\n  padding: 5px 8px;\n  font-size: 11px;\n  display: flex;\n}\n\n.booster-reader-fork-group > span {\n  color: var(--muted-foreground);\n  font-weight: 600;\n}\n\n.booster-reader-fork-choice {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  background: var(--secondary);\n  border: 1px solid var(--border);\n  cursor: pointer;\n  border-radius: 6px;\n  max-width: 180px;\n  padding: 4px 6px;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n.booster-reader-fork-choice:hover, .booster-reader-fork-choice:focus-visible {\n  border-color: var(--ring);\n}\n\n.booster-reader-map-track {\n  background: none;\n}\n\n.booster-reader-map-links path {\n  stroke-width: 2.5px;\n  opacity: .95;\n}\n\n.booster-reader-map-node.is-fork {\n  background: var(--primary);\n  box-shadow: 0 0 0 3px var(--card), 0 0 0 5px var(--primary);\n}\n\n.booster-reader-map-node.is-fork:after {\n  display: none;\n}\n\n@media (max-width: 700px) {\n  .booster-reader-map {\n    flex-basis: 88px;\n    width: 88px;\n  }\n\n  .booster-reader-map-node {\n    left: calc(12px + min(var(--map-lane, 0), 3) * 19px);\n  }\n}\n\n.booster-reader-map-warning {\n  border: 1px solid var(--border);\n  width: 19px;\n  height: 19px;\n  color: var(--foreground);\n  text-align: center;\n  cursor: help;\n  border-radius: 50%;\n  font-size: 12px;\n}\n\n.booster-archive-flow-graph {\n  scrollbar-gutter: stable;\n  overflow-x: auto;\n}\n\n.booster-gitgraph-content {\n  width: max-content;\n  min-width: 0;\n  padding: 4px 8px 10px;\n}\n\n.booster-gitgraph-segment {\n  width: max-content;\n}\n\n.booster-gitgraph-gap {\n  border-left: 2px dashed var(--border);\n  height: 21px;\n  color: var(--muted-foreground);\n  padding: 1px 9px;\n  font-size: 13px;\n  line-height: 20px;\n}\n\n.booster-gitgraph-segment-canvas svg g[data-archive-graph-node] {\n  cursor: pointer;\n  outline: none;\n}\n\n.booster-gitgraph-segment-canvas svg g[data-archive-graph-node]:is(:hover, :focus-visible) > use {\n  filter: drop-shadow(0 0 3px var(--ring));\n}\n\n.booster-gitgraph-segment-canvas svg g[data-archive-graph-node][aria-current="true"] > use {\n  filter: drop-shadow(0 0 3px var(--foreground));\n}\n\n.booster-reader-reading-surface {\n  display: block;\n}\n\n.booster-reader-reading-surface > .booster-reader-scroll {\n  width: 100%;\n  height: 100%;\n}\n\n.booster-reader-history-toggle.active {\n  background: var(--muted);\n  border-color: var(--ring);\n}\n\n.booster-archive-flow-graph {\n  z-index: 5;\n  order: unset;\n  overscroll-behavior: contain;\n  border: 1px solid var(--border);\n  background: var(--background);\n  scrollbar-gutter: stable;\n  border-radius: 12px;\n  flex: none;\n  width: min(360px, 100% - 16px);\n  max-width: none;\n  height: auto;\n  display: block;\n  position: absolute;\n  inset: 8px 8px 8px auto;\n  overflow: hidden auto;\n  box-shadow: 0 10px 32px #00000047;\n}\n\n.booster-history-header {\n  z-index: 3;\n  border-bottom: 1px solid var(--border);\n  background: var(--background);\n  justify-content: space-between;\n  align-items: flex-start;\n  gap: 10px;\n  min-width: 0;\n  padding: 15px 14px 10px;\n  display: flex;\n  position: sticky;\n  top: 0;\n}\n\n.booster-history-header > div {\n  min-width: 0;\n}\n\n.booster-history-heading {\n  color: var(--foreground);\n  font-size: 14px;\n  font-weight: 650;\n  line-height: 20px;\n}\n\n.booster-history-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-history-close {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 28px;\n  height: 28px;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  border-radius: 7px;\n  flex: 0 0 28px;\n  place-items: center;\n  font-size: 19px;\n  display: grid;\n}\n\n.booster-history-close:hover {\n  color: var(--foreground);\n  background: var(--muted);\n}\n\n.booster-history-state {\n  color: var(--foreground);\n  align-items: center;\n  gap: 7px;\n  padding: 12px 14px 0;\n  font-size: 11px;\n  font-weight: 550;\n  display: flex;\n}\n\n.booster-history-state-dot {\n  background: var(--primary);\n  border-radius: 50%;\n  flex: 0 0 7px;\n  width: 7px;\n  height: 7px;\n}\n\n.booster-history-state-dot.is-unverified {\n  background: var(--muted-foreground);\n}\n\n.booster-history-range {\n  color: var(--muted-foreground);\n  font-variant-numeric: tabular-nums;\n  white-space: nowrap;\n  margin-left: auto;\n  font-weight: 400;\n}\n\n.booster-history-explainer {\n  color: var(--muted-foreground);\n  margin: 6px 14px 0;\n  font-size: 11px;\n  line-height: 1.45;\n}\n\n.booster-history-evidence {\n  background: var(--muted);\n  color: var(--muted-foreground);\n  border-radius: 6px;\n  margin: 10px 14px 2px;\n  padding: 7px 9px;\n  font-size: 10px;\n}\n\n.booster-gitgraph-content {\n  width: 100%;\n  min-width: 0;\n  min-height: 0;\n  padding: 12px 9px 16px;\n  display: block;\n}\n\n.booster-gitgraph-segment {\n  width: 100%;\n  position: relative;\n}\n\n.booster-gitgraph-segment-canvas {\n  min-width: 0;\n}\n\n.booster-gitgraph-segment-labels {\n  pointer-events: none;\n  height: 100%;\n  position: absolute;\n  inset: 0 8px 0 80px;\n}\n\n.booster-graph-message {\n  width: 100%;\n  height: 28px;\n  color: var(--foreground);\n  text-align: left;\n  cursor: pointer;\n  pointer-events: auto;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 5px;\n  flex-direction: column;\n  justify-content: center;\n  gap: 1px;\n  padding: 1px 7px;\n  display: flex;\n  position: absolute;\n  right: 0;\n}\n\n.booster-graph-message:hover, .booster-graph-message:focus-visible {\n  border-color: var(--border);\n  background: var(--muted);\n}\n\n.booster-graph-message[aria-current="true"] {\n  background: var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-graph-message[aria-current="true"] {\n    background: color-mix(in oklab, var(--primary) 12%, var(--card));\n  }\n}\n\n.booster-graph-message[aria-current="true"] {\n  border-color: var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-graph-message[aria-current="true"] {\n    border-color: color-mix(in oklab, var(--primary) 35%, var(--border));\n  }\n}\n\n.booster-graph-message-role {\n  color: var(--muted-foreground);\n  font-size: 9px;\n  line-height: 12px;\n}\n\n.booster-graph-message-preview {\n  width: 100%;\n  color: var(--foreground);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  font-size: 11px;\n  line-height: 14px;\n  overflow: hidden;\n}\n\n.booster-history-list {\n  flex-direction: column;\n  gap: 2px;\n  padding: 12px 9px 14px;\n  display: flex;\n}\n\n.booster-history-list-row {\n  width: 100%;\n  min-height: 48px;\n  color: var(--foreground);\n  text-align: left;\n  cursor: pointer;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 8px;\n  align-items: stretch;\n  gap: 10px;\n  padding: 6px 8px;\n  display: flex;\n}\n\n.booster-history-list-row:hover, .booster-history-list-row:focus-visible {\n  background: var(--muted);\n  border-color: var(--border);\n}\n\n.booster-history-list-row[aria-current="true"] {\n  background: var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-history-list-row[aria-current="true"] {\n    background: color-mix(in oklab, var(--primary) 10%, var(--card));\n  }\n}\n\n.booster-history-list-row[aria-current="true"] {\n  border-color: var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-history-list-row[aria-current="true"] {\n    border-color: color-mix(in oklab, var(--primary) 32%, var(--border));\n  }\n}\n\n.booster-history-list-rail {\n  flex: 0 0 12px;\n  justify-content: center;\n  padding-top: 7px;\n  display: flex;\n}\n\n.booster-history-list-dot {\n  border: 2px solid var(--muted-foreground);\n  border-radius: 50%;\n  width: 8px;\n  height: 8px;\n}\n\n.booster-history-list-dot.is-user {\n  background: var(--primary);\n  border-color: var(--primary);\n}\n\n.booster-history-list-copy {\n  flex-direction: column;\n  flex: 1;\n  gap: 3px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-history-list-meta {\n  color: var(--muted-foreground);\n  font-size: 10px;\n  line-height: 13px;\n}\n\n.booster-history-list-preview {\n  -webkit-line-clamp: 2;\n  overflow-wrap: anywhere;\n  -webkit-box-orient: vertical;\n  font-size: 11px;\n  line-height: 1.4;\n  display: -webkit-box;\n  overflow: hidden;\n}\n\n.booster-history-footer {\n  z-index: 3;\n  border-top: 1px solid var(--border);\n  background: var(--background);\n  justify-content: space-between;\n  gap: 8px;\n  padding: 10px 12px;\n  display: flex;\n  position: sticky;\n  bottom: 0;\n}\n\n.booster-history-footer button {\n  border: 1px solid var(--border);\n  background: var(--card);\n  color: var(--foreground);\n  font: inherit;\n  cursor: pointer;\n  border-radius: 7px;\n  padding: 6px 10px;\n  font-size: 11px;\n}\n\n.booster-history-footer button:disabled {\n  opacity: .35;\n  cursor: not-allowed;\n}\n\n.booster-history-close:focus-visible, .booster-history-footer button:focus-visible, .booster-history-list-row:focus-visible, .booster-graph-message:focus-visible {\n  outline: 2px solid var(--ring);\n  outline-offset: 2px;\n}\n\n@media (max-width: 700px) {\n  .booster-archive-flow-graph {\n    width: 100%;\n    box-shadow: none;\n    scrollbar-gutter: auto;\n    border: 0;\n    border-radius: 0;\n    inset: 0;\n  }\n\n  .booster-history-header {\n    padding-right: 16px;\n  }\n\n  .booster-history-state {\n    flex-wrap: wrap;\n  }\n\n  .booster-history-range {\n    text-align: right;\n    flex: 100%;\n  }\n}\n\n.booster-reader {\n  position: relative;\n}\n\n.booster-reader-heading {\n  justify-content: flex-start;\n  min-width: 0;\n}\n\n.booster-reader-heading > div {\n  min-width: 0;\n}\n\n.booster-reader-heading strong {\n  line-height: 1.25;\n  display: block;\n}\n\n.booster-reader > .booster-section-header > .booster-header-actions {\n  flex: none;\n  gap: 6px;\n}\n\n.booster-reader-tools {\n  position: relative;\n}\n\n.booster-reader-tools-menu {\n  z-index: 12;\n  border: 1px solid var(--border);\n  background: var(--popover, var(--card));\n  border-radius: 10px;\n  min-width: 222px;\n  padding: 5px;\n  display: grid;\n  position: absolute;\n  top: calc(100% + 8px);\n  right: 0;\n  box-shadow: 0 12px 30px #00000047;\n}\n\n.booster-reader-tools-menu button {\n  width: 100%;\n  color: var(--foreground);\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n  background: none;\n  border: 0;\n  border-radius: 7px;\n  align-items: center;\n  gap: 9px;\n  padding: 10px 12px;\n  font-size: 12px;\n  line-height: 1.35;\n  display: flex;\n}\n\n.booster-reader-tools-menu button:hover, .booster-reader-tools-menu button:focus-visible {\n  background: var(--accent);\n}\n\n.booster-maintenance-backdrop {\n  z-index: 18;\n  background: #000000b3;\n  justify-content: center;\n  align-items: center;\n  min-width: 0;\n  padding: clamp(12px, 3vw, 28px);\n  display: flex;\n  position: absolute;\n  inset: 0;\n}\n\n.booster-maintenance-widget {\n  border: 1px solid var(--border);\n  background: var(--background);\n  width: min(100%, 570px);\n  min-height: 0;\n  max-height: min(700px, 100%);\n  color: var(--foreground);\n  font: inherit;\n  border-radius: 14px;\n  flex-direction: column;\n  display: flex;\n  overflow: hidden;\n  box-shadow: 0 24px 70px #00000059;\n}\n\n.booster-maintenance-heading {\n  border-bottom: 1px solid var(--border);\n  flex: none;\n  justify-content: space-between;\n  align-items: center;\n  gap: 14px;\n  padding: 15px 18px;\n  display: flex;\n}\n\n.booster-maintenance-title {\n  align-items: center;\n  gap: 11px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-maintenance-title > div {\n  min-width: 0;\n}\n\n.booster-maintenance-title h2 {\n  margin: 0;\n  font-size: 16px;\n  font-weight: 650;\n  line-height: 1.35;\n}\n\n.booster-maintenance-title p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-maintenance-content {\n  overscroll-behavior: contain;\n  scrollbar-gutter: stable;\n  align-content: start;\n  gap: 14px;\n  min-height: 0;\n  padding: 16px 18px;\n  display: grid;\n  overflow: hidden auto;\n}\n\n.booster-maintenance-stats {\n  grid-template-columns: repeat(3, minmax(0, 1fr));\n  gap: 8px;\n  display: grid;\n}\n\n.booster-maintenance-stats > div {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  border-radius: 9px;\n  gap: 5px;\n  min-width: 0;\n  padding: 11px;\n  display: grid;\n}\n\n.booster-maintenance-stats span {\n  color: var(--muted-foreground);\n  font-size: 10px;\n  line-height: 1.4;\n}\n\n.booster-maintenance-stats strong {\n  font-variant-numeric: tabular-nums;\n  font-size: 20px;\n  font-weight: 650;\n}\n\n.booster-maintenance-section {\n  border: 1px solid var(--border);\n  border-radius: 10px;\n  gap: 11px;\n  min-width: 0;\n  padding: 15px;\n  display: grid;\n}\n\n.booster-maintenance-section-title {\n  align-items: center;\n  gap: 9px;\n  display: flex;\n}\n\n.booster-maintenance-section h3 {\n  margin: 0;\n  font-size: 13px;\n  font-weight: 650;\n}\n\n.booster-maintenance-section p, .booster-maintenance-result p, .booster-maintenance-progress p {\n  color: var(--muted-foreground);\n  overflow-wrap: anywhere;\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.5;\n}\n\n.booster-maintenance-section .booster-maintenance-warning {\n  color: var(--foreground);\n  border-left: 2px solid #d97706;\n  padding-left: 10px;\n}\n\n.booster-maintenance-widget .booster-maintenance-check {\n  min-width: 0;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  align-items: flex-start;\n  gap: 10px;\n  font-size: 11px;\n  line-height: 1.5;\n  display: flex;\n}\n\n.booster-maintenance-widget .booster-maintenance-check input {\n  width: 16px;\n  height: 16px;\n  min-height: 16px;\n  accent-color: var(--primary);\n  flex: 0 0 16px;\n  margin: 1px 0 0;\n  padding: 0;\n}\n\n.booster-maintenance-actions {\n  flex-wrap: wrap;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-maintenance-actions button {\n  flex: 170px;\n  min-width: 0;\n}\n\n.booster-maintenance-actions button small {\n  opacity: .8;\n  font-size: 10px;\n  display: block;\n}\n\n.booster-maintenance-section > button {\n  justify-self: start;\n  max-width: 100%;\n}\n\n.booster-maintenance-loading, .booster-maintenance-progress, .booster-maintenance-result {\n  border: 1px solid var(--border);\n  border-radius: 9px;\n  align-items: flex-start;\n  gap: 10px;\n  min-width: 0;\n  padding: 12px;\n  font-size: 12px;\n  line-height: 1.5;\n  display: flex;\n}\n\n.booster-maintenance-result svg, .booster-maintenance-progress svg {\n  flex: none;\n}\n\n.booster-maintenance-result strong, .booster-maintenance-progress strong {\n  margin-bottom: 3px;\n  font-size: 12px;\n  display: block;\n}\n\n.booster-maintenance-error {\n  color: var(--foreground);\n  overflow-wrap: anywhere;\n  border: 1px solid #c2410c;\n  border-radius: 8px;\n  margin: 0;\n  padding: 10px;\n  font-size: 12px;\n}\n\n.booster-maintenance-footer {\n  border-top: 1px solid var(--border);\n  flex: none;\n  justify-content: flex-end;\n  gap: 8px;\n  padding: 12px 18px;\n  display: flex;\n}\n\n@media (max-width: 620px) {\n  .booster-maintenance-backdrop {\n    padding: 8px;\n  }\n\n  .booster-maintenance-heading, .booster-maintenance-content {\n    padding: 12px;\n  }\n\n  .booster-maintenance-stats strong {\n    font-size: 17px;\n  }\n\n  .booster-maintenance-stats > div {\n    padding: 8px;\n  }\n\n  .booster-reader > .booster-section-header {\n    padding: 8px 10px;\n  }\n}\n\n.booster-maintenance-owner-list {\n  gap: 8px;\n  max-height: 290px;\n  display: grid;\n  overflow-y: auto;\n}\n\n.booster-maintenance-owner-row {\n  border: 1px solid var(--border);\n  cursor: pointer;\n  border-radius: 8px;\n  align-items: flex-start;\n  gap: 10px;\n  padding: 10px;\n  display: flex;\n}\n\n.booster-maintenance-owner-row > input[type="checkbox"] {\n  width: 16px;\n  height: 16px;\n  accent-color: var(--primary);\n  flex: 0 0 16px;\n  margin: 2px 0 0;\n  padding: 0;\n}\n\n.booster-maintenance-owner-description {\n  gap: 4px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-maintenance-owner-description > strong {\n  overflow-wrap: anywhere;\n  font-size: 12px;\n}\n\n.booster-maintenance-owner-description > span, .booster-maintenance-owner-caution {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.45;\n}\n\n.booster-maintenance-owner-description details {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.booster-maintenance-owner-description summary {\n  cursor: pointer;\n}\n\n.booster-maintenance-owner-description code {\n  overflow-wrap: anywhere;\n  margin-top: 5px;\n  font: 10px / 1.4 ui-monospace, monospace;\n  display: block;\n}\n\n.booster-maintenance-owner-description small {\n  margin-top: 6px;\n  display: block;\n}\n\n.booster-maintenance-link {\n  color: var(--foreground);\n  font: inherit;\n  cursor: pointer;\n  background: none;\n  border: 0;\n  justify-self: start;\n  padding: 0;\n  font-size: 11px;\n  text-decoration: underline;\n}\n\n.booster-maintenance-link:disabled {\n  opacity: .5;\n  cursor: not-allowed;\n}\n\n.booster-export-disclosure {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  padding: 10px 12px;\n  font-size: 12px;\n}\n\n.booster-export-disclosure > summary {\n  cursor: pointer;\n  font-weight: 600;\n}\n\n.booster-export-disclosure > summary small {\n  color: var(--muted-foreground);\n  margin-inline-start: 8px;\n  font-weight: 400;\n}\n\n.booster-export-disclosure[open] > section, .booster-export-disclosure[open] > label, .booster-export-disclosure[open] > p {\n  margin-block-start: 12px;\n}\n\n.booster-maintenance-backup-tools > summary {\n  cursor: pointer;\n  font-weight: 600;\n}\n\n.booster-maintenance-backup-tools > p {\n  margin-block: 10px;\n}\n\n.booster-maintenance-backup-restore {\n  gap: 12px;\n  margin-block-start: 14px;\n  display: grid;\n}\n\n.booster-maintenance-backup-restore > label {\n  gap: 8px;\n  display: grid;\n}\n\n.booster-maintenance-backup-restore input[type="file"] {\n  max-width: 100%;\n}\n\n.booster-control-embedded {\n  box-shadow: none;\n  background: none;\n  border: 0;\n  width: 100%;\n  max-width: none;\n}\n\n.booster-control-embedded > .booster-settings-layout {\n  min-height: 0;\n  max-height: none;\n}\n\n.booster-chatgpt-panel {\n  flex-direction: column;\n  gap: 10px;\n  width: 100%;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-chatgpt-panel > .booster-dock-context {\n  border: 1px solid var(--border);\n  background: var(--card);\n  border-radius: 10px;\n  gap: 7px;\n}\n\n.booster-chatgpt-panel .booster-dock-context-info {\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 6px 16px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-chatgpt-panel .booster-dock-context-info .booster-identity {\n  min-width: 0;\n  max-width: 100%;\n}\n\n.booster-chatgpt-panel .booster-capture-shortcut {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  width: fit-content;\n  min-height: 32px;\n  padding-inline: 8px;\n  font-size: 12px;\n}\n\n.booster-chatgpt-panel > .booster-export-recovery-actions {\n  border-bottom: 1px solid var(--border);\n  min-width: 0;\n  padding-block: 5px;\n}\n\n.booster-chatgpt-panel > .booster-export-recovery-actions > button, .booster-chatgpt-panel > .booster-export-recovery-actions > .booster-reader-tools > button {\n  justify-content: center;\n  align-items: center;\n  gap: 6px;\n  min-height: 34px;\n  display: inline-flex;\n}\n\n.booster-chatgpt-panel > .booster-reader, .booster-chatgpt-panel > .booster-capture-surface {\n  min-width: 0;\n}\n\n@media (max-width: 600px) {\n  .booster-chatgpt-panel > .booster-export-recovery-actions {\n    flex-wrap: wrap;\n  }\n\n  .booster-chatgpt-panel > .booster-export-recovery-actions > button {\n    flex: auto;\n  }\n\n  .booster-chatgpt-panel .booster-reader-tools-menu {\n    min-width: min(260px, 85vw);\n    right: 0;\n  }\n}\n\n.booster-export-presets {\n  border: 1px solid var(--border);\n  border-radius: 10px;\n  gap: 8px;\n  min-width: 0;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-export-presets > strong {\n  font-size: 13px;\n}\n\n.booster-export-presets .booster-export-recovery-actions {\n  flex-wrap: wrap;\n}\n\n.booster-export-presets .booster-export-recovery-actions > button {\n  white-space: normal;\n  overflow-wrap: anywhere;\n  max-width: 100%;\n  min-height: 34px;\n}\n\n.booster-export-presets button[aria-pressed="true"] {\n  background: var(--accent);\n  color: var(--accent-foreground);\n  border-color: var(--ring);\n}\n\n@media (max-width: 560px) {\n  .booster-export-presets {\n    padding: 8px;\n  }\n\n  .booster-export-presets .booster-export-recovery-actions > button {\n    flex: 130px;\n  }\n}\n\n@property --tw-rotate-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-z {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-border-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-leading {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-font-weight {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ordinal {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-slashed-zero {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-figure {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-spacing {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-fraction {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-inset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-ring-inset {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-offset-width {\n  syntax: "<length>";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-ring-offset-color {\n  syntax: "*";\n  inherits: false;\n  initial-value: #fff;\n}\n\n@property --tw-ring-offset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-outline-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-blur {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-brightness {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-contrast {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-grayscale {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-hue-rotate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-invert {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-opacity {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-saturate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-sepia {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-drop-shadow-size {\n  syntax: "*";\n  inherits: false\n}\n';
+  const styles$1 = '/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */\n@layer properties {\n  @supports (((-webkit-hyphens: none)) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color: rgb(from red r g b)))) {\n    *, :before, :after, ::backdrop {\n      --tw-rotate-x: initial;\n      --tw-rotate-y: initial;\n      --tw-rotate-z: initial;\n      --tw-skew-x: initial;\n      --tw-skew-y: initial;\n      --tw-space-y-reverse: 0;\n      --tw-border-style: solid;\n      --tw-leading: initial;\n      --tw-font-weight: initial;\n      --tw-ordinal: initial;\n      --tw-slashed-zero: initial;\n      --tw-numeric-figure: initial;\n      --tw-numeric-spacing: initial;\n      --tw-numeric-fraction: initial;\n      --tw-shadow: 0 0 #0000;\n      --tw-shadow-color: initial;\n      --tw-shadow-alpha: 100%;\n      --tw-inset-shadow: 0 0 #0000;\n      --tw-inset-shadow-color: initial;\n      --tw-inset-shadow-alpha: 100%;\n      --tw-ring-color: initial;\n      --tw-ring-shadow: 0 0 #0000;\n      --tw-inset-ring-color: initial;\n      --tw-inset-ring-shadow: 0 0 #0000;\n      --tw-ring-inset: initial;\n      --tw-ring-offset-width: 0px;\n      --tw-ring-offset-color: #fff;\n      --tw-ring-offset-shadow: 0 0 #0000;\n      --tw-outline-style: solid;\n      --tw-blur: initial;\n      --tw-brightness: initial;\n      --tw-contrast: initial;\n      --tw-grayscale: initial;\n      --tw-hue-rotate: initial;\n      --tw-invert: initial;\n      --tw-opacity: initial;\n      --tw-saturate: initial;\n      --tw-sepia: initial;\n      --tw-drop-shadow: initial;\n      --tw-drop-shadow-color: initial;\n      --tw-drop-shadow-alpha: 100%;\n      --tw-drop-shadow-size: initial;\n    }\n  }\n}\n\n@layer theme {\n  :root, :host {\n    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",\n      "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",\n      "Segoe UI Symbol", "Noto Color Emoji";\n    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",\n      "Courier New", monospace;\n    --spacing: .25rem;\n    --text-xs: .75rem;\n    --text-xs--line-height: calc(1 / .75);\n    --text-sm: .875rem;\n    --text-sm--line-height: calc(1.25 / .875);\n    --text-base: 1rem;\n    --text-base--line-height: calc(1.5 / 1);\n    --font-weight-medium: 500;\n    --font-weight-semibold: 600;\n    --default-transition-duration: .15s;\n    --default-transition-timing-function: cubic-bezier(.4, 0, .2, 1);\n    --default-font-family: var(--font-sans);\n    --default-mono-font-family: var(--font-mono);\n  }\n}\n\n@layer base {\n  *, :after, :before, ::backdrop {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  ::file-selector-button {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  html, :host {\n    -webkit-text-size-adjust: 100%;\n    tab-size: 4;\n    line-height: 1.5;\n    font-family: var(--default-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");\n    font-feature-settings: var(--default-font-feature-settings, normal);\n    font-variation-settings: var(--default-font-variation-settings, normal);\n    -webkit-tap-highlight-color: transparent;\n  }\n\n  hr {\n    height: 0;\n    color: inherit;\n    border-top-width: 1px;\n  }\n\n  abbr:where([title]) {\n    -webkit-text-decoration: underline dotted;\n    text-decoration: underline dotted;\n  }\n\n  h1, h2, h3, h4, h5, h6 {\n    font-size: inherit;\n    font-weight: inherit;\n  }\n\n  a {\n    color: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    text-decoration: inherit;\n  }\n\n  b, strong {\n    font-weight: bolder;\n  }\n\n  code, kbd, samp, pre {\n    font-family: var(--default-mono-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);\n    font-feature-settings: var(--default-mono-font-feature-settings, normal);\n    font-variation-settings: var(--default-mono-font-variation-settings, normal);\n    font-size: 1em;\n  }\n\n  small {\n    font-size: 80%;\n  }\n\n  sub, sup {\n    vertical-align: baseline;\n    font-size: 75%;\n    line-height: 0;\n    position: relative;\n  }\n\n  sub {\n    bottom: -.25em;\n  }\n\n  sup {\n    top: -.5em;\n  }\n\n  table {\n    text-indent: 0;\n    border-color: inherit;\n    border-collapse: collapse;\n  }\n\n  :-moz-focusring:where(:not(iframe)) {\n    outline: auto;\n  }\n\n  progress {\n    vertical-align: baseline;\n  }\n\n  summary {\n    display: list-item;\n  }\n\n  ol, ul, menu {\n    list-style: none;\n  }\n\n  img, svg, video, canvas, audio, iframe, embed, object {\n    vertical-align: middle;\n    display: block;\n  }\n\n  img, video {\n    max-width: 100%;\n    height: auto;\n  }\n\n  button, input, select, optgroup, textarea {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  ::file-selector-button {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  :where(select:is([multiple], [size])) optgroup {\n    font-weight: bolder;\n  }\n\n  :where(select:is([multiple], [size])) optgroup option {\n    padding-inline-start: 20px;\n  }\n\n  ::file-selector-button {\n    margin-inline-end: 4px;\n  }\n\n  ::placeholder {\n    opacity: 1;\n  }\n\n  @supports (not ((-webkit-appearance: -apple-pay-button))) or (contain-intrinsic-size: 1px) {\n    ::placeholder {\n      color: currentColor;\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      ::placeholder {\n        color: color-mix(in oklab, currentcolor 50%, transparent);\n      }\n    }\n  }\n\n  textarea {\n    resize: vertical;\n  }\n\n  ::-webkit-search-decoration {\n    -webkit-appearance: none;\n  }\n\n  ::-webkit-date-and-time-value {\n    min-height: 1lh;\n    text-align: inherit;\n  }\n\n  ::-webkit-datetime-edit {\n    display: inline-flex;\n  }\n\n  ::-webkit-datetime-edit-fields-wrapper {\n    padding: 0;\n  }\n\n  ::-webkit-datetime-edit {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-year-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-month-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-day-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-hour-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-minute-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-second-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-millisecond-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-meridiem-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-calendar-picker-indicator {\n    line-height: 1;\n  }\n\n  :-moz-ui-invalid {\n    box-shadow: none;\n  }\n\n  button, input:where([type="button"], [type="reset"], [type="submit"]) {\n    appearance: button;\n  }\n\n  ::file-selector-button {\n    appearance: button;\n  }\n\n  ::-webkit-inner-spin-button {\n    height: auto;\n  }\n\n  ::-webkit-outer-spin-button {\n    height: auto;\n  }\n\n  [hidden]:where(:not([hidden="until-found"])) {\n    display: none !important;\n  }\n}\n\n@layer components;\n\n@layer utilities {\n  .collapse {\n    visibility: collapse;\n  }\n\n  .invisible {\n    visibility: hidden;\n  }\n\n  .visible {\n    visibility: visible;\n  }\n\n  .absolute {\n    position: absolute;\n  }\n\n  .fixed {\n    position: fixed;\n  }\n\n  .relative {\n    position: relative;\n  }\n\n  .static {\n    position: static;\n  }\n\n  .sticky {\n    position: sticky;\n  }\n\n  .top-41 {\n    top: calc(var(--spacing) * 41);\n  }\n\n  .isolate {\n    isolation: isolate;\n  }\n\n  .col-span-2 {\n    grid-column: span 2 / span 2;\n  }\n\n  .container {\n    width: 100%;\n  }\n\n  @media (min-width: 40rem) {\n    .container {\n      max-width: 40rem;\n    }\n  }\n\n  @media (min-width: 48rem) {\n    .container {\n      max-width: 48rem;\n    }\n  }\n\n  @media (min-width: 64rem) {\n    .container {\n      max-width: 64rem;\n    }\n  }\n\n  @media (min-width: 80rem) {\n    .container {\n      max-width: 80rem;\n    }\n  }\n\n  @media (min-width: 96rem) {\n    .container {\n      max-width: 96rem;\n    }\n  }\n\n  .m-0 {\n    margin: 0;\n  }\n\n  .m-1 {\n    margin: var(--spacing);\n  }\n\n  .mt-1 {\n    margin-top: var(--spacing);\n  }\n\n  .mt-2 {\n    margin-top: calc(var(--spacing) * 2);\n  }\n\n  .mb-2 {\n    margin-bottom: calc(var(--spacing) * 2);\n  }\n\n  .block {\n    display: block;\n  }\n\n  .contents {\n    display: contents;\n  }\n\n  .flex {\n    display: flex;\n  }\n\n  .grid {\n    display: grid;\n  }\n\n  .hidden {\n    display: none;\n  }\n\n  .inline {\n    display: inline;\n  }\n\n  .inline-flex {\n    display: inline-flex;\n  }\n\n  .table {\n    display: table;\n  }\n\n  .size-3 {\n    width: calc(var(--spacing) * 3);\n    height: calc(var(--spacing) * 3);\n  }\n\n  .size-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n    height: calc(var(--spacing) * 3.5);\n  }\n\n  .size-4 {\n    width: calc(var(--spacing) * 4);\n    height: calc(var(--spacing) * 4);\n  }\n\n  .size-5 {\n    width: calc(var(--spacing) * 5);\n    height: calc(var(--spacing) * 5);\n  }\n\n  .size-6 {\n    width: calc(var(--spacing) * 6);\n    height: calc(var(--spacing) * 6);\n  }\n\n  .size-7 {\n    width: calc(var(--spacing) * 7);\n    height: calc(var(--spacing) * 7);\n  }\n\n  .size-8 {\n    width: calc(var(--spacing) * 8);\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-7 {\n    height: calc(var(--spacing) * 7);\n  }\n\n  .h-8 {\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-9 {\n    height: calc(var(--spacing) * 9);\n  }\n\n  .max-h-60 {\n    max-height: calc(var(--spacing) * 60);\n  }\n\n  .max-h-96 {\n    max-height: calc(var(--spacing) * 96);\n  }\n\n  .max-h-\\[420px\\] {\n    max-height: 420px;\n  }\n\n  .min-h-\\[130px\\] {\n    min-height: 130px;\n  }\n\n  .w-full {\n    width: 100%;\n  }\n\n  .min-w-0 {\n    min-width: 0;\n  }\n\n  .flex-1 {\n    flex: 1;\n  }\n\n  .shrink-0 {\n    flex-shrink: 0;\n  }\n\n  .grow {\n    flex-grow: 1;\n  }\n\n  .rotate-180 {\n    rotate: 180deg;\n  }\n\n  .transform {\n    transform: var(--tw-rotate-x, ) var(--tw-rotate-y, ) var(--tw-rotate-z, ) var(--tw-skew-x, ) var(--tw-skew-y, );\n  }\n\n  .resize {\n    resize: both;\n  }\n\n  .grid-cols-2 {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }\n\n  .flex-col {\n    flex-direction: column;\n  }\n\n  .flex-wrap {\n    flex-wrap: wrap;\n  }\n\n  .items-center {\n    align-items: center;\n  }\n\n  .items-end {\n    align-items: flex-end;\n  }\n\n  .items-start {\n    align-items: flex-start;\n  }\n\n  .justify-between {\n    justify-content: space-between;\n  }\n\n  .justify-center {\n    justify-content: center;\n  }\n\n  .gap-0\\.5 {\n    gap: calc(var(--spacing) * .5);\n  }\n\n  .gap-1 {\n    gap: var(--spacing);\n  }\n\n  .gap-2 {\n    gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-3 {\n    gap: calc(var(--spacing) * 3);\n  }\n\n  :where(.space-y-2 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 2) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 2) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  .self-start {\n    align-self: flex-start;\n  }\n\n  .truncate {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    overflow: hidden;\n  }\n\n  .overflow-x-hidden {\n    overflow-x: hidden;\n  }\n\n  .overflow-y-auto {\n    overflow-y: auto;\n  }\n\n  .rounded-lg {\n    border-radius: var(--radius);\n  }\n\n  .rounded-md {\n    border-radius: calc(var(--radius) - 2px);\n  }\n\n  .border {\n    border-style: var(--tw-border-style);\n    border-width: 1px;\n  }\n\n  .border-t {\n    border-top-style: var(--tw-border-style);\n    border-top-width: 1px;\n  }\n\n  .border-b {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 1px;\n  }\n\n  .border-l-2 {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 2px;\n  }\n\n  .border-border {\n    border-color: var(--border);\n  }\n\n  .border-transparent {\n    border-color: #0000;\n  }\n\n  .bg-background {\n    background-color: var(--background);\n  }\n\n  .bg-card {\n    background-color: var(--card);\n  }\n\n  .bg-primary {\n    background-color: var(--primary);\n  }\n\n  .bg-secondary {\n    background-color: var(--secondary);\n  }\n\n  .p-0 {\n    padding: 0;\n  }\n\n  .p-2 {\n    padding: calc(var(--spacing) * 2);\n  }\n\n  .p-3 {\n    padding: calc(var(--spacing) * 3);\n  }\n\n  .px-2 {\n    padding-inline: calc(var(--spacing) * 2);\n  }\n\n  .px-3 {\n    padding-inline: calc(var(--spacing) * 3);\n  }\n\n  .px-4 {\n    padding-inline: calc(var(--spacing) * 4);\n  }\n\n  .py-0\\.5 {\n    padding-block: calc(var(--spacing) * .5);\n  }\n\n  .py-2 {\n    padding-block: calc(var(--spacing) * 2);\n  }\n\n  .pt-2 {\n    padding-top: calc(var(--spacing) * 2);\n  }\n\n  .pl-2 {\n    padding-left: calc(var(--spacing) * 2);\n  }\n\n  .text-base {\n    font-size: var(--text-base);\n    line-height: var(--tw-leading, var(--text-base--line-height));\n  }\n\n  .text-sm {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n\n  .text-xs {\n    font-size: var(--text-xs);\n    line-height: var(--tw-leading, var(--text-xs--line-height));\n  }\n\n  .text-\\[11px\\] {\n    font-size: 11px;\n  }\n\n  .leading-4 {\n    --tw-leading: calc(var(--spacing) * 4);\n    line-height: calc(var(--spacing) * 4);\n  }\n\n  .font-medium {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n\n  .font-semibold {\n    --tw-font-weight: var(--font-weight-semibold);\n    font-weight: var(--font-weight-semibold);\n  }\n\n  .break-words {\n    overflow-wrap: break-word;\n  }\n\n  .whitespace-nowrap {\n    white-space: nowrap;\n  }\n\n  .whitespace-pre-wrap {\n    white-space: pre-wrap;\n  }\n\n  .text-foreground {\n    color: var(--foreground);\n  }\n\n  .text-muted-foreground {\n    color: var(--muted-foreground);\n  }\n\n  .text-primary-foreground {\n    color: var(--primary-foreground);\n  }\n\n  .text-secondary-foreground {\n    color: var(--secondary-foreground);\n  }\n\n  .ordinal {\n    --tw-ordinal: ordinal;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .tabular-nums {\n    --tw-numeric-spacing: tabular-nums;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .shadow {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .outline {\n    outline-style: var(--tw-outline-style);\n    outline-width: 1px;\n  }\n\n  .blur {\n    --tw-blur: blur(8px);\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .filter {\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .transition {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-colors {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-transform {\n    transition-property: transform, translate, scale, rotate;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .outline-none {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  @media (hover: hover) {\n    .hover\\:bg-accent:hover {\n      background-color: var(--accent);\n    }\n\n    .hover\\:bg-primary\\/90:hover {\n      background-color: var(--primary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-primary\\/90:hover {\n        background-color: color-mix(in oklab, var(--primary) 90%, transparent);\n      }\n    }\n\n    .hover\\:text-accent-foreground:hover {\n      color: var(--accent-foreground);\n    }\n  }\n\n  .focus-visible\\:ring-2:focus-visible {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus-visible\\:ring-ring:focus-visible {\n    --tw-ring-color: var(--ring);\n  }\n\n  .disabled\\:pointer-events-none:disabled {\n    pointer-events: none;\n  }\n\n  .disabled\\:opacity-50:disabled {\n    opacity: .5;\n  }\n}\n\n:host {\n  --background: oklch(98.5% 0 0);\n  --foreground: oklch(14.5% 0 0);\n  --card: oklch(100% 0 0);\n  --card-foreground: oklch(14.5% 0 0);\n  --primary: oklch(20.5% 0 0);\n  --primary-foreground: oklch(98.5% 0 0);\n  --secondary: oklch(97% 0 0);\n  --secondary-foreground: oklch(20.5% 0 0);\n  --muted: oklch(97% 0 0);\n  --muted-foreground: oklch(55.6% 0 0);\n  --accent: oklch(97% 0 0);\n  --accent-foreground: oklch(20.5% 0 0);\n  --border: oklch(92.2% 0 0);\n  --ring: oklch(70.8% 0 0);\n  --radius: .625rem;\n  all: initial;\n  color: var(--foreground);\n  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;\n}\n\n@media (prefers-color-scheme: dark) {\n  :host {\n    --background: oklch(14.5% 0 0);\n    --foreground: oklch(98.5% 0 0);\n    --card: oklch(20.5% 0 0);\n    --card-foreground: oklch(98.5% 0 0);\n    --primary: oklch(92.2% 0 0);\n    --primary-foreground: oklch(20.5% 0 0);\n    --secondary: oklch(26.9% 0 0);\n    --secondary-foreground: oklch(98.5% 0 0);\n    --muted: oklch(26.9% 0 0);\n    --muted-foreground: oklch(70.8% 0 0);\n    --accent: oklch(26.9% 0 0);\n    --accent-foreground: oklch(98.5% 0 0);\n    --border: oklch(100% 0 0 / .12);\n    --ring: oklch(55.6% 0 0);\n  }\n}\n\n* {\n  box-sizing: border-box;\n  border-color: var(--border);\n}\n\n.booster-shell {\n  z-index: 2147483647;\n  position: fixed;\n  bottom: 20px;\n  right: 20px;\n}\n\n.booster-button {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 42px;\n  height: 42px;\n  color: var(--card-foreground);\n  cursor: pointer;\n  border-radius: 14px;\n  font: 700 15px / 1 inherit;\n  box-shadow: 0 10px 30px #0003;\n}\n\n.booster-panel {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 300px;\n  color: var(--card-foreground);\n  border-radius: 16px;\n  margin-bottom: 10px;\n  padding: 14px;\n  box-shadow: 0 18px 45px #0000003d;\n}\n\n.booster-panel h2 {\n  margin: 0 0 6px;\n  font-size: 15px;\n  font-weight: 700;\n}\n\n.booster-panel p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.45;\n}\n\n.booster-control-center {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(760px, 100vw - 32px);\n  color: var(--card-foreground);\n  border-radius: 18px;\n  margin-bottom: 10px;\n  overflow: hidden;\n  box-shadow: 0 22px 60px #00000047;\n}\n\n.booster-control-header, .booster-control-footer {\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  display: flex;\n}\n\n.booster-control-header {\n  border-bottom: 1px solid var(--border);\n  padding: 14px 14px 12px;\n}\n\n.booster-control-header strong {\n  font-size: 14px;\n}\n\n.booster-control-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-control-body {\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-loading {\n  color: var(--muted-foreground);\n  padding: 18px;\n  font-size: 12px;\n}\n\n.booster-section-label {\n  color: var(--muted-foreground);\n  letter-spacing: .08em;\n  text-transform: uppercase;\n  padding: 2px 2px 0;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-setting-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 12px;\n  display: flex;\n}\n\n.booster-setting-card-stack {\n  align-items: stretch;\n  display: grid;\n}\n\n.booster-range-grid {\n  gap: 10px;\n  min-width: 220px;\n  display: grid;\n}\n\n.booster-range-grid label {\n  gap: 5px;\n  display: grid;\n}\n\n.booster-range-grid label > span {\n  color: var(--muted-foreground);\n  justify-content: space-between;\n  gap: 12px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-range-grid label > span b {\n  color: var(--foreground);\n  font-variant-numeric: tabular-nums;\n}\n\n.booster-range-grid input[type="range"] {\n  width: 100%;\n  accent-color: var(--primary);\n}\n\n.booster-setting-disabled {\n  opacity: .55;\n}\n\n.booster-setting-copy {\n  gap: 5px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-setting-copy b {\n  font-size: 12px;\n}\n\n.booster-setting-copy > span {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.4;\n}\n\n.booster-switch {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  cursor: pointer;\n  border-radius: 999px;\n  flex: none;\n  width: 36px;\n  height: 20px;\n  padding: 0;\n  transition: background .12s, border-color .12s;\n  position: relative;\n}\n\n.booster-switch:disabled {\n  cursor: not-allowed;\n}\n\n.booster-switch > span {\n  background: var(--foreground);\n  border-radius: 999px;\n  width: 14px;\n  height: 14px;\n  transition: transform .12s;\n  position: absolute;\n  top: 2px;\n  left: 2px;\n}\n\n.booster-switch-on {\n  background: var(--primary);\n  border-color: var(--primary);\n}\n\n.booster-switch-on > span {\n  background: var(--primary-foreground);\n  transform: translateX(16px);\n}\n\n.booster-info-card {\n  background: var(--muted);\n  color: var(--foreground);\n  border-radius: 12px;\n  padding: 11px 12px;\n  font-size: 11px;\n}\n\n.booster-info-card ul {\n  color: var(--muted-foreground);\n  gap: 4px;\n  margin: 8px 0 0 18px;\n  padding: 0;\n  line-height: 1.35;\n  display: grid;\n}\n\n.booster-control-footer {\n  padding-top: 2px;\n}\n\n.booster-save-state {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 5px;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-overlay-root {\n  pointer-events: none;\n}\n\n.booster-launcher {\n  z-index: 2147483647;\n  border: 2px solid var(--primary);\n  justify-content: center;\n  align-items: center;\n  gap: 1px;\n  width: 46px;\n  height: 46px;\n  display: inline-flex;\n  position: fixed;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher {\n    border: 2px solid color-mix(in oklab, var(--primary) 55%, transparent);\n  }\n}\n\n.booster-launcher {\n  background: var(--primary);\n  color: var(--primary-foreground);\n  box-shadow: 0 12px 36px #00000047, 0 0 0 3px var(--primary);\n  border-radius: 15px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher {\n    box-shadow: 0 12px 36px #00000047, 0 0 0 3px color-mix(in oklab, var(--primary) 18%, transparent);\n  }\n}\n\n.booster-launcher {\n  cursor: grab;\n  pointer-events: auto;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  font: 800 17px / 1 inherit;\n}\n\n.booster-launcher:hover {\n  transform: scale(1.04);\n}\n\n.booster-launcher-dragging {\n  cursor: grabbing;\n  transform: scale(1.06);\n}\n\n.booster-launcher-grip {\n  opacity: .7;\n  width: 11px;\n  height: 11px;\n}\n\n.booster-modal-backdrop {\n  z-index: 2147483646;\n  -webkit-backdrop-filter: blur(3px);\n  backdrop-filter: blur(3px);\n  pointer-events: auto;\n  background: #00000061;\n  place-items: center;\n  padding: 16px;\n  display: grid;\n  position: fixed;\n  inset: 0;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n  max-height: calc(100vh - 32px);\n  overflow: auto;\n}\n\n.booster-modal-surface .booster-control-center {\n  width: 100%;\n  margin: 0;\n}\n\n.booster-popup-host {\n  background: var(--background);\n  min-width: 360px;\n}\n\n.booster-select {\n  border: 1px solid var(--border);\n  background: var(--background);\n  min-width: 92px;\n  height: 32px;\n  color: var(--foreground);\n  cursor: pointer;\n  border-radius: 8px;\n  outline: none;\n  flex: none;\n  padding: 0 28px 0 10px;\n  font: 500 12px / 1 inherit;\n}\n\n.booster-select:focus {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-stack-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-stack-card label {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-input {\n  border: 1px solid var(--border);\n  background: var(--background);\n  width: 100%;\n  min-width: 0;\n  height: 32px;\n  color: var(--foreground);\n  border-radius: 8px;\n  outline: none;\n  padding: 0 10px;\n  font: 500 11px / 1 inherit;\n}\n\n.booster-input:focus {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-counter-grid {\n  color: var(--muted-foreground);\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 6px 12px;\n  margin-top: 8px;\n  display: grid;\n}\n\n.booster-counter-grid span {\n  justify-content: space-between;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-counter-grid b {\n  color: var(--foreground);\n}\n\n.booster-header-copy {\n  min-width: 0;\n}\n\n.booster-header-actions {\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-header-toggle-label {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  font-weight: 600;\n}\n\n.booster-settings-layout {\n  grid-template-columns: 150px minmax(0, 1fr);\n  min-height: 360px;\n  display: grid;\n}\n\n.booster-settings-nav {\n  border-right: 1px solid var(--border);\n  background: var(--muted);\n  align-content: start;\n  gap: 4px;\n  padding: 12px 8px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-settings-nav {\n    background: color-mix(in oklab, var(--muted) 58%, transparent);\n  }\n}\n\n.booster-settings-nav button {\n  width: 100%;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  border-radius: 9px;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 10px;\n  font: 600 11px / 1.2 inherit;\n  display: flex;\n}\n\n.booster-settings-nav button:hover, .booster-settings-nav button.active {\n  background: var(--background);\n  color: var(--foreground);\n}\n\n.booster-settings-content {\n  align-content: start;\n  gap: 10px;\n  min-width: 0;\n  padding: 14px;\n  display: grid;\n}\n\n.booster-setting-card-flat {\n  border: 0;\n  border-bottom: 1px solid var(--border);\n  border-radius: 0;\n  padding: 0 0 10px;\n}\n\n.booster-analytics-grid {\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 12px;\n  display: grid;\n}\n\n.booster-counter-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  padding: 12px;\n}\n\n.booster-counter-title {\n  margin-bottom: 8px;\n  font-size: 12px;\n  font-weight: 700;\n}\n\n.booster-disclosure {\n  width: 100%;\n  color: var(--foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 0;\n  display: flex;\n}\n\n.booster-disclosure > span {\n  gap: 3px;\n  display: grid;\n}\n\n.booster-disclosure b {\n  font-size: 12px;\n}\n\n.booster-disclosure small {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.rotate-180 {\n  transform: rotate(180deg);\n}\n\n.booster-telemetry-body {\n  gap: 10px;\n  padding-top: 10px;\n  display: grid;\n}\n\n.booster-field {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-telemetry-test-row {\n  align-items: center;\n  gap: 10px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-test-success {\n  color: oklch(62% .17 145);\n  font-size: 11px;\n}\n\n.booster-test-error {\n  color: oklch(63% .2 25);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n}\n\n@media (max-width: 620px) {\n  .booster-control-center, .booster-modal-surface {\n    width: calc(100vw - 20px);\n  }\n\n  .booster-settings-layout {\n    grid-template-columns: 1fr;\n  }\n\n  .booster-settings-nav {\n    border-right: 0;\n    border-bottom: 1px solid var(--border);\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n\n  .booster-settings-nav button {\n    justify-content: center;\n  }\n\n  .booster-analytics-grid {\n    grid-template-columns: 1fr;\n  }\n}\n\n.booster-launcher-icon {\n  width: 21px;\n  height: 21px;\n}\n\n.booster-launcher-open {\n  box-shadow: 0 14px 40px #00000057, 0 0 0 4px var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher-open {\n    box-shadow: 0 14px 40px #00000057, 0 0 0 4px color-mix(in oklab, var(--primary) 24%, transparent);\n  }\n}\n\n.booster-quick-menu {\n  z-index: 2147483647;\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 330px;\n  color: var(--card-foreground);\n  pointer-events: auto;\n  border-radius: 18px;\n  position: fixed;\n  overflow: hidden;\n  box-shadow: 0 22px 60px #0000004d;\n}\n\n.booster-quick-header, .booster-loader-status, .booster-quick-actions, .booster-quick-context, .booster-quick-empty, .booster-loader-error {\n  padding: 12px 14px;\n}\n\n.booster-quick-header, .booster-loader-status {\n  justify-content: space-between;\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-quick-header {\n  border-bottom: 1px solid var(--border);\n}\n\n.booster-quick-header > div, .booster-loader-status > div {\n  gap: 2px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-quick-header strong, .booster-loader-status strong {\n  font-size: 13px;\n}\n\n.booster-quick-header span, .booster-loader-status span, .booster-quick-context code, .booster-quick-empty, .booster-loader-error {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.booster-icon-button {\n  border: 1px solid var(--border);\n  background: var(--secondary);\n  width: 30px;\n  height: 30px;\n  color: var(--secondary-foreground);\n  cursor: pointer;\n  border-radius: 9px;\n  flex: none;\n  justify-content: center;\n  align-items: center;\n  display: inline-flex;\n}\n\n.booster-icon-button:hover {\n  background: var(--accent);\n}\n\n.booster-quick-context {\n  gap: 7px;\n  display: grid;\n}\n\n.booster-quick-context > strong {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 13px;\n  overflow: hidden;\n}\n\n.booster-quick-context code {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  overflow: hidden;\n}\n\n.booster-quick-chips, .booster-archive-meta {\n  flex-wrap: wrap;\n  gap: 5px;\n  display: flex;\n}\n\n.booster-quick-chips span, .booster-archive-meta span {\n  background: var(--muted);\n  max-width: 100%;\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  border-radius: 999px;\n  padding: 3px 6px;\n  font-size: 10px;\n  overflow: hidden;\n}\n\n.booster-loader-status {\n  border-top: 1px solid var(--border);\n  border-bottom: 1px solid var(--border);\n  background: var(--secondary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-loader-status {\n    background: color-mix(in oklab, var(--secondary) 70%, transparent);\n  }\n}\n\n.booster-loader-error {\n  border-top: 1px solid var(--border);\n}\n\n.booster-spin {\n  animation: 1.2s linear infinite booster-spin;\n}\n\n@keyframes booster-spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n.booster-quick-actions {\n  grid-template-columns: 1fr 1fr;\n  gap: 8px;\n  display: grid;\n}\n\n.booster-quick-primary, .booster-quick-secondary {\n  border: 1px solid var(--border);\n  cursor: pointer;\n  border-radius: 11px;\n  justify-content: center;\n  align-items: center;\n  gap: 7px;\n  min-height: 38px;\n  font: 600 11px / 1.2 inherit;\n  display: inline-flex;\n}\n\n.booster-quick-primary {\n  background: var(--primary);\n  color: var(--primary-foreground);\n}\n\n.booster-quick-secondary {\n  background: var(--secondary);\n  color: var(--secondary-foreground);\n}\n\n.booster-quick-primary:disabled, .booster-quick-secondary:disabled {\n  cursor: not-allowed;\n  opacity: .45;\n}\n\n.booster-archive-backdrop {\n  padding: 10px;\n}\n\n.booster-archive-surface {\n  pointer-events: auto;\n  width: min(1180px, 100vw - 20px);\n  height: min(820px, 100vh - 20px);\n}\n\n.booster-archive-browser {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 100%;\n  height: 100%;\n  color: var(--card-foreground);\n  border-radius: 20px;\n  grid-template-rows: auto minmax(0, 1fr);\n  display: grid;\n  overflow: hidden;\n  box-shadow: 0 28px 80px #00000061;\n}\n\n.booster-archive-header {\n  border-bottom: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  min-height: 58px;\n  padding: 10px 14px;\n  display: flex;\n}\n\n.booster-archive-title, .booster-archive-header-actions {\n  align-items: center;\n  gap: 9px;\n  display: flex;\n}\n\n.booster-archive-title > div {\n  gap: 1px;\n  display: grid;\n}\n\n.booster-archive-title strong {\n  font-size: 14px;\n}\n\n.booster-archive-title span {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-archive-layout {\n  grid-template-columns: 300px minmax(0, 1fr);\n  min-height: 0;\n  display: grid;\n}\n\n.booster-archive-sidebar {\n  border-right: 1px solid var(--border);\n  background: var(--secondary);\n  padding: 10px;\n  overflow: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-sidebar {\n    background: color-mix(in oklab, var(--secondary) 38%, var(--card));\n  }\n}\n\n.booster-archive-group {\n  margin-bottom: 12px;\n}\n\n.booster-archive-project {\n  color: var(--muted-foreground);\n  text-transform: uppercase;\n  align-items: center;\n  gap: 6px;\n  padding: 6px 7px;\n  font-size: 10px;\n  font-weight: 700;\n  display: flex;\n}\n\n.booster-archive-project span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-archive-conversation {\n  width: 100%;\n  color: inherit;\n  text-align: left;\n  cursor: pointer;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 11px;\n  gap: 3px;\n  margin: 2px 0;\n  padding: 9px 10px;\n  display: grid;\n}\n\n.booster-archive-conversation:hover, .booster-archive-conversation.active {\n  border-color: var(--border);\n  background: var(--card);\n}\n\n.booster-archive-conversation strong, .booster-archive-conversation span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  overflow: hidden;\n}\n\n.booster-archive-conversation strong {\n  font-size: 12px;\n}\n\n.booster-archive-conversation span {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-archive-content {\n  background: var(--background);\n  min-width: 0;\n  overflow: auto;\n}\n\n.booster-archive-conversation-head {\n  z-index: 2;\n  border-bottom: 1px solid var(--border);\n  background: var(--card);\n  justify-content: space-between;\n  align-items: flex-start;\n  gap: 14px;\n  padding: 12px 16px;\n  display: flex;\n  position: sticky;\n  top: 0;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-conversation-head {\n    background: color-mix(in oklab, var(--card) 94%, transparent);\n  }\n}\n\n.booster-archive-conversation-head {\n  -webkit-backdrop-filter: blur(10px);\n  backdrop-filter: blur(10px);\n}\n\n.booster-archive-conversation-head > div:first-child {\n  grid-template-columns: auto minmax(0, 1fr);\n  align-items: center;\n  gap: 2px 8px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-archive-conversation-head strong {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 13px;\n  overflow: hidden;\n}\n\n.booster-archive-conversation-head span {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  grid-column: 2;\n  font-size: 9px;\n  overflow: hidden;\n}\n\n.booster-archive-back {\n  background: var(--secondary);\n  width: 28px;\n  height: 28px;\n  color: var(--secondary-foreground);\n  cursor: pointer;\n  border: 0;\n  border-radius: 8px;\n  grid-row: 1 / span 2;\n  justify-content: center;\n  align-items: center;\n  display: inline-flex;\n}\n\n.booster-archive-messages {\n  gap: 10px;\n  padding: 14px 16px 40px;\n  display: grid;\n}\n\n.booster-archive-message {\n  border: 1px solid var(--border);\n  background: var(--card);\n  border-radius: 14px;\n  max-width: 920px;\n  padding: 11px 13px;\n}\n\n.booster-archive-message.role-user {\n  background: var(--secondary);\n  margin-left: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-message.role-user {\n    background: color-mix(in oklab, var(--secondary) 82%, var(--card));\n  }\n}\n\n.booster-archive-message.role-tool {\n  border-style: dashed;\n}\n\n.booster-archive-message-head {\n  color: var(--muted-foreground);\n  text-transform: uppercase;\n  flex-wrap: wrap;\n  gap: 5px 10px;\n  margin-bottom: 8px;\n  font-size: 9px;\n  display: flex;\n}\n\n.booster-archive-message-head strong {\n  color: var(--foreground);\n}\n\n.booster-archive-message-text {\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  font-size: 12px;\n  line-height: 1.55;\n}\n\n.booster-raw-toggle {\n  color: var(--muted-foreground);\n  cursor: pointer;\n  background: none;\n  border: 0;\n  align-items: center;\n  gap: 4px;\n  margin-top: 10px;\n  padding: 0;\n  font: 600 10px / 1 inherit;\n  display: inline-flex;\n}\n\n.booster-archive-raw {\n  background: var(--muted);\n  max-height: 360px;\n  color: var(--foreground);\n  white-space: pre-wrap;\n  border-radius: 10px;\n  margin: 9px 0 0;\n  padding: 10px;\n  font: 10px / 1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;\n  overflow: auto;\n}\n\n.booster-archive-empty, .booster-archive-error {\n  color: var(--muted-foreground);\n  padding: 24px;\n  font-size: 12px;\n}\n\n.booster-archive-error {\n  color: #dc2626;\n}\n\n@media (max-width: 760px) {\n  .booster-archive-layout {\n    grid-template-columns: 220px minmax(0, 1fr);\n  }\n\n  .booster-quick-menu {\n    width: min(330px, 100vw - 24px);\n  }\n}\n\n.booster-identity {\n  vertical-align: middle;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  max-width: 100%;\n  display: inline-flex;\n}\n\n.booster-dock {\n  z-index: 2147483647;\n  pointer-events: auto;\n  width: 44px;\n  height: 44px;\n  position: fixed;\n}\n\n.booster-dock-toggle {\n  z-index: 2;\n  border: 1px solid var(--border);\n  background: var(--primary);\n  width: 44px;\n  height: 44px;\n  color: var(--primary-foreground);\n  cursor: grab;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  justify-content: center;\n  align-items: center;\n  padding: 0;\n  display: flex;\n  position: relative;\n}\n\n.booster-dock.right .booster-dock-toggle {\n  border-radius: 12px 0 0 12px;\n}\n\n.booster-dock.left .booster-dock-toggle {\n  border-radius: 0 12px 12px 0;\n}\n\n.booster-dock.dragging .booster-dock-toggle {\n  cursor: grabbing;\n}\n\n.booster-dock-shell {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(284px, 100vw);\n  color: var(--card-foreground);\n  position: absolute;\n  overflow: hidden;\n  box-shadow: 0 12px 32px #00000038;\n}\n\n.booster-dock.right .booster-dock-shell {\n  border-radius: 16px 0 0 16px;\n  right: 0;\n}\n\n.booster-dock.left .booster-dock-shell {\n  border-radius: 0 16px 16px 0;\n  left: 0;\n}\n\n.booster-dock.grow-up .booster-dock-shell {\n  padding-bottom: 44px;\n  bottom: 0;\n}\n\n.booster-dock.grow-down .booster-dock-shell {\n  padding-top: 44px;\n  top: 0;\n}\n\n.booster-dock-content {\n  overscroll-behavior: contain;\n  overflow-y: auto;\n}\n\n.booster-dock-close-bar {\n  box-sizing: border-box;\n  background: var(--primary);\n  height: 44px;\n  color: var(--primary-foreground);\n  letter-spacing: .01em;\n  cursor: grab;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  border: 0;\n  align-items: center;\n  gap: 8px;\n  padding: 0 12px;\n  font: 650 11px / 1 inherit;\n  display: flex;\n  position: absolute;\n  left: -1px;\n  right: -1px;\n}\n\n.booster-dock.grow-up .booster-dock-close-bar {\n  border-top: 1px solid var(--primary-foreground);\n  bottom: -1px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-dock.grow-up .booster-dock-close-bar {\n    border-top: 1px solid color-mix(in oklab, var(--primary-foreground) 18%, transparent);\n  }\n}\n\n.booster-dock.grow-down .booster-dock-close-bar {\n  border-bottom: 1px solid var(--primary-foreground);\n  top: -1px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-dock.grow-down .booster-dock-close-bar {\n    border-bottom: 1px solid color-mix(in oklab, var(--primary-foreground) 18%, transparent);\n  }\n}\n\n.booster-dock.right .booster-dock-close-bar, .booster-dock.left .booster-dock-close-bar {\n  justify-content: flex-start;\n  padding-inline: 12px;\n}\n\n.booster-dock-close-bar:hover {\n  filter: brightness(1.04);\n}\n\n.booster-dock-close-bar:active {\n  cursor: grabbing;\n}\n\n.booster-dock-close-bar svg {\n  flex: none;\n}\n\n.booster-dock-context {\n  gap: 5px;\n  padding: 11px 12px 7px;\n  display: grid;\n}\n\n.booster-dock-context > .booster-identity:first-child {\n  font-size: 13px;\n  font-weight: 650;\n}\n\n.booster-dock-context > .booster-identity {\n  font-size: 12px;\n}\n\n.booster-dock-context p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 11px;\n  line-height: 1.5;\n}\n\n.booster-dock-context time {\n  font-size: 10px;\n  display: block;\n}\n\n.booster-dock-counts {\n  color: var(--muted-foreground);\n  flex-wrap: wrap;\n  gap: 6px 10px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-dock-counts b {\n  color: var(--foreground);\n  font-weight: 650;\n}\n\n.booster-capture-shortcut {\n  color: var(--muted-foreground);\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n  background: none;\n  border: 0;\n  align-items: center;\n  gap: 6px;\n  padding: 3px 0;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-dock-actions {\n  flex-direction: column;\n  gap: 1px;\n  padding: 4px 5px 6px;\n  display: flex;\n}\n\n.booster-dock-actions > button {\n  width: 100%;\n  min-height: 34px;\n  color: inherit;\n  text-align: left;\n  font: inherit;\n  cursor: pointer;\n  background: none;\n  border: 0;\n  border-radius: 8px;\n  align-items: center;\n  gap: 10px;\n  padding: 6px 9px;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-dock-actions > button:hover:not(:disabled) {\n  background: var(--muted);\n}\n\n.booster-dock-actions > button:disabled {\n  opacity: .4;\n  cursor: not-allowed;\n}\n\n.booster-dock.grow-down .booster-dock-content {\n  flex-direction: column-reverse;\n  display: flex;\n}\n\n.booster-dock.grow-down .booster-dock-actions {\n  flex-direction: column-reverse;\n}\n\n.booster-dock-progress {\n  border-block: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: center;\n  gap: 8px;\n  padding: 8px 12px;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-identity-label {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-identity-copy {\n  width: 24px;\n  height: 24px;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  opacity: 0;\n  background: none;\n  border: 0;\n  border-radius: 5px;\n  flex: none;\n  justify-content: center;\n  align-items: center;\n  padding: 4px;\n  display: inline-flex;\n}\n\n.booster-identity:hover .booster-identity-copy, .booster-identity:focus-within .booster-identity-copy, .booster-reader-group-header:hover .booster-identity-copy {\n  opacity: 1;\n}\n\n.booster-identity-copy:hover {\n  background: var(--muted);\n}\n\n.booster-sr-only {\n  clip-path: inset(50%);\n  white-space: nowrap;\n  width: 1px;\n  height: 1px;\n  position: absolute;\n  overflow: hidden;\n}\n\n.booster-modal-backdrop {\n  -webkit-backdrop-filter: none;\n  backdrop-filter: none;\n}\n\n.booster-dialog {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(760px, 100vw - 32px);\n  max-height: calc(100dvh - 32px);\n  color: var(--card-foreground);\n  pointer-events: auto;\n  border-radius: 16px;\n  outline: none;\n  font-size: 14px;\n  overflow: auto;\n  box-shadow: 0 20px 60px #0000004d;\n}\n\n.booster-dialog .booster-control-center {\n  width: 100%;\n  box-shadow: none;\n  border: 0;\n  border-radius: 0;\n  margin: 0;\n}\n\n.booster-dialog-wide {\n  width: min(1220px, 100vw - 32px);\n  height: min(860px, 100dvh - 32px);\n  overflow: hidden;\n}\n\n.booster-section-header {\n  border-bottom: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  min-height: 64px;\n  padding: 12px 18px;\n  display: flex;\n}\n\n.booster-section-header strong {\n  font-size: 15px;\n}\n\n.booster-section-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-form-body {\n  gap: 16px;\n  padding: 20px;\n  line-height: 1.5;\n  display: grid;\n}\n\n.booster-form-body h2, .booster-capture-settings h3 {\n  margin: 0;\n  font-size: 16px;\n  font-weight: 650;\n}\n\n.booster-form-body > label {\n  gap: 6px;\n  font-size: 12px;\n  font-weight: 600;\n  display: grid;\n}\n\n.booster-form-body select, .booster-reader input {\n  border: 1px solid var(--border);\n  background: var(--background);\n  width: 100%;\n  min-width: 0;\n  min-height: 38px;\n  color: var(--foreground);\n  font: inherit;\n  border-radius: 8px;\n  padding: 8px 10px;\n  font-size: 12px;\n}\n\n.booster-checkboxes {\n  border: 0;\n  gap: 10px;\n  margin: 0;\n  padding: 0;\n  display: grid;\n}\n\n.booster-checkboxes label {\n  align-items: center;\n  gap: 8px;\n  font-size: 13px;\n  display: flex;\n}\n\n.booster-checkboxes input {\n  width: 16px;\n  height: 16px;\n}\n\n.booster-export-suboptions {\n  border-inline-start: 1px solid var(--border);\n  gap: 8px;\n  margin-inline-start: 22px;\n  padding-inline-start: 12px;\n  display: grid;\n}\n\n.booster-note {\n  color: var(--muted-foreground);\n  overflow-wrap: anywhere;\n  margin: 8px 0;\n  font-size: 12px;\n  line-height: 1.6;\n}\n\n.booster-notice {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  border-radius: 8px;\n  margin: 0;\n  padding: 12px;\n  font-size: 12px;\n  line-height: 1.6;\n}\n\n.booster-error {\n  color: var(--foreground);\n  border: 1px solid #c2410c;\n  border-radius: 8px;\n  margin: 8px 12px;\n  padding: 8px 10px;\n  font-size: 12px;\n  line-height: 1.5;\n}\n\n.booster-action-primary, .booster-action-secondary {\n  border: 1px solid var(--border);\n  cursor: pointer;\n  min-height: 38px;\n  font: inherit;\n  border-radius: 8px;\n  justify-content: center;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 14px;\n  font-size: 12px;\n  display: inline-flex;\n}\n\n.booster-action-primary {\n  background: var(--primary);\n  color: var(--primary-foreground);\n  text-decoration: none;\n}\n\n.booster-action-secondary {\n  background: var(--secondary);\n  color: var(--secondary-foreground);\n}\n\n.booster-action-primary:disabled, .booster-action-secondary:disabled, .booster-icon-button:disabled {\n  opacity: .45;\n  cursor: not-allowed;\n}\n\n.booster-capture-settings > .booster-form-body {\n  padding-inline: 0;\n}\n\n.booster-reader {\n  grid-template-rows: auto minmax(0, 1fr);\n  height: 100%;\n  display: grid;\n}\n\n.booster-reader-heading {\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-reader-layout {\n  grid-template-columns: minmax(210px, 27%) minmax(0, 1fr);\n  min-height: 0;\n  display: grid;\n}\n\n.booster-reader-sidebar {\n  border-right: 1px solid var(--border);\n  background: var(--card);\n  overscroll-behavior: contain;\n  min-width: 0;\n  padding: 12px;\n  overflow: auto;\n}\n\n.booster-reader-group {\n  margin-top: 12px;\n}\n\n.booster-reader-group-header {\n  align-items: center;\n  gap: 2px;\n  min-height: 38px;\n  display: flex;\n}\n\n.booster-group-toggle {\n  min-width: 0;\n  color: inherit;\n  cursor: pointer;\n  text-align: left;\n  font: inherit;\n  background: none;\n  border: 0;\n  flex: 1;\n  align-items: center;\n  gap: 6px;\n  padding: 6px 0;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-group-toggle svg {\n  flex-shrink: 0;\n}\n\n.booster-group-toggle span {\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-group-toggle small {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-reader-chat-list {\n  gap: 3px;\n  padding-left: 10px;\n  display: grid;\n}\n\n.booster-reader-chat-list > button {\n  color: inherit;\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 8px;\n  align-items: center;\n  gap: 6px;\n  padding: 10px;\n  font-size: 12px;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-reader-chat-list > button:hover, .booster-reader-chat-list > button.active {\n  background: var(--muted);\n  border-color: var(--border);\n}\n\n.booster-reader-main {\n  background: var(--background);\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-reader-chat-header {\n  justify-content: space-between;\n  align-items: flex-start;\n  gap: 12px;\n  display: flex;\n}\n\n.booster-reader-chat-header > div {\n  min-width: 0;\n}\n\n.booster-reader-chat-header h2 {\n  margin: 0 0 4px;\n  font-size: 18px;\n  line-height: 1.4;\n}\n\n.booster-reader-chat-header > div > .booster-identity {\n  color: var(--muted-foreground);\n  font-size: 12px;\n}\n\n.booster-reader-summary {\n  color: var(--muted-foreground);\n  flex-wrap: wrap;\n  gap: 6px 14px;\n  margin-block: 10px 0;\n  font-size: 11px;\n  display: flex;\n}\n\n.booster-reader-summary b {\n  color: var(--foreground);\n}\n\n.booster-reader-summary p {\n  flex-basis: 100%;\n  margin: 2px 0 0;\n  line-height: 1.5;\n}\n\n.booster-reader-exchanges {\n  gap: 20px;\n  margin-top: 0;\n  display: grid;\n}\n\n.booster-exchange {\n  border-bottom: 1px solid var(--border);\n  padding-bottom: 16px;\n}\n\n.booster-graph-message {\n  margin-left: calc(min(var(--graph-lane, 0), 3) * 15px);\n  grid-template-columns: 34px minmax(0, 1fr);\n  align-items: stretch;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-graph-rail {\n  background: linear-gradient(var(--border), var(--border)) center / 2px 100% no-repeat;\n  justify-content: center;\n  min-height: 40px;\n  display: flex;\n  position: relative;\n}\n\n.booster-graph-dot {\n  border: 2px solid var(--background);\n  outline: 2px solid var(--primary);\n  background: var(--primary);\n  z-index: 1;\n  border-radius: 50%;\n  align-self: flex-start;\n  width: 12px;\n  height: 12px;\n  margin-top: 14px;\n  position: sticky;\n  top: 12px;\n}\n\n.booster-graph-dot.is-assistant {\n  background: var(--secondary);\n  outline-color: var(--muted-foreground);\n  border-radius: 4px;\n}\n\n.booster-graph-message.is-fork .booster-graph-rail:before {\n  content: "";\n  border-top: 2px solid var(--primary);\n  border-radius: 6px;\n  position: absolute;\n  top: 20px;\n  left: 0;\n  right: 50%;\n}\n\n.booster-graph-content {\n  min-width: 0;\n  padding-bottom: 10px;\n}\n\n.booster-graph-branch-label {\n  border: 1px solid var(--border);\n  color: var(--muted-foreground);\n  border-radius: 999px;\n  align-items: center;\n  gap: 5px;\n  margin: 2px 0 8px 4px;\n  padding: 3px 8px;\n  font-size: 11px;\n  display: inline-flex;\n}\n\n.booster-mobile-back {\n  display: none;\n}\n\n.booster-dialog :is(button, input, select, summary):focus-visible, .booster-dock :is(button, summary):focus-visible {\n  outline: 2px solid var(--ring);\n  outline-offset: 2px;\n}\n\n@media (hover: none) {\n  .booster-identity-copy {\n    opacity: 1;\n  }\n}\n\n@media (max-width: 640px) {\n  .booster-reader-layout {\n    display: block;\n  }\n\n  .booster-reader-sidebar, .booster-reader-main {\n    height: 100%;\n  }\n\n  .booster-reader-sidebar {\n    display: none;\n  }\n\n  .booster-reader-list-mode .booster-reader-sidebar {\n    display: block;\n  }\n\n  .booster-reader-main {\n    padding: 0;\n  }\n\n  .booster-reader-list-mode .booster-reader-main {\n    display: none;\n  }\n\n  .booster-mobile-back {\n    color: inherit;\n    font: inherit;\n    cursor: pointer;\n    background: none;\n    border: 0;\n    align-items: center;\n    gap: 6px;\n    margin-bottom: 12px;\n    padding: 6px 0;\n    font-size: 12px;\n    display: inline-flex;\n  }\n\n  .booster-reader-chat-header {\n    flex-wrap: wrap;\n  }\n\n  .booster-dialog, .booster-dialog-wide {\n    width: calc(100vw - 16px);\n    max-height: calc(100dvh - 16px);\n  }\n\n  .booster-modal-backdrop {\n    padding: 8px;\n  }\n}\n\n.booster-archive-workspace-root {\n  z-index: 2147483645;\n  pointer-events: none;\n  position: fixed;\n  inset: 0;\n}\n\n.booster-archive-workspace {\n  border: 1px solid var(--border);\n  background: var(--background);\n  pointer-events: auto;\n  resize: none;\n  border-radius: 14px;\n  min-width: 520px;\n  min-height: 360px;\n  position: fixed;\n  overflow: hidden;\n  box-shadow: 0 22px 70px #00000052;\n}\n\n.booster-archive-workspace .booster-reader {\n  border-radius: inherit;\n  background: var(--background);\n  height: 100%;\n  overflow: hidden;\n}\n\n.booster-archive-workspace [data-archive-drag-handle] {\n  cursor: move;\n  -webkit-user-select: none;\n  user-select: none;\n  touch-action: none;\n}\n\n.booster-archive-grip {\n  color: var(--muted-foreground);\n  flex: none;\n}\n\n.booster-archive-resize {\n  z-index: 4;\n  background: linear-gradient(135deg, transparent 0 48%, var(--muted-foreground) 49% 54%, transparent 55% 64%, var(--muted-foreground) 65% 70%, transparent 71%);\n  opacity: .55;\n  cursor: nwse-resize;\n  touch-action: none;\n  border: 0;\n  width: 18px;\n  height: 18px;\n  padding: 0;\n  position: absolute;\n  bottom: 0;\n  right: 0;\n}\n\n.booster-archive-dock-button {\n  z-index: 2147483646;\n  border: 1px solid var(--primary);\n  place-items: center;\n  width: 42px;\n  height: 42px;\n  padding: 0;\n  display: grid;\n  position: fixed;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-dock-button {\n    border: 1px solid color-mix(in oklab, var(--primary) 60%, var(--border));\n  }\n}\n\n.booster-archive-dock-button {\n  background: var(--primary);\n  color: var(--primary-foreground);\n  cursor: grab;\n  pointer-events: auto;\n  touch-action: none;\n  border-radius: 10px 0 0 10px;\n  box-shadow: 0 10px 30px #00000047;\n}\n\n.booster-archive-dock-button[style*="left: 0px"] {\n  border-radius: 0 10px 10px 0;\n}\n\n.booster-archive-dock-button:active {\n  cursor: grabbing;\n}\n\n.booster-archive-dock-corner {\n  opacity: .65;\n  width: 9px;\n  height: 9px;\n  position: absolute;\n  bottom: 3px;\n  right: 3px;\n}\n\n.booster-reader-chat-actions {\n  flex-wrap: wrap;\n  justify-content: flex-end;\n  gap: 6px;\n  display: flex;\n}\n\n.booster-exchange-details {\n  border-left: 2px solid var(--border);\n  gap: 6px;\n  margin: 10px 0 10px 12px;\n  padding: 8px 0 8px 12px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-exchange-details {\n    border-left: 2px solid color-mix(in oklab, var(--border) 78%, var(--primary));\n  }\n}\n\n.booster-exchange-details-label {\n  color: var(--muted-foreground);\n  letter-spacing: .04em;\n  text-transform: uppercase;\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-markdown {\n  overflow-wrap: anywhere;\n  font-size: 13px;\n  line-height: 1.65;\n}\n\n.booster-markdown > :first-child {\n  margin-top: 0;\n}\n\n.booster-markdown > :last-child {\n  margin-bottom: 0;\n}\n\n.booster-markdown p {\n  margin: .55em 0;\n}\n\n.booster-markdown h1, .booster-markdown h2, .booster-markdown h3, .booster-markdown h4, .booster-markdown h5, .booster-markdown h6 {\n  color: var(--foreground);\n  margin: 1em 0 .45em;\n  font-weight: 700;\n  line-height: 1.3;\n}\n\n.booster-markdown h1 {\n  font-size: 1.45em;\n}\n\n.booster-markdown h2 {\n  font-size: 1.28em;\n}\n\n.booster-markdown h3 {\n  font-size: 1.14em;\n}\n\n.booster-markdown :is(ul, ol) {\n  margin: .6em 0;\n  padding-left: 1.45em;\n}\n\n.booster-markdown li {\n  margin: .22em 0;\n}\n\n.booster-markdown blockquote {\n  border-left: 3px solid var(--border);\n  color: var(--muted-foreground);\n  margin: .7em 0;\n  padding: .2em 0 .2em .9em;\n}\n\n.booster-markdown code {\n  background: var(--muted);\n  border-radius: 5px;\n  padding: .15em .35em;\n  font: .92em / 1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n}\n\n.booster-markdown pre {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  border-radius: 9px;\n  max-width: 100%;\n  margin: .75em 0;\n  padding: 11px 12px;\n  overflow: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-markdown pre {\n    background: color-mix(in oklab, var(--muted) 72%, var(--background));\n  }\n}\n\n.booster-markdown pre code {\n  white-space: pre;\n  background: none;\n  padding: 0;\n}\n\n.booster-markdown a {\n  color: var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-markdown a {\n    color: color-mix(in oklab, var(--primary) 78%, #3b82f6);\n  }\n}\n\n.booster-markdown a {\n  text-underline-offset: 2px;\n  text-decoration: underline;\n}\n\n.booster-markdown hr {\n  background: var(--border);\n  border: 0;\n  height: 1px;\n  margin: 1em 0;\n}\n\n.booster-markdown-table-wrap {\n  max-width: 100%;\n  margin: .8em 0;\n  overflow-x: auto;\n}\n\n.booster-markdown table {\n  border-collapse: collapse;\n  width: max-content;\n  min-width: 100%;\n  font-size: 12px;\n}\n\n.booster-markdown :is(th, td) {\n  border: 1px solid var(--border);\n  text-align: left;\n  vertical-align: top;\n  padding: 6px 9px;\n}\n\n.booster-markdown th {\n  background: var(--muted);\n}\n\n.booster-record {\n  border: 1px solid var(--border);\n  background: var(--card);\n  border-radius: 11px;\n  min-width: 0;\n  max-width: 100%;\n  margin-block: 7px;\n  padding: 11px 13px;\n  position: relative;\n  overflow: hidden;\n}\n\n.booster-record-user {\n  background: var(--muted);\n  margin-left: min(52px, 8%);\n}\n\n.booster-record-reasoning, .booster-record-tool_call, .booster-record-tool_result, .booster-record-internal {\n  background: var(--muted);\n  margin-block: 4px;\n  padding: 8px 10px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-record-reasoning, .booster-record-tool_call, .booster-record-tool_result, .booster-record-internal {\n    background: color-mix(in oklab, var(--muted) 45%, var(--background));\n  }\n}\n\n.booster-record-header {\n  color: var(--muted-foreground);\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 5px 10px;\n  margin-bottom: 8px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-record-header strong {\n  color: var(--foreground);\n  font-size: 11px;\n}\n\n.booster-record-internal-header {\n  justify-content: space-between;\n}\n\n.booster-record-kind {\n  align-items: center;\n  gap: 6px;\n  display: inline-flex;\n}\n\n.booster-record-expand, .booster-record-meta-button, .booster-tool-action {\n  color: var(--muted-foreground);\n  cursor: pointer;\n  background: none;\n  border: 0;\n  border-radius: 6px;\n  align-items: center;\n  gap: 4px;\n  padding: 3px 6px;\n  font: 600 10px / 1.25 inherit;\n  display: inline-flex;\n}\n\n.booster-record-expand:hover, .booster-record-meta-button:hover, .booster-tool-action:hover {\n  background: var(--muted);\n  color: var(--foreground);\n}\n\n.booster-record-meta-button {\n  margin-top: 7px;\n}\n\n.booster-reasoning-preview {\n  max-height: 76px;\n  color: var(--foreground);\n  position: relative;\n  overflow: hidden;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reasoning-preview {\n    color: color-mix(in oklab, var(--foreground) 82%, var(--muted-foreground));\n  }\n}\n\n.booster-reasoning-preview:not(.expanded):after {\n  background: linear-gradient(transparent, var(--muted));\n  height: 30px;\n  position: absolute;\n  bottom: 0;\n  left: 0;\n  right: 0;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reasoning-preview:not(.expanded):after {\n    background: linear-gradient(transparent, color-mix(in oklab, var(--muted) 45%, var(--background)));\n  }\n}\n\n.booster-reasoning-preview:not(.expanded):after {\n  content: "";\n  pointer-events: none;\n}\n\n.booster-reasoning-preview.expanded {\n  max-height: none;\n  overflow: visible;\n}\n\n.booster-reasoning-preview .booster-markdown {\n  font-size: 11px;\n  line-height: 1.55;\n}\n\n.booster-tool-row {\n  grid-template-columns: 28px minmax(0, 1fr) auto;\n  align-items: center;\n  gap: 8px;\n  display: grid;\n}\n\n.booster-tool-icon {\n  border: 1px solid var(--border);\n  object-fit: cover;\n  background: var(--background);\n  border-radius: 7px;\n  width: 28px;\n  height: 28px;\n}\n\n.booster-tool-icon-fallback {\n  color: var(--muted-foreground);\n  place-items: center;\n  display: grid;\n}\n\n.booster-tool-copy {\n  gap: 1px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-tool-copy strong {\n  color: var(--foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n.booster-tool-copy > span {\n  color: var(--muted-foreground);\n  font-size: 9px;\n}\n\n.booster-tool-copy p {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  margin: 2px 0 0;\n  font-size: 10px;\n  overflow: hidden;\n}\n\n.booster-tool-actions {\n  align-items: center;\n  gap: 2px;\n  display: flex;\n}\n\n.booster-json-viewer {\n  background: var(--background);\n  max-height: min(70vh, 620px);\n  margin: 0;\n  padding: 14px 16px 22px;\n  overflow: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-json-viewer {\n    background: color-mix(in oklab, var(--background) 86%, #0f172a);\n  }\n}\n\n.booster-json-viewer {\n  color: var(--foreground);\n  tab-size: 2;\n  white-space: pre;\n  font: 11px / 1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n}\n\n.booster-tool-expanded {\n  border-top: 1px solid var(--border);\n  margin-top: 8px;\n  padding-top: 8px;\n}\n\n.booster-tool-expanded .booster-markdown {\n  font-size: 11px;\n}\n\n.booster-tool-expanded .booster-json-viewer {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  max-height: 260px;\n  font-size: 10px;\n}\n\n.booster-internal-row {\n  width: 100%;\n  color: inherit;\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  grid-template-columns: auto minmax(0, 1fr) auto;\n  align-items: center;\n  gap: 8px;\n  padding: 0;\n  display: grid;\n}\n\n.booster-internal-row > span:first-child {\n  align-items: center;\n  gap: 5px;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-internal-preview {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 10px;\n  overflow: hidden;\n}\n\n.booster-record-modal-header {\n  border-bottom: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: flex-start;\n  gap: 14px;\n  padding: 12px 14px;\n  display: flex;\n}\n\n.booster-record-modal-header > div {\n  gap: 2px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-record-modal-header strong {\n  font-size: 13px;\n}\n\n.booster-record-modal-header span {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 10px;\n  overflow: hidden;\n}\n\n.booster-json-key {\n  color: #60a5fa;\n}\n\n.booster-json-string {\n  color: #86efac;\n}\n\n.booster-json-number {\n  color: #fbbf24;\n}\n\n.booster-json-boolean {\n  color: #c084fc;\n}\n\n.booster-json-null {\n  color: #94a3b8;\n}\n\n.booster-capture-surface {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 14px;\n  overflow: hidden;\n}\n\n.booster-capture-surface > .booster-capture-settings {\n  padding: 14px 16px 18px;\n}\n\n@media (max-width: 680px) {\n  .booster-archive-workspace {\n    border-radius: 10px;\n    min-width: 0;\n    min-height: 0;\n  }\n\n  .booster-tool-row {\n    grid-template-columns: 26px minmax(0, 1fr);\n  }\n\n  .booster-tool-actions {\n    grid-column: 2;\n    justify-content: flex-start;\n  }\n\n  .booster-reader-chat-actions {\n    justify-content: flex-start;\n    width: 100%;\n  }\n}\n\n.booster-analytics-dashboard {\n  gap: 12px;\n  display: grid;\n}\n\n.booster-analytics-header {\n  justify-content: space-between;\n  align-items: flex-start;\n  gap: 14px;\n  display: flex;\n}\n\n.booster-analytics-header > div {\n  gap: 3px;\n  display: grid;\n}\n\n.booster-analytics-header strong {\n  font-size: 14px;\n}\n\n.booster-analytics-header span {\n  max-width: 520px;\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.45;\n}\n\n.booster-analytics-reset {\n  white-space: nowrap;\n  min-height: 30px;\n  padding: 5px 8px;\n}\n\n.booster-analytics-metrics {\n  grid-template-columns: repeat(3, minmax(0, 1fr));\n  gap: 8px;\n  display: grid;\n}\n\n.booster-analytics-metrics article {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 11px;\n  gap: 2px;\n  min-width: 0;\n  padding: 10px 11px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-analytics-metrics article {\n    background: color-mix(in oklab, var(--background) 82%, var(--muted));\n  }\n}\n\n.booster-analytics-metrics :where(article > span), .booster-analytics-metrics :where(small) {\n  color: var(--muted-foreground);\n  font-size: 9px;\n  line-height: 1.35;\n}\n\n.booster-analytics-metrics strong {\n  font-variant-numeric: tabular-nums;\n  margin-top: 2px;\n  font-size: 24px;\n  line-height: 1;\n}\n\n.booster-analytics-metrics article.warning {\n  border-color: #ef4444;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-analytics-metrics article.warning {\n    border-color: color-mix(in oklab, #ef4444 45%, var(--border));\n  }\n}\n\n.booster-analytics-metrics article.warning {\n  background: #ef4444;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-analytics-metrics article.warning {\n    background: color-mix(in oklab, #ef4444 8%, var(--background));\n  }\n}\n\n.booster-analytics-flow-grid {\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 8px;\n  display: grid;\n}\n\n.booster-analytics-flow-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 11px;\n  gap: 9px;\n  padding: 11px;\n  display: grid;\n}\n\n.booster-analytics-flow-card > header {\n  justify-content: space-between;\n  align-items: center;\n  gap: 8px;\n  font-size: 11px;\n  display: flex;\n}\n\n.booster-analytics-flow-card :where(header > span) {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 5px;\n  display: inline-flex;\n}\n\n.booster-analytics-flow-card :where(header b) {\n  font-variant-numeric: tabular-nums;\n  font-size: 12px;\n}\n\n.booster-analytics-flow-row {\n  color: var(--muted-foreground);\n  grid-template-columns: minmax(88px, .9fr) minmax(80px, 1.3fr) auto;\n  align-items: center;\n  gap: 7px;\n  font-size: 9px;\n  display: grid;\n}\n\n.booster-analytics-flow-row > div {\n  background: var(--muted);\n  border-radius: 999px;\n  height: 5px;\n  overflow: hidden;\n}\n\n.booster-analytics-flow-row i {\n  border-radius: inherit;\n  background: var(--primary);\n  height: 100%;\n  display: block;\n}\n\n.booster-analytics-flow-row b {\n  min-width: 24px;\n  color: var(--foreground);\n  text-align: right;\n  font-variant-numeric: tabular-nums;\n  font-size: 10px;\n}\n\n.booster-analytics-footer {\n  background: var(--muted);\n  color: var(--muted-foreground);\n  border-radius: 9px;\n  flex-wrap: wrap;\n  justify-content: space-between;\n  gap: 8px 16px;\n  padding: 8px 10px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-analytics-footer span {\n  align-items: center;\n  gap: 5px;\n  display: inline-flex;\n}\n\n.booster-analytics-footer b {\n  color: var(--foreground);\n  font-weight: 650;\n}\n\n.booster-analytics-footer .warning {\n  color: #ef4444;\n}\n\n@media (max-width: 720px) {\n  .booster-analytics-metrics, .booster-analytics-flow-grid {\n    grid-template-columns: 1fr;\n  }\n\n  .booster-analytics-header {\n    flex-direction: column;\n  }\n}\n\n.booster-record-header {\n  min-width: 0;\n}\n\n.booster-record-header-tools {\n  align-items: center;\n  gap: 2px;\n  margin-left: auto;\n  display: inline-flex;\n}\n\n.booster-record-icon-button {\n  width: 24px;\n  height: 24px;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  background: none;\n  border: 0;\n  border-radius: 6px;\n  flex: none;\n  justify-content: center;\n  align-items: center;\n  padding: 0;\n  display: inline-flex;\n}\n\n.booster-record-icon-button:hover {\n  background: var(--muted);\n  color: var(--foreground);\n}\n\n.booster-record-edited {\n  color: var(--muted-foreground);\n  white-space: nowrap;\n  font-size: 9px;\n}\n\n.booster-record-raw-corner {\n  position: absolute;\n  top: 5px;\n  right: 5px;\n}\n\n.booster-tool-row {\n  min-width: 0;\n  max-width: 100%;\n  overflow: hidden;\n}\n\n.booster-tool-row.is-clickable {\n  cursor: pointer;\n}\n\n.booster-tool-copy, .booster-tool-actions {\n  min-width: 0;\n}\n\n.booster-tool-actions {\n  flex: none;\n}\n\n.booster-tool-action {\n  flex: none;\n  text-decoration: none;\n}\n\n.booster-tool-expanded {\n  min-width: 0;\n  max-width: 100%;\n  overflow: auto hidden;\n}\n\n.booster-internal-row {\n  min-width: 0;\n  max-width: 100%;\n  overflow: hidden;\n}\n\n.booster-internal-row.disabled {\n  cursor: default;\n  opacity: .8;\n}\n\n.booster-internal-preview {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  max-width: 100%;\n  padding-right: 2px;\n}\n\n.booster-json-modal {\n  background: var(--background);\n  flex-direction: column;\n  width: 100%;\n  min-width: 0;\n  height: 100%;\n  min-height: 0;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-json-modal .booster-json-viewer {\n  box-sizing: border-box;\n  flex: auto;\n  width: 100%;\n  min-width: 0;\n  max-width: 100%;\n  max-height: none;\n  overflow: auto;\n}\n\n.booster-dialog-wide:has(.booster-json-modal) {\n  min-width: 0;\n  min-height: 0;\n  display: flex;\n}\n\n.booster-reader-main, .booster-reader-exchanges, .booster-exchange, .booster-exchange-details {\n  min-width: 0;\n  max-width: 100%;\n}\n\n.booster-reader-main {\n  overflow-x: hidden;\n}\n\n.booster-export-status {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  border-radius: 10px;\n  grid-template-columns: auto minmax(0, 1fr) auto;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 10px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-export-status {\n    background: color-mix(in oklab, var(--muted) 52%, var(--background));\n  }\n}\n\n.booster-export-status.warning {\n  border-color: #f59e0b;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-export-status.warning {\n    border-color: color-mix(in oklab, #f59e0b 44%, var(--border));\n  }\n}\n\n.booster-export-status.warning {\n  background: #f59e0b;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-export-status.warning {\n    background: color-mix(in oklab, #f59e0b 7%, var(--background));\n  }\n}\n\n.booster-export-status > div {\n  gap: 2px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-export-status strong {\n  font-size: 10px;\n  line-height: 1.4;\n}\n\n.booster-export-status span {\n  color: var(--muted-foreground);\n  font-size: 9px;\n}\n\n.booster-export-status .booster-action-secondary {\n  white-space: nowrap;\n  min-height: 30px;\n  padding: 5px 8px;\n}\n\n.booster-dock-context > .booster-dock-history-state {\n  color: var(--muted-foreground);\n  font-size: 9px;\n  line-height: 1.35;\n}\n\n.booster-export-preferences {\n  gap: 8px;\n  display: grid;\n}\n\n.booster-export-preferences > label {\n  gap: 6px;\n  font-size: 12px;\n  font-weight: 600;\n  display: grid;\n}\n\n.booster-export-preferences > .booster-note {\n  margin: 0;\n}\n\n.booster-reader-message-jump, .booster-reader-message-jump form, .booster-export-preview-record {\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-reader-message-jump input {\n  flex: 1;\n  min-width: 160px;\n}\n\n.booster-export-preview-record > span {\n  overflow-wrap: anywhere;\n  flex: 220px;\n}\n\n.booster-message-target {\n  outline: 2px solid var(--primary);\n  outline-offset: 2px;\n  border-radius: 6px;\n}\n\n[data-archive-message] {\n  scroll-margin-block: 20px;\n}\n\n.booster-export-readiness {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  gap: 10px;\n  padding: 12px;\n  font-size: 12px;\n  display: grid;\n}\n\n.booster-export-readiness > header, .booster-export-recovery-actions {\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-export-readiness > header {\n  justify-content: space-between;\n}\n\n.booster-export-readiness dl {\n  gap: 6px;\n  margin: 0;\n  display: grid;\n}\n\n.booster-export-readiness dl > div {\n  flex-wrap: wrap;\n  justify-content: space-between;\n  gap: 6px 12px;\n  display: flex;\n}\n\n.booster-export-readiness dd {\n  text-align: end;\n  margin: 0;\n}\n\n.booster-export-readiness p {\n  margin: 0;\n}\n\n.booster-export-blockers {\n  gap: 6px;\n  margin: 0;\n  padding-inline-start: 18px;\n  display: grid;\n}\n\n.booster-export-blockers li {\n  overflow-wrap: anywhere;\n}\n\n.booster-export-progress {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  gap: 8px;\n  padding: 10px;\n  display: grid;\n}\n\n.booster-export-progress > p {\n  overflow-wrap: anywhere;\n  margin: 0;\n  font-size: 12px;\n}\n\n.booster-export-progress progress {\n  width: 100%;\n  height: 8px;\n  accent-color: var(--primary);\n  display: block;\n}\n\n.booster-export-preview-content {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  gap: 8px;\n  max-height: min(360px, 48vh);\n  padding: 10px;\n  display: grid;\n  overflow: auto;\n}\n\n.booster-export-preview-content .booster-note {\n  white-space: pre-wrap;\n  margin: 0;\n}\n\n.booster-export-preview-skeleton {\n  gap: 8px;\n  display: grid;\n}\n\n.booster-export-preview-skeleton > span {\n  background: var(--muted);\n  border-radius: 6px;\n  height: 30px;\n  display: block;\n}\n\n.booster-export-dialog input[type="text"] {\n  border: 1px solid var(--border);\n  background: var(--background);\n  width: 100%;\n  min-height: 38px;\n  color: var(--foreground);\n  font: inherit;\n  border-radius: 8px;\n  padding: 8px 10px;\n}\n\n.booster-meta-badges {\n  align-items: center;\n  gap: 2px;\n  display: inline-flex;\n}\n\n.booster-meta-badges.compact {\n  gap: 0;\n}\n\n.booster-meta-trigger {\n  width: 28px;\n  height: 28px;\n  color: var(--muted-foreground);\n  cursor: help;\n  border-radius: 8px;\n  outline: none;\n  justify-content: center;\n  align-items: center;\n  display: inline-flex;\n}\n\n.booster-meta-trigger.is-clickable {\n  cursor: pointer;\n}\n\n.booster-meta-trigger:hover, .booster-meta-trigger:focus-visible {\n  background: var(--muted);\n  color: var(--foreground);\n}\n\n.booster-meta-trigger:focus-visible {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-floating-popover {\n  z-index: 2147483647;\n  border: 1px solid var(--border, #94a3b842);\n  background: var(--popover, #202020);\n  width: max-content;\n  min-width: 190px;\n  max-width: min(420px, 100vw - 16px);\n  color: var(--popover-foreground, #f4f4f5);\n  letter-spacing: normal;\n  white-space: normal;\n  pointer-events: none;\n  border-radius: 10px;\n  margin: 0;\n  padding: 9px 10px;\n  font-family: inherit;\n  font-size: 12px;\n  font-weight: 400;\n  line-height: 1.45;\n  position: fixed;\n  inset: auto;\n  box-shadow: 0 14px 38px #0000006b;\n}\n\n.booster-floating-popover:has(.booster-message-meta-body), .booster-floating-popover:has(.booster-tool-detail-popover) {\n  border-color: #4ade8052;\n  box-shadow: 0 14px 38px #0000006b, 0 0 0 1px #22c55e0d;\n}\n\n.booster-floating-popover.is-interactive {\n  pointer-events: auto;\n}\n\n.booster-floating-popover:not(:popover-open):not(.is-open) {\n  display: none;\n}\n\n.booster-meta-lines {\n  grid-template-columns: max-content minmax(0, 1fr);\n  gap: 3px 10px;\n  display: grid;\n}\n\n.booster-meta-label {\n  color: var(--muted-foreground);\n  font-size: 10px;\n  font-weight: 600;\n}\n\n.booster-meta-value {\n  overflow-wrap: anywhere;\n  min-width: 0;\n  color: var(--popover-foreground);\n  font-variant-numeric: tabular-nums;\n}\n\n.booster-scope-popover {\n  gap: 10px;\n  min-width: 260px;\n  display: grid;\n}\n\n.booster-scope-popover > header {\n  gap: 1px;\n  display: grid;\n}\n\n.booster-scope-title {\n  max-width: 280px;\n  color: var(--foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 12px;\n  overflow: hidden;\n}\n\n.booster-scope-kind {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-scope-actions {\n  flex-wrap: wrap;\n  gap: 5px;\n  display: flex;\n}\n\n.booster-scope-actions button {\n  border: 1px solid var(--border);\n  background: var(--background);\n  min-height: 28px;\n  color: var(--foreground);\n  cursor: pointer;\n  font: inherit;\n  border-radius: 7px;\n  align-items: center;\n  gap: 5px;\n  padding: 4px 8px;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-scope-actions button:hover {\n  background: var(--muted);\n}\n\n.booster-live-tool-row {\n  width: min(100%, 48rem);\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 6px;\n  padding: 4px 0;\n  display: flex;\n}\n\n.booster-live-tool-copy {\n  flex: auto;\n  align-items: baseline;\n  gap: 6px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-live-tool-name {\n  color: var(--foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 11px;\n  font-weight: 650;\n  overflow: hidden;\n}\n\n.booster-live-tool-action-name {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 10px;\n  overflow: hidden;\n}\n\n.booster-live-tool-details {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(100%, 48rem);\n  color: var(--card-foreground);\n  border-radius: 12px;\n  margin-top: 4px;\n  padding: 10px;\n  box-shadow: 0 8px 24px #0000001f;\n}\n\n.booster-chat-save-marker {\n  background: none;\n  border-radius: 999px;\n  flex: 0 0 6px;\n  width: 6px;\n  height: 6px;\n  display: block;\n}\n\n.booster-chat-save-marker.is-enabled {\n  background: #22c55e;\n  box-shadow: 0 0 0 1px #22c55e40, 0 0 6px #22c55e61;\n}\n\n.booster-chat-save-marker.is-work {\n  background: #ef4444;\n  box-shadow: 0 0 0 1px #ef444452, 0 0 8px #ef44448c;\n}\n\n.booster-project-status-badge {\n  color: #a1a1aa;\n  background: #ffffff08;\n  border: 1px solid #94a3b852;\n  border-radius: 8px;\n  justify-content: center;\n  align-items: center;\n  width: 24px;\n  height: 24px;\n  transition: border-color .12s, background-color .12s, color .12s;\n  display: inline-flex;\n}\n\n.booster-project-status-badge.is-enabled {\n  color: #4ade80;\n  background: #22c55e14;\n  border-color: #22c55eb8;\n}\n\n.booster-project-status-badge.is-disabled {\n  color: #f87171;\n  background: #ef444412;\n  border-color: #ef444494;\n}\n\n.booster-agent-activity {\n  border: 1px solid var(--border, #94a3b838);\n  background: var(--background, #202020);\n  border-radius: 999px;\n  align-items: center;\n  gap: 6px;\n  max-width: min(100%, 520px);\n  min-height: 28px;\n  padding: 3px 8px;\n  display: inline-flex;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-agent-activity {\n    background: color-mix(in srgb, var(--background, #202020) 88%, transparent);\n  }\n}\n\n.booster-agent-activity {\n  color: var(--muted-foreground);\n  pointer-events: auto;\n  font-size: 11px;\n  line-height: 1.2;\n}\n\n.booster-agent-activity[data-phase="tool"] {\n  border-style: dashed;\n}\n\n.booster-agent-activity > svg {\n  flex: none;\n}\n\n.booster-agent-activity-phase {\n  color: var(--foreground);\n  flex: none;\n  font-weight: 600;\n}\n\n.booster-agent-activity-label {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-agent-activity-timer {\n  min-width: 3.2em;\n  color: var(--foreground);\n  font-variant-numeric: tabular-nums;\n  text-align: end;\n  flex: none;\n  margin-inline-start: auto;\n}\n\n.booster-danger-zone {\n  background: #7f1d1d14;\n  border: 1px solid #ef444473;\n  border-radius: 12px;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 12px;\n  display: flex;\n}\n\n.booster-danger-zone .booster-setting-copy > div, .booster-danger-zone .booster-setting-copy b {\n  color: #f87171;\n}\n\n.booster-destructive-button {\n  color: #fff;\n  cursor: pointer;\n  background: #b91c1c;\n  border: 1px solid #ef44448c;\n  border-radius: 8px;\n  flex: none;\n  min-height: 34px;\n  padding: 7px 12px;\n  font-size: 12px;\n  font-weight: 700;\n}\n\n.booster-destructive-button:hover:not(:disabled) {\n  background: #991b1b;\n}\n\n.booster-destructive-button:disabled {\n  opacity: .55;\n  cursor: default;\n}\n\n.booster-destructive-dialog {\n  grid-template-columns: auto minmax(0, 1fr);\n  gap: 14px;\n  padding: 22px;\n  display: grid;\n}\n\n.booster-destructive-dialog strong {\n  color: #f87171;\n  letter-spacing: .025em;\n  font-size: 17px;\n}\n\n.booster-destructive-dialog p {\n  color: var(--muted-foreground);\n  margin: 8px 0 0;\n  font-size: 12px;\n  line-height: 1.55;\n}\n\n.booster-destructive-icon {\n  color: #f87171;\n  background: #7f1d1d33;\n  border-radius: 50%;\n  justify-content: center;\n  align-items: center;\n  width: 42px;\n  height: 42px;\n  display: flex;\n}\n\n.booster-destructive-warning {\n  color: #f87171;\n  font-weight: 700;\n}\n\n.booster-destructive-actions {\n  grid-column: 1 / -1;\n  justify-content: flex-end;\n  gap: 8px;\n  padding-top: 4px;\n  display: flex;\n}\n\n.booster-meta-trigger-time {\n  color: #4ade80;\n  font-variant-numeric: tabular-nums;\n  cursor: pointer;\n  background: #22c55e17;\n  border: 1px solid #4ade806b;\n  gap: 0;\n  width: 26px;\n  min-width: 26px;\n  height: 26px;\n  padding: 0;\n}\n\n.booster-meta-trigger-time:hover, .booster-meta-trigger-time:focus-visible {\n  color: #86efac;\n  background: #22c55e29;\n  border-color: #4ade80b8;\n}\n\n.booster-meta-time-text {\n  letter-spacing: .01em;\n  font-size: 9px;\n  font-weight: 650;\n}\n\n.booster-message-meta-popover {\n  max-width: min(420px, 100vw - 16px);\n}\n\n.booster-message-meta-body {\n  gap: 12px;\n  min-width: 260px;\n  display: grid;\n}\n\n.booster-message-meta-header {\n  border-bottom: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: baseline;\n  gap: 12px;\n  padding-bottom: 7px;\n  display: flex;\n}\n\n.booster-message-meta-header strong {\n  color: var(--popover-foreground);\n  font-size: 12px;\n  font-weight: 650;\n}\n\n.booster-message-meta-header span {\n  color: #4ade80;\n  font-variant-numeric: tabular-nums;\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-meta-raw-toggle {\n  border: 1px solid var(--border);\n  width: fit-content;\n  color: var(--muted-foreground);\n  font: inherit;\n  cursor: pointer;\n  background: none;\n  border-radius: 7px;\n  padding: 4px 7px;\n}\n\n.booster-meta-raw-toggle:hover {\n  background: var(--muted);\n  color: var(--foreground);\n}\n\n.booster-message-meta-raw {\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  background: #0003;\n  border-radius: 8px;\n  max-width: 390px;\n  max-height: 260px;\n  margin: 0;\n  padding: 8px;\n  font: 10px / 1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n  overflow: auto;\n}\n\n.booster-live-tool-icon {\n  object-fit: cover;\n  border-radius: 999px;\n  flex: 0 0 16px;\n  width: 16px;\n  height: 16px;\n}\n\n.booster-tool-time-chip {\n  color: #c084fc;\n  font-variant-numeric: tabular-nums;\n  background: #7e22ce1c;\n  border: 1px solid #a855f775;\n  gap: 5px;\n  width: auto;\n  min-width: 76px;\n  padding: 0 8px;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-tool-time-chip:hover, .booster-tool-time-chip:focus-visible {\n  color: #d8b4fe;\n  background: #7e22ce30;\n  border-color: #c084fcc2;\n}\n\n.booster-agent-activity[data-phase="thinking"], .booster-agent-activity[data-phase="tool"], .booster-agent-activity[data-phase="responding"], .booster-agent-activity[data-phase="complete"] {\n  color: #4ade80;\n  background: #22c55e17;\n  border-color: #4ade807a;\n}\n\n.booster-agent-activity[data-phase="thinking"] .booster-agent-activity-phase, .booster-agent-activity[data-phase="tool"] .booster-agent-activity-phase, .booster-agent-activity[data-phase="responding"] .booster-agent-activity-phase, .booster-agent-activity[data-phase="complete"] .booster-agent-activity-phase, .booster-agent-activity[data-phase="thinking"] .booster-agent-activity-timer, .booster-agent-activity[data-phase="tool"] .booster-agent-activity-timer, .booster-agent-activity[data-phase="responding"] .booster-agent-activity-timer, .booster-agent-activity[data-phase="complete"] .booster-agent-activity-timer {\n  color: currentColor;\n}\n\n.booster-tool-inspect-trigger {\n  color: #4ade80;\n  pointer-events: auto;\n  background: #22c55e14;\n  border: 1px solid #4ade8061;\n  border-radius: 7px;\n  width: 24px;\n  height: 24px;\n}\n\n.booster-tool-inspect-trigger:hover, .booster-tool-inspect-trigger:focus-visible {\n  color: #86efac;\n  background: #22c55e26;\n  border-color: #4ade80ad;\n}\n\n.booster-tool-detail-popover {\n  gap: 10px;\n  width: min(390px, 100vw - 24px);\n  display: grid;\n}\n\n.booster-tool-detail-popover > header {\n  align-items: center;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-tool-detail-popover > header strong {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  color: var(--popover-foreground);\n  font-size: 11px;\n  display: block;\n  overflow: hidden;\n}\n\n.booster-tool-detail-popover > header span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  color: var(--muted-foreground);\n  font-size: 10px;\n  display: block;\n  overflow: hidden;\n}\n\n.booster-tool-payload {\n  gap: 5px;\n  display: grid;\n}\n\n.booster-tool-payload > strong, .booster-tool-evidence > summary {\n  color: var(--muted-foreground);\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-tool-evidence > summary {\n  cursor: pointer;\n}\n\n.booster-tool-attributes {\n  grid-template-columns: max-content minmax(0, 1fr);\n  gap: 3px 8px;\n  margin: 8px 0 0;\n  font: 9px / 1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n  display: grid;\n}\n\n.booster-tool-attributes dt {\n  color: var(--muted-foreground);\n}\n\n.booster-tool-attributes dd {\n  overflow-wrap: anywhere;\n  min-width: 0;\n  margin: 0;\n}\n\n.booster-tool-evidence pre {\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  background: #0003;\n  border-radius: 7px;\n  max-height: 180px;\n  margin: 8px 0 0;\n  padding: 7px;\n  font: 9px / 1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n  overflow: auto;\n}\n\n.booster-tool-link {\n  overflow-wrap: anywhere;\n  color: #4ade80;\n  align-items: center;\n  gap: 4px;\n  min-width: 0;\n  text-decoration: none;\n  display: inline-flex;\n}\n\n.booster-tool-link:hover {\n  color: #86efac;\n  text-decoration: underline;\n}\n\n.booster-work-mode-warning {\n  color: #fca5a5;\n  background: #ef44441a;\n  border: 1px solid #ef44448c;\n  border-radius: 999px;\n  align-items: center;\n  gap: 7px;\n  padding: 4px 9px;\n  font-family: inherit;\n  font-size: 10px;\n  line-height: 1.25;\n  display: inline-flex;\n}\n\n.booster-work-mode-warning strong {\n  color: #f87171;\n  font-weight: 750;\n}\n\n.booster-work-mode-warning > span:before {\n  content: "·";\n  color: #f87171b8;\n  margin-inline-end: 7px;\n}\n\n.booster-request-status {\n  color: #86efac;\n  font-variant-numeric: tabular-nums;\n  background: #22c55e12;\n  border: 1px solid #4ade8047;\n  border-radius: 999px;\n  align-items: center;\n  gap: 6px;\n  padding: 3px 8px;\n  font-family: inherit;\n  font-size: 10px;\n  line-height: 1.25;\n  display: inline-flex;\n}\n\n.booster-request-spinner {\n  border: 1.5px solid #4ade8047;\n  border-top-color: #4ade80;\n  border-radius: 50%;\n  flex: 0 0 11px;\n  width: 11px;\n  height: 11px;\n  animation: .9s linear infinite booster-request-spin;\n}\n\n@keyframes booster-request-spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n.booster-request-status > span {\n  align-items: center;\n  gap: 4px;\n  display: inline-flex;\n}\n\n.booster-request-status > span + span:before {\n  content: "·";\n  color: var(--muted-foreground);\n}\n\n.booster-request-status-label {\n  color: var(--muted-foreground);\n  font-weight: 500;\n}\n\n.booster-request-status strong {\n  color: #4ade80;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-request-status[data-phase="tool"] strong {\n  color: #c084fc;\n}\n\n.booster-request-status[data-phase="responding"] strong {\n  color: #86efac;\n}\n\n.booster-alert-setting-actions {\n  grid-template-columns: auto minmax(180px, 1fr);\n  align-items: center;\n  gap: 14px;\n  display: grid;\n}\n\n.booster-alert-threshold {\n  gap: 5px;\n  display: grid;\n}\n\n.booster-alert-threshold > span {\n  color: var(--muted-foreground);\n  justify-content: space-between;\n  gap: 10px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-alert-threshold b {\n  color: var(--foreground);\n  font-variant-numeric: tabular-nums;\n}\n\n.booster-alert-threshold input[type="range"] {\n  width: 100%;\n  accent-color: var(--primary);\n}\n\n.booster-tool-path {\n  max-width: 280px;\n  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n  font-size: 9px;\n}\n\n.booster-reader-pinned {\n  border-bottom: 1px solid var(--border);\n  background: var(--background);\n  flex: none;\n  min-width: 0;\n  max-height: 52%;\n  padding: 12px 20px 10px;\n  overflow: auto;\n}\n\n.booster-reader-reading-surface {\n  flex: 1 1 0;\n  min-width: 0;\n  min-height: 0;\n  position: relative;\n}\n\n.booster-reader-scroll {\n  scrollbar-gutter: stable;\n  overscroll-behavior: contain;\n  min-width: 0;\n  height: 100%;\n  padding: 18px 20px 30px;\n  overflow: hidden auto;\n}\n\n.booster-reader-chat-header h2 {\n  overflow-wrap: anywhere;\n  font-size: 16px;\n}\n\n.booster-reader-chat-actions {\n  justify-content: flex-start;\n  margin-top: 9px;\n}\n\n.booster-reader-find {\n  margin-top: 8px;\n}\n\n.booster-reader-find input {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 100%;\n  min-width: 0;\n  color: var(--foreground);\n  font: inherit;\n  border-radius: 8px;\n  padding: 8px 10px;\n  font-size: 12px;\n  display: block;\n}\n\n.booster-reader-chat-list > button span {\n  text-overflow: ellipsis;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-reader-chat-list > button.is-branch {\n  border-inline-start: 2px solid var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reader-chat-list > button.is-branch {\n    border-inline-start: 2px solid color-mix(in oklab, var(--primary) 35%, transparent);\n  }\n}\n\n.booster-reader-branch-icon {\n  opacity: .66;\n  flex: none;\n}\n\n.booster-reader-loading {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 8px;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-reader-older-loading {\n  z-index: 2;\n  border: 1px solid var(--border);\n  background: var(--card);\n  color: var(--foreground);\n  white-space: nowrap;\n  pointer-events: none;\n  border-radius: 100px;\n  align-items: center;\n  gap: 7px;\n  padding: 8px 12px;\n  font-size: 11px;\n  display: flex;\n  position: absolute;\n  inset: 6px auto auto 50%;\n  transform: translateX(-50%);\n  box-shadow: 0 3px 12px #0000001f;\n}\n\n.booster-reader-spinner {\n  flex: none;\n  animation: .9s linear infinite booster-archive-spin;\n}\n\n@keyframes booster-archive-spin {\n  to {\n    rotate: 360deg;\n  }\n}\n\n@media (prefers-reduced-motion: reduce) {\n  .booster-reader-spinner {\n    animation: none;\n  }\n}\n\n@media (max-width: 640px) {\n  .booster-reader-pinned {\n    padding: 10px 12px;\n  }\n\n  .booster-reader-scroll {\n    padding: 12px 12px 24px;\n  }\n}\n\n.booster-reader-reading-surface > .booster-reader-scroll {\n  flex: auto;\n  min-width: 0;\n}\n\n.booster-reader-map {\n  border-left: 1px solid var(--border);\n  background: var(--card);\n  flex-direction: column;\n  flex: 0 0 108px;\n  order: 2;\n  align-items: center;\n  width: 108px;\n  padding: 7px 3px;\n  display: flex;\n}\n\n.booster-reader-map-track {\n  background: linear-gradient(var(--border), var(--border)) center / 2px 100% no-repeat;\n  flex: 1;\n  width: 100%;\n  min-height: 0;\n  position: relative;\n}\n\n.booster-reader-map-node {\n  left: calc(18px + min(var(--map-lane, 0), 3) * 23px);\n  border: 1px solid var(--background);\n  background: var(--muted-foreground);\n  cursor: pointer;\n  z-index: 1;\n  border-radius: 3px;\n  width: 8px;\n  height: 8px;\n  padding: 0;\n  position: absolute;\n  transform: translate(-50%, -50%);\n}\n\n.booster-reader-map-node.is-user {\n  background: var(--primary);\n  border-radius: 50%;\n}\n\n.booster-reader-map-node.is-fork {\n  width: 12px;\n  height: 12px;\n  box-shadow: 0 0 0 2px var(--primary);\n}\n\n.booster-reader-map-node:hover, .booster-reader-map-node:focus-visible, .booster-reader-map-node.is-near {\n  outline: 1px solid var(--ring);\n  z-index: 4;\n  width: 13px;\n  height: 13px;\n}\n\n.booster-reader-map-position {\n  border: 1px solid var(--ring);\n  background: var(--primary);\n  height: 19px;\n  position: absolute;\n  left: 0;\n  right: 0;\n  transform: translateY(-50%);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reader-map-position {\n    background: color-mix(in oklab, var(--primary) 16%, transparent);\n  }\n}\n\n.booster-reader-map-position {\n  pointer-events: none;\n  z-index: 0;\n  border-radius: 6px;\n}\n\n.booster-reader-map-end {\n  color: var(--foreground);\n  cursor: pointer;\n  background: none;\n  border: 0;\n  font-size: 15px;\n}\n\n.booster-reader-pinned {\n  max-height: 35%;\n  padding: 8px 12px;\n}\n\n.booster-reader-summary {\n  align-items: center;\n  margin-top: 4px;\n}\n\n.booster-reader-coverage {\n  align-items: center;\n  gap: 5px;\n  display: inline-flex;\n}\n\n.booster-reader-project-label {\n  color: var(--muted-foreground);\n  font-weight: 400;\n}\n\n.booster-reader-chat-actions {\n  margin-top: 4px;\n}\n\n.booster-reader-chat-actions .booster-action-secondary {\n  padding: 5px 8px;\n}\n\n.booster-reader-heading {\n  justify-content: center;\n}\n\n.booster-reader-exchanges {\n  gap: 12px;\n}\n\n.booster-reader-map-node.is-fork:after {\n  content: "";\n  width: calc(min(var(--map-lane, 0), 3) * 23px);\n  border-top: 2px solid var(--primary);\n  position: absolute;\n  top: 50%;\n  right: 80%;\n}\n\n.booster-reader-loading {\n  justify-content: center;\n  min-height: 130px;\n  font-size: 13px;\n}\n\n.booster-reader-map-node {\n  transition: top .1s ease-out, width .12s ease-out, height .12s ease-out;\n}\n\n.booster-reader-map-node:hover:before, .booster-reader-map-node:focus-visible:before {\n  content: attr(data-preview);\n  z-index: 12;\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 240px;\n  min-width: 170px;\n  max-width: min(240px, 60vw);\n  color: var(--foreground);\n  white-space: normal;\n  text-align: left;\n  pointer-events: none;\n  border-radius: 8px;\n  padding: 10px 12px;\n  font-size: 12px;\n  font-weight: 400;\n  line-height: 1.45;\n  position: absolute;\n  top: -8px;\n  right: calc(100% + 15px);\n  box-shadow: 0 7px 24px oklab(0% none none / .18);\n}\n\n.booster-reader .booster-section-header {\n  min-height: 42px;\n  padding-block: 6px;\n}\n\n.booster-reader-heading {\n  gap: 7px;\n}\n\n.booster-reader-heading strong {\n  font-size: 12px;\n}\n\n.booster-reader-heading p {\n  opacity: .7;\n  margin: 0;\n  font-size: 10px;\n}\n\n.booster-reader-older-loading {\n  border-radius: 10px;\n  font-size: 12px;\n  inset: 50% auto auto 50%;\n}\n\n.booster-reader-map-links {\n  pointer-events: none;\n  width: 100%;\n  height: 100%;\n  position: absolute;\n  inset: 0;\n  overflow: visible;\n}\n\n.booster-reader-map-links path {\n  fill: none;\n  stroke: var(--primary);\n  stroke-width: 1.5px;\n  vector-effect: non-scaling-stroke;\n  opacity: .58;\n}\n\n.booster-reader-fork-choices {\n  flex-wrap: wrap;\n  gap: 6px;\n  max-height: 115px;\n  margin-top: 6px;\n  display: flex;\n  overflow: auto;\n}\n\n.booster-reader-fork-group {\n  border: 1px solid var(--border);\n  border-radius: 7px;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 5px;\n  padding: 5px 8px;\n  font-size: 11px;\n  display: flex;\n}\n\n.booster-reader-fork-group > span {\n  color: var(--muted-foreground);\n  font-weight: 600;\n}\n\n.booster-reader-fork-choice {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  background: var(--secondary);\n  border: 1px solid var(--border);\n  cursor: pointer;\n  border-radius: 6px;\n  max-width: 180px;\n  padding: 4px 6px;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n.booster-reader-fork-choice:hover, .booster-reader-fork-choice:focus-visible {\n  border-color: var(--ring);\n}\n\n.booster-reader-map-track {\n  background: none;\n}\n\n.booster-reader-map-links path {\n  stroke-width: 2.5px;\n  opacity: .95;\n}\n\n.booster-reader-map-node.is-fork {\n  background: var(--primary);\n  box-shadow: 0 0 0 3px var(--card), 0 0 0 5px var(--primary);\n}\n\n.booster-reader-map-node.is-fork:after {\n  display: none;\n}\n\n@media (max-width: 700px) {\n  .booster-reader-map {\n    flex-basis: 88px;\n    width: 88px;\n  }\n\n  .booster-reader-map-node {\n    left: calc(12px + min(var(--map-lane, 0), 3) * 19px);\n  }\n}\n\n.booster-reader-map-warning {\n  border: 1px solid var(--border);\n  width: 19px;\n  height: 19px;\n  color: var(--foreground);\n  text-align: center;\n  cursor: help;\n  border-radius: 50%;\n  font-size: 12px;\n}\n\n.booster-archive-flow-graph {\n  scrollbar-gutter: stable;\n  overflow-x: auto;\n}\n\n.booster-gitgraph-content {\n  width: max-content;\n  min-width: 0;\n  padding: 4px 8px 10px;\n}\n\n.booster-gitgraph-segment {\n  width: max-content;\n}\n\n.booster-gitgraph-gap {\n  border-left: 2px dashed var(--border);\n  height: 21px;\n  color: var(--muted-foreground);\n  padding: 1px 9px;\n  font-size: 13px;\n  line-height: 20px;\n}\n\n.booster-gitgraph-segment-canvas svg g[data-archive-graph-node] {\n  cursor: pointer;\n  outline: none;\n}\n\n.booster-gitgraph-segment-canvas svg g[data-archive-graph-node]:is(:hover, :focus-visible) > use {\n  filter: drop-shadow(0 0 3px var(--ring));\n}\n\n.booster-gitgraph-segment-canvas svg g[data-archive-graph-node][aria-current="true"] > use {\n  filter: drop-shadow(0 0 3px var(--foreground));\n}\n\n.booster-reader-reading-surface {\n  display: block;\n}\n\n.booster-reader-reading-surface > .booster-reader-scroll {\n  width: 100%;\n  height: 100%;\n}\n\n.booster-reader-history-toggle.active {\n  background: var(--muted);\n  border-color: var(--ring);\n}\n\n.booster-archive-flow-graph {\n  z-index: 5;\n  order: unset;\n  overscroll-behavior: contain;\n  border: 1px solid var(--border);\n  background: var(--background);\n  scrollbar-gutter: stable;\n  border-radius: 12px;\n  flex: none;\n  width: min(360px, 100% - 16px);\n  max-width: none;\n  height: auto;\n  display: block;\n  position: absolute;\n  inset: 8px 8px 8px auto;\n  overflow: hidden auto;\n  box-shadow: 0 10px 32px #00000047;\n}\n\n.booster-history-header {\n  z-index: 3;\n  border-bottom: 1px solid var(--border);\n  background: var(--background);\n  justify-content: space-between;\n  align-items: flex-start;\n  gap: 10px;\n  min-width: 0;\n  padding: 15px 14px 10px;\n  display: flex;\n  position: sticky;\n  top: 0;\n}\n\n.booster-history-header > div {\n  min-width: 0;\n}\n\n.booster-history-heading {\n  color: var(--foreground);\n  font-size: 14px;\n  font-weight: 650;\n  line-height: 20px;\n}\n\n.booster-history-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-history-close {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 28px;\n  height: 28px;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  border-radius: 7px;\n  flex: 0 0 28px;\n  place-items: center;\n  font-size: 19px;\n  display: grid;\n}\n\n.booster-history-close:hover {\n  color: var(--foreground);\n  background: var(--muted);\n}\n\n.booster-history-state {\n  color: var(--foreground);\n  align-items: center;\n  gap: 7px;\n  padding: 12px 14px 0;\n  font-size: 11px;\n  font-weight: 550;\n  display: flex;\n}\n\n.booster-history-state-dot {\n  background: var(--primary);\n  border-radius: 50%;\n  flex: 0 0 7px;\n  width: 7px;\n  height: 7px;\n}\n\n.booster-history-state-dot.is-unverified {\n  background: var(--muted-foreground);\n}\n\n.booster-history-range {\n  color: var(--muted-foreground);\n  font-variant-numeric: tabular-nums;\n  white-space: nowrap;\n  margin-left: auto;\n  font-weight: 400;\n}\n\n.booster-history-explainer {\n  color: var(--muted-foreground);\n  margin: 6px 14px 0;\n  font-size: 11px;\n  line-height: 1.45;\n}\n\n.booster-history-evidence {\n  background: var(--muted);\n  color: var(--muted-foreground);\n  border-radius: 6px;\n  margin: 10px 14px 2px;\n  padding: 7px 9px;\n  font-size: 10px;\n}\n\n.booster-gitgraph-content {\n  width: 100%;\n  min-width: 0;\n  min-height: 0;\n  padding: 12px 9px 16px;\n  display: block;\n}\n\n.booster-gitgraph-segment {\n  width: 100%;\n  position: relative;\n}\n\n.booster-gitgraph-segment-canvas {\n  min-width: 0;\n}\n\n.booster-gitgraph-segment-labels {\n  pointer-events: none;\n  height: 100%;\n  position: absolute;\n  inset: 0 8px 0 80px;\n}\n\n.booster-graph-message {\n  width: 100%;\n  height: 28px;\n  color: var(--foreground);\n  text-align: left;\n  cursor: pointer;\n  pointer-events: auto;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 5px;\n  flex-direction: column;\n  justify-content: center;\n  gap: 1px;\n  padding: 1px 7px;\n  display: flex;\n  position: absolute;\n  right: 0;\n}\n\n.booster-graph-message:hover, .booster-graph-message:focus-visible {\n  border-color: var(--border);\n  background: var(--muted);\n}\n\n.booster-graph-message[aria-current="true"] {\n  background: var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-graph-message[aria-current="true"] {\n    background: color-mix(in oklab, var(--primary) 12%, var(--card));\n  }\n}\n\n.booster-graph-message[aria-current="true"] {\n  border-color: var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-graph-message[aria-current="true"] {\n    border-color: color-mix(in oklab, var(--primary) 35%, var(--border));\n  }\n}\n\n.booster-graph-message-role {\n  color: var(--muted-foreground);\n  font-size: 9px;\n  line-height: 12px;\n}\n\n.booster-graph-message-preview {\n  width: 100%;\n  color: var(--foreground);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  font-size: 11px;\n  line-height: 14px;\n  overflow: hidden;\n}\n\n.booster-history-list {\n  flex-direction: column;\n  gap: 2px;\n  padding: 12px 9px 14px;\n  display: flex;\n}\n\n.booster-history-list-row {\n  width: 100%;\n  min-height: 48px;\n  color: var(--foreground);\n  text-align: left;\n  cursor: pointer;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 8px;\n  align-items: stretch;\n  gap: 10px;\n  padding: 6px 8px;\n  display: flex;\n}\n\n.booster-history-list-row:hover, .booster-history-list-row:focus-visible {\n  background: var(--muted);\n  border-color: var(--border);\n}\n\n.booster-history-list-row[aria-current="true"] {\n  background: var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-history-list-row[aria-current="true"] {\n    background: color-mix(in oklab, var(--primary) 10%, var(--card));\n  }\n}\n\n.booster-history-list-row[aria-current="true"] {\n  border-color: var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-history-list-row[aria-current="true"] {\n    border-color: color-mix(in oklab, var(--primary) 32%, var(--border));\n  }\n}\n\n.booster-history-list-rail {\n  flex: 0 0 12px;\n  justify-content: center;\n  padding-top: 7px;\n  display: flex;\n}\n\n.booster-history-list-dot {\n  border: 2px solid var(--muted-foreground);\n  border-radius: 50%;\n  width: 8px;\n  height: 8px;\n}\n\n.booster-history-list-dot.is-user {\n  background: var(--primary);\n  border-color: var(--primary);\n}\n\n.booster-history-list-copy {\n  flex-direction: column;\n  flex: 1;\n  gap: 3px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-history-list-meta {\n  color: var(--muted-foreground);\n  font-size: 10px;\n  line-height: 13px;\n}\n\n.booster-history-list-preview {\n  -webkit-line-clamp: 2;\n  overflow-wrap: anywhere;\n  -webkit-box-orient: vertical;\n  font-size: 11px;\n  line-height: 1.4;\n  display: -webkit-box;\n  overflow: hidden;\n}\n\n.booster-history-footer {\n  z-index: 3;\n  border-top: 1px solid var(--border);\n  background: var(--background);\n  justify-content: space-between;\n  gap: 8px;\n  padding: 10px 12px;\n  display: flex;\n  position: sticky;\n  bottom: 0;\n}\n\n.booster-history-footer button {\n  border: 1px solid var(--border);\n  background: var(--card);\n  color: var(--foreground);\n  font: inherit;\n  cursor: pointer;\n  border-radius: 7px;\n  padding: 6px 10px;\n  font-size: 11px;\n}\n\n.booster-history-footer button:disabled {\n  opacity: .35;\n  cursor: not-allowed;\n}\n\n.booster-history-close:focus-visible, .booster-history-footer button:focus-visible, .booster-history-list-row:focus-visible, .booster-graph-message:focus-visible {\n  outline: 2px solid var(--ring);\n  outline-offset: 2px;\n}\n\n@media (max-width: 700px) {\n  .booster-archive-flow-graph {\n    width: 100%;\n    box-shadow: none;\n    scrollbar-gutter: auto;\n    border: 0;\n    border-radius: 0;\n    inset: 0;\n  }\n\n  .booster-history-header {\n    padding-right: 16px;\n  }\n\n  .booster-history-state {\n    flex-wrap: wrap;\n  }\n\n  .booster-history-range {\n    text-align: right;\n    flex: 100%;\n  }\n}\n\n.booster-reader {\n  position: relative;\n}\n\n.booster-reader-heading {\n  justify-content: flex-start;\n  min-width: 0;\n}\n\n.booster-reader-heading > div {\n  min-width: 0;\n}\n\n.booster-reader-heading strong {\n  line-height: 1.25;\n  display: block;\n}\n\n.booster-reader > .booster-section-header > .booster-header-actions {\n  flex: none;\n  gap: 6px;\n}\n\n.booster-reader-tools {\n  position: relative;\n}\n\n.booster-reader-tools-menu {\n  z-index: 12;\n  border: 1px solid var(--border);\n  background: var(--popover, var(--card));\n  border-radius: 10px;\n  min-width: 222px;\n  padding: 5px;\n  display: grid;\n  position: absolute;\n  top: calc(100% + 8px);\n  right: 0;\n  box-shadow: 0 12px 30px #00000047;\n}\n\n.booster-reader-tools-menu button {\n  width: 100%;\n  color: var(--foreground);\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n  background: none;\n  border: 0;\n  border-radius: 7px;\n  align-items: center;\n  gap: 9px;\n  padding: 10px 12px;\n  font-size: 12px;\n  line-height: 1.35;\n  display: flex;\n}\n\n.booster-reader-tools-menu button:hover, .booster-reader-tools-menu button:focus-visible {\n  background: var(--accent);\n}\n\n.booster-maintenance-backdrop {\n  z-index: 18;\n  background: #000000b3;\n  justify-content: center;\n  align-items: center;\n  min-width: 0;\n  padding: clamp(12px, 3vw, 28px);\n  display: flex;\n  position: absolute;\n  inset: 0;\n}\n\n.booster-maintenance-widget {\n  border: 1px solid var(--border);\n  background: var(--background);\n  width: min(100%, 570px);\n  min-height: 0;\n  max-height: min(700px, 100%);\n  color: var(--foreground);\n  font: inherit;\n  border-radius: 14px;\n  flex-direction: column;\n  display: flex;\n  overflow: hidden;\n  box-shadow: 0 24px 70px #00000059;\n}\n\n.booster-maintenance-heading {\n  border-bottom: 1px solid var(--border);\n  flex: none;\n  justify-content: space-between;\n  align-items: center;\n  gap: 14px;\n  padding: 15px 18px;\n  display: flex;\n}\n\n.booster-maintenance-title {\n  align-items: center;\n  gap: 11px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-maintenance-title > div {\n  min-width: 0;\n}\n\n.booster-maintenance-title h2 {\n  margin: 0;\n  font-size: 16px;\n  font-weight: 650;\n  line-height: 1.35;\n}\n\n.booster-maintenance-title p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-maintenance-content {\n  overscroll-behavior: contain;\n  scrollbar-gutter: stable;\n  align-content: start;\n  gap: 14px;\n  min-height: 0;\n  padding: 16px 18px;\n  display: grid;\n  overflow: hidden auto;\n}\n\n.booster-maintenance-stats {\n  grid-template-columns: repeat(3, minmax(0, 1fr));\n  gap: 8px;\n  display: grid;\n}\n\n.booster-maintenance-stats > div {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  border-radius: 9px;\n  gap: 5px;\n  min-width: 0;\n  padding: 11px;\n  display: grid;\n}\n\n.booster-maintenance-stats span {\n  color: var(--muted-foreground);\n  font-size: 10px;\n  line-height: 1.4;\n}\n\n.booster-maintenance-stats strong {\n  font-variant-numeric: tabular-nums;\n  font-size: 20px;\n  font-weight: 650;\n}\n\n.booster-maintenance-section {\n  border: 1px solid var(--border);\n  border-radius: 10px;\n  gap: 11px;\n  min-width: 0;\n  padding: 15px;\n  display: grid;\n}\n\n.booster-maintenance-section-title {\n  align-items: center;\n  gap: 9px;\n  display: flex;\n}\n\n.booster-maintenance-section h3 {\n  margin: 0;\n  font-size: 13px;\n  font-weight: 650;\n}\n\n.booster-maintenance-section p, .booster-maintenance-result p, .booster-maintenance-progress p {\n  color: var(--muted-foreground);\n  overflow-wrap: anywhere;\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.5;\n}\n\n.booster-maintenance-section .booster-maintenance-warning {\n  color: var(--foreground);\n  border-left: 2px solid #d97706;\n  padding-left: 10px;\n}\n\n.booster-maintenance-widget .booster-maintenance-check {\n  min-width: 0;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  align-items: flex-start;\n  gap: 10px;\n  font-size: 11px;\n  line-height: 1.5;\n  display: flex;\n}\n\n.booster-maintenance-widget .booster-maintenance-check input {\n  width: 16px;\n  height: 16px;\n  min-height: 16px;\n  accent-color: var(--primary);\n  flex: 0 0 16px;\n  margin: 1px 0 0;\n  padding: 0;\n}\n\n.booster-maintenance-actions {\n  flex-wrap: wrap;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-maintenance-actions button {\n  flex: 170px;\n  min-width: 0;\n}\n\n.booster-maintenance-actions button small {\n  opacity: .8;\n  font-size: 10px;\n  display: block;\n}\n\n.booster-maintenance-section > button {\n  justify-self: start;\n  max-width: 100%;\n}\n\n.booster-maintenance-loading, .booster-maintenance-progress, .booster-maintenance-result {\n  border: 1px solid var(--border);\n  border-radius: 9px;\n  align-items: flex-start;\n  gap: 10px;\n  min-width: 0;\n  padding: 12px;\n  font-size: 12px;\n  line-height: 1.5;\n  display: flex;\n}\n\n.booster-maintenance-result svg, .booster-maintenance-progress svg {\n  flex: none;\n}\n\n.booster-maintenance-result strong, .booster-maintenance-progress strong {\n  margin-bottom: 3px;\n  font-size: 12px;\n  display: block;\n}\n\n.booster-maintenance-error {\n  color: var(--foreground);\n  overflow-wrap: anywhere;\n  border: 1px solid #c2410c;\n  border-radius: 8px;\n  margin: 0;\n  padding: 10px;\n  font-size: 12px;\n}\n\n.booster-maintenance-footer {\n  border-top: 1px solid var(--border);\n  flex: none;\n  justify-content: flex-end;\n  gap: 8px;\n  padding: 12px 18px;\n  display: flex;\n}\n\n@media (max-width: 620px) {\n  .booster-maintenance-backdrop {\n    padding: 8px;\n  }\n\n  .booster-maintenance-heading, .booster-maintenance-content {\n    padding: 12px;\n  }\n\n  .booster-maintenance-stats strong {\n    font-size: 17px;\n  }\n\n  .booster-maintenance-stats > div {\n    padding: 8px;\n  }\n\n  .booster-reader > .booster-section-header {\n    padding: 8px 10px;\n  }\n}\n\n.booster-maintenance-owner-list {\n  gap: 8px;\n  max-height: 290px;\n  display: grid;\n  overflow-y: auto;\n}\n\n.booster-maintenance-owner-row {\n  border: 1px solid var(--border);\n  cursor: pointer;\n  border-radius: 8px;\n  align-items: flex-start;\n  gap: 10px;\n  padding: 10px;\n  display: flex;\n}\n\n.booster-maintenance-owner-row > input[type="checkbox"] {\n  width: 16px;\n  height: 16px;\n  accent-color: var(--primary);\n  flex: 0 0 16px;\n  margin: 2px 0 0;\n  padding: 0;\n}\n\n.booster-maintenance-owner-description {\n  gap: 4px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-maintenance-owner-description > strong {\n  overflow-wrap: anywhere;\n  font-size: 12px;\n}\n\n.booster-maintenance-owner-description > span, .booster-maintenance-owner-caution {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.45;\n}\n\n.booster-maintenance-owner-description details {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.booster-maintenance-owner-description summary {\n  cursor: pointer;\n}\n\n.booster-maintenance-owner-description code {\n  overflow-wrap: anywhere;\n  margin-top: 5px;\n  font: 10px / 1.4 ui-monospace, monospace;\n  display: block;\n}\n\n.booster-maintenance-owner-description small {\n  margin-top: 6px;\n  display: block;\n}\n\n.booster-maintenance-link {\n  color: var(--foreground);\n  font: inherit;\n  cursor: pointer;\n  background: none;\n  border: 0;\n  justify-self: start;\n  padding: 0;\n  font-size: 11px;\n  text-decoration: underline;\n}\n\n.booster-maintenance-link:disabled {\n  opacity: .5;\n  cursor: not-allowed;\n}\n\n.booster-export-disclosure {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  padding: 10px 12px;\n  font-size: 12px;\n}\n\n.booster-export-disclosure > summary {\n  cursor: pointer;\n  font-weight: 600;\n}\n\n.booster-export-disclosure > summary small {\n  color: var(--muted-foreground);\n  margin-inline-start: 8px;\n  font-weight: 400;\n}\n\n.booster-export-disclosure[open] > section, .booster-export-disclosure[open] > label, .booster-export-disclosure[open] > p {\n  margin-block-start: 12px;\n}\n\n.booster-maintenance-backup-tools > summary {\n  cursor: pointer;\n  font-weight: 600;\n}\n\n.booster-maintenance-backup-tools > p {\n  margin-block: 10px;\n}\n\n.booster-maintenance-backup-restore {\n  gap: 12px;\n  margin-block-start: 14px;\n  display: grid;\n}\n\n.booster-maintenance-backup-restore > label {\n  gap: 8px;\n  display: grid;\n}\n\n.booster-maintenance-backup-restore input[type="file"] {\n  max-width: 100%;\n}\n\n.booster-control-embedded {\n  box-shadow: none;\n  background: none;\n  border: 0;\n  width: 100%;\n  max-width: none;\n}\n\n.booster-control-embedded > .booster-settings-layout {\n  min-height: 0;\n  max-height: none;\n}\n\n.booster-chatgpt-panel {\n  flex-direction: column;\n  gap: 10px;\n  width: 100%;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-chatgpt-panel > .booster-dock-context {\n  border: 1px solid var(--border);\n  background: var(--card);\n  border-radius: 10px;\n  gap: 7px;\n}\n\n.booster-chatgpt-panel .booster-dock-context-info {\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 6px 16px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-chatgpt-panel .booster-dock-context-info .booster-identity {\n  min-width: 0;\n  max-width: 100%;\n}\n\n.booster-chatgpt-panel .booster-capture-shortcut {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  width: fit-content;\n  min-height: 32px;\n  padding-inline: 8px;\n  font-size: 12px;\n}\n\n.booster-chatgpt-panel > .booster-export-recovery-actions {\n  border-bottom: 1px solid var(--border);\n  min-width: 0;\n  padding-block: 5px;\n}\n\n.booster-chatgpt-panel > .booster-export-recovery-actions > button, .booster-chatgpt-panel > .booster-export-recovery-actions > .booster-reader-tools > button {\n  justify-content: center;\n  align-items: center;\n  gap: 6px;\n  min-height: 34px;\n  display: inline-flex;\n}\n\n.booster-chatgpt-panel > .booster-reader, .booster-chatgpt-panel > .booster-capture-surface {\n  min-width: 0;\n}\n\n@media (max-width: 600px) {\n  .booster-chatgpt-panel > .booster-export-recovery-actions {\n    flex-wrap: wrap;\n  }\n\n  .booster-chatgpt-panel > .booster-export-recovery-actions > button {\n    flex: auto;\n  }\n\n  .booster-chatgpt-panel .booster-reader-tools-menu {\n    min-width: min(260px, 85vw);\n    right: 0;\n  }\n}\n\n.booster-export-presets {\n  border: 1px solid var(--border);\n  border-radius: 10px;\n  gap: 8px;\n  min-width: 0;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-export-presets > strong {\n  font-size: 13px;\n}\n\n.booster-export-presets .booster-export-recovery-actions {\n  flex-wrap: wrap;\n}\n\n.booster-export-presets .booster-export-recovery-actions > button {\n  white-space: normal;\n  overflow-wrap: anywhere;\n  max-width: 100%;\n  min-height: 34px;\n}\n\n.booster-export-presets button[aria-pressed="true"] {\n  background: var(--accent);\n  color: var(--accent-foreground);\n  border-color: var(--ring);\n}\n\n@media (max-width: 560px) {\n  .booster-export-presets {\n    padding: 8px;\n  }\n\n  .booster-export-presets .booster-export-recovery-actions > button {\n    flex: 130px;\n  }\n}\n\n@property --tw-rotate-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-z {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-space-y-reverse {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-border-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-leading {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-font-weight {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ordinal {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-slashed-zero {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-figure {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-spacing {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-fraction {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-inset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-ring-inset {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-offset-width {\n  syntax: "<length>";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-ring-offset-color {\n  syntax: "*";\n  inherits: false;\n  initial-value: #fff;\n}\n\n@property --tw-ring-offset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-outline-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-blur {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-brightness {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-contrast {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-grayscale {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-hue-rotate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-invert {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-opacity {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-saturate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-sepia {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-drop-shadow-size {\n  syntax: "*";\n  inherits: false\n}\n';
   let sharedSheet;
   let constructedSheetsUnavailable = false;
   function boosterStyleSheet() {
@@ -27928,10 +27924,10 @@
   const SEARCH_ACTIVITY_HEADER_SELECTOR = '[class~="group/activity-header"]';
   const TURN_ACTIONS_SELECTOR = ".turn-action-controls";
   const WORK_SUBAGENT_ACTIVITY_SELECTOR = '[data-testid="chatgpt-subagent-activity"]';
-  function parseChatGptWorkSubagentActivityText(text2) {
-    if (/начал\(-и\) работу|started work(?:ing)?/i.test(text2)) return "working";
-    if (/завершил\(-и\) работу|completed work|finished work/i.test(text2)) return "done";
-    if (/прерван|остановлен|interrupted|cancelled|canceled/i.test(text2)) return "interrupted";
+  function parseChatGptWorkSubagentActivityText(text) {
+    if (/начал\(-и\) работу|started work(?:ing)?/i.test(text)) return "working";
+    if (/завершил\(-и\) работу|completed work|finished work/i.test(text)) return "done";
+    if (/прерван|остановлен|interrupted|cancelled|canceled/i.test(text)) return "interrupted";
     return "unknown";
   }
   function chatGptWorkSubagentUsageCount(root = document) {
@@ -27948,8 +27944,8 @@
   }
   function chatGptWorkSubagentActivity(root = document) {
     return includeSelf(root, WORK_SUBAGENT_ACTIVITY_SELECTOR).flatMap((element) => {
-      const text2 = (element.textContent ?? "").trim();
-      const status = parseChatGptWorkSubagentActivityText(text2);
+      const text = (element.textContent ?? "").trim();
+      const status = parseChatGptWorkSubagentActivityText(text);
       if (status === "unknown") return [];
       const displayName = element.querySelector('[role="button"]')?.textContent?.trim() || null;
       return [{ displayName, status }];
@@ -28375,8 +28371,8 @@
   function structuredPayloads(element) {
     const values = /* @__PURE__ */ new Set();
     for (const node of element.querySelectorAll("pre, code, [data-json], [data-payload]")) {
-      const text2 = compact$1(node.textContent ?? "");
-      if (text2.length >= 2) values.add(text2);
+      const text = compact$1(node.textContent ?? "");
+      if (text.length >= 2) values.add(text);
     }
     for (const key of ["data-json", "data-payload"]) {
       const value = element.getAttribute(key);
@@ -28385,13 +28381,13 @@
     return [...values].slice(0, 8);
   }
   function parseStreamingToolStatus(value) {
-    const text2 = compact$1(value);
-    if (!text2) return null;
-    const query = text2.match(
+    const text = compact$1(value);
+    if (!text) return null;
+    const query = text.match(
       /(?:поиск по запросу|search(?:ing)?(?: the web)? for)\s*[«“"]([^»”"]+)[»”"]/i
     )?.[1] ?? null;
     if (query) return { name: "web.search", payload: { query } };
-    return { name: "tool.activity", payload: { status: text2 } };
+    return { name: "tool.activity", payload: { status: text } };
   }
   function streamingStatusTool(element) {
     if (!element.matches("[data-streaming-response-status]")) return null;
@@ -28405,7 +28401,7 @@
     if (!isInsideConversationAssistantTurn(element)) return { score: 0, signals: [] };
     const signals = ["assistant conversation turn"];
     let score = 2;
-    const text2 = compact$1(element.textContent || "").slice(0, 800);
+    const text = compact$1(element.textContent || "").slice(0, 800);
     const metadata = [
       element.getAttribute("data-testid"),
       element.getAttribute("aria-label"),
@@ -28417,11 +28413,11 @@
       score += 3;
       signals.push("tool-like metadata");
     }
-    if (TOOL_WORDS.test(text2)) {
+    if (TOOL_WORDS.test(text)) {
       score += 2;
       signals.push("tool-like text");
     }
-    if (TOOL_ACTIONS.test(text2)) {
+    if (TOOL_ACTIONS.test(text)) {
       score += 2;
       signals.push("tool action text");
     }
@@ -28456,8 +28452,8 @@
     const activityRows = chatGptToolActivityRows(searchRoot);
     const highSignal = activityRows.length > 0 || rootElement?.matches(HIGH_SIGNAL_SELECTOR) || searchRoot.querySelector(HIGH_SIGNAL_SELECTOR);
     if (!highSignal) {
-      const text2 = compact$1(searchRoot.textContent ?? "").slice(0, 1600);
-      if (!TOOL_WORDS.test(text2) && !TOOL_ACTIONS.test(text2)) return [];
+      const text = compact$1(searchRoot.textContent ?? "").slice(0, 1600);
+      if (!TOOL_WORDS.test(text) && !TOOL_ACTIONS.test(text)) return [];
     }
     const candidates = [
       .../* @__PURE__ */ new Set([...activityRows, ...searchRoot.querySelectorAll(CANDIDATE_SELECTOR)])
@@ -29282,10 +29278,10 @@
     return value.replace(/\s+/g, " ").trim();
   }
   function dedupeRepeatedText(value) {
-    const text2 = compact(value);
-    if (!text2) return "";
-    const match = text2.match(/^(.{2,}?)\1$/u);
-    return match?.[1]?.trim() || text2;
+    const text = compact(value);
+    if (!text) return "";
+    const match = text.match(/^(.{2,}?)\1$/u);
+    return match?.[1]?.trim() || text;
   }
   function activityPhase(section, tool, statusText) {
     if (tool) return "tool";
@@ -29298,7 +29294,7 @@
     if (!section) return `${active ? "1" : "0"}|${phase}|${label ?? ""}|${toolLabel ?? ""}`;
     const adapter = resolveChatGptDomAdapter(section);
     const message = adapter?.assistantMessage(section) ?? null;
-    const text2 = compact(message?.textContent ?? "");
+    const text = compact(message?.textContent ?? "");
     return [
       adapter?.turnId(section) ?? "",
       adapter?.turnState(section) ?? "",
@@ -29307,8 +29303,8 @@
       label ?? "",
       toolLabel ?? "",
       message?.getAttribute("data-markdown-talvt-render-state") ?? "",
-      text2.length,
-      text2.slice(-180)
+      text.length,
+      text.slice(-180)
     ].join("|");
   }
   function readConversationActivity() {
@@ -29501,7 +29497,7 @@
     if (!conversationId || !targets.length) return void 0;
     const observedAt = Date.now();
     const records = targets.map((target) => {
-      const text2 = (target.message.textContent || "").trim();
+      const text = (target.message.textContent || "").trim();
       const role = target.role;
       return {
         messageKey: conversationId + ":" + target.messageId,
@@ -29525,7 +29521,7 @@
         raw: {
           id: target.messageId,
           author: { role },
-          content: { content_type: "text", parts: [text2] },
+          content: { content_type: "text", parts: [text] },
           metadata: { booster_dom_snapshot: true },
           recipient: role === "assistant" ? "all" : null
         }
@@ -29606,11 +29602,11 @@
     }
   };
   function jsonBlock(value) {
-    const text2 = JSON.stringify(value, null, 2);
+    const text = JSON.stringify(value, null, 2);
     const tick = String.fromCharCode(96);
-    const runs = text2.match(new RegExp(tick + "+", "g")) ?? [];
+    const runs = text.match(new RegExp(tick + "+", "g")) ?? [];
     const fence = tick.repeat(Math.max(3, ...runs.map((run) => run.length + 1)));
-    return [fence + "json", text2, fence, ""];
+    return [fence + "json", text, fence, ""];
   }
   function exportEntries(turn) {
     return [
@@ -29625,10 +29621,10 @@
     return kind;
   }
   function readableMessageText(message) {
-    const assets2 = new Set(message.attachments.map((item) => item.assetId));
+    const assets = new Set(message.attachments.map((item) => item.assetId));
     return message.text.split(/\r?\n/).filter((line) => {
       const pointer = line.trim().match(/^\[[^\]]+\]\s+(?:sediment:\/\/)?(file_[\w-]+)$/);
-      return !pointer || !assets2.has(pointer[1] ?? "");
+      return !pointer || !assets.has(pointer[1] ?? "");
     }).join("\n").trim();
   }
   function attachmentLines(message) {
@@ -30116,8 +30112,8 @@
     const routeProjectId = conversationCatalogProjectId(sourceUrl);
     if (routeProjectId === void 0) return null;
     const value = requestPayload(payload);
-    const items2 = Array.isArray(value?.items) ? value.items : [];
-    const normalized = items2.flatMap((item) => {
+    const items = Array.isArray(value?.items) ? value.items : [];
+    const normalized = items.flatMap((item) => {
       const record2 = requestPayload(item);
       if (!record2 || typeof record2.id !== "string") return [];
       const gizmoId = typeof record2.gizmo_id === "string" && record2.gizmo_id.startsWith("g-p-") ? record2.gizmo_id : null;
@@ -30221,35 +30217,35 @@
   }
   function sanitizeBodyPreview(value, maxChars) {
     if (value == null) return void 0;
-    let text2;
+    let text;
     if (typeof value === "string") {
       try {
-        text2 = JSON.stringify(redact(JSON.parse(value)));
+        text = JSON.stringify(redact(JSON.parse(value)));
       } catch {
-        text2 = value;
+        text = value;
       }
     } else if (value instanceof URLSearchParams) {
       const params = new URLSearchParams(value);
       for (const [key] of params) if (SECRET_KEY.test(key)) params.set(key, "[REDACTED]");
-      text2 = params.toString();
+      text = params.toString();
     } else if (value instanceof FormData) {
       const result = {};
       for (const [key, child] of value.entries()) {
         result[key] = SECRET_KEY.test(key) ? "[REDACTED]" : typeof child === "string" ? child : `[Blob ${child.type || "unknown"} ${child.size}B]`;
       }
-      text2 = JSON.stringify(result);
+      text = JSON.stringify(result);
     } else if (value instanceof Blob) {
       return `[Blob ${value.type || "unknown"} ${value.size}B]`;
     } else if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) {
       return "[Binary]";
     } else {
       try {
-        text2 = JSON.stringify(redact(value));
+        text = JSON.stringify(redact(value));
       } catch {
-        text2 = String(value);
+        text = String(value);
       }
     }
-    const redacted = redactTextSecrets(text2);
+    const redacted = redactTextSecrets(text);
     return redacted.length > maxChars ? `${redacted.slice(0, maxChars)}…` : redacted;
   }
   let observerTarget = typeof window === "undefined" ? void 0 : window;
@@ -30413,8 +30409,8 @@
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          const text2 = decoder.decode(value, { stream: true });
-          if (!text2) continue;
+          const text = decoder.decode(value, { stream: true });
+          if (!text) continue;
           emit({
             id: context.id,
             kind: "fetch",
@@ -30425,7 +30421,7 @@
             url: context.url,
             contentType,
             size: value.byteLength,
-            bodyPreview: sanitizeBodyPreview(text2, config.maxBodyChars)
+            bodyPreview: sanitizeBodyPreview(text, config.maxBodyChars)
           });
         }
       } catch (error) {
@@ -30896,12 +30892,12 @@
     const WrappedWebSocket = function(url, protocols) {
       const ws = protocols === void 0 ? new OriginalWebSocket(url) : new OriginalWebSocket(url, protocols);
       let id;
-      let safe2;
+      let safe;
       const diagnosticMeta = () => {
         if (!transportEmissionEnabled) return void 0;
         id ??= nextId("websocket");
-        safe2 ??= sanitizeTransportUrl(String(url));
-        return { id, safe: safe2 };
+        safe ??= sanitizeTransportUrl(String(url));
+        return { id, safe };
       };
       const originalSendWs = ws.send.bind(ws);
       ws.send = (data) => {
@@ -30978,12 +30974,12 @@
     const WrappedEventSource = function(url, eventSourceInitDict) {
       const source = new OriginalEventSource(url, eventSourceInitDict);
       let id;
-      let safe2;
+      let safe;
       const diagnosticMeta = () => {
         if (!transportEmissionEnabled) return void 0;
         id ??= nextId("eventsource");
-        safe2 ??= sanitizeTransportUrl(String(url));
-        return { id, safe: safe2 };
+        safe ??= sanitizeTransportUrl(String(url));
+        return { id, safe };
       };
       source.addEventListener("open", () => {
         const meta = diagnosticMeta();
@@ -31067,198 +31063,15 @@
       delete tagged[marker];
     };
   }
-  function foldArchivePage(records, index, options) {
-    const remaining = options.remaining ?? Infinity;
-    if (!(remaining === Infinity || Number.isSafeInteger(remaining) && remaining >= 0))
-      throw new Error("Archive page remaining target must be a non-negative integer");
-    const result = {
-      consumed: 0,
-      matched: 0,
-      inserted: 0,
-      skipped: 0,
-      stopReason: null
-    };
-    if (remaining === 0) {
-      result.stopReason = "target_reached";
-      return result;
-    }
-    for (const row of records) {
-      result.consumed++;
-      if (options.skip?.(row)) {
-        result.skipped++;
-        continue;
-      }
-      if (options.stop?.(row)) {
-        result.stopReason = "range_end";
-        break;
-      }
-      const id = options.identity(row);
-      if (typeof id === "number" && !Number.isSafeInteger(id) || typeof id === "string" && !id)
-        throw new Error("Archive record identity is invalid");
-      const known = index.has(id) || options.isKnown?.(id) === true;
-      const existing = index.get(id);
-      if (known) {
-        if (options.mode === "snapshot" && options.same && existing !== void 0 && !options.same(existing, row))
-          throw new Error("Conflicting native record with the same archive identity");
-        if (options.mode === "incremental") {
-          result.stopReason = "known_record";
-          break;
-        }
-        if (options.mode === "backfill" || options.mode === "snapshot") {
-          result.skipped++;
-          continue;
-        }
-      } else {
-        index.set(id, row);
-        result.inserted++;
-      }
-      result.matched++;
-      if (result.matched >= remaining) {
-        result.stopReason = "target_reached";
-        break;
-      }
-    }
-    return result;
-  }
-  function selectArchivePage(input) {
-    if (!Number.isSafeInteger(input.remaining) || input.remaining < 0)
-      throw new Error("Invalid archive page selection limit");
-    if ((input.fromInclusive != null || input.toExclusive != null) && !input.timestampOf)
-      throw new Error("Timestamp accessor required for date-filtered selection");
-    const added = /* @__PURE__ */ new Map();
-    const timestamp = (record2) => {
-      const value = input.timestampOf?.(record2);
-      if (value == null || !Number.isFinite(value))
-        throw new Error("Invalid archive source timestamp");
-      return value;
-    };
-    const toExclusive = input.toExclusive;
-    const fromInclusive = input.fromInclusive;
-    const result = foldArchivePage(input.records, added, {
-      mode: input.mode,
-      identity: (record2) => {
-        const id = input.keyOf(record2);
-        if (!id)
-          throw new Error("Empty archive source record identity");
-        return id;
-      },
-      isKnown: (id) => input.knownKeys.has(id),
-      remaining: input.remaining,
-      ...toExclusive != null ? { skip: (record2) => timestamp(record2) >= toExclusive } : {},
-      ...fromInclusive != null ? { stop: (record2) => timestamp(record2) < fromInclusive } : {}
-    });
-    return {
-      consumed: result.consumed,
-      matched: result.matched,
-      added: [...added.values()],
-      boundaryReached: result.stopReason === "known_record" || result.stopReason === "range_end"
-    };
-  }
-  async function readArchiveMedia(response, options) {
-    const { maxBytes, expectedBytes = null } = options;
-    if (!Number.isSafeInteger(maxBytes) || maxBytes < 1)
-      throw new Error("Invalid media limit");
-    if (expectedBytes !== null && (!Number.isSafeInteger(expectedBytes) || expectedBytes < 0))
-      throw new Error("Invalid expected media size");
-    if (!response.ok)
-      throw new Error("Media HTTP " + response.status);
-    const mime = (response.headers.get("content-type") || "application/octet-stream").split(";", 1)[0] ?? "application/octet-stream".trim().toLowerCase();
-    if (mime === "text/html" || mime === "application/xhtml+xml")
-      throw new Error("HTML returned instead of media");
-    const lengthHeader = response.headers.get("content-length");
-    if (lengthHeader !== null && /^\d+$/.test(lengthHeader) && Number(lengthHeader) > maxBytes)
-      throw new Error("Media exceeds size limit");
-    if (!response.body)
-      throw new Error("Missing media stream");
-    const reader = response.body.getReader();
-    const chunks = [];
-    let size = 0, complete = false;
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          complete = true;
-          break;
-        }
-        size += value.byteLength;
-        if (size > maxBytes)
-          throw new Error("Media exceeds size limit");
-        chunks.push(value);
-      }
-    } finally {
-      if (!complete)
-        await reader.cancel().catch(() => {
-          return;
-        });
-      reader.releaseLock();
-    }
-    if (!size || expectedBytes !== null && size !== expectedBytes)
-      throw new Error("Invalid original media size");
-    const bytes = new Uint8Array(size);
-    let offset = 0;
-    for (const chunk of chunks) {
-      bytes.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
-    const sha256 = Array.from(digest, (x) => x.toString(16).padStart(2, "0")).join("");
-    return { bytes, size, sha256, mime };
-  }
-  async function scanLinearArchive(options) {
-    if (!Number.isSafeInteger(options.target) || options.target < 1 || !Number.isSafeInteger(options.pageSize) || options.pageSize < 1 || !Number.isSafeInteger(options.initial.offset) || options.initial.offset < 0 || !Number.isSafeInteger(options.initial.matched) || options.initial.matched < 0 || options.initial.matched > options.target || !Number.isSafeInteger(options.initial.scanned) || options.initial.scanned < 0 || !Number.isSafeInteger(options.initial.newCount) || options.initial.newCount < 0)
-      throw new Error("Invalid linear archive scan state");
-    let state = { ...options.initial };
-    let sourceTotal = null;
-    let exhausted = state.matched >= options.target;
-    while (!options.stopped() && state.matched < options.target) {
-      const page = await options.source.readPage(state.offset, options.pageSize);
-      if (!page || !Array.isArray(page.items) || !Number.isSafeInteger(page.count) || page.count < 0)
-        throw new Error("Invalid linear archive source page");
-      sourceTotal = page.count;
-      if (!page.items.length || state.offset >= page.count) {
-        exhausted = true;
-        break;
-      }
-      const selection = selectArchivePage({
-        mode: options.mode,
-        records: page.items,
-        knownKeys: options.knownKeys,
-        keyOf: options.keyOf,
-        timestampOf: options.timestampOf,
-        fromInclusive: options.fromInclusive,
-        toExclusive: options.toExclusive,
-        remaining: options.target - state.matched
-      });
-      if (selection.consumed === 0)
-        throw new Error("Linear archive scan made no progress");
-      const next = {
-        offset: state.offset + selection.consumed,
-        matched: state.matched + selection.matched,
-        scanned: state.scanned + selection.consumed,
-        newCount: state.newCount + selection.added.length
-      };
-      await options.commit({ selection, previous: state, next, sourceTotal: page.count });
-      for (const item of selection.added)
-        options.knownKeys.add(options.keyOf(item));
-      state = next;
-      if (selection.boundaryReached || state.offset >= page.count || page.items.length < options.pageSize || state.matched >= options.target) {
-        exhausted = true;
-        break;
-      }
-      if (!options.stopped())
-        await options.delay?.();
-    }
-    return { state, sourceTotal, paused: options.stopped(), exhausted };
-  }
   var safeBytes = (buffer) => buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
   function toBase64(data) {
     const bytes = safeBytes(data);
     const parts = [];
     for (let offset = 0; offset < bytes.length; offset += 32766) {
-      let text2 = "";
+      let text = "";
       for (const byte of bytes.subarray(offset, offset + 32766))
-        text2 += String.fromCharCode(byte);
-      parts.push(btoa(text2));
+        text += String.fromCharCode(byte);
+      parts.push(btoa(text));
     }
     return parts.join("");
   }
@@ -31358,8 +31171,8 @@
           if (next.done)
             controller.close();
           else {
-            const safe2 = next.value.buffer instanceof ArrayBuffer ? next.value : new Uint8Array(next.value);
-            controller.enqueue(safe2);
+            const safe = next.value.buffer instanceof ArrayBuffer ? next.value : new Uint8Array(next.value);
+            controller.enqueue(safe);
           }
         } catch (error) {
           controller.error(error);
@@ -31434,10 +31247,10 @@
     return `${hours}:${String(minutes % 60).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
   }
   function normalizedLabel(value) {
-    const text2 = value?.replace(/\s+/g, " ").trim() ?? "";
-    if (!text2) return "";
-    const match = text2.match(/^(.{2,}?)\1$/u);
-    return match?.[1]?.trim() || text2;
+    const text = value?.replace(/\s+/g, " ").trim() ?? "";
+    if (!text) return "";
+    const match = text.match(/^(.{2,}?)\1$/u);
+    return match?.[1]?.trim() || text;
   }
   function mountAgentActivity(into, initial, locale) {
     const host = document.createElement("div");
@@ -31807,24 +31620,24 @@
     };
   }
   const _hoisted_1$3$1 = ["aria-busy"];
-  const _hoisted_2$8 = {
+  const _hoisted_2$6 = {
     key: 0,
     class: "flex items-center justify-between gap-2"
   };
-  const _hoisted_3$7 = {
+  const _hoisted_3$5 = {
     role: "status",
     "aria-live": "polite"
   };
-  const _hoisted_4$7 = {
+  const _hoisted_4$5 = {
     key: 0,
     class: "tabular-nums"
   };
-  const _hoisted_5$7 = ["value", "aria-label"];
-  const _hoisted_6$7 = {
+  const _hoisted_5$5 = ["value", "aria-label"];
+  const _hoisted_6$5 = {
     key: 1,
     class: "text-xs text-muted-foreground"
   };
-  const _hoisted_7$7 = {
+  const _hoisted_7$5 = {
     key: 2,
     role: "alert",
     class: "text-sm text-destructive"
@@ -31853,17 +31666,17 @@
           class: normalizeClass(__props.compact ? "w-full" : "booster-shared-archive-progress"),
           "aria-busy": __props.busy
         }, [
-          !__props.compact ? (openBlock(), createElementBlock("div", _hoisted_2$8, [
+          !__props.compact ? (openBlock(), createElementBlock("div", _hoisted_2$6, [
             createBaseVNode(
               "span",
-              _hoisted_3$7,
+              _hoisted_3$5,
               toDisplayString(__props.label),
               1
               /* TEXT */
             ),
             progress.value !== null ? (openBlock(), createElementBlock(
               "strong",
-              _hoisted_4$7,
+              _hoisted_4$5,
               toDisplayString(progress.value) + "%",
               1
               /* TEXT */
@@ -31874,17 +31687,17 @@
             value: progress.value ?? void 0,
             max: "100",
             "aria-label": __props.ariaLabel || __props.label
-          }, null, 8, _hoisted_5$7),
+          }, null, 8, _hoisted_5$5),
           __props.detail ? (openBlock(), createElementBlock(
             "p",
-            _hoisted_6$7,
+            _hoisted_6$5,
             toDisplayString(__props.detail),
             1
             /* TEXT */
           )) : createCommentVNode("v-if", true),
           __props.error ? (openBlock(), createElementBlock(
             "p",
-            _hoisted_7$7,
+            _hoisted_7$5,
             toDisplayString(__props.error),
             1
             /* TEXT */
@@ -31894,7 +31707,7 @@
       };
     }
   });
-  const _hoisted_1$8 = ["aria-modal", "aria-label"];
+  const _hoisted_1$6 = ["aria-modal", "aria-label"];
   const _sfc_main$2$2 = /* @__PURE__ */ defineComponent({
     __name: "ModalSurface",
     props: {
@@ -31918,12 +31731,12 @@
           return;
         }
         if (event.key !== "Tab" || !root.value || props.floating) return;
-        const items2 = [
+        const items = [
           ...root.value.querySelectorAll(
             'button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]'
           )
         ].filter((item) => item.getClientRects().length);
-        const first = items2[0], last = items2.at(-1);
+        const first = items[0], last = items.at(-1);
         const active = root.value.getRootNode().activeElement;
         if (!first || !last) {
           event.preventDefault();
@@ -31969,7 +31782,7 @@
               renderSlot(_ctx.$slots, "chrome"),
               renderSlot(_ctx.$slots, "default"),
               renderSlot(_ctx.$slots, "handles")
-            ], 46, _hoisted_1$8)
+            ], 46, _hoisted_1$6)
           ],
           2
           /* CLASS */
@@ -31980,7 +31793,7 @@
   function cn(...inputs) {
     return twMerge(clsx(inputs));
   }
-  const _sfc_main$1$2 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$1$1 = /* @__PURE__ */ defineComponent({
     __name: "Badge",
     props: {
       variant: {},
@@ -32008,7 +31821,7 @@
       };
     }
   });
-  const _sfc_main$8 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$6 = /* @__PURE__ */ defineComponent({
     __name: "Button",
     props: {
       variant: { default: "default" },
@@ -32112,18 +31925,18 @@
       }
     };
   }
-  const _hoisted_1$7 = ["title"];
-  const _hoisted_2$7 = { class: "booster-scope-title" };
-  const _hoisted_3$6 = { class: "booster-scope-kind" };
-  const _hoisted_4$6 = { class: "booster-meta-lines" };
-  const _hoisted_5$6 = { class: "booster-meta-label" };
-  const _hoisted_6$6 = { class: "booster-meta-value" };
-  const _hoisted_7$6 = { class: "booster-meta-label" };
-  const _hoisted_8$6 = { class: "booster-meta-value" };
-  const _hoisted_9$6 = { class: "booster-meta-label" };
-  const _hoisted_10$6 = { class: "booster-meta-value" };
-  const _hoisted_11$6 = { class: "booster-scope-actions" };
-  const _sfc_main$7 = /* @__PURE__ */ defineComponent({
+  const _hoisted_1$5 = ["title"];
+  const _hoisted_2$5 = { class: "booster-scope-title" };
+  const _hoisted_3$4 = { class: "booster-scope-kind" };
+  const _hoisted_4$4 = { class: "booster-meta-lines" };
+  const _hoisted_5$4 = { class: "booster-meta-label" };
+  const _hoisted_6$4 = { class: "booster-meta-value" };
+  const _hoisted_7$4 = { class: "booster-meta-label" };
+  const _hoisted_8$4 = { class: "booster-meta-value" };
+  const _hoisted_9$4 = { class: "booster-meta-label" };
+  const _hoisted_10$4 = { class: "booster-meta-value" };
+  const _hoisted_11$4 = { class: "booster-scope-actions" };
+  const _sfc_main$5 = /* @__PURE__ */ defineComponent({
     __name: "ScopeArchiveControl",
     props: {
       model: {}
@@ -32138,7 +31951,7 @@
           class: normalizeClass(["booster-chat-save-marker", { "is-enabled": __props.model.effectiveEnabled, "is-work": __props.model.workConversation }]),
           title: label(),
           "aria-hidden": "true"
-        }, null, 10, _hoisted_1$7)) : (openBlock(), createBlock(_sfc_main$n, {
+        }, null, 10, _hoisted_1$5)) : (openBlock(), createBlock(_sfc_main$l, {
           key: 1,
           mode: "click",
           label: label()
@@ -32165,64 +31978,64 @@
               createBaseVNode("header", null, [
                 createBaseVNode(
                   "strong",
-                  _hoisted_2$7,
+                  _hoisted_2$5,
                   toDisplayString(__props.model.context.title || t("identity.unknownProject")),
                   1
                   /* TEXT */
                 ),
                 createBaseVNode(
                   "span",
-                  _hoisted_3$6,
+                  _hoisted_3$4,
                   toDisplayString(t("capture.project")),
                   1
                   /* TEXT */
                 )
               ]),
-              createBaseVNode("div", _hoisted_4$6, [
+              createBaseVNode("div", _hoisted_4$4, [
                 createBaseVNode(
                   "strong",
-                  _hoisted_5$6,
+                  _hoisted_5$4,
                   toDisplayString(t("scope.localArchive")),
                   1
                   /* TEXT */
                 ),
                 createBaseVNode(
                   "span",
-                  _hoisted_6$6,
+                  _hoisted_6$4,
                   toDisplayString(__props.model.archivedCount > 0 ? t("scope.archived") + " · " + __props.model.archivedCount : t("scope.notArchived")),
                   1
                   /* TEXT */
                 ),
                 createBaseVNode(
                   "strong",
-                  _hoisted_7$6,
+                  _hoisted_7$4,
                   toDisplayString(t("capture.policy")),
                   1
                   /* TEXT */
                 ),
                 createBaseVNode(
                   "span",
-                  _hoisted_8$6,
+                  _hoisted_8$4,
                   toDisplayString(t(__props.model.effectiveEnabled ? "dock.autoOn" : "dock.autoOff")),
                   1
                   /* TEXT */
                 ),
                 createBaseVNode(
                   "strong",
-                  _hoisted_9$6,
+                  _hoisted_9$4,
                   toDisplayString(t("scope.rule")),
                   1
                   /* TEXT */
                 ),
                 createBaseVNode(
                   "span",
-                  _hoisted_10$6,
+                  _hoisted_10$4,
                   toDisplayString(t("scope.source." + __props.model.source)),
                   1
                   /* TEXT */
                 )
               ]),
-              createBaseVNode("div", _hoisted_11$6, [
+              createBaseVNode("div", _hoisted_11$4, [
                 createBaseVNode(
                   "button",
                   {
@@ -32316,7 +32129,7 @@
       const mountPoint = document.createElement("span");
       projectShadow.append(mountPoint);
       projectModel = /* @__PURE__ */ reactive({ ...current });
-      app = createApp(_sfc_main$7, { model: projectModel });
+      app = createApp(_sfc_main$5, { model: projectModel });
       app.mount(mountPoint);
     };
     const render = () => {
@@ -32342,43 +32155,43 @@
       }
     };
   }
-  const _hoisted_1$6 = ["lang"];
-  const _hoisted_2$6 = ["src"];
-  const _hoisted_3$5 = { class: "min-w-0 flex-1" };
-  const _hoisted_4$5 = { key: 0 };
-  const _hoisted_5$5 = { class: "booster-meta-lines" };
-  const _hoisted_6$5 = { class: "booster-meta-label" };
-  const _hoisted_7$5 = { class: "booster-meta-value" };
-  const _hoisted_8$5 = { class: "booster-meta-label" };
-  const _hoisted_9$5 = { class: "booster-meta-value" };
-  const _hoisted_10$5 = { class: "booster-meta-label" };
-  const _hoisted_11$5 = { class: "booster-meta-value" };
-  const _hoisted_12$5 = { class: "booster-meta-label" };
-  const _hoisted_13$4 = { class: "booster-meta-value" };
-  const _hoisted_14$4 = { class: "booster-meta-label" };
-  const _hoisted_15$4 = { class: "booster-meta-value" };
-  const _hoisted_16$3 = { class: "booster-meta-label" };
-  const _hoisted_17$3 = { class: "booster-meta-value" };
-  const _hoisted_18$3 = { class: "booster-meta-label" };
-  const _hoisted_19$3 = { class: "booster-meta-value booster-tool-path" };
-  const _hoisted_20$3 = ["href"];
-  const _hoisted_21$3 = {
+  const _hoisted_1$4 = ["lang"];
+  const _hoisted_2$4 = ["src"];
+  const _hoisted_3$3 = { class: "min-w-0 flex-1" };
+  const _hoisted_4$3 = { key: 0 };
+  const _hoisted_5$3 = { class: "booster-meta-lines" };
+  const _hoisted_6$3 = { class: "booster-meta-label" };
+  const _hoisted_7$3 = { class: "booster-meta-value" };
+  const _hoisted_8$3 = { class: "booster-meta-label" };
+  const _hoisted_9$3 = { class: "booster-meta-value" };
+  const _hoisted_10$3 = { class: "booster-meta-label" };
+  const _hoisted_11$3 = { class: "booster-meta-value" };
+  const _hoisted_12$3 = { class: "booster-meta-label" };
+  const _hoisted_13$3 = { class: "booster-meta-value" };
+  const _hoisted_14$3 = { class: "booster-meta-label" };
+  const _hoisted_15$3 = { class: "booster-meta-value" };
+  const _hoisted_16$2 = { class: "booster-meta-label" };
+  const _hoisted_17$2 = { class: "booster-meta-value" };
+  const _hoisted_18$2 = { class: "booster-meta-label" };
+  const _hoisted_19$2 = { class: "booster-meta-value booster-tool-path" };
+  const _hoisted_20$2 = ["href"];
+  const _hoisted_21$2 = {
     key: 1,
     class: "booster-tool-payload"
   };
-  const _hoisted_22$3 = {
+  const _hoisted_22$2 = {
     key: 2,
     class: "booster-tool-payload"
   };
-  const _hoisted_23$3 = {
+  const _hoisted_23$2 = {
     key: 3,
     class: "booster-tool-evidence"
   };
-  const _hoisted_24$3 = {
+  const _hoisted_24$2 = {
     key: 0,
     class: "booster-tool-attributes"
   };
-  const _sfc_main$6 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$4 = /* @__PURE__ */ defineComponent({
     __name: "ToolInspector",
     props: {
       model: {},
@@ -32428,7 +32241,7 @@
         }, 1200);
       }
       return (_ctx, _cache) => {
-        return openBlock(), createBlock(_sfc_main$n, {
+        return openBlock(), createBlock(_sfc_main$l, {
           mode: "hover-click",
           label: t("tool.inspect"),
           align: "start",
@@ -32448,14 +32261,14 @@
                   src: __props.model.tool.iconUrl,
                   alt: "",
                   class: "booster-live-tool-icon"
-                }, null, 8, _hoisted_2$6)) : isWebTool.value ? (openBlock(), createBlock(unref(Globe), {
+                }, null, 8, _hoisted_2$4)) : isWebTool.value ? (openBlock(), createBlock(unref(Globe), {
                   key: 1,
                   class: "size-4 shrink-0"
                 })) : (openBlock(), createBlock(unref(Wrench), {
                   key: 2,
                   class: "size-4 shrink-0"
                 })),
-                createBaseVNode("div", _hoisted_3$5, [
+                createBaseVNode("div", _hoisted_3$3, [
                   createBaseVNode(
                     "strong",
                     null,
@@ -32465,13 +32278,13 @@
                   ),
                   __props.model.tool.action ? (openBlock(), createElementBlock(
                     "span",
-                    _hoisted_4$5,
+                    _hoisted_4$3,
                     toDisplayString(__props.model.tool.action),
                     1
                     /* TEXT */
                   )) : createCommentVNode("v-if", true)
                 ]),
-                pinned ? (openBlock(), createBlock(unref(_sfc_main$a), {
+                pinned ? (openBlock(), createBlock(unref(_sfc_main$8), {
                   key: 3,
                   variant: "ghost",
                   size: "icon-sm",
@@ -32491,21 +32304,21 @@
                   /* STABLE */
                 }, 8, ["title"])) : createCommentVNode("v-if", true)
               ]),
-              createBaseVNode("div", _hoisted_5$5, [
+              createBaseVNode("div", _hoisted_5$3, [
                 durationLabel.value ? (openBlock(), createElementBlock(
                   Fragment,
                   { key: 0 },
                   [
                     createBaseVNode(
                       "strong",
-                      _hoisted_6$5,
+                      _hoisted_6$3,
                       toDisplayString(t("tool.duration")),
                       1
                       /* TEXT */
                     ),
                     createBaseVNode(
                       "span",
-                      _hoisted_7$5,
+                      _hoisted_7$3,
                       toDisplayString(durationLabel.value),
                       1
                       /* TEXT */
@@ -32520,14 +32333,14 @@
                   [
                     createBaseVNode(
                       "strong",
-                      _hoisted_8$5,
+                      _hoisted_8$3,
                       toDisplayString(t("tool.provider")),
                       1
                       /* TEXT */
                     ),
                     createBaseVNode(
                       "span",
-                      _hoisted_9$5,
+                      _hoisted_9$3,
                       toDisplayString(__props.model.tool.provider),
                       1
                       /* TEXT */
@@ -32542,14 +32355,14 @@
                   [
                     createBaseVNode(
                       "strong",
-                      _hoisted_10$5,
+                      _hoisted_10$3,
                       toDisplayString(t("tool.action")),
                       1
                       /* TEXT */
                     ),
                     createBaseVNode(
                       "span",
-                      _hoisted_11$5,
+                      _hoisted_11$3,
                       toDisplayString(__props.model.tool.action),
                       1
                       /* TEXT */
@@ -32564,14 +32377,14 @@
                   [
                     createBaseVNode(
                       "strong",
-                      _hoisted_12$5,
+                      _hoisted_12$3,
                       toDisplayString(t("tool.startedAt")),
                       1
                       /* TEXT */
                     ),
                     createBaseVNode(
                       "span",
-                      _hoisted_13$4,
+                      _hoisted_13$3,
                       toDisplayString(startedAt.value),
                       1
                       /* TEXT */
@@ -32586,14 +32399,14 @@
                   [
                     createBaseVNode(
                       "strong",
-                      _hoisted_14$4,
+                      _hoisted_14$3,
                       toDisplayString(t("tool.finishedAt")),
                       1
                       /* TEXT */
                     ),
                     createBaseVNode(
                       "span",
-                      _hoisted_15$4,
+                      _hoisted_15$3,
                       toDisplayString(finishedAt.value),
                       1
                       /* TEXT */
@@ -32608,14 +32421,14 @@
                   [
                     createBaseVNode(
                       "strong",
-                      _hoisted_16$3,
+                      _hoisted_16$2,
                       toDisplayString(t("tool.recipient")),
                       1
                       /* TEXT */
                     ),
                     createBaseVNode(
                       "span",
-                      _hoisted_17$3,
+                      _hoisted_17$2,
                       toDisplayString(__props.model.tool.recipient),
                       1
                       /* TEXT */
@@ -32630,14 +32443,14 @@
                   [
                     createBaseVNode(
                       "strong",
-                      _hoisted_18$3,
+                      _hoisted_18$2,
                       toDisplayString(t("tool.path")),
                       1
                       /* TEXT */
                     ),
                     createBaseVNode(
                       "span",
-                      _hoisted_19$3,
+                      _hoisted_19$2,
                       toDisplayString(__props.model.tool.path),
                       1
                       /* TEXT */
@@ -32662,8 +32475,8 @@
                   1
                   /* TEXT */
                 )
-              ], 8, _hoisted_20$3)) : createCommentVNode("v-if", true),
-              pinned && __props.model.tool.payload !== null ? (openBlock(), createElementBlock("div", _hoisted_21$3, [
+              ], 8, _hoisted_20$2)) : createCommentVNode("v-if", true),
+              pinned && __props.model.tool.payload !== null ? (openBlock(), createElementBlock("div", _hoisted_21$2, [
                 createBaseVNode(
                   "strong",
                   null,
@@ -32671,11 +32484,11 @@
                   1
                   /* TEXT */
                 ),
-                createVNode(_sfc_main$m, {
+                createVNode(_sfc_main$k, {
                   value: __props.model.tool.payload
                 }, null, 8, ["value"])
               ])) : createCommentVNode("v-if", true),
-              pinned && __props.model.tool.result !== null ? (openBlock(), createElementBlock("div", _hoisted_22$3, [
+              pinned && __props.model.tool.result !== null ? (openBlock(), createElementBlock("div", _hoisted_22$2, [
                 createBaseVNode(
                   "strong",
                   null,
@@ -32683,11 +32496,11 @@
                   1
                   /* TEXT */
                 ),
-                createVNode(_sfc_main$m, {
+                createVNode(_sfc_main$k, {
                   value: __props.model.tool.result
                 }, null, 8, ["value"])
               ])) : createCommentVNode("v-if", true),
-              pinned && (Object.keys(__props.model.attributes).length || __props.model.visibleText) ? (openBlock(), createElementBlock("details", _hoisted_23$3, [
+              pinned && (Object.keys(__props.model.attributes).length || __props.model.visibleText) ? (openBlock(), createElementBlock("details", _hoisted_23$2, [
                 createBaseVNode(
                   "summary",
                   null,
@@ -32695,7 +32508,7 @@
                   1
                   /* TEXT */
                 ),
-                Object.keys(__props.model.attributes).length ? (openBlock(), createElementBlock("dl", _hoisted_24$3, [
+                Object.keys(__props.model.attributes).length ? (openBlock(), createElementBlock("dl", _hoisted_24$2, [
                   (openBlock(true), createElementBlock(
                     Fragment,
                     null,
@@ -32735,7 +32548,7 @@
                   /* TEXT */
                 )
               ])) : createCommentVNode("v-if", true)
-            ], 8, _hoisted_1$6)
+            ], 8, _hoisted_1$4)
           ]),
           _: 1
           /* STABLE */
@@ -32754,7 +32567,7 @@
     shadow.append(mountPoint);
     const state = /* @__PURE__ */ reactive({ model, now: 0 });
     const app = createApp({
-      render: () => h(_sfc_main$6, { model: state.model, now: state.now })
+      render: () => h(_sfc_main$4, { model: state.model, now: state.now })
     });
     app.mount(mountPoint);
     return {
@@ -33618,7 +33431,7 @@
       oldestCursor: page.startCursor
     };
   }
-  function record$2(value) {
+  function record$1(value) {
     return value && typeof value === "object" && !Array.isArray(value) ? value : void 0;
   }
   function stringOrNull(value) {
@@ -33631,13 +33444,13 @@
     return typeof value === "boolean" ? value : null;
   }
   function jsonHash(value) {
-    const text2 = JSON.stringify(value);
+    const text = JSON.stringify(value);
     let hash = 2166136261;
-    for (let index = 0; index < text2.length; index += 1) {
-      hash ^= text2.charCodeAt(index);
+    for (let index = 0; index < text.length; index += 1) {
+      hash ^= text.charCodeAt(index);
       hash = Math.imul(hash, 16777619);
     }
-    return `fnv1a32:${(hash >>> 0).toString(16).padStart(8, "0")}:${text2.length}`;
+    return `fnv1a32:${(hash >>> 0).toString(16).padStart(8, "0")}:${text.length}`;
   }
   function normalizeConversationProjectId(payload) {
     const gizmoId = stringOrNull(payload.gizmo_id);
@@ -33649,9 +33462,9 @@
   function normalizeConversationMessage(raw, conversationId, projectId, observedAt, previous) {
     const messageId = stringOrNull(raw.id);
     if (!messageId) return void 0;
-    const author = record$2(raw.author);
-    const content = record$2(raw.content);
-    const metadata = record$2(raw.metadata);
+    const author = record$1(raw.author);
+    const content = record$1(raw.content);
+    const metadata = record$1(raw.metadata);
     return {
       messageKey: `${conversationId}:${messageId}`,
       messageId,
@@ -34984,12 +34797,12 @@
       for (const record2 of records)
         for (const key of /* @__PURE__ */ new Set([record2.turnExchangeId, record2.workingTurnId])) {
           if (!key) continue;
-          const items2 = this.#turnRecords.get(key) ?? [];
-          items2.push(record2);
-          this.#turnRecords.set(key, items2);
+          const items = this.#turnRecords.get(key) ?? [];
+          items.push(record2);
+          this.#turnRecords.set(key, items);
         }
-      for (const items2 of this.#turnRecords.values())
-        items2.sort(
+      for (const items of this.#turnRecords.values())
+        items.sort(
           (a, b) => (sourceTime(a.createTime) ?? Number.POSITIVE_INFINITY) - (sourceTime(b.createTime) ?? Number.POSITIVE_INFINITY)
         );
       this.#recordConversationId = conversationId;
@@ -35008,12 +34821,12 @@
       return this.stateStore.recordsForMessageIds(conversationId, chatGptTurnMessageIds(section));
     }
     #sourceActivity(section, observed) {
-      const items2 = this.#turnItemsForSection(section);
+      const items = this.#turnItemsForSection(section);
       const conversationId = currentConversationId() ?? null;
       const lifecycle = conversationId ? this.stateStore.lifecycle(conversationId) : void 0;
       const lifecycleActive = lifecycle ? lifecycle.state === "in_progress" || lifecycle.state === "stop_requested" : observed.active;
       const lifecyclePhase = lifecycleActive ? observed.phase : lifecycle?.state === "complete" || lifecycle?.state === "stopped" || lifecycle?.state === "cancelled" || lifecycle?.state === "failed" ? "complete" : observed.phase;
-      if (!items2.length)
+      if (!items.length)
         return {
           ...observed,
           active: lifecycleActive,
@@ -35026,7 +34839,7 @@
           durationMs: null,
           reasoningDurationMs: null
         };
-      const ordered = [...items2].sort(
+      const ordered = [...items].sort(
         (a, b) => (sourceTime(a.createTime) ?? Number.POSITIVE_INFINITY) - (sourceTime(b.createTime) ?? Number.POSITIVE_INFINITY)
       );
       const user = ordered.find((item) => item.role === "user");
@@ -35161,8 +34974,8 @@
       const anchor = messageIds.map((id) => this.#records.get(id)).find(Boolean);
       const key = anchor?.turnExchangeId ?? anchor?.workingTurnId;
       if (!key) return [];
-      const items2 = this.#turnRecords.get(key) ?? [];
-      const candidates = items2.filter(
+      const items = this.#turnRecords.get(key) ?? [];
+      const candidates = items.filter(
         (item) => item.role === "assistant" && Boolean(item.recipient && item.recipient !== "all") && Boolean(toolInvocationFromRecord(item))
       );
       const concrete = candidates.filter(hasConcreteConnectorPayload);
@@ -35174,8 +34987,8 @@
         const callTime = sourceTime(call.createTime);
         const nextCall = calls[index + 1];
         const nextCallTime = nextCall ? sourceTime(nextCall.createTime) : null;
-        const direct = items2.find((item) => item.role === "tool" && item.parentId === call.messageId);
-        const adjacent = callTime === null ? void 0 : items2.find((item) => {
+        const direct = items.find((item) => item.role === "tool" && item.parentId === call.messageId);
+        const adjacent = callTime === null ? void 0 : items.find((item) => {
           if (item.role !== "tool") return false;
           const time = sourceTime(item.createTime);
           return time !== null && time >= callTime && (nextCallTime === null || time < nextCallTime);
@@ -39177,19 +38990,19 @@
       const owner = this.state.verifiedAccountId();
       const epoch = this.state.accountEpoch();
       if (!owner) throw Error("Unverified owner");
-      const items2 = await this.repo(owner).listConversations();
+      const items = await this.repo(owner).listConversations();
       if (this.state.accountEpoch() !== epoch || this.state.verifiedAccountId() !== owner)
         throw Error("Account changed during conversation read");
-      return items2.map(({ conversationId, projectId, title }) => ({ conversationId, projectId, title }));
+      return items.map(({ conversationId, projectId, title }) => ({ conversationId, projectId, title }));
     }
     async listSavedProjects() {
       const owner = this.state.verifiedAccountId();
       const epoch = this.state.accountEpoch();
       if (!owner) throw Error("Unverified owner");
-      const items2 = await this.repo(owner).listProjects();
+      const items = await this.repo(owner).listProjects();
       if (this.state.accountEpoch() !== epoch || this.state.verifiedAccountId() !== owner)
         throw Error("Account changed during project read");
-      return items2.map(({ projectId, title }) => ({ projectId, title }));
+      return items.map(({ projectId, title }) => ({ projectId, title }));
     }
     async hasMessagesBefore(id, cursor) {
       return this.boundary(id, cursor, "before");
@@ -39539,9 +39352,9 @@
       },
       listMessages: async (id) => {
         const owner = account(), epoch = memory.accountEpoch();
-        const items2 = await capture.readConversation(id);
+        const items = await capture.readConversation(id);
         guard(owner, epoch);
-        return items2.map((item) => {
+        return items.map((item) => {
           const normalized = normalizeConversationMessage(item.raw, id, null, item.observedAtMs);
           if (!normalized) throw Error("Saved source cannot be normalized for the fixed Reader");
           return normalized;
@@ -39581,9 +39394,9 @@
       },
       getThread: async (id) => {
         const owner = account(), epoch = memory.accountEpoch();
-        const items2 = await capture.readConversation(id);
+        const items = await capture.readConversation(id);
         guard(owner, epoch);
-        return buildArchiveThread(items2.map((item) => {
+        return buildArchiveThread(items.map((item) => {
           const record2 = normalizeConversationMessage(item.raw, id, null, item.observedAtMs);
           if (!record2) throw Error("Saved source cannot be normalized");
           return record2;
@@ -39848,85 +39661,85 @@
     };
     return { feature, startEarly };
   }
-  const _hoisted_1$5 = ["lang"];
-  const _hoisted_2$5 = {
+  const _hoisted_1$3 = ["lang"];
+  const _hoisted_2$3 = {
     class: "booster-dock-context",
     "aria-label": "ChatGPT Booster"
   };
-  const _hoisted_3$4 = { class: "booster-dock-context-info" };
-  const _hoisted_4$4 = {
+  const _hoisted_3$2 = { class: "booster-dock-context-info" };
+  const _hoisted_4$2 = {
     key: 0,
     role: "status"
   };
-  const _hoisted_5$4 = {
+  const _hoisted_5$2 = {
     key: 1,
     class: "booster-dock-counts"
   };
-  const _hoisted_6$4 = {
+  const _hoisted_6$2 = {
     key: 2,
     class: "booster-dock-history-state"
   };
-  const _hoisted_7$4 = ["disabled"];
-  const _hoisted_8$4 = {
+  const _hoisted_7$2 = ["disabled"];
+  const _hoisted_8$2 = {
     key: 0,
     class: "booster-error",
     role: "alert"
   };
-  const _hoisted_9$4 = {
+  const _hoisted_9$2 = {
     key: 1,
     class: "booster-dock-progress",
     role: "status"
   };
-  const _hoisted_10$4 = ["aria-label"];
-  const _hoisted_11$4 = ["aria-label"];
-  const _hoisted_12$4 = ["aria-pressed"];
-  const _hoisted_13$3 = ["aria-pressed", "disabled"];
-  const _hoisted_14$3 = ["disabled"];
-  const _hoisted_15$3 = ["aria-pressed"];
-  const _hoisted_16$2 = ["aria-pressed"];
-  const _hoisted_17$2 = ["aria-label"];
-  const _hoisted_18$2 = ["aria-label", "aria-expanded"];
-  const _hoisted_19$2 = {
+  const _hoisted_10$2 = ["aria-label"];
+  const _hoisted_11$2 = ["aria-label"];
+  const _hoisted_12$2 = ["aria-pressed"];
+  const _hoisted_13$2 = ["aria-pressed", "disabled"];
+  const _hoisted_14$2 = ["disabled"];
+  const _hoisted_15$2 = ["aria-pressed"];
+  const _hoisted_16$1 = ["aria-pressed"];
+  const _hoisted_17$1 = ["aria-label"];
+  const _hoisted_18$1 = ["aria-label", "aria-expanded"];
+  const _hoisted_19$1 = {
     key: 0,
     class: "booster-reader-tools-menu",
     role: "menu"
   };
-  const _hoisted_20$2 = {
+  const _hoisted_20$1 = {
     key: 2,
     class: "booster-stack-card",
     "aria-label": "Фиксированный Dexie архив ChatGPT"
   };
-  const _hoisted_21$2 = { class: "booster-setting-copy" };
-  const _hoisted_22$2 = { key: 0 };
-  const _hoisted_23$2 = {
+  const _hoisted_21$1 = { class: "booster-setting-copy" };
+  const _hoisted_22$1 = { key: 0 };
+  const _hoisted_23$1 = {
     key: 1,
     role: "status"
   };
-  const _hoisted_24$2 = { class: "flex flex-wrap gap-2" };
-  const _hoisted_25$2 = ["disabled"];
+  const _hoisted_24$1 = { class: "flex flex-wrap gap-2" };
+  const _hoisted_25$1 = ["disabled"];
   const _hoisted_26$1 = ["disabled"];
-  const _hoisted_27 = {
+  const _hoisted_27$1 = {
     key: 0,
     role: "alert"
   };
-  const _hoisted_28 = {
+  const _hoisted_28$1 = {
     key: 1,
     class: "max-h-60 overflow-y-auto p-2"
   };
-  const _hoisted_29 = { key: 0 };
-  const _hoisted_30 = { class: "whitespace-pre-wrap break-words" };
-  const _hoisted_31 = {
+  const _hoisted_29$1 = { key: 0 };
+  const _hoisted_30$1 = { class: "whitespace-pre-wrap break-words" };
+  const _hoisted_31$1 = {
     key: 3,
     role: "status"
   };
-  const _hoisted_32 = {
+  const _hoisted_32$1 = {
     key: 1,
     class: "booster-stack-card",
     "aria-label": "Экспорт фиксированного Dexie-архива"
   };
-  const _hoisted_33 = { class: "flex flex-wrap gap-2" };
-  const _hoisted_34 = ["disabled"];
-  const _hoisted_35 = {
+  const _hoisted_33$1 = { class: "flex flex-wrap gap-2" };
+  const _hoisted_34$1 = ["disabled"];
+  const _hoisted_35$1 = {
     key: 0,
     role: "alert"
   };
@@ -39945,7 +39758,7 @@
     key: 0,
     role: "alert"
   };
-  const _sfc_main$5 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$3 = /* @__PURE__ */ defineComponent({
     __name: "ChatGptPanel",
     setup(__props) {
       const tab = /* @__PURE__ */ ref("archive");
@@ -40327,14 +40140,14 @@
           class: "booster-chatgpt-panel",
           lang: locale.value
         }, [
-          createBaseVNode("header", _hoisted_2$5, [
-            createBaseVNode("div", _hoisted_3$4, [
-              createVNode(_sfc_main$f, {
+          createBaseVNode("header", _hoisted_2$3, [
+            createBaseVNode("div", _hoisted_3$2, [
+              createVNode(_sfc_main$d, {
                 label: current.value.conversationTitle || tr("Текущий диалог", "Current conversation"),
                 identifier: current.value.conversationId,
                 locale: locale.value
               }, null, 8, ["label", "identifier", "locale"]),
-              current.value.projectId ? (openBlock(), createBlock(_sfc_main$f, {
+              current.value.projectId ? (openBlock(), createBlock(_sfc_main$d, {
                 key: 0,
                 label: current.value.projectTitle || tr("Проект", "Project"),
                 identifier: current.value.projectId,
@@ -40343,12 +40156,12 @@
             ]),
             loading.value ? (openBlock(), createElementBlock(
               "p",
-              _hoisted_4$4,
+              _hoisted_4$2,
               toDisplayString(tr("Чтение состояния…", "Reading status…")),
               1
               /* TEXT */
             )) : createCommentVNode("v-if", true),
-            coverage.value ? (openBlock(), createElementBlock("div", _hoisted_5$4, [
+            coverage.value ? (openBlock(), createElementBlock("div", _hoisted_5$2, [
               createBaseVNode("span", null, [
                 createTextVNode(
                   toDisplayString(tr("Сообщений", "Messages")) + ": ",
@@ -40373,7 +40186,7 @@
             ])) : createCommentVNode("v-if", true),
             current.value.conversationId ? (openBlock(), createElementBlock(
               "div",
-              _hoisted_6$4,
+              _hoisted_6$2,
               toDisplayString(coverage.value?.hasOlderServerHistory === true ? tr("Есть более ранняя история", "Older server history available") : coverage.value?.hasOlderServerHistory === false ? tr("Начало истории достигнуто", "Start of history reached") : tr("Полнота истории не проверена", "History completeness unverified")),
               1
               /* TEXT */
@@ -40390,16 +40203,16 @@
                 1
                 /* TEXT */
               )
-            ], 8, _hoisted_7$4)
+            ], 8, _hoisted_7$2)
           ]),
           error.value ? (openBlock(), createElementBlock(
             "p",
-            _hoisted_8$4,
+            _hoisted_8$2,
             toDisplayString(error.value),
             1
             /* TEXT */
           )) : createCommentVNode("v-if", true),
-          active.value ? (openBlock(), createElementBlock("div", _hoisted_9$4, [
+          active.value ? (openBlock(), createElementBlock("div", _hoisted_9$2, [
             createBaseVNode(
               "span",
               null,
@@ -40414,7 +40227,7 @@
               onClick: stopCollection
             }, [
               createVNode(unref(Square), { class: "size-4" })
-            ], 8, _hoisted_10$4)
+            ], 8, _hoisted_10$2)
           ])) : createCommentVNode("v-if", true),
           createBaseVNode("nav", {
             class: "booster-export-recovery-actions",
@@ -40432,7 +40245,7 @@
                 1
                 /* TEXT */
               )
-            ], 8, _hoisted_12$4),
+            ], 8, _hoisted_12$2),
             createBaseVNode("button", {
               class: "booster-action-secondary",
               type: "button",
@@ -40446,7 +40259,7 @@
                 1
                 /* TEXT */
               )
-            ], 8, _hoisted_13$3),
+            ], 8, _hoisted_13$2),
             !context.value?.archiveAdapter.collectionInsideExportOnly ? (openBlock(), createElementBlock("button", {
               key: 0,
               class: "booster-action-secondary",
@@ -40460,7 +40273,7 @@
                 1
                 /* TEXT */
               )
-            ], 8, _hoisted_14$3)) : createCommentVNode("v-if", true),
+            ], 8, _hoisted_14$2)) : createCommentVNode("v-if", true),
             createBaseVNode("button", {
               class: "booster-action-secondary",
               type: "button",
@@ -40473,7 +40286,7 @@
                 1
                 /* TEXT */
               )
-            ], 8, _hoisted_15$3),
+            ], 8, _hoisted_15$2),
             createBaseVNode("button", {
               class: "booster-action-secondary",
               type: "button",
@@ -40486,7 +40299,7 @@
                 1
                 /* TEXT */
               )
-            ], 8, _hoisted_16$2),
+            ], 8, _hoisted_16$1),
             createBaseVNode("button", {
               class: "booster-action-secondary",
               type: "button",
@@ -40502,7 +40315,7 @@
                 1
                 /* TEXT */
               )
-            ], 8, _hoisted_17$2),
+            ], 8, _hoisted_17$1),
             createBaseVNode(
               "div",
               {
@@ -40526,8 +40339,8 @@
                     1
                     /* TEXT */
                   )
-                ], 8, _hoisted_18$2),
-                archiveMenuOpen.value ? (openBlock(), createElementBlock("div", _hoisted_19$2, [
+                ], 8, _hoisted_18$1),
+                archiveMenuOpen.value ? (openBlock(), createElementBlock("div", _hoisted_19$1, [
                   createBaseVNode("button", {
                     type: "button",
                     role: "menuitem",
@@ -40575,9 +40388,9 @@
               544
               /* NEED_HYDRATION, NEED_PATCH */
             )
-          ], 8, _hoisted_11$4),
-          context.value?.fixedArchive && current.value.conversationId && tab.value === "archive" ? (openBlock(), createElementBlock("section", _hoisted_20$2, [
-            createBaseVNode("div", _hoisted_21$2, [
+          ], 8, _hoisted_11$2),
+          context.value?.fixedArchive && current.value.conversationId && tab.value === "archive" ? (openBlock(), createElementBlock("section", _hoisted_20$1, [
+            createBaseVNode("div", _hoisted_21$1, [
               createBaseVNode(
                 "b",
                 null,
@@ -40597,20 +40410,20 @@
               ),
               fixedCount.value !== null ? (openBlock(), createElementBlock(
                 "small",
-                _hoisted_22$2,
+                _hoisted_22$1,
                 toDisplayString(tr("Сохранено", "Saved")) + ": " + toDisplayString(fixedCount.value),
                 1
                 /* TEXT */
               )) : createCommentVNode("v-if", true),
-              context.value.fixedArchive.captureFailed() ? (openBlock(), createElementBlock("small", _hoisted_23$2, "Исходное сообщение изменилось; прежний снимок сохранён.")) : createCommentVNode("v-if", true)
+              context.value.fixedArchive.captureFailed() ? (openBlock(), createElementBlock("small", _hoisted_23$1, "Исходное сообщение изменилось; прежний снимок сохранён.")) : createCommentVNode("v-if", true)
             ]),
-            createBaseVNode("div", _hoisted_24$2, [
+            createBaseVNode("div", _hoisted_24$1, [
               createBaseVNode("button", {
                 type: "button",
                 class: "booster-action-secondary",
                 disabled: fixedBusy.value,
                 onClick: readFixedArchive
-              }, toDisplayString(tr("Читать Dexie", "Read Dexie")), 9, _hoisted_25$2),
+              }, toDisplayString(tr("Читать Dexie", "Read Dexie")), 9, _hoisted_25$1),
               createBaseVNode("button", {
                 type: "button",
                 class: "booster-action-secondary",
@@ -40620,12 +40433,12 @@
             ]),
             fixedError.value ? (openBlock(), createElementBlock(
               "p",
-              _hoisted_27,
+              _hoisted_27$1,
               toDisplayString(fixedError.value),
               1
               /* TEXT */
             )) : createCommentVNode("v-if", true),
-            fixedPreview.value.length ? (openBlock(), createElementBlock("ol", _hoisted_28, [
+            fixedPreview.value.length ? (openBlock(), createElementBlock("ol", _hoisted_28$1, [
               (openBlock(true), createElementBlock(
                 Fragment,
                 null,
@@ -40643,14 +40456,14 @@
                     ),
                     record2.coverage === "contains_opaque" ? (openBlock(), createElementBlock(
                       "span",
-                      _hoisted_29,
+                      _hoisted_29$1,
                       " · " + toDisplayString(tr("Есть неизвестные части", "Contains unknown content")),
                       1
                       /* TEXT */
                     )) : createCommentVNode("v-if", true),
                     createBaseVNode(
                       "p",
-                      _hoisted_30,
+                      _hoisted_30$1,
                       toDisplayString(record2.text),
                       1
                       /* TEXT */
@@ -40664,7 +40477,7 @@
           ])) : createCommentVNode("v-if", true),
           !context.value ? (openBlock(), createElementBlock(
             "div",
-            _hoisted_31,
+            _hoisted_31$1,
             toDisplayString(tr("Архив запускается…", "Loading archive…")),
             1
             /* TEXT */
@@ -40672,7 +40485,7 @@
             Fragment,
             { key: 4 },
             [
-              tab.value === "archive" ? (openBlock(), createBlock(_sfc_main$e, {
+              tab.value === "archive" ? (openBlock(), createBlock(_sfc_main$c, {
                 key: 0,
                 "archive-adapter": context.value.archiveAdapter,
                 "initial-conversation-id": archiveInitial.value,
@@ -40683,7 +40496,7 @@
                 onReturnExport: _cache[10] || (_cache[10] = ($event) => tab.value = "export"),
                 onExport: _cache[11] || (_cache[11] = (id, title) => openExport(id, title, true)),
                 onClose: closePanel
-              }, null, 8, ["archive-adapter", "initial-conversation-id", "navigation-target", "locale", "can-return-to-export"])) : tab.value === "export" && selectedChat.value ? (openBlock(), createElementBlock("section", _hoisted_32, [
+              }, null, 8, ["archive-adapter", "initial-conversation-id", "navigation-target", "locale", "can-return-to-export"])) : tab.value === "export" && selectedChat.value ? (openBlock(), createElementBlock("section", _hoisted_32$1, [
                 createBaseVNode(
                   "b",
                   null,
@@ -40701,13 +40514,13 @@
                   1
                   /* TEXT */
                 ),
-                createBaseVNode("div", _hoisted_33, [
+                createBaseVNode("div", _hoisted_33$1, [
                   createBaseVNode("button", {
                     type: "button",
                     class: "booster-action-secondary",
                     disabled: fixedBusy.value,
                     onClick: exportSelectedDexie
-                  }, toDisplayString(tr("Экспорт JSONL.gz", "Export JSONL.gz")), 9, _hoisted_34),
+                  }, toDisplayString(tr("Экспорт JSONL.gz", "Export JSONL.gz")), 9, _hoisted_34$1),
                   createBaseVNode(
                     "button",
                     {
@@ -40722,19 +40535,19 @@
                 ]),
                 fixedError.value ? (openBlock(), createElementBlock(
                   "p",
-                  _hoisted_35,
+                  _hoisted_35$1,
                   toDisplayString(fixedError.value),
                   1
                   /* TEXT */
                 )) : createCommentVNode("v-if", true)
-              ])) : tab.value === "capture" ? (openBlock(), createBlock(_sfc_main$c, {
+              ])) : tab.value === "capture" ? (openBlock(), createBlock(_sfc_main$a, {
                 key: 2,
                 "settings-adapter": context.value.settingsAdapter,
                 "archive-adapter": context.value.archiveAdapter,
                 context: captureContext.value,
                 locale: locale.value,
                 onClose: endCapture
-              }, null, 8, ["settings-adapter", "archive-adapter", "context", "locale"])) : tab.value === "settings" ? (openBlock(), createBlock(_sfc_main$9, {
+              }, null, 8, ["settings-adapter", "archive-adapter", "context", "locale"])) : tab.value === "settings" ? (openBlock(), createBlock(_sfc_main$7, {
                 key: 3,
                 "settings-adapter": context.value.settingsAdapter,
                 "archive-adapter": context.value.archiveAdapter,
@@ -40813,7 +40626,7 @@
               /* TEXT */
             )) : createCommentVNode("v-if", true)
           ])) : createCommentVNode("v-if", true)
-        ], 8, _hoisted_1$5);
+        ], 8, _hoisted_1$3);
       };
     }
   });
@@ -47041,37 +46854,6 @@
       return Dexie$12;
     });
   });
-  function createArchiveFiles(getRoot) {
-    async function json(name) {
-      try {
-        const file = await getRoot().getFileHandle(name);
-        return JSON.parse(await (await file.getFile()).text());
-      } catch (error) {
-        if (error?.name === "NotFoundError")
-          return null;
-        throw error;
-      }
-    }
-    async function write2(name, data, parent = getRoot()) {
-      const file = await parent.getFileHandle(name, { create: true });
-      const writer = await file.createWritable();
-      try {
-        const payload = data instanceof Uint8Array ? new Uint8Array(data) : typeof data === "string" || data instanceof Blob ? data : JSON.stringify(data, null, 2) + `
-`;
-        await writer.write(payload);
-        await writer.close();
-      } catch (error) {
-        await writer.abort().catch(() => {
-          return;
-        });
-        throw error;
-      }
-    }
-    async function dir(name, parent = getRoot()) {
-      return parent.getDirectoryHandle(name, { create: true });
-    }
-    return { json, write: write2, dir };
-  }
   var import_dexie = __toESM(require_dexie());
   var DexieSymbol = /* @__PURE__ */ Symbol.for("Dexie");
   var Dexie = globalThis[DexieSymbol] || (globalThis[DexieSymbol] = import_dexie.default);
@@ -47105,174 +46887,6 @@
         localStorage.setItem(`${namespace}:${key}`, String(enabled));
       }
     };
-  }
-  const record$1 = (v) => v !== null && typeof v === "object" && !Array.isArray(v) ? v : {};
-  const text = (v) => typeof v === "string" ? v : "";
-  const number = (v) => typeof v === "number" && Number.isFinite(v) ? v : null;
-  const items = (v) => Array.isArray(v) ? v : [];
-  function safe(value) {
-    const raw = String(value || "file").normalize("NFC").replace(/[\\/:*?"<>|\p{Cc}]/gu, "_").replace(/^\.+/, "_").trim();
-    let out = "", n = 0;
-    for (const ch of raw) {
-      const m = new TextEncoder().encode(ch).length;
-      if (n + m > 150) break;
-      out += ch;
-      n += m;
-    }
-    return out || "file";
-  }
-  const ext = (s, fallback = "bin") => String(s || fallback).replace(/[^a-zA-Z0-9]/g, "").toLowerCase() || fallback;
-  const join = (...parts) => parts.join("/");
-  function assets(message) {
-    const out = [];
-    function descend(n, ctx, depth) {
-      if (depth > 8) return;
-      for (const [i, att] of (n.attachments || []).entries()) {
-        const type = att.type || "unknown";
-        const v = record$1(att[type]), key = [message.id, ctx, i, type].join(":");
-        const choices = [];
-        const add2 = (url, name, size = null) => {
-          if (typeof url === "string" && /^https?:\/\//i.test(url))
-            choices.push({ url, name: safe(name), size: number(size) });
-        };
-        if (type === "doc" && (record$1(v.preview).audio_msg || v.type === 5)) {
-          const a = record$1(record$1(v.preview).audio_msg);
-          add2(a.link_ogg, "Голосовое.ogg");
-          add2(a.link_mp3, "Голосовое.mp3");
-          if (!choices.length) add2(v.url, "Голосовое." + ext(v.ext, "ogg"), v.size);
-        } else if (type === "doc") {
-          const title = text(v.title), extension = ext(v.ext);
-          add2(
-            v.url,
-            safe(title || "Документ") + (title.toLowerCase().endsWith("." + extension) ? "" : "." + extension),
-            v.size
-          );
-        } else if (type === "photo") {
-          const sizes = items(v.sizes).map(record$1).filter((s) => text(s.url)).sort(
-            (a, b) => (number(b.width) || 0) * (number(b.height) || 0) - (number(a.width) || 0) * (number(a.height) || 0)
-          );
-          const url = text(sizes[0]?.url);
-          add2(url, "Фото." + ext(url.split("?")[0]?.match(/\.([a-z0-9]{3,4})$/i)?.[1], "jpg"));
-        } else if (type === "audio_message") {
-          add2(v.link_ogg, "Голосовое.ogg");
-          add2(v.link_mp3, "Голосовое.mp3");
-        } else if (type === "audio") add2(v.url, "Аудио.mp3");
-        else if (type === "graffiti") add2(v.url, "Граффити.png");
-        else if (type === "sticker") {
-          const images = items(v.images_with_background || v.images).map(record$1);
-          add2(images.at(-1)?.url, "Стикер.png");
-        } else if (type === "video") {
-          const files = Object.entries(record$1(v.files)).filter(([k, url]) => /^mp4_\d+$/.test(k) && typeof url === "string").sort(([a], [b]) => parseInt(b.slice(4), 10) - parseInt(a.slice(4), 10));
-          add2(files[0]?.[1], "Видео.mp4");
-        }
-        out.push({
-          key,
-          rootId: message.id,
-          type,
-          choices,
-          sourceId: n.id ?? null,
-          context: ctx,
-          external: type === "link" && /^https?:\/\//i.test(text(v.url)) ? text(v.url) : null,
-          transcript: type === "audio_message" ? text(v.transcript) || null : type === "doc" ? text(record$1(record$1(v.preview).audio_msg).transcript) || null : null
-        });
-      }
-      if (n.reply_message) descend(n.reply_message, ctx + ".reply", depth + 1);
-      for (const [i, f] of (n.fwd_messages || []).entries()) descend(f, ctx + ".fwd" + i, depth + 1);
-    }
-    descend(message, "root", 0);
-    return out;
-  }
-  async function download(asset, { meta, dir, write: write2, sleep, verifyContext }) {
-    verifyContext();
-    const prev = meta.files[asset.key];
-    if (prev?.status === "saved" && prev.name) {
-      try {
-        const target = await dir(String(asset.rootId), await dir("media"));
-        verifyContext();
-        const file = await (await target.getFileHandle(prev.name)).getFile();
-        verifyContext();
-        if (file.size === prev.size) {
-          if (!prev.sha256) return "existing";
-          if (file.size > 64 * 1048576) throw Error("Stored media exceeds verification limit");
-          if (!/^[0-9a-f]{64}$/.test(prev.sha256))
-            throw Error("Stored media receipt contains an invalid SHA-256");
-          const buffer = await file.arrayBuffer();
-          verifyContext();
-          const hash = Array.from(
-            new Uint8Array(await crypto.subtle.digest("SHA-256", buffer)),
-            (byte) => byte.toString(16).padStart(2, "0")
-          ).join("");
-          verifyContext();
-          if (hash === prev.sha256) return "existing";
-        }
-      } catch (error) {
-        verifyContext();
-        if (!(error instanceof Error) || error.name !== "NotFoundError") throw error;
-      }
-    }
-    const result = {
-      type: asset.type,
-      message_id: asset.rootId,
-      source_id: asset.sourceId,
-      status: "unavailable"
-    };
-    if (asset.type === "link") {
-      verifyContext();
-      result.status = "link";
-      meta.files[asset.key] = result;
-      return "link";
-    }
-    let failures = 0;
-    for (const candidate of asset.choices) {
-      try {
-        verifyContext();
-        const response = await fetch(candidate.url, {
-          method: "GET",
-          credentials: "omit",
-          signal: AbortSignal.timeout(6e4)
-        });
-        verifyContext();
-        const payload = await readArchiveMedia(response, {
-          maxBytes: 64 * 1048576,
-          expectedBytes: candidate.size
-        });
-        verifyContext();
-        const media = await dir(String(asset.rootId), await dir("media"));
-        verifyContext();
-        let name = candidate.name, index = 2;
-        const occupied = new Set(
-          Object.entries(meta.files).filter(
-            ([key, file]) => key !== asset.key && file.message_id === asset.rootId && file.status === "saved"
-          ).map(([, file]) => file.name)
-        );
-        while (occupied.has(name)) {
-          const dot = candidate.name.lastIndexOf(".");
-          name = dot > 0 ? candidate.name.slice(0, dot) + " (" + index++ + ")" + candidate.name.slice(dot) : candidate.name + " (" + index++ + ")";
-        }
-        verifyContext();
-        await write2(name, payload.bytes, media);
-        verifyContext();
-        Object.assign(result, {
-          status: "saved",
-          name,
-          size: payload.size,
-          sha256: payload.sha256,
-          path: join("media", String(asset.rootId), name),
-          mime: payload.mime
-        });
-        meta.files[asset.key] = result;
-        return "saved";
-      } catch {
-        verifyContext();
-      }
-      failures++;
-      await sleep(300);
-      verifyContext();
-    }
-    verifyContext();
-    if (failures) result.status = "failed";
-    meta.files[asset.key] = result;
-    return result.status;
   }
   const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value) ? value : null;
   function isHistory(value) {
@@ -47436,7 +47050,7 @@
       if (source.out !== void 0 && ![0, 1, true, false].includes(source.out))
         throw Error("Unknown VK message direction");
       const outgoing = source.out === void 0 ? null : source.out === 1 || source.out === true;
-      const text2 = typeof source.text === "string" ? source.text : null;
+      const text = typeof source.text === "string" ? source.text : null;
       const attachmentCount = Array.isArray(source.attachments) ? source.attachments.length : null;
       const data = {
         key,
@@ -47447,7 +47061,7 @@
         date,
         senderId,
         outgoing,
-        text: text2,
+        text,
         attachmentCount
       };
       const snapshot = {
@@ -47486,20 +47100,6 @@
       this.db.close();
     }
   }
-  function selectVkArchivePreview(rows, options) {
-    const limit = Number.isFinite(options.limit) ? Math.max(1, Math.min(240, Math.floor(options.limit))) : 80;
-    const query = (options.query ?? "").trim().toLocaleLowerCase("ru");
-    const selected = [];
-    let matching = 0;
-    for (let index = rows.length - 1; index >= 0; index--) {
-      const row = rows[index];
-      if (!row || query && !(row.text ?? "").toLocaleLowerCase("ru").includes(query)) continue;
-      matching++;
-      if (selected.length < limit) selected.push(row);
-    }
-    selected.reverse();
-    return { messages: selected, matching };
-  }
   function conversationPeerFromPath(pathname) {
     const match = /^\/im\/convo\/([1-9]\d*)(?:\/|$)/.exec(pathname);
     if (!match) return null;
@@ -47512,53 +47112,8 @@
       return "Открыта другая переписка VK. Для неё выбери соответствующую папку архива.";
     return null;
   }
-  function viewerHTML(rows, peerId, attachmentView) {
-    const snapshot = rows.map((m) => ({
-      id: m.id,
-      author: m.from_id,
-      out: !!m.out,
-      date: m.date,
-      text: m.text || "",
-      media: attachmentView(m),
-      reply: m.reply_message ? { text: m.reply_message.text || "", from: m.reply_message.from_id } : null,
-      forwards: (m.fwd_messages || []).map((f) => ({ text: f.text || "", from: f.from_id }))
-    }));
-    const embed = JSON.stringify(snapshot).replace(/</g, "\\u003c");
-    return `<!DOCTYPE html><html lang="ru"><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VK Booster — диалог ${peerId}</title><style>
-:root{color-scheme:light;font:15px/1.5 system-ui,sans-serif;background:#f3f5fa;color:#202838}
-*{box-sizing:border-box}body{margin:0}.top{position:sticky;top:0;background:white;border-bottom:1px solid #d8deeb;padding:14px 18px;z-index:5}
-h1{font-size:19px;margin:0 0 8px}.stats{color:#68758b;font-size:13px}.search{width:100%;max-width:630px;border:1px solid #c4cee1;border-radius:9px;padding:10px}
-main{max-width:860px;margin:18px auto;padding:0 14px}.msg{background:white;border:1px solid #e1e5ed;border-radius:12px;margin:9px 0;padding:12px 16px;max-width:85%;overflow-wrap:anywhere}
-.msg.mine{margin-left:auto;background:#e6f0ff}.by{font-size:12px;color:#65738b;margin-bottom:5px}.content{white-space:pre-wrap}
-.file{display:block;margin-top:6px;color:#2154a5}.file img{display:block;max-width:min(100%,390px);max-height:360px;border-radius:8px}
-.file audio{width:min(100%,380px)}.quote{border-left:3px solid #8da9d8;padding-left:10px;color:#5b6881;margin:7px 0}
-</style><header class="top"><h1>VK Booster · Архив переписки</h1><div class="stats" id="stats"></div><input class="search" id="q" placeholder="Поиск по сообщениям…"></header><main id="list"></main>
-<script>const entries=${embed};const list=document.getElementById('list'),q=document.getElementById('q'),stats=document.getElementById('stats');
-function elt(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n}
-function link(path){return path.split('/').map(encodeURIComponent).join('/')}
-function render(){const filter=q.value.toLowerCase(),found=entries.filter(m=>!filter||m.text.toLowerCase().includes(filter));list.replaceChildren();
-const fragment=document.createDocumentFragment();for(const m of found){const box=elt('article','msg'+(m.out?' mine':''));box.append(elt('div','by',(m.out?'Вы':'ID '+m.author)+' · '+new Date(m.date*1000).toLocaleString('ru-RU')));
-if(m.reply)box.append(elt('div','quote','↪ '+(m.reply.text||'Ответ на сообщение')));
-for(const f of m.forwards)box.append(elt('div','quote','Переслано: '+(f.text||'Вложение')));
-const content=elt('div','content');
-for(const part of m.text.split(/(https?:\\/\\/[^\\s]+)/g)){
- if(/^https?:\\/\\//.test(part)){
-  const a=elt('a',null,part);a.href=part.replace(/[),.;!?]+$/,'');a.target='_blank';a.rel='noopener noreferrer';content.append(a);
- }else content.append(document.createTextNode(part));
-}
-box.append(content);for(const a of m.media){if(a.media){const tag=elt('a','file','📎 '+a.name);tag.href=link(a.media);tag.target='_blank';tag.rel='noopener noreferrer';
-if(/\\.(jpe?g|png|webp|gif)$/i.test(a.name)){const img=elt('img');img.src=link(a.media);img.loading='lazy';tag.append(img)}
-else if(/\\.(ogg|mp3|wav|m4a)$/i.test(a.name)){const audio=elt('audio');audio.controls=true;audio.preload='none';audio.src=link(a.media);box.append(audio)}
-box.append(tag)}else if(a.external){const external=elt('a','file','🔗 '+a.external);external.href=a.external;external.target='_blank';external.rel='noopener noreferrer';box.append(external)}
-else box.append(elt('div','by','Вложение ('+a.type+'): '+a.status));
-if(a.transcript)box.append(elt('div','quote','Расшифровка: '+a.transcript))}
-fragment.append(box)}
-list.append(fragment);stats.textContent=found.length+' / '+entries.length+' сообщений · локальный архив'}
-q.addEventListener('input',render);render();<\/script></html>`;
-  }
   function installVkArchive(target = "userscript") {
-    const VERSION = "2.3.10";
+    const VERSION = "1.0.0";
     const apiKey = instanceKey("VKExport", "vk-booster:prod");
     const published = globalThis;
     if (published[apiKey]?.version === VERSION) return;
@@ -47573,7 +47128,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
       delay: 450,
       media: true
     };
-    let root = null, meta = null, rows = [], busy = false, stopRequested = false, folderLoading = false, folderPickerOpen = false;
+    let rows = [], busy = false, stopRequested = false, folderLoading = false, folderPickerOpen = false;
     let prog = {
       phase: "Ожидание",
       done: 0,
@@ -47583,69 +47138,14 @@ q.addEventListener('input',render);render();<\/script></html>`;
       failed: 0
     };
     const subscribers = /* @__PURE__ */ new Set();
-    const ts = () => (/* @__PURE__ */ new Date()).toISOString(), sleep = (ms) => globalThis.__VK_EXPORT_TEST_MODE ? Promise.resolve() : new Promise((r2) => setTimeout(r2, ms));
+    const sleep = (ms) => new Promise((r2) => setTimeout(r2, ms));
     const validDay2 = (d) => !d || /^\d{4}-\d\d-\d\d$/.test(d) && new Date(Date.parse(d + "T00:00:00+03:00") + 108e5).toISOString().slice(0, 10) === d;
-    const unixDay = (d) => d ? Math.floor(Date.parse(d + "T00:00:00+03:00") / 1e3) : null;
-    const known = () => new Map(rows.map((m) => [m.id, m]));
-    const blank = () => ({
-      schema: 2,
-      version: VERSION,
-      peer_id: cfg.peerId,
-      updated: ts(),
-      instance_scope: instanceScope(),
-      total: 0,
-      checkpoint: null,
-      files: {},
-      runs: [],
-      conversation: null
-    });
-    const { json, write: write2, dir } = createArchiveFiles(() => {
-      if (!root) throw Error("Сначала выбери папку");
-      return root;
-    });
-    const sorted = () => rows.sort((a, b) => a.date - b.date || a.id - b.id);
-    const currentMeta = () => {
-      if (!meta) throw Error("Архив не выбран");
-      return meta;
-    };
-    async function persistSnapshot(nextRows, nextMeta) {
-      const ordered = [...nextRows].sort((a, b) => a.date - b.date || a.id - b.id);
-      const lastMessage = ordered.at(-1);
-      const savedMeta = {
-        ...nextMeta,
-        total: ordered.length,
-        updated: ts(),
-        lastMessageDate: lastMessage ? new Date(lastMessage.date * 1e3).toISOString() : null
-      };
-      await write2("messages.json", { schema: 2, peer_id: cfg.peerId, messages: ordered });
-      await write2("metadata.json", savedMeta);
-      return { ordered, savedMeta };
-    }
-    async function checkpoint() {
-      const { ordered, savedMeta } = await persistSnapshot(rows, currentMeta());
-      rows = ordered;
-      meta = savedMeta;
-      refresh();
-    }
     function status() {
       const pagePeer = currentPeer();
-      if (folderLoading || folderPickerOpen)
-        return {
-          version: VERSION,
-          folder: null,
-          activePeerId: pagePeer,
-          blockedReason: folderPickerOpen ? "Выбор папки архива…" : "Читаю и проверяю папку архива…",
-          busy: true,
-          folderPending: true,
-          options: { ...cfg },
-          progress: { ...prog },
-          messages: 0,
-          checkpoint: null
-        };
-      if (!root && !busy && pagePeer !== null) cfg.peerId = pagePeer;
+      if (!busy && pagePeer !== null) cfg.peerId = pagePeer;
       return {
         version: VERSION,
-        folder: root?.name || null,
+        folder: null,
         activePeerId: pagePeer,
         blockedReason: archiveContextBlock(cfg.peerId, pagePeer),
         busy,
@@ -47653,13 +47153,13 @@ q.addEventListener('input',render);render();<\/script></html>`;
         options: { ...cfg },
         progress: { ...prog },
         messages: rows.length,
-        checkpoint: meta?.checkpoint || null
+        checkpoint: null
       };
     }
     function configure(v = {}) {
       if (busy || folderLoading || folderPickerOpen) throw Error("Заверши текущую операцию с архивом");
       const pagePeer = currentPeer();
-      const o = { ...cfg, ...v, peerId: v.peerId ?? (root ? cfg.peerId : pagePeer ?? cfg.peerId) };
+      const o = { ...cfg, ...v, peerId: v.peerId ?? (pagePeer ?? cfg.peerId) };
       if (pagePeer !== null && o.peerId !== pagePeer) throw Error("Выбран другой диалог VK");
       if (!["recent", "incremental", "backfill"].includes(o.mode)) throw Error("Режим");
       if (!Number.isSafeInteger(o.limit) || o.limit < 1 || o.limit > 1e5)
@@ -47669,128 +47169,21 @@ q.addEventListener('input',render);render();<\/script></html>`;
       if (!Number.isSafeInteger(o.delay) || o.delay < 300) throw Error("Пауза: от 300 мс");
       if (!validDay2(o.from) || !validDay2(o.through) || o.from && o.through && o.from > o.through)
         throw Error("Диапазон дат");
-      if (root && o.peerId !== currentMeta().peer_id)
-        throw Error("Для другого диалога нужна отдельная папка");
       Object.assign(cfg, o);
       return status();
     }
-    function isRecord2(v) {
-      return v !== null && typeof v === "object" && !Array.isArray(v);
-    }
-    function isMessage(v) {
-      return isRecord2(v) && typeof v.id === "number" && Number.isSafeInteger(v.id) && typeof v.date === "number" && Number.isFinite(v.date);
-    }
-    function isMeta(v) {
-      return isRecord2(v) && v.schema === 2 && typeof v.peer_id === "number" && isRecord2(v.files) && Array.isArray(v.runs) && (v.checkpoint === null || isRecord2(v.checkpoint));
-    }
-    function isMessagesFile(v) {
-      return isRecord2(v) && v.schema === 2 && typeof v.peer_id === "number" && Array.isArray(v.messages) && v.messages.every(
-        (message) => isMessage(message) && (message.peer_id === void 0 || message.peer_id === v.peer_id)
-      );
-    }
     async function useFolder(handle) {
-      const pagePeer = currentPeer();
-      if (pagePeer === null) throw Error("Открой диалог VK перед выбором папки");
-      if (busy || folderLoading || folderPickerOpen)
-        throw Error("Другая операция с папкой уже выполняется");
-      const previousRoot = root, previousMeta = meta, previousRows = rows, previousPeer = cfg.peerId;
-      folderLoading = true;
-      cfg.peerId = pagePeer;
-      root = handle;
-      try {
-        const previous = await json("metadata.json");
-        if (!previous) {
-          try {
-            await root.getFileHandle("state.json");
-            throw Error("Обнаружен старый архив v1. Используй отдельную утилиту миграции.");
-          } catch (e) {
-            if (!(e instanceof Error) || e.name !== "NotFoundError") throw e;
-          }
-          try {
-            await root.getDirectoryHandle("pages");
-            throw Error("Обнаружен старый каталог pages/. Сначала выполни миграцию.");
-          } catch (e) {
-            if (!(e instanceof Error) || e.name !== "NotFoundError") throw e;
-          }
-        }
-        const loadedMeta = previous === null ? blank() : isMeta(previous) ? previous : null;
-        if (!loadedMeta || loadedMeta.peer_id !== cfg.peerId)
-          throw Error("Старая папка несовместима. Мигрируй её отдельной утилитой в новую папку.");
-        const owningScope = instanceScope() || "vk-booster:prod";
-        if (loadedMeta.instance_scope ? loadedMeta.instance_scope !== owningScope : owningScope !== "vk-booster:prod")
-          throw Error("Папка уже принадлежит другой установке VK Booster или каналу.");
-        const existing = await json("messages.json");
-        const loadedMessages = existing === null ? [] : isMessagesFile(existing) && existing.peer_id === cfg.peerId ? existing.messages : null;
-        if (!loadedMessages) throw Error("Неверный формат messages.json");
-        meta = loadedMeta;
-        rows = loadedMessages;
-        sorted();
-        if (currentPeer() !== pagePeer) throw Error("Диалог VK изменился при выборе папки");
-        if (!previous) await checkpoint();
-        folderLoading = false;
-        refresh();
-        return status();
-      } catch (error) {
-        root = previousRoot;
-        meta = previousMeta;
-        rows = previousRows;
-        cfg.peerId = previousPeer;
-        folderLoading = false;
-        refresh();
-        throw error;
-      } finally {
-        folderLoading = false;
-      }
+      throw Error("Файловая папка не подключается в основном режиме Dexie.");
     }
     async function selectFolder() {
-      if (!globalThis.showDirectoryPicker) throw Error("Нужен Chrome и HTTPS");
-      const pagePeer = currentPeer();
-      if (pagePeer === null) throw Error("Открой диалог VK перед выбором папки");
-      if (busy || folderLoading || folderPickerOpen)
-        throw Error("Другая операция с папкой уже выполняется");
-      folderPickerOpen = true;
-      refresh();
-      try {
-        const h2 = await globalThis.showDirectoryPicker({ id: "vk-archive-v2", mode: "readwrite" });
-        const permitted = h2;
-        if (await permitted.requestPermission({ mode: "readwrite" }) !== "granted")
-          throw Error("Нет разрешения на запись");
-        if (currentPeer() !== pagePeer) throw Error("Диалог VK изменился при выборе папки");
-        folderPickerOpen = false;
-        return await useFolder(h2);
-      } finally {
-        folderPickerOpen = false;
-        refresh();
-      }
+      throw Error("Файловая папка больше не является основным архивом. Используй экспорт Dexie.");
     }
     const vk = createVkProvider(cfg, { sleep, refresh });
     const auth = () => vk.auth();
     const history = (offset, count) => vk.history(offset, count);
     const api = (method, p2) => vk.api(method, p2);
-    const download$1 = (a, verifyContext) => download(a, { meta: currentMeta(), dir, write: write2, sleep, verifyContext });
-    function attachmentView(m) {
-      return assets(m).map((a) => ({
-        type: a.type,
-        key: a.key,
-        media: currentMeta().files[a.key]?.path || null,
-        status: currentMeta().files[a.key]?.status || "missing",
-        external: a.external,
-        transcript: a.transcript,
-        name: currentMeta().files[a.key]?.name || a.choices[0]?.name || a.type
-      }));
-    }
-    function archiveReadable() {
-      return !folderLoading && !folderPickerOpen && root !== null && meta !== null && meta.peer_id === cfg.peerId && currentPeer() === cfg.peerId;
-    }
     async function buildViewer() {
-      if (folderLoading || folderPickerOpen) throw Error("Выбор папки ещё не завершён");
-      if (!root || !meta) throw Error("Сначала выбери папку");
-      const reason = archiveContextBlock(cfg.peerId, currentPeer());
-      if (reason || meta.peer_id !== cfg.peerId)
-        throw Error(reason ?? "Папка принадлежит другому диалогу VK");
-      sorted();
-      await write2("index.html", viewerHTML(rows, cfg.peerId, attachmentView));
-      return { messages: rows.length };
+      throw Error("Сначала выбери папку");
     }
     function progress(phase, done, total, extra = {}) {
       prog = { phase, done, total, ...extra };
@@ -47801,193 +47194,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
       refresh();
     }
     async function run(options = {}) {
-      if (busy) throw Error("Выгрузка уже запущена");
-      if (folderLoading || folderPickerOpen) throw Error("Выбор папки ещё не завершён");
-      if (!root) throw Error("Сначала выбери папку");
-      const resume = options.resume === true;
-      if (!resume) configure(options);
-      const guard = () => {
-        const reason = archiveContextBlock(cfg.peerId, currentPeer());
-        if (reason || currentMeta().peer_id !== cfg.peerId)
-          throw Error(reason ?? "Папка принадлежит другому диалогу VK");
-      };
-      guard();
-      busy = true;
-      stopRequested = false;
-      refresh();
-      try {
-        if (!await auth()) throw Error("Не удалось авторизовать VK API из хранилища");
-        guard();
-      } catch (error) {
-        busy = false;
-        refresh();
-        throw error;
-      }
-      const storedSettings = currentMeta().checkpoint?.settings;
-      if (resume && storedSettings) Object.assign(cfg, storedSettings);
-      let index = known();
-      const identities = new Set([...index.keys()].map(String));
-      const lower = unixDay(cfg.from), through = unixDay(cfg.through), upper = through === null ? null : through + 86400;
-      const countTarget = cfg.limit;
-      const savedCp = currentMeta().checkpoint;
-      let cp = resume && savedCp && ["paused", "running"].includes(savedCp.status) ? savedCp : {
-        mode: cfg.mode,
-        target: countTarget,
-        offset: cfg.mode === "backfill" ? currentMeta().backfillOffset || 0 : 0,
-        matched: 0,
-        scanned: 0,
-        newCount: 0,
-        phase: "messages",
-        fileCursor: 0,
-        status: "running",
-        totalVK: null,
-        started: ts(),
-        settings: { ...cfg }
-      };
-      currentMeta().checkpoint = cp;
-      cfg.mode = cp.mode;
-      progress("Сообщения", cp.matched, cp.target);
-      try {
-        if (!currentMeta().conversation && vk.hasToken()) {
-          try {
-            currentMeta().conversation = await api("messages.getConversationsById", {
-              peer_ids: String(cfg.peerId),
-              extended: 0
-            });
-          } catch {
-          }
-        }
-        if (cp.phase === "messages") {
-          const result = await scanLinearArchive({
-            mode: cp.mode,
-            target: cp.target,
-            pageSize: cfg.pageSize,
-            knownKeys: identities,
-            keyOf: (m) => String(m.id),
-            timestampOf: (m) => m.date,
-            fromInclusive: lower,
-            toExclusive: upper,
-            initial: {
-              offset: cp.offset,
-              matched: cp.matched,
-              scanned: cp.scanned,
-              newCount: cp.newCount
-            },
-            source: {
-              async readPage(offset, count) {
-                guard();
-                const page = await history(offset, count);
-                guard();
-                return page;
-              }
-            },
-            stopped: () => stopRequested,
-            delay: () => sleep(cfg.delay),
-            async commit({ selection, next, sourceTotal }) {
-              guard();
-              const candidateIndex = new Map(index);
-              for (const item of selection.added) candidateIndex.set(item.id, item);
-              const nextCp = {
-                ...cp,
-                totalVK: sourceTotal,
-                offset: next.offset,
-                matched: next.matched,
-                scanned: next.scanned,
-                newCount: next.newCount,
-                shifted: next.newCount,
-                status: "running"
-              };
-              let backfillOffset = currentMeta().backfillOffset || 0;
-              if (cp.mode === "backfill") backfillOffset = next.offset;
-              if (cp.mode === "incremental") backfillOffset += next.newCount - (cp.shifted || 0);
-              if (cp.mode === "recent") backfillOffset = Math.max(backfillOffset, next.offset);
-              const { ordered, savedMeta } = await persistSnapshot([...candidateIndex.values()], {
-                ...currentMeta(),
-                backfillOffset,
-                checkpoint: nextCp
-              });
-              index = candidateIndex;
-              rows = ordered;
-              meta = savedMeta;
-              cp = nextCp;
-              refresh();
-              progress("Сообщения", cp.matched, cp.target, { newCount: cp.newCount, scanned: cp.scanned });
-            }
-          });
-          if (result.sourceTotal !== null) cp.totalVK = result.sourceTotal;
-          if (!result.paused) cp.phase = "media";
-        }
-        if (stopRequested) {
-          cp.status = "paused";
-          await checkpoint();
-          return { paused: true, progress: status().progress };
-        }
-        if (cp.phase === "media") {
-          const queue2 = cfg.media ? rows.flatMap(assets).filter((a) => a.type !== "link") : [];
-          progress("Файлы", cp.fileCursor, queue2.length, { newCount: cp.newCount });
-          for (let i = cp.fileCursor; i < queue2.length; i++) {
-            if (stopRequested) break;
-            guard();
-            const asset = queue2[i];
-            if (!asset) throw Error("Недоступен файл из очереди");
-            const outcome = await download$1(asset, guard);
-            guard();
-            cp.fileCursor = i + 1;
-            currentMeta().checkpoint = cp;
-            await write2("metadata.json", currentMeta());
-            const vals = Object.values(currentMeta().files);
-            progress("Файлы", cp.fileCursor, queue2.length, {
-              downloaded: vals.filter((f) => f.status === "saved").length,
-              failed: vals.filter((f) => f.status === "failed").length,
-              newCount: cp.newCount
-            });
-            if (!stopRequested && outcome !== "existing") await sleep(250);
-          }
-        }
-        if (stopRequested) {
-          cp.status = "paused";
-          await checkpoint();
-          return { paused: true, progress: status().progress };
-        }
-        guard();
-        cp.status = "done";
-        cp.phase = "done";
-        cp.finished = ts();
-        currentMeta().checkpoint = cp;
-        currentMeta().runs.push({
-          mode: cp.mode,
-          target: cp.target,
-          matched: cp.matched,
-          newCount: cp.newCount,
-          finished: ts()
-        });
-        if (currentMeta().runs.length > 30) currentMeta().runs = currentMeta().runs.slice(-30);
-        await checkpoint();
-        await buildViewer();
-        progress("Готово", cp.target, cp.target, {
-          newCount: cp.newCount,
-          downloaded: Object.values(currentMeta().files).filter((f) => f.status === "saved").length
-        });
-        return {
-          matched: cp.matched,
-          newCount: cp.newCount,
-          saved: rows.length,
-          files: prog.downloaded ?? 0,
-          folder: root.name
-        };
-      } catch (e) {
-        cp.status = "paused";
-        cp.error = String(e instanceof Error ? e.message : e).slice(0, 180);
-        try {
-          await checkpoint();
-        } catch {
-        }
-        progress("Ошибка", cp.matched, cp.target, { error: cp.error });
-        throw e;
-      } finally {
-        busy = false;
-        refresh();
-      }
+      throw Error("Историческая файловая выгрузка недоступна как основное хранилище. Используй Dexie.");
     }
     async function openFixedArchive(peerId) {
       const scope = instanceScope();
@@ -48076,11 +47283,11 @@ q.addEventListener('input',render);render();<\/script></html>`;
         repo.close();
       }
     }
-    async function readFixed(limit = 80) {
+    async function readFixed(limit = 80, afterMessageId) {
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500)
         throw Error("Invalid fixed archive page size");
       return withFixed(async (repo, peerId) => {
-        const rows2 = await repo.listMessages(peerId, limit);
+        const rows2 = await repo.listMessages(peerId, limit, afterMessageId);
         const messages2 = [];
         for (const row of rows2) {
           const original = await repo.getOriginal(peerId, row.messageId);
@@ -48154,23 +47361,24 @@ q.addEventListener('input',render);render();<\/script></html>`;
       selectFolder,
       useFolder,
       run,
-      resume: () => run({ resume: true }),
+      resume: () => run({}),
       stop,
       status,
       show,
       hide,
       subscribe,
       buildViewer,
-      // Public readers receive independent JSON-shaped snapshots; callers cannot mutate
-      // the in-memory rows that the next v2 checkpoint will persist.
       captureFixed,
       readFixed,
       exportFixed,
-      getMessages: () => archiveReadable() ? structuredClone(rows) : [],
+      // Public readers receive independent JSON-shaped snapshots; callers cannot mutate
+      // the in-memory rows that the next v1 checkpoint will persist.
+      getMessages: () => [],
       previewMessages: (options) => {
-        if (!archiveReadable()) return { messages: [], matching: 0 };
-        const result = selectVkArchivePreview(rows, options);
-        return { ...result, messages: structuredClone(result.messages) };
+        return { messages: [], matching: 0 };
+      },
+      previewAttachments: (messageIds) => {
+        return {};
       },
       destroy() {
         subscribers.clear();
@@ -48179,697 +47387,6 @@ q.addEventListener('input',render);render();<\/script></html>`;
     };
     published[apiKey] = Object.freeze(apiObject);
   }
-  function archiveApi() {
-    const key = instanceKey("VKExport", "vk-booster:prod");
-    return globalThis[key];
-  }
-  const vkBoosterFeature = {
-    id: "vk-booster",
-    title: "VK Booster",
-    description: "История переписки, вложения и офлайн-просмотр",
-    targets: ["userscript", "chromium"],
-    requiredCapabilities: ["page-dom", "origin-storage", "local-files"],
-    match: (url) => /^(vk\.ru|vk\.com)$/.test(url.hostname) && url.pathname.startsWith("/im"),
-    start(context) {
-      installVkArchive(context.target);
-    },
-    open() {
-      archiveApi()?.show();
-    },
-    stop() {
-      archiveApi()?.destroy?.();
-    }
-  };
-  const _sfc_main$2$1 = /* @__PURE__ */ defineComponent({
-    __name: "ArchiveProgressBar",
-    props: {
-      label: {},
-      percent: {},
-      counter: {},
-      percentLabel: {},
-      compact: { type: Boolean, default: false }
-    },
-    setup(__props) {
-      return (_ctx, _cache) => {
-        return openBlock(), createBlock(unref(_sfc_main$5$1), {
-          label: __props.label,
-          completed: __props.percent,
-          total: 100,
-          compact: __props.compact,
-          detail: __props.counter ? `${__props.counter}${__props.percent !== null && __props.percentLabel ? ` · ${__props.percentLabel} ${__props.percent}%` : ""}` : null
-        }, null, 8, ["label", "completed", "compact", "detail"]);
-      };
-    }
-  });
-  const _hoisted_1$1$1 = { class: "booster-setting-card" };
-  const _hoisted_2$1$1 = { class: "booster-setting-copy" };
-  const _hoisted_3$1$1 = { class: "flex items-center gap-2" };
-  const _hoisted_4$1$1 = { class: "booster-setting-card" };
-  const _hoisted_5$1$1 = { class: "booster-setting-copy" };
-  const _hoisted_6$1$1 = { class: "booster-stack-card" };
-  const _hoisted_7$1$1 = { class: "grid grid-cols-2 gap-3" };
-  const _hoisted_8$1$1 = { class: "booster-field" };
-  const _hoisted_9$1$1 = { class: "booster-field" };
-  const _hoisted_10$3 = ["aria-expanded"];
-  const _hoisted_11$3 = {
-    key: 0,
-    class: "grid grid-cols-2 gap-3"
-  };
-  const _hoisted_12$3 = { class: "booster-field" };
-  const _hoisted_13$2 = { class: "booster-field" };
-  const _hoisted_14$2 = { class: "booster-field" };
-  const _hoisted_15$2 = { class: "booster-field" };
-  const _hoisted_16$1 = { class: "booster-field col-span-2" };
-  const _hoisted_17$1 = { class: "flex items-center gap-2" };
-  const _hoisted_18$1 = { class: "booster-stack-card" };
-  const _hoisted_19$1 = { class: "flex items-center justify-between gap-2" };
-  const _hoisted_20$1 = { class: "booster-setting-copy" };
-  const _hoisted_21$1 = { class: "text-base font-semibold tabular-nums" };
-  const _hoisted_22$1 = { class: "booster-counter-grid text-xs" };
-  const _hoisted_23$1 = { class: "flex flex-wrap gap-2" };
-  const _hoisted_24$1 = {
-    key: 0,
-    role: "alert",
-    class: "text-sm text-destructive"
-  };
-  const _hoisted_25$1 = {
-    key: 1,
-    role: "alert",
-    class: "text-sm text-destructive"
-  };
-  const _sfc_main$1$1 = /* @__PURE__ */ defineComponent({
-    __name: "ArchiveManager",
-    props: {
-      state: {},
-      initial: {},
-      error: {},
-      title: {}
-    },
-    emits: ["choose-folder", "start", "stop", "resume"],
-    setup(__props, { emit: __emit }) {
-      const props = __props;
-      const emit2 = __emit;
-      const mode2 = /* @__PURE__ */ ref(props.initial.mode);
-      const limit = /* @__PURE__ */ ref(props.initial.limit);
-      const from = /* @__PURE__ */ ref(props.initial.from);
-      const through = /* @__PURE__ */ ref(props.initial.through);
-      const pageSize = /* @__PURE__ */ ref(props.initial.pageSize);
-      const delay = /* @__PURE__ */ ref(props.initial.delay);
-      const media = /* @__PURE__ */ ref(props.initial.media);
-      const advanced = /* @__PURE__ */ ref(false);
-      const percent = computed(
-        () => props.state.total ? Math.min(100, Math.floor(props.state.done / props.state.total * 100)) : props.state.phase === "Готово" ? 100 : 0
-      );
-      function start() {
-        emit2("start", {
-          mode: mode2.value,
-          limit: Number(limit.value),
-          from: from.value,
-          through: through.value,
-          pageSize: Number(pageSize.value),
-          delay: Number(delay.value),
-          media: media.value
-        });
-      }
-      return (_ctx, _cache) => {
-        return openBlock(), createElementBlock(
-          Fragment,
-          null,
-          [
-            createBaseVNode("section", _hoisted_1$1$1, [
-              createBaseVNode("div", _hoisted_2$1$1, [
-                createBaseVNode("div", _hoisted_3$1$1, [
-                  createVNode(unref(Archive), { class: "size-4" }),
-                  createBaseVNode(
-                    "b",
-                    null,
-                    toDisplayString(__props.title || "Архив переписки"),
-                    1
-                    /* TEXT */
-                  ),
-                  createVNode(unref(_sfc_main$1$2), {
-                    variant: __props.state.busy ? "default" : "outline"
-                  }, {
-                    default: withCtx(() => [
-                      createTextVNode(
-                        toDisplayString(__props.state.folderPending ? "Выбор папки" : __props.state.busy ? "Экспорт" : "Ожидание"),
-                        1
-                        /* TEXT */
-                      )
-                    ]),
-                    _: 1
-                    /* STABLE */
-                  }, 8, ["variant"])
-                ]),
-                createBaseVNode(
-                  "span",
-                  null,
-                  toDisplayString(__props.state.context) + " · Сообщений в архиве: " + toDisplayString(__props.state.messages),
-                  1
-                  /* TEXT */
-                )
-              ]),
-              createVNode(unref(_sfc_main$8), {
-                variant: "outline",
-                size: "sm",
-                disabled: __props.state.busy,
-                onClick: _cache[0] || (_cache[0] = ($event) => emit2("choose-folder"))
-              }, {
-                default: withCtx(() => [
-                  createVNode(unref(FolderOpen), { class: "size-4" }),
-                  _cache[11] || (_cache[11] = createTextVNode(
-                    "Папка ",
-                    -1
-                    /* CACHED */
-                  ))
-                ]),
-                _: 1
-                /* STABLE */
-              }, 8, ["disabled"])
-            ]),
-            createBaseVNode("section", _hoisted_4$1$1, [
-              createBaseVNode("div", _hoisted_5$1$1, [
-                _cache[12] || (_cache[12] = createBaseVNode(
-                  "b",
-                  null,
-                  "Хранилище",
-                  -1
-                  /* CACHED */
-                )),
-                createBaseVNode(
-                  "span",
-                  null,
-                  toDisplayString(__props.state.folder || "Выбери папку архива"),
-                  1
-                  /* TEXT */
-                )
-              ])
-            ]),
-            createBaseVNode("section", _hoisted_6$1$1, [
-              _cache[22] || (_cache[22] = createBaseVNode(
-                "div",
-                { class: "booster-setting-copy" },
-                [
-                  createBaseVNode("b", null, "Что выгружать"),
-                  createBaseVNode("span", null, "Без дублирования уже сохранённых сообщений")
-                ],
-                -1
-                /* CACHED */
-              )),
-              createBaseVNode("div", _hoisted_7$1$1, [
-                createBaseVNode("label", _hoisted_8$1$1, [
-                  _cache[14] || (_cache[14] = createTextVNode(
-                    " Режим ",
-                    -1
-                    /* CACHED */
-                  )),
-                  withDirectives(createBaseVNode(
-                    "select",
-                    {
-                      "onUpdate:modelValue": _cache[1] || (_cache[1] = ($event) => mode2.value = $event),
-                      class: "booster-select w-full"
-                    },
-                    [..._cache[13] || (_cache[13] = [
-                      createBaseVNode(
-                        "option",
-                        { value: "recent" },
-                        "Последние N",
-                        -1
-                        /* CACHED */
-                      ),
-                      createBaseVNode(
-                        "option",
-                        { value: "incremental" },
-                        "Только новые",
-                        -1
-                        /* CACHED */
-                      ),
-                      createBaseVNode(
-                        "option",
-                        { value: "backfill" },
-                        "Продолжить старые",
-                        -1
-                        /* CACHED */
-                      )
-                    ])],
-                    512
-                    /* NEED_PATCH */
-                  ), [
-                    [vModelSelect, mode2.value]
-                  ])
-                ]),
-                createBaseVNode("label", _hoisted_9$1$1, [
-                  _cache[15] || (_cache[15] = createTextVNode(
-                    " Количество сообщений ",
-                    -1
-                    /* CACHED */
-                  )),
-                  withDirectives(createBaseVNode(
-                    "input",
-                    {
-                      "onUpdate:modelValue": _cache[2] || (_cache[2] = ($event) => limit.value = $event),
-                      class: "booster-input",
-                      type: "number",
-                      min: "1",
-                      max: "100000"
-                    },
-                    null,
-                    512
-                    /* NEED_PATCH */
-                  ), [
-                    [
-                      vModelText,
-                      limit.value,
-                      void 0,
-                      { number: true }
-                    ]
-                  ])
-                ])
-              ]),
-              createBaseVNode("button", {
-                class: "booster-disclosure",
-                type: "button",
-                "aria-expanded": advanced.value,
-                onClick: _cache[3] || (_cache[3] = ($event) => advanced.value = !advanced.value)
-              }, [
-                _cache[16] || (_cache[16] = createBaseVNode(
-                  "span",
-                  null,
-                  [
-                    createBaseVNode("b", null, "Дополнительные настройки"),
-                    createBaseVNode("small", null, "Диапазон дат, пачка и медиафайлы")
-                  ],
-                  -1
-                  /* CACHED */
-                )),
-                createVNode(unref(Settings2), { class: "size-4" })
-              ], 8, _hoisted_10$3),
-              advanced.value ? (openBlock(), createElementBlock("div", _hoisted_11$3, [
-                createBaseVNode("label", _hoisted_12$3, [
-                  _cache[17] || (_cache[17] = createTextVNode(
-                    "С даты",
-                    -1
-                    /* CACHED */
-                  )),
-                  withDirectives(createBaseVNode(
-                    "input",
-                    {
-                      "onUpdate:modelValue": _cache[4] || (_cache[4] = ($event) => from.value = $event),
-                      class: "booster-input",
-                      type: "date"
-                    },
-                    null,
-                    512
-                    /* NEED_PATCH */
-                  ), [
-                    [vModelText, from.value]
-                  ])
-                ]),
-                createBaseVNode("label", _hoisted_13$2, [
-                  _cache[18] || (_cache[18] = createTextVNode(
-                    "По дату",
-                    -1
-                    /* CACHED */
-                  )),
-                  withDirectives(createBaseVNode(
-                    "input",
-                    {
-                      "onUpdate:modelValue": _cache[5] || (_cache[5] = ($event) => through.value = $event),
-                      class: "booster-input",
-                      type: "date"
-                    },
-                    null,
-                    512
-                    /* NEED_PATCH */
-                  ), [
-                    [vModelText, through.value]
-                  ])
-                ]),
-                createBaseVNode("label", _hoisted_14$2, [
-                  _cache[19] || (_cache[19] = createTextVNode(
-                    "Пачка",
-                    -1
-                    /* CACHED */
-                  )),
-                  withDirectives(createBaseVNode(
-                    "input",
-                    {
-                      "onUpdate:modelValue": _cache[6] || (_cache[6] = ($event) => pageSize.value = $event),
-                      class: "booster-input",
-                      type: "number",
-                      min: "1",
-                      max: "100"
-                    },
-                    null,
-                    512
-                    /* NEED_PATCH */
-                  ), [
-                    [
-                      vModelText,
-                      pageSize.value,
-                      void 0,
-                      { number: true }
-                    ]
-                  ])
-                ]),
-                createBaseVNode("label", _hoisted_15$2, [
-                  _cache[20] || (_cache[20] = createTextVNode(
-                    "Пауза, мс",
-                    -1
-                    /* CACHED */
-                  )),
-                  withDirectives(createBaseVNode(
-                    "input",
-                    {
-                      "onUpdate:modelValue": _cache[7] || (_cache[7] = ($event) => delay.value = $event),
-                      class: "booster-input",
-                      type: "number",
-                      min: "300"
-                    },
-                    null,
-                    512
-                    /* NEED_PATCH */
-                  ), [
-                    [
-                      vModelText,
-                      delay.value,
-                      void 0,
-                      { number: true }
-                    ]
-                  ])
-                ]),
-                createBaseVNode("label", _hoisted_16$1, [
-                  createBaseVNode("span", _hoisted_17$1, [
-                    withDirectives(createBaseVNode(
-                      "input",
-                      {
-                        "onUpdate:modelValue": _cache[8] || (_cache[8] = ($event) => media.value = $event),
-                        type: "checkbox"
-                      },
-                      null,
-                      512
-                      /* NEED_PATCH */
-                    ), [
-                      [vModelCheckbox, media.value]
-                    ]),
-                    _cache[21] || (_cache[21] = createTextVNode(
-                      "Сохранять файлы и голосовые",
-                      -1
-                      /* CACHED */
-                    ))
-                  ])
-                ])
-              ])) : createCommentVNode("v-if", true)
-            ]),
-            createBaseVNode("section", _hoisted_18$1, [
-              createBaseVNode("div", _hoisted_19$1, [
-                createBaseVNode("div", _hoisted_20$1, [
-                  _cache[23] || (_cache[23] = createBaseVNode(
-                    "b",
-                    null,
-                    "Прогресс экспорта",
-                    -1
-                    /* CACHED */
-                  )),
-                  createBaseVNode(
-                    "span",
-                    null,
-                    toDisplayString(__props.state.error || __props.state.phase || "Ожидание"),
-                    1
-                    /* TEXT */
-                  )
-                ]),
-                createBaseVNode(
-                  "strong",
-                  _hoisted_21$1,
-                  toDisplayString(percent.value) + "%",
-                  1
-                  /* TEXT */
-                )
-              ]),
-              createVNode(_sfc_main$2$1, {
-                label: "Прогресс экспорта",
-                percent: percent.value,
-                compact: ""
-              }, null, 8, ["percent"]),
-              createBaseVNode("div", _hoisted_22$1, [
-                createBaseVNode("span", null, [
-                  _cache[24] || (_cache[24] = createTextVNode(
-                    "Обработано ",
-                    -1
-                    /* CACHED */
-                  )),
-                  createBaseVNode(
-                    "b",
-                    null,
-                    toDisplayString(__props.state.done) + " / " + toDisplayString(__props.state.total),
-                    1
-                    /* TEXT */
-                  )
-                ]),
-                createBaseVNode("span", null, [
-                  _cache[25] || (_cache[25] = createTextVNode(
-                    "Новых ",
-                    -1
-                    /* CACHED */
-                  )),
-                  createBaseVNode(
-                    "b",
-                    null,
-                    toDisplayString(__props.state.newCount),
-                    1
-                    /* TEXT */
-                  )
-                ]),
-                createBaseVNode("span", null, [
-                  _cache[26] || (_cache[26] = createTextVNode(
-                    "Файлов ",
-                    -1
-                    /* CACHED */
-                  )),
-                  createBaseVNode(
-                    "b",
-                    null,
-                    toDisplayString(__props.state.downloaded),
-                    1
-                    /* TEXT */
-                  )
-                ]),
-                createBaseVNode("span", null, [
-                  _cache[27] || (_cache[27] = createTextVNode(
-                    "Ошибки ",
-                    -1
-                    /* CACHED */
-                  )),
-                  createBaseVNode(
-                    "b",
-                    null,
-                    toDisplayString(__props.state.failed),
-                    1
-                    /* TEXT */
-                  )
-                ])
-              ]),
-              createBaseVNode("div", _hoisted_23$1, [
-                createVNode(unref(_sfc_main$8), {
-                  disabled: __props.state.busy || !__props.state.folder || !!__props.state.blockedReason,
-                  onClick: start
-                }, {
-                  default: withCtx(() => [
-                    createVNode(unref(Download), { class: "size-4" }),
-                    _cache[28] || (_cache[28] = createTextVNode(
-                      "Выгрузить",
-                      -1
-                      /* CACHED */
-                    ))
-                  ]),
-                  _: 1
-                  /* STABLE */
-                }, 8, ["disabled"]),
-                createVNode(unref(_sfc_main$8), {
-                  variant: "outline",
-                  disabled: !__props.state.busy || __props.state.folderPending,
-                  onClick: _cache[9] || (_cache[9] = ($event) => emit2("stop"))
-                }, {
-                  default: withCtx(() => [
-                    createVNode(unref(Pause), { class: "size-4" }),
-                    _cache[29] || (_cache[29] = createTextVNode(
-                      "Пауза",
-                      -1
-                      /* CACHED */
-                    ))
-                  ]),
-                  _: 1
-                  /* STABLE */
-                }, 8, ["disabled"]),
-                createVNode(unref(_sfc_main$8), {
-                  variant: "outline",
-                  disabled: __props.state.busy || !__props.state.paused || !!__props.state.blockedReason,
-                  onClick: _cache[10] || (_cache[10] = ($event) => emit2("resume"))
-                }, {
-                  default: withCtx(() => [
-                    createVNode(unref(Play), { class: "size-4" }),
-                    _cache[30] || (_cache[30] = createTextVNode(
-                      "Продолжить",
-                      -1
-                      /* CACHED */
-                    ))
-                  ]),
-                  _: 1
-                  /* STABLE */
-                }, 8, ["disabled"])
-              ]),
-              __props.state.blockedReason ? (openBlock(), createElementBlock(
-                "p",
-                _hoisted_24$1,
-                toDisplayString(__props.state.blockedReason),
-                1
-                /* TEXT */
-              )) : createCommentVNode("v-if", true),
-              __props.error ? (openBlock(), createElementBlock(
-                "p",
-                _hoisted_25$1,
-                toDisplayString(__props.error),
-                1
-                /* TEXT */
-              )) : createCommentVNode("v-if", true)
-            ])
-          ],
-          64
-          /* STABLE_FRAGMENT */
-        );
-      };
-    }
-  });
-  const _hoisted_1$4 = { class: "booster-reader-exchanges" };
-  const _hoisted_2$4 = {
-    key: 0,
-    class: "booster-note"
-  };
-  const _hoisted_3$3 = {
-    key: 0,
-    class: "booster-note"
-  };
-  const _hoisted_4$3 = {
-    key: 1,
-    class: "booster-note"
-  };
-  const _hoisted_5$3 = ["data-archive-node", "data-archive-message"];
-  const _hoisted_6$3 = {
-    key: 2,
-    class: "booster-exchange-details"
-  };
-  const _hoisted_7$3 = { class: "booster-exchange-details-label" };
-  const _hoisted_8$3 = ["data-archive-node", "data-archive-message"];
-  const _hoisted_9$3 = ["data-archive-node", "data-archive-message"];
-  const _sfc_main$4 = /* @__PURE__ */ defineComponent({
-    __name: "ArchiveTranscript",
-    props: {
-      turns: {},
-      isEmpty: { type: Boolean },
-      targetMessageId: {},
-      copy: {}
-    },
-    setup(__props) {
-      return (_ctx, _cache) => {
-        return openBlock(), createElementBlock("div", _hoisted_1$4, [
-          __props.isEmpty ? (openBlock(), createElementBlock(
-            "p",
-            _hoisted_2$4,
-            toDisplayString(__props.copy.empty),
-            1
-            /* TEXT */
-          )) : createCommentVNode("v-if", true),
-          (openBlock(true), createElementBlock(
-            Fragment,
-            null,
-            renderList(__props.turns, (turn) => {
-              return openBlock(), createElementBlock("article", {
-                key: turn.id,
-                class: "booster-exchange"
-              }, [
-                turn.association === "unassigned" ? (openBlock(), createElementBlock(
-                  "p",
-                  _hoisted_3$3,
-                  toDisplayString(__props.copy.unassigned),
-                  1
-                  /* TEXT */
-                )) : turn.association === "adjacency" ? (openBlock(), createElementBlock(
-                  "p",
-                  _hoisted_4$3,
-                  toDisplayString(__props.copy.adjacency),
-                  1
-                  /* TEXT */
-                )) : createCommentVNode("v-if", true),
-                (openBlock(true), createElementBlock(
-                  Fragment,
-                  null,
-                  renderList(turn.users, (item) => {
-                    return openBlock(), createElementBlock("div", {
-                      key: item.key,
-                      "data-archive-node": item.key,
-                      "data-archive-message": item.messageId,
-                      class: normalizeClass({ "booster-message-target": __props.targetMessageId === item.messageId }),
-                      tabindex: "-1"
-                    }, [
-                      renderSlot(_ctx.$slots, "record", { record: item })
-                    ], 10, _hoisted_5$3);
-                  }),
-                  128
-                  /* KEYED_FRAGMENT */
-                )),
-                turn.details.length ? (openBlock(), createElementBlock("div", _hoisted_6$3, [
-                  createBaseVNode(
-                    "div",
-                    _hoisted_7$3,
-                    toDisplayString(__props.copy.details) + " · " + toDisplayString(turn.details.length),
-                    1
-                    /* TEXT */
-                  ),
-                  (openBlock(true), createElementBlock(
-                    Fragment,
-                    null,
-                    renderList(turn.details, (item) => {
-                      return openBlock(), createElementBlock("div", {
-                        key: item.key,
-                        "data-archive-node": item.key,
-                        "data-archive-message": item.messageId,
-                        class: normalizeClass({ "booster-message-target": __props.targetMessageId === item.messageId }),
-                        tabindex: "-1"
-                      }, [
-                        renderSlot(_ctx.$slots, "record", { record: item })
-                      ], 10, _hoisted_8$3);
-                    }),
-                    128
-                    /* KEYED_FRAGMENT */
-                  ))
-                ])) : createCommentVNode("v-if", true),
-                (openBlock(true), createElementBlock(
-                  Fragment,
-                  null,
-                  renderList(turn.replies, (item) => {
-                    return openBlock(), createElementBlock("div", {
-                      key: item.key,
-                      "data-archive-node": item.key,
-                      "data-archive-message": item.messageId,
-                      class: normalizeClass({ "booster-message-target": __props.targetMessageId === item.messageId }),
-                      tabindex: "-1"
-                    }, [
-                      renderSlot(_ctx.$slots, "record", { record: item })
-                    ], 10, _hoisted_9$3);
-                  }),
-                  128
-                  /* KEYED_FRAGMENT */
-                ))
-              ]);
-            }),
-            128
-            /* KEYED_FRAGMENT */
-          ))
-        ]);
-      };
-    }
-  });
   const fields = ["mode", "limit", "from", "through", "pageSize", "delay", "media"];
   const fieldNames = [...fields].sort().join(",");
   function validDay(value) {
@@ -48923,333 +47440,337 @@ q.addEventListener('input',render);render();<\/script></html>`;
   async function exportVkCaptureSettings(api) {
     return exportSettingsBackup(vkCaptureSettingsPort(api));
   }
-  async function restoreVkCaptureSettings(api, backup) {
-    await restoreSettingsBackup(vkCaptureSettingsPort(api), backup);
+  async function restoreVkCaptureSettings(api, backup, persistence) {
+    const port = vkCaptureSettingsPort(api, persistence?.scopeId);
+    if (!persistence) return restoreSettingsBackup(port, backup);
+    const validated = await validateSettingsBackup(port, backup);
+    const before = withoutPeer(api.status().options);
+    await port.exportSettings();
+    await port.restoreSettingsAtomically(validated.settings);
+    try {
+      await persistence.write(validated.settings);
+    } catch (error) {
+      try {
+        await port.restoreSettingsAtomically(before);
+      } catch {
+        throw Error("VK settings persistence failed and live rollback was blocked");
+      }
+      throw error;
+    }
   }
-  const _hoisted_1$3 = {
-    class: "booster-stack-card",
-    "aria-label": "Просмотр сохранённой переписки"
+  const PREFIX = "koba:vk-capture-preferences:v1";
+  const MAX_BYTES = 4096;
+  function assertVkScope(scopeId) {
+    if (!/^(vk-booster|all-in-one):(dev|prod)$/.test(scopeId))
+      throw Error("Invalid VK application preferences scope");
+  }
+  function vkPreferencesKey(scopeId, target) {
+    assertVkScope(scopeId);
+    if (target !== "userscript" && target !== "chromium") throw Error("Invalid VK settings target");
+    return `${PREFIX}:${scopeId}:${target}`;
+  }
+  function browserPreferencesBackend(target) {
+    if (target === "chromium") {
+      if (typeof chrome === "undefined" || !chrome.storage?.local)
+        throw Error("Chromium storage permission is unavailable");
+      return {
+        async get(key) {
+          const value = (await chrome.storage.local.get(key))[key];
+          return typeof value === "string" ? value : value === void 0 ? null : "invalid";
+        },
+        async set(key, value) {
+          await chrome.storage.local.set({ [key]: value });
+        }
+      };
+    }
+    if (typeof localStorage === "undefined") throw Error("Userscript local storage is unavailable");
+    return {
+      async get(key) {
+        return localStorage.getItem(key);
+      },
+      async set(key, value) {
+        localStorage.setItem(key, value);
+      }
+    };
+  }
+  function createVkPreferencesPersistence(target, scopeId, backend = browserPreferencesBackend(target)) {
+    const key = vkPreferencesKey(scopeId, target);
+    return {
+      scopeId,
+      target,
+      async read() {
+        const raw = await backend.get(key);
+        if (raw === null) return null;
+        if (new TextEncoder().encode(raw).byteLength > MAX_BYTES)
+          throw Error("Invalid stored VK settings size");
+        let parsed;
+        try {
+          parsed = JSON.parse(raw);
+        } catch {
+          throw Error("Invalid stored VK settings JSON");
+        }
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || Object.keys(parsed).sort().join(",") !== "schemaVersion,scopeId,settings,target")
+          throw Error("Invalid stored VK settings envelope");
+        const envelope = parsed;
+        if (envelope.schemaVersion !== 1 || envelope.scopeId !== scopeId || envelope.target !== target)
+          throw Error("Stored VK settings scope/version mismatch");
+        return validateVkCapturePreferences(envelope.settings);
+      },
+      async write(value) {
+        const settings = validateVkCapturePreferences(value);
+        const raw = JSON.stringify({ schemaVersion: 1, scopeId, target, settings });
+        if (new TextEncoder().encode(raw).byteLength > MAX_BYTES) throw Error("VK settings size exceeded");
+        await backend.set(key, raw);
+      }
+    };
+  }
+  let activePreferences = null;
+  let startupError = "";
+  function setVkPreferencesPersistence(port) {
+    activePreferences = port;
+    startupError = "";
+  }
+  function vkPreferencesPersistence() {
+    return activePreferences;
+  }
+  function vkPreferencesLoadError() {
+    return startupError;
+  }
+  async function loadVkCaptureDefaults(configure, target, scopeId = instanceScope(), backend) {
+    setVkPreferencesPersistence(null);
+    try {
+      const port = createVkPreferencesPersistence(
+        target,
+        scopeId,
+        backend ?? browserPreferencesBackend(target)
+      );
+      setVkPreferencesPersistence(port);
+      const saved = await port.read();
+      if (saved) configure(saved);
+    } catch {
+      startupError = "Не удалось загрузить постоянные параметры VK; используются параметры сессии.";
+    }
+  }
+  function archiveApi() {
+    const key = instanceKey("VKExport", "vk-booster:prod");
+    return globalThis[key];
+  }
+  const vkBoosterFeature = {
+    id: "vk-booster",
+    title: "VK Booster",
+    description: "История переписки, вложения и офлайн-просмотр",
+    targets: ["userscript", "chromium"],
+    requiredCapabilities: ["page-dom", "origin-storage", "local-files"],
+    match: (url) => /^(vk\.ru|vk\.com)$/.test(url.hostname) && url.pathname.startsWith("/im"),
+    async start(context) {
+      installVkArchive(context.target);
+      await loadVkCaptureDefaults((value) => archiveApi()?.configure(value), context.target);
+    },
+    open() {
+      archiveApi()?.show();
+    },
+    stop() {
+      archiveApi()?.destroy?.();
+      setVkPreferencesPersistence(null);
+    }
   };
-  const _hoisted_2$3 = { class: "booster-setting-copy" };
-  const _hoisted_3$2 = { class: "booster-field" };
-  const _hoisted_4$2 = { class: "max-h-[420px] min-h-[130px] overflow-x-hidden overflow-y-auto rounded-lg border border-border bg-background p-3" };
-  const _hoisted_5$2 = { class: "mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground" };
-  const _hoisted_6$2 = { class: "text-foreground" };
-  const _hoisted_7$2 = { class: "m-0 whitespace-pre-wrap break-words text-sm text-foreground" };
-  const _hoisted_8$2 = {
-    key: 0,
-    class: "mt-2 border-l-2 border-border pl-2 text-xs text-muted-foreground"
-  };
-  const _hoisted_9$2 = {
-    key: 1,
-    class: "mt-2 text-xs text-muted-foreground"
-  };
-  const _hoisted_10$2 = {
-    key: 2,
-    class: "mt-2 text-xs text-muted-foreground"
-  };
-  const _hoisted_11$2 = { class: "flex flex-wrap items-center justify-between gap-2" };
-  const _hoisted_12$2 = {
-    key: 0,
-    class: "m-0 text-xs text-muted-foreground"
-  };
-  const _sfc_main$3 = /* @__PURE__ */ defineComponent({
-    __name: "ArchivePreview",
+  const _sfc_main$2$1 = /* @__PURE__ */ defineComponent({
+    __name: "ArchiveProgressBar",
     props: {
-      api: {},
-      status: {}
+      label: {},
+      percent: {},
+      counter: {},
+      percentLabel: {},
+      compact: { type: Boolean, default: false }
     },
     setup(__props) {
-      const props = __props;
-      const query = /* @__PURE__ */ ref("");
-      const visibleLimit = /* @__PURE__ */ ref(80);
-      const result = computed(() => {
-        void props.status;
-        return props.api.previewMessages({ limit: visibleLimit.value, query: query.value });
-      });
-      const messageMap = computed(() => new Map(result.value.messages.map((row) => [String(row.id), row])));
-      const turns = computed(
-        () => result.value.messages.map((message) => {
-          const record2 = { key: String(message.id), messageId: String(message.id) };
-          return {
-            id: record2.key,
-            association: "linked",
-            users: message.out ? [record2] : [],
-            details: [],
-            replies: message.out ? [] : [record2]
-          };
-        })
-      );
-      const copy = computed(() => ({
-        empty: query.value ? "Сообщения с таким текстом не найдены." : "В выбранном архиве ещё нет сообщений.",
-        unassigned: "",
-        adjacency: "",
-        details: ""
-      }));
-      watch(query, () => {
-        visibleLimit.value = 80;
-      });
-      function dateLabel(date) {
-        return Number.isFinite(date) ? new Date(date * 1e3).toLocaleString("ru-RU") : "Дата неизвестна";
-      }
-      function attachmentCount(message) {
-        return Array.isArray(message.attachments) ? message.attachments.length : 0;
-      }
-      function showMore() {
-        visibleLimit.value = Math.min(240, visibleLimit.value + 80);
-      }
       return (_ctx, _cache) => {
-        return openBlock(), createElementBlock("section", _hoisted_1$3, [
-          createBaseVNode("div", _hoisted_2$3, [
-            _cache[1] || (_cache[1] = createBaseVNode(
-              "b",
-              null,
-              "Сообщения из архива",
-              -1
-              /* CACHED */
-            )),
-            createBaseVNode(
-              "span",
-              null,
-              " Папка: " + toDisplayString(__props.status.folder) + " · Найдено: " + toDisplayString(result.value.matching) + " · Показано: " + toDisplayString(result.value.messages.length),
-              1
-              /* TEXT */
-            )
-          ]),
-          createBaseVNode("label", _hoisted_3$2, [
-            _cache[2] || (_cache[2] = createTextVNode(
-              " Поиск по тексту сохранённых сообщений ",
-              -1
-              /* CACHED */
-            )),
-            withDirectives(createBaseVNode(
-              "input",
-              {
-                "onUpdate:modelValue": _cache[0] || (_cache[0] = ($event) => query.value = $event),
-                class: "booster-input w-full",
-                type: "search",
-                placeholder: "Введите текст сообщения…",
-                autocomplete: "off",
-                "aria-label": "Поиск в локальном архиве"
-              },
-              null,
-              512
-              /* NEED_PATCH */
-            ), [
-              [vModelText, query.value]
-            ])
-          ]),
-          createBaseVNode("div", _hoisted_4$2, [
-            createVNode(unref(_sfc_main$4), {
-              turns: turns.value,
-              "is-empty": !result.value.messages.length,
-              "target-message-id": null,
-              copy: copy.value
-            }, {
-              record: withCtx(({ record: record2 }) => [
-                messageMap.value.get(record2.key) ? (openBlock(), createElementBlock(
-                  "div",
-                  {
-                    key: 0,
-                    class: normalizeClass(["w-full min-w-0 rounded-lg border border-border bg-card p-3", { "bg-secondary": Boolean(messageMap.value.get(record2.key)?.out) }])
-                  },
-                  [
-                    createBaseVNode("div", _hoisted_5$2, [
-                      createBaseVNode(
-                        "b",
-                        _hoisted_6$2,
-                        toDisplayString(messageMap.value.get(record2.key)?.out ? "Вы" : "ID " + (messageMap.value.get(record2.key)?.from_id ?? "—")),
-                        1
-                        /* TEXT */
-                      ),
-                      createBaseVNode(
-                        "time",
-                        null,
-                        toDisplayString(dateLabel(messageMap.value.get(record2.key)?.date ?? 0)),
-                        1
-                        /* TEXT */
-                      )
-                    ]),
-                    createBaseVNode(
-                      "p",
-                      _hoisted_7$2,
-                      toDisplayString(messageMap.value.get(record2.key)?.text || "Сообщение без текста"),
-                      1
-                      /* TEXT */
-                    ),
-                    messageMap.value.get(record2.key)?.reply_message ? (openBlock(), createElementBlock(
-                      "p",
-                      _hoisted_8$2,
-                      " Ответ: " + toDisplayString(messageMap.value.get(record2.key)?.reply_message?.text || "вложение"),
-                      1
-                      /* TEXT */
-                    )) : createCommentVNode("v-if", true),
-                    messageMap.value.get(record2.key)?.fwd_messages?.length ? (openBlock(), createElementBlock(
-                      "p",
-                      _hoisted_9$2,
-                      " Пересланных: " + toDisplayString(messageMap.value.get(record2.key)?.fwd_messages?.length),
-                      1
-                      /* TEXT */
-                    )) : createCommentVNode("v-if", true),
-                    attachmentCount(messageMap.value.get(record2.key)) ? (openBlock(), createElementBlock(
-                      "p",
-                      _hoisted_10$2,
-                      " Вложений: " + toDisplayString(attachmentCount(messageMap.value.get(record2.key))),
-                      1
-                      /* TEXT */
-                    )) : createCommentVNode("v-if", true)
-                  ],
-                  2
-                  /* CLASS */
-                )) : createCommentVNode("v-if", true)
-              ]),
-              _: 1
-              /* STABLE */
-            }, 8, ["turns", "is-empty", "copy"])
-          ]),
-          createBaseVNode("div", _hoisted_11$2, [
-            _cache[4] || (_cache[4] = createBaseVNode(
-              "span",
-              { class: "text-xs text-muted-foreground" },
-              " Для всех сообщений и сохранённых медиа открой index.html в папке архива. ",
-              -1
-              /* CACHED */
-            )),
-            result.value.matching > result.value.messages.length && visibleLimit.value < 240 ? (openBlock(), createBlock(unref(_sfc_main$8), {
-              key: 0,
-              variant: "outline",
-              size: "sm",
-              onClick: showMore
-            }, {
-              default: withCtx(() => [..._cache[3] || (_cache[3] = [
-                createTextVNode(
-                  "Показать ещё",
-                  -1
-                  /* CACHED */
-                )
-              ])]),
-              _: 1
-              /* STABLE */
-            })) : createCommentVNode("v-if", true)
-          ]),
-          result.value.matching > result.value.messages.length && visibleLimit.value >= 240 ? (openBlock(), createElementBlock("p", _hoisted_12$2, " Показаны последние 240 совпадений. Уточни поиск, чтобы найти более ранние сообщения. ")) : createCommentVNode("v-if", true)
-        ]);
+        return openBlock(), createBlock(unref(_sfc_main$5$1), {
+          label: __props.label,
+          completed: __props.percent,
+          total: 100,
+          compact: __props.compact,
+          detail: __props.counter ? `${__props.counter}${__props.percent !== null && __props.percentLabel ? ` · ${__props.percentLabel} ${__props.percent}%` : ""}` : null
+        }, null, 8, ["label", "completed", "compact", "detail"]);
       };
     }
   });
   const _hoisted_1$2 = {
-    key: 0,
-    class: "booster-stack-card",
-    "aria-label": "Фиксированный Dexie архив VK"
+    class: "flex min-w-0 flex-col gap-3",
+    "aria-label": "VK Booster — управление архивом"
   };
-  const _hoisted_2$2 = { class: "booster-setting-copy" };
-  const _hoisted_3$1 = { key: 0 };
-  const _hoisted_4$1 = { class: "booster-field" };
-  const _hoisted_5$1 = ["disabled"];
-  const _hoisted_6$1 = { class: "flex flex-wrap gap-2" };
-  const _hoisted_7$1 = ["disabled"];
-  const _hoisted_8$1 = ["disabled"];
-  const _hoisted_9$1 = ["disabled"];
-  const _hoisted_10$1 = {
+  const _hoisted_2$2 = { class: "booster-setting-card" };
+  const _hoisted_3$1 = { class: "booster-setting-copy min-w-0" };
+  const _hoisted_4$1 = { class: "flex flex-wrap items-center gap-2" };
+  const _hoisted_5$1 = { key: 0 };
+  const _hoisted_6$1 = { key: 1 };
+  const _hoisted_7$1 = {
     key: 0,
+    class: "m-0 flex items-start gap-2 text-sm text-destructive",
     role: "alert"
   };
-  const _hoisted_11$1 = {
-    key: 1,
-    class: "max-h-60 overflow-y-auto p-2"
+  const _hoisted_8$1 = {
+    "aria-label": "Разделы VK Booster",
+    class: "flex flex-wrap gap-2",
+    role: "tablist"
   };
-  const _hoisted_12$1 = { class: "whitespace-pre-wrap break-words" };
-  const _hoisted_13$1 = { class: "flex justify-end" };
-  const _hoisted_14$1 = ["aria-expanded"];
-  const _hoisted_15$1 = {
+  const _hoisted_9$1 = ["id", "aria-labelledby"];
+  const _hoisted_10$1 = {
+    class: "booster-stack-card",
+    "aria-label": "Захват в Dexie"
+  };
+  const _hoisted_11$1 = { class: "booster-field" };
+  const _hoisted_12$1 = ["disabled"];
+  const _hoisted_13$1 = { class: "flex flex-wrap gap-2" };
+  const _hoisted_14$1 = {
     key: 0,
-    id: "vk-archive-preview"
+    role: "status"
+  };
+  const _hoisted_15$1 = {
+    key: 2,
+    role: "status"
   };
   const _hoisted_16 = {
     key: 3,
-    class: "booster-stack-card",
-    "aria-label": "Профиль параметров VK"
-  };
-  const _hoisted_17 = { class: "flex flex-wrap gap-2" };
-  const _hoisted_18 = ["disabled"];
-  const _hoisted_19 = { class: "booster-field" };
-  const _hoisted_20 = ["disabled"];
-  const _hoisted_21 = {
-    key: 0,
-    class: "booster-field"
-  };
-  const _hoisted_22 = ["disabled"];
-  const _hoisted_23 = ["disabled"];
-  const _hoisted_24 = {
-    key: 2,
     role: "alert",
     class: "text-sm text-destructive"
   };
-  const _hoisted_25 = {
-    key: 3,
-    role: "status",
-    class: "text-sm"
-  };
-  const _hoisted_26 = {
+  const _hoisted_17 = {
     key: 4,
-    class: "booster-setting-card"
+    role: "alert",
+    class: "text-sm text-destructive"
+  };
+  const _hoisted_18 = ["id", "aria-labelledby"];
+  const _hoisted_19 = {
+    class: "booster-stack-card",
+    "aria-label": "Reader Dexie"
+  };
+  const _hoisted_20 = { class: "flex flex-wrap gap-2" };
+  const _hoisted_21 = {
+    class: "max-h-96 overflow-y-auto space-y-2",
+    "aria-label": "Сохранённые сообщения"
+  };
+  const _hoisted_22 = { class: "whitespace-pre-wrap break-words" };
+  const _hoisted_23 = { key: 0 };
+  const _hoisted_24 = {
+    key: 0,
+    role: "alert",
+    class: "text-sm text-destructive"
+  };
+  const _hoisted_25 = ["id", "aria-labelledby"];
+  const _hoisted_26 = {
+    key: 0,
+    class: "booster-stack-card",
+    "aria-label": "Профиль параметров VK"
+  };
+  const _hoisted_27 = { class: "flex flex-wrap items-end gap-2" };
+  const _hoisted_28 = { class: "booster-field min-w-0 flex-1" };
+  const _hoisted_29 = ["disabled"];
+  const _hoisted_30 = {
+    key: 0,
+    class: "booster-field"
+  };
+  const _hoisted_31 = { class: "flex items-center gap-2" };
+  const _hoisted_32 = ["disabled"];
+  const _hoisted_33 = {
+    key: 2,
+    role: "alert",
+    class: "m-0 text-sm text-destructive"
+  };
+  const _hoisted_34 = {
+    key: 3,
+    role: "alert",
+    class: "m-0 text-sm text-destructive"
+  };
+  const _hoisted_35 = {
+    key: 4,
+    role: "status",
+    class: "m-0 text-sm"
   };
   const _sfc_main$2 = /* @__PURE__ */ defineComponent({
     __name: "ArchivePanel",
     setup(__props) {
       const api = archiveApi();
       const status = /* @__PURE__ */ ref(api?.status() ?? null);
-      const error = /* @__PURE__ */ ref("");
-      const previewOpen = /* @__PURE__ */ ref(false);
+      const tab = /* @__PURE__ */ ref("capture");
+      const tabPrefix = useId();
+      const selectedStatus = computed(() => {
+        if (status.value?.busy || fixedBusy.value) return "Захват сообщений";
+        if (status.value?.blockedReason) return "Другой диалог";
+        return status.value?.activePeerId ? "Dexie v1" : "Открой переписку";
+      });
       const fixedBusy = /* @__PURE__ */ ref(false);
-      const fixedLimit = /* @__PURE__ */ ref(100);
+      const fixedLimit = /* @__PURE__ */ ref(Math.min(3e3, Math.max(1, status.value?.options.limit ?? 100)));
       const fixedSaved = /* @__PURE__ */ ref(null);
       const fixedError = /* @__PURE__ */ ref("");
       const fixedPreview = /* @__PURE__ */ ref([]);
+      const fixedCursor = /* @__PURE__ */ ref();
+      const fixedNextCursor = /* @__PURE__ */ ref();
+      const fixedReading = /* @__PURE__ */ ref(false);
+      const hasVerifiedPeer = computed(() => !!status.value?.activePeerId && !status.value?.blockedReason);
+      const captureProgress = computed(() => status.value?.progress);
+      async function persistCaptureLimit() {
+        if (!api) throw Error("VK unavailable");
+        const options = validateVkCapturePreferences({ ...api.status().options, limit: fixedLimit.value });
+        api.configure(options);
+        const port = vkPreferencesPersistence();
+        try {
+          if (!port) throw Error("VK settings storage unavailable");
+          await port.write(options);
+          durableSettingsError.value = "";
+        } catch {
+          durableSettingsError.value = "Не удалось сохранить параметры для следующего запуска.";
+        }
+      }
       async function captureDexie() {
-        if (!api || fixedBusy.value) return;
+        if (!api || fixedBusy.value || !hasVerifiedPeer.value) return;
         fixedBusy.value = true;
         fixedError.value = "";
         try {
+          await persistCaptureLimit();
           const result = await api.captureFixed(fixedLimit.value);
           fixedSaved.value = result.saved;
           fixedPreview.value = [];
+          fixedCursor.value = void 0;
+          fixedNextCursor.value = void 0;
         } catch {
-          fixedError.value = "Не удалось сохранить историю в Dexie: проверь VK API, владельца и диалог.";
+          fixedError.value = "Не удалось сохранить историю в Dexie: проверь VK API и текущий диалог.";
         } finally {
           fixedBusy.value = false;
         }
       }
-      async function readDexie() {
-        if (!api || fixedBusy.value) return;
-        fixedBusy.value = true;
+      async function readDexie(cursor) {
+        if (!api || fixedBusy.value || fixedReading.value || !hasVerifiedPeer.value) return;
+        fixedReading.value = true;
         fixedError.value = "";
         try {
-          const records = await api.readFixed(100);
-          fixedPreview.value = records.map((row) => ({
-            id: row.id,
-            text: typeof row.text === "string" ? row.text : ""
-          }));
+          const rows = await api.readFixed(80, cursor);
+          fixedPreview.value = rows;
+          fixedCursor.value = cursor;
+          fixedNextCursor.value = rows.length === 80 ? rows.at(-1)?.id : void 0;
         } catch {
+          fixedPreview.value = [];
+          fixedCursor.value = void 0;
+          fixedNextCursor.value = void 0;
           fixedError.value = "Dexie-архив недоступен для текущего проверенного диалога.";
         } finally {
-          fixedBusy.value = false;
+          fixedReading.value = false;
         }
       }
       async function exportDexie() {
-        if (!api || fixedBusy.value) return;
+        if (!api || fixedBusy.value || !hasVerifiedPeer.value) return;
         fixedBusy.value = true;
         fixedError.value = "";
         try {
           const blob = await api.exportFixed();
           const url = URL.createObjectURL(blob);
           try {
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = "vk-fixed-v1-original.jsonl.gz";
-            a.click();
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "vk-fixed-v1-original.jsonl.gz";
+            link.click();
           } finally {
-            setTimeout(() => URL.revokeObjectURL(url), 3e4);
+            window.setTimeout(() => URL.revokeObjectURL(url), 3e4);
           }
         } catch {
           fixedError.value = "Экспорт Dexie не выполнен. Сохранённая история не изменена.";
@@ -49257,12 +47778,30 @@ q.addEventListener('input',render);render();<\/script></html>`;
           fixedBusy.value = false;
         }
       }
+      const tabs = [
+        { id: "capture", label: "Выгрузка", icon: Download },
+        { id: "reader", label: "Архив", icon: Archive },
+        { id: "settings", label: "Параметры", icon: Settings2 }
+      ];
+      function onTabKeydown(event, active) {
+        if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)) return;
+        event.preventDefault();
+        const index = tabs.findIndex((item) => item.id === active);
+        const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length;
+        const selected = tabs[next];
+        if (!selected) return;
+        tab.value = selected.id;
+        const target = event.currentTarget.parentElement?.querySelector(
+          "#" + tabPrefix + "-tab-" + selected.id
+        );
+        target?.focus();
+      }
       const preferencesBusy = /* @__PURE__ */ ref(false);
       const preferencesFile = /* @__PURE__ */ ref(null);
       const preferencesConfirmed = /* @__PURE__ */ ref(false);
       const preferencesError = /* @__PURE__ */ ref("");
       const preferencesMessage = /* @__PURE__ */ ref("");
-      const preferencesRevision = /* @__PURE__ */ ref(0);
+      const durableSettingsError = /* @__PURE__ */ ref(vkPreferencesLoadError());
       function selectPreferences(event) {
         preferencesFile.value = event.target.files?.[0] ?? null;
         preferencesConfirmed.value = false;
@@ -49298,10 +47837,12 @@ q.addEventListener('input',render);render();<\/script></html>`;
         preferencesError.value = "";
         preferencesMessage.value = "";
         try {
-          await restoreVkCaptureSettings(api, preferencesFile.value);
+          const port = vkPreferencesPersistence();
+          if (!port) throw Error("Persistent settings unavailable");
+          await restoreVkCaptureSettings(api, preferencesFile.value, port);
           status.value = api.status();
-          preferencesRevision.value++;
-          preferencesMessage.value = "Параметры применены к текущей сессии. Папка и сообщения не изменены.";
+          fixedLimit.value = Math.min(3e3, Math.max(1, api.status().options.limit));
+          preferencesMessage.value = "Параметры восстановлены в текущей сессии и постоянном хранилище. Архив не изменён.";
           preferencesFile.value = null;
           preferencesConfirmed.value = false;
         } catch {
@@ -49319,32 +47860,13 @@ q.addEventListener('input',render);render();<\/script></html>`;
         if (previous?.activePeerId !== next.activePeerId) {
           fixedPreview.value = [];
           fixedSaved.value = null;
+          fixedCursor.value = void 0;
+          fixedNextCursor.value = void 0;
           fixedError.value = "";
         }
         if (!previous || next.activePeerId !== previous.activePeerId || next.blockedReason !== previous.blockedReason || next.options.peerId !== previous.options.peerId)
           status.value = next;
       }
-      const view = computed(() => {
-        const current = status.value;
-        if (!current) return null;
-        const p2 = current.progress;
-        return {
-          context: "Диалог " + (current.options.peerId || "не выбран"),
-          folder: current.folder,
-          messages: current.messages,
-          busy: current.busy,
-          folderPending: current.folderPending,
-          paused: current.checkpoint?.status === "paused",
-          blockedReason: current.blockedReason,
-          phase: p2.phase,
-          done: p2.done,
-          total: p2.total,
-          newCount: p2.newCount ?? 0,
-          downloaded: p2.downloaded ?? 0,
-          failed: p2.failed ?? 0,
-          error: p2.error
-        };
-      });
       onMounted(() => {
         unsubscribe = api?.subscribe((next) => {
           status.value = next;
@@ -49355,74 +47877,127 @@ q.addEventListener('input',render);render();<\/script></html>`;
         unsubscribe?.();
         if (peerTimer !== void 0) clearInterval(peerTimer);
       });
-      async function chooseFolder() {
-        error.value = "";
-        try {
-          await api?.selectFolder();
-        } catch (e) {
-          error.value = e instanceof Error ? e.message : String(e);
-        }
-      }
-      async function start(options) {
-        error.value = "";
-        try {
-          await api?.run(options);
-        } catch (e) {
-          error.value = e instanceof Error ? e.message : String(e);
-        }
-      }
-      async function resume() {
-        error.value = "";
-        try {
-          await api?.resume();
-        } catch (e) {
-          error.value = e instanceof Error ? e.message : String(e);
-        }
-      }
       return (_ctx, _cache) => {
-        return openBlock(), createElementBlock(
-          Fragment,
-          null,
-          [
-            unref(api) && status.value ? (openBlock(), createElementBlock("section", _hoisted_1$2, [
-              createBaseVNode("div", _hoisted_2$2, [
-                _cache[4] || (_cache[4] = createBaseVNode(
+        return openBlock(), createElementBlock("section", _hoisted_1$2, [
+          createBaseVNode("header", _hoisted_2$2, [
+            createBaseVNode("div", _hoisted_3$1, [
+              createBaseVNode("div", _hoisted_4$1, [
+                createVNode(unref(Archive), {
+                  class: "size-4 shrink-0",
+                  "aria-hidden": "true"
+                }),
+                _cache[6] || (_cache[6] = createBaseVNode(
                   "b",
                   null,
-                  "Dexie — собственная база сообщений",
+                  "VK Booster · Архив v1",
                   -1
                   /* CACHED */
                 )),
-                _cache[5] || (_cache[5] = createBaseVNode(
-                  "small",
-                  null,
-                  "Захват только текущего проверенного VK-диалога. Папка Archive v2 не требуется и не изменяется.",
-                  -1
-                  /* CACHED */
-                )),
-                fixedSaved.value !== null ? (openBlock(), createElementBlock(
-                  "small",
-                  _hoisted_3$1,
-                  "Новых записей: " + toDisplayString(fixedSaved.value),
-                  1
-                  /* TEXT */
-                )) : createCommentVNode("v-if", true)
+                createVNode(unref(_sfc_main$1$1), {
+                  variant: status.value?.blockedReason ? "secondary" : status.value?.busy ? "default" : "outline",
+                  class: normalizeClass(status.value?.blockedReason ? "text-destructive" : "")
+                }, {
+                  default: withCtx(() => [
+                    createTextVNode(
+                      toDisplayString(selectedStatus.value),
+                      1
+                      /* TEXT */
+                    )
+                  ]),
+                  _: 1
+                  /* STABLE */
+                }, 8, ["variant", "class"])
               ]),
-              createBaseVNode("label", _hoisted_4$1, [
-                _cache[6] || (_cache[6] = createTextVNode(
-                  "Максимум сообщений ",
+              hasVerifiedPeer.value ? (openBlock(), createElementBlock(
+                "span",
+                _hoisted_5$1,
+                "Текущий диалог: " + toDisplayString(status.value?.activePeerId) + " · Данные в Dexie, без файловой папки",
+                1
+                /* TEXT */
+              )) : (openBlock(), createElementBlock("span", _hoisted_6$1, "Открой VK-переписку, чтобы работать с архивом."))
+            ])
+          ]),
+          status.value?.blockedReason ? (openBlock(), createElementBlock("p", _hoisted_7$1, [
+            createVNode(unref(ShieldAlert), {
+              class: "size-4 shrink-0",
+              "aria-hidden": "true"
+            }),
+            createTextVNode(
+              " " + toDisplayString(status.value.blockedReason) + ". Вернись в выбранный диалог перед работой с архивом. ",
+              1
+              /* TEXT */
+            )
+          ])) : createCommentVNode("v-if", true),
+          createBaseVNode("nav", _hoisted_8$1, [
+            (openBlock(), createElementBlock(
+              Fragment,
+              null,
+              renderList(tabs, (item) => {
+                return createVNode(unref(_sfc_main$6), {
+                  id: unref(tabPrefix) + "-tab-" + item.id,
+                  key: item.id,
+                  type: "button",
+                  role: "tab",
+                  size: "sm",
+                  variant: tab.value === item.id ? "default" : "outline",
+                  "aria-controls": unref(tabPrefix) + "-panel-" + item.id,
+                  "aria-selected": tab.value === item.id,
+                  tabindex: tab.value === item.id ? 0 : -1,
+                  onClick: ($event) => tab.value = item.id,
+                  onKeydown: ($event) => onTabKeydown($event, item.id)
+                }, {
+                  default: withCtx(() => [
+                    (openBlock(), createBlock(resolveDynamicComponent(item.icon), {
+                      class: "size-4",
+                      "aria-hidden": "true"
+                    })),
+                    createTextVNode(
+                      " " + toDisplayString(item.label),
+                      1
+                      /* TEXT */
+                    )
+                  ]),
+                  _: 2
+                  /* DYNAMIC */
+                }, 1032, ["id", "variant", "aria-controls", "aria-selected", "tabindex", "onClick", "onKeydown"]);
+              }),
+              64
+              /* STABLE_FRAGMENT */
+            ))
+          ]),
+          createCommentVNode(" Capture and reader share the fixed owner-scoped Dexie repository. "),
+          withDirectives(createBaseVNode("div", {
+            id: unref(tabPrefix) + "-panel-capture",
+            role: "tabpanel",
+            "aria-labelledby": unref(tabPrefix) + "-tab-capture",
+            tabindex: "0",
+            class: "flex min-w-0 flex-col gap-3"
+          }, [
+            createBaseVNode("section", _hoisted_10$1, [
+              _cache[11] || (_cache[11] = createBaseVNode(
+                "div",
+                { class: "booster-setting-copy" },
+                [
+                  createBaseVNode("b", null, "Локальный архив Dexie v1"),
+                  createBaseVNode("span", null, "Сохраняет оригинальные записи текущего проверенного диалога. Повторный захват пропускает совпадающие сообщения.")
+                ],
+                -1
+                /* CACHED */
+              )),
+              createBaseVNode("label", _hoisted_11$1, [
+                _cache[7] || (_cache[7] = createTextVNode(
+                  "Количество последних сообщений (1–3000) ",
                   -1
                   /* CACHED */
                 )),
                 withDirectives(createBaseVNode("input", {
                   "onUpdate:modelValue": _cache[0] || (_cache[0] = ($event) => fixedLimit.value = $event),
+                  class: "booster-input",
                   type: "number",
                   min: "1",
                   max: "3000",
-                  step: "1",
-                  class: "booster-input",
-                  disabled: fixedBusy.value || status.value.busy
-                }, null, 8, _hoisted_5$1), [
+                  disabled: fixedBusy.value
+                }, null, 8, _hoisted_12$1), [
                   [
                     vModelText,
                     fixedLimit.value,
@@ -49431,34 +48006,168 @@ q.addEventListener('input',render);render();<\/script></html>`;
                   ]
                 ])
               ]),
-              createBaseVNode("div", _hoisted_6$1, [
-                createBaseVNode("button", {
-                  type: "button",
-                  class: "booster-disclosure",
-                  disabled: fixedBusy.value || status.value.busy || !status.value.activePeerId,
+              createBaseVNode("div", _hoisted_13$1, [
+                createVNode(unref(_sfc_main$6), {
+                  disabled: fixedBusy.value || !hasVerifiedPeer.value,
                   onClick: captureDexie
-                }, " Сохранить текущий диалог в Dexie ", 8, _hoisted_7$1),
-                createBaseVNode("button", {
-                  type: "button",
-                  class: "booster-disclosure",
-                  disabled: fixedBusy.value || status.value.busy || !status.value.activePeerId,
-                  onClick: readDexie
-                }, " Читать Dexie ", 8, _hoisted_8$1),
-                createBaseVNode("button", {
-                  type: "button",
-                  class: "booster-disclosure",
-                  disabled: fixedBusy.value || status.value.busy || !status.value.activePeerId,
+                }, {
+                  default: withCtx(() => [
+                    createVNode(unref(Download), {
+                      class: "size-4",
+                      "aria-hidden": "true"
+                    }),
+                    _cache[8] || (_cache[8] = createTextVNode(
+                      "Сохранить в Dexie ",
+                      -1
+                      /* CACHED */
+                    ))
+                  ]),
+                  _: 1
+                  /* STABLE */
+                }, 8, ["disabled"]),
+                createVNode(unref(_sfc_main$6), {
+                  variant: "outline",
+                  disabled: !fixedBusy.value,
+                  onClick: _cache[1] || (_cache[1] = ($event) => unref(api)?.stop())
+                }, {
+                  default: withCtx(() => [..._cache[9] || (_cache[9] = [
+                    createTextVNode(
+                      "Остановить",
+                      -1
+                      /* CACHED */
+                    )
+                  ])]),
+                  _: 1
+                  /* STABLE */
+                }, 8, ["disabled"]),
+                createVNode(unref(_sfc_main$6), {
+                  variant: "outline",
+                  disabled: fixedBusy.value || !hasVerifiedPeer.value,
                   onClick: exportDexie
-                }, " Экспорт Dexie JSON.gz ", 8, _hoisted_9$1)
+                }, {
+                  default: withCtx(() => [..._cache[10] || (_cache[10] = [
+                    createTextVNode(
+                      "Экспорт .jsonl.gz",
+                      -1
+                      /* CACHED */
+                    )
+                  ])]),
+                  _: 1
+                  /* STABLE */
+                }, 8, ["disabled"])
               ]),
+              fixedSaved.value !== null ? (openBlock(), createElementBlock(
+                "p",
+                _hoisted_14$1,
+                "Новых сообщений: " + toDisplayString(fixedSaved.value) + ".",
+                1
+                /* TEXT */
+              )) : createCommentVNode("v-if", true),
+              captureProgress.value?.total ? (openBlock(), createBlock(unref(_sfc_main$2$1), {
+                key: 1,
+                label: "Прогресс сохранения VK в Dexie",
+                percent: Math.min(100, Math.round(100 * (captureProgress.value.done / captureProgress.value.total))),
+                counter: `${captureProgress.value.done} / ${captureProgress.value.total}`,
+                compact: ""
+              }, null, 8, ["percent", "counter"])) : createCommentVNode("v-if", true),
+              captureProgress.value?.phase ? (openBlock(), createElementBlock(
+                "p",
+                _hoisted_15$1,
+                toDisplayString(captureProgress.value.phase) + ": " + toDisplayString(captureProgress.value.done) + " / " + toDisplayString(captureProgress.value.total),
+                1
+                /* TEXT */
+              )) : createCommentVNode("v-if", true),
               fixedError.value ? (openBlock(), createElementBlock(
                 "p",
-                _hoisted_10$1,
+                _hoisted_16,
                 toDisplayString(fixedError.value),
                 1
                 /* TEXT */
               )) : createCommentVNode("v-if", true),
-              fixedPreview.value.length ? (openBlock(), createElementBlock("ol", _hoisted_11$1, [
+              durableSettingsError.value ? (openBlock(), createElementBlock(
+                "p",
+                _hoisted_17,
+                toDisplayString(durableSettingsError.value),
+                1
+                /* TEXT */
+              )) : createCommentVNode("v-if", true),
+              _cache[12] || (_cache[12] = createBaseVNode(
+                "p",
+                { class: "text-xs text-muted-foreground" },
+                "Экспорт содержит исходные записи; вложения не считаются скачанными файлами. Захват можно безопасно повторить после остановки.",
+                -1
+                /* CACHED */
+              ))
+            ])
+          ], 8, _hoisted_9$1), [
+            [vShow, tab.value === "capture"]
+          ]),
+          withDirectives(createBaseVNode("div", {
+            id: unref(tabPrefix) + "-panel-reader",
+            role: "tabpanel",
+            "aria-labelledby": unref(tabPrefix) + "-tab-reader",
+            tabindex: "0",
+            class: "flex min-w-0 flex-col gap-3"
+          }, [
+            createBaseVNode("section", _hoisted_19, [
+              _cache[16] || (_cache[16] = createBaseVNode(
+                "div",
+                { class: "booster-setting-copy" },
+                [
+                  createBaseVNode("b", null, "Сообщения из Dexie"),
+                  createBaseVNode("span", null, "Чтение только текущей подтверждённой VK-переписки. До 80 записей на страницу.")
+                ],
+                -1
+                /* CACHED */
+              )),
+              createBaseVNode("div", _hoisted_20, [
+                createVNode(unref(_sfc_main$6), {
+                  variant: "outline",
+                  disabled: fixedBusy.value || fixedReading.value || !hasVerifiedPeer.value,
+                  onClick: _cache[2] || (_cache[2] = ($event) => readDexie())
+                }, {
+                  default: withCtx(() => [..._cache[13] || (_cache[13] = [
+                    createTextVNode(
+                      "Открыть Reader",
+                      -1
+                      /* CACHED */
+                    )
+                  ])]),
+                  _: 1
+                  /* STABLE */
+                }, 8, ["disabled"]),
+                createVNode(unref(_sfc_main$6), {
+                  variant: "outline",
+                  disabled: fixedBusy.value || fixedReading.value || !fixedNextCursor.value,
+                  onClick: _cache[3] || (_cache[3] = ($event) => readDexie(fixedNextCursor.value))
+                }, {
+                  default: withCtx(() => [..._cache[14] || (_cache[14] = [
+                    createTextVNode(
+                      "Следующие 80",
+                      -1
+                      /* CACHED */
+                    )
+                  ])]),
+                  _: 1
+                  /* STABLE */
+                }, 8, ["disabled"]),
+                createVNode(unref(_sfc_main$6), {
+                  variant: "outline",
+                  disabled: fixedBusy.value || fixedReading.value || !fixedCursor.value,
+                  onClick: _cache[4] || (_cache[4] = ($event) => readDexie())
+                }, {
+                  default: withCtx(() => [..._cache[15] || (_cache[15] = [
+                    createTextVNode(
+                      "К началу",
+                      -1
+                      /* CACHED */
+                    )
+                  ])]),
+                  _: 1
+                  /* STABLE */
+                }, 8, ["disabled"])
+              ]),
+              createBaseVNode("ol", _hoisted_21, [
                 (openBlock(true), createElementBlock(
                   Fragment,
                   null,
@@ -49470,143 +48179,165 @@ q.addEventListener('input',render);render();<\/script></html>`;
                       createBaseVNode(
                         "b",
                         null,
-                        toDisplayString(message.id),
+                        "Сообщение " + toDisplayString(message.id),
                         1
                         /* TEXT */
                       ),
                       createBaseVNode(
                         "p",
-                        _hoisted_12$1,
-                        toDisplayString(message.text),
+                        _hoisted_22,
+                        toDisplayString(message.text || "Без текста"),
                         1
                         /* TEXT */
-                      )
+                      ),
+                      message.attachments?.length ? (openBlock(), createElementBlock(
+                        "small",
+                        _hoisted_23,
+                        "Вложений в исходных данных: " + toDisplayString(message.attachments.length),
+                        1
+                        /* TEXT */
+                      )) : createCommentVNode("v-if", true)
                     ]);
                   }),
                   128
                   /* KEYED_FRAGMENT */
                 ))
-              ])) : createCommentVNode("v-if", true)
-            ])) : createCommentVNode("v-if", true),
-            status.value && view.value ? (openBlock(), createBlock(unref(_sfc_main$1$1), {
-              key: preferencesRevision.value,
-              state: view.value,
-              initial: status.value.options,
-              error: error.value,
-              title: "Архив переписки VK",
-              onChooseFolder: chooseFolder,
-              onStart: start,
-              onStop: _cache[1] || (_cache[1] = ($event) => unref(api)?.stop()),
-              onResume: resume
-            }, null, 8, ["state", "initial", "error"])) : createCommentVNode("v-if", true),
-            unref(api) && status.value?.folder && !status.value.blockedReason && status.value.messages > 0 ? (openBlock(), createElementBlock(
-              Fragment,
-              { key: 2 },
-              [
-                createBaseVNode("div", _hoisted_13$1, [
-                  createBaseVNode("button", {
-                    type: "button",
-                    class: "booster-disclosure",
-                    "aria-expanded": previewOpen.value,
-                    onClick: _cache[2] || (_cache[2] = ($event) => previewOpen.value = !previewOpen.value)
-                  }, toDisplayString(previewOpen.value ? "Скрыть сохранённые сообщения" : "Просмотр сохранённых сообщений"), 9, _hoisted_14$1)
-                ]),
-                previewOpen.value ? (openBlock(), createElementBlock("div", _hoisted_15$1, [
-                  createVNode(_sfc_main$3, {
-                    api: unref(api),
-                    status: status.value
-                  }, null, 8, ["api", "status"])
-                ])) : createCommentVNode("v-if", true)
-              ],
-              64
-              /* STABLE_FRAGMENT */
-            )) : createCommentVNode("v-if", true),
-            unref(api) && status.value ? (openBlock(), createElementBlock("section", _hoisted_16, [
-              _cache[9] || (_cache[9] = createBaseVNode(
+              ]),
+              fixedError.value ? (openBlock(), createElementBlock(
+                "p",
+                _hoisted_24,
+                toDisplayString(fixedError.value),
+                1
+                /* TEXT */
+              )) : createCommentVNode("v-if", true)
+            ])
+          ], 8, _hoisted_18), [
+            [vShow, tab.value === "reader"]
+          ]),
+          withDirectives(createBaseVNode("div", {
+            id: unref(tabPrefix) + "-panel-settings",
+            role: "tabpanel",
+            "aria-labelledby": unref(tabPrefix) + "-tab-settings",
+            tabindex: "0",
+            class: "flex min-w-0 flex-col gap-3"
+          }, [
+            unref(api) && status.value ? (openBlock(), createElementBlock("section", _hoisted_26, [
+              _cache[21] || (_cache[21] = createBaseVNode(
                 "div",
                 { class: "booster-setting-copy" },
                 [
-                  createBaseVNode("b", null, "Профиль параметров выгрузки"),
-                  createBaseVNode("small", null, "Только режим, диапазон, размер пачки и загрузка файлов. Без сообщений, токенов, ID диалога и архива. Импорт действует в текущей сессии.")
+                  createBaseVNode("b", null, "Постоянные параметры и резервная копия"),
+                  createBaseVNode("small", null, " Режим, количество, диапазон дат, размер пачки и медиа хранятся отдельно от архива. При перезапуске они восстанавливаются автоматически; JSON создаёт переносимую резервную копию только этих параметров. Сообщения, токены, ID диалога и данные папки не сохраняются. ")
                 ],
                 -1
                 /* CACHED */
               )),
-              createBaseVNode("div", _hoisted_17, [
-                createBaseVNode("button", {
-                  class: "booster-disclosure",
-                  type: "button",
-                  disabled: preferencesBusy.value || status.value.busy || !!status.value.blockedReason,
+              createBaseVNode("div", _hoisted_27, [
+                createVNode(unref(_sfc_main$6), {
+                  variant: "outline",
+                  size: "sm",
+                  disabled: preferencesBusy.value || status.value.busy || status.value.folderPending || !!status.value.blockedReason,
                   onClick: downloadPreferences
-                }, "Сохранить профиль в JSON", 8, _hoisted_18),
-                createBaseVNode("label", _hoisted_19, [
-                  _cache[7] || (_cache[7] = createBaseVNode(
+                }, {
+                  default: withCtx(() => [..._cache[17] || (_cache[17] = [
+                    createTextVNode(
+                      "Сохранить профиль JSON",
+                      -1
+                      /* CACHED */
+                    )
+                  ])]),
+                  _: 1
+                  /* STABLE */
+                }, 8, ["disabled"]),
+                createBaseVNode("label", _hoisted_28, [
+                  _cache[18] || (_cache[18] = createBaseVNode(
                     "span",
                     null,
-                    "Загрузить профиль JSON",
+                    "Восстановить параметры из JSON",
                     -1
                     /* CACHED */
                   )),
                   createBaseVNode("input", {
                     type: "file",
-                    class: "booster-input",
+                    class: "booster-input w-full",
                     accept: ".json,application/json",
-                    disabled: preferencesBusy.value || status.value.busy,
+                    disabled: preferencesBusy.value || status.value.busy || status.value.folderPending || !!status.value.blockedReason,
                     onChange: selectPreferences
-                  }, null, 40, _hoisted_20)
+                  }, null, 40, _hoisted_29)
                 ])
               ]),
-              preferencesFile.value ? (openBlock(), createElementBlock("label", _hoisted_21, [
-                createBaseVNode("span", null, [
+              preferencesFile.value ? (openBlock(), createElementBlock("label", _hoisted_30, [
+                createBaseVNode("span", _hoisted_31, [
                   withDirectives(createBaseVNode("input", {
-                    "onUpdate:modelValue": _cache[3] || (_cache[3] = ($event) => preferencesConfirmed.value = $event),
+                    "onUpdate:modelValue": _cache[5] || (_cache[5] = ($event) => preferencesConfirmed.value = $event),
                     type: "checkbox",
                     disabled: preferencesBusy.value
-                  }, null, 8, _hoisted_22), [
+                  }, null, 8, _hoisted_32), [
                     [vModelCheckbox, preferencesConfirmed.value]
                   ]),
-                  _cache[8] || (_cache[8] = createTextVNode(
-                    " Подтверждаю замену параметров текущей сессии",
+                  _cache[19] || (_cache[19] = createTextVNode(
+                    " Подтверждаю замену сохранённых и текущих параметров ",
                     -1
                     /* CACHED */
                   ))
                 ])
               ])) : createCommentVNode("v-if", true),
-              preferencesFile.value ? (openBlock(), createElementBlock("button", {
+              preferencesFile.value ? (openBlock(), createBlock(unref(_sfc_main$6), {
                 key: 1,
-                class: "booster-disclosure",
-                type: "button",
-                disabled: preferencesBusy.value || status.value.busy || !!status.value.blockedReason || !preferencesConfirmed.value,
+                variant: "outline",
+                size: "sm",
+                disabled: preferencesBusy.value || status.value.busy || status.value.folderPending || !!status.value.blockedReason || !preferencesConfirmed.value,
                 onClick: importPreferences
-              }, "Применить профиль", 8, _hoisted_23)) : createCommentVNode("v-if", true),
+              }, {
+                default: withCtx(() => [..._cache[20] || (_cache[20] = [
+                  createTextVNode(
+                    "Применить профиль",
+                    -1
+                    /* CACHED */
+                  )
+                ])]),
+                _: 1
+                /* STABLE */
+              }, 8, ["disabled"])) : createCommentVNode("v-if", true),
+              durableSettingsError.value ? (openBlock(), createElementBlock(
+                "p",
+                _hoisted_33,
+                toDisplayString(durableSettingsError.value),
+                1
+                /* TEXT */
+              )) : createCommentVNode("v-if", true),
               preferencesError.value ? (openBlock(), createElementBlock(
                 "p",
-                _hoisted_24,
+                _hoisted_34,
                 toDisplayString(preferencesError.value),
                 1
                 /* TEXT */
               )) : createCommentVNode("v-if", true),
               preferencesMessage.value ? (openBlock(), createElementBlock(
                 "p",
-                _hoisted_25,
+                _hoisted_35,
                 toDisplayString(preferencesMessage.value),
                 1
                 /* TEXT */
               )) : createCommentVNode("v-if", true)
             ])) : createCommentVNode("v-if", true),
-            !status.value || !view.value ? (openBlock(), createElementBlock("section", _hoisted_26, [..._cache[10] || (_cache[10] = [
-              createBaseVNode(
-                "span",
-                null,
-                "Модуль VK Booster ещё не инициализирован.",
-                -1
-                /* CACHED */
-              )
-            ])])) : createCommentVNode("v-if", true)
-          ],
-          64
-          /* STABLE_FRAGMENT */
-        );
+            _cache[22] || (_cache[22] = createBaseVNode(
+              "section",
+              { class: "booster-stack-card" },
+              [
+                createBaseVNode("div", { class: "booster-setting-copy" }, [
+                  createBaseVNode("b", null, "Архив и восстановление"),
+                  createBaseVNode("span", null, "Backup/restore сообщений и вложений — отдельная операция для Dexie. Эта кнопка сохраняет только настройки.")
+                ]),
+                createBaseVNode("p", { class: "m-0 text-xs text-muted-foreground" }, " Архив хранится в Dexie. Экспорт .jsonl.gz выполняется отдельно на вкладке «Выгрузка». Backup/restore самих сообщений пока не реализован; профиль JSON сохраняет только настройки. ")
+              ],
+              -1
+              /* CACHED */
+            ))
+          ], 8, _hoisted_25), [
+            [vShow, tab.value === "settings"]
+          ])
+        ]);
       };
     }
   });
@@ -50045,7 +48776,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
                   1
                   /* TEXT */
                 ),
-                createVNode(unref(_sfc_main$1$2), { variant: "outline" }, {
+                createVNode(unref(_sfc_main$1$1), { variant: "outline" }, {
                   default: withCtx(() => [..._cache[4] || (_cache[4] = [
                     createTextVNode(
                       "Browser Tools",
@@ -50066,7 +48797,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
               ))
             ]),
             createBaseVNode("div", _hoisted_5, [
-              createVNode(unref(_sfc_main$1$2), { variant: "secondary" }, {
+              createVNode(unref(_sfc_main$1$1), { variant: "secondary" }, {
                 default: withCtx(() => [
                   createTextVNode(
                     toDisplayString(activeFeatures.value.length) + " активен",
@@ -50077,7 +48808,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
                 _: 1
                 /* STABLE */
               }),
-              createVNode(unref(_sfc_main$8), {
+              createVNode(unref(_sfc_main$6), {
                 variant: "ghost",
                 size: "icon",
                 class: "size-8",
@@ -50189,7 +48920,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
                           1
                           /* TEXT */
                         ),
-                        createVNode(unref(_sfc_main$1$2), {
+                        createVNode(unref(_sfc_main$1$1), {
                           variant: feature.state === "active" ? "default" : "secondary"
                         }, {
                           default: withCtx(() => [
@@ -50228,7 +48959,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
                           /* CACHED */
                         )
                       ])], 10, _hoisted_13),
-                      feature.state === "active" ? (openBlock(), createBlock(unref(_sfc_main$8), {
+                      feature.state === "active" ? (openBlock(), createBlock(unref(_sfc_main$6), {
                         key: 0,
                         variant: "outline",
                         size: "sm",
@@ -50669,7 +49400,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
       };
     }
   });
-  const styles = '/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */\n@layer properties {\n  @supports (((-webkit-hyphens: none)) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color: rgb(from red r g b)))) {\n    *, :before, :after, ::backdrop {\n      --tw-rotate-x: initial;\n      --tw-rotate-y: initial;\n      --tw-rotate-z: initial;\n      --tw-skew-x: initial;\n      --tw-skew-y: initial;\n      --tw-border-style: solid;\n      --tw-leading: initial;\n      --tw-font-weight: initial;\n      --tw-ordinal: initial;\n      --tw-slashed-zero: initial;\n      --tw-numeric-figure: initial;\n      --tw-numeric-spacing: initial;\n      --tw-numeric-fraction: initial;\n      --tw-shadow: 0 0 #0000;\n      --tw-shadow-color: initial;\n      --tw-shadow-alpha: 100%;\n      --tw-inset-shadow: 0 0 #0000;\n      --tw-inset-shadow-color: initial;\n      --tw-inset-shadow-alpha: 100%;\n      --tw-ring-color: initial;\n      --tw-ring-shadow: 0 0 #0000;\n      --tw-inset-ring-color: initial;\n      --tw-inset-ring-shadow: 0 0 #0000;\n      --tw-ring-inset: initial;\n      --tw-ring-offset-width: 0px;\n      --tw-ring-offset-color: #fff;\n      --tw-ring-offset-shadow: 0 0 #0000;\n      --tw-outline-style: solid;\n      --tw-blur: initial;\n      --tw-brightness: initial;\n      --tw-contrast: initial;\n      --tw-grayscale: initial;\n      --tw-hue-rotate: initial;\n      --tw-invert: initial;\n      --tw-opacity: initial;\n      --tw-saturate: initial;\n      --tw-sepia: initial;\n      --tw-drop-shadow: initial;\n      --tw-drop-shadow-color: initial;\n      --tw-drop-shadow-alpha: 100%;\n      --tw-drop-shadow-size: initial;\n    }\n  }\n}\n\n@layer theme {\n  :root, :host {\n    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",\n      "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",\n      "Segoe UI Symbol", "Noto Color Emoji";\n    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",\n      "Courier New", monospace;\n    --spacing: .25rem;\n    --text-xs: .75rem;\n    --text-xs--line-height: calc(1 / .75);\n    --text-sm: .875rem;\n    --text-sm--line-height: calc(1.25 / .875);\n    --text-base: 1rem;\n    --text-base--line-height: calc(1.5 / 1);\n    --font-weight-medium: 500;\n    --font-weight-semibold: 600;\n    --default-transition-duration: .15s;\n    --default-transition-timing-function: cubic-bezier(.4, 0, .2, 1);\n    --default-font-family: var(--font-sans);\n    --default-mono-font-family: var(--font-mono);\n  }\n}\n\n@layer base {\n  *, :after, :before, ::backdrop {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  ::file-selector-button {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  html, :host {\n    -webkit-text-size-adjust: 100%;\n    tab-size: 4;\n    line-height: 1.5;\n    font-family: var(--default-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");\n    font-feature-settings: var(--default-font-feature-settings, normal);\n    font-variation-settings: var(--default-font-variation-settings, normal);\n    -webkit-tap-highlight-color: transparent;\n  }\n\n  hr {\n    height: 0;\n    color: inherit;\n    border-top-width: 1px;\n  }\n\n  abbr:where([title]) {\n    -webkit-text-decoration: underline dotted;\n    text-decoration: underline dotted;\n  }\n\n  h1, h2, h3, h4, h5, h6 {\n    font-size: inherit;\n    font-weight: inherit;\n  }\n\n  a {\n    color: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    text-decoration: inherit;\n  }\n\n  b, strong {\n    font-weight: bolder;\n  }\n\n  code, kbd, samp, pre {\n    font-family: var(--default-mono-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);\n    font-feature-settings: var(--default-mono-font-feature-settings, normal);\n    font-variation-settings: var(--default-mono-font-variation-settings, normal);\n    font-size: 1em;\n  }\n\n  small {\n    font-size: 80%;\n  }\n\n  sub, sup {\n    vertical-align: baseline;\n    font-size: 75%;\n    line-height: 0;\n    position: relative;\n  }\n\n  sub {\n    bottom: -.25em;\n  }\n\n  sup {\n    top: -.5em;\n  }\n\n  table {\n    text-indent: 0;\n    border-color: inherit;\n    border-collapse: collapse;\n  }\n\n  :-moz-focusring:where(:not(iframe)) {\n    outline: auto;\n  }\n\n  progress {\n    vertical-align: baseline;\n  }\n\n  summary {\n    display: list-item;\n  }\n\n  ol, ul, menu {\n    list-style: none;\n  }\n\n  img, svg, video, canvas, audio, iframe, embed, object {\n    vertical-align: middle;\n    display: block;\n  }\n\n  img, video {\n    max-width: 100%;\n    height: auto;\n  }\n\n  button, input, select, optgroup, textarea {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  ::file-selector-button {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  :where(select:is([multiple], [size])) optgroup {\n    font-weight: bolder;\n  }\n\n  :where(select:is([multiple], [size])) optgroup option {\n    padding-inline-start: 20px;\n  }\n\n  ::file-selector-button {\n    margin-inline-end: 4px;\n  }\n\n  ::placeholder {\n    opacity: 1;\n  }\n\n  @supports (not ((-webkit-appearance: -apple-pay-button))) or (contain-intrinsic-size: 1px) {\n    ::placeholder {\n      color: currentColor;\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      ::placeholder {\n        color: color-mix(in oklab, currentcolor 50%, transparent);\n      }\n    }\n  }\n\n  textarea {\n    resize: vertical;\n  }\n\n  ::-webkit-search-decoration {\n    -webkit-appearance: none;\n  }\n\n  ::-webkit-date-and-time-value {\n    min-height: 1lh;\n    text-align: inherit;\n  }\n\n  ::-webkit-datetime-edit {\n    display: inline-flex;\n  }\n\n  ::-webkit-datetime-edit-fields-wrapper {\n    padding: 0;\n  }\n\n  ::-webkit-datetime-edit {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-year-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-month-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-day-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-hour-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-minute-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-second-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-millisecond-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-meridiem-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-calendar-picker-indicator {\n    line-height: 1;\n  }\n\n  :-moz-ui-invalid {\n    box-shadow: none;\n  }\n\n  button, input:where([type="button"], [type="reset"], [type="submit"]) {\n    appearance: button;\n  }\n\n  ::file-selector-button {\n    appearance: button;\n  }\n\n  ::-webkit-inner-spin-button {\n    height: auto;\n  }\n\n  ::-webkit-outer-spin-button {\n    height: auto;\n  }\n\n  [hidden]:where(:not([hidden="until-found"])) {\n    display: none !important;\n  }\n}\n\n@layer components;\n\n@layer utilities {\n  .collapse {\n    visibility: collapse;\n  }\n\n  .invisible {\n    visibility: hidden;\n  }\n\n  .visible {\n    visibility: visible;\n  }\n\n  .absolute {\n    position: absolute;\n  }\n\n  .fixed {\n    position: fixed;\n  }\n\n  .relative {\n    position: relative;\n  }\n\n  .static {\n    position: static;\n  }\n\n  .sticky {\n    position: sticky;\n  }\n\n  .top-41 {\n    top: calc(var(--spacing) * 41);\n  }\n\n  .isolate {\n    isolation: isolate;\n  }\n\n  .col-span-2 {\n    grid-column: span 2 / span 2;\n  }\n\n  .container {\n    width: 100%;\n  }\n\n  @media (min-width: 40rem) {\n    .container {\n      max-width: 40rem;\n    }\n  }\n\n  @media (min-width: 48rem) {\n    .container {\n      max-width: 48rem;\n    }\n  }\n\n  @media (min-width: 64rem) {\n    .container {\n      max-width: 64rem;\n    }\n  }\n\n  @media (min-width: 80rem) {\n    .container {\n      max-width: 80rem;\n    }\n  }\n\n  @media (min-width: 96rem) {\n    .container {\n      max-width: 96rem;\n    }\n  }\n\n  .m-0 {\n    margin: 0;\n  }\n\n  .m-1 {\n    margin: var(--spacing);\n  }\n\n  .mt-2 {\n    margin-top: calc(var(--spacing) * 2);\n  }\n\n  .mb-2 {\n    margin-bottom: calc(var(--spacing) * 2);\n  }\n\n  .block {\n    display: block;\n  }\n\n  .contents {\n    display: contents;\n  }\n\n  .flex {\n    display: flex;\n  }\n\n  .grid {\n    display: grid;\n  }\n\n  .hidden {\n    display: none;\n  }\n\n  .inline {\n    display: inline;\n  }\n\n  .inline-flex {\n    display: inline-flex;\n  }\n\n  .table {\n    display: table;\n  }\n\n  .size-3 {\n    width: calc(var(--spacing) * 3);\n    height: calc(var(--spacing) * 3);\n  }\n\n  .size-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n    height: calc(var(--spacing) * 3.5);\n  }\n\n  .size-4 {\n    width: calc(var(--spacing) * 4);\n    height: calc(var(--spacing) * 4);\n  }\n\n  .size-5 {\n    width: calc(var(--spacing) * 5);\n    height: calc(var(--spacing) * 5);\n  }\n\n  .size-6 {\n    width: calc(var(--spacing) * 6);\n    height: calc(var(--spacing) * 6);\n  }\n\n  .size-7 {\n    width: calc(var(--spacing) * 7);\n    height: calc(var(--spacing) * 7);\n  }\n\n  .size-8 {\n    width: calc(var(--spacing) * 8);\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-7 {\n    height: calc(var(--spacing) * 7);\n  }\n\n  .h-8 {\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-9 {\n    height: calc(var(--spacing) * 9);\n  }\n\n  .max-h-60 {\n    max-height: calc(var(--spacing) * 60);\n  }\n\n  .max-h-\\[420px\\] {\n    max-height: 420px;\n  }\n\n  .min-h-\\[130px\\] {\n    min-height: 130px;\n  }\n\n  .w-full {\n    width: 100%;\n  }\n\n  .min-w-0 {\n    min-width: 0;\n  }\n\n  .flex-1 {\n    flex: 1;\n  }\n\n  .shrink-0 {\n    flex-shrink: 0;\n  }\n\n  .grow {\n    flex-grow: 1;\n  }\n\n  .rotate-180 {\n    rotate: 180deg;\n  }\n\n  .transform {\n    transform: var(--tw-rotate-x, ) var(--tw-rotate-y, ) var(--tw-rotate-z, ) var(--tw-skew-x, ) var(--tw-skew-y, );\n  }\n\n  .resize {\n    resize: both;\n  }\n\n  .grid-cols-2 {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }\n\n  .flex-wrap {\n    flex-wrap: wrap;\n  }\n\n  .items-center {\n    align-items: center;\n  }\n\n  .justify-between {\n    justify-content: space-between;\n  }\n\n  .justify-center {\n    justify-content: center;\n  }\n\n  .justify-end {\n    justify-content: flex-end;\n  }\n\n  .gap-2 {\n    gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-3 {\n    gap: calc(var(--spacing) * 3);\n  }\n\n  .self-start {\n    align-self: flex-start;\n  }\n\n  .truncate {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    overflow: hidden;\n  }\n\n  .overflow-x-hidden {\n    overflow-x: hidden;\n  }\n\n  .overflow-y-auto {\n    overflow-y: auto;\n  }\n\n  .rounded-lg {\n    border-radius: var(--radius);\n  }\n\n  .rounded-md {\n    border-radius: calc(var(--radius) - 2px);\n  }\n\n  .border {\n    border-style: var(--tw-border-style);\n    border-width: 1px;\n  }\n\n  .border-b {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 1px;\n  }\n\n  .border-l-2 {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 2px;\n  }\n\n  .border-border {\n    border-color: var(--border);\n  }\n\n  .border-transparent {\n    border-color: #0000;\n  }\n\n  .bg-background {\n    background-color: var(--background);\n  }\n\n  .bg-card {\n    background-color: var(--card);\n  }\n\n  .bg-primary {\n    background-color: var(--primary);\n  }\n\n  .bg-secondary {\n    background-color: var(--secondary);\n  }\n\n  .p-2 {\n    padding: calc(var(--spacing) * 2);\n  }\n\n  .p-3 {\n    padding: calc(var(--spacing) * 3);\n  }\n\n  .px-2 {\n    padding-inline: calc(var(--spacing) * 2);\n  }\n\n  .px-3 {\n    padding-inline: calc(var(--spacing) * 3);\n  }\n\n  .px-4 {\n    padding-inline: calc(var(--spacing) * 4);\n  }\n\n  .py-0\\.5 {\n    padding-block: calc(var(--spacing) * .5);\n  }\n\n  .py-2 {\n    padding-block: calc(var(--spacing) * 2);\n  }\n\n  .pl-2 {\n    padding-left: calc(var(--spacing) * 2);\n  }\n\n  .text-base {\n    font-size: var(--text-base);\n    line-height: var(--tw-leading, var(--text-base--line-height));\n  }\n\n  .text-sm {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n\n  .text-xs {\n    font-size: var(--text-xs);\n    line-height: var(--tw-leading, var(--text-xs--line-height));\n  }\n\n  .text-\\[11px\\] {\n    font-size: 11px;\n  }\n\n  .leading-4 {\n    --tw-leading: calc(var(--spacing) * 4);\n    line-height: calc(var(--spacing) * 4);\n  }\n\n  .font-medium {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n\n  .font-semibold {\n    --tw-font-weight: var(--font-weight-semibold);\n    font-weight: var(--font-weight-semibold);\n  }\n\n  .break-words {\n    overflow-wrap: break-word;\n  }\n\n  .whitespace-nowrap {\n    white-space: nowrap;\n  }\n\n  .whitespace-pre-wrap {\n    white-space: pre-wrap;\n  }\n\n  .text-foreground {\n    color: var(--foreground);\n  }\n\n  .text-muted-foreground {\n    color: var(--muted-foreground);\n  }\n\n  .text-primary-foreground {\n    color: var(--primary-foreground);\n  }\n\n  .text-secondary-foreground {\n    color: var(--secondary-foreground);\n  }\n\n  .ordinal {\n    --tw-ordinal: ordinal;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .tabular-nums {\n    --tw-numeric-spacing: tabular-nums;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .shadow {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .outline {\n    outline-style: var(--tw-outline-style);\n    outline-width: 1px;\n  }\n\n  .blur {\n    --tw-blur: blur(8px);\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .filter {\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .transition {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-colors {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-transform {\n    transition-property: transform, translate, scale, rotate;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .outline-none {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  @media (hover: hover) {\n    .hover\\:bg-accent:hover {\n      background-color: var(--accent);\n    }\n\n    .hover\\:bg-primary\\/90:hover {\n      background-color: var(--primary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-primary\\/90:hover {\n        background-color: color-mix(in oklab, var(--primary) 90%, transparent);\n      }\n    }\n\n    .hover\\:text-accent-foreground:hover {\n      color: var(--accent-foreground);\n    }\n  }\n\n  .focus-visible\\:ring-2:focus-visible {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus-visible\\:ring-ring:focus-visible {\n    --tw-ring-color: var(--ring);\n  }\n\n  .disabled\\:pointer-events-none:disabled {\n    pointer-events: none;\n  }\n\n  .disabled\\:opacity-50:disabled {\n    opacity: .5;\n  }\n}\n\n.booster-reader-sidebar {\n  border-right: 1px solid var(--border);\n  background: var(--card);\n  overscroll-behavior: contain;\n  min-width: 0;\n  padding: 12px;\n  overflow: auto;\n}\n\n.booster-reader-group {\n  margin-top: 12px;\n}\n\n.booster-reader-group-header {\n  align-items: center;\n  gap: 2px;\n  min-height: 38px;\n  display: flex;\n}\n\n.booster-group-toggle {\n  min-width: 0;\n  color: inherit;\n  cursor: pointer;\n  text-align: left;\n  font: inherit;\n  background: none;\n  border: 0;\n  flex: 1;\n  align-items: center;\n  gap: 6px;\n  padding: 6px 0;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-group-toggle svg {\n  flex-shrink: 0;\n}\n\n.booster-group-toggle span {\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-group-toggle small {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-reader-chat-list {\n  gap: 3px;\n  padding-left: 10px;\n  display: grid;\n}\n\n.booster-reader-chat-list > button {\n  color: inherit;\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 8px;\n  align-items: center;\n  gap: 6px;\n  padding: 10px;\n  font-size: 12px;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-reader-chat-list > button:hover, .booster-reader-chat-list > button.active {\n  background: var(--muted);\n  border-color: var(--border);\n}\n\n.booster-reader-chat-list > button span {\n  text-overflow: ellipsis;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-reader-chat-list > button.is-branch {\n  border-inline-start: 2px solid var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reader-chat-list > button.is-branch {\n    border-inline-start: 2px solid color-mix(in oklab, var(--primary) 35%, transparent);\n  }\n}\n\n.booster-reader-branch-icon {\n  opacity: .66;\n  flex: none;\n}\n\n.booster-reader-exchanges {\n  gap: 12px;\n  margin-top: 0;\n  display: grid;\n}\n\n.booster-exchange {\n  border-bottom: 1px solid var(--border);\n  min-width: 0;\n  max-width: 100%;\n  padding-bottom: 16px;\n}\n\n.booster-exchange-details {\n  border-left: 2px solid var(--border);\n  gap: 6px;\n  margin: 10px 0 10px 12px;\n  padding: 8px 0 8px 12px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-exchange-details {\n    border-left: 2px solid color-mix(in oklab, var(--border) 78%, var(--primary));\n  }\n}\n\n.booster-exchange-details-label {\n  color: var(--muted-foreground);\n  letter-spacing: .04em;\n  text-transform: uppercase;\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-message-target {\n  outline: 2px solid var(--primary);\n  outline-offset: 2px;\n  border-radius: 6px;\n}\n\n[data-archive-message] {\n  scroll-margin-block: 20px;\n}\n\n.booster-reader-exchanges, .booster-exchange-details {\n  min-width: 0;\n  max-width: 100%;\n}\n\n:host {\n  --background: oklch(98.5% 0 0);\n  --foreground: oklch(14.5% 0 0);\n  --card: oklch(100% 0 0);\n  --card-foreground: oklch(14.5% 0 0);\n  --primary: oklch(20.5% 0 0);\n  --primary-foreground: oklch(98.5% 0 0);\n  --secondary: oklch(97% 0 0);\n  --secondary-foreground: oklch(20.5% 0 0);\n  --muted: oklch(97% 0 0);\n  --muted-foreground: oklch(55.6% 0 0);\n  --accent: oklch(97% 0 0);\n  --accent-foreground: oklch(20.5% 0 0);\n  --border: oklch(92.2% 0 0);\n  --ring: oklch(70.8% 0 0);\n  --radius: .625rem;\n  all: initial;\n  color: var(--foreground);\n  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;\n}\n\n@media (prefers-color-scheme: dark) {\n  :host {\n    --background: oklch(14.5% 0 0);\n    --foreground: oklch(98.5% 0 0);\n    --card: oklch(20.5% 0 0);\n    --card-foreground: oklch(98.5% 0 0);\n    --primary: oklch(92.2% 0 0);\n    --primary-foreground: oklch(20.5% 0 0);\n    --secondary: oklch(26.9% 0 0);\n    --secondary-foreground: oklch(98.5% 0 0);\n    --muted: oklch(26.9% 0 0);\n    --muted-foreground: oklch(70.8% 0 0);\n    --accent: oklch(26.9% 0 0);\n    --accent-foreground: oklch(98.5% 0 0);\n    --border: oklch(100% 0 0 / .12);\n    --ring: oklch(55.6% 0 0);\n  }\n}\n\n* {\n  box-sizing: border-box;\n  border-color: var(--border);\n}\n\n.booster-shell {\n  z-index: 2147483647;\n  position: fixed;\n  bottom: 20px;\n  right: 20px;\n}\n\n.booster-button {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 42px;\n  height: 42px;\n  color: var(--card-foreground);\n  cursor: pointer;\n  border-radius: 14px;\n  font: 700 15px / 1 inherit;\n  box-shadow: 0 10px 30px #0003;\n}\n\n.booster-panel {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 300px;\n  color: var(--card-foreground);\n  border-radius: 16px;\n  margin-bottom: 10px;\n  padding: 14px;\n  box-shadow: 0 18px 45px #0000003d;\n}\n\n.booster-panel h2 {\n  margin: 0 0 6px;\n  font-size: 15px;\n  font-weight: 700;\n}\n\n.booster-panel p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.45;\n}\n\n.booster-control-center {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(760px, 100vw - 32px);\n  color: var(--card-foreground);\n  border-radius: 18px;\n  margin-bottom: 10px;\n  overflow: hidden;\n  box-shadow: 0 22px 60px #00000047;\n}\n\n.booster-control-header, .booster-control-footer {\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  display: flex;\n}\n\n.booster-control-header {\n  border-bottom: 1px solid var(--border);\n  padding: 14px 14px 12px;\n}\n\n.booster-control-header strong {\n  font-size: 14px;\n}\n\n.booster-control-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-control-body {\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-loading {\n  color: var(--muted-foreground);\n  padding: 18px;\n  font-size: 12px;\n}\n\n.booster-section-label {\n  color: var(--muted-foreground);\n  letter-spacing: .08em;\n  text-transform: uppercase;\n  padding: 2px 2px 0;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-setting-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 12px;\n  display: flex;\n}\n\n.booster-setting-disabled {\n  opacity: .55;\n}\n\n.booster-setting-copy {\n  gap: 5px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-setting-copy b {\n  font-size: 12px;\n}\n\n.booster-setting-copy > span {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.4;\n}\n\n.booster-switch {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  cursor: pointer;\n  border-radius: 999px;\n  flex: none;\n  width: 36px;\n  height: 20px;\n  padding: 0;\n  transition: background .12s, border-color .12s;\n  position: relative;\n}\n\n.booster-switch:disabled {\n  cursor: not-allowed;\n}\n\n.booster-switch > span {\n  background: var(--foreground);\n  border-radius: 999px;\n  width: 14px;\n  height: 14px;\n  transition: transform .12s;\n  position: absolute;\n  top: 2px;\n  left: 2px;\n}\n\n.booster-switch-on {\n  background: var(--primary);\n  border-color: var(--primary);\n}\n\n.booster-switch-on > span {\n  background: var(--primary-foreground);\n  transform: translateX(16px);\n}\n\n.booster-info-card {\n  background: var(--muted);\n  color: var(--foreground);\n  border-radius: 12px;\n  padding: 11px 12px;\n  font-size: 11px;\n}\n\n.booster-info-card ul {\n  color: var(--muted-foreground);\n  gap: 4px;\n  margin: 8px 0 0 18px;\n  padding: 0;\n  line-height: 1.35;\n  display: grid;\n}\n\n.booster-control-footer {\n  padding-top: 2px;\n}\n\n.booster-save-state {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 5px;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-overlay-root {\n  pointer-events: none;\n}\n\n.booster-launcher {\n  z-index: 2147483647;\n  border: 2px solid var(--primary);\n  justify-content: center;\n  align-items: center;\n  gap: 1px;\n  width: 46px;\n  height: 46px;\n  display: inline-flex;\n  position: fixed;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher {\n    border: 2px solid color-mix(in oklab, var(--primary) 55%, transparent);\n  }\n}\n\n.booster-launcher {\n  background: var(--primary);\n  color: var(--primary-foreground);\n  box-shadow: 0 12px 36px #00000047, 0 0 0 3px var(--primary);\n  border-radius: 15px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher {\n    box-shadow: 0 12px 36px #00000047, 0 0 0 3px color-mix(in oklab, var(--primary) 18%, transparent);\n  }\n}\n\n.booster-launcher {\n  cursor: grab;\n  pointer-events: auto;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  font: 800 17px / 1 inherit;\n}\n\n.booster-launcher:hover {\n  transform: scale(1.04);\n}\n\n.booster-launcher-dragging {\n  cursor: grabbing;\n  transform: scale(1.06);\n}\n\n.booster-launcher-icon {\n  flex-shrink: 0;\n  width: 20px;\n  height: 20px;\n}\n\n.booster-modal-backdrop {\n  z-index: 2147483646;\n  -webkit-backdrop-filter: blur(3px);\n  backdrop-filter: blur(3px);\n  pointer-events: auto;\n  background: #00000061;\n  place-items: center;\n  padding: 16px;\n  display: grid;\n  position: fixed;\n  inset: 0;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n  max-height: calc(100vh - 32px);\n  overflow: auto;\n}\n\n.booster-modal-surface .booster-control-center {\n  width: 100%;\n  margin: 0;\n}\n\n.booster-popup-host {\n  background: var(--background);\n  min-width: 360px;\n}\n\n.booster-select {\n  border: 1px solid var(--border);\n  background: var(--background);\n  min-width: 92px;\n  height: 32px;\n  color: var(--foreground);\n  cursor: pointer;\n  border-radius: 8px;\n  outline: none;\n  flex: none;\n  padding: 0 28px 0 10px;\n  font: 500 12px / 1 inherit;\n}\n\n.booster-select:focus {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-stack-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-stack-card label {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-input {\n  border: 1px solid var(--border);\n  background: var(--background);\n  width: 100%;\n  min-width: 0;\n  height: 32px;\n  color: var(--foreground);\n  border-radius: 8px;\n  outline: none;\n  padding: 0 10px;\n  font: 500 11px / 1 inherit;\n}\n\n.booster-input:focus {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-counter-grid {\n  color: var(--muted-foreground);\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 6px 12px;\n  margin-top: 8px;\n  display: grid;\n}\n\n.booster-counter-grid span {\n  justify-content: space-between;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-counter-grid b {\n  color: var(--foreground);\n}\n\n.booster-header-copy {\n  min-width: 0;\n}\n\n.booster-header-actions {\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-header-toggle-label {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  font-weight: 600;\n}\n\n.booster-settings-layout {\n  grid-template-columns: 150px minmax(0, 1fr);\n  min-height: 360px;\n  display: grid;\n}\n\n.booster-settings-nav {\n  border-right: 1px solid var(--border);\n  background: var(--muted);\n  align-content: start;\n  gap: 4px;\n  padding: 12px 8px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-settings-nav {\n    background: color-mix(in oklab, var(--muted) 58%, transparent);\n  }\n}\n\n.booster-settings-nav button {\n  width: 100%;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  border-radius: 9px;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 10px;\n  font: 600 11px / 1.2 inherit;\n  display: flex;\n}\n\n.booster-settings-nav button:hover, .booster-settings-nav button.active {\n  background: var(--background);\n  color: var(--foreground);\n}\n\n.booster-settings-content {\n  align-content: start;\n  gap: 10px;\n  min-width: 0;\n  padding: 14px;\n  display: grid;\n}\n\n.booster-setting-card-flat {\n  border: 0;\n  border-bottom: 1px solid var(--border);\n  border-radius: 0;\n  padding: 0 0 10px;\n}\n\n.booster-analytics-grid {\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 12px;\n  display: grid;\n}\n\n.booster-counter-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  padding: 12px;\n}\n\n.booster-counter-title {\n  margin-bottom: 8px;\n  font-size: 12px;\n  font-weight: 700;\n}\n\n.booster-disclosure {\n  width: 100%;\n  color: var(--foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 0;\n  display: flex;\n}\n\n.booster-disclosure > span {\n  gap: 3px;\n  display: grid;\n}\n\n.booster-disclosure b {\n  font-size: 12px;\n}\n\n.booster-disclosure small {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.rotate-180 {\n  transform: rotate(180deg);\n}\n\n.booster-telemetry-body {\n  gap: 10px;\n  padding-top: 10px;\n  display: grid;\n}\n\n.booster-field {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-telemetry-test-row {\n  align-items: center;\n  gap: 10px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-test-success {\n  color: oklch(62% .17 145);\n  font-size: 11px;\n}\n\n.booster-test-error {\n  color: oklch(63% .2 25);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n}\n\n@media (max-width: 620px) {\n  .booster-control-center, .booster-modal-surface {\n    width: calc(100vw - 20px);\n  }\n\n  .booster-settings-layout {\n    grid-template-columns: 1fr;\n  }\n\n  .booster-settings-nav {\n    border-right: 0;\n    border-bottom: 1px solid var(--border);\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n\n  .booster-settings-nav button {\n    justify-content: center;\n  }\n\n  .booster-analytics-grid {\n    grid-template-columns: 1fr;\n  }\n}\n\n.booster-modal-surface.booster-modal-surface-wide {\n  width: min(1320px, 100vw - 32px);\n}\n\n.booster-modal-surface-wide > .booster-control-center {\n  width: 100%;\n}\n\n@media (max-width: 620px) {\n  .booster-modal-surface.booster-modal-surface-wide {\n    width: calc(100vw - 20px);\n  }\n}\n\n.booster-modal-backdrop.booster-modal-backdrop-floating {\n  -webkit-backdrop-filter: none;\n  backdrop-filter: none;\n  pointer-events: none;\n  background: none;\n  padding: 0;\n  display: block;\n}\n\n.booster-modal-surface.booster-modal-surface-wide.booster-dialog-floating {\n  pointer-events: auto;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  max-height: none;\n  padding: 0;\n  display: flex;\n  position: fixed;\n  overflow: hidden;\n}\n\n.booster-dialog-floating > .booster-control-center {\n  flex: auto;\n  min-height: 0;\n  overflow: auto;\n}\n\n.booster-floating-chrome {\n  border-bottom: 1px solid var(--border);\n  background: var(--muted);\n  cursor: move;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  flex: none;\n  align-items: center;\n  gap: 8px;\n  min-height: 38px;\n  padding: 4px 8px 4px 12px;\n  display: flex;\n}\n\n.booster-floating-chrome > span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  flex: auto;\n  min-width: 0;\n  font-size: 12px;\n  font-weight: 600;\n  overflow: hidden;\n}\n\n.booster-floating-chrome > button {\n  cursor: pointer;\n  border-radius: 6px;\n  flex: none;\n  place-items: center;\n  width: 30px;\n  height: 30px;\n  display: grid;\n}\n\n.booster-floating-chrome > button:focus-visible, .booster-floating-resize:focus-visible {\n  outline: 2px solid var(--ring);\n}\n\n.booster-floating-resize {\n  background: var(--muted);\n  cursor: nwse-resize;\n  touch-action: none;\n  border-top-left-radius: 7px;\n  place-items: center;\n  width: 28px;\n  height: 28px;\n  display: grid;\n  position: absolute;\n  bottom: 0;\n  right: 0;\n}\n\n@property --tw-rotate-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-z {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-border-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-leading {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-font-weight {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ordinal {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-slashed-zero {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-figure {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-spacing {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-fraction {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-inset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-ring-inset {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-offset-width {\n  syntax: "<length>";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-ring-offset-color {\n  syntax: "*";\n  inherits: false;\n  initial-value: #fff;\n}\n\n@property --tw-ring-offset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-outline-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-blur {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-brightness {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-contrast {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-grayscale {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-hue-rotate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-invert {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-opacity {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-saturate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-sepia {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-drop-shadow-size {\n  syntax: "*";\n  inherits: false\n}\n';
+  const styles = '/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */\n@layer properties {\n  @supports (((-webkit-hyphens: none)) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color: rgb(from red r g b)))) {\n    *, :before, :after, ::backdrop {\n      --tw-rotate-x: initial;\n      --tw-rotate-y: initial;\n      --tw-rotate-z: initial;\n      --tw-skew-x: initial;\n      --tw-skew-y: initial;\n      --tw-space-y-reverse: 0;\n      --tw-border-style: solid;\n      --tw-leading: initial;\n      --tw-font-weight: initial;\n      --tw-ordinal: initial;\n      --tw-slashed-zero: initial;\n      --tw-numeric-figure: initial;\n      --tw-numeric-spacing: initial;\n      --tw-numeric-fraction: initial;\n      --tw-shadow: 0 0 #0000;\n      --tw-shadow-color: initial;\n      --tw-shadow-alpha: 100%;\n      --tw-inset-shadow: 0 0 #0000;\n      --tw-inset-shadow-color: initial;\n      --tw-inset-shadow-alpha: 100%;\n      --tw-ring-color: initial;\n      --tw-ring-shadow: 0 0 #0000;\n      --tw-inset-ring-color: initial;\n      --tw-inset-ring-shadow: 0 0 #0000;\n      --tw-ring-inset: initial;\n      --tw-ring-offset-width: 0px;\n      --tw-ring-offset-color: #fff;\n      --tw-ring-offset-shadow: 0 0 #0000;\n      --tw-outline-style: solid;\n      --tw-blur: initial;\n      --tw-brightness: initial;\n      --tw-contrast: initial;\n      --tw-grayscale: initial;\n      --tw-hue-rotate: initial;\n      --tw-invert: initial;\n      --tw-opacity: initial;\n      --tw-saturate: initial;\n      --tw-sepia: initial;\n      --tw-drop-shadow: initial;\n      --tw-drop-shadow-color: initial;\n      --tw-drop-shadow-alpha: 100%;\n      --tw-drop-shadow-size: initial;\n    }\n  }\n}\n\n@layer theme {\n  :root, :host {\n    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",\n      "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",\n      "Segoe UI Symbol", "Noto Color Emoji";\n    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",\n      "Courier New", monospace;\n    --spacing: .25rem;\n    --text-xs: .75rem;\n    --text-xs--line-height: calc(1 / .75);\n    --text-sm: .875rem;\n    --text-sm--line-height: calc(1.25 / .875);\n    --text-base: 1rem;\n    --text-base--line-height: calc(1.5 / 1);\n    --font-weight-medium: 500;\n    --font-weight-semibold: 600;\n    --default-transition-duration: .15s;\n    --default-transition-timing-function: cubic-bezier(.4, 0, .2, 1);\n    --default-font-family: var(--font-sans);\n    --default-mono-font-family: var(--font-mono);\n  }\n}\n\n@layer base {\n  *, :after, :before, ::backdrop {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  ::file-selector-button {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  html, :host {\n    -webkit-text-size-adjust: 100%;\n    tab-size: 4;\n    line-height: 1.5;\n    font-family: var(--default-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");\n    font-feature-settings: var(--default-font-feature-settings, normal);\n    font-variation-settings: var(--default-font-variation-settings, normal);\n    -webkit-tap-highlight-color: transparent;\n  }\n\n  hr {\n    height: 0;\n    color: inherit;\n    border-top-width: 1px;\n  }\n\n  abbr:where([title]) {\n    -webkit-text-decoration: underline dotted;\n    text-decoration: underline dotted;\n  }\n\n  h1, h2, h3, h4, h5, h6 {\n    font-size: inherit;\n    font-weight: inherit;\n  }\n\n  a {\n    color: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    text-decoration: inherit;\n  }\n\n  b, strong {\n    font-weight: bolder;\n  }\n\n  code, kbd, samp, pre {\n    font-family: var(--default-mono-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);\n    font-feature-settings: var(--default-mono-font-feature-settings, normal);\n    font-variation-settings: var(--default-mono-font-variation-settings, normal);\n    font-size: 1em;\n  }\n\n  small {\n    font-size: 80%;\n  }\n\n  sub, sup {\n    vertical-align: baseline;\n    font-size: 75%;\n    line-height: 0;\n    position: relative;\n  }\n\n  sub {\n    bottom: -.25em;\n  }\n\n  sup {\n    top: -.5em;\n  }\n\n  table {\n    text-indent: 0;\n    border-color: inherit;\n    border-collapse: collapse;\n  }\n\n  :-moz-focusring:where(:not(iframe)) {\n    outline: auto;\n  }\n\n  progress {\n    vertical-align: baseline;\n  }\n\n  summary {\n    display: list-item;\n  }\n\n  ol, ul, menu {\n    list-style: none;\n  }\n\n  img, svg, video, canvas, audio, iframe, embed, object {\n    vertical-align: middle;\n    display: block;\n  }\n\n  img, video {\n    max-width: 100%;\n    height: auto;\n  }\n\n  button, input, select, optgroup, textarea {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  ::file-selector-button {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  :where(select:is([multiple], [size])) optgroup {\n    font-weight: bolder;\n  }\n\n  :where(select:is([multiple], [size])) optgroup option {\n    padding-inline-start: 20px;\n  }\n\n  ::file-selector-button {\n    margin-inline-end: 4px;\n  }\n\n  ::placeholder {\n    opacity: 1;\n  }\n\n  @supports (not ((-webkit-appearance: -apple-pay-button))) or (contain-intrinsic-size: 1px) {\n    ::placeholder {\n      color: currentColor;\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      ::placeholder {\n        color: color-mix(in oklab, currentcolor 50%, transparent);\n      }\n    }\n  }\n\n  textarea {\n    resize: vertical;\n  }\n\n  ::-webkit-search-decoration {\n    -webkit-appearance: none;\n  }\n\n  ::-webkit-date-and-time-value {\n    min-height: 1lh;\n    text-align: inherit;\n  }\n\n  ::-webkit-datetime-edit {\n    display: inline-flex;\n  }\n\n  ::-webkit-datetime-edit-fields-wrapper {\n    padding: 0;\n  }\n\n  ::-webkit-datetime-edit {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-year-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-month-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-day-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-hour-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-minute-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-second-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-millisecond-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-meridiem-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-calendar-picker-indicator {\n    line-height: 1;\n  }\n\n  :-moz-ui-invalid {\n    box-shadow: none;\n  }\n\n  button, input:where([type="button"], [type="reset"], [type="submit"]) {\n    appearance: button;\n  }\n\n  ::file-selector-button {\n    appearance: button;\n  }\n\n  ::-webkit-inner-spin-button {\n    height: auto;\n  }\n\n  ::-webkit-outer-spin-button {\n    height: auto;\n  }\n\n  [hidden]:where(:not([hidden="until-found"])) {\n    display: none !important;\n  }\n}\n\n@layer components;\n\n@layer utilities {\n  .collapse {\n    visibility: collapse;\n  }\n\n  .invisible {\n    visibility: hidden;\n  }\n\n  .visible {\n    visibility: visible;\n  }\n\n  .absolute {\n    position: absolute;\n  }\n\n  .fixed {\n    position: fixed;\n  }\n\n  .relative {\n    position: relative;\n  }\n\n  .static {\n    position: static;\n  }\n\n  .sticky {\n    position: sticky;\n  }\n\n  .top-41 {\n    top: calc(var(--spacing) * 41);\n  }\n\n  .isolate {\n    isolation: isolate;\n  }\n\n  .col-span-2 {\n    grid-column: span 2 / span 2;\n  }\n\n  .container {\n    width: 100%;\n  }\n\n  @media (min-width: 40rem) {\n    .container {\n      max-width: 40rem;\n    }\n  }\n\n  @media (min-width: 48rem) {\n    .container {\n      max-width: 48rem;\n    }\n  }\n\n  @media (min-width: 64rem) {\n    .container {\n      max-width: 64rem;\n    }\n  }\n\n  @media (min-width: 80rem) {\n    .container {\n      max-width: 80rem;\n    }\n  }\n\n  @media (min-width: 96rem) {\n    .container {\n      max-width: 96rem;\n    }\n  }\n\n  .m-0 {\n    margin: 0;\n  }\n\n  .m-1 {\n    margin: var(--spacing);\n  }\n\n  .mt-1 {\n    margin-top: var(--spacing);\n  }\n\n  .mt-2 {\n    margin-top: calc(var(--spacing) * 2);\n  }\n\n  .mb-2 {\n    margin-bottom: calc(var(--spacing) * 2);\n  }\n\n  .block {\n    display: block;\n  }\n\n  .contents {\n    display: contents;\n  }\n\n  .flex {\n    display: flex;\n  }\n\n  .grid {\n    display: grid;\n  }\n\n  .hidden {\n    display: none;\n  }\n\n  .inline {\n    display: inline;\n  }\n\n  .inline-flex {\n    display: inline-flex;\n  }\n\n  .table {\n    display: table;\n  }\n\n  .size-3 {\n    width: calc(var(--spacing) * 3);\n    height: calc(var(--spacing) * 3);\n  }\n\n  .size-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n    height: calc(var(--spacing) * 3.5);\n  }\n\n  .size-4 {\n    width: calc(var(--spacing) * 4);\n    height: calc(var(--spacing) * 4);\n  }\n\n  .size-5 {\n    width: calc(var(--spacing) * 5);\n    height: calc(var(--spacing) * 5);\n  }\n\n  .size-6 {\n    width: calc(var(--spacing) * 6);\n    height: calc(var(--spacing) * 6);\n  }\n\n  .size-7 {\n    width: calc(var(--spacing) * 7);\n    height: calc(var(--spacing) * 7);\n  }\n\n  .size-8 {\n    width: calc(var(--spacing) * 8);\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-7 {\n    height: calc(var(--spacing) * 7);\n  }\n\n  .h-8 {\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-9 {\n    height: calc(var(--spacing) * 9);\n  }\n\n  .max-h-60 {\n    max-height: calc(var(--spacing) * 60);\n  }\n\n  .max-h-96 {\n    max-height: calc(var(--spacing) * 96);\n  }\n\n  .max-h-\\[420px\\] {\n    max-height: 420px;\n  }\n\n  .min-h-\\[130px\\] {\n    min-height: 130px;\n  }\n\n  .w-full {\n    width: 100%;\n  }\n\n  .min-w-0 {\n    min-width: 0;\n  }\n\n  .flex-1 {\n    flex: 1;\n  }\n\n  .shrink-0 {\n    flex-shrink: 0;\n  }\n\n  .grow {\n    flex-grow: 1;\n  }\n\n  .rotate-180 {\n    rotate: 180deg;\n  }\n\n  .transform {\n    transform: var(--tw-rotate-x, ) var(--tw-rotate-y, ) var(--tw-rotate-z, ) var(--tw-skew-x, ) var(--tw-skew-y, );\n  }\n\n  .resize {\n    resize: both;\n  }\n\n  .grid-cols-2 {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }\n\n  .flex-col {\n    flex-direction: column;\n  }\n\n  .flex-wrap {\n    flex-wrap: wrap;\n  }\n\n  .items-center {\n    align-items: center;\n  }\n\n  .items-end {\n    align-items: flex-end;\n  }\n\n  .items-start {\n    align-items: flex-start;\n  }\n\n  .justify-between {\n    justify-content: space-between;\n  }\n\n  .justify-center {\n    justify-content: center;\n  }\n\n  .gap-0\\.5 {\n    gap: calc(var(--spacing) * .5);\n  }\n\n  .gap-1 {\n    gap: var(--spacing);\n  }\n\n  .gap-2 {\n    gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-3 {\n    gap: calc(var(--spacing) * 3);\n  }\n\n  :where(.space-y-2 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 2) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 2) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  .self-start {\n    align-self: flex-start;\n  }\n\n  .truncate {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    overflow: hidden;\n  }\n\n  .overflow-x-hidden {\n    overflow-x: hidden;\n  }\n\n  .overflow-y-auto {\n    overflow-y: auto;\n  }\n\n  .rounded-lg {\n    border-radius: var(--radius);\n  }\n\n  .rounded-md {\n    border-radius: calc(var(--radius) - 2px);\n  }\n\n  .border {\n    border-style: var(--tw-border-style);\n    border-width: 1px;\n  }\n\n  .border-t {\n    border-top-style: var(--tw-border-style);\n    border-top-width: 1px;\n  }\n\n  .border-b {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 1px;\n  }\n\n  .border-l-2 {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 2px;\n  }\n\n  .border-border {\n    border-color: var(--border);\n  }\n\n  .border-transparent {\n    border-color: #0000;\n  }\n\n  .bg-background {\n    background-color: var(--background);\n  }\n\n  .bg-card {\n    background-color: var(--card);\n  }\n\n  .bg-primary {\n    background-color: var(--primary);\n  }\n\n  .bg-secondary {\n    background-color: var(--secondary);\n  }\n\n  .p-0 {\n    padding: 0;\n  }\n\n  .p-2 {\n    padding: calc(var(--spacing) * 2);\n  }\n\n  .p-3 {\n    padding: calc(var(--spacing) * 3);\n  }\n\n  .px-2 {\n    padding-inline: calc(var(--spacing) * 2);\n  }\n\n  .px-3 {\n    padding-inline: calc(var(--spacing) * 3);\n  }\n\n  .px-4 {\n    padding-inline: calc(var(--spacing) * 4);\n  }\n\n  .py-0\\.5 {\n    padding-block: calc(var(--spacing) * .5);\n  }\n\n  .py-2 {\n    padding-block: calc(var(--spacing) * 2);\n  }\n\n  .pt-2 {\n    padding-top: calc(var(--spacing) * 2);\n  }\n\n  .pl-2 {\n    padding-left: calc(var(--spacing) * 2);\n  }\n\n  .text-base {\n    font-size: var(--text-base);\n    line-height: var(--tw-leading, var(--text-base--line-height));\n  }\n\n  .text-sm {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n\n  .text-xs {\n    font-size: var(--text-xs);\n    line-height: var(--tw-leading, var(--text-xs--line-height));\n  }\n\n  .text-\\[11px\\] {\n    font-size: 11px;\n  }\n\n  .leading-4 {\n    --tw-leading: calc(var(--spacing) * 4);\n    line-height: calc(var(--spacing) * 4);\n  }\n\n  .font-medium {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n\n  .font-semibold {\n    --tw-font-weight: var(--font-weight-semibold);\n    font-weight: var(--font-weight-semibold);\n  }\n\n  .break-words {\n    overflow-wrap: break-word;\n  }\n\n  .whitespace-nowrap {\n    white-space: nowrap;\n  }\n\n  .whitespace-pre-wrap {\n    white-space: pre-wrap;\n  }\n\n  .text-foreground {\n    color: var(--foreground);\n  }\n\n  .text-muted-foreground {\n    color: var(--muted-foreground);\n  }\n\n  .text-primary-foreground {\n    color: var(--primary-foreground);\n  }\n\n  .text-secondary-foreground {\n    color: var(--secondary-foreground);\n  }\n\n  .ordinal {\n    --tw-ordinal: ordinal;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .tabular-nums {\n    --tw-numeric-spacing: tabular-nums;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .shadow {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .outline {\n    outline-style: var(--tw-outline-style);\n    outline-width: 1px;\n  }\n\n  .blur {\n    --tw-blur: blur(8px);\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .filter {\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .transition {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-colors {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-transform {\n    transition-property: transform, translate, scale, rotate;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .outline-none {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  @media (hover: hover) {\n    .hover\\:bg-accent:hover {\n      background-color: var(--accent);\n    }\n\n    .hover\\:bg-primary\\/90:hover {\n      background-color: var(--primary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-primary\\/90:hover {\n        background-color: color-mix(in oklab, var(--primary) 90%, transparent);\n      }\n    }\n\n    .hover\\:text-accent-foreground:hover {\n      color: var(--accent-foreground);\n    }\n  }\n\n  .focus-visible\\:ring-2:focus-visible {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus-visible\\:ring-ring:focus-visible {\n    --tw-ring-color: var(--ring);\n  }\n\n  .disabled\\:pointer-events-none:disabled {\n    pointer-events: none;\n  }\n\n  .disabled\\:opacity-50:disabled {\n    opacity: .5;\n  }\n}\n\n.booster-reader-sidebar {\n  border-right: 1px solid var(--border);\n  background: var(--card);\n  overscroll-behavior: contain;\n  min-width: 0;\n  padding: 12px;\n  overflow: auto;\n}\n\n.booster-reader-group {\n  margin-top: 12px;\n}\n\n.booster-reader-group-header {\n  align-items: center;\n  gap: 2px;\n  min-height: 38px;\n  display: flex;\n}\n\n.booster-group-toggle {\n  min-width: 0;\n  color: inherit;\n  cursor: pointer;\n  text-align: left;\n  font: inherit;\n  background: none;\n  border: 0;\n  flex: 1;\n  align-items: center;\n  gap: 6px;\n  padding: 6px 0;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-group-toggle svg {\n  flex-shrink: 0;\n}\n\n.booster-group-toggle span {\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-group-toggle small {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-reader-chat-list {\n  gap: 3px;\n  padding-left: 10px;\n  display: grid;\n}\n\n.booster-reader-chat-list > button {\n  color: inherit;\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 8px;\n  align-items: center;\n  gap: 6px;\n  padding: 10px;\n  font-size: 12px;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-reader-chat-list > button:hover, .booster-reader-chat-list > button.active {\n  background: var(--muted);\n  border-color: var(--border);\n}\n\n.booster-reader-chat-list > button span {\n  text-overflow: ellipsis;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-reader-chat-list > button.is-branch {\n  border-inline-start: 2px solid var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reader-chat-list > button.is-branch {\n    border-inline-start: 2px solid color-mix(in oklab, var(--primary) 35%, transparent);\n  }\n}\n\n.booster-reader-branch-icon {\n  opacity: .66;\n  flex: none;\n}\n\n.booster-reader-exchanges {\n  gap: 12px;\n  margin-top: 0;\n  display: grid;\n}\n\n.booster-exchange {\n  border-bottom: 1px solid var(--border);\n  min-width: 0;\n  max-width: 100%;\n  padding-bottom: 16px;\n}\n\n.booster-exchange-details {\n  border-left: 2px solid var(--border);\n  gap: 6px;\n  margin: 10px 0 10px 12px;\n  padding: 8px 0 8px 12px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-exchange-details {\n    border-left: 2px solid color-mix(in oklab, var(--border) 78%, var(--primary));\n  }\n}\n\n.booster-exchange-details-label {\n  color: var(--muted-foreground);\n  letter-spacing: .04em;\n  text-transform: uppercase;\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-message-target {\n  outline: 2px solid var(--primary);\n  outline-offset: 2px;\n  border-radius: 6px;\n}\n\n[data-archive-message] {\n  scroll-margin-block: 20px;\n}\n\n.booster-reader-exchanges, .booster-exchange-details {\n  min-width: 0;\n  max-width: 100%;\n}\n\n:host {\n  --background: oklch(98.5% 0 0);\n  --foreground: oklch(14.5% 0 0);\n  --card: oklch(100% 0 0);\n  --card-foreground: oklch(14.5% 0 0);\n  --primary: oklch(20.5% 0 0);\n  --primary-foreground: oklch(98.5% 0 0);\n  --secondary: oklch(97% 0 0);\n  --secondary-foreground: oklch(20.5% 0 0);\n  --muted: oklch(97% 0 0);\n  --muted-foreground: oklch(55.6% 0 0);\n  --accent: oklch(97% 0 0);\n  --accent-foreground: oklch(20.5% 0 0);\n  --border: oklch(92.2% 0 0);\n  --ring: oklch(70.8% 0 0);\n  --radius: .625rem;\n  all: initial;\n  color: var(--foreground);\n  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;\n}\n\n@media (prefers-color-scheme: dark) {\n  :host {\n    --background: oklch(14.5% 0 0);\n    --foreground: oklch(98.5% 0 0);\n    --card: oklch(20.5% 0 0);\n    --card-foreground: oklch(98.5% 0 0);\n    --primary: oklch(92.2% 0 0);\n    --primary-foreground: oklch(20.5% 0 0);\n    --secondary: oklch(26.9% 0 0);\n    --secondary-foreground: oklch(98.5% 0 0);\n    --muted: oklch(26.9% 0 0);\n    --muted-foreground: oklch(70.8% 0 0);\n    --accent: oklch(26.9% 0 0);\n    --accent-foreground: oklch(98.5% 0 0);\n    --border: oklch(100% 0 0 / .12);\n    --ring: oklch(55.6% 0 0);\n  }\n}\n\n* {\n  box-sizing: border-box;\n  border-color: var(--border);\n}\n\n.booster-shell {\n  z-index: 2147483647;\n  position: fixed;\n  bottom: 20px;\n  right: 20px;\n}\n\n.booster-button {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 42px;\n  height: 42px;\n  color: var(--card-foreground);\n  cursor: pointer;\n  border-radius: 14px;\n  font: 700 15px / 1 inherit;\n  box-shadow: 0 10px 30px #0003;\n}\n\n.booster-panel {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 300px;\n  color: var(--card-foreground);\n  border-radius: 16px;\n  margin-bottom: 10px;\n  padding: 14px;\n  box-shadow: 0 18px 45px #0000003d;\n}\n\n.booster-panel h2 {\n  margin: 0 0 6px;\n  font-size: 15px;\n  font-weight: 700;\n}\n\n.booster-panel p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.45;\n}\n\n.booster-control-center {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(760px, 100vw - 32px);\n  color: var(--card-foreground);\n  border-radius: 18px;\n  margin-bottom: 10px;\n  overflow: hidden;\n  box-shadow: 0 22px 60px #00000047;\n}\n\n.booster-control-header, .booster-control-footer {\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  display: flex;\n}\n\n.booster-control-header {\n  border-bottom: 1px solid var(--border);\n  padding: 14px 14px 12px;\n}\n\n.booster-control-header strong {\n  font-size: 14px;\n}\n\n.booster-control-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-control-body {\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-loading {\n  color: var(--muted-foreground);\n  padding: 18px;\n  font-size: 12px;\n}\n\n.booster-section-label {\n  color: var(--muted-foreground);\n  letter-spacing: .08em;\n  text-transform: uppercase;\n  padding: 2px 2px 0;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-setting-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 12px;\n  display: flex;\n}\n\n.booster-setting-disabled {\n  opacity: .55;\n}\n\n.booster-setting-copy {\n  gap: 5px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-setting-copy b {\n  font-size: 12px;\n}\n\n.booster-setting-copy > span {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.4;\n}\n\n.booster-switch {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  cursor: pointer;\n  border-radius: 999px;\n  flex: none;\n  width: 36px;\n  height: 20px;\n  padding: 0;\n  transition: background .12s, border-color .12s;\n  position: relative;\n}\n\n.booster-switch:disabled {\n  cursor: not-allowed;\n}\n\n.booster-switch > span {\n  background: var(--foreground);\n  border-radius: 999px;\n  width: 14px;\n  height: 14px;\n  transition: transform .12s;\n  position: absolute;\n  top: 2px;\n  left: 2px;\n}\n\n.booster-switch-on {\n  background: var(--primary);\n  border-color: var(--primary);\n}\n\n.booster-switch-on > span {\n  background: var(--primary-foreground);\n  transform: translateX(16px);\n}\n\n.booster-info-card {\n  background: var(--muted);\n  color: var(--foreground);\n  border-radius: 12px;\n  padding: 11px 12px;\n  font-size: 11px;\n}\n\n.booster-info-card ul {\n  color: var(--muted-foreground);\n  gap: 4px;\n  margin: 8px 0 0 18px;\n  padding: 0;\n  line-height: 1.35;\n  display: grid;\n}\n\n.booster-control-footer {\n  padding-top: 2px;\n}\n\n.booster-save-state {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 5px;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-overlay-root {\n  pointer-events: none;\n}\n\n.booster-launcher {\n  z-index: 2147483647;\n  border: 2px solid var(--primary);\n  justify-content: center;\n  align-items: center;\n  gap: 1px;\n  width: 46px;\n  height: 46px;\n  display: inline-flex;\n  position: fixed;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher {\n    border: 2px solid color-mix(in oklab, var(--primary) 55%, transparent);\n  }\n}\n\n.booster-launcher {\n  background: var(--primary);\n  color: var(--primary-foreground);\n  box-shadow: 0 12px 36px #00000047, 0 0 0 3px var(--primary);\n  border-radius: 15px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher {\n    box-shadow: 0 12px 36px #00000047, 0 0 0 3px color-mix(in oklab, var(--primary) 18%, transparent);\n  }\n}\n\n.booster-launcher {\n  cursor: grab;\n  pointer-events: auto;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  font: 800 17px / 1 inherit;\n}\n\n.booster-launcher:hover {\n  transform: scale(1.04);\n}\n\n.booster-launcher-dragging {\n  cursor: grabbing;\n  transform: scale(1.06);\n}\n\n.booster-launcher-icon {\n  flex-shrink: 0;\n  width: 20px;\n  height: 20px;\n}\n\n.booster-modal-backdrop {\n  z-index: 2147483646;\n  -webkit-backdrop-filter: blur(3px);\n  backdrop-filter: blur(3px);\n  pointer-events: auto;\n  background: #00000061;\n  place-items: center;\n  padding: 16px;\n  display: grid;\n  position: fixed;\n  inset: 0;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n  max-height: calc(100vh - 32px);\n  overflow: auto;\n}\n\n.booster-modal-surface .booster-control-center {\n  width: 100%;\n  margin: 0;\n}\n\n.booster-popup-host {\n  background: var(--background);\n  min-width: 360px;\n}\n\n.booster-select {\n  border: 1px solid var(--border);\n  background: var(--background);\n  min-width: 92px;\n  height: 32px;\n  color: var(--foreground);\n  cursor: pointer;\n  border-radius: 8px;\n  outline: none;\n  flex: none;\n  padding: 0 28px 0 10px;\n  font: 500 12px / 1 inherit;\n}\n\n.booster-select:focus {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-stack-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-stack-card label {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-input {\n  border: 1px solid var(--border);\n  background: var(--background);\n  width: 100%;\n  min-width: 0;\n  height: 32px;\n  color: var(--foreground);\n  border-radius: 8px;\n  outline: none;\n  padding: 0 10px;\n  font: 500 11px / 1 inherit;\n}\n\n.booster-input:focus {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-counter-grid {\n  color: var(--muted-foreground);\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 6px 12px;\n  margin-top: 8px;\n  display: grid;\n}\n\n.booster-counter-grid span {\n  justify-content: space-between;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-counter-grid b {\n  color: var(--foreground);\n}\n\n.booster-header-copy {\n  min-width: 0;\n}\n\n.booster-header-actions {\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-header-toggle-label {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  font-weight: 600;\n}\n\n.booster-settings-layout {\n  grid-template-columns: 150px minmax(0, 1fr);\n  min-height: 360px;\n  display: grid;\n}\n\n.booster-settings-nav {\n  border-right: 1px solid var(--border);\n  background: var(--muted);\n  align-content: start;\n  gap: 4px;\n  padding: 12px 8px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-settings-nav {\n    background: color-mix(in oklab, var(--muted) 58%, transparent);\n  }\n}\n\n.booster-settings-nav button {\n  width: 100%;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  border-radius: 9px;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 10px;\n  font: 600 11px / 1.2 inherit;\n  display: flex;\n}\n\n.booster-settings-nav button:hover, .booster-settings-nav button.active {\n  background: var(--background);\n  color: var(--foreground);\n}\n\n.booster-settings-content {\n  align-content: start;\n  gap: 10px;\n  min-width: 0;\n  padding: 14px;\n  display: grid;\n}\n\n.booster-setting-card-flat {\n  border: 0;\n  border-bottom: 1px solid var(--border);\n  border-radius: 0;\n  padding: 0 0 10px;\n}\n\n.booster-analytics-grid {\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 12px;\n  display: grid;\n}\n\n.booster-counter-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  padding: 12px;\n}\n\n.booster-counter-title {\n  margin-bottom: 8px;\n  font-size: 12px;\n  font-weight: 700;\n}\n\n.booster-disclosure {\n  width: 100%;\n  color: var(--foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 0;\n  display: flex;\n}\n\n.booster-disclosure > span {\n  gap: 3px;\n  display: grid;\n}\n\n.booster-disclosure b {\n  font-size: 12px;\n}\n\n.booster-disclosure small {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.rotate-180 {\n  transform: rotate(180deg);\n}\n\n.booster-telemetry-body {\n  gap: 10px;\n  padding-top: 10px;\n  display: grid;\n}\n\n.booster-field {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-telemetry-test-row {\n  align-items: center;\n  gap: 10px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-test-success {\n  color: oklch(62% .17 145);\n  font-size: 11px;\n}\n\n.booster-test-error {\n  color: oklch(63% .2 25);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n}\n\n@media (max-width: 620px) {\n  .booster-control-center, .booster-modal-surface {\n    width: calc(100vw - 20px);\n  }\n\n  .booster-settings-layout {\n    grid-template-columns: 1fr;\n  }\n\n  .booster-settings-nav {\n    border-right: 0;\n    border-bottom: 1px solid var(--border);\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n\n  .booster-settings-nav button {\n    justify-content: center;\n  }\n\n  .booster-analytics-grid {\n    grid-template-columns: 1fr;\n  }\n}\n\n.booster-modal-surface.booster-modal-surface-wide {\n  width: min(1320px, 100vw - 32px);\n}\n\n.booster-modal-surface-wide > .booster-control-center {\n  width: 100%;\n}\n\n@media (max-width: 620px) {\n  .booster-modal-surface.booster-modal-surface-wide {\n    width: calc(100vw - 20px);\n  }\n}\n\n.booster-modal-backdrop.booster-modal-backdrop-floating {\n  -webkit-backdrop-filter: none;\n  backdrop-filter: none;\n  pointer-events: none;\n  background: none;\n  padding: 0;\n  display: block;\n}\n\n.booster-modal-surface.booster-modal-surface-wide.booster-dialog-floating {\n  pointer-events: auto;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  max-height: none;\n  padding: 0;\n  display: flex;\n  position: fixed;\n  overflow: hidden;\n}\n\n.booster-dialog-floating > .booster-control-center {\n  flex: auto;\n  min-height: 0;\n  overflow: auto;\n}\n\n.booster-floating-chrome {\n  border-bottom: 1px solid var(--border);\n  background: var(--muted);\n  cursor: move;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  flex: none;\n  align-items: center;\n  gap: 8px;\n  min-height: 38px;\n  padding: 4px 8px 4px 12px;\n  display: flex;\n}\n\n.booster-floating-chrome > span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  flex: auto;\n  min-width: 0;\n  font-size: 12px;\n  font-weight: 600;\n  overflow: hidden;\n}\n\n.booster-floating-chrome > button {\n  cursor: pointer;\n  border-radius: 6px;\n  flex: none;\n  place-items: center;\n  width: 30px;\n  height: 30px;\n  display: grid;\n}\n\n.booster-floating-chrome > button:focus-visible, .booster-floating-resize:focus-visible {\n  outline: 2px solid var(--ring);\n}\n\n.booster-floating-resize {\n  background: var(--muted);\n  cursor: nwse-resize;\n  touch-action: none;\n  border-top-left-radius: 7px;\n  place-items: center;\n  width: 28px;\n  height: 28px;\n  display: grid;\n  position: absolute;\n  bottom: 0;\n  right: 0;\n}\n\n@property --tw-rotate-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-z {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-space-y-reverse {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-border-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-leading {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-font-weight {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ordinal {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-slashed-zero {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-figure {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-spacing {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-fraction {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-inset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-ring-inset {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-offset-width {\n  syntax: "<length>";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-ring-offset-color {\n  syntax: "*";\n  inherits: false;\n  initial-value: #fff;\n}\n\n@property --tw-ring-offset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-outline-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-blur {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-brightness {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-contrast {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-grayscale {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-hue-rotate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-invert {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-opacity {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-saturate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-sepia {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-drop-shadow-size {\n  syntax: "*";\n  inherits: false\n}\n';
   function mountControlCenter(options) {
     document.getElementById(instanceKey("koba-browser-tools-root"))?.remove();
     const host = document.createElement("div");
@@ -50730,7 +49461,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
   }
   if (isChatGptPage())
     bootstrapUserscript([createChatGptUserscriptFeature()], "Koba Browser Tools", {
-      "chatgpt-booster": _sfc_main$5
+      "chatgpt-booster": _sfc_main$3
     });
   else if (vkBoosterFeature.match(new URL(location.href)))
     bootstrapUserscript([vkBoosterFeature], "Koba Browser Tools", { "vk-booster": _sfc_main$2 });
