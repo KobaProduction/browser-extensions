@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VK Booster [DEV]
 // @namespace    https://github.com/KobaProduction/browser-extensions/dev/vk-booster
-// @version      2.3.10-dev.3
+// @version      2.3.10-dev.36
 // @description  Koba Browser Tools / VK Booster
 // @homepageURL   https://github.com/KobaProduction/browser-extensions
 // @updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/vk-booster.user.js
@@ -15,6 +15,124 @@
 
 (function() {
   "use strict";
+  function instanceScope() {
+    return "vk-booster:dev";
+  }
+  function scopedIdentity(base, scope, legacyOwner) {
+    if (legacyOwner && scope === legacyOwner)
+      return base;
+    if (!/^(vk-booster|chatgpt-booster|all-in-one):(dev|prod)$/.test(scope))
+      throw new Error("Unsupported Booster instance scope");
+    return base + ":" + scope;
+  }
+  function instanceKey(base, legacyOwner) {
+    return scopedIdentity(base, instanceScope(), legacyOwner);
+  }
+  var SHELL_OPEN_FEATURE_EVENT = instanceKey("koba:open-feature");
+  var SHELL_CLOSE_EVENT = instanceKey("koba:close-shell");
+  class FeatureSettings {
+    store;
+    constructor(store) {
+      this.store = store;
+    }
+    enabled(id) {
+      return this.store.get(`features.${id}.enabled`).then((value) => value !== false);
+    }
+    setEnabled(id, enabled) {
+      return this.store.set(`features.${id}.enabled`, enabled);
+    }
+  }
+  class FeatureRuntime {
+    features;
+    context;
+    telemetry;
+    active = /* @__PURE__ */ new Map();
+    status = /* @__PURE__ */ new Map();
+    started = false;
+    constructor(features, context, telemetry) {
+      this.features = features;
+      this.context = context;
+      this.telemetry = telemetry;
+      const names = /* @__PURE__ */ new Set();
+      for (const feature of features) {
+        if (!/^[a-z][a-z0-9-]+$/.test(feature.id) || names.has(feature.id))
+          throw new Error(`Invalid or duplicate module id: ${feature.id}`);
+        names.add(feature.id);
+      }
+    }
+    async start() {
+      if (this.started)
+        return;
+      this.started = true;
+      for (const feature of this.features) {
+        const base = { id: feature.id, title: feature.title, description: feature.description };
+        if (!feature.match(this.context.url)) {
+          this.status.set(feature.id, { ...base, state: "unsupported", reason: "Wrong site" });
+          continue;
+        }
+        const missing = feature.requiredCapabilities.find((cap) => !this.context.capabilities.has(cap));
+        if (!feature.targets.includes(this.context.target) || missing) {
+          this.status.set(feature.id, {
+            ...base,
+            state: "unsupported",
+            reason: missing ? `Requires ${missing}` : "Unsupported delivery target"
+          });
+          continue;
+        }
+        if (!await this.context.settings.enabled(feature.id)) {
+          this.status.set(feature.id, { ...base, state: "disabled" });
+          continue;
+        }
+        try {
+          const begin = Date.now();
+          await feature.start(this.context);
+          this.active.set(feature.id, feature);
+          this.status.set(feature.id, { ...base, state: "active" });
+          this.telemetry?.record("feature.started", feature.id, Date.now() - begin);
+        } catch (error) {
+          this.status.set(feature.id, {
+            ...base,
+            state: "failed",
+            reason: error instanceof Error ? error.message : "Unknown startup error"
+          });
+          this.telemetry?.record("feature.failed", feature.id);
+        }
+      }
+    }
+    async stop() {
+      for (const f of [...this.active.values()].reverse())
+        try {
+          await f.stop?.();
+          this.telemetry?.record("feature.stopped", f.id);
+        } catch {
+        }
+      this.active.clear();
+      this.started = false;
+    }
+    list() {
+      return this.features.map((f) => this.status.get(f.id) ?? {
+        id: f.id,
+        title: f.title,
+        description: f.description,
+        state: "disabled"
+      });
+    }
+    async open(id) {
+      const feature = this.active.get(id);
+      if (!feature)
+        throw new Error(`Module is not active: ${id}`);
+      await feature.open?.();
+    }
+    async setEnabled(id, value) {
+      await this.context.settings.setEnabled(id, value);
+      await this.stop();
+      this.status.clear();
+      await this.start();
+    }
+  }
+  function defaultCapabilities(_target) {
+    return /* @__PURE__ */ new Set(["page-dom", "origin-storage", "local-files"]);
+  }
   function createArchiveFiles(getRoot) {
     async function json(name) {
       try {
@@ -244,124 +362,6 @@
     }
     return { state, sourceTotal, paused: options.stopped(), exhausted };
   }
-  function instanceScope() {
-    return "vk-booster:dev";
-  }
-  function scopedIdentity(base, scope, legacyOwner) {
-    if (legacyOwner && scope === legacyOwner)
-      return base;
-    if (!/^(vk-booster|chatgpt-booster|all-in-one):(dev|prod)$/.test(scope))
-      throw new Error("Unsupported Booster instance scope");
-    return base + ":" + scope;
-  }
-  function instanceKey(base, legacyOwner) {
-    return scopedIdentity(base, instanceScope(), legacyOwner);
-  }
-  var SHELL_OPEN_FEATURE_EVENT = instanceKey("koba:open-feature");
-  var SHELL_CLOSE_EVENT = instanceKey("koba:close-shell");
-  class FeatureSettings {
-    store;
-    constructor(store) {
-      this.store = store;
-    }
-    enabled(id) {
-      return this.store.get(`features.${id}.enabled`).then((value) => value !== false);
-    }
-    setEnabled(id, enabled) {
-      return this.store.set(`features.${id}.enabled`, enabled);
-    }
-  }
-  class FeatureRuntime {
-    features;
-    context;
-    telemetry;
-    active = /* @__PURE__ */ new Map();
-    status = /* @__PURE__ */ new Map();
-    started = false;
-    constructor(features, context, telemetry) {
-      this.features = features;
-      this.context = context;
-      this.telemetry = telemetry;
-      const names = /* @__PURE__ */ new Set();
-      for (const feature of features) {
-        if (!/^[a-z][a-z0-9-]+$/.test(feature.id) || names.has(feature.id))
-          throw new Error(`Invalid or duplicate module id: ${feature.id}`);
-        names.add(feature.id);
-      }
-    }
-    async start() {
-      if (this.started)
-        return;
-      this.started = true;
-      for (const feature of this.features) {
-        const base = { id: feature.id, title: feature.title, description: feature.description };
-        if (!feature.match(this.context.url)) {
-          this.status.set(feature.id, { ...base, state: "unsupported", reason: "Wrong site" });
-          continue;
-        }
-        const missing = feature.requiredCapabilities.find((cap) => !this.context.capabilities.has(cap));
-        if (!feature.targets.includes(this.context.target) || missing) {
-          this.status.set(feature.id, {
-            ...base,
-            state: "unsupported",
-            reason: missing ? `Requires ${missing}` : "Unsupported delivery target"
-          });
-          continue;
-        }
-        if (!await this.context.settings.enabled(feature.id)) {
-          this.status.set(feature.id, { ...base, state: "disabled" });
-          continue;
-        }
-        try {
-          const begin = Date.now();
-          await feature.start(this.context);
-          this.active.set(feature.id, feature);
-          this.status.set(feature.id, { ...base, state: "active" });
-          this.telemetry?.record("feature.started", feature.id, Date.now() - begin);
-        } catch (error) {
-          this.status.set(feature.id, {
-            ...base,
-            state: "failed",
-            reason: error instanceof Error ? error.message : "Unknown startup error"
-          });
-          this.telemetry?.record("feature.failed", feature.id);
-        }
-      }
-    }
-    async stop() {
-      for (const f of [...this.active.values()].reverse())
-        try {
-          await f.stop?.();
-          this.telemetry?.record("feature.stopped", f.id);
-        } catch {
-        }
-      this.active.clear();
-      this.started = false;
-    }
-    list() {
-      return this.features.map((f) => this.status.get(f.id) ?? {
-        id: f.id,
-        title: f.title,
-        description: f.description,
-        state: "disabled"
-      });
-    }
-    async open(id) {
-      const feature = this.active.get(id);
-      if (!feature)
-        throw new Error(`Module is not active: ${id}`);
-      await feature.open?.();
-    }
-    async setEnabled(id, value) {
-      await this.context.settings.setEnabled(id, value);
-      await this.stop();
-      this.status.clear();
-      await this.start();
-    }
-  }
-  function defaultCapabilities(_target) {
-    return /* @__PURE__ */ new Set(["page-dom", "origin-storage", "local-files"]);
-  }
   const record$1 = (v) => v !== null && typeof v === "object" && !Array.isArray(v) ? v : {};
   const text = (v) => typeof v === "string" ? v : "";
   const number = (v) => typeof v === "number" && Number.isFinite(v) ? v : null;
@@ -447,9 +447,23 @@
         verifyContext();
         const file = await (await target.getFileHandle(prev.name)).getFile();
         verifyContext();
-        if (file.size === prev.size) return "existing";
-      } catch {
+        if (file.size === prev.size) {
+          if (!prev.sha256) return "existing";
+          if (file.size > 64 * 1048576) throw Error("Stored media exceeds verification limit");
+          if (!/^[0-9a-f]{64}$/.test(prev.sha256))
+            throw Error("Stored media receipt contains an invalid SHA-256");
+          const buffer = await file.arrayBuffer();
+          verifyContext();
+          const hash = Array.from(
+            new Uint8Array(await crypto.subtle.digest("SHA-256", buffer)),
+            (byte) => byte.toString(16).padStart(2, "0")
+          ).join("");
+          verifyContext();
+          if (hash === prev.sha256) return "existing";
+        }
+      } catch (error) {
         verifyContext();
+        if (!(error instanceof Error) || error.name !== "NotFoundError") throw error;
       }
     }
     const result = {
@@ -736,7 +750,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
     };
     const subscribers = /* @__PURE__ */ new Set();
     const ts = () => (/* @__PURE__ */ new Date()).toISOString(), sleep = (ms) => globalThis.__VK_EXPORT_TEST_MODE ? Promise.resolve() : new Promise((r2) => setTimeout(r2, ms));
-    const validDay = (d) => !d || /^\d{4}-\d\d-\d\d$/.test(d) && new Date(Date.parse(d + "T00:00:00+03:00") + 108e5).toISOString().slice(0, 10) === d;
+    const validDay2 = (d) => !d || /^\d{4}-\d\d-\d\d$/.test(d) && new Date(Date.parse(d + "T00:00:00+03:00") + 108e5).toISOString().slice(0, 10) === d;
     const unixDay = (d) => d ? Math.floor(Date.parse(d + "T00:00:00+03:00") / 1e3) : null;
     const known = () => new Map(rows.map((m) => [m.id, m]));
     const blank = () => ({
@@ -819,24 +833,24 @@ q.addEventListener('input',render);render();<\/script></html>`;
       if (!Number.isSafeInteger(o.pageSize) || o.pageSize < 1 || o.pageSize > 100)
         throw Error("Пачка: 1–100");
       if (!Number.isSafeInteger(o.delay) || o.delay < 300) throw Error("Пауза: от 300 мс");
-      if (!validDay(o.from) || !validDay(o.through) || o.from && o.through && o.from > o.through)
+      if (!validDay2(o.from) || !validDay2(o.through) || o.from && o.through && o.from > o.through)
         throw Error("Диапазон дат");
       if (root && o.peerId !== currentMeta().peer_id)
         throw Error("Для другого диалога нужна отдельная папка");
       Object.assign(cfg, o);
       return status();
     }
-    function isRecord(v) {
+    function isRecord2(v) {
       return v !== null && typeof v === "object" && !Array.isArray(v);
     }
     function isMessage(v) {
-      return isRecord(v) && typeof v.id === "number" && Number.isSafeInteger(v.id) && typeof v.date === "number" && Number.isFinite(v.date);
+      return isRecord2(v) && typeof v.id === "number" && Number.isSafeInteger(v.id) && typeof v.date === "number" && Number.isFinite(v.date);
     }
     function isMeta(v) {
-      return isRecord(v) && v.schema === 2 && typeof v.peer_id === "number" && isRecord(v.files) && Array.isArray(v.runs) && (v.checkpoint === null || isRecord(v.checkpoint));
+      return isRecord2(v) && v.schema === 2 && typeof v.peer_id === "number" && isRecord2(v.files) && Array.isArray(v.runs) && (v.checkpoint === null || isRecord2(v.checkpoint));
     }
     function isMessagesFile(v) {
-      return isRecord(v) && v.schema === 2 && typeof v.peer_id === "number" && Array.isArray(v.messages) && v.messages.every(
+      return isRecord2(v) && v.schema === 2 && typeof v.peer_id === "number" && Array.isArray(v.messages) && v.messages.every(
         (message) => isMessage(message) && (message.peer_id === void 0 || message.peer_id === v.peer_id)
       );
     }
@@ -11497,12 +11511,12 @@ q.addEventListener('input',render);render();<\/script></html>`;
     key: 0,
     class: "tabular-nums"
   };
-  const _hoisted_5$3 = ["value", "aria-label"];
-  const _hoisted_6$3 = {
+  const _hoisted_5$4 = ["value", "aria-label"];
+  const _hoisted_6$4 = {
     key: 1,
     class: "text-xs text-muted-foreground"
   };
-  const _hoisted_7$3 = {
+  const _hoisted_7$4 = {
     key: 2,
     role: "alert",
     class: "text-sm text-destructive"
@@ -11552,17 +11566,17 @@ q.addEventListener('input',render);render();<\/script></html>`;
             value: progress.value ?? void 0,
             max: "100",
             "aria-label": __props.ariaLabel || __props.label
-          }, null, 8, _hoisted_5$3),
+          }, null, 8, _hoisted_5$4),
           __props.detail ? (openBlock(), createElementBlock(
             "p",
-            _hoisted_6$3,
+            _hoisted_6$4,
             toDisplayString(__props.detail),
             1
             /* TEXT */
           )) : createCommentVNode("v-if", true),
           __props.error ? (openBlock(), createElementBlock(
             "p",
-            _hoisted_7$3,
+            _hoisted_7$4,
             toDisplayString(__props.error),
             1
             /* TEXT */
@@ -11739,14 +11753,14 @@ q.addEventListener('input',render);render();<\/script></html>`;
   const _hoisted_7$1$1 = { class: "grid grid-cols-2 gap-3" };
   const _hoisted_8$1$1 = { class: "booster-field" };
   const _hoisted_9$1$1 = { class: "booster-field" };
-  const _hoisted_10$2 = ["aria-expanded"];
-  const _hoisted_11$2 = {
+  const _hoisted_10$3 = ["aria-expanded"];
+  const _hoisted_11$3 = {
     key: 0,
     class: "grid grid-cols-2 gap-3"
   };
-  const _hoisted_12$2 = { class: "booster-field" };
-  const _hoisted_13$1 = { class: "booster-field" };
-  const _hoisted_14$1 = { class: "booster-field" };
+  const _hoisted_12$3 = { class: "booster-field" };
+  const _hoisted_13$2 = { class: "booster-field" };
+  const _hoisted_14$2 = { class: "booster-field" };
   const _hoisted_15$1 = { class: "booster-field" };
   const _hoisted_16 = { class: "booster-field col-span-2" };
   const _hoisted_17 = { class: "flex items-center gap-2" };
@@ -11972,9 +11986,9 @@ q.addEventListener('input',render);render();<\/script></html>`;
                   /* CACHED */
                 )),
                 createVNode(unref(Settings2), { class: "size-4" })
-              ], 8, _hoisted_10$2),
-              advanced.value ? (openBlock(), createElementBlock("div", _hoisted_11$2, [
-                createBaseVNode("label", _hoisted_12$2, [
+              ], 8, _hoisted_10$3),
+              advanced.value ? (openBlock(), createElementBlock("div", _hoisted_11$3, [
+                createBaseVNode("label", _hoisted_12$3, [
                   _cache[17] || (_cache[17] = createTextVNode(
                     "С даты",
                     -1
@@ -11994,7 +12008,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
                     [vModelText, from.value]
                   ])
                 ]),
-                createBaseVNode("label", _hoisted_13$1, [
+                createBaseVNode("label", _hoisted_13$2, [
                   _cache[18] || (_cache[18] = createTextVNode(
                     "По дату",
                     -1
@@ -12014,7 +12028,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
                     [vModelText, through.value]
                   ])
                 ]),
-                createBaseVNode("label", _hoisted_14$1, [
+                createBaseVNode("label", _hoisted_14$2, [
                   _cache[19] || (_cache[19] = createTextVNode(
                     "Пачка",
                     -1
@@ -12263,14 +12277,14 @@ q.addEventListener('input',render);render();<\/script></html>`;
     key: 1,
     class: "booster-note"
   };
-  const _hoisted_5$2 = ["data-archive-node", "data-archive-message"];
-  const _hoisted_6$2 = {
+  const _hoisted_5$3 = ["data-archive-node", "data-archive-message"];
+  const _hoisted_6$3 = {
     key: 2,
     class: "booster-exchange-details"
   };
-  const _hoisted_7$2 = { class: "booster-exchange-details-label" };
-  const _hoisted_8$2 = ["data-archive-node", "data-archive-message"];
-  const _hoisted_9$2 = ["data-archive-node", "data-archive-message"];
+  const _hoisted_7$3 = { class: "booster-exchange-details-label" };
+  const _hoisted_8$3 = ["data-archive-node", "data-archive-message"];
+  const _hoisted_9$3 = ["data-archive-node", "data-archive-message"];
   const _sfc_main$4 = /* @__PURE__ */ defineComponent({
     __name: "ArchiveTranscript",
     props: {
@@ -12322,15 +12336,15 @@ q.addEventListener('input',render);render();<\/script></html>`;
                       tabindex: "-1"
                     }, [
                       renderSlot(_ctx.$slots, "record", { record: item })
-                    ], 10, _hoisted_5$2);
+                    ], 10, _hoisted_5$3);
                   }),
                   128
                   /* KEYED_FRAGMENT */
                 )),
-                turn.details.length ? (openBlock(), createElementBlock("div", _hoisted_6$2, [
+                turn.details.length ? (openBlock(), createElementBlock("div", _hoisted_6$3, [
                   createBaseVNode(
                     "div",
-                    _hoisted_7$2,
+                    _hoisted_7$3,
                     toDisplayString(__props.copy.details) + " · " + toDisplayString(turn.details.length),
                     1
                     /* TEXT */
@@ -12347,7 +12361,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
                         tabindex: "-1"
                       }, [
                         renderSlot(_ctx.$slots, "record", { record: item })
-                      ], 10, _hoisted_8$2);
+                      ], 10, _hoisted_8$3);
                     }),
                     128
                     /* KEYED_FRAGMENT */
@@ -12365,7 +12379,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
                       tabindex: "-1"
                     }, [
                       renderSlot(_ctx.$slots, "record", { record: item })
-                    ], 10, _hoisted_9$2);
+                    ], 10, _hoisted_9$3);
                   }),
                   128
                   /* KEYED_FRAGMENT */
@@ -12379,6 +12393,146 @@ q.addEventListener('input',render);render();<\/script></html>`;
       };
     }
   });
+  function assertServiceScope(scope) {
+    if (!/^[a-z][a-z0-9-]{1,63}$/.test(scope.productId) || scope.channel !== "dev" && scope.channel !== "prod" || scope.ownerId !== void 0 && (!scope.ownerId || scope.ownerId.length > 256) || scope.installationId !== void 0 && !/^[a-zA-Z0-9_-]{1,128}$/.test(scope.installationId)) {
+      throw new Error("Invalid product/channel/owner scope");
+    }
+    return scope;
+  }
+  function assertMatchingScope(expected, actual) {
+    assertServiceScope(expected);
+    assertServiceScope(actual);
+    if (expected.productId !== actual.productId || expected.channel !== actual.channel || expected.ownerId !== actual.ownerId || expected.installationId !== actual.installationId) {
+      throw new Error("Backup product, channel, owner or installation mismatch");
+    }
+  }
+  var FORMAT = "koba-settings-backup-v1";
+  var MAX_BYTES = 512 * 1024;
+  var isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+  async function checksum(text2) {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text2));
+    return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+  }
+  function settingsJson(value) {
+    const valueJson = JSON.stringify(value);
+    if (typeof valueJson !== "string" || valueJson.length === 0 || valueJson.length > MAX_BYTES)
+      throw new Error("Settings backup payload is invalid or oversized");
+    return valueJson;
+  }
+  async function exportSettingsBackup(port) {
+    assertServiceScope(port.scope);
+    if (!Number.isSafeInteger(port.schemaVersion) || port.schemaVersion < 1)
+      throw new Error("Invalid settings schema version");
+    const value = port.validateSettings(await port.exportSettings());
+    settingsJson(value);
+    const body = {
+      format: FORMAT,
+      schemaVersion: port.schemaVersion,
+      scope: { ...port.scope },
+      createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+      includes: { settings: true, archive: false, attachments: false },
+      settings: value
+    };
+    const backup = {
+      ...body,
+      checksum: await checksum(JSON.stringify(body))
+    };
+    const raw = JSON.stringify(backup);
+    if (new TextEncoder().encode(raw).byteLength > MAX_BYTES)
+      throw new Error("Settings backup exceeds maximum size");
+    return new Blob([raw], { type: "application/json" });
+  }
+  async function validateSettingsBackup(port, blob) {
+    if (blob.size === 0 || blob.size > MAX_BYTES)
+      throw new Error("Settings backup size rejected");
+    const raw = JSON.parse(await blob.text());
+    if (!isRecord(raw) || raw.format !== FORMAT || raw.schemaVersion !== port.schemaVersion || !isRecord(raw.scope) || !isRecord(raw.includes) || Object.keys(raw).sort().join(",") !== "checksum,createdAt,format,includes,schemaVersion,scope,settings" || Object.keys(raw.scope).some((key) => !["productId", "channel", "ownerId", "installationId"].includes(key)) || Object.keys(raw.includes).sort().join(",") !== "archive,attachments,settings" || raw.includes.settings !== true || raw.includes.archive !== false || raw.includes.attachments !== false || typeof raw.createdAt !== "string" || !Number.isFinite(Date.parse(raw.createdAt)) || typeof raw.checksum !== "string" || !/^[a-f0-9]{64}$/.test(raw.checksum)) {
+      throw new Error("Settings backup format or schema is unsupported");
+    }
+    const scope = {
+      productId: raw.scope.productId,
+      channel: raw.scope.channel,
+      ...raw.scope.ownerId === void 0 ? {} : { ownerId: raw.scope.ownerId },
+      ...raw.scope.installationId === void 0 ? {} : { installationId: raw.scope.installationId }
+    };
+    assertMatchingScope(port.scope, scope);
+    settingsJson(raw.settings);
+    const { checksum: expectedDigest, ...fields2 } = raw;
+    if (await checksum(JSON.stringify(fields2)) !== expectedDigest)
+      throw new Error("Settings backup integrity check failed");
+    const settings = port.validateSettings(raw.settings);
+    if (settingsJson(settings) !== settingsJson(raw.settings))
+      throw new Error("Settings backup contains unsupported or unnormalized values");
+    return {
+      format: FORMAT,
+      schemaVersion: port.schemaVersion,
+      scope,
+      createdAt: raw.createdAt,
+      includes: { settings: true, archive: false, attachments: false },
+      checksum: raw.checksum,
+      settings
+    };
+  }
+  async function restoreSettingsBackup(port, blob) {
+    const validated = await validateSettingsBackup(port, blob);
+    await port.restoreSettingsAtomically(validated.settings);
+  }
+  const fields = ["mode", "limit", "from", "through", "pageSize", "delay", "media"];
+  const fieldNames = [...fields].sort().join(",");
+  function validDay(value) {
+    if (!value) return true;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const millis = Date.parse(`${value}T00:00:00.000Z`);
+    return Number.isFinite(millis) && new Date(millis).toISOString().slice(0, 10) === value;
+  }
+  function validateVkCapturePreferences(input) {
+    if (!input || typeof input !== "object" || Array.isArray(input))
+      throw Error("Invalid VK capture preferences");
+    const value = input;
+    if (Object.keys(value).sort().join(",") !== fieldNames || !["recent", "incremental", "backfill"].includes(String(value.mode)) || !Number.isSafeInteger(value.limit) || value.limit < 1 || value.limit > 1e5 || !Number.isSafeInteger(value.pageSize) || value.pageSize < 1 || value.pageSize > 100 || !Number.isSafeInteger(value.delay) || value.delay < 300 || typeof value.media !== "boolean" || typeof value.from !== "string" || typeof value.through !== "string" || !validDay(value.from) || !validDay(value.through) || value.from && value.through && value.from > value.through)
+      throw Error("Invalid VK capture preferences");
+    return {
+      mode: value.mode,
+      limit: value.limit,
+      from: value.from,
+      through: value.through,
+      pageSize: value.pageSize,
+      delay: value.delay,
+      media: value.media
+    };
+  }
+  function withoutPeer(options) {
+    return validateVkCapturePreferences(Object.fromEntries(fields.map((name) => [name, options[name]])));
+  }
+  function vkCaptureSettingsPort(api, scopeId = instanceScope()) {
+    const [productId, channel, extra] = scopeId.split(":");
+    if (productId !== "vk-booster" && productId !== "all-in-one" || channel !== "dev" && channel !== "prod" || extra !== void 0)
+      throw Error("VK capture settings require a VK or aggregate product/channel scope");
+    function requireIdle() {
+      const status = api.status();
+      if (status.busy || status.folderPending) throw Error("Archive operation in progress");
+      if (status.blockedReason) throw Error("VK conversation does not match selected archive");
+      return status.options;
+    }
+    return {
+      scope: { productId, channel },
+      schemaVersion: 1,
+      async exportSettings() {
+        return withoutPeer(requireIdle());
+      },
+      validateSettings: validateVkCapturePreferences,
+      async restoreSettingsAtomically(value) {
+        requireIdle();
+        api.configure(validateVkCapturePreferences(value));
+      }
+    };
+  }
+  async function exportVkCaptureSettings(api) {
+    return exportSettingsBackup(vkCaptureSettingsPort(api));
+  }
+  async function restoreVkCaptureSettings(api, backup) {
+    await restoreSettingsBackup(vkCaptureSettingsPort(api), backup);
+  }
   const _hoisted_1$3 = {
     class: "booster-stack-card",
     "aria-label": "Просмотр сохранённой переписки"
@@ -12386,23 +12540,23 @@ q.addEventListener('input',render);render();<\/script></html>`;
   const _hoisted_2$3 = { class: "booster-setting-copy" };
   const _hoisted_3$2 = { class: "booster-field" };
   const _hoisted_4$2 = { class: "max-h-[420px] min-h-[130px] overflow-x-hidden overflow-y-auto rounded-lg border border-border bg-background p-3" };
-  const _hoisted_5$1 = { class: "mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground" };
-  const _hoisted_6$1 = { class: "text-foreground" };
-  const _hoisted_7$1 = { class: "m-0 whitespace-pre-wrap break-words text-sm text-foreground" };
-  const _hoisted_8$1 = {
+  const _hoisted_5$2 = { class: "mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground" };
+  const _hoisted_6$2 = { class: "text-foreground" };
+  const _hoisted_7$2 = { class: "m-0 whitespace-pre-wrap break-words text-sm text-foreground" };
+  const _hoisted_8$2 = {
     key: 0,
     class: "mt-2 border-l-2 border-border pl-2 text-xs text-muted-foreground"
   };
-  const _hoisted_9$1 = {
+  const _hoisted_9$2 = {
     key: 1,
     class: "mt-2 text-xs text-muted-foreground"
   };
-  const _hoisted_10$1 = {
+  const _hoisted_10$2 = {
     key: 2,
     class: "mt-2 text-xs text-muted-foreground"
   };
-  const _hoisted_11$1 = { class: "flex flex-wrap items-center justify-between gap-2" };
-  const _hoisted_12$1 = {
+  const _hoisted_11$2 = { class: "flex flex-wrap items-center justify-between gap-2" };
+  const _hoisted_12$2 = {
     key: 0,
     class: "m-0 text-xs text-muted-foreground"
   };
@@ -12507,10 +12661,10 @@ q.addEventListener('input',render);render();<\/script></html>`;
                     class: normalizeClass(["w-full min-w-0 rounded-lg border border-border bg-card p-3", { "bg-secondary": Boolean(messageMap.value.get(record2.key)?.out) }])
                   },
                   [
-                    createBaseVNode("div", _hoisted_5$1, [
+                    createBaseVNode("div", _hoisted_5$2, [
                       createBaseVNode(
                         "b",
-                        _hoisted_6$1,
+                        _hoisted_6$2,
                         toDisplayString(messageMap.value.get(record2.key)?.out ? "Вы" : "ID " + (messageMap.value.get(record2.key)?.from_id ?? "—")),
                         1
                         /* TEXT */
@@ -12525,28 +12679,28 @@ q.addEventListener('input',render);render();<\/script></html>`;
                     ]),
                     createBaseVNode(
                       "p",
-                      _hoisted_7$1,
+                      _hoisted_7$2,
                       toDisplayString(messageMap.value.get(record2.key)?.text || "Сообщение без текста"),
                       1
                       /* TEXT */
                     ),
                     messageMap.value.get(record2.key)?.reply_message ? (openBlock(), createElementBlock(
                       "p",
-                      _hoisted_8$1,
+                      _hoisted_8$2,
                       " Ответ: " + toDisplayString(messageMap.value.get(record2.key)?.reply_message?.text || "вложение"),
                       1
                       /* TEXT */
                     )) : createCommentVNode("v-if", true),
                     messageMap.value.get(record2.key)?.fwd_messages?.length ? (openBlock(), createElementBlock(
                       "p",
-                      _hoisted_9$1,
+                      _hoisted_9$2,
                       " Пересланных: " + toDisplayString(messageMap.value.get(record2.key)?.fwd_messages?.length),
                       1
                       /* TEXT */
                     )) : createCommentVNode("v-if", true),
                     attachmentCount(messageMap.value.get(record2.key)) ? (openBlock(), createElementBlock(
                       "p",
-                      _hoisted_10$1,
+                      _hoisted_10$2,
                       " Вложений: " + toDisplayString(attachmentCount(messageMap.value.get(record2.key))),
                       1
                       /* TEXT */
@@ -12560,7 +12714,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
               /* STABLE */
             }, 8, ["turns", "is-empty", "copy"])
           ]),
-          createBaseVNode("div", _hoisted_11$1, [
+          createBaseVNode("div", _hoisted_11$2, [
             _cache[4] || (_cache[4] = createBaseVNode(
               "span",
               { class: "text-xs text-muted-foreground" },
@@ -12585,7 +12739,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
               /* STABLE */
             })) : createCommentVNode("v-if", true)
           ]),
-          result.value.matching > result.value.messages.length && visibleLimit.value >= 240 ? (openBlock(), createElementBlock("p", _hoisted_12$1, " Показаны последние 240 совпадений. Уточни поиск, чтобы найти более ранние сообщения. ")) : createCommentVNode("v-if", true)
+          result.value.matching > result.value.messages.length && visibleLimit.value >= 240 ? (openBlock(), createElementBlock("p", _hoisted_12$2, " Показаны последние 240 совпадений. Уточни поиск, чтобы найти более ранние сообщения. ")) : createCommentVNode("v-if", true)
         ]);
       };
     }
@@ -12598,6 +12752,31 @@ q.addEventListener('input',render);render();<\/script></html>`;
   };
   const _hoisted_4$1 = {
     key: 2,
+    class: "booster-stack-card",
+    "aria-label": "Профиль параметров VK"
+  };
+  const _hoisted_5$1 = { class: "flex flex-wrap gap-2" };
+  const _hoisted_6$1 = ["disabled"];
+  const _hoisted_7$1 = { class: "booster-field" };
+  const _hoisted_8$1 = ["disabled"];
+  const _hoisted_9$1 = {
+    key: 0,
+    class: "booster-field"
+  };
+  const _hoisted_10$1 = ["disabled"];
+  const _hoisted_11$1 = ["disabled"];
+  const _hoisted_12$1 = {
+    key: 2,
+    role: "alert",
+    class: "text-sm text-destructive"
+  };
+  const _hoisted_13$1 = {
+    key: 3,
+    role: "status",
+    class: "text-sm"
+  };
+  const _hoisted_14$1 = {
+    key: 3,
     class: "booster-setting-card"
   };
   const _sfc_main$2 = /* @__PURE__ */ defineComponent({
@@ -12607,6 +12786,59 @@ q.addEventListener('input',render);render();<\/script></html>`;
       const status = /* @__PURE__ */ ref(api?.status() ?? null);
       const error = /* @__PURE__ */ ref("");
       const previewOpen = /* @__PURE__ */ ref(false);
+      const preferencesBusy = /* @__PURE__ */ ref(false);
+      const preferencesFile = /* @__PURE__ */ ref(null);
+      const preferencesConfirmed = /* @__PURE__ */ ref(false);
+      const preferencesError = /* @__PURE__ */ ref("");
+      const preferencesMessage = /* @__PURE__ */ ref("");
+      const preferencesRevision = /* @__PURE__ */ ref(0);
+      function selectPreferences(event) {
+        preferencesFile.value = event.target.files?.[0] ?? null;
+        preferencesConfirmed.value = false;
+        preferencesError.value = "";
+        preferencesMessage.value = "";
+      }
+      async function downloadPreferences() {
+        if (!api || preferencesBusy.value || status.value?.busy) return;
+        preferencesBusy.value = true;
+        preferencesError.value = "";
+        preferencesMessage.value = "";
+        try {
+          const blob = await exportVkCaptureSettings(api);
+          const url = URL.createObjectURL(blob);
+          try {
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "vk-booster-capture-preset.json";
+            link.click();
+          } finally {
+            window.setTimeout(() => URL.revokeObjectURL(url), 1e3);
+          }
+          preferencesMessage.value = "Профиль подготовлен. Убедись, что файл сохранился.";
+        } catch {
+          preferencesError.value = "Не удалось выгрузить профиль настроек.";
+        } finally {
+          preferencesBusy.value = false;
+        }
+      }
+      async function importPreferences() {
+        if (!api || !preferencesFile.value || !preferencesConfirmed.value || preferencesBusy.value) return;
+        preferencesBusy.value = true;
+        preferencesError.value = "";
+        preferencesMessage.value = "";
+        try {
+          await restoreVkCaptureSettings(api, preferencesFile.value);
+          status.value = api.status();
+          preferencesRevision.value++;
+          preferencesMessage.value = "Параметры применены к текущей сессии. Папка и сообщения не изменены.";
+          preferencesFile.value = null;
+          preferencesConfirmed.value = false;
+        } catch {
+          preferencesError.value = "Профиль отклонён: проверь целостность, формат и DEV/PROD канал.";
+        } finally {
+          preferencesBusy.value = false;
+        }
+      }
       let unsubscribe;
       let peerTimer;
       function refreshActiveConversation() {
@@ -12677,7 +12909,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
           null,
           [
             status.value && view.value ? (openBlock(), createBlock(unref(_sfc_main$1$1), {
-              key: 0,
+              key: preferencesRevision.value,
               state: view.value,
               initial: status.value.options,
               error: error.value,
@@ -12709,7 +12941,80 @@ q.addEventListener('input',render);render();<\/script></html>`;
               64
               /* STABLE_FRAGMENT */
             )) : createCommentVNode("v-if", true),
-            !status.value || !view.value ? (openBlock(), createElementBlock("section", _hoisted_4$1, [..._cache[2] || (_cache[2] = [
+            unref(api) && status.value ? (openBlock(), createElementBlock("section", _hoisted_4$1, [
+              _cache[5] || (_cache[5] = createBaseVNode(
+                "div",
+                { class: "booster-setting-copy" },
+                [
+                  createBaseVNode("b", null, "Профиль параметров выгрузки"),
+                  createBaseVNode("small", null, "Только режим, диапазон, размер пачки и загрузка файлов. Без сообщений, токенов, ID диалога и архива. Импорт действует в текущей сессии.")
+                ],
+                -1
+                /* CACHED */
+              )),
+              createBaseVNode("div", _hoisted_5$1, [
+                createBaseVNode("button", {
+                  class: "booster-disclosure",
+                  type: "button",
+                  disabled: preferencesBusy.value || status.value.busy || !!status.value.blockedReason,
+                  onClick: downloadPreferences
+                }, "Сохранить профиль в JSON", 8, _hoisted_6$1),
+                createBaseVNode("label", _hoisted_7$1, [
+                  _cache[3] || (_cache[3] = createBaseVNode(
+                    "span",
+                    null,
+                    "Загрузить профиль JSON",
+                    -1
+                    /* CACHED */
+                  )),
+                  createBaseVNode("input", {
+                    type: "file",
+                    class: "booster-input",
+                    accept: ".json,application/json",
+                    disabled: preferencesBusy.value || status.value.busy,
+                    onChange: selectPreferences
+                  }, null, 40, _hoisted_8$1)
+                ])
+              ]),
+              preferencesFile.value ? (openBlock(), createElementBlock("label", _hoisted_9$1, [
+                createBaseVNode("span", null, [
+                  withDirectives(createBaseVNode("input", {
+                    "onUpdate:modelValue": _cache[2] || (_cache[2] = ($event) => preferencesConfirmed.value = $event),
+                    type: "checkbox",
+                    disabled: preferencesBusy.value
+                  }, null, 8, _hoisted_10$1), [
+                    [vModelCheckbox, preferencesConfirmed.value]
+                  ]),
+                  _cache[4] || (_cache[4] = createTextVNode(
+                    " Подтверждаю замену параметров текущей сессии",
+                    -1
+                    /* CACHED */
+                  ))
+                ])
+              ])) : createCommentVNode("v-if", true),
+              preferencesFile.value ? (openBlock(), createElementBlock("button", {
+                key: 1,
+                class: "booster-disclosure",
+                type: "button",
+                disabled: preferencesBusy.value || status.value.busy || !!status.value.blockedReason || !preferencesConfirmed.value,
+                onClick: importPreferences
+              }, "Применить профиль", 8, _hoisted_11$1)) : createCommentVNode("v-if", true),
+              preferencesError.value ? (openBlock(), createElementBlock(
+                "p",
+                _hoisted_12$1,
+                toDisplayString(preferencesError.value),
+                1
+                /* TEXT */
+              )) : createCommentVNode("v-if", true),
+              preferencesMessage.value ? (openBlock(), createElementBlock(
+                "p",
+                _hoisted_13$1,
+                toDisplayString(preferencesMessage.value),
+                1
+                /* TEXT */
+              )) : createCommentVNode("v-if", true)
+            ])) : createCommentVNode("v-if", true),
+            !status.value || !view.value ? (openBlock(), createElementBlock("section", _hoisted_14$1, [..._cache[6] || (_cache[6] = [
               createBaseVNode(
                 "span",
                 null,
@@ -13208,7 +13513,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
       };
     }
   });
-  const styles = '/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */\n@layer properties {\n  @supports (((-webkit-hyphens: none)) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color: rgb(from red r g b)))) {\n    *, :before, :after, ::backdrop {\n      --tw-rotate-x: initial;\n      --tw-rotate-y: initial;\n      --tw-rotate-z: initial;\n      --tw-skew-x: initial;\n      --tw-skew-y: initial;\n      --tw-border-style: solid;\n      --tw-leading: initial;\n      --tw-font-weight: initial;\n      --tw-ordinal: initial;\n      --tw-slashed-zero: initial;\n      --tw-numeric-figure: initial;\n      --tw-numeric-spacing: initial;\n      --tw-numeric-fraction: initial;\n      --tw-shadow: 0 0 #0000;\n      --tw-shadow-color: initial;\n      --tw-shadow-alpha: 100%;\n      --tw-inset-shadow: 0 0 #0000;\n      --tw-inset-shadow-color: initial;\n      --tw-inset-shadow-alpha: 100%;\n      --tw-ring-color: initial;\n      --tw-ring-shadow: 0 0 #0000;\n      --tw-inset-ring-color: initial;\n      --tw-inset-ring-shadow: 0 0 #0000;\n      --tw-ring-inset: initial;\n      --tw-ring-offset-width: 0px;\n      --tw-ring-offset-color: #fff;\n      --tw-ring-offset-shadow: 0 0 #0000;\n      --tw-outline-style: solid;\n      --tw-blur: initial;\n      --tw-brightness: initial;\n      --tw-contrast: initial;\n      --tw-grayscale: initial;\n      --tw-hue-rotate: initial;\n      --tw-invert: initial;\n      --tw-opacity: initial;\n      --tw-saturate: initial;\n      --tw-sepia: initial;\n      --tw-drop-shadow: initial;\n      --tw-drop-shadow-color: initial;\n      --tw-drop-shadow-alpha: 100%;\n      --tw-drop-shadow-size: initial;\n    }\n  }\n}\n\n@layer theme {\n  :root, :host {\n    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",\n      "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",\n      "Segoe UI Symbol", "Noto Color Emoji";\n    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",\n      "Courier New", monospace;\n    --spacing: .25rem;\n    --text-xs: .75rem;\n    --text-xs--line-height: calc(1 / .75);\n    --text-sm: .875rem;\n    --text-sm--line-height: calc(1.25 / .875);\n    --text-base: 1rem;\n    --text-base--line-height: calc(1.5 / 1);\n    --font-weight-medium: 500;\n    --font-weight-semibold: 600;\n    --default-transition-duration: .15s;\n    --default-transition-timing-function: cubic-bezier(.4, 0, .2, 1);\n    --default-font-family: var(--font-sans);\n    --default-mono-font-family: var(--font-mono);\n  }\n}\n\n@layer base {\n  *, :after, :before, ::backdrop {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  ::file-selector-button {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  html, :host {\n    -webkit-text-size-adjust: 100%;\n    tab-size: 4;\n    line-height: 1.5;\n    font-family: var(--default-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");\n    font-feature-settings: var(--default-font-feature-settings, normal);\n    font-variation-settings: var(--default-font-variation-settings, normal);\n    -webkit-tap-highlight-color: transparent;\n  }\n\n  hr {\n    height: 0;\n    color: inherit;\n    border-top-width: 1px;\n  }\n\n  abbr:where([title]) {\n    -webkit-text-decoration: underline dotted;\n    text-decoration: underline dotted;\n  }\n\n  h1, h2, h3, h4, h5, h6 {\n    font-size: inherit;\n    font-weight: inherit;\n  }\n\n  a {\n    color: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    text-decoration: inherit;\n  }\n\n  b, strong {\n    font-weight: bolder;\n  }\n\n  code, kbd, samp, pre {\n    font-family: var(--default-mono-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);\n    font-feature-settings: var(--default-mono-font-feature-settings, normal);\n    font-variation-settings: var(--default-mono-font-variation-settings, normal);\n    font-size: 1em;\n  }\n\n  small {\n    font-size: 80%;\n  }\n\n  sub, sup {\n    vertical-align: baseline;\n    font-size: 75%;\n    line-height: 0;\n    position: relative;\n  }\n\n  sub {\n    bottom: -.25em;\n  }\n\n  sup {\n    top: -.5em;\n  }\n\n  table {\n    text-indent: 0;\n    border-color: inherit;\n    border-collapse: collapse;\n  }\n\n  :-moz-focusring:where(:not(iframe)) {\n    outline: auto;\n  }\n\n  progress {\n    vertical-align: baseline;\n  }\n\n  summary {\n    display: list-item;\n  }\n\n  ol, ul, menu {\n    list-style: none;\n  }\n\n  img, svg, video, canvas, audio, iframe, embed, object {\n    vertical-align: middle;\n    display: block;\n  }\n\n  img, video {\n    max-width: 100%;\n    height: auto;\n  }\n\n  button, input, select, optgroup, textarea {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  ::file-selector-button {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  :where(select:is([multiple], [size])) optgroup {\n    font-weight: bolder;\n  }\n\n  :where(select:is([multiple], [size])) optgroup option {\n    padding-inline-start: 20px;\n  }\n\n  ::file-selector-button {\n    margin-inline-end: 4px;\n  }\n\n  ::placeholder {\n    opacity: 1;\n  }\n\n  @supports (not ((-webkit-appearance: -apple-pay-button))) or (contain-intrinsic-size: 1px) {\n    ::placeholder {\n      color: currentColor;\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      ::placeholder {\n        color: color-mix(in oklab, currentcolor 50%, transparent);\n      }\n    }\n  }\n\n  textarea {\n    resize: vertical;\n  }\n\n  ::-webkit-search-decoration {\n    -webkit-appearance: none;\n  }\n\n  ::-webkit-date-and-time-value {\n    min-height: 1lh;\n    text-align: inherit;\n  }\n\n  ::-webkit-datetime-edit {\n    display: inline-flex;\n  }\n\n  ::-webkit-datetime-edit-fields-wrapper {\n    padding: 0;\n  }\n\n  ::-webkit-datetime-edit {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-year-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-month-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-day-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-hour-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-minute-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-second-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-millisecond-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-meridiem-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-calendar-picker-indicator {\n    line-height: 1;\n  }\n\n  :-moz-ui-invalid {\n    box-shadow: none;\n  }\n\n  button, input:where([type="button"], [type="reset"], [type="submit"]) {\n    appearance: button;\n  }\n\n  ::file-selector-button {\n    appearance: button;\n  }\n\n  ::-webkit-inner-spin-button {\n    height: auto;\n  }\n\n  ::-webkit-outer-spin-button {\n    height: auto;\n  }\n\n  [hidden]:where(:not([hidden="until-found"])) {\n    display: none !important;\n  }\n}\n\n@layer components;\n\n@layer utilities {\n  .collapse {\n    visibility: collapse;\n  }\n\n  .invisible {\n    visibility: hidden;\n  }\n\n  .visible {\n    visibility: visible;\n  }\n\n  .absolute {\n    position: absolute;\n  }\n\n  .fixed {\n    position: fixed;\n  }\n\n  .relative {\n    position: relative;\n  }\n\n  .static {\n    position: static;\n  }\n\n  .sticky {\n    position: sticky;\n  }\n\n  .top-41 {\n    top: calc(var(--spacing) * 41);\n  }\n\n  .col-span-2 {\n    grid-column: span 2 / span 2;\n  }\n\n  .container {\n    width: 100%;\n  }\n\n  @media (min-width: 40rem) {\n    .container {\n      max-width: 40rem;\n    }\n  }\n\n  @media (min-width: 48rem) {\n    .container {\n      max-width: 48rem;\n    }\n  }\n\n  @media (min-width: 64rem) {\n    .container {\n      max-width: 64rem;\n    }\n  }\n\n  @media (min-width: 80rem) {\n    .container {\n      max-width: 80rem;\n    }\n  }\n\n  @media (min-width: 96rem) {\n    .container {\n      max-width: 96rem;\n    }\n  }\n\n  .m-0 {\n    margin: 0;\n  }\n\n  .mt-2 {\n    margin-top: calc(var(--spacing) * 2);\n  }\n\n  .mb-2 {\n    margin-bottom: calc(var(--spacing) * 2);\n  }\n\n  .block {\n    display: block;\n  }\n\n  .contents {\n    display: contents;\n  }\n\n  .flex {\n    display: flex;\n  }\n\n  .grid {\n    display: grid;\n  }\n\n  .hidden {\n    display: none;\n  }\n\n  .inline {\n    display: inline;\n  }\n\n  .inline-flex {\n    display: inline-flex;\n  }\n\n  .table {\n    display: table;\n  }\n\n  .size-3 {\n    width: calc(var(--spacing) * 3);\n    height: calc(var(--spacing) * 3);\n  }\n\n  .size-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n    height: calc(var(--spacing) * 3.5);\n  }\n\n  .size-4 {\n    width: calc(var(--spacing) * 4);\n    height: calc(var(--spacing) * 4);\n  }\n\n  .size-5 {\n    width: calc(var(--spacing) * 5);\n    height: calc(var(--spacing) * 5);\n  }\n\n  .size-6 {\n    width: calc(var(--spacing) * 6);\n    height: calc(var(--spacing) * 6);\n  }\n\n  .size-7 {\n    width: calc(var(--spacing) * 7);\n    height: calc(var(--spacing) * 7);\n  }\n\n  .size-8 {\n    width: calc(var(--spacing) * 8);\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-7 {\n    height: calc(var(--spacing) * 7);\n  }\n\n  .h-8 {\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-9 {\n    height: calc(var(--spacing) * 9);\n  }\n\n  .max-h-\\[420px\\] {\n    max-height: 420px;\n  }\n\n  .min-h-\\[130px\\] {\n    min-height: 130px;\n  }\n\n  .w-full {\n    width: 100%;\n  }\n\n  .min-w-0 {\n    min-width: 0;\n  }\n\n  .flex-1 {\n    flex: 1;\n  }\n\n  .shrink-0 {\n    flex-shrink: 0;\n  }\n\n  .grow {\n    flex-grow: 1;\n  }\n\n  .rotate-180 {\n    rotate: 180deg;\n  }\n\n  .transform {\n    transform: var(--tw-rotate-x, ) var(--tw-rotate-y, ) var(--tw-rotate-z, ) var(--tw-skew-x, ) var(--tw-skew-y, );\n  }\n\n  .resize {\n    resize: both;\n  }\n\n  .grid-cols-2 {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }\n\n  .flex-wrap {\n    flex-wrap: wrap;\n  }\n\n  .items-center {\n    align-items: center;\n  }\n\n  .justify-between {\n    justify-content: space-between;\n  }\n\n  .justify-center {\n    justify-content: center;\n  }\n\n  .justify-end {\n    justify-content: flex-end;\n  }\n\n  .gap-2 {\n    gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-3 {\n    gap: calc(var(--spacing) * 3);\n  }\n\n  .self-start {\n    align-self: flex-start;\n  }\n\n  .truncate {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    overflow: hidden;\n  }\n\n  .overflow-x-hidden {\n    overflow-x: hidden;\n  }\n\n  .overflow-y-auto {\n    overflow-y: auto;\n  }\n\n  .rounded-lg {\n    border-radius: var(--radius);\n  }\n\n  .rounded-md {\n    border-radius: calc(var(--radius) - 2px);\n  }\n\n  .border {\n    border-style: var(--tw-border-style);\n    border-width: 1px;\n  }\n\n  .border-l-2 {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 2px;\n  }\n\n  .border-border {\n    border-color: var(--border);\n  }\n\n  .border-transparent {\n    border-color: #0000;\n  }\n\n  .bg-background {\n    background-color: var(--background);\n  }\n\n  .bg-card {\n    background-color: var(--card);\n  }\n\n  .bg-primary {\n    background-color: var(--primary);\n  }\n\n  .bg-secondary {\n    background-color: var(--secondary);\n  }\n\n  .p-3 {\n    padding: calc(var(--spacing) * 3);\n  }\n\n  .px-2 {\n    padding-inline: calc(var(--spacing) * 2);\n  }\n\n  .px-3 {\n    padding-inline: calc(var(--spacing) * 3);\n  }\n\n  .px-4 {\n    padding-inline: calc(var(--spacing) * 4);\n  }\n\n  .py-0\\.5 {\n    padding-block: calc(var(--spacing) * .5);\n  }\n\n  .py-2 {\n    padding-block: calc(var(--spacing) * 2);\n  }\n\n  .pl-2 {\n    padding-left: calc(var(--spacing) * 2);\n  }\n\n  .text-base {\n    font-size: var(--text-base);\n    line-height: var(--tw-leading, var(--text-base--line-height));\n  }\n\n  .text-sm {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n\n  .text-xs {\n    font-size: var(--text-xs);\n    line-height: var(--tw-leading, var(--text-xs--line-height));\n  }\n\n  .text-\\[11px\\] {\n    font-size: 11px;\n  }\n\n  .leading-4 {\n    --tw-leading: calc(var(--spacing) * 4);\n    line-height: calc(var(--spacing) * 4);\n  }\n\n  .font-medium {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n\n  .font-semibold {\n    --tw-font-weight: var(--font-weight-semibold);\n    font-weight: var(--font-weight-semibold);\n  }\n\n  .break-words {\n    overflow-wrap: break-word;\n  }\n\n  .whitespace-nowrap {\n    white-space: nowrap;\n  }\n\n  .whitespace-pre-wrap {\n    white-space: pre-wrap;\n  }\n\n  .text-foreground {\n    color: var(--foreground);\n  }\n\n  .text-muted-foreground {\n    color: var(--muted-foreground);\n  }\n\n  .text-primary-foreground {\n    color: var(--primary-foreground);\n  }\n\n  .text-secondary-foreground {\n    color: var(--secondary-foreground);\n  }\n\n  .ordinal {\n    --tw-ordinal: ordinal;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .tabular-nums {\n    --tw-numeric-spacing: tabular-nums;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .shadow {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .outline {\n    outline-style: var(--tw-outline-style);\n    outline-width: 1px;\n  }\n\n  .blur {\n    --tw-blur: blur(8px);\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .filter {\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .transition {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-colors {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-transform {\n    transition-property: transform, translate, scale, rotate;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .outline-none {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  @media (hover: hover) {\n    .hover\\:bg-accent:hover {\n      background-color: var(--accent);\n    }\n\n    .hover\\:bg-primary\\/90:hover {\n      background-color: var(--primary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-primary\\/90:hover {\n        background-color: color-mix(in oklab, var(--primary) 90%, transparent);\n      }\n    }\n\n    .hover\\:text-accent-foreground:hover {\n      color: var(--accent-foreground);\n    }\n  }\n\n  .focus-visible\\:ring-2:focus-visible {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus-visible\\:ring-ring:focus-visible {\n    --tw-ring-color: var(--ring);\n  }\n\n  .disabled\\:pointer-events-none:disabled {\n    pointer-events: none;\n  }\n\n  .disabled\\:opacity-50:disabled {\n    opacity: .5;\n  }\n}\n\n.booster-reader-sidebar {\n  border-right: 1px solid var(--border);\n  background: var(--card);\n  overscroll-behavior: contain;\n  min-width: 0;\n  padding: 12px;\n  overflow: auto;\n}\n\n.booster-reader-group {\n  margin-top: 12px;\n}\n\n.booster-reader-group-header {\n  align-items: center;\n  gap: 2px;\n  min-height: 38px;\n  display: flex;\n}\n\n.booster-group-toggle {\n  min-width: 0;\n  color: inherit;\n  cursor: pointer;\n  text-align: left;\n  font: inherit;\n  background: none;\n  border: 0;\n  flex: 1;\n  align-items: center;\n  gap: 6px;\n  padding: 6px 0;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-group-toggle svg {\n  flex-shrink: 0;\n}\n\n.booster-group-toggle span {\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-group-toggle small {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-reader-chat-list {\n  gap: 3px;\n  padding-left: 10px;\n  display: grid;\n}\n\n.booster-reader-chat-list > button {\n  color: inherit;\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 8px;\n  align-items: center;\n  gap: 6px;\n  padding: 10px;\n  font-size: 12px;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-reader-chat-list > button:hover, .booster-reader-chat-list > button.active {\n  background: var(--muted);\n  border-color: var(--border);\n}\n\n.booster-reader-chat-list > button span {\n  text-overflow: ellipsis;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-reader-chat-list > button.is-branch {\n  border-inline-start: 2px solid var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reader-chat-list > button.is-branch {\n    border-inline-start: 2px solid color-mix(in oklab, var(--primary) 35%, transparent);\n  }\n}\n\n.booster-reader-branch-icon {\n  opacity: .66;\n  flex: none;\n}\n\n.booster-reader-exchanges {\n  gap: 12px;\n  margin-top: 0;\n  display: grid;\n}\n\n.booster-exchange {\n  border-bottom: 1px solid var(--border);\n  min-width: 0;\n  max-width: 100%;\n  padding-bottom: 16px;\n}\n\n.booster-exchange-details {\n  border-left: 2px solid var(--border);\n  gap: 6px;\n  margin: 10px 0 10px 12px;\n  padding: 8px 0 8px 12px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-exchange-details {\n    border-left: 2px solid color-mix(in oklab, var(--border) 78%, var(--primary));\n  }\n}\n\n.booster-exchange-details-label {\n  color: var(--muted-foreground);\n  letter-spacing: .04em;\n  text-transform: uppercase;\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-message-target {\n  outline: 2px solid var(--primary);\n  outline-offset: 2px;\n  border-radius: 6px;\n}\n\n[data-archive-message] {\n  scroll-margin-block: 20px;\n}\n\n.booster-reader-exchanges, .booster-exchange-details {\n  min-width: 0;\n  max-width: 100%;\n}\n\n:host {\n  --background: oklch(98.5% 0 0);\n  --foreground: oklch(14.5% 0 0);\n  --card: oklch(100% 0 0);\n  --card-foreground: oklch(14.5% 0 0);\n  --primary: oklch(20.5% 0 0);\n  --primary-foreground: oklch(98.5% 0 0);\n  --secondary: oklch(97% 0 0);\n  --secondary-foreground: oklch(20.5% 0 0);\n  --muted: oklch(97% 0 0);\n  --muted-foreground: oklch(55.6% 0 0);\n  --accent: oklch(97% 0 0);\n  --accent-foreground: oklch(20.5% 0 0);\n  --border: oklch(92.2% 0 0);\n  --ring: oklch(70.8% 0 0);\n  --radius: .625rem;\n  all: initial;\n  color: var(--foreground);\n  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;\n}\n\n@media (prefers-color-scheme: dark) {\n  :host {\n    --background: oklch(14.5% 0 0);\n    --foreground: oklch(98.5% 0 0);\n    --card: oklch(20.5% 0 0);\n    --card-foreground: oklch(98.5% 0 0);\n    --primary: oklch(92.2% 0 0);\n    --primary-foreground: oklch(20.5% 0 0);\n    --secondary: oklch(26.9% 0 0);\n    --secondary-foreground: oklch(98.5% 0 0);\n    --muted: oklch(26.9% 0 0);\n    --muted-foreground: oklch(70.8% 0 0);\n    --accent: oklch(26.9% 0 0);\n    --accent-foreground: oklch(98.5% 0 0);\n    --border: oklch(100% 0 0 / .12);\n    --ring: oklch(55.6% 0 0);\n  }\n}\n\n* {\n  box-sizing: border-box;\n  border-color: var(--border);\n}\n\n.booster-shell {\n  z-index: 2147483647;\n  position: fixed;\n  bottom: 20px;\n  right: 20px;\n}\n\n.booster-button {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 42px;\n  height: 42px;\n  color: var(--card-foreground);\n  cursor: pointer;\n  border-radius: 14px;\n  font: 700 15px / 1 inherit;\n  box-shadow: 0 10px 30px #0003;\n}\n\n.booster-panel {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 300px;\n  color: var(--card-foreground);\n  border-radius: 16px;\n  margin-bottom: 10px;\n  padding: 14px;\n  box-shadow: 0 18px 45px #0000003d;\n}\n\n.booster-panel h2 {\n  margin: 0 0 6px;\n  font-size: 15px;\n  font-weight: 700;\n}\n\n.booster-panel p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.45;\n}\n\n.booster-control-center {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(760px, 100vw - 32px);\n  color: var(--card-foreground);\n  border-radius: 18px;\n  margin-bottom: 10px;\n  overflow: hidden;\n  box-shadow: 0 22px 60px #00000047;\n}\n\n.booster-control-header, .booster-control-footer {\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  display: flex;\n}\n\n.booster-control-header {\n  border-bottom: 1px solid var(--border);\n  padding: 14px 14px 12px;\n}\n\n.booster-control-header strong {\n  font-size: 14px;\n}\n\n.booster-control-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-control-body {\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-loading {\n  color: var(--muted-foreground);\n  padding: 18px;\n  font-size: 12px;\n}\n\n.booster-section-label {\n  color: var(--muted-foreground);\n  letter-spacing: .08em;\n  text-transform: uppercase;\n  padding: 2px 2px 0;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-setting-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 12px;\n  display: flex;\n}\n\n.booster-setting-disabled {\n  opacity: .55;\n}\n\n.booster-setting-copy {\n  gap: 5px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-setting-copy b {\n  font-size: 12px;\n}\n\n.booster-setting-copy > span {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.4;\n}\n\n.booster-switch {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  cursor: pointer;\n  border-radius: 999px;\n  flex: none;\n  width: 36px;\n  height: 20px;\n  padding: 0;\n  transition: background .12s, border-color .12s;\n  position: relative;\n}\n\n.booster-switch:disabled {\n  cursor: not-allowed;\n}\n\n.booster-switch > span {\n  background: var(--foreground);\n  border-radius: 999px;\n  width: 14px;\n  height: 14px;\n  transition: transform .12s;\n  position: absolute;\n  top: 2px;\n  left: 2px;\n}\n\n.booster-switch-on {\n  background: var(--primary);\n  border-color: var(--primary);\n}\n\n.booster-switch-on > span {\n  background: var(--primary-foreground);\n  transform: translateX(16px);\n}\n\n.booster-info-card {\n  background: var(--muted);\n  color: var(--foreground);\n  border-radius: 12px;\n  padding: 11px 12px;\n  font-size: 11px;\n}\n\n.booster-info-card ul {\n  color: var(--muted-foreground);\n  gap: 4px;\n  margin: 8px 0 0 18px;\n  padding: 0;\n  line-height: 1.35;\n  display: grid;\n}\n\n.booster-control-footer {\n  padding-top: 2px;\n}\n\n.booster-save-state {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 5px;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-overlay-root {\n  pointer-events: none;\n}\n\n.booster-launcher {\n  z-index: 2147483647;\n  border: 2px solid var(--primary);\n  justify-content: center;\n  align-items: center;\n  gap: 1px;\n  width: 46px;\n  height: 46px;\n  display: inline-flex;\n  position: fixed;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher {\n    border: 2px solid color-mix(in oklab, var(--primary) 55%, transparent);\n  }\n}\n\n.booster-launcher {\n  background: var(--primary);\n  color: var(--primary-foreground);\n  box-shadow: 0 12px 36px #00000047, 0 0 0 3px var(--primary);\n  border-radius: 15px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher {\n    box-shadow: 0 12px 36px #00000047, 0 0 0 3px color-mix(in oklab, var(--primary) 18%, transparent);\n  }\n}\n\n.booster-launcher {\n  cursor: grab;\n  pointer-events: auto;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  font: 800 17px / 1 inherit;\n}\n\n.booster-launcher:hover {\n  transform: scale(1.04);\n}\n\n.booster-launcher-dragging {\n  cursor: grabbing;\n  transform: scale(1.06);\n}\n\n.booster-launcher-icon {\n  flex-shrink: 0;\n  width: 20px;\n  height: 20px;\n}\n\n.booster-modal-backdrop {\n  z-index: 2147483646;\n  -webkit-backdrop-filter: blur(3px);\n  backdrop-filter: blur(3px);\n  pointer-events: auto;\n  background: #00000061;\n  place-items: center;\n  padding: 16px;\n  display: grid;\n  position: fixed;\n  inset: 0;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n  max-height: calc(100vh - 32px);\n  overflow: auto;\n}\n\n.booster-modal-surface .booster-control-center {\n  width: 100%;\n  margin: 0;\n}\n\n.booster-popup-host {\n  background: var(--background);\n  min-width: 360px;\n}\n\n.booster-select {\n  border: 1px solid var(--border);\n  background: var(--background);\n  min-width: 92px;\n  height: 32px;\n  color: var(--foreground);\n  cursor: pointer;\n  border-radius: 8px;\n  outline: none;\n  flex: none;\n  padding: 0 28px 0 10px;\n  font: 500 12px / 1 inherit;\n}\n\n.booster-select:focus {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-stack-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-stack-card label {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-input {\n  border: 1px solid var(--border);\n  background: var(--background);\n  width: 100%;\n  min-width: 0;\n  height: 32px;\n  color: var(--foreground);\n  border-radius: 8px;\n  outline: none;\n  padding: 0 10px;\n  font: 500 11px / 1 inherit;\n}\n\n.booster-input:focus {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-counter-grid {\n  color: var(--muted-foreground);\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 6px 12px;\n  margin-top: 8px;\n  display: grid;\n}\n\n.booster-counter-grid span {\n  justify-content: space-between;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-counter-grid b {\n  color: var(--foreground);\n}\n\n.booster-header-copy {\n  min-width: 0;\n}\n\n.booster-header-actions {\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-header-toggle-label {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  font-weight: 600;\n}\n\n.booster-settings-layout {\n  grid-template-columns: 150px minmax(0, 1fr);\n  min-height: 360px;\n  display: grid;\n}\n\n.booster-settings-nav {\n  border-right: 1px solid var(--border);\n  background: var(--muted);\n  align-content: start;\n  gap: 4px;\n  padding: 12px 8px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-settings-nav {\n    background: color-mix(in oklab, var(--muted) 58%, transparent);\n  }\n}\n\n.booster-settings-nav button {\n  width: 100%;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  border-radius: 9px;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 10px;\n  font: 600 11px / 1.2 inherit;\n  display: flex;\n}\n\n.booster-settings-nav button:hover, .booster-settings-nav button.active {\n  background: var(--background);\n  color: var(--foreground);\n}\n\n.booster-settings-content {\n  align-content: start;\n  gap: 10px;\n  min-width: 0;\n  padding: 14px;\n  display: grid;\n}\n\n.booster-setting-card-flat {\n  border: 0;\n  border-bottom: 1px solid var(--border);\n  border-radius: 0;\n  padding: 0 0 10px;\n}\n\n.booster-analytics-grid {\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 12px;\n  display: grid;\n}\n\n.booster-counter-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  padding: 12px;\n}\n\n.booster-counter-title {\n  margin-bottom: 8px;\n  font-size: 12px;\n  font-weight: 700;\n}\n\n.booster-disclosure {\n  width: 100%;\n  color: var(--foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 0;\n  display: flex;\n}\n\n.booster-disclosure > span {\n  gap: 3px;\n  display: grid;\n}\n\n.booster-disclosure b {\n  font-size: 12px;\n}\n\n.booster-disclosure small {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.rotate-180 {\n  transform: rotate(180deg);\n}\n\n.booster-telemetry-body {\n  gap: 10px;\n  padding-top: 10px;\n  display: grid;\n}\n\n.booster-field {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-telemetry-test-row {\n  align-items: center;\n  gap: 10px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-test-success {\n  color: oklch(62% .17 145);\n  font-size: 11px;\n}\n\n.booster-test-error {\n  color: oklch(63% .2 25);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n}\n\n@media (max-width: 620px) {\n  .booster-control-center, .booster-modal-surface {\n    width: calc(100vw - 20px);\n  }\n\n  .booster-settings-layout {\n    grid-template-columns: 1fr;\n  }\n\n  .booster-settings-nav {\n    border-right: 0;\n    border-bottom: 1px solid var(--border);\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n\n  .booster-settings-nav button {\n    justify-content: center;\n  }\n\n  .booster-analytics-grid {\n    grid-template-columns: 1fr;\n  }\n}\n\n.booster-modal-surface.booster-modal-surface-wide {\n  width: min(1320px, 100vw - 32px);\n}\n\n.booster-modal-surface-wide > .booster-control-center {\n  width: 100%;\n}\n\n@media (max-width: 620px) {\n  .booster-modal-surface.booster-modal-surface-wide {\n    width: calc(100vw - 20px);\n  }\n}\n\n@property --tw-rotate-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-z {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-border-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-leading {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-font-weight {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ordinal {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-slashed-zero {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-figure {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-spacing {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-fraction {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-inset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-ring-inset {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-offset-width {\n  syntax: "<length>";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-ring-offset-color {\n  syntax: "*";\n  inherits: false;\n  initial-value: #fff;\n}\n\n@property --tw-ring-offset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-outline-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-blur {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-brightness {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-contrast {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-grayscale {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-hue-rotate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-invert {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-opacity {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-saturate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-sepia {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-drop-shadow-size {\n  syntax: "*";\n  inherits: false\n}\n';
+  const styles = '/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */\n@layer properties {\n  @supports (((-webkit-hyphens: none)) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color: rgb(from red r g b)))) {\n    *, :before, :after, ::backdrop {\n      --tw-rotate-x: initial;\n      --tw-rotate-y: initial;\n      --tw-rotate-z: initial;\n      --tw-skew-x: initial;\n      --tw-skew-y: initial;\n      --tw-border-style: solid;\n      --tw-leading: initial;\n      --tw-font-weight: initial;\n      --tw-ordinal: initial;\n      --tw-slashed-zero: initial;\n      --tw-numeric-figure: initial;\n      --tw-numeric-spacing: initial;\n      --tw-numeric-fraction: initial;\n      --tw-shadow: 0 0 #0000;\n      --tw-shadow-color: initial;\n      --tw-shadow-alpha: 100%;\n      --tw-inset-shadow: 0 0 #0000;\n      --tw-inset-shadow-color: initial;\n      --tw-inset-shadow-alpha: 100%;\n      --tw-ring-color: initial;\n      --tw-ring-shadow: 0 0 #0000;\n      --tw-inset-ring-color: initial;\n      --tw-inset-ring-shadow: 0 0 #0000;\n      --tw-ring-inset: initial;\n      --tw-ring-offset-width: 0px;\n      --tw-ring-offset-color: #fff;\n      --tw-ring-offset-shadow: 0 0 #0000;\n      --tw-outline-style: solid;\n      --tw-blur: initial;\n      --tw-brightness: initial;\n      --tw-contrast: initial;\n      --tw-grayscale: initial;\n      --tw-hue-rotate: initial;\n      --tw-invert: initial;\n      --tw-opacity: initial;\n      --tw-saturate: initial;\n      --tw-sepia: initial;\n      --tw-drop-shadow: initial;\n      --tw-drop-shadow-color: initial;\n      --tw-drop-shadow-alpha: 100%;\n      --tw-drop-shadow-size: initial;\n    }\n  }\n}\n\n@layer theme {\n  :root, :host {\n    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",\n      "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",\n      "Segoe UI Symbol", "Noto Color Emoji";\n    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",\n      "Courier New", monospace;\n    --spacing: .25rem;\n    --text-xs: .75rem;\n    --text-xs--line-height: calc(1 / .75);\n    --text-sm: .875rem;\n    --text-sm--line-height: calc(1.25 / .875);\n    --text-base: 1rem;\n    --text-base--line-height: calc(1.5 / 1);\n    --font-weight-medium: 500;\n    --font-weight-semibold: 600;\n    --default-transition-duration: .15s;\n    --default-transition-timing-function: cubic-bezier(.4, 0, .2, 1);\n    --default-font-family: var(--font-sans);\n    --default-mono-font-family: var(--font-mono);\n  }\n}\n\n@layer base {\n  *, :after, :before, ::backdrop {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  ::file-selector-button {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  html, :host {\n    -webkit-text-size-adjust: 100%;\n    tab-size: 4;\n    line-height: 1.5;\n    font-family: var(--default-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");\n    font-feature-settings: var(--default-font-feature-settings, normal);\n    font-variation-settings: var(--default-font-variation-settings, normal);\n    -webkit-tap-highlight-color: transparent;\n  }\n\n  hr {\n    height: 0;\n    color: inherit;\n    border-top-width: 1px;\n  }\n\n  abbr:where([title]) {\n    -webkit-text-decoration: underline dotted;\n    text-decoration: underline dotted;\n  }\n\n  h1, h2, h3, h4, h5, h6 {\n    font-size: inherit;\n    font-weight: inherit;\n  }\n\n  a {\n    color: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    text-decoration: inherit;\n  }\n\n  b, strong {\n    font-weight: bolder;\n  }\n\n  code, kbd, samp, pre {\n    font-family: var(--default-mono-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);\n    font-feature-settings: var(--default-mono-font-feature-settings, normal);\n    font-variation-settings: var(--default-mono-font-variation-settings, normal);\n    font-size: 1em;\n  }\n\n  small {\n    font-size: 80%;\n  }\n\n  sub, sup {\n    vertical-align: baseline;\n    font-size: 75%;\n    line-height: 0;\n    position: relative;\n  }\n\n  sub {\n    bottom: -.25em;\n  }\n\n  sup {\n    top: -.5em;\n  }\n\n  table {\n    text-indent: 0;\n    border-color: inherit;\n    border-collapse: collapse;\n  }\n\n  :-moz-focusring:where(:not(iframe)) {\n    outline: auto;\n  }\n\n  progress {\n    vertical-align: baseline;\n  }\n\n  summary {\n    display: list-item;\n  }\n\n  ol, ul, menu {\n    list-style: none;\n  }\n\n  img, svg, video, canvas, audio, iframe, embed, object {\n    vertical-align: middle;\n    display: block;\n  }\n\n  img, video {\n    max-width: 100%;\n    height: auto;\n  }\n\n  button, input, select, optgroup, textarea {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  ::file-selector-button {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  :where(select:is([multiple], [size])) optgroup {\n    font-weight: bolder;\n  }\n\n  :where(select:is([multiple], [size])) optgroup option {\n    padding-inline-start: 20px;\n  }\n\n  ::file-selector-button {\n    margin-inline-end: 4px;\n  }\n\n  ::placeholder {\n    opacity: 1;\n  }\n\n  @supports (not ((-webkit-appearance: -apple-pay-button))) or (contain-intrinsic-size: 1px) {\n    ::placeholder {\n      color: currentColor;\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      ::placeholder {\n        color: color-mix(in oklab, currentcolor 50%, transparent);\n      }\n    }\n  }\n\n  textarea {\n    resize: vertical;\n  }\n\n  ::-webkit-search-decoration {\n    -webkit-appearance: none;\n  }\n\n  ::-webkit-date-and-time-value {\n    min-height: 1lh;\n    text-align: inherit;\n  }\n\n  ::-webkit-datetime-edit {\n    display: inline-flex;\n  }\n\n  ::-webkit-datetime-edit-fields-wrapper {\n    padding: 0;\n  }\n\n  ::-webkit-datetime-edit {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-year-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-month-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-day-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-hour-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-minute-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-second-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-millisecond-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-meridiem-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-calendar-picker-indicator {\n    line-height: 1;\n  }\n\n  :-moz-ui-invalid {\n    box-shadow: none;\n  }\n\n  button, input:where([type="button"], [type="reset"], [type="submit"]) {\n    appearance: button;\n  }\n\n  ::file-selector-button {\n    appearance: button;\n  }\n\n  ::-webkit-inner-spin-button {\n    height: auto;\n  }\n\n  ::-webkit-outer-spin-button {\n    height: auto;\n  }\n\n  [hidden]:where(:not([hidden="until-found"])) {\n    display: none !important;\n  }\n}\n\n@layer components;\n\n@layer utilities {\n  .collapse {\n    visibility: collapse;\n  }\n\n  .invisible {\n    visibility: hidden;\n  }\n\n  .visible {\n    visibility: visible;\n  }\n\n  .absolute {\n    position: absolute;\n  }\n\n  .fixed {\n    position: fixed;\n  }\n\n  .relative {\n    position: relative;\n  }\n\n  .static {\n    position: static;\n  }\n\n  .sticky {\n    position: sticky;\n  }\n\n  .top-41 {\n    top: calc(var(--spacing) * 41);\n  }\n\n  .isolate {\n    isolation: isolate;\n  }\n\n  .col-span-2 {\n    grid-column: span 2 / span 2;\n  }\n\n  .container {\n    width: 100%;\n  }\n\n  @media (min-width: 40rem) {\n    .container {\n      max-width: 40rem;\n    }\n  }\n\n  @media (min-width: 48rem) {\n    .container {\n      max-width: 48rem;\n    }\n  }\n\n  @media (min-width: 64rem) {\n    .container {\n      max-width: 64rem;\n    }\n  }\n\n  @media (min-width: 80rem) {\n    .container {\n      max-width: 80rem;\n    }\n  }\n\n  @media (min-width: 96rem) {\n    .container {\n      max-width: 96rem;\n    }\n  }\n\n  .m-0 {\n    margin: 0;\n  }\n\n  .mt-2 {\n    margin-top: calc(var(--spacing) * 2);\n  }\n\n  .mb-2 {\n    margin-bottom: calc(var(--spacing) * 2);\n  }\n\n  .block {\n    display: block;\n  }\n\n  .contents {\n    display: contents;\n  }\n\n  .flex {\n    display: flex;\n  }\n\n  .grid {\n    display: grid;\n  }\n\n  .hidden {\n    display: none;\n  }\n\n  .inline {\n    display: inline;\n  }\n\n  .inline-flex {\n    display: inline-flex;\n  }\n\n  .table {\n    display: table;\n  }\n\n  .size-3 {\n    width: calc(var(--spacing) * 3);\n    height: calc(var(--spacing) * 3);\n  }\n\n  .size-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n    height: calc(var(--spacing) * 3.5);\n  }\n\n  .size-4 {\n    width: calc(var(--spacing) * 4);\n    height: calc(var(--spacing) * 4);\n  }\n\n  .size-5 {\n    width: calc(var(--spacing) * 5);\n    height: calc(var(--spacing) * 5);\n  }\n\n  .size-6 {\n    width: calc(var(--spacing) * 6);\n    height: calc(var(--spacing) * 6);\n  }\n\n  .size-7 {\n    width: calc(var(--spacing) * 7);\n    height: calc(var(--spacing) * 7);\n  }\n\n  .size-8 {\n    width: calc(var(--spacing) * 8);\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-7 {\n    height: calc(var(--spacing) * 7);\n  }\n\n  .h-8 {\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-9 {\n    height: calc(var(--spacing) * 9);\n  }\n\n  .max-h-\\[420px\\] {\n    max-height: 420px;\n  }\n\n  .min-h-\\[130px\\] {\n    min-height: 130px;\n  }\n\n  .w-full {\n    width: 100%;\n  }\n\n  .min-w-0 {\n    min-width: 0;\n  }\n\n  .flex-1 {\n    flex: 1;\n  }\n\n  .shrink-0 {\n    flex-shrink: 0;\n  }\n\n  .grow {\n    flex-grow: 1;\n  }\n\n  .rotate-180 {\n    rotate: 180deg;\n  }\n\n  .transform {\n    transform: var(--tw-rotate-x, ) var(--tw-rotate-y, ) var(--tw-rotate-z, ) var(--tw-skew-x, ) var(--tw-skew-y, );\n  }\n\n  .resize {\n    resize: both;\n  }\n\n  .grid-cols-2 {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }\n\n  .flex-wrap {\n    flex-wrap: wrap;\n  }\n\n  .items-center {\n    align-items: center;\n  }\n\n  .justify-between {\n    justify-content: space-between;\n  }\n\n  .justify-center {\n    justify-content: center;\n  }\n\n  .justify-end {\n    justify-content: flex-end;\n  }\n\n  .gap-2 {\n    gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-3 {\n    gap: calc(var(--spacing) * 3);\n  }\n\n  .self-start {\n    align-self: flex-start;\n  }\n\n  .truncate {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    overflow: hidden;\n  }\n\n  .overflow-x-hidden {\n    overflow-x: hidden;\n  }\n\n  .overflow-y-auto {\n    overflow-y: auto;\n  }\n\n  .rounded-lg {\n    border-radius: var(--radius);\n  }\n\n  .rounded-md {\n    border-radius: calc(var(--radius) - 2px);\n  }\n\n  .border {\n    border-style: var(--tw-border-style);\n    border-width: 1px;\n  }\n\n  .border-l-2 {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 2px;\n  }\n\n  .border-border {\n    border-color: var(--border);\n  }\n\n  .border-transparent {\n    border-color: #0000;\n  }\n\n  .bg-background {\n    background-color: var(--background);\n  }\n\n  .bg-card {\n    background-color: var(--card);\n  }\n\n  .bg-primary {\n    background-color: var(--primary);\n  }\n\n  .bg-secondary {\n    background-color: var(--secondary);\n  }\n\n  .p-3 {\n    padding: calc(var(--spacing) * 3);\n  }\n\n  .px-2 {\n    padding-inline: calc(var(--spacing) * 2);\n  }\n\n  .px-3 {\n    padding-inline: calc(var(--spacing) * 3);\n  }\n\n  .px-4 {\n    padding-inline: calc(var(--spacing) * 4);\n  }\n\n  .py-0\\.5 {\n    padding-block: calc(var(--spacing) * .5);\n  }\n\n  .py-2 {\n    padding-block: calc(var(--spacing) * 2);\n  }\n\n  .pl-2 {\n    padding-left: calc(var(--spacing) * 2);\n  }\n\n  .text-base {\n    font-size: var(--text-base);\n    line-height: var(--tw-leading, var(--text-base--line-height));\n  }\n\n  .text-sm {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n\n  .text-xs {\n    font-size: var(--text-xs);\n    line-height: var(--tw-leading, var(--text-xs--line-height));\n  }\n\n  .text-\\[11px\\] {\n    font-size: 11px;\n  }\n\n  .leading-4 {\n    --tw-leading: calc(var(--spacing) * 4);\n    line-height: calc(var(--spacing) * 4);\n  }\n\n  .font-medium {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n\n  .font-semibold {\n    --tw-font-weight: var(--font-weight-semibold);\n    font-weight: var(--font-weight-semibold);\n  }\n\n  .break-words {\n    overflow-wrap: break-word;\n  }\n\n  .whitespace-nowrap {\n    white-space: nowrap;\n  }\n\n  .whitespace-pre-wrap {\n    white-space: pre-wrap;\n  }\n\n  .text-foreground {\n    color: var(--foreground);\n  }\n\n  .text-muted-foreground {\n    color: var(--muted-foreground);\n  }\n\n  .text-primary-foreground {\n    color: var(--primary-foreground);\n  }\n\n  .text-secondary-foreground {\n    color: var(--secondary-foreground);\n  }\n\n  .ordinal {\n    --tw-ordinal: ordinal;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .tabular-nums {\n    --tw-numeric-spacing: tabular-nums;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .shadow {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .outline {\n    outline-style: var(--tw-outline-style);\n    outline-width: 1px;\n  }\n\n  .blur {\n    --tw-blur: blur(8px);\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .filter {\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .transition {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-colors {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-transform {\n    transition-property: transform, translate, scale, rotate;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .outline-none {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  @media (hover: hover) {\n    .hover\\:bg-accent:hover {\n      background-color: var(--accent);\n    }\n\n    .hover\\:bg-primary\\/90:hover {\n      background-color: var(--primary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-primary\\/90:hover {\n        background-color: color-mix(in oklab, var(--primary) 90%, transparent);\n      }\n    }\n\n    .hover\\:text-accent-foreground:hover {\n      color: var(--accent-foreground);\n    }\n  }\n\n  .focus-visible\\:ring-2:focus-visible {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus-visible\\:ring-ring:focus-visible {\n    --tw-ring-color: var(--ring);\n  }\n\n  .disabled\\:pointer-events-none:disabled {\n    pointer-events: none;\n  }\n\n  .disabled\\:opacity-50:disabled {\n    opacity: .5;\n  }\n}\n\n.booster-reader-sidebar {\n  border-right: 1px solid var(--border);\n  background: var(--card);\n  overscroll-behavior: contain;\n  min-width: 0;\n  padding: 12px;\n  overflow: auto;\n}\n\n.booster-reader-group {\n  margin-top: 12px;\n}\n\n.booster-reader-group-header {\n  align-items: center;\n  gap: 2px;\n  min-height: 38px;\n  display: flex;\n}\n\n.booster-group-toggle {\n  min-width: 0;\n  color: inherit;\n  cursor: pointer;\n  text-align: left;\n  font: inherit;\n  background: none;\n  border: 0;\n  flex: 1;\n  align-items: center;\n  gap: 6px;\n  padding: 6px 0;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-group-toggle svg {\n  flex-shrink: 0;\n}\n\n.booster-group-toggle span {\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-group-toggle small {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-reader-chat-list {\n  gap: 3px;\n  padding-left: 10px;\n  display: grid;\n}\n\n.booster-reader-chat-list > button {\n  color: inherit;\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 8px;\n  align-items: center;\n  gap: 6px;\n  padding: 10px;\n  font-size: 12px;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-reader-chat-list > button:hover, .booster-reader-chat-list > button.active {\n  background: var(--muted);\n  border-color: var(--border);\n}\n\n.booster-reader-chat-list > button span {\n  text-overflow: ellipsis;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-reader-chat-list > button.is-branch {\n  border-inline-start: 2px solid var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reader-chat-list > button.is-branch {\n    border-inline-start: 2px solid color-mix(in oklab, var(--primary) 35%, transparent);\n  }\n}\n\n.booster-reader-branch-icon {\n  opacity: .66;\n  flex: none;\n}\n\n.booster-reader-exchanges {\n  gap: 12px;\n  margin-top: 0;\n  display: grid;\n}\n\n.booster-exchange {\n  border-bottom: 1px solid var(--border);\n  min-width: 0;\n  max-width: 100%;\n  padding-bottom: 16px;\n}\n\n.booster-exchange-details {\n  border-left: 2px solid var(--border);\n  gap: 6px;\n  margin: 10px 0 10px 12px;\n  padding: 8px 0 8px 12px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-exchange-details {\n    border-left: 2px solid color-mix(in oklab, var(--border) 78%, var(--primary));\n  }\n}\n\n.booster-exchange-details-label {\n  color: var(--muted-foreground);\n  letter-spacing: .04em;\n  text-transform: uppercase;\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-message-target {\n  outline: 2px solid var(--primary);\n  outline-offset: 2px;\n  border-radius: 6px;\n}\n\n[data-archive-message] {\n  scroll-margin-block: 20px;\n}\n\n.booster-reader-exchanges, .booster-exchange-details {\n  min-width: 0;\n  max-width: 100%;\n}\n\n:host {\n  --background: oklch(98.5% 0 0);\n  --foreground: oklch(14.5% 0 0);\n  --card: oklch(100% 0 0);\n  --card-foreground: oklch(14.5% 0 0);\n  --primary: oklch(20.5% 0 0);\n  --primary-foreground: oklch(98.5% 0 0);\n  --secondary: oklch(97% 0 0);\n  --secondary-foreground: oklch(20.5% 0 0);\n  --muted: oklch(97% 0 0);\n  --muted-foreground: oklch(55.6% 0 0);\n  --accent: oklch(97% 0 0);\n  --accent-foreground: oklch(20.5% 0 0);\n  --border: oklch(92.2% 0 0);\n  --ring: oklch(70.8% 0 0);\n  --radius: .625rem;\n  all: initial;\n  color: var(--foreground);\n  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;\n}\n\n@media (prefers-color-scheme: dark) {\n  :host {\n    --background: oklch(14.5% 0 0);\n    --foreground: oklch(98.5% 0 0);\n    --card: oklch(20.5% 0 0);\n    --card-foreground: oklch(98.5% 0 0);\n    --primary: oklch(92.2% 0 0);\n    --primary-foreground: oklch(20.5% 0 0);\n    --secondary: oklch(26.9% 0 0);\n    --secondary-foreground: oklch(98.5% 0 0);\n    --muted: oklch(26.9% 0 0);\n    --muted-foreground: oklch(70.8% 0 0);\n    --accent: oklch(26.9% 0 0);\n    --accent-foreground: oklch(98.5% 0 0);\n    --border: oklch(100% 0 0 / .12);\n    --ring: oklch(55.6% 0 0);\n  }\n}\n\n* {\n  box-sizing: border-box;\n  border-color: var(--border);\n}\n\n.booster-shell {\n  z-index: 2147483647;\n  position: fixed;\n  bottom: 20px;\n  right: 20px;\n}\n\n.booster-button {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 42px;\n  height: 42px;\n  color: var(--card-foreground);\n  cursor: pointer;\n  border-radius: 14px;\n  font: 700 15px / 1 inherit;\n  box-shadow: 0 10px 30px #0003;\n}\n\n.booster-panel {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 300px;\n  color: var(--card-foreground);\n  border-radius: 16px;\n  margin-bottom: 10px;\n  padding: 14px;\n  box-shadow: 0 18px 45px #0000003d;\n}\n\n.booster-panel h2 {\n  margin: 0 0 6px;\n  font-size: 15px;\n  font-weight: 700;\n}\n\n.booster-panel p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.45;\n}\n\n.booster-control-center {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(760px, 100vw - 32px);\n  color: var(--card-foreground);\n  border-radius: 18px;\n  margin-bottom: 10px;\n  overflow: hidden;\n  box-shadow: 0 22px 60px #00000047;\n}\n\n.booster-control-header, .booster-control-footer {\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  display: flex;\n}\n\n.booster-control-header {\n  border-bottom: 1px solid var(--border);\n  padding: 14px 14px 12px;\n}\n\n.booster-control-header strong {\n  font-size: 14px;\n}\n\n.booster-control-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-control-body {\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-loading {\n  color: var(--muted-foreground);\n  padding: 18px;\n  font-size: 12px;\n}\n\n.booster-section-label {\n  color: var(--muted-foreground);\n  letter-spacing: .08em;\n  text-transform: uppercase;\n  padding: 2px 2px 0;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-setting-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 12px;\n  display: flex;\n}\n\n.booster-setting-disabled {\n  opacity: .55;\n}\n\n.booster-setting-copy {\n  gap: 5px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-setting-copy b {\n  font-size: 12px;\n}\n\n.booster-setting-copy > span {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.4;\n}\n\n.booster-switch {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  cursor: pointer;\n  border-radius: 999px;\n  flex: none;\n  width: 36px;\n  height: 20px;\n  padding: 0;\n  transition: background .12s, border-color .12s;\n  position: relative;\n}\n\n.booster-switch:disabled {\n  cursor: not-allowed;\n}\n\n.booster-switch > span {\n  background: var(--foreground);\n  border-radius: 999px;\n  width: 14px;\n  height: 14px;\n  transition: transform .12s;\n  position: absolute;\n  top: 2px;\n  left: 2px;\n}\n\n.booster-switch-on {\n  background: var(--primary);\n  border-color: var(--primary);\n}\n\n.booster-switch-on > span {\n  background: var(--primary-foreground);\n  transform: translateX(16px);\n}\n\n.booster-info-card {\n  background: var(--muted);\n  color: var(--foreground);\n  border-radius: 12px;\n  padding: 11px 12px;\n  font-size: 11px;\n}\n\n.booster-info-card ul {\n  color: var(--muted-foreground);\n  gap: 4px;\n  margin: 8px 0 0 18px;\n  padding: 0;\n  line-height: 1.35;\n  display: grid;\n}\n\n.booster-control-footer {\n  padding-top: 2px;\n}\n\n.booster-save-state {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 5px;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-overlay-root {\n  pointer-events: none;\n}\n\n.booster-launcher {\n  z-index: 2147483647;\n  border: 2px solid var(--primary);\n  justify-content: center;\n  align-items: center;\n  gap: 1px;\n  width: 46px;\n  height: 46px;\n  display: inline-flex;\n  position: fixed;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher {\n    border: 2px solid color-mix(in oklab, var(--primary) 55%, transparent);\n  }\n}\n\n.booster-launcher {\n  background: var(--primary);\n  color: var(--primary-foreground);\n  box-shadow: 0 12px 36px #00000047, 0 0 0 3px var(--primary);\n  border-radius: 15px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher {\n    box-shadow: 0 12px 36px #00000047, 0 0 0 3px color-mix(in oklab, var(--primary) 18%, transparent);\n  }\n}\n\n.booster-launcher {\n  cursor: grab;\n  pointer-events: auto;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  font: 800 17px / 1 inherit;\n}\n\n.booster-launcher:hover {\n  transform: scale(1.04);\n}\n\n.booster-launcher-dragging {\n  cursor: grabbing;\n  transform: scale(1.06);\n}\n\n.booster-launcher-icon {\n  flex-shrink: 0;\n  width: 20px;\n  height: 20px;\n}\n\n.booster-modal-backdrop {\n  z-index: 2147483646;\n  -webkit-backdrop-filter: blur(3px);\n  backdrop-filter: blur(3px);\n  pointer-events: auto;\n  background: #00000061;\n  place-items: center;\n  padding: 16px;\n  display: grid;\n  position: fixed;\n  inset: 0;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n  max-height: calc(100vh - 32px);\n  overflow: auto;\n}\n\n.booster-modal-surface .booster-control-center {\n  width: 100%;\n  margin: 0;\n}\n\n.booster-popup-host {\n  background: var(--background);\n  min-width: 360px;\n}\n\n.booster-select {\n  border: 1px solid var(--border);\n  background: var(--background);\n  min-width: 92px;\n  height: 32px;\n  color: var(--foreground);\n  cursor: pointer;\n  border-radius: 8px;\n  outline: none;\n  flex: none;\n  padding: 0 28px 0 10px;\n  font: 500 12px / 1 inherit;\n}\n\n.booster-select:focus {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-stack-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-stack-card label {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-input {\n  border: 1px solid var(--border);\n  background: var(--background);\n  width: 100%;\n  min-width: 0;\n  height: 32px;\n  color: var(--foreground);\n  border-radius: 8px;\n  outline: none;\n  padding: 0 10px;\n  font: 500 11px / 1 inherit;\n}\n\n.booster-input:focus {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-counter-grid {\n  color: var(--muted-foreground);\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 6px 12px;\n  margin-top: 8px;\n  display: grid;\n}\n\n.booster-counter-grid span {\n  justify-content: space-between;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-counter-grid b {\n  color: var(--foreground);\n}\n\n.booster-header-copy {\n  min-width: 0;\n}\n\n.booster-header-actions {\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-header-toggle-label {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  font-weight: 600;\n}\n\n.booster-settings-layout {\n  grid-template-columns: 150px minmax(0, 1fr);\n  min-height: 360px;\n  display: grid;\n}\n\n.booster-settings-nav {\n  border-right: 1px solid var(--border);\n  background: var(--muted);\n  align-content: start;\n  gap: 4px;\n  padding: 12px 8px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-settings-nav {\n    background: color-mix(in oklab, var(--muted) 58%, transparent);\n  }\n}\n\n.booster-settings-nav button {\n  width: 100%;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  border-radius: 9px;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 10px;\n  font: 600 11px / 1.2 inherit;\n  display: flex;\n}\n\n.booster-settings-nav button:hover, .booster-settings-nav button.active {\n  background: var(--background);\n  color: var(--foreground);\n}\n\n.booster-settings-content {\n  align-content: start;\n  gap: 10px;\n  min-width: 0;\n  padding: 14px;\n  display: grid;\n}\n\n.booster-setting-card-flat {\n  border: 0;\n  border-bottom: 1px solid var(--border);\n  border-radius: 0;\n  padding: 0 0 10px;\n}\n\n.booster-analytics-grid {\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 12px;\n  display: grid;\n}\n\n.booster-counter-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  padding: 12px;\n}\n\n.booster-counter-title {\n  margin-bottom: 8px;\n  font-size: 12px;\n  font-weight: 700;\n}\n\n.booster-disclosure {\n  width: 100%;\n  color: var(--foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 0;\n  display: flex;\n}\n\n.booster-disclosure > span {\n  gap: 3px;\n  display: grid;\n}\n\n.booster-disclosure b {\n  font-size: 12px;\n}\n\n.booster-disclosure small {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.rotate-180 {\n  transform: rotate(180deg);\n}\n\n.booster-telemetry-body {\n  gap: 10px;\n  padding-top: 10px;\n  display: grid;\n}\n\n.booster-field {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-telemetry-test-row {\n  align-items: center;\n  gap: 10px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-test-success {\n  color: oklch(62% .17 145);\n  font-size: 11px;\n}\n\n.booster-test-error {\n  color: oklch(63% .2 25);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n}\n\n@media (max-width: 620px) {\n  .booster-control-center, .booster-modal-surface {\n    width: calc(100vw - 20px);\n  }\n\n  .booster-settings-layout {\n    grid-template-columns: 1fr;\n  }\n\n  .booster-settings-nav {\n    border-right: 0;\n    border-bottom: 1px solid var(--border);\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n\n  .booster-settings-nav button {\n    justify-content: center;\n  }\n\n  .booster-analytics-grid {\n    grid-template-columns: 1fr;\n  }\n}\n\n.booster-modal-surface.booster-modal-surface-wide {\n  width: min(1320px, 100vw - 32px);\n}\n\n.booster-modal-surface-wide > .booster-control-center {\n  width: 100%;\n}\n\n@media (max-width: 620px) {\n  .booster-modal-surface.booster-modal-surface-wide {\n    width: calc(100vw - 20px);\n  }\n}\n\n@property --tw-rotate-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-z {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-border-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-leading {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-font-weight {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ordinal {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-slashed-zero {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-figure {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-spacing {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-fraction {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-inset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-ring-inset {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-offset-width {\n  syntax: "<length>";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-ring-offset-color {\n  syntax: "*";\n  inherits: false;\n  initial-value: #fff;\n}\n\n@property --tw-ring-offset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-outline-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-blur {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-brightness {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-contrast {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-grayscale {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-hue-rotate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-invert {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-opacity {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-saturate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-sepia {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-drop-shadow-size {\n  syntax: "*";\n  inherits: false\n}\n';
   function mountControlCenter(options) {
     document.getElementById(instanceKey("koba-browser-tools-root"))?.remove();
     const host = document.createElement("div");
