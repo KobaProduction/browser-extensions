@@ -30,6 +30,9 @@ export function installVkArchive(target: DeliveryTarget = 'userscript'): void {
   const apiKey = instanceKey('VKExport', 'vk-booster:prod')
   const published = globalThis as Record<string, unknown>
   if ((published[apiKey] as ArchiveApi | undefined)?.version === VERSION) return
+  // Injected scopes are nonempty in production bundles. Test-only file output
+  // cannot be activated by a VK page setting the test-mode global.
+  const legacyFileTestOnly = () => instanceScope() === '' && globalThis.__VK_EXPORT_TEST_MODE === true
   const currentPeer = () => conversationPeerFromPath(location.pathname)
   const cfg: ArchiveOptions = {
     peerId: currentPeer() ?? 0,
@@ -59,7 +62,7 @@ export function installVkArchive(target: DeliveryTarget = 'userscript'): void {
   const subscribers = new Set<(status: ArchiveStatus) => void>()
   const ts = () => new Date().toISOString(),
     sleep = (ms: number): Promise<void> =>
-      globalThis.__VK_EXPORT_TEST_MODE ? Promise.resolve() : new Promise((r) => setTimeout(r, ms))
+      legacyFileTestOnly() ? Promise.resolve() : new Promise((r) => setTimeout(r, ms))
   const validDay = (d: string): boolean =>
     !d ||
     (/^\d{4}-\d\d-\d\d$/.test(d) &&
@@ -192,8 +195,7 @@ export function installVkArchive(target: DeliveryTarget = 'userscript'): void {
     )
   }
   async function useFolder(handle: FileSystemDirectoryHandle): Promise<ArchiveStatus> {
-    if (!globalThis.__VK_EXPORT_TEST_MODE)
-      throw Error('Файловая папка не подключается в основном режиме Dexie.')
+    if (!legacyFileTestOnly()) throw Error('Файловая папка не подключается в основном режиме Dexie.')
     const pagePeer = currentPeer()
     if (pagePeer === null) throw Error('Открой диалог VK перед выбором папки')
     if (busy || folderLoading || folderPickerOpen)
@@ -269,7 +271,7 @@ export function installVkArchive(target: DeliveryTarget = 'userscript'): void {
     }
   }
   async function selectFolder(): Promise<ArchiveStatus> {
-    if (!globalThis.__VK_EXPORT_TEST_MODE)
+    if (!legacyFileTestOnly())
       throw Error('Файловая папка больше не является основным архивом. Используй экспорт Dexie.')
     if (!globalThis.showDirectoryPicker) throw Error('Нужен Chrome и HTTPS')
     const pagePeer = currentPeer()
@@ -352,7 +354,7 @@ export function installVkArchive(target: DeliveryTarget = 'userscript'): void {
   async function run(
     options: Partial<ArchiveOptions> & { resume?: boolean } = {},
   ): Promise<ArchiveRunResult> {
-    if (!globalThis.__VK_EXPORT_TEST_MODE)
+    if (!legacyFileTestOnly())
       throw Error('Историческая файловая выгрузка недоступна как основное хранилище. Используй Dexie.')
     if (busy) throw Error('Выгрузка уже запущена')
     if (folderLoading || folderPickerOpen) throw Error('Выбор папки ещё не завершён')

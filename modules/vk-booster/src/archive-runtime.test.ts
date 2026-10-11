@@ -947,7 +947,7 @@ test('fixed Dexie VK capture reads verified owner, persists new history, preview
   }
 })
 
-test('production VK API cannot initialize a second file-backed canonical writer', async () => {
+test('VK file writer is unavailable unless running unbundled synthetic tests', async () => {
   const previousTestMode = globalThis.__VK_EXPORT_TEST_MODE
   globalThis.__VK_EXPORT_TEST_MODE = false
   try {
