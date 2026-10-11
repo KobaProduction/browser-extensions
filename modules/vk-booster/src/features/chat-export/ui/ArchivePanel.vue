@@ -191,7 +191,7 @@ async function resume() {
         <div class="flex flex-wrap items-center gap-2">
           <Archive class="size-4 shrink-0" aria-hidden="true" />
           <b>VK Booster · Архив v2</b>
-          <Badge :variant="status?.blockedReason ? 'destructive' : status?.busy ? 'default' : 'outline'">
+          <Badge :variant="status?.blockedReason ? 'secondary' : status?.busy ? 'default' : 'outline'" :class="status?.blockedReason ? 'text-destructive' : ''">
             {{ selectedStatus }}
           </Badge>
         </div>

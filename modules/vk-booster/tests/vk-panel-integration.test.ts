@@ -27,6 +27,8 @@ test('VK uses the existing single shell and accessible archive/export/settings n
   })
   expect(compiled.errors).toHaveLength(0)
   expect(descriptor.template?.content).toContain('role="tablist"')
+  expect(panel).toContain("status?.blockedReason ? 'secondary'")
+  expect(panel).not.toContain("status?.blockedReason ? 'destructive'")
   expect(descriptor.template?.content).toContain('role="tabpanel"')
   expect(descriptor.template?.content).toContain(':aria-selected="tab === item.id"')
   expect(descriptor.template?.content).toContain(':aria-controls="tabPrefix +')
