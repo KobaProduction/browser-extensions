@@ -1,3 +1,4 @@
+import { attachChromeInstallationToggle } from '@kobaproduction/browser-adapters'
 import { mountControlCenter } from '@chatgpt-booster/ui'
 import { chromeAnalytics } from '../analytics'
 import { chromeSettings } from '../settings'
@@ -18,3 +19,5 @@ mountControlCenter(host, {
   telemetryControlAdapter: createChromeTelemetryControl(telemetry, chromeSettings),
   targetLabel: 'Extension',
 })
+
+attachChromeInstallationToggle(document.body, /^https:\/\/chatgpt\.com\//)

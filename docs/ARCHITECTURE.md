@@ -344,7 +344,21 @@ capture service, with no active v4 commit or warmup. Old v4 source code and
 physical browser databases remain intact solely for the explicit read-only
 backup utility alongside the stable 0.8.92 v3 exporter. Future provider
 source changes are normalized to fixed v1 data; no automatic migration.
-VK remains on its separate development branch; OTLP network remains deferred.
+VK is now integrated with its own Dexie v1 data store; OTLP network remains deferred.
+
+
+## Installation lifecycle & clean canonical storage (source checkpoint 2026-10-11)
+
+Shared FeatureRuntime serializes per-installation start/stop and user
+enable/disable transitions; all provider mounts/listeners/hooks must be
+cleaned up while retaining the shared shell as a reactivation surface.
+Scoped FeatureSettings uses product/channel keys, and the MAIN-world
+observer is activated by its matching isolated content runtime only.
+The Chromium popup and userscript Control Center provide live toggles.
+The fixed ChatGPT archive stays Dexie schema v1; legacy native readers
+and migration controls are not present in the active product. Physical old
+databases remain untouched for a separately handled owner-run recovery.
+The installed-browser DEV+PROD coexistence gate is still open.
 
 ## VK merged-main reconciliation checkpoint (2026-10-11)
 
@@ -353,6 +367,6 @@ bounded saved Reader and source-preserving gzip export to the fixed Dexie v1
 repository. Its old folder writer is no longer exposed via the user interface
 and accepts only the synthetic test-mode gate. Original media downloads and
 legacy offline HTML are retained in historic/test code, not a proven Dexie
-export capability. VK source is 1.0.0, ChatGPT source 2.0.12 and dependent
-All-in-one 0.5.13. Settings persistence/JSON restoration remains separate
+export capability. VK source is 1.0.0, ChatGPT source 2.0.13 and dependent
+All-in-one 0.5.14. Settings persistence/JSON restoration remains separate
 from canonical archive persistence and is not full archive backup.

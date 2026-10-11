@@ -20,7 +20,11 @@ if (chatgpt || vkBoosterFeature.match(url)) {
   if (chatFeature) {
     void new FeatureSettings(createSettingsStore('chromium'))
       .enabled('chatgpt-booster')
-      .then((enabled) => (enabled ? chatFeature.startEarly() : undefined))
+      .then(async (enabled) =>
+        enabled && (await new FeatureSettings(createSettingsStore('chromium')).installationEnabled())
+          ? chatFeature.startEarly()
+          : undefined,
+      )
       .catch((error) =>
         console.warn(
           '[ChatGPT Booster] Early capture failed',
@@ -41,20 +45,37 @@ if (chatgpt || vkBoosterFeature.match(url)) {
       title: 'Koba Browser Tools',
       views: chatgpt ? { 'chatgpt-booster': ChatGptPanel } : { 'vk-booster': ArchivePanel },
     })
-    chrome.runtime.onMessage.addListener((message: { type?: string; id?: string }, _, respond) => {
-      if (message?.type === 'koba:open') {
-        ui.open()
-        respond({ ok: true })
-        return
-      }
-      if (message?.type === 'koba:open-feature' && message.id === feature.id) {
-        ui.open()
-        window.dispatchEvent(new CustomEvent(SHELL_OPEN_FEATURE_EVENT, { detail: { id: feature.id } }))
-        respond({ ok: true })
-        return
-      }
-      if (message?.type === 'koba:list') respond({ features: runtime.list() })
-    })
+    chrome.runtime.onMessage.addListener(
+      (message: { type?: string; id?: string; enabled?: boolean }, _, respond) => {
+        if (message?.type === 'koba:installation-status') {
+          respond({ enabled: runtime.isRunning(), features: runtime.list() })
+          return
+        }
+        if (message?.type === 'koba:installation-set-running') {
+          if (typeof message.enabled !== 'boolean') {
+            respond({ ok: false })
+            return
+          }
+          void runtime
+            .setRunning(message.enabled)
+            .then(() => respond({ ok: true, enabled: runtime.isRunning() }))
+            .catch(() => respond({ ok: false }))
+          return true
+        }
+        if (message?.type === 'koba:open') {
+          ui.open()
+          respond({ ok: true })
+          return
+        }
+        if (message?.type === 'koba:open-feature' && message.id === feature.id) {
+          ui.open()
+          window.dispatchEvent(new CustomEvent(SHELL_OPEN_FEATURE_EVENT, { detail: { id: feature.id } }))
+          respond({ ok: true })
+          return
+        }
+        if (message?.type === 'koba:list') respond({ features: runtime.list() })
+      },
+    )
   }
   if (document.readyState === 'loading')
     document.addEventListener('DOMContentLoaded', () => void launch(), { once: true })

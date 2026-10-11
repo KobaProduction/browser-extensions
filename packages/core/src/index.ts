@@ -47,6 +47,12 @@ export class FeatureSettings {
   setEnabled(id: string, enabled: boolean) {
     return this.store.set(`features.${id}.enabled`, enabled)
   }
+  installationEnabled() {
+    return this.store.get('installation.enabled').then((value) => value !== false)
+  }
+  setInstallationEnabled(enabled: boolean) {
+    return this.store.set('installation.enabled', enabled)
+  }
 }
 export type FeatureStatus = {
   id: string
@@ -58,7 +64,10 @@ export type FeatureStatus = {
 export class FeatureRuntime {
   private readonly active = new Map<string, Feature>()
   private readonly status = new Map<string, FeatureStatus>()
+  private readonly listeners = new Set<() => void>()
   private started = false
+  private running = true
+  private operations: Promise<void> = Promise.resolve()
   constructor(
     readonly features: readonly Feature[],
     readonly context: FeatureContext,
@@ -71,9 +80,22 @@ export class FeatureRuntime {
       names.add(feature.id)
     }
   }
-  async start() {
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
+  }
+  private changed() {
+    for (const listener of [...this.listeners]) listener()
+  }
+  private transition(task: () => Promise<void>): Promise<void> {
+    const next = this.operations.then(task)
+    this.operations = next.catch(() => undefined)
+    return next
+  }
+  private async startNow() {
     if (this.started) return
     this.started = true
+    this.running = await this.context.settings.installationEnabled()
     for (const feature of this.features) {
       const base = { id: feature.id, title: feature.title, description: feature.description }
       if (!feature.match(this.context.url)) {
@@ -89,7 +111,7 @@ export class FeatureRuntime {
         })
         continue
       }
-      if (!(await this.context.settings.enabled(feature.id))) {
+      if (!this.running || !(await this.context.settings.enabled(feature.id))) {
         this.status.set(feature.id, { ...base, state: 'disabled' })
         continue
       }
@@ -100,6 +122,10 @@ export class FeatureRuntime {
         this.status.set(feature.id, { ...base, state: 'active' })
         void this.telemetry?.record('feature.started', feature.id, Date.now() - begin)
       } catch (error) {
+        // Failed starts can still have partial observers or DOM mounts.
+        try {
+          await feature.stop?.()
+        } catch {}
         this.status.set(feature.id, {
           ...base,
           state: 'failed',
@@ -108,8 +134,9 @@ export class FeatureRuntime {
         void this.telemetry?.record('feature.failed', feature.id)
       }
     }
+    this.changed()
   }
-  async stop() {
+  private async stopNow() {
     for (const f of [...this.active.values()].reverse())
       try {
         await f.stop?.()
@@ -117,6 +144,17 @@ export class FeatureRuntime {
       } catch {}
     this.active.clear()
     this.started = false
+    this.status.clear()
+    this.changed()
+  }
+  start(): Promise<void> {
+    return this.transition(() => this.startNow())
+  }
+  stop(): Promise<void> {
+    return this.transition(() => this.stopNow())
+  }
+  isRunning(): boolean {
+    return this.running
   }
   list(): FeatureStatus[] {
     return this.features.map(
@@ -134,13 +172,26 @@ export class FeatureRuntime {
     if (!feature) throw new Error(`Module is not active: ${id}`)
     await feature.open?.()
   }
-  async setEnabled(id: string, value: boolean) {
-    await this.context.settings.setEnabled(id, value)
-    await this.stop()
-    this.status.clear()
-    await this.start()
+  /** Completely detach provider hooks, observers and mounts, but retain the
+   * shared launcher/control panel so the installation can be re-enabled. */
+  setRunning(enabled: boolean): Promise<void> {
+    return this.transition(async () => {
+      await this.context.settings.setInstallationEnabled(enabled)
+      await this.stopNow()
+      await this.startNow()
+    })
+  }
+  setEnabled(id: string, value: boolean): Promise<void> {
+    if (!this.features.some((feature) => feature.id === id))
+      return Promise.reject(Error(`Unknown module ${id}`))
+    return this.transition(async () => {
+      await this.context.settings.setEnabled(id, value)
+      await this.stopNow()
+      await this.startNow()
+    })
   }
 }
+
 export function defaultCapabilities(_target: DeliveryTarget): ReadonlySet<Capability> {
   return new Set<Capability>(['page-dom', 'origin-storage', 'local-files'])
 }

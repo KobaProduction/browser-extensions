@@ -15,7 +15,7 @@ import {
 } from '@chatgpt-booster/core'
 import { SHELL_CLOSE_EVENT, instanceKey } from '@kobaproduction/browser-core'
 import {
-  Archive, ArrowUpToLine, Download, Ellipsis, Settings2, ShieldCheck, Square, Wrench,
+  Archive, ArrowUpToLine, Download, Ellipsis, Settings2, ShieldCheck, Square,
 } from 'lucide-vue-next'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ArchiveBrowser from '../../../../packages/ui/src/ArchiveBrowser.vue'
@@ -54,34 +54,6 @@ const fixedBusy = ref(false)
 const fixedError = ref('')
 const fixedCount = ref<number | null>(null)
 const fixedPreview = ref<readonly { id: string; text: string; coverage: string }[]>([])
-async function saveLegacyReadOnly(version: 'v3' | 'v4') {
-  const source = context.value?.fixedArchive
-  if (!source || !legacyBackupConfirmed.value || legacyBackupBusy.value) return
-  legacyBackupBusy.value = true
-  legacyBackupError.value = ''
-  try {
-    const blob = version === 'v3' ? await source.backupLegacyV3() : await source.backupLegacyV4()
-    if (!blob.size) throw Error('Empty historical source backup')
-    const url = URL.createObjectURL(blob)
-    try {
-      const link = document.createElement('a')
-      link.href = url
-      link.download = version === 'v3'
-        ? 'chatgpt-booster-0.8.92-native-v3-readonly.jsonl.gz'
-        : 'chatgpt-booster-native-v4-readonly.jsonl.gz'
-      link.click()
-    } finally {
-      setTimeout(() => URL.revokeObjectURL(url), 30_000)
-    }
-  } catch {
-    legacyBackupError.value = tr(
-      'Старая база не найдена или снимок не удалось создать. Исходные данные не изменены.',
-      'Historical database unavailable or export failed; source remains unchanged.',
-    )
-  } finally {
-    legacyBackupBusy.value = false
-  }
-}
 async function readFixedArchive() {
   const fixed = context.value?.fixedArchive
   if (!fixed || fixedBusy.value) return
@@ -143,10 +115,6 @@ async function exportFixedArchive() {
       'Dexie export failed. Original sources were not modified.')
   } finally { fixedBusy.value = false }
 }
-const maintenanceOpen = ref(false)
-const legacyBackupBusy = ref(false)
-const legacyBackupConfirmed = ref(false)
-const legacyBackupError = ref('')
 const archiveMenuOpen = ref(false)
 const archiveMenuArea = ref<HTMLElement | null>(null)
 const archiveInitial = ref<string | null>(null)
@@ -438,11 +406,6 @@ onBeforeUnmount(() => {
       <button class="booster-action-secondary" type="button" :aria-pressed="tab==='settings'" @click="tab='settings'">
         <Settings2 class="size-4" />{{ tr('Настройки', 'Settings') }}
       </button>
-      <button class="booster-action-secondary" type="button"
-        :aria-label="tr('Экспорт старых баз', 'Export historical databases')"
-        @click="archiveMenuOpen=false; maintenanceOpen=true">
-        <Wrench class="size-4" />{{ tr('Старые базы', 'Historical backups') }}
-      </button>
       <div ref="archiveMenuArea" class="booster-reader-tools" @keydown.esc.stop="archiveMenuOpen=false">
         <button class="booster-action-secondary" type="button"
           :aria-label="tr('Дополнительные действия с архивом', 'More archive actions')"
@@ -450,9 +413,6 @@ onBeforeUnmount(() => {
           <Ellipsis class="size-4" />{{ tr('Ещё', 'More') }}
         </button>
         <div v-if="archiveMenuOpen" class="booster-reader-tools-menu" role="menu">
-          <button type="button" role="menuitem" @click="archiveMenuOpen=false; maintenanceOpen=true">
-            <Wrench class="size-4" />{{ tr('Экспорт v3/v4 без изменений', 'Export v3/v4 read-only') }}
-          </button>
           <button type="button" role="menuitem" @click="openCapture()">
             <ShieldCheck class="size-4" />{{ tr('Правила сохранения', 'Capture rules') }}
           </button>
@@ -533,31 +493,5 @@ onBeforeUnmount(() => {
         :show-close="false" :embedded="true"
       />
     </template>
-    <section v-if="maintenanceOpen && context?.fixedArchive" class="booster-stack-card"
-      aria-label="Читающий экспорт прежних баз ChatGPT">
-      <b>{{ tr('Исторические базы — только экспорт', 'Historical databases — export only') }}</b>
-      <p>{{ tr('Нет переноса и удаления данных. Останови сбор в старом расширении перед резервной копией.',
-        'No migration or deletion. Stop old extension capture before exporting.') }}</p>
-      <label class="booster-field"><input v-model="legacyBackupConfirmed" type="checkbox"
-        :disabled="legacyBackupBusy" />
-        {{ tr('Понимаю, что копия может содержать переписки всех локальных владельцев.',
-          'I understand this file may include all local owners.') }}
-      </label>
-      <div class="flex flex-wrap gap-2">
-        <button type="button" class="booster-action-secondary"
-          :disabled="legacyBackupBusy || !legacyBackupConfirmed" @click="saveLegacyReadOnly('v3')">
-          {{ tr('Скачать 0.8.92 / v3', 'Export 0.8.92 / v3') }}
-        </button>
-        <button type="button" class="booster-action-secondary"
-          :disabled="legacyBackupBusy || !legacyBackupConfirmed" @click="saveLegacyReadOnly('v4')">
-          {{ tr('Скачать прежнюю v4', 'Export historical v4') }}
-        </button>
-        <button type="button" class="booster-action-secondary"
-          :disabled="legacyBackupBusy" @click="maintenanceOpen=false">
-          {{ tr('Закрыть', 'Close') }}
-        </button>
-      </div>
-      <p v-if="legacyBackupError" role="alert">{{ legacyBackupError }}</p>
-    </section>
   </section>
 </template>

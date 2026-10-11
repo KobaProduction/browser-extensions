@@ -1,5 +1,36 @@
 # Environments, identity and state/persistence contract
 
+## Clean Dexie-v1 baseline and live DEV/PROD lifecycle (owner decision 2026-10-11)
+
+**Current target is one provider-owned canonical Dexie database schema v1**
+for each new installation, representing the accepted ChatGPT v4-era archive
+content model. New capture, Reader, and export use this versioned fixed model,
+never the historical raw native v3/v4 stores. Upstream changes are handled
+by source adapters without mutating the canonical schema. No integrated
+legacy migration/import/read/backup service is to be shipped. Historical
+physical databases and old installations are **left entirely untouched**;
+their optional raw extraction/import will be designed separately by the owner.
+
+The product/channel/target is part of physical storage scope. For simultaneous
+DEV/PROD on the same host, module-enabled and installation-enabled switches
+are now stored using `instanceKey('koba-browser')` for Tampermonkey (same
+site origin), while MV3 uses its own extension ID and scoped keys. A disabled
+installation must retain only its minimal Control Center or popup for
+reactivation, removing provider listeners, DOM mounts and transport hooks.
+Its IndexedDB content is never cleared by a toggle. Every installed target
+may be switched back on **without page reload**; both running versions
+must be independently scoped.
+
+The injected MAIN-world observer must be passive until explicitly enabled
+by its own corresponding content runtime, and disposed when that installation
+is disabled. Hooks can coexist; a stopped instance must not restore a hook
+currently owned by another installed instance. True installed-browser
+multi-version coexistence requires separate acceptance beyond synthetic tests.
+
+This decision supersedes older text below requesting old v3/v4 migration
+services, shared settings namespaces, or VK v2 as the new primary archive.
+
+
 ## Dexie-first storage direction (newer owner decision 2026-10-11)
 
 New durable application data uses **fixed provider-owned Dexie schemas**, not automatic version chains. `packages/storage` exposes the generic Dexie-backed technical telemetry journal; ChatGPT and VK source modules now offer first-party, fixed-schema Dexie repositories for new messages and immutable original snapshots. Each physical store is scoped by product, channel and installation; owner is independently checked inside provider records. Do not silently open, rename, delete, convert or merge historical archives. The old statement below describing Dexie/Pinia only as a future target is **historical context** for the earlier runtime; it does not mean that every product's current capture engine has been switched to Dexie. Provider runtime cutover and installed-browser acceptance remain separate. OTLP transport can share an envelope and collector later, but no network collection is enabled by adding these stores.

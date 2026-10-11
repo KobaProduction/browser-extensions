@@ -1,5 +1,22 @@
 # Target architecture for Koba Browser Extensions
 
+## Current clean-storage and live-toggle direction (2026-10-11)
+
+Fixed canonical ChatGPT v4-era source model persists in **Dexie schema v1**.
+There is one active new-database Reader, Writer and exporter. No old v3/v4
+native IndexedDB migration/import/Reader or physical erase in this product.
+Historical recovery is an external owner-run process.
+
+The platform owns installation/channel/target activation and reversible
+hooks: DEV and PROD may run side by side, with separate settings, database
+and observer events. Each can be switched entirely off/on without page
+reload while retaining its small Control Center/popup. Host-specific MAIN
+transport interception remains at the provider boundary, but the
+activation/stop/cleanup contract belongs to the common feature runtime.
+This is the newest accepted target and supersedes older staged-migration
+plans in this document.
+
+
 ## New fixed-schema source persistence directive (2026-10-11)
 
 The owner has superseded automated v3/v4/canonical archive migration work. The agreed target is **immutable source snapshots + our own fixed canonical message/content schema + explicit upstream adapters**. Dexie is the first-choice application persistence adapter for new ChatGPT and VK records. Old standalone ChatGPT `0.8.92` records are recovered by one-time, read-only original-schema extraction; no automatic v3→v4 conversion is required. Historic v2 compatibility/migration paragraphs below document prior decisions and currently live code, not the desired future VK engine. The active VK 2.3.10 file-backed engine may only be retired after the new pipeline has passed acceptance; do not assert that replacement has already shipped. Common scoped OTLP transport follows completed Dexie runtime integration.

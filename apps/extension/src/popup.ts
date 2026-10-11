@@ -1,4 +1,4 @@
-export {}
+import { attachChromeInstallationToggle } from '@kobaproduction/browser-adapters'
 
 const button = document.getElementById('open') as HTMLButtonElement
 const status = document.getElementById('status') as HTMLElement
@@ -15,3 +15,5 @@ button.onclick = async () => {
     status.textContent = 'Откройте VK и обновите вкладку'
   }
 }
+
+attachChromeInstallationToggle(document.body, /^https:\/\/(?:vk\.ru|vk\.com)\/im/)

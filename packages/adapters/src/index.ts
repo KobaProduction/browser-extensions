@@ -1,28 +1,29 @@
 export { createArchiveFiles } from './folder-archive'
 
-import type { DeliveryTarget, SettingsStore } from '@kobaproduction/browser-core'
+import { type DeliveryTarget, instanceKey, type SettingsStore } from '@kobaproduction/browser-core'
 export function createSettingsStore(target: DeliveryTarget, namespace = 'koba-browser'): SettingsStore {
+  const scopedNamespace = instanceKey(namespace)
   if (target === 'chromium')
     return {
       async get(key) {
-        const data = await chrome.storage.local.get(`${namespace}:${key}`)
-        return data[`${namespace}:${key}`] as boolean | undefined
+        const data = await chrome.storage.local.get(`${scopedNamespace}:${key}`)
+        return data[`${scopedNamespace}:${key}`] as boolean | undefined
       },
       async set(key, enabled) {
-        await chrome.storage.local.set({ [`${namespace}:${key}`]: enabled })
+        await chrome.storage.local.set({ [`${scopedNamespace}:${key}`]: enabled })
       },
     }
   return {
     async get(key) {
       try {
-        const value = localStorage.getItem(`${namespace}:${key}`)
+        const value = localStorage.getItem(`${scopedNamespace}:${key}`)
         return value === null ? undefined : value === 'true'
       } catch {
         return undefined
       }
     },
     async set(key, enabled) {
-      localStorage.setItem(`${namespace}:${key}`, String(enabled))
+      localStorage.setItem(`${scopedNamespace}:${key}`, String(enabled))
     },
   }
 }
@@ -52,6 +53,7 @@ export function proxyAvailable(target: DeliveryTarget, granted: ReadonlySet<stri
   return target === 'chromium' && granted.has('proxy')
 }
 
+export { attachChromeInstallationToggle } from './installation-popup'
 export type { OtlpDeliveryConfiguration, OtlpRequest, OtlpSender } from './scoped-otlp'
 export {
   resolveOtlpLogsEndpoint,

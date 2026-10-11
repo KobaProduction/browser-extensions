@@ -1,5 +1,5 @@
 import { archiveSha256Hex, createGzipFromChunks, encodeArchiveClone } from '@kobaproduction/browser-archive'
-import { instanceKey, instanceScope } from '@kobaproduction/browser-core'
+import { instanceScope } from '@kobaproduction/browser-core'
 import { captureRuleForOperation, type BoosterModule, type SettingsAdapter } from '@chatgpt-booster/core'
 import { currentConversationId, hasConversationDraft, hasPendingComposerAttachments, isConversationGenerating } from '@chatgpt-booster/chatgpt'
 import type { DexieOptions } from 'dexie'
@@ -9,7 +9,6 @@ import { NATIVE_HISTORY_CONTRACT_VERSION } from './archive-source-contract'
 import { FixedCanonicalDexieRepository } from './archive-fixed-dexie'
 import type { ConversationStateStore } from './conversation-state'
 import { retainRawSource } from './archive-record-retention'
-import { exportLegacy092NativeV3, exportLegacyNativeV4 } from './archive-legacy092-extract'
 
 export interface FixedChatGptView {
   currentConversationId(): string | null
@@ -27,8 +26,6 @@ export interface FixedChatGptView {
   windowConversation(id: string, direction: 'older' | 'newer' | 'first', cursorId?: string): Promise<readonly { id: string; raw: Record<string, unknown>; observedAtMs: number }[]>
   collectCurrent(): Promise<void>
   stopCollection(): void
-  backupLegacyV3(): Promise<Blob>
-  backupLegacyV4(): Promise<Blob>
 }
 function scopeIdentity(label: string): { channel: 'dev' | 'prod'; installationId: string } {
   const compiled = instanceScope() || 'chatgpt-booster:prod'
@@ -162,12 +159,6 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
   }
   private enqueuePage?: (page: ConversationArchiveEventDetail) => void
   stopCollection() { this.collectionSession.pause('user') }
-  async backupLegacyV3(): Promise<Blob> {
-    return (await exportLegacy092NativeV3()).blob
-  }
-  async backupLegacyV4(): Promise<Blob> {
-    return (await exportLegacyNativeV4(instanceKey('chatgpt-booster-archive-v4', 'chatgpt-booster:prod'))).blob
-  }
   async completeCollection(run: ArchiveCollectionRun) {
     this.collectionSession.requireCurrent(run)
     this.collectionSession.update(run, { phase: 'saving', hasOlderServerHistory: false })

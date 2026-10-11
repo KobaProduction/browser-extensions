@@ -85,10 +85,14 @@ export function createChatGptBoosterFeature(
       window.removeEventListener(OPEN_ARCHIVE_EVENT, onArchive)
       window.removeEventListener(OPEN_SETTINGS_EVENT, onSettings)
       window.removeEventListener(OPEN_CAPTURE_SETTINGS_EVENT, onCapture)
-      await page.runtime.stop()
-      detachObserver?.()
-      detachObserver = null
-      early = null
+      try {
+        await page.runtime.stop()
+      } finally {
+        // Never leave MAIN-world interceptors installed on a failed teardown.
+        detachObserver?.()
+        detachObserver = null
+        early = null
+      }
     },
     open() {
       window.dispatchEvent(new CustomEvent(SHELL_OPEN_FEATURE_EVENT, { detail: { id: 'chatgpt-booster' } }))

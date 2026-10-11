@@ -1,5 +1,20 @@
 # ChatGPT Booster
 
+## Clean Dexie v1 runtime and external-only legacy recovery (2026-10-11)
+
+**New decision supersedes older migration/export references below.** The
+canonical v4-era ChatGPT content model is saved in fixed **Dexie schema v1**;
+it is the only active Writer, Reader and archive export. The live Booster
+no longer contains user-facing legacy v3/v4 backup/export/migration paths.
+Physical historical IndexedDB storage is **not deleted, updated or opened**.
+Optional original-source extraction, one-off import and adaptation will be
+handled separately by the owner, outside this code path.
+
+The shared installation toggle can stop and restart all ChatGPT injection,
+observation and UI modules without page reload. DEV/PROD and all-in-one use
+distinct product/channel/target namespaces. Remote OTLP remains deferred.
+
+
 ## Fixed canonical model and 0.8.92 recovery direction (2026-10-11)
 
 The current implementation direction is fixed `CanonicalMessageProjection` v1 and `CanonicalContentElement` plus immutable original source evidence in a separate Dexie archive repository. ChatGPT upstream formats are handled by adapter code, **not by changing the stored schema or chaining archive generation migrations**. The historical stable `0.8.92` v3 database must first be read-only exported with its original unknown fields, primary keys and binary values. `0.8.98` remains an experimental source reference, not a release. Existing manual migration UI/services remain old source evidence and are not authorized automatic work. New code and tests do not prove real browser extraction or import. See Issue #11 and the provider archive target document.

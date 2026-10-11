@@ -2,7 +2,7 @@
 import type { FeatureRuntime } from '@kobaproduction/browser-core'
 import { Badge, Button } from '@kobaproduction/browser-ui'
 import { BarChart3, FolderArchive, SlidersHorizontal, Wrench, X } from 'lucide-vue-next'
-import { type Component, computed, ref, watch } from 'vue'
+import { type Component, computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const props = defineProps<{
   runtime: FeatureRuntime
@@ -18,11 +18,48 @@ watch(
     section.value = value
   },
 )
-const statuses = computed(() => props.runtime.list())
+const revision = ref(0)
+let unsubscribe: (() => void) | undefined
+onMounted(() => {
+  unsubscribe = props.runtime.subscribe(() => {
+    revision.value++
+  })
+})
+onBeforeUnmount(() => unsubscribe?.())
+const statuses = computed(() => {
+  void revision.value
+  return props.runtime.list()
+})
+const installationActive = computed(() => {
+  void revision.value
+  return props.runtime.isRunning()
+})
+const changing = ref(false)
+const changeError = ref('')
+async function toggleInstallation() {
+  if (changing.value) return
+  changing.value = true
+  changeError.value = ''
+  try {
+    await props.runtime.setRunning(!installationActive.value)
+  } catch {
+    changeError.value = 'Не удалось изменить состояние установки'
+  } finally {
+    changing.value = false
+  }
+}
 const activeFeatures = computed(() => statuses.value.filter((s) => s.state === 'active'))
 const currentView = computed(() => props.views[section.value])
 async function enable(id: string, enabled: boolean) {
-  await props.runtime.setEnabled(id, enabled)
+  changing.value = true
+  changeError.value = ''
+  try {
+    await props.runtime.setEnabled(id, enabled)
+  } catch {
+    changeError.value = 'Не удалось изменить состояние модуля'
+  } finally {
+    changing.value = false
+  }
 }
 function selectSection(id: string) {
   section.value = id
@@ -43,6 +80,12 @@ function openModule(id: string) {
         <p>Модульные инструменты браузера</p>
       </div>
       <div class="booster-header-actions">
+        <button type="button" class="booster-switch"
+          :class="{ 'booster-switch-on': installationActive }"
+          :disabled="changing" :aria-pressed="installationActive"
+          :aria-label="installationActive ? 'Полностью выключить установку' : 'Включить установку'"
+          @click="toggleInstallation"><span/></button>
+        <Badge variant="secondary">{{installationActive ? 'Установка включена' : 'Установка выключена'}}</Badge>
         <Badge variant="secondary">{{activeFeatures.length}} активен</Badge>
         <Button variant="ghost" size="icon" class="size-8" title="Закрыть" @click="emit('close')"><X class="size-4"/></Button>
       </div>
@@ -67,6 +110,7 @@ function openModule(id: string) {
         </button>
       </nav>
       <main class="booster-settings-content">
+        <p v-if="changeError" role="alert">{{changeError}}</p>
         <template v-if="section==='modules'">
           <section v-for="feature in statuses" :key="feature.id" class="booster-setting-card">
             <div class="booster-setting-copy">
@@ -82,7 +126,7 @@ function openModule(id: string) {
               <button
                 type="button" class="booster-switch"
                 :class="{'booster-switch-on':feature.state==='active'}"
-                :disabled="feature.state==='unsupported'"
+                :disabled="changing || !installationActive || feature.state==='unsupported'"
                 :aria-pressed="feature.state==='active'"
                 :aria-label="'Включить '+feature.title"
                 @click="enable(feature.id,feature.state!=='active')"

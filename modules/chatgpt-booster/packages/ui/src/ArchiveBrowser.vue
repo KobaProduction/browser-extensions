@@ -7,18 +7,14 @@ import Brain from 'lucide-vue-next/dist/esm/icons/brain.js'
 import ChevronDown from 'lucide-vue-next/dist/esm/icons/chevron-down.js'
 import ChevronRight from 'lucide-vue-next/dist/esm/icons/chevron-right.js'
 import Database from 'lucide-vue-next/dist/esm/icons/database.js'
-import Download from 'lucide-vue-next/dist/esm/icons/download.js'
 import GitBranch from 'lucide-vue-next/dist/esm/icons/git-branch.js'
 import GripHorizontal from 'lucide-vue-next/dist/esm/icons/grip-horizontal.js'
 import LoaderCircle from 'lucide-vue-next/dist/esm/icons/loader-circle.js'
 import Minus from 'lucide-vue-next/dist/esm/icons/minus.js'
-import MoreHorizontal from 'lucide-vue-next/dist/esm/icons/ellipsis.js'
-import Wrench from 'lucide-vue-next/dist/esm/icons/wrench.js'
 import RefreshCw from 'lucide-vue-next/dist/esm/icons/refresh-cw.js'
 import X from 'lucide-vue-next/dist/esm/icons/x.js'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ArchiveRecord from './ArchiveRecord.vue'
-import ArchiveMaintenanceWidget from './ArchiveMaintenanceWidget.vue'
 import ArchiveFlowGraph from './ArchiveFlowGraph.vue'
 import {
   archiveConversationForest,
@@ -60,53 +56,6 @@ const conversations = ref<ArchiveConversationView[]>([])
 // Archive tools are intentionally opt-in. Opening the Reader never scans the
 // legacy database or displays migration controls unprompted.
 const accountPending = ref(!props.archiveAdapter.currentAccountId?.())
-const toolsMenuOpen = ref(false)
-const toolsArea = ref<HTMLElement | null>(null)
-function closeToolsOnOutsidePress(event: PointerEvent) {
-  if (toolsMenuOpen.value && toolsArea.value &&
-      !event.composedPath().includes(toolsArea.value))
-    toolsMenuOpen.value = false
-}
-function closeMaintenance() {
-  maintenanceOpen.value = false
-  void nextTick(() => toolsArea.value?.querySelector('button')?.focus())
-}
-const maintenanceOpen = ref(false)
-const recoveredSelected = ref(false)
-const archiveToolError = ref('')
-function openMaintenance() {
-  toolsMenuOpen.value = false
-  maintenanceOpen.value = true
-}
-function afterMaintenance() {
-  void refresh()
-}
-async function downloadRecovered(format: 'json' | 'markdown' | 'json-gzip' = 'json') {
-  toolsMenuOpen.value = false
-  if (!selectedId.value || !props.archiveAdapter.exportRecoveredConversation) return
-  archiveToolError.value = ''
-  try {
-    const id = selectedId.value
-    const owner = props.archiveAdapter.currentAccountId?.()
-    if (!owner) return
-    const blob = await props.archiveAdapter.exportRecoveredConversation(id, format)
-    if (!blob || props.archiveAdapter.currentAccountId?.() !== owner || selectedId.value !== id) return
-    const url = URL.createObjectURL(blob)
-    try {
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `booster-recovered-partial.${format === 'markdown' ? 'md' : format === 'json-gzip' ? 'json.gz' : 'json'}`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-    } finally {
-      setTimeout(() => URL.revokeObjectURL(url), 30_000)
-    }
-  } catch (cause) {
-    archiveToolError.value = cause instanceof Error ? cause.message
-      : (props.locale === 'ru' ? 'Не удалось выгрузить архив.' : 'Archive download failed.')
-  }
-}
 const projects = ref<ArchiveProjectView[]>([])
 const selectedId = ref<string | null>(props.initialConversationId ?? null)
 const thread = ref<ArchiveThreadView>({ turns: [], messageCount: 0, recordCount: 0, detailCount: 0 })
@@ -219,7 +168,7 @@ const emptyArchiveMessage = computed(() =>
   props.archiveAdapter.archiveGeneration === 4
     ? props.locale === 'ru'
       ? 'Этот архив пока не содержит записей. Данные предыдущего архива не удалены; для их переноса требуется проверенная миграция.'
-      : 'This archive has no records yet. Previous archive data has not been deleted; a verified migration is required to transfer it.'
+      : 'This archive has no records yet. Older databases are not read by this version.'
     : t('reader.empty'),
 )
 
@@ -568,9 +517,6 @@ async function navigateToNode(index: number) {
   }
   onReadingScroll()
 }
-watch(selectedId, async (id) => {
-  recoveredSelected.value = !!id && !!(await props.archiveAdapter.isRecoveredConversation?.(id))
-})
 watch(textSearch, () => { if (!suppressSearchReset) void resetReadingPosition() })
 watch(readingOrder, () => {
   if (requestedMessageId.value && !textSearch.value) void focusMessage(requestedMessageId.value).catch(() => undefined)
@@ -739,8 +685,6 @@ onMounted(async () => {
       selectedId.value = null
       initialized = false
       current = next
-      maintenanceOpen.value = false
-      toolsMenuOpen.value = false
       if (nextOwner) void refresh().catch(() => undefined)
       return
     }
@@ -754,15 +698,13 @@ onMounted(async () => {
     void loadThread(next)
   }
   window.addEventListener(ARCHIVE_UPDATED_EVENT, refreshConversationTitles)
-  window.addEventListener('pointerdown', closeToolsOnOutsidePress, true)
-  // Subscribe BEFORE the initial asynchronous Reader request. Native ChatGPT
+    // Subscribe BEFORE the initial asynchronous Reader request. Native ChatGPT
   // may confirm the account while that request is still pending.
   if (props.archiveAdapter.subscribeContextChange)
     contextUnsubscribe = props.archiveAdapter.subscribeContextChange(syncContext)
   else contextFallbackTimer = setInterval(syncContext, 450)
   await refresh()
   if (!alive) return
-  recoveredSelected.value = !!selectedId.value && !!(await props.archiveAdapter.isRecoveredConversation?.(selectedId.value))
   if (!alive) return
   if (alive) syncContext()
 })
@@ -776,8 +718,7 @@ onBeforeUnmount(() => {
   windowShiftRevision++
   contextUnsubscribe?.()
   window.removeEventListener(ARCHIVE_UPDATED_EVENT, refreshConversationTitles)
-  window.removeEventListener('pointerdown', closeToolsOnOutsidePress, true)
-  if (readFocusFrame !== null) cancelAnimationFrame(readFocusFrame)
+    if (readFocusFrame !== null) cancelAnimationFrame(readFocusFrame)
   if (contextFallbackTimer) clearInterval(contextFallbackTimer)
 })
 </script>
@@ -792,37 +733,12 @@ onBeforeUnmount(() => {
       </div>
       <div class="booster-header-actions">
         <button v-if="canReturnToExport" type="button" class="booster-action-secondary" @click="emit('returnExport')"><ArrowLeft class="size-4" />{{ t('reader.returnExport') }}</button>
-        <div ref="toolsArea" class="booster-reader-tools" @keydown.esc.stop="toolsMenuOpen = false">
-          <button type="button" class="booster-icon-button"
-            :aria-label="locale === 'ru' ? 'Меню архива' : 'Archive menu'"
-            :title="locale === 'ru' ? 'Меню архива' : 'Archive menu'"
-            :aria-expanded="toolsMenuOpen" @click="toolsMenuOpen = !toolsMenuOpen">
-            <MoreHorizontal class="size-5" />
-          </button>
-          <div v-if="toolsMenuOpen" class="booster-reader-tools-menu" role="menu">
-            <button v-if="archiveAdapter.startArchiveMigration || archiveAdapter.exportNativeSourceBackup" type="button" role="menuitem" @click="openMaintenance">
-              <Wrench class="size-4" />{{ locale === 'ru' ? 'Управление архивом' : 'Manage archive' }}
-            </button>
-            <template v-if="recoveredSelected">
-              <button type="button" role="menuitem" @click="downloadRecovered('markdown')">
-                <Download class="size-4" />{{ locale === 'ru' ? 'Markdown (неполный)' : 'Markdown (partial)' }}
-              </button>
-              <button type="button" role="menuitem" @click="downloadRecovered('json-gzip')">
-                <Download class="size-4" />{{ locale === 'ru' ? 'JSON.gz (сжатый, неполный)' : 'JSON.gz (compressed partial)' }}
-              </button>
-              <button type="button" role="menuitem" @click="downloadRecovered('json')">
-                <Download class="size-4" />{{ locale === 'ru' ? 'JSON (неполный)' : 'JSON (partial)' }}
-              </button>
-            </template>
-          </div>
-        </div>
         <button type="button" class="booster-icon-button" :disabled="listLoading" :title="t('reader.refresh')" :aria-label="t('reader.refresh')" @click="retryLocation"><RefreshCw class="size-4" /></button>
         <button v-if="windowed" type="button" class="booster-icon-button" :title="t('reader.minimize')" :aria-label="t('reader.minimize')" @click="emit('minimize')"><Minus class="size-4" /></button>
         <button type="button" class="booster-icon-button" :aria-label="t('reader.close')" @click="emit('close')"><X class="size-4" /></button>
       </div>
     </header>
 
-    <p v-if="archiveToolError" role="alert" class="booster-error">{{ archiveToolError }}</p>
     <p v-if="accountPending" role="status" class="booster-note">{{ locale === 'ru'
       ? 'Ожидание подтверждения аккаунта ChatGPT…'
       : 'Waiting for ChatGPT account verification…' }}</p>
@@ -951,8 +867,6 @@ onBeforeUnmount(() => {
         </div>
       </main>
     </div>
-    <ArchiveMaintenanceWidget v-if="maintenanceOpen && (archiveAdapter.startArchiveMigration || archiveAdapter.exportNativeSourceBackup)"
-      :archive-adapter="archiveAdapter" :locale="locale"
-      @close="closeMaintenance" @updated="afterMaintenance" />
+
   </div>
 </template>

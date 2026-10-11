@@ -1,5 +1,21 @@
 # Backup, import, restore and portability
 
+## Clean archive baseline; old-source migration is external (2026-10-11)
+
+The active ChatGPT Booster is **Dexie v1 only** (fixed canonical v4-era data
+model) and does **not** ship original v3/v4 database readers, backups,
+importers or migration controls. Existing native v3/v4 IndexedDB objects
+must remain untouched, not deleted or upgraded. The owner will work on
+optional raw IndexedDB extraction/import through a **separate script/chat**;
+do not carry that legacy workflow into the new runtime.
+
+Future archive backup and restore belong to the canonical scoped Dexie
+schema with explicit independent archive/settings/media sections, validation
+and rollback. This work is not yet accepted and is not an excuse to recreate
+the old migration machinery. The older provisions below describe historical
+requirements only where they reference v3/v4 migration/read/export.
+
+
 ## User-selected native backups, not migration engines (new owner decision 2026-10-11)
 
 The **only historical ChatGPT data-recovery path requested now** is a non-destructive read-only export of the installed stable `0.8.92` native v3 IndexedDB, with exact source records and structured-clone values. The owner may provide the resulting backup for a separately validated one-off import into the fixed canonical Dexie model; there is **no requirement to automatically migrate source v3/v4 generations, switch canonical generations or guess missing API data**. Existing historic backup/migration features below remain implementation history and must not run without separate owner initiation. VK future capture is a new fixed Dexie model; no v2→v1 migration pipeline is being built.
