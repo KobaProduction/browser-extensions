@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VK Booster [DEV]
 // @namespace    https://github.com/KobaProduction/browser-extensions/dev/vk-booster
-// @version      2.3.38
+// @version      1.0.39
 // @description  Koba Browser Tools / VK Booster
 // @homepageURL   https://github.com/KobaProduction/browser-extensions
 // @updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/vk-booster.user.js
@@ -6357,37 +6357,6 @@
       return Dexie$12;
     });
   });
-  function createArchiveFiles(getRoot) {
-    async function json(name) {
-      try {
-        const file = await getRoot().getFileHandle(name);
-        return JSON.parse(await (await file.getFile()).text());
-      } catch (error) {
-        if (error?.name === "NotFoundError")
-          return null;
-        throw error;
-      }
-    }
-    async function write(name, data, parent = getRoot()) {
-      const file = await parent.getFileHandle(name, { create: true });
-      const writer = await file.createWritable();
-      try {
-        const payload = data instanceof Uint8Array ? new Uint8Array(data) : typeof data === "string" || data instanceof Blob ? data : JSON.stringify(data, null, 2) + `
-`;
-        await writer.write(payload);
-        await writer.close();
-      } catch (error) {
-        await writer.abort().catch(() => {
-          return;
-        });
-        throw error;
-      }
-    }
-    async function dir(name, parent = getRoot()) {
-      return parent.getDirectoryHandle(name, { create: true });
-    }
-    return { json, write, dir };
-  }
   var import_dexie$1 = __toESM$1(require_dexie$1());
   var DexieSymbol$2 = /* @__PURE__ */ Symbol.for("Dexie");
   var Dexie$2 = globalThis[DexieSymbol$2] || (globalThis[DexieSymbol$2] = import_dexie$1.default);
@@ -6422,198 +6391,15 @@
       }
     };
   }
-  function foldArchivePage(records, index, options) {
-    const remaining = options.remaining ?? Infinity;
-    if (!(remaining === Infinity || Number.isSafeInteger(remaining) && remaining >= 0))
-      throw new Error("Archive page remaining target must be a non-negative integer");
-    const result = {
-      consumed: 0,
-      matched: 0,
-      inserted: 0,
-      skipped: 0,
-      stopReason: null
-    };
-    if (remaining === 0) {
-      result.stopReason = "target_reached";
-      return result;
-    }
-    for (const row of records) {
-      result.consumed++;
-      if (options.skip?.(row)) {
-        result.skipped++;
-        continue;
-      }
-      if (options.stop?.(row)) {
-        result.stopReason = "range_end";
-        break;
-      }
-      const id = options.identity(row);
-      if (typeof id === "number" && !Number.isSafeInteger(id) || typeof id === "string" && !id)
-        throw new Error("Archive record identity is invalid");
-      const known = index.has(id) || options.isKnown?.(id) === true;
-      const existing = index.get(id);
-      if (known) {
-        if (options.mode === "snapshot" && options.same && existing !== void 0 && !options.same(existing, row))
-          throw new Error("Conflicting native record with the same archive identity");
-        if (options.mode === "incremental") {
-          result.stopReason = "known_record";
-          break;
-        }
-        if (options.mode === "backfill" || options.mode === "snapshot") {
-          result.skipped++;
-          continue;
-        }
-      } else {
-        index.set(id, row);
-        result.inserted++;
-      }
-      result.matched++;
-      if (result.matched >= remaining) {
-        result.stopReason = "target_reached";
-        break;
-      }
-    }
-    return result;
-  }
-  function selectArchivePage(input) {
-    if (!Number.isSafeInteger(input.remaining) || input.remaining < 0)
-      throw new Error("Invalid archive page selection limit");
-    if ((input.fromInclusive != null || input.toExclusive != null) && !input.timestampOf)
-      throw new Error("Timestamp accessor required for date-filtered selection");
-    const added = /* @__PURE__ */ new Map();
-    const timestamp = (record2) => {
-      const value = input.timestampOf?.(record2);
-      if (value == null || !Number.isFinite(value))
-        throw new Error("Invalid archive source timestamp");
-      return value;
-    };
-    const toExclusive = input.toExclusive;
-    const fromInclusive = input.fromInclusive;
-    const result = foldArchivePage(input.records, added, {
-      mode: input.mode,
-      identity: (record2) => {
-        const id = input.keyOf(record2);
-        if (!id)
-          throw new Error("Empty archive source record identity");
-        return id;
-      },
-      isKnown: (id) => input.knownKeys.has(id),
-      remaining: input.remaining,
-      ...toExclusive != null ? { skip: (record2) => timestamp(record2) >= toExclusive } : {},
-      ...fromInclusive != null ? { stop: (record2) => timestamp(record2) < fromInclusive } : {}
-    });
-    return {
-      consumed: result.consumed,
-      matched: result.matched,
-      added: [...added.values()],
-      boundaryReached: result.stopReason === "known_record" || result.stopReason === "range_end"
-    };
-  }
-  async function readArchiveMedia(response, options) {
-    const { maxBytes, expectedBytes = null } = options;
-    if (!Number.isSafeInteger(maxBytes) || maxBytes < 1)
-      throw new Error("Invalid media limit");
-    if (expectedBytes !== null && (!Number.isSafeInteger(expectedBytes) || expectedBytes < 0))
-      throw new Error("Invalid expected media size");
-    if (!response.ok)
-      throw new Error("Media HTTP " + response.status);
-    const mime = (response.headers.get("content-type") || "application/octet-stream").split(";", 1)[0] ?? "application/octet-stream".trim().toLowerCase();
-    if (mime === "text/html" || mime === "application/xhtml+xml")
-      throw new Error("HTML returned instead of media");
-    const lengthHeader = response.headers.get("content-length");
-    if (lengthHeader !== null && /^\d+$/.test(lengthHeader) && Number(lengthHeader) > maxBytes)
-      throw new Error("Media exceeds size limit");
-    if (!response.body)
-      throw new Error("Missing media stream");
-    const reader = response.body.getReader();
-    const chunks = [];
-    let size = 0, complete = false;
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          complete = true;
-          break;
-        }
-        size += value.byteLength;
-        if (size > maxBytes)
-          throw new Error("Media exceeds size limit");
-        chunks.push(value);
-      }
-    } finally {
-      if (!complete)
-        await reader.cancel().catch(() => {
-          return;
-        });
-      reader.releaseLock();
-    }
-    if (!size || expectedBytes !== null && size !== expectedBytes)
-      throw new Error("Invalid original media size");
-    const bytes = new Uint8Array(size);
-    let offset = 0;
-    for (const chunk of chunks) {
-      bytes.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
-    const sha256 = Array.from(digest, (x) => x.toString(16).padStart(2, "0")).join("");
-    return { bytes, size, sha256, mime };
-  }
-  async function scanLinearArchive(options) {
-    if (!Number.isSafeInteger(options.target) || options.target < 1 || !Number.isSafeInteger(options.pageSize) || options.pageSize < 1 || !Number.isSafeInteger(options.initial.offset) || options.initial.offset < 0 || !Number.isSafeInteger(options.initial.matched) || options.initial.matched < 0 || options.initial.matched > options.target || !Number.isSafeInteger(options.initial.scanned) || options.initial.scanned < 0 || !Number.isSafeInteger(options.initial.newCount) || options.initial.newCount < 0)
-      throw new Error("Invalid linear archive scan state");
-    let state = { ...options.initial };
-    let sourceTotal = null;
-    let exhausted = state.matched >= options.target;
-    while (!options.stopped() && state.matched < options.target) {
-      const page = await options.source.readPage(state.offset, options.pageSize);
-      if (!page || !Array.isArray(page.items) || !Number.isSafeInteger(page.count) || page.count < 0)
-        throw new Error("Invalid linear archive source page");
-      sourceTotal = page.count;
-      if (!page.items.length || state.offset >= page.count) {
-        exhausted = true;
-        break;
-      }
-      const selection = selectArchivePage({
-        mode: options.mode,
-        records: page.items,
-        knownKeys: options.knownKeys,
-        keyOf: options.keyOf,
-        timestampOf: options.timestampOf,
-        fromInclusive: options.fromInclusive,
-        toExclusive: options.toExclusive,
-        remaining: options.target - state.matched
-      });
-      if (selection.consumed === 0)
-        throw new Error("Linear archive scan made no progress");
-      const next = {
-        offset: state.offset + selection.consumed,
-        matched: state.matched + selection.matched,
-        scanned: state.scanned + selection.consumed,
-        newCount: state.newCount + selection.added.length
-      };
-      await options.commit({ selection, previous: state, next, sourceTotal: page.count });
-      for (const item of selection.added)
-        options.knownKeys.add(options.keyOf(item));
-      state = next;
-      if (selection.boundaryReached || state.offset >= page.count || page.items.length < options.pageSize || state.matched >= options.target) {
-        exhausted = true;
-        break;
-      }
-      if (!options.stopped())
-        await options.delay?.();
-    }
-    return { state, sourceTotal, paused: options.stopped(), exhausted };
-  }
   var safeBytes = (buffer) => buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
   function toBase64(data) {
     const bytes = safeBytes(data);
     const parts = [];
     for (let offset = 0; offset < bytes.length; offset += 32766) {
-      let text2 = "";
+      let text = "";
       for (const byte of bytes.subarray(offset, offset + 32766))
-        text2 += String.fromCharCode(byte);
-      parts.push(btoa(text2));
+        text += String.fromCharCode(byte);
+      parts.push(btoa(text));
     }
     return parts.join("");
   }
@@ -6713,8 +6499,8 @@
           if (next.done)
             controller.close();
           else {
-            const safe2 = next.value.buffer instanceof ArrayBuffer ? next.value : new Uint8Array(next.value);
-            controller.enqueue(safe2);
+            const safe = next.value.buffer instanceof ArrayBuffer ? next.value : new Uint8Array(next.value);
+            controller.enqueue(safe);
           }
         } catch (error) {
           controller.error(error);
@@ -6744,174 +6530,6 @@
       reader.releaseLock();
     }
     return new Blob(parts, { type: "application/gzip" });
-  }
-  const record$1 = (v) => v !== null && typeof v === "object" && !Array.isArray(v) ? v : {};
-  const text = (v) => typeof v === "string" ? v : "";
-  const number = (v) => typeof v === "number" && Number.isFinite(v) ? v : null;
-  const items = (v) => Array.isArray(v) ? v : [];
-  function safe(value) {
-    const raw = String(value || "file").normalize("NFC").replace(/[\\/:*?"<>|\p{Cc}]/gu, "_").replace(/^\.+/, "_").trim();
-    let out = "", n = 0;
-    for (const ch of raw) {
-      const m = new TextEncoder().encode(ch).length;
-      if (n + m > 150) break;
-      out += ch;
-      n += m;
-    }
-    return out || "file";
-  }
-  const ext = (s, fallback = "bin") => String(s || fallback).replace(/[^a-zA-Z0-9]/g, "").toLowerCase() || fallback;
-  const join = (...parts) => parts.join("/");
-  function assets(message) {
-    const out = [];
-    function descend(n, ctx, depth) {
-      if (depth > 8) return;
-      for (const [i, att] of (n.attachments || []).entries()) {
-        const type = att.type || "unknown";
-        const v = record$1(att[type]), key = [message.id, ctx, i, type].join(":");
-        const choices = [];
-        const add2 = (url, name, size = null) => {
-          if (typeof url === "string" && /^https?:\/\//i.test(url))
-            choices.push({ url, name: safe(name), size: number(size) });
-        };
-        if (type === "doc" && (record$1(v.preview).audio_msg || v.type === 5)) {
-          const a = record$1(record$1(v.preview).audio_msg);
-          add2(a.link_ogg, "Голосовое.ogg");
-          add2(a.link_mp3, "Голосовое.mp3");
-          if (!choices.length) add2(v.url, "Голосовое." + ext(v.ext, "ogg"), v.size);
-        } else if (type === "doc") {
-          const title = text(v.title), extension = ext(v.ext);
-          add2(
-            v.url,
-            safe(title || "Документ") + (title.toLowerCase().endsWith("." + extension) ? "" : "." + extension),
-            v.size
-          );
-        } else if (type === "photo") {
-          const sizes = items(v.sizes).map(record$1).filter((s) => text(s.url)).sort(
-            (a, b) => (number(b.width) || 0) * (number(b.height) || 0) - (number(a.width) || 0) * (number(a.height) || 0)
-          );
-          const url = text(sizes[0]?.url);
-          add2(url, "Фото." + ext(url.split("?")[0]?.match(/\.([a-z0-9]{3,4})$/i)?.[1], "jpg"));
-        } else if (type === "audio_message") {
-          add2(v.link_ogg, "Голосовое.ogg");
-          add2(v.link_mp3, "Голосовое.mp3");
-        } else if (type === "audio") add2(v.url, "Аудио.mp3");
-        else if (type === "graffiti") add2(v.url, "Граффити.png");
-        else if (type === "sticker") {
-          const images = items(v.images_with_background || v.images).map(record$1);
-          add2(images.at(-1)?.url, "Стикер.png");
-        } else if (type === "video") {
-          const files = Object.entries(record$1(v.files)).filter(([k, url]) => /^mp4_\d+$/.test(k) && typeof url === "string").sort(([a], [b]) => parseInt(b.slice(4), 10) - parseInt(a.slice(4), 10));
-          add2(files[0]?.[1], "Видео.mp4");
-        }
-        out.push({
-          key,
-          rootId: message.id,
-          type,
-          choices,
-          sourceId: n.id ?? null,
-          context: ctx,
-          external: type === "link" && /^https?:\/\//i.test(text(v.url)) ? text(v.url) : null,
-          transcript: type === "audio_message" ? text(v.transcript) || null : type === "doc" ? text(record$1(record$1(v.preview).audio_msg).transcript) || null : null
-        });
-      }
-      if (n.reply_message) descend(n.reply_message, ctx + ".reply", depth + 1);
-      for (const [i, f] of (n.fwd_messages || []).entries()) descend(f, ctx + ".fwd" + i, depth + 1);
-    }
-    descend(message, "root", 0);
-    return out;
-  }
-  async function download(asset, { meta, dir, write, sleep, verifyContext }) {
-    verifyContext();
-    const prev = meta.files[asset.key];
-    if (prev?.status === "saved" && prev.name) {
-      try {
-        const target = await dir(String(asset.rootId), await dir("media"));
-        verifyContext();
-        const file = await (await target.getFileHandle(prev.name)).getFile();
-        verifyContext();
-        if (file.size === prev.size) {
-          if (!prev.sha256) return "existing";
-          if (file.size > 64 * 1048576) throw Error("Stored media exceeds verification limit");
-          if (!/^[0-9a-f]{64}$/.test(prev.sha256))
-            throw Error("Stored media receipt contains an invalid SHA-256");
-          const buffer = await file.arrayBuffer();
-          verifyContext();
-          const hash = Array.from(
-            new Uint8Array(await crypto.subtle.digest("SHA-256", buffer)),
-            (byte) => byte.toString(16).padStart(2, "0")
-          ).join("");
-          verifyContext();
-          if (hash === prev.sha256) return "existing";
-        }
-      } catch (error) {
-        verifyContext();
-        if (!(error instanceof Error) || error.name !== "NotFoundError") throw error;
-      }
-    }
-    const result = {
-      type: asset.type,
-      message_id: asset.rootId,
-      source_id: asset.sourceId,
-      status: "unavailable"
-    };
-    if (asset.type === "link") {
-      verifyContext();
-      result.status = "link";
-      meta.files[asset.key] = result;
-      return "link";
-    }
-    let failures = 0;
-    for (const candidate of asset.choices) {
-      try {
-        verifyContext();
-        const response = await fetch(candidate.url, {
-          method: "GET",
-          credentials: "omit",
-          signal: AbortSignal.timeout(6e4)
-        });
-        verifyContext();
-        const payload = await readArchiveMedia(response, {
-          maxBytes: 64 * 1048576,
-          expectedBytes: candidate.size
-        });
-        verifyContext();
-        const media = await dir(String(asset.rootId), await dir("media"));
-        verifyContext();
-        let name = candidate.name, index = 2;
-        const occupied = new Set(
-          Object.entries(meta.files).filter(
-            ([key, file]) => key !== asset.key && file.message_id === asset.rootId && file.status === "saved"
-          ).map(([, file]) => file.name)
-        );
-        while (occupied.has(name)) {
-          const dot = candidate.name.lastIndexOf(".");
-          name = dot > 0 ? candidate.name.slice(0, dot) + " (" + index++ + ")" + candidate.name.slice(dot) : candidate.name + " (" + index++ + ")";
-        }
-        verifyContext();
-        await write(name, payload.bytes, media);
-        verifyContext();
-        Object.assign(result, {
-          status: "saved",
-          name,
-          size: payload.size,
-          sha256: payload.sha256,
-          path: join("media", String(asset.rootId), name),
-          mime: payload.mime
-        });
-        meta.files[asset.key] = result;
-        return "saved";
-      } catch {
-        verifyContext();
-      }
-      failures++;
-      await sleep(300);
-      verifyContext();
-    }
-    verifyContext();
-    if (failures) result.status = "failed";
-    meta.files[asset.key] = result;
-    return result.status;
   }
   const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value) ? value : null;
   function isHistory(value) {
@@ -13273,15 +12891,15 @@
     }
   }
   var FORMAT = "koba-settings-backup-v1";
-  var MAX_BYTES = 512 * 1024;
+  var MAX_BYTES$1 = 512 * 1024;
   var isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
-  async function checksum(text2) {
-    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text2));
+  async function checksum(text) {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
     return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
   }
   function settingsJson(value) {
     const valueJson = JSON.stringify(value);
-    if (typeof valueJson !== "string" || valueJson.length === 0 || valueJson.length > MAX_BYTES)
+    if (typeof valueJson !== "string" || valueJson.length === 0 || valueJson.length > MAX_BYTES$1)
       throw new Error("Settings backup payload is invalid or oversized");
     return valueJson;
   }
@@ -13304,12 +12922,12 @@
       checksum: await checksum(JSON.stringify(body))
     };
     const raw = JSON.stringify(backup);
-    if (new TextEncoder().encode(raw).byteLength > MAX_BYTES)
+    if (new TextEncoder().encode(raw).byteLength > MAX_BYTES$1)
       throw new Error("Settings backup exceeds maximum size");
     return new Blob([raw], { type: "application/json" });
   }
   async function validateSettingsBackup(port, blob) {
-    if (blob.size === 0 || blob.size > MAX_BYTES)
+    if (blob.size === 0 || blob.size > MAX_BYTES$1)
       throw new Error("Settings backup size rejected");
     const raw = JSON.parse(await blob.text());
     if (!isRecord(raw) || raw.format !== FORMAT || raw.schemaVersion !== port.schemaVersion || !isRecord(raw.scope) || !isRecord(raw.includes) || Object.keys(raw).sort().join(",") !== "checksum,createdAt,format,includes,schemaVersion,scope,settings" || Object.keys(raw.scope).some((key) => !["productId", "channel", "ownerId", "installationId"].includes(key)) || Object.keys(raw.includes).sort().join(",") !== "archive,attachments,settings" || raw.includes.settings !== true || raw.includes.archive !== false || raw.includes.attachments !== false || typeof raw.createdAt !== "string" || !Number.isFinite(Date.parse(raw.createdAt)) || typeof raw.checksum !== "string" || !/^[a-f0-9]{64}$/.test(raw.checksum)) {
@@ -16467,7 +16085,7 @@
       if (source.out !== void 0 && ![0, 1, true, false].includes(source.out))
         throw Error("Unknown VK message direction");
       const outgoing = source.out === void 0 ? null : source.out === 1 || source.out === true;
-      const text2 = typeof source.text === "string" ? source.text : null;
+      const text = typeof source.text === "string" ? source.text : null;
       const attachmentCount = Array.isArray(source.attachments) ? source.attachments.length : null;
       const data = {
         key,
@@ -16478,7 +16096,7 @@
         date,
         senderId,
         outgoing,
-        text: text2,
+        text,
         attachmentCount
       };
       const snapshot = {
@@ -16517,20 +16135,6 @@
       this.db.close();
     }
   }
-  function selectVkArchivePreview(rows, options) {
-    const limit = Number.isFinite(options.limit) ? Math.max(1, Math.min(240, Math.floor(options.limit))) : 80;
-    const query = (options.query ?? "").trim().toLocaleLowerCase("ru");
-    const selected = [];
-    let matching = 0;
-    for (let index = rows.length - 1; index >= 0; index--) {
-      const row = rows[index];
-      if (!row || query && !(row.text ?? "").toLocaleLowerCase("ru").includes(query)) continue;
-      matching++;
-      if (selected.length < limit) selected.push(row);
-    }
-    selected.reverse();
-    return { messages: selected, matching };
-  }
   function conversationPeerFromPath(pathname) {
     const match = /^\/im\/convo\/([1-9]\d*)(?:\/|$)/.exec(pathname);
     if (!match) return null;
@@ -16543,53 +16147,8 @@
       return "Открыта другая переписка VK. Для неё выбери соответствующую папку архива.";
     return null;
   }
-  function viewerHTML(rows, peerId, attachmentView) {
-    const snapshot = rows.map((m) => ({
-      id: m.id,
-      author: m.from_id,
-      out: !!m.out,
-      date: m.date,
-      text: m.text || "",
-      media: attachmentView(m),
-      reply: m.reply_message ? { text: m.reply_message.text || "", from: m.reply_message.from_id } : null,
-      forwards: (m.fwd_messages || []).map((f) => ({ text: f.text || "", from: f.from_id }))
-    }));
-    const embed = JSON.stringify(snapshot).replace(/</g, "\\u003c");
-    return `<!DOCTYPE html><html lang="ru"><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VK Booster — диалог ${peerId}</title><style>
-:root{color-scheme:light;font:15px/1.5 system-ui,sans-serif;background:#f3f5fa;color:#202838}
-*{box-sizing:border-box}body{margin:0}.top{position:sticky;top:0;background:white;border-bottom:1px solid #d8deeb;padding:14px 18px;z-index:5}
-h1{font-size:19px;margin:0 0 8px}.stats{color:#68758b;font-size:13px}.search{width:100%;max-width:630px;border:1px solid #c4cee1;border-radius:9px;padding:10px}
-main{max-width:860px;margin:18px auto;padding:0 14px}.msg{background:white;border:1px solid #e1e5ed;border-radius:12px;margin:9px 0;padding:12px 16px;max-width:85%;overflow-wrap:anywhere}
-.msg.mine{margin-left:auto;background:#e6f0ff}.by{font-size:12px;color:#65738b;margin-bottom:5px}.content{white-space:pre-wrap}
-.file{display:block;margin-top:6px;color:#2154a5}.file img{display:block;max-width:min(100%,390px);max-height:360px;border-radius:8px}
-.file audio{width:min(100%,380px)}.quote{border-left:3px solid #8da9d8;padding-left:10px;color:#5b6881;margin:7px 0}
-</style><header class="top"><h1>VK Booster · Архив переписки</h1><div class="stats" id="stats"></div><input class="search" id="q" placeholder="Поиск по сообщениям…"></header><main id="list"></main>
-<script>const entries=${embed};const list=document.getElementById('list'),q=document.getElementById('q'),stats=document.getElementById('stats');
-function elt(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n}
-function link(path){return path.split('/').map(encodeURIComponent).join('/')}
-function render(){const filter=q.value.toLowerCase(),found=entries.filter(m=>!filter||m.text.toLowerCase().includes(filter));list.replaceChildren();
-const fragment=document.createDocumentFragment();for(const m of found){const box=elt('article','msg'+(m.out?' mine':''));box.append(elt('div','by',(m.out?'Вы':'ID '+m.author)+' · '+new Date(m.date*1000).toLocaleString('ru-RU')));
-if(m.reply)box.append(elt('div','quote','↪ '+(m.reply.text||'Ответ на сообщение')));
-for(const f of m.forwards)box.append(elt('div','quote','Переслано: '+(f.text||'Вложение')));
-const content=elt('div','content');
-for(const part of m.text.split(/(https?:\\/\\/[^\\s]+)/g)){
- if(/^https?:\\/\\//.test(part)){
-  const a=elt('a',null,part);a.href=part.replace(/[),.;!?]+$/,'');a.target='_blank';a.rel='noopener noreferrer';content.append(a);
- }else content.append(document.createTextNode(part));
-}
-box.append(content);for(const a of m.media){if(a.media){const tag=elt('a','file','📎 '+a.name);tag.href=link(a.media);tag.target='_blank';tag.rel='noopener noreferrer';
-if(/\\.(jpe?g|png|webp|gif)$/i.test(a.name)){const img=elt('img');img.src=link(a.media);img.loading='lazy';tag.append(img)}
-else if(/\\.(ogg|mp3|wav|m4a)$/i.test(a.name)){const audio=elt('audio');audio.controls=true;audio.preload='none';audio.src=link(a.media);box.append(audio)}
-box.append(tag)}else if(a.external){const external=elt('a','file','🔗 '+a.external);external.href=a.external;external.target='_blank';external.rel='noopener noreferrer';box.append(external)}
-else box.append(elt('div','by','Вложение ('+a.type+'): '+a.status));
-if(a.transcript)box.append(elt('div','quote','Расшифровка: '+a.transcript))}
-fragment.append(box)}
-list.append(fragment);stats.textContent=found.length+' / '+entries.length+' сообщений · локальный архив'}
-q.addEventListener('input',render);render();<\/script></html>`;
-  }
   function installVkArchive(target = "userscript") {
-    const VERSION = "2.3.10";
+    const VERSION = "1.0.0";
     const apiKey = instanceKey("VKExport", "vk-booster:prod");
     const published = globalThis;
     if (published[apiKey]?.version === VERSION) return;
@@ -16604,7 +16163,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
       delay: 450,
       media: true
     };
-    let root = null, meta = null, rows = [], busy = false, stopRequested = false, folderLoading = false, folderPickerOpen = false;
+    let rows = [], busy = false, stopRequested = false, folderLoading = false, folderPickerOpen = false;
     let prog = {
       phase: "Ожидание",
       done: 0,
@@ -16614,69 +16173,14 @@ q.addEventListener('input',render);render();<\/script></html>`;
       failed: 0
     };
     const subscribers = /* @__PURE__ */ new Set();
-    const ts = () => (/* @__PURE__ */ new Date()).toISOString(), sleep = (ms) => globalThis.__VK_EXPORT_TEST_MODE ? Promise.resolve() : new Promise((r2) => setTimeout(r2, ms));
+    const sleep = (ms) => new Promise((r2) => setTimeout(r2, ms));
     const validDay2 = (d) => !d || /^\d{4}-\d\d-\d\d$/.test(d) && new Date(Date.parse(d + "T00:00:00+03:00") + 108e5).toISOString().slice(0, 10) === d;
-    const unixDay = (d) => d ? Math.floor(Date.parse(d + "T00:00:00+03:00") / 1e3) : null;
-    const known = () => new Map(rows.map((m) => [m.id, m]));
-    const blank = () => ({
-      schema: 2,
-      version: VERSION,
-      peer_id: cfg.peerId,
-      updated: ts(),
-      instance_scope: instanceScope(),
-      total: 0,
-      checkpoint: null,
-      files: {},
-      runs: [],
-      conversation: null
-    });
-    const { json, write, dir } = createArchiveFiles(() => {
-      if (!root) throw Error("Сначала выбери папку");
-      return root;
-    });
-    const sorted = () => rows.sort((a, b) => a.date - b.date || a.id - b.id);
-    const currentMeta = () => {
-      if (!meta) throw Error("Архив не выбран");
-      return meta;
-    };
-    async function persistSnapshot(nextRows, nextMeta) {
-      const ordered = [...nextRows].sort((a, b) => a.date - b.date || a.id - b.id);
-      const lastMessage = ordered.at(-1);
-      const savedMeta = {
-        ...nextMeta,
-        total: ordered.length,
-        updated: ts(),
-        lastMessageDate: lastMessage ? new Date(lastMessage.date * 1e3).toISOString() : null
-      };
-      await write("messages.json", { schema: 2, peer_id: cfg.peerId, messages: ordered });
-      await write("metadata.json", savedMeta);
-      return { ordered, savedMeta };
-    }
-    async function checkpoint() {
-      const { ordered, savedMeta } = await persistSnapshot(rows, currentMeta());
-      rows = ordered;
-      meta = savedMeta;
-      refresh();
-    }
     function status() {
       const pagePeer = currentPeer();
-      if (folderLoading || folderPickerOpen)
-        return {
-          version: VERSION,
-          folder: null,
-          activePeerId: pagePeer,
-          blockedReason: folderPickerOpen ? "Выбор папки архива…" : "Читаю и проверяю папку архива…",
-          busy: true,
-          folderPending: true,
-          options: { ...cfg },
-          progress: { ...prog },
-          messages: 0,
-          checkpoint: null
-        };
-      if (!root && !busy && pagePeer !== null) cfg.peerId = pagePeer;
+      if (!busy && pagePeer !== null) cfg.peerId = pagePeer;
       return {
         version: VERSION,
-        folder: root?.name || null,
+        folder: null,
         activePeerId: pagePeer,
         blockedReason: archiveContextBlock(cfg.peerId, pagePeer),
         busy,
@@ -16684,13 +16188,13 @@ q.addEventListener('input',render);render();<\/script></html>`;
         options: { ...cfg },
         progress: { ...prog },
         messages: rows.length,
-        checkpoint: meta?.checkpoint || null
+        checkpoint: null
       };
     }
     function configure(v = {}) {
       if (busy || folderLoading || folderPickerOpen) throw Error("Заверши текущую операцию с архивом");
       const pagePeer = currentPeer();
-      const o = { ...cfg, ...v, peerId: v.peerId ?? (root ? cfg.peerId : pagePeer ?? cfg.peerId) };
+      const o = { ...cfg, ...v, peerId: v.peerId ?? (pagePeer ?? cfg.peerId) };
       if (pagePeer !== null && o.peerId !== pagePeer) throw Error("Выбран другой диалог VK");
       if (!["recent", "incremental", "backfill"].includes(o.mode)) throw Error("Режим");
       if (!Number.isSafeInteger(o.limit) || o.limit < 1 || o.limit > 1e5)
@@ -16700,128 +16204,21 @@ q.addEventListener('input',render);render();<\/script></html>`;
       if (!Number.isSafeInteger(o.delay) || o.delay < 300) throw Error("Пауза: от 300 мс");
       if (!validDay2(o.from) || !validDay2(o.through) || o.from && o.through && o.from > o.through)
         throw Error("Диапазон дат");
-      if (root && o.peerId !== currentMeta().peer_id)
-        throw Error("Для другого диалога нужна отдельная папка");
       Object.assign(cfg, o);
       return status();
     }
-    function isRecord2(v) {
-      return v !== null && typeof v === "object" && !Array.isArray(v);
-    }
-    function isMessage(v) {
-      return isRecord2(v) && typeof v.id === "number" && Number.isSafeInteger(v.id) && typeof v.date === "number" && Number.isFinite(v.date);
-    }
-    function isMeta(v) {
-      return isRecord2(v) && v.schema === 2 && typeof v.peer_id === "number" && isRecord2(v.files) && Array.isArray(v.runs) && (v.checkpoint === null || isRecord2(v.checkpoint));
-    }
-    function isMessagesFile(v) {
-      return isRecord2(v) && v.schema === 2 && typeof v.peer_id === "number" && Array.isArray(v.messages) && v.messages.every(
-        (message) => isMessage(message) && (message.peer_id === void 0 || message.peer_id === v.peer_id)
-      );
-    }
     async function useFolder(handle) {
-      const pagePeer = currentPeer();
-      if (pagePeer === null) throw Error("Открой диалог VK перед выбором папки");
-      if (busy || folderLoading || folderPickerOpen)
-        throw Error("Другая операция с папкой уже выполняется");
-      const previousRoot = root, previousMeta = meta, previousRows = rows, previousPeer = cfg.peerId;
-      folderLoading = true;
-      cfg.peerId = pagePeer;
-      root = handle;
-      try {
-        const previous = await json("metadata.json");
-        if (!previous) {
-          try {
-            await root.getFileHandle("state.json");
-            throw Error("Обнаружен старый архив v1. Используй отдельную утилиту миграции.");
-          } catch (e) {
-            if (!(e instanceof Error) || e.name !== "NotFoundError") throw e;
-          }
-          try {
-            await root.getDirectoryHandle("pages");
-            throw Error("Обнаружен старый каталог pages/. Сначала выполни миграцию.");
-          } catch (e) {
-            if (!(e instanceof Error) || e.name !== "NotFoundError") throw e;
-          }
-        }
-        const loadedMeta = previous === null ? blank() : isMeta(previous) ? previous : null;
-        if (!loadedMeta || loadedMeta.peer_id !== cfg.peerId)
-          throw Error("Старая папка несовместима. Мигрируй её отдельной утилитой в новую папку.");
-        const owningScope = instanceScope() || "vk-booster:prod";
-        if (loadedMeta.instance_scope ? loadedMeta.instance_scope !== owningScope : owningScope !== "vk-booster:prod")
-          throw Error("Папка уже принадлежит другой установке VK Booster или каналу.");
-        const existing = await json("messages.json");
-        const loadedMessages = existing === null ? [] : isMessagesFile(existing) && existing.peer_id === cfg.peerId ? existing.messages : null;
-        if (!loadedMessages) throw Error("Неверный формат messages.json");
-        meta = loadedMeta;
-        rows = loadedMessages;
-        sorted();
-        if (currentPeer() !== pagePeer) throw Error("Диалог VK изменился при выборе папки");
-        if (!previous) await checkpoint();
-        folderLoading = false;
-        refresh();
-        return status();
-      } catch (error) {
-        root = previousRoot;
-        meta = previousMeta;
-        rows = previousRows;
-        cfg.peerId = previousPeer;
-        folderLoading = false;
-        refresh();
-        throw error;
-      } finally {
-        folderLoading = false;
-      }
+      throw Error("Файловая папка не подключается в основном режиме Dexie.");
     }
     async function selectFolder() {
-      if (!globalThis.showDirectoryPicker) throw Error("Нужен Chrome и HTTPS");
-      const pagePeer = currentPeer();
-      if (pagePeer === null) throw Error("Открой диалог VK перед выбором папки");
-      if (busy || folderLoading || folderPickerOpen)
-        throw Error("Другая операция с папкой уже выполняется");
-      folderPickerOpen = true;
-      refresh();
-      try {
-        const h2 = await globalThis.showDirectoryPicker({ id: "vk-archive-v2", mode: "readwrite" });
-        const permitted = h2;
-        if (await permitted.requestPermission({ mode: "readwrite" }) !== "granted")
-          throw Error("Нет разрешения на запись");
-        if (currentPeer() !== pagePeer) throw Error("Диалог VK изменился при выборе папки");
-        folderPickerOpen = false;
-        return await useFolder(h2);
-      } finally {
-        folderPickerOpen = false;
-        refresh();
-      }
+      throw Error("Файловая папка больше не является основным архивом. Используй экспорт Dexie.");
     }
     const vk = createVkProvider(cfg, { sleep, refresh });
     const auth = () => vk.auth();
     const history = (offset, count) => vk.history(offset, count);
     const api = (method, p2) => vk.api(method, p2);
-    const download$1 = (a, verifyContext) => download(a, { meta: currentMeta(), dir, write, sleep, verifyContext });
-    function attachmentView(m) {
-      return assets(m).map((a) => ({
-        type: a.type,
-        key: a.key,
-        media: currentMeta().files[a.key]?.path || null,
-        status: currentMeta().files[a.key]?.status || "missing",
-        external: a.external,
-        transcript: a.transcript,
-        name: currentMeta().files[a.key]?.name || a.choices[0]?.name || a.type
-      }));
-    }
-    function archiveReadable() {
-      return !folderLoading && !folderPickerOpen && root !== null && meta !== null && meta.peer_id === cfg.peerId && currentPeer() === cfg.peerId;
-    }
     async function buildViewer() {
-      if (folderLoading || folderPickerOpen) throw Error("Выбор папки ещё не завершён");
-      if (!root || !meta) throw Error("Сначала выбери папку");
-      const reason = archiveContextBlock(cfg.peerId, currentPeer());
-      if (reason || meta.peer_id !== cfg.peerId)
-        throw Error(reason ?? "Папка принадлежит другому диалогу VK");
-      sorted();
-      await write("index.html", viewerHTML(rows, cfg.peerId, attachmentView));
-      return { messages: rows.length };
+      throw Error("Сначала выбери папку");
     }
     function progress(phase, done, total, extra = {}) {
       prog = { phase, done, total, ...extra };
@@ -16832,193 +16229,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
       refresh();
     }
     async function run(options = {}) {
-      if (busy) throw Error("Выгрузка уже запущена");
-      if (folderLoading || folderPickerOpen) throw Error("Выбор папки ещё не завершён");
-      if (!root) throw Error("Сначала выбери папку");
-      const resume = options.resume === true;
-      if (!resume) configure(options);
-      const guard = () => {
-        const reason = archiveContextBlock(cfg.peerId, currentPeer());
-        if (reason || currentMeta().peer_id !== cfg.peerId)
-          throw Error(reason ?? "Папка принадлежит другому диалогу VK");
-      };
-      guard();
-      busy = true;
-      stopRequested = false;
-      refresh();
-      try {
-        if (!await auth()) throw Error("Не удалось авторизовать VK API из хранилища");
-        guard();
-      } catch (error) {
-        busy = false;
-        refresh();
-        throw error;
-      }
-      const storedSettings = currentMeta().checkpoint?.settings;
-      if (resume && storedSettings) Object.assign(cfg, storedSettings);
-      let index = known();
-      const identities = new Set([...index.keys()].map(String));
-      const lower = unixDay(cfg.from), through = unixDay(cfg.through), upper = through === null ? null : through + 86400;
-      const countTarget = cfg.limit;
-      const savedCp = currentMeta().checkpoint;
-      let cp = resume && savedCp && ["paused", "running"].includes(savedCp.status) ? savedCp : {
-        mode: cfg.mode,
-        target: countTarget,
-        offset: cfg.mode === "backfill" ? currentMeta().backfillOffset || 0 : 0,
-        matched: 0,
-        scanned: 0,
-        newCount: 0,
-        phase: "messages",
-        fileCursor: 0,
-        status: "running",
-        totalVK: null,
-        started: ts(),
-        settings: { ...cfg }
-      };
-      currentMeta().checkpoint = cp;
-      cfg.mode = cp.mode;
-      progress("Сообщения", cp.matched, cp.target);
-      try {
-        if (!currentMeta().conversation && vk.hasToken()) {
-          try {
-            currentMeta().conversation = await api("messages.getConversationsById", {
-              peer_ids: String(cfg.peerId),
-              extended: 0
-            });
-          } catch {
-          }
-        }
-        if (cp.phase === "messages") {
-          const result = await scanLinearArchive({
-            mode: cp.mode,
-            target: cp.target,
-            pageSize: cfg.pageSize,
-            knownKeys: identities,
-            keyOf: (m) => String(m.id),
-            timestampOf: (m) => m.date,
-            fromInclusive: lower,
-            toExclusive: upper,
-            initial: {
-              offset: cp.offset,
-              matched: cp.matched,
-              scanned: cp.scanned,
-              newCount: cp.newCount
-            },
-            source: {
-              async readPage(offset, count) {
-                guard();
-                const page = await history(offset, count);
-                guard();
-                return page;
-              }
-            },
-            stopped: () => stopRequested,
-            delay: () => sleep(cfg.delay),
-            async commit({ selection, next, sourceTotal }) {
-              guard();
-              const candidateIndex = new Map(index);
-              for (const item of selection.added) candidateIndex.set(item.id, item);
-              const nextCp = {
-                ...cp,
-                totalVK: sourceTotal,
-                offset: next.offset,
-                matched: next.matched,
-                scanned: next.scanned,
-                newCount: next.newCount,
-                shifted: next.newCount,
-                status: "running"
-              };
-              let backfillOffset = currentMeta().backfillOffset || 0;
-              if (cp.mode === "backfill") backfillOffset = next.offset;
-              if (cp.mode === "incremental") backfillOffset += next.newCount - (cp.shifted || 0);
-              if (cp.mode === "recent") backfillOffset = Math.max(backfillOffset, next.offset);
-              const { ordered, savedMeta } = await persistSnapshot([...candidateIndex.values()], {
-                ...currentMeta(),
-                backfillOffset,
-                checkpoint: nextCp
-              });
-              index = candidateIndex;
-              rows = ordered;
-              meta = savedMeta;
-              cp = nextCp;
-              refresh();
-              progress("Сообщения", cp.matched, cp.target, { newCount: cp.newCount, scanned: cp.scanned });
-            }
-          });
-          if (result.sourceTotal !== null) cp.totalVK = result.sourceTotal;
-          if (!result.paused) cp.phase = "media";
-        }
-        if (stopRequested) {
-          cp.status = "paused";
-          await checkpoint();
-          return { paused: true, progress: status().progress };
-        }
-        if (cp.phase === "media") {
-          const queue2 = cfg.media ? rows.flatMap(assets).filter((a) => a.type !== "link") : [];
-          progress("Файлы", cp.fileCursor, queue2.length, { newCount: cp.newCount });
-          for (let i = cp.fileCursor; i < queue2.length; i++) {
-            if (stopRequested) break;
-            guard();
-            const asset = queue2[i];
-            if (!asset) throw Error("Недоступен файл из очереди");
-            const outcome = await download$1(asset, guard);
-            guard();
-            cp.fileCursor = i + 1;
-            currentMeta().checkpoint = cp;
-            await write("metadata.json", currentMeta());
-            const vals = Object.values(currentMeta().files);
-            progress("Файлы", cp.fileCursor, queue2.length, {
-              downloaded: vals.filter((f) => f.status === "saved").length,
-              failed: vals.filter((f) => f.status === "failed").length,
-              newCount: cp.newCount
-            });
-            if (!stopRequested && outcome !== "existing") await sleep(250);
-          }
-        }
-        if (stopRequested) {
-          cp.status = "paused";
-          await checkpoint();
-          return { paused: true, progress: status().progress };
-        }
-        guard();
-        cp.status = "done";
-        cp.phase = "done";
-        cp.finished = ts();
-        currentMeta().checkpoint = cp;
-        currentMeta().runs.push({
-          mode: cp.mode,
-          target: cp.target,
-          matched: cp.matched,
-          newCount: cp.newCount,
-          finished: ts()
-        });
-        if (currentMeta().runs.length > 30) currentMeta().runs = currentMeta().runs.slice(-30);
-        await checkpoint();
-        await buildViewer();
-        progress("Готово", cp.target, cp.target, {
-          newCount: cp.newCount,
-          downloaded: Object.values(currentMeta().files).filter((f) => f.status === "saved").length
-        });
-        return {
-          matched: cp.matched,
-          newCount: cp.newCount,
-          saved: rows.length,
-          files: prog.downloaded ?? 0,
-          folder: root.name
-        };
-      } catch (e) {
-        cp.status = "paused";
-        cp.error = String(e instanceof Error ? e.message : e).slice(0, 180);
-        try {
-          await checkpoint();
-        } catch {
-        }
-        progress("Ошибка", cp.matched, cp.target, { error: cp.error });
-        throw e;
-      } finally {
-        busy = false;
-        refresh();
-      }
+      throw Error("Историческая файловая выгрузка недоступна как основное хранилище. Используй Dexie.");
     }
     async function openFixedArchive(peerId) {
       const scope = instanceScope();
@@ -17107,11 +16318,11 @@ q.addEventListener('input',render);render();<\/script></html>`;
         repo.close();
       }
     }
-    async function readFixed(limit = 80) {
+    async function readFixed(limit = 80, afterMessageId) {
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500)
         throw Error("Invalid fixed archive page size");
       return withFixed(async (repo, peerId) => {
-        const rows2 = await repo.listMessages(peerId, limit);
+        const rows2 = await repo.listMessages(peerId, limit, afterMessageId);
         const messages = [];
         for (const row of rows2) {
           const original = await repo.getOriginal(peerId, row.messageId);
@@ -17185,23 +16396,24 @@ q.addEventListener('input',render);render();<\/script></html>`;
       selectFolder,
       useFolder,
       run,
-      resume: () => run({ resume: true }),
+      resume: () => run({}),
       stop,
       status,
       show,
       hide,
       subscribe,
       buildViewer,
-      // Public readers receive independent JSON-shaped snapshots; callers cannot mutate
-      // the in-memory rows that the next v2 checkpoint will persist.
       captureFixed,
       readFixed,
       exportFixed,
-      getMessages: () => archiveReadable() ? structuredClone(rows) : [],
+      // Public readers receive independent JSON-shaped snapshots; callers cannot mutate
+      // the in-memory rows that the next v1 checkpoint will persist.
+      getMessages: () => [],
       previewMessages: (options) => {
-        if (!archiveReadable()) return { messages: [], matching: 0 };
-        const result = selectVkArchivePreview(rows, options);
-        return { ...result, messages: structuredClone(result.messages) };
+        return { messages: [], matching: 0 };
+      },
+      previewAttachments: (messageIds) => {
+        return {};
       },
       destroy() {
         subscribers.clear();
@@ -17209,6 +16421,170 @@ q.addEventListener('input',render);render();<\/script></html>`;
       }
     };
     published[apiKey] = Object.freeze(apiObject);
+  }
+  const fields = ["mode", "limit", "from", "through", "pageSize", "delay", "media"];
+  const fieldNames = [...fields].sort().join(",");
+  function validDay(value) {
+    if (!value) return true;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const millis = Date.parse(`${value}T00:00:00.000Z`);
+    return Number.isFinite(millis) && new Date(millis).toISOString().slice(0, 10) === value;
+  }
+  function validateVkCapturePreferences(input) {
+    if (!input || typeof input !== "object" || Array.isArray(input))
+      throw Error("Invalid VK capture preferences");
+    const value = input;
+    if (Object.keys(value).sort().join(",") !== fieldNames || !["recent", "incremental", "backfill"].includes(String(value.mode)) || !Number.isSafeInteger(value.limit) || value.limit < 1 || value.limit > 1e5 || !Number.isSafeInteger(value.pageSize) || value.pageSize < 1 || value.pageSize > 100 || !Number.isSafeInteger(value.delay) || value.delay < 300 || typeof value.media !== "boolean" || typeof value.from !== "string" || typeof value.through !== "string" || !validDay(value.from) || !validDay(value.through) || value.from && value.through && value.from > value.through)
+      throw Error("Invalid VK capture preferences");
+    return {
+      mode: value.mode,
+      limit: value.limit,
+      from: value.from,
+      through: value.through,
+      pageSize: value.pageSize,
+      delay: value.delay,
+      media: value.media
+    };
+  }
+  function withoutPeer(options) {
+    return validateVkCapturePreferences(Object.fromEntries(fields.map((name) => [name, options[name]])));
+  }
+  function vkCaptureSettingsPort(api, scopeId = instanceScope()) {
+    const [productId, channel, extra] = scopeId.split(":");
+    if (productId !== "vk-booster" && productId !== "all-in-one" || channel !== "dev" && channel !== "prod" || extra !== void 0)
+      throw Error("VK capture settings require a VK or aggregate product/channel scope");
+    function requireIdle() {
+      const status = api.status();
+      if (status.busy || status.folderPending) throw Error("Archive operation in progress");
+      if (status.blockedReason) throw Error("VK conversation does not match selected archive");
+      return status.options;
+    }
+    return {
+      scope: { productId, channel },
+      schemaVersion: 1,
+      async exportSettings() {
+        return withoutPeer(requireIdle());
+      },
+      validateSettings: validateVkCapturePreferences,
+      async restoreSettingsAtomically(value) {
+        requireIdle();
+        api.configure(validateVkCapturePreferences(value));
+      }
+    };
+  }
+  async function exportVkCaptureSettings(api) {
+    return exportSettingsBackup(vkCaptureSettingsPort(api));
+  }
+  async function restoreVkCaptureSettings(api, backup, persistence) {
+    const port = vkCaptureSettingsPort(api, persistence?.scopeId);
+    if (!persistence) return restoreSettingsBackup(port, backup);
+    const validated = await validateSettingsBackup(port, backup);
+    const before = withoutPeer(api.status().options);
+    await port.exportSettings();
+    await port.restoreSettingsAtomically(validated.settings);
+    try {
+      await persistence.write(validated.settings);
+    } catch (error) {
+      try {
+        await port.restoreSettingsAtomically(before);
+      } catch {
+        throw Error("VK settings persistence failed and live rollback was blocked");
+      }
+      throw error;
+    }
+  }
+  const PREFIX = "koba:vk-capture-preferences:v1";
+  const MAX_BYTES = 4096;
+  function assertVkScope(scopeId) {
+    if (!/^(vk-booster|all-in-one):(dev|prod)$/.test(scopeId))
+      throw Error("Invalid VK application preferences scope");
+  }
+  function vkPreferencesKey(scopeId, target) {
+    assertVkScope(scopeId);
+    if (target !== "userscript" && target !== "chromium") throw Error("Invalid VK settings target");
+    return `${PREFIX}:${scopeId}:${target}`;
+  }
+  function browserPreferencesBackend(target) {
+    if (target === "chromium") {
+      if (typeof chrome === "undefined" || !chrome.storage?.local)
+        throw Error("Chromium storage permission is unavailable");
+      return {
+        async get(key) {
+          const value = (await chrome.storage.local.get(key))[key];
+          return typeof value === "string" ? value : value === void 0 ? null : "invalid";
+        },
+        async set(key, value) {
+          await chrome.storage.local.set({ [key]: value });
+        }
+      };
+    }
+    if (typeof localStorage === "undefined") throw Error("Userscript local storage is unavailable");
+    return {
+      async get(key) {
+        return localStorage.getItem(key);
+      },
+      async set(key, value) {
+        localStorage.setItem(key, value);
+      }
+    };
+  }
+  function createVkPreferencesPersistence(target, scopeId, backend = browserPreferencesBackend(target)) {
+    const key = vkPreferencesKey(scopeId, target);
+    return {
+      scopeId,
+      target,
+      async read() {
+        const raw = await backend.get(key);
+        if (raw === null) return null;
+        if (new TextEncoder().encode(raw).byteLength > MAX_BYTES)
+          throw Error("Invalid stored VK settings size");
+        let parsed;
+        try {
+          parsed = JSON.parse(raw);
+        } catch {
+          throw Error("Invalid stored VK settings JSON");
+        }
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || Object.keys(parsed).sort().join(",") !== "schemaVersion,scopeId,settings,target")
+          throw Error("Invalid stored VK settings envelope");
+        const envelope = parsed;
+        if (envelope.schemaVersion !== 1 || envelope.scopeId !== scopeId || envelope.target !== target)
+          throw Error("Stored VK settings scope/version mismatch");
+        return validateVkCapturePreferences(envelope.settings);
+      },
+      async write(value) {
+        const settings = validateVkCapturePreferences(value);
+        const raw = JSON.stringify({ schemaVersion: 1, scopeId, target, settings });
+        if (new TextEncoder().encode(raw).byteLength > MAX_BYTES) throw Error("VK settings size exceeded");
+        await backend.set(key, raw);
+      }
+    };
+  }
+  let activePreferences = null;
+  let startupError = "";
+  function setVkPreferencesPersistence(port) {
+    activePreferences = port;
+    startupError = "";
+  }
+  function vkPreferencesPersistence() {
+    return activePreferences;
+  }
+  function vkPreferencesLoadError() {
+    return startupError;
+  }
+  async function loadVkCaptureDefaults(configure, target, scopeId = instanceScope(), backend) {
+    setVkPreferencesPersistence(null);
+    try {
+      const port = createVkPreferencesPersistence(
+        target,
+        scopeId,
+        backend ?? browserPreferencesBackend(target)
+      );
+      setVkPreferencesPersistence(port);
+      const saved = await port.read();
+      if (saved) configure(saved);
+    } catch {
+      startupError = "Не удалось загрузить постоянные параметры VK; используются параметры сессии.";
+    }
   }
   function archiveApi() {
     const key = instanceKey("VKExport", "vk-booster:prod");
@@ -17221,14 +16597,16 @@ q.addEventListener('input',render);render();<\/script></html>`;
     targets: ["userscript", "chromium"],
     requiredCapabilities: ["page-dom", "origin-storage", "local-files"],
     match: (url) => /^(vk\.ru|vk\.com)$/.test(url.hostname) && url.pathname.startsWith("/im"),
-    start(context) {
+    async start(context) {
       installVkArchive(context.target);
+      await loadVkCaptureDefaults((value) => archiveApi()?.configure(value), context.target);
     },
     open() {
       archiveApi()?.show();
     },
     stop() {
       archiveApi()?.destroy?.();
+      setVkPreferencesPersistence(null);
     }
   };
   // @__NO_SIDE_EFFECTS__
@@ -19648,6 +19026,13 @@ q.addEventListener('input',render);render();<\/script></html>`;
       // by Rollup, so we have to wrap it in a pure-annotated IIFE.
       /* @__PURE__ */ (() => extend({ name: options.name }, extraOptions, { setup: options }))()
     ) : options;
+  }
+  function useId() {
+    const i = getCurrentInstance();
+    if (i) {
+      return (i.appContext.config.idPrefix || "v") + "-" + i.ids[0] + i.ids[1]++;
+    }
+    return "";
   }
   function markAsyncBoundary(instance) {
     instance.ids = [instance.ids[0] + instance.ids[2]++ + "-", 0, 0];
@@ -22940,11 +22325,11 @@ q.addEventListener('input',render);render();<\/script></html>`;
     }
     return cloned;
   }
-  function createTextVNode(text2 = " ", flag = 0) {
-    return createVNode(Text, null, text2, flag);
+  function createTextVNode(text = " ", flag = 0) {
+    return createVNode(Text, null, text, flag);
   }
-  function createCommentVNode(text2 = "", asBlock = false) {
-    return asBlock ? (openBlock(), createBlock(Comment, null, text2)) : createVNode(Comment, null, text2);
+  function createCommentVNode(text = "", asBlock = false) {
+    return asBlock ? (openBlock(), createBlock(Comment, null, text)) : createVNode(Comment, null, text);
   }
   function normalizeVNode(child) {
     if (child == null || typeof child === "boolean") {
@@ -23394,13 +22779,13 @@ q.addEventListener('input',render);render();<\/script></html>`;
       }
       return el;
     },
-    createText: (text2) => doc.createTextNode(text2),
-    createComment: (text2) => doc.createComment(text2),
-    setText: (node, text2) => {
-      node.nodeValue = text2;
+    createText: (text) => doc.createTextNode(text),
+    createComment: (text) => doc.createComment(text),
+    setText: (node, text) => {
+      node.nodeValue = text;
     },
-    setElementText: (el, text2) => {
-      el.textContent = text2;
+    setElementText: (el, text) => {
+      el.textContent = text;
     },
     parentNode: (node) => node.parentNode,
     nextSibling: (node) => node.nextSibling,
@@ -23457,6 +22842,46 @@ q.addEventListener('input',render);render();<\/script></html>`;
   }
   const vShowOriginalDisplay = /* @__PURE__ */ Symbol("_vod");
   const vShowHidden = /* @__PURE__ */ Symbol("_vsh");
+  const vShow = {
+    // used for prop mismatch check during hydration
+    name: "show",
+    beforeMount(el, { value }, { transition }) {
+      el[vShowOriginalDisplay] = el.style.display === "none" ? "" : el.style.display;
+      if (transition && value) {
+        transition.beforeEnter(el);
+      } else {
+        setDisplay(el, value);
+      }
+    },
+    mounted(el, { value }, { transition }) {
+      if (transition && value) {
+        transition.enter(el);
+      }
+    },
+    updated(el, { value, oldValue }, { transition }) {
+      if (!value === !oldValue) return;
+      if (transition) {
+        if (value) {
+          transition.beforeEnter(el);
+          setDisplay(el, true);
+          transition.enter(el);
+        } else {
+          transition.leave(el, () => {
+            setDisplay(el, false);
+          });
+        }
+      } else {
+        setDisplay(el, value);
+      }
+    },
+    beforeUnmount(el, { value }) {
+      setDisplay(el, value);
+    }
+  };
+  function setDisplay(el, value) {
+    el.style.display = value ? el[vShowOriginalDisplay] : "none";
+    el[vShowHidden] = !value;
+  }
   const CSS_VAR_TEXT = /* @__PURE__ */ Symbol("");
   const displayRE = /(?:^|;)\s*display\s*:/;
   function patchStyle(el, prev, next) {
@@ -23812,13 +23237,13 @@ q.addEventListener('input',render);render();<\/script></html>`;
   }
   const assignKey = /* @__PURE__ */ Symbol("_assign");
   const initialValueKey = /* @__PURE__ */ Symbol("_initialValue");
-  function castValue(value, trim, number2) {
+  function castValue(value, trim, number) {
     if (trim) value = value.trim();
-    if (number2) value = looseToNumber(value);
+    if (number) value = looseToNumber(value);
     return value;
   }
   const vModelText = {
-    created(el, { modifiers: { lazy, trim, number: number2 } }, vnode) {
+    created(el, { modifiers: { lazy, trim, number } }, vnode) {
       if (el.parentNode) {
         if (el.type === "text") {
           el[initialValueKey] = el.defaultValue.replace(/[\r\n]/g, "");
@@ -23827,7 +23252,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
         }
       }
       el[assignKey] = getModelAssigner(vnode);
-      const castToNumber = number2 || vnode.props && vnode.props.type === "number";
+      const castToNumber = number || vnode.props && vnode.props.type === "number";
       addEventListener$1(el, lazy ? "change" : "input", (e) => {
         if (e.target.composing) return;
         el[assignKey](castValue(el.value, trim, castToNumber));
@@ -23844,20 +23269,20 @@ q.addEventListener('input',render);render();<\/script></html>`;
       }
     },
     // set value on mounted so it's after min/max for type="range"
-    mounted(el, { value, modifiers: { trim, number: number2 } }) {
+    mounted(el, { value, modifiers: { trim, number } }) {
       const newValue = value == null ? "" : value;
       const initialValue = el[initialValueKey];
       delete el[initialValueKey];
       if (initialValue !== void 0 && (el.type === "text" || el.type === "textarea") && el.value !== initialValue) {
-        el[assignKey](castValue(el.value, trim, number2));
+        el[assignKey](castValue(el.value, trim, number));
       } else {
         el.value = newValue;
       }
     },
-    beforeUpdate(el, { value, oldValue, modifiers: { lazy, trim, number: number2 } }, vnode) {
+    beforeUpdate(el, { value, oldValue, modifiers: { lazy, trim, number } }, vnode) {
       el[assignKey] = getModelAssigner(vnode);
       if (el.composing) return;
-      const elValue = (number2 || el.type === "number") && !/^0\d/.test(el.value) ? looseToNumber(el.value) : el.value;
+      const elValue = (number || el.type === "number") && !/^0\d/.test(el.value) ? looseToNumber(el.value) : el.value;
       const newValue = value == null ? "" : value;
       if (elValue === newValue) {
         return;
@@ -23927,91 +23352,6 @@ q.addEventListener('input',render);render();<\/script></html>`;
     }
     if (el.checked !== checked) {
       el.checked = checked;
-    }
-  }
-  const vModelSelect = {
-    // <select multiple> value need to be deep traversed
-    deep: true,
-    created(el, { value, modifiers: { number: number2 } }, vnode) {
-      el._modelValue = value;
-      addEventListener$1(el, "change", () => {
-        const selectedVal = Array.prototype.filter.call(el.options, (o) => o.selected).map(
-          (o) => number2 ? looseToNumber(getValue(o)) : getValue(o)
-        );
-        const multiple = el.multiple;
-        const assignedValue = multiple ? isSet(el._modelValue) ? new Set(selectedVal) : selectedVal : selectedVal[0];
-        const pending = el._pendingValue = [
-          multiple,
-          multiple ? isArray(assignedValue) ? selectedVal.slice() : selectedVal : assignedValue
-        ];
-        try {
-          el[assignKey](assignedValue);
-        } finally {
-          nextTick(() => {
-            if (el._pendingValue === pending) {
-              el._pendingValue = void 0;
-            }
-          });
-        }
-      });
-      el[assignKey] = getModelAssigner(vnode);
-    },
-    // set value in mounted & updated because <select> relies on its children
-    // <option>s.
-    mounted(el, { value }) {
-      setSelected(el, value);
-    },
-    beforeUpdate(el, { value }, vnode) {
-      el._modelValue = value;
-      el[assignKey] = getModelAssigner(vnode);
-    },
-    updated(el, { value }) {
-      const pending = el._pendingValue;
-      el._pendingValue = void 0;
-      if (!pending || pending[0] !== el.multiple || !isSameSelectValue(value, pending[1], pending[0])) {
-        setSelected(el, value);
-      }
-    }
-  };
-  function isSameSelectValue(value, assignedValue, multiple) {
-    if (!multiple) return looseEqual(value, assignedValue);
-    if (isArray(value)) return looseEqual(value, assignedValue);
-    if (isSet(value)) {
-      if (value.size !== assignedValue.length) return false;
-      for (const item of assignedValue) {
-        if (!value.has(item)) return false;
-      }
-      return true;
-    }
-    return false;
-  }
-  function setSelected(el, value) {
-    const isMultiple = el.multiple;
-    const isArrayValue = isArray(value);
-    if (isMultiple && !isArrayValue && !isSet(value)) {
-      return;
-    }
-    for (let i = 0, l = el.options.length; i < l; i++) {
-      const option = el.options[i];
-      const optionValue = getValue(option);
-      if (isMultiple) {
-        if (isArrayValue) {
-          const optionType = typeof optionValue;
-          if (optionType === "string" || optionType === "number") {
-            option.selected = value.some((v) => String(v) === String(optionValue));
-          } else {
-            option.selected = looseIndexOf(value, optionValue) > -1;
-          }
-        } else {
-          option.selected = value.has(optionValue);
-        }
-      } else if (looseEqual(getValue(option), value)) {
-        if (el.selectedIndex !== i) el.selectedIndex = i;
-        return;
-      }
-    }
-    if (!isMultiple && el.selectedIndex !== -1) {
-      el.selectedIndex = -1;
     }
   }
   function getValue(el) {
@@ -24089,192 +23429,6 @@ q.addEventListener('input',render);render();<\/script></html>`;
     }
     return container;
   }
-  const toKebabCase = (string) => string.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
-  const toCamelCase = (string) => string.replace(
-    /^([A-Z])|[\s-_]+(\w)/g,
-    (match, p1, p2) => p2 ? p2.toUpperCase() : p1.toLowerCase()
-  );
-  const toPascalCase = (string) => {
-    const camelCase = toCamelCase(string);
-    return camelCase.charAt(0).toUpperCase() + camelCase.slice(1);
-  };
-  const mergeClasses = (...classes) => classes.filter((className, index, array) => {
-    return Boolean(className) && className.trim() !== "" && array.indexOf(className) === index;
-  }).join(" ").trim();
-  const isEmptyString = (value) => value === "";
-  var defaultAttributes = {
-    xmlns: "http://www.w3.org/2000/svg",
-    width: 24,
-    height: 24,
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "currentColor",
-    "stroke-width": 2,
-    "stroke-linecap": "round",
-    "stroke-linejoin": "round"
-  };
-  const Icon = ({
-    name,
-    iconNode,
-    absoluteStrokeWidth,
-    "absolute-stroke-width": absoluteStrokeWidthKebabCase,
-    strokeWidth,
-    "stroke-width": strokeWidthKebabCase,
-    size = defaultAttributes.width,
-    color = defaultAttributes.stroke,
-    ...props
-  }, { slots }) => {
-    return h(
-      "svg",
-      {
-        ...defaultAttributes,
-        ...props,
-        width: size,
-        height: size,
-        stroke: color,
-        "stroke-width": isEmptyString(absoluteStrokeWidth) || isEmptyString(absoluteStrokeWidthKebabCase) || absoluteStrokeWidth === true || absoluteStrokeWidthKebabCase === true ? Number(strokeWidth || strokeWidthKebabCase || defaultAttributes["stroke-width"]) * 24 / Number(size) : strokeWidth || strokeWidthKebabCase || defaultAttributes["stroke-width"],
-        class: mergeClasses(
-          "lucide",
-          props.class,
-          ...name ? [`lucide-${toKebabCase(toPascalCase(name))}-icon`, `lucide-${toKebabCase(name)}`] : ["lucide-icon"]
-        )
-      },
-      [...iconNode.map((child) => h(...child)), ...slots.default ? [slots.default()] : []]
-    );
-  };
-  const createLucideIcon = (iconName, iconNode) => (props, { slots, attrs }) => h(
-    Icon,
-    {
-      ...attrs,
-      ...props,
-      iconNode,
-      name: iconName
-    },
-    slots
-  );
-  const Archive = createLucideIcon("archive", [
-    ["rect", { width: "20", height: "5", x: "2", y: "3", rx: "1", key: "1wp1u1" }],
-    ["path", { d: "M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8", key: "1s80jp" }],
-    ["path", { d: "M10 12h4", key: "a56b0p" }]
-  ]);
-  const ChartColumn = createLucideIcon("chart-column", [
-    ["path", { d: "M3 3v16a2 2 0 0 0 2 2h16", key: "c24i48" }],
-    ["path", { d: "M18 17V9", key: "2bz60n" }],
-    ["path", { d: "M13 17V5", key: "1frdt8" }],
-    ["path", { d: "M8 17v-3", key: "17ska0" }]
-  ]);
-  const Download = createLucideIcon("download", [
-    ["path", { d: "M12 15V3", key: "m9g1x1" }],
-    ["path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", key: "ih7n3h" }],
-    ["path", { d: "m7 10 5 5 5-5", key: "brsn70" }]
-  ]);
-  const FolderArchive = createLucideIcon("folder-archive", [
-    ["circle", { cx: "15", cy: "19", r: "2", key: "u2pros" }],
-    [
-      "path",
-      {
-        d: "M20.9 19.8A2 2 0 0 0 22 18V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h5.1",
-        key: "1jj40k"
-      }
-    ],
-    ["path", { d: "M15 11v-1", key: "cntcp" }],
-    ["path", { d: "M15 17v-2", key: "1279jj" }]
-  ]);
-  const FolderOpen = createLucideIcon("folder-open", [
-    [
-      "path",
-      {
-        d: "m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2",
-        key: "usdka0"
-      }
-    ]
-  ]);
-  const GripVertical = createLucideIcon("grip-vertical", [
-    ["circle", { cx: "9", cy: "12", r: "1", key: "1vctgf" }],
-    ["circle", { cx: "9", cy: "5", r: "1", key: "hp0tcf" }],
-    ["circle", { cx: "9", cy: "19", r: "1", key: "fkjjf6" }],
-    ["circle", { cx: "15", cy: "12", r: "1", key: "1tmaij" }],
-    ["circle", { cx: "15", cy: "5", r: "1", key: "19l28e" }],
-    ["circle", { cx: "15", cy: "19", r: "1", key: "f4zoj3" }]
-  ]);
-  const Grip = createLucideIcon("grip", [
-    ["circle", { cx: "12", cy: "5", r: "1", key: "gxeob9" }],
-    ["circle", { cx: "19", cy: "5", r: "1", key: "w8mnmm" }],
-    ["circle", { cx: "5", cy: "5", r: "1", key: "lttvr7" }],
-    ["circle", { cx: "12", cy: "12", r: "1", key: "41hilf" }],
-    ["circle", { cx: "19", cy: "12", r: "1", key: "1wjl8i" }],
-    ["circle", { cx: "5", cy: "12", r: "1", key: "1pcz8c" }],
-    ["circle", { cx: "12", cy: "19", r: "1", key: "lyex9k" }],
-    ["circle", { cx: "19", cy: "19", r: "1", key: "shf9b7" }],
-    ["circle", { cx: "5", cy: "19", r: "1", key: "bfqh0e" }]
-  ]);
-  const Layers = createLucideIcon("layers", [
-    [
-      "path",
-      {
-        d: "M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z",
-        key: "zw3jo"
-      }
-    ],
-    [
-      "path",
-      {
-        d: "M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12",
-        key: "1wduqc"
-      }
-    ],
-    [
-      "path",
-      {
-        d: "M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17",
-        key: "kqbvx6"
-      }
-    ]
-  ]);
-  const Minus = createLucideIcon("minus", [["path", { d: "M5 12h14", key: "1ays0h" }]]);
-  const Pause = createLucideIcon("pause", [
-    ["rect", { x: "14", y: "3", width: "5", height: "18", rx: "1", key: "kaeet6" }],
-    ["rect", { x: "5", y: "3", width: "5", height: "18", rx: "1", key: "1wsw3u" }]
-  ]);
-  const Play = createLucideIcon("play", [
-    [
-      "path",
-      {
-        d: "M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z",
-        key: "10ikf1"
-      }
-    ]
-  ]);
-  const Settings2 = createLucideIcon("settings-2", [
-    ["path", { d: "M14 17H5", key: "gfn3mx" }],
-    ["path", { d: "M19 7h-9", key: "6i9tg" }],
-    ["circle", { cx: "17", cy: "17", r: "3", key: "18b49y" }],
-    ["circle", { cx: "7", cy: "7", r: "3", key: "dfmy0x" }]
-  ]);
-  const SlidersHorizontal = createLucideIcon("sliders-horizontal", [
-    ["path", { d: "M10 5H3", key: "1qgfaw" }],
-    ["path", { d: "M12 19H3", key: "yhmn1j" }],
-    ["path", { d: "M14 3v4", key: "1sua03" }],
-    ["path", { d: "M16 17v4", key: "1q0r14" }],
-    ["path", { d: "M21 12h-9", key: "1o4lsq" }],
-    ["path", { d: "M21 19h-5", key: "1rlt1p" }],
-    ["path", { d: "M21 5h-7", key: "1oszz2" }],
-    ["path", { d: "M8 10v4", key: "tgpxqk" }],
-    ["path", { d: "M8 12H3", key: "a7s4jb" }]
-  ]);
-  const Wrench = createLucideIcon("wrench", [
-    [
-      "path",
-      {
-        d: "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z",
-        key: "1ngwbx"
-      }
-    ]
-  ]);
-  const X = createLucideIcon("x", [
-    ["path", { d: "M18 6 6 18", key: "1bl5f8" }],
-    ["path", { d: "m6 6 12 12", key: "d8bk6v" }]
-  ]);
   function r(e) {
     var t, f, n = "";
     if ("string" == typeof e || "number" == typeof e) n += e;
@@ -27544,25 +26698,25 @@ q.addEventListener('input',render);render();<\/script></html>`;
     };
   };
   const twMerge = /* @__PURE__ */ createTailwindMerge(getDefaultConfig);
-  const _hoisted_1$3$1 = ["aria-busy"];
-  const _hoisted_2$5 = {
+  const _hoisted_1$3 = ["aria-busy"];
+  const _hoisted_2$3 = {
     key: 0,
     class: "flex items-center justify-between gap-2"
   };
-  const _hoisted_3$4 = {
+  const _hoisted_3$2 = {
     role: "status",
     "aria-live": "polite"
   };
-  const _hoisted_4$4 = {
+  const _hoisted_4$2 = {
     key: 0,
     class: "tabular-nums"
   };
-  const _hoisted_5$4 = ["value", "aria-label"];
-  const _hoisted_6$4 = {
+  const _hoisted_5$2 = ["value", "aria-label"];
+  const _hoisted_6$2 = {
     key: 1,
     class: "text-xs text-muted-foreground"
   };
-  const _hoisted_7$4 = {
+  const _hoisted_7$2 = {
     key: 2,
     role: "alert",
     class: "text-sm text-destructive"
@@ -27591,17 +26745,17 @@ q.addEventListener('input',render);render();<\/script></html>`;
           class: normalizeClass(__props.compact ? "w-full" : "booster-shared-archive-progress"),
           "aria-busy": __props.busy
         }, [
-          !__props.compact ? (openBlock(), createElementBlock("div", _hoisted_2$5, [
+          !__props.compact ? (openBlock(), createElementBlock("div", _hoisted_2$3, [
             createBaseVNode(
               "span",
-              _hoisted_3$4,
+              _hoisted_3$2,
               toDisplayString(__props.label),
               1
               /* TEXT */
             ),
             progress.value !== null ? (openBlock(), createElementBlock(
               "strong",
-              _hoisted_4$4,
+              _hoisted_4$2,
               toDisplayString(progress.value) + "%",
               1
               /* TEXT */
@@ -27612,27 +26766,27 @@ q.addEventListener('input',render);render();<\/script></html>`;
             value: progress.value ?? void 0,
             max: "100",
             "aria-label": __props.ariaLabel || __props.label
-          }, null, 8, _hoisted_5$4),
+          }, null, 8, _hoisted_5$2),
           __props.detail ? (openBlock(), createElementBlock(
             "p",
-            _hoisted_6$4,
+            _hoisted_6$2,
             toDisplayString(__props.detail),
             1
             /* TEXT */
           )) : createCommentVNode("v-if", true),
           __props.error ? (openBlock(), createElementBlock(
             "p",
-            _hoisted_7$4,
+            _hoisted_7$2,
             toDisplayString(__props.error),
             1
             /* TEXT */
           )) : createCommentVNode("v-if", true),
           renderSlot(_ctx.$slots, "default")
-        ], 10, _hoisted_1$3$1);
+        ], 10, _hoisted_1$3);
       };
     }
   });
-  const _hoisted_1$5 = ["aria-modal", "aria-label"];
+  const _hoisted_1$4 = ["aria-modal", "aria-label"];
   const _sfc_main$2$2 = /* @__PURE__ */ defineComponent({
     __name: "ModalSurface",
     props: {
@@ -27656,12 +26810,12 @@ q.addEventListener('input',render);render();<\/script></html>`;
           return;
         }
         if (event.key !== "Tab" || !root.value || props.floating) return;
-        const items2 = [
+        const items = [
           ...root.value.querySelectorAll(
             'button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]'
           )
         ].filter((item) => item.getClientRects().length);
-        const first = items2[0], last = items2.at(-1);
+        const first = items[0], last = items.at(-1);
         const active = root.value.getRootNode().activeElement;
         if (!first || !last) {
           event.preventDefault();
@@ -27707,7 +26861,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
               renderSlot(_ctx.$slots, "chrome"),
               renderSlot(_ctx.$slots, "default"),
               renderSlot(_ctx.$slots, "handles")
-            ], 46, _hoisted_1$5)
+            ], 46, _hoisted_1$4)
           ],
           2
           /* CLASS */
@@ -27718,7 +26872,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
   function cn(...inputs) {
     return twMerge(clsx(inputs));
   }
-  const _sfc_main$1$2 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$1$1 = /* @__PURE__ */ defineComponent({
     __name: "Badge",
     props: {
       variant: {},
@@ -27746,7 +26900,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
       };
     }
   });
-  const _sfc_main$6 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$3 = /* @__PURE__ */ defineComponent({
     __name: "Button",
     props: {
       variant: { default: "default" },
@@ -27780,6 +26934,181 @@ q.addEventListener('input',render);render();<\/script></html>`;
       };
     }
   });
+  const toKebabCase = (string) => string.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+  const toCamelCase = (string) => string.replace(
+    /^([A-Z])|[\s-_]+(\w)/g,
+    (match, p1, p2) => p2 ? p2.toUpperCase() : p1.toLowerCase()
+  );
+  const toPascalCase = (string) => {
+    const camelCase = toCamelCase(string);
+    return camelCase.charAt(0).toUpperCase() + camelCase.slice(1);
+  };
+  const mergeClasses = (...classes) => classes.filter((className, index, array) => {
+    return Boolean(className) && className.trim() !== "" && array.indexOf(className) === index;
+  }).join(" ").trim();
+  const isEmptyString = (value) => value === "";
+  var defaultAttributes = {
+    xmlns: "http://www.w3.org/2000/svg",
+    width: 24,
+    height: 24,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    "stroke-width": 2,
+    "stroke-linecap": "round",
+    "stroke-linejoin": "round"
+  };
+  const Icon = ({
+    name,
+    iconNode,
+    absoluteStrokeWidth,
+    "absolute-stroke-width": absoluteStrokeWidthKebabCase,
+    strokeWidth,
+    "stroke-width": strokeWidthKebabCase,
+    size = defaultAttributes.width,
+    color = defaultAttributes.stroke,
+    ...props
+  }, { slots }) => {
+    return h(
+      "svg",
+      {
+        ...defaultAttributes,
+        ...props,
+        width: size,
+        height: size,
+        stroke: color,
+        "stroke-width": isEmptyString(absoluteStrokeWidth) || isEmptyString(absoluteStrokeWidthKebabCase) || absoluteStrokeWidth === true || absoluteStrokeWidthKebabCase === true ? Number(strokeWidth || strokeWidthKebabCase || defaultAttributes["stroke-width"]) * 24 / Number(size) : strokeWidth || strokeWidthKebabCase || defaultAttributes["stroke-width"],
+        class: mergeClasses(
+          "lucide",
+          props.class,
+          ...name ? [`lucide-${toKebabCase(toPascalCase(name))}-icon`, `lucide-${toKebabCase(name)}`] : ["lucide-icon"]
+        )
+      },
+      [...iconNode.map((child) => h(...child)), ...slots.default ? [slots.default()] : []]
+    );
+  };
+  const createLucideIcon = (iconName, iconNode) => (props, { slots, attrs }) => h(
+    Icon,
+    {
+      ...attrs,
+      ...props,
+      iconNode,
+      name: iconName
+    },
+    slots
+  );
+  const Archive = createLucideIcon("archive", [
+    ["rect", { width: "20", height: "5", x: "2", y: "3", rx: "1", key: "1wp1u1" }],
+    ["path", { d: "M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8", key: "1s80jp" }],
+    ["path", { d: "M10 12h4", key: "a56b0p" }]
+  ]);
+  const ChartColumn = createLucideIcon("chart-column", [
+    ["path", { d: "M3 3v16a2 2 0 0 0 2 2h16", key: "c24i48" }],
+    ["path", { d: "M18 17V9", key: "2bz60n" }],
+    ["path", { d: "M13 17V5", key: "1frdt8" }],
+    ["path", { d: "M8 17v-3", key: "17ska0" }]
+  ]);
+  const Download = createLucideIcon("download", [
+    ["path", { d: "M12 15V3", key: "m9g1x1" }],
+    ["path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", key: "ih7n3h" }],
+    ["path", { d: "m7 10 5 5 5-5", key: "brsn70" }]
+  ]);
+  const FolderArchive = createLucideIcon("folder-archive", [
+    ["circle", { cx: "15", cy: "19", r: "2", key: "u2pros" }],
+    [
+      "path",
+      {
+        d: "M20.9 19.8A2 2 0 0 0 22 18V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h5.1",
+        key: "1jj40k"
+      }
+    ],
+    ["path", { d: "M15 11v-1", key: "cntcp" }],
+    ["path", { d: "M15 17v-2", key: "1279jj" }]
+  ]);
+  const GripVertical = createLucideIcon("grip-vertical", [
+    ["circle", { cx: "9", cy: "12", r: "1", key: "1vctgf" }],
+    ["circle", { cx: "9", cy: "5", r: "1", key: "hp0tcf" }],
+    ["circle", { cx: "9", cy: "19", r: "1", key: "fkjjf6" }],
+    ["circle", { cx: "15", cy: "12", r: "1", key: "1tmaij" }],
+    ["circle", { cx: "15", cy: "5", r: "1", key: "19l28e" }],
+    ["circle", { cx: "15", cy: "19", r: "1", key: "f4zoj3" }]
+  ]);
+  const Grip = createLucideIcon("grip", [
+    ["circle", { cx: "12", cy: "5", r: "1", key: "gxeob9" }],
+    ["circle", { cx: "19", cy: "5", r: "1", key: "w8mnmm" }],
+    ["circle", { cx: "5", cy: "5", r: "1", key: "lttvr7" }],
+    ["circle", { cx: "12", cy: "12", r: "1", key: "41hilf" }],
+    ["circle", { cx: "19", cy: "12", r: "1", key: "1wjl8i" }],
+    ["circle", { cx: "5", cy: "12", r: "1", key: "1pcz8c" }],
+    ["circle", { cx: "12", cy: "19", r: "1", key: "lyex9k" }],
+    ["circle", { cx: "19", cy: "19", r: "1", key: "shf9b7" }],
+    ["circle", { cx: "5", cy: "19", r: "1", key: "bfqh0e" }]
+  ]);
+  const Layers = createLucideIcon("layers", [
+    [
+      "path",
+      {
+        d: "M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z",
+        key: "zw3jo"
+      }
+    ],
+    [
+      "path",
+      {
+        d: "M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12",
+        key: "1wduqc"
+      }
+    ],
+    [
+      "path",
+      {
+        d: "M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17",
+        key: "kqbvx6"
+      }
+    ]
+  ]);
+  const Minus = createLucideIcon("minus", [["path", { d: "M5 12h14", key: "1ays0h" }]]);
+  const Settings2 = createLucideIcon("settings-2", [
+    ["path", { d: "M14 17H5", key: "gfn3mx" }],
+    ["path", { d: "M19 7h-9", key: "6i9tg" }],
+    ["circle", { cx: "17", cy: "17", r: "3", key: "18b49y" }],
+    ["circle", { cx: "7", cy: "7", r: "3", key: "dfmy0x" }]
+  ]);
+  const ShieldAlert = createLucideIcon("shield-alert", [
+    [
+      "path",
+      {
+        d: "M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z",
+        key: "oel41y"
+      }
+    ],
+    ["path", { d: "M12 8v4", key: "1got3b" }],
+    ["path", { d: "M12 16h.01", key: "1drbdi" }]
+  ]);
+  const SlidersHorizontal = createLucideIcon("sliders-horizontal", [
+    ["path", { d: "M10 5H3", key: "1qgfaw" }],
+    ["path", { d: "M12 19H3", key: "yhmn1j" }],
+    ["path", { d: "M14 3v4", key: "1sua03" }],
+    ["path", { d: "M16 17v4", key: "1q0r14" }],
+    ["path", { d: "M21 12h-9", key: "1o4lsq" }],
+    ["path", { d: "M21 19h-5", key: "1rlt1p" }],
+    ["path", { d: "M21 5h-7", key: "1oszz2" }],
+    ["path", { d: "M8 10v4", key: "tgpxqk" }],
+    ["path", { d: "M8 12H3", key: "a7s4jb" }]
+  ]);
+  const Wrench = createLucideIcon("wrench", [
+    [
+      "path",
+      {
+        d: "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z",
+        key: "1ngwbx"
+      }
+    ]
+  ]);
+  const X = createLucideIcon("x", [
+    ["path", { d: "M18 6 6 18", key: "1bl5f8" }],
+    ["path", { d: "m6 6 12 12", key: "d8bk6v" }]
+  ]);
   const _sfc_main$2$1 = /* @__PURE__ */ defineComponent({
     __name: "ArchiveProgressBar",
     props: {
@@ -27801,1035 +27130,182 @@ q.addEventListener('input',render);render();<\/script></html>`;
       };
     }
   });
-  const _hoisted_1$1$1 = { class: "booster-setting-card" };
-  const _hoisted_2$1$1 = { class: "booster-setting-copy" };
-  const _hoisted_3$1$1 = { class: "flex items-center gap-2" };
-  const _hoisted_4$1$1 = { class: "booster-setting-card" };
-  const _hoisted_5$1$1 = { class: "booster-setting-copy" };
-  const _hoisted_6$1$1 = { class: "booster-stack-card" };
-  const _hoisted_7$1$1 = { class: "grid grid-cols-2 gap-3" };
-  const _hoisted_8$1$1 = { class: "booster-field" };
-  const _hoisted_9$1$1 = { class: "booster-field" };
-  const _hoisted_10$3 = ["aria-expanded"];
-  const _hoisted_11$3 = {
-    key: 0,
-    class: "grid grid-cols-2 gap-3"
-  };
-  const _hoisted_12$3 = { class: "booster-field" };
-  const _hoisted_13$2 = { class: "booster-field" };
-  const _hoisted_14$2 = { class: "booster-field" };
-  const _hoisted_15$2 = { class: "booster-field" };
-  const _hoisted_16$1 = { class: "booster-field col-span-2" };
-  const _hoisted_17$1 = { class: "flex items-center gap-2" };
-  const _hoisted_18$1 = { class: "booster-stack-card" };
-  const _hoisted_19$1 = { class: "flex items-center justify-between gap-2" };
-  const _hoisted_20$1 = { class: "booster-setting-copy" };
-  const _hoisted_21$1 = { class: "text-base font-semibold tabular-nums" };
-  const _hoisted_22$1 = { class: "booster-counter-grid text-xs" };
-  const _hoisted_23$1 = { class: "flex flex-wrap gap-2" };
-  const _hoisted_24$1 = {
-    key: 0,
-    role: "alert",
-    class: "text-sm text-destructive"
-  };
-  const _hoisted_25$1 = {
-    key: 1,
-    role: "alert",
-    class: "text-sm text-destructive"
-  };
-  const _sfc_main$1$1 = /* @__PURE__ */ defineComponent({
-    __name: "ArchiveManager",
-    props: {
-      state: {},
-      initial: {},
-      error: {},
-      title: {}
-    },
-    emits: ["choose-folder", "start", "stop", "resume"],
-    setup(__props, { emit: __emit }) {
-      const props = __props;
-      const emit2 = __emit;
-      const mode = /* @__PURE__ */ ref(props.initial.mode);
-      const limit = /* @__PURE__ */ ref(props.initial.limit);
-      const from = /* @__PURE__ */ ref(props.initial.from);
-      const through = /* @__PURE__ */ ref(props.initial.through);
-      const pageSize = /* @__PURE__ */ ref(props.initial.pageSize);
-      const delay = /* @__PURE__ */ ref(props.initial.delay);
-      const media = /* @__PURE__ */ ref(props.initial.media);
-      const advanced = /* @__PURE__ */ ref(false);
-      const percent = computed(
-        () => props.state.total ? Math.min(100, Math.floor(props.state.done / props.state.total * 100)) : props.state.phase === "Готово" ? 100 : 0
-      );
-      function start() {
-        emit2("start", {
-          mode: mode.value,
-          limit: Number(limit.value),
-          from: from.value,
-          through: through.value,
-          pageSize: Number(pageSize.value),
-          delay: Number(delay.value),
-          media: media.value
-        });
-      }
-      return (_ctx, _cache) => {
-        return openBlock(), createElementBlock(
-          Fragment,
-          null,
-          [
-            createBaseVNode("section", _hoisted_1$1$1, [
-              createBaseVNode("div", _hoisted_2$1$1, [
-                createBaseVNode("div", _hoisted_3$1$1, [
-                  createVNode(unref(Archive), { class: "size-4" }),
-                  createBaseVNode(
-                    "b",
-                    null,
-                    toDisplayString(__props.title || "Архив переписки"),
-                    1
-                    /* TEXT */
-                  ),
-                  createVNode(unref(_sfc_main$1$2), {
-                    variant: __props.state.busy ? "default" : "outline"
-                  }, {
-                    default: withCtx(() => [
-                      createTextVNode(
-                        toDisplayString(__props.state.folderPending ? "Выбор папки" : __props.state.busy ? "Экспорт" : "Ожидание"),
-                        1
-                        /* TEXT */
-                      )
-                    ]),
-                    _: 1
-                    /* STABLE */
-                  }, 8, ["variant"])
-                ]),
-                createBaseVNode(
-                  "span",
-                  null,
-                  toDisplayString(__props.state.context) + " · Сообщений в архиве: " + toDisplayString(__props.state.messages),
-                  1
-                  /* TEXT */
-                )
-              ]),
-              createVNode(unref(_sfc_main$6), {
-                variant: "outline",
-                size: "sm",
-                disabled: __props.state.busy,
-                onClick: _cache[0] || (_cache[0] = ($event) => emit2("choose-folder"))
-              }, {
-                default: withCtx(() => [
-                  createVNode(unref(FolderOpen), { class: "size-4" }),
-                  _cache[11] || (_cache[11] = createTextVNode(
-                    "Папка ",
-                    -1
-                    /* CACHED */
-                  ))
-                ]),
-                _: 1
-                /* STABLE */
-              }, 8, ["disabled"])
-            ]),
-            createBaseVNode("section", _hoisted_4$1$1, [
-              createBaseVNode("div", _hoisted_5$1$1, [
-                _cache[12] || (_cache[12] = createBaseVNode(
-                  "b",
-                  null,
-                  "Хранилище",
-                  -1
-                  /* CACHED */
-                )),
-                createBaseVNode(
-                  "span",
-                  null,
-                  toDisplayString(__props.state.folder || "Выбери папку архива"),
-                  1
-                  /* TEXT */
-                )
-              ])
-            ]),
-            createBaseVNode("section", _hoisted_6$1$1, [
-              _cache[22] || (_cache[22] = createBaseVNode(
-                "div",
-                { class: "booster-setting-copy" },
-                [
-                  createBaseVNode("b", null, "Что выгружать"),
-                  createBaseVNode("span", null, "Без дублирования уже сохранённых сообщений")
-                ],
-                -1
-                /* CACHED */
-              )),
-              createBaseVNode("div", _hoisted_7$1$1, [
-                createBaseVNode("label", _hoisted_8$1$1, [
-                  _cache[14] || (_cache[14] = createTextVNode(
-                    " Режим ",
-                    -1
-                    /* CACHED */
-                  )),
-                  withDirectives(createBaseVNode(
-                    "select",
-                    {
-                      "onUpdate:modelValue": _cache[1] || (_cache[1] = ($event) => mode.value = $event),
-                      class: "booster-select w-full"
-                    },
-                    [..._cache[13] || (_cache[13] = [
-                      createBaseVNode(
-                        "option",
-                        { value: "recent" },
-                        "Последние N",
-                        -1
-                        /* CACHED */
-                      ),
-                      createBaseVNode(
-                        "option",
-                        { value: "incremental" },
-                        "Только новые",
-                        -1
-                        /* CACHED */
-                      ),
-                      createBaseVNode(
-                        "option",
-                        { value: "backfill" },
-                        "Продолжить старые",
-                        -1
-                        /* CACHED */
-                      )
-                    ])],
-                    512
-                    /* NEED_PATCH */
-                  ), [
-                    [vModelSelect, mode.value]
-                  ])
-                ]),
-                createBaseVNode("label", _hoisted_9$1$1, [
-                  _cache[15] || (_cache[15] = createTextVNode(
-                    " Количество сообщений ",
-                    -1
-                    /* CACHED */
-                  )),
-                  withDirectives(createBaseVNode(
-                    "input",
-                    {
-                      "onUpdate:modelValue": _cache[2] || (_cache[2] = ($event) => limit.value = $event),
-                      class: "booster-input",
-                      type: "number",
-                      min: "1",
-                      max: "100000"
-                    },
-                    null,
-                    512
-                    /* NEED_PATCH */
-                  ), [
-                    [
-                      vModelText,
-                      limit.value,
-                      void 0,
-                      { number: true }
-                    ]
-                  ])
-                ])
-              ]),
-              createBaseVNode("button", {
-                class: "booster-disclosure",
-                type: "button",
-                "aria-expanded": advanced.value,
-                onClick: _cache[3] || (_cache[3] = ($event) => advanced.value = !advanced.value)
-              }, [
-                _cache[16] || (_cache[16] = createBaseVNode(
-                  "span",
-                  null,
-                  [
-                    createBaseVNode("b", null, "Дополнительные настройки"),
-                    createBaseVNode("small", null, "Диапазон дат, пачка и медиафайлы")
-                  ],
-                  -1
-                  /* CACHED */
-                )),
-                createVNode(unref(Settings2), { class: "size-4" })
-              ], 8, _hoisted_10$3),
-              advanced.value ? (openBlock(), createElementBlock("div", _hoisted_11$3, [
-                createBaseVNode("label", _hoisted_12$3, [
-                  _cache[17] || (_cache[17] = createTextVNode(
-                    "С даты",
-                    -1
-                    /* CACHED */
-                  )),
-                  withDirectives(createBaseVNode(
-                    "input",
-                    {
-                      "onUpdate:modelValue": _cache[4] || (_cache[4] = ($event) => from.value = $event),
-                      class: "booster-input",
-                      type: "date"
-                    },
-                    null,
-                    512
-                    /* NEED_PATCH */
-                  ), [
-                    [vModelText, from.value]
-                  ])
-                ]),
-                createBaseVNode("label", _hoisted_13$2, [
-                  _cache[18] || (_cache[18] = createTextVNode(
-                    "По дату",
-                    -1
-                    /* CACHED */
-                  )),
-                  withDirectives(createBaseVNode(
-                    "input",
-                    {
-                      "onUpdate:modelValue": _cache[5] || (_cache[5] = ($event) => through.value = $event),
-                      class: "booster-input",
-                      type: "date"
-                    },
-                    null,
-                    512
-                    /* NEED_PATCH */
-                  ), [
-                    [vModelText, through.value]
-                  ])
-                ]),
-                createBaseVNode("label", _hoisted_14$2, [
-                  _cache[19] || (_cache[19] = createTextVNode(
-                    "Пачка",
-                    -1
-                    /* CACHED */
-                  )),
-                  withDirectives(createBaseVNode(
-                    "input",
-                    {
-                      "onUpdate:modelValue": _cache[6] || (_cache[6] = ($event) => pageSize.value = $event),
-                      class: "booster-input",
-                      type: "number",
-                      min: "1",
-                      max: "100"
-                    },
-                    null,
-                    512
-                    /* NEED_PATCH */
-                  ), [
-                    [
-                      vModelText,
-                      pageSize.value,
-                      void 0,
-                      { number: true }
-                    ]
-                  ])
-                ]),
-                createBaseVNode("label", _hoisted_15$2, [
-                  _cache[20] || (_cache[20] = createTextVNode(
-                    "Пауза, мс",
-                    -1
-                    /* CACHED */
-                  )),
-                  withDirectives(createBaseVNode(
-                    "input",
-                    {
-                      "onUpdate:modelValue": _cache[7] || (_cache[7] = ($event) => delay.value = $event),
-                      class: "booster-input",
-                      type: "number",
-                      min: "300"
-                    },
-                    null,
-                    512
-                    /* NEED_PATCH */
-                  ), [
-                    [
-                      vModelText,
-                      delay.value,
-                      void 0,
-                      { number: true }
-                    ]
-                  ])
-                ]),
-                createBaseVNode("label", _hoisted_16$1, [
-                  createBaseVNode("span", _hoisted_17$1, [
-                    withDirectives(createBaseVNode(
-                      "input",
-                      {
-                        "onUpdate:modelValue": _cache[8] || (_cache[8] = ($event) => media.value = $event),
-                        type: "checkbox"
-                      },
-                      null,
-                      512
-                      /* NEED_PATCH */
-                    ), [
-                      [vModelCheckbox, media.value]
-                    ]),
-                    _cache[21] || (_cache[21] = createTextVNode(
-                      "Сохранять файлы и голосовые",
-                      -1
-                      /* CACHED */
-                    ))
-                  ])
-                ])
-              ])) : createCommentVNode("v-if", true)
-            ]),
-            createBaseVNode("section", _hoisted_18$1, [
-              createBaseVNode("div", _hoisted_19$1, [
-                createBaseVNode("div", _hoisted_20$1, [
-                  _cache[23] || (_cache[23] = createBaseVNode(
-                    "b",
-                    null,
-                    "Прогресс экспорта",
-                    -1
-                    /* CACHED */
-                  )),
-                  createBaseVNode(
-                    "span",
-                    null,
-                    toDisplayString(__props.state.error || __props.state.phase || "Ожидание"),
-                    1
-                    /* TEXT */
-                  )
-                ]),
-                createBaseVNode(
-                  "strong",
-                  _hoisted_21$1,
-                  toDisplayString(percent.value) + "%",
-                  1
-                  /* TEXT */
-                )
-              ]),
-              createVNode(_sfc_main$2$1, {
-                label: "Прогресс экспорта",
-                percent: percent.value,
-                compact: ""
-              }, null, 8, ["percent"]),
-              createBaseVNode("div", _hoisted_22$1, [
-                createBaseVNode("span", null, [
-                  _cache[24] || (_cache[24] = createTextVNode(
-                    "Обработано ",
-                    -1
-                    /* CACHED */
-                  )),
-                  createBaseVNode(
-                    "b",
-                    null,
-                    toDisplayString(__props.state.done) + " / " + toDisplayString(__props.state.total),
-                    1
-                    /* TEXT */
-                  )
-                ]),
-                createBaseVNode("span", null, [
-                  _cache[25] || (_cache[25] = createTextVNode(
-                    "Новых ",
-                    -1
-                    /* CACHED */
-                  )),
-                  createBaseVNode(
-                    "b",
-                    null,
-                    toDisplayString(__props.state.newCount),
-                    1
-                    /* TEXT */
-                  )
-                ]),
-                createBaseVNode("span", null, [
-                  _cache[26] || (_cache[26] = createTextVNode(
-                    "Файлов ",
-                    -1
-                    /* CACHED */
-                  )),
-                  createBaseVNode(
-                    "b",
-                    null,
-                    toDisplayString(__props.state.downloaded),
-                    1
-                    /* TEXT */
-                  )
-                ]),
-                createBaseVNode("span", null, [
-                  _cache[27] || (_cache[27] = createTextVNode(
-                    "Ошибки ",
-                    -1
-                    /* CACHED */
-                  )),
-                  createBaseVNode(
-                    "b",
-                    null,
-                    toDisplayString(__props.state.failed),
-                    1
-                    /* TEXT */
-                  )
-                ])
-              ]),
-              createBaseVNode("div", _hoisted_23$1, [
-                createVNode(unref(_sfc_main$6), {
-                  disabled: __props.state.busy || !__props.state.folder || !!__props.state.blockedReason,
-                  onClick: start
-                }, {
-                  default: withCtx(() => [
-                    createVNode(unref(Download), { class: "size-4" }),
-                    _cache[28] || (_cache[28] = createTextVNode(
-                      "Выгрузить",
-                      -1
-                      /* CACHED */
-                    ))
-                  ]),
-                  _: 1
-                  /* STABLE */
-                }, 8, ["disabled"]),
-                createVNode(unref(_sfc_main$6), {
-                  variant: "outline",
-                  disabled: !__props.state.busy || __props.state.folderPending,
-                  onClick: _cache[9] || (_cache[9] = ($event) => emit2("stop"))
-                }, {
-                  default: withCtx(() => [
-                    createVNode(unref(Pause), { class: "size-4" }),
-                    _cache[29] || (_cache[29] = createTextVNode(
-                      "Пауза",
-                      -1
-                      /* CACHED */
-                    ))
-                  ]),
-                  _: 1
-                  /* STABLE */
-                }, 8, ["disabled"]),
-                createVNode(unref(_sfc_main$6), {
-                  variant: "outline",
-                  disabled: __props.state.busy || !__props.state.paused || !!__props.state.blockedReason,
-                  onClick: _cache[10] || (_cache[10] = ($event) => emit2("resume"))
-                }, {
-                  default: withCtx(() => [
-                    createVNode(unref(Play), { class: "size-4" }),
-                    _cache[30] || (_cache[30] = createTextVNode(
-                      "Продолжить",
-                      -1
-                      /* CACHED */
-                    ))
-                  ]),
-                  _: 1
-                  /* STABLE */
-                }, 8, ["disabled"])
-              ]),
-              __props.state.blockedReason ? (openBlock(), createElementBlock(
-                "p",
-                _hoisted_24$1,
-                toDisplayString(__props.state.blockedReason),
-                1
-                /* TEXT */
-              )) : createCommentVNode("v-if", true),
-              __props.error ? (openBlock(), createElementBlock(
-                "p",
-                _hoisted_25$1,
-                toDisplayString(__props.error),
-                1
-                /* TEXT */
-              )) : createCommentVNode("v-if", true)
-            ])
-          ],
-          64
-          /* STABLE_FRAGMENT */
-        );
-      };
-    }
-  });
-  const _hoisted_1$4 = { class: "booster-reader-exchanges" };
-  const _hoisted_2$4 = {
-    key: 0,
-    class: "booster-note"
-  };
-  const _hoisted_3$3 = {
-    key: 0,
-    class: "booster-note"
-  };
-  const _hoisted_4$3 = {
-    key: 1,
-    class: "booster-note"
-  };
-  const _hoisted_5$3 = ["data-archive-node", "data-archive-message"];
-  const _hoisted_6$3 = {
-    key: 2,
-    class: "booster-exchange-details"
-  };
-  const _hoisted_7$3 = { class: "booster-exchange-details-label" };
-  const _hoisted_8$3 = ["data-archive-node", "data-archive-message"];
-  const _hoisted_9$3 = ["data-archive-node", "data-archive-message"];
-  const _sfc_main$4 = /* @__PURE__ */ defineComponent({
-    __name: "ArchiveTranscript",
-    props: {
-      turns: {},
-      isEmpty: { type: Boolean },
-      targetMessageId: {},
-      copy: {}
-    },
-    setup(__props) {
-      return (_ctx, _cache) => {
-        return openBlock(), createElementBlock("div", _hoisted_1$4, [
-          __props.isEmpty ? (openBlock(), createElementBlock(
-            "p",
-            _hoisted_2$4,
-            toDisplayString(__props.copy.empty),
-            1
-            /* TEXT */
-          )) : createCommentVNode("v-if", true),
-          (openBlock(true), createElementBlock(
-            Fragment,
-            null,
-            renderList(__props.turns, (turn) => {
-              return openBlock(), createElementBlock("article", {
-                key: turn.id,
-                class: "booster-exchange"
-              }, [
-                turn.association === "unassigned" ? (openBlock(), createElementBlock(
-                  "p",
-                  _hoisted_3$3,
-                  toDisplayString(__props.copy.unassigned),
-                  1
-                  /* TEXT */
-                )) : turn.association === "adjacency" ? (openBlock(), createElementBlock(
-                  "p",
-                  _hoisted_4$3,
-                  toDisplayString(__props.copy.adjacency),
-                  1
-                  /* TEXT */
-                )) : createCommentVNode("v-if", true),
-                (openBlock(true), createElementBlock(
-                  Fragment,
-                  null,
-                  renderList(turn.users, (item) => {
-                    return openBlock(), createElementBlock("div", {
-                      key: item.key,
-                      "data-archive-node": item.key,
-                      "data-archive-message": item.messageId,
-                      class: normalizeClass({ "booster-message-target": __props.targetMessageId === item.messageId }),
-                      tabindex: "-1"
-                    }, [
-                      renderSlot(_ctx.$slots, "record", { record: item })
-                    ], 10, _hoisted_5$3);
-                  }),
-                  128
-                  /* KEYED_FRAGMENT */
-                )),
-                turn.details.length ? (openBlock(), createElementBlock("div", _hoisted_6$3, [
-                  createBaseVNode(
-                    "div",
-                    _hoisted_7$3,
-                    toDisplayString(__props.copy.details) + " · " + toDisplayString(turn.details.length),
-                    1
-                    /* TEXT */
-                  ),
-                  (openBlock(true), createElementBlock(
-                    Fragment,
-                    null,
-                    renderList(turn.details, (item) => {
-                      return openBlock(), createElementBlock("div", {
-                        key: item.key,
-                        "data-archive-node": item.key,
-                        "data-archive-message": item.messageId,
-                        class: normalizeClass({ "booster-message-target": __props.targetMessageId === item.messageId }),
-                        tabindex: "-1"
-                      }, [
-                        renderSlot(_ctx.$slots, "record", { record: item })
-                      ], 10, _hoisted_8$3);
-                    }),
-                    128
-                    /* KEYED_FRAGMENT */
-                  ))
-                ])) : createCommentVNode("v-if", true),
-                (openBlock(true), createElementBlock(
-                  Fragment,
-                  null,
-                  renderList(turn.replies, (item) => {
-                    return openBlock(), createElementBlock("div", {
-                      key: item.key,
-                      "data-archive-node": item.key,
-                      "data-archive-message": item.messageId,
-                      class: normalizeClass({ "booster-message-target": __props.targetMessageId === item.messageId }),
-                      tabindex: "-1"
-                    }, [
-                      renderSlot(_ctx.$slots, "record", { record: item })
-                    ], 10, _hoisted_9$3);
-                  }),
-                  128
-                  /* KEYED_FRAGMENT */
-                ))
-              ]);
-            }),
-            128
-            /* KEYED_FRAGMENT */
-          ))
-        ]);
-      };
-    }
-  });
-  const fields = ["mode", "limit", "from", "through", "pageSize", "delay", "media"];
-  const fieldNames = [...fields].sort().join(",");
-  function validDay(value) {
-    if (!value) return true;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-    const millis = Date.parse(`${value}T00:00:00.000Z`);
-    return Number.isFinite(millis) && new Date(millis).toISOString().slice(0, 10) === value;
-  }
-  function validateVkCapturePreferences(input) {
-    if (!input || typeof input !== "object" || Array.isArray(input))
-      throw Error("Invalid VK capture preferences");
-    const value = input;
-    if (Object.keys(value).sort().join(",") !== fieldNames || !["recent", "incremental", "backfill"].includes(String(value.mode)) || !Number.isSafeInteger(value.limit) || value.limit < 1 || value.limit > 1e5 || !Number.isSafeInteger(value.pageSize) || value.pageSize < 1 || value.pageSize > 100 || !Number.isSafeInteger(value.delay) || value.delay < 300 || typeof value.media !== "boolean" || typeof value.from !== "string" || typeof value.through !== "string" || !validDay(value.from) || !validDay(value.through) || value.from && value.through && value.from > value.through)
-      throw Error("Invalid VK capture preferences");
-    return {
-      mode: value.mode,
-      limit: value.limit,
-      from: value.from,
-      through: value.through,
-      pageSize: value.pageSize,
-      delay: value.delay,
-      media: value.media
-    };
-  }
-  function withoutPeer(options) {
-    return validateVkCapturePreferences(Object.fromEntries(fields.map((name) => [name, options[name]])));
-  }
-  function vkCaptureSettingsPort(api, scopeId = instanceScope()) {
-    const [productId, channel, extra] = scopeId.split(":");
-    if (productId !== "vk-booster" && productId !== "all-in-one" || channel !== "dev" && channel !== "prod" || extra !== void 0)
-      throw Error("VK capture settings require a VK or aggregate product/channel scope");
-    function requireIdle() {
-      const status = api.status();
-      if (status.busy || status.folderPending) throw Error("Archive operation in progress");
-      if (status.blockedReason) throw Error("VK conversation does not match selected archive");
-      return status.options;
-    }
-    return {
-      scope: { productId, channel },
-      schemaVersion: 1,
-      async exportSettings() {
-        return withoutPeer(requireIdle());
-      },
-      validateSettings: validateVkCapturePreferences,
-      async restoreSettingsAtomically(value) {
-        requireIdle();
-        api.configure(validateVkCapturePreferences(value));
-      }
-    };
-  }
-  async function exportVkCaptureSettings(api) {
-    return exportSettingsBackup(vkCaptureSettingsPort(api));
-  }
-  async function restoreVkCaptureSettings(api, backup) {
-    await restoreSettingsBackup(vkCaptureSettingsPort(api), backup);
-  }
-  const _hoisted_1$3 = {
-    class: "booster-stack-card",
-    "aria-label": "Просмотр сохранённой переписки"
-  };
-  const _hoisted_2$3 = { class: "booster-setting-copy" };
-  const _hoisted_3$2 = { class: "booster-field" };
-  const _hoisted_4$2 = { class: "max-h-[420px] min-h-[130px] overflow-x-hidden overflow-y-auto rounded-lg border border-border bg-background p-3" };
-  const _hoisted_5$2 = { class: "mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground" };
-  const _hoisted_6$2 = { class: "text-foreground" };
-  const _hoisted_7$2 = { class: "m-0 whitespace-pre-wrap break-words text-sm text-foreground" };
-  const _hoisted_8$2 = {
-    key: 0,
-    class: "mt-2 border-l-2 border-border pl-2 text-xs text-muted-foreground"
-  };
-  const _hoisted_9$2 = {
-    key: 1,
-    class: "mt-2 text-xs text-muted-foreground"
-  };
-  const _hoisted_10$2 = {
-    key: 2,
-    class: "mt-2 text-xs text-muted-foreground"
-  };
-  const _hoisted_11$2 = { class: "flex flex-wrap items-center justify-between gap-2" };
-  const _hoisted_12$2 = {
-    key: 0,
-    class: "m-0 text-xs text-muted-foreground"
-  };
-  const _sfc_main$3 = /* @__PURE__ */ defineComponent({
-    __name: "ArchivePreview",
-    props: {
-      api: {},
-      status: {}
-    },
-    setup(__props) {
-      const props = __props;
-      const query = /* @__PURE__ */ ref("");
-      const visibleLimit = /* @__PURE__ */ ref(80);
-      const result = computed(() => {
-        void props.status;
-        return props.api.previewMessages({ limit: visibleLimit.value, query: query.value });
-      });
-      const messageMap = computed(() => new Map(result.value.messages.map((row) => [String(row.id), row])));
-      const turns = computed(
-        () => result.value.messages.map((message) => {
-          const record2 = { key: String(message.id), messageId: String(message.id) };
-          return {
-            id: record2.key,
-            association: "linked",
-            users: message.out ? [record2] : [],
-            details: [],
-            replies: message.out ? [] : [record2]
-          };
-        })
-      );
-      const copy = computed(() => ({
-        empty: query.value ? "Сообщения с таким текстом не найдены." : "В выбранном архиве ещё нет сообщений.",
-        unassigned: "",
-        adjacency: "",
-        details: ""
-      }));
-      watch(query, () => {
-        visibleLimit.value = 80;
-      });
-      function dateLabel(date) {
-        return Number.isFinite(date) ? new Date(date * 1e3).toLocaleString("ru-RU") : "Дата неизвестна";
-      }
-      function attachmentCount(message) {
-        return Array.isArray(message.attachments) ? message.attachments.length : 0;
-      }
-      function showMore() {
-        visibleLimit.value = Math.min(240, visibleLimit.value + 80);
-      }
-      return (_ctx, _cache) => {
-        return openBlock(), createElementBlock("section", _hoisted_1$3, [
-          createBaseVNode("div", _hoisted_2$3, [
-            _cache[1] || (_cache[1] = createBaseVNode(
-              "b",
-              null,
-              "Сообщения из архива",
-              -1
-              /* CACHED */
-            )),
-            createBaseVNode(
-              "span",
-              null,
-              " Папка: " + toDisplayString(__props.status.folder) + " · Найдено: " + toDisplayString(result.value.matching) + " · Показано: " + toDisplayString(result.value.messages.length),
-              1
-              /* TEXT */
-            )
-          ]),
-          createBaseVNode("label", _hoisted_3$2, [
-            _cache[2] || (_cache[2] = createTextVNode(
-              " Поиск по тексту сохранённых сообщений ",
-              -1
-              /* CACHED */
-            )),
-            withDirectives(createBaseVNode(
-              "input",
-              {
-                "onUpdate:modelValue": _cache[0] || (_cache[0] = ($event) => query.value = $event),
-                class: "booster-input w-full",
-                type: "search",
-                placeholder: "Введите текст сообщения…",
-                autocomplete: "off",
-                "aria-label": "Поиск в локальном архиве"
-              },
-              null,
-              512
-              /* NEED_PATCH */
-            ), [
-              [vModelText, query.value]
-            ])
-          ]),
-          createBaseVNode("div", _hoisted_4$2, [
-            createVNode(unref(_sfc_main$4), {
-              turns: turns.value,
-              "is-empty": !result.value.messages.length,
-              "target-message-id": null,
-              copy: copy.value
-            }, {
-              record: withCtx(({ record: record2 }) => [
-                messageMap.value.get(record2.key) ? (openBlock(), createElementBlock(
-                  "div",
-                  {
-                    key: 0,
-                    class: normalizeClass(["w-full min-w-0 rounded-lg border border-border bg-card p-3", { "bg-secondary": Boolean(messageMap.value.get(record2.key)?.out) }])
-                  },
-                  [
-                    createBaseVNode("div", _hoisted_5$2, [
-                      createBaseVNode(
-                        "b",
-                        _hoisted_6$2,
-                        toDisplayString(messageMap.value.get(record2.key)?.out ? "Вы" : "ID " + (messageMap.value.get(record2.key)?.from_id ?? "—")),
-                        1
-                        /* TEXT */
-                      ),
-                      createBaseVNode(
-                        "time",
-                        null,
-                        toDisplayString(dateLabel(messageMap.value.get(record2.key)?.date ?? 0)),
-                        1
-                        /* TEXT */
-                      )
-                    ]),
-                    createBaseVNode(
-                      "p",
-                      _hoisted_7$2,
-                      toDisplayString(messageMap.value.get(record2.key)?.text || "Сообщение без текста"),
-                      1
-                      /* TEXT */
-                    ),
-                    messageMap.value.get(record2.key)?.reply_message ? (openBlock(), createElementBlock(
-                      "p",
-                      _hoisted_8$2,
-                      " Ответ: " + toDisplayString(messageMap.value.get(record2.key)?.reply_message?.text || "вложение"),
-                      1
-                      /* TEXT */
-                    )) : createCommentVNode("v-if", true),
-                    messageMap.value.get(record2.key)?.fwd_messages?.length ? (openBlock(), createElementBlock(
-                      "p",
-                      _hoisted_9$2,
-                      " Пересланных: " + toDisplayString(messageMap.value.get(record2.key)?.fwd_messages?.length),
-                      1
-                      /* TEXT */
-                    )) : createCommentVNode("v-if", true),
-                    attachmentCount(messageMap.value.get(record2.key)) ? (openBlock(), createElementBlock(
-                      "p",
-                      _hoisted_10$2,
-                      " Вложений: " + toDisplayString(attachmentCount(messageMap.value.get(record2.key))),
-                      1
-                      /* TEXT */
-                    )) : createCommentVNode("v-if", true)
-                  ],
-                  2
-                  /* CLASS */
-                )) : createCommentVNode("v-if", true)
-              ]),
-              _: 1
-              /* STABLE */
-            }, 8, ["turns", "is-empty", "copy"])
-          ]),
-          createBaseVNode("div", _hoisted_11$2, [
-            _cache[4] || (_cache[4] = createBaseVNode(
-              "span",
-              { class: "text-xs text-muted-foreground" },
-              " Для всех сообщений и сохранённых медиа открой index.html в папке архива. ",
-              -1
-              /* CACHED */
-            )),
-            result.value.matching > result.value.messages.length && visibleLimit.value < 240 ? (openBlock(), createBlock(unref(_sfc_main$6), {
-              key: 0,
-              variant: "outline",
-              size: "sm",
-              onClick: showMore
-            }, {
-              default: withCtx(() => [..._cache[3] || (_cache[3] = [
-                createTextVNode(
-                  "Показать ещё",
-                  -1
-                  /* CACHED */
-                )
-              ])]),
-              _: 1
-              /* STABLE */
-            })) : createCommentVNode("v-if", true)
-          ]),
-          result.value.matching > result.value.messages.length && visibleLimit.value >= 240 ? (openBlock(), createElementBlock("p", _hoisted_12$2, " Показаны последние 240 совпадений. Уточни поиск, чтобы найти более ранние сообщения. ")) : createCommentVNode("v-if", true)
-        ]);
-      };
-    }
-  });
   const _hoisted_1$2 = {
-    key: 0,
-    class: "booster-stack-card",
-    "aria-label": "Фиксированный Dexie архив VK"
+    class: "flex min-w-0 flex-col gap-3",
+    "aria-label": "VK Booster — управление архивом"
   };
-  const _hoisted_2$2 = { class: "booster-setting-copy" };
-  const _hoisted_3$1 = { key: 0 };
-  const _hoisted_4$1 = { class: "booster-field" };
-  const _hoisted_5$1 = ["disabled"];
-  const _hoisted_6$1 = { class: "flex flex-wrap gap-2" };
-  const _hoisted_7$1 = ["disabled"];
-  const _hoisted_8$1 = ["disabled"];
-  const _hoisted_9$1 = ["disabled"];
-  const _hoisted_10$1 = {
+  const _hoisted_2$2 = { class: "booster-setting-card" };
+  const _hoisted_3$1 = { class: "booster-setting-copy min-w-0" };
+  const _hoisted_4$1 = { class: "flex flex-wrap items-center gap-2" };
+  const _hoisted_5$1 = { key: 0 };
+  const _hoisted_6$1 = { key: 1 };
+  const _hoisted_7$1 = {
     key: 0,
+    class: "m-0 flex items-start gap-2 text-sm text-destructive",
     role: "alert"
   };
-  const _hoisted_11$1 = {
-    key: 1,
-    class: "max-h-60 overflow-y-auto p-2"
+  const _hoisted_8$1 = {
+    "aria-label": "Разделы VK Booster",
+    class: "flex flex-wrap gap-2",
+    role: "tablist"
   };
-  const _hoisted_12$1 = { class: "whitespace-pre-wrap break-words" };
-  const _hoisted_13$1 = { class: "flex justify-end" };
-  const _hoisted_14$1 = ["aria-expanded"];
-  const _hoisted_15$1 = {
+  const _hoisted_9$1 = ["id", "aria-labelledby"];
+  const _hoisted_10$1 = {
+    class: "booster-stack-card",
+    "aria-label": "Захват в Dexie"
+  };
+  const _hoisted_11$1 = { class: "booster-field" };
+  const _hoisted_12$1 = ["disabled"];
+  const _hoisted_13$1 = { class: "flex flex-wrap gap-2" };
+  const _hoisted_14$1 = {
     key: 0,
-    id: "vk-archive-preview"
+    role: "status"
+  };
+  const _hoisted_15$1 = {
+    key: 2,
+    role: "status"
   };
   const _hoisted_16 = {
     key: 3,
-    class: "booster-stack-card",
-    "aria-label": "Профиль параметров VK"
-  };
-  const _hoisted_17 = { class: "flex flex-wrap gap-2" };
-  const _hoisted_18 = ["disabled"];
-  const _hoisted_19 = { class: "booster-field" };
-  const _hoisted_20 = ["disabled"];
-  const _hoisted_21 = {
-    key: 0,
-    class: "booster-field"
-  };
-  const _hoisted_22 = ["disabled"];
-  const _hoisted_23 = ["disabled"];
-  const _hoisted_24 = {
-    key: 2,
     role: "alert",
     class: "text-sm text-destructive"
   };
-  const _hoisted_25 = {
-    key: 3,
-    role: "status",
-    class: "text-sm"
-  };
-  const _hoisted_26 = {
+  const _hoisted_17 = {
     key: 4,
-    class: "booster-setting-card"
+    role: "alert",
+    class: "text-sm text-destructive"
+  };
+  const _hoisted_18 = ["id", "aria-labelledby"];
+  const _hoisted_19 = {
+    class: "booster-stack-card",
+    "aria-label": "Reader Dexie"
+  };
+  const _hoisted_20 = { class: "flex flex-wrap gap-2" };
+  const _hoisted_21 = {
+    class: "max-h-96 overflow-y-auto space-y-2",
+    "aria-label": "Сохранённые сообщения"
+  };
+  const _hoisted_22 = { class: "whitespace-pre-wrap break-words" };
+  const _hoisted_23 = { key: 0 };
+  const _hoisted_24 = {
+    key: 0,
+    role: "alert",
+    class: "text-sm text-destructive"
+  };
+  const _hoisted_25 = ["id", "aria-labelledby"];
+  const _hoisted_26 = {
+    key: 0,
+    class: "booster-stack-card",
+    "aria-label": "Профиль параметров VK"
+  };
+  const _hoisted_27 = { class: "flex flex-wrap items-end gap-2" };
+  const _hoisted_28 = { class: "booster-field min-w-0 flex-1" };
+  const _hoisted_29 = ["disabled"];
+  const _hoisted_30 = {
+    key: 0,
+    class: "booster-field"
+  };
+  const _hoisted_31 = { class: "flex items-center gap-2" };
+  const _hoisted_32 = ["disabled"];
+  const _hoisted_33 = {
+    key: 2,
+    role: "alert",
+    class: "m-0 text-sm text-destructive"
+  };
+  const _hoisted_34 = {
+    key: 3,
+    role: "alert",
+    class: "m-0 text-sm text-destructive"
+  };
+  const _hoisted_35 = {
+    key: 4,
+    role: "status",
+    class: "m-0 text-sm"
   };
   const _sfc_main$2 = /* @__PURE__ */ defineComponent({
     __name: "ArchivePanel",
     setup(__props) {
       const api = archiveApi();
       const status = /* @__PURE__ */ ref(api?.status() ?? null);
-      const error = /* @__PURE__ */ ref("");
-      const previewOpen = /* @__PURE__ */ ref(false);
+      const tab = /* @__PURE__ */ ref("capture");
+      const tabPrefix = useId();
+      const selectedStatus = computed(() => {
+        if (status.value?.busy || fixedBusy.value) return "Захват сообщений";
+        if (status.value?.blockedReason) return "Другой диалог";
+        return status.value?.activePeerId ? "Dexie v1" : "Открой переписку";
+      });
       const fixedBusy = /* @__PURE__ */ ref(false);
-      const fixedLimit = /* @__PURE__ */ ref(100);
+      const fixedLimit = /* @__PURE__ */ ref(Math.min(3e3, Math.max(1, status.value?.options.limit ?? 100)));
       const fixedSaved = /* @__PURE__ */ ref(null);
       const fixedError = /* @__PURE__ */ ref("");
       const fixedPreview = /* @__PURE__ */ ref([]);
+      const fixedCursor = /* @__PURE__ */ ref();
+      const fixedNextCursor = /* @__PURE__ */ ref();
+      const fixedReading = /* @__PURE__ */ ref(false);
+      const hasVerifiedPeer = computed(() => !!status.value?.activePeerId && !status.value?.blockedReason);
+      const captureProgress = computed(() => status.value?.progress);
+      async function persistCaptureLimit() {
+        if (!api) throw Error("VK unavailable");
+        const options = validateVkCapturePreferences({ ...api.status().options, limit: fixedLimit.value });
+        api.configure(options);
+        const port = vkPreferencesPersistence();
+        try {
+          if (!port) throw Error("VK settings storage unavailable");
+          await port.write(options);
+          durableSettingsError.value = "";
+        } catch {
+          durableSettingsError.value = "Не удалось сохранить параметры для следующего запуска.";
+        }
+      }
       async function captureDexie() {
-        if (!api || fixedBusy.value) return;
+        if (!api || fixedBusy.value || !hasVerifiedPeer.value) return;
         fixedBusy.value = true;
         fixedError.value = "";
         try {
+          await persistCaptureLimit();
           const result = await api.captureFixed(fixedLimit.value);
           fixedSaved.value = result.saved;
           fixedPreview.value = [];
+          fixedCursor.value = void 0;
+          fixedNextCursor.value = void 0;
         } catch {
-          fixedError.value = "Не удалось сохранить историю в Dexie: проверь VK API, владельца и диалог.";
+          fixedError.value = "Не удалось сохранить историю в Dexie: проверь VK API и текущий диалог.";
         } finally {
           fixedBusy.value = false;
         }
       }
-      async function readDexie() {
-        if (!api || fixedBusy.value) return;
-        fixedBusy.value = true;
+      async function readDexie(cursor) {
+        if (!api || fixedBusy.value || fixedReading.value || !hasVerifiedPeer.value) return;
+        fixedReading.value = true;
         fixedError.value = "";
         try {
-          const records = await api.readFixed(100);
-          fixedPreview.value = records.map((row) => ({
-            id: row.id,
-            text: typeof row.text === "string" ? row.text : ""
-          }));
+          const rows = await api.readFixed(80, cursor);
+          fixedPreview.value = rows;
+          fixedCursor.value = cursor;
+          fixedNextCursor.value = rows.length === 80 ? rows.at(-1)?.id : void 0;
         } catch {
+          fixedPreview.value = [];
+          fixedCursor.value = void 0;
+          fixedNextCursor.value = void 0;
           fixedError.value = "Dexie-архив недоступен для текущего проверенного диалога.";
         } finally {
-          fixedBusy.value = false;
+          fixedReading.value = false;
         }
       }
       async function exportDexie() {
-        if (!api || fixedBusy.value) return;
+        if (!api || fixedBusy.value || !hasVerifiedPeer.value) return;
         fixedBusy.value = true;
         fixedError.value = "";
         try {
           const blob = await api.exportFixed();
           const url = URL.createObjectURL(blob);
           try {
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = "vk-fixed-v1-original.jsonl.gz";
-            a.click();
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "vk-fixed-v1-original.jsonl.gz";
+            link.click();
           } finally {
-            setTimeout(() => URL.revokeObjectURL(url), 3e4);
+            window.setTimeout(() => URL.revokeObjectURL(url), 3e4);
           }
         } catch {
           fixedError.value = "Экспорт Dexie не выполнен. Сохранённая история не изменена.";
@@ -28837,12 +27313,30 @@ q.addEventListener('input',render);render();<\/script></html>`;
           fixedBusy.value = false;
         }
       }
+      const tabs = [
+        { id: "capture", label: "Выгрузка", icon: Download },
+        { id: "reader", label: "Архив", icon: Archive },
+        { id: "settings", label: "Параметры", icon: Settings2 }
+      ];
+      function onTabKeydown(event, active) {
+        if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)) return;
+        event.preventDefault();
+        const index = tabs.findIndex((item) => item.id === active);
+        const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length;
+        const selected = tabs[next];
+        if (!selected) return;
+        tab.value = selected.id;
+        const target = event.currentTarget.parentElement?.querySelector(
+          "#" + tabPrefix + "-tab-" + selected.id
+        );
+        target?.focus();
+      }
       const preferencesBusy = /* @__PURE__ */ ref(false);
       const preferencesFile = /* @__PURE__ */ ref(null);
       const preferencesConfirmed = /* @__PURE__ */ ref(false);
       const preferencesError = /* @__PURE__ */ ref("");
       const preferencesMessage = /* @__PURE__ */ ref("");
-      const preferencesRevision = /* @__PURE__ */ ref(0);
+      const durableSettingsError = /* @__PURE__ */ ref(vkPreferencesLoadError());
       function selectPreferences(event) {
         preferencesFile.value = event.target.files?.[0] ?? null;
         preferencesConfirmed.value = false;
@@ -28878,10 +27372,12 @@ q.addEventListener('input',render);render();<\/script></html>`;
         preferencesError.value = "";
         preferencesMessage.value = "";
         try {
-          await restoreVkCaptureSettings(api, preferencesFile.value);
+          const port = vkPreferencesPersistence();
+          if (!port) throw Error("Persistent settings unavailable");
+          await restoreVkCaptureSettings(api, preferencesFile.value, port);
           status.value = api.status();
-          preferencesRevision.value++;
-          preferencesMessage.value = "Параметры применены к текущей сессии. Папка и сообщения не изменены.";
+          fixedLimit.value = Math.min(3e3, Math.max(1, api.status().options.limit));
+          preferencesMessage.value = "Параметры восстановлены в текущей сессии и постоянном хранилище. Архив не изменён.";
           preferencesFile.value = null;
           preferencesConfirmed.value = false;
         } catch {
@@ -28899,32 +27395,13 @@ q.addEventListener('input',render);render();<\/script></html>`;
         if (previous?.activePeerId !== next.activePeerId) {
           fixedPreview.value = [];
           fixedSaved.value = null;
+          fixedCursor.value = void 0;
+          fixedNextCursor.value = void 0;
           fixedError.value = "";
         }
         if (!previous || next.activePeerId !== previous.activePeerId || next.blockedReason !== previous.blockedReason || next.options.peerId !== previous.options.peerId)
           status.value = next;
       }
-      const view = computed(() => {
-        const current = status.value;
-        if (!current) return null;
-        const p2 = current.progress;
-        return {
-          context: "Диалог " + (current.options.peerId || "не выбран"),
-          folder: current.folder,
-          messages: current.messages,
-          busy: current.busy,
-          folderPending: current.folderPending,
-          paused: current.checkpoint?.status === "paused",
-          blockedReason: current.blockedReason,
-          phase: p2.phase,
-          done: p2.done,
-          total: p2.total,
-          newCount: p2.newCount ?? 0,
-          downloaded: p2.downloaded ?? 0,
-          failed: p2.failed ?? 0,
-          error: p2.error
-        };
-      });
       onMounted(() => {
         unsubscribe = api?.subscribe((next) => {
           status.value = next;
@@ -28935,74 +27412,127 @@ q.addEventListener('input',render);render();<\/script></html>`;
         unsubscribe?.();
         if (peerTimer !== void 0) clearInterval(peerTimer);
       });
-      async function chooseFolder() {
-        error.value = "";
-        try {
-          await api?.selectFolder();
-        } catch (e) {
-          error.value = e instanceof Error ? e.message : String(e);
-        }
-      }
-      async function start(options) {
-        error.value = "";
-        try {
-          await api?.run(options);
-        } catch (e) {
-          error.value = e instanceof Error ? e.message : String(e);
-        }
-      }
-      async function resume() {
-        error.value = "";
-        try {
-          await api?.resume();
-        } catch (e) {
-          error.value = e instanceof Error ? e.message : String(e);
-        }
-      }
       return (_ctx, _cache) => {
-        return openBlock(), createElementBlock(
-          Fragment,
-          null,
-          [
-            unref(api) && status.value ? (openBlock(), createElementBlock("section", _hoisted_1$2, [
-              createBaseVNode("div", _hoisted_2$2, [
-                _cache[4] || (_cache[4] = createBaseVNode(
+        return openBlock(), createElementBlock("section", _hoisted_1$2, [
+          createBaseVNode("header", _hoisted_2$2, [
+            createBaseVNode("div", _hoisted_3$1, [
+              createBaseVNode("div", _hoisted_4$1, [
+                createVNode(unref(Archive), {
+                  class: "size-4 shrink-0",
+                  "aria-hidden": "true"
+                }),
+                _cache[6] || (_cache[6] = createBaseVNode(
                   "b",
                   null,
-                  "Dexie — собственная база сообщений",
+                  "VK Booster · Архив v1",
                   -1
                   /* CACHED */
                 )),
-                _cache[5] || (_cache[5] = createBaseVNode(
-                  "small",
-                  null,
-                  "Захват только текущего проверенного VK-диалога. Папка Archive v2 не требуется и не изменяется.",
-                  -1
-                  /* CACHED */
-                )),
-                fixedSaved.value !== null ? (openBlock(), createElementBlock(
-                  "small",
-                  _hoisted_3$1,
-                  "Новых записей: " + toDisplayString(fixedSaved.value),
-                  1
-                  /* TEXT */
-                )) : createCommentVNode("v-if", true)
+                createVNode(unref(_sfc_main$1$1), {
+                  variant: status.value?.blockedReason ? "secondary" : status.value?.busy ? "default" : "outline",
+                  class: normalizeClass(status.value?.blockedReason ? "text-destructive" : "")
+                }, {
+                  default: withCtx(() => [
+                    createTextVNode(
+                      toDisplayString(selectedStatus.value),
+                      1
+                      /* TEXT */
+                    )
+                  ]),
+                  _: 1
+                  /* STABLE */
+                }, 8, ["variant", "class"])
               ]),
-              createBaseVNode("label", _hoisted_4$1, [
-                _cache[6] || (_cache[6] = createTextVNode(
-                  "Максимум сообщений ",
+              hasVerifiedPeer.value ? (openBlock(), createElementBlock(
+                "span",
+                _hoisted_5$1,
+                "Текущий диалог: " + toDisplayString(status.value?.activePeerId) + " · Данные в Dexie, без файловой папки",
+                1
+                /* TEXT */
+              )) : (openBlock(), createElementBlock("span", _hoisted_6$1, "Открой VK-переписку, чтобы работать с архивом."))
+            ])
+          ]),
+          status.value?.blockedReason ? (openBlock(), createElementBlock("p", _hoisted_7$1, [
+            createVNode(unref(ShieldAlert), {
+              class: "size-4 shrink-0",
+              "aria-hidden": "true"
+            }),
+            createTextVNode(
+              " " + toDisplayString(status.value.blockedReason) + ". Вернись в выбранный диалог перед работой с архивом. ",
+              1
+              /* TEXT */
+            )
+          ])) : createCommentVNode("v-if", true),
+          createBaseVNode("nav", _hoisted_8$1, [
+            (openBlock(), createElementBlock(
+              Fragment,
+              null,
+              renderList(tabs, (item) => {
+                return createVNode(unref(_sfc_main$3), {
+                  id: unref(tabPrefix) + "-tab-" + item.id,
+                  key: item.id,
+                  type: "button",
+                  role: "tab",
+                  size: "sm",
+                  variant: tab.value === item.id ? "default" : "outline",
+                  "aria-controls": unref(tabPrefix) + "-panel-" + item.id,
+                  "aria-selected": tab.value === item.id,
+                  tabindex: tab.value === item.id ? 0 : -1,
+                  onClick: ($event) => tab.value = item.id,
+                  onKeydown: ($event) => onTabKeydown($event, item.id)
+                }, {
+                  default: withCtx(() => [
+                    (openBlock(), createBlock(resolveDynamicComponent(item.icon), {
+                      class: "size-4",
+                      "aria-hidden": "true"
+                    })),
+                    createTextVNode(
+                      " " + toDisplayString(item.label),
+                      1
+                      /* TEXT */
+                    )
+                  ]),
+                  _: 2
+                  /* DYNAMIC */
+                }, 1032, ["id", "variant", "aria-controls", "aria-selected", "tabindex", "onClick", "onKeydown"]);
+              }),
+              64
+              /* STABLE_FRAGMENT */
+            ))
+          ]),
+          createCommentVNode(" Capture and reader share the fixed owner-scoped Dexie repository. "),
+          withDirectives(createBaseVNode("div", {
+            id: unref(tabPrefix) + "-panel-capture",
+            role: "tabpanel",
+            "aria-labelledby": unref(tabPrefix) + "-tab-capture",
+            tabindex: "0",
+            class: "flex min-w-0 flex-col gap-3"
+          }, [
+            createBaseVNode("section", _hoisted_10$1, [
+              _cache[11] || (_cache[11] = createBaseVNode(
+                "div",
+                { class: "booster-setting-copy" },
+                [
+                  createBaseVNode("b", null, "Локальный архив Dexie v1"),
+                  createBaseVNode("span", null, "Сохраняет оригинальные записи текущего проверенного диалога. Повторный захват пропускает совпадающие сообщения.")
+                ],
+                -1
+                /* CACHED */
+              )),
+              createBaseVNode("label", _hoisted_11$1, [
+                _cache[7] || (_cache[7] = createTextVNode(
+                  "Количество последних сообщений (1–3000) ",
                   -1
                   /* CACHED */
                 )),
                 withDirectives(createBaseVNode("input", {
                   "onUpdate:modelValue": _cache[0] || (_cache[0] = ($event) => fixedLimit.value = $event),
+                  class: "booster-input",
                   type: "number",
                   min: "1",
                   max: "3000",
-                  step: "1",
-                  class: "booster-input",
-                  disabled: fixedBusy.value || status.value.busy
-                }, null, 8, _hoisted_5$1), [
+                  disabled: fixedBusy.value
+                }, null, 8, _hoisted_12$1), [
                   [
                     vModelText,
                     fixedLimit.value,
@@ -29011,34 +27541,168 @@ q.addEventListener('input',render);render();<\/script></html>`;
                   ]
                 ])
               ]),
-              createBaseVNode("div", _hoisted_6$1, [
-                createBaseVNode("button", {
-                  type: "button",
-                  class: "booster-disclosure",
-                  disabled: fixedBusy.value || status.value.busy || !status.value.activePeerId,
+              createBaseVNode("div", _hoisted_13$1, [
+                createVNode(unref(_sfc_main$3), {
+                  disabled: fixedBusy.value || !hasVerifiedPeer.value,
                   onClick: captureDexie
-                }, " Сохранить текущий диалог в Dexie ", 8, _hoisted_7$1),
-                createBaseVNode("button", {
-                  type: "button",
-                  class: "booster-disclosure",
-                  disabled: fixedBusy.value || status.value.busy || !status.value.activePeerId,
-                  onClick: readDexie
-                }, " Читать Dexie ", 8, _hoisted_8$1),
-                createBaseVNode("button", {
-                  type: "button",
-                  class: "booster-disclosure",
-                  disabled: fixedBusy.value || status.value.busy || !status.value.activePeerId,
+                }, {
+                  default: withCtx(() => [
+                    createVNode(unref(Download), {
+                      class: "size-4",
+                      "aria-hidden": "true"
+                    }),
+                    _cache[8] || (_cache[8] = createTextVNode(
+                      "Сохранить в Dexie ",
+                      -1
+                      /* CACHED */
+                    ))
+                  ]),
+                  _: 1
+                  /* STABLE */
+                }, 8, ["disabled"]),
+                createVNode(unref(_sfc_main$3), {
+                  variant: "outline",
+                  disabled: !fixedBusy.value,
+                  onClick: _cache[1] || (_cache[1] = ($event) => unref(api)?.stop())
+                }, {
+                  default: withCtx(() => [..._cache[9] || (_cache[9] = [
+                    createTextVNode(
+                      "Остановить",
+                      -1
+                      /* CACHED */
+                    )
+                  ])]),
+                  _: 1
+                  /* STABLE */
+                }, 8, ["disabled"]),
+                createVNode(unref(_sfc_main$3), {
+                  variant: "outline",
+                  disabled: fixedBusy.value || !hasVerifiedPeer.value,
                   onClick: exportDexie
-                }, " Экспорт Dexie JSON.gz ", 8, _hoisted_9$1)
+                }, {
+                  default: withCtx(() => [..._cache[10] || (_cache[10] = [
+                    createTextVNode(
+                      "Экспорт .jsonl.gz",
+                      -1
+                      /* CACHED */
+                    )
+                  ])]),
+                  _: 1
+                  /* STABLE */
+                }, 8, ["disabled"])
               ]),
+              fixedSaved.value !== null ? (openBlock(), createElementBlock(
+                "p",
+                _hoisted_14$1,
+                "Новых сообщений: " + toDisplayString(fixedSaved.value) + ".",
+                1
+                /* TEXT */
+              )) : createCommentVNode("v-if", true),
+              captureProgress.value?.total ? (openBlock(), createBlock(unref(_sfc_main$2$1), {
+                key: 1,
+                label: "Прогресс сохранения VK в Dexie",
+                percent: Math.min(100, Math.round(100 * (captureProgress.value.done / captureProgress.value.total))),
+                counter: `${captureProgress.value.done} / ${captureProgress.value.total}`,
+                compact: ""
+              }, null, 8, ["percent", "counter"])) : createCommentVNode("v-if", true),
+              captureProgress.value?.phase ? (openBlock(), createElementBlock(
+                "p",
+                _hoisted_15$1,
+                toDisplayString(captureProgress.value.phase) + ": " + toDisplayString(captureProgress.value.done) + " / " + toDisplayString(captureProgress.value.total),
+                1
+                /* TEXT */
+              )) : createCommentVNode("v-if", true),
               fixedError.value ? (openBlock(), createElementBlock(
                 "p",
-                _hoisted_10$1,
+                _hoisted_16,
                 toDisplayString(fixedError.value),
                 1
                 /* TEXT */
               )) : createCommentVNode("v-if", true),
-              fixedPreview.value.length ? (openBlock(), createElementBlock("ol", _hoisted_11$1, [
+              durableSettingsError.value ? (openBlock(), createElementBlock(
+                "p",
+                _hoisted_17,
+                toDisplayString(durableSettingsError.value),
+                1
+                /* TEXT */
+              )) : createCommentVNode("v-if", true),
+              _cache[12] || (_cache[12] = createBaseVNode(
+                "p",
+                { class: "text-xs text-muted-foreground" },
+                "Экспорт содержит исходные записи; вложения не считаются скачанными файлами. Захват можно безопасно повторить после остановки.",
+                -1
+                /* CACHED */
+              ))
+            ])
+          ], 8, _hoisted_9$1), [
+            [vShow, tab.value === "capture"]
+          ]),
+          withDirectives(createBaseVNode("div", {
+            id: unref(tabPrefix) + "-panel-reader",
+            role: "tabpanel",
+            "aria-labelledby": unref(tabPrefix) + "-tab-reader",
+            tabindex: "0",
+            class: "flex min-w-0 flex-col gap-3"
+          }, [
+            createBaseVNode("section", _hoisted_19, [
+              _cache[16] || (_cache[16] = createBaseVNode(
+                "div",
+                { class: "booster-setting-copy" },
+                [
+                  createBaseVNode("b", null, "Сообщения из Dexie"),
+                  createBaseVNode("span", null, "Чтение только текущей подтверждённой VK-переписки. До 80 записей на страницу.")
+                ],
+                -1
+                /* CACHED */
+              )),
+              createBaseVNode("div", _hoisted_20, [
+                createVNode(unref(_sfc_main$3), {
+                  variant: "outline",
+                  disabled: fixedBusy.value || fixedReading.value || !hasVerifiedPeer.value,
+                  onClick: _cache[2] || (_cache[2] = ($event) => readDexie())
+                }, {
+                  default: withCtx(() => [..._cache[13] || (_cache[13] = [
+                    createTextVNode(
+                      "Открыть Reader",
+                      -1
+                      /* CACHED */
+                    )
+                  ])]),
+                  _: 1
+                  /* STABLE */
+                }, 8, ["disabled"]),
+                createVNode(unref(_sfc_main$3), {
+                  variant: "outline",
+                  disabled: fixedBusy.value || fixedReading.value || !fixedNextCursor.value,
+                  onClick: _cache[3] || (_cache[3] = ($event) => readDexie(fixedNextCursor.value))
+                }, {
+                  default: withCtx(() => [..._cache[14] || (_cache[14] = [
+                    createTextVNode(
+                      "Следующие 80",
+                      -1
+                      /* CACHED */
+                    )
+                  ])]),
+                  _: 1
+                  /* STABLE */
+                }, 8, ["disabled"]),
+                createVNode(unref(_sfc_main$3), {
+                  variant: "outline",
+                  disabled: fixedBusy.value || fixedReading.value || !fixedCursor.value,
+                  onClick: _cache[4] || (_cache[4] = ($event) => readDexie())
+                }, {
+                  default: withCtx(() => [..._cache[15] || (_cache[15] = [
+                    createTextVNode(
+                      "К началу",
+                      -1
+                      /* CACHED */
+                    )
+                  ])]),
+                  _: 1
+                  /* STABLE */
+                }, 8, ["disabled"])
+              ]),
+              createBaseVNode("ol", _hoisted_21, [
                 (openBlock(true), createElementBlock(
                   Fragment,
                   null,
@@ -29050,143 +27714,165 @@ q.addEventListener('input',render);render();<\/script></html>`;
                       createBaseVNode(
                         "b",
                         null,
-                        toDisplayString(message.id),
+                        "Сообщение " + toDisplayString(message.id),
                         1
                         /* TEXT */
                       ),
                       createBaseVNode(
                         "p",
-                        _hoisted_12$1,
-                        toDisplayString(message.text),
+                        _hoisted_22,
+                        toDisplayString(message.text || "Без текста"),
                         1
                         /* TEXT */
-                      )
+                      ),
+                      message.attachments?.length ? (openBlock(), createElementBlock(
+                        "small",
+                        _hoisted_23,
+                        "Вложений в исходных данных: " + toDisplayString(message.attachments.length),
+                        1
+                        /* TEXT */
+                      )) : createCommentVNode("v-if", true)
                     ]);
                   }),
                   128
                   /* KEYED_FRAGMENT */
                 ))
-              ])) : createCommentVNode("v-if", true)
-            ])) : createCommentVNode("v-if", true),
-            status.value && view.value ? (openBlock(), createBlock(unref(_sfc_main$1$1), {
-              key: preferencesRevision.value,
-              state: view.value,
-              initial: status.value.options,
-              error: error.value,
-              title: "Архив переписки VK",
-              onChooseFolder: chooseFolder,
-              onStart: start,
-              onStop: _cache[1] || (_cache[1] = ($event) => unref(api)?.stop()),
-              onResume: resume
-            }, null, 8, ["state", "initial", "error"])) : createCommentVNode("v-if", true),
-            unref(api) && status.value?.folder && !status.value.blockedReason && status.value.messages > 0 ? (openBlock(), createElementBlock(
-              Fragment,
-              { key: 2 },
-              [
-                createBaseVNode("div", _hoisted_13$1, [
-                  createBaseVNode("button", {
-                    type: "button",
-                    class: "booster-disclosure",
-                    "aria-expanded": previewOpen.value,
-                    onClick: _cache[2] || (_cache[2] = ($event) => previewOpen.value = !previewOpen.value)
-                  }, toDisplayString(previewOpen.value ? "Скрыть сохранённые сообщения" : "Просмотр сохранённых сообщений"), 9, _hoisted_14$1)
-                ]),
-                previewOpen.value ? (openBlock(), createElementBlock("div", _hoisted_15$1, [
-                  createVNode(_sfc_main$3, {
-                    api: unref(api),
-                    status: status.value
-                  }, null, 8, ["api", "status"])
-                ])) : createCommentVNode("v-if", true)
-              ],
-              64
-              /* STABLE_FRAGMENT */
-            )) : createCommentVNode("v-if", true),
-            unref(api) && status.value ? (openBlock(), createElementBlock("section", _hoisted_16, [
-              _cache[9] || (_cache[9] = createBaseVNode(
+              ]),
+              fixedError.value ? (openBlock(), createElementBlock(
+                "p",
+                _hoisted_24,
+                toDisplayString(fixedError.value),
+                1
+                /* TEXT */
+              )) : createCommentVNode("v-if", true)
+            ])
+          ], 8, _hoisted_18), [
+            [vShow, tab.value === "reader"]
+          ]),
+          withDirectives(createBaseVNode("div", {
+            id: unref(tabPrefix) + "-panel-settings",
+            role: "tabpanel",
+            "aria-labelledby": unref(tabPrefix) + "-tab-settings",
+            tabindex: "0",
+            class: "flex min-w-0 flex-col gap-3"
+          }, [
+            unref(api) && status.value ? (openBlock(), createElementBlock("section", _hoisted_26, [
+              _cache[21] || (_cache[21] = createBaseVNode(
                 "div",
                 { class: "booster-setting-copy" },
                 [
-                  createBaseVNode("b", null, "Профиль параметров выгрузки"),
-                  createBaseVNode("small", null, "Только режим, диапазон, размер пачки и загрузка файлов. Без сообщений, токенов, ID диалога и архива. Импорт действует в текущей сессии.")
+                  createBaseVNode("b", null, "Постоянные параметры и резервная копия"),
+                  createBaseVNode("small", null, " Режим, количество, диапазон дат, размер пачки и медиа хранятся отдельно от архива. При перезапуске они восстанавливаются автоматически; JSON создаёт переносимую резервную копию только этих параметров. Сообщения, токены, ID диалога и данные папки не сохраняются. ")
                 ],
                 -1
                 /* CACHED */
               )),
-              createBaseVNode("div", _hoisted_17, [
-                createBaseVNode("button", {
-                  class: "booster-disclosure",
-                  type: "button",
-                  disabled: preferencesBusy.value || status.value.busy || !!status.value.blockedReason,
+              createBaseVNode("div", _hoisted_27, [
+                createVNode(unref(_sfc_main$3), {
+                  variant: "outline",
+                  size: "sm",
+                  disabled: preferencesBusy.value || status.value.busy || status.value.folderPending || !!status.value.blockedReason,
                   onClick: downloadPreferences
-                }, "Сохранить профиль в JSON", 8, _hoisted_18),
-                createBaseVNode("label", _hoisted_19, [
-                  _cache[7] || (_cache[7] = createBaseVNode(
+                }, {
+                  default: withCtx(() => [..._cache[17] || (_cache[17] = [
+                    createTextVNode(
+                      "Сохранить профиль JSON",
+                      -1
+                      /* CACHED */
+                    )
+                  ])]),
+                  _: 1
+                  /* STABLE */
+                }, 8, ["disabled"]),
+                createBaseVNode("label", _hoisted_28, [
+                  _cache[18] || (_cache[18] = createBaseVNode(
                     "span",
                     null,
-                    "Загрузить профиль JSON",
+                    "Восстановить параметры из JSON",
                     -1
                     /* CACHED */
                   )),
                   createBaseVNode("input", {
                     type: "file",
-                    class: "booster-input",
+                    class: "booster-input w-full",
                     accept: ".json,application/json",
-                    disabled: preferencesBusy.value || status.value.busy,
+                    disabled: preferencesBusy.value || status.value.busy || status.value.folderPending || !!status.value.blockedReason,
                     onChange: selectPreferences
-                  }, null, 40, _hoisted_20)
+                  }, null, 40, _hoisted_29)
                 ])
               ]),
-              preferencesFile.value ? (openBlock(), createElementBlock("label", _hoisted_21, [
-                createBaseVNode("span", null, [
+              preferencesFile.value ? (openBlock(), createElementBlock("label", _hoisted_30, [
+                createBaseVNode("span", _hoisted_31, [
                   withDirectives(createBaseVNode("input", {
-                    "onUpdate:modelValue": _cache[3] || (_cache[3] = ($event) => preferencesConfirmed.value = $event),
+                    "onUpdate:modelValue": _cache[5] || (_cache[5] = ($event) => preferencesConfirmed.value = $event),
                     type: "checkbox",
                     disabled: preferencesBusy.value
-                  }, null, 8, _hoisted_22), [
+                  }, null, 8, _hoisted_32), [
                     [vModelCheckbox, preferencesConfirmed.value]
                   ]),
-                  _cache[8] || (_cache[8] = createTextVNode(
-                    " Подтверждаю замену параметров текущей сессии",
+                  _cache[19] || (_cache[19] = createTextVNode(
+                    " Подтверждаю замену сохранённых и текущих параметров ",
                     -1
                     /* CACHED */
                   ))
                 ])
               ])) : createCommentVNode("v-if", true),
-              preferencesFile.value ? (openBlock(), createElementBlock("button", {
+              preferencesFile.value ? (openBlock(), createBlock(unref(_sfc_main$3), {
                 key: 1,
-                class: "booster-disclosure",
-                type: "button",
-                disabled: preferencesBusy.value || status.value.busy || !!status.value.blockedReason || !preferencesConfirmed.value,
+                variant: "outline",
+                size: "sm",
+                disabled: preferencesBusy.value || status.value.busy || status.value.folderPending || !!status.value.blockedReason || !preferencesConfirmed.value,
                 onClick: importPreferences
-              }, "Применить профиль", 8, _hoisted_23)) : createCommentVNode("v-if", true),
+              }, {
+                default: withCtx(() => [..._cache[20] || (_cache[20] = [
+                  createTextVNode(
+                    "Применить профиль",
+                    -1
+                    /* CACHED */
+                  )
+                ])]),
+                _: 1
+                /* STABLE */
+              }, 8, ["disabled"])) : createCommentVNode("v-if", true),
+              durableSettingsError.value ? (openBlock(), createElementBlock(
+                "p",
+                _hoisted_33,
+                toDisplayString(durableSettingsError.value),
+                1
+                /* TEXT */
+              )) : createCommentVNode("v-if", true),
               preferencesError.value ? (openBlock(), createElementBlock(
                 "p",
-                _hoisted_24,
+                _hoisted_34,
                 toDisplayString(preferencesError.value),
                 1
                 /* TEXT */
               )) : createCommentVNode("v-if", true),
               preferencesMessage.value ? (openBlock(), createElementBlock(
                 "p",
-                _hoisted_25,
+                _hoisted_35,
                 toDisplayString(preferencesMessage.value),
                 1
                 /* TEXT */
               )) : createCommentVNode("v-if", true)
             ])) : createCommentVNode("v-if", true),
-            !status.value || !view.value ? (openBlock(), createElementBlock("section", _hoisted_26, [..._cache[10] || (_cache[10] = [
-              createBaseVNode(
-                "span",
-                null,
-                "Модуль VK Booster ещё не инициализирован.",
-                -1
-                /* CACHED */
-              )
-            ])])) : createCommentVNode("v-if", true)
-          ],
-          64
-          /* STABLE_FRAGMENT */
-        );
+            _cache[22] || (_cache[22] = createBaseVNode(
+              "section",
+              { class: "booster-stack-card" },
+              [
+                createBaseVNode("div", { class: "booster-setting-copy" }, [
+                  createBaseVNode("b", null, "Архив и восстановление"),
+                  createBaseVNode("span", null, "Backup/restore сообщений и вложений — отдельная операция для Dexie. Эта кнопка сохраняет только настройки.")
+                ]),
+                createBaseVNode("p", { class: "m-0 text-xs text-muted-foreground" }, " Архив хранится в Dexie. Экспорт .jsonl.gz выполняется отдельно на вкладке «Выгрузка». Backup/restore самих сообщений пока не реализован; профиль JSON сохраняет только настройки. ")
+              ],
+              -1
+              /* CACHED */
+            ))
+          ], 8, _hoisted_25), [
+            [vShow, tab.value === "settings"]
+          ])
+        ]);
       };
     }
   });
@@ -29293,7 +27979,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
                   1
                   /* TEXT */
                 ),
-                createVNode(unref(_sfc_main$1$2), { variant: "outline" }, {
+                createVNode(unref(_sfc_main$1$1), { variant: "outline" }, {
                   default: withCtx(() => [..._cache[4] || (_cache[4] = [
                     createTextVNode(
                       "Browser Tools",
@@ -29314,7 +28000,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
               ))
             ]),
             createBaseVNode("div", _hoisted_5, [
-              createVNode(unref(_sfc_main$1$2), { variant: "secondary" }, {
+              createVNode(unref(_sfc_main$1$1), { variant: "secondary" }, {
                 default: withCtx(() => [
                   createTextVNode(
                     toDisplayString(activeFeatures.value.length) + " активен",
@@ -29325,7 +28011,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
                 _: 1
                 /* STABLE */
               }),
-              createVNode(unref(_sfc_main$6), {
+              createVNode(unref(_sfc_main$3), {
                 variant: "ghost",
                 size: "icon",
                 class: "size-8",
@@ -29437,7 +28123,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
                           1
                           /* TEXT */
                         ),
-                        createVNode(unref(_sfc_main$1$2), {
+                        createVNode(unref(_sfc_main$1$1), {
                           variant: feature.state === "active" ? "default" : "secondary"
                         }, {
                           default: withCtx(() => [
@@ -29476,7 +28162,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
                           /* CACHED */
                         )
                       ])], 10, _hoisted_13),
-                      feature.state === "active" ? (openBlock(), createBlock(unref(_sfc_main$6), {
+                      feature.state === "active" ? (openBlock(), createBlock(unref(_sfc_main$3), {
                         key: 0,
                         variant: "outline",
                         size: "sm",
@@ -29917,7 +28603,7 @@ q.addEventListener('input',render);render();<\/script></html>`;
       };
     }
   });
-  const styles = '/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */\n@layer properties {\n  @supports (((-webkit-hyphens: none)) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color: rgb(from red r g b)))) {\n    *, :before, :after, ::backdrop {\n      --tw-rotate-x: initial;\n      --tw-rotate-y: initial;\n      --tw-rotate-z: initial;\n      --tw-skew-x: initial;\n      --tw-skew-y: initial;\n      --tw-border-style: solid;\n      --tw-leading: initial;\n      --tw-font-weight: initial;\n      --tw-ordinal: initial;\n      --tw-slashed-zero: initial;\n      --tw-numeric-figure: initial;\n      --tw-numeric-spacing: initial;\n      --tw-numeric-fraction: initial;\n      --tw-shadow: 0 0 #0000;\n      --tw-shadow-color: initial;\n      --tw-shadow-alpha: 100%;\n      --tw-inset-shadow: 0 0 #0000;\n      --tw-inset-shadow-color: initial;\n      --tw-inset-shadow-alpha: 100%;\n      --tw-ring-color: initial;\n      --tw-ring-shadow: 0 0 #0000;\n      --tw-inset-ring-color: initial;\n      --tw-inset-ring-shadow: 0 0 #0000;\n      --tw-ring-inset: initial;\n      --tw-ring-offset-width: 0px;\n      --tw-ring-offset-color: #fff;\n      --tw-ring-offset-shadow: 0 0 #0000;\n      --tw-outline-style: solid;\n      --tw-blur: initial;\n      --tw-brightness: initial;\n      --tw-contrast: initial;\n      --tw-grayscale: initial;\n      --tw-hue-rotate: initial;\n      --tw-invert: initial;\n      --tw-opacity: initial;\n      --tw-saturate: initial;\n      --tw-sepia: initial;\n      --tw-drop-shadow: initial;\n      --tw-drop-shadow-color: initial;\n      --tw-drop-shadow-alpha: 100%;\n      --tw-drop-shadow-size: initial;\n    }\n  }\n}\n\n@layer theme {\n  :root, :host {\n    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",\n      "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",\n      "Segoe UI Symbol", "Noto Color Emoji";\n    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",\n      "Courier New", monospace;\n    --spacing: .25rem;\n    --text-xs: .75rem;\n    --text-xs--line-height: calc(1 / .75);\n    --text-sm: .875rem;\n    --text-sm--line-height: calc(1.25 / .875);\n    --text-base: 1rem;\n    --text-base--line-height: calc(1.5 / 1);\n    --font-weight-medium: 500;\n    --font-weight-semibold: 600;\n    --default-transition-duration: .15s;\n    --default-transition-timing-function: cubic-bezier(.4, 0, .2, 1);\n    --default-font-family: var(--font-sans);\n    --default-mono-font-family: var(--font-mono);\n  }\n}\n\n@layer base {\n  *, :after, :before, ::backdrop {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  ::file-selector-button {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  html, :host {\n    -webkit-text-size-adjust: 100%;\n    tab-size: 4;\n    line-height: 1.5;\n    font-family: var(--default-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");\n    font-feature-settings: var(--default-font-feature-settings, normal);\n    font-variation-settings: var(--default-font-variation-settings, normal);\n    -webkit-tap-highlight-color: transparent;\n  }\n\n  hr {\n    height: 0;\n    color: inherit;\n    border-top-width: 1px;\n  }\n\n  abbr:where([title]) {\n    -webkit-text-decoration: underline dotted;\n    text-decoration: underline dotted;\n  }\n\n  h1, h2, h3, h4, h5, h6 {\n    font-size: inherit;\n    font-weight: inherit;\n  }\n\n  a {\n    color: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    text-decoration: inherit;\n  }\n\n  b, strong {\n    font-weight: bolder;\n  }\n\n  code, kbd, samp, pre {\n    font-family: var(--default-mono-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);\n    font-feature-settings: var(--default-mono-font-feature-settings, normal);\n    font-variation-settings: var(--default-mono-font-variation-settings, normal);\n    font-size: 1em;\n  }\n\n  small {\n    font-size: 80%;\n  }\n\n  sub, sup {\n    vertical-align: baseline;\n    font-size: 75%;\n    line-height: 0;\n    position: relative;\n  }\n\n  sub {\n    bottom: -.25em;\n  }\n\n  sup {\n    top: -.5em;\n  }\n\n  table {\n    text-indent: 0;\n    border-color: inherit;\n    border-collapse: collapse;\n  }\n\n  :-moz-focusring:where(:not(iframe)) {\n    outline: auto;\n  }\n\n  progress {\n    vertical-align: baseline;\n  }\n\n  summary {\n    display: list-item;\n  }\n\n  ol, ul, menu {\n    list-style: none;\n  }\n\n  img, svg, video, canvas, audio, iframe, embed, object {\n    vertical-align: middle;\n    display: block;\n  }\n\n  img, video {\n    max-width: 100%;\n    height: auto;\n  }\n\n  button, input, select, optgroup, textarea {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  ::file-selector-button {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  :where(select:is([multiple], [size])) optgroup {\n    font-weight: bolder;\n  }\n\n  :where(select:is([multiple], [size])) optgroup option {\n    padding-inline-start: 20px;\n  }\n\n  ::file-selector-button {\n    margin-inline-end: 4px;\n  }\n\n  ::placeholder {\n    opacity: 1;\n  }\n\n  @supports (not ((-webkit-appearance: -apple-pay-button))) or (contain-intrinsic-size: 1px) {\n    ::placeholder {\n      color: currentColor;\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      ::placeholder {\n        color: color-mix(in oklab, currentcolor 50%, transparent);\n      }\n    }\n  }\n\n  textarea {\n    resize: vertical;\n  }\n\n  ::-webkit-search-decoration {\n    -webkit-appearance: none;\n  }\n\n  ::-webkit-date-and-time-value {\n    min-height: 1lh;\n    text-align: inherit;\n  }\n\n  ::-webkit-datetime-edit {\n    display: inline-flex;\n  }\n\n  ::-webkit-datetime-edit-fields-wrapper {\n    padding: 0;\n  }\n\n  ::-webkit-datetime-edit {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-year-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-month-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-day-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-hour-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-minute-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-second-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-millisecond-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-meridiem-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-calendar-picker-indicator {\n    line-height: 1;\n  }\n\n  :-moz-ui-invalid {\n    box-shadow: none;\n  }\n\n  button, input:where([type="button"], [type="reset"], [type="submit"]) {\n    appearance: button;\n  }\n\n  ::file-selector-button {\n    appearance: button;\n  }\n\n  ::-webkit-inner-spin-button {\n    height: auto;\n  }\n\n  ::-webkit-outer-spin-button {\n    height: auto;\n  }\n\n  [hidden]:where(:not([hidden="until-found"])) {\n    display: none !important;\n  }\n}\n\n@layer components;\n\n@layer utilities {\n  .collapse {\n    visibility: collapse;\n  }\n\n  .invisible {\n    visibility: hidden;\n  }\n\n  .visible {\n    visibility: visible;\n  }\n\n  .absolute {\n    position: absolute;\n  }\n\n  .fixed {\n    position: fixed;\n  }\n\n  .relative {\n    position: relative;\n  }\n\n  .static {\n    position: static;\n  }\n\n  .sticky {\n    position: sticky;\n  }\n\n  .top-41 {\n    top: calc(var(--spacing) * 41);\n  }\n\n  .isolate {\n    isolation: isolate;\n  }\n\n  .col-span-2 {\n    grid-column: span 2 / span 2;\n  }\n\n  .container {\n    width: 100%;\n  }\n\n  @media (min-width: 40rem) {\n    .container {\n      max-width: 40rem;\n    }\n  }\n\n  @media (min-width: 48rem) {\n    .container {\n      max-width: 48rem;\n    }\n  }\n\n  @media (min-width: 64rem) {\n    .container {\n      max-width: 64rem;\n    }\n  }\n\n  @media (min-width: 80rem) {\n    .container {\n      max-width: 80rem;\n    }\n  }\n\n  @media (min-width: 96rem) {\n    .container {\n      max-width: 96rem;\n    }\n  }\n\n  .m-0 {\n    margin: 0;\n  }\n\n  .m-1 {\n    margin: var(--spacing);\n  }\n\n  .mt-2 {\n    margin-top: calc(var(--spacing) * 2);\n  }\n\n  .mb-2 {\n    margin-bottom: calc(var(--spacing) * 2);\n  }\n\n  .block {\n    display: block;\n  }\n\n  .contents {\n    display: contents;\n  }\n\n  .flex {\n    display: flex;\n  }\n\n  .grid {\n    display: grid;\n  }\n\n  .hidden {\n    display: none;\n  }\n\n  .inline {\n    display: inline;\n  }\n\n  .inline-flex {\n    display: inline-flex;\n  }\n\n  .table {\n    display: table;\n  }\n\n  .size-3 {\n    width: calc(var(--spacing) * 3);\n    height: calc(var(--spacing) * 3);\n  }\n\n  .size-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n    height: calc(var(--spacing) * 3.5);\n  }\n\n  .size-4 {\n    width: calc(var(--spacing) * 4);\n    height: calc(var(--spacing) * 4);\n  }\n\n  .size-5 {\n    width: calc(var(--spacing) * 5);\n    height: calc(var(--spacing) * 5);\n  }\n\n  .size-6 {\n    width: calc(var(--spacing) * 6);\n    height: calc(var(--spacing) * 6);\n  }\n\n  .size-7 {\n    width: calc(var(--spacing) * 7);\n    height: calc(var(--spacing) * 7);\n  }\n\n  .size-8 {\n    width: calc(var(--spacing) * 8);\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-7 {\n    height: calc(var(--spacing) * 7);\n  }\n\n  .h-8 {\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-9 {\n    height: calc(var(--spacing) * 9);\n  }\n\n  .max-h-60 {\n    max-height: calc(var(--spacing) * 60);\n  }\n\n  .max-h-\\[420px\\] {\n    max-height: 420px;\n  }\n\n  .min-h-\\[130px\\] {\n    min-height: 130px;\n  }\n\n  .w-full {\n    width: 100%;\n  }\n\n  .min-w-0 {\n    min-width: 0;\n  }\n\n  .flex-1 {\n    flex: 1;\n  }\n\n  .shrink-0 {\n    flex-shrink: 0;\n  }\n\n  .grow {\n    flex-grow: 1;\n  }\n\n  .rotate-180 {\n    rotate: 180deg;\n  }\n\n  .transform {\n    transform: var(--tw-rotate-x, ) var(--tw-rotate-y, ) var(--tw-rotate-z, ) var(--tw-skew-x, ) var(--tw-skew-y, );\n  }\n\n  .resize {\n    resize: both;\n  }\n\n  .grid-cols-2 {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }\n\n  .flex-wrap {\n    flex-wrap: wrap;\n  }\n\n  .items-center {\n    align-items: center;\n  }\n\n  .justify-between {\n    justify-content: space-between;\n  }\n\n  .justify-center {\n    justify-content: center;\n  }\n\n  .justify-end {\n    justify-content: flex-end;\n  }\n\n  .gap-2 {\n    gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-3 {\n    gap: calc(var(--spacing) * 3);\n  }\n\n  .self-start {\n    align-self: flex-start;\n  }\n\n  .truncate {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    overflow: hidden;\n  }\n\n  .overflow-x-hidden {\n    overflow-x: hidden;\n  }\n\n  .overflow-y-auto {\n    overflow-y: auto;\n  }\n\n  .rounded-lg {\n    border-radius: var(--radius);\n  }\n\n  .rounded-md {\n    border-radius: calc(var(--radius) - 2px);\n  }\n\n  .border {\n    border-style: var(--tw-border-style);\n    border-width: 1px;\n  }\n\n  .border-b {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 1px;\n  }\n\n  .border-l-2 {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 2px;\n  }\n\n  .border-border {\n    border-color: var(--border);\n  }\n\n  .border-transparent {\n    border-color: #0000;\n  }\n\n  .bg-background {\n    background-color: var(--background);\n  }\n\n  .bg-card {\n    background-color: var(--card);\n  }\n\n  .bg-primary {\n    background-color: var(--primary);\n  }\n\n  .bg-secondary {\n    background-color: var(--secondary);\n  }\n\n  .p-2 {\n    padding: calc(var(--spacing) * 2);\n  }\n\n  .p-3 {\n    padding: calc(var(--spacing) * 3);\n  }\n\n  .px-2 {\n    padding-inline: calc(var(--spacing) * 2);\n  }\n\n  .px-3 {\n    padding-inline: calc(var(--spacing) * 3);\n  }\n\n  .px-4 {\n    padding-inline: calc(var(--spacing) * 4);\n  }\n\n  .py-0\\.5 {\n    padding-block: calc(var(--spacing) * .5);\n  }\n\n  .py-2 {\n    padding-block: calc(var(--spacing) * 2);\n  }\n\n  .pl-2 {\n    padding-left: calc(var(--spacing) * 2);\n  }\n\n  .text-base {\n    font-size: var(--text-base);\n    line-height: var(--tw-leading, var(--text-base--line-height));\n  }\n\n  .text-sm {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n\n  .text-xs {\n    font-size: var(--text-xs);\n    line-height: var(--tw-leading, var(--text-xs--line-height));\n  }\n\n  .text-\\[11px\\] {\n    font-size: 11px;\n  }\n\n  .leading-4 {\n    --tw-leading: calc(var(--spacing) * 4);\n    line-height: calc(var(--spacing) * 4);\n  }\n\n  .font-medium {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n\n  .font-semibold {\n    --tw-font-weight: var(--font-weight-semibold);\n    font-weight: var(--font-weight-semibold);\n  }\n\n  .break-words {\n    overflow-wrap: break-word;\n  }\n\n  .whitespace-nowrap {\n    white-space: nowrap;\n  }\n\n  .whitespace-pre-wrap {\n    white-space: pre-wrap;\n  }\n\n  .text-foreground {\n    color: var(--foreground);\n  }\n\n  .text-muted-foreground {\n    color: var(--muted-foreground);\n  }\n\n  .text-primary-foreground {\n    color: var(--primary-foreground);\n  }\n\n  .text-secondary-foreground {\n    color: var(--secondary-foreground);\n  }\n\n  .ordinal {\n    --tw-ordinal: ordinal;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .tabular-nums {\n    --tw-numeric-spacing: tabular-nums;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .shadow {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .outline {\n    outline-style: var(--tw-outline-style);\n    outline-width: 1px;\n  }\n\n  .blur {\n    --tw-blur: blur(8px);\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .filter {\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .transition {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-colors {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-transform {\n    transition-property: transform, translate, scale, rotate;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .outline-none {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  @media (hover: hover) {\n    .hover\\:bg-accent:hover {\n      background-color: var(--accent);\n    }\n\n    .hover\\:bg-primary\\/90:hover {\n      background-color: var(--primary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-primary\\/90:hover {\n        background-color: color-mix(in oklab, var(--primary) 90%, transparent);\n      }\n    }\n\n    .hover\\:text-accent-foreground:hover {\n      color: var(--accent-foreground);\n    }\n  }\n\n  .focus-visible\\:ring-2:focus-visible {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus-visible\\:ring-ring:focus-visible {\n    --tw-ring-color: var(--ring);\n  }\n\n  .disabled\\:pointer-events-none:disabled {\n    pointer-events: none;\n  }\n\n  .disabled\\:opacity-50:disabled {\n    opacity: .5;\n  }\n}\n\n.booster-reader-sidebar {\n  border-right: 1px solid var(--border);\n  background: var(--card);\n  overscroll-behavior: contain;\n  min-width: 0;\n  padding: 12px;\n  overflow: auto;\n}\n\n.booster-reader-group {\n  margin-top: 12px;\n}\n\n.booster-reader-group-header {\n  align-items: center;\n  gap: 2px;\n  min-height: 38px;\n  display: flex;\n}\n\n.booster-group-toggle {\n  min-width: 0;\n  color: inherit;\n  cursor: pointer;\n  text-align: left;\n  font: inherit;\n  background: none;\n  border: 0;\n  flex: 1;\n  align-items: center;\n  gap: 6px;\n  padding: 6px 0;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-group-toggle svg {\n  flex-shrink: 0;\n}\n\n.booster-group-toggle span {\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-group-toggle small {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-reader-chat-list {\n  gap: 3px;\n  padding-left: 10px;\n  display: grid;\n}\n\n.booster-reader-chat-list > button {\n  color: inherit;\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 8px;\n  align-items: center;\n  gap: 6px;\n  padding: 10px;\n  font-size: 12px;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-reader-chat-list > button:hover, .booster-reader-chat-list > button.active {\n  background: var(--muted);\n  border-color: var(--border);\n}\n\n.booster-reader-chat-list > button span {\n  text-overflow: ellipsis;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-reader-chat-list > button.is-branch {\n  border-inline-start: 2px solid var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reader-chat-list > button.is-branch {\n    border-inline-start: 2px solid color-mix(in oklab, var(--primary) 35%, transparent);\n  }\n}\n\n.booster-reader-branch-icon {\n  opacity: .66;\n  flex: none;\n}\n\n.booster-reader-exchanges {\n  gap: 12px;\n  margin-top: 0;\n  display: grid;\n}\n\n.booster-exchange {\n  border-bottom: 1px solid var(--border);\n  min-width: 0;\n  max-width: 100%;\n  padding-bottom: 16px;\n}\n\n.booster-exchange-details {\n  border-left: 2px solid var(--border);\n  gap: 6px;\n  margin: 10px 0 10px 12px;\n  padding: 8px 0 8px 12px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-exchange-details {\n    border-left: 2px solid color-mix(in oklab, var(--border) 78%, var(--primary));\n  }\n}\n\n.booster-exchange-details-label {\n  color: var(--muted-foreground);\n  letter-spacing: .04em;\n  text-transform: uppercase;\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-message-target {\n  outline: 2px solid var(--primary);\n  outline-offset: 2px;\n  border-radius: 6px;\n}\n\n[data-archive-message] {\n  scroll-margin-block: 20px;\n}\n\n.booster-reader-exchanges, .booster-exchange-details {\n  min-width: 0;\n  max-width: 100%;\n}\n\n:host {\n  --background: oklch(98.5% 0 0);\n  --foreground: oklch(14.5% 0 0);\n  --card: oklch(100% 0 0);\n  --card-foreground: oklch(14.5% 0 0);\n  --primary: oklch(20.5% 0 0);\n  --primary-foreground: oklch(98.5% 0 0);\n  --secondary: oklch(97% 0 0);\n  --secondary-foreground: oklch(20.5% 0 0);\n  --muted: oklch(97% 0 0);\n  --muted-foreground: oklch(55.6% 0 0);\n  --accent: oklch(97% 0 0);\n  --accent-foreground: oklch(20.5% 0 0);\n  --border: oklch(92.2% 0 0);\n  --ring: oklch(70.8% 0 0);\n  --radius: .625rem;\n  all: initial;\n  color: var(--foreground);\n  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;\n}\n\n@media (prefers-color-scheme: dark) {\n  :host {\n    --background: oklch(14.5% 0 0);\n    --foreground: oklch(98.5% 0 0);\n    --card: oklch(20.5% 0 0);\n    --card-foreground: oklch(98.5% 0 0);\n    --primary: oklch(92.2% 0 0);\n    --primary-foreground: oklch(20.5% 0 0);\n    --secondary: oklch(26.9% 0 0);\n    --secondary-foreground: oklch(98.5% 0 0);\n    --muted: oklch(26.9% 0 0);\n    --muted-foreground: oklch(70.8% 0 0);\n    --accent: oklch(26.9% 0 0);\n    --accent-foreground: oklch(98.5% 0 0);\n    --border: oklch(100% 0 0 / .12);\n    --ring: oklch(55.6% 0 0);\n  }\n}\n\n* {\n  box-sizing: border-box;\n  border-color: var(--border);\n}\n\n.booster-shell {\n  z-index: 2147483647;\n  position: fixed;\n  bottom: 20px;\n  right: 20px;\n}\n\n.booster-button {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 42px;\n  height: 42px;\n  color: var(--card-foreground);\n  cursor: pointer;\n  border-radius: 14px;\n  font: 700 15px / 1 inherit;\n  box-shadow: 0 10px 30px #0003;\n}\n\n.booster-panel {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 300px;\n  color: var(--card-foreground);\n  border-radius: 16px;\n  margin-bottom: 10px;\n  padding: 14px;\n  box-shadow: 0 18px 45px #0000003d;\n}\n\n.booster-panel h2 {\n  margin: 0 0 6px;\n  font-size: 15px;\n  font-weight: 700;\n}\n\n.booster-panel p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.45;\n}\n\n.booster-control-center {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(760px, 100vw - 32px);\n  color: var(--card-foreground);\n  border-radius: 18px;\n  margin-bottom: 10px;\n  overflow: hidden;\n  box-shadow: 0 22px 60px #00000047;\n}\n\n.booster-control-header, .booster-control-footer {\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  display: flex;\n}\n\n.booster-control-header {\n  border-bottom: 1px solid var(--border);\n  padding: 14px 14px 12px;\n}\n\n.booster-control-header strong {\n  font-size: 14px;\n}\n\n.booster-control-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-control-body {\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-loading {\n  color: var(--muted-foreground);\n  padding: 18px;\n  font-size: 12px;\n}\n\n.booster-section-label {\n  color: var(--muted-foreground);\n  letter-spacing: .08em;\n  text-transform: uppercase;\n  padding: 2px 2px 0;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-setting-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 12px;\n  display: flex;\n}\n\n.booster-setting-disabled {\n  opacity: .55;\n}\n\n.booster-setting-copy {\n  gap: 5px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-setting-copy b {\n  font-size: 12px;\n}\n\n.booster-setting-copy > span {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.4;\n}\n\n.booster-switch {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  cursor: pointer;\n  border-radius: 999px;\n  flex: none;\n  width: 36px;\n  height: 20px;\n  padding: 0;\n  transition: background .12s, border-color .12s;\n  position: relative;\n}\n\n.booster-switch:disabled {\n  cursor: not-allowed;\n}\n\n.booster-switch > span {\n  background: var(--foreground);\n  border-radius: 999px;\n  width: 14px;\n  height: 14px;\n  transition: transform .12s;\n  position: absolute;\n  top: 2px;\n  left: 2px;\n}\n\n.booster-switch-on {\n  background: var(--primary);\n  border-color: var(--primary);\n}\n\n.booster-switch-on > span {\n  background: var(--primary-foreground);\n  transform: translateX(16px);\n}\n\n.booster-info-card {\n  background: var(--muted);\n  color: var(--foreground);\n  border-radius: 12px;\n  padding: 11px 12px;\n  font-size: 11px;\n}\n\n.booster-info-card ul {\n  color: var(--muted-foreground);\n  gap: 4px;\n  margin: 8px 0 0 18px;\n  padding: 0;\n  line-height: 1.35;\n  display: grid;\n}\n\n.booster-control-footer {\n  padding-top: 2px;\n}\n\n.booster-save-state {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 5px;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-overlay-root {\n  pointer-events: none;\n}\n\n.booster-launcher {\n  z-index: 2147483647;\n  border: 2px solid var(--primary);\n  justify-content: center;\n  align-items: center;\n  gap: 1px;\n  width: 46px;\n  height: 46px;\n  display: inline-flex;\n  position: fixed;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher {\n    border: 2px solid color-mix(in oklab, var(--primary) 55%, transparent);\n  }\n}\n\n.booster-launcher {\n  background: var(--primary);\n  color: var(--primary-foreground);\n  box-shadow: 0 12px 36px #00000047, 0 0 0 3px var(--primary);\n  border-radius: 15px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher {\n    box-shadow: 0 12px 36px #00000047, 0 0 0 3px color-mix(in oklab, var(--primary) 18%, transparent);\n  }\n}\n\n.booster-launcher {\n  cursor: grab;\n  pointer-events: auto;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  font: 800 17px / 1 inherit;\n}\n\n.booster-launcher:hover {\n  transform: scale(1.04);\n}\n\n.booster-launcher-dragging {\n  cursor: grabbing;\n  transform: scale(1.06);\n}\n\n.booster-launcher-icon {\n  flex-shrink: 0;\n  width: 20px;\n  height: 20px;\n}\n\n.booster-modal-backdrop {\n  z-index: 2147483646;\n  -webkit-backdrop-filter: blur(3px);\n  backdrop-filter: blur(3px);\n  pointer-events: auto;\n  background: #00000061;\n  place-items: center;\n  padding: 16px;\n  display: grid;\n  position: fixed;\n  inset: 0;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n  max-height: calc(100vh - 32px);\n  overflow: auto;\n}\n\n.booster-modal-surface .booster-control-center {\n  width: 100%;\n  margin: 0;\n}\n\n.booster-popup-host {\n  background: var(--background);\n  min-width: 360px;\n}\n\n.booster-select {\n  border: 1px solid var(--border);\n  background: var(--background);\n  min-width: 92px;\n  height: 32px;\n  color: var(--foreground);\n  cursor: pointer;\n  border-radius: 8px;\n  outline: none;\n  flex: none;\n  padding: 0 28px 0 10px;\n  font: 500 12px / 1 inherit;\n}\n\n.booster-select:focus {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-stack-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-stack-card label {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-input {\n  border: 1px solid var(--border);\n  background: var(--background);\n  width: 100%;\n  min-width: 0;\n  height: 32px;\n  color: var(--foreground);\n  border-radius: 8px;\n  outline: none;\n  padding: 0 10px;\n  font: 500 11px / 1 inherit;\n}\n\n.booster-input:focus {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-counter-grid {\n  color: var(--muted-foreground);\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 6px 12px;\n  margin-top: 8px;\n  display: grid;\n}\n\n.booster-counter-grid span {\n  justify-content: space-between;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-counter-grid b {\n  color: var(--foreground);\n}\n\n.booster-header-copy {\n  min-width: 0;\n}\n\n.booster-header-actions {\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-header-toggle-label {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  font-weight: 600;\n}\n\n.booster-settings-layout {\n  grid-template-columns: 150px minmax(0, 1fr);\n  min-height: 360px;\n  display: grid;\n}\n\n.booster-settings-nav {\n  border-right: 1px solid var(--border);\n  background: var(--muted);\n  align-content: start;\n  gap: 4px;\n  padding: 12px 8px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-settings-nav {\n    background: color-mix(in oklab, var(--muted) 58%, transparent);\n  }\n}\n\n.booster-settings-nav button {\n  width: 100%;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  border-radius: 9px;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 10px;\n  font: 600 11px / 1.2 inherit;\n  display: flex;\n}\n\n.booster-settings-nav button:hover, .booster-settings-nav button.active {\n  background: var(--background);\n  color: var(--foreground);\n}\n\n.booster-settings-content {\n  align-content: start;\n  gap: 10px;\n  min-width: 0;\n  padding: 14px;\n  display: grid;\n}\n\n.booster-setting-card-flat {\n  border: 0;\n  border-bottom: 1px solid var(--border);\n  border-radius: 0;\n  padding: 0 0 10px;\n}\n\n.booster-analytics-grid {\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 12px;\n  display: grid;\n}\n\n.booster-counter-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  padding: 12px;\n}\n\n.booster-counter-title {\n  margin-bottom: 8px;\n  font-size: 12px;\n  font-weight: 700;\n}\n\n.booster-disclosure {\n  width: 100%;\n  color: var(--foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 0;\n  display: flex;\n}\n\n.booster-disclosure > span {\n  gap: 3px;\n  display: grid;\n}\n\n.booster-disclosure b {\n  font-size: 12px;\n}\n\n.booster-disclosure small {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.rotate-180 {\n  transform: rotate(180deg);\n}\n\n.booster-telemetry-body {\n  gap: 10px;\n  padding-top: 10px;\n  display: grid;\n}\n\n.booster-field {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-telemetry-test-row {\n  align-items: center;\n  gap: 10px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-test-success {\n  color: oklch(62% .17 145);\n  font-size: 11px;\n}\n\n.booster-test-error {\n  color: oklch(63% .2 25);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n}\n\n@media (max-width: 620px) {\n  .booster-control-center, .booster-modal-surface {\n    width: calc(100vw - 20px);\n  }\n\n  .booster-settings-layout {\n    grid-template-columns: 1fr;\n  }\n\n  .booster-settings-nav {\n    border-right: 0;\n    border-bottom: 1px solid var(--border);\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n\n  .booster-settings-nav button {\n    justify-content: center;\n  }\n\n  .booster-analytics-grid {\n    grid-template-columns: 1fr;\n  }\n}\n\n.booster-modal-surface.booster-modal-surface-wide {\n  width: min(1320px, 100vw - 32px);\n}\n\n.booster-modal-surface-wide > .booster-control-center {\n  width: 100%;\n}\n\n@media (max-width: 620px) {\n  .booster-modal-surface.booster-modal-surface-wide {\n    width: calc(100vw - 20px);\n  }\n}\n\n.booster-modal-backdrop.booster-modal-backdrop-floating {\n  -webkit-backdrop-filter: none;\n  backdrop-filter: none;\n  pointer-events: none;\n  background: none;\n  padding: 0;\n  display: block;\n}\n\n.booster-modal-surface.booster-modal-surface-wide.booster-dialog-floating {\n  pointer-events: auto;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  max-height: none;\n  padding: 0;\n  display: flex;\n  position: fixed;\n  overflow: hidden;\n}\n\n.booster-dialog-floating > .booster-control-center {\n  flex: auto;\n  min-height: 0;\n  overflow: auto;\n}\n\n.booster-floating-chrome {\n  border-bottom: 1px solid var(--border);\n  background: var(--muted);\n  cursor: move;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  flex: none;\n  align-items: center;\n  gap: 8px;\n  min-height: 38px;\n  padding: 4px 8px 4px 12px;\n  display: flex;\n}\n\n.booster-floating-chrome > span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  flex: auto;\n  min-width: 0;\n  font-size: 12px;\n  font-weight: 600;\n  overflow: hidden;\n}\n\n.booster-floating-chrome > button {\n  cursor: pointer;\n  border-radius: 6px;\n  flex: none;\n  place-items: center;\n  width: 30px;\n  height: 30px;\n  display: grid;\n}\n\n.booster-floating-chrome > button:focus-visible, .booster-floating-resize:focus-visible {\n  outline: 2px solid var(--ring);\n}\n\n.booster-floating-resize {\n  background: var(--muted);\n  cursor: nwse-resize;\n  touch-action: none;\n  border-top-left-radius: 7px;\n  place-items: center;\n  width: 28px;\n  height: 28px;\n  display: grid;\n  position: absolute;\n  bottom: 0;\n  right: 0;\n}\n\n@property --tw-rotate-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-z {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-border-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-leading {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-font-weight {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ordinal {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-slashed-zero {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-figure {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-spacing {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-fraction {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-inset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-ring-inset {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-offset-width {\n  syntax: "<length>";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-ring-offset-color {\n  syntax: "*";\n  inherits: false;\n  initial-value: #fff;\n}\n\n@property --tw-ring-offset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-outline-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-blur {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-brightness {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-contrast {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-grayscale {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-hue-rotate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-invert {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-opacity {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-saturate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-sepia {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-drop-shadow-size {\n  syntax: "*";\n  inherits: false\n}\n';
+  const styles = '/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */\n@layer properties {\n  @supports (((-webkit-hyphens: none)) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color: rgb(from red r g b)))) {\n    *, :before, :after, ::backdrop {\n      --tw-rotate-x: initial;\n      --tw-rotate-y: initial;\n      --tw-rotate-z: initial;\n      --tw-skew-x: initial;\n      --tw-skew-y: initial;\n      --tw-space-y-reverse: 0;\n      --tw-border-style: solid;\n      --tw-leading: initial;\n      --tw-font-weight: initial;\n      --tw-ordinal: initial;\n      --tw-slashed-zero: initial;\n      --tw-numeric-figure: initial;\n      --tw-numeric-spacing: initial;\n      --tw-numeric-fraction: initial;\n      --tw-shadow: 0 0 #0000;\n      --tw-shadow-color: initial;\n      --tw-shadow-alpha: 100%;\n      --tw-inset-shadow: 0 0 #0000;\n      --tw-inset-shadow-color: initial;\n      --tw-inset-shadow-alpha: 100%;\n      --tw-ring-color: initial;\n      --tw-ring-shadow: 0 0 #0000;\n      --tw-inset-ring-color: initial;\n      --tw-inset-ring-shadow: 0 0 #0000;\n      --tw-ring-inset: initial;\n      --tw-ring-offset-width: 0px;\n      --tw-ring-offset-color: #fff;\n      --tw-ring-offset-shadow: 0 0 #0000;\n      --tw-outline-style: solid;\n      --tw-blur: initial;\n      --tw-brightness: initial;\n      --tw-contrast: initial;\n      --tw-grayscale: initial;\n      --tw-hue-rotate: initial;\n      --tw-invert: initial;\n      --tw-opacity: initial;\n      --tw-saturate: initial;\n      --tw-sepia: initial;\n      --tw-drop-shadow: initial;\n      --tw-drop-shadow-color: initial;\n      --tw-drop-shadow-alpha: 100%;\n      --tw-drop-shadow-size: initial;\n    }\n  }\n}\n\n@layer theme {\n  :root, :host {\n    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",\n      "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",\n      "Segoe UI Symbol", "Noto Color Emoji";\n    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",\n      "Courier New", monospace;\n    --spacing: .25rem;\n    --text-xs: .75rem;\n    --text-xs--line-height: calc(1 / .75);\n    --text-sm: .875rem;\n    --text-sm--line-height: calc(1.25 / .875);\n    --text-base: 1rem;\n    --text-base--line-height: calc(1.5 / 1);\n    --font-weight-medium: 500;\n    --font-weight-semibold: 600;\n    --default-transition-duration: .15s;\n    --default-transition-timing-function: cubic-bezier(.4, 0, .2, 1);\n    --default-font-family: var(--font-sans);\n    --default-mono-font-family: var(--font-mono);\n  }\n}\n\n@layer base {\n  *, :after, :before, ::backdrop {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  ::file-selector-button {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  html, :host {\n    -webkit-text-size-adjust: 100%;\n    tab-size: 4;\n    line-height: 1.5;\n    font-family: var(--default-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");\n    font-feature-settings: var(--default-font-feature-settings, normal);\n    font-variation-settings: var(--default-font-variation-settings, normal);\n    -webkit-tap-highlight-color: transparent;\n  }\n\n  hr {\n    height: 0;\n    color: inherit;\n    border-top-width: 1px;\n  }\n\n  abbr:where([title]) {\n    -webkit-text-decoration: underline dotted;\n    text-decoration: underline dotted;\n  }\n\n  h1, h2, h3, h4, h5, h6 {\n    font-size: inherit;\n    font-weight: inherit;\n  }\n\n  a {\n    color: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    text-decoration: inherit;\n  }\n\n  b, strong {\n    font-weight: bolder;\n  }\n\n  code, kbd, samp, pre {\n    font-family: var(--default-mono-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);\n    font-feature-settings: var(--default-mono-font-feature-settings, normal);\n    font-variation-settings: var(--default-mono-font-variation-settings, normal);\n    font-size: 1em;\n  }\n\n  small {\n    font-size: 80%;\n  }\n\n  sub, sup {\n    vertical-align: baseline;\n    font-size: 75%;\n    line-height: 0;\n    position: relative;\n  }\n\n  sub {\n    bottom: -.25em;\n  }\n\n  sup {\n    top: -.5em;\n  }\n\n  table {\n    text-indent: 0;\n    border-color: inherit;\n    border-collapse: collapse;\n  }\n\n  :-moz-focusring:where(:not(iframe)) {\n    outline: auto;\n  }\n\n  progress {\n    vertical-align: baseline;\n  }\n\n  summary {\n    display: list-item;\n  }\n\n  ol, ul, menu {\n    list-style: none;\n  }\n\n  img, svg, video, canvas, audio, iframe, embed, object {\n    vertical-align: middle;\n    display: block;\n  }\n\n  img, video {\n    max-width: 100%;\n    height: auto;\n  }\n\n  button, input, select, optgroup, textarea {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  ::file-selector-button {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  :where(select:is([multiple], [size])) optgroup {\n    font-weight: bolder;\n  }\n\n  :where(select:is([multiple], [size])) optgroup option {\n    padding-inline-start: 20px;\n  }\n\n  ::file-selector-button {\n    margin-inline-end: 4px;\n  }\n\n  ::placeholder {\n    opacity: 1;\n  }\n\n  @supports (not ((-webkit-appearance: -apple-pay-button))) or (contain-intrinsic-size: 1px) {\n    ::placeholder {\n      color: currentColor;\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      ::placeholder {\n        color: color-mix(in oklab, currentcolor 50%, transparent);\n      }\n    }\n  }\n\n  textarea {\n    resize: vertical;\n  }\n\n  ::-webkit-search-decoration {\n    -webkit-appearance: none;\n  }\n\n  ::-webkit-date-and-time-value {\n    min-height: 1lh;\n    text-align: inherit;\n  }\n\n  ::-webkit-datetime-edit {\n    display: inline-flex;\n  }\n\n  ::-webkit-datetime-edit-fields-wrapper {\n    padding: 0;\n  }\n\n  ::-webkit-datetime-edit {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-year-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-month-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-day-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-hour-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-minute-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-second-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-millisecond-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-meridiem-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-calendar-picker-indicator {\n    line-height: 1;\n  }\n\n  :-moz-ui-invalid {\n    box-shadow: none;\n  }\n\n  button, input:where([type="button"], [type="reset"], [type="submit"]) {\n    appearance: button;\n  }\n\n  ::file-selector-button {\n    appearance: button;\n  }\n\n  ::-webkit-inner-spin-button {\n    height: auto;\n  }\n\n  ::-webkit-outer-spin-button {\n    height: auto;\n  }\n\n  [hidden]:where(:not([hidden="until-found"])) {\n    display: none !important;\n  }\n}\n\n@layer components;\n\n@layer utilities {\n  .collapse {\n    visibility: collapse;\n  }\n\n  .invisible {\n    visibility: hidden;\n  }\n\n  .visible {\n    visibility: visible;\n  }\n\n  .absolute {\n    position: absolute;\n  }\n\n  .fixed {\n    position: fixed;\n  }\n\n  .relative {\n    position: relative;\n  }\n\n  .static {\n    position: static;\n  }\n\n  .sticky {\n    position: sticky;\n  }\n\n  .top-41 {\n    top: calc(var(--spacing) * 41);\n  }\n\n  .isolate {\n    isolation: isolate;\n  }\n\n  .col-span-2 {\n    grid-column: span 2 / span 2;\n  }\n\n  .container {\n    width: 100%;\n  }\n\n  @media (min-width: 40rem) {\n    .container {\n      max-width: 40rem;\n    }\n  }\n\n  @media (min-width: 48rem) {\n    .container {\n      max-width: 48rem;\n    }\n  }\n\n  @media (min-width: 64rem) {\n    .container {\n      max-width: 64rem;\n    }\n  }\n\n  @media (min-width: 80rem) {\n    .container {\n      max-width: 80rem;\n    }\n  }\n\n  @media (min-width: 96rem) {\n    .container {\n      max-width: 96rem;\n    }\n  }\n\n  .m-0 {\n    margin: 0;\n  }\n\n  .m-1 {\n    margin: var(--spacing);\n  }\n\n  .mt-1 {\n    margin-top: var(--spacing);\n  }\n\n  .mt-2 {\n    margin-top: calc(var(--spacing) * 2);\n  }\n\n  .mb-2 {\n    margin-bottom: calc(var(--spacing) * 2);\n  }\n\n  .block {\n    display: block;\n  }\n\n  .contents {\n    display: contents;\n  }\n\n  .flex {\n    display: flex;\n  }\n\n  .grid {\n    display: grid;\n  }\n\n  .hidden {\n    display: none;\n  }\n\n  .inline {\n    display: inline;\n  }\n\n  .inline-flex {\n    display: inline-flex;\n  }\n\n  .table {\n    display: table;\n  }\n\n  .size-3 {\n    width: calc(var(--spacing) * 3);\n    height: calc(var(--spacing) * 3);\n  }\n\n  .size-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n    height: calc(var(--spacing) * 3.5);\n  }\n\n  .size-4 {\n    width: calc(var(--spacing) * 4);\n    height: calc(var(--spacing) * 4);\n  }\n\n  .size-5 {\n    width: calc(var(--spacing) * 5);\n    height: calc(var(--spacing) * 5);\n  }\n\n  .size-6 {\n    width: calc(var(--spacing) * 6);\n    height: calc(var(--spacing) * 6);\n  }\n\n  .size-7 {\n    width: calc(var(--spacing) * 7);\n    height: calc(var(--spacing) * 7);\n  }\n\n  .size-8 {\n    width: calc(var(--spacing) * 8);\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-7 {\n    height: calc(var(--spacing) * 7);\n  }\n\n  .h-8 {\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-9 {\n    height: calc(var(--spacing) * 9);\n  }\n\n  .max-h-60 {\n    max-height: calc(var(--spacing) * 60);\n  }\n\n  .max-h-96 {\n    max-height: calc(var(--spacing) * 96);\n  }\n\n  .max-h-\\[420px\\] {\n    max-height: 420px;\n  }\n\n  .min-h-\\[130px\\] {\n    min-height: 130px;\n  }\n\n  .w-full {\n    width: 100%;\n  }\n\n  .min-w-0 {\n    min-width: 0;\n  }\n\n  .flex-1 {\n    flex: 1;\n  }\n\n  .shrink-0 {\n    flex-shrink: 0;\n  }\n\n  .grow {\n    flex-grow: 1;\n  }\n\n  .rotate-180 {\n    rotate: 180deg;\n  }\n\n  .transform {\n    transform: var(--tw-rotate-x, ) var(--tw-rotate-y, ) var(--tw-rotate-z, ) var(--tw-skew-x, ) var(--tw-skew-y, );\n  }\n\n  .resize {\n    resize: both;\n  }\n\n  .grid-cols-2 {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }\n\n  .flex-col {\n    flex-direction: column;\n  }\n\n  .flex-wrap {\n    flex-wrap: wrap;\n  }\n\n  .items-center {\n    align-items: center;\n  }\n\n  .items-end {\n    align-items: flex-end;\n  }\n\n  .items-start {\n    align-items: flex-start;\n  }\n\n  .justify-between {\n    justify-content: space-between;\n  }\n\n  .justify-center {\n    justify-content: center;\n  }\n\n  .gap-0\\.5 {\n    gap: calc(var(--spacing) * .5);\n  }\n\n  .gap-1 {\n    gap: var(--spacing);\n  }\n\n  .gap-2 {\n    gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-3 {\n    gap: calc(var(--spacing) * 3);\n  }\n\n  :where(.space-y-2 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 2) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 2) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  .self-start {\n    align-self: flex-start;\n  }\n\n  .truncate {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    overflow: hidden;\n  }\n\n  .overflow-x-hidden {\n    overflow-x: hidden;\n  }\n\n  .overflow-y-auto {\n    overflow-y: auto;\n  }\n\n  .rounded-lg {\n    border-radius: var(--radius);\n  }\n\n  .rounded-md {\n    border-radius: calc(var(--radius) - 2px);\n  }\n\n  .border {\n    border-style: var(--tw-border-style);\n    border-width: 1px;\n  }\n\n  .border-t {\n    border-top-style: var(--tw-border-style);\n    border-top-width: 1px;\n  }\n\n  .border-b {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 1px;\n  }\n\n  .border-l-2 {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 2px;\n  }\n\n  .border-border {\n    border-color: var(--border);\n  }\n\n  .border-transparent {\n    border-color: #0000;\n  }\n\n  .bg-background {\n    background-color: var(--background);\n  }\n\n  .bg-card {\n    background-color: var(--card);\n  }\n\n  .bg-primary {\n    background-color: var(--primary);\n  }\n\n  .bg-secondary {\n    background-color: var(--secondary);\n  }\n\n  .p-0 {\n    padding: 0;\n  }\n\n  .p-2 {\n    padding: calc(var(--spacing) * 2);\n  }\n\n  .p-3 {\n    padding: calc(var(--spacing) * 3);\n  }\n\n  .px-2 {\n    padding-inline: calc(var(--spacing) * 2);\n  }\n\n  .px-3 {\n    padding-inline: calc(var(--spacing) * 3);\n  }\n\n  .px-4 {\n    padding-inline: calc(var(--spacing) * 4);\n  }\n\n  .py-0\\.5 {\n    padding-block: calc(var(--spacing) * .5);\n  }\n\n  .py-2 {\n    padding-block: calc(var(--spacing) * 2);\n  }\n\n  .pt-2 {\n    padding-top: calc(var(--spacing) * 2);\n  }\n\n  .pl-2 {\n    padding-left: calc(var(--spacing) * 2);\n  }\n\n  .text-base {\n    font-size: var(--text-base);\n    line-height: var(--tw-leading, var(--text-base--line-height));\n  }\n\n  .text-sm {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n\n  .text-xs {\n    font-size: var(--text-xs);\n    line-height: var(--tw-leading, var(--text-xs--line-height));\n  }\n\n  .text-\\[11px\\] {\n    font-size: 11px;\n  }\n\n  .leading-4 {\n    --tw-leading: calc(var(--spacing) * 4);\n    line-height: calc(var(--spacing) * 4);\n  }\n\n  .font-medium {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n\n  .font-semibold {\n    --tw-font-weight: var(--font-weight-semibold);\n    font-weight: var(--font-weight-semibold);\n  }\n\n  .break-words {\n    overflow-wrap: break-word;\n  }\n\n  .whitespace-nowrap {\n    white-space: nowrap;\n  }\n\n  .whitespace-pre-wrap {\n    white-space: pre-wrap;\n  }\n\n  .text-foreground {\n    color: var(--foreground);\n  }\n\n  .text-muted-foreground {\n    color: var(--muted-foreground);\n  }\n\n  .text-primary-foreground {\n    color: var(--primary-foreground);\n  }\n\n  .text-secondary-foreground {\n    color: var(--secondary-foreground);\n  }\n\n  .ordinal {\n    --tw-ordinal: ordinal;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .tabular-nums {\n    --tw-numeric-spacing: tabular-nums;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .shadow {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .outline {\n    outline-style: var(--tw-outline-style);\n    outline-width: 1px;\n  }\n\n  .blur {\n    --tw-blur: blur(8px);\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .filter {\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .transition {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-colors {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-transform {\n    transition-property: transform, translate, scale, rotate;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .outline-none {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  @media (hover: hover) {\n    .hover\\:bg-accent:hover {\n      background-color: var(--accent);\n    }\n\n    .hover\\:bg-primary\\/90:hover {\n      background-color: var(--primary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-primary\\/90:hover {\n        background-color: color-mix(in oklab, var(--primary) 90%, transparent);\n      }\n    }\n\n    .hover\\:text-accent-foreground:hover {\n      color: var(--accent-foreground);\n    }\n  }\n\n  .focus-visible\\:ring-2:focus-visible {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus-visible\\:ring-ring:focus-visible {\n    --tw-ring-color: var(--ring);\n  }\n\n  .disabled\\:pointer-events-none:disabled {\n    pointer-events: none;\n  }\n\n  .disabled\\:opacity-50:disabled {\n    opacity: .5;\n  }\n}\n\n.booster-reader-sidebar {\n  border-right: 1px solid var(--border);\n  background: var(--card);\n  overscroll-behavior: contain;\n  min-width: 0;\n  padding: 12px;\n  overflow: auto;\n}\n\n.booster-reader-group {\n  margin-top: 12px;\n}\n\n.booster-reader-group-header {\n  align-items: center;\n  gap: 2px;\n  min-height: 38px;\n  display: flex;\n}\n\n.booster-group-toggle {\n  min-width: 0;\n  color: inherit;\n  cursor: pointer;\n  text-align: left;\n  font: inherit;\n  background: none;\n  border: 0;\n  flex: 1;\n  align-items: center;\n  gap: 6px;\n  padding: 6px 0;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-group-toggle svg {\n  flex-shrink: 0;\n}\n\n.booster-group-toggle span {\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-group-toggle small {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-reader-chat-list {\n  gap: 3px;\n  padding-left: 10px;\n  display: grid;\n}\n\n.booster-reader-chat-list > button {\n  color: inherit;\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 8px;\n  align-items: center;\n  gap: 6px;\n  padding: 10px;\n  font-size: 12px;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-reader-chat-list > button:hover, .booster-reader-chat-list > button.active {\n  background: var(--muted);\n  border-color: var(--border);\n}\n\n.booster-reader-chat-list > button span {\n  text-overflow: ellipsis;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-reader-chat-list > button.is-branch {\n  border-inline-start: 2px solid var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reader-chat-list > button.is-branch {\n    border-inline-start: 2px solid color-mix(in oklab, var(--primary) 35%, transparent);\n  }\n}\n\n.booster-reader-branch-icon {\n  opacity: .66;\n  flex: none;\n}\n\n.booster-reader-exchanges {\n  gap: 12px;\n  margin-top: 0;\n  display: grid;\n}\n\n.booster-exchange {\n  border-bottom: 1px solid var(--border);\n  min-width: 0;\n  max-width: 100%;\n  padding-bottom: 16px;\n}\n\n.booster-exchange-details {\n  border-left: 2px solid var(--border);\n  gap: 6px;\n  margin: 10px 0 10px 12px;\n  padding: 8px 0 8px 12px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-exchange-details {\n    border-left: 2px solid color-mix(in oklab, var(--border) 78%, var(--primary));\n  }\n}\n\n.booster-exchange-details-label {\n  color: var(--muted-foreground);\n  letter-spacing: .04em;\n  text-transform: uppercase;\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-message-target {\n  outline: 2px solid var(--primary);\n  outline-offset: 2px;\n  border-radius: 6px;\n}\n\n[data-archive-message] {\n  scroll-margin-block: 20px;\n}\n\n.booster-reader-exchanges, .booster-exchange-details {\n  min-width: 0;\n  max-width: 100%;\n}\n\n:host {\n  --background: oklch(98.5% 0 0);\n  --foreground: oklch(14.5% 0 0);\n  --card: oklch(100% 0 0);\n  --card-foreground: oklch(14.5% 0 0);\n  --primary: oklch(20.5% 0 0);\n  --primary-foreground: oklch(98.5% 0 0);\n  --secondary: oklch(97% 0 0);\n  --secondary-foreground: oklch(20.5% 0 0);\n  --muted: oklch(97% 0 0);\n  --muted-foreground: oklch(55.6% 0 0);\n  --accent: oklch(97% 0 0);\n  --accent-foreground: oklch(20.5% 0 0);\n  --border: oklch(92.2% 0 0);\n  --ring: oklch(70.8% 0 0);\n  --radius: .625rem;\n  all: initial;\n  color: var(--foreground);\n  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;\n}\n\n@media (prefers-color-scheme: dark) {\n  :host {\n    --background: oklch(14.5% 0 0);\n    --foreground: oklch(98.5% 0 0);\n    --card: oklch(20.5% 0 0);\n    --card-foreground: oklch(98.5% 0 0);\n    --primary: oklch(92.2% 0 0);\n    --primary-foreground: oklch(20.5% 0 0);\n    --secondary: oklch(26.9% 0 0);\n    --secondary-foreground: oklch(98.5% 0 0);\n    --muted: oklch(26.9% 0 0);\n    --muted-foreground: oklch(70.8% 0 0);\n    --accent: oklch(26.9% 0 0);\n    --accent-foreground: oklch(98.5% 0 0);\n    --border: oklch(100% 0 0 / .12);\n    --ring: oklch(55.6% 0 0);\n  }\n}\n\n* {\n  box-sizing: border-box;\n  border-color: var(--border);\n}\n\n.booster-shell {\n  z-index: 2147483647;\n  position: fixed;\n  bottom: 20px;\n  right: 20px;\n}\n\n.booster-button {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 42px;\n  height: 42px;\n  color: var(--card-foreground);\n  cursor: pointer;\n  border-radius: 14px;\n  font: 700 15px / 1 inherit;\n  box-shadow: 0 10px 30px #0003;\n}\n\n.booster-panel {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 300px;\n  color: var(--card-foreground);\n  border-radius: 16px;\n  margin-bottom: 10px;\n  padding: 14px;\n  box-shadow: 0 18px 45px #0000003d;\n}\n\n.booster-panel h2 {\n  margin: 0 0 6px;\n  font-size: 15px;\n  font-weight: 700;\n}\n\n.booster-panel p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.45;\n}\n\n.booster-control-center {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(760px, 100vw - 32px);\n  color: var(--card-foreground);\n  border-radius: 18px;\n  margin-bottom: 10px;\n  overflow: hidden;\n  box-shadow: 0 22px 60px #00000047;\n}\n\n.booster-control-header, .booster-control-footer {\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  display: flex;\n}\n\n.booster-control-header {\n  border-bottom: 1px solid var(--border);\n  padding: 14px 14px 12px;\n}\n\n.booster-control-header strong {\n  font-size: 14px;\n}\n\n.booster-control-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-control-body {\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-loading {\n  color: var(--muted-foreground);\n  padding: 18px;\n  font-size: 12px;\n}\n\n.booster-section-label {\n  color: var(--muted-foreground);\n  letter-spacing: .08em;\n  text-transform: uppercase;\n  padding: 2px 2px 0;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-setting-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 12px;\n  display: flex;\n}\n\n.booster-setting-disabled {\n  opacity: .55;\n}\n\n.booster-setting-copy {\n  gap: 5px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-setting-copy b {\n  font-size: 12px;\n}\n\n.booster-setting-copy > span {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.4;\n}\n\n.booster-switch {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  cursor: pointer;\n  border-radius: 999px;\n  flex: none;\n  width: 36px;\n  height: 20px;\n  padding: 0;\n  transition: background .12s, border-color .12s;\n  position: relative;\n}\n\n.booster-switch:disabled {\n  cursor: not-allowed;\n}\n\n.booster-switch > span {\n  background: var(--foreground);\n  border-radius: 999px;\n  width: 14px;\n  height: 14px;\n  transition: transform .12s;\n  position: absolute;\n  top: 2px;\n  left: 2px;\n}\n\n.booster-switch-on {\n  background: var(--primary);\n  border-color: var(--primary);\n}\n\n.booster-switch-on > span {\n  background: var(--primary-foreground);\n  transform: translateX(16px);\n}\n\n.booster-info-card {\n  background: var(--muted);\n  color: var(--foreground);\n  border-radius: 12px;\n  padding: 11px 12px;\n  font-size: 11px;\n}\n\n.booster-info-card ul {\n  color: var(--muted-foreground);\n  gap: 4px;\n  margin: 8px 0 0 18px;\n  padding: 0;\n  line-height: 1.35;\n  display: grid;\n}\n\n.booster-control-footer {\n  padding-top: 2px;\n}\n\n.booster-save-state {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 5px;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-overlay-root {\n  pointer-events: none;\n}\n\n.booster-launcher {\n  z-index: 2147483647;\n  border: 2px solid var(--primary);\n  justify-content: center;\n  align-items: center;\n  gap: 1px;\n  width: 46px;\n  height: 46px;\n  display: inline-flex;\n  position: fixed;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher {\n    border: 2px solid color-mix(in oklab, var(--primary) 55%, transparent);\n  }\n}\n\n.booster-launcher {\n  background: var(--primary);\n  color: var(--primary-foreground);\n  box-shadow: 0 12px 36px #00000047, 0 0 0 3px var(--primary);\n  border-radius: 15px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher {\n    box-shadow: 0 12px 36px #00000047, 0 0 0 3px color-mix(in oklab, var(--primary) 18%, transparent);\n  }\n}\n\n.booster-launcher {\n  cursor: grab;\n  pointer-events: auto;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  font: 800 17px / 1 inherit;\n}\n\n.booster-launcher:hover {\n  transform: scale(1.04);\n}\n\n.booster-launcher-dragging {\n  cursor: grabbing;\n  transform: scale(1.06);\n}\n\n.booster-launcher-icon {\n  flex-shrink: 0;\n  width: 20px;\n  height: 20px;\n}\n\n.booster-modal-backdrop {\n  z-index: 2147483646;\n  -webkit-backdrop-filter: blur(3px);\n  backdrop-filter: blur(3px);\n  pointer-events: auto;\n  background: #00000061;\n  place-items: center;\n  padding: 16px;\n  display: grid;\n  position: fixed;\n  inset: 0;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n  max-height: calc(100vh - 32px);\n  overflow: auto;\n}\n\n.booster-modal-surface .booster-control-center {\n  width: 100%;\n  margin: 0;\n}\n\n.booster-popup-host {\n  background: var(--background);\n  min-width: 360px;\n}\n\n.booster-select {\n  border: 1px solid var(--border);\n  background: var(--background);\n  min-width: 92px;\n  height: 32px;\n  color: var(--foreground);\n  cursor: pointer;\n  border-radius: 8px;\n  outline: none;\n  flex: none;\n  padding: 0 28px 0 10px;\n  font: 500 12px / 1 inherit;\n}\n\n.booster-select:focus {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-stack-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-stack-card label {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-input {\n  border: 1px solid var(--border);\n  background: var(--background);\n  width: 100%;\n  min-width: 0;\n  height: 32px;\n  color: var(--foreground);\n  border-radius: 8px;\n  outline: none;\n  padding: 0 10px;\n  font: 500 11px / 1 inherit;\n}\n\n.booster-input:focus {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-counter-grid {\n  color: var(--muted-foreground);\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 6px 12px;\n  margin-top: 8px;\n  display: grid;\n}\n\n.booster-counter-grid span {\n  justify-content: space-between;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-counter-grid b {\n  color: var(--foreground);\n}\n\n.booster-header-copy {\n  min-width: 0;\n}\n\n.booster-header-actions {\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-header-toggle-label {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  font-weight: 600;\n}\n\n.booster-settings-layout {\n  grid-template-columns: 150px minmax(0, 1fr);\n  min-height: 360px;\n  display: grid;\n}\n\n.booster-settings-nav {\n  border-right: 1px solid var(--border);\n  background: var(--muted);\n  align-content: start;\n  gap: 4px;\n  padding: 12px 8px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-settings-nav {\n    background: color-mix(in oklab, var(--muted) 58%, transparent);\n  }\n}\n\n.booster-settings-nav button {\n  width: 100%;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  border-radius: 9px;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 10px;\n  font: 600 11px / 1.2 inherit;\n  display: flex;\n}\n\n.booster-settings-nav button:hover, .booster-settings-nav button.active {\n  background: var(--background);\n  color: var(--foreground);\n}\n\n.booster-settings-content {\n  align-content: start;\n  gap: 10px;\n  min-width: 0;\n  padding: 14px;\n  display: grid;\n}\n\n.booster-setting-card-flat {\n  border: 0;\n  border-bottom: 1px solid var(--border);\n  border-radius: 0;\n  padding: 0 0 10px;\n}\n\n.booster-analytics-grid {\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 12px;\n  display: grid;\n}\n\n.booster-counter-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  padding: 12px;\n}\n\n.booster-counter-title {\n  margin-bottom: 8px;\n  font-size: 12px;\n  font-weight: 700;\n}\n\n.booster-disclosure {\n  width: 100%;\n  color: var(--foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 0;\n  display: flex;\n}\n\n.booster-disclosure > span {\n  gap: 3px;\n  display: grid;\n}\n\n.booster-disclosure b {\n  font-size: 12px;\n}\n\n.booster-disclosure small {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.rotate-180 {\n  transform: rotate(180deg);\n}\n\n.booster-telemetry-body {\n  gap: 10px;\n  padding-top: 10px;\n  display: grid;\n}\n\n.booster-field {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-telemetry-test-row {\n  align-items: center;\n  gap: 10px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-test-success {\n  color: oklch(62% .17 145);\n  font-size: 11px;\n}\n\n.booster-test-error {\n  color: oklch(63% .2 25);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n}\n\n@media (max-width: 620px) {\n  .booster-control-center, .booster-modal-surface {\n    width: calc(100vw - 20px);\n  }\n\n  .booster-settings-layout {\n    grid-template-columns: 1fr;\n  }\n\n  .booster-settings-nav {\n    border-right: 0;\n    border-bottom: 1px solid var(--border);\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n\n  .booster-settings-nav button {\n    justify-content: center;\n  }\n\n  .booster-analytics-grid {\n    grid-template-columns: 1fr;\n  }\n}\n\n.booster-modal-surface.booster-modal-surface-wide {\n  width: min(1320px, 100vw - 32px);\n}\n\n.booster-modal-surface-wide > .booster-control-center {\n  width: 100%;\n}\n\n@media (max-width: 620px) {\n  .booster-modal-surface.booster-modal-surface-wide {\n    width: calc(100vw - 20px);\n  }\n}\n\n.booster-modal-backdrop.booster-modal-backdrop-floating {\n  -webkit-backdrop-filter: none;\n  backdrop-filter: none;\n  pointer-events: none;\n  background: none;\n  padding: 0;\n  display: block;\n}\n\n.booster-modal-surface.booster-modal-surface-wide.booster-dialog-floating {\n  pointer-events: auto;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  max-height: none;\n  padding: 0;\n  display: flex;\n  position: fixed;\n  overflow: hidden;\n}\n\n.booster-dialog-floating > .booster-control-center {\n  flex: auto;\n  min-height: 0;\n  overflow: auto;\n}\n\n.booster-floating-chrome {\n  border-bottom: 1px solid var(--border);\n  background: var(--muted);\n  cursor: move;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  flex: none;\n  align-items: center;\n  gap: 8px;\n  min-height: 38px;\n  padding: 4px 8px 4px 12px;\n  display: flex;\n}\n\n.booster-floating-chrome > span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  flex: auto;\n  min-width: 0;\n  font-size: 12px;\n  font-weight: 600;\n  overflow: hidden;\n}\n\n.booster-floating-chrome > button {\n  cursor: pointer;\n  border-radius: 6px;\n  flex: none;\n  place-items: center;\n  width: 30px;\n  height: 30px;\n  display: grid;\n}\n\n.booster-floating-chrome > button:focus-visible, .booster-floating-resize:focus-visible {\n  outline: 2px solid var(--ring);\n}\n\n.booster-floating-resize {\n  background: var(--muted);\n  cursor: nwse-resize;\n  touch-action: none;\n  border-top-left-radius: 7px;\n  place-items: center;\n  width: 28px;\n  height: 28px;\n  display: grid;\n  position: absolute;\n  bottom: 0;\n  right: 0;\n}\n\n@property --tw-rotate-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-z {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-space-y-reverse {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-border-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-leading {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-font-weight {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ordinal {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-slashed-zero {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-figure {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-spacing {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-fraction {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-inset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-ring-inset {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-offset-width {\n  syntax: "<length>";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-ring-offset-color {\n  syntax: "*";\n  inherits: false;\n  initial-value: #fff;\n}\n\n@property --tw-ring-offset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-outline-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-blur {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-brightness {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-contrast {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-grayscale {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-hue-rotate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-invert {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-opacity {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-saturate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-sepia {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-drop-shadow-size {\n  syntax: "*";\n  inherits: false\n}\n';
   function mountControlCenter(options) {
     document.getElementById(instanceKey("koba-browser-tools-root"))?.remove();
     const host = document.createElement("div");
