@@ -1,7 +1,12 @@
 import { expect, test } from 'bun:test'
 import { DexieTelemetryJournal } from '@kobaproduction/browser-storage'
 import { IDBKeyRange, indexedDB } from 'fake-indexeddb'
-import { resolveOtlpLogsEndpoint, ScopedOtlpService, scopedOtlpPayload } from './scoped-otlp'
+import {
+  resolveOtlpLogsEndpoint,
+  ScopedOtlpService,
+  scopedOtlpPayload,
+  sendOtlpRequest,
+} from './scoped-otlp'
 
 const scope = { productId: 'chatgpt-booster', channel: 'dev' as const, installationId: 'tm-test-otel' }
 const drivers = { indexedDB, IDBKeyRange }
@@ -123,4 +128,27 @@ test('shared OTLP payload keeps two services separately attributed in one collec
       '0.5.9',
     ),
   ).toThrow('private OTLP')
+})
+
+test('shared default HTTP sender never attaches cookies or accepts collector rejection', async () => {
+  const prior = globalThis.fetch
+  let observed: RequestInit | undefined
+  globalThis.fetch = async (_url, options) => {
+    observed = options
+    return { ok: false, status: 503 } as Response
+  }
+  try {
+    await expect(
+      sendOtlpRequest({
+        url: 'https://otel.test/v1/logs',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      }),
+    ).rejects.toThrow('did not acknowledge')
+    expect(observed?.credentials).toBe('omit')
+    expect(observed?.redirect).toBe('error')
+    expect(observed?.signal).toBeTruthy()
+  } finally {
+    globalThis.fetch = prior
+  }
 })

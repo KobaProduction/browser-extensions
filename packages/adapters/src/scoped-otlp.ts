@@ -23,14 +23,21 @@ export type OtlpSender = (request: OtlpRequest) => Promise<void>
 
 /** Network transport is provider-neutral. Call only after explicit remote consent. */
 export async function sendOtlpRequest(request: OtlpRequest): Promise<void> {
-  const response = await fetch(request.url, {
-    method: 'POST',
-    credentials: 'omit',
-    redirect: 'error',
-    headers: request.headers,
-    body: request.body,
-  })
-  if (!response.ok) throw new Error('OTLP collector did not acknowledge batch')
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 15_000)
+  try {
+    const response = await fetch(request.url, {
+      method: 'POST',
+      credentials: 'omit',
+      redirect: 'error',
+      signal: controller.signal,
+      headers: request.headers,
+      body: request.body,
+    })
+    if (!response.ok) throw new Error('OTLP collector did not acknowledge batch')
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 export function resolveOtlpLogsEndpoint(value: string): string {
   let endpoint: URL
