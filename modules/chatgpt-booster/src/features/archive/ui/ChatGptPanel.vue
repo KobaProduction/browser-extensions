@@ -390,6 +390,7 @@ onBeforeUnmount(() => {
         @close="showArchive()"
         @open-archive="(id, location) => showArchive(id, location)"
         @open-capture="scope => openCapture(scope, true)"
+        @open-backups="archiveMenuOpen=false; maintenanceOpen=true"
       />
       <CaptureSettingsSurface
         v-else-if="tab==='capture'"

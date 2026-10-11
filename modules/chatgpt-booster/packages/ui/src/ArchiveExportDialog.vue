@@ -28,8 +28,9 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ArchiveProgress } from '@kobaproduction/browser-ui'
 import { translate, type SupportedLocale, type TranslationKey } from './i18n'
 import type { ArchiveCoverageView, ArchiveDataAdapter, ArchiveExportPreview } from './mount'
+import { archiveExportPresetOptions, type ArchiveExportPreset } from './archive-export-presets'
 const props = defineProps<{ archiveAdapter: ArchiveDataAdapter; settingsAdapter: SettingsAdapter; conversationId: string; title?: string | null; locale: SupportedLocale; suspended?: boolean }>()
-const emit = defineEmits<{ close: []; 'open-archive': [conversationId: string, location?: ArchiveMessageLocation]; 'open-capture': [context: ArchiveCaptureContext] }>()
+const emit = defineEmits<{ close: []; 'open-archive': [conversationId: string, location?: ArchiveMessageLocation]; 'open-capture': [context: ArchiveCaptureContext]; 'open-backups': [] }>()
 const options = ref<ArchiveExportOptions>({ ...DEFAULT_EXPORT_OPTIONS })
 type ExportPreferenceScope = 'global' | 'project' | 'conversation'
 const preferenceScope = ref<ExportPreferenceScope>('global')
@@ -575,6 +576,17 @@ async function changePreferenceScope() {
   }
 }
 
+function chooseExportPreset(preset: ArchiveExportPreset) {
+  if (!ready.value || busy.value || collecting.value || refreshing.value ||
+      preferenceSaving.value || preferenceLoading.value || props.suspended) return
+  const selected = archiveExportPresetOptions(
+    options.value, preset, formats.value, props.archiveAdapter.archiveGeneration,
+  )
+  if (!selected) return
+  options.value = selected
+  remember()
+}
+
 function remember() {
   if (props.archiveAdapter.archiveGeneration === 4 && options.value.level === 'full' &&
     options.value.format !== 'json' && options.value.format !== 'json-compact')
@@ -855,6 +867,38 @@ function cancelExport() {
           :disabled="busy || preferenceSaving" @click="resetPreferenceScope">
           {{ locale === 'ru' ? 'Убрать переопределение' : 'Reset override' }}
         </button>
+      </section>
+      <section class="booster-export-presets" aria-label="Export format shortcuts">
+        <strong>{{ locale === 'ru' ? 'Быстрые профили экспорта' : 'Quick export profiles' }}</strong>
+        <p class="booster-note">{{ locale === 'ru'
+          ? 'Выберите формат, затем проверьте параметры и подготовьте файл. Проверка полноты и владельца обязательна.'
+          : 'Select a format, review the options, then prepare the file. Completeness and ownership checks still apply.' }}</p>
+        <div class="booster-export-recovery-actions">
+          <button v-if="formats.some(item => item.id === 'markdown')" class="booster-action-secondary" type="button"
+            :aria-pressed="options.format === 'markdown' && options.level === 'conversation' && options.packaging === 'none'"
+            :disabled="busy || collecting || refreshing || preferenceSaving || preferenceLoading || suspended"
+            @click="chooseExportPreset('markdown')">Markdown</button>
+          <button v-if="formats.some(item => item.id === 'json')" class="booster-action-secondary" type="button"
+            :aria-pressed="options.format === 'json' && options.level === 'full' && options.packaging === 'none'"
+            :disabled="busy || collecting || refreshing || preferenceSaving || preferenceLoading || suspended"
+            @click="chooseExportPreset('json')">JSON {{ locale === 'ru' ? '(полный)' : '(full)' }}</button>
+          <template v-if="archiveAdapter.archiveGeneration === 4 && formats.some(item => item.id === 'json')">
+            <button class="booster-action-secondary" type="button"
+              :aria-pressed="options.format === 'json' && options.level === 'full' && options.packaging === 'gzip'"
+              :disabled="busy || collecting || refreshing || preferenceSaving || preferenceLoading || suspended"
+              @click="chooseExportPreset('json-gzip')">JSON.gz</button>
+            <button class="booster-action-secondary" type="button"
+              :aria-pressed="options.format === 'json' && options.level === 'full' && options.packaging === 'zip'"
+              :disabled="busy || collecting || refreshing || preferenceSaving || preferenceLoading || suspended"
+              @click="chooseExportPreset('json-zip')">ZIP + manifest</button>
+          </template>
+        </div>
+        <p class="booster-note">{{ locale === 'ru'
+          ? 'Markdown содержит сообщения диалога. Полный JSON включает технические записи; ZIP и GZIP не подтверждают наличие бинарных вложений.'
+          : 'Markdown contains conversation messages. Full JSON includes technical records; ZIP and GZIP do not prove binary attachments are present.' }}</p>
+        <button v-if="archiveAdapter.exportNativeSourceBackup || archiveAdapter.exportCanonicalBackup"
+          type="button" class="booster-action-secondary" :disabled="busy || collecting || suspended"
+          @click="emit('open-backups')">{{ locale === 'ru' ? 'Резервные копии источника и канонического архива' : 'Native and canonical archive backups' }}</button>
       </section>
       <label>{{ t('export.format') }}<select v-model="options.format" :disabled="busy || preferenceLoading" @change="remember"><option v-for="format in formats" :key="format.id" :value="format.id">{{ format.label }}</option></select></label>
       <label v-if="archiveAdapter.archiveGeneration === 4">

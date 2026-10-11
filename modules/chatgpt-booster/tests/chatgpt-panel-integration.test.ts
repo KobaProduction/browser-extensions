@@ -42,3 +42,13 @@ test('no extra launcher or owner-scope confusion in provider panel', () => {
   expect(panel).toContain("adapter.currentConversationId() !== conversationId")
   expect(panel).toContain('ARCHIVE_SOURCE_INCOMPATIBLE_EVENT')
 })
+
+test('hosted export wizard exposes format profiles and native/canonical backup entry without another shell', () => {
+  const exporter = readFileSync(new URL('../packages/ui/src/ArchiveExportDialog.vue', import.meta.url), 'utf8')
+  const { descriptor, errors } = parse(exporter, { filename: 'ArchiveExportDialog.vue' })
+  expect(errors).toHaveLength(0)
+  expect(descriptor.template?.content).toContain('chooseExportPreset')
+  expect(descriptor.template?.content).toContain("emit('open-backups')")
+  expect(panel).toContain('@open-backups="archiveMenuOpen=false; maintenanceOpen=true"')
+  expect(exporter).not.toContain('<BoosterOverlay')
+})

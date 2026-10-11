@@ -74,6 +74,13 @@ collection/stop actions when supported by the provider, the source-backed
 Archive Reader, the full Export wizard and the manually opened migration and
 backup widget. Migration and owner reconciliation do not start automatically.
 
+The hosted Export wizard exposes explicit Markdown, full JSON, JSON.gz and
+ZIP-with-manifest profiles through the existing owner-verified export adapter.
+These shortcuts select and persist export options; they do not initiate a
+download, assert history completeness or include unverified binary assets.
+The same Export view opens the existing native v3/v4 and canonical backup
+tools without creating another launcher, archive engine or storage scope.
+
 The historical 0.8.98 source reference owns comparison evidence for the
 legacy floating Archive Workspace and navigation; it is **not** an accepted
 stable release. Current stable **0.8.92** remains untouched. UI source
