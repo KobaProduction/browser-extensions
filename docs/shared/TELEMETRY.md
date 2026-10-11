@@ -34,11 +34,11 @@ full exception objects that may contain secrets.
 - Support a local/mock sink in the development archive lab; no real data
   leaves the environment during tests.
 
-**Current evidence:** VK native PR #10 supplies an optional
-`ScopedTelemetry` interface and synthetic counter tests. A real telemetry
+**Current evidence:** unmerged VK PR #10 contains an optional
+`ScopedTelemetry` interface and synthetic counter tests. This may be
+adapted to VK v2 without replacing its archive. A real telemetry
 backend/transport, aggregation dashboards, consent persistence and installed
-browser acceptance are still missing. Other services must adopt the common
-contract deliberately, not pretend a VK mock proves their integration.
+browser acceptance remain missing; mocks do not prove live integration.
 
 See [environment isolation](ENVIRONMENTS_AND_STORAGE.md) and
 [project rules](PROJECT_RULES.md).

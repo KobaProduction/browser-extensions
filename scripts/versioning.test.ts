@@ -3,7 +3,7 @@ import { bumpPatch, planVersionBumps } from './bump-versions'
 import { affectedModules, impactedProductVersions, manifest, scopeFor } from './catalog'
 import { releaseTargets } from './release-plan'
 
-const versions = { 'vk-booster': '2.3.8', 'chatgpt-booster': '2.0.1', 'all-in-one': '0.5.0' }
+const versions = { 'vk-booster': '2.3.10', 'chatgpt-booster': '2.0.1', 'all-in-one': '0.5.0' }
 test('ChatGPT-only change bumps ChatGPT and aggregate, not VK', () => {
   const paths = ['modules/chatgpt-booster/packages/features/src/page-runtime.ts']
   expect(impactedProductVersions(paths)).toEqual(['chatgpt-booster', 'all-in-one'])
@@ -13,10 +13,10 @@ test('ChatGPT-only change bumps ChatGPT and aggregate, not VK', () => {
   })
   expect(affectedModules(paths)).toEqual(['chatgpt-booster', 'all-in-one'])
 })
-test('VK-only change bumps VK and aggregate, not ChatGPT', () => {
+test('VK-only change preserves VK base and bumps aggregate, not ChatGPT', () => {
   const paths = ['modules/vk-booster/src/features/chat-export/model/archive-engine.ts']
   expect(impactedProductVersions(paths)).toEqual(['vk-booster', 'all-in-one'])
-  expect(planVersionBumps(paths, versions)).toEqual({ 'vk-booster': '2.3.9', 'all-in-one': '0.5.1' })
+  expect(planVersionBumps(paths, versions)).toEqual({ 'all-in-one': '0.5.1' })
   expect(affectedModules(paths)).toEqual(['vk-booster', 'all-in-one'])
 })
 test('shared domain change bumps every consumer, not disabled proxy', () => {
@@ -26,7 +26,6 @@ test('shared domain change bumps every consumer, not disabled proxy', () => {
     'all-in-one',
   ])
   expect(planVersionBumps(['packages/archive/src/page-fold.ts'], versions)).toEqual({
-    'vk-booster': '2.3.9',
     'chatgpt-booster': '2.0.2',
     'all-in-one': '0.5.1',
   })
@@ -66,4 +65,10 @@ test('all internal ChatGPT private package versions match its release manifest',
   }
   const source = await readFile('modules/chatgpt-booster/packages/core/src/version.ts', 'utf8')
   expect(source).toContain(`BOOSTER_BASE_VERSION = '${current}'`)
+})
+
+test('VK v2 base cannot be auto-incremented from a non-frozen manifest', () => {
+  expect(() =>
+    planVersionBumps(['modules/vk-booster/src/index.ts'], { ...versions, 'vk-booster': '3.0.0' }),
+  ).toThrow('VK v2 base must remain')
 })

@@ -47,8 +47,8 @@ bun run build
 
 The [release/channel contract](docs/DEV_PROD_CHANNELS.md) defines continuous DEV
 prereleases and explicitly approved PROD publication. Different products can
-advance independently. **VK Booster's product base is frozen at 3.0.0 during
-development**; DEV build identifiers may continue as `3.0.0-dev.N`.
+advance independently. **VK Booster's current 2.3.10 base is frozen during development**;
+DEV build identifiers may advance as `2.3.10-dev.N`. Existing v2 archives remain compatible.
 
 Installation and environment-specific instructions live in the corresponding
 product README. Do not confuse a successful build or source review with

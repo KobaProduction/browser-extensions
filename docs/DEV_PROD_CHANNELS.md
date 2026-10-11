@@ -24,7 +24,8 @@ promotion from inventing source history or causing endless build-on-push loops.
   builds/versions VK and aggregate, but not ChatGPT; ChatGPT-only changes
   affect ChatGPT and aggregate; common runtime, packaging and storage
   changes affect all real consumers. Docs-only changes release nothing.
-- Base product semver remains independent. Only the build's DEV metadata
+- Base product semver remains independent, except that VK is explicitly
+  frozen at 2.3.10 during ongoing v2 work. Only the build's DEV metadata
   receives `-dev.<run>` (Chromium `version` uses a legal fourth numeric
   component). A new stable `X.Y.Z` requires the product's own version bump.
   DEV run counters above Chromium's fourth-component limit fail closed.

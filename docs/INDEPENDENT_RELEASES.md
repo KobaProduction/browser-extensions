@@ -25,14 +25,16 @@ compiled for different distribution targets.
 | Changed implementation | Required version change | Must remain unchanged |
 | --- | --- | --- |
 | `modules/chatgpt-booster/**` | ChatGPT and all-in-one | VK |
-| `modules/vk-booster/**` | VK and all-in-one | ChatGPT |
+| `modules/vk-booster/**` | All-in-one; VK stays frozen at 2.3.10 with DEV build ID updates | ChatGPT |
 | `apps/all-in-one*` | All-in-one | Both standalone products |
-| Shared `packages/**` | VK, ChatGPT and all-in-one | Disabled proxy target |
+| Shared `packages/**` | Actual dependents; VK stays 2.3.10, other affected products bump | Disabled proxy target |
 | Documentation-only or CI-only | None | All product versions |
 
 Run `bun scripts/bump-versions.ts <changed implementation path>...` to plan
-and write product manifest **patch** bumps, including private product
-package metadata, the runtime version identifier and the Bun lockfile. Larger semver updates should be
+and write product manifest **patch** bumps for affected products **except frozen VK 2.3.10**. VK's
+DEV artifact build ID advances independently of its manifest semver.
+Other affected private package metadata and Bun lockfile follow their owning
+product's version. Larger semver updates should be
 chosen deliberately; the first ChatGPT version-2 release is `2.0.1` and the
 aggregator feature release is `0.5.0`. PR CI executes
 `scripts/version-policy.ts` against the pull-request base SHA and refuses

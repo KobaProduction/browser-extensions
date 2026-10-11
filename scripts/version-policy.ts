@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { impactedProductVersions } from './catalog'
+import { FROZEN_VK_VERSION } from './vk-version-freeze'
 
 const versions = ['vk-booster', 'chatgpt-booster', 'all-in-one'] as const
 export type ProductVersion = (typeof versions)[number]
@@ -21,10 +22,9 @@ export function semverCompare(left: string, right: string): number {
   }
   return 0
 }
-/** PR code-impact contract: provider changes bump their own product and
- * all-in-one, shared packages bump all products, docs/CI don't bump anything.
- * Tooling files have separate review and do not silently bump VK for ChatGPT
- * packaging fixes; a shared runtime change belongs under packages/. */
+/** PR source-impact contract: VK v2 stays on its owner-frozen base while
+ * aggregate and other genuinely affected products advance independently.
+ * DEV build IDs, rather than product semver, identify VK test releases. */
 export function validateVersionPolicy(
   paths: readonly string[],
   before: Readonly<Record<string, string>>,
@@ -44,6 +44,11 @@ export function validateVersionPolicy(
       to = after[id]
     if (!from || !to) throw new Error(`Missing ${id} version metadata`)
     const cmp = semverCompare(to, from)
+    if (id === 'vk-booster') {
+      if (from !== FROZEN_VK_VERSION || to !== FROZEN_VK_VERSION)
+        throw new Error(`VK v2 base must remain ${FROZEN_VK_VERSION} (${from} -> ${to})`)
+      continue
+    }
     if (required.has(id) && cmp <= 0)
       throw new Error(`${id} must bump its version for changed product sources (${from} -> ${to})`)
     if (!required.has(id) && cmp !== 0)

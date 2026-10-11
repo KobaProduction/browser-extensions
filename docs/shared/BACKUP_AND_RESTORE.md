@@ -55,8 +55,9 @@ transaction abort, browser restart, and concurrent readers. Verify counts,
 metadata relations and original files after restore. Report whether the test
 used mocks, a real browser IndexedDB or installed extension data.
 
-**Existing source reality:** VK Archive 3 on PR #10 implements scope-checked
-JSON database export/import and receipt metadata, not bundled media backup;
-ChatGPT has its own v3/v4 backup/migration contracts. A universal settings
-backup and a Dexie-backed cross-product recovery facade are **not yet
-accepted or deployed**.
+**Existing source reality:** VK Booster main still persists the v2 folder
+archive; the incompatible IndexedDB replacement proposed in PR #10 is not
+accepted for integration. Its backup helpers may be reused only through a
+separate v2-compatible adapter with real data tests. ChatGPT has independent
+v3/v4 migration contracts. A universal settings backup and Dexie-backed
+cross-product recovery facade are **not yet accepted or deployed**.
