@@ -181,6 +181,16 @@ export class FeatureRuntime {
       await this.startNow()
     })
   }
+  /** Another tab of this same scoped installation changed durable enablement.
+   * Replay the lifecycle without writing storage, so no cross-tab event loop. */
+  refreshFromSettings(): Promise<void> {
+    return this.transition(async () => {
+      const enabled = await this.context.settings.installationEnabled()
+      if (enabled === this.running) return
+      await this.stopNow()
+      await this.startNow()
+    })
+  }
   setEnabled(id: string, value: boolean): Promise<void> {
     if (!this.features.some((feature) => feature.id === id))
       return Promise.reject(Error(`Unknown module ${id}`))

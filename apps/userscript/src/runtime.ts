@@ -1,4 +1,4 @@
-import { createSettingsStore } from '@kobaproduction/browser-adapters'
+import { createSettingsStore, onInstallationStateChange } from '@kobaproduction/browser-adapters'
 import {
   defaultCapabilities,
   type Feature,
@@ -18,6 +18,10 @@ export function bootstrapUserscript(
     capabilities: defaultCapabilities('userscript'),
     settings: new FeatureSettings(createSettingsStore('userscript')),
   })
+  const unsubscribeState = onInstallationStateChange('userscript', () => {
+    void runtime.refreshFromSettings()
+  })
+  window.addEventListener('pagehide', unsubscribeState, { once: true })
   let open: () => void = () => {}
   const launch = async () => {
     await runtime.start()

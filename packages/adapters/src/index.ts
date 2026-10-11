@@ -53,6 +53,24 @@ export function proxyAvailable(target: DeliveryTarget, granted: ReadonlySet<stri
   return target === 'chromium' && granted.has('proxy')
 }
 
+/** Observe just this installation's enable switch. One browser identity
+ * never toggles the sibling DEV/PROD or other product; no DB is touched. */
+export function onInstallationStateChange(target: DeliveryTarget, listener: () => void): () => void {
+  const key = `${instanceKey('koba-browser')}:installation.enabled`
+  if (target === 'chromium') {
+    const changed = (items: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area === 'local' && Object.hasOwn(items, key)) listener()
+    }
+    chrome.storage.onChanged.addListener(changed)
+    return () => chrome.storage.onChanged.removeListener(changed)
+  }
+  const changed = (event: StorageEvent) => {
+    if (event.key === key) listener()
+  }
+  window.addEventListener('storage', changed)
+  return () => window.removeEventListener('storage', changed)
+}
+
 export { attachChromeInstallationToggle } from './installation-popup'
 export type { OtlpDeliveryConfiguration, OtlpRequest, OtlpSender } from './scoped-otlp'
 export {

@@ -185,3 +185,54 @@ test('feature operations are serialized and cannot activate after a later off re
   expect(stopCount).toBe(1)
   expect(runtime.list()[0]?.state).toBe('disabled')
 })
+
+test('a sibling tab can revoke and restore this installation from scoped storage', async () => {
+  const values = new Map<string, boolean>()
+  let starts = 0,
+    stops = 0
+  const runtime = new FeatureRuntime(
+    [
+      {
+        id: 'shared',
+        title: 'Shared',
+        description: '',
+        match: () => true,
+        targets: ['chromium'],
+        requiredCapabilities: [],
+        start() {
+          starts++
+        },
+        stop() {
+          stops++
+        },
+      },
+    ],
+    {
+      target: 'chromium',
+      url: new URL('https://chatgpt.com'),
+      capabilities: defaultCapabilities('chromium'),
+      settings: new FeatureSettings({
+        async get(key) {
+          return values.get(key)
+        },
+        async set(key, enabled) {
+          values.set(key, enabled)
+        },
+      }),
+    },
+  )
+  await runtime.start()
+  expect(starts).toBe(1)
+  values.set('installation.enabled', false)
+  await runtime.refreshFromSettings()
+  expect(runtime.isRunning()).toBe(false)
+  expect(stops).toBe(1)
+  expect(values.get('installation.enabled')).toBe(false)
+  await runtime.refreshFromSettings()
+  expect(stops).toBe(1)
+  values.set('installation.enabled', true)
+  await runtime.refreshFromSettings()
+  expect(runtime.isRunning()).toBe(true)
+  expect(starts).toBe(2)
+  await runtime.stop()
+})

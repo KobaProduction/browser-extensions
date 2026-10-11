@@ -1,4 +1,4 @@
-import { createSettingsStore } from '@kobaproduction/browser-adapters'
+import { createSettingsStore, onInstallationStateChange } from '@kobaproduction/browser-adapters'
 import { type Capability, FeatureRuntime, FeatureSettings } from '@kobaproduction/browser-core'
 import { mountControlCenter } from '@kobaproduction/browser-shell'
 import { vkBoosterFeature } from '@kobaproduction/module-vk-booster'
@@ -11,6 +11,10 @@ const runtime = new FeatureRuntime([vkBoosterFeature], {
   capabilities: new Set<Capability>(['page-dom', 'origin-storage', 'local-files']),
   settings: new FeatureSettings(createSettingsStore('chromium')),
 })
+const unsubscribeState = onInstallationStateChange('chromium', () => {
+  void runtime.refreshFromSettings()
+})
+window.addEventListener('pagehide', unsubscribeState, { once: true })
 async function launch() {
   await runtime.start()
   const ui = mountControlCenter({ runtime, launcher: true, views: { 'vk-booster': ArchivePanel } })

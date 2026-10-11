@@ -1,5 +1,5 @@
 import { isChatGptPage } from '@chatgpt-booster/core'
-import { createSettingsStore } from '@kobaproduction/browser-adapters'
+import { createSettingsStore, onInstallationStateChange } from '@kobaproduction/browser-adapters'
 import {
   type Capability,
   FeatureRuntime,
@@ -38,6 +38,10 @@ if (chatgpt || vkBoosterFeature.match(url)) {
     capabilities: new Set<Capability>(['page-dom', 'origin-storage', 'local-files']),
     settings: new FeatureSettings(createSettingsStore('chromium')),
   })
+  const unsubscribeState = onInstallationStateChange('chromium', () => {
+    void runtime.refreshFromSettings()
+  })
+  window.addEventListener('pagehide', unsubscribeState, { once: true })
   const launch = async () => {
     await runtime.start()
     const ui = mountControlCenter({
