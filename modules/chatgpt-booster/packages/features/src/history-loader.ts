@@ -17,7 +17,7 @@ import {
 import { ARCHIVE_NETWORK_EVENT, TRANSPORT_CHANNEL } from '@chatgpt-booster/observer'
 import type { ArchiveCollectionRun, ArchiveCollectionSession } from './archive-collection-session'
 import { type HistoryPageEvidence, historyCoverage } from './archive-coverage'
-import type { ArchiveV4CaptureModule } from './archive-v4-capture'
+import type { FixedChatGptCapture } from './archive-fixed-runtime'
 import type { ConversationStateStore } from './conversation-state'
 
 export type { HistoryLoaderState } from '@chatgpt-booster/core'
@@ -79,7 +79,7 @@ export class HistoryLoaderModule implements BoosterModule {
   constructor(
     private readonly stateStore: ConversationStateStore,
     private readonly capture: Pick<
-      ArchiveV4CaptureModule,
+      FixedChatGptCapture,
       'collectionSession' | 'completeCollection'
     >,
     private readonly messageSource: Window = window,

@@ -1,4 +1,4 @@
-import { createSettingsStore } from '@kobaproduction/browser-adapters'
+import { createSettingsStore, onInstallationStateChange } from '@kobaproduction/browser-adapters'
 import {
   defaultCapabilities,
   type Feature,
@@ -18,14 +18,22 @@ export function bootstrapUserscript(
     capabilities: defaultCapabilities('userscript'),
     settings: new FeatureSettings(createSettingsStore('userscript')),
   })
+  const unsubscribeState = onInstallationStateChange('userscript', () => {
+    void runtime.refreshFromSettings()
+  })
+  window.addEventListener('pagehide', unsubscribeState, { once: true })
   let open: () => void = () => {}
   const launch = async () => {
     await runtime.start()
     const ui = mountControlCenter({ runtime, title, launcher: true, views })
     open = ui.open
   }
-  if (typeof GM_registerMenuCommand === 'function')
+  if (typeof GM_registerMenuCommand === 'function') {
     GM_registerMenuCommand('Открыть ' + title, () => open())
+    GM_registerMenuCommand('Включить/выключить эту установку', () => {
+      void runtime.setRunning(!runtime.isRunning())
+    })
+  }
   if (document.readyState === 'loading')
     document.addEventListener('DOMContentLoaded', () => void launch(), { once: true })
   else void launch()

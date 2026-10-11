@@ -2,10 +2,17 @@ export const TRANSPORT_EVENT = 'chatgpt-booster:transport-event'
 export const TRANSPORT_BATCH_EVENT = 'chatgpt-booster:transport-batch'
 export const TRANSPORT_CONFIG_EVENT = 'chatgpt-booster:transport-config'
 declare const __BOOSTER_INSTANCE_SCOPE__: string | undefined
-const observerScope = typeof __BOOSTER_INSTANCE_SCOPE__ === 'string' ? __BOOSTER_INSTANCE_SCOPE__ : ''
-export const TRANSPORT_CHANNEL = observerScope && observerScope !== 'chatgpt-booster:prod'
-  ? 'chatgpt-booster:transport:' + observerScope
+declare const __BOOSTER_DELIVERY_TARGET__: string | undefined
+const observerScope = typeof __BOOSTER_INSTANCE_SCOPE__ === 'string'
+  ? __BOOSTER_INSTANCE_SCOPE__
+  : ''
+const observerTargetId = typeof __BOOSTER_DELIVERY_TARGET__ === 'string'
+  ? __BOOSTER_DELIVERY_TARGET__
+  : ''
+export const TRANSPORT_CHANNEL = observerScope
+  ? 'chatgpt-booster:transport:' + observerScope + (observerTargetId ? ':' + observerTargetId : '')
   : 'chatgpt-booster:transport'
+
 export const ARCHIVE_POLICY_EVENT = 'chatgpt-booster:archive-policy'
 export const ARCHIVE_NETWORK_EVENT = 'chatgpt-booster:archive-network'
 export const ARCHIVE_CONTRACT_ERROR_EVENT = 'chatgpt-booster:archive-native-contract-error'
@@ -1229,10 +1236,45 @@ function nextId(kind: TransportKind) {
 export function installTransportObserver(
   target: Window & typeof globalThis = window as Window & typeof globalThis,
 ): () => void {
-  const marker = '__chatgptBoosterTransportObserverInstalled__'
+  // Two installed DEV/PROD userscripts must never share one observer marker.
+  const marker = '__chatgptBoosterTransportObserverInstalled__:' + TRANSPORT_CHANNEL
   const tagged = target as Window & typeof globalThis & Record<string, unknown>
   if (tagged[marker]) return () => undefined
   tagged[marker] = true
+  // Cross-bundle registry: userscript DEV/PROD and MV3 MAIN-world observers
+  // can be present on the same host page. Preserve the ORIGINAL host APIs
+  // until the final live layer is detached, without disabling a sibling.
+  const registryKey = '__kobaBrowserNativeHookLayers__'
+  type HookRegistry = {
+    active: Set<string>
+    originalFetch: PropertyDescriptor | undefined
+    hostFetch: typeof target.fetch
+    originalXhrOpen: typeof XMLHttpRequest.prototype.open
+    originalXhrSend: typeof XMLHttpRequest.prototype.send
+    originalWebSocket: typeof target.WebSocket
+    originalEventSource: typeof target.EventSource
+    fetchGetters: Set<() => typeof target.fetch>
+    xhrOpens: Set<typeof XMLHttpRequest.prototype.open>
+    xhrSends: Set<typeof XMLHttpRequest.prototype.send>
+  }
+  let shared = tagged[registryKey] as HookRegistry | undefined
+  if (!shared) {
+    shared = {
+      active: new Set(),
+      originalFetch: Object.getOwnPropertyDescriptor(target, 'fetch'),
+      hostFetch: target.fetch,
+      originalXhrOpen: target.XMLHttpRequest.prototype.open,
+      originalXhrSend: target.XMLHttpRequest.prototype.send,
+      originalWebSocket: target.WebSocket,
+      originalEventSource: target.EventSource,
+      fetchGetters: new Set(),
+      xhrOpens: new Set(),
+      xhrSends: new Set(),
+    }
+    tagged[registryKey] = shared
+  }
+  shared.active.add(marker)
+  let observerActive = true
   observerTarget = target
 
   archivePolicy = { ...DENY_ARCHIVE }
@@ -1460,6 +1502,7 @@ export function installTransportObserver(
     }
 
     const wrapped = ((input: RequestInfo | URL, init?: RequestInit) => {
+      if (!observerActive) return callUpstream(input, init)
       if (fetchCallDepth > 0) return upstream.call(target, input, init)
       const request = input instanceof Request ? input : undefined
       const rawUrl = request?.url ?? String(input)
@@ -1628,10 +1671,12 @@ export function installTransportObserver(
   }
 
   fetchWrapper = createFetchWrapper(fetchHost)
+  const ownFetchGetter = () => fetchWrapper
+  shared.fetchGetters.add(ownFetchGetter)
   Object.defineProperty(target, 'fetch', {
     configurable: true,
     enumerable: originalFetchDescriptor?.enumerable ?? true,
-    get: () => fetchWrapper,
+    get: ownFetchGetter,
     set: (next: typeof target.fetch) => {
       if (typeof next !== 'function' || (next as TaggedFetch)[fetchWrapperMarker]) return
       // ChatGPT installs its own fetch instrumentation after document-start. Keep that
@@ -1646,7 +1691,8 @@ export function installTransportObserver(
   const originalSend = OriginalXHR.prototype.send
   const xhrMeta = new WeakMap<XMLHttpRequest, { method: string; rawUrl: string }>()
 
-  OriginalXHR.prototype.open = function (
+  const wrappedXhrOpen: typeof OriginalXHR.prototype.open = function (
+    this: XMLHttpRequest,
     method: string,
     url: string | URL,
     asyncFlag: boolean = true,
@@ -1657,7 +1703,8 @@ export function installTransportObserver(
     return originalOpen.call(this, method, url, asyncFlag, user ?? null, password ?? null)
   }
 
-  OriginalXHR.prototype.send = function (body?: Document | XMLHttpRequestBodyInit | null) {
+  const wrappedXhrSend: typeof OriginalXHR.prototype.send = function (this: XMLHttpRequest, body?: Document | XMLHttpRequestBodyInit | null) {
+    if (!observerActive) return originalSend.call(this, body)
     const meta = xhrMeta.get(this)
     if (!meta) return originalSend.call(this, body)
 
@@ -1777,6 +1824,11 @@ export function installTransportObserver(
     )
     return originalSend.call(this, body)
   }
+
+  shared.xhrOpens.add(wrappedXhrOpen)
+  shared.xhrSends.add(wrappedXhrSend)
+  OriginalXHR.prototype.open = wrappedXhrOpen
+  OriginalXHR.prototype.send = wrappedXhrSend
 
   const OriginalWebSocket = target.WebSocket
   const WrappedWebSocket = function (
@@ -1945,6 +1997,8 @@ export function installTransportObserver(
   }
 
   return () => {
+    if (!observerActive) return
+    observerActive = false
     target.removeEventListener('message', onConfig)
     target.removeEventListener('message', onArchivePolicy)
     target.removeEventListener('message', onArchiveAssetFetch)
@@ -1952,16 +2006,34 @@ export function installTransportObserver(
     for (const controller of archiveAssetFetches.values()) controller.abort()
     archiveAssetFetches.clear()
     const currentDescriptor = Object.getOwnPropertyDescriptor(target, 'fetch')
-    if (currentDescriptor?.get) {
-      Object.defineProperty(target, 'fetch', {
-        configurable: originalFetchDescriptor?.configurable ?? true,
-        enumerable: originalFetchDescriptor?.enumerable ?? true,
-        writable: true,
-        value: fetchHost,
-      })
+    shared.active.delete(marker)
+    if (shared.active.size === 0) {
+      // Only undo our own chain; do not clobber an unrelated site's newer hook.
+      if (currentDescriptor?.get && shared.fetchGetters.has(currentDescriptor.get as () => typeof target.fetch)) {
+        if (shared.originalFetch) Object.defineProperty(target, 'fetch', shared.originalFetch)
+        else Object.defineProperty(target, 'fetch', {
+          configurable: true, enumerable: true, writable: true, value: shared.hostFetch,
+        })
+      }
+      if (shared.xhrOpens.has(OriginalXHR.prototype.open))
+        OriginalXHR.prototype.open = shared.originalXhrOpen
+      if (shared.xhrSends.has(OriginalXHR.prototype.send))
+        OriginalXHR.prototype.send = shared.originalXhrSend
+      if (target.WebSocket && target.WebSocket !== shared.originalWebSocket)
+        setRealtimeTransportHooksEnabled(false)
+      if (target.EventSource && target.EventSource !== shared.originalEventSource)
+        setRealtimeTransportHooksEnabled(false)
+      delete tagged[registryKey]
+    } else {
+      if (currentDescriptor?.get === ownFetchGetter) {
+        if (originalFetchDescriptor) Object.defineProperty(target, 'fetch', originalFetchDescriptor)
+        else Object.defineProperty(target, 'fetch', {
+          configurable: true, writable: true, enumerable: true, value: fetchHost,
+        })
+      }
+      if (OriginalXHR.prototype.open === wrappedXhrOpen) OriginalXHR.prototype.open = originalOpen
+      if (OriginalXHR.prototype.send === wrappedXhrSend) OriginalXHR.prototype.send = originalSend
     }
-    OriginalXHR.prototype.open = originalOpen
-    OriginalXHR.prototype.send = originalSend
     setRealtimeTransportHooksEnabled(false)
     bufferedInitialPages.clear()
     verifiedAccountIds.clear()

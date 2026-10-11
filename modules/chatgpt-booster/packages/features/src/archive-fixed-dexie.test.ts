@@ -43,6 +43,20 @@ test('Dexie canonical v1 is fixed, keeps opaque unknown input and never changes 
   db.close()
 })
 
+test('saved stats distinguish messages from tool and internal content without inferring remote completeness', async () => {
+  const db = new FixedCanonicalDexieRepository(scope('dev', 'tm-fixed-stats', 'owner-a'), driver)
+  try {
+    await db.addObservation(source('owner-a', 'selected', 'msg-1'))
+    await db.addObservation(source('owner-a', 'other', 'msg-2'))
+    const result = await db.savedConversationStats('selected')
+    expect(result.messages).toBe(1)
+    expect(result.internalElements).toBeGreaterThanOrEqual(0)
+    expect(result.toolCalls).toBeGreaterThanOrEqual(0)
+    expect(result.reasoning).toBeGreaterThanOrEqual(0)
+    await expect(db.savedConversationStats('')).rejects.toThrow('Verified')
+  } finally { db.close() }
+})
+
 test('fixed archive rejects unknown ownership, conflicted projects and unsupported snapshots atomically', async () => {
   const db = new FixedCanonicalDexieRepository(scope('prod', 'tm-fixed-2', 'account-a'), driver)
   await expect(db.addObservation(source('account-b', 'c1', 'bad'))).rejects.toThrow('identity')

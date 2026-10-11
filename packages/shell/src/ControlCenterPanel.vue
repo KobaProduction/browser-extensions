@@ -2,7 +2,7 @@
 import type { FeatureRuntime } from '@kobaproduction/browser-core'
 import { Badge, Button } from '@kobaproduction/browser-ui'
 import { BarChart3, FolderArchive, SlidersHorizontal, Wrench, X } from 'lucide-vue-next'
-import { type Component, computed, ref, watch } from 'vue'
+import { type Component, computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const props = defineProps<{
   runtime: FeatureRuntime
@@ -11,6 +11,8 @@ const props = defineProps<{
   selectedSection: string
 }>()
 const emit = defineEmits<{ close: []; select: [section: string] }>()
+const standalone = props.runtime.features.length === 1
+const singleFeature = standalone ? props.runtime.features[0] : undefined
 const section = ref(props.selectedSection)
 watch(
   () => props.selectedSection,
@@ -18,11 +20,48 @@ watch(
     section.value = value
   },
 )
-const statuses = computed(() => props.runtime.list())
+const revision = ref(0)
+let unsubscribe: (() => void) | undefined
+onMounted(() => {
+  unsubscribe = props.runtime.subscribe(() => {
+    revision.value++
+  })
+})
+onBeforeUnmount(() => unsubscribe?.())
+const statuses = computed(() => {
+  void revision.value
+  return props.runtime.list()
+})
+const installationActive = computed(() => {
+  void revision.value
+  return props.runtime.isRunning()
+})
+const changing = ref(false)
+const changeError = ref('')
+async function toggleInstallation() {
+  if (changing.value) return
+  changing.value = true
+  changeError.value = ''
+  try {
+    await props.runtime.setRunning(!installationActive.value)
+  } catch {
+    changeError.value = 'Не удалось изменить состояние установки'
+  } finally {
+    changing.value = false
+  }
+}
 const activeFeatures = computed(() => statuses.value.filter((s) => s.state === 'active'))
 const currentView = computed(() => props.views[section.value])
 async function enable(id: string, enabled: boolean) {
-  await props.runtime.setEnabled(id, enabled)
+  changing.value = true
+  changeError.value = ''
+  try {
+    await props.runtime.setEnabled(id, enabled)
+  } catch {
+    changeError.value = 'Не удалось изменить состояние модуля'
+  } finally {
+    changing.value = false
+  }
 }
 function selectSection(id: string) {
   section.value = id
@@ -34,21 +73,30 @@ function openModule(id: string) {
 }
 </script>
 <template>
-  <section class="booster-control-center" lang="ru">
+  <section class="booster-control-center" :class="{ 'booster-control-standalone': standalone }" lang="ru">
     <header class="booster-control-header">
       <div class="booster-header-copy">
         <div class="flex items-center gap-2">
-          <strong>{{title}}</strong><Badge variant="outline">Browser Tools</Badge>
+          <strong>{{ title }}</strong>
+          <Badge v-if="standalone && singleFeature?.presentation?.installation" variant="outline">{{ singleFeature.presentation.installation }}</Badge>
+          <Badge v-if="standalone && singleFeature?.presentation?.version" variant="outline">{{ singleFeature.presentation.version }}</Badge>
+          <Badge v-if="!standalone" variant="outline">Browser Tools</Badge>
         </div>
-        <p>Модульные инструменты браузера</p>
+        <p>{{ standalone ? 'Центр управления' : 'Модульные инструменты браузера' }}</p>
       </div>
       <div class="booster-header-actions">
-        <Badge variant="secondary">{{activeFeatures.length}} активен</Badge>
+        <button type="button" class="booster-switch"
+          :class="{ 'booster-switch-on': installationActive }"
+          :disabled="changing" :aria-pressed="installationActive"
+          :aria-label="installationActive ? 'Полностью выключить установку' : 'Включить установку'"
+          @click="toggleInstallation"><span/></button>
+        <Badge variant="secondary">{{installationActive ? 'Установка включена' : 'Установка выключена'}}</Badge>
+        <Badge v-if="!standalone" variant="secondary">{{activeFeatures.length}} активен</Badge>
         <Button variant="ghost" size="icon" class="size-8" title="Закрыть" @click="emit('close')"><X class="size-4"/></Button>
       </div>
     </header>
     <div class="booster-settings-layout">
-      <nav class="booster-settings-nav" aria-label="Разделы">
+      <nav v-if="!standalone" class="booster-settings-nav" aria-label="Разделы">
         <button type="button" :class="{active:section==='modules'}" @click="selectSection('modules')">
           <Wrench class="size-4"/>Модули
         </button>
@@ -67,6 +115,7 @@ function openModule(id: string) {
         </button>
       </nav>
       <main class="booster-settings-content">
+        <p v-if="changeError" role="alert">{{changeError}}</p>
         <template v-if="section==='modules'">
           <section v-for="feature in statuses" :key="feature.id" class="booster-setting-card">
             <div class="booster-setting-copy">
@@ -82,7 +131,7 @@ function openModule(id: string) {
               <button
                 type="button" class="booster-switch"
                 :class="{'booster-switch-on':feature.state==='active'}"
-                :disabled="feature.state==='unsupported'"
+                :disabled="changing || !installationActive || feature.state==='unsupported'"
                 :aria-pressed="feature.state==='active'"
                 :aria-label="'Включить '+feature.title"
                 @click="enable(feature.id,feature.state!=='active')"

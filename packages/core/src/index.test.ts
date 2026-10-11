@@ -85,3 +85,154 @@ test('unsupported browser capability is not enabled in Tampermonkey', async () =
   await runtime.start()
   expect(runtime.list()[0]?.state).toBe('unsupported')
 })
+
+test('entire installation can stop and reattach without reload and without changing another channel', async () => {
+  const devValues = new Map<string, boolean>()
+  const prodValues = new Map<string, boolean>()
+  const build = (values: Map<string, boolean>) => {
+    const settings = new FeatureSettings({
+      async get(key) {
+        return values.get(key)
+      },
+      async set(key, enabled) {
+        values.set(key, enabled)
+      },
+    })
+    let installed = 0
+    let detached = 0
+    const feature: Feature = {
+      id: 'capture',
+      title: 'Capture',
+      description: 'Synthetic native observer',
+      targets: ['chromium'],
+      requiredCapabilities: ['page-dom'],
+      match: () => true,
+      start() {
+        installed++
+      },
+      stop() {
+        detached++
+      },
+    }
+    const runtime = new FeatureRuntime([feature], {
+      target: 'chromium',
+      url: new URL('https://chatgpt.com'),
+      capabilities: defaultCapabilities('chromium'),
+      settings,
+    })
+    return { runtime, counts: () => ({ installed, detached }), values }
+  }
+  const dev = build(devValues),
+    prod = build(prodValues)
+  const changes: string[] = []
+  const dispose = dev.runtime.subscribe(() => changes.push(dev.runtime.list()[0]?.state ?? 'missing'))
+  await Promise.all([dev.runtime.start(), prod.runtime.start()])
+  expect(dev.counts()).toEqual({ installed: 1, detached: 0 })
+  expect(prod.counts()).toEqual({ installed: 1, detached: 0 })
+  await dev.runtime.setRunning(false)
+  expect(dev.counts()).toEqual({ installed: 1, detached: 1 })
+  expect(dev.runtime.list()[0]?.state).toBe('disabled')
+  expect(devValues.get('installation.enabled')).toBe(false)
+  expect(prodValues.has('installation.enabled')).toBe(false)
+  expect(prod.runtime.list()[0]?.state).toBe('active')
+  await dev.runtime.setRunning(true)
+  expect(dev.counts()).toEqual({ installed: 2, detached: 1 })
+  expect(dev.runtime.list()[0]?.state).toBe('active')
+  expect(changes).toContain('disabled')
+  dispose()
+  await dev.runtime.stop()
+  await prod.runtime.stop()
+})
+
+test('feature operations are serialized and cannot activate after a later off request', async () => {
+  const storage = new Map<string, boolean>()
+  const settings = new FeatureSettings({
+    async get(key) {
+      return storage.get(key)
+    },
+    async set(key, value) {
+      storage.set(key, value)
+    },
+  })
+  let active = false,
+    stopCount = 0
+  const feature: Feature = {
+    id: 'agent',
+    title: 'Agent',
+    description: 'Synthetic slow start',
+    match: () => true,
+    targets: ['userscript'],
+    requiredCapabilities: [],
+    async start() {
+      await Promise.resolve()
+      active = true
+    },
+    stop() {
+      stopCount++
+      active = false
+    },
+  }
+  const runtime = new FeatureRuntime([feature], {
+    target: 'userscript',
+    url: new URL('https://chatgpt.com'),
+    capabilities: defaultCapabilities('userscript'),
+    settings,
+  })
+  const initial = runtime.start()
+  const off = runtime.setRunning(false)
+  await Promise.all([initial, off])
+  expect(active).toBe(false)
+  expect(stopCount).toBe(1)
+  expect(runtime.list()[0]?.state).toBe('disabled')
+})
+
+test('a sibling tab can revoke and restore this installation from scoped storage', async () => {
+  const values = new Map<string, boolean>()
+  let starts = 0,
+    stops = 0
+  const runtime = new FeatureRuntime(
+    [
+      {
+        id: 'shared',
+        title: 'Shared',
+        description: '',
+        match: () => true,
+        targets: ['chromium'],
+        requiredCapabilities: [],
+        start() {
+          starts++
+        },
+        stop() {
+          stops++
+        },
+      },
+    ],
+    {
+      target: 'chromium',
+      url: new URL('https://chatgpt.com'),
+      capabilities: defaultCapabilities('chromium'),
+      settings: new FeatureSettings({
+        async get(key) {
+          return values.get(key)
+        },
+        async set(key, enabled) {
+          values.set(key, enabled)
+        },
+      }),
+    },
+  )
+  await runtime.start()
+  expect(starts).toBe(1)
+  values.set('installation.enabled', false)
+  await runtime.refreshFromSettings()
+  expect(runtime.isRunning()).toBe(false)
+  expect(stops).toBe(1)
+  expect(values.get('installation.enabled')).toBe(false)
+  await runtime.refreshFromSettings()
+  expect(stops).toBe(1)
+  values.set('installation.enabled', true)
+  await runtime.refreshFromSettings()
+  expect(runtime.isRunning()).toBe(true)
+  expect(starts).toBe(2)
+  await runtime.stop()
+})

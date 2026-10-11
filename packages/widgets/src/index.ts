@@ -14,6 +14,7 @@ export type {
   ArchiveTranscriptRecord,
   ArchiveTranscriptTurn,
 } from './archive-transcript'
+export { default as ConversationCollectionAction } from './ConversationCollectionAction.vue'
 export { default as PortableBackupPanel } from './PortableBackupPanel.vue'
 export type { ArchiveManagerMode, ArchiveManagerOptions, ArchiveManagerState } from './types'
 export type { Viewport, WorkspaceDockRatios, WorkspaceRatios, WorkspaceRect } from './window-geometry'

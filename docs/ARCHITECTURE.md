@@ -344,7 +344,21 @@ capture service, with no active v4 commit or warmup. Old v4 source code and
 physical browser databases remain intact solely for the explicit read-only
 backup utility alongside the stable 0.8.92 v3 exporter. Future provider
 source changes are normalized to fixed v1 data; no automatic migration.
-VK remains on its separate development branch; OTLP network remains deferred.
+VK is now integrated with its own Dexie v1 data store; OTLP network remains deferred.
+
+
+## Installation lifecycle & clean canonical storage (source checkpoint 2026-10-11)
+
+Shared FeatureRuntime serializes per-installation start/stop and user
+enable/disable transitions; all provider mounts/listeners/hooks must be
+cleaned up while retaining the shared shell as a reactivation surface.
+Scoped FeatureSettings uses product/channel keys, and the MAIN-world
+observer is activated by its matching isolated content runtime only.
+The Chromium popup and userscript Control Center provide live toggles.
+The fixed ChatGPT archive stays Dexie schema v1; legacy native readers
+and migration controls are not present in the active product. Physical old
+databases remain untouched for a separately handled owner-run recovery.
+The installed-browser DEV+PROD coexistence gate is still open.
 
 ## VK merged-main reconciliation checkpoint (2026-10-11)
 
@@ -353,19 +367,37 @@ bounded saved Reader and source-preserving gzip export to the fixed Dexie v1
 repository. Its old folder writer is no longer exposed via the user interface
 and accepts only the synthetic test-mode gate. Original media downloads and
 legacy offline HTML are retained in historic/test code, not a proven Dexie
-export capability. That checkpoint used VK source 1.0.0, ChatGPT source 2.0.12 and dependent
-All-in-one 0.5.13; current manifest versions may have advanced. Settings persistence/JSON restoration remains separate
-from canonical archive persistence and is not full archive backup.
+export capability. The integration checkpoint had VK 1.0.0, ChatGPT 2.0.13
+and all-in-one 0.5.14; current manifests remain the version authority.
+Settings persistence is separate from canonical archive persistence.
 
-## Portable TAR / TAR.GZ backup (source implementation; browser acceptance pending)
+## Portable TAR / TAR.GZ (source implementation; browser acceptance pending)
 
-`packages/storage` provides a streaming POSIX ustar writer/reader and a
-single outer GZIP compressor for plain JSONL record chunks, exact schema,
-settings and integrity manifests. Repeated API strings are compressed in
-the same GZIP stream without ZIP-in-ZIP or individually compressed chunks.
-The writer can stream directly to an explicitly selected File System Access
-file without holding the output Blob. `packages/widgets` owns a single
-provider-neutral backup form, while VK owns the data codecs and Dexie
-transaction. Large export and safe large restore are distinct acceptance
-levels. The current 128 MiB in-memory restore transaction is not a durable
-staged-generation import for arbitrary huge archives.
+`packages/storage` owns streaming POSIX ustar with a single GZIP stream,
+bounded plain JSONL chunks, exact IndexedDB schema and integrity manifest.
+The shared backup UI is only a presentation adapter. VK owns its Dexie
+message/source record validation. Large export and recovery have separate
+gates: current restore buffers at most 128 MiB, with no staged generation
+or cross-storage crash atomicity. Provider-neutral infrastructure is reusable
+without exposing low-level backups in ordinary user workflows.
+
+## ChatGPT UI decomposition checkpoint (Extension 15)
+
+The shared `@kobaproduction/browser-ui` package owns reusable
+`ModalSurface`, `FloatingInfoPopover` and `JsonViewer` Vue primitives. ChatGPT
+consumers import them via the public API rather than retaining identical
+copies. The former ChatGPT-specific quick action row and separate fixed-Dexie
+summary card have been superseded by reusable Shell quick actions and scoped
+metrics. `ChatGptPanel` owns provider archive operations and verification. This source refactor is not installed-browser acceptance.
+
+## Edge launcher and reusable conversation collection (Extension 15)
+
+`packages/shell` owns a side-snapped launcher, compact quick menu and
+responsive full settings panel. Active origin matching prevents all-in-one
+from showing an unrelated product's quick menu. Each Feature may override
+launcher behavior and supply actions and counters without editing the Shell.
+The ordinary ChatGPT and VK panels reuse `ConversationCollectionAction` from
+`packages/widgets` and the provider-neutral collection lifecycle/controller
+from `packages/archive`. Their actual ChatGPT History Loader and VK Dexie
+record-fetch implementations remain behind their respective adapters.
+No installed-browser visual or data acceptance is implied by source tests.

@@ -26,7 +26,12 @@ test('archive progress is a single host-neutral widget reused by VK and ChatGPT'
   expect(shared).toContain('aria-live="polite"')
   expect(shared).not.toContain('vk-booster')
   expect(shared).not.toContain('chatgpt-booster')
-  expect(vk).toContain('<ArchiveProgressBar')
+  expect(vk).toContain('<ConversationCollectionAction')
+  const collection = await readFile(
+    new URL('../../widgets/src/ConversationCollectionAction.vue', import.meta.url),
+    'utf8',
+  )
+  expect(collection).toContain('<ArchiveProgressBar')
   expect(vk).not.toContain('<ArchiveManager')
   expect(chatgpt).toContain('<ArchiveProgress')
 })

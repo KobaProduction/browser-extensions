@@ -13,6 +13,8 @@ export declare const ModalSurface: DefineComponent<{
   label: string
   wide?: boolean
   surfaceClass?: string
+  floating?: boolean
+  surfaceStyle?: Record<string, string>
 }>
 export declare const JsonViewer: DefineComponent<{ value: unknown }>
 export declare const FloatingInfoPopover: DefineComponent<{

@@ -1,5 +1,31 @@
 # ChatGPT Booster
 
+## Canonical internal recovery (2026-10-12)
+
+The fixed Dexie v1 ChatGPT repository can supply provider-validated rows to
+the merged shared single-stream TAR.GZ backup/recovery engine. Its five tables
+retain a verified account scope and original source snapshots; import must
+validate all relations and then commit that owner within one Dexie transaction.
+The existing settings-only backup and the new archive recovery adapter are
+**internal/operator** ports, not ordinary user-facing backup features. External media bytes, historic native v3/v4 archives and automatic
+migration are excluded. Cross-storage crash atomicity, huge restores and
+installed-browser recovery remain separate acceptance gates.
+
+## Clean Dexie v1 runtime and external-only legacy recovery (2026-10-11)
+
+**New decision supersedes older migration/export references below.** The
+canonical v4-era ChatGPT content model is saved in fixed **Dexie schema v1**;
+it is the only active Writer, Reader and archive export. The live Booster
+no longer contains user-facing legacy v3/v4 backup/export/migration paths.
+Physical historical IndexedDB storage is **not deleted, updated or opened**.
+Optional original-source extraction, one-off import and adaptation will be
+handled separately by the owner, outside this code path.
+
+The shared installation toggle can stop and restart all ChatGPT injection,
+observation and UI modules without page reload. DEV/PROD and all-in-one use
+distinct product/channel/target namespaces. Remote OTLP remains deferred.
+
+
 ## Fixed canonical model and 0.8.92 recovery direction (2026-10-11)
 
 The current implementation direction is fixed `CanonicalMessageProjection` v1 and `CanonicalContentElement` plus immutable original source evidence in a separate Dexie archive repository. ChatGPT upstream formats are handled by adapter code, **not by changing the stored schema or chaining archive generation migrations**. The historical stable `0.8.92` v3 database must first be read-only exported with its original unknown fields, primary keys and binary values. `0.8.98` remains an experimental source reference, not a release. Existing manual migration UI/services remain old source evidence and are not authorized automatic work. New code and tests do not prove real browser extraction or import. See Issue #11 and the provider archive target document.
@@ -208,3 +234,13 @@ after validating its own owner/peer/archive invariants. Main integration and
 automatic DEV distribution happen only after exact-head CI and independent
 review of the consolidated changes. See
 `../shared/PROJECT_RULES.md`.
+
+## Edge menu and saved-only counters (Extension 15)
+
+The shared side-docked launcher displays a provider-defined compact menu
+(archive, current-chat collection, export, settings), then a distinct
+responsive settings/Reader panel. The menu shows canonical Dexie saved-message,
+internal-element, tool-call and reasoning counts for the *verified current
+conversation*, not estimates of remote completeness. History Loader stays
+ChatGPT-owned behind the shared conversation-collection port. Existing
+telemetry, retention and capture authorization semantics are preserved.

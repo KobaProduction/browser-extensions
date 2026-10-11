@@ -1,28 +1,29 @@
 export { createArchiveFiles } from './folder-archive'
 
-import type { DeliveryTarget, SettingsStore } from '@kobaproduction/browser-core'
+import { type DeliveryTarget, instanceKey, type SettingsStore } from '@kobaproduction/browser-core'
 export function createSettingsStore(target: DeliveryTarget, namespace = 'koba-browser'): SettingsStore {
+  const scopedNamespace = instanceKey(namespace)
   if (target === 'chromium')
     return {
       async get(key) {
-        const data = await chrome.storage.local.get(`${namespace}:${key}`)
-        return data[`${namespace}:${key}`] as boolean | undefined
+        const data = await chrome.storage.local.get(`${scopedNamespace}:${key}`)
+        return data[`${scopedNamespace}:${key}`] as boolean | undefined
       },
       async set(key, enabled) {
-        await chrome.storage.local.set({ [`${namespace}:${key}`]: enabled })
+        await chrome.storage.local.set({ [`${scopedNamespace}:${key}`]: enabled })
       },
     }
   return {
     async get(key) {
       try {
-        const value = localStorage.getItem(`${namespace}:${key}`)
+        const value = localStorage.getItem(`${scopedNamespace}:${key}`)
         return value === null ? undefined : value === 'true'
       } catch {
         return undefined
       }
     },
     async set(key, enabled) {
-      localStorage.setItem(`${namespace}:${key}`, String(enabled))
+      localStorage.setItem(`${scopedNamespace}:${key}`, String(enabled))
     },
   }
 }
@@ -52,6 +53,25 @@ export function proxyAvailable(target: DeliveryTarget, granted: ReadonlySet<stri
   return target === 'chromium' && granted.has('proxy')
 }
 
+/** Observe just this installation's enable switch. One browser identity
+ * never toggles the sibling DEV/PROD or other product; no DB is touched. */
+export function onInstallationStateChange(target: DeliveryTarget, listener: () => void): () => void {
+  const key = `${instanceKey('koba-browser')}:installation.enabled`
+  if (target === 'chromium') {
+    const changed = (items: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area === 'local' && Object.hasOwn(items, key)) listener()
+    }
+    chrome.storage.onChanged.addListener(changed)
+    return () => chrome.storage.onChanged.removeListener(changed)
+  }
+  const changed = (event: StorageEvent) => {
+    if (event.key === key) listener()
+  }
+  window.addEventListener('storage', changed)
+  return () => window.removeEventListener('storage', changed)
+}
+
+export { attachChromeInstallationToggle } from './installation-popup'
 export type { OtlpDeliveryConfiguration, OtlpRequest, OtlpSender } from './scoped-otlp'
 export {
   resolveOtlpLogsEndpoint,

@@ -1,18 +1,17 @@
 <script setup lang="ts">
 /** VK-only archive API adapter. Generic ArchiveManager owns presentation, never VK storage. */
 
-import type { BackupTarChoice, BackupTarInspection } from '@kobaproduction/browser-storage'
+import type { ChatCollectionSnapshot } from '@kobaproduction/browser-archive'
+import { createChatCollectionController } from '@kobaproduction/browser-archive'
 import { Badge, Button } from '@kobaproduction/browser-ui'
-import { ArchiveProgressBar, PortableBackupPanel } from '@kobaproduction/browser-widgets'
+import { ConversationCollectionAction } from '@kobaproduction/browser-widgets'
 import { Archive, Download, Settings2, ShieldAlert } from 'lucide-vue-next'
-import { computed, onMounted, onUnmounted, ref, useId } from 'vue'
+import { computed, onMounted, onUnmounted, ref, useId, watch } from 'vue'
+import { vkChatCollectionPort } from '../model/chat-collection-port'
 import { vkPreferencesLoadError, vkPreferencesPersistence } from '../model/durable-preferences'
-import {
-  exportVkCaptureSettings,
-  restoreVkCaptureSettings,
-  validateVkCapturePreferences,
-} from '../model/settings-backup'
+import { validateVkCapturePreferences } from '../model/settings-backup'
 import { type ArchiveStatus, archiveApi, type VkMessage } from '../model/types'
+import { vkRequestedView } from '../model/ui-navigation'
 
 const api = archiveApi()
 const status = ref<ArchiveStatus | null>(api?.status() ?? null)
@@ -27,6 +26,24 @@ const selectedStatus = computed(() => {
 })
 const fixedBusy = ref(false)
 const fixedLimit = ref(Math.min(3000, Math.max(1, status.value?.options.limit ?? 100)))
+const collector = api
+  ? createChatCollectionController(vkChatCollectionPort(api, () => fixedLimit.value))
+  : null
+const collectionState = ref<ChatCollectionSnapshot>(
+  collector?.snapshot() ?? {
+    phase: 'idle',
+    processed: 0,
+    total: null,
+    saved: null,
+  },
+)
+const unsubscribeCollection = collector?.subscribe((next) => {
+  collectionState.value = next
+})
+onUnmounted(() => {
+  unsubscribeCollection?.()
+  collector?.dispose()
+})
 const fixedSaved = ref<number | null>(null)
 const fixedError = ref('')
 const fixedPreview = ref<readonly VkMessage[]>([])
@@ -34,7 +51,6 @@ const fixedCursor = ref<number | undefined>()
 const fixedNextCursor = ref<number | undefined>()
 const fixedReading = ref(false)
 const hasVerifiedPeer = computed(() => !!status.value?.activePeerId && !status.value?.blockedReason)
-const captureProgress = computed(() => status.value?.progress)
 async function persistCaptureLimit() {
   if (!api) throw Error('VK unavailable')
   const options = validateVkCapturePreferences({ ...api.status().options, limit: fixedLimit.value })
@@ -54,8 +70,9 @@ async function captureDexie() {
   fixedError.value = ''
   try {
     await persistCaptureLimit()
-    const result = await api.captureFixed(fixedLimit.value)
-    fixedSaved.value = result.saved
+    if (!collector) throw Error('VK collector unavailable')
+    await collector.start()
+    fixedSaved.value = api.status().progress.newCount ?? null
     fixedPreview.value = []
     fixedCursor.value = undefined
     fixedNextCursor.value = undefined
@@ -104,127 +121,6 @@ async function exportDexie() {
     fixedBusy.value = false
   }
 }
-const portableBusy = ref(false)
-const portableFile = ref<File | null>(null)
-const portableInspected = ref<BackupTarInspection | null>(null)
-const portableError = ref('')
-const portableMessage = ref('')
-const tarProgress = ref<import('@kobaproduction/browser-storage').BackupTarProgress | null>(null)
-const portablePreview = computed(() =>
-  portableInspected.value
-    ? {
-        settings: portableInspected.value.manifest.includes.settings,
-        indexeddb: portableInspected.value.manifest.includes.indexeddb,
-        rows: portableInspected.value.rows,
-        createdAt: portableInspected.value.manifest.createdAt,
-      }
-    : null,
-)
-async function downloadPortable(choice: BackupTarChoice) {
-  if (!api || portableBusy.value || !hasVerifiedPeer.value || fixedBusy.value) return
-  portableBusy.value = true
-  portableError.value = ''
-  portableMessage.value = ''
-  tarProgress.value = null
-  try {
-    const filename = choice.compression === 'gzip' ? 'vk-portable-v1.tar.gz' : 'vk-portable-v1.tar'
-    // Must ask for user file access synchronously from this button's gesture;
-    // authenticated VK API calls may otherwise consume transient activation.
-    const picker = (
-      window as Window & {
-        showSaveFilePicker?: (options: {
-          suggestedName: string
-          types: Array<{ description: string; accept: Record<string, string[]> }>
-        }) => Promise<FileSystemFileHandle>
-      }
-    ).showSaveFilePicker
-    const handle = picker
-      ? await picker({
-          suggestedName: filename,
-          types: [
-            {
-              description: 'Portable TAR backup',
-              accept:
-                choice.compression === 'gzip'
-                  ? { 'application/gzip': ['.gz'] }
-                  : { 'application/x-tar': ['.tar'] },
-            },
-          ],
-        })
-      : undefined
-    const sink = handle ? await handle.createWritable() : undefined
-    const blob = await api.backupPortable(choice, {
-      sink,
-      onProgress: (next) => {
-        tarProgress.value = next
-      },
-    })
-    if (blob) {
-      const url = URL.createObjectURL(blob)
-      try {
-        const link = document.createElement('a')
-        link.href = url
-        link.download = filename
-        link.click()
-      } finally {
-        window.setTimeout(() => URL.revokeObjectURL(url), 30_000)
-      }
-    }
-    portableMessage.value = 'Резервная копия сформирована. Проверь файл в загрузках или выбранной папке.'
-  } catch (error) {
-    portableError.value =
-      error instanceof Error && error.name === 'AbortError'
-        ? 'Выбор файла отменён; резервная копия не создавалась.'
-        : 'Не удалось создать TAR.GZ-архив. Исходные данные не изменены.'
-  } finally {
-    portableBusy.value = false
-  }
-}
-async function inspectPortableFile(file: File) {
-  if (!api || portableBusy.value || !hasVerifiedPeer.value) return
-  portableBusy.value = true
-  portableFile.value = null
-  portableInspected.value = null
-  portableError.value = ''
-  portableMessage.value = ''
-  tarProgress.value = null
-  try {
-    const inspected = await api.inspectPortable(file, (next) => {
-      tarProgress.value = next
-    })
-    portableFile.value = file
-    portableInspected.value = inspected
-  } catch {
-    portableError.value = 'Файл повреждён, несовместим или относится к другому владельцу/каналу.'
-  } finally {
-    portableBusy.value = false
-  }
-}
-async function restorePortableSelection(selected: Pick<BackupTarChoice, 'settings' | 'indexeddb'>) {
-  if (!api || !portableFile.value || portableBusy.value || !hasVerifiedPeer.value) return
-  portableBusy.value = true
-  portableError.value = ''
-  portableMessage.value = ''
-  tarProgress.value = null
-  try {
-    await api.restorePortable(portableFile.value, selected, (next) => {
-      tarProgress.value = next
-    })
-    status.value = api.status()
-    fixedLimit.value = Math.min(3000, Math.max(1, status.value.options.limit))
-    fixedPreview.value = []
-    fixedCursor.value = undefined
-    fixedNextCursor.value = undefined
-    portableMessage.value = 'Выбранные разделы восстановлены. Reader обновлён.'
-    portableFile.value = null
-    portableInspected.value = null
-  } catch {
-    portableError.value = 'Восстановление отклонено: проверь файл, владельца и доступное место.'
-  } finally {
-    portableBusy.value = false
-  }
-}
-
 const tabs: { id: View; label: string; icon: typeof Archive }[] = [
   { id: 'capture', label: 'Выгрузка', icon: Download },
   { id: 'reader', label: 'Архив', icon: Archive },
@@ -248,63 +144,22 @@ function onTabKeydown(event: KeyboardEvent, active: View) {
   )
   target?.focus()
 }
-const preferencesBusy = ref(false)
-const preferencesFile = ref<File | null>(null)
-const preferencesConfirmed = ref(false)
-const preferencesError = ref('')
-const preferencesMessage = ref('')
 const durableSettingsError = ref(vkPreferencesLoadError())
 
-function selectPreferences(event: Event) {
-  preferencesFile.value = (event.target as HTMLInputElement).files?.[0] ?? null
-  preferencesConfirmed.value = false
-  preferencesError.value = ''
-  preferencesMessage.value = ''
-}
-async function downloadPreferences() {
-  if (!api || preferencesBusy.value || status.value?.busy) return
-  preferencesBusy.value = true
-  preferencesError.value = ''
-  preferencesMessage.value = ''
-  try {
-    const blob = await exportVkCaptureSettings(api)
-    const url = URL.createObjectURL(blob)
-    try {
-      const link = document.createElement('a')
-      link.href = url
-      link.download = 'vk-booster-capture-preset.json'
-      link.click()
-    } finally {
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-    }
-    preferencesMessage.value = 'Профиль подготовлен. Убедись, что файл сохранился.'
-  } catch {
-    preferencesError.value = 'Не удалось выгрузить профиль настроек.'
-  } finally {
-    preferencesBusy.value = false
-  }
-}
-async function importPreferences() {
-  if (!api || !preferencesFile.value || !preferencesConfirmed.value || preferencesBusy.value) return
-  preferencesBusy.value = true
-  preferencesError.value = ''
-  preferencesMessage.value = ''
-  try {
-    const port = vkPreferencesPersistence()
-    if (!port) throw Error('Persistent settings unavailable')
-    await restoreVkCaptureSettings(api, preferencesFile.value, port)
-    status.value = api.status()
-    fixedLimit.value = Math.min(3000, Math.max(1, api.status().options.limit))
-    preferencesMessage.value =
-      'Параметры восстановлены в текущей сессии и постоянном хранилище. Архив не изменён.'
-    preferencesFile.value = null
-    preferencesConfirmed.value = false
-  } catch {
-    preferencesError.value = 'Профиль отклонён: проверь целостность, формат и DEV/PROD канал.'
-  } finally {
-    preferencesBusy.value = false
-  }
-}
+watch(
+  vkRequestedView,
+  (requested) => {
+    if (!requested) return
+    if (requested === 'export') {
+      tab.value = 'reader'
+      void exportDexie()
+    } else if (requested === 'collect') {
+      tab.value = 'capture'
+      void captureDexie()
+    } else tab.value = requested
+  },
+  { immediate: true },
+)
 let unsubscribe: (() => void) | undefined
 let peerTimer: ReturnType<typeof setInterval> | undefined
 function refreshActiveConversation() {
@@ -317,8 +172,6 @@ function refreshActiveConversation() {
     fixedCursor.value = undefined
     fixedNextCursor.value = undefined
     fixedError.value = ''
-    portableFile.value = null
-    portableInspected.value = null
   }
   if (
     !previous ||
@@ -396,21 +249,13 @@ onUnmounted(() => {
           <input v-model.number="fixedLimit" class="booster-input" type="number" min="1" max="3000" :disabled="fixedBusy" />
         </label>
         <div class="flex flex-wrap gap-2">
-          <Button :disabled="fixedBusy || portableBusy || !hasVerifiedPeer" @click="captureDexie">
-            <Download class="size-4" aria-hidden="true" />Сохранить в Dexie
-          </Button>
-          <Button variant="outline" :disabled="!fixedBusy" @click="api?.stop()">Остановить</Button>
-          <Button variant="outline" :disabled="fixedBusy || portableBusy || !hasVerifiedPeer" @click="exportDexie">Экспорт .jsonl.gz</Button>
+          <ConversationCollectionAction label="Собрать сообщения"
+            :busy="fixedBusy" :disabled="!hasVerifiedPeer"
+            :processed="collectionState.processed" :total="collectionState.total"
+            :saved="fixedSaved" @start="captureDexie" @stop="collector?.stop()" />
+          <Button variant="outline" :disabled="fixedBusy || !hasVerifiedPeer" @click="exportDexie">Экспорт .jsonl.gz</Button>
         </div>
         <p v-if="fixedSaved !== null" role="status">Новых сообщений: {{ fixedSaved }}.</p>
-        <ArchiveProgressBar
-          v-if="captureProgress?.total"
-          label="Прогресс сохранения VK в Dexie"
-          :percent="Math.min(100, Math.round(100 * (captureProgress.done / captureProgress.total)))"
-          :counter="`${captureProgress.done} / ${captureProgress.total}`"
-          compact
-        />
-        <p v-if="captureProgress?.phase" role="status">{{ captureProgress.phase }}: {{ captureProgress.done }} / {{ captureProgress.total }}</p>
         <p v-if="fixedError" role="alert" class="text-sm text-destructive">{{ fixedError }}</p>
         <p v-if="durableSettingsError" role="alert" class="text-sm text-destructive">{{ durableSettingsError }}</p>
         <p class="text-xs text-muted-foreground">Экспорт содержит исходные записи; вложения не считаются скачанными файлами. Захват можно безопасно повторить после остановки.</p>
@@ -430,9 +275,9 @@ onUnmounted(() => {
           <span>Чтение только текущей подтверждённой VK-переписки. До 80 записей на страницу.</span>
         </div>
         <div class="flex flex-wrap gap-2">
-          <Button variant="outline" :disabled="fixedBusy || fixedReading || portableBusy || !hasVerifiedPeer" @click="readDexie()">Открыть Reader</Button>
-          <Button variant="outline" :disabled="fixedBusy || fixedReading || portableBusy || !fixedNextCursor" @click="readDexie(fixedNextCursor)">Следующие 80</Button>
-          <Button variant="outline" :disabled="fixedBusy || fixedReading || portableBusy || !fixedCursor" @click="readDexie()">К началу</Button>
+          <Button variant="outline" :disabled="fixedBusy || fixedReading || !hasVerifiedPeer" @click="readDexie()">Открыть Reader</Button>
+          <Button variant="outline" :disabled="fixedBusy || fixedReading || !fixedNextCursor" @click="readDexie(fixedNextCursor)">Следующие 80</Button>
+          <Button variant="outline" :disabled="fixedBusy || fixedReading || !fixedCursor" @click="readDexie()">К началу</Button>
         </div>
         <ol class="max-h-96 overflow-y-auto space-y-2" aria-label="Сохранённые сообщения">
           <li v-for="message in fixedPreview" :key="message.id" class="border-b border-border py-2">
@@ -452,61 +297,13 @@ onUnmounted(() => {
       tabindex="0"
       class="flex min-w-0 flex-col gap-3"
     >
-      <section v-if="api && status" class="booster-stack-card" aria-label="Профиль параметров VK">
+      <section class="booster-stack-card" aria-label="Постоянные параметры VK">
         <div class="booster-setting-copy">
-          <b>Постоянные параметры и резервная копия</b>
-          <small>
-            Режим, количество, диапазон дат, размер пачки и медиа хранятся отдельно от архива.
-            При перезапуске они восстанавливаются автоматически; JSON создаёт переносимую резервную копию только этих параметров.
-            Сообщения, токены, ID диалога и данные папки не сохраняются.
-          </small>
+          <b>Параметры сохранения</b>
+          <small>Настройки захвата сохраняются автоматически и восстанавливаются при следующем запуске.</small>
         </div>
-        <div class="flex flex-wrap items-end gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            :disabled="preferencesBusy || status.busy || status.folderPending || !!status.blockedReason"
-            @click="downloadPreferences"
-          >Сохранить профиль JSON</Button>
-          <label class="booster-field min-w-0 flex-1">
-            <span>Восстановить параметры из JSON</span>
-            <input
-              type="file"
-              class="booster-input w-full"
-              accept=".json,application/json"
-              :disabled="preferencesBusy || status.busy || status.folderPending || !!status.blockedReason"
-              @change="selectPreferences"
-            />
-          </label>
-        </div>
-        <label v-if="preferencesFile" class="booster-field">
-          <span class="flex items-center gap-2">
-            <input v-model="preferencesConfirmed" type="checkbox" :disabled="preferencesBusy" />
-            Подтверждаю замену сохранённых и текущих параметров
-          </span>
-        </label>
-        <Button
-          v-if="preferencesFile"
-          variant="outline"
-          size="sm"
-          :disabled="preferencesBusy || status.busy || status.folderPending || !!status.blockedReason || !preferencesConfirmed"
-          @click="importPreferences"
-        >Применить профиль</Button>
         <p v-if="durableSettingsError" role="alert" class="m-0 text-sm text-destructive">{{ durableSettingsError }}</p>
-        <p v-if="preferencesError" role="alert" class="m-0 text-sm text-destructive">{{ preferencesError }}</p>
-        <p v-if="preferencesMessage" role="status" class="m-0 text-sm">{{ preferencesMessage }}</p>
       </section>
-      <PortableBackupPanel
-        :available="{ settings: true, indexeddb: true }"
-        :pending="portableBusy || fixedBusy || !!status?.busy || !hasVerifiedPeer"
-        :inspected="portablePreview"
-        :error="portableError"
-        :success="portableMessage"
-        :progress="tarProgress"
-        @export="downloadPortable"
-        @inspect="inspectPortableFile"
-        @restore="restorePortableSelection"
-      />
     </div>
   </section>
 </template>

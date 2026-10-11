@@ -155,6 +155,12 @@ export async function createGzipFromChunks(
   return new Blob(parts, { type: 'application/gzip' })
 }
 
+export type {
+  ChatCollectionController,
+  ChatCollectionPort,
+  ChatCollectionSnapshot,
+} from './chat-collection'
+export { createChatCollectionController } from './chat-collection'
 export type { ArchivePageScan, ArchivePageSelection, ArchiveScanMode } from './linear-selection'
 export { selectArchivePage } from './linear-selection'
 export type { ArchiveMediaReadOptions, ArchiveMediaResult } from './media'

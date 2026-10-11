@@ -154,3 +154,14 @@ export declare function useArchiveFocusTracker(
   reset: () => void
   dispose: () => void
 }
+
+export declare const ConversationCollectionAction: DefineComponent<{
+  label: string
+  busy: boolean
+  disabled?: boolean
+  processed?: number | null
+  total?: number | null
+  saved?: number | null
+  stopLabel?: string
+  savedLabel?: string
+}>

@@ -675,3 +675,193 @@
   touch-action: none;
   border-top-left-radius: 7px;
 }
+
+/* Compact side-docked quick menu shared by single-product Boosters. */
+.booster-launcher-docked {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 22%);
+}
+.booster-quick-menu {
+  position: fixed;
+  z-index: 2147483646;
+  width: min(294px, calc(100vw - 58px));
+  max-height: min(360px, calc(100dvh - 16px));
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--card-foreground);
+  box-shadow: 0 16px 45px rgb(0 0 0 / 32%);
+  pointer-events: auto;
+  font: inherit;
+}
+.booster-quick-header,
+.booster-quick-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 12px;
+}
+.booster-quick-header {
+  border-bottom: 1px solid var(--border);
+}
+.booster-quick-identity {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+.booster-quick-identity > strong {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.booster-quick-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.booster-quick-badges > span {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 2px 6px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.booster-quick-close {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.booster-quick-actions {
+  padding: 6px;
+}
+.booster-quick-actions > button {
+  display: flex;
+  width: 100%;
+  min-height: 37px;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+  text-align: left;
+}
+.booster-quick-actions > button:hover:not(:disabled),
+.booster-quick-actions > button:focus-visible,
+.booster-quick-close:hover {
+  background: var(--muted);
+}
+.booster-quick-actions > button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+.booster-quick-footer {
+  border-top: 1px solid var(--border);
+}
+.booster-quick-status {
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.booster-quick-status.is-active {
+  color: var(--foreground);
+}
+.booster-quick-toggle {
+  width: 38px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  background: var(--muted);
+  padding: 2px;
+  cursor: pointer;
+}
+.booster-quick-toggle > span {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--foreground);
+  transition: transform 130ms ease;
+}
+.booster-quick-toggle[aria-checked="true"] {
+  background: var(--primary);
+}
+.booster-quick-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 8px 11px;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.booster-quick-metrics > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+.booster-quick-metrics span {
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.booster-quick-metrics b {
+  color: var(--foreground);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.booster-quick-toggle[aria-checked="true"] > span {
+  background: var(--primary-foreground);
+  transform: translateX(16px);
+}
+.booster-quick-toggle:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.booster-quick-error {
+  position: fixed;
+  bottom: 10px;
+  left: 10px;
+  background: var(--card);
+  color: var(--foreground);
+  padding: 7px;
+  pointer-events: none;
+}
+.booster-modal-surface.booster-modal-surface-single {
+  width: min(820px, calc(100vw - 24px));
+  max-height: min(86dvh, 760px);
+  overflow: auto;
+}
+.booster-control-standalone {
+  width: 100%;
+  margin: 0;
+}
+.booster-control-standalone .booster-settings-layout {
+  display: block;
+  min-height: 0;
+}
+.booster-control-standalone .booster-settings-content {
+  min-width: 0;
+  width: 100%;
+}
+@media (max-width: 620px) {
+  .booster-modal-surface.booster-modal-surface-single {
+    width: calc(100vw - 16px);
+    max-height: calc(100dvh - 16px);
+  }
+}

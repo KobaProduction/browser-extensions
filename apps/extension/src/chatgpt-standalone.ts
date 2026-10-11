@@ -1,5 +1,5 @@
 import { isChatGptPage } from '@chatgpt-booster/core'
-import { createSettingsStore } from '@kobaproduction/browser-adapters'
+import { createSettingsStore, onInstallationStateChange } from '@kobaproduction/browser-adapters'
 import {
   type Capability,
   FeatureRuntime,
@@ -14,7 +14,11 @@ if (isChatGptPage()) {
   const { feature, startEarly } = createChatGptChromeFeature()
   void new FeatureSettings(createSettingsStore('chromium'))
     .enabled('chatgpt-booster')
-    .then((enabled) => (enabled ? startEarly() : undefined))
+    .then(async (enabled) =>
+      enabled && (await new FeatureSettings(createSettingsStore('chromium')).installationEnabled())
+        ? startEarly()
+        : undefined,
+    )
     .catch((error) =>
       console.warn(
         '[ChatGPT Booster] Early capture failed',
@@ -27,6 +31,10 @@ if (isChatGptPage()) {
     capabilities: new Set<Capability>(['page-dom', 'origin-storage', 'local-files']),
     settings: new FeatureSettings(createSettingsStore('chromium')),
   })
+  const unsubscribeState = onInstallationStateChange('chromium', () => {
+    void runtime.refreshFromSettings()
+  })
+  window.addEventListener('pagehide', unsubscribeState, { once: true })
   const launch = async () => {
     await runtime.start()
     const ui = mountControlCenter({
@@ -34,20 +42,37 @@ if (isChatGptPage()) {
       title: 'ChatGPT Booster',
       views: { 'chatgpt-booster': ChatGptPanel },
     })
-    chrome.runtime.onMessage.addListener((message: { type?: string; id?: string }, _, respond) => {
-      if (message?.type === 'koba:open') {
-        ui.open()
-        respond({ ok: true })
-        return
-      }
-      if (message?.type === 'koba:open-feature' && message.id === 'chatgpt-booster') {
-        ui.open()
-        window.dispatchEvent(new CustomEvent(SHELL_OPEN_FEATURE_EVENT, { detail: { id: message.id } }))
-        respond({ ok: true })
-        return
-      }
-      if (message?.type === 'koba:list') respond({ features: runtime.list() })
-    })
+    chrome.runtime.onMessage.addListener(
+      (message: { type?: string; id?: string; enabled?: boolean }, _, respond) => {
+        if (message?.type === 'koba:installation-status') {
+          respond({ enabled: runtime.isRunning(), features: runtime.list() })
+          return
+        }
+        if (message?.type === 'koba:installation-set-running') {
+          if (typeof message.enabled !== 'boolean') {
+            respond({ ok: false })
+            return
+          }
+          void runtime
+            .setRunning(message.enabled)
+            .then(() => respond({ ok: true, enabled: runtime.isRunning() }))
+            .catch(() => respond({ ok: false }))
+          return true
+        }
+        if (message?.type === 'koba:open') {
+          ui.open()
+          respond({ ok: true })
+          return
+        }
+        if (message?.type === 'koba:open-feature' && message.id === 'chatgpt-booster') {
+          ui.open()
+          window.dispatchEvent(new CustomEvent(SHELL_OPEN_FEATURE_EVENT, { detail: { id: message.id } }))
+          respond({ ok: true })
+          return
+        }
+        if (message?.type === 'koba:list') respond({ features: runtime.list() })
+      },
+    )
   }
   if (document.body) void launch()
   else window.addEventListener('DOMContentLoaded', () => void launch(), { once: true })

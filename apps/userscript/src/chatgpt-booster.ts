@@ -38,8 +38,12 @@ export function createChatGptUserscriptFeature() {
   // The active feature's start() also invokes startEarly() after a later enable.
   void new FeatureSettings(createSettingsStore('userscript'))
     .enabled('chatgpt-booster')
-    .then((enabled) => {
-      if (!enabled) return
+    .then(async (enabled) => {
+      if (
+        !enabled ||
+        !(await new FeatureSettings(createSettingsStore('userscript')).installationEnabled())
+      )
+        return
       return startEarly()
     })
     .catch((error) =>

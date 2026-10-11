@@ -22,12 +22,42 @@ export interface FeatureContext {
   readonly capabilities: ReadonlySet<Capability>
   readonly settings: FeatureSettings
 }
+export interface FeatureQuickMetric {
+  readonly label: string
+  /** Counts are provided by the verified provider, never inferred by the shell. */
+  readonly value: string | number
+}
+export interface FeatureQuickAction {
+  readonly id: string
+  readonly label: string
+  readonly icon?: 'archive' | 'collect' | 'export' | 'settings' | 'capture' | 'open'
+  /** Default: the action owns navigation; never unconditionally open the panel. */
+  readonly after?: 'close-menu' | 'keep-menu' | 'open-panel'
+  /** Override for recovery/settings actions that can run while the feature is off. */
+  readonly availableWhenDisabled?: boolean
+  /** Source-owned context check; the shared shell never inspects private accounts. */
+  readonly enabled?: () => boolean
+  readonly run: () => void | Promise<void>
+}
+/** A provider can replace the launcher click entirely without editing the shell. */
+export interface FeatureLauncher {
+  readonly mode: 'quick-menu' | 'panel' | 'action'
+  readonly run?: () => void | Promise<void>
+}
 export interface Feature {
   readonly id: FeatureId
   readonly title: string
   readonly description: string
   /** Provider-independent view sizing; default is standard. */
-  readonly presentation?: { readonly panel: 'standard' | 'wide' }
+  readonly presentation?: {
+    readonly panel: 'standard' | 'wide'
+    readonly version?: string
+    readonly installation?: string
+  }
+  /** Product-owned actions rendered by the shared compact edge menu. */
+  readonly quickActions?: readonly FeatureQuickAction[]
+  readonly quickMetrics?: () => Promise<readonly FeatureQuickMetric[]>
+  readonly launcher?: FeatureLauncher
   readonly match: (url: URL) => boolean
   readonly targets: readonly DeliveryTarget[]
   readonly requiredCapabilities: readonly Capability[]
@@ -47,6 +77,12 @@ export class FeatureSettings {
   setEnabled(id: string, enabled: boolean) {
     return this.store.set(`features.${id}.enabled`, enabled)
   }
+  installationEnabled() {
+    return this.store.get('installation.enabled').then((value) => value !== false)
+  }
+  setInstallationEnabled(enabled: boolean) {
+    return this.store.set('installation.enabled', enabled)
+  }
 }
 export type FeatureStatus = {
   id: string
@@ -58,7 +94,10 @@ export type FeatureStatus = {
 export class FeatureRuntime {
   private readonly active = new Map<string, Feature>()
   private readonly status = new Map<string, FeatureStatus>()
+  private readonly listeners = new Set<() => void>()
   private started = false
+  private running = true
+  private operations: Promise<void> = Promise.resolve()
   constructor(
     readonly features: readonly Feature[],
     readonly context: FeatureContext,
@@ -71,9 +110,22 @@ export class FeatureRuntime {
       names.add(feature.id)
     }
   }
-  async start() {
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
+  }
+  private changed() {
+    for (const listener of [...this.listeners]) listener()
+  }
+  private transition(task: () => Promise<void>): Promise<void> {
+    const next = this.operations.then(task)
+    this.operations = next.catch(() => undefined)
+    return next
+  }
+  private async startNow() {
     if (this.started) return
     this.started = true
+    this.running = await this.context.settings.installationEnabled()
     for (const feature of this.features) {
       const base = { id: feature.id, title: feature.title, description: feature.description }
       if (!feature.match(this.context.url)) {
@@ -89,7 +141,7 @@ export class FeatureRuntime {
         })
         continue
       }
-      if (!(await this.context.settings.enabled(feature.id))) {
+      if (!this.running || !(await this.context.settings.enabled(feature.id))) {
         this.status.set(feature.id, { ...base, state: 'disabled' })
         continue
       }
@@ -100,6 +152,10 @@ export class FeatureRuntime {
         this.status.set(feature.id, { ...base, state: 'active' })
         void this.telemetry?.record('feature.started', feature.id, Date.now() - begin)
       } catch (error) {
+        // Failed starts can still have partial observers or DOM mounts.
+        try {
+          await feature.stop?.()
+        } catch {}
         this.status.set(feature.id, {
           ...base,
           state: 'failed',
@@ -108,8 +164,9 @@ export class FeatureRuntime {
         void this.telemetry?.record('feature.failed', feature.id)
       }
     }
+    this.changed()
   }
-  async stop() {
+  private async stopNow() {
     for (const f of [...this.active.values()].reverse())
       try {
         await f.stop?.()
@@ -117,6 +174,17 @@ export class FeatureRuntime {
       } catch {}
     this.active.clear()
     this.started = false
+    this.status.clear()
+    this.changed()
+  }
+  start(): Promise<void> {
+    return this.transition(() => this.startNow())
+  }
+  stop(): Promise<void> {
+    return this.transition(() => this.stopNow())
+  }
+  isRunning(): boolean {
+    return this.running
   }
   list(): FeatureStatus[] {
     return this.features.map(
@@ -134,13 +202,36 @@ export class FeatureRuntime {
     if (!feature) throw new Error(`Module is not active: ${id}`)
     await feature.open?.()
   }
-  async setEnabled(id: string, value: boolean) {
-    await this.context.settings.setEnabled(id, value)
-    await this.stop()
-    this.status.clear()
-    await this.start()
+  /** Completely detach provider hooks, observers and mounts, but retain the
+   * shared launcher/control panel so the installation can be re-enabled. */
+  setRunning(enabled: boolean): Promise<void> {
+    return this.transition(async () => {
+      await this.context.settings.setInstallationEnabled(enabled)
+      await this.stopNow()
+      await this.startNow()
+    })
+  }
+  /** Another tab of this same scoped installation changed durable enablement.
+   * Replay the lifecycle without writing storage, so no cross-tab event loop. */
+  refreshFromSettings(): Promise<void> {
+    return this.transition(async () => {
+      const enabled = await this.context.settings.installationEnabled()
+      if (enabled === this.running) return
+      await this.stopNow()
+      await this.startNow()
+    })
+  }
+  setEnabled(id: string, value: boolean): Promise<void> {
+    if (!this.features.some((feature) => feature.id === id))
+      return Promise.reject(Error(`Unknown module ${id}`))
+    return this.transition(async () => {
+      await this.context.settings.setEnabled(id, value)
+      await this.stopNow()
+      await this.startNow()
+    })
   }
 }
+
 export function defaultCapabilities(_target: DeliveryTarget): ReadonlySet<Capability> {
   return new Set<Capability>(['page-dom', 'origin-storage', 'local-files'])
 }

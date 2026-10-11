@@ -38,7 +38,9 @@ test('VK uses the existing single shell and accessible archive/export/settings n
 
 test('capture and reader use only fixed Dexie and hide the historical folder writer', () => {
   expect(panel).toContain('v-show="tab === \'capture\'"')
-  expect(panel).toContain('api.captureFixed(')
+  expect(panel).toContain('<ConversationCollectionAction')
+  expect(panel).toContain('collector.start()')
+  expect(panel).toContain("requested === 'collect'")
   expect(panel).toContain('api.readFixed(80, cursor)')
   expect(panel).toContain('api.exportFixed()')
   expect(panel).not.toContain('<ArchiveManager')
@@ -58,17 +60,16 @@ test('peer-aware Dexie Reader retains only bounded local records and never expos
   expect(panel).not.toContain('ArchiveCanonicalMigrator')
 })
 
-test('settings and full portable IndexedDB backup coexist in the same Control Center', () => {
+test('ordinary settings omit internal full-database recovery controls', () => {
   expect(panel).toContain("tab === 'settings'")
-  expect(panel).toContain('exportVkCaptureSettings(api)')
-  expect(panel).toContain('restoreVkCaptureSettings(')
+  expect(panel).not.toContain('exportVkCaptureSettings(api)')
+  expect(panel).not.toContain('restoreVkCaptureSettings(')
   expect(panel).toContain('vkPreferencesPersistence()')
   expect(panel).toContain('await port.write(options)')
-  expect(panel).toContain('preferencesConfirmed')
-  expect(panel).toContain('status.folderPending || !!status.blockedReason')
-  expect(panel).toContain('<PortableBackupPanel')
-  expect(panel).toContain('api.backupPortable(')
-  expect(panel).toContain('api.inspectPortable(')
-  expect(panel).toContain('api.restorePortable(')
+  expect(panel).not.toContain('preferencesConfirmed')
+  expect(panel).toContain('durableSettingsError')
+  expect(panel).not.toContain('<PortableBackupPanel')
+  expect(panel).not.toContain('api.backupPortable(')
+  expect(panel).not.toContain('api.restorePortable(')
   expect(panel).not.toContain('restoreCanonicalBackup')
 })

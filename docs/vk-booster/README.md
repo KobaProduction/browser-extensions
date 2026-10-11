@@ -18,8 +18,8 @@ not yet implemented against the Dexie canonical source.
 The product has independently scoped durable capture defaults in
 userscript `localStorage` / MV3 `chrome.storage.local`. JSON settings export
 and restore reuse the generic checksum/scoping contract in `packages/storage`
-and do not include VK peer, account, tokens, archives or media. The UI never
-presents settings backup as full archive recovery.
+and do not include VK peer, account, tokens, archives or media. Settings backup and whole-archive recovery are internal operator facilities,
+not controls in the ordinary VK UI.
 
 See [archive/source contract](ARCHIVE.md),
 [environment isolation](../shared/ENVIRONMENTS_AND_STORAGE.md),
@@ -41,7 +41,17 @@ recovery, archive import/restore or first-PROD readiness. Historical VK
 
 The source includes a single portable `.tar.gz` backup
 of persistent settings and VK Dexie v1. Plain JSONL chunks, schema and a
-final manifest share one GZIP stream. Sections and chunk sizes are selected
-in the shared Control Center with visible progress. Tab/session storage and
-external attachment files are excluded. The feature is not PROD-accepted.
+final manifest share one GZIP stream. Internal operator tools can select
+sections and chunk sizes through shared typed ports; ordinary users do not
+see the full backup controls. Tab/session state and external attachments
+are excluded. The feature is not PROD-accepted.
 See [shared backup contract](../shared/BACKUP_AND_RESTORE.md).
+
+## Shared quick menu and collection UI (Extension 15)
+
+VK contributes its own archive/collection/export/settings actions to the
+shared edge launcher and preserves VK peer authorization, Dexie persistence,
+source paging and stop behavior inside VK. The generic conversation-collection
+controller and presentation are reused with ChatGPT; their providers do not
+share physical databases or source APIs. No full-database backup controls are
+added to the ordinary VK UI.

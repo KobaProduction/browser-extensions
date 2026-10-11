@@ -70,6 +70,11 @@ async function viteBundle(
       __BOOSTER_INSTANCE_SCOPE__: JSON.stringify(
         currentProduct ? channelIdentity(currentProduct, channel) : '',
       ),
+      __BOOSTER_DELIVERY_TARGET__: JSON.stringify(
+        src.includes('/apps/extension/') || src.includes('/packages/extension/')
+          ? 'chromium'
+          : 'userscript',
+      ),
     },
     build: {
       outDir: dir,

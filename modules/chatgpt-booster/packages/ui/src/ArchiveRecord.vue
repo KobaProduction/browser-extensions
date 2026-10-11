@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { FloatingInfoPopover, JsonViewer, ModalSurface } from '@kobaproduction/browser-ui'
 import type { ArchiveItemView } from '@chatgpt-booster/core'
 import Brain from 'lucide-vue-next/dist/esm/icons/brain.js'
 import ChevronDown from 'lucide-vue-next/dist/esm/icons/chevron-down.js'
@@ -15,10 +16,9 @@ import TerminalSquare from 'lucide-vue-next/dist/esm/icons/square-terminal.js'
 import Wrench from 'lucide-vue-next/dist/esm/icons/wrench.js'
 import X from 'lucide-vue-next/dist/esm/icons/x.js'
 import { computed, ref, watch } from 'vue'
-import FloatingInfoPopover from './FloatingInfoPopover.vue'
-import JsonViewer from './JsonViewer.vue'
+
 import MarkdownContent from './MarkdownContent.vue'
-import ModalSurface from './ModalSurface.vue'
+
 import RecordMetaBadges from './RecordMetaBadges.vue'
 import { translate, type SupportedLocale, type TranslationKey } from './i18n'
 import { omitRepeatedRecordHeading, parseArchiveStructuredText } from './archive-presentation'

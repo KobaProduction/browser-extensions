@@ -1,5 +1,46 @@
 # Backup, import, restore and portability
 
+## Clean archive baseline; old-source migration is external (2026-10-11)
+
+The active ChatGPT Booster is **Dexie v1 only** (fixed canonical v4-era data
+model) and does **not** ship original v3/v4 database readers, backups,
+importers or migration controls. Existing native v3/v4 IndexedDB objects
+must remain untouched, not deleted or upgraded. The owner will work on
+optional raw IndexedDB extraction/import through a **separate script/chat**;
+do not carry that legacy workflow into the new runtime.
+
+Future archive backup and restore belong to the canonical scoped Dexie
+schema with explicit independent archive/settings/media sections, validation
+and rollback. This work is not yet accepted and is not an excuse to recreate
+the old migration machinery. The older provisions below describe historical
+requirements only where they reference v3/v4 migration/read/export.
+
+
+## Internal recovery versus ordinary user export (2026-10-12)
+
+The portable TAR.GZ backup and restore facility is an internal/operator recovery
+capability, **not a required ordinary-user action or default UI workflow**.
+Products may expose independently validated service ports without surfacing a
+backup/restore wizard. Archive reading and explicit conversation exports remain
+normal product features and must not be confused with whole-database recovery.
+An operator restore always requires an explicit invocation; never restore on
+startup, capture, update or a channel change.
+
+ChatGPT's new canonical Dexie schema v1 has a provider-owned five-table
+backup adapter (projects, conversations, messages, elements, snapshots) using
+the generic TAR format. Only the verified account's rows are included and an
+import validates the graph before replacing that account in one transaction.
+No ordinary ChatGPT backup screen is mounted, and the historical v3/v4
+physical databases remain untouched. Settings are an independent scope and
+require a validated persistent-settings adapter before inclusion.
+
+PR #38 initially exposed portable backup controls in VK settings. The
+ordinary VK and ChatGPT Control Centers no longer offer backup or restore
+controls for either persistent settings or full IndexedDB archives. Existing
+service-level settings and archive backup ports are retained for internal
+operator tooling; the provider-neutral widget is not mounted in these screens. Installed-browser recovery and large-input staged restore
+remain unaccepted.
+
 ## User-selected native backups, not migration engines (new owner decision 2026-10-11)
 
 The **only historical ChatGPT data-recovery path requested now** is a non-destructive read-only export of the installed stable `0.8.92` native v3 IndexedDB, with exact source records and structured-clone values. The owner may provide the resulting backup for a separately validated one-off import into the fixed canonical Dexie model; there is **no requirement to automatically migrate source v3/v4 generations, switch canonical generations or guess missing API data**. Existing historic backup/migration features below remain implementation history and must not run without separate owner initiation. VK future capture is a new fixed Dexie model; no v2→v1 migration pipeline is being built.
@@ -23,8 +64,9 @@ remain different data products even when the UI offers a unified wizard.
    paths, SHA-256 and size. Never claim that a database-only backup includes
    binaries not actually present in the backup.
 
-Each extension must expose independently usable **export, validate, import,
-restore** operations for settings and for data. A combined backup is optional,
+Each extension must support independently usable internal **export, validate, import,
+restore** operations for settings and for data; ordinary users do not need
+backup-specific screens. A combined backup is optional,
 but must be a manifest containing separately restorable sections. The user
 must be able to choose which sections to import.
 
@@ -123,7 +165,7 @@ vk-portable-v1.tar.gz
   API does not support a configurable GZIP level, custom dictionary or larger
   history window. Additional codec tuning requires a separate tested library
   and actual compression benchmarks rather than inventing unsupported flags.
-- User controls independent persistent settings/IndexedDB inclusion, gzip on
+- The internal operator selects persistent settings/IndexedDB inclusion, gzip on
   or off, and chunk size 64–2,048 records (default 1,024). Session/tab RAM and
   sessionStorage never enter backups. Per-chunk plain JSONL buffers are
   bounded to 8 MiB, but there is **no arbitrary total backup-record or TAR
