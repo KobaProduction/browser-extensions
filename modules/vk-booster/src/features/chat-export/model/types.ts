@@ -140,7 +140,7 @@ export interface ArchiveApi {
   hide(): void
   buildViewer(): Promise<{ messages: number }>
   getMessages(): VkMessage[]
-  previewMessages(options: { limit: number; query?: string }): {
+  previewMessages(options: { limit: number; offset?: number; query?: string }): {
     messages: VkMessage[]
     matching: number
   }

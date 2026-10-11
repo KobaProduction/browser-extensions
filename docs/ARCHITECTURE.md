@@ -139,9 +139,10 @@ The VK archive engine is wrapped as a `Feature` and used by both Tampermonkey an
 VK Booster 2.3.0 mounts a read-only VK ArchivePreview beneath the existing
 shared ArchiveManager. It uses the provider-neutral ArchiveTranscript layout
 with VK-specific text, sender, timestamp and attachment-count slots. The
-view requests only the latest 80 records initially, expands in 80-record
-increments up to 240, and searches existing in-memory archived text through
-a bounded VK projection API. It does not load remote history, media or
+view reads bounded 80-message pages, starting from the latest saved records,
+and can page back through the entire locally archived conversation (including
+filtered search matches) using an offset-based VK projection API. It does not
+load remote history, media or
 IndexedDB and does not alter the v2 folder/file format. For the entire
 archive and saved media, index.html remains authoritative.
 

@@ -229,6 +229,10 @@ test('exact N=3000 even if previously saved, and only two JSON outputs', async (
   expect(preview.messages).toHaveLength(80)
   expect(preview.matching).toBe(3000)
   expect(preview.messages.at(-1)?.id).toBe(m.messages.at(-1)?.id)
+  const oldPage = a.previewMessages({ limit: 80, offset: 80 })
+  expect(oldPage.matching).toBe(3000)
+  expect(oldPage.messages).toHaveLength(80)
+  expect(oldPage.messages.at(-1)?.id).toBe(m.messages.at(-81)?.id)
   const exposed = a.getMessages()
   const first = exposed[0]
   if (!first) throw Error('Expected archived message')

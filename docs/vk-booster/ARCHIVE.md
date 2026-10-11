@@ -59,6 +59,10 @@ session-only preferences. Navigation fences hide archived messages on
 peer mismatch or during folder selection. A blocked snapshot must not
 render stale folder names, message totals, progress counters or previous
 archive errors, although the v2 engine retains its state for safe resume.
+The in-app reader supports older/newer navigation over the full existing v2
+message set in bounded 80-message pages, including filtered search results.
+It never requests remote history or changes canonical v2 files; attachment
+statuses remain recorded receipts rather than a fresh disk audit.
 This is not a ChatGPT-specific ArchiveBrowser, an IndexedDB migration UI
 or a second launcher. Browser
 acceptance must still check keyboard/focus, mobile layout, installed
