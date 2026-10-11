@@ -36,7 +36,8 @@ export function validateVersionPolicy(
       !path.startsWith('.github/') &&
       !path.startsWith('docs/') &&
       path !== 'package.json' &&
-      path !== 'bun.lock',
+      path !== 'bun.lock' &&
+      !/\.(?:test|spec)\.[cm]?[jt]sx?$/.test(path),
   )
   const required = new Set(impactedProductVersions(productPaths))
   for (const id of versions) {

@@ -26,7 +26,8 @@ test('archive progress is a single host-neutral widget reused by VK and ChatGPT'
   expect(shared).toContain('aria-live="polite"')
   expect(shared).not.toContain('vk-booster')
   expect(shared).not.toContain('chatgpt-booster')
-  expect(vk).toContain('<ArchiveManager')
+  expect(vk).toContain('<ArchiveProgressBar')
+  expect(vk).not.toContain('<ArchiveManager')
   expect(chatgpt).toContain('<ArchiveProgress')
 })
 

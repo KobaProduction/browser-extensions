@@ -917,6 +917,11 @@ test('fixed Dexie VK capture reads verified owner, persists new history, preview
     expect(repeated).toMatchObject({ saved: 0, alreadySaved: 10 })
     const preview = await fresh.readFixed(10)
     expect(preview).toHaveLength(10)
+    const firstWindow = await fresh.readFixed(5)
+    const nextWindow = await fresh.readFixed(5, firstWindow.at(-1)?.id)
+    expect(firstWindow).toHaveLength(5)
+    expect(nextWindow).toHaveLength(5)
+    expect(new Set([...firstWindow, ...nextWindow].map((row) => row.id)).size).toBe(10)
     const archive = await fresh.exportFixed()
     const text = await new Response(archive.stream().pipeThrough(new DecompressionStream('gzip'))).text()
     const lines = text
@@ -931,7 +936,7 @@ test('fixed Dexie VK capture reads verified owner, persists new history, preview
     expect(lines.filter((row) => row.kind === 'message')).toHaveLength(10)
     expect(lines.at(-1)).toMatchObject({ kind: 'footer', count: 10 })
     // Dexie capture is not allowed to touch the existing file-backed archive.
-    expect(((await read('metadata.json')) as VkArchiveMeta).schema).toBe(2)
+    expect(((await read('metadata.json')) as VkArchiveMeta).schema).toBe(1)
     fresh.destroy()
   } finally {
     globalThis.fetch = previous
@@ -939,5 +944,17 @@ test('fixed Dexie VK capture reads verified owner, persists new history, preview
     Object.assign(globalThis, { indexedDB: oldIndexed, IDBKeyRange: oldRange })
     Dexie.dependencies.indexedDB = priorDexie.indexedDB
     Dexie.dependencies.IDBKeyRange = priorDexie.IDBKeyRange
+  }
+})
+
+test('production VK API cannot initialize a second file-backed canonical writer', async () => {
+  const previousTestMode = globalThis.__VK_EXPORT_TEST_MODE
+  globalThis.__VK_EXPORT_TEST_MODE = false
+  try {
+    await expect(a.selectFolder()).rejects.toThrow('Dexie')
+    await expect(a.useFolder(folderHandle(new MockDir('isolated-history')))).rejects.toThrow('Dexie')
+    await expect(a.run({ limit: 1 })).rejects.toThrow('Dexie')
+  } finally {
+    globalThis.__VK_EXPORT_TEST_MODE = previousTestMode
   }
 })

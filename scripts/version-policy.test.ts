@@ -86,3 +86,13 @@ test('explicit fresh VK v1 baseline transition requires actual VK source changes
     }),
   ).toThrow('VK v1 pre-PROD base must remain')
 })
+
+test('source-only quality assertions do not force unrelated product versions', () => {
+  expect(() =>
+    validateVersionPolicy(
+      ['packages/ui/src/theme.test.ts', 'modules/vk-booster/tests/vk-panel-integration.test.ts'],
+      chatRelease,
+      chatRelease,
+    ),
+  ).not.toThrow()
+})

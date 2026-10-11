@@ -6,10 +6,6 @@ const panel = readFileSync(
   new URL('../src/features/chat-export/ui/ArchivePanel.vue', import.meta.url),
   'utf8',
 )
-const archive = readFileSync(
-  new URL('../../../packages/widgets/src/ArchiveManager.vue', import.meta.url),
-  'utf8',
-)
 const reader = readFileSync(
   new URL('../src/features/chat-export/ui/ArchivePreview.vue', import.meta.url),
   'utf8',
@@ -40,37 +36,25 @@ test('VK uses the existing single shell and accessible archive/export/settings n
   expect(feature).toContain("id: 'vk-booster'")
 })
 
-test('capture form stays mounted during navigation and uses the initial v1 engine', () => {
+test('capture and reader use only fixed Dexie and hide the historical folder writer', () => {
   expect(panel).toContain('v-show="tab === \'capture\'"')
-  expect(panel).toContain('<ArchiveManager')
-  expect(panel).toContain(':key="preferencesRevision"')
-  expect(panel).toContain('@choose-folder="chooseFolder"')
-  expect(panel).toContain('@start="start"')
-  expect(panel).toContain('@stop="api?.stop()"')
-  expect(panel).toContain('@resume="resume"')
-  expect(archive).toContain("emit('start', {")
-  expect(archive).toContain("emit('resume')")
-  expect(panel).not.toContain('autoMigrate')
+  expect(panel).toContain('api.captureFixed(')
+  expect(panel).toContain('api.readFixed(80, cursor)')
+  expect(panel).toContain('api.exportFixed()')
+  expect(panel).not.toContain('<ArchiveManager')
+  expect(panel).not.toContain('api?.run(')
+  expect(panel).not.toContain('chooseFolder')
+  expect(panel).toContain('fixedPreview.value = []')
+  expect(panel).toContain('role="alert"')
+  expect(panel).toContain('Следующие 80')
 })
 
-test('reader fails closed on a changed VK conversation or an incomplete folder selection', () => {
-  expect(panel).toContain('presentVkArchive(status.value)')
-  expect(panel).toContain('v-if="visibleSummary"')
-  expect(panel).toContain('{{ visibleSummary.folder }} · Сообщений: {{ visibleSummary.messages }}')
-  expect(panel).toContain(':state="view"')
-  expect(panel).not.toContain('{{ status.folder }} · Сообщений: {{ status.messages }}')
-  expect(panel).toContain('v-if="api && status && canReadArchive"')
-  expect(panel).toContain('role="alert"')
-  expect(reader).toContain('previewMessages')
-  expect(reader).toContain('offset: pageOffset.value')
-  expect(reader).toContain('Ранее')
-  expect(reader).toContain('К новым')
-  expect(reader).toContain('ArchiveTranscript')
-  expect(reader).toContain('props.api.previewAttachments(')
-  expect(reader).toContain('Вложения (по записям архива)')
-  expect(reader).toContain('а не повторная проверка файла на диске')
+test('peer-aware Dexie Reader retains only bounded local records and never exposes file paths', () => {
+  expect(panel).toContain('hasVerifiedPeer')
+  expect(panel).toContain('fixedNextCursor')
+  expect(panel).not.toContain('<ArchivePreview')
+  expect(panel).not.toContain('visibleSummary.folder')
   expect(reader).not.toContain(':href="receipt.')
-  expect(reader).not.toContain(':src="receipt.')
   expect(panel).not.toContain('ArchiveCanonicalMigrator')
 })
 
@@ -79,7 +63,7 @@ test('settings are durable and backup remains limited to preferences, not archiv
   expect(panel).toContain('exportVkCaptureSettings(api)')
   expect(panel).toContain('restoreVkCaptureSettings(')
   expect(panel).toContain('vkPreferencesPersistence()')
-  expect(panel).toContain('port.write(validateVkCapturePreferences(options))')
+  expect(panel).toContain('await port.write(options)')
   expect(panel).toContain('preferencesConfirmed')
   expect(panel).toContain('status.folderPending || !!status.blockedReason')
   expect(panel).toContain('Backup/restore сообщений и вложений')

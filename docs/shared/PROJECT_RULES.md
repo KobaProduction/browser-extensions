@@ -68,7 +68,7 @@ Binding security/storage rules:
   unrelated standalone provider. Shared runtime changes affect actual
   dependents. Build-only changes do not imply a product version increase.
 - **VK Booster's new pre-first-PROD source base is 1.0.0 and the initial
-  file archive schema is 1**, by the owner's 2026-10-11 revised decision.
+  Dexie canonical archive schema is 1**, by the owner's 2026-10-11 revised decision.
   Both remain frozen until a separately approved first PROD. DEV build
   identifiers advance independently (`dev-vk-booster/v1.0.N`) without source
   version bumps. Historical 2.3.x tags/schema-2 folder archives are preserved

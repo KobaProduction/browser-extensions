@@ -1,114 +1,71 @@
-# VK Archive v2 — preserved product contract and enhancement acceptance
+# VK Booster — fixed Archive v1 and pre-PROD acceptance
 
-## New archive direction; previous v2 compatibility requirements remain historical (2026-10-11)
+**Owner decision (2026-10-11):** VK's first source release is **1.0.0**;
+its provider-owned canonical IndexedDB schema is **v1** and stays fixed
+until independently approved first PROD. Dexie is the only active message
+writer/Reader. Changes to the upstream VK API are handled by its provider
+adapter, not automatic archive migration services.
 
-The owner reports no personally used VK archive and now directs a **fixed Dexie-backed VK source model without any archive-version migration pipeline**. The new `FixedVkDexieRepository` introduces a v1 source projection and immutable original VK-message snapshot behind the existing provider boundary. The existing file-backed v2 engine is still present until explicitly replaced by a complete validated capture/export pipeline; it must not be reported as removed. Earlier instructions below to permanently retain v2 and build migration compatibility are **superseded for future implementation**. Do not delete old files or release a destructive conversion as a shortcut. Version `2.3.10` remains unchanged in the active distribution until an independently accepted release decision.
+## Canonical source and read/export contract
 
+- The product's Control Center offers **capture → Dexie → Reader → explicit
+  gzip JSONL export** for the currently authenticated and verified VK peer.
+  Its sole source of truth is `FixedVkDexieRepository`: immutable original
+  VK message snapshots plus a fixed projection of IDs, sender, direction,
+  dates, text and attachment counts. It does not silently coerce unknown
+  upstream fields or overwrite conflicting original records.
+- The database is scoped to the **product/channel/installation** and to the
+  authenticated VK account inside its records. DEV, PROD, standalone and
+  All-in-one do not share writable stores. Capture and export fail closed on
+  peer changes and unknown ownership. Repeated capture skips unchanged rows;
+  a conflicting upstream original is rejected until an explicit revision
+  policy is accepted.
+- Capture reads bounded VK API pages (maximum request 3,000). The Reader
+  reads 80 records per bounded page, using a stable source-message ID cursor.
+  User Stop halts scanning at message/page boundaries; a subsequent manual
+  capture can resume without duplicating previously saved originals. This is
+  **not** a durable capture checkpoint or accepted full-history coverage.
+- The explicit gzip JSONL export carries fixed projections and original
+  source snapshots; its header marks completeness **unknown**. Original
+  attachment metadata is preserved, but media bytes are **not** downloaded
+  or included by this export. Do not describe the output as a full attachment
+  backup. Binary download/HTML offline output require a separate file-output
+  implementation against the Dexie source and independent browser acceptance.
+- The former file-backed Archive v2 and historical experimental folder v1
+  sources remain in Git and are not automatically imported, renamed, reset
+  or deleted. The file engine is inaccessible through normal runtime UI;
+  legacy synthetic tests still exercise its explicit test-only path.
 
-This is the authoritative VK product contract after the owner's 2026-10-11
-correction. **The implemented VK Archive v2 is not replaced by the unmerged
-Archive 3 proposal.** The product base remains **2.3.10**, and DEV build IDs
-may change without changing product semver.
+## Settings backup and restore
 
-## Existing archive: non-destructive compatibility
+Seven validated capture preferences (mode, limit, date range, page size,
+delay, media toggle) are independent of Dexie. They use product/channel/target-
+scoped userscript localStorage or MV3 `chrome.storage.local`, hydrate at VK
+feature startup, and are saved when starting capture. The existing shared
+`koba-settings-backup-v1` JSON format supports bounded, checksum-verified
+settings export/import with exact scope checks and rollback on a failed
+persistent write. Peer IDs, account data, tokens, messages, folder handles
+and binaries never enter settings storage. Settings-backup success **does not**
+mean archive or media restore is implemented.
 
-- Preserve the on-disk `metadata.json`, `messages.json`, `index.html`
-  and `media/` format and the ability to reopen, export and resume an
-  existing v2 folder. Never silently delete, rename or migrate its records.
-- Keep stable VK IDs, peer IDs, sender, direction, date, original message
-  text, source attachment metadata, forwarded/replied records, original
-  filenames where available, voice/media files and local HTML links.
-- Paged authorized VK API capture, exact-N up to at least 3,000 messages,
-  incremental/backfill options, deduplication, pause/resume and checkpoint
-  acknowledgement remain supported. Never log/store authentication secrets.
-- Bound the archive to the selected conversation, validated owner,
-  product/installation and channel. DEV and aggregate must never write to
-  an unstamped or other installation's PROD folder. Fail closed on mismatch,
-  lost folder permission and SPA navigation while a write is pending.
-- Preserve the same Control Center (one launcher and one modal) across
-  Tampermonkey and Chromium MV3.
+Full Dexie archive backup/import/restore is a separate unfinished capability.
+It must validate scope, source hashes, record counts and limits before any
+transaction and preserve old data on failure. Historical ChatGPT v3/v4
+read-only backup is a separate source-extraction feature, not VK restore.
 
-## Additive archive and offline capabilities
+## Release and acceptance boundaries
 
-- Archive preview: conversation-like bubbles, dates, author/direction,
-  searching, reply/forward context, available attachments and clear missing
-  media statuses. `index.html` must continue to open locally without a server.
-- An optional indexed **read model/cache** for large collections may be added
-  behind a provider-owned port, but it must not become a silent replacement
-  for v2 files. Implement explicit import/validation and failure-safe
-  reconciliation before relying on it for canonical writes.
-- A new full-history capture or incremental update must not repeatedly
-  reread the entire conversation once verified complete. File downloads can
-  be deferred through an explicit setting/action, without removing the
-  existing combined v2 workflow until backward-compatible behavior is proven.
-- Optional date/type-filtered exports may generate `chat.json`,
-  `manifest.json` and numbered readable `attachments/` files, but **only
-  as an additional export format**; these files must not replace the
-  canonical v2 layout. Source message metadata and scope remain traceable.
-- Downloads use safe deterministic filenames, bounded stream/size limits,
-  SHA-256 receipts and explicit missing/modified/renamed/repair states.
-  On a user-initiated v2 export run, existing saved files with a SHA-256
-  receipt are verified by digest, not just size, and repaired through the
-  authorized downloader when corrupted. Old v2 receipts without hashes
-  retain legacy size-only compatibility and remain **unverified**; a future
-  explicit media audit must distinguish this status. Redownload only with
-  user permission and retained provenance. Filesystem read errors, unusable
-  checksum receipts and unavailable hash verification fail closed, retaining
-  the prior saved media record instead of speculatively marking it failed.
-
-## Backup, restore and integration
-- The VK capture-options JSON profile is intentionally limited to current
-  session parameters, not the canonical v2 archive or durable application
-  settings. It contains no peer ID, folders, messages, tokens or binaries;
-  scoped checksum validation precedes a fail-closed session update. This
-  **does not** satisfy archive backup/recovery or restart persistence.
-
-- Separate export/validate/import/restore for settings and archive data,
-  with independently declared external media inclusion and user-owned paths.
-  Check schema, counts, hashes, owner, channel and resource bounds *before*
-  mutation. A failed restore must leave the existing v2 archive usable.
-- Provider-neutral storage, export, telemetry and import ports can be shared
-  with ChatGPT Booster but its v3/v4 physical IndexedDB, canonical archive and
-  account ownership remain independent. Never import another product's
-  private database directly.
-- Telemetry is off by default and sanitized by product and channel.
-  The aggregate may request only explicitly consented, same-channel,
-  owner-proven read access; DEV/PROD and standalone/aggregate data stay
-  isolated.
-
-## Acceptance gates
-
-1. Reopen real preexisting v2 folders unchanged, then exact-N 3,000-message
-   capture, incremental/backfill dedup, pause/resume and navigation interruption.
-2. Preserve HTML offline viewing, source text, original attachments, links,
-   voice files, filename safety and SHA-256 integrity after repeated exports.
-3. Demonstrate filtered exports and attachment audit/repair without silently
-   altering or deleting canonical v2 files.
-4. Validate backup/restore for empty/large/malformed/wrong-owner/wrong-channel
-   and interrupted inputs; prove rollback and no cross-channel overwrites.
-5. Test source mocks separately from authenticated VK APIs and the installed
-   Tampermonkey/MV3 permission and file-picker flows.
-6. Verify six-way VK/ChatGPT/all-in-one DEV/PROD co-installation, browser
-   restart, multiple tabs, settings/database isolation and account switching.
-7. Independently review source and build artifacts, then perform live browser
-   acceptance before any PROD promotion.
-
-Do not interpret PR #10 synthetic tests as v2 compatibility evidence; that
-PR removed v2. Never bump VK above **2.3.10** without a new owner decision.
-
-## Explicit fixed Dexie capture/read/export path (2026-10-11)
-
-The VK provider now exposes `captureFixed`, `readFixed` and `exportFixed`
-from the existing single Control Center, independent of selecting a v2 folder.
-The new path verifies the current VK peer and user through the existing
-authenticated VK API, persists bounded pages into the new owner-scoped v1
-Dexie repository, retains source snapshots, and offers an explicit gzip JSONL
-export. Changing the VK peer or receiving conflicting source revisions blocks
-the operation. Export is marked completeness unknown and preserves original
-fields with structured-clone encoding.
-
-**Transitional boundary:** the pre-existing file-backed Archive v2 capture,
-media output and viewer remain available and unchanged. No v2 data is
-auto-imported or deleted. The new native Dexie path is supported by synthetic
-source integration tests, but has not yet passed real authenticated VK browser
-acceptance, File System Access or product cutover. VK base remains 2.3.10.
+- Source `1.0.0` is below historical published VK `2.3.x` versions. This
+  does **not** establish an in-place updater path. Preserve old tags and
+  data without forced downgrade or migration; test installation identity
+  and explicit cutover before any PROD promotion.
+- One shared Control Center, keyboard/ARIA navigation, strict owner/peer
+  guards, accessible settings and bounded Reader. Avoid a second launcher
+  or second canonical archive writer.
+- SOURCE/TYPE/UNIT/BUILD/CI pass do not prove authenticated VK API,
+  installed Tampermonkey/MV3, six-way DEV/PROD profile isolation, real
+  attachment completeness, native folder permissions or restored backups.
+  These remain explicit browser/product gates.
+- Shared scoped telemetry/OTLP infrastructure merged through PR #36 but
+  remote delivery stays disabled by default and out of this VK integration.
+  No chat text, URLs, paths or authentication material in telemetry.

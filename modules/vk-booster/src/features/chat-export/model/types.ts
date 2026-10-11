@@ -140,7 +140,7 @@ export interface ArchiveApi {
   hide(): void
   buildViewer(): Promise<{ messages: number }>
   captureFixed(limit?: number): Promise<{ saved: number; alreadySaved: number; available: number }>
-  readFixed(limit?: number): Promise<readonly VkMessage[]>
+  readFixed(limit?: number, afterMessageId?: number): Promise<readonly VkMessage[]>
   exportFixed(): Promise<Blob>
   getMessages(): VkMessage[]
   previewMessages(options: { limit: number; offset?: number; query?: string }): {

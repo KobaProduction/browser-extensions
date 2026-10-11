@@ -1,66 +1,38 @@
 # VK Booster
 
-**Owner:** `modules/vk-booster/`. Delivery: Tampermonkey and Chromium MV3.
+**Owner:** `modules/vk-booster/`, delivered as Tampermonkey userscript and
+Chromium MV3. The product is a participant in the one shared Control Center
+alongside ChatGPT Booster and All-in-one.
 
-## Product and authoritative contracts
+## Source/product contract
 
-- [VK Archive v1 and first-release acceptance](ARCHIVE.md).
-- [Scoped DEV/PROD and product storage](../shared/ENVIRONMENTS_AND_STORAGE.md).
-- [Backup and restore](../shared/BACKUP_AND_RESTORE.md).
-- [Telemetry](../shared/TELEMETRY.md) (`VK Booster Service`).
-- [All-in-one connection](../shared/INTEGRATION_CONTRACT.md).
-- [Release channels](../DEV_PROD_CHANNELS.md).
-- [Current architecture](../ARCHITECTURE.md) and
-  [accepted architectural direction](../TARGET_ARCHITECTURE.md).
+The current VK integration branch targets source **1.0.0** with a fixed
+**Dexie Archive v1** as its sole active message repository. The capture UI
+reads authorized VK history; the Reader pages saved messages by immutable
+source ID; explicit gzip JSONL export preserves original source snapshots.
+The old file-backed Archive v2 and experimental v1 folders remain untouched;
+no implicit version migration, native folder import or destructive reset.
+Original external media bytes, offline HTML output and full data restore are
+not yet implemented against the Dexie canonical source.
 
-## First VK product under development
+The product has independently scoped durable capture defaults in
+userscript `localStorage` / MV3 `chrome.storage.local`. JSON settings export
+and restore reuse the generic checksum/scoping contract in `packages/storage`
+and do not include VK peer, account, tokens, archives or media. The UI never
+presents settings backup as full archive recovery.
 
-The branch implementing the owner's 2026-10-11 decision uses **VK Booster 1.0.0**
-and **VK Archive schema 1** in `metadata.json` and `messages.json`. The folder
-still contains `index.html` and `media/` and retains exact-N capture, pause,
-resume, read-only preview and original media. Source 1.0.0 remains frozen until
-explicit first-PROD acceptance, while independently numbered DEV builds are
-allowed. This is a development source contract, not a claim of a shipped v1
-installation or a merged/released artifact.
+See [archive/source contract](ARCHIVE.md),
+[environment isolation](../shared/ENVIRONMENTS_AND_STORAGE.md),
+[backup/restore ownership](../shared/BACKUP_AND_RESTORE.md),
+[telemetry](../shared/TELEMETRY.md),
+[shared product rules](../shared/PROJECT_RULES.md) and
+[release channels](../DEV_PROD_CHANNELS.md).
 
-`main` historically used VK 2.3.10 and schema-2 folders, and repository Git
-history includes older stable and development tags. Those artifacts remain
-available. The new v1 engine rejects old schema-2 folders and earlier
-`state.json/pages` layouts **without modifying their files**. There is no
-implicit import or conversion. Real installed-profile evidence and a safe
-release/update strategy are required before first PROD: a new `1.0.0` does
-not automatically replace a historically installed `2.3.x` userscript.
+## Acceptance
 
-The shared Control Center keeps capture/export, read-only archive Reader and
-checksum-validated capture-settings backup/restore with durable defaults:
-userscripts use an isolated product/channel/target localStorage key, and
-Chromium MV3 uses its extension-owned `chrome.storage.local`. Startup restores
-validated defaults, while export runs and JSON restores persist new values.
-This does not write VK messages/IDs/folder paths into settings storage. The
-seven capture defaults are committed after selecting **Выгрузить**, as well as
-after validated JSON restore; they are loaded before the Control Center mounts.
-The storage write is best-effort for capture: a quota/permission error produces
-a visible warning but does not block an authorized archive run. Full Dexie
-archive backup/restore remains separate and unavailable in this UI.
-
-Shared Dexie 4 telemetry and common OTLP are currently implemented on [PR #32](https://github.com/KobaProduction/browser-extensions/pull/32),
-not yet merged/wired into VK; Dexie archive storage is not yet implemented.
-Refer to [ARCHIVE.md](ARCHIVE.md) for the accepted v1 acceptance contract.
-
-## Testing
-
-`bun run check`, `bun run build`, and `bun scripts/validate.ts --built`
-are mandatory before source review. The offline synthetic lab is useful
-for UI checks but does not prove VK authorization, File System Access
-permissions, real media downloads, existing-folder recovery or installed
-Tampermonkey/MV3 isolation.
-
-See [ARCHIVE.md](ARCHIVE.md) for compatibility, enhancements and acceptance.
-
-## Shared Dexie telemetry availability
-
-The shared storage package now has a Dexie-backed, opt-in technical-event
-journal for provider-neutral telemetry. VK's canonical Archive v2 remains
-file-backed and unchanged, and it does not automatically open or migrate to
-Dexie. Runtime telemetry consent/transport integration is a separate product
-acceptance task; this source work keeps VK at 2.3.10.
+The repository requires `bun run check`, `bun run build` and
+`bun scripts/validate.ts --built`. These prove source and artifact gates,
+not real VK authorization, installed multi-profile isolation, missing media
+recovery, archive import/restore or first-PROD readiness. Historical VK
+`2.3.x` distributions are numerically newer than first-release source
+`1.0.0`; explicit updater and user-data acceptance remains necessary.

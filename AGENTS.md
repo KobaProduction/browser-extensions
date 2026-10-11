@@ -38,7 +38,7 @@ GitHub Issues track only current tasks/evidence, never the sole rule authority.
 - DEV and PROD **never** share writable data, settings, IndexedDB or events.
   The aggregate may request access only to same-channel services, through
   an explicit capability, valid owner identity and user consent.
-- VK Booster now targets the first **1.0.0** source base and file Archive
+- VK Booster now targets the first **1.0.0** source base and fixed Dexie Archive
   **schema 1**, frozen until separately approved first PROD. DEV build IDs
   may advance. Historic schema-2 and state/pages archives are not migrated,
   overwritten or deleted; release-update downgrade requires validation.
