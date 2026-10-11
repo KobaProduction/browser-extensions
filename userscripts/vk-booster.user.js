@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VK Booster [DEV]
 // @namespace    https://github.com/KobaProduction/browser-extensions/dev/vk-booster
-// @version      1.0.39
+// @version      1.0.40
 // @description  Koba Browser Tools / VK Booster
 // @homepageURL   https://github.com/KobaProduction/browser-extensions
 // @updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/vk-booster.user.js
@@ -6403,6 +6403,15 @@
     }
     return parts.join("");
   }
+  function fromBase64(value) {
+    if (typeof value !== "string" || value.length > 4e8)
+      throw new Error("Invalid portable binary value");
+    const decoded = atob(value);
+    const output = new Uint8Array(decoded.length);
+    for (let i = 0; i < decoded.length; i++)
+      output[i] = decoded.charCodeAt(i);
+    return output;
+  }
   var typed = /* @__PURE__ */ new Set([
     "Int8Array",
     "Uint8Array",
@@ -6480,11 +6489,130 @@
     }
     return encode(value, 0);
   }
+  function decodeArchiveClone(value) {
+    function decode(input, depth) {
+      if (depth > 150)
+        throw new Error("Encoded archive structure exceeds maximum nesting depth");
+      if (!Array.isArray(input)) {
+        if (input === null || typeof input === "string" || typeof input === "boolean" || typeof input === "number" && Number.isFinite(input))
+          return input;
+        throw new Error("Invalid encoded archive primitive");
+      }
+      const [tag, ...fields2] = input;
+      if (tag === "undefined" && !fields2.length)
+        return;
+      if (tag === "number" && typeof fields2[0] === "string") {
+        if (fields2[0] === "NaN")
+          return Number.NaN;
+        if (fields2[0] === "Infinity")
+          return Infinity;
+        if (fields2[0] === "-Infinity")
+          return -Infinity;
+        if (fields2[0] === "0" || fields2[0] === "-0")
+          return -0;
+        throw new Error("Invalid encoded numeric value");
+      }
+      if (tag === "bigint" && typeof fields2[0] === "string")
+        return BigInt(fields2[0]);
+      if (tag === "date" && (typeof fields2[0] === "number" || fields2[0] === "NaN"))
+        return new Date(fields2[0] === "NaN" ? Number.NaN : fields2[0]);
+      if (tag === "regexp" && typeof fields2[0] === "string" && typeof fields2[1] === "string")
+        return new RegExp(fields2[0], fields2[1]);
+      if (tag === "buffer")
+        return fromBase64(fields2[0]).buffer;
+      if (tag === "blob" && typeof fields2[0] === "string")
+        return new Blob([fromBase64(fields2[1])], { type: fields2[0] });
+      if (tag === "file" && typeof fields2[0] === "string" && typeof fields2[1] === "number" && typeof fields2[2] === "string")
+        return new File([fromBase64(fields2[3])], fields2[0], { lastModified: fields2[1], type: fields2[2] });
+      if (tag === "view") {
+        const [name, offset, size, encoded] = fields2;
+        if (typeof name !== "string" || !typed.has(name) || !Number.isSafeInteger(offset) || !Number.isSafeInteger(size) || offset < 0 || size < 0)
+          throw new Error("Invalid portable typed view");
+        const buffer = fromBase64(encoded).buffer;
+        if (offset + size > buffer.byteLength)
+          throw new Error("Portable view out of bounds");
+        switch (name) {
+          case "DataView":
+            return new DataView(buffer, offset, size);
+          case "Int8Array":
+            return new Int8Array(buffer, offset, size);
+          case "Uint8Array":
+            return new Uint8Array(buffer, offset, size);
+          case "Uint8ClampedArray":
+            return new Uint8ClampedArray(buffer, offset, size);
+          case "Int16Array":
+            return new Int16Array(buffer, offset, size / 2);
+          case "Uint16Array":
+            return new Uint16Array(buffer, offset, size / 2);
+          case "Int32Array":
+            return new Int32Array(buffer, offset, size / 4);
+          case "Uint32Array":
+            return new Uint32Array(buffer, offset, size / 4);
+          case "Float32Array":
+            return new Float32Array(buffer, offset, size / 4);
+          case "Float64Array":
+            return new Float64Array(buffer, offset, size / 8);
+          case "BigInt64Array":
+            return new BigInt64Array(buffer, offset, size / 8);
+          case "BigUint64Array":
+            return new BigUint64Array(buffer, offset, size / 8);
+        }
+      }
+      if (tag === "array") {
+        const length = fields2[0];
+        const entries = fields2[1];
+        if (!Number.isSafeInteger(length) || length < 0 || length > 2e7 || !Array.isArray(entries))
+          throw new Error("Invalid portable archive array length");
+        const result = new Array(length);
+        for (const pair of entries) {
+          if (!Array.isArray(pair) || pair.length !== 2 || typeof pair[0] !== "string" || pair[0] === "length" || /^(0|[1-9]\d*)$/.test(pair[0]) && Number(pair[0]) >= length)
+            throw new Error("Invalid portable archive array index");
+          Object.defineProperty(result, pair[0], {
+            value: decode(pair[1], depth + 1),
+            enumerable: true,
+            writable: true,
+            configurable: true
+          });
+        }
+        return result;
+      }
+      const pairs = fields2[0];
+      if (!Array.isArray(pairs))
+        throw new Error("Encoded archive collection is not an array");
+      if (tag === "map") {
+        const result = /* @__PURE__ */ new Map();
+        for (const pair of pairs) {
+          if (!Array.isArray(pair) || pair.length !== 2)
+            throw new Error("Malformed encoded Map");
+          result.set(decode(pair[0], depth + 1), decode(pair[1], depth + 1));
+        }
+        return result;
+      }
+      if (tag === "set")
+        return new Set(pairs.map((row) => decode(row, depth + 1)));
+      if (tag === "object") {
+        const object = /* @__PURE__ */ Object.create(null);
+        for (const pair of pairs) {
+          if (!Array.isArray(pair) || pair.length !== 2 || typeof pair[0] !== "string")
+            throw new Error("Malformed archive object property");
+          Object.defineProperty(object, pair[0], {
+            value: decode(pair[1], depth + 1),
+            enumerable: true,
+            writable: true,
+            configurable: true
+          });
+        }
+        return object;
+      }
+      throw new Error("Unknown structured archive type tag");
+    }
+    return decode(value, 0);
+  }
   async function archiveSha256Hex(bytes) {
     const data = typeof bytes === "string" ? new TextEncoder().encode(bytes) : bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
     const safeBytes2 = data.buffer instanceof ArrayBuffer ? data : new Uint8Array(data);
-    const digest = await crypto.subtle.digest("SHA-256", safeBytes2);
-    return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+    const digest2 = await crypto.subtle.digest("SHA-256", safeBytes2);
+    return Array.from(new Uint8Array(digest2), (value) => value.toString(16).padStart(2, "0")).join("");
   }
   async function createGzipFromChunks(input, signal) {
     if (typeof CompressionStream !== "function")
@@ -12890,12 +13018,475 @@
       throw new Error("Backup product, channel, owner or installation mismatch");
     }
   }
+  var encoder = new TextEncoder();
+  var decoder = new TextDecoder("utf-8", { fatal: true });
+  var BLOCK = 512;
+  var MAX_ENTRY_BYTES = 8 * 1024 * 1024;
+  var MAX_NAME_BYTES = 100;
+  var allowedName = (name) => /^[a-z][a-z0-9_./-]*$/.test(name) && !name.includes("..") && !name.includes("//") && !name.startsWith("/") && encoder.encode(name).length <= MAX_NAME_BYTES;
+  function octal(buffer, start, size, value) {
+    if (!Number.isSafeInteger(value) || value < 0 || value.toString(8).length >= size)
+      throw Error("TAR numeric field exceeds ustar limits");
+    const valueBytes = encoder.encode(value.toString(8).padStart(size - 1, "0"));
+    buffer.set(valueBytes, start);
+    buffer[start + size - 1] = 0;
+  }
+  function parseOctal(bytes) {
+    const value = decoder.decode(bytes).replace(/\0.*$/s, "").trim();
+    if (!/^[0-7]+$/.test(value))
+      throw Error("Invalid TAR octal field");
+    const number = Number.parseInt(value, 8);
+    if (!Number.isSafeInteger(number) || number < 0)
+      throw Error("Invalid TAR numeric value");
+    return number;
+  }
+  function header(name, length) {
+    if (!allowedName(name) || length > MAX_ENTRY_BYTES || length < 0)
+      throw Error("Invalid TAR file path or excessive single entry");
+    const bytes = new Uint8Array(BLOCK);
+    bytes.set(encoder.encode(name), 0);
+    octal(bytes, 100, 8, 384);
+    octal(bytes, 108, 8, 0);
+    octal(bytes, 116, 8, 0);
+    octal(bytes, 124, 12, length);
+    octal(bytes, 136, 12, Math.floor(Date.now() / 1e3));
+    bytes.fill(32, 148, 156);
+    bytes[156] = 48;
+    bytes.set(encoder.encode("ustar\0"), 257);
+    bytes.set(encoder.encode("00"), 263);
+    octal(bytes, 148, 8, bytes.reduce((sum, n) => sum + n, 0));
+    return bytes;
+  }
+  class TarStreamWriter {
+    writer;
+    names = /* @__PURE__ */ new Set();
+    closed = false;
+    constructor(sink) {
+      this.writer = sink.getWriter();
+    }
+    async add(name, bytes) {
+      if (this.closed || this.names.has(name))
+        throw Error("TAR closed or duplicate file");
+      this.names.add(name);
+      await this.writer.write(header(name, bytes.length));
+      await this.writer.write(bytes);
+      const pad = (BLOCK - bytes.length % BLOCK) % BLOCK;
+      if (pad)
+        await this.writer.write(new Uint8Array(pad));
+    }
+    async finish() {
+      if (this.closed)
+        throw Error("TAR writer already finished");
+      this.closed = true;
+      try {
+        await this.writer.write(new Uint8Array(BLOCK * 2));
+        await this.writer.close();
+      } finally {
+        this.writer.releaseLock();
+      }
+    }
+    async abort(error) {
+      if (this.closed)
+        return;
+      this.closed = true;
+      try {
+        await this.writer.abort(error);
+      } finally {
+        this.writer.releaseLock();
+      }
+    }
+  }
+  class StreamCursor {
+    pending = new Uint8Array(0);
+    reader;
+    constructor(stream) {
+      this.reader = stream.getReader();
+    }
+    async take(size) {
+      if (!Number.isSafeInteger(size) || size < 0 || size > MAX_ENTRY_BYTES + BLOCK)
+        throw Error("TAR bounded reader refuses excessive entry");
+      const output = new Uint8Array(size);
+      let at = 0;
+      while (at < size) {
+        if (!this.pending.length) {
+          const next = await this.reader.read();
+          if (next.done)
+            throw Error("Unexpected end of TAR stream");
+          this.pending = next.value;
+        }
+        const n = Math.min(size - at, this.pending.length);
+        output.set(this.pending.subarray(0, n), at);
+        at += n;
+        this.pending = this.pending.subarray(n);
+      }
+      return output;
+    }
+    async eof() {
+      while (true) {
+        if (this.pending.some((b) => b !== 0))
+          return false;
+        const next = await this.reader.read();
+        if (next.done)
+          return true;
+        this.pending = next.value;
+      }
+    }
+    async close() {
+      await this.reader.cancel().catch(() => {
+        return;
+      });
+      this.reader.releaseLock();
+    }
+  }
+  async function* readTarEntries(input) {
+    const cursor = new StreamCursor(input);
+    const seen = /* @__PURE__ */ new Set();
+    try {
+      while (true) {
+        const bytes = await cursor.take(BLOCK);
+        if (bytes.every((n) => n === 0)) {
+          if (!(await cursor.take(BLOCK)).every((n) => n === 0) || !await cursor.eof())
+            throw Error("Unexpected data after TAR terminator");
+          return;
+        }
+        const provided = parseOctal(bytes.subarray(148, 156));
+        let sum = 0;
+        for (let i = 0; i < BLOCK; i++)
+          sum += i >= 148 && i < 156 ? 32 : bytes[i] ?? 0;
+        if (provided !== sum || decoder.decode(bytes.subarray(257, 263)) !== "ustar\0" || bytes[156] !== 48)
+          throw Error("Invalid TAR header or unsupported entry type");
+        const end = bytes.indexOf(0);
+        if (end < 1 || end > MAX_NAME_BYTES)
+          throw Error("TAR missing filename");
+        const name = decoder.decode(bytes.subarray(0, end));
+        if (!allowedName(name) || seen.has(name))
+          throw Error("Unsafe or repeated TAR path");
+        seen.add(name);
+        const length = parseOctal(bytes.subarray(124, 136));
+        if (length > MAX_ENTRY_BYTES)
+          throw Error("TAR chunk exceeds memory bound");
+        const data = await cursor.take(length);
+        const pad = (BLOCK - length % BLOCK) % BLOCK;
+        if (pad && !(await cursor.take(pad)).every((n) => n === 0))
+          throw Error("Nonzero TAR padding");
+        yield { name, bytes: data };
+      }
+    } finally {
+      await cursor.close();
+    }
+  }
+  var encoder2 = new TextEncoder();
+  var decoder2 = new TextDecoder("utf-8", { fatal: true });
+  var CHUNK_LIMIT = 8 * 1024 * 1024;
+  var SETTINGS_LIMIT = 512 * 1024;
+  var RESTORE_LIMIT = 128 * 1024 * 1024;
+  var FALLBACK_BLOB_LIMIT = 128 * 1024 * 1024;
+  var MAX_RECORDS = Number.MAX_SAFE_INTEGER;
+  var DEFAULT_ROWS = 1024;
+  var MANIFEST = "manifest.json";
+  var SCHEMA = "indexeddb/schema.json";
+  var SETTINGS = "persistent/settings.json";
+  var json = (value) => JSON.stringify(value);
+  var isObject$1 = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+  async function digest(bytes) {
+    return [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((v) => v.toString(16).padStart(2, "0")).join("");
+  }
+  function notify(onProgress, phase, completed, total, entries) {
+    onProgress?.({
+      phase,
+      completed,
+      total,
+      entries,
+      percent: total === 0 ? 100 : Math.min(100, Math.floor(100 * completed / total))
+    });
+  }
+  function validate(ports, choice) {
+    assertServiceScope(ports.scope);
+    if (!choice.settings && !choice.indexeddb || choice.settings && !ports.settings || choice.indexeddb && !ports.indexeddb)
+      throw Error("No supported persistent backup section selected");
+    if (ports.settings)
+      assertMatchingScope(ports.scope, ports.settings.scope);
+    if (ports.indexeddb)
+      assertMatchingScope(ports.scope, ports.indexeddb.scope);
+  }
+  function validateChunkRows(n) {
+    if (!Number.isSafeInteger(n) || n < 64 || n > 2048)
+      throw Error("TAR chunk size must be 64–2048 records");
+    return n;
+  }
+  function schemaOf(ports, enabled) {
+    const p2 = enabled ? ports.indexeddb : void 0;
+    if (enabled && (!p2 || Object.keys(p2.schema).sort().join(",") !== [...p2.stores].sort().join(",")))
+      throw Error("IndexedDB schema layout must be declared explicitly");
+    return {
+      schemaVersion: p2?.schemaVersion ?? null,
+      stores: p2 ? [...p2.stores] : [],
+      layout: p2?.schema ?? null
+    };
+  }
+  async function exportBackupTar(ports, choice, options = {}) {
+    validate(ports, choice);
+    if (choice.compression !== "gzip" && choice.compression !== "none")
+      throw Error("Unknown TAR compression");
+    const pageSize = validateChunkRows(choice.chunkRows ?? DEFAULT_ROWS);
+    const schema = schemaOf(ports, choice.indexeddb);
+    const counts = choice.indexeddb && ports.indexeddb ? await ports.indexeddb.countRows() : {};
+    if (Object.keys(counts).sort().join(",") !== [...schema.stores].sort().join(",") || Object.values(counts).some((n) => !Number.isSafeInteger(n) || n < 0))
+      throw Error("Invalid IndexedDB table counts");
+    const total = Object.values(counts).reduce((a, b) => a + b, 0) + Number(choice.settings);
+    if (!Number.isSafeInteger(total) || total > MAX_RECORDS)
+      throw Error("Unsupported record count");
+    notify(options.onProgress, "counting", 0, total, 0);
+    const parts = [];
+    let fallbackBytes = 0;
+    const destination = options.sink ?? new WritableStream({
+      write(bytes) {
+        fallbackBytes += bytes.length;
+        if (fallbackBytes > FALLBACK_BLOB_LIMIT)
+          throw Error("Select a file destination for a large TAR backup");
+        parts.push(bytes.slice());
+      }
+    });
+    const gzip = choice.compression === "gzip" ? new CompressionStream("gzip") : null;
+    const pump = gzip ? gzip.readable.pipeTo(destination) : null;
+    const writer = new TarStreamWriter(gzip ? gzip.writable : destination);
+    let done = 0, entries = 0;
+    const chunks = [];
+    let settingsDigest = null;
+    try {
+      if (choice.settings && ports.settings) {
+        const value = ports.settings.validateSettings(await ports.settings.exportSettings());
+        const bytes = encoder2.encode(json({ schemaVersion: ports.settings.schemaVersion, value }));
+        if (bytes.length > SETTINGS_LIMIT)
+          throw Error("Settings backup exceeds portable limit");
+        await writer.add(SETTINGS, bytes);
+        settingsDigest = await digest(bytes);
+        done++;
+        notify(options.onProgress, "writing", done, total, ++entries);
+      }
+      const schemaBytes = encoder2.encode(json(schema));
+      await writer.add(SCHEMA, schemaBytes);
+      const schemaDigest = await digest(schemaBytes);
+      entries++;
+      if (choice.indexeddb && ports.indexeddb) {
+        const allowed = new Set(schema.stores);
+        let current = "", lines = [], size = 0, sequence = 0;
+        const flush = async () => {
+          if (!lines.length)
+            return;
+          const bytes = encoder2.encode(lines.join(""));
+          const path = `indexeddb/${current}/${String(sequence++).padStart(8, "0")}.jsonl`;
+          await writer.add(path, bytes);
+          chunks.push({
+            path,
+            store: current,
+            rows: lines.length,
+            size: bytes.length,
+            sha256: await digest(bytes)
+          });
+          lines = [];
+          size = 0;
+          notify(options.onProgress, "writing", done, total, ++entries);
+        };
+        for await (const row of ports.indexeddb.readRows(pageSize)) {
+          if (!allowed.has(row.store) || !row.key || row.key.length > 1024)
+            throw Error("Invalid IndexedDB export record");
+          if (row.store !== current) {
+            await flush();
+            current = row.store;
+            sequence = 0;
+          }
+          const line = `${json({ key: row.key, value: row.value })}
+`;
+          const length = encoder2.encode(line).length;
+          if (length > CHUNK_LIMIT)
+            throw Error("Record exceeds maximum TAR chunk size");
+          if (lines.length >= pageSize || size + length > CHUNK_LIMIT)
+            await flush();
+          lines.push(line);
+          size += length;
+          done++;
+          if ((done - Number(choice.settings)) % pageSize === 0)
+            notify(options.onProgress, "reading", done, total, entries);
+        }
+        await flush();
+        if (done !== total)
+          throw Error("IndexedDB row counts changed during backup");
+        const after = await ports.indexeddb.countRows();
+        if (json(after) !== json(counts))
+          throw Error("IndexedDB changed during backup");
+      }
+      const manifest = {
+        format: "koba-portable-tar",
+        version: 1,
+        createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+        scope: { ...ports.scope },
+        compression: choice.compression,
+        includes: {
+          settings: choice.settings,
+          indexeddb: choice.indexeddb,
+          session: false,
+          attachments: false
+        },
+        stores: schema.stores,
+        indexedSchema: schema.schemaVersion,
+        counts,
+        rows: total - Number(choice.settings),
+        chunks,
+        settingsDigest,
+        schemaDigest
+      };
+      const manifestBytes = encoder2.encode(json(manifest));
+      if (manifestBytes.length > CHUNK_LIMIT)
+        throw Error("Manifest too large");
+      await writer.add(MANIFEST, manifestBytes);
+      entries++;
+      await writer.finish();
+      if (pump)
+        await pump;
+      notify(options.onProgress, "done", total, total, entries);
+      return options.sink ? null : new Blob(parts, {
+        type: choice.compression === "gzip" ? "application/gzip" : "application/x-tar"
+      });
+    } catch (error) {
+      await writer.abort(error).catch(() => {
+        return;
+      });
+      if (pump)
+        await pump.catch(() => {
+          return;
+        });
+      throw error;
+    }
+  }
+  async function scan(ports, blob, collect, progress) {
+    assertServiceScope(ports.scope);
+    if (!blob.size)
+      throw Error("Empty TAR archive");
+    const header2 = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
+    const compressed = header2[0] === 31 && header2[1] === 139;
+    const stream = compressed ? blob.stream().pipeThrough(new DecompressionStream("gzip")) : blob.stream();
+    const observed = [];
+    const byStore = /* @__PURE__ */ Object.create(null);
+    const records = [];
+    const unique = /* @__PURE__ */ new Set();
+    let schemaBytes = null, settingsBytes = null;
+    let settings, manifest, rows = 0, entries = 0, retained = 0;
+    for await (const file of readTarEntries(stream)) {
+      entries++;
+      if (manifest)
+        throw Error("Unexpected files after TAR manifest");
+      if (file.name === SETTINGS) {
+        if (settingsBytes || file.bytes.length > SETTINGS_LIMIT)
+          throw Error("Duplicate or oversized settings file");
+        settingsBytes = file.bytes;
+        continue;
+      }
+      if (file.name === SCHEMA) {
+        if (schemaBytes)
+          throw Error("Duplicate TAR schema");
+        schemaBytes = file.bytes;
+        continue;
+      }
+      if (file.name === MANIFEST) {
+        const value = JSON.parse(decoder2.decode(file.bytes));
+        if (!isObject$1(value) || value.format !== "koba-portable-tar" || value.version !== 1 || !isObject$1(value.scope) || !isObject$1(value.includes) || value.includes.session !== false || value.includes.attachments !== false || typeof value.includes.settings !== "boolean" || typeof value.includes.indexeddb !== "boolean" || !Array.isArray(value.stores) || !Array.isArray(value.chunks) || !isObject$1(value.counts) || !Number.isSafeInteger(value.rows) || typeof value.createdAt !== "string" || !Number.isFinite(Date.parse(value.createdAt)))
+          throw Error("Unsupported TAR manifest");
+        assertMatchingScope(ports.scope, value.scope);
+        manifest = value;
+        if (manifest.compression !== (compressed ? "gzip" : "none"))
+          throw Error("TAR compression mismatch");
+        continue;
+      }
+      const match = /^indexeddb\/([a-z][a-z0-9_-]*)\/([0-9]{8})\.jsonl$/.exec(file.name);
+      if (!match || !ports.indexeddb?.stores.includes(match[1] ?? ""))
+        throw Error("Unknown or disallowed TAR file");
+      const store = match[1];
+      const lines = decoder2.decode(file.bytes).split(`
+`);
+      if (lines.pop() !== "" || !lines.length)
+        throw Error("Malformed TAR JSONL chunk");
+      for (const line of lines) {
+        const data = JSON.parse(line);
+        if (!isObject$1(data) || Object.keys(data).sort().join(",") !== "key,value" || typeof data.key !== "string" || !data.key || data.key.length > 1024)
+          throw Error("Invalid TAR record");
+        const id = `${store}:${data.key}`;
+        if (unique.has(id))
+          throw Error("Duplicate TAR IndexedDB primary key");
+        unique.add(id);
+        rows++;
+        if (!Number.isSafeInteger(rows))
+          throw Error("Excessive TAR record count");
+        if (collect) {
+          retained += encoder2.encode(line).length;
+          if (retained > RESTORE_LIMIT)
+            throw Error("Full restore exceeds current transaction memory; staged restore required");
+          records.push({ store, key: data.key, value: data.value });
+        }
+      }
+      byStore[store] = (byStore[store] ?? 0) + lines.length;
+      observed.push({
+        path: file.name,
+        store,
+        rows: lines.length,
+        size: file.bytes.length,
+        sha256: await digest(file.bytes)
+      });
+      notify(progress, "verifying", rows, 0, entries);
+    }
+    if (!manifest || !schemaBytes || manifest.rows !== rows || json(manifest.chunks) !== json(observed) || json(manifest.counts) !== json(Object.fromEntries(manifest.stores.map((s) => [s, byStore[s] ?? 0]))))
+      throw Error("TAR manifest counts or chunk checksums disagree");
+    validate(ports, manifest.includes);
+    const schema = schemaOf(ports, manifest.includes.indexeddb);
+    if (json(JSON.parse(decoder2.decode(schemaBytes))) !== json(schema) || await digest(schemaBytes) !== manifest.schemaDigest || manifest.indexedSchema !== schema.schemaVersion || json(manifest.stores) !== json(schema.stores))
+      throw Error("TAR IndexedDB schema mismatch");
+    if (manifest.includes.settings) {
+      if (!settingsBytes || await digest(settingsBytes) !== manifest.settingsDigest || !ports.settings)
+        throw Error("TAR persistent settings integrity mismatch");
+      const entry = JSON.parse(decoder2.decode(settingsBytes));
+      if (!isObject$1(entry) || entry.schemaVersion !== ports.settings.schemaVersion)
+        throw Error("Unsupported TAR settings schema");
+      settings = ports.settings.validateSettings(entry.value);
+      if (json(settings) !== json(entry.value))
+        throw Error("Noncanonical settings restore");
+    } else if (settingsBytes || manifest.settingsDigest !== null)
+      throw Error("Unexpected TAR settings file");
+    notify(progress, "done", rows, rows, entries);
+    return { manifest, settings, records, entries };
+  }
+  async function inspectBackupTar(ports, blob, progress) {
+    const scanned = await scan(ports, blob, false, progress);
+    return { manifest: scanned.manifest, rows: scanned.manifest.rows, entries: scanned.entries };
+  }
+  async function restoreBackupTar(ports, blob, selection, progress) {
+    if (!selection.settings && !selection.indexeddb)
+      throw Error("No restore sections selected");
+    const inspected = await inspectBackupTar(ports, blob, progress);
+    if (selection.settings && !inspected.manifest.includes.settings || selection.indexeddb && !inspected.manifest.includes.indexeddb)
+      throw Error("Requested restore section missing");
+    const payload = await scan(ports, blob, selection.indexeddb, progress);
+    notify(progress, "restoring", 0, inspected.rows + Number(selection.settings), inspected.entries);
+    if (selection.settings && ports.settings) {
+      const before = ports.settings.validateSettings(await ports.settings.exportSettings());
+      await ports.settings.restoreSettingsAtomically(payload.settings);
+      try {
+        if (selection.indexeddb && ports.indexeddb)
+          await ports.indexeddb.restoreAtomically(payload.records);
+      } catch (error) {
+        await ports.settings.restoreSettingsAtomically(before);
+        throw error;
+      }
+    } else if (selection.indexeddb && ports.indexeddb)
+      await ports.indexeddb.restoreAtomically(payload.records);
+    notify(progress, "done", inspected.rows + Number(selection.settings), inspected.rows + Number(selection.settings), inspected.entries);
+    return inspected;
+  }
   var FORMAT = "koba-settings-backup-v1";
   var MAX_BYTES$1 = 512 * 1024;
   var isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
   async function checksum(text) {
-    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-    return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+    const digest2 = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    return Array.from(new Uint8Array(digest2), (value) => value.toString(16).padStart(2, "0")).join("");
   }
   function settingsJson(value) {
     const valueJson = JSON.stringify(value);
@@ -16131,6 +16722,99 @@
         throw Error("VK source record identity unavailable");
       return this.db.snapshots.get(JSON.stringify([this.scope.ownerId, peerId, messageId]));
     }
+    /** VK-specific table adapter; the common backup engine knows no VK fields. */
+    backupPort() {
+      const self2 = this;
+      const owner = this.scope.ownerId;
+      if (!owner) throw Error("Verified VK owner is required for backups");
+      return {
+        scope: this.scope,
+        schemaVersion: VK_FIXED_RECORD_VERSION,
+        stores: ["messages", "snapshots"],
+        schema: Object.fromEntries(
+          self2.db.tables.map((table) => [
+            table.name,
+            {
+              primaryKey: table.schema.primKey.src,
+              indexes: table.schema.indexes.map((index) => index.src)
+            }
+          ])
+        ),
+        async countRows() {
+          return {
+            messages: await self2.db.messages.where("ownerId").equals(owner).count(),
+            snapshots: await self2.db.snapshots.where("ownerId").equals(owner).count()
+          };
+        },
+        async *readRows(pageSize) {
+          if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 2048)
+            throw Error("Invalid VK backup page size");
+          const counts = await Promise.all([
+            self2.db.messages.where("ownerId").equals(owner).count(),
+            self2.db.snapshots.where("ownerId").equals(owner).count()
+          ]);
+          const prefix = `${JSON.stringify([owner]).slice(0, -1)},`;
+          const upper = `${prefix}￿`;
+          for (const store of ["messages", "snapshots"]) {
+            const table = self2.db[store];
+            let last;
+            while (true) {
+              const page = await table.where("key").between(last ?? prefix, upper, last === void 0, false).limit(pageSize).toArray();
+              for (const record2 of page) {
+                if (record2.ownerId !== owner || !record2.key.startsWith(prefix))
+                  throw Error("Unexpected VK backup account");
+                yield { store, key: record2.key, value: await encodeArchiveClone(record2) };
+              }
+              last = page.at(-1)?.key;
+              if (page.length < pageSize) break;
+            }
+          }
+          const after = await Promise.all([
+            self2.db.messages.where("ownerId").equals(owner).count(),
+            self2.db.snapshots.where("ownerId").equals(owner).count()
+          ]);
+          if (after[0] !== counts[0] || after[1] !== counts[1])
+            throw Error("VK archive changed during backup; retry after capture stops");
+        },
+        async restoreAtomically(input) {
+          const messages = [];
+          const snapshots = [];
+          const msgKeys = /* @__PURE__ */ new Set(), snapshotKeys = /* @__PURE__ */ new Set();
+          for (const row of input) {
+            if (row.store !== "messages" && row.store !== "snapshots") throw Error("Unknown VK table");
+            const value = decodeArchiveClone(row.value);
+            if (!value || typeof value !== "object" || Array.isArray(value))
+              throw Error("Invalid VK record");
+            const record2 = value;
+            if (record2.ownerId !== owner || record2.key !== row.key || typeof row.key !== "string")
+              throw Error("VK backup owner/key mismatch");
+            if (row.store === "messages") {
+              if (record2.schemaVersion !== VK_FIXED_RECORD_VERSION || !Number.isSafeInteger(record2.peerId) || record2.peerId <= 0 || !Number.isSafeInteger(record2.messageId) || record2.messageId <= 0 || row.key !== JSON.stringify([owner, record2.peerId, record2.messageId]) || msgKeys.has(row.key))
+                throw Error("Invalid fixed VK backup message");
+              msgKeys.add(row.key);
+              messages.push(value);
+            } else {
+              if (typeof record2.sourceVersion !== "string" || !record2.sourceVersion || !Number.isSafeInteger(record2.recordedAtMs) || record2.recordedAtMs < 0 || !record2.raw || typeof record2.raw !== "object" || Array.isArray(record2.raw) || snapshotKeys.has(row.key))
+                throw Error("Invalid fixed VK backup source");
+              const original = record2.raw;
+              const keyParts = JSON.parse(row.key);
+              if (!Array.isArray(keyParts) || keyParts[0] !== owner || original.id !== keyParts[2] || original.peer_id !== void 0 && original.peer_id !== keyParts[1])
+                throw Error("Invalid VK backup snapshot identity");
+              snapshotKeys.add(row.key);
+              snapshots.push(value);
+            }
+          }
+          if (msgKeys.size !== snapshotKeys.size || [...msgKeys].some((key) => !snapshotKeys.has(key)))
+            throw Error("VK backup projection/snapshot consistency mismatch");
+          await self2.db.transaction("rw", self2.db.messages, self2.db.snapshots, async () => {
+            await self2.db.messages.where("ownerId").equals(owner).delete();
+            await self2.db.snapshots.where("ownerId").equals(owner).delete();
+            if (messages.length) await self2.db.messages.bulkAdd(messages);
+            if (snapshots.length) await self2.db.snapshots.bulkAdd(snapshots);
+          });
+        }
+      };
+    }
     close() {
       this.db.close();
     }
@@ -16146,281 +16830,6 @@
     if (archivePeerId !== pagePeerId)
       return "Открыта другая переписка VK. Для неё выбери соответствующую папку архива.";
     return null;
-  }
-  function installVkArchive(target = "userscript") {
-    const VERSION = "1.0.0";
-    const apiKey = instanceKey("VKExport", "vk-booster:prod");
-    const published = globalThis;
-    if (published[apiKey]?.version === VERSION) return;
-    const currentPeer = () => conversationPeerFromPath(location.pathname);
-    const cfg = {
-      peerId: currentPeer() ?? 0,
-      mode: "recent",
-      limit: 10,
-      from: "",
-      through: "",
-      pageSize: 50,
-      delay: 450,
-      media: true
-    };
-    let rows = [], busy = false, stopRequested = false, folderLoading = false, folderPickerOpen = false;
-    let prog = {
-      phase: "Ожидание",
-      done: 0,
-      total: 0,
-      newCount: 0,
-      downloaded: 0,
-      failed: 0
-    };
-    const subscribers = /* @__PURE__ */ new Set();
-    const sleep = (ms) => new Promise((r2) => setTimeout(r2, ms));
-    const validDay2 = (d) => !d || /^\d{4}-\d\d-\d\d$/.test(d) && new Date(Date.parse(d + "T00:00:00+03:00") + 108e5).toISOString().slice(0, 10) === d;
-    function status() {
-      const pagePeer = currentPeer();
-      if (!busy && pagePeer !== null) cfg.peerId = pagePeer;
-      return {
-        version: VERSION,
-        folder: null,
-        activePeerId: pagePeer,
-        blockedReason: archiveContextBlock(cfg.peerId, pagePeer),
-        busy,
-        folderPending: false,
-        options: { ...cfg },
-        progress: { ...prog },
-        messages: rows.length,
-        checkpoint: null
-      };
-    }
-    function configure(v = {}) {
-      if (busy || folderLoading || folderPickerOpen) throw Error("Заверши текущую операцию с архивом");
-      const pagePeer = currentPeer();
-      const o = { ...cfg, ...v, peerId: v.peerId ?? (pagePeer ?? cfg.peerId) };
-      if (pagePeer !== null && o.peerId !== pagePeer) throw Error("Выбран другой диалог VK");
-      if (!["recent", "incremental", "backfill"].includes(o.mode)) throw Error("Режим");
-      if (!Number.isSafeInteger(o.limit) || o.limit < 1 || o.limit > 1e5)
-        throw Error("Количество: 1–100000");
-      if (!Number.isSafeInteger(o.pageSize) || o.pageSize < 1 || o.pageSize > 100)
-        throw Error("Пачка: 1–100");
-      if (!Number.isSafeInteger(o.delay) || o.delay < 300) throw Error("Пауза: от 300 мс");
-      if (!validDay2(o.from) || !validDay2(o.through) || o.from && o.through && o.from > o.through)
-        throw Error("Диапазон дат");
-      Object.assign(cfg, o);
-      return status();
-    }
-    async function useFolder(handle) {
-      throw Error("Файловая папка не подключается в основном режиме Dexie.");
-    }
-    async function selectFolder() {
-      throw Error("Файловая папка больше не является основным архивом. Используй экспорт Dexie.");
-    }
-    const vk = createVkProvider(cfg, { sleep, refresh });
-    const auth = () => vk.auth();
-    const history = (offset, count) => vk.history(offset, count);
-    const api = (method, p2) => vk.api(method, p2);
-    async function buildViewer() {
-      throw Error("Сначала выбери папку");
-    }
-    function progress(phase, done, total, extra = {}) {
-      prog = { phase, done, total, ...extra };
-      refresh();
-    }
-    function stop() {
-      stopRequested = true;
-      refresh();
-    }
-    async function run(options = {}) {
-      throw Error("Историческая файловая выгрузка недоступна как основное хранилище. Используй Dexie.");
-    }
-    async function openFixedArchive(peerId) {
-      const scope = instanceScope();
-      if (!/^(vk-booster|all-in-one):(dev|prod)$/.test(scope))
-        throw Error("Unsupported VK installation scope");
-      const user = await api("users.get", {});
-      const first = Array.isArray(user) ? user[0] : void 0;
-      const owner = first && typeof first === "object" ? first.id : void 0;
-      if (typeof owner !== "number" || !Number.isSafeInteger(owner) || owner <= 0)
-        throw Error("Authenticated VK account verification required for Dexie");
-      if (currentPeer() !== peerId) throw Error("VK peer changed during account verification");
-      return new FixedVkDexieRepository({
-        productId: "vk-booster",
-        channel: scope.endsWith(":dev") ? "dev" : "prod",
-        installationId: scope.split(":")[0] + "-" + target,
-        ownerId: "vk-user-" + owner
-      });
-    }
-    async function captureFixed(limit = 100) {
-      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 3e3)
-        throw Error("Dexie capture limit must be 1–3000");
-      const peerId = currentPeer();
-      if (!peerId || busy || folderLoading || folderPickerOpen)
-        throw Error("Select one VK conversation before saving");
-      cfg.peerId = peerId;
-      busy = true;
-      stopRequested = false;
-      progress("Dexie: сообщения", 0, limit);
-      let repo;
-      let saved = 0, alreadySaved = 0, available = 0;
-      try {
-        if (!await auth()) throw Error("VK API authorization unavailable");
-        repo = await openFixedArchive(peerId);
-        let offset = 0;
-        while (offset < limit && !stopRequested) {
-          if (currentPeer() !== peerId) throw Error("VK peer changed during Dexie capture");
-          const requestSize = Math.min(100, limit - offset);
-          const page = await history(offset, requestSize);
-          if (currentPeer() !== peerId) throw Error("VK peer changed during Dexie capture");
-          available = page.count;
-          if (!page.items.length) break;
-          for (const item of page.items) {
-            if (stopRequested || currentPeer() !== peerId) break;
-            if (item.peer_id !== void 0 && item.peer_id !== peerId)
-              throw Error("VK source returned a different conversation");
-            const previous = await repo.getOriginal(peerId, item.id);
-            if (previous) {
-              if (JSON.stringify(previous.raw) !== JSON.stringify(item))
-                throw Error("VK message changed: explicit source revision required");
-              alreadySaved++;
-            } else {
-              await repo.addOriginal(peerId, item, "vk-history-current", Date.now());
-              saved++;
-            }
-          }
-          offset += page.items.length;
-          progress("Dexie: сообщения", Math.min(offset, limit), limit, { newCount: saved });
-          if (page.items.length < requestSize || offset >= page.count) break;
-          await sleep(Math.max(450, cfg.delay));
-        }
-        progress(
-          stopRequested ? "Dexie: остановлено" : "Dexie: сохранено",
-          saved + alreadySaved,
-          Math.min(limit, available),
-          { newCount: saved }
-        );
-        if (currentPeer() !== peerId) throw Error("VK peer changed before capture completion");
-        return { saved, alreadySaved, available };
-      } finally {
-        repo?.close();
-        busy = false;
-        refresh();
-      }
-    }
-    async function withFixed(operation) {
-      const peerId = currentPeer();
-      if (!peerId || busy || folderPickerOpen) throw Error("VK conversation is not available");
-      cfg.peerId = peerId;
-      if (!await auth()) throw Error("VK API authorization unavailable");
-      const repo = await openFixedArchive(peerId);
-      try {
-        const result = await operation(repo, peerId);
-        if (currentPeer() !== peerId) throw Error("VK peer changed during fixed archive read");
-        return result;
-      } finally {
-        repo.close();
-      }
-    }
-    async function readFixed(limit = 80, afterMessageId) {
-      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500)
-        throw Error("Invalid fixed archive page size");
-      return withFixed(async (repo, peerId) => {
-        const rows2 = await repo.listMessages(peerId, limit, afterMessageId);
-        const messages = [];
-        for (const row of rows2) {
-          const original = await repo.getOriginal(peerId, row.messageId);
-          if (!original) throw Error("Missing immutable VK source snapshot");
-          messages.push(original.raw);
-        }
-        return messages;
-      });
-    }
-    async function exportFixed() {
-      return withFixed(async (repo, peerId) => {
-        let cursor;
-        let count = 0, digest = "start";
-        const encode = async (row, footer = false) => {
-          const line = JSON.stringify(row);
-          if (!footer) digest = await archiveSha256Hex(digest + "\n" + line);
-          return new TextEncoder().encode(line + "\n");
-        };
-        async function* records() {
-          yield await encode({
-            kind: "header",
-            schema: "koba-fixed-vk-v1",
-            peerId,
-            completeness: "unknown",
-            source: "verified-vk-history"
-          });
-          while (true) {
-            if (currentPeer() !== peerId) throw Error("VK peer changed during export");
-            const page = await repo.listMessages(peerId, 128, cursor);
-            if (!page.length) break;
-            for (const message of page) {
-              if (currentPeer() !== peerId) throw Error("VK peer changed during export");
-              const original = await repo.getOriginal(peerId, message.messageId);
-              if (!original) throw Error("Missing immutable VK source");
-              yield await encode({
-                kind: "message",
-                fixed: message,
-                snapshot: { ...original, raw: await encodeArchiveClone(original.raw) }
-              });
-              count++;
-            }
-            cursor = page.at(-1)?.messageId;
-            if (page.length < 128) break;
-          }
-          yield await encode({ kind: "footer", count, digest }, true);
-        }
-        return createGzipFromChunks(records());
-      });
-    }
-    function refresh() {
-      const snapshot = status();
-      for (const listener of subscribers)
-        try {
-          listener(snapshot);
-        } catch {
-        }
-    }
-    function subscribe(listener) {
-      subscribers.add(listener);
-      listener(status());
-      return () => subscribers.delete(listener);
-    }
-    function show() {
-      window.dispatchEvent(new CustomEvent(SHELL_OPEN_FEATURE_EVENT, { detail: { id: "vk-booster" } }));
-    }
-    function hide() {
-    }
-    const apiObject = {
-      version: VERSION,
-      configure,
-      selectFolder,
-      useFolder,
-      run,
-      resume: () => run({}),
-      stop,
-      status,
-      show,
-      hide,
-      subscribe,
-      buildViewer,
-      captureFixed,
-      readFixed,
-      exportFixed,
-      // Public readers receive independent JSON-shaped snapshots; callers cannot mutate
-      // the in-memory rows that the next v1 checkpoint will persist.
-      getMessages: () => [],
-      previewMessages: (options) => {
-        return { messages: [], matching: 0 };
-      },
-      previewAttachments: (messageIds) => {
-        return {};
-      },
-      destroy() {
-        subscribers.clear();
-        if (published[apiKey] === apiObject) delete published[apiKey];
-      }
-    };
-    published[apiKey] = Object.freeze(apiObject);
   }
   const fields = ["mode", "limit", "from", "through", "pageSize", "delay", "media"];
   const fieldNames = [...fields].sort().join(",");
@@ -16585,6 +16994,338 @@
     } catch {
       startupError = "Не удалось загрузить постоянные параметры VK; используются параметры сессии.";
     }
+  }
+  function vkPortableBackupPorts(api, repository, persistence) {
+    const sessionPort = vkCaptureSettingsPort(api, persistence.scopeId);
+    const settings = {
+      scope: repository.scope,
+      schemaVersion: sessionPort.schemaVersion,
+      exportSettings: () => sessionPort.exportSettings(),
+      validateSettings: validateVkCapturePreferences,
+      async restoreSettingsAtomically(next) {
+        const before = await sessionPort.exportSettings();
+        await persistence.write(next);
+        try {
+          await sessionPort.restoreSettingsAtomically(next);
+        } catch (error) {
+          await persistence.write(before);
+          throw error;
+        }
+      }
+    };
+    return { scope: repository.scope, settings, indexeddb: repository.backupPort() };
+  }
+  function exportVkPortableBackup(ports, options, output) {
+    return exportBackupTar(ports, options, output);
+  }
+  function inspectVkPortableBackup(ports, backup, progress) {
+    return inspectBackupTar(ports, backup, progress);
+  }
+  function restoreVkPortableBackup(ports, backup, selected, progress) {
+    return restoreBackupTar(ports, backup, selected, progress);
+  }
+  function installVkArchive(target = "userscript") {
+    const VERSION = "1.0.0";
+    const apiKey = instanceKey("VKExport", "vk-booster:prod");
+    const published = globalThis;
+    if (published[apiKey]?.version === VERSION) return;
+    const currentPeer = () => conversationPeerFromPath(location.pathname);
+    const cfg = {
+      peerId: currentPeer() ?? 0,
+      mode: "recent",
+      limit: 10,
+      from: "",
+      through: "",
+      pageSize: 50,
+      delay: 450,
+      media: true
+    };
+    let rows = [], busy = false, backupRunning = false, stopRequested = false, folderLoading = false, folderPickerOpen = false;
+    let prog = {
+      phase: "Ожидание",
+      done: 0,
+      total: 0,
+      newCount: 0,
+      downloaded: 0,
+      failed: 0
+    };
+    const subscribers = /* @__PURE__ */ new Set();
+    const sleep = (ms) => new Promise((r2) => setTimeout(r2, ms));
+    const validDay2 = (d) => !d || /^\d{4}-\d\d-\d\d$/.test(d) && new Date(Date.parse(d + "T00:00:00+03:00") + 108e5).toISOString().slice(0, 10) === d;
+    function status() {
+      const pagePeer = currentPeer();
+      if (!busy && pagePeer !== null) cfg.peerId = pagePeer;
+      return {
+        version: VERSION,
+        folder: null,
+        activePeerId: pagePeer,
+        blockedReason: archiveContextBlock(cfg.peerId, pagePeer),
+        busy,
+        folderPending: false,
+        options: { ...cfg },
+        progress: { ...prog },
+        messages: rows.length,
+        checkpoint: null
+      };
+    }
+    function configure(v = {}) {
+      if (busy || folderLoading || folderPickerOpen) throw Error("Заверши текущую операцию с архивом");
+      const pagePeer = currentPeer();
+      const o = { ...cfg, ...v, peerId: v.peerId ?? (pagePeer ?? cfg.peerId) };
+      if (pagePeer !== null && o.peerId !== pagePeer) throw Error("Выбран другой диалог VK");
+      if (!["recent", "incremental", "backfill"].includes(o.mode)) throw Error("Режим");
+      if (!Number.isSafeInteger(o.limit) || o.limit < 1 || o.limit > 1e5)
+        throw Error("Количество: 1–100000");
+      if (!Number.isSafeInteger(o.pageSize) || o.pageSize < 1 || o.pageSize > 100)
+        throw Error("Пачка: 1–100");
+      if (!Number.isSafeInteger(o.delay) || o.delay < 300) throw Error("Пауза: от 300 мс");
+      if (!validDay2(o.from) || !validDay2(o.through) || o.from && o.through && o.from > o.through)
+        throw Error("Диапазон дат");
+      Object.assign(cfg, o);
+      return status();
+    }
+    async function useFolder(handle) {
+      throw Error("Файловая папка не подключается в основном режиме Dexie.");
+    }
+    async function selectFolder() {
+      throw Error("Файловая папка больше не является основным архивом. Используй экспорт Dexie.");
+    }
+    const vk = createVkProvider(cfg, { sleep, refresh });
+    const auth = () => vk.auth();
+    const history = (offset, count) => vk.history(offset, count);
+    const api = (method, p2) => vk.api(method, p2);
+    async function buildViewer() {
+      throw Error("Сначала выбери папку");
+    }
+    function progress(phase, done, total, extra = {}) {
+      prog = { phase, done, total, ...extra };
+      refresh();
+    }
+    function stop() {
+      stopRequested = true;
+      refresh();
+    }
+    async function run(options = {}) {
+      throw Error("Историческая файловая выгрузка недоступна как основное хранилище. Используй Dexie.");
+    }
+    async function openFixedArchive(peerId) {
+      const scope = instanceScope();
+      if (!/^(vk-booster|all-in-one):(dev|prod)$/.test(scope))
+        throw Error("Unsupported VK installation scope");
+      const user = await api("users.get", {});
+      const first = Array.isArray(user) ? user[0] : void 0;
+      const owner = first && typeof first === "object" ? first.id : void 0;
+      if (typeof owner !== "number" || !Number.isSafeInteger(owner) || owner <= 0)
+        throw Error("Authenticated VK account verification required for Dexie");
+      if (currentPeer() !== peerId) throw Error("VK peer changed during account verification");
+      return new FixedVkDexieRepository({
+        productId: "vk-booster",
+        channel: scope.endsWith(":dev") ? "dev" : "prod",
+        installationId: scope.split(":")[0] + "-" + target,
+        ownerId: "vk-user-" + owner
+      });
+    }
+    async function captureFixed(limit = 100) {
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 3e3)
+        throw Error("Dexie capture limit must be 1–3000");
+      const peerId = currentPeer();
+      if (!peerId || busy || backupRunning || folderLoading || folderPickerOpen)
+        throw Error("Select one VK conversation before saving");
+      cfg.peerId = peerId;
+      busy = true;
+      stopRequested = false;
+      progress("Dexie: сообщения", 0, limit);
+      let repo;
+      let saved = 0, alreadySaved = 0, available = 0;
+      try {
+        if (!await auth()) throw Error("VK API authorization unavailable");
+        repo = await openFixedArchive(peerId);
+        let offset = 0;
+        while (offset < limit && !stopRequested) {
+          if (currentPeer() !== peerId) throw Error("VK peer changed during Dexie capture");
+          const requestSize = Math.min(100, limit - offset);
+          const page = await history(offset, requestSize);
+          if (currentPeer() !== peerId) throw Error("VK peer changed during Dexie capture");
+          available = page.count;
+          if (!page.items.length) break;
+          for (const item of page.items) {
+            if (stopRequested || currentPeer() !== peerId) break;
+            if (item.peer_id !== void 0 && item.peer_id !== peerId)
+              throw Error("VK source returned a different conversation");
+            const previous = await repo.getOriginal(peerId, item.id);
+            if (previous) {
+              if (JSON.stringify(previous.raw) !== JSON.stringify(item))
+                throw Error("VK message changed: explicit source revision required");
+              alreadySaved++;
+            } else {
+              await repo.addOriginal(peerId, item, "vk-history-current", Date.now());
+              saved++;
+            }
+          }
+          offset += page.items.length;
+          progress("Dexie: сообщения", Math.min(offset, limit), limit, { newCount: saved });
+          if (page.items.length < requestSize || offset >= page.count) break;
+          await sleep(Math.max(450, cfg.delay));
+        }
+        progress(
+          stopRequested ? "Dexie: остановлено" : "Dexie: сохранено",
+          saved + alreadySaved,
+          Math.min(limit, available),
+          { newCount: saved }
+        );
+        if (currentPeer() !== peerId) throw Error("VK peer changed before capture completion");
+        return { saved, alreadySaved, available };
+      } finally {
+        repo?.close();
+        busy = false;
+        refresh();
+      }
+    }
+    async function withFixed(operation, allowBackup = false) {
+      const peerId = currentPeer();
+      if (!peerId || busy || !allowBackup && backupRunning || folderPickerOpen)
+        throw Error("VK conversation is not available");
+      cfg.peerId = peerId;
+      if (!await auth()) throw Error("VK API authorization unavailable");
+      const repo = await openFixedArchive(peerId);
+      try {
+        const result = await operation(repo, peerId);
+        if (currentPeer() !== peerId) throw Error("VK peer changed during fixed archive read");
+        return result;
+      } finally {
+        repo.close();
+      }
+    }
+    async function readFixed(limit = 80, afterMessageId) {
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500)
+        throw Error("Invalid fixed archive page size");
+      return withFixed(async (repo, peerId) => {
+        const rows2 = await repo.listMessages(peerId, limit, afterMessageId);
+        const messages = [];
+        for (const row of rows2) {
+          const original = await repo.getOriginal(peerId, row.messageId);
+          if (!original) throw Error("Missing immutable VK source snapshot");
+          messages.push(original.raw);
+        }
+        return messages;
+      });
+    }
+    async function exportFixed() {
+      return withFixed(async (repo, peerId) => {
+        let cursor;
+        let count = 0, digest2 = "start";
+        const encode = async (row, footer = false) => {
+          const line = JSON.stringify(row);
+          if (!footer) digest2 = await archiveSha256Hex(digest2 + "\n" + line);
+          return new TextEncoder().encode(line + "\n");
+        };
+        async function* records() {
+          yield await encode({
+            kind: "header",
+            schema: "koba-fixed-vk-v1",
+            peerId,
+            completeness: "unknown",
+            source: "verified-vk-history"
+          });
+          while (true) {
+            if (currentPeer() !== peerId) throw Error("VK peer changed during export");
+            const page = await repo.listMessages(peerId, 128, cursor);
+            if (!page.length) break;
+            for (const message of page) {
+              if (currentPeer() !== peerId) throw Error("VK peer changed during export");
+              const original = await repo.getOriginal(peerId, message.messageId);
+              if (!original) throw Error("Missing immutable VK source");
+              yield await encode({
+                kind: "message",
+                fixed: message,
+                snapshot: { ...original, raw: await encodeArchiveClone(original.raw) }
+              });
+              count++;
+            }
+            cursor = page.at(-1)?.messageId;
+            if (page.length < 128) break;
+          }
+          yield await encode({ kind: "footer", count, digest: digest2 }, true);
+        }
+        return createGzipFromChunks(records());
+      });
+    }
+    async function withBackup(operation) {
+      if (backupRunning || busy || folderPickerOpen || folderLoading)
+        throw Error("Another VK operation is in progress");
+      const storage = vkPreferencesPersistence();
+      if (!storage) throw Error("Persistent VK settings adapter is unavailable");
+      backupRunning = true;
+      try {
+        return await withFixed(
+          async (repo) => operation(vkPortableBackupPorts(apiObject, repo, storage)),
+          true
+        );
+      } finally {
+        backupRunning = false;
+      }
+    }
+    async function backupPortable(options, output) {
+      return withBackup((ports) => exportVkPortableBackup(ports, options, output));
+    }
+    async function inspectPortable(backup, progress2) {
+      return withBackup((ports) => inspectVkPortableBackup(ports, backup, progress2));
+    }
+    async function restorePortable(backup, chosen, progress2) {
+      return withBackup((ports) => restoreVkPortableBackup(ports, backup, chosen, progress2));
+    }
+    function refresh() {
+      const snapshot = status();
+      for (const listener of subscribers)
+        try {
+          listener(snapshot);
+        } catch {
+        }
+    }
+    function subscribe(listener) {
+      subscribers.add(listener);
+      listener(status());
+      return () => subscribers.delete(listener);
+    }
+    function show() {
+      window.dispatchEvent(new CustomEvent(SHELL_OPEN_FEATURE_EVENT, { detail: { id: "vk-booster" } }));
+    }
+    function hide() {
+    }
+    const apiObject = {
+      version: VERSION,
+      configure,
+      selectFolder,
+      useFolder,
+      run,
+      resume: () => run({}),
+      stop,
+      status,
+      show,
+      hide,
+      subscribe,
+      buildViewer,
+      captureFixed,
+      readFixed,
+      exportFixed,
+      backupPortable,
+      inspectPortable,
+      restorePortable,
+      // Public readers receive independent JSON-shaped snapshots; callers cannot mutate
+      // the in-memory rows that the next v1 checkpoint will persist.
+      getMessages: () => [],
+      previewMessages: (options) => {
+        return { messages: [], matching: 0 };
+      },
+      previewAttachments: (messageIds) => {
+        return {};
+      },
+      destroy() {
+        subscribers.clear();
+        if (published[apiKey] === apiObject) delete published[apiKey];
+      }
+    };
+    published[apiKey] = Object.freeze(apiObject);
   }
   function archiveApi() {
     const key = instanceKey("VKExport", "vk-booster:prod");
@@ -26698,25 +27439,25 @@
     };
   };
   const twMerge = /* @__PURE__ */ createTailwindMerge(getDefaultConfig);
-  const _hoisted_1$3 = ["aria-busy"];
-  const _hoisted_2$3 = {
+  const _hoisted_1$3$1 = ["aria-busy"];
+  const _hoisted_2$4 = {
     key: 0,
     class: "flex items-center justify-between gap-2"
   };
-  const _hoisted_3$2 = {
+  const _hoisted_3$3 = {
     role: "status",
     "aria-live": "polite"
   };
-  const _hoisted_4$2 = {
+  const _hoisted_4$3 = {
     key: 0,
     class: "tabular-nums"
   };
-  const _hoisted_5$2 = ["value", "aria-label"];
-  const _hoisted_6$2 = {
+  const _hoisted_5$3 = ["value", "aria-label"];
+  const _hoisted_6$3 = {
     key: 1,
     class: "text-xs text-muted-foreground"
   };
-  const _hoisted_7$2 = {
+  const _hoisted_7$3 = {
     key: 2,
     role: "alert",
     class: "text-sm text-destructive"
@@ -26745,17 +27486,17 @@
           class: normalizeClass(__props.compact ? "w-full" : "booster-shared-archive-progress"),
           "aria-busy": __props.busy
         }, [
-          !__props.compact ? (openBlock(), createElementBlock("div", _hoisted_2$3, [
+          !__props.compact ? (openBlock(), createElementBlock("div", _hoisted_2$4, [
             createBaseVNode(
               "span",
-              _hoisted_3$2,
+              _hoisted_3$3,
               toDisplayString(__props.label),
               1
               /* TEXT */
             ),
             progress.value !== null ? (openBlock(), createElementBlock(
               "strong",
-              _hoisted_4$2,
+              _hoisted_4$3,
               toDisplayString(progress.value) + "%",
               1
               /* TEXT */
@@ -26766,28 +27507,28 @@
             value: progress.value ?? void 0,
             max: "100",
             "aria-label": __props.ariaLabel || __props.label
-          }, null, 8, _hoisted_5$2),
+          }, null, 8, _hoisted_5$3),
           __props.detail ? (openBlock(), createElementBlock(
             "p",
-            _hoisted_6$2,
+            _hoisted_6$3,
             toDisplayString(__props.detail),
             1
             /* TEXT */
           )) : createCommentVNode("v-if", true),
           __props.error ? (openBlock(), createElementBlock(
             "p",
-            _hoisted_7$2,
+            _hoisted_7$3,
             toDisplayString(__props.error),
             1
             /* TEXT */
           )) : createCommentVNode("v-if", true),
           renderSlot(_ctx.$slots, "default")
-        ], 10, _hoisted_1$3);
+        ], 10, _hoisted_1$3$1);
       };
     }
   });
   const _hoisted_1$4 = ["aria-modal", "aria-label"];
-  const _sfc_main$2$2 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$2$1 = /* @__PURE__ */ defineComponent({
     __name: "ModalSurface",
     props: {
       label: {},
@@ -26900,7 +27641,7 @@
       };
     }
   });
-  const _sfc_main$3 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$6 = /* @__PURE__ */ defineComponent({
     __name: "Button",
     props: {
       variant: { default: "default" },
@@ -27109,7 +27850,7 @@
     ["path", { d: "M18 6 6 18", key: "1bl5f8" }],
     ["path", { d: "m6 6 12 12", key: "d8bk6v" }]
   ]);
-  const _sfc_main$2$1 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$3 = /* @__PURE__ */ defineComponent({
     __name: "ArchiveProgressBar",
     props: {
       label: {},
@@ -27127,6 +27868,334 @@
           compact: __props.compact,
           detail: __props.counter ? `${__props.counter}${__props.percent !== null && __props.percentLabel ? ` · ${__props.percentLabel} ${__props.percent}%` : ""}` : null
         }, null, 8, ["label", "completed", "compact", "detail"]);
+      };
+    }
+  });
+  const _hoisted_1$3 = {
+    class: "booster-stack-card",
+    "aria-label": "Резервная копия приложения"
+  };
+  const _hoisted_2$3 = { class: "booster-field" };
+  const _hoisted_3$2 = { class: "flex items-center gap-2" };
+  const _hoisted_4$2 = ["disabled"];
+  const _hoisted_5$2 = { class: "booster-field" };
+  const _hoisted_6$2 = { class: "flex items-center gap-2" };
+  const _hoisted_7$2 = ["disabled"];
+  const _hoisted_8$2 = { class: "booster-field" };
+  const _hoisted_9$2 = { class: "flex items-center gap-2" };
+  const _hoisted_10$2 = ["disabled"];
+  const _hoisted_11$2 = { class: "booster-field" };
+  const _hoisted_12$2 = ["disabled"];
+  const _hoisted_13$2 = { class: "booster-field" };
+  const _hoisted_14$2 = ["disabled"];
+  const _hoisted_15$2 = {
+    role: "status",
+    class: "m-0 text-xs"
+  };
+  const _hoisted_16$1 = {
+    key: 0,
+    class: "booster-field"
+  };
+  const _hoisted_17$1 = { class: "flex items-center gap-2" };
+  const _hoisted_18$1 = ["disabled"];
+  const _hoisted_19$1 = {
+    key: 1,
+    class: "booster-field"
+  };
+  const _hoisted_20$1 = { class: "flex items-center gap-2" };
+  const _hoisted_21$1 = ["disabled"];
+  const _hoisted_22$1 = { class: "booster-field" };
+  const _hoisted_23$1 = { class: "flex items-center gap-2" };
+  const _hoisted_24$1 = ["disabled"];
+  const _hoisted_25$1 = {
+    key: 1,
+    class: "booster-setting-copy",
+    role: "status",
+    "aria-live": "polite"
+  };
+  const _hoisted_26$1 = ["value", "max"];
+  const _hoisted_27$1 = {
+    key: 2,
+    role: "alert",
+    class: "m-0 text-sm text-destructive"
+  };
+  const _hoisted_28$1 = {
+    key: 3,
+    role: "status",
+    class: "m-0 text-sm"
+  };
+  const _sfc_main$4 = /* @__PURE__ */ defineComponent({
+    __name: "PortableBackupPanel",
+    props: {
+      available: {},
+      pending: { type: Boolean },
+      inspected: {},
+      error: {},
+      success: {},
+      progress: {}
+    },
+    emits: ["export", "inspect", "restore"],
+    setup(__props, { emit: __emit }) {
+      const props = __props;
+      const emit2 = __emit;
+      const settings = /* @__PURE__ */ ref(true);
+      const indexeddb = /* @__PURE__ */ ref(true);
+      const gzip = /* @__PURE__ */ ref(true);
+      const chunkRows = /* @__PURE__ */ ref(1024);
+      const restoreSettings = /* @__PURE__ */ ref(true);
+      const restoreIndexed = /* @__PURE__ */ ref(true);
+      const confirmed = /* @__PURE__ */ ref(false);
+      const canExport = computed(
+        () => !props.pending && (settings.value && props.available.settings || indexeddb.value && props.available.indexeddb)
+      );
+      const canRestore = computed(
+        () => !!props.inspected && !props.pending && confirmed.value && (restoreSettings.value && props.inspected.settings || restoreIndexed.value && props.inspected.indexeddb)
+      );
+      function fileChanged(e) {
+        const input = e.target;
+        const file = input.files?.[0];
+        confirmed.value = false;
+        if (file) emit2("inspect", file);
+        input.value = "";
+      }
+      return (_ctx, _cache) => {
+        return openBlock(), createElementBlock("section", _hoisted_1$3, [
+          _cache[18] || (_cache[18] = createBaseVNode(
+            "div",
+            { class: "booster-setting-copy" },
+            [
+              createBaseVNode("b", null, "Резервная копия"),
+              createBaseVNode("small", null, "Постоянные настройки и IndexedDB — независимо. Состояние текущей вкладки и сессии никогда не входит в резервную копию.")
+            ],
+            -1
+            /* CACHED */
+          )),
+          createBaseVNode("label", _hoisted_2$3, [
+            createBaseVNode("span", _hoisted_3$2, [
+              withDirectives(createBaseVNode("input", {
+                "onUpdate:modelValue": _cache[0] || (_cache[0] = ($event) => settings.value = $event),
+                type: "checkbox",
+                disabled: __props.pending || !__props.available.settings
+              }, null, 8, _hoisted_4$2), [
+                [vModelCheckbox, settings.value]
+              ]),
+              _cache[9] || (_cache[9] = createTextVNode(
+                "Persistent-настройки (Pinia / браузерное хранилище)",
+                -1
+                /* CACHED */
+              ))
+            ])
+          ]),
+          createBaseVNode("label", _hoisted_5$2, [
+            createBaseVNode("span", _hoisted_6$2, [
+              withDirectives(createBaseVNode("input", {
+                "onUpdate:modelValue": _cache[1] || (_cache[1] = ($event) => indexeddb.value = $event),
+                type: "checkbox",
+                disabled: __props.pending || !__props.available.indexeddb
+              }, null, 8, _hoisted_7$2), [
+                [vModelCheckbox, indexeddb.value]
+              ]),
+              _cache[10] || (_cache[10] = createTextVNode(
+                "Все записи доступных таблиц IndexedDB",
+                -1
+                /* CACHED */
+              ))
+            ])
+          ]),
+          createBaseVNode("label", _hoisted_8$2, [
+            createBaseVNode("span", _hoisted_9$2, [
+              withDirectives(createBaseVNode("input", {
+                "onUpdate:modelValue": _cache[2] || (_cache[2] = ($event) => gzip.value = $event),
+                type: "checkbox",
+                disabled: __props.pending
+              }, null, 8, _hoisted_10$2), [
+                [vModelCheckbox, gzip.value]
+              ]),
+              _cache[11] || (_cache[11] = createTextVNode(
+                "Сжать весь TAR (GZIP)",
+                -1
+                /* CACHED */
+              ))
+            ])
+          ]),
+          createBaseVNode("label", _hoisted_11$2, [
+            createBaseVNode(
+              "span",
+              null,
+              "Размер чанка: " + toDisplayString(chunkRows.value) + " записей IndexedDB",
+              1
+              /* TEXT */
+            ),
+            withDirectives(createBaseVNode("input", {
+              "onUpdate:modelValue": _cache[3] || (_cache[3] = ($event) => chunkRows.value = $event),
+              type: "range",
+              min: "64",
+              max: "2048",
+              step: "64",
+              disabled: __props.pending
+            }, null, 8, _hoisted_12$2), [
+              [
+                vModelText,
+                chunkRows.value,
+                void 0,
+                { number: true }
+              ]
+            ])
+          ]),
+          createVNode(unref(_sfc_main$6), {
+            size: "sm",
+            variant: "outline",
+            disabled: !canExport.value,
+            onClick: _cache[4] || (_cache[4] = ($event) => emit2("export", { settings: settings.value && __props.available.settings, indexeddb: indexeddb.value && __props.available.indexeddb, compression: gzip.value ? "gzip" : "none", chunkRows: chunkRows.value }))
+          }, {
+            default: withCtx(() => [..._cache[12] || (_cache[12] = [
+              createTextVNode(
+                "Сохранить TAR / TAR.GZ",
+                -1
+                /* CACHED */
+              )
+            ])]),
+            _: 1
+            /* STABLE */
+          }, 8, ["disabled"]),
+          createBaseVNode("label", _hoisted_13$2, [
+            _cache[13] || (_cache[13] = createBaseVNode(
+              "span",
+              null,
+              "Проверить файл резервной копии",
+              -1
+              /* CACHED */
+            )),
+            createBaseVNode("input", {
+              type: "file",
+              class: "booster-input w-full",
+              accept: ".tar,.tar.gz,.tgz,application/x-tar,application/gzip",
+              disabled: __props.pending,
+              onChange: fileChanged
+            }, null, 40, _hoisted_14$2)
+          ]),
+          __props.inspected ? (openBlock(), createElementBlock(
+            Fragment,
+            { key: 0 },
+            [
+              createBaseVNode(
+                "p",
+                _hoisted_15$2,
+                "Файл проверен: " + toDisplayString(__props.inspected.rows) + " записей IndexedDB, " + toDisplayString(__props.inspected.createdAt) + ".",
+                1
+                /* TEXT */
+              ),
+              __props.inspected.settings ? (openBlock(), createElementBlock("label", _hoisted_16$1, [
+                createBaseVNode("span", _hoisted_17$1, [
+                  withDirectives(createBaseVNode("input", {
+                    "onUpdate:modelValue": _cache[5] || (_cache[5] = ($event) => restoreSettings.value = $event),
+                    type: "checkbox",
+                    disabled: __props.pending
+                  }, null, 8, _hoisted_18$1), [
+                    [vModelCheckbox, restoreSettings.value]
+                  ]),
+                  _cache[14] || (_cache[14] = createTextVNode(
+                    "Восстановить persistent-настройки",
+                    -1
+                    /* CACHED */
+                  ))
+                ])
+              ])) : createCommentVNode("v-if", true),
+              __props.inspected.indexeddb ? (openBlock(), createElementBlock("label", _hoisted_19$1, [
+                createBaseVNode("span", _hoisted_20$1, [
+                  withDirectives(createBaseVNode("input", {
+                    "onUpdate:modelValue": _cache[6] || (_cache[6] = ($event) => restoreIndexed.value = $event),
+                    type: "checkbox",
+                    disabled: __props.pending
+                  }, null, 8, _hoisted_21$1), [
+                    [vModelCheckbox, restoreIndexed.value]
+                  ]),
+                  _cache[15] || (_cache[15] = createTextVNode(
+                    "Восстановить IndexedDB (заменить записи этого владельца)",
+                    -1
+                    /* CACHED */
+                  ))
+                ])
+              ])) : createCommentVNode("v-if", true),
+              createBaseVNode("label", _hoisted_22$1, [
+                createBaseVNode("span", _hoisted_23$1, [
+                  withDirectives(createBaseVNode("input", {
+                    "onUpdate:modelValue": _cache[7] || (_cache[7] = ($event) => confirmed.value = $event),
+                    type: "checkbox",
+                    disabled: __props.pending
+                  }, null, 8, _hoisted_24$1), [
+                    [vModelCheckbox, confirmed.value]
+                  ]),
+                  _cache[16] || (_cache[16] = createTextVNode(
+                    "Подтверждаю восстановление выбранных разделов",
+                    -1
+                    /* CACHED */
+                  ))
+                ])
+              ]),
+              createVNode(unref(_sfc_main$6), {
+                size: "sm",
+                variant: "outline",
+                disabled: !canRestore.value,
+                onClick: _cache[8] || (_cache[8] = ($event) => emit2("restore", { settings: restoreSettings.value && !!__props.inspected?.settings, indexeddb: restoreIndexed.value && !!__props.inspected?.indexeddb }))
+              }, {
+                default: withCtx(() => [..._cache[17] || (_cache[17] = [
+                  createTextVNode(
+                    "Восстановить выбранное",
+                    -1
+                    /* CACHED */
+                  )
+                ])]),
+                _: 1
+                /* STABLE */
+              }, 8, ["disabled"])
+            ],
+            64
+            /* STABLE_FRAGMENT */
+          )) : createCommentVNode("v-if", true),
+          __props.progress ? (openBlock(), createElementBlock("div", _hoisted_25$1, [
+            createBaseVNode(
+              "span",
+              null,
+              "Этап: " + toDisplayString(__props.progress.phase) + " · " + toDisplayString(__props.progress.completed) + " из " + toDisplayString(__props.progress.total) + " записей",
+              1
+              /* TEXT */
+            ),
+            createBaseVNode(
+              "span",
+              null,
+              toDisplayString(__props.progress.percent) + "% · файлов в архиве: " + toDisplayString(__props.progress.entries),
+              1
+              /* TEXT */
+            ),
+            createBaseVNode("progress", {
+              class: "w-full",
+              value: __props.progress.completed,
+              max: Math.max(1, __props.progress.total)
+            }, null, 8, _hoisted_26$1)
+          ])) : createCommentVNode("v-if", true),
+          __props.error ? (openBlock(), createElementBlock(
+            "p",
+            _hoisted_27$1,
+            toDisplayString(__props.error),
+            1
+            /* TEXT */
+          )) : createCommentVNode("v-if", true),
+          __props.success ? (openBlock(), createElementBlock(
+            "p",
+            _hoisted_28$1,
+            toDisplayString(__props.success),
+            1
+            /* TEXT */
+          )) : createCommentVNode("v-if", true),
+          _cache[19] || (_cache[19] = createBaseVNode(
+            "p",
+            { class: "m-0 text-xs text-muted-foreground" },
+            "Один переносимый TAR.GZ: manifest.json, persistent/settings.json, indexeddb/schema.json и обычные JSONL-чанки таблиц, сжатые общим потоком GZIP. Внешние медиафайлы не включаются.",
+            -1
+            /* CACHED */
+          ))
+        ]);
       };
     }
   });
@@ -27313,6 +28382,107 @@
           fixedBusy.value = false;
         }
       }
+      const portableBusy = /* @__PURE__ */ ref(false);
+      const portableFile = /* @__PURE__ */ ref(null);
+      const portableInspected = /* @__PURE__ */ ref(null);
+      const portableError = /* @__PURE__ */ ref("");
+      const portableMessage = /* @__PURE__ */ ref("");
+      const tarProgress = /* @__PURE__ */ ref(null);
+      const portablePreview = computed(
+        () => portableInspected.value ? {
+          settings: portableInspected.value.manifest.includes.settings,
+          indexeddb: portableInspected.value.manifest.includes.indexeddb,
+          rows: portableInspected.value.rows,
+          createdAt: portableInspected.value.manifest.createdAt
+        } : null
+      );
+      async function downloadPortable(choice) {
+        if (!api || portableBusy.value || !hasVerifiedPeer.value || fixedBusy.value) return;
+        portableBusy.value = true;
+        portableError.value = "";
+        portableMessage.value = "";
+        tarProgress.value = null;
+        try {
+          const filename = choice.compression === "gzip" ? "vk-portable-v1.tar.gz" : "vk-portable-v1.tar";
+          const picker = window.showSaveFilePicker;
+          const handle = picker ? await picker({
+            suggestedName: filename,
+            types: [
+              {
+                description: "Portable TAR backup",
+                accept: choice.compression === "gzip" ? { "application/gzip": [".gz"] } : { "application/x-tar": [".tar"] }
+              }
+            ]
+          }) : void 0;
+          const sink = handle ? await handle.createWritable() : void 0;
+          const blob = await api.backupPortable(choice, {
+            sink,
+            onProgress: (next) => {
+              tarProgress.value = next;
+            }
+          });
+          if (blob) {
+            const url = URL.createObjectURL(blob);
+            try {
+              const link = document.createElement("a");
+              link.href = url;
+              link.download = filename;
+              link.click();
+            } finally {
+              window.setTimeout(() => URL.revokeObjectURL(url), 3e4);
+            }
+          }
+          portableMessage.value = "Резервная копия сформирована. Проверь файл в загрузках или выбранной папке.";
+        } catch (error2) {
+          portableError.value = error2 instanceof Error && error2.name === "AbortError" ? "Выбор файла отменён; резервная копия не создавалась." : "Не удалось создать TAR.GZ-архив. Исходные данные не изменены.";
+        } finally {
+          portableBusy.value = false;
+        }
+      }
+      async function inspectPortableFile(file) {
+        if (!api || portableBusy.value || !hasVerifiedPeer.value) return;
+        portableBusy.value = true;
+        portableFile.value = null;
+        portableInspected.value = null;
+        portableError.value = "";
+        portableMessage.value = "";
+        tarProgress.value = null;
+        try {
+          const inspected = await api.inspectPortable(file, (next) => {
+            tarProgress.value = next;
+          });
+          portableFile.value = file;
+          portableInspected.value = inspected;
+        } catch {
+          portableError.value = "Файл повреждён, несовместим или относится к другому владельцу/каналу.";
+        } finally {
+          portableBusy.value = false;
+        }
+      }
+      async function restorePortableSelection(selected) {
+        if (!api || !portableFile.value || portableBusy.value || !hasVerifiedPeer.value) return;
+        portableBusy.value = true;
+        portableError.value = "";
+        portableMessage.value = "";
+        tarProgress.value = null;
+        try {
+          await api.restorePortable(portableFile.value, selected, (next) => {
+            tarProgress.value = next;
+          });
+          status.value = api.status();
+          fixedLimit.value = Math.min(3e3, Math.max(1, status.value.options.limit));
+          fixedPreview.value = [];
+          fixedCursor.value = void 0;
+          fixedNextCursor.value = void 0;
+          portableMessage.value = "Выбранные разделы восстановлены. Reader обновлён.";
+          portableFile.value = null;
+          portableInspected.value = null;
+        } catch {
+          portableError.value = "Восстановление отклонено: проверь файл, владельца и доступное место.";
+        } finally {
+          portableBusy.value = false;
+        }
+      }
       const tabs = [
         { id: "capture", label: "Выгрузка", icon: Download },
         { id: "reader", label: "Архив", icon: Archive },
@@ -27398,6 +28568,8 @@
           fixedCursor.value = void 0;
           fixedNextCursor.value = void 0;
           fixedError.value = "";
+          portableFile.value = null;
+          portableInspected.value = null;
         }
         if (!previous || next.activePeerId !== previous.activePeerId || next.blockedReason !== previous.blockedReason || next.options.peerId !== previous.options.peerId)
           status.value = next;
@@ -27468,7 +28640,7 @@
               Fragment,
               null,
               renderList(tabs, (item) => {
-                return createVNode(unref(_sfc_main$3), {
+                return createVNode(unref(_sfc_main$6), {
                   id: unref(tabPrefix) + "-tab-" + item.id,
                   key: item.id,
                   type: "button",
@@ -27542,8 +28714,8 @@
                 ])
               ]),
               createBaseVNode("div", _hoisted_13$1, [
-                createVNode(unref(_sfc_main$3), {
-                  disabled: fixedBusy.value || !hasVerifiedPeer.value,
+                createVNode(unref(_sfc_main$6), {
+                  disabled: fixedBusy.value || portableBusy.value || !hasVerifiedPeer.value,
                   onClick: captureDexie
                 }, {
                   default: withCtx(() => [
@@ -27560,7 +28732,7 @@
                   _: 1
                   /* STABLE */
                 }, 8, ["disabled"]),
-                createVNode(unref(_sfc_main$3), {
+                createVNode(unref(_sfc_main$6), {
                   variant: "outline",
                   disabled: !fixedBusy.value,
                   onClick: _cache[1] || (_cache[1] = ($event) => unref(api)?.stop())
@@ -27575,9 +28747,9 @@
                   _: 1
                   /* STABLE */
                 }, 8, ["disabled"]),
-                createVNode(unref(_sfc_main$3), {
+                createVNode(unref(_sfc_main$6), {
                   variant: "outline",
-                  disabled: fixedBusy.value || !hasVerifiedPeer.value,
+                  disabled: fixedBusy.value || portableBusy.value || !hasVerifiedPeer.value,
                   onClick: exportDexie
                 }, {
                   default: withCtx(() => [..._cache[10] || (_cache[10] = [
@@ -27598,7 +28770,7 @@
                 1
                 /* TEXT */
               )) : createCommentVNode("v-if", true),
-              captureProgress.value?.total ? (openBlock(), createBlock(unref(_sfc_main$2$1), {
+              captureProgress.value?.total ? (openBlock(), createBlock(unref(_sfc_main$3), {
                 key: 1,
                 label: "Прогресс сохранения VK в Dexie",
                 percent: Math.min(100, Math.round(100 * (captureProgress.value.done / captureProgress.value.total))),
@@ -27656,9 +28828,9 @@
                 /* CACHED */
               )),
               createBaseVNode("div", _hoisted_20, [
-                createVNode(unref(_sfc_main$3), {
+                createVNode(unref(_sfc_main$6), {
                   variant: "outline",
-                  disabled: fixedBusy.value || fixedReading.value || !hasVerifiedPeer.value,
+                  disabled: fixedBusy.value || fixedReading.value || portableBusy.value || !hasVerifiedPeer.value,
                   onClick: _cache[2] || (_cache[2] = ($event) => readDexie())
                 }, {
                   default: withCtx(() => [..._cache[13] || (_cache[13] = [
@@ -27671,9 +28843,9 @@
                   _: 1
                   /* STABLE */
                 }, 8, ["disabled"]),
-                createVNode(unref(_sfc_main$3), {
+                createVNode(unref(_sfc_main$6), {
                   variant: "outline",
-                  disabled: fixedBusy.value || fixedReading.value || !fixedNextCursor.value,
+                  disabled: fixedBusy.value || fixedReading.value || portableBusy.value || !fixedNextCursor.value,
                   onClick: _cache[3] || (_cache[3] = ($event) => readDexie(fixedNextCursor.value))
                 }, {
                   default: withCtx(() => [..._cache[14] || (_cache[14] = [
@@ -27686,9 +28858,9 @@
                   _: 1
                   /* STABLE */
                 }, 8, ["disabled"]),
-                createVNode(unref(_sfc_main$3), {
+                createVNode(unref(_sfc_main$6), {
                   variant: "outline",
-                  disabled: fixedBusy.value || fixedReading.value || !fixedCursor.value,
+                  disabled: fixedBusy.value || fixedReading.value || portableBusy.value || !fixedCursor.value,
                   onClick: _cache[4] || (_cache[4] = ($event) => readDexie())
                 }, {
                   default: withCtx(() => [..._cache[15] || (_cache[15] = [
@@ -27768,7 +28940,7 @@
                 /* CACHED */
               )),
               createBaseVNode("div", _hoisted_27, [
-                createVNode(unref(_sfc_main$3), {
+                createVNode(unref(_sfc_main$6), {
                   variant: "outline",
                   size: "sm",
                   disabled: preferencesBusy.value || status.value.busy || status.value.folderPending || !!status.value.blockedReason,
@@ -27817,7 +28989,7 @@
                   ))
                 ])
               ])) : createCommentVNode("v-if", true),
-              preferencesFile.value ? (openBlock(), createBlock(unref(_sfc_main$3), {
+              preferencesFile.value ? (openBlock(), createBlock(unref(_sfc_main$6), {
                 key: 1,
                 variant: "outline",
                 size: "sm",
@@ -27856,19 +29028,17 @@
                 /* TEXT */
               )) : createCommentVNode("v-if", true)
             ])) : createCommentVNode("v-if", true),
-            _cache[22] || (_cache[22] = createBaseVNode(
-              "section",
-              { class: "booster-stack-card" },
-              [
-                createBaseVNode("div", { class: "booster-setting-copy" }, [
-                  createBaseVNode("b", null, "Архив и восстановление"),
-                  createBaseVNode("span", null, "Backup/restore сообщений и вложений — отдельная операция для Dexie. Эта кнопка сохраняет только настройки.")
-                ]),
-                createBaseVNode("p", { class: "m-0 text-xs text-muted-foreground" }, " Архив хранится в Dexie. Экспорт .jsonl.gz выполняется отдельно на вкладке «Выгрузка». Backup/restore самих сообщений пока не реализован; профиль JSON сохраняет только настройки. ")
-              ],
-              -1
-              /* CACHED */
-            ))
+            createVNode(unref(_sfc_main$4), {
+              available: { settings: true, indexeddb: true },
+              pending: portableBusy.value || fixedBusy.value || !!status.value?.busy || !hasVerifiedPeer.value,
+              inspected: portablePreview.value,
+              error: portableError.value,
+              success: portableMessage.value,
+              progress: tarProgress.value,
+              onExport: downloadPortable,
+              onInspect: inspectPortableFile,
+              onRestore: restorePortableSelection
+            }, null, 8, ["pending", "inspected", "error", "success", "progress"])
           ], 8, _hoisted_25), [
             [vShow, tab.value === "settings"]
           ])
@@ -28011,7 +29181,7 @@
                 _: 1
                 /* STABLE */
               }),
-              createVNode(unref(_sfc_main$3), {
+              createVNode(unref(_sfc_main$6), {
                 variant: "ghost",
                 size: "icon",
                 class: "size-8",
@@ -28162,7 +29332,7 @@
                           /* CACHED */
                         )
                       ])], 10, _hoisted_13),
-                      feature.state === "active" ? (openBlock(), createBlock(unref(_sfc_main$3), {
+                      feature.state === "active" ? (openBlock(), createBlock(unref(_sfc_main$6), {
                         key: 0,
                         variant: "outline",
                         size: "sm",
@@ -28458,7 +29628,7 @@
       });
       return (_ctx, _cache) => {
         return openBlock(), createElementBlock("div", _hoisted_1, [
-          open.value ? (openBlock(), createBlock(unref(_sfc_main$2$2), {
+          open.value ? (openBlock(), createBlock(unref(_sfc_main$2$1), {
             key: 0,
             label: __props.title,
             floating: widePanel.value,
