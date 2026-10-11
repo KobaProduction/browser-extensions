@@ -3,7 +3,7 @@
 > **Release-system update (2026-10-10):** this document includes historical
 > source-relocation checkpoints. The executable ChatGPT Booster is now
 > version **2.0.7** with `release:true` and independent userscript/MV3
-> artifacts. All-in-one **0.5.6** includes both ChatGPT and VK. Real-user
+> artifacts. All-in-one **0.5.9** includes both ChatGPT and VK. Real-user
 > installation/backup cutover and public release remain gated separately.
 > See [independent releases](../INDEPENDENT_RELEASES.md) for current authority.
 

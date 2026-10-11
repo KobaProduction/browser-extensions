@@ -1,6 +1,6 @@
 {
   "name": "@kobaproduction/browser-storage",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "sideEffects": false,
   "files": [
@@ -22,5 +22,8 @@
   "publishConfig": {
     "access": "public",
     "registry": "https://npm.pkg.github.com"
+  },
+  "dependencies": {
+    "dexie": "^4.4.6"
   }
 }

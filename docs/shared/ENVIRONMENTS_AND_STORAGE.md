@@ -91,3 +91,14 @@ Access uses a versioned, audited provider-neutral capability/port with:
 
 See the owning [integration contract](INTEGRATION_CONTRACT.md) and
 [backup/restore contract](BACKUP_AND_RESTORE.md).
+
+## Dexie telemetry driver checkpoint
+
+The shared `@kobaproduction/browser-storage` package now includes Dexie
+for a separate bounded technical-event journal. This is **not** a bulk
+conversion of native ChatGPT v3/v4 IndexedDB or VK v2 folder archives.
+Telemetry requires a validated product/channel/installation identity; it
+refuses a missing installation ID and does not persist account IDs or data.
+IndexedDB transaction failures do not trigger automatic deletion or reset.
+Provider-owned Dexie archive repository migration and optional Pinia stores
+remain open under Issue #19, with explicit backup and schema acceptance.

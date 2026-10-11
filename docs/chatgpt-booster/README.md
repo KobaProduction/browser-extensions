@@ -84,7 +84,7 @@ separate validated portable settings backup/restore; it does not replace
 archive export or introduce another launcher. The pre-existing ChatGPT
 telemetry settings/diagnostic adapters remain owned by the ChatGPT provider;
 the common optional scoped telemetry port does not replace or implicitly
-enable its transport. All-in-one is 0.5.6, VK remains 2.3.10. None of these
+enable its transport. All-in-one is 0.5.9, VK remains 2.3.10. None of these
 source changes promotes stable 0.8.92 or proves installed-browser acceptance.
 
 ## Restoring user-facing archive controls
@@ -112,3 +112,13 @@ The floating window/minimize workflow and installed-browser export parity
 remain under [functional acceptance issue #16](https://github.com/KobaProduction/browser-extensions/issues/16).
 Data/owner reconciliation remains under
 [archive acceptance issue #11](https://github.com/KobaProduction/browser-extensions/issues/11).
+
+## Shared Dexie telemetry availability
+
+Shared Dexie/OTLP adapters are now available for a future single telemetry
+runtime. They are local-only/default-off until separately enabled and wired
+by the product composition root. ChatGPT's existing provider-specific OTLP
+client has **not** been silently replaced: its current transport and opt-in
+remain independent pending validated migration into the durable journal.
+ChatGPT v3/v4 native data and canonical archive are untouched. See
+`docs/shared/TELEMETRY.md` and Issue #30.
