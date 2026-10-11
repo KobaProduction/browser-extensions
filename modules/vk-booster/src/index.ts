@@ -1,5 +1,9 @@
 import type { Feature } from '@kobaproduction/browser-core'
 import { installVkArchive } from './archive-runtime'
+import {
+  loadVkCaptureDefaults,
+  setVkPreferencesPersistence,
+} from './features/chat-export/model/durable-preferences'
 import { archiveApi } from './features/chat-export/model/types'
 
 export const vkBoosterFeature: Feature = {
@@ -9,13 +13,15 @@ export const vkBoosterFeature: Feature = {
   targets: ['userscript', 'chromium'],
   requiredCapabilities: ['page-dom', 'origin-storage', 'local-files'],
   match: (url) => /^(vk\.ru|vk\.com)$/.test(url.hostname) && url.pathname.startsWith('/im'),
-  start() {
+  async start(context) {
     installVkArchive()
+    await loadVkCaptureDefaults((value) => archiveApi()?.configure(value), context.target)
   },
   open() {
     archiveApi()?.show()
   },
   stop() {
     archiveApi()?.destroy?.()
+    setVkPreferencesPersistence(null)
   },
 }

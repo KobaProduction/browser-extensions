@@ -58,9 +58,17 @@ pre-release freeze decision, not historical Git tags or user-owned data.
   and remote delivery require independent explicit opt-ins (default off).
 - One shared Control Center with VK capture/reader/settings navigation,
   bounded archive paging, receipt statuses and no second launcher.
-- Capture-preset JSON is **session options only**, not archive backup or
-  persisted settings. Full archive/settings backup and external media inclusion
-  require separate validate/restore/rollback contracts.
+- Capture preferences (seven safe fields, excluding peer, folder and tokens)
+  now persist independently of Dexie: product/channel/target-scoped localStorage
+  for userscripts, or extension-owned `chrome.storage.local` for MV3. The
+  previous values are loaded at feature startup; starting an export commits
+  the edited defaults, and importing a verified JSON profile applies and saves
+  them with rollback on a failed persistence write.
+- The existing checksum-validated JSON export/import is a real **settings-only
+  backup/restore**, not an archive or media backup. A separate archive/data
+  backup interface must target the final accepted Dexie source-of-truth (PRs
+  #34–#36) and explicitly declare external attachment coverage. Never present
+  a legacy v3/v4 read-only export as a complete VK archive restore.
 - All-in-one requests same-channel provider data only through user-consented,
   owner-proven read-only ports; it does not open a standalone product DB.
 

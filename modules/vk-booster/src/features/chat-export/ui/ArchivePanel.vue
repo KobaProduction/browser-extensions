@@ -6,7 +6,12 @@ import { ArchiveManager, type ArchiveManagerOptions } from '@kobaproduction/brow
 import { Archive, Download, Settings2, ShieldAlert } from 'lucide-vue-next'
 import { computed, onMounted, onUnmounted, ref, useId } from 'vue'
 import { presentVkArchive } from '../model/archive-presentation'
-import { exportVkCaptureSettings, restoreVkCaptureSettings } from '../model/settings-backup'
+import { vkPreferencesLoadError, vkPreferencesPersistence } from '../model/durable-preferences'
+import {
+  exportVkCaptureSettings,
+  restoreVkCaptureSettings,
+  validateVkCapturePreferences,
+} from '../model/settings-backup'
 import { type ArchiveStatus, archiveApi } from '../model/types'
 import ArchivePreview from './ArchivePreview.vue'
 
@@ -57,6 +62,7 @@ const preferencesConfirmed = ref(false)
 const preferencesError = ref('')
 const preferencesMessage = ref('')
 const preferencesRevision = ref(0)
+const durableSettingsError = ref(vkPreferencesLoadError())
 
 function selectPreferences(event: Event) {
   preferencesFile.value = (event.target as HTMLInputElement).files?.[0] ?? null
@@ -93,10 +99,13 @@ async function importPreferences() {
   preferencesError.value = ''
   preferencesMessage.value = ''
   try {
-    await restoreVkCaptureSettings(api, preferencesFile.value)
+    const port = vkPreferencesPersistence()
+    if (!port) throw Error('Persistent settings unavailable')
+    await restoreVkCaptureSettings(api, preferencesFile.value, port)
     status.value = api.status()
     preferencesRevision.value++
-    preferencesMessage.value = 'Параметры применены к текущей сессии. Папка и сообщения не изменены.'
+    preferencesMessage.value =
+      'Параметры восстановлены в текущей сессии и постоянном хранилище. Архив не изменён.'
     preferencesFile.value = null
     preferencesConfirmed.value = false
   } catch {
@@ -142,6 +151,16 @@ async function chooseFolder() {
 async function start(options: ArchiveManagerOptions) {
   error.value = ''
   try {
+    // Save the user's validated capture defaults independently of the archive sink.
+    const port = vkPreferencesPersistence()
+    try {
+      if (!port) throw Error('Постоянное хранилище VK недоступно')
+      await port.write(validateVkCapturePreferences(options))
+      durableSettingsError.value = ''
+    } catch {
+      // A storage quota/permission failure must not prevent authorized VK capture.
+      durableSettingsError.value = 'Не удалось сохранить параметры для следующего запуска.'
+    }
     await api?.run(options)
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
@@ -222,6 +241,7 @@ async function resume() {
         <span>VK Archive v1 ещё не инициализирован.</span>
       </section>
       <p class="m-0 text-xs text-muted-foreground">
+        Параметры выгрузки сохраняются на этом устройстве при запуске и при восстановлении JSON-профиля.
         Повторная выгрузка сохраняет существующие сообщения, чекпоинты и файлы.
         Для проверки ранее сохранённых вложений используется их SHA-256, если он известен.
       </p>
@@ -255,10 +275,11 @@ async function resume() {
     >
       <section v-if="api && status" class="booster-stack-card" aria-label="Профиль параметров VK">
         <div class="booster-setting-copy">
-          <b>Профиль параметров выгрузки</b>
+          <b>Постоянные параметры и резервная копия</b>
           <small>
-            Отдельно от архива: режим, количество, диапазон дат, размер пачки и медиа.
-            Нет сообщений, токенов, ID диалога и данных папки.
+            Режим, количество, диапазон дат, размер пачки и медиа хранятся отдельно от архива.
+            При перезапуске они восстанавливаются автоматически; JSON создаёт переносимую резервную копию только этих параметров.
+            Сообщения, токены, ID диалога и данные папки не сохраняются.
           </small>
         </div>
         <div class="flex flex-wrap items-end gap-2">
@@ -282,7 +303,7 @@ async function resume() {
         <label v-if="preferencesFile" class="booster-field">
           <span class="flex items-center gap-2">
             <input v-model="preferencesConfirmed" type="checkbox" :disabled="preferencesBusy" />
-            Подтверждаю замену параметров только текущей сессии
+            Подтверждаю замену сохранённых и текущих параметров
           </span>
         </label>
         <Button
@@ -292,13 +313,14 @@ async function resume() {
           :disabled="preferencesBusy || status.busy || status.folderPending || !!status.blockedReason || !preferencesConfirmed"
           @click="importPreferences"
         >Применить профиль</Button>
+        <p v-if="durableSettingsError" role="alert" class="m-0 text-sm text-destructive">{{ durableSettingsError }}</p>
         <p v-if="preferencesError" role="alert" class="m-0 text-sm text-destructive">{{ preferencesError }}</p>
         <p v-if="preferencesMessage" role="status" class="m-0 text-sm">{{ preferencesMessage }}</p>
       </section>
       <section class="booster-stack-card">
         <div class="booster-setting-copy">
           <b>Архив и восстановление</b>
-          <span>Здесь сохраняются только параметры сессии. Полная резервная копия файлов архива v1 не создаётся.</span>
+          <span>Backup/restore сообщений и вложений — отдельный механизм, зависящий от будущего канонического архива Dexie. Эта кнопка сохраняет только настройки.</span>
         </div>
         <p class="m-0 text-xs text-muted-foreground">
           Для сохранения архива используй папку с metadata.json, messages.json,

@@ -32,9 +32,18 @@ release/update strategy are required before first PROD: a new `1.0.0` does
 not automatically replace a historically installed `2.3.x` userscript.
 
 The shared Control Center keeps capture/export, read-only archive Reader and
-session-only capture-settings backup. Full archive backup and persistent
-settings remain open. Shared Dexie 4 telemetry and common OTLP are currently
-implemented on [PR #32](https://github.com/KobaProduction/browser-extensions/pull/32),
+checksum-validated capture-settings backup/restore with durable defaults:
+userscripts use an isolated product/channel/target localStorage key, and
+Chromium MV3 uses its extension-owned `chrome.storage.local`. Startup restores
+validated defaults, while export runs and JSON restores persist new values.
+This does not write VK messages/IDs/folder paths into settings storage. The
+seven capture defaults are committed after selecting **Выгрузить**, as well as
+after validated JSON restore; they are loaded before the Control Center mounts.
+The storage write is best-effort for capture: a quota/permission error produces
+a visible warning but does not block an authorized archive run. Full Dexie
+archive backup/restore remains separate and unavailable in this UI.
+
+Shared Dexie 4 telemetry and common OTLP are currently implemented on [PR #32](https://github.com/KobaProduction/browser-extensions/pull/32),
 not yet merged/wired into VK; Dexie archive storage is not yet implemented.
 Refer to [ARCHIVE.md](ARCHIVE.md) for the accepted v1 acceptance contract.
 

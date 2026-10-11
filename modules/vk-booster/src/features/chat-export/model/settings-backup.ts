@@ -3,7 +3,9 @@ import {
   exportSettingsBackup,
   type PersistentSettingsPort,
   restoreSettingsBackup,
+  validateSettingsBackup,
 } from '@kobaproduction/browser-storage'
+import type { VkPreferencesPersistence } from './durable-preferences'
 import type { ArchiveApi, ArchiveOptions } from './types'
 
 /** Capture preferences only. No conversation, owner, checkpoint or folder identity. */
@@ -97,6 +99,27 @@ export async function exportVkCaptureSettings(api: ArchiveApi): Promise<Blob> {
   return exportSettingsBackup(vkCaptureSettingsPort(api))
 }
 
-export async function restoreVkCaptureSettings(api: ArchiveApi, backup: Blob): Promise<void> {
-  await restoreSettingsBackup(vkCaptureSettingsPort(api), backup)
+export async function restoreVkCaptureSettings(
+  api: ArchiveApi,
+  backup: Blob,
+  persistence?: VkPreferencesPersistence,
+): Promise<void> {
+  const port = vkCaptureSettingsPort(api, persistence?.scopeId)
+  if (!persistence) return restoreSettingsBackup(port, backup)
+  // Preflight the entire file and the live conversation before any mutation.
+  const validated = await validateSettingsBackup(port, backup)
+  const before = withoutPeer(api.status().options)
+  await port.exportSettings()
+  // One storage.set is atomic; live configuration is rolled back on a failed write.
+  await port.restoreSettingsAtomically(validated.settings)
+  try {
+    await persistence.write(validated.settings)
+  } catch (error) {
+    try {
+      await port.restoreSettingsAtomically(before)
+    } catch {
+      throw Error('VK settings persistence failed and live rollback was blocked')
+    }
+    throw error
+  }
 }

@@ -74,12 +74,14 @@ test('reader fails closed on a changed VK conversation or an incomplete folder s
   expect(panel).not.toContain('ArchiveCanonicalMigrator')
 })
 
-test('settings remain session-only with validated import and no invented archive recovery', () => {
+test('settings are durable and backup remains limited to preferences, not archive data', () => {
   expect(panel).toContain("tab === 'settings'")
   expect(panel).toContain('exportVkCaptureSettings(api)')
-  expect(panel).toContain('restoreVkCaptureSettings(api, preferencesFile.value)')
+  expect(panel).toContain('restoreVkCaptureSettings(')
+  expect(panel).toContain('vkPreferencesPersistence()')
+  expect(panel).toContain('port.write(validateVkCapturePreferences(options))')
   expect(panel).toContain('preferencesConfirmed')
   expect(panel).toContain('status.folderPending || !!status.blockedReason')
-  expect(panel).toContain('Полная резервная копия файлов архива v1 не создаётся')
+  expect(panel).toContain('Backup/restore сообщений и вложений')
   expect(panel).not.toContain('restoreCanonicalBackup')
 })
