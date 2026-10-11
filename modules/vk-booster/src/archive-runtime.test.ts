@@ -296,6 +296,31 @@ test('original names, offline HTML, media path and hashes', async () => {
   expect(() => new Function(block)).not.toThrow()
   expect(block).toContain('target=')
 })
+test('same-size media tampering is SHA-256 verified and repaired on explicit rerun', async () => {
+  a = reload()
+  await a.useFolder(folderHandle(folder))
+  const media = folder.dirs.get('media')?.dirs.get(String(docMessage.id))?.files.get(originalName)
+  if (!media) throw Error('Original document is missing from v2 media folder')
+  const original = media.bytes.slice()
+  const before = mediaCalls
+  media.bytes[0] = (media.bytes[0] ?? 0) ^ 0xff // same byte length, different digest
+  expect(media.bytes.length).toBe(original.length)
+  await completed(a.run({ mode: 'recent', limit: 12, pageSize: 20, media: true, delay: 300 }))
+  expect(media.bytes).toEqual(original)
+  expect(mediaCalls).toBe(before + 1)
+  const metadata = (await read('metadata.json')) as VkArchiveMeta
+  expect(
+    Object.values(metadata.files).some(
+      (item) =>
+        item.status === 'saved' &&
+        item.name === originalName &&
+        /^[a-f0-9]{64}$/.test(item.sha256 ?? ''),
+    ),
+  ).toBe(true)
+  const again = mediaCalls
+  await completed(a.run({ mode: 'recent', limit: 12, pageSize: 20, media: true, delay: 300 }))
+  expect(mediaCalls).toBe(again) // unmodified media retained without network redownload
+})
 test('reconnect folder after simulated reload reads only two files', async () => {
   const old = folder
   a = reload()

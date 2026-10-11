@@ -42,9 +42,19 @@ may change without changing product semver.
   canonical v2 layout. Source message metadata and scope remain traceable.
 - Downloads use safe deterministic filenames, bounded stream/size limits,
   SHA-256 receipts and explicit missing/modified/renamed/repair states.
-  Redownload only with user permission and retained provenance.
+  On a user-initiated v2 export run, existing saved files with a SHA-256
+  receipt are verified by digest, not just size, and repaired through the
+  authorized downloader when corrupted. Old v2 receipts without hashes
+  retain legacy size-only compatibility and remain **unverified**; a future
+  explicit media audit must distinguish this status. Redownload only with
+  user permission and retained provenance.
 
 ## Backup, restore and integration
+- The VK capture-options JSON profile is intentionally limited to current
+  session parameters, not the canonical v2 archive or durable application
+  settings. It contains no peer ID, folders, messages, tokens or binaries;
+  scoped checksum validation precedes a fail-closed session update. This
+  **does not** satisfy archive backup/recovery or restart persistence.
 
 - Separate export/validate/import/restore for settings and archive data,
   with independently declared external media inclusion and user-owned paths.

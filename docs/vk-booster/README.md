@@ -42,6 +42,27 @@ but is stacked on PR #10. Its useful pieces must be rebased or transplanted
 independently of the rejected v3 architecture. The PR's source/build approval
 is not browser/data acceptance.
 
+## Existing attachment integrity on v2 reruns
+
+When an existing v2 media receipt contains SHA-256, a user-initiated export
+rerun compares the stored file digest in addition to its byte size before
+marking it reusable. Same-size corruption triggers a fresh authorized
+provider download; unaffected files are kept. Original v2 records without
+SHA-256 remain readable but are not cryptographically proven. This does not
+yet provide a standalone folder-wide media audit or an accepted repair UI.
+
+## VK capture preset (source/UI, session only)
+
+The VK Archive v2 panel now has a separate download/import action for the
+seven current capture preferences: mode, limit, inclusive date range, page
+size, delay and media toggle. A shared SHA-256 settings-backup envelope checks
+product/channel and rejects unknown keys or attempted peer rebinding.
+Import applies only to the current in-memory VK archive session; it does not
+persist general VK preferences across restarts, change the selected peer or
+folder, or back up archive files. It is disabled while archive operations are
+running or the live conversation does not match the selected folder. The
+settings, folder archive and media backup requirements remain separate.
+
 ## Testing
 
 `bun run check`, `bun run build`, and `bun scripts/validate.ts --built`

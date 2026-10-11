@@ -125,7 +125,24 @@ export async function download(
       verifyContext()
       const file = await (await target.getFileHandle(prev.name)).getFile()
       verifyContext()
-      if (file.size === prev.size) return 'existing'
+      if (file.size === prev.size) {
+        // Older v2 receipts may not contain hashes: retain legacy size-only
+        // compatibility rather than rewriting unknown offline media.
+        if (!prev.sha256) return 'existing'
+        // The downloader never writes more than 64 MiB. Bound the read before
+        // computing a digest, so corrupted metadata cannot force an unbounded load.
+        if (file.size > 64 * 1048576) throw Error('Stored media exceeds verification limit')
+        if (/^[0-9a-f]{64}$/.test(prev.sha256)) {
+          const buffer = await file.arrayBuffer()
+          verifyContext()
+          const hash = Array.from(
+            new Uint8Array(await crypto.subtle.digest('SHA-256', buffer)),
+            (byte) => byte.toString(16).padStart(2, '0'),
+          ).join('')
+          verifyContext()
+          if (hash === prev.sha256) return 'existing'
+        }
+      }
     } catch {
       verifyContext()
       /* stale file: redownload */
