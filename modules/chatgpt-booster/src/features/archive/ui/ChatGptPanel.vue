@@ -19,8 +19,6 @@ import {
 } from 'lucide-vue-next'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ArchiveBrowser from '../../../../packages/ui/src/ArchiveBrowser.vue'
-import ArchiveExportDialog from '../../../../packages/ui/src/ArchiveExportDialog.vue'
-import ArchiveMaintenanceWidget from '../../../../packages/ui/src/ArchiveMaintenanceWidget.vue'
 import CaptureSettingsSurface from '../../../../packages/ui/src/CaptureSettingsSurface.vue'
 import ControlCenter from '../../../../packages/ui/src/ControlCenterPanel.vue'
 import CopyIdentity from '../../../../packages/ui/src/CopyIdentity.vue'
@@ -52,7 +50,103 @@ const error = ref('')
 const selectedChat = ref<{ id: string; title: string | null }>()
 const captureContext = ref<ArchiveCaptureContext>()
 const exportCapture = ref(false)
+const fixedBusy = ref(false)
+const fixedError = ref('')
+const fixedCount = ref<number | null>(null)
+const fixedPreview = ref<readonly { id: string; text: string; coverage: string }[]>([])
+async function saveLegacyReadOnly(version: 'v3' | 'v4') {
+  const source = context.value?.fixedArchive
+  if (!source || !legacyBackupConfirmed.value || legacyBackupBusy.value) return
+  legacyBackupBusy.value = true
+  legacyBackupError.value = ''
+  try {
+    const blob = version === 'v3' ? await source.backupLegacyV3() : await source.backupLegacyV4()
+    if (!blob.size) throw Error('Empty historical source backup')
+    const url = URL.createObjectURL(blob)
+    try {
+      const link = document.createElement('a')
+      link.href = url
+      link.download = version === 'v3'
+        ? 'chatgpt-booster-0.8.92-native-v3-readonly.jsonl.gz'
+        : 'chatgpt-booster-native-v4-readonly.jsonl.gz'
+      link.click()
+    } finally {
+      setTimeout(() => URL.revokeObjectURL(url), 30_000)
+    }
+  } catch {
+    legacyBackupError.value = tr(
+      'Старая база не найдена или снимок не удалось создать. Исходные данные не изменены.',
+      'Historical database unavailable or export failed; source remains unchanged.',
+    )
+  } finally {
+    legacyBackupBusy.value = false
+  }
+}
+async function readFixedArchive() {
+  const fixed = context.value?.fixedArchive
+  if (!fixed || fixedBusy.value) return
+  fixedBusy.value = true
+  fixedError.value = ''
+  try {
+    const [count, records] = await Promise.all([fixed.savedCurrent(), fixed.listCurrent()])
+    if (!alive || fixed !== context.value?.fixedArchive) return
+    fixedCount.value = count
+    fixedPreview.value = records
+  } catch {
+    fixedError.value = tr('Dexie-архив недоступен для текущего проверенного владельца.',
+      'The fixed Dexie archive is unavailable for the verified account.')
+  } finally { fixedBusy.value = false }
+}
+async function exportSelectedDexie() {
+  const fixed = context.value?.fixedArchive
+  const selected = selectedChat.value
+  if (!fixed || !selected || fixedBusy.value) return
+  fixedBusy.value = true
+  fixedError.value = ''
+  const expectedAccount = context.value?.archiveAdapter.currentAccountId?.()
+  try {
+    if (!expectedAccount) throw Error('Owner unverified')
+    const blob = await fixed.exportConversation(selected.id)
+    if (context.value?.archiveAdapter.currentAccountId?.() !== expectedAccount ||
+        selectedChat.value?.id !== selected.id)
+      throw Error('Account or selected conversation changed during export')
+    const url = URL.createObjectURL(blob)
+    try {
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'chatgpt-fixed-v1-' + selected.id.replace(/[^a-zA-Z0-9_-]/g, '_') + '.jsonl.gz'
+      link.click()
+    } finally {
+      setTimeout(() => URL.revokeObjectURL(url), 30_000)
+    }
+  } catch {
+    fixedError.value = tr('Сохранённый Dexie-архив не экспортирован.',
+      'The selected Dexie archive could not be exported.')
+  } finally { fixedBusy.value = false }
+}
+async function exportFixedArchive() {
+  const fixed = context.value?.fixedArchive
+  if (!fixed || fixedBusy.value || !current.value.conversationId) return
+  fixedBusy.value = true
+  fixedError.value = ''
+  try {
+    const blob = await fixed.exportCurrent()
+    const url = URL.createObjectURL(blob)
+    try {
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'chatgpt-fixed-v1-' + current.value.conversationId.replace(/[^a-zA-Z0-9_-]/g, '_') + '.jsonl.gz'
+      link.click()
+    } finally { window.setTimeout(() => URL.revokeObjectURL(url), 30_000) }
+  } catch {
+    fixedError.value = tr('Экспорт Dexie не удался. Исходные базы не изменены.',
+      'Dexie export failed. Original sources were not modified.')
+  } finally { fixedBusy.value = false }
+}
 const maintenanceOpen = ref(false)
+const legacyBackupBusy = ref(false)
+const legacyBackupConfirmed = ref(false)
+const legacyBackupError = ref('')
 const archiveMenuOpen = ref(false)
 const archiveMenuArea = ref<HTMLElement | null>(null)
 const archiveInitial = ref<string | null>(null)
@@ -111,6 +205,9 @@ async function refreshContext() {
       projectTitle: null,
     }
     coverage.value = undefined
+    fixedCount.value = null
+    fixedPreview.value = []
+    fixedError.value = ''
     captureContext.value = undefined
   }
   loading.value = true
@@ -342,9 +439,9 @@ onBeforeUnmount(() => {
         <Settings2 class="size-4" />{{ tr('Настройки', 'Settings') }}
       </button>
       <button class="booster-action-secondary" type="button"
-        :aria-label="tr('Открыть миграцию и резервные копии', 'Open migration and backups')"
+        :aria-label="tr('Экспорт старых баз', 'Export historical databases')"
         @click="archiveMenuOpen=false; maintenanceOpen=true">
-        <Wrench class="size-4" />{{ tr('Восстановление', 'Recovery') }}
+        <Wrench class="size-4" />{{ tr('Старые базы', 'Historical backups') }}
       </button>
       <div ref="archiveMenuArea" class="booster-reader-tools" @keydown.esc.stop="archiveMenuOpen=false">
         <button class="booster-action-secondary" type="button"
@@ -354,7 +451,7 @@ onBeforeUnmount(() => {
         </button>
         <div v-if="archiveMenuOpen" class="booster-reader-tools-menu" role="menu">
           <button type="button" role="menuitem" @click="archiveMenuOpen=false; maintenanceOpen=true">
-            <Wrench class="size-4" />{{ tr('Управление архивом и миграция', 'Manage archive and migration') }}
+            <Wrench class="size-4" />{{ tr('Экспорт v3/v4 без изменений', 'Export v3/v4 read-only') }}
           </button>
           <button type="button" role="menuitem" @click="openCapture()">
             <ShieldCheck class="size-4" />{{ tr('Правила сохранения', 'Capture rules') }}
@@ -365,6 +462,30 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </nav>
+    <section v-if="context?.fixedArchive && current.conversationId && tab==='archive'"
+      class="booster-stack-card" aria-label="Фиксированный Dexie архив ChatGPT">
+      <div class="booster-setting-copy">
+        <b>{{ tr('Dexie — собственная структура v1', 'Dexie — fixed canonical v1') }}</b>
+        <small>{{ tr('Только новые подтверждённые события сохранения; прежние базы v3/v4 не переносятся.',
+          'Only new verified capture events; existing v3/v4 archives are not converted.') }}</small>
+        <small v-if="fixedCount !== null">{{ tr('Сохранено', 'Saved') }}: {{ fixedCount }}</small>
+        <small v-if="context.fixedArchive.captureFailed()" role="status">Исходное сообщение изменилось; прежний снимок сохранён.</small>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" class="booster-action-secondary" :disabled="fixedBusy"
+          @click="readFixedArchive">{{ tr('Читать Dexie', 'Read Dexie') }}</button>
+        <button type="button" class="booster-action-secondary" :disabled="fixedBusy"
+          @click="exportFixedArchive">{{ tr('Экспорт Dexie JSON.gz', 'Export Dexie JSON.gz') }}</button>
+      </div>
+      <p v-if="fixedError" role="alert">{{ fixedError }}</p>
+      <ol v-if="fixedPreview.length" class="max-h-60 overflow-y-auto p-2">
+        <li v-for="record in fixedPreview" :key="record.id" class="border-b border-border py-2">
+          <b>{{ record.id }}</b>
+          <span v-if="record.coverage==='contains_opaque'"> · {{ tr('Есть неизвестные части', 'Contains unknown content') }}</span>
+          <p class="whitespace-pre-wrap break-words">{{ record.text }}</p>
+        </li>
+      </ol>
+    </section>
     <div v-if="!context" role="status">{{ tr('Архив запускается…', 'Loading archive…') }}</div>
     <template v-else>
       <ArchiveBrowser
@@ -379,19 +500,20 @@ onBeforeUnmount(() => {
         @export="(id, title) => openExport(id, title, true)"
         @close="closePanel"
       />
-      <ArchiveExportDialog
-        v-else-if="tab==='export' && selectedChat"
-        :key="selectedChat.id"
-        :archive-adapter="context.archiveAdapter"
-        :settings-adapter="context.settingsAdapter"
-        :conversation-id="selectedChat.id"
-        :title="selectedChat.title"
-        :locale="locale"
-        @close="showArchive()"
-        @open-archive="(id, location) => showArchive(id, location)"
-        @open-capture="scope => openCapture(scope, true)"
-        @open-backups="archiveMenuOpen=false; maintenanceOpen=true"
-      />
+      <section v-else-if="tab==='export' && selectedChat" class="booster-stack-card"
+        aria-label="Экспорт фиксированного Dexie-архива">
+        <b>{{ selectedChat.title || selectedChat.id }}</b>
+        <p>{{ tr('Экспорт из собственной схемы Dexie v1. Полнота истории не подтверждена.',
+          'Export from fixed Dexie v1. History completeness is unverified.') }}</p>
+        <div class="flex flex-wrap gap-2">
+          <button type="button" class="booster-action-secondary" :disabled="fixedBusy"
+            @click="exportSelectedDexie">{{ tr('Экспорт JSONL.gz', 'Export JSONL.gz') }}</button>
+          <button type="button" class="booster-action-secondary" @click="showArchive()">
+            {{ tr('К архиву', 'Back to archive') }}
+          </button>
+        </div>
+        <p v-if="fixedError" role="alert">{{ fixedError }}</p>
+      </section>
       <CaptureSettingsSurface
         v-else-if="tab==='capture'"
         :settings-adapter="context.settingsAdapter"
@@ -411,8 +533,31 @@ onBeforeUnmount(() => {
         :show-close="false" :embedded="true"
       />
     </template>
-    <ArchiveMaintenanceWidget v-if="maintenanceOpen && context"
-      :archive-adapter="context.archiveAdapter" :locale="locale"
-      @close="maintenanceOpen=false" @updated="refreshContext" />
+    <section v-if="maintenanceOpen && context?.fixedArchive" class="booster-stack-card"
+      aria-label="Читающий экспорт прежних баз ChatGPT">
+      <b>{{ tr('Исторические базы — только экспорт', 'Historical databases — export only') }}</b>
+      <p>{{ tr('Нет переноса и удаления данных. Останови сбор в старом расширении перед резервной копией.',
+        'No migration or deletion. Stop old extension capture before exporting.') }}</p>
+      <label class="booster-field"><input v-model="legacyBackupConfirmed" type="checkbox"
+        :disabled="legacyBackupBusy" />
+        {{ tr('Понимаю, что копия может содержать переписки всех локальных владельцев.',
+          'I understand this file may include all local owners.') }}
+      </label>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" class="booster-action-secondary"
+          :disabled="legacyBackupBusy || !legacyBackupConfirmed" @click="saveLegacyReadOnly('v3')">
+          {{ tr('Скачать 0.8.92 / v3', 'Export 0.8.92 / v3') }}
+        </button>
+        <button type="button" class="booster-action-secondary"
+          :disabled="legacyBackupBusy || !legacyBackupConfirmed" @click="saveLegacyReadOnly('v4')">
+          {{ tr('Скачать прежнюю v4', 'Export historical v4') }}
+        </button>
+        <button type="button" class="booster-action-secondary"
+          :disabled="legacyBackupBusy" @click="maintenanceOpen=false">
+          {{ tr('Закрыть', 'Close') }}
+        </button>
+      </div>
+      <p v-if="legacyBackupError" role="alert">{{ legacyBackupError }}</p>
+    </section>
   </section>
 </template>

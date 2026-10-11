@@ -800,7 +800,7 @@ onBeforeUnmount(() => {
             <MoreHorizontal class="size-5" />
           </button>
           <div v-if="toolsMenuOpen" class="booster-reader-tools-menu" role="menu">
-            <button type="button" role="menuitem" @click="openMaintenance">
+            <button v-if="archiveAdapter.startArchiveMigration || archiveAdapter.exportNativeSourceBackup" type="button" role="menuitem" @click="openMaintenance">
               <Wrench class="size-4" />{{ locale === 'ru' ? 'Управление архивом' : 'Manage archive' }}
             </button>
             <template v-if="recoveredSelected">
@@ -951,7 +951,7 @@ onBeforeUnmount(() => {
         </div>
       </main>
     </div>
-    <ArchiveMaintenanceWidget v-if="maintenanceOpen"
+    <ArchiveMaintenanceWidget v-if="maintenanceOpen && (archiveAdapter.startArchiveMigration || archiveAdapter.exportNativeSourceBackup)"
       :archive-adapter="archiveAdapter" :locale="locale"
       @close="closeMaintenance" @updated="afterMaintenance" />
   </div>

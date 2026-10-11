@@ -887,3 +887,57 @@ test('switching VK conversations during media fetch pauses without saving media 
   expect(Object.values(saved.files).filter((file) => file.status === 'saved')).toHaveLength(2)
   expect(saved.checkpoint?.status).toBe('done')
 })
+
+test('fixed Dexie VK capture reads verified owner, persists new history, previews and exports without a folder', async () => {
+  const previous = globalThis.fetch
+  const oldIndexed = globalThis.indexedDB
+  const oldRange = globalThis.IDBKeyRange
+  const { indexedDB: fake, IDBKeyRange: range } = await import('fake-indexeddb')
+  const { default: Dexie } = await import('dexie')
+  const priorDexie = { ...Dexie.dependencies }
+  Dexie.dependencies.indexedDB = fake
+  Dexie.dependencies.IDBKeyRange = range
+  Object.assign(globalThis, { indexedDB: fake, IDBKeyRange: range })
+  const initialPath = globalThis.location.pathname
+  globalThis.location.pathname = '/im/convo/' + String(peer)
+  globalThis.fetch = Object.assign(
+    async (url: RequestInfo | URL, init?: RequestInit) => {
+      if (String(url).includes('/method/users.get'))
+        return new Response(JSON.stringify({ response: [{ id: 554433 }] }), { status: 200 })
+      return previous(url, init)
+    },
+    { preconnect: previous.preconnect },
+  )
+  try {
+    const fresh = reload()
+    const saved = await fresh.captureFixed(10)
+    expect(saved).toMatchObject({ saved: 10, alreadySaved: 0 })
+    expect(saved.available).toBeGreaterThanOrEqual(3000)
+    const repeated = await fresh.captureFixed(10)
+    expect(repeated).toMatchObject({ saved: 0, alreadySaved: 10 })
+    const preview = await fresh.readFixed(10)
+    expect(preview).toHaveLength(10)
+    const archive = await fresh.exportFixed()
+    const text = await new Response(archive.stream().pipeThrough(new DecompressionStream('gzip'))).text()
+    const lines = text
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+    expect(lines[0]).toMatchObject({
+      kind: 'header',
+      schema: 'koba-fixed-vk-v1',
+      completeness: 'unknown',
+    })
+    expect(lines.filter((row) => row.kind === 'message')).toHaveLength(10)
+    expect(lines.at(-1)).toMatchObject({ kind: 'footer', count: 10 })
+    // Dexie capture is not allowed to touch the existing file-backed archive.
+    expect(((await read('metadata.json')) as VkArchiveMeta).schema).toBe(2)
+    fresh.destroy()
+  } finally {
+    globalThis.fetch = previous
+    globalThis.location.pathname = initialPath
+    Object.assign(globalThis, { indexedDB: oldIndexed, IDBKeyRange: oldRange })
+    Dexie.dependencies.indexedDB = priorDexie.indexedDB
+    Dexie.dependencies.IDBKeyRange = priorDexie.IDBKeyRange
+  }
+})

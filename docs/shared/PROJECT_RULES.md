@@ -82,6 +82,40 @@ Binding security/storage rules:
 - Permissions are explicit capabilities. MV3 privileges are not assumed by
   userscripts; proxy capability is not shipped without a validated background.
 
+## Long-lived PRs and multi-agent integration
+
+One coherent **workstream owns one working branch and one PR**. Do not open a
+new PR for every feature, bug fix, test or review correction in the same
+workstream. Keep adding small reviewed commits to its existing branch/PR,
+updating the PR scope, current acceptance evidence and head SHA.
+
+For parallel ChatGPT/shared-platform and VK work, use at most **one open
+integration PR per owner/workstream**. A shared change is produced by one
+owner, validated in the affected consumers, then incorporated into the
+other owner's branch via Git merge/rebase or a reviewed, explicit patch.
+Do not create a third "integration" PR or silently copy incompatible
+source. Before changing another owner's paths, coordinate the intended
+boundary on the existing Issue/PR and inspect its latest remote head.
+
+Avoid permanent chains of stacked PRs. Consolidate accumulated unmerged
+work into the existing owner PR, retarget it to the intended base and close
+redundant PRs **only after** verifying their commits/diffs remain reachable
+from the surviving branch. Do not delete source history or force-push
+over another agent's work. After one workstream merges to main, the other
+refreshes its branch from the current main and resolves version/lockfile,
+provider ownership, schema, storage and UI conflicts before requesting
+independent review. Major architectural disagreements are explicit
+integration blockers, not permission to silently prefer a branch.
+
+The writer owns implementation, tests and pushing to its own branch;
+the independent reviewer owns exact-head acceptance and merges. Check
+source+types+lint+tests+affected builds, then **exact final-head CI/review**.
+Main merges trigger continuous DEV prerelease publication after a passing
+push CI. Never use an apparently successful earlier PR CI as proof of a
+changed combined head. PROD still requires installed-browser/data and
+explicit promotion acceptance. Do not disable automatic DEV to work
+around conflicts; resolve the integration before merging.
+
 ## Engineering workflow
 
 Use `AGENTS.md` as a **router**, not a second copy of these rules. Load only

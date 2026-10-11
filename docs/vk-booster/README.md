@@ -56,3 +56,11 @@ permissions, real media downloads, existing-folder recovery or installed
 Tampermonkey/MV3 isolation.
 
 See [ARCHIVE.md](ARCHIVE.md) for compatibility, enhancements and acceptance.
+
+## Shared Dexie telemetry availability
+
+The shared storage package now has a Dexie-backed, opt-in technical-event
+journal for provider-neutral telemetry. VK's canonical Archive v2 remains
+file-backed and unchanged, and it does not automatically open or migrate to
+Dexie. Runtime telemetry consent/transport integration is a separate product
+acceptance task; this source work keeps VK at 2.3.10.
