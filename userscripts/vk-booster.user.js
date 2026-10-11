@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VK Booster [DEV]
 // @namespace    https://github.com/KobaProduction/browser-extensions/dev/vk-booster
-// @version      1.0.40
+// @version      1.0.41
 // @description  Koba Browser Tools / VK Booster
 // @homepageURL   https://github.com/KobaProduction/browser-extensions
 // @updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/vk-booster.user.js
@@ -41,6 +41,12 @@
     setEnabled(id, enabled) {
       return this.store.set(`features.${id}.enabled`, enabled);
     }
+    installationEnabled() {
+      return this.store.get("installation.enabled").then((value) => value !== false);
+    }
+    setInstallationEnabled(enabled) {
+      return this.store.set("installation.enabled", enabled);
+    }
   }
   class FeatureRuntime {
     features;
@@ -48,7 +54,10 @@
     telemetry;
     active = /* @__PURE__ */ new Map();
     status = /* @__PURE__ */ new Map();
+    listeners = /* @__PURE__ */ new Set();
     started = false;
+    running = true;
+    operations = Promise.resolve();
     constructor(features, context, telemetry) {
       this.features = features;
       this.context = context;
@@ -60,10 +69,26 @@
         names.add(feature.id);
       }
     }
-    async start() {
+    subscribe(listener) {
+      this.listeners.add(listener);
+      return () => this.listeners.delete(listener);
+    }
+    changed() {
+      for (const listener of [...this.listeners])
+        listener();
+    }
+    transition(task) {
+      const next = this.operations.then(task);
+      this.operations = next.catch(() => {
+        return;
+      });
+      return next;
+    }
+    async startNow() {
       if (this.started)
         return;
       this.started = true;
+      this.running = await this.context.settings.installationEnabled();
       for (const feature of this.features) {
         const base = { id: feature.id, title: feature.title, description: feature.description };
         if (!feature.match(this.context.url)) {
@@ -79,7 +104,7 @@
           });
           continue;
         }
-        if (!await this.context.settings.enabled(feature.id)) {
+        if (!this.running || !await this.context.settings.enabled(feature.id)) {
           this.status.set(feature.id, { ...base, state: "disabled" });
           continue;
         }
@@ -90,6 +115,10 @@
           this.status.set(feature.id, { ...base, state: "active" });
           this.telemetry?.record("feature.started", feature.id, Date.now() - begin);
         } catch (error) {
+          try {
+            await feature.stop?.();
+          } catch {
+          }
           this.status.set(feature.id, {
             ...base,
             state: "failed",
@@ -98,8 +127,9 @@
           this.telemetry?.record("feature.failed", feature.id);
         }
       }
+      this.changed();
     }
-    async stop() {
+    async stopNow() {
       for (const f of [...this.active.values()].reverse())
         try {
           await f.stop?.();
@@ -108,6 +138,17 @@
         }
       this.active.clear();
       this.started = false;
+      this.status.clear();
+      this.changed();
+    }
+    start() {
+      return this.transition(() => this.startNow());
+    }
+    stop() {
+      return this.transition(() => this.stopNow());
+    }
+    isRunning() {
+      return this.running;
     }
     list() {
       return this.features.map((f) => this.status.get(f.id) ?? {
@@ -123,11 +164,30 @@
         throw new Error(`Module is not active: ${id}`);
       await feature.open?.();
     }
-    async setEnabled(id, value) {
-      await this.context.settings.setEnabled(id, value);
-      await this.stop();
-      this.status.clear();
-      await this.start();
+    setRunning(enabled) {
+      return this.transition(async () => {
+        await this.context.settings.setInstallationEnabled(enabled);
+        await this.stopNow();
+        await this.startNow();
+      });
+    }
+    refreshFromSettings() {
+      return this.transition(async () => {
+        const enabled = await this.context.settings.installationEnabled();
+        if (enabled === this.running)
+          return;
+        await this.stopNow();
+        await this.startNow();
+      });
+    }
+    setEnabled(id, value) {
+      if (!this.features.some((feature) => feature.id === id))
+        return Promise.reject(Error(`Unknown module ${id}`));
+      return this.transition(async () => {
+        await this.context.settings.setEnabled(id, value);
+        await this.stopNow();
+        await this.startNow();
+      });
     }
   }
   function defaultCapabilities(_target) {
@@ -6377,17 +6437,98 @@
     DexieYProvider: DexieYProvider$2
   } = Dexie$2;
   function createSettingsStore(target, namespace = "koba-browser") {
+    const scopedNamespace = instanceKey(namespace);
     return {
       async get(key) {
         try {
-          const value = localStorage.getItem(`${namespace}:${key}`);
+          const value = localStorage.getItem(`${scopedNamespace}:${key}`);
           return value === null ? void 0 : value === "true";
         } catch {
           return;
         }
       },
       async set(key, enabled) {
-        localStorage.setItem(`${namespace}:${key}`, String(enabled));
+        localStorage.setItem(`${scopedNamespace}:${key}`, String(enabled));
+      }
+    };
+  }
+  function onInstallationStateChange(target, listener) {
+    const key = `${instanceKey("koba-browser")}:installation.enabled`;
+    const changed = (event) => {
+      if (event.key === key)
+        listener();
+    };
+    window.addEventListener("storage", changed);
+    return () => window.removeEventListener("storage", changed);
+  }
+  function createChatCollectionController(port) {
+    let running = null;
+    let cancelled = false;
+    let disposed = false;
+    let state = port.snapshot();
+    const listeners = /* @__PURE__ */ new Set();
+    const publish = (next) => {
+      if (disposed)
+        return;
+      state = next;
+      for (const listener of [...listeners])
+        listener(state);
+    };
+    const off = port.subscribe((next) => {
+      if (cancelled && (next.phase === "completed" || next.phase === "running"))
+        return;
+      publish(next);
+    });
+    return {
+      snapshot: () => state,
+      subscribe(listener) {
+        if (disposed)
+          throw Error("Collection controller already disposed");
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      },
+      start() {
+        if (disposed)
+          return Promise.reject(Error("Collection controller disposed"));
+        if (running)
+          return running;
+        if (state.phase === "running")
+          return Promise.resolve();
+        cancelled = false;
+        publish({ phase: "running", processed: 0, total: null, saved: null });
+        const task = Promise.resolve().then(() => port.start()).then(() => {
+          if (!cancelled && (state.phase === "running" || state.phase === "idle") && port.completion !== "by-event")
+            publish({ ...state, phase: "completed" });
+        }, (error) => {
+          if (cancelled)
+            return;
+          publish({ ...state, phase: "error" });
+          throw error;
+        }).finally(() => {
+          if (running === task)
+            running = null;
+        });
+        running = task;
+        return task;
+      },
+      stop() {
+        if (disposed || !running && state.phase !== "running")
+          return;
+        cancelled = true;
+        port.stop();
+        publish({ ...state, phase: "cancelled" });
+      },
+      dispose() {
+        if (disposed)
+          return;
+        const active = Boolean(running) || state.phase === "running";
+        disposed = true;
+        if (active)
+          port.stop();
+        off();
+        listeners.clear();
       }
     };
   }
@@ -13481,77 +13622,6 @@
     notify(progress, "done", inspected.rows + Number(selection.settings), inspected.rows + Number(selection.settings), inspected.entries);
     return inspected;
   }
-  var FORMAT = "koba-settings-backup-v1";
-  var MAX_BYTES$1 = 512 * 1024;
-  var isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
-  async function checksum(text) {
-    const digest2 = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-    return Array.from(new Uint8Array(digest2), (value) => value.toString(16).padStart(2, "0")).join("");
-  }
-  function settingsJson(value) {
-    const valueJson = JSON.stringify(value);
-    if (typeof valueJson !== "string" || valueJson.length === 0 || valueJson.length > MAX_BYTES$1)
-      throw new Error("Settings backup payload is invalid or oversized");
-    return valueJson;
-  }
-  async function exportSettingsBackup(port) {
-    assertServiceScope(port.scope);
-    if (!Number.isSafeInteger(port.schemaVersion) || port.schemaVersion < 1)
-      throw new Error("Invalid settings schema version");
-    const value = port.validateSettings(await port.exportSettings());
-    settingsJson(value);
-    const body = {
-      format: FORMAT,
-      schemaVersion: port.schemaVersion,
-      scope: { ...port.scope },
-      createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-      includes: { settings: true, archive: false, attachments: false },
-      settings: value
-    };
-    const backup = {
-      ...body,
-      checksum: await checksum(JSON.stringify(body))
-    };
-    const raw = JSON.stringify(backup);
-    if (new TextEncoder().encode(raw).byteLength > MAX_BYTES$1)
-      throw new Error("Settings backup exceeds maximum size");
-    return new Blob([raw], { type: "application/json" });
-  }
-  async function validateSettingsBackup(port, blob) {
-    if (blob.size === 0 || blob.size > MAX_BYTES$1)
-      throw new Error("Settings backup size rejected");
-    const raw = JSON.parse(await blob.text());
-    if (!isRecord(raw) || raw.format !== FORMAT || raw.schemaVersion !== port.schemaVersion || !isRecord(raw.scope) || !isRecord(raw.includes) || Object.keys(raw).sort().join(",") !== "checksum,createdAt,format,includes,schemaVersion,scope,settings" || Object.keys(raw.scope).some((key) => !["productId", "channel", "ownerId", "installationId"].includes(key)) || Object.keys(raw.includes).sort().join(",") !== "archive,attachments,settings" || raw.includes.settings !== true || raw.includes.archive !== false || raw.includes.attachments !== false || typeof raw.createdAt !== "string" || !Number.isFinite(Date.parse(raw.createdAt)) || typeof raw.checksum !== "string" || !/^[a-f0-9]{64}$/.test(raw.checksum)) {
-      throw new Error("Settings backup format or schema is unsupported");
-    }
-    const scope = {
-      productId: raw.scope.productId,
-      channel: raw.scope.channel,
-      ...raw.scope.ownerId === void 0 ? {} : { ownerId: raw.scope.ownerId },
-      ...raw.scope.installationId === void 0 ? {} : { installationId: raw.scope.installationId }
-    };
-    assertMatchingScope(port.scope, scope);
-    settingsJson(raw.settings);
-    const { checksum: expectedDigest, ...fields2 } = raw;
-    if (await checksum(JSON.stringify(fields2)) !== expectedDigest)
-      throw new Error("Settings backup integrity check failed");
-    const settings = port.validateSettings(raw.settings);
-    if (settingsJson(settings) !== settingsJson(raw.settings))
-      throw new Error("Settings backup contains unsupported or unnormalized values");
-    return {
-      format: FORMAT,
-      schemaVersion: port.schemaVersion,
-      scope,
-      createdAt: raw.createdAt,
-      includes: { settings: true, archive: false, attachments: false },
-      checksum: raw.checksum,
-      settings
-    };
-  }
-  async function restoreSettingsBackup(port, blob) {
-    const validated = await validateSettingsBackup(port, blob);
-    await port.restoreSettingsAtomically(validated.settings);
-  }
   var import_dexie = __toESM(require_dexie());
   var DexieSymbol$1 = /* @__PURE__ */ Symbol.for("Dexie");
   var Dexie$1 = globalThis[DexieSymbol$1] || (globalThis[DexieSymbol$1] = import_dexie.default);
@@ -16881,27 +16951,6 @@
       }
     };
   }
-  async function exportVkCaptureSettings(api) {
-    return exportSettingsBackup(vkCaptureSettingsPort(api));
-  }
-  async function restoreVkCaptureSettings(api, backup, persistence) {
-    const port = vkCaptureSettingsPort(api, persistence?.scopeId);
-    if (!persistence) return restoreSettingsBackup(port, backup);
-    const validated = await validateSettingsBackup(port, backup);
-    const before = withoutPeer(api.status().options);
-    await port.exportSettings();
-    await port.restoreSettingsAtomically(validated.settings);
-    try {
-      await persistence.write(validated.settings);
-    } catch (error) {
-      try {
-        await port.restoreSettingsAtomically(before);
-      } catch {
-        throw Error("VK settings persistence failed and live rollback was blocked");
-      }
-      throw error;
-    }
-  }
   const PREFIX = "koba:vk-capture-preferences:v1";
   const MAX_BYTES = 4096;
   function assertVkScope(scopeId) {
@@ -17331,25 +17380,6 @@
     const key = instanceKey("VKExport", "vk-booster:prod");
     return globalThis[key];
   }
-  const vkBoosterFeature = {
-    id: "vk-booster",
-    title: "VK Booster",
-    description: "История переписки, вложения и офлайн-просмотр",
-    targets: ["userscript", "chromium"],
-    requiredCapabilities: ["page-dom", "origin-storage", "local-files"],
-    match: (url) => /^(vk\.ru|vk\.com)$/.test(url.hostname) && url.pathname.startsWith("/im"),
-    async start(context) {
-      installVkArchive(context.target);
-      await loadVkCaptureDefaults((value) => archiveApi()?.configure(value), context.target);
-    },
-    open() {
-      archiveApi()?.show();
-    },
-    stop() {
-      archiveApi()?.destroy?.();
-      setVkPreferencesPersistence(null);
-    }
-  };
   // @__NO_SIDE_EFFECTS__
   function makeMap(str) {
     const map = /* @__PURE__ */ Object.create(null);
@@ -17589,9 +17619,6 @@
       return looseCompareNested(a, b, seen, looseCompareObjects);
     }
     return String(a) === String(b);
-  }
-  function looseIndexOf(arr, val) {
-    return arr.findIndex((item) => looseEqual(item, val));
   }
   const isRef$1 = (val) => {
     return !!(val && val["__v_isRef"] === true);
@@ -24040,68 +24067,6 @@
       el.value = newValue;
     }
   };
-  const vModelCheckbox = {
-    // #4096 array checkboxes need to be deep traversed
-    deep: true,
-    created(el, _, vnode) {
-      el[assignKey] = getModelAssigner(vnode);
-      addEventListener$1(el, "change", () => {
-        const modelValue = el._modelValue;
-        const elementValue = getValue(el);
-        const checked = el.checked;
-        const assign = el[assignKey];
-        if (isArray(modelValue)) {
-          const index = looseIndexOf(modelValue, elementValue);
-          const found = index !== -1;
-          if (checked && !found) {
-            assign(modelValue.concat(elementValue));
-          } else if (!checked && found) {
-            const filtered = [...modelValue];
-            filtered.splice(index, 1);
-            assign(filtered);
-          }
-        } else if (isSet(modelValue)) {
-          const cloned = new Set(modelValue);
-          if (checked) {
-            cloned.add(elementValue);
-          } else {
-            cloned.delete(elementValue);
-          }
-          assign(cloned);
-        } else {
-          assign(getCheckboxValue(el, checked));
-        }
-      });
-    },
-    // set initial checked on mount to wait for true-value/false-value
-    mounted: setChecked,
-    beforeUpdate(el, binding, vnode) {
-      el[assignKey] = getModelAssigner(vnode);
-      setChecked(el, binding, vnode);
-    }
-  };
-  function setChecked(el, { value, oldValue }, vnode) {
-    el._modelValue = value;
-    let checked;
-    if (isArray(value)) {
-      checked = looseIndexOf(value, vnode.props.value) > -1;
-    } else if (isSet(value)) {
-      checked = value.has(vnode.props.value);
-    } else {
-      if (value === oldValue) return;
-      checked = looseEqual(value, getCheckboxValue(el, true));
-    }
-    if (el.checked !== checked) {
-      el.checked = checked;
-    }
-  }
-  function getValue(el) {
-    return "_value" in el ? el._value : el.value;
-  }
-  function getCheckboxValue(el, checked) {
-    const key = checked ? "_trueValue" : "_falseValue";
-    return key in el ? el[key] : checked;
-  }
   const systemModifiers = ["ctrl", "shift", "alt", "meta"];
   const modifierGuards = {
     stop: (e) => e.stopPropagation(),
@@ -24170,6 +24135,45 @@
     }
     return container;
   }
+  const vkRequestedView = /* @__PURE__ */ ref(null);
+  const presentation = { panel: "standard", version: "1.0.0", installation: "Browser extension" };
+  function openVkView(view) {
+    vkRequestedView.value = view;
+    window.dispatchEvent(new CustomEvent(SHELL_OPEN_FEATURE_EVENT, { detail: { id: "vk-booster" } }));
+  }
+  const vkBoosterFeature = {
+    id: "vk-booster",
+    title: "VK Booster",
+    presentation,
+    launcher: { mode: "quick-menu" },
+    quickActions: [
+      { id: "settings", label: "Настройки", icon: "settings", run: () => openVkView("settings") },
+      { id: "archive", label: "Открыть архив", icon: "archive", run: () => openVkView("reader") },
+      { id: "collect", label: "Собрать диалог", icon: "collect", run: () => openVkView("collect") },
+      {
+        id: "export",
+        label: "Экспорт сохранённого чата",
+        icon: "export",
+        run: () => openVkView("export")
+      }
+    ],
+    description: "История переписки, вложения и офлайн-просмотр",
+    targets: ["userscript", "chromium"],
+    requiredCapabilities: ["page-dom", "origin-storage", "local-files"],
+    match: (url) => /^(vk\.ru|vk\.com)$/.test(url.hostname) && url.pathname.startsWith("/im"),
+    async start(context) {
+      presentation.installation = context.target === "userscript" ? "Tampermonkey" : "Chromium";
+      installVkArchive(context.target);
+      await loadVkCaptureDefaults((value) => archiveApi()?.configure(value), context.target);
+    },
+    open() {
+      archiveApi()?.show();
+    },
+    stop() {
+      archiveApi()?.destroy?.();
+      setVkPreferencesPersistence(null);
+    }
+  };
   function r(e) {
     var t, f, n = "";
     if ("string" == typeof e || "number" == typeof e) n += e;
@@ -27444,7 +27448,7 @@
     key: 0,
     class: "flex items-center justify-between gap-2"
   };
-  const _hoisted_3$3 = {
+  const _hoisted_3$4 = {
     role: "status",
     "aria-live": "polite"
   };
@@ -27489,7 +27493,7 @@
           !__props.compact ? (openBlock(), createElementBlock("div", _hoisted_2$4, [
             createBaseVNode(
               "span",
-              _hoisted_3$3,
+              _hoisted_3$4,
               toDisplayString(__props.label),
               1
               /* TEXT */
@@ -27613,7 +27617,7 @@
   function cn(...inputs) {
     return twMerge(clsx(inputs));
   }
-  const _sfc_main$1$1 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$1$2 = /* @__PURE__ */ defineComponent({
     __name: "Badge",
     props: {
       variant: {},
@@ -27743,6 +27747,11 @@
     ["path", { d: "M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8", key: "1s80jp" }],
     ["path", { d: "M10 12h4", key: "a56b0p" }]
   ]);
+  const ArrowUpToLine = createLucideIcon("arrow-up-to-line", [
+    ["path", { d: "M5 3h14", key: "7usisc" }],
+    ["path", { d: "m18 13-6-6-6 6", key: "1kf1n9" }],
+    ["path", { d: "M12 7v14", key: "1akyts" }]
+  ]);
   const ChartColumn = createLucideIcon("chart-column", [
     ["path", { d: "M3 3v16a2 2 0 0 0 2 2h16", key: "c24i48" }],
     ["path", { d: "M18 17V9", key: "2bz60n" }],
@@ -27765,6 +27774,15 @@
     ],
     ["path", { d: "M15 11v-1", key: "cntcp" }],
     ["path", { d: "M15 17v-2", key: "1279jj" }]
+  ]);
+  const FolderOpen = createLucideIcon("folder-open", [
+    [
+      "path",
+      {
+        d: "m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2",
+        key: "usdka0"
+      }
+    ]
   ]);
   const GripVertical = createLucideIcon("grip-vertical", [
     ["circle", { cx: "9", cy: "12", r: "1", key: "1vctgf" }],
@@ -27826,6 +27844,16 @@
     ["path", { d: "M12 8v4", key: "1got3b" }],
     ["path", { d: "M12 16h.01", key: "1drbdi" }]
   ]);
+  const ShieldCheck = createLucideIcon("shield-check", [
+    [
+      "path",
+      {
+        d: "M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z",
+        key: "oel41y"
+      }
+    ],
+    ["path", { d: "m9 12 2 2 4-4", key: "dzmm74" }]
+  ]);
   const SlidersHorizontal = createLucideIcon("sliders-horizontal", [
     ["path", { d: "M10 5H3", key: "1qgfaw" }],
     ["path", { d: "M12 19H3", key: "yhmn1j" }],
@@ -27836,6 +27864,9 @@
     ["path", { d: "M21 5h-7", key: "1oszz2" }],
     ["path", { d: "M8 10v4", key: "tgpxqk" }],
     ["path", { d: "M8 12H3", key: "a7s4jb" }]
+  ]);
+  const Square = createLucideIcon("square", [
+    ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", key: "afitv7" }]
   ]);
   const Wrench = createLucideIcon("wrench", [
     [
@@ -27850,7 +27881,7 @@
     ["path", { d: "M18 6 6 18", key: "1bl5f8" }],
     ["path", { d: "m6 6 12 12", key: "d8bk6v" }]
   ]);
-  const _sfc_main$3 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$4 = /* @__PURE__ */ defineComponent({
     __name: "ArchiveProgressBar",
     props: {
       label: {},
@@ -27871,359 +27902,123 @@
       };
     }
   });
-  const _hoisted_1$3 = {
-    class: "booster-stack-card",
-    "aria-label": "Резервная копия приложения"
-  };
-  const _hoisted_2$3 = { class: "booster-field" };
-  const _hoisted_3$2 = { class: "flex items-center gap-2" };
-  const _hoisted_4$2 = ["disabled"];
-  const _hoisted_5$2 = { class: "booster-field" };
-  const _hoisted_6$2 = { class: "flex items-center gap-2" };
-  const _hoisted_7$2 = ["disabled"];
-  const _hoisted_8$2 = { class: "booster-field" };
-  const _hoisted_9$2 = { class: "flex items-center gap-2" };
-  const _hoisted_10$2 = ["disabled"];
-  const _hoisted_11$2 = { class: "booster-field" };
-  const _hoisted_12$2 = ["disabled"];
-  const _hoisted_13$2 = { class: "booster-field" };
-  const _hoisted_14$2 = ["disabled"];
-  const _hoisted_15$2 = {
-    role: "status",
-    class: "m-0 text-xs"
-  };
-  const _hoisted_16$1 = {
-    key: 0,
-    class: "booster-field"
-  };
-  const _hoisted_17$1 = { class: "flex items-center gap-2" };
-  const _hoisted_18$1 = ["disabled"];
-  const _hoisted_19$1 = {
-    key: 1,
-    class: "booster-field"
-  };
-  const _hoisted_20$1 = { class: "flex items-center gap-2" };
-  const _hoisted_21$1 = ["disabled"];
-  const _hoisted_22$1 = { class: "booster-field" };
-  const _hoisted_23$1 = { class: "flex items-center gap-2" };
-  const _hoisted_24$1 = ["disabled"];
-  const _hoisted_25$1 = {
-    key: 1,
-    class: "booster-setting-copy",
-    role: "status",
-    "aria-live": "polite"
-  };
-  const _hoisted_26$1 = ["value", "max"];
-  const _hoisted_27$1 = {
-    key: 2,
-    role: "alert",
-    class: "m-0 text-sm text-destructive"
-  };
-  const _hoisted_28$1 = {
+  const _hoisted_1$1$1 = { class: "booster-conversation-collection" };
+  const _hoisted_2$1$1 = ["disabled"];
+  const _hoisted_3$1$1 = {
     key: 3,
-    role: "status",
-    class: "m-0 text-sm"
+    class: "text-xs text-muted-foreground",
+    role: "status"
   };
-  const _sfc_main$4 = /* @__PURE__ */ defineComponent({
-    __name: "PortableBackupPanel",
+  const _sfc_main$1$1 = /* @__PURE__ */ defineComponent({
+    __name: "ConversationCollectionAction",
     props: {
-      available: {},
-      pending: { type: Boolean },
-      inspected: {},
-      error: {},
-      success: {},
-      progress: {}
+      label: {},
+      busy: { type: Boolean },
+      disabled: { type: Boolean, default: false },
+      processed: {},
+      total: {},
+      saved: {},
+      stopLabel: { default: "Остановить" },
+      savedLabel: { default: "Сохранено" }
     },
-    emits: ["export", "inspect", "restore"],
+    emits: ["start", "stop"],
     setup(__props, { emit: __emit }) {
-      const props = __props;
       const emit2 = __emit;
-      const settings = /* @__PURE__ */ ref(true);
-      const indexeddb = /* @__PURE__ */ ref(true);
-      const gzip = /* @__PURE__ */ ref(true);
-      const chunkRows = /* @__PURE__ */ ref(1024);
-      const restoreSettings = /* @__PURE__ */ ref(true);
-      const restoreIndexed = /* @__PURE__ */ ref(true);
-      const confirmed = /* @__PURE__ */ ref(false);
-      const canExport = computed(
-        () => !props.pending && (settings.value && props.available.settings || indexeddb.value && props.available.indexeddb)
-      );
-      const canRestore = computed(
-        () => !!props.inspected && !props.pending && confirmed.value && (restoreSettings.value && props.inspected.settings || restoreIndexed.value && props.inspected.indexeddb)
-      );
-      function fileChanged(e) {
-        const input = e.target;
-        const file = input.files?.[0];
-        confirmed.value = false;
-        if (file) emit2("inspect", file);
-        input.value = "";
-      }
       return (_ctx, _cache) => {
-        return openBlock(), createElementBlock("section", _hoisted_1$3, [
-          _cache[18] || (_cache[18] = createBaseVNode(
-            "div",
-            { class: "booster-setting-copy" },
-            [
-              createBaseVNode("b", null, "Резервная копия"),
-              createBaseVNode("small", null, "Постоянные настройки и IndexedDB — независимо. Состояние текущей вкладки и сессии никогда не входит в резервную копию.")
-            ],
-            -1
-            /* CACHED */
-          )),
-          createBaseVNode("label", _hoisted_2$3, [
-            createBaseVNode("span", _hoisted_3$2, [
-              withDirectives(createBaseVNode("input", {
-                "onUpdate:modelValue": _cache[0] || (_cache[0] = ($event) => settings.value = $event),
-                type: "checkbox",
-                disabled: __props.pending || !__props.available.settings
-              }, null, 8, _hoisted_4$2), [
-                [vModelCheckbox, settings.value]
-              ]),
-              _cache[9] || (_cache[9] = createTextVNode(
-                "Persistent-настройки (Pinia / браузерное хранилище)",
-                -1
-                /* CACHED */
-              ))
-            ])
-          ]),
-          createBaseVNode("label", _hoisted_5$2, [
-            createBaseVNode("span", _hoisted_6$2, [
-              withDirectives(createBaseVNode("input", {
-                "onUpdate:modelValue": _cache[1] || (_cache[1] = ($event) => indexeddb.value = $event),
-                type: "checkbox",
-                disabled: __props.pending || !__props.available.indexeddb
-              }, null, 8, _hoisted_7$2), [
-                [vModelCheckbox, indexeddb.value]
-              ]),
-              _cache[10] || (_cache[10] = createTextVNode(
-                "Все записи доступных таблиц IndexedDB",
-                -1
-                /* CACHED */
-              ))
-            ])
-          ]),
-          createBaseVNode("label", _hoisted_8$2, [
-            createBaseVNode("span", _hoisted_9$2, [
-              withDirectives(createBaseVNode("input", {
-                "onUpdate:modelValue": _cache[2] || (_cache[2] = ($event) => gzip.value = $event),
-                type: "checkbox",
-                disabled: __props.pending
-              }, null, 8, _hoisted_10$2), [
-                [vModelCheckbox, gzip.value]
-              ]),
-              _cache[11] || (_cache[11] = createTextVNode(
-                "Сжать весь TAR (GZIP)",
-                -1
-                /* CACHED */
-              ))
-            ])
-          ]),
-          createBaseVNode("label", _hoisted_11$2, [
-            createBaseVNode(
-              "span",
-              null,
-              "Размер чанка: " + toDisplayString(chunkRows.value) + " записей IndexedDB",
+        return openBlock(), createElementBlock("div", _hoisted_1$1$1, [
+          !__props.busy ? (openBlock(), createElementBlock("button", {
+            key: 0,
+            type: "button",
+            class: "booster-action-secondary",
+            disabled: __props.disabled,
+            onClick: _cache[0] || (_cache[0] = ($event) => emit2("start"))
+          }, [
+            createVNode(unref(ArrowUpToLine), {
+              class: "size-4",
+              "aria-hidden": "true"
+            }),
+            createTextVNode(
+              toDisplayString(__props.label),
               1
               /* TEXT */
-            ),
-            withDirectives(createBaseVNode("input", {
-              "onUpdate:modelValue": _cache[3] || (_cache[3] = ($event) => chunkRows.value = $event),
-              type: "range",
-              min: "64",
-              max: "2048",
-              step: "64",
-              disabled: __props.pending
-            }, null, 8, _hoisted_12$2), [
-              [
-                vModelText,
-                chunkRows.value,
-                void 0,
-                { number: true }
-              ]
-            ])
-          ]),
-          createVNode(unref(_sfc_main$6), {
-            size: "sm",
-            variant: "outline",
-            disabled: !canExport.value,
-            onClick: _cache[4] || (_cache[4] = ($event) => emit2("export", { settings: settings.value && __props.available.settings, indexeddb: indexeddb.value && __props.available.indexeddb, compression: gzip.value ? "gzip" : "none", chunkRows: chunkRows.value }))
-          }, {
-            default: withCtx(() => [..._cache[12] || (_cache[12] = [
-              createTextVNode(
-                "Сохранить TAR / TAR.GZ",
-                -1
-                /* CACHED */
-              )
-            ])]),
-            _: 1
-            /* STABLE */
-          }, 8, ["disabled"]),
-          createBaseVNode("label", _hoisted_13$2, [
-            _cache[13] || (_cache[13] = createBaseVNode(
-              "span",
-              null,
-              "Проверить файл резервной копии",
-              -1
-              /* CACHED */
-            )),
-            createBaseVNode("input", {
-              type: "file",
-              class: "booster-input w-full",
-              accept: ".tar,.tar.gz,.tgz,application/x-tar,application/gzip",
-              disabled: __props.pending,
-              onChange: fileChanged
-            }, null, 40, _hoisted_14$2)
-          ]),
-          __props.inspected ? (openBlock(), createElementBlock(
-            Fragment,
-            { key: 0 },
-            [
-              createBaseVNode(
-                "p",
-                _hoisted_15$2,
-                "Файл проверен: " + toDisplayString(__props.inspected.rows) + " записей IndexedDB, " + toDisplayString(__props.inspected.createdAt) + ".",
-                1
-                /* TEXT */
-              ),
-              __props.inspected.settings ? (openBlock(), createElementBlock("label", _hoisted_16$1, [
-                createBaseVNode("span", _hoisted_17$1, [
-                  withDirectives(createBaseVNode("input", {
-                    "onUpdate:modelValue": _cache[5] || (_cache[5] = ($event) => restoreSettings.value = $event),
-                    type: "checkbox",
-                    disabled: __props.pending
-                  }, null, 8, _hoisted_18$1), [
-                    [vModelCheckbox, restoreSettings.value]
-                  ]),
-                  _cache[14] || (_cache[14] = createTextVNode(
-                    "Восстановить persistent-настройки",
-                    -1
-                    /* CACHED */
-                  ))
-                ])
-              ])) : createCommentVNode("v-if", true),
-              __props.inspected.indexeddb ? (openBlock(), createElementBlock("label", _hoisted_19$1, [
-                createBaseVNode("span", _hoisted_20$1, [
-                  withDirectives(createBaseVNode("input", {
-                    "onUpdate:modelValue": _cache[6] || (_cache[6] = ($event) => restoreIndexed.value = $event),
-                    type: "checkbox",
-                    disabled: __props.pending
-                  }, null, 8, _hoisted_21$1), [
-                    [vModelCheckbox, restoreIndexed.value]
-                  ]),
-                  _cache[15] || (_cache[15] = createTextVNode(
-                    "Восстановить IndexedDB (заменить записи этого владельца)",
-                    -1
-                    /* CACHED */
-                  ))
-                ])
-              ])) : createCommentVNode("v-if", true),
-              createBaseVNode("label", _hoisted_22$1, [
-                createBaseVNode("span", _hoisted_23$1, [
-                  withDirectives(createBaseVNode("input", {
-                    "onUpdate:modelValue": _cache[7] || (_cache[7] = ($event) => confirmed.value = $event),
-                    type: "checkbox",
-                    disabled: __props.pending
-                  }, null, 8, _hoisted_24$1), [
-                    [vModelCheckbox, confirmed.value]
-                  ]),
-                  _cache[16] || (_cache[16] = createTextVNode(
-                    "Подтверждаю восстановление выбранных разделов",
-                    -1
-                    /* CACHED */
-                  ))
-                ])
-              ]),
-              createVNode(unref(_sfc_main$6), {
-                size: "sm",
-                variant: "outline",
-                disabled: !canRestore.value,
-                onClick: _cache[8] || (_cache[8] = ($event) => emit2("restore", { settings: restoreSettings.value && !!__props.inspected?.settings, indexeddb: restoreIndexed.value && !!__props.inspected?.indexeddb }))
-              }, {
-                default: withCtx(() => [..._cache[17] || (_cache[17] = [
-                  createTextVNode(
-                    "Восстановить выбранное",
-                    -1
-                    /* CACHED */
-                  )
-                ])]),
-                _: 1
-                /* STABLE */
-              }, 8, ["disabled"])
-            ],
-            64
-            /* STABLE_FRAGMENT */
-          )) : createCommentVNode("v-if", true),
-          __props.progress ? (openBlock(), createElementBlock("div", _hoisted_25$1, [
-            createBaseVNode(
-              "span",
-              null,
-              "Этап: " + toDisplayString(__props.progress.phase) + " · " + toDisplayString(__props.progress.completed) + " из " + toDisplayString(__props.progress.total) + " записей",
+            )
+          ], 8, _hoisted_2$1$1)) : (openBlock(), createElementBlock("button", {
+            key: 1,
+            type: "button",
+            class: "booster-action-secondary",
+            onClick: _cache[1] || (_cache[1] = ($event) => emit2("stop"))
+          }, [
+            createVNode(unref(Square), {
+              class: "size-4",
+              "aria-hidden": "true"
+            }),
+            createTextVNode(
+              toDisplayString(__props.stopLabel),
               1
               /* TEXT */
-            ),
-            createBaseVNode(
-              "span",
-              null,
-              toDisplayString(__props.progress.percent) + "% · файлов в архиве: " + toDisplayString(__props.progress.entries),
-              1
-              /* TEXT */
-            ),
-            createBaseVNode("progress", {
-              class: "w-full",
-              value: __props.progress.completed,
-              max: Math.max(1, __props.progress.total)
-            }, null, 8, _hoisted_26$1)
-          ])) : createCommentVNode("v-if", true),
-          __props.error ? (openBlock(), createElementBlock(
-            "p",
-            _hoisted_27$1,
-            toDisplayString(__props.error),
+            )
+          ])),
+          __props.total !== null && __props.total !== void 0 && __props.total > 0 ? (openBlock(), createBlock(_sfc_main$4, {
+            key: 2,
+            label: __props.label,
+            percent: Math.max(0, Math.min(100, Math.round(100 * (__props.processed ?? 0) / __props.total))),
+            counter: `${__props.processed ?? 0} / ${__props.total}`,
+            compact: ""
+          }, null, 8, ["label", "percent", "counter"])) : createCommentVNode("v-if", true),
+          __props.saved !== void 0 && __props.saved !== null ? (openBlock(), createElementBlock(
+            "span",
+            _hoisted_3$1$1,
+            toDisplayString(__props.savedLabel) + ": " + toDisplayString(__props.saved),
             1
             /* TEXT */
-          )) : createCommentVNode("v-if", true),
-          __props.success ? (openBlock(), createElementBlock(
-            "p",
-            _hoisted_28$1,
-            toDisplayString(__props.success),
-            1
-            /* TEXT */
-          )) : createCommentVNode("v-if", true),
-          _cache[19] || (_cache[19] = createBaseVNode(
-            "p",
-            { class: "m-0 text-xs text-muted-foreground" },
-            "Один переносимый TAR.GZ: manifest.json, persistent/settings.json, indexeddb/schema.json и обычные JSONL-чанки таблиц, сжатые общим потоком GZIP. Внешние медиафайлы не включаются.",
-            -1
-            /* CACHED */
-          ))
+          )) : createCommentVNode("v-if", true)
         ]);
       };
     }
   });
-  const _hoisted_1$2 = {
+  function vkChatCollectionPort(api, limit) {
+    const map = (s) => ({
+      phase: s.busy ? "running" : s.progress.phase === "Ошибка" ? "error" : s.progress.phase === "Готово" ? "completed" : "idle",
+      processed: s.progress.done,
+      total: s.progress.total > 0 ? s.progress.total : null,
+      saved: s.progress.newCount ?? null
+    });
+    return {
+      start: async () => {
+        await api.captureFixed(limit());
+      },
+      stop: () => api.stop(),
+      snapshot: () => map(api.status()),
+      subscribe(listener) {
+        return api.subscribe((status) => listener(map(status)));
+      }
+    };
+  }
+  const _hoisted_1$3 = {
     class: "flex min-w-0 flex-col gap-3",
     "aria-label": "VK Booster — управление архивом"
   };
-  const _hoisted_2$2 = { class: "booster-setting-card" };
-  const _hoisted_3$1 = { class: "booster-setting-copy min-w-0" };
-  const _hoisted_4$1 = { class: "flex flex-wrap items-center gap-2" };
-  const _hoisted_5$1 = { key: 0 };
-  const _hoisted_6$1 = { key: 1 };
-  const _hoisted_7$1 = {
+  const _hoisted_2$3 = { class: "booster-setting-card" };
+  const _hoisted_3$3 = { class: "booster-setting-copy min-w-0" };
+  const _hoisted_4$2 = { class: "flex flex-wrap items-center gap-2" };
+  const _hoisted_5$2 = { key: 0 };
+  const _hoisted_6$2 = { key: 1 };
+  const _hoisted_7$2 = {
     key: 0,
     class: "m-0 flex items-start gap-2 text-sm text-destructive",
     role: "alert"
   };
-  const _hoisted_8$1 = {
+  const _hoisted_8$2 = {
     "aria-label": "Разделы VK Booster",
     class: "flex flex-wrap gap-2",
     role: "tablist"
   };
-  const _hoisted_9$1 = ["id", "aria-labelledby"];
-  const _hoisted_10$1 = {
+  const _hoisted_9$2 = ["id", "aria-labelledby"];
+  const _hoisted_10$2 = {
     class: "booster-stack-card",
     "aria-label": "Захват в Dexie"
   };
-  const _hoisted_11$1 = { class: "booster-field" };
+  const _hoisted_11$2 = { class: "booster-field" };
   const _hoisted_12$1 = ["disabled"];
   const _hoisted_13$1 = { class: "flex flex-wrap gap-2" };
   const _hoisted_14$1 = {
@@ -28231,67 +28026,43 @@
     role: "status"
   };
   const _hoisted_15$1 = {
+    key: 1,
+    role: "alert",
+    class: "text-sm text-destructive"
+  };
+  const _hoisted_16$1 = {
     key: 2,
-    role: "status"
-  };
-  const _hoisted_16 = {
-    key: 3,
     role: "alert",
     class: "text-sm text-destructive"
   };
-  const _hoisted_17 = {
-    key: 4,
-    role: "alert",
-    class: "text-sm text-destructive"
-  };
-  const _hoisted_18 = ["id", "aria-labelledby"];
-  const _hoisted_19 = {
+  const _hoisted_17 = ["id", "aria-labelledby"];
+  const _hoisted_18 = {
     class: "booster-stack-card",
     "aria-label": "Reader Dexie"
   };
-  const _hoisted_20 = { class: "flex flex-wrap gap-2" };
-  const _hoisted_21 = {
+  const _hoisted_19 = { class: "flex flex-wrap gap-2" };
+  const _hoisted_20 = {
     class: "max-h-96 overflow-y-auto space-y-2",
     "aria-label": "Сохранённые сообщения"
   };
-  const _hoisted_22 = { class: "whitespace-pre-wrap break-words" };
-  const _hoisted_23 = { key: 0 };
-  const _hoisted_24 = {
+  const _hoisted_21 = { class: "whitespace-pre-wrap break-words" };
+  const _hoisted_22 = { key: 0 };
+  const _hoisted_23 = {
     key: 0,
     role: "alert",
     class: "text-sm text-destructive"
   };
-  const _hoisted_25 = ["id", "aria-labelledby"];
+  const _hoisted_24 = ["id", "aria-labelledby"];
+  const _hoisted_25 = {
+    class: "booster-stack-card",
+    "aria-label": "Постоянные параметры VK"
+  };
   const _hoisted_26 = {
     key: 0,
-    class: "booster-stack-card",
-    "aria-label": "Профиль параметров VK"
-  };
-  const _hoisted_27 = { class: "flex flex-wrap items-end gap-2" };
-  const _hoisted_28 = { class: "booster-field min-w-0 flex-1" };
-  const _hoisted_29 = ["disabled"];
-  const _hoisted_30 = {
-    key: 0,
-    class: "booster-field"
-  };
-  const _hoisted_31 = { class: "flex items-center gap-2" };
-  const _hoisted_32 = ["disabled"];
-  const _hoisted_33 = {
-    key: 2,
     role: "alert",
     class: "m-0 text-sm text-destructive"
   };
-  const _hoisted_34 = {
-    key: 3,
-    role: "alert",
-    class: "m-0 text-sm text-destructive"
-  };
-  const _hoisted_35 = {
-    key: 4,
-    role: "status",
-    class: "m-0 text-sm"
-  };
-  const _sfc_main$2 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$3 = /* @__PURE__ */ defineComponent({
     __name: "ArchivePanel",
     setup(__props) {
       const api = archiveApi();
@@ -28305,6 +28076,22 @@
       });
       const fixedBusy = /* @__PURE__ */ ref(false);
       const fixedLimit = /* @__PURE__ */ ref(Math.min(3e3, Math.max(1, status.value?.options.limit ?? 100)));
+      const collector = api ? createChatCollectionController(vkChatCollectionPort(api, () => fixedLimit.value)) : null;
+      const collectionState = /* @__PURE__ */ ref(
+        collector?.snapshot() ?? {
+          phase: "idle",
+          processed: 0,
+          total: null,
+          saved: null
+        }
+      );
+      const unsubscribeCollection = collector?.subscribe((next) => {
+        collectionState.value = next;
+      });
+      onUnmounted(() => {
+        unsubscribeCollection?.();
+        collector?.dispose();
+      });
       const fixedSaved = /* @__PURE__ */ ref(null);
       const fixedError = /* @__PURE__ */ ref("");
       const fixedPreview = /* @__PURE__ */ ref([]);
@@ -28312,7 +28099,6 @@
       const fixedNextCursor = /* @__PURE__ */ ref();
       const fixedReading = /* @__PURE__ */ ref(false);
       const hasVerifiedPeer = computed(() => !!status.value?.activePeerId && !status.value?.blockedReason);
-      const captureProgress = computed(() => status.value?.progress);
       async function persistCaptureLimit() {
         if (!api) throw Error("VK unavailable");
         const options = validateVkCapturePreferences({ ...api.status().options, limit: fixedLimit.value });
@@ -28332,8 +28118,9 @@
         fixedError.value = "";
         try {
           await persistCaptureLimit();
-          const result = await api.captureFixed(fixedLimit.value);
-          fixedSaved.value = result.saved;
+          if (!collector) throw Error("VK collector unavailable");
+          await collector.start();
+          fixedSaved.value = api.status().progress.newCount ?? null;
           fixedPreview.value = [];
           fixedCursor.value = void 0;
           fixedNextCursor.value = void 0;
@@ -28382,107 +28169,6 @@
           fixedBusy.value = false;
         }
       }
-      const portableBusy = /* @__PURE__ */ ref(false);
-      const portableFile = /* @__PURE__ */ ref(null);
-      const portableInspected = /* @__PURE__ */ ref(null);
-      const portableError = /* @__PURE__ */ ref("");
-      const portableMessage = /* @__PURE__ */ ref("");
-      const tarProgress = /* @__PURE__ */ ref(null);
-      const portablePreview = computed(
-        () => portableInspected.value ? {
-          settings: portableInspected.value.manifest.includes.settings,
-          indexeddb: portableInspected.value.manifest.includes.indexeddb,
-          rows: portableInspected.value.rows,
-          createdAt: portableInspected.value.manifest.createdAt
-        } : null
-      );
-      async function downloadPortable(choice) {
-        if (!api || portableBusy.value || !hasVerifiedPeer.value || fixedBusy.value) return;
-        portableBusy.value = true;
-        portableError.value = "";
-        portableMessage.value = "";
-        tarProgress.value = null;
-        try {
-          const filename = choice.compression === "gzip" ? "vk-portable-v1.tar.gz" : "vk-portable-v1.tar";
-          const picker = window.showSaveFilePicker;
-          const handle = picker ? await picker({
-            suggestedName: filename,
-            types: [
-              {
-                description: "Portable TAR backup",
-                accept: choice.compression === "gzip" ? { "application/gzip": [".gz"] } : { "application/x-tar": [".tar"] }
-              }
-            ]
-          }) : void 0;
-          const sink = handle ? await handle.createWritable() : void 0;
-          const blob = await api.backupPortable(choice, {
-            sink,
-            onProgress: (next) => {
-              tarProgress.value = next;
-            }
-          });
-          if (blob) {
-            const url = URL.createObjectURL(blob);
-            try {
-              const link = document.createElement("a");
-              link.href = url;
-              link.download = filename;
-              link.click();
-            } finally {
-              window.setTimeout(() => URL.revokeObjectURL(url), 3e4);
-            }
-          }
-          portableMessage.value = "Резервная копия сформирована. Проверь файл в загрузках или выбранной папке.";
-        } catch (error2) {
-          portableError.value = error2 instanceof Error && error2.name === "AbortError" ? "Выбор файла отменён; резервная копия не создавалась." : "Не удалось создать TAR.GZ-архив. Исходные данные не изменены.";
-        } finally {
-          portableBusy.value = false;
-        }
-      }
-      async function inspectPortableFile(file) {
-        if (!api || portableBusy.value || !hasVerifiedPeer.value) return;
-        portableBusy.value = true;
-        portableFile.value = null;
-        portableInspected.value = null;
-        portableError.value = "";
-        portableMessage.value = "";
-        tarProgress.value = null;
-        try {
-          const inspected = await api.inspectPortable(file, (next) => {
-            tarProgress.value = next;
-          });
-          portableFile.value = file;
-          portableInspected.value = inspected;
-        } catch {
-          portableError.value = "Файл повреждён, несовместим или относится к другому владельцу/каналу.";
-        } finally {
-          portableBusy.value = false;
-        }
-      }
-      async function restorePortableSelection(selected) {
-        if (!api || !portableFile.value || portableBusy.value || !hasVerifiedPeer.value) return;
-        portableBusy.value = true;
-        portableError.value = "";
-        portableMessage.value = "";
-        tarProgress.value = null;
-        try {
-          await api.restorePortable(portableFile.value, selected, (next) => {
-            tarProgress.value = next;
-          });
-          status.value = api.status();
-          fixedLimit.value = Math.min(3e3, Math.max(1, status.value.options.limit));
-          fixedPreview.value = [];
-          fixedCursor.value = void 0;
-          fixedNextCursor.value = void 0;
-          portableMessage.value = "Выбранные разделы восстановлены. Reader обновлён.";
-          portableFile.value = null;
-          portableInspected.value = null;
-        } catch {
-          portableError.value = "Восстановление отклонено: проверь файл, владельца и доступное место.";
-        } finally {
-          portableBusy.value = false;
-        }
-      }
       const tabs = [
         { id: "capture", label: "Выгрузка", icon: Download },
         { id: "reader", label: "Архив", icon: Archive },
@@ -28501,61 +28187,21 @@
         );
         target?.focus();
       }
-      const preferencesBusy = /* @__PURE__ */ ref(false);
-      const preferencesFile = /* @__PURE__ */ ref(null);
-      const preferencesConfirmed = /* @__PURE__ */ ref(false);
-      const preferencesError = /* @__PURE__ */ ref("");
-      const preferencesMessage = /* @__PURE__ */ ref("");
       const durableSettingsError = /* @__PURE__ */ ref(vkPreferencesLoadError());
-      function selectPreferences(event) {
-        preferencesFile.value = event.target.files?.[0] ?? null;
-        preferencesConfirmed.value = false;
-        preferencesError.value = "";
-        preferencesMessage.value = "";
-      }
-      async function downloadPreferences() {
-        if (!api || preferencesBusy.value || status.value?.busy) return;
-        preferencesBusy.value = true;
-        preferencesError.value = "";
-        preferencesMessage.value = "";
-        try {
-          const blob = await exportVkCaptureSettings(api);
-          const url = URL.createObjectURL(blob);
-          try {
-            const link = document.createElement("a");
-            link.href = url;
-            link.download = "vk-booster-capture-preset.json";
-            link.click();
-          } finally {
-            window.setTimeout(() => URL.revokeObjectURL(url), 1e3);
-          }
-          preferencesMessage.value = "Профиль подготовлен. Убедись, что файл сохранился.";
-        } catch {
-          preferencesError.value = "Не удалось выгрузить профиль настроек.";
-        } finally {
-          preferencesBusy.value = false;
-        }
-      }
-      async function importPreferences() {
-        if (!api || !preferencesFile.value || !preferencesConfirmed.value || preferencesBusy.value) return;
-        preferencesBusy.value = true;
-        preferencesError.value = "";
-        preferencesMessage.value = "";
-        try {
-          const port = vkPreferencesPersistence();
-          if (!port) throw Error("Persistent settings unavailable");
-          await restoreVkCaptureSettings(api, preferencesFile.value, port);
-          status.value = api.status();
-          fixedLimit.value = Math.min(3e3, Math.max(1, api.status().options.limit));
-          preferencesMessage.value = "Параметры восстановлены в текущей сессии и постоянном хранилище. Архив не изменён.";
-          preferencesFile.value = null;
-          preferencesConfirmed.value = false;
-        } catch {
-          preferencesError.value = "Профиль отклонён: проверь целостность, формат и DEV/PROD канал.";
-        } finally {
-          preferencesBusy.value = false;
-        }
-      }
+      watch(
+        vkRequestedView,
+        (requested) => {
+          if (!requested) return;
+          if (requested === "export") {
+            tab.value = "reader";
+            void exportDexie();
+          } else if (requested === "collect") {
+            tab.value = "capture";
+            void captureDexie();
+          } else tab.value = requested;
+        },
+        { immediate: true }
+      );
       let unsubscribe;
       let peerTimer;
       function refreshActiveConversation() {
@@ -28568,8 +28214,6 @@
           fixedCursor.value = void 0;
           fixedNextCursor.value = void 0;
           fixedError.value = "";
-          portableFile.value = null;
-          portableInspected.value = null;
         }
         if (!previous || next.activePeerId !== previous.activePeerId || next.blockedReason !== previous.blockedReason || next.options.peerId !== previous.options.peerId)
           status.value = next;
@@ -28585,22 +28229,22 @@
         if (peerTimer !== void 0) clearInterval(peerTimer);
       });
       return (_ctx, _cache) => {
-        return openBlock(), createElementBlock("section", _hoisted_1$2, [
-          createBaseVNode("header", _hoisted_2$2, [
-            createBaseVNode("div", _hoisted_3$1, [
-              createBaseVNode("div", _hoisted_4$1, [
+        return openBlock(), createElementBlock("section", _hoisted_1$3, [
+          createBaseVNode("header", _hoisted_2$3, [
+            createBaseVNode("div", _hoisted_3$3, [
+              createBaseVNode("div", _hoisted_4$2, [
                 createVNode(unref(Archive), {
                   class: "size-4 shrink-0",
                   "aria-hidden": "true"
                 }),
-                _cache[6] || (_cache[6] = createBaseVNode(
+                _cache[5] || (_cache[5] = createBaseVNode(
                   "b",
                   null,
                   "VK Booster · Архив v1",
                   -1
                   /* CACHED */
                 )),
-                createVNode(unref(_sfc_main$1$1), {
+                createVNode(unref(_sfc_main$1$2), {
                   variant: status.value?.blockedReason ? "secondary" : status.value?.busy ? "default" : "outline",
                   class: normalizeClass(status.value?.blockedReason ? "text-destructive" : "")
                 }, {
@@ -28617,14 +28261,14 @@
               ]),
               hasVerifiedPeer.value ? (openBlock(), createElementBlock(
                 "span",
-                _hoisted_5$1,
+                _hoisted_5$2,
                 "Текущий диалог: " + toDisplayString(status.value?.activePeerId) + " · Данные в Dexie, без файловой папки",
                 1
                 /* TEXT */
-              )) : (openBlock(), createElementBlock("span", _hoisted_6$1, "Открой VK-переписку, чтобы работать с архивом."))
+              )) : (openBlock(), createElementBlock("span", _hoisted_6$2, "Открой VK-переписку, чтобы работать с архивом."))
             ])
           ]),
-          status.value?.blockedReason ? (openBlock(), createElementBlock("p", _hoisted_7$1, [
+          status.value?.blockedReason ? (openBlock(), createElementBlock("p", _hoisted_7$2, [
             createVNode(unref(ShieldAlert), {
               class: "size-4 shrink-0",
               "aria-hidden": "true"
@@ -28635,7 +28279,7 @@
               /* TEXT */
             )
           ])) : createCommentVNode("v-if", true),
-          createBaseVNode("nav", _hoisted_8$1, [
+          createBaseVNode("nav", _hoisted_8$2, [
             (openBlock(), createElementBlock(
               Fragment,
               null,
@@ -28680,8 +28324,8 @@
             tabindex: "0",
             class: "flex min-w-0 flex-col gap-3"
           }, [
-            createBaseVNode("section", _hoisted_10$1, [
-              _cache[11] || (_cache[11] = createBaseVNode(
+            createBaseVNode("section", _hoisted_10$2, [
+              _cache[8] || (_cache[8] = createBaseVNode(
                 "div",
                 { class: "booster-setting-copy" },
                 [
@@ -28691,8 +28335,8 @@
                 -1
                 /* CACHED */
               )),
-              createBaseVNode("label", _hoisted_11$1, [
-                _cache[7] || (_cache[7] = createTextVNode(
+              createBaseVNode("label", _hoisted_11$2, [
+                _cache[6] || (_cache[6] = createTextVNode(
                   "Количество последних сообщений (1–3000) ",
                   -1
                   /* CACHED */
@@ -28714,45 +28358,22 @@
                 ])
               ]),
               createBaseVNode("div", _hoisted_13$1, [
-                createVNode(unref(_sfc_main$6), {
-                  disabled: fixedBusy.value || portableBusy.value || !hasVerifiedPeer.value,
-                  onClick: captureDexie
-                }, {
-                  default: withCtx(() => [
-                    createVNode(unref(Download), {
-                      class: "size-4",
-                      "aria-hidden": "true"
-                    }),
-                    _cache[8] || (_cache[8] = createTextVNode(
-                      "Сохранить в Dexie ",
-                      -1
-                      /* CACHED */
-                    ))
-                  ]),
-                  _: 1
-                  /* STABLE */
-                }, 8, ["disabled"]),
+                createVNode(unref(_sfc_main$1$1), {
+                  label: "Собрать сообщения",
+                  busy: fixedBusy.value,
+                  disabled: !hasVerifiedPeer.value,
+                  processed: collectionState.value.processed,
+                  total: collectionState.value.total,
+                  saved: fixedSaved.value,
+                  onStart: captureDexie,
+                  onStop: _cache[1] || (_cache[1] = ($event) => unref(collector)?.stop())
+                }, null, 8, ["busy", "disabled", "processed", "total", "saved"]),
                 createVNode(unref(_sfc_main$6), {
                   variant: "outline",
-                  disabled: !fixedBusy.value,
-                  onClick: _cache[1] || (_cache[1] = ($event) => unref(api)?.stop())
-                }, {
-                  default: withCtx(() => [..._cache[9] || (_cache[9] = [
-                    createTextVNode(
-                      "Остановить",
-                      -1
-                      /* CACHED */
-                    )
-                  ])]),
-                  _: 1
-                  /* STABLE */
-                }, 8, ["disabled"]),
-                createVNode(unref(_sfc_main$6), {
-                  variant: "outline",
-                  disabled: fixedBusy.value || portableBusy.value || !hasVerifiedPeer.value,
+                  disabled: fixedBusy.value || !hasVerifiedPeer.value,
                   onClick: exportDexie
                 }, {
-                  default: withCtx(() => [..._cache[10] || (_cache[10] = [
+                  default: withCtx(() => [..._cache[7] || (_cache[7] = [
                     createTextVNode(
                       "Экспорт .jsonl.gz",
                       -1
@@ -28770,35 +28391,21 @@
                 1
                 /* TEXT */
               )) : createCommentVNode("v-if", true),
-              captureProgress.value?.total ? (openBlock(), createBlock(unref(_sfc_main$3), {
-                key: 1,
-                label: "Прогресс сохранения VK в Dexie",
-                percent: Math.min(100, Math.round(100 * (captureProgress.value.done / captureProgress.value.total))),
-                counter: `${captureProgress.value.done} / ${captureProgress.value.total}`,
-                compact: ""
-              }, null, 8, ["percent", "counter"])) : createCommentVNode("v-if", true),
-              captureProgress.value?.phase ? (openBlock(), createElementBlock(
-                "p",
-                _hoisted_15$1,
-                toDisplayString(captureProgress.value.phase) + ": " + toDisplayString(captureProgress.value.done) + " / " + toDisplayString(captureProgress.value.total),
-                1
-                /* TEXT */
-              )) : createCommentVNode("v-if", true),
               fixedError.value ? (openBlock(), createElementBlock(
                 "p",
-                _hoisted_16,
+                _hoisted_15$1,
                 toDisplayString(fixedError.value),
                 1
                 /* TEXT */
               )) : createCommentVNode("v-if", true),
               durableSettingsError.value ? (openBlock(), createElementBlock(
                 "p",
-                _hoisted_17,
+                _hoisted_16$1,
                 toDisplayString(durableSettingsError.value),
                 1
                 /* TEXT */
               )) : createCommentVNode("v-if", true),
-              _cache[12] || (_cache[12] = createBaseVNode(
+              _cache[9] || (_cache[9] = createBaseVNode(
                 "p",
                 { class: "text-xs text-muted-foreground" },
                 "Экспорт содержит исходные записи; вложения не считаются скачанными файлами. Захват можно безопасно повторить после остановки.",
@@ -28806,7 +28413,7 @@
                 /* CACHED */
               ))
             ])
-          ], 8, _hoisted_9$1), [
+          ], 8, _hoisted_9$2), [
             [vShow, tab.value === "capture"]
           ]),
           withDirectives(createBaseVNode("div", {
@@ -28816,8 +28423,8 @@
             tabindex: "0",
             class: "flex min-w-0 flex-col gap-3"
           }, [
-            createBaseVNode("section", _hoisted_19, [
-              _cache[16] || (_cache[16] = createBaseVNode(
+            createBaseVNode("section", _hoisted_18, [
+              _cache[13] || (_cache[13] = createBaseVNode(
                 "div",
                 { class: "booster-setting-copy" },
                 [
@@ -28827,13 +28434,13 @@
                 -1
                 /* CACHED */
               )),
-              createBaseVNode("div", _hoisted_20, [
+              createBaseVNode("div", _hoisted_19, [
                 createVNode(unref(_sfc_main$6), {
                   variant: "outline",
-                  disabled: fixedBusy.value || fixedReading.value || portableBusy.value || !hasVerifiedPeer.value,
+                  disabled: fixedBusy.value || fixedReading.value || !hasVerifiedPeer.value,
                   onClick: _cache[2] || (_cache[2] = ($event) => readDexie())
                 }, {
-                  default: withCtx(() => [..._cache[13] || (_cache[13] = [
+                  default: withCtx(() => [..._cache[10] || (_cache[10] = [
                     createTextVNode(
                       "Открыть Reader",
                       -1
@@ -28845,10 +28452,10 @@
                 }, 8, ["disabled"]),
                 createVNode(unref(_sfc_main$6), {
                   variant: "outline",
-                  disabled: fixedBusy.value || fixedReading.value || portableBusy.value || !fixedNextCursor.value,
+                  disabled: fixedBusy.value || fixedReading.value || !fixedNextCursor.value,
                   onClick: _cache[3] || (_cache[3] = ($event) => readDexie(fixedNextCursor.value))
                 }, {
-                  default: withCtx(() => [..._cache[14] || (_cache[14] = [
+                  default: withCtx(() => [..._cache[11] || (_cache[11] = [
                     createTextVNode(
                       "Следующие 80",
                       -1
@@ -28860,10 +28467,10 @@
                 }, 8, ["disabled"]),
                 createVNode(unref(_sfc_main$6), {
                   variant: "outline",
-                  disabled: fixedBusy.value || fixedReading.value || portableBusy.value || !fixedCursor.value,
+                  disabled: fixedBusy.value || fixedReading.value || !fixedCursor.value,
                   onClick: _cache[4] || (_cache[4] = ($event) => readDexie())
                 }, {
-                  default: withCtx(() => [..._cache[15] || (_cache[15] = [
+                  default: withCtx(() => [..._cache[12] || (_cache[12] = [
                     createTextVNode(
                       "К началу",
                       -1
@@ -28874,7 +28481,7 @@
                   /* STABLE */
                 }, 8, ["disabled"])
               ]),
-              createBaseVNode("ol", _hoisted_21, [
+              createBaseVNode("ol", _hoisted_20, [
                 (openBlock(true), createElementBlock(
                   Fragment,
                   null,
@@ -28892,14 +28499,14 @@
                       ),
                       createBaseVNode(
                         "p",
-                        _hoisted_22,
+                        _hoisted_21,
                         toDisplayString(message.text || "Без текста"),
                         1
                         /* TEXT */
                       ),
                       message.attachments?.length ? (openBlock(), createElementBlock(
                         "small",
-                        _hoisted_23,
+                        _hoisted_22,
                         "Вложений в исходных данных: " + toDisplayString(message.attachments.length),
                         1
                         /* TEXT */
@@ -28912,13 +28519,13 @@
               ]),
               fixedError.value ? (openBlock(), createElementBlock(
                 "p",
-                _hoisted_24,
+                _hoisted_23,
                 toDisplayString(fixedError.value),
                 1
                 /* TEXT */
               )) : createCommentVNode("v-if", true)
             ])
-          ], 8, _hoisted_18), [
+          ], 8, _hoisted_17), [
             [vShow, tab.value === "reader"]
           ]),
           withDirectives(createBaseVNode("div", {
@@ -28928,118 +28535,26 @@
             tabindex: "0",
             class: "flex min-w-0 flex-col gap-3"
           }, [
-            unref(api) && status.value ? (openBlock(), createElementBlock("section", _hoisted_26, [
-              _cache[21] || (_cache[21] = createBaseVNode(
+            createBaseVNode("section", _hoisted_25, [
+              _cache[14] || (_cache[14] = createBaseVNode(
                 "div",
                 { class: "booster-setting-copy" },
                 [
-                  createBaseVNode("b", null, "Постоянные параметры и резервная копия"),
-                  createBaseVNode("small", null, " Режим, количество, диапазон дат, размер пачки и медиа хранятся отдельно от архива. При перезапуске они восстанавливаются автоматически; JSON создаёт переносимую резервную копию только этих параметров. Сообщения, токены, ID диалога и данные папки не сохраняются. ")
+                  createBaseVNode("b", null, "Параметры сохранения"),
+                  createBaseVNode("small", null, "Настройки захвата сохраняются автоматически и восстанавливаются при следующем запуске.")
                 ],
                 -1
                 /* CACHED */
               )),
-              createBaseVNode("div", _hoisted_27, [
-                createVNode(unref(_sfc_main$6), {
-                  variant: "outline",
-                  size: "sm",
-                  disabled: preferencesBusy.value || status.value.busy || status.value.folderPending || !!status.value.blockedReason,
-                  onClick: downloadPreferences
-                }, {
-                  default: withCtx(() => [..._cache[17] || (_cache[17] = [
-                    createTextVNode(
-                      "Сохранить профиль JSON",
-                      -1
-                      /* CACHED */
-                    )
-                  ])]),
-                  _: 1
-                  /* STABLE */
-                }, 8, ["disabled"]),
-                createBaseVNode("label", _hoisted_28, [
-                  _cache[18] || (_cache[18] = createBaseVNode(
-                    "span",
-                    null,
-                    "Восстановить параметры из JSON",
-                    -1
-                    /* CACHED */
-                  )),
-                  createBaseVNode("input", {
-                    type: "file",
-                    class: "booster-input w-full",
-                    accept: ".json,application/json",
-                    disabled: preferencesBusy.value || status.value.busy || status.value.folderPending || !!status.value.blockedReason,
-                    onChange: selectPreferences
-                  }, null, 40, _hoisted_29)
-                ])
-              ]),
-              preferencesFile.value ? (openBlock(), createElementBlock("label", _hoisted_30, [
-                createBaseVNode("span", _hoisted_31, [
-                  withDirectives(createBaseVNode("input", {
-                    "onUpdate:modelValue": _cache[5] || (_cache[5] = ($event) => preferencesConfirmed.value = $event),
-                    type: "checkbox",
-                    disabled: preferencesBusy.value
-                  }, null, 8, _hoisted_32), [
-                    [vModelCheckbox, preferencesConfirmed.value]
-                  ]),
-                  _cache[19] || (_cache[19] = createTextVNode(
-                    " Подтверждаю замену сохранённых и текущих параметров ",
-                    -1
-                    /* CACHED */
-                  ))
-                ])
-              ])) : createCommentVNode("v-if", true),
-              preferencesFile.value ? (openBlock(), createBlock(unref(_sfc_main$6), {
-                key: 1,
-                variant: "outline",
-                size: "sm",
-                disabled: preferencesBusy.value || status.value.busy || status.value.folderPending || !!status.value.blockedReason || !preferencesConfirmed.value,
-                onClick: importPreferences
-              }, {
-                default: withCtx(() => [..._cache[20] || (_cache[20] = [
-                  createTextVNode(
-                    "Применить профиль",
-                    -1
-                    /* CACHED */
-                  )
-                ])]),
-                _: 1
-                /* STABLE */
-              }, 8, ["disabled"])) : createCommentVNode("v-if", true),
               durableSettingsError.value ? (openBlock(), createElementBlock(
                 "p",
-                _hoisted_33,
+                _hoisted_26,
                 toDisplayString(durableSettingsError.value),
                 1
                 /* TEXT */
-              )) : createCommentVNode("v-if", true),
-              preferencesError.value ? (openBlock(), createElementBlock(
-                "p",
-                _hoisted_34,
-                toDisplayString(preferencesError.value),
-                1
-                /* TEXT */
-              )) : createCommentVNode("v-if", true),
-              preferencesMessage.value ? (openBlock(), createElementBlock(
-                "p",
-                _hoisted_35,
-                toDisplayString(preferencesMessage.value),
-                1
-                /* TEXT */
               )) : createCommentVNode("v-if", true)
-            ])) : createCommentVNode("v-if", true),
-            createVNode(unref(_sfc_main$4), {
-              available: { settings: true, indexeddb: true },
-              pending: portableBusy.value || fixedBusy.value || !!status.value?.busy || !hasVerifiedPeer.value,
-              inspected: portablePreview.value,
-              error: portableError.value,
-              success: portableMessage.value,
-              progress: tarProgress.value,
-              onExport: downloadPortable,
-              onInspect: inspectPortableFile,
-              onRestore: restorePortableSelection
-            }, null, 8, ["pending", "inspected", "error", "success", "progress"])
-          ], 8, _hoisted_25), [
+            ])
+          ], 8, _hoisted_24), [
             [vShow, tab.value === "settings"]
           ])
         ]);
@@ -29077,34 +28592,36 @@
       heightRatio: value.height / Math.max(1, viewport.height)
     };
   }
-  const _hoisted_1$1 = {
-    class: "booster-control-center",
-    lang: "ru"
-  };
-  const _hoisted_2$1 = { class: "booster-control-header" };
-  const _hoisted_3 = { class: "booster-header-copy" };
-  const _hoisted_4 = { class: "flex items-center gap-2" };
-  const _hoisted_5 = { class: "booster-header-actions" };
-  const _hoisted_6 = { class: "booster-settings-layout" };
-  const _hoisted_7 = {
+  const _hoisted_1$2 = { class: "booster-control-header" };
+  const _hoisted_2$2 = { class: "booster-header-copy" };
+  const _hoisted_3$2 = { class: "flex items-center gap-2" };
+  const _hoisted_4$1 = { class: "booster-header-actions" };
+  const _hoisted_5$1 = ["disabled", "aria-pressed", "aria-label"];
+  const _hoisted_6$1 = { class: "booster-settings-layout" };
+  const _hoisted_7$1 = {
+    key: 0,
     class: "booster-settings-nav",
     "aria-label": "Разделы"
   };
-  const _hoisted_8 = ["onClick"];
-  const _hoisted_9 = { class: "booster-settings-content" };
-  const _hoisted_10 = { class: "booster-setting-copy" };
-  const _hoisted_11 = { class: "flex items-center gap-2" };
-  const _hoisted_12 = { class: "booster-header-actions" };
-  const _hoisted_13 = ["disabled", "aria-pressed", "aria-label", "onClick"];
-  const _hoisted_14 = {
-    key: 2,
-    class: "booster-setting-card"
+  const _hoisted_8$1 = ["onClick"];
+  const _hoisted_9$1 = { class: "booster-settings-content" };
+  const _hoisted_10$1 = {
+    key: 0,
+    role: "alert"
   };
+  const _hoisted_11$1 = { class: "booster-setting-copy" };
+  const _hoisted_12 = { class: "flex items-center gap-2" };
+  const _hoisted_13 = { class: "booster-header-actions" };
+  const _hoisted_14 = ["disabled", "aria-pressed", "aria-label", "onClick"];
   const _hoisted_15 = {
     key: 3,
     class: "booster-setting-card"
   };
-  const _sfc_main$1 = /* @__PURE__ */ defineComponent({
+  const _hoisted_16 = {
+    key: 4,
+    class: "booster-setting-card"
+  };
+  const _sfc_main$2 = /* @__PURE__ */ defineComponent({
     __name: "ControlCenterPanel",
     props: {
       runtime: {},
@@ -29116,6 +28633,8 @@
     setup(__props, { emit: __emit }) {
       const props = __props;
       const emit2 = __emit;
+      const standalone = props.runtime.features.length === 1;
+      const singleFeature = standalone ? props.runtime.features[0] : void 0;
       const section = /* @__PURE__ */ ref(props.selectedSection);
       watch(
         () => props.selectedSection,
@@ -29123,11 +28642,48 @@
           section.value = value;
         }
       );
-      const statuses = computed(() => props.runtime.list());
+      const revision = /* @__PURE__ */ ref(0);
+      let unsubscribe;
+      onMounted(() => {
+        unsubscribe = props.runtime.subscribe(() => {
+          revision.value++;
+        });
+      });
+      onBeforeUnmount(() => unsubscribe?.());
+      const statuses = computed(() => {
+        void revision.value;
+        return props.runtime.list();
+      });
+      const installationActive = computed(() => {
+        void revision.value;
+        return props.runtime.isRunning();
+      });
+      const changing = /* @__PURE__ */ ref(false);
+      const changeError = /* @__PURE__ */ ref("");
+      async function toggleInstallation() {
+        if (changing.value) return;
+        changing.value = true;
+        changeError.value = "";
+        try {
+          await props.runtime.setRunning(!installationActive.value);
+        } catch {
+          changeError.value = "Не удалось изменить состояние установки";
+        } finally {
+          changing.value = false;
+        }
+      }
       const activeFeatures = computed(() => statuses.value.filter((s) => s.state === "active"));
       const currentView = computed(() => props.views[section.value]);
       async function enable(id, enabled) {
-        await props.runtime.setEnabled(id, enabled);
+        changing.value = true;
+        changeError.value = "";
+        try {
+          await props.runtime.setEnabled(id, enabled);
+        } catch {
+          changeError.value = "Не удалось изменить состояние модуля";
+        } finally {
+          changing.value = false;
+        }
       }
       function selectSection(id) {
         section.value = id;
@@ -29138,252 +28694,502 @@
         else void props.runtime.open(id);
       }
       return (_ctx, _cache) => {
-        return openBlock(), createElementBlock("section", _hoisted_1$1, [
-          createBaseVNode("header", _hoisted_2$1, [
-            createBaseVNode("div", _hoisted_3, [
-              createBaseVNode("div", _hoisted_4, [
-                createBaseVNode(
-                  "strong",
-                  null,
-                  toDisplayString(__props.title),
-                  1
-                  /* TEXT */
-                ),
-                createVNode(unref(_sfc_main$1$1), { variant: "outline" }, {
-                  default: withCtx(() => [..._cache[4] || (_cache[4] = [
-                    createTextVNode(
-                      "Browser Tools",
-                      -1
-                      /* CACHED */
-                    )
-                  ])]),
-                  _: 1
-                  /* STABLE */
-                })
-              ]),
-              _cache[5] || (_cache[5] = createBaseVNode(
-                "p",
-                null,
-                "Модульные инструменты браузера",
-                -1
-                /* CACHED */
-              ))
-            ]),
-            createBaseVNode("div", _hoisted_5, [
-              createVNode(unref(_sfc_main$1$1), { variant: "secondary" }, {
-                default: withCtx(() => [
-                  createTextVNode(
-                    toDisplayString(activeFeatures.value.length) + " активен",
+        return openBlock(), createElementBlock(
+          "section",
+          {
+            class: normalizeClass(["booster-control-center", { "booster-control-standalone": standalone }]),
+            lang: "ru"
+          },
+          [
+            createBaseVNode("header", _hoisted_1$2, [
+              createBaseVNode("div", _hoisted_2$2, [
+                createBaseVNode("div", _hoisted_3$2, [
+                  createBaseVNode(
+                    "strong",
+                    null,
+                    toDisplayString(__props.title),
                     1
                     /* TEXT */
-                  )
-                ]),
-                _: 1
-                /* STABLE */
-              }),
-              createVNode(unref(_sfc_main$6), {
-                variant: "ghost",
-                size: "icon",
-                class: "size-8",
-                title: "Закрыть",
-                onClick: _cache[0] || (_cache[0] = ($event) => emit2("close"))
-              }, {
-                default: withCtx(() => [
-                  createVNode(unref(X), { class: "size-4" })
-                ]),
-                _: 1
-                /* STABLE */
-              })
-            ])
-          ]),
-          createBaseVNode("div", _hoisted_6, [
-            createBaseVNode("nav", _hoisted_7, [
-              createBaseVNode(
-                "button",
-                {
-                  type: "button",
-                  class: normalizeClass({ active: section.value === "modules" }),
-                  onClick: _cache[1] || (_cache[1] = ($event) => selectSection("modules"))
-                },
-                [
-                  createVNode(unref(Wrench), { class: "size-4" }),
-                  _cache[6] || (_cache[6] = createTextVNode(
-                    "Модули ",
-                    -1
-                    /* CACHED */
-                  ))
-                ],
-                2
-                /* CLASS */
-              ),
-              (openBlock(true), createElementBlock(
-                Fragment,
-                null,
-                renderList(statuses.value.filter((s) => Boolean(__props.views[s.id])), (feature) => {
-                  return openBlock(), createElementBlock("button", {
-                    key: feature.id,
-                    type: "button",
-                    class: normalizeClass({ active: section.value === feature.id }),
-                    onClick: ($event) => selectSection(feature.id)
-                  }, [
-                    createVNode(unref(FolderArchive), { class: "size-4" }),
-                    createTextVNode(
-                      toDisplayString(feature.title),
-                      1
-                      /* TEXT */
-                    )
-                  ], 10, _hoisted_8);
-                }),
-                128
-                /* KEYED_FRAGMENT */
-              )),
-              createBaseVNode(
-                "button",
-                {
-                  type: "button",
-                  class: normalizeClass({ active: section.value === "analytics" }),
-                  onClick: _cache[2] || (_cache[2] = ($event) => selectSection("analytics"))
-                },
-                [
-                  createVNode(unref(ChartColumn), { class: "size-4" }),
-                  _cache[7] || (_cache[7] = createTextVNode(
-                    "Аналитика ",
-                    -1
-                    /* CACHED */
-                  ))
-                ],
-                2
-                /* CLASS */
-              ),
-              createBaseVNode(
-                "button",
-                {
-                  type: "button",
-                  class: normalizeClass({ active: section.value === "settings" }),
-                  onClick: _cache[3] || (_cache[3] = ($event) => selectSection("settings"))
-                },
-                [
-                  createVNode(unref(SlidersHorizontal), { class: "size-4" }),
-                  _cache[8] || (_cache[8] = createTextVNode(
-                    "Настройки ",
-                    -1
-                    /* CACHED */
-                  ))
-                ],
-                2
-                /* CLASS */
-              )
-            ]),
-            createBaseVNode("main", _hoisted_9, [
-              section.value === "modules" ? (openBlock(true), createElementBlock(
-                Fragment,
-                { key: 0 },
-                renderList(statuses.value, (feature) => {
-                  return openBlock(), createElementBlock("section", {
-                    key: feature.id,
-                    class: "booster-setting-card"
-                  }, [
-                    createBaseVNode("div", _hoisted_10, [
-                      createBaseVNode("div", _hoisted_11, [
-                        createVNode(unref(Wrench), { class: "size-4" }),
-                        createBaseVNode(
-                          "b",
-                          null,
-                          toDisplayString(feature.title),
-                          1
-                          /* TEXT */
-                        ),
-                        createVNode(unref(_sfc_main$1$1), {
-                          variant: feature.state === "active" ? "default" : "secondary"
-                        }, {
-                          default: withCtx(() => [
-                            createTextVNode(
-                              toDisplayString(feature.state === "active" ? "Включён" : feature.state === "disabled" ? "Выключен" : feature.state === "unsupported" ? "Недоступен" : "Ошибка"),
-                              1
-                              /* TEXT */
-                            )
-                          ]),
-                          _: 2
-                          /* DYNAMIC */
-                        }, 1032, ["variant"])
-                      ]),
-                      createBaseVNode(
-                        "span",
-                        null,
-                        toDisplayString(feature.description),
+                  ),
+                  standalone && unref(singleFeature)?.presentation?.installation ? (openBlock(), createBlock(unref(_sfc_main$1$2), {
+                    key: 0,
+                    variant: "outline"
+                  }, {
+                    default: withCtx(() => [
+                      createTextVNode(
+                        toDisplayString(unref(singleFeature).presentation.installation),
                         1
                         /* TEXT */
                       )
                     ]),
-                    createBaseVNode("div", _hoisted_12, [
-                      createBaseVNode("button", {
-                        type: "button",
-                        class: normalizeClass(["booster-switch", { "booster-switch-on": feature.state === "active" }]),
-                        disabled: feature.state === "unsupported",
-                        "aria-pressed": feature.state === "active",
-                        "aria-label": "Включить " + feature.title,
-                        onClick: ($event) => enable(feature.id, feature.state !== "active")
-                      }, [..._cache[9] || (_cache[9] = [
+                    _: 1
+                    /* STABLE */
+                  })) : createCommentVNode("v-if", true),
+                  standalone && unref(singleFeature)?.presentation?.version ? (openBlock(), createBlock(unref(_sfc_main$1$2), {
+                    key: 1,
+                    variant: "outline"
+                  }, {
+                    default: withCtx(() => [
+                      createTextVNode(
+                        toDisplayString(unref(singleFeature).presentation.version),
+                        1
+                        /* TEXT */
+                      )
+                    ]),
+                    _: 1
+                    /* STABLE */
+                  })) : createCommentVNode("v-if", true),
+                  !standalone ? (openBlock(), createBlock(unref(_sfc_main$1$2), {
+                    key: 2,
+                    variant: "outline"
+                  }, {
+                    default: withCtx(() => [..._cache[4] || (_cache[4] = [
+                      createTextVNode(
+                        "Browser Tools",
+                        -1
+                        /* CACHED */
+                      )
+                    ])]),
+                    _: 1
+                    /* STABLE */
+                  })) : createCommentVNode("v-if", true)
+                ]),
+                createBaseVNode(
+                  "p",
+                  null,
+                  toDisplayString(standalone ? "Центр управления" : "Модульные инструменты браузера"),
+                  1
+                  /* TEXT */
+                )
+              ]),
+              createBaseVNode("div", _hoisted_4$1, [
+                createBaseVNode("button", {
+                  type: "button",
+                  class: normalizeClass(["booster-switch", { "booster-switch-on": installationActive.value }]),
+                  disabled: changing.value,
+                  "aria-pressed": installationActive.value,
+                  "aria-label": installationActive.value ? "Полностью выключить установку" : "Включить установку",
+                  onClick: toggleInstallation
+                }, [..._cache[5] || (_cache[5] = [
+                  createBaseVNode(
+                    "span",
+                    null,
+                    null,
+                    -1
+                    /* CACHED */
+                  )
+                ])], 10, _hoisted_5$1),
+                createVNode(unref(_sfc_main$1$2), { variant: "secondary" }, {
+                  default: withCtx(() => [
+                    createTextVNode(
+                      toDisplayString(installationActive.value ? "Установка включена" : "Установка выключена"),
+                      1
+                      /* TEXT */
+                    )
+                  ]),
+                  _: 1
+                  /* STABLE */
+                }),
+                !standalone ? (openBlock(), createBlock(unref(_sfc_main$1$2), {
+                  key: 0,
+                  variant: "secondary"
+                }, {
+                  default: withCtx(() => [
+                    createTextVNode(
+                      toDisplayString(activeFeatures.value.length) + " активен",
+                      1
+                      /* TEXT */
+                    )
+                  ]),
+                  _: 1
+                  /* STABLE */
+                })) : createCommentVNode("v-if", true),
+                createVNode(unref(_sfc_main$6), {
+                  variant: "ghost",
+                  size: "icon",
+                  class: "size-8",
+                  title: "Закрыть",
+                  onClick: _cache[0] || (_cache[0] = ($event) => emit2("close"))
+                }, {
+                  default: withCtx(() => [
+                    createVNode(unref(X), { class: "size-4" })
+                  ]),
+                  _: 1
+                  /* STABLE */
+                })
+              ])
+            ]),
+            createBaseVNode("div", _hoisted_6$1, [
+              !standalone ? (openBlock(), createElementBlock("nav", _hoisted_7$1, [
+                createBaseVNode(
+                  "button",
+                  {
+                    type: "button",
+                    class: normalizeClass({ active: section.value === "modules" }),
+                    onClick: _cache[1] || (_cache[1] = ($event) => selectSection("modules"))
+                  },
+                  [
+                    createVNode(unref(Wrench), { class: "size-4" }),
+                    _cache[6] || (_cache[6] = createTextVNode(
+                      "Модули ",
+                      -1
+                      /* CACHED */
+                    ))
+                  ],
+                  2
+                  /* CLASS */
+                ),
+                (openBlock(true), createElementBlock(
+                  Fragment,
+                  null,
+                  renderList(statuses.value.filter((s) => Boolean(__props.views[s.id])), (feature) => {
+                    return openBlock(), createElementBlock("button", {
+                      key: feature.id,
+                      type: "button",
+                      class: normalizeClass({ active: section.value === feature.id }),
+                      onClick: ($event) => selectSection(feature.id)
+                    }, [
+                      createVNode(unref(FolderArchive), { class: "size-4" }),
+                      createTextVNode(
+                        toDisplayString(feature.title),
+                        1
+                        /* TEXT */
+                      )
+                    ], 10, _hoisted_8$1);
+                  }),
+                  128
+                  /* KEYED_FRAGMENT */
+                )),
+                createBaseVNode(
+                  "button",
+                  {
+                    type: "button",
+                    class: normalizeClass({ active: section.value === "analytics" }),
+                    onClick: _cache[2] || (_cache[2] = ($event) => selectSection("analytics"))
+                  },
+                  [
+                    createVNode(unref(ChartColumn), { class: "size-4" }),
+                    _cache[7] || (_cache[7] = createTextVNode(
+                      "Аналитика ",
+                      -1
+                      /* CACHED */
+                    ))
+                  ],
+                  2
+                  /* CLASS */
+                ),
+                createBaseVNode(
+                  "button",
+                  {
+                    type: "button",
+                    class: normalizeClass({ active: section.value === "settings" }),
+                    onClick: _cache[3] || (_cache[3] = ($event) => selectSection("settings"))
+                  },
+                  [
+                    createVNode(unref(SlidersHorizontal), { class: "size-4" }),
+                    _cache[8] || (_cache[8] = createTextVNode(
+                      "Настройки ",
+                      -1
+                      /* CACHED */
+                    ))
+                  ],
+                  2
+                  /* CLASS */
+                )
+              ])) : createCommentVNode("v-if", true),
+              createBaseVNode("main", _hoisted_9$1, [
+                changeError.value ? (openBlock(), createElementBlock(
+                  "p",
+                  _hoisted_10$1,
+                  toDisplayString(changeError.value),
+                  1
+                  /* TEXT */
+                )) : createCommentVNode("v-if", true),
+                section.value === "modules" ? (openBlock(true), createElementBlock(
+                  Fragment,
+                  { key: 1 },
+                  renderList(statuses.value, (feature) => {
+                    return openBlock(), createElementBlock("section", {
+                      key: feature.id,
+                      class: "booster-setting-card"
+                    }, [
+                      createBaseVNode("div", _hoisted_11$1, [
+                        createBaseVNode("div", _hoisted_12, [
+                          createVNode(unref(Wrench), { class: "size-4" }),
+                          createBaseVNode(
+                            "b",
+                            null,
+                            toDisplayString(feature.title),
+                            1
+                            /* TEXT */
+                          ),
+                          createVNode(unref(_sfc_main$1$2), {
+                            variant: feature.state === "active" ? "default" : "secondary"
+                          }, {
+                            default: withCtx(() => [
+                              createTextVNode(
+                                toDisplayString(feature.state === "active" ? "Включён" : feature.state === "disabled" ? "Выключен" : feature.state === "unsupported" ? "Недоступен" : "Ошибка"),
+                                1
+                                /* TEXT */
+                              )
+                            ]),
+                            _: 2
+                            /* DYNAMIC */
+                          }, 1032, ["variant"])
+                        ]),
                         createBaseVNode(
                           "span",
                           null,
-                          null,
-                          -1
-                          /* CACHED */
+                          toDisplayString(feature.description),
+                          1
+                          /* TEXT */
                         )
-                      ])], 10, _hoisted_13),
-                      feature.state === "active" ? (openBlock(), createBlock(unref(_sfc_main$6), {
-                        key: 0,
-                        variant: "outline",
-                        size: "sm",
-                        onClick: ($event) => openModule(feature.id)
-                      }, {
-                        default: withCtx(() => [..._cache[10] || (_cache[10] = [
-                          createTextVNode(
-                            "Открыть",
+                      ]),
+                      createBaseVNode("div", _hoisted_13, [
+                        createBaseVNode("button", {
+                          type: "button",
+                          class: normalizeClass(["booster-switch", { "booster-switch-on": feature.state === "active" }]),
+                          disabled: changing.value || !installationActive.value || feature.state === "unsupported",
+                          "aria-pressed": feature.state === "active",
+                          "aria-label": "Включить " + feature.title,
+                          onClick: ($event) => enable(feature.id, feature.state !== "active")
+                        }, [..._cache[9] || (_cache[9] = [
+                          createBaseVNode(
+                            "span",
+                            null,
+                            null,
                             -1
                             /* CACHED */
                           )
-                        ])]),
-                        _: 1
-                        /* STABLE */
-                      }, 8, ["onClick"])) : createCommentVNode("v-if", true)
-                    ])
-                  ]);
-                }),
-                128
-                /* KEYED_FRAGMENT */
-              )) : currentView.value ? (openBlock(), createBlock(resolveDynamicComponent(currentView.value), { key: 1 })) : section.value === "analytics" ? (openBlock(), createElementBlock("section", _hoisted_14, [..._cache[11] || (_cache[11] = [
-                createBaseVNode(
-                  "div",
-                  { class: "booster-setting-copy" },
-                  [
-                    createBaseVNode("b", null, "Аналитика"),
-                    createBaseVNode("span", null, "Общая телеметрия выключена по умолчанию. Содержимое сообщений не собирается.")
-                  ],
-                  -1
-                  /* CACHED */
-                )
-              ])])) : (openBlock(), createElementBlock("section", _hoisted_15, [..._cache[12] || (_cache[12] = [
-                createBaseVNode(
-                  "div",
-                  { class: "booster-setting-copy" },
-                  [
-                    createBaseVNode("b", null, "Настройки"),
-                    createBaseVNode("span", null, "Включение модулей — на вкладке «Модули». Настройки экспорта — внутри VK Booster.")
-                  ],
-                  -1
-                  /* CACHED */
-                )
-              ])]))
+                        ])], 10, _hoisted_14),
+                        feature.state === "active" ? (openBlock(), createBlock(unref(_sfc_main$6), {
+                          key: 0,
+                          variant: "outline",
+                          size: "sm",
+                          onClick: ($event) => openModule(feature.id)
+                        }, {
+                          default: withCtx(() => [..._cache[10] || (_cache[10] = [
+                            createTextVNode(
+                              "Открыть",
+                              -1
+                              /* CACHED */
+                            )
+                          ])]),
+                          _: 1
+                          /* STABLE */
+                        }, 8, ["onClick"])) : createCommentVNode("v-if", true)
+                      ])
+                    ]);
+                  }),
+                  128
+                  /* KEYED_FRAGMENT */
+                )) : currentView.value ? (openBlock(), createBlock(resolveDynamicComponent(currentView.value), { key: 2 })) : section.value === "analytics" ? (openBlock(), createElementBlock("section", _hoisted_15, [..._cache[11] || (_cache[11] = [
+                  createBaseVNode(
+                    "div",
+                    { class: "booster-setting-copy" },
+                    [
+                      createBaseVNode("b", null, "Аналитика"),
+                      createBaseVNode("span", null, "Общая телеметрия выключена по умолчанию. Содержимое сообщений не собирается.")
+                    ],
+                    -1
+                    /* CACHED */
+                  )
+                ])])) : (openBlock(), createElementBlock("section", _hoisted_16, [..._cache[12] || (_cache[12] = [
+                  createBaseVNode(
+                    "div",
+                    { class: "booster-setting-copy" },
+                    [
+                      createBaseVNode("b", null, "Настройки"),
+                      createBaseVNode("span", null, "Включение модулей — на вкладке «Модули». Настройки экспорта — внутри VK Booster.")
+                    ],
+                    -1
+                    /* CACHED */
+                  )
+                ])]))
+              ])
             ])
+          ],
+          2
+          /* CLASS */
+        );
+      };
+    }
+  });
+  const _hoisted_1$1 = ["aria-label"];
+  const _hoisted_2$1 = { class: "booster-quick-header" };
+  const _hoisted_3$1 = { class: "booster-quick-identity" };
+  const _hoisted_4 = { class: "booster-quick-badges" };
+  const _hoisted_5 = { key: 0 };
+  const _hoisted_6 = { key: 1 };
+  const _hoisted_7 = {
+    key: 0,
+    class: "booster-quick-metrics",
+    "aria-label": "Сводка модуля"
+  };
+  const _hoisted_8 = { class: "booster-quick-actions" };
+  const _hoisted_9 = ["disabled", "onClick"];
+  const _hoisted_10 = { class: "booster-quick-footer" };
+  const _hoisted_11 = ["aria-checked", "aria-label", "disabled"];
+  const _sfc_main$1 = /* @__PURE__ */ defineComponent({
+    __name: "QuickMenu",
+    props: {
+      title: {},
+      version: {},
+      installation: {},
+      active: { type: Boolean },
+      enabled: { type: Boolean },
+      busy: { type: Boolean },
+      actions: {},
+      metrics: {}
+    },
+    emits: ["close", "select", "toggle"],
+    setup(__props, { emit: __emit }) {
+      const emit2 = __emit;
+      const icons = {
+        archive: Archive,
+        collect: ArrowUpToLine,
+        export: Download,
+        settings: Settings2,
+        capture: ShieldCheck,
+        open: FolderOpen
+      };
+      return (_ctx, _cache) => {
+        return openBlock(), createElementBlock("section", {
+          class: "booster-quick-menu",
+          role: "dialog",
+          "aria-label": `${__props.title}: быстрое меню`
+        }, [
+          createBaseVNode("header", _hoisted_2$1, [
+            createBaseVNode("div", _hoisted_3$1, [
+              createBaseVNode(
+                "strong",
+                null,
+                toDisplayString(__props.title),
+                1
+                /* TEXT */
+              ),
+              createBaseVNode("div", _hoisted_4, [
+                __props.installation ? (openBlock(), createElementBlock(
+                  "span",
+                  _hoisted_5,
+                  toDisplayString(__props.installation),
+                  1
+                  /* TEXT */
+                )) : createCommentVNode("v-if", true),
+                __props.version ? (openBlock(), createElementBlock(
+                  "span",
+                  _hoisted_6,
+                  toDisplayString(__props.version),
+                  1
+                  /* TEXT */
+                )) : createCommentVNode("v-if", true)
+              ])
+            ]),
+            createBaseVNode("button", {
+              class: "booster-quick-close",
+              type: "button",
+              "aria-label": "Закрыть меню",
+              onClick: _cache[0] || (_cache[0] = ($event) => emit2("close"))
+            }, [
+              createVNode(unref(X), { class: "size-4" })
+            ])
+          ]),
+          __props.metrics?.length ? (openBlock(), createElementBlock("div", _hoisted_7, [
+            (openBlock(true), createElementBlock(
+              Fragment,
+              null,
+              renderList(__props.metrics, (metric) => {
+                return openBlock(), createElementBlock("div", {
+                  key: metric.label
+                }, [
+                  createBaseVNode(
+                    "span",
+                    null,
+                    toDisplayString(metric.label),
+                    1
+                    /* TEXT */
+                  ),
+                  createBaseVNode(
+                    "b",
+                    null,
+                    toDisplayString(metric.value),
+                    1
+                    /* TEXT */
+                  )
+                ]);
+              }),
+              128
+              /* KEYED_FRAGMENT */
+            ))
+          ])) : createCommentVNode("v-if", true),
+          createBaseVNode("div", _hoisted_8, [
+            (openBlock(true), createElementBlock(
+              Fragment,
+              null,
+              renderList(__props.actions, (action) => {
+                return openBlock(), createElementBlock("button", {
+                  key: action.id,
+                  type: "button",
+                  disabled: __props.busy || !__props.active && !action.availableWhenDisabled || action.enabled && !action.enabled(),
+                  onClick: ($event) => emit2("select", action.id)
+                }, [
+                  (openBlock(), createBlock(resolveDynamicComponent(icons[action.icon || "open"]), {
+                    class: "size-4",
+                    "aria-hidden": "true"
+                  })),
+                  createBaseVNode(
+                    "span",
+                    null,
+                    toDisplayString(action.label),
+                    1
+                    /* TEXT */
+                  )
+                ], 8, _hoisted_9);
+              }),
+              128
+              /* KEYED_FRAGMENT */
+            ))
+          ]),
+          createBaseVNode("footer", _hoisted_10, [
+            createBaseVNode(
+              "span",
+              {
+                class: normalizeClass(["booster-quick-status", { "is-active": __props.active }])
+              },
+              toDisplayString(__props.active ? "Работает" : "Выключен"),
+              3
+              /* TEXT, CLASS */
+            ),
+            createBaseVNode("button", {
+              type: "button",
+              class: "booster-quick-toggle",
+              role: "switch",
+              "aria-checked": __props.enabled,
+              "aria-label": __props.enabled ? "Выключить Booster" : "Включить Booster",
+              disabled: __props.busy,
+              onClick: _cache[1] || (_cache[1] = ($event) => emit2("toggle"))
+            }, [..._cache[2] || (_cache[2] = [
+              createBaseVNode(
+                "span",
+                null,
+                null,
+                -1
+                /* CACHED */
+              )
+            ])], 8, _hoisted_11)
           ])
-        ]);
+        ], 8, _hoisted_1$1);
       };
     }
   });
   const _hoisted_1 = { class: "booster-overlay-root" };
-  const _hoisted_2 = ["aria-expanded", "aria-label"];
+  const _hoisted_2 = {
+    key: 2,
+    class: "booster-quick-error",
+    role: "alert"
+  };
+  const _hoisted_3 = ["aria-expanded", "aria-label"];
+  const edgeKey = "koba-browser:edge-launcher";
   const WORKSPACE_KEY = "koba-browser:floating-workspace";
   const BUTTON_SIZE = 46, VIEWPORT_MARGIN = 12, DRAG_THRESHOLD = 4;
   const _sfc_main = /* @__PURE__ */ defineComponent({
@@ -29397,6 +29203,40 @@
     setup(__props, { expose: __expose }) {
       const props = __props;
       const open = /* @__PURE__ */ ref(false);
+      const quickOpen = /* @__PURE__ */ ref(false);
+      const quickBusy = /* @__PURE__ */ ref(false);
+      const quickError = /* @__PURE__ */ ref("");
+      const quickMetrics = /* @__PURE__ */ ref([]);
+      let metricsRevision = 0;
+      const runtimeRevision = /* @__PURE__ */ ref(0);
+      let unsubscribeRuntime;
+      const installationEnabled = computed(() => {
+        void runtimeRevision.value;
+        return props.runtime.isRunning();
+      });
+      const featureActive = computed(() => {
+        void runtimeRevision.value;
+        return props.runtime.list().find((x) => x.id === singleFeature.value?.id)?.state === "active";
+      });
+      const launcherButton = /* @__PURE__ */ ref();
+      const matchingFeatures = computed(
+        () => props.runtime.features.filter((feature) => feature.match(props.runtime.context.url))
+      );
+      const standalone = computed(() => matchingFeatures.value.length === 1);
+      const singleFeature = computed(() => standalone.value ? matchingFeatures.value[0] : void 0);
+      const menuActions = computed(
+        () => singleFeature.value?.quickActions?.length ? singleFeature.value.quickActions : [
+          {
+            id: "open",
+            label: "Открыть панель",
+            icon: "open",
+            after: "open-panel",
+            run: () => void 0
+          }
+        ]
+      );
+      const dockSide = /* @__PURE__ */ ref("right");
+      const dockRatio = /* @__PURE__ */ ref(0.45);
       const configuredSections = Object.keys(props.views);
       const selectedSection = /* @__PURE__ */ ref(
         configuredSections.length === 1 ? configuredSections[0] ?? "modules" : "modules"
@@ -29428,7 +29268,42 @@
           y: Math.min(Math.max(VIEWPORT_MARGIN, y), maxY)
         };
       }
+      function dockPosition() {
+        const margin = 3;
+        const maxY = Math.max(margin, window.innerHeight - BUTTON_SIZE - margin);
+        position.value = {
+          x: dockSide.value === "left" ? margin : Math.max(margin, window.innerWidth - BUTTON_SIZE - margin),
+          y: Math.max(margin, Math.min(maxY, dockRatio.value * maxY))
+        };
+      }
+      function restoreEdge() {
+        try {
+          const saved = JSON.parse(localStorage.getItem(instanceKey(edgeKey)) || "null");
+          if (saved && typeof saved === "object") {
+            const value = saved;
+            if ((value.side === "left" || value.side === "right") && typeof value.ratio === "number" && Number.isFinite(value.ratio)) {
+              dockSide.value = value.side;
+              dockRatio.value = Math.max(0, Math.min(1, value.ratio));
+            }
+          }
+        } catch {
+        }
+        dockPosition();
+      }
+      function storeEdge() {
+        try {
+          localStorage.setItem(
+            instanceKey(edgeKey),
+            JSON.stringify({ side: dockSide.value, ratio: dockRatio.value })
+          );
+        } catch {
+        }
+      }
       function restore() {
+        if (standalone.value) {
+          restoreEdge();
+          return;
+        }
         try {
           const saved = JSON.parse(
             localStorage.getItem(instanceKey("koba-browser:launcher-position")) || "null"
@@ -29458,12 +29333,19 @@
           moved: false
         };
         dragging.value = true;
-        event.currentTarget.setPointerCapture(event.pointerId);
+        try {
+          ;
+          event.currentTarget.setPointerCapture(event.pointerId);
+        } catch {
+        }
       }
       function onPointerMove(event) {
         if (!dragStart || dragStart.pointerId !== event.pointerId) return;
         const dx = event.clientX - dragStart.clientX, dy = event.clientY - dragStart.clientY;
-        if (Math.hypot(dx, dy) >= DRAG_THRESHOLD) dragStart.moved = true;
+        if (Math.hypot(dx, dy) >= DRAG_THRESHOLD) {
+          if (!dragStart.moved && standalone.value) quickOpen.value = false;
+          dragStart.moved = true;
+        }
         position.value = clampPosition(dragStart.x + dx, dragStart.y + dy);
       }
       function onPointerUp(event) {
@@ -29471,11 +29353,16 @@
         const moved = dragStart.moved;
         dragStart = void 0;
         dragging.value = false;
-        if (moved) savePosition();
-        else toggleLauncher();
+        if (moved && standalone.value) {
+          dockSide.value = position.value.x + BUTTON_SIZE / 2 < window.innerWidth / 2 ? "left" : "right";
+          dockRatio.value = position.value.y / Math.max(1, window.innerHeight - BUTTON_SIZE - 3);
+          dockPosition();
+          storeEdge();
+        } else if (moved) savePosition();
+        else void activateLauncher();
       }
       function onLauncherClick(event) {
-        if (event.detail === 0) toggleLauncher();
+        if (event.detail === 0) void activateLauncher();
       }
       function viewport() {
         return { width: window.innerWidth, height: window.innerHeight };
@@ -29562,32 +29449,119 @@
         minimized.value = true;
         open.value = false;
       }
+      async function refreshQuickMetrics() {
+        const feature = singleFeature.value;
+        const sequence = ++metricsRevision;
+        quickMetrics.value = [];
+        if (!feature?.quickMetrics || !featureActive.value) return;
+        try {
+          const values = await feature.quickMetrics();
+          if (sequence === metricsRevision && quickOpen.value) quickMetrics.value = values;
+        } catch {
+        }
+      }
+      async function activateLauncher() {
+        const click = singleFeature.value?.launcher;
+        if (click?.mode === "action") {
+          if (quickBusy.value) return;
+          quickBusy.value = true;
+          try {
+            await click.run?.();
+          } catch {
+            quickError.value = "Не удалось выполнить действие кнопки";
+          } finally {
+            quickBusy.value = false;
+          }
+          return;
+        }
+        if (click?.mode === "panel") {
+          openPanel();
+          return;
+        }
+        toggleLauncher();
+      }
       function toggleLauncher() {
+        if (standalone.value) {
+          quickOpen.value = !quickOpen.value;
+          if (quickOpen.value) {
+            open.value = false;
+            void refreshQuickMetrics();
+          }
+          return;
+        }
         open.value = !open.value;
         if (open.value) minimized.value = false;
       }
+      async function selectQuick(id) {
+        const action = menuActions.value.find((item) => item.id === id);
+        if (!action || quickBusy.value || !props.runtime.isRunning() && !action.availableWhenDisabled || action.enabled?.() === false)
+          return;
+        quickBusy.value = true;
+        quickError.value = "";
+        try {
+          await action.run();
+          if (action.after === "open-panel") openPanel();
+          else if (action.after !== "keep-menu") quickOpen.value = false;
+        } catch {
+          quickError.value = "Не удалось открыть действие";
+        } finally {
+          quickBusy.value = false;
+        }
+      }
+      async function toggleQuickInstallation() {
+        if (quickBusy.value) return;
+        quickBusy.value = true;
+        quickError.value = "";
+        try {
+          await props.runtime.setRunning(!props.runtime.isRunning());
+        } catch {
+          quickError.value = "Не удалось изменить состояние установки";
+        } finally {
+          quickBusy.value = false;
+        }
+      }
       function onResize() {
+        if (standalone.value) dockPosition();
         if (!workspaceDrag) {
           const nextViewport = viewport();
           workspace.value = workspaceRect(workspaceRatios(workspace.value, lastViewport), nextViewport);
           lastViewport = nextViewport;
         }
+        if (standalone.value) return;
         const p2 = clampPosition(position.value.x, position.value.y);
         if (p2.x !== position.value.x || p2.y !== position.value.y) {
           position.value = p2;
           savePosition();
         }
       }
+      function onOutsidePress(event) {
+        if (!quickOpen.value) return;
+        const path = event.composedPath();
+        if (path.includes(launcherButton.value) || path.some((node) => node instanceof HTMLElement && node.classList.contains("booster-quick-menu")))
+          return;
+        quickOpen.value = false;
+      }
       function onKeyDown(event) {
-        if (event.key === "Escape") closePanel();
+        if (event.key !== "Escape") return;
+        if (quickOpen.value) {
+          quickOpen.value = false;
+          launcherButton.value?.focus();
+          return;
+        }
+        if (open.value) closePanel();
       }
       function onModuleOpen(event) {
         const detail = event.detail;
         selectedSection.value = detail?.id || "modules";
+        quickOpen.value = false;
         open.value = true;
         minimized.value = false;
       }
       const launcherStyle = computed(() => ({ left: position.value.x + "px", top: position.value.y + "px" }));
+      const quickMenuStyle = computed(() => ({
+        top: Math.max(8, Math.min(position.value.y - 110, window.innerHeight - 320)) + "px",
+        ...dockSide.value === "right" ? { right: BUTTON_SIZE + 6 + "px" } : { left: BUTTON_SIZE + 6 + "px" }
+      }));
       const workspaceStyle = computed(() => ({
         left: workspace.value.x + "px",
         top: workspace.value.y + "px",
@@ -29595,7 +29569,7 @@
         height: workspace.value.height + "px"
       }));
       const widePanel = computed(
-        () => props.runtime.features.some(
+        () => !standalone.value && props.runtime.features.some(
           (feature) => feature.id === selectedSection.value && feature.presentation?.panel === "wide"
         )
       );
@@ -29603,44 +29577,54 @@
         if (!wide) workspaceDrag = void 0;
       });
       function openPanel() {
+        quickOpen.value = false;
         open.value = true;
         minimized.value = false;
       }
       function closePanel() {
+        quickOpen.value = false;
+        ++metricsRevision;
         open.value = false;
         minimized.value = false;
       }
       __expose({ openPanel, closePanel });
       onMounted(() => {
+        unsubscribeRuntime = props.runtime.subscribe(() => {
+          runtimeRevision.value++;
+        });
         restore();
         restoreWorkspace();
         window.addEventListener("resize", onResize);
         window.addEventListener(SHELL_OPEN_FEATURE_EVENT, onModuleOpen);
         window.addEventListener(SHELL_CLOSE_EVENT, closePanel);
         document.addEventListener("keydown", onKeyDown);
+        document.addEventListener("pointerdown", onOutsidePress, true);
       });
       onBeforeUnmount(() => {
+        ++metricsRevision;
+        unsubscribeRuntime?.();
         workspaceDrag = void 0;
         window.removeEventListener("resize", onResize);
         window.removeEventListener(SHELL_OPEN_FEATURE_EVENT, onModuleOpen);
         window.removeEventListener(SHELL_CLOSE_EVENT, closePanel);
         document.removeEventListener("keydown", onKeyDown);
+        document.removeEventListener("pointerdown", onOutsidePress, true);
       });
       return (_ctx, _cache) => {
         return openBlock(), createElementBlock("div", _hoisted_1, [
           open.value ? (openBlock(), createBlock(unref(_sfc_main$2$1), {
             key: 0,
-            label: __props.title,
+            label: singleFeature.value?.title || __props.title,
             floating: widePanel.value,
             "surface-style": widePanel.value ? workspaceStyle.value : void 0,
-            "surface-class": widePanel.value ? "booster-modal-surface booster-modal-surface-wide" : "booster-modal-surface",
+            "surface-class": standalone.value ? "booster-modal-surface booster-modal-surface-single" : widePanel.value ? "booster-modal-surface booster-modal-surface-wide" : "booster-modal-surface",
             onClose: closePanel
           }, createSlots({
             default: withCtx(() => [
-              createVNode(_sfc_main$1, {
+              createVNode(_sfc_main$2, {
                 runtime: __props.runtime,
                 views: __props.views,
-                title: __props.title,
+                title: singleFeature.value?.title || __props.title,
                 "selected-section": selectedSection.value,
                 onSelect: _cache[3] || (_cache[3] = ($event) => selectedSection.value = $event),
                 onClose: closePanel
@@ -29741,25 +29725,52 @@
               key: "1"
             } : void 0
           ]), 1032, ["label", "floating", "surface-style", "surface-class"])) : createCommentVNode("v-if", true),
-          __props.launcher ? (openBlock(), createElementBlock("button", {
+          quickOpen.value && standalone.value && singleFeature.value ? (openBlock(), createBlock(_sfc_main$1, {
             key: 1,
-            class: normalizeClass(["booster-launcher", { "booster-launcher-dragging": dragging.value }]),
+            style: normalizeStyle(quickMenuStyle.value),
+            title: singleFeature.value.title,
+            version: singleFeature.value.presentation?.version,
+            installation: singleFeature.value.presentation?.installation,
+            enabled: installationEnabled.value,
+            active: featureActive.value,
+            busy: quickBusy.value,
+            actions: menuActions.value,
+            metrics: quickMetrics.value,
+            onClose: _cache[6] || (_cache[6] = ($event) => {
+              quickOpen.value = false;
+              launcherButton.value?.focus();
+            }),
+            onSelect: selectQuick,
+            onToggle: toggleQuickInstallation
+          }, null, 8, ["style", "title", "version", "installation", "enabled", "active", "busy", "actions", "metrics"])) : createCommentVNode("v-if", true),
+          quickOpen.value && quickError.value ? (openBlock(), createElementBlock(
+            "p",
+            _hoisted_2,
+            toDisplayString(quickError.value),
+            1
+            /* TEXT */
+          )) : createCommentVNode("v-if", true),
+          __props.launcher ? (openBlock(), createElementBlock("button", {
+            key: 3,
+            ref_key: "launcherButton",
+            ref: launcherButton,
+            class: normalizeClass(["booster-launcher", { "booster-launcher-dragging": dragging.value, "booster-launcher-docked": standalone.value }]),
             style: normalizeStyle(launcherStyle.value),
             type: "button",
             title: "Открыть Koba Browser Tools",
             "aria-haspopup": "dialog",
-            "aria-expanded": open.value,
-            "aria-label": minimized.value ? "Восстановить окно Koba Browser Tools" : "Открыть или закрыть Koba Browser Tools",
+            "aria-expanded": standalone.value ? quickOpen.value : open.value,
+            "aria-label": standalone.value ? quickOpen.value ? "Закрыть быстрое меню" : "Открыть быстрое меню" : minimized.value ? "Восстановить окно" : "Открыть или закрыть панель",
             onClick: onLauncherClick,
             onPointerdown: onPointerDown,
             onPointermove: onPointerMove,
             onPointerup: onPointerUp,
-            onPointercancel: _cache[6] || (_cache[6] = ($event) => {
+            onPointercancel: _cache[7] || (_cache[7] = ($event) => {
               /* @__PURE__ */ isRef(dragStart) ? dragStart.value = void 0 : dragStart = void 0;
               dragging.value = false;
             })
           }, [
-            open.value ? (openBlock(), createBlock(unref(X), {
+            (standalone.value ? quickOpen.value : open.value) ? (openBlock(), createBlock(unref(X), {
               key: 0,
               class: "booster-launcher-icon",
               "aria-hidden": "true"
@@ -29768,12 +29779,12 @@
               class: "booster-launcher-icon",
               "aria-hidden": "true"
             }))
-          ], 46, _hoisted_2)) : createCommentVNode("v-if", true)
+          ], 46, _hoisted_3)) : createCommentVNode("v-if", true)
         ]);
       };
     }
   });
-  const styles = '/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */\n@layer properties {\n  @supports (((-webkit-hyphens: none)) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color: rgb(from red r g b)))) {\n    *, :before, :after, ::backdrop {\n      --tw-rotate-x: initial;\n      --tw-rotate-y: initial;\n      --tw-rotate-z: initial;\n      --tw-skew-x: initial;\n      --tw-skew-y: initial;\n      --tw-space-y-reverse: 0;\n      --tw-border-style: solid;\n      --tw-leading: initial;\n      --tw-font-weight: initial;\n      --tw-ordinal: initial;\n      --tw-slashed-zero: initial;\n      --tw-numeric-figure: initial;\n      --tw-numeric-spacing: initial;\n      --tw-numeric-fraction: initial;\n      --tw-shadow: 0 0 #0000;\n      --tw-shadow-color: initial;\n      --tw-shadow-alpha: 100%;\n      --tw-inset-shadow: 0 0 #0000;\n      --tw-inset-shadow-color: initial;\n      --tw-inset-shadow-alpha: 100%;\n      --tw-ring-color: initial;\n      --tw-ring-shadow: 0 0 #0000;\n      --tw-inset-ring-color: initial;\n      --tw-inset-ring-shadow: 0 0 #0000;\n      --tw-ring-inset: initial;\n      --tw-ring-offset-width: 0px;\n      --tw-ring-offset-color: #fff;\n      --tw-ring-offset-shadow: 0 0 #0000;\n      --tw-outline-style: solid;\n      --tw-blur: initial;\n      --tw-brightness: initial;\n      --tw-contrast: initial;\n      --tw-grayscale: initial;\n      --tw-hue-rotate: initial;\n      --tw-invert: initial;\n      --tw-opacity: initial;\n      --tw-saturate: initial;\n      --tw-sepia: initial;\n      --tw-drop-shadow: initial;\n      --tw-drop-shadow-color: initial;\n      --tw-drop-shadow-alpha: 100%;\n      --tw-drop-shadow-size: initial;\n    }\n  }\n}\n\n@layer theme {\n  :root, :host {\n    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",\n      "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",\n      "Segoe UI Symbol", "Noto Color Emoji";\n    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",\n      "Courier New", monospace;\n    --spacing: .25rem;\n    --text-xs: .75rem;\n    --text-xs--line-height: calc(1 / .75);\n    --text-sm: .875rem;\n    --text-sm--line-height: calc(1.25 / .875);\n    --text-base: 1rem;\n    --text-base--line-height: calc(1.5 / 1);\n    --font-weight-medium: 500;\n    --font-weight-semibold: 600;\n    --default-transition-duration: .15s;\n    --default-transition-timing-function: cubic-bezier(.4, 0, .2, 1);\n    --default-font-family: var(--font-sans);\n    --default-mono-font-family: var(--font-mono);\n  }\n}\n\n@layer base {\n  *, :after, :before, ::backdrop {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  ::file-selector-button {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  html, :host {\n    -webkit-text-size-adjust: 100%;\n    tab-size: 4;\n    line-height: 1.5;\n    font-family: var(--default-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");\n    font-feature-settings: var(--default-font-feature-settings, normal);\n    font-variation-settings: var(--default-font-variation-settings, normal);\n    -webkit-tap-highlight-color: transparent;\n  }\n\n  hr {\n    height: 0;\n    color: inherit;\n    border-top-width: 1px;\n  }\n\n  abbr:where([title]) {\n    -webkit-text-decoration: underline dotted;\n    text-decoration: underline dotted;\n  }\n\n  h1, h2, h3, h4, h5, h6 {\n    font-size: inherit;\n    font-weight: inherit;\n  }\n\n  a {\n    color: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    text-decoration: inherit;\n  }\n\n  b, strong {\n    font-weight: bolder;\n  }\n\n  code, kbd, samp, pre {\n    font-family: var(--default-mono-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);\n    font-feature-settings: var(--default-mono-font-feature-settings, normal);\n    font-variation-settings: var(--default-mono-font-variation-settings, normal);\n    font-size: 1em;\n  }\n\n  small {\n    font-size: 80%;\n  }\n\n  sub, sup {\n    vertical-align: baseline;\n    font-size: 75%;\n    line-height: 0;\n    position: relative;\n  }\n\n  sub {\n    bottom: -.25em;\n  }\n\n  sup {\n    top: -.5em;\n  }\n\n  table {\n    text-indent: 0;\n    border-color: inherit;\n    border-collapse: collapse;\n  }\n\n  :-moz-focusring:where(:not(iframe)) {\n    outline: auto;\n  }\n\n  progress {\n    vertical-align: baseline;\n  }\n\n  summary {\n    display: list-item;\n  }\n\n  ol, ul, menu {\n    list-style: none;\n  }\n\n  img, svg, video, canvas, audio, iframe, embed, object {\n    vertical-align: middle;\n    display: block;\n  }\n\n  img, video {\n    max-width: 100%;\n    height: auto;\n  }\n\n  button, input, select, optgroup, textarea {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  ::file-selector-button {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  :where(select:is([multiple], [size])) optgroup {\n    font-weight: bolder;\n  }\n\n  :where(select:is([multiple], [size])) optgroup option {\n    padding-inline-start: 20px;\n  }\n\n  ::file-selector-button {\n    margin-inline-end: 4px;\n  }\n\n  ::placeholder {\n    opacity: 1;\n  }\n\n  @supports (not ((-webkit-appearance: -apple-pay-button))) or (contain-intrinsic-size: 1px) {\n    ::placeholder {\n      color: currentColor;\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      ::placeholder {\n        color: color-mix(in oklab, currentcolor 50%, transparent);\n      }\n    }\n  }\n\n  textarea {\n    resize: vertical;\n  }\n\n  ::-webkit-search-decoration {\n    -webkit-appearance: none;\n  }\n\n  ::-webkit-date-and-time-value {\n    min-height: 1lh;\n    text-align: inherit;\n  }\n\n  ::-webkit-datetime-edit {\n    display: inline-flex;\n  }\n\n  ::-webkit-datetime-edit-fields-wrapper {\n    padding: 0;\n  }\n\n  ::-webkit-datetime-edit {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-year-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-month-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-day-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-hour-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-minute-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-second-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-millisecond-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-meridiem-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-calendar-picker-indicator {\n    line-height: 1;\n  }\n\n  :-moz-ui-invalid {\n    box-shadow: none;\n  }\n\n  button, input:where([type="button"], [type="reset"], [type="submit"]) {\n    appearance: button;\n  }\n\n  ::file-selector-button {\n    appearance: button;\n  }\n\n  ::-webkit-inner-spin-button {\n    height: auto;\n  }\n\n  ::-webkit-outer-spin-button {\n    height: auto;\n  }\n\n  [hidden]:where(:not([hidden="until-found"])) {\n    display: none !important;\n  }\n}\n\n@layer components;\n\n@layer utilities {\n  .collapse {\n    visibility: collapse;\n  }\n\n  .invisible {\n    visibility: hidden;\n  }\n\n  .visible {\n    visibility: visible;\n  }\n\n  .absolute {\n    position: absolute;\n  }\n\n  .fixed {\n    position: fixed;\n  }\n\n  .relative {\n    position: relative;\n  }\n\n  .static {\n    position: static;\n  }\n\n  .sticky {\n    position: sticky;\n  }\n\n  .top-41 {\n    top: calc(var(--spacing) * 41);\n  }\n\n  .isolate {\n    isolation: isolate;\n  }\n\n  .col-span-2 {\n    grid-column: span 2 / span 2;\n  }\n\n  .container {\n    width: 100%;\n  }\n\n  @media (min-width: 40rem) {\n    .container {\n      max-width: 40rem;\n    }\n  }\n\n  @media (min-width: 48rem) {\n    .container {\n      max-width: 48rem;\n    }\n  }\n\n  @media (min-width: 64rem) {\n    .container {\n      max-width: 64rem;\n    }\n  }\n\n  @media (min-width: 80rem) {\n    .container {\n      max-width: 80rem;\n    }\n  }\n\n  @media (min-width: 96rem) {\n    .container {\n      max-width: 96rem;\n    }\n  }\n\n  .m-0 {\n    margin: 0;\n  }\n\n  .m-1 {\n    margin: var(--spacing);\n  }\n\n  .mt-1 {\n    margin-top: var(--spacing);\n  }\n\n  .mt-2 {\n    margin-top: calc(var(--spacing) * 2);\n  }\n\n  .mb-2 {\n    margin-bottom: calc(var(--spacing) * 2);\n  }\n\n  .block {\n    display: block;\n  }\n\n  .contents {\n    display: contents;\n  }\n\n  .flex {\n    display: flex;\n  }\n\n  .grid {\n    display: grid;\n  }\n\n  .hidden {\n    display: none;\n  }\n\n  .inline {\n    display: inline;\n  }\n\n  .inline-flex {\n    display: inline-flex;\n  }\n\n  .table {\n    display: table;\n  }\n\n  .size-3 {\n    width: calc(var(--spacing) * 3);\n    height: calc(var(--spacing) * 3);\n  }\n\n  .size-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n    height: calc(var(--spacing) * 3.5);\n  }\n\n  .size-4 {\n    width: calc(var(--spacing) * 4);\n    height: calc(var(--spacing) * 4);\n  }\n\n  .size-5 {\n    width: calc(var(--spacing) * 5);\n    height: calc(var(--spacing) * 5);\n  }\n\n  .size-6 {\n    width: calc(var(--spacing) * 6);\n    height: calc(var(--spacing) * 6);\n  }\n\n  .size-7 {\n    width: calc(var(--spacing) * 7);\n    height: calc(var(--spacing) * 7);\n  }\n\n  .size-8 {\n    width: calc(var(--spacing) * 8);\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-7 {\n    height: calc(var(--spacing) * 7);\n  }\n\n  .h-8 {\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-9 {\n    height: calc(var(--spacing) * 9);\n  }\n\n  .max-h-60 {\n    max-height: calc(var(--spacing) * 60);\n  }\n\n  .max-h-96 {\n    max-height: calc(var(--spacing) * 96);\n  }\n\n  .max-h-\\[420px\\] {\n    max-height: 420px;\n  }\n\n  .min-h-\\[130px\\] {\n    min-height: 130px;\n  }\n\n  .w-full {\n    width: 100%;\n  }\n\n  .min-w-0 {\n    min-width: 0;\n  }\n\n  .flex-1 {\n    flex: 1;\n  }\n\n  .shrink-0 {\n    flex-shrink: 0;\n  }\n\n  .grow {\n    flex-grow: 1;\n  }\n\n  .rotate-180 {\n    rotate: 180deg;\n  }\n\n  .transform {\n    transform: var(--tw-rotate-x, ) var(--tw-rotate-y, ) var(--tw-rotate-z, ) var(--tw-skew-x, ) var(--tw-skew-y, );\n  }\n\n  .resize {\n    resize: both;\n  }\n\n  .grid-cols-2 {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }\n\n  .flex-col {\n    flex-direction: column;\n  }\n\n  .flex-wrap {\n    flex-wrap: wrap;\n  }\n\n  .items-center {\n    align-items: center;\n  }\n\n  .items-end {\n    align-items: flex-end;\n  }\n\n  .items-start {\n    align-items: flex-start;\n  }\n\n  .justify-between {\n    justify-content: space-between;\n  }\n\n  .justify-center {\n    justify-content: center;\n  }\n\n  .gap-0\\.5 {\n    gap: calc(var(--spacing) * .5);\n  }\n\n  .gap-1 {\n    gap: var(--spacing);\n  }\n\n  .gap-2 {\n    gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-3 {\n    gap: calc(var(--spacing) * 3);\n  }\n\n  :where(.space-y-2 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 2) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 2) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  .self-start {\n    align-self: flex-start;\n  }\n\n  .truncate {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    overflow: hidden;\n  }\n\n  .overflow-x-hidden {\n    overflow-x: hidden;\n  }\n\n  .overflow-y-auto {\n    overflow-y: auto;\n  }\n\n  .rounded-lg {\n    border-radius: var(--radius);\n  }\n\n  .rounded-md {\n    border-radius: calc(var(--radius) - 2px);\n  }\n\n  .border {\n    border-style: var(--tw-border-style);\n    border-width: 1px;\n  }\n\n  .border-t {\n    border-top-style: var(--tw-border-style);\n    border-top-width: 1px;\n  }\n\n  .border-b {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 1px;\n  }\n\n  .border-l-2 {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 2px;\n  }\n\n  .border-border {\n    border-color: var(--border);\n  }\n\n  .border-transparent {\n    border-color: #0000;\n  }\n\n  .bg-background {\n    background-color: var(--background);\n  }\n\n  .bg-card {\n    background-color: var(--card);\n  }\n\n  .bg-primary {\n    background-color: var(--primary);\n  }\n\n  .bg-secondary {\n    background-color: var(--secondary);\n  }\n\n  .p-0 {\n    padding: 0;\n  }\n\n  .p-2 {\n    padding: calc(var(--spacing) * 2);\n  }\n\n  .p-3 {\n    padding: calc(var(--spacing) * 3);\n  }\n\n  .px-2 {\n    padding-inline: calc(var(--spacing) * 2);\n  }\n\n  .px-3 {\n    padding-inline: calc(var(--spacing) * 3);\n  }\n\n  .px-4 {\n    padding-inline: calc(var(--spacing) * 4);\n  }\n\n  .py-0\\.5 {\n    padding-block: calc(var(--spacing) * .5);\n  }\n\n  .py-2 {\n    padding-block: calc(var(--spacing) * 2);\n  }\n\n  .pt-2 {\n    padding-top: calc(var(--spacing) * 2);\n  }\n\n  .pl-2 {\n    padding-left: calc(var(--spacing) * 2);\n  }\n\n  .text-base {\n    font-size: var(--text-base);\n    line-height: var(--tw-leading, var(--text-base--line-height));\n  }\n\n  .text-sm {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n\n  .text-xs {\n    font-size: var(--text-xs);\n    line-height: var(--tw-leading, var(--text-xs--line-height));\n  }\n\n  .text-\\[11px\\] {\n    font-size: 11px;\n  }\n\n  .leading-4 {\n    --tw-leading: calc(var(--spacing) * 4);\n    line-height: calc(var(--spacing) * 4);\n  }\n\n  .font-medium {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n\n  .font-semibold {\n    --tw-font-weight: var(--font-weight-semibold);\n    font-weight: var(--font-weight-semibold);\n  }\n\n  .break-words {\n    overflow-wrap: break-word;\n  }\n\n  .whitespace-nowrap {\n    white-space: nowrap;\n  }\n\n  .whitespace-pre-wrap {\n    white-space: pre-wrap;\n  }\n\n  .text-foreground {\n    color: var(--foreground);\n  }\n\n  .text-muted-foreground {\n    color: var(--muted-foreground);\n  }\n\n  .text-primary-foreground {\n    color: var(--primary-foreground);\n  }\n\n  .text-secondary-foreground {\n    color: var(--secondary-foreground);\n  }\n\n  .ordinal {\n    --tw-ordinal: ordinal;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .tabular-nums {\n    --tw-numeric-spacing: tabular-nums;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .shadow {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .outline {\n    outline-style: var(--tw-outline-style);\n    outline-width: 1px;\n  }\n\n  .blur {\n    --tw-blur: blur(8px);\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .filter {\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .transition {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-colors {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-transform {\n    transition-property: transform, translate, scale, rotate;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .outline-none {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  @media (hover: hover) {\n    .hover\\:bg-accent:hover {\n      background-color: var(--accent);\n    }\n\n    .hover\\:bg-primary\\/90:hover {\n      background-color: var(--primary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-primary\\/90:hover {\n        background-color: color-mix(in oklab, var(--primary) 90%, transparent);\n      }\n    }\n\n    .hover\\:text-accent-foreground:hover {\n      color: var(--accent-foreground);\n    }\n  }\n\n  .focus-visible\\:ring-2:focus-visible {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus-visible\\:ring-ring:focus-visible {\n    --tw-ring-color: var(--ring);\n  }\n\n  .disabled\\:pointer-events-none:disabled {\n    pointer-events: none;\n  }\n\n  .disabled\\:opacity-50:disabled {\n    opacity: .5;\n  }\n}\n\n.booster-reader-sidebar {\n  border-right: 1px solid var(--border);\n  background: var(--card);\n  overscroll-behavior: contain;\n  min-width: 0;\n  padding: 12px;\n  overflow: auto;\n}\n\n.booster-reader-group {\n  margin-top: 12px;\n}\n\n.booster-reader-group-header {\n  align-items: center;\n  gap: 2px;\n  min-height: 38px;\n  display: flex;\n}\n\n.booster-group-toggle {\n  min-width: 0;\n  color: inherit;\n  cursor: pointer;\n  text-align: left;\n  font: inherit;\n  background: none;\n  border: 0;\n  flex: 1;\n  align-items: center;\n  gap: 6px;\n  padding: 6px 0;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-group-toggle svg {\n  flex-shrink: 0;\n}\n\n.booster-group-toggle span {\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-group-toggle small {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-reader-chat-list {\n  gap: 3px;\n  padding-left: 10px;\n  display: grid;\n}\n\n.booster-reader-chat-list > button {\n  color: inherit;\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 8px;\n  align-items: center;\n  gap: 6px;\n  padding: 10px;\n  font-size: 12px;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-reader-chat-list > button:hover, .booster-reader-chat-list > button.active {\n  background: var(--muted);\n  border-color: var(--border);\n}\n\n.booster-reader-chat-list > button span {\n  text-overflow: ellipsis;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-reader-chat-list > button.is-branch {\n  border-inline-start: 2px solid var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reader-chat-list > button.is-branch {\n    border-inline-start: 2px solid color-mix(in oklab, var(--primary) 35%, transparent);\n  }\n}\n\n.booster-reader-branch-icon {\n  opacity: .66;\n  flex: none;\n}\n\n.booster-reader-exchanges {\n  gap: 12px;\n  margin-top: 0;\n  display: grid;\n}\n\n.booster-exchange {\n  border-bottom: 1px solid var(--border);\n  min-width: 0;\n  max-width: 100%;\n  padding-bottom: 16px;\n}\n\n.booster-exchange-details {\n  border-left: 2px solid var(--border);\n  gap: 6px;\n  margin: 10px 0 10px 12px;\n  padding: 8px 0 8px 12px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-exchange-details {\n    border-left: 2px solid color-mix(in oklab, var(--border) 78%, var(--primary));\n  }\n}\n\n.booster-exchange-details-label {\n  color: var(--muted-foreground);\n  letter-spacing: .04em;\n  text-transform: uppercase;\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-message-target {\n  outline: 2px solid var(--primary);\n  outline-offset: 2px;\n  border-radius: 6px;\n}\n\n[data-archive-message] {\n  scroll-margin-block: 20px;\n}\n\n.booster-reader-exchanges, .booster-exchange-details {\n  min-width: 0;\n  max-width: 100%;\n}\n\n:host {\n  --background: oklch(98.5% 0 0);\n  --foreground: oklch(14.5% 0 0);\n  --card: oklch(100% 0 0);\n  --card-foreground: oklch(14.5% 0 0);\n  --primary: oklch(20.5% 0 0);\n  --primary-foreground: oklch(98.5% 0 0);\n  --secondary: oklch(97% 0 0);\n  --secondary-foreground: oklch(20.5% 0 0);\n  --muted: oklch(97% 0 0);\n  --muted-foreground: oklch(55.6% 0 0);\n  --accent: oklch(97% 0 0);\n  --accent-foreground: oklch(20.5% 0 0);\n  --border: oklch(92.2% 0 0);\n  --ring: oklch(70.8% 0 0);\n  --radius: .625rem;\n  all: initial;\n  color: var(--foreground);\n  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;\n}\n\n@media (prefers-color-scheme: dark) {\n  :host {\n    --background: oklch(14.5% 0 0);\n    --foreground: oklch(98.5% 0 0);\n    --card: oklch(20.5% 0 0);\n    --card-foreground: oklch(98.5% 0 0);\n    --primary: oklch(92.2% 0 0);\n    --primary-foreground: oklch(20.5% 0 0);\n    --secondary: oklch(26.9% 0 0);\n    --secondary-foreground: oklch(98.5% 0 0);\n    --muted: oklch(26.9% 0 0);\n    --muted-foreground: oklch(70.8% 0 0);\n    --accent: oklch(26.9% 0 0);\n    --accent-foreground: oklch(98.5% 0 0);\n    --border: oklch(100% 0 0 / .12);\n    --ring: oklch(55.6% 0 0);\n  }\n}\n\n* {\n  box-sizing: border-box;\n  border-color: var(--border);\n}\n\n.booster-shell {\n  z-index: 2147483647;\n  position: fixed;\n  bottom: 20px;\n  right: 20px;\n}\n\n.booster-button {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 42px;\n  height: 42px;\n  color: var(--card-foreground);\n  cursor: pointer;\n  border-radius: 14px;\n  font: 700 15px / 1 inherit;\n  box-shadow: 0 10px 30px #0003;\n}\n\n.booster-panel {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 300px;\n  color: var(--card-foreground);\n  border-radius: 16px;\n  margin-bottom: 10px;\n  padding: 14px;\n  box-shadow: 0 18px 45px #0000003d;\n}\n\n.booster-panel h2 {\n  margin: 0 0 6px;\n  font-size: 15px;\n  font-weight: 700;\n}\n\n.booster-panel p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.45;\n}\n\n.booster-control-center {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(760px, 100vw - 32px);\n  color: var(--card-foreground);\n  border-radius: 18px;\n  margin-bottom: 10px;\n  overflow: hidden;\n  box-shadow: 0 22px 60px #00000047;\n}\n\n.booster-control-header, .booster-control-footer {\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  display: flex;\n}\n\n.booster-control-header {\n  border-bottom: 1px solid var(--border);\n  padding: 14px 14px 12px;\n}\n\n.booster-control-header strong {\n  font-size: 14px;\n}\n\n.booster-control-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-control-body {\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-loading {\n  color: var(--muted-foreground);\n  padding: 18px;\n  font-size: 12px;\n}\n\n.booster-section-label {\n  color: var(--muted-foreground);\n  letter-spacing: .08em;\n  text-transform: uppercase;\n  padding: 2px 2px 0;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-setting-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 12px;\n  display: flex;\n}\n\n.booster-setting-disabled {\n  opacity: .55;\n}\n\n.booster-setting-copy {\n  gap: 5px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-setting-copy b {\n  font-size: 12px;\n}\n\n.booster-setting-copy > span {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.4;\n}\n\n.booster-switch {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  cursor: pointer;\n  border-radius: 999px;\n  flex: none;\n  width: 36px;\n  height: 20px;\n  padding: 0;\n  transition: background .12s, border-color .12s;\n  position: relative;\n}\n\n.booster-switch:disabled {\n  cursor: not-allowed;\n}\n\n.booster-switch > span {\n  background: var(--foreground);\n  border-radius: 999px;\n  width: 14px;\n  height: 14px;\n  transition: transform .12s;\n  position: absolute;\n  top: 2px;\n  left: 2px;\n}\n\n.booster-switch-on {\n  background: var(--primary);\n  border-color: var(--primary);\n}\n\n.booster-switch-on > span {\n  background: var(--primary-foreground);\n  transform: translateX(16px);\n}\n\n.booster-info-card {\n  background: var(--muted);\n  color: var(--foreground);\n  border-radius: 12px;\n  padding: 11px 12px;\n  font-size: 11px;\n}\n\n.booster-info-card ul {\n  color: var(--muted-foreground);\n  gap: 4px;\n  margin: 8px 0 0 18px;\n  padding: 0;\n  line-height: 1.35;\n  display: grid;\n}\n\n.booster-control-footer {\n  padding-top: 2px;\n}\n\n.booster-save-state {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 5px;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-overlay-root {\n  pointer-events: none;\n}\n\n.booster-launcher {\n  z-index: 2147483647;\n  border: 2px solid var(--primary);\n  justify-content: center;\n  align-items: center;\n  gap: 1px;\n  width: 46px;\n  height: 46px;\n  display: inline-flex;\n  position: fixed;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher {\n    border: 2px solid color-mix(in oklab, var(--primary) 55%, transparent);\n  }\n}\n\n.booster-launcher {\n  background: var(--primary);\n  color: var(--primary-foreground);\n  box-shadow: 0 12px 36px #00000047, 0 0 0 3px var(--primary);\n  border-radius: 15px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher {\n    box-shadow: 0 12px 36px #00000047, 0 0 0 3px color-mix(in oklab, var(--primary) 18%, transparent);\n  }\n}\n\n.booster-launcher {\n  cursor: grab;\n  pointer-events: auto;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  font: 800 17px / 1 inherit;\n}\n\n.booster-launcher:hover {\n  transform: scale(1.04);\n}\n\n.booster-launcher-dragging {\n  cursor: grabbing;\n  transform: scale(1.06);\n}\n\n.booster-launcher-icon {\n  flex-shrink: 0;\n  width: 20px;\n  height: 20px;\n}\n\n.booster-modal-backdrop {\n  z-index: 2147483646;\n  -webkit-backdrop-filter: blur(3px);\n  backdrop-filter: blur(3px);\n  pointer-events: auto;\n  background: #00000061;\n  place-items: center;\n  padding: 16px;\n  display: grid;\n  position: fixed;\n  inset: 0;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n  max-height: calc(100vh - 32px);\n  overflow: auto;\n}\n\n.booster-modal-surface .booster-control-center {\n  width: 100%;\n  margin: 0;\n}\n\n.booster-popup-host {\n  background: var(--background);\n  min-width: 360px;\n}\n\n.booster-select {\n  border: 1px solid var(--border);\n  background: var(--background);\n  min-width: 92px;\n  height: 32px;\n  color: var(--foreground);\n  cursor: pointer;\n  border-radius: 8px;\n  outline: none;\n  flex: none;\n  padding: 0 28px 0 10px;\n  font: 500 12px / 1 inherit;\n}\n\n.booster-select:focus {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-stack-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-stack-card label {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-input {\n  border: 1px solid var(--border);\n  background: var(--background);\n  width: 100%;\n  min-width: 0;\n  height: 32px;\n  color: var(--foreground);\n  border-radius: 8px;\n  outline: none;\n  padding: 0 10px;\n  font: 500 11px / 1 inherit;\n}\n\n.booster-input:focus {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-counter-grid {\n  color: var(--muted-foreground);\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 6px 12px;\n  margin-top: 8px;\n  display: grid;\n}\n\n.booster-counter-grid span {\n  justify-content: space-between;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-counter-grid b {\n  color: var(--foreground);\n}\n\n.booster-header-copy {\n  min-width: 0;\n}\n\n.booster-header-actions {\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-header-toggle-label {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  font-weight: 600;\n}\n\n.booster-settings-layout {\n  grid-template-columns: 150px minmax(0, 1fr);\n  min-height: 360px;\n  display: grid;\n}\n\n.booster-settings-nav {\n  border-right: 1px solid var(--border);\n  background: var(--muted);\n  align-content: start;\n  gap: 4px;\n  padding: 12px 8px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-settings-nav {\n    background: color-mix(in oklab, var(--muted) 58%, transparent);\n  }\n}\n\n.booster-settings-nav button {\n  width: 100%;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  border-radius: 9px;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 10px;\n  font: 600 11px / 1.2 inherit;\n  display: flex;\n}\n\n.booster-settings-nav button:hover, .booster-settings-nav button.active {\n  background: var(--background);\n  color: var(--foreground);\n}\n\n.booster-settings-content {\n  align-content: start;\n  gap: 10px;\n  min-width: 0;\n  padding: 14px;\n  display: grid;\n}\n\n.booster-setting-card-flat {\n  border: 0;\n  border-bottom: 1px solid var(--border);\n  border-radius: 0;\n  padding: 0 0 10px;\n}\n\n.booster-analytics-grid {\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 12px;\n  display: grid;\n}\n\n.booster-counter-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  padding: 12px;\n}\n\n.booster-counter-title {\n  margin-bottom: 8px;\n  font-size: 12px;\n  font-weight: 700;\n}\n\n.booster-disclosure {\n  width: 100%;\n  color: var(--foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 0;\n  display: flex;\n}\n\n.booster-disclosure > span {\n  gap: 3px;\n  display: grid;\n}\n\n.booster-disclosure b {\n  font-size: 12px;\n}\n\n.booster-disclosure small {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.rotate-180 {\n  transform: rotate(180deg);\n}\n\n.booster-telemetry-body {\n  gap: 10px;\n  padding-top: 10px;\n  display: grid;\n}\n\n.booster-field {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-telemetry-test-row {\n  align-items: center;\n  gap: 10px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-test-success {\n  color: oklch(62% .17 145);\n  font-size: 11px;\n}\n\n.booster-test-error {\n  color: oklch(63% .2 25);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n}\n\n@media (max-width: 620px) {\n  .booster-control-center, .booster-modal-surface {\n    width: calc(100vw - 20px);\n  }\n\n  .booster-settings-layout {\n    grid-template-columns: 1fr;\n  }\n\n  .booster-settings-nav {\n    border-right: 0;\n    border-bottom: 1px solid var(--border);\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n\n  .booster-settings-nav button {\n    justify-content: center;\n  }\n\n  .booster-analytics-grid {\n    grid-template-columns: 1fr;\n  }\n}\n\n.booster-modal-surface.booster-modal-surface-wide {\n  width: min(1320px, 100vw - 32px);\n}\n\n.booster-modal-surface-wide > .booster-control-center {\n  width: 100%;\n}\n\n@media (max-width: 620px) {\n  .booster-modal-surface.booster-modal-surface-wide {\n    width: calc(100vw - 20px);\n  }\n}\n\n.booster-modal-backdrop.booster-modal-backdrop-floating {\n  -webkit-backdrop-filter: none;\n  backdrop-filter: none;\n  pointer-events: none;\n  background: none;\n  padding: 0;\n  display: block;\n}\n\n.booster-modal-surface.booster-modal-surface-wide.booster-dialog-floating {\n  pointer-events: auto;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  max-height: none;\n  padding: 0;\n  display: flex;\n  position: fixed;\n  overflow: hidden;\n}\n\n.booster-dialog-floating > .booster-control-center {\n  flex: auto;\n  min-height: 0;\n  overflow: auto;\n}\n\n.booster-floating-chrome {\n  border-bottom: 1px solid var(--border);\n  background: var(--muted);\n  cursor: move;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  flex: none;\n  align-items: center;\n  gap: 8px;\n  min-height: 38px;\n  padding: 4px 8px 4px 12px;\n  display: flex;\n}\n\n.booster-floating-chrome > span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  flex: auto;\n  min-width: 0;\n  font-size: 12px;\n  font-weight: 600;\n  overflow: hidden;\n}\n\n.booster-floating-chrome > button {\n  cursor: pointer;\n  border-radius: 6px;\n  flex: none;\n  place-items: center;\n  width: 30px;\n  height: 30px;\n  display: grid;\n}\n\n.booster-floating-chrome > button:focus-visible, .booster-floating-resize:focus-visible {\n  outline: 2px solid var(--ring);\n}\n\n.booster-floating-resize {\n  background: var(--muted);\n  cursor: nwse-resize;\n  touch-action: none;\n  border-top-left-radius: 7px;\n  place-items: center;\n  width: 28px;\n  height: 28px;\n  display: grid;\n  position: absolute;\n  bottom: 0;\n  right: 0;\n}\n\n@property --tw-rotate-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-z {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-space-y-reverse {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-border-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-leading {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-font-weight {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ordinal {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-slashed-zero {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-figure {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-spacing {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-fraction {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-inset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-ring-inset {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-offset-width {\n  syntax: "<length>";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-ring-offset-color {\n  syntax: "*";\n  inherits: false;\n  initial-value: #fff;\n}\n\n@property --tw-ring-offset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-outline-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-blur {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-brightness {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-contrast {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-grayscale {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-hue-rotate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-invert {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-opacity {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-saturate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-sepia {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-drop-shadow-size {\n  syntax: "*";\n  inherits: false\n}\n';
+  const styles = '/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */\n@layer properties {\n  @supports (((-webkit-hyphens: none)) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color: rgb(from red r g b)))) {\n    *, :before, :after, ::backdrop {\n      --tw-rotate-x: initial;\n      --tw-rotate-y: initial;\n      --tw-rotate-z: initial;\n      --tw-skew-x: initial;\n      --tw-skew-y: initial;\n      --tw-space-y-reverse: 0;\n      --tw-border-style: solid;\n      --tw-leading: initial;\n      --tw-font-weight: initial;\n      --tw-ordinal: initial;\n      --tw-slashed-zero: initial;\n      --tw-numeric-figure: initial;\n      --tw-numeric-spacing: initial;\n      --tw-numeric-fraction: initial;\n      --tw-shadow: 0 0 #0000;\n      --tw-shadow-color: initial;\n      --tw-shadow-alpha: 100%;\n      --tw-inset-shadow: 0 0 #0000;\n      --tw-inset-shadow-color: initial;\n      --tw-inset-shadow-alpha: 100%;\n      --tw-ring-color: initial;\n      --tw-ring-shadow: 0 0 #0000;\n      --tw-inset-ring-color: initial;\n      --tw-inset-ring-shadow: 0 0 #0000;\n      --tw-ring-inset: initial;\n      --tw-ring-offset-width: 0px;\n      --tw-ring-offset-color: #fff;\n      --tw-ring-offset-shadow: 0 0 #0000;\n      --tw-outline-style: solid;\n      --tw-blur: initial;\n      --tw-brightness: initial;\n      --tw-contrast: initial;\n      --tw-grayscale: initial;\n      --tw-hue-rotate: initial;\n      --tw-invert: initial;\n      --tw-opacity: initial;\n      --tw-saturate: initial;\n      --tw-sepia: initial;\n      --tw-drop-shadow: initial;\n      --tw-drop-shadow-color: initial;\n      --tw-drop-shadow-alpha: 100%;\n      --tw-drop-shadow-size: initial;\n    }\n  }\n}\n\n@layer theme {\n  :root, :host {\n    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",\n      "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",\n      "Segoe UI Symbol", "Noto Color Emoji";\n    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",\n      "Courier New", monospace;\n    --spacing: .25rem;\n    --text-xs: .75rem;\n    --text-xs--line-height: calc(1 / .75);\n    --text-sm: .875rem;\n    --text-sm--line-height: calc(1.25 / .875);\n    --text-base: 1rem;\n    --text-base--line-height: calc(1.5 / 1);\n    --font-weight-medium: 500;\n    --font-weight-semibold: 600;\n    --default-transition-duration: .15s;\n    --default-transition-timing-function: cubic-bezier(.4, 0, .2, 1);\n    --default-font-family: var(--font-sans);\n    --default-mono-font-family: var(--font-mono);\n  }\n}\n\n@layer base {\n  *, :after, :before, ::backdrop {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  ::file-selector-button {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  html, :host {\n    -webkit-text-size-adjust: 100%;\n    tab-size: 4;\n    line-height: 1.5;\n    font-family: var(--default-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");\n    font-feature-settings: var(--default-font-feature-settings, normal);\n    font-variation-settings: var(--default-font-variation-settings, normal);\n    -webkit-tap-highlight-color: transparent;\n  }\n\n  hr {\n    height: 0;\n    color: inherit;\n    border-top-width: 1px;\n  }\n\n  abbr:where([title]) {\n    -webkit-text-decoration: underline dotted;\n    text-decoration: underline dotted;\n  }\n\n  h1, h2, h3, h4, h5, h6 {\n    font-size: inherit;\n    font-weight: inherit;\n  }\n\n  a {\n    color: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    text-decoration: inherit;\n  }\n\n  b, strong {\n    font-weight: bolder;\n  }\n\n  code, kbd, samp, pre {\n    font-family: var(--default-mono-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);\n    font-feature-settings: var(--default-mono-font-feature-settings, normal);\n    font-variation-settings: var(--default-mono-font-variation-settings, normal);\n    font-size: 1em;\n  }\n\n  small {\n    font-size: 80%;\n  }\n\n  sub, sup {\n    vertical-align: baseline;\n    font-size: 75%;\n    line-height: 0;\n    position: relative;\n  }\n\n  sub {\n    bottom: -.25em;\n  }\n\n  sup {\n    top: -.5em;\n  }\n\n  table {\n    text-indent: 0;\n    border-color: inherit;\n    border-collapse: collapse;\n  }\n\n  :-moz-focusring:where(:not(iframe)) {\n    outline: auto;\n  }\n\n  progress {\n    vertical-align: baseline;\n  }\n\n  summary {\n    display: list-item;\n  }\n\n  ol, ul, menu {\n    list-style: none;\n  }\n\n  img, svg, video, canvas, audio, iframe, embed, object {\n    vertical-align: middle;\n    display: block;\n  }\n\n  img, video {\n    max-width: 100%;\n    height: auto;\n  }\n\n  button, input, select, optgroup, textarea {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  ::file-selector-button {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  :where(select:is([multiple], [size])) optgroup {\n    font-weight: bolder;\n  }\n\n  :where(select:is([multiple], [size])) optgroup option {\n    padding-inline-start: 20px;\n  }\n\n  ::file-selector-button {\n    margin-inline-end: 4px;\n  }\n\n  ::placeholder {\n    opacity: 1;\n  }\n\n  @supports (not ((-webkit-appearance: -apple-pay-button))) or (contain-intrinsic-size: 1px) {\n    ::placeholder {\n      color: currentColor;\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      ::placeholder {\n        color: color-mix(in oklab, currentcolor 50%, transparent);\n      }\n    }\n  }\n\n  textarea {\n    resize: vertical;\n  }\n\n  ::-webkit-search-decoration {\n    -webkit-appearance: none;\n  }\n\n  ::-webkit-date-and-time-value {\n    min-height: 1lh;\n    text-align: inherit;\n  }\n\n  ::-webkit-datetime-edit {\n    display: inline-flex;\n  }\n\n  ::-webkit-datetime-edit-fields-wrapper {\n    padding: 0;\n  }\n\n  ::-webkit-datetime-edit {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-year-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-month-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-day-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-hour-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-minute-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-second-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-millisecond-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-meridiem-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-calendar-picker-indicator {\n    line-height: 1;\n  }\n\n  :-moz-ui-invalid {\n    box-shadow: none;\n  }\n\n  button, input:where([type="button"], [type="reset"], [type="submit"]) {\n    appearance: button;\n  }\n\n  ::file-selector-button {\n    appearance: button;\n  }\n\n  ::-webkit-inner-spin-button {\n    height: auto;\n  }\n\n  ::-webkit-outer-spin-button {\n    height: auto;\n  }\n\n  [hidden]:where(:not([hidden="until-found"])) {\n    display: none !important;\n  }\n}\n\n@layer components;\n\n@layer utilities {\n  .collapse {\n    visibility: collapse;\n  }\n\n  .visible {\n    visibility: visible;\n  }\n\n  .absolute {\n    position: absolute;\n  }\n\n  .fixed {\n    position: fixed;\n  }\n\n  .relative {\n    position: relative;\n  }\n\n  .static {\n    position: static;\n  }\n\n  .sticky {\n    position: sticky;\n  }\n\n  .isolate {\n    isolation: isolate;\n  }\n\n  .col-span-2 {\n    grid-column: span 2 / span 2;\n  }\n\n  .container {\n    width: 100%;\n  }\n\n  @media (min-width: 40rem) {\n    .container {\n      max-width: 40rem;\n    }\n  }\n\n  @media (min-width: 48rem) {\n    .container {\n      max-width: 48rem;\n    }\n  }\n\n  @media (min-width: 64rem) {\n    .container {\n      max-width: 64rem;\n    }\n  }\n\n  @media (min-width: 80rem) {\n    .container {\n      max-width: 80rem;\n    }\n  }\n\n  @media (min-width: 96rem) {\n    .container {\n      max-width: 96rem;\n    }\n  }\n\n  .m-0 {\n    margin: 0;\n  }\n\n  .m-1 {\n    margin: var(--spacing);\n  }\n\n  .mt-1 {\n    margin-top: var(--spacing);\n  }\n\n  .mt-2 {\n    margin-top: calc(var(--spacing) * 2);\n  }\n\n  .mb-2 {\n    margin-bottom: calc(var(--spacing) * 2);\n  }\n\n  .block {\n    display: block;\n  }\n\n  .contents {\n    display: contents;\n  }\n\n  .flex {\n    display: flex;\n  }\n\n  .grid {\n    display: grid;\n  }\n\n  .hidden {\n    display: none;\n  }\n\n  .inline {\n    display: inline;\n  }\n\n  .inline-flex {\n    display: inline-flex;\n  }\n\n  .table {\n    display: table;\n  }\n\n  .size-3 {\n    width: calc(var(--spacing) * 3);\n    height: calc(var(--spacing) * 3);\n  }\n\n  .size-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n    height: calc(var(--spacing) * 3.5);\n  }\n\n  .size-4 {\n    width: calc(var(--spacing) * 4);\n    height: calc(var(--spacing) * 4);\n  }\n\n  .size-5 {\n    width: calc(var(--spacing) * 5);\n    height: calc(var(--spacing) * 5);\n  }\n\n  .size-6 {\n    width: calc(var(--spacing) * 6);\n    height: calc(var(--spacing) * 6);\n  }\n\n  .size-7 {\n    width: calc(var(--spacing) * 7);\n    height: calc(var(--spacing) * 7);\n  }\n\n  .size-8 {\n    width: calc(var(--spacing) * 8);\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-7 {\n    height: calc(var(--spacing) * 7);\n  }\n\n  .h-8 {\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-9 {\n    height: calc(var(--spacing) * 9);\n  }\n\n  .max-h-96 {\n    max-height: calc(var(--spacing) * 96);\n  }\n\n  .max-h-\\[420px\\] {\n    max-height: 420px;\n  }\n\n  .min-h-\\[130px\\] {\n    min-height: 130px;\n  }\n\n  .w-full {\n    width: 100%;\n  }\n\n  .min-w-0 {\n    min-width: 0;\n  }\n\n  .flex-1 {\n    flex: 1;\n  }\n\n  .shrink-0 {\n    flex-shrink: 0;\n  }\n\n  .grow {\n    flex-grow: 1;\n  }\n\n  .rotate-180 {\n    rotate: 180deg;\n  }\n\n  .transform {\n    transform: var(--tw-rotate-x, ) var(--tw-rotate-y, ) var(--tw-rotate-z, ) var(--tw-skew-x, ) var(--tw-skew-y, );\n  }\n\n  .resize {\n    resize: both;\n  }\n\n  .grid-cols-2 {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }\n\n  .flex-col {\n    flex-direction: column;\n  }\n\n  .flex-wrap {\n    flex-wrap: wrap;\n  }\n\n  .items-center {\n    align-items: center;\n  }\n\n  .items-start {\n    align-items: flex-start;\n  }\n\n  .justify-between {\n    justify-content: space-between;\n  }\n\n  .justify-center {\n    justify-content: center;\n  }\n\n  .gap-0\\.5 {\n    gap: calc(var(--spacing) * .5);\n  }\n\n  .gap-1 {\n    gap: var(--spacing);\n  }\n\n  .gap-2 {\n    gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-3 {\n    gap: calc(var(--spacing) * 3);\n  }\n\n  :where(.space-y-2 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 2) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 2) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  .self-start {\n    align-self: flex-start;\n  }\n\n  .truncate {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    overflow: hidden;\n  }\n\n  .overflow-x-hidden {\n    overflow-x: hidden;\n  }\n\n  .overflow-y-auto {\n    overflow-y: auto;\n  }\n\n  .rounded-lg {\n    border-radius: var(--radius);\n  }\n\n  .rounded-md {\n    border-radius: calc(var(--radius) - 2px);\n  }\n\n  .border {\n    border-style: var(--tw-border-style);\n    border-width: 1px;\n  }\n\n  .border-t {\n    border-top-style: var(--tw-border-style);\n    border-top-width: 1px;\n  }\n\n  .border-b {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 1px;\n  }\n\n  .border-l-2 {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 2px;\n  }\n\n  .border-border {\n    border-color: var(--border);\n  }\n\n  .border-transparent {\n    border-color: #0000;\n  }\n\n  .bg-background {\n    background-color: var(--background);\n  }\n\n  .bg-card {\n    background-color: var(--card);\n  }\n\n  .bg-primary {\n    background-color: var(--primary);\n  }\n\n  .bg-secondary {\n    background-color: var(--secondary);\n  }\n\n  .p-0 {\n    padding: 0;\n  }\n\n  .p-3 {\n    padding: calc(var(--spacing) * 3);\n  }\n\n  .px-2 {\n    padding-inline: calc(var(--spacing) * 2);\n  }\n\n  .px-3 {\n    padding-inline: calc(var(--spacing) * 3);\n  }\n\n  .px-4 {\n    padding-inline: calc(var(--spacing) * 4);\n  }\n\n  .py-0\\.5 {\n    padding-block: calc(var(--spacing) * .5);\n  }\n\n  .py-2 {\n    padding-block: calc(var(--spacing) * 2);\n  }\n\n  .pt-2 {\n    padding-top: calc(var(--spacing) * 2);\n  }\n\n  .pl-2 {\n    padding-left: calc(var(--spacing) * 2);\n  }\n\n  .text-base {\n    font-size: var(--text-base);\n    line-height: var(--tw-leading, var(--text-base--line-height));\n  }\n\n  .text-sm {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n\n  .text-xs {\n    font-size: var(--text-xs);\n    line-height: var(--tw-leading, var(--text-xs--line-height));\n  }\n\n  .text-\\[11px\\] {\n    font-size: 11px;\n  }\n\n  .leading-4 {\n    --tw-leading: calc(var(--spacing) * 4);\n    line-height: calc(var(--spacing) * 4);\n  }\n\n  .font-medium {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n\n  .font-semibold {\n    --tw-font-weight: var(--font-weight-semibold);\n    font-weight: var(--font-weight-semibold);\n  }\n\n  .break-words {\n    overflow-wrap: break-word;\n  }\n\n  .whitespace-nowrap {\n    white-space: nowrap;\n  }\n\n  .whitespace-pre-wrap {\n    white-space: pre-wrap;\n  }\n\n  .text-foreground {\n    color: var(--foreground);\n  }\n\n  .text-muted-foreground {\n    color: var(--muted-foreground);\n  }\n\n  .text-primary-foreground {\n    color: var(--primary-foreground);\n  }\n\n  .text-secondary-foreground {\n    color: var(--secondary-foreground);\n  }\n\n  .ordinal {\n    --tw-ordinal: ordinal;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .tabular-nums {\n    --tw-numeric-spacing: tabular-nums;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .shadow {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .outline {\n    outline-style: var(--tw-outline-style);\n    outline-width: 1px;\n  }\n\n  .blur {\n    --tw-blur: blur(8px);\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .filter {\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .transition {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-colors {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-transform {\n    transition-property: transform, translate, scale, rotate;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .outline-none {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  @media (hover: hover) {\n    .hover\\:bg-accent:hover {\n      background-color: var(--accent);\n    }\n\n    .hover\\:bg-primary\\/90:hover {\n      background-color: var(--primary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-primary\\/90:hover {\n        background-color: color-mix(in oklab, var(--primary) 90%, transparent);\n      }\n    }\n\n    .hover\\:text-accent-foreground:hover {\n      color: var(--accent-foreground);\n    }\n  }\n\n  .focus-visible\\:ring-2:focus-visible {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus-visible\\:ring-ring:focus-visible {\n    --tw-ring-color: var(--ring);\n  }\n\n  .disabled\\:pointer-events-none:disabled {\n    pointer-events: none;\n  }\n\n  .disabled\\:opacity-50:disabled {\n    opacity: .5;\n  }\n}\n\n.booster-reader-sidebar {\n  border-right: 1px solid var(--border);\n  background: var(--card);\n  overscroll-behavior: contain;\n  min-width: 0;\n  padding: 12px;\n  overflow: auto;\n}\n\n.booster-reader-group {\n  margin-top: 12px;\n}\n\n.booster-reader-group-header {\n  align-items: center;\n  gap: 2px;\n  min-height: 38px;\n  display: flex;\n}\n\n.booster-group-toggle {\n  min-width: 0;\n  color: inherit;\n  cursor: pointer;\n  text-align: left;\n  font: inherit;\n  background: none;\n  border: 0;\n  flex: 1;\n  align-items: center;\n  gap: 6px;\n  padding: 6px 0;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-group-toggle svg {\n  flex-shrink: 0;\n}\n\n.booster-group-toggle span {\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-group-toggle small {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-reader-chat-list {\n  gap: 3px;\n  padding-left: 10px;\n  display: grid;\n}\n\n.booster-reader-chat-list > button {\n  color: inherit;\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 8px;\n  align-items: center;\n  gap: 6px;\n  padding: 10px;\n  font-size: 12px;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-reader-chat-list > button:hover, .booster-reader-chat-list > button.active {\n  background: var(--muted);\n  border-color: var(--border);\n}\n\n.booster-reader-chat-list > button span {\n  text-overflow: ellipsis;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-reader-chat-list > button.is-branch {\n  border-inline-start: 2px solid var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reader-chat-list > button.is-branch {\n    border-inline-start: 2px solid color-mix(in oklab, var(--primary) 35%, transparent);\n  }\n}\n\n.booster-reader-branch-icon {\n  opacity: .66;\n  flex: none;\n}\n\n.booster-reader-exchanges {\n  gap: 12px;\n  margin-top: 0;\n  display: grid;\n}\n\n.booster-exchange {\n  border-bottom: 1px solid var(--border);\n  min-width: 0;\n  max-width: 100%;\n  padding-bottom: 16px;\n}\n\n.booster-exchange-details {\n  border-left: 2px solid var(--border);\n  gap: 6px;\n  margin: 10px 0 10px 12px;\n  padding: 8px 0 8px 12px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-exchange-details {\n    border-left: 2px solid color-mix(in oklab, var(--border) 78%, var(--primary));\n  }\n}\n\n.booster-exchange-details-label {\n  color: var(--muted-foreground);\n  letter-spacing: .04em;\n  text-transform: uppercase;\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-message-target {\n  outline: 2px solid var(--primary);\n  outline-offset: 2px;\n  border-radius: 6px;\n}\n\n[data-archive-message] {\n  scroll-margin-block: 20px;\n}\n\n.booster-reader-exchanges, .booster-exchange-details {\n  min-width: 0;\n  max-width: 100%;\n}\n\n:host {\n  --background: oklch(98.5% 0 0);\n  --foreground: oklch(14.5% 0 0);\n  --card: oklch(100% 0 0);\n  --card-foreground: oklch(14.5% 0 0);\n  --primary: oklch(20.5% 0 0);\n  --primary-foreground: oklch(98.5% 0 0);\n  --secondary: oklch(97% 0 0);\n  --secondary-foreground: oklch(20.5% 0 0);\n  --muted: oklch(97% 0 0);\n  --muted-foreground: oklch(55.6% 0 0);\n  --accent: oklch(97% 0 0);\n  --accent-foreground: oklch(20.5% 0 0);\n  --border: oklch(92.2% 0 0);\n  --ring: oklch(70.8% 0 0);\n  --radius: .625rem;\n  all: initial;\n  color: var(--foreground);\n  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;\n}\n\n@media (prefers-color-scheme: dark) {\n  :host {\n    --background: oklch(14.5% 0 0);\n    --foreground: oklch(98.5% 0 0);\n    --card: oklch(20.5% 0 0);\n    --card-foreground: oklch(98.5% 0 0);\n    --primary: oklch(92.2% 0 0);\n    --primary-foreground: oklch(20.5% 0 0);\n    --secondary: oklch(26.9% 0 0);\n    --secondary-foreground: oklch(98.5% 0 0);\n    --muted: oklch(26.9% 0 0);\n    --muted-foreground: oklch(70.8% 0 0);\n    --accent: oklch(26.9% 0 0);\n    --accent-foreground: oklch(98.5% 0 0);\n    --border: oklch(100% 0 0 / .12);\n    --ring: oklch(55.6% 0 0);\n  }\n}\n\n* {\n  box-sizing: border-box;\n  border-color: var(--border);\n}\n\n.booster-shell {\n  z-index: 2147483647;\n  position: fixed;\n  bottom: 20px;\n  right: 20px;\n}\n\n.booster-button {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 42px;\n  height: 42px;\n  color: var(--card-foreground);\n  cursor: pointer;\n  border-radius: 14px;\n  font: 700 15px / 1 inherit;\n  box-shadow: 0 10px 30px #0003;\n}\n\n.booster-panel {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 300px;\n  color: var(--card-foreground);\n  border-radius: 16px;\n  margin-bottom: 10px;\n  padding: 14px;\n  box-shadow: 0 18px 45px #0000003d;\n}\n\n.booster-panel h2 {\n  margin: 0 0 6px;\n  font-size: 15px;\n  font-weight: 700;\n}\n\n.booster-panel p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.45;\n}\n\n.booster-control-center {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(760px, 100vw - 32px);\n  color: var(--card-foreground);\n  border-radius: 18px;\n  margin-bottom: 10px;\n  overflow: hidden;\n  box-shadow: 0 22px 60px #00000047;\n}\n\n.booster-control-header, .booster-control-footer {\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  display: flex;\n}\n\n.booster-control-header {\n  border-bottom: 1px solid var(--border);\n  padding: 14px 14px 12px;\n}\n\n.booster-control-header strong {\n  font-size: 14px;\n}\n\n.booster-control-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-control-body {\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-loading {\n  color: var(--muted-foreground);\n  padding: 18px;\n  font-size: 12px;\n}\n\n.booster-section-label {\n  color: var(--muted-foreground);\n  letter-spacing: .08em;\n  text-transform: uppercase;\n  padding: 2px 2px 0;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-setting-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 12px;\n  display: flex;\n}\n\n.booster-setting-disabled {\n  opacity: .55;\n}\n\n.booster-setting-copy {\n  gap: 5px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-setting-copy b {\n  font-size: 12px;\n}\n\n.booster-setting-copy > span {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.4;\n}\n\n.booster-switch {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  cursor: pointer;\n  border-radius: 999px;\n  flex: none;\n  width: 36px;\n  height: 20px;\n  padding: 0;\n  transition: background .12s, border-color .12s;\n  position: relative;\n}\n\n.booster-switch:disabled {\n  cursor: not-allowed;\n}\n\n.booster-switch > span {\n  background: var(--foreground);\n  border-radius: 999px;\n  width: 14px;\n  height: 14px;\n  transition: transform .12s;\n  position: absolute;\n  top: 2px;\n  left: 2px;\n}\n\n.booster-switch-on {\n  background: var(--primary);\n  border-color: var(--primary);\n}\n\n.booster-switch-on > span {\n  background: var(--primary-foreground);\n  transform: translateX(16px);\n}\n\n.booster-info-card {\n  background: var(--muted);\n  color: var(--foreground);\n  border-radius: 12px;\n  padding: 11px 12px;\n  font-size: 11px;\n}\n\n.booster-info-card ul {\n  color: var(--muted-foreground);\n  gap: 4px;\n  margin: 8px 0 0 18px;\n  padding: 0;\n  line-height: 1.35;\n  display: grid;\n}\n\n.booster-control-footer {\n  padding-top: 2px;\n}\n\n.booster-save-state {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 5px;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-overlay-root {\n  pointer-events: none;\n}\n\n.booster-launcher {\n  z-index: 2147483647;\n  border: 2px solid var(--primary);\n  justify-content: center;\n  align-items: center;\n  gap: 1px;\n  width: 46px;\n  height: 46px;\n  display: inline-flex;\n  position: fixed;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher {\n    border: 2px solid color-mix(in oklab, var(--primary) 55%, transparent);\n  }\n}\n\n.booster-launcher {\n  background: var(--primary);\n  color: var(--primary-foreground);\n  box-shadow: 0 12px 36px #00000047, 0 0 0 3px var(--primary);\n  border-radius: 15px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher {\n    box-shadow: 0 12px 36px #00000047, 0 0 0 3px color-mix(in oklab, var(--primary) 18%, transparent);\n  }\n}\n\n.booster-launcher {\n  cursor: grab;\n  pointer-events: auto;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  font: 800 17px / 1 inherit;\n}\n\n.booster-launcher:hover {\n  transform: scale(1.04);\n}\n\n.booster-launcher-dragging {\n  cursor: grabbing;\n  transform: scale(1.06);\n}\n\n.booster-launcher-icon {\n  flex-shrink: 0;\n  width: 20px;\n  height: 20px;\n}\n\n.booster-modal-backdrop {\n  z-index: 2147483646;\n  -webkit-backdrop-filter: blur(3px);\n  backdrop-filter: blur(3px);\n  pointer-events: auto;\n  background: #00000061;\n  place-items: center;\n  padding: 16px;\n  display: grid;\n  position: fixed;\n  inset: 0;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n  max-height: calc(100vh - 32px);\n  overflow: auto;\n}\n\n.booster-modal-surface .booster-control-center {\n  width: 100%;\n  margin: 0;\n}\n\n.booster-popup-host {\n  background: var(--background);\n  min-width: 360px;\n}\n\n.booster-select {\n  border: 1px solid var(--border);\n  background: var(--background);\n  min-width: 92px;\n  height: 32px;\n  color: var(--foreground);\n  cursor: pointer;\n  border-radius: 8px;\n  outline: none;\n  flex: none;\n  padding: 0 28px 0 10px;\n  font: 500 12px / 1 inherit;\n}\n\n.booster-select:focus {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-stack-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-stack-card label {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-input {\n  border: 1px solid var(--border);\n  background: var(--background);\n  width: 100%;\n  min-width: 0;\n  height: 32px;\n  color: var(--foreground);\n  border-radius: 8px;\n  outline: none;\n  padding: 0 10px;\n  font: 500 11px / 1 inherit;\n}\n\n.booster-input:focus {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-counter-grid {\n  color: var(--muted-foreground);\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 6px 12px;\n  margin-top: 8px;\n  display: grid;\n}\n\n.booster-counter-grid span {\n  justify-content: space-between;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-counter-grid b {\n  color: var(--foreground);\n}\n\n.booster-header-copy {\n  min-width: 0;\n}\n\n.booster-header-actions {\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-header-toggle-label {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  font-weight: 600;\n}\n\n.booster-settings-layout {\n  grid-template-columns: 150px minmax(0, 1fr);\n  min-height: 360px;\n  display: grid;\n}\n\n.booster-settings-nav {\n  border-right: 1px solid var(--border);\n  background: var(--muted);\n  align-content: start;\n  gap: 4px;\n  padding: 12px 8px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-settings-nav {\n    background: color-mix(in oklab, var(--muted) 58%, transparent);\n  }\n}\n\n.booster-settings-nav button {\n  width: 100%;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  border-radius: 9px;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 10px;\n  font: 600 11px / 1.2 inherit;\n  display: flex;\n}\n\n.booster-settings-nav button:hover, .booster-settings-nav button.active {\n  background: var(--background);\n  color: var(--foreground);\n}\n\n.booster-settings-content {\n  align-content: start;\n  gap: 10px;\n  min-width: 0;\n  padding: 14px;\n  display: grid;\n}\n\n.booster-setting-card-flat {\n  border: 0;\n  border-bottom: 1px solid var(--border);\n  border-radius: 0;\n  padding: 0 0 10px;\n}\n\n.booster-analytics-grid {\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 12px;\n  display: grid;\n}\n\n.booster-counter-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  padding: 12px;\n}\n\n.booster-counter-title {\n  margin-bottom: 8px;\n  font-size: 12px;\n  font-weight: 700;\n}\n\n.booster-disclosure {\n  width: 100%;\n  color: var(--foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 0;\n  display: flex;\n}\n\n.booster-disclosure > span {\n  gap: 3px;\n  display: grid;\n}\n\n.booster-disclosure b {\n  font-size: 12px;\n}\n\n.booster-disclosure small {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.rotate-180 {\n  transform: rotate(180deg);\n}\n\n.booster-telemetry-body {\n  gap: 10px;\n  padding-top: 10px;\n  display: grid;\n}\n\n.booster-field {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-telemetry-test-row {\n  align-items: center;\n  gap: 10px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-test-success {\n  color: oklch(62% .17 145);\n  font-size: 11px;\n}\n\n.booster-test-error {\n  color: oklch(63% .2 25);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n}\n\n@media (max-width: 620px) {\n  .booster-control-center, .booster-modal-surface {\n    width: calc(100vw - 20px);\n  }\n\n  .booster-settings-layout {\n    grid-template-columns: 1fr;\n  }\n\n  .booster-settings-nav {\n    border-right: 0;\n    border-bottom: 1px solid var(--border);\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n\n  .booster-settings-nav button {\n    justify-content: center;\n  }\n\n  .booster-analytics-grid {\n    grid-template-columns: 1fr;\n  }\n}\n\n.booster-modal-surface.booster-modal-surface-wide {\n  width: min(1320px, 100vw - 32px);\n}\n\n.booster-modal-surface-wide > .booster-control-center {\n  width: 100%;\n}\n\n@media (max-width: 620px) {\n  .booster-modal-surface.booster-modal-surface-wide {\n    width: calc(100vw - 20px);\n  }\n}\n\n.booster-modal-backdrop.booster-modal-backdrop-floating {\n  -webkit-backdrop-filter: none;\n  backdrop-filter: none;\n  pointer-events: none;\n  background: none;\n  padding: 0;\n  display: block;\n}\n\n.booster-modal-surface.booster-modal-surface-wide.booster-dialog-floating {\n  pointer-events: auto;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  max-height: none;\n  padding: 0;\n  display: flex;\n  position: fixed;\n  overflow: hidden;\n}\n\n.booster-dialog-floating > .booster-control-center {\n  flex: auto;\n  min-height: 0;\n  overflow: auto;\n}\n\n.booster-floating-chrome {\n  border-bottom: 1px solid var(--border);\n  background: var(--muted);\n  cursor: move;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  flex: none;\n  align-items: center;\n  gap: 8px;\n  min-height: 38px;\n  padding: 4px 8px 4px 12px;\n  display: flex;\n}\n\n.booster-floating-chrome > span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  flex: auto;\n  min-width: 0;\n  font-size: 12px;\n  font-weight: 600;\n  overflow: hidden;\n}\n\n.booster-floating-chrome > button {\n  cursor: pointer;\n  border-radius: 6px;\n  flex: none;\n  place-items: center;\n  width: 30px;\n  height: 30px;\n  display: grid;\n}\n\n.booster-floating-chrome > button:focus-visible, .booster-floating-resize:focus-visible {\n  outline: 2px solid var(--ring);\n}\n\n.booster-floating-resize {\n  background: var(--muted);\n  cursor: nwse-resize;\n  touch-action: none;\n  border-top-left-radius: 7px;\n  place-items: center;\n  width: 28px;\n  height: 28px;\n  display: grid;\n  position: absolute;\n  bottom: 0;\n  right: 0;\n}\n\n.booster-launcher-docked {\n  border-radius: 12px;\n  width: 42px;\n  height: 42px;\n  box-shadow: 0 8px 24px #00000038;\n}\n\n.booster-quick-menu {\n  z-index: 2147483646;\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(294px, 100vw - 58px);\n  max-height: min(360px, 100dvh - 16px);\n  color: var(--card-foreground);\n  pointer-events: auto;\n  font: inherit;\n  border-radius: 14px;\n  position: fixed;\n  overflow: auto;\n  box-shadow: 0 16px 45px #00000052;\n}\n\n.booster-quick-header, .booster-quick-footer {\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  padding: 11px 12px;\n  display: flex;\n}\n\n.booster-quick-header {\n  border-bottom: 1px solid var(--border);\n}\n\n.booster-quick-identity {\n  gap: 5px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-quick-identity > strong {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 13px;\n  overflow: hidden;\n}\n\n.booster-quick-badges {\n  flex-wrap: wrap;\n  gap: 5px;\n  display: flex;\n}\n\n.booster-quick-badges > span {\n  border: 1px solid var(--border);\n  color: var(--muted-foreground);\n  border-radius: 7px;\n  padding: 2px 6px;\n  font-size: 10px;\n}\n\n.booster-quick-close {\n  width: 30px;\n  height: 30px;\n  color: inherit;\n  cursor: pointer;\n  background: none;\n  border: 0;\n  border-radius: 8px;\n  flex-shrink: 0;\n  place-items: center;\n  display: grid;\n}\n\n.booster-quick-actions {\n  padding: 6px;\n}\n\n.booster-quick-actions > button {\n  width: 100%;\n  min-height: 37px;\n  color: inherit;\n  cursor: pointer;\n  font: inherit;\n  text-align: left;\n  background: none;\n  border: 0;\n  border-radius: 8px;\n  align-items: center;\n  gap: 10px;\n  padding: 7px 9px;\n  font-size: 12px;\n  font-weight: 500;\n  line-height: 1.3;\n  display: flex;\n}\n\n.booster-quick-actions > button:hover:not(:disabled), .booster-quick-actions > button:focus-visible, .booster-quick-close:hover {\n  background: var(--muted);\n}\n\n.booster-quick-actions > button:disabled {\n  opacity: .48;\n  cursor: not-allowed;\n}\n\n.booster-quick-footer {\n  border-top: 1px solid var(--border);\n}\n\n.booster-quick-status {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.booster-quick-status.is-active {\n  color: var(--foreground);\n}\n\n.booster-quick-toggle {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  cursor: pointer;\n  border-radius: 99px;\n  width: 38px;\n  height: 22px;\n  padding: 2px;\n}\n\n.booster-quick-toggle > span {\n  background: var(--foreground);\n  border-radius: 50%;\n  width: 16px;\n  height: 16px;\n  transition: transform .13s;\n  display: block;\n}\n\n.booster-quick-toggle[aria-checked="true"] {\n  background: var(--primary);\n}\n\n.booster-quick-metrics {\n  border-bottom: 1px solid var(--border);\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 8px;\n  padding: 8px 11px;\n  display: grid;\n}\n\n.booster-quick-metrics > div {\n  gap: 3px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-quick-metrics span {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-quick-metrics b {\n  color: var(--foreground);\n  font-variant-numeric: tabular-nums;\n  font-size: 15px;\n}\n\n.booster-quick-toggle[aria-checked="true"] > span {\n  background: var(--primary-foreground);\n  transform: translateX(16px);\n}\n\n.booster-quick-toggle:disabled {\n  opacity: .5;\n  cursor: wait;\n}\n\n.booster-quick-error {\n  background: var(--card);\n  color: var(--foreground);\n  pointer-events: none;\n  padding: 7px;\n  position: fixed;\n  bottom: 10px;\n  left: 10px;\n}\n\n.booster-modal-surface.booster-modal-surface-single {\n  width: min(820px, 100vw - 24px);\n  max-height: min(86dvh, 760px);\n  overflow: auto;\n}\n\n.booster-control-standalone {\n  width: 100%;\n  margin: 0;\n}\n\n.booster-control-standalone .booster-settings-layout {\n  min-height: 0;\n  display: block;\n}\n\n.booster-control-standalone .booster-settings-content {\n  width: 100%;\n  min-width: 0;\n}\n\n@media (max-width: 620px) {\n  .booster-modal-surface.booster-modal-surface-single {\n    width: calc(100vw - 16px);\n    max-height: calc(100dvh - 16px);\n  }\n}\n\n@property --tw-rotate-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-z {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-space-y-reverse {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-border-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-leading {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-font-weight {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ordinal {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-slashed-zero {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-figure {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-spacing {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-fraction {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-inset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-ring-inset {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-offset-width {\n  syntax: "<length>";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-ring-offset-color {\n  syntax: "*";\n  inherits: false;\n  initial-value: #fff;\n}\n\n@property --tw-ring-offset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-outline-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-blur {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-brightness {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-contrast {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-grayscale {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-hue-rotate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-invert {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-opacity {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-saturate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-sepia {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-drop-shadow-size {\n  syntax: "*";\n  inherits: false\n}\n';
   function mountControlCenter(options) {
     document.getElementById(instanceKey("koba-browser-tools-root"))?.remove();
     const host = document.createElement("div");
@@ -29819,6 +29830,10 @@
       capabilities: defaultCapabilities(),
       settings: new FeatureSettings(createSettingsStore())
     });
+    const unsubscribeState = onInstallationStateChange("userscript", () => {
+      void runtime.refreshFromSettings();
+    });
+    window.addEventListener("pagehide", unsubscribeState, { once: true });
     let open = () => {
     };
     const launch = async () => {
@@ -29826,11 +29841,15 @@
       const ui = mountControlCenter({ runtime, title, launcher: true, views });
       open = ui.open;
     };
-    if (typeof GM_registerMenuCommand === "function")
+    if (typeof GM_registerMenuCommand === "function") {
       GM_registerMenuCommand("Открыть " + title, () => open());
+      GM_registerMenuCommand("Включить/выключить эту установку", () => {
+        void runtime.setRunning(!runtime.isRunning());
+      });
+    }
     if (document.readyState === "loading")
       document.addEventListener("DOMContentLoaded", () => void launch(), { once: true });
     else void launch();
   }
-  bootstrapUserscript([vkBoosterFeature], "VK Booster", { "vk-booster": _sfc_main$2 });
+  bootstrapUserscript([vkBoosterFeature], "VK Booster", { "vk-booster": _sfc_main$3 });
 })();
