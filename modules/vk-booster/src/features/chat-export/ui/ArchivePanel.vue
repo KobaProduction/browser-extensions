@@ -7,6 +7,7 @@ import {
   type ArchiveManagerState,
 } from '@kobaproduction/browser-widgets'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { exportVkCaptureSettings, restoreVkCaptureSettings } from '../model/settings-backup'
 import { type ArchiveStatus, archiveApi } from '../model/types'
 import ArchivePreview from './ArchivePreview.vue'
 
@@ -14,6 +15,60 @@ const api = archiveApi()
 const status = ref<ArchiveStatus | null>(api?.status() ?? null)
 const error = ref('')
 const previewOpen = ref(false)
+const preferencesBusy = ref(false)
+const preferencesFile = ref<File | null>(null)
+const preferencesConfirmed = ref(false)
+const preferencesError = ref('')
+const preferencesMessage = ref('')
+const preferencesRevision = ref(0)
+
+function selectPreferences(event: Event) {
+  preferencesFile.value = (event.target as HTMLInputElement).files?.[0] ?? null
+  preferencesConfirmed.value = false
+  preferencesError.value = ''
+  preferencesMessage.value = ''
+}
+async function downloadPreferences() {
+  if (!api || preferencesBusy.value || status.value?.busy) return
+  preferencesBusy.value = true
+  preferencesError.value = ''
+  preferencesMessage.value = ''
+  try {
+    const blob = await exportVkCaptureSettings(api)
+    const url = URL.createObjectURL(blob)
+    try {
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'vk-booster-capture-preset.json'
+      link.click()
+    } finally {
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    }
+    preferencesMessage.value = 'Профиль подготовлен. Убедись, что файл сохранился.'
+  } catch {
+    preferencesError.value = 'Не удалось выгрузить профиль настроек.'
+  } finally {
+    preferencesBusy.value = false
+  }
+}
+async function importPreferences() {
+  if (!api || !preferencesFile.value || !preferencesConfirmed.value || preferencesBusy.value) return
+  preferencesBusy.value = true
+  preferencesError.value = ''
+  preferencesMessage.value = ''
+  try {
+    await restoreVkCaptureSettings(api, preferencesFile.value)
+    status.value = api.status()
+    preferencesRevision.value++
+    preferencesMessage.value = 'Параметры применены к текущей сессии. Папка и сообщения не изменены.'
+    preferencesFile.value = null
+    preferencesConfirmed.value = false
+  } catch {
+    preferencesError.value = 'Профиль отклонён: проверь целостность, формат и DEV/PROD канал.'
+  } finally {
+    preferencesBusy.value = false
+  }
+}
 let unsubscribe: (() => void) | undefined
 let peerTimer: ReturnType<typeof setInterval> | undefined
 function refreshActiveConversation() {
@@ -86,7 +141,7 @@ async function resume() {
 }
 </script>
 <template>
-  <ArchiveManager v-if="status && view" :state="view" :initial="status.options" :error="error"
+  <ArchiveManager v-if="status && view" :key="preferencesRevision" :state="view" :initial="status.options" :error="error"
     title="Архив переписки VK" @choose-folder="chooseFolder" @start="start"
     @stop="api?.stop()" @resume="resume"/>
   <template v-if="api && status?.folder && !status.blockedReason && status.messages > 0">
@@ -102,5 +157,28 @@ async function resume() {
       <ArchivePreview :api="api" :status="status" />
     </div>
   </template>
+  <section v-if="api && status" class="booster-stack-card" aria-label="Профиль параметров VK">
+    <div class="booster-setting-copy">
+      <b>Профиль параметров выгрузки</b>
+      <small>Только режим, диапазон, размер пачки и загрузка файлов. Без сообщений, токенов, ID диалога и архива. Импорт действует в текущей сессии.</small>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <button class="booster-disclosure" type="button" :disabled="preferencesBusy || status.busy || !!status.blockedReason"
+        @click="downloadPreferences">Сохранить профиль в JSON</button>
+      <label class="booster-field">
+        <span>Загрузить профиль JSON</span>
+        <input type="file" class="booster-input" accept=".json,application/json"
+          :disabled="preferencesBusy || status.busy" @change="selectPreferences" />
+      </label>
+    </div>
+    <label v-if="preferencesFile" class="booster-field">
+      <span><input v-model="preferencesConfirmed" type="checkbox" :disabled="preferencesBusy"/> Подтверждаю замену параметров текущей сессии</span>
+    </label>
+    <button v-if="preferencesFile" class="booster-disclosure" type="button"
+      :disabled="preferencesBusy || status.busy || !!status.blockedReason || !preferencesConfirmed"
+      @click="importPreferences">Применить профиль</button>
+    <p v-if="preferencesError" role="alert" class="text-sm text-destructive">{{ preferencesError }}</p>
+    <p v-if="preferencesMessage" role="status" class="text-sm">{{ preferencesMessage }}</p>
+  </section>
   <section v-if="!status || !view" class="booster-setting-card"><span>Модуль VK Booster ещё не инициализирован.</span></section>
 </template>

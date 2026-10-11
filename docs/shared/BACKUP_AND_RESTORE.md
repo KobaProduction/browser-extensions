@@ -73,5 +73,7 @@ private capture rules, archives, credentials and telemetry endpoints.
 The returned file does **not** contain IndexedDB archives or media.
 
 The VK v2 folder archive and existing ChatGPT v3/v4 databases are untouched.
-A VK settings port, provider archive round-trip, Dexie adoption and
-installed-browser recovery are **not yet accepted**.
+A VK **session capture-preset** port and UI are also implemented, but they
+do not yet persist application settings or back up the v2 folder. Provider
+archive round-trip, Dexie adoption and installed-browser recovery are
+**not yet accepted**.
