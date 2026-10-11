@@ -122,7 +122,8 @@ export class FixedCanonicalDexieRepository {
    * Existing message IDs are immutable: an upstream edit is explicitly refused
    * until a separate revision policy is accepted, never silently overwritten.
    */
-  async addObservation(observation: SourceObservation): Promise<string> {
+  async addObservation(observation: SourceObservation, stillAuthorized: () => boolean = () => true): Promise<string> {
+    if (!stillAuthorized()) throw Error('Fixed archive capture authorization expired')
     const projection = checkedObservation(observation, this.scope)
     const accountId = observation.accountId
     const conversationId = observation.conversationId
@@ -153,6 +154,7 @@ export class FixedCanonicalDexieRepository {
       this.db.projects, this.db.conversations, this.db.messages,
       this.db.elements, this.db.snapshots,
       async () => {
+        if (!stillAuthorized()) throw Error('Fixed archive capture authorization expired')
         if (await this.db.messages.get(messageKey))
           throw Error('Canonical message already exists; revisions are not implicit')
         const existing = await this.db.conversations.get(conversationKey)
@@ -177,6 +179,7 @@ export class FixedCanonicalDexieRepository {
         await this.db.messages.add(record)
         await this.db.elements.bulkAdd(projection.elements.map(element => ({ ...element, accountId })))
         await this.db.snapshots.add(source)
+        if (!stillAuthorized()) throw Error('Fixed archive capture authorization expired')
       },
     )
     return messageKey

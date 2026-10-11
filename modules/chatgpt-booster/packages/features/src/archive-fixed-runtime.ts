@@ -32,6 +32,8 @@ function scopeIdentity(label: string): { channel: 'dev' | 'prod'; installationId
 export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
   readonly id = 'fixed-dexie-capture'
   private unsubscribe: (() => void) | undefined
+  private unsubscribeSettings: (() => void) | undefined
+  private policyEpoch = 0
   private pending: Promise<void> = Promise.resolve()
   private readonly repositories = new Map<string, FixedCanonicalDexieRepository>()
   private stopped = true
@@ -61,6 +63,7 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
   start() {
     if (!this.stopped) return
     this.stopped = false
+    this.unsubscribeSettings = this.settings.subscribe(() => { this.policyEpoch++ })
     const enqueue = (page: ConversationArchiveEventDetail) => {
       const owner = this.state.verifiedAccountId()
       const epoch = this.state.accountEpoch()
@@ -89,10 +92,17 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
       settings.archive, page.conversationId, header?.projectId ?? null, manual, settings.enabled,
     )
     if (!rule.enabled || !Array.isArray(page.payload.messages)) return
+    const policyEpoch = this.policyEpoch
+    const stillAuthorized = () =>
+      !this.stopped && this.state.accountEpoch() === epoch &&
+      this.state.verifiedAccountId() === owner &&
+      this.policyEpoch === policyEpoch &&
+      (!manual || Boolean(this.collectionSession?.permits(
+        this.collectionSession.current(), owner, page.conversationId,
+      )))
     const store = this.repo(owner)
     for (const candidate of page.payload.messages) {
-      if (this.stopped || this.state.accountEpoch() !== epoch ||
-          this.state.verifiedAccountId() !== owner) return
+      if (!stillAuthorized()) return
       if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) continue
       const raw = candidate as Record<string, unknown>
       if (typeof raw.id !== 'string' || !raw.id || !retainRawSource(raw, rule)) continue
@@ -103,6 +113,7 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
           throw Error('Original message changed; explicit revision support required')
         continue
       }
+      if (!stillAuthorized()) return
       await store.addObservation({
         accountId: owner,
         conversationId: page.conversationId,
@@ -112,7 +123,7 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
         sourceVersion: NATIVE_HISTORY_CONTRACT_VERSION,
         observedAtMs: page.timestamp,
         raw,
-      })
+      }, stillAuthorized)
     }
   }
   currentConversationId() { return currentConversationId() ?? null }
@@ -122,7 +133,12 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
     const owner = this.state.verifiedAccountId()
     const id = this.currentConversationId()
     if (!owner || !id) throw Error('Verified account and current conversation required')
-    return this.repo(owner).countConversation(id)
+    const epoch = this.state.accountEpoch()
+    const count = await this.repo(owner).countConversation(id)
+    if (this.state.accountEpoch() !== epoch || this.state.verifiedAccountId() !== owner ||
+        this.currentConversationId() !== id)
+      throw Error('Account or conversation changed during fixed archive count')
+    return count
   }
   async listCurrent(limit = 80): Promise<readonly { id: string; text: string; coverage: string }[]> {
     await this.pending
@@ -187,6 +203,8 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
     this.stopped = true
     this.unsubscribe?.()
     this.unsubscribe = undefined
+    this.unsubscribeSettings?.()
+    this.unsubscribeSettings = undefined
     await this.pending
     for (const store of this.repositories.values()) store.close()
     this.repositories.clear()

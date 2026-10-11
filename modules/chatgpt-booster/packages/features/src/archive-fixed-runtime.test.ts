@@ -31,6 +31,7 @@ test('native page -> consented fixed Dexie v1 -> saved Reader -> explicit gzip, 
       archive: { defaultRule: { ...DEFAULT_CAPTURE_RULE, enabled: consent },
         projects: {}, conversations: {} },
     }),
+    subscribe: () => () => undefined,
   } as unknown as SettingsAdapter
   const service = new FixedChatGptCapture(
     state, settings, 'Tampermonkey', undefined, { indexedDB, IDBKeyRange },

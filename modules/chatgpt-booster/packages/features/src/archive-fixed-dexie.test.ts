@@ -77,3 +77,14 @@ test('fixed schema separates channels/installations and strictly limits owner re
     .toThrow('ChatGPT')
   a.close(); b.close(); c.close(); d.close()
 })
+
+test('revoked capture permission aborts an atomic fixed Dexie append without partial rows', async () => {
+  const db = new FixedCanonicalDexieRepository(scope('dev', 'tm-revoke', 'account-a'), driver)
+  let checks = 0
+  await expect(db.addObservation(source('account-a', 'revoked', 'm1'), () => ++checks < 3))
+    .rejects.toThrow('authorization expired')
+  expect(await db.counts()).toEqual({
+    projects: 0, conversations: 0, messages: 0, elements: 0, snapshots: 0,
+  })
+  db.close()
+})
