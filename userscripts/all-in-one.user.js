@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Koba Browser Tools [DEV]
 // @namespace    https://github.com/KobaProduction/browser-extensions/dev/all-in-one
-// @version      0.5.6-dev.36
+// @version      0.5.37
 // @description  Koba Browser Tools / Koba Browser Tools
 // @homepageURL   https://github.com/KobaProduction/browser-extensions
 // @updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/all-in-one.user.js
