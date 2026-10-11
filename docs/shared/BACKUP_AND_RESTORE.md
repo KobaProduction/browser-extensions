@@ -59,5 +59,19 @@ used mocks, a real browser IndexedDB or installed extension data.
 archive; the incompatible IndexedDB replacement proposed in PR #10 is not
 accepted for integration. Its backup helpers may be reused only through a
 separate v2-compatible adapter with real data tests. ChatGPT has independent
-v3/v4 migration contracts. A universal settings backup and Dexie-backed
-cross-product recovery facade are **not yet accepted or deployed**.
+v3/v4 migration contracts. A settings-backup contract is now implemented for ChatGPT only; a universal
+provider archive backup and Dexie-backed cross-product recovery facade remain **unaccepted**.
+
+## Shared settings backup implementation checkpoint (source only)
+
+`packages/storage` now provides `ServiceScope`, `PersistentSettingsPort`
+and portable JSON settings export/validate/restore with a 512 KiB input
+bound, SHA-256 integrity, schema and exact product/channel/owner checks
+before a single adapter-owned atomic restore. ChatGPT Booster 2.0.6 exposes
+this as an explicit export/import action in its Settings panel, excluding
+private capture rules, archives, credentials and telemetry endpoints.
+The returned file does **not** contain IndexedDB archives or media.
+
+The VK v2 folder archive and existing ChatGPT v3/v4 databases are untouched.
+A VK settings port, provider archive round-trip, Dexie adoption and
+installed-browser recovery are **not yet accepted**.

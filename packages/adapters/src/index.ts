@@ -51,3 +51,5 @@ export function validateProxyProfile(v: ProxyProfile): ProxyProfile {
 export function proxyAvailable(target: DeliveryTarget, granted: ReadonlySet<string>) {
   return target === 'chromium' && granted.has('proxy')
 }
+
+export { asTelemetryPort } from './telemetry-port'

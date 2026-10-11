@@ -144,3 +144,10 @@ export class FeatureRuntime {
 export function defaultCapabilities(_target: DeliveryTarget): ReadonlySet<Capability> {
   return new Set<Capability>(['page-dom', 'origin-storage', 'local-files'])
 }
+
+export type { ScopedTelemetryEvent, ScopedTelemetryName, ScopedTelemetrySink } from './scoped-telemetry'
+export {
+  isScopedTelemetryName,
+  SCOPED_TELEMETRY_SCHEMA_VERSION,
+  ScopedTelemetry,
+} from './scoped-telemetry'

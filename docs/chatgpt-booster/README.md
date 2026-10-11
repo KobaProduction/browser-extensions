@@ -34,6 +34,15 @@ A same-channel aggregate may request a read-only snapshot only through an
 explicit capability and owner-validated consent, not by guessing a database
 name. See the shared contracts linked above.
 
+## Portable settings backup (source-level)
+
+The ChatGPT Settings view offers separate export and explicit-confirmation
+restore of non-secret preferences using the shared 512 KiB, SHA-256-verified
+settings-backup format. The adapter enforces exact product and DEV/PROD scope,
+retains per-chat capture rules, and does not touch v3/v4/canonical archives.
+This feature is not an archive backup and does not imply installed-product
+acceptance. The owner-scoped native archive migration remains separately gated.
+
 ## Acceptance boundary
 
 Builds and source integration are not proof of installed-browser migration.
