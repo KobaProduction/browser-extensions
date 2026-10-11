@@ -1,5 +1,5 @@
 import { SHELL_OPEN_FEATURE_EVENT, type Feature } from '@kobaproduction/browser-core'
-import { createBoosterPageRuntime, type BoosterTargetAdapter } from '@chatgpt-booster/features'
+import { createBoosterPageRuntime, type BoosterTargetAdapter, type FixedChatGptView } from '@chatgpt-booster/features'
 import { OPEN_ARCHIVE_EVENT, OPEN_SETTINGS_EVENT, OPEN_CAPTURE_SETTINGS_EVENT } from '@chatgpt-booster/core'
 import { shallowRef, ref } from 'vue'
 import type { ArchiveDataAdapter } from '@chatgpt-booster/ui'
@@ -7,6 +7,7 @@ import type { SettingsAdapter, TransportDiagnosticsAdapter, PersistentDiagnostic
 
 export interface ChatGptViewContext {
   archiveAdapter: ArchiveDataAdapter
+  fixedArchive?: FixedChatGptView
   settingsAdapter: SettingsAdapter
   diagnosticsAdapter: TransportDiagnosticsAdapter
   persistentDiagnosticsAdapter?: PersistentDiagnosticsAdapter
@@ -69,6 +70,7 @@ export function createChatGptBoosterFeature(
       window.addEventListener(OPEN_CAPTURE_SETTINGS_EVENT, onCapture)
       chatGptViewContext.value = {
         archiveAdapter: page.archiveAdapter,
+        ...(page.fixedArchive ? { fixedArchive: page.fixedArchive } : {}),
         settingsAdapter: page.settings,
         diagnosticsAdapter: target.diagnostics,
         targetLabel: target.label,

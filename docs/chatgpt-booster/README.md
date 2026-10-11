@@ -89,7 +89,7 @@ separate validated portable settings backup/restore; it does not replace
 archive export or introduce another launcher. The pre-existing ChatGPT
 telemetry settings/diagnostic adapters remain owned by the ChatGPT provider;
 the common optional scoped telemetry port does not replace or implicitly
-enable its transport. All-in-one is 0.5.10, VK remains 2.3.10. None of these
+enable its transport. All-in-one is 0.5.11, VK remains 2.3.10. None of these
 source changes promotes stable 0.8.92 or proves installed-browser acceptance.
 
 ## Restoring user-facing archive controls
@@ -148,3 +148,21 @@ separate `chrome-extension://` IndexedDB. **Do not** reset a browser profile,
 import automatically, or upload private archive data to repository issues.
 The function and bundled helper have synthetic tests; real 0.8.92 profile
 access and user-owned file integrity are still unaccepted under Issue #11.
+
+## Fixed Dexie capture/read/export wiring checkpoint (2026-10-11)
+
+The provider runtime now registers `FixedChatGptCapture` alongside the
+historical v4 runtime and exposes a dedicated fixed-Dexie panel in the same
+ChatGPT Control Center. The new path receives **new, identity-verified native
+page observations only**, respects the same current automatic/manual capture
+rules, records canonical v1 messages with preserved original source snapshots,
+and lets the owner read and export their current conversation on explicit action.
+Export uses bounded indexed cursor pages with a gzip JSONL envelope, unknown
+completeness, chained checksum and lossless structured-clone encoding.
+No old v3/v4 source scans or automatic archive migration occur in this path.
+
+**Transitional boundary:** the historical v4 writer and Reader remain active
+for existing users. This change introduces a verified live Dexie path, but
+does not declare a complete single-writer cutover, editing/revision support or
+installed-browser acceptance. Conflicting source revisions fail closed.
+PROD release and old 0.8.92 profile recovery require separate validation.

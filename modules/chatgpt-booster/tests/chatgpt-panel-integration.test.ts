@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, test } from 'bun:test'
-import { parse } from 'vue/compiler-sfc'
+import { compileTemplate, parse } from 'vue/compiler-sfc'
 
 const panel = readFileSync(new URL('../src/features/archive/ui/ChatGptPanel.vue', import.meta.url), 'utf8')
 const reader = readFileSync(new URL('../packages/ui/src/ArchiveBrowser.vue', import.meta.url), 'utf8')
@@ -71,4 +71,20 @@ test('merged archive shell retains settings-backup and existing telemetry capabi
   expect(descriptor.template?.content).toContain('Восстановить настройки')
   expect(settingsView).toContain('props.telemetryControlAdapter.test()')
   expect(panel).not.toContain('<BoosterOverlay')
+})
+
+test('new ChatGPT Dexie Reader/export lives inside the existing shared panel', () => {
+  const { descriptor, errors } = parse(panel, { filename: 'ChatGptPanel.vue' })
+  expect(errors).toHaveLength(0)
+  const result = compileTemplate({
+    source: descriptor.template?.content ?? '',
+    filename: 'ChatGptPanel.vue',
+    id: 'chatgpt-fixed-dexie',
+  })
+  expect(result.errors).toHaveLength(0)
+  expect(panel).toContain('context?.fixedArchive')
+  expect(panel).toContain('fixed.listCurrent()')
+  expect(panel).toContain('fixed.exportCurrent()')
+  expect(panel).toContain('contains_opaque')
+  expect(panel).not.toContain('<ArchiveWorkspace')
 })

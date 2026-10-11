@@ -34,7 +34,7 @@ import { ArchiveSourceWriteRegistry, archiveWriteScope } from './archive-v4-writ
 import { normalizeConversationProjectId } from './conversation-records'
 import type { ConversationStateStore } from './conversation-state'
 
-function retainRawSource(raw: Readonly<Record<string, unknown>>, rule: CaptureRule): boolean {
+export function retainRawSource(raw: Readonly<Record<string, unknown>>, rule: CaptureRule): boolean {
   const author = asRecord(raw.author)
   const content = asRecord(raw.content)
   const metadata = asRecord(raw.metadata)

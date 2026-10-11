@@ -207,6 +207,12 @@ export class FixedCanonicalDexieRepository {
       .between(start, end, afterMessageId === undefined, false).limit(limit).toArray()
   }
 
+  async countConversation(conversationId: string): Promise<number> {
+    if (!nonEmpty(conversationId) || !this.scope.ownerId) throw Error('Invalid conversation ownership')
+    return this.db.messages.where('[accountId+conversationId]')
+      .equals([this.scope.ownerId, conversationId]).count()
+  }
+
   async getSourceSnapshot(
     conversationId: string,
     messageId: string,

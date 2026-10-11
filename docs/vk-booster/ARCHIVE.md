@@ -95,3 +95,20 @@ may change without changing product semver.
 
 Do not interpret PR #10 synthetic tests as v2 compatibility evidence; that
 PR removed v2. Never bump VK above **2.3.10** without a new owner decision.
+
+## Explicit fixed Dexie capture/read/export path (2026-10-11)
+
+The VK provider now exposes `captureFixed`, `readFixed` and `exportFixed`
+from the existing single Control Center, independent of selecting a v2 folder.
+The new path verifies the current VK peer and user through the existing
+authenticated VK API, persists bounded pages into the new owner-scoped v1
+Dexie repository, retains source snapshots, and offers an explicit gzip JSONL
+export. Changing the VK peer or receiving conflicting source revisions blocks
+the operation. Export is marked completeness unknown and preserves original
+fields with structured-clone encoding.
+
+**Transitional boundary:** the pre-existing file-backed Archive v2 capture,
+media output and viewer remain available and unchanged. No v2 data is
+auto-imported or deleted. The new native Dexie path is supported by synthetic
+source integration tests, but has not yet passed real authenticated VK browser
+acceptance, File System Access or product cutover. VK base remains 2.3.10.

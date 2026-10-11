@@ -52,6 +52,44 @@ const error = ref('')
 const selectedChat = ref<{ id: string; title: string | null }>()
 const captureContext = ref<ArchiveCaptureContext>()
 const exportCapture = ref(false)
+const fixedBusy = ref(false)
+const fixedError = ref('')
+const fixedCount = ref<number | null>(null)
+const fixedPreview = ref<readonly { id: string; text: string; coverage: string }[]>([])
+async function readFixedArchive() {
+  const fixed = context.value?.fixedArchive
+  if (!fixed || fixedBusy.value) return
+  fixedBusy.value = true
+  fixedError.value = ''
+  try {
+    const [count, records] = await Promise.all([fixed.savedCurrent(), fixed.listCurrent()])
+    if (!alive || fixed !== context.value?.fixedArchive) return
+    fixedCount.value = count
+    fixedPreview.value = records
+  } catch {
+    fixedError.value = tr('Dexie-архив недоступен для текущего проверенного владельца.',
+      'The fixed Dexie archive is unavailable for the verified account.')
+  } finally { fixedBusy.value = false }
+}
+async function exportFixedArchive() {
+  const fixed = context.value?.fixedArchive
+  if (!fixed || fixedBusy.value || !current.value.conversationId) return
+  fixedBusy.value = true
+  fixedError.value = ''
+  try {
+    const blob = await fixed.exportCurrent()
+    const url = URL.createObjectURL(blob)
+    try {
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'chatgpt-fixed-v1-' + current.value.conversationId.replace(/[^a-zA-Z0-9_-]/g, '_') + '.jsonl.gz'
+      link.click()
+    } finally { window.setTimeout(() => URL.revokeObjectURL(url), 30_000) }
+  } catch {
+    fixedError.value = tr('Экспорт Dexie не удался. Исходные базы не изменены.',
+      'Dexie export failed. Original sources were not modified.')
+  } finally { fixedBusy.value = false }
+}
 const maintenanceOpen = ref(false)
 const archiveMenuOpen = ref(false)
 const archiveMenuArea = ref<HTMLElement | null>(null)
@@ -111,6 +149,9 @@ async function refreshContext() {
       projectTitle: null,
     }
     coverage.value = undefined
+    fixedCount.value = null
+    fixedPreview.value = []
+    fixedError.value = ''
     captureContext.value = undefined
   }
   loading.value = true
@@ -365,6 +406,30 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </nav>
+    <section v-if="context?.fixedArchive && current.conversationId && tab==='archive'"
+      class="booster-stack-card" aria-label="Фиксированный Dexie архив ChatGPT">
+      <div class="booster-setting-copy">
+        <b>{{ tr('Dexie — собственная структура v1', 'Dexie — fixed canonical v1') }}</b>
+        <small>{{ tr('Только новые подтверждённые события сохранения; прежние базы v3/v4 не переносятся.',
+          'Only new verified capture events; existing v3/v4 archives are not converted.') }}</small>
+        <small v-if="fixedCount !== null">{{ tr('Сохранено', 'Saved') }}: {{ fixedCount }}</small>
+        <small v-if="context.fixedArchive.captureFailed()" role="status">Исходное сообщение изменилось; прежний снимок сохранён.</small>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" class="booster-action-secondary" :disabled="fixedBusy"
+          @click="readFixedArchive">{{ tr('Читать Dexie', 'Read Dexie') }}</button>
+        <button type="button" class="booster-action-secondary" :disabled="fixedBusy"
+          @click="exportFixedArchive">{{ tr('Экспорт Dexie JSON.gz', 'Export Dexie JSON.gz') }}</button>
+      </div>
+      <p v-if="fixedError" role="alert">{{ fixedError }}</p>
+      <ol v-if="fixedPreview.length" class="max-h-60 overflow-y-auto p-2">
+        <li v-for="record in fixedPreview" :key="record.id" class="border-b border-border py-2">
+          <b>{{ record.id }}</b>
+          <span v-if="record.coverage==='contains_opaque'"> · {{ tr('Есть неизвестные части', 'Contains unknown content') }}</span>
+          <p class="whitespace-pre-wrap break-words">{{ record.text }}</p>
+        </li>
+      </ol>
+    </section>
     <div v-if="!context" role="status">{{ tr('Архив запускается…', 'Loading archive…') }}</div>
     <template v-else>
       <ArchiveBrowser

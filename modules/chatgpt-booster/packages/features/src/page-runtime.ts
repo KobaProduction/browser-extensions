@@ -12,6 +12,7 @@ import {
 } from '@chatgpt-booster/core'
 import type { OtlpTelemetryClient } from '@chatgpt-booster/telemetry'
 import { type ArchiveDataAdapter, type MountedBoosterUi, mountBoosterUi } from '@chatgpt-booster/ui'
+import { FixedChatGptCapture } from './archive-fixed-runtime'
 import { ArchiveCollectionSession } from './archive-collection-session'
 import { ArchiveScopeControlsModule } from './archive-scope-controls'
 import { ArchiveSourceGate, NATIVE_HISTORY_CONTRACT_VERSION } from './archive-source-contract'
@@ -117,6 +118,9 @@ export function createBoosterPageRuntime(options: BoosterPageRuntimeOptions) {
     settings,
     collectionSession,
   )
+  const fixedArchive = ['Chromium', 'Tampermonkey'].includes(target.label)
+    ? new FixedChatGptCapture(conversationState, settings, target.label, collectionSession)
+    : undefined
   const archiveReader = new ArchiveV4Reader(archiveStore, conversationState)
   const archiveAdapter = createArchiveV4UiAdapter(
     archiveStore,
@@ -130,6 +134,7 @@ export function createBoosterPageRuntime(options: BoosterPageRuntimeOptions) {
     conversationState,
     ...(options.mountUi === false ? [] : [new OverlayModule(runtimeTarget, archiveAdapter)]),
     archiveCapture,
+    ...(fixedArchive ? [fixedArchive] : []),
     new ArchiveScopeControlsModule(settings, archiveAdapter, conversationState),
     new HistoryLoaderModule(conversationState, archiveCapture, pageBridgeWindow, settings, false),
     new TransportObserverModule({
@@ -169,5 +174,6 @@ export function createBoosterPageRuntime(options: BoosterPageRuntimeOptions) {
     },
     settings,
     archiveAdapter,
+    fixedArchive,
   }
 }

@@ -19,3 +19,6 @@ export type { FixedProject, FixedConversation, FixedMessage, FixedSnapshot, Sour
 export { FixedCanonicalDexieRepository, fixedArchiveDatabaseName } from './archive-fixed-dexie'
 export { exportLegacy092NativeV3, LEGACY_092_V3_DATABASE, LEGACY_092_BACKUP_FORMAT } from './archive-legacy092-extract'
 export type { Legacy092BackupResult } from './archive-legacy092-extract'
+
+export { FixedChatGptCapture } from './archive-fixed-runtime'
+export type { FixedChatGptView } from './archive-fixed-runtime'
