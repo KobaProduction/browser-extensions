@@ -144,13 +144,10 @@ function restoreWorkspace() {
     if (
       saved &&
       typeof saved === 'object' &&
-      ['xRatio', 'yRatio', 'widthRatio', 'heightRatio'].every(
-        (key) =>
-          Number.isFinite((saved as Record<string, unknown>)[key]) &&
-          typeof (saved as Record<string, unknown>)[key] === 'number' &&
-          (saved as Record<string, number>)[key] >= 0 &&
-          (saved as Record<string, number>)[key] <= 1,
-      )
+      ['xRatio', 'yRatio', 'widthRatio', 'heightRatio'].every((key) => {
+        const value: unknown = (saved as Record<string, unknown>)[key]
+        return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1
+      })
     ) {
       ratios = saved as WorkspaceRatios
     }
