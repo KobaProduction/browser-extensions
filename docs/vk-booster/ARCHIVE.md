@@ -70,7 +70,7 @@ read-only backup is a separate source-extraction feature, not VK restore.
   remote delivery stays disabled by default and out of this VK integration.
   No chat text, URLs, paths or authentication material in telemetry.
 
-## Single-stream TAR.GZ backup prototype (unpublished local branch)
+## Single-stream TAR.GZ backup (source implementation; browser acceptance pending)
 
 VK now adapts its fixed owner-scoped Dexie v1 message/snapshot tables to a
 shared portable TAR writer and Reader. The TAR contains only plain JSONL

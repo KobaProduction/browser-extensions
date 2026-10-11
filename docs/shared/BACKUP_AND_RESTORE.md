@@ -98,9 +98,9 @@ report schema/counts and use a chained gzip JSONL digest. No deletion or
 automatic restoration is authorized. Cross-store concurrent-write atomicity
 cannot be claimed; pause historical capture for a consistent export.
 
-## Single-stream TAR / TAR.GZ backup (unpublished local branch)
+## Single-stream TAR / TAR.GZ backup (source implementation; browser acceptance pending)
 
-The local VK worktree replaces the experimental nested-compression ZIP
+The VK source implementation replaces the experimental nested-compression ZIP
 with a **single POSIX ustar file**, optionally wrapped by **one GZIP stream**.
 The browser IndexedDB API cannot copy a physical LevelDB database file; the
 provider must read records through scoped indexed queries. The TAR payload

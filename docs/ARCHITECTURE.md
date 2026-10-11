@@ -357,7 +357,7 @@ export capability. VK source is 1.0.0, ChatGPT source 2.0.12 and dependent
 All-in-one 0.5.13. Settings persistence/JSON restoration remains separate
 from canonical archive persistence and is not full archive backup.
 
-## Portable TAR / TAR.GZ backup (local-only prototype)
+## Portable TAR / TAR.GZ backup (source implementation; browser acceptance pending)
 
 `packages/storage` provides a streaming POSIX ustar writer/reader and a
 single outer GZIP compressor for plain JSONL record chunks, exact schema,
