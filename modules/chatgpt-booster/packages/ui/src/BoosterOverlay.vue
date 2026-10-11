@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ModalSurface } from '@kobaproduction/browser-ui'
 import {
   ARCHIVE_UPDATED_EVENT, ARCHIVE_SOURCE_INCOMPATIBLE_EVENT, dockFromDrop, dockPosition,
   HISTORY_LOADER_STATE_EVENT, HISTORY_LOADER_STOP_EVENT, normalizeSettings,
@@ -19,7 +20,7 @@ import ArchiveExportDialog from './ArchiveExportDialog.vue'
 import ControlCenterPanel from './ControlCenterPanel.vue'
 import CaptureSettingsSurface from './CaptureSettingsSurface.vue'
 import CopyIdentity from './CopyIdentity.vue'
-import ModalSurface from './ModalSurface.vue'
+
 import { resolveLocale, translate, type TranslationKey } from './i18n'
 import type { ArchiveCoverageView, BoosterUiOptions } from './mount'
 const props = defineProps<BoosterUiOptions>()

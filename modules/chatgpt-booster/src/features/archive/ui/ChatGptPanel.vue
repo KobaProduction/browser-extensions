@@ -15,10 +15,12 @@ import {
 } from '@chatgpt-booster/core'
 import { SHELL_CLOSE_EVENT, instanceKey } from '@kobaproduction/browser-core'
 import {
-  Archive, ArrowUpToLine, Download, Ellipsis, Settings2, ShieldCheck, Square,
+  ShieldCheck, Square,
 } from 'lucide-vue-next'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ArchiveBrowser from '../../../../packages/ui/src/ArchiveBrowser.vue'
+import ChatGptArchiveActions from './ChatGptArchiveActions.vue'
+import ChatGptFixedArchiveSection from './ChatGptFixedArchiveSection.vue'
 import CaptureSettingsSurface from '../../../../packages/ui/src/CaptureSettingsSurface.vue'
 import ControlCenter from '../../../../packages/ui/src/ControlCenterPanel.vue'
 import CopyIdentity from '../../../../packages/ui/src/CopyIdentity.vue'
@@ -115,8 +117,6 @@ async function exportFixedArchive() {
       'Dexie export failed. Original sources were not modified.')
   } finally { fixedBusy.value = false }
 }
-const archiveMenuOpen = ref(false)
-const archiveMenuArea = ref<HTMLElement | null>(null)
 const archiveInitial = ref<string | null>(null)
 const navigationTarget = ref<ArchiveMessageLocation | null>(null)
 const returnToExport = ref(false)
@@ -228,7 +228,6 @@ async function initializeContext() {
 function showArchive(id?: string | null, location?: ArchiveMessageLocation) {
   archiveInitial.value = id ?? current.value.conversationId
   navigationTarget.value = location ?? null
-  archiveMenuOpen.value = false
   tab.value = 'archive'
 }
 async function currentExport() {
@@ -255,7 +254,6 @@ function openExport(id: string, title: string | null, fromArchive = false) {
 function openCapture(scope?: ArchiveCaptureContext, fromExport = false) {
   captureContext.value = scope ?? captureTarget.value
   exportCapture.value = fromExport
-  archiveMenuOpen.value = false
   tab.value = 'capture'
 }
 function endCapture() {
@@ -302,11 +300,6 @@ function onCaptureRequest(event: Event) {
   const detail = (event as CustomEvent<ArchiveCaptureContext>).detail
   openCapture(detail && (detail.scope === 'project' || detail.scope === 'conversation') ? detail : undefined)
 }
-function closeMenuOnOutsidePress(event: PointerEvent) {
-  if (archiveMenuOpen.value && archiveMenuArea.value &&
-      !event.composedPath().includes(archiveMenuArea.value))
-    archiveMenuOpen.value = false
-}
 function closePanel() { window.dispatchEvent(new Event(SHELL_CLOSE_EVENT)) }
 
 watch(context, () => { void initializeContext() }, { immediate: true })
@@ -318,7 +311,6 @@ watch(chatGptRequestedSection, (section) => {
 onMounted(() => {
   const root = document.getElementById(instanceKey('koba-browser-tools-root'))?.shadowRoot
   if (root) installBoosterShadowStyles(root)
-  window.addEventListener('pointerdown', closeMenuOnOutsidePress, true)
   window.addEventListener(OPEN_ARCHIVE_EVENT, onShowArchive)
   window.addEventListener(OPEN_SETTINGS_EVENT, onShowSettings)
   window.addEventListener(OPEN_CAPTURE_SETTINGS_EVENT, onCaptureRequest)
@@ -335,7 +327,6 @@ onBeforeUnmount(() => {
   ++contextRevision
   unsubscribeContext?.()
   unsubscribeSettings?.()
-  window.removeEventListener('pointerdown', closeMenuOnOutsidePress, true)
   window.removeEventListener(OPEN_ARCHIVE_EVENT, onShowArchive)
   window.removeEventListener(OPEN_SETTINGS_EVENT, onShowSettings)
   window.removeEventListener(OPEN_CAPTURE_SETTINGS_EVENT, onCaptureRequest)
@@ -388,64 +379,29 @@ onBeforeUnmount(() => {
         <Square class="size-4" />
       </button>
     </div>
-    <nav class="booster-export-recovery-actions" :aria-label="tr('Действия ChatGPT Booster', 'ChatGPT Booster actions')">
-      <button class="booster-action-secondary" type="button" :aria-pressed="tab==='archive'" @click="showArchive()">
-        <Archive class="size-4" />{{ tr('Архив', 'Archive') }}
-      </button>
-      <button class="booster-action-secondary" type="button" :aria-pressed="tab==='export'"
-        :disabled="!current.conversationId" @click="currentExport">
-        <Download class="size-4" />{{ tr('Экспорт', 'Export') }}
-      </button>
-      <button v-if="!context?.archiveAdapter.collectionInsideExportOnly" class="booster-action-secondary"
-        type="button" :disabled="!current.conversationId || active" @click="collect">
-        <ArrowUpToLine class="size-4" />{{ tr('Собрать историю', 'Collect history') }}
-      </button>
-      <button class="booster-action-secondary" type="button" :aria-pressed="tab==='capture'" @click="openCapture()">
-        <ShieldCheck class="size-4" />{{ tr('Сохранение', 'Capture') }}
-      </button>
-      <button class="booster-action-secondary" type="button" :aria-pressed="tab==='settings'" @click="tab='settings'">
-        <Settings2 class="size-4" />{{ tr('Настройки', 'Settings') }}
-      </button>
-      <div ref="archiveMenuArea" class="booster-reader-tools" @keydown.esc.stop="archiveMenuOpen=false">
-        <button class="booster-action-secondary" type="button"
-          :aria-label="tr('Дополнительные действия с архивом', 'More archive actions')"
-          :aria-expanded="archiveMenuOpen" aria-haspopup="menu" @click="archiveMenuOpen=!archiveMenuOpen">
-          <Ellipsis class="size-4" />{{ tr('Ещё', 'More') }}
-        </button>
-        <div v-if="archiveMenuOpen" class="booster-reader-tools-menu" role="menu">
-          <button type="button" role="menuitem" @click="openCapture()">
-            <ShieldCheck class="size-4" />{{ tr('Правила сохранения', 'Capture rules') }}
-          </button>
-          <button type="button" role="menuitem" @click="archiveMenuOpen=false; showArchive()">
-            <Archive class="size-4" />{{ tr('Открыть сохранённые диалоги', 'Open saved conversations') }}
-          </button>
-        </div>
-      </div>
-    </nav>
-    <section v-if="context?.fixedArchive && current.conversationId && tab==='archive'"
-      class="booster-stack-card" aria-label="Фиксированный Dexie архив ChatGPT">
-      <div class="booster-setting-copy">
-        <b>{{ tr('Dexie — собственная структура v1', 'Dexie — fixed canonical v1') }}</b>
-        <small>{{ tr('Только новые подтверждённые события сохранения; прежние базы v3/v4 не переносятся.',
-          'Only new verified capture events; existing v3/v4 archives are not converted.') }}</small>
-        <small v-if="fixedCount !== null">{{ tr('Сохранено', 'Saved') }}: {{ fixedCount }}</small>
-        <small v-if="context.fixedArchive.captureFailed()" role="status">Исходное сообщение изменилось; прежний снимок сохранён.</small>
-      </div>
-      <div class="flex flex-wrap gap-2">
-        <button type="button" class="booster-action-secondary" :disabled="fixedBusy"
-          @click="readFixedArchive">{{ tr('Читать Dexie', 'Read Dexie') }}</button>
-        <button type="button" class="booster-action-secondary" :disabled="fixedBusy"
-          @click="exportFixedArchive">{{ tr('Экспорт Dexie JSON.gz', 'Export Dexie JSON.gz') }}</button>
-      </div>
-      <p v-if="fixedError" role="alert">{{ fixedError }}</p>
-      <ol v-if="fixedPreview.length" class="max-h-60 overflow-y-auto p-2">
-        <li v-for="record in fixedPreview" :key="record.id" class="border-b border-border py-2">
-          <b>{{ record.id }}</b>
-          <span v-if="record.coverage==='contains_opaque'"> · {{ tr('Есть неизвестные части', 'Contains unknown content') }}</span>
-          <p class="whitespace-pre-wrap break-words">{{ record.text }}</p>
-        </li>
-      </ol>
-    </section>
+    <ChatGptArchiveActions
+      :locale="locale"
+      :tab="tab"
+      :has-conversation="!!current.conversationId"
+      :collecting="active"
+      :collection-inside-export-only="!!context?.archiveAdapter.collectionInsideExportOnly"
+      @archive="showArchive()"
+      @export="currentExport"
+      @collect="collect"
+      @capture="openCapture()"
+      @settings="tab = 'settings'"
+    />
+    <ChatGptFixedArchiveSection
+      v-if="context?.fixedArchive && current.conversationId && tab === 'archive'"
+      :locale="locale"
+      :saved-count="fixedCount"
+      :capture-failed="context.fixedArchive.captureFailed()"
+      :busy="fixedBusy"
+      :error="fixedError"
+      :preview="fixedPreview"
+      @read="readFixedArchive"
+      @export="exportFixedArchive"
+    />
     <div v-if="!context" role="status">{{ tr('Архив запускается…', 'Loading archive…') }}</div>
     <template v-else>
       <ArchiveBrowser

@@ -370,3 +370,15 @@ legacy offline HTML are retained in historic/test code, not a proven Dexie
 export capability. VK source is 1.0.0, ChatGPT source 2.0.13 and dependent
 All-in-one 0.5.14. Settings persistence/JSON restoration remains separate
 from canonical archive persistence and is not full archive backup.
+
+## ChatGPT UI decomposition checkpoint (Extension 15)
+
+The shared `@kobaproduction/browser-ui` package owns the reusable
+`ModalSurface`, `FloatingInfoPopover` and `JsonViewer` Vue primitives. ChatGPT
+consumers import them via its public API instead of keeping private identical
+copies; the shared Shell already uses the same modal implementation. ChatGPT
+provider presentation owns `ChatGptArchiveActions` (navigation/menu state) and
+`ChatGptFixedArchiveSection` (scoped Dexie status/preview), while the parent
+`ChatGptPanel` retains archive permissions, owner checks and source operations.
+No VK provider/archive ownership or settings-backup contract changed. UI source
+integration is not installed-browser visual, interaction or data acceptance.

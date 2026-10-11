@@ -1,12 +1,12 @@
 <script setup lang="ts">
+import { FloatingInfoPopover, JsonViewer } from '@kobaproduction/browser-ui'
 import Check from 'lucide-vue-next/dist/esm/icons/check.js'
 import Clipboard from 'lucide-vue-next/dist/esm/icons/clipboard.js'
 import ExternalLink from 'lucide-vue-next/dist/esm/icons/external-link.js'
 import Globe2 from 'lucide-vue-next/dist/esm/icons/globe.js'
 import Wrench from 'lucide-vue-next/dist/esm/icons/wrench.js'
 import { computed, ref } from 'vue'
-import FloatingInfoPopover from './FloatingInfoPopover.vue'
-import JsonViewer from './JsonViewer.vue'
+
 import { Button } from './components/ui/button'
 import { translate } from './i18n'
 import type { ToolCallViewModel } from './tool-inspector'

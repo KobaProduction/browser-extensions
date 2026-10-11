@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { FloatingInfoPopover } from '@kobaproduction/browser-ui'
 import Archive from 'lucide-vue-next/dist/esm/icons/archive.js'
 import Settings2 from 'lucide-vue-next/dist/esm/icons/settings-2.js'
-import FloatingInfoPopover from './FloatingInfoPopover.vue'
+
 import type { ScopeArchiveControlModel } from './scope-archive-control'
 import { translate } from './i18n'
 

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ModalSurface } from '@kobaproduction/browser-ui'
 import {
   BOOSTER_VERSION,
   EMPTY_TRANSPORT_COUNTERS,
@@ -36,7 +37,7 @@ import { Badge } from './components/ui/badge'
 import { Button } from './components/ui/button'
 import { resolveLocale, translate } from './i18n'
 import CaptureSettings from './CaptureSettings.vue'
-import ModalSurface from './ModalSurface.vue'
+
 import { exportChatGptSettings, restoreChatGptSettings } from './settings-backup'
 import type { ArchiveDataAdapter } from './mount'
 
