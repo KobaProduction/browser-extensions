@@ -76,7 +76,7 @@ and [backup/restore](../shared/BACKUP_AND_RESTORE.md).
 
 ## Reconciled 2.0.7 source scope
 
-After PR #25 merged, the integrated 2.0.7 development source retains its
+After PR #25 merged, the integrated 2.0.8 development source retains its
 single Control Center, current conversation/project context, manual archive
 collection/stop, native/canonical recovery and export-format presets. The
 Settings section continues to use the existing `ControlCenterPanel` and its
@@ -84,7 +84,7 @@ separate validated portable settings backup/restore; it does not replace
 archive export or introduce another launcher. The pre-existing ChatGPT
 telemetry settings/diagnostic adapters remain owned by the ChatGPT provider;
 the common optional scoped telemetry port does not replace or implicitly
-enable its transport. All-in-one is 0.5.6, VK remains 2.3.10. None of these
+enable its transport. All-in-one is 0.5.8, VK remains 2.3.10. None of these
 source changes promotes stable 0.8.92 or proves installed-browser acceptance.
 
 ## Restoring user-facing archive controls
@@ -108,7 +108,12 @@ legacy floating Archive Workspace and navigation; it is **not** an accepted
 stable release. Current stable **0.8.92** remains untouched. UI source
 integration and a passing build do not prove that the user's original
 v3/v4 IndexedDB is present or successfully read in the installed profile.
-The floating window/minimize workflow and installed-browser export parity
+The shared Control Center now has a **source-level floating workspace** when a
+wide feature is active (currently ChatGPT Booster). It reuses the existing
+launcher for minimize/restore, stores scoped viewport-proportional geometry,
+resizes and moves by pointer or keyboard, and keeps ordinary module dialogs
+modal. It does not restore the obsolete second ArchiveWorkspace launcher.
+Installed-browser drag, resize, responsiveness, focus and archive parity still
 remain under [functional acceptance issue #16](https://github.com/KobaProduction/browser-extensions/issues/16).
 Data/owner reconciliation remains under
 [archive acceptance issue #11](https://github.com/KobaProduction/browser-extensions/issues/11).
