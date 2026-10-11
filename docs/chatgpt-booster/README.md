@@ -234,3 +234,13 @@ after validating its own owner/peer/archive invariants. Main integration and
 automatic DEV distribution happen only after exact-head CI and independent
 review of the consolidated changes. See
 `../shared/PROJECT_RULES.md`.
+
+## Edge menu and saved-only counters (Extension 15)
+
+The shared side-docked launcher displays a provider-defined compact menu
+(archive, current-chat collection, export, settings), then a distinct
+responsive settings/Reader panel. The menu shows canonical Dexie saved-message,
+internal-element, tool-call and reasoning counts for the *verified current
+conversation*, not estimates of remote completeness. History Loader stays
+ChatGPT-owned behind the shared conversation-collection port. Existing
+telemetry, retention and capture authorization semantics are preserved.

@@ -14,13 +14,12 @@ import {
   resolveCaptureRule,
 } from '@chatgpt-booster/core'
 import { SHELL_CLOSE_EVENT, instanceKey } from '@kobaproduction/browser-core'
-import {
-  ShieldCheck, Square,
-} from 'lucide-vue-next'
+import { createChatCollectionController, type ChatCollectionController, type ChatCollectionSnapshot } from '@kobaproduction/browser-archive'
+import { ConversationCollectionAction } from '@kobaproduction/browser-widgets'
+import { ShieldCheck } from 'lucide-vue-next'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ArchiveBrowser from '../../../../packages/ui/src/ArchiveBrowser.vue'
-import ChatGptArchiveActions from './ChatGptArchiveActions.vue'
-import ChatGptFixedArchiveSection from './ChatGptFixedArchiveSection.vue'
+import { chatGptCollectionPort } from './chat-collection-port'
 import CaptureSettingsSurface from '../../../../packages/ui/src/CaptureSettingsSurface.vue'
 import ControlCenter from '../../../../packages/ui/src/ControlCenterPanel.vue'
 import CopyIdentity from '../../../../packages/ui/src/CopyIdentity.vue'
@@ -48,29 +47,22 @@ const loader = ref<HistoryLoaderState>({
   consecutiveErrors: 0,
 })
 const loading = ref(false)
+const collectionState = ref<ChatCollectionSnapshot>({ phase: 'idle', processed: 0, total: null, saved: null })
+let collector: ChatCollectionController | undefined
+let unsubscribeCollection: (() => void) | undefined
+watch(() => context.value?.archiveAdapter, adapter => {
+  unsubscribeCollection?.()
+  collector?.dispose()
+  collector = adapter ? createChatCollectionController(chatGptCollectionPort(adapter)) : undefined
+  collectionState.value = collector?.snapshot() ?? { phase: 'idle', processed: 0, total: null, saved: null }
+  unsubscribeCollection = collector?.subscribe(value => { collectionState.value = value })
+}, { immediate: true })
 const error = ref('')
 const selectedChat = ref<{ id: string; title: string | null }>()
 const captureContext = ref<ArchiveCaptureContext>()
 const exportCapture = ref(false)
 const fixedBusy = ref(false)
 const fixedError = ref('')
-const fixedCount = ref<number | null>(null)
-const fixedPreview = ref<readonly { id: string; text: string; coverage: string }[]>([])
-async function readFixedArchive() {
-  const fixed = context.value?.fixedArchive
-  if (!fixed || fixedBusy.value) return
-  fixedBusy.value = true
-  fixedError.value = ''
-  try {
-    const [count, records] = await Promise.all([fixed.savedCurrent(), fixed.listCurrent()])
-    if (!alive || fixed !== context.value?.fixedArchive) return
-    fixedCount.value = count
-    fixedPreview.value = records
-  } catch {
-    fixedError.value = tr('Dexie-архив недоступен для текущего проверенного владельца.',
-      'The fixed Dexie archive is unavailable for the verified account.')
-  } finally { fixedBusy.value = false }
-}
 async function exportSelectedDexie() {
   const fixed = context.value?.fixedArchive
   const selected = selectedChat.value
@@ -96,25 +88,6 @@ async function exportSelectedDexie() {
   } catch {
     fixedError.value = tr('Сохранённый Dexie-архив не экспортирован.',
       'The selected Dexie archive could not be exported.')
-  } finally { fixedBusy.value = false }
-}
-async function exportFixedArchive() {
-  const fixed = context.value?.fixedArchive
-  if (!fixed || fixedBusy.value || !current.value.conversationId) return
-  fixedBusy.value = true
-  fixedError.value = ''
-  try {
-    const blob = await fixed.exportCurrent()
-    const url = URL.createObjectURL(blob)
-    try {
-      const link = document.createElement('a')
-      link.href = url
-      link.download = 'chatgpt-fixed-v1-' + current.value.conversationId.replace(/[^a-zA-Z0-9_-]/g, '_') + '.jsonl.gz'
-      link.click()
-    } finally { window.setTimeout(() => URL.revokeObjectURL(url), 30_000) }
-  } catch {
-    fixedError.value = tr('Экспорт Dexie не удался. Исходные базы не изменены.',
-      'Dexie export failed. Original sources were not modified.')
   } finally { fixedBusy.value = false }
 }
 const archiveInitial = ref<string | null>(null)
@@ -173,8 +146,6 @@ async function refreshContext() {
       projectTitle: null,
     }
     coverage.value = undefined
-    fixedCount.value = null
-    fixedPreview.value = []
     fixedError.value = ''
     captureContext.value = undefined
   }
@@ -195,7 +166,7 @@ async function refreshContext() {
         'Unsupported conversation source: saved data was not changed.')
       : ''
   } catch {
-    if (alive && revision === contextRevision)
+    if (alive && revision === contextRevision && accountId && conversationId)
       error.value = tr('Не удалось прочитать текущий диалог. Сохранённый архив не сбрасывался.',
         'Unable to inspect the current conversation. The archive was not reset.')
   } finally {
@@ -262,10 +233,11 @@ function endCapture() {
 }
 async function collect() {
   const adapter = context.value?.archiveAdapter
-  if (!adapter || adapter.collectionInsideExportOnly || !current.value.conversationId) return
+  if (!adapter || adapter.collectionInsideExportOnly || !adapter.currentConversationId()) return
   error.value = ''
   try {
-    await adapter.collectCurrent()
+    if (!collector) return
+    await collector.start()
     await refreshContext()
   } catch {
     error.value = tr('Сбор истории не выполнен. Исходные данные сохранены.',
@@ -273,6 +245,7 @@ async function collect() {
   }
 }
 function stopCollection() {
+  if (collector) { collector.stop(); return }
   const adapter = context.value?.archiveAdapter
   const request = {
     ...(loader.value.conversationId ? { conversationId: loader.value.conversationId } : {}),
@@ -307,6 +280,8 @@ watch(chatGptRequestedSection, (section) => {
   if (section === 'archive') showArchive()
   if (section === 'settings') tab.value = 'settings'
   if (section === 'capture') openCapture()
+  if (section === 'collect') void collect()
+  if (section === 'export') void currentExport()
 }, { immediate: true })
 onMounted(() => {
   const root = document.getElementById(instanceKey('koba-browser-tools-root'))?.shadowRoot
@@ -323,6 +298,8 @@ function onShowArchive() { showArchive() }
 function onShowSettings() { tab.value = 'settings' }
 function onArchiveUpdated() { void refreshContext() }
 onBeforeUnmount(() => {
+  unsubscribeCollection?.()
+  collector?.dispose()
   alive = false
   ++contextRevision
   unsubscribeContext?.()
@@ -338,7 +315,7 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="booster-chatgpt-panel" :lang="locale">
-    <header class="booster-dock-context" aria-label="ChatGPT Booster">
+    <header v-if="tab === 'archive'" class="booster-dock-context" aria-label="ChatGPT Booster">
       <div class="booster-dock-context-info">
         <CopyIdentity
           :label="current.conversationTitle || tr('Текущий диалог', 'Current conversation')"
@@ -370,38 +347,18 @@ onBeforeUnmount(() => {
           : tr('Настроить автосохранение', 'Configure capture') }}
       </button>
     </header>
-    <p v-if="error" class="booster-error" role="alert">{{ error }}</p>
-    <div v-if="active" class="booster-dock-progress" role="status">
+    <p v-if="error && tab !== 'settings'" class="booster-error" role="alert">{{ error }}</p>
+    <div v-if="active && tab === 'archive'" class="booster-dock-progress" role="status">
       <span>{{ tr('Загрузка истории', 'History collection') }}: {{ loader.phase }}
         · {{ tr('Сообщения', 'Messages') }} {{ loader.knownMessageCount }}
         · {{ tr('Страницы', 'Pages') }} {{ loader.pagesLoaded }}</span>
-      <button class="booster-icon-button" type="button" :aria-label="tr('Остановить загрузку', 'Stop collection')" @click="stopCollection">
-        <Square class="size-4" />
-      </button>
     </div>
-    <ChatGptArchiveActions
-      :locale="locale"
-      :tab="tab"
-      :has-conversation="!!current.conversationId"
-      :collecting="active"
-      :collection-inside-export-only="!!context?.archiveAdapter.collectionInsideExportOnly"
-      @archive="showArchive()"
-      @export="currentExport"
-      @collect="collect"
-      @capture="openCapture()"
-      @settings="tab = 'settings'"
-    />
-    <ChatGptFixedArchiveSection
-      v-if="context?.fixedArchive && current.conversationId && tab === 'archive'"
-      :locale="locale"
-      :saved-count="fixedCount"
-      :capture-failed="context.fixedArchive.captureFailed()"
-      :busy="fixedBusy"
-      :error="fixedError"
-      :preview="fixedPreview"
-      @read="readFixedArchive"
-      @export="exportFixedArchive"
-    />
+    <ConversationCollectionAction v-if="tab === 'archive' && context"
+      :label="tr('Собрать историю', 'Collect history')" :busy="active"
+      :saved-label="tr('Сохранено', 'Saved')" :stop-label="tr('Остановить', 'Stop')"
+      :disabled="!current.conversationId || !!context.archiveAdapter.collectionInsideExportOnly"
+      :processed="collectionState.processed" :total="collectionState.total"
+      @start="collect" @stop="stopCollection" />
     <div v-if="!context" role="status">{{ tr('Архив запускается…', 'Loading archive…') }}</div>
     <template v-else>
       <ArchiveBrowser

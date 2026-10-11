@@ -342,3 +342,23 @@ builds and tags, with actual public distribution still protected by manual
 workflow approval and installed-product acceptance. This change does not
 migrate existing user profiles or authorize automatic upgrades. Historical v3/v4 raw rows, quarantine and
 canonical backup remain preserved until those later gates are satisfied.
+
+## Reusable two-level browser interaction and collection (2026-10-12)
+
+The shared Shell owns an edge-docked, draggable and keyboard-accessible launcher.
+A click may open a compact quick menu, open the full module panel, or invoke an
+explicit module-provided action. The module supplies its title, version, delivery
+method, available quick actions and safely verified metrics. The Shell is not
+a provider's secondary navigator; do not nest product and platform sidebars
+in single-module installations. Full settings keep the product's own modular
+navigation. All-in-one resolves the relevant feature for the current origin
+rather than assuming its registry contains only one feature.
+
+The shared archive application layer defines a collection lifecycle contract
+(start, stop, status subscription, progress, single-flight control) and
+`packages/widgets` renders one reusable collection action. Providers retain
+authorization, current-chat identity, request paging, source normalization,
+source-specific cancellation, and persistence semantics. Never assume VK API
+cursors, ChatGPT History Loader page state or network completeness are equal.
+Provider metrics in the quick menu refer only to records known to the
+verified source and do not imply full remote history.

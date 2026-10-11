@@ -19,7 +19,7 @@ test('draggable launcher supports keyboard activation without double-toggling po
   expect(source).toContain('@click="onLauncherClick"')
   expect(source).toContain('event.detail === 0')
   expect(source).toContain('@pointerup="onPointerUp"')
-  expect(source).toContain(':aria-expanded="open"')
+  expect(source).toContain(':aria-expanded="standalone ? quickOpen : open"')
   expect(source).toContain('aria-haspopup="dialog"')
 })
 
@@ -27,7 +27,7 @@ test('launcher matches shared ChatGPT Booster icon rather than legacy B glyph', 
   const overlay = await read('./Overlay.vue')
   const style = await read('./styles.css')
   expect(overlay).toContain('<Layers3 v-else class="booster-launcher-icon"')
-  expect(overlay).toContain('<X v-if="open" class="booster-launcher-icon"')
+  expect(overlay).toContain('<X v-if="standalone ? quickOpen : open" class="booster-launcher-icon"')
   expect(overlay).not.toContain('<span>B</span>')
   expect(style).toContain('.booster-launcher-icon')
 })
@@ -56,7 +56,7 @@ test('shared shell tracks navigation state for wide vs standard module presentat
   expect(panel).toContain('@click="selectSection(feature.id)"')
 })
 
-test('wide ChatGPT workspace floats in the existing shared shell and is keyboard accessible', async () => {
+test('legacy multi-product wide workspace remains supported while single-product settings are modal', async () => {
   const source = await read('./Overlay.vue')
   const modal = await read('../../ui/src/components/booster/ModalSurface.vue')
   const css = await read('./styles.css')
@@ -73,6 +73,8 @@ test('wide ChatGPT workspace floats in the existing shared shell and is keyboard
   expect(source).not.toContain('<ArchiveWorkspace')
   expect(source).not.toContain('ChatGPT Booster · {{ title }}')
   expect(source).toContain('{{ title }} · {{ selectedSection }}')
+  expect(source).toContain('!standalone.value &&')
+  expect(source).toContain('booster-modal-surface-single')
   expect(modal).toContain('!root.value || props.floating')
   expect(modal).toContain("floating ? 'false' : 'true'")
   expect(css).toContain('.booster-modal-backdrop.booster-modal-backdrop-floating')

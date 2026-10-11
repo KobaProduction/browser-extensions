@@ -22,12 +22,42 @@ export interface FeatureContext {
   readonly capabilities: ReadonlySet<Capability>
   readonly settings: FeatureSettings
 }
+export interface FeatureQuickMetric {
+  readonly label: string
+  /** Counts are provided by the verified provider, never inferred by the shell. */
+  readonly value: string | number
+}
+export interface FeatureQuickAction {
+  readonly id: string
+  readonly label: string
+  readonly icon?: 'archive' | 'collect' | 'export' | 'settings' | 'capture' | 'open'
+  /** Default: the action owns navigation; never unconditionally open the panel. */
+  readonly after?: 'close-menu' | 'keep-menu' | 'open-panel'
+  /** Override for recovery/settings actions that can run while the feature is off. */
+  readonly availableWhenDisabled?: boolean
+  /** Source-owned context check; the shared shell never inspects private accounts. */
+  readonly enabled?: () => boolean
+  readonly run: () => void | Promise<void>
+}
+/** A provider can replace the launcher click entirely without editing the shell. */
+export interface FeatureLauncher {
+  readonly mode: 'quick-menu' | 'panel' | 'action'
+  readonly run?: () => void | Promise<void>
+}
 export interface Feature {
   readonly id: FeatureId
   readonly title: string
   readonly description: string
   /** Provider-independent view sizing; default is standard. */
-  readonly presentation?: { readonly panel: 'standard' | 'wide' }
+  readonly presentation?: {
+    readonly panel: 'standard' | 'wide'
+    readonly version?: string
+    readonly installation?: string
+  }
+  /** Product-owned actions rendered by the shared compact edge menu. */
+  readonly quickActions?: readonly FeatureQuickAction[]
+  readonly quickMetrics?: () => Promise<readonly FeatureQuickMetric[]>
+  readonly launcher?: FeatureLauncher
   readonly match: (url: URL) => boolean
   readonly targets: readonly DeliveryTarget[]
   readonly requiredCapabilities: readonly Capability[]

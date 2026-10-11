@@ -386,6 +386,18 @@ without exposing low-level backups in ordinary user workflows.
 The shared `@kobaproduction/browser-ui` package owns reusable
 `ModalSurface`, `FloatingInfoPopover` and `JsonViewer` Vue primitives. ChatGPT
 consumers import them via the public API rather than retaining identical
-copies. ChatGPT owns `ChatGptArchiveActions` and `ChatGptFixedArchiveSection`
-as presentation; its parent `ChatGptPanel` owns provider operations and
-verification. This source refactor is not installed-browser acceptance.
+copies. The former ChatGPT-specific quick action row and separate fixed-Dexie
+summary card have been superseded by reusable Shell quick actions and scoped
+metrics. `ChatGptPanel` owns provider archive operations and verification. This source refactor is not installed-browser acceptance.
+
+## Edge launcher and reusable conversation collection (Extension 15)
+
+`packages/shell` owns a side-snapped launcher, compact quick menu and
+responsive full settings panel. Active origin matching prevents all-in-one
+from showing an unrelated product's quick menu. Each Feature may override
+launcher behavior and supply actions and counters without editing the Shell.
+The ordinary ChatGPT and VK panels reuse `ConversationCollectionAction` from
+`packages/widgets` and the provider-neutral collection lifecycle/controller
+from `packages/archive`. Their actual ChatGPT History Loader and VK Dexie
+record-fetch implementations remain behind their respective adapters.
+No installed-browser visual or data acceptance is implied by source tests.

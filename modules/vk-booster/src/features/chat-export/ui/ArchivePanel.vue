@@ -1,13 +1,17 @@
 <script setup lang="ts">
 /** VK-only archive API adapter. Generic ArchiveManager owns presentation, never VK storage. */
 
+import type { ChatCollectionSnapshot } from '@kobaproduction/browser-archive'
+import { createChatCollectionController } from '@kobaproduction/browser-archive'
 import { Badge, Button } from '@kobaproduction/browser-ui'
-import { ArchiveProgressBar } from '@kobaproduction/browser-widgets'
+import { ConversationCollectionAction } from '@kobaproduction/browser-widgets'
 import { Archive, Download, Settings2, ShieldAlert } from 'lucide-vue-next'
-import { computed, onMounted, onUnmounted, ref, useId } from 'vue'
+import { computed, onMounted, onUnmounted, ref, useId, watch } from 'vue'
+import { vkChatCollectionPort } from '../model/chat-collection-port'
 import { vkPreferencesLoadError, vkPreferencesPersistence } from '../model/durable-preferences'
 import { validateVkCapturePreferences } from '../model/settings-backup'
 import { type ArchiveStatus, archiveApi, type VkMessage } from '../model/types'
+import { vkRequestedView } from '../model/ui-navigation'
 
 const api = archiveApi()
 const status = ref<ArchiveStatus | null>(api?.status() ?? null)
@@ -22,6 +26,24 @@ const selectedStatus = computed(() => {
 })
 const fixedBusy = ref(false)
 const fixedLimit = ref(Math.min(3000, Math.max(1, status.value?.options.limit ?? 100)))
+const collector = api
+  ? createChatCollectionController(vkChatCollectionPort(api, () => fixedLimit.value))
+  : null
+const collectionState = ref<ChatCollectionSnapshot>(
+  collector?.snapshot() ?? {
+    phase: 'idle',
+    processed: 0,
+    total: null,
+    saved: null,
+  },
+)
+const unsubscribeCollection = collector?.subscribe((next) => {
+  collectionState.value = next
+})
+onUnmounted(() => {
+  unsubscribeCollection?.()
+  collector?.dispose()
+})
 const fixedSaved = ref<number | null>(null)
 const fixedError = ref('')
 const fixedPreview = ref<readonly VkMessage[]>([])
@@ -29,7 +51,6 @@ const fixedCursor = ref<number | undefined>()
 const fixedNextCursor = ref<number | undefined>()
 const fixedReading = ref(false)
 const hasVerifiedPeer = computed(() => !!status.value?.activePeerId && !status.value?.blockedReason)
-const captureProgress = computed(() => status.value?.progress)
 async function persistCaptureLimit() {
   if (!api) throw Error('VK unavailable')
   const options = validateVkCapturePreferences({ ...api.status().options, limit: fixedLimit.value })
@@ -49,8 +70,9 @@ async function captureDexie() {
   fixedError.value = ''
   try {
     await persistCaptureLimit()
-    const result = await api.captureFixed(fixedLimit.value)
-    fixedSaved.value = result.saved
+    if (!collector) throw Error('VK collector unavailable')
+    await collector.start()
+    fixedSaved.value = api.status().progress.newCount ?? null
     fixedPreview.value = []
     fixedCursor.value = undefined
     fixedNextCursor.value = undefined
@@ -124,6 +146,20 @@ function onTabKeydown(event: KeyboardEvent, active: View) {
 }
 const durableSettingsError = ref(vkPreferencesLoadError())
 
+watch(
+  vkRequestedView,
+  (requested) => {
+    if (!requested) return
+    if (requested === 'export') {
+      tab.value = 'reader'
+      void exportDexie()
+    } else if (requested === 'collect') {
+      tab.value = 'capture'
+      void captureDexie()
+    } else tab.value = requested
+  },
+  { immediate: true },
+)
 let unsubscribe: (() => void) | undefined
 let peerTimer: ReturnType<typeof setInterval> | undefined
 function refreshActiveConversation() {
@@ -213,21 +249,13 @@ onUnmounted(() => {
           <input v-model.number="fixedLimit" class="booster-input" type="number" min="1" max="3000" :disabled="fixedBusy" />
         </label>
         <div class="flex flex-wrap gap-2">
-          <Button :disabled="fixedBusy || !hasVerifiedPeer" @click="captureDexie">
-            <Download class="size-4" aria-hidden="true" />Сохранить в Dexie
-          </Button>
-          <Button variant="outline" :disabled="!fixedBusy" @click="api?.stop()">Остановить</Button>
+          <ConversationCollectionAction label="Собрать сообщения"
+            :busy="fixedBusy" :disabled="!hasVerifiedPeer"
+            :processed="collectionState.processed" :total="collectionState.total"
+            :saved="fixedSaved" @start="captureDexie" @stop="collector?.stop()" />
           <Button variant="outline" :disabled="fixedBusy || !hasVerifiedPeer" @click="exportDexie">Экспорт .jsonl.gz</Button>
         </div>
         <p v-if="fixedSaved !== null" role="status">Новых сообщений: {{ fixedSaved }}.</p>
-        <ArchiveProgressBar
-          v-if="captureProgress?.total"
-          label="Прогресс сохранения VK в Dexie"
-          :percent="Math.min(100, Math.round(100 * (captureProgress.done / captureProgress.total)))"
-          :counter="`${captureProgress.done} / ${captureProgress.total}`"
-          compact
-        />
-        <p v-if="captureProgress?.phase" role="status">{{ captureProgress.phase }}: {{ captureProgress.done }} / {{ captureProgress.total }}</p>
         <p v-if="fixedError" role="alert" class="text-sm text-destructive">{{ fixedError }}</p>
         <p v-if="durableSettingsError" role="alert" class="text-sm text-destructive">{{ durableSettingsError }}</p>
         <p class="text-xs text-muted-foreground">Экспорт содержит исходные записи; вложения не считаются скачанными файлами. Захват можно безопасно повторить после остановки.</p>

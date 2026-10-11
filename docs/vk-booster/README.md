@@ -46,3 +46,12 @@ sections and chunk sizes through shared typed ports; ordinary users do not
 see the full backup controls. Tab/session state and external attachments
 are excluded. The feature is not PROD-accepted.
 See [shared backup contract](../shared/BACKUP_AND_RESTORE.md).
+
+## Shared quick menu and collection UI (Extension 15)
+
+VK contributes its own archive/collection/export/settings actions to the
+shared edge launcher and preserves VK peer authorization, Dexie persistence,
+source paging and stop behavior inside VK. The generic conversation-collection
+controller and presentation are reused with ChatGPT; their providers do not
+share physical databases or source APIs. No full-database backup controls are
+added to the ordinary VK UI.

@@ -5,8 +5,6 @@ import { compileTemplate, parse } from 'vue/compiler-sfc'
 const panel = readFileSync(new URL('../src/features/archive/ui/ChatGptPanel.vue', import.meta.url), 'utf8')
 const reader = readFileSync(new URL('../packages/ui/src/ArchiveBrowser.vue', import.meta.url), 'utf8')
 const feature = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8')
-const actions = readFileSync(new URL('../src/features/archive/ui/ChatGptArchiveActions.vue', import.meta.url), 'utf8')
-const fixedView = readFileSync(new URL('../src/features/archive/ui/ChatGptFixedArchiveSection.vue', import.meta.url), 'utf8')
 
 test('ChatGPT panel composes fixed Dexie archive, capture, export and settings views', () => {
   const { descriptor, errors } = parse(panel, { filename: 'ChatGptPanel.vue' })
@@ -18,12 +16,11 @@ test('ChatGPT panel composes fixed Dexie archive, capture, export and settings v
   ]) {
     expect(descriptor.template?.content).toContain('<' + widget)
   }
-  expect(descriptor.template?.content).toContain('<ChatGptFixedArchiveSection')
-  expect(fixedView).toContain('Dexie — собственная структура v1')
-  expect(descriptor.template?.content).toContain('<ChatGptArchiveActions')
-  expect(actions).toContain('Собрать историю')
-  expect(actions).toContain('watch(() => props.tab')
-  expect(descriptor.template?.content).toContain('Остановить загрузку')
+  expect(descriptor.template?.content).not.toContain('<ChatGptFixedArchiveSection')
+  expect(descriptor.template?.content).not.toContain('Dexie — собственная структура v1')
+  expect(descriptor.template?.content).toContain('<ConversationCollectionAction')
+  expect(feature).toContain('quickActions: [')
+  expect(descriptor.template?.content).toContain('stopCollection')
   expect(panel).toContain('installBoosterShadowStyles(root)')
 })
 
@@ -86,9 +83,20 @@ test('new ChatGPT Dexie Reader/export lives inside the existing shared panel', (
     id: 'chatgpt-fixed-dexie',
   })
   expect(result.errors).toHaveLength(0)
-  expect(panel).toContain('context?.fixedArchive')
-  expect(panel).toContain('fixed.listCurrent()')
-  expect(panel).toContain('fixed.exportCurrent()')
-  expect(fixedView).toContain('contains_opaque')
+  expect(panel).toContain('context.value?.fixedArchive')
+  expect(panel).toContain('fixed.exportConversation(selected.id)')
+  expect(panel).not.toContain('<ChatGptFixedArchiveSection')
   expect(panel).not.toContain('<ArchiveWorkspace')
+})
+
+test('legacy-style quick menu commands open correct views without a second launcher', () => {
+  expect(feature).toContain("id: 'settings'")
+  expect(feature).toContain("id: 'archive'")
+  expect(feature).toContain("id: 'collect'")
+  expect(feature).toContain("id: 'export'")
+  expect(feature).toContain('installation: target.label')
+  expect(feature).toContain('version: BOOSTER_VERSION')
+  expect(panel).toContain("if (section === 'collect') void collect()")
+  expect(panel).toContain("if (section === 'export') void currentExport()")
+  expect(panel).not.toContain('<BoosterOverlay')
 })

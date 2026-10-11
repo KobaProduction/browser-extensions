@@ -15,6 +15,7 @@ export interface FixedChatGptView {
   listCurrent(limit?: number): Promise<readonly { id: string; text: string; coverage: string }[]>
   exportCurrent(): Promise<Blob>
   savedCurrent(): Promise<number>
+  savedCurrentSummary(): Promise<{ messages: number; internalElements: number; toolCalls: number; reasoning: number }>
   captureFailed(): boolean
   listSavedConversations(): Promise<readonly { conversationId: string; projectId: string | null; title: string | null }[]>
   listSavedProjects(): Promise<readonly { projectId: string; title: string | null }[]>
@@ -246,6 +247,17 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
   }
 
   captureFailed() { return Boolean(this.failure) }
+  async savedCurrentSummary() {
+    await this.pending
+    const owner = this.state.verifiedAccountId()
+    const epoch = this.state.accountEpoch()
+    const id = this.currentConversationId()
+    if (!owner || !id) throw Error('Verified ChatGPT conversation required for metrics')
+    const stats = await this.repo(owner).savedConversationStats(id)
+    if (this.state.accountEpoch() !== epoch || this.state.verifiedAccountId() !== owner ||
+        this.currentConversationId() !== id) throw Error('ChatGPT context changed while reading metrics')
+    return stats
+  }
   async savedCurrent(): Promise<number> {
     await this.pending
     const owner = this.state.verifiedAccountId()

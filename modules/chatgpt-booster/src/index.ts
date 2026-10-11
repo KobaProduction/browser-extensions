@@ -1,6 +1,6 @@
 import { SHELL_OPEN_FEATURE_EVENT, type Feature } from '@kobaproduction/browser-core'
 import { createBoosterPageRuntime, type BoosterTargetAdapter, type FixedChatGptView } from '@chatgpt-booster/features'
-import { OPEN_ARCHIVE_EVENT, OPEN_SETTINGS_EVENT, OPEN_CAPTURE_SETTINGS_EVENT } from '@chatgpt-booster/core'
+import { BOOSTER_VERSION, OPEN_ARCHIVE_EVENT, OPEN_SETTINGS_EVENT, OPEN_CAPTURE_SETTINGS_EVENT } from '@chatgpt-booster/core'
 import { shallowRef, ref } from 'vue'
 import type { ArchiveDataAdapter } from '@chatgpt-booster/ui'
 import type { SettingsAdapter, TransportDiagnosticsAdapter, PersistentDiagnosticsAdapter, SecretAdapter, TelemetryControlAdapter } from '@chatgpt-booster/core'
@@ -18,7 +18,7 @@ export interface ChatGptViewContext {
 
 /** Per-provider service composition; a shared shell owns the only launcher. */
 export const chatGptViewContext = shallowRef<ChatGptViewContext | null>(null)
-export const chatGptRequestedSection = ref<'archive' | 'settings' | 'capture' | null>(null)
+export const chatGptRequestedSection = ref<'archive' | 'settings' | 'capture' | 'collect' | 'export' | null>(null)
 
 export interface ChatGptObserverLifecycle {
   /** Install a reversible page-world transport observer only while enabled. */
@@ -44,7 +44,7 @@ export function createChatGptBoosterFeature(
     }
     return early
   }
-  const reveal = (section: 'archive' | 'settings' | 'capture') => {
+  const reveal = (section: 'archive' | 'settings' | 'capture' | 'collect' | 'export') => {
     chatGptRequestedSection.value = section
     window.dispatchEvent(new CustomEvent(SHELL_OPEN_FEATURE_EVENT, { detail: { id: 'chatgpt-booster' } }))
   }
@@ -57,7 +57,24 @@ export function createChatGptBoosterFeature(
   const feature: Feature = {
     id: 'chatgpt-booster',
     title: 'ChatGPT Booster',
-    presentation: { panel: 'wide' },
+    presentation: { panel: 'wide', version: BOOSTER_VERSION, installation: target.label },
+    launcher: { mode: 'quick-menu' },
+    async quickMetrics() {
+      if (!page.archiveAdapter.currentConversationId() || !page.archiveAdapter.currentAccountId?.()) return []
+      const stats = await page.fixedArchive.savedCurrentSummary()
+      return [
+        { label: 'Сохранено сообщений', value: stats.messages },
+        { label: 'Внутренних элементов', value: stats.internalElements },
+        { label: 'Вызовов инструментов', value: stats.toolCalls },
+        { label: 'Reasoning', value: stats.reasoning },
+      ]
+    },
+    quickActions: [
+      { id: 'settings', label: 'Настройки', icon: 'settings', run: () => reveal('settings') },
+      { id: 'archive', label: 'Открыть архив', icon: 'archive', run: () => reveal('archive') },
+      { id: 'collect', label: 'Собрать историю', icon: 'collect', enabled: () => Boolean(page.archiveAdapter.currentConversationId()), run: () => reveal('collect') },
+      { id: 'export', label: 'Экспорт сохранённого чата', icon: 'export', enabled: () => Boolean(page.archiveAdapter.currentConversationId()), run: () => reveal('export') },
+    ],
     description: 'Архив диалогов, исходные метаданные, экспорт, инструменты и аналитика',
     targets: ['userscript', 'chromium'],
     requiredCapabilities: ['page-dom', 'origin-storage', 'local-files'],

@@ -11,6 +11,8 @@ const props = defineProps<{
   selectedSection: string
 }>()
 const emit = defineEmits<{ close: []; select: [section: string] }>()
+const standalone = props.runtime.features.length === 1
+const singleFeature = standalone ? props.runtime.features[0] : undefined
 const section = ref(props.selectedSection)
 watch(
   () => props.selectedSection,
@@ -71,13 +73,16 @@ function openModule(id: string) {
 }
 </script>
 <template>
-  <section class="booster-control-center" lang="ru">
+  <section class="booster-control-center" :class="{ 'booster-control-standalone': standalone }" lang="ru">
     <header class="booster-control-header">
       <div class="booster-header-copy">
         <div class="flex items-center gap-2">
-          <strong>{{title}}</strong><Badge variant="outline">Browser Tools</Badge>
+          <strong>{{ title }}</strong>
+          <Badge v-if="standalone && singleFeature?.presentation?.installation" variant="outline">{{ singleFeature.presentation.installation }}</Badge>
+          <Badge v-if="standalone && singleFeature?.presentation?.version" variant="outline">{{ singleFeature.presentation.version }}</Badge>
+          <Badge v-if="!standalone" variant="outline">Browser Tools</Badge>
         </div>
-        <p>Модульные инструменты браузера</p>
+        <p>{{ standalone ? 'Центр управления' : 'Модульные инструменты браузера' }}</p>
       </div>
       <div class="booster-header-actions">
         <button type="button" class="booster-switch"
@@ -86,12 +91,12 @@ function openModule(id: string) {
           :aria-label="installationActive ? 'Полностью выключить установку' : 'Включить установку'"
           @click="toggleInstallation"><span/></button>
         <Badge variant="secondary">{{installationActive ? 'Установка включена' : 'Установка выключена'}}</Badge>
-        <Badge variant="secondary">{{activeFeatures.length}} активен</Badge>
+        <Badge v-if="!standalone" variant="secondary">{{activeFeatures.length}} активен</Badge>
         <Button variant="ghost" size="icon" class="size-8" title="Закрыть" @click="emit('close')"><X class="size-4"/></Button>
       </div>
     </header>
     <div class="booster-settings-layout">
-      <nav class="booster-settings-nav" aria-label="Разделы">
+      <nav v-if="!standalone" class="booster-settings-nav" aria-label="Разделы">
         <button type="button" :class="{active:section==='modules'}" @click="selectSection('modules')">
           <Wrench class="size-4"/>Модули
         </button>

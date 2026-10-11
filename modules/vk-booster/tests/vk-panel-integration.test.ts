@@ -38,7 +38,9 @@ test('VK uses the existing single shell and accessible archive/export/settings n
 
 test('capture and reader use only fixed Dexie and hide the historical folder writer', () => {
   expect(panel).toContain('v-show="tab === \'capture\'"')
-  expect(panel).toContain('api.captureFixed(')
+  expect(panel).toContain('<ConversationCollectionAction')
+  expect(panel).toContain('collector.start()')
+  expect(panel).toContain("requested === 'collect'")
   expect(panel).toContain('api.readFixed(80, cursor)')
   expect(panel).toContain('api.exportFixed()')
   expect(panel).not.toContain('<ArchiveManager')

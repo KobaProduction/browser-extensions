@@ -12,7 +12,9 @@ test('VK Dexie is sole UI archive source with a dedicated Reader and persisted s
     id: 'vk-fixed-dexie',
   })
   expect(result.errors).toHaveLength(0)
-  expect(text).toContain('api.captureFixed(')
+  const adapter = readFileSync(new URL('../model/chat-collection-port.ts', import.meta.url), 'utf8')
+  expect(adapter).toContain('api.captureFixed(')
+  expect(text).toContain('collector.start()')
   expect(text).toContain('api.readFixed(')
   expect(text).toContain('api.exportFixed(')
   expect(text).not.toContain('<ArchiveManager')

@@ -264,6 +264,26 @@ export class FixedCanonicalDexieRepository {
       : this.db.messages.where('[accountId+conversationId+messageId]').between(key, to, false, false)
     return (await range.limit(1).count()) > 0
   }
+  /** Exact counts of saved projections for the selected verified conversation.
+   * A cursor walks message rows; do not claim this proves full remote history. */
+  async savedConversationStats(conversationId: string): Promise<{
+    messages: number; internalElements: number; toolCalls: number; reasoning: number
+  }> {
+    const owner = this.scope.ownerId
+    if (!owner || !nonEmpty(conversationId)) throw Error('Verified conversation required')
+    const result = { messages: 0, internalElements: 0, toolCalls: 0, reasoning: 0 }
+    await this.db.messages.where('[accountId+conversationId]')
+      .equals([owner, conversationId]).each(row => {
+        result.messages++
+        for (const element of row.projection.elements) {
+          if (element.visibility === 'internal') result.internalElements++
+          if (element.kind === 'tool_call') result.toolCalls++
+          if (element.kind === 'reasoning') result.reasoning++
+        }
+      })
+    return result
+  }
+
   async countConversation(conversationId: string): Promise<number> {
     if (!nonEmpty(conversationId) || !this.scope.ownerId) throw Error('Invalid conversation ownership')
     return this.db.messages.where('[accountId+conversationId]')
