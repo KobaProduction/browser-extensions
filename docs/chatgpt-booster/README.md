@@ -1,5 +1,16 @@
 # ChatGPT Booster
 
+## Canonical internal recovery (2026-10-12)
+
+The fixed Dexie v1 ChatGPT repository can supply provider-validated rows to
+the merged shared single-stream TAR.GZ backup/recovery engine. Its five tables
+retain a verified account scope and original source snapshots; import must
+validate all relations and then commit that owner within one Dexie transaction.
+This is an **internal/operator** port, not a new everyday user-facing backup
+feature. External media bytes, historic native v3/v4 archives and automatic
+migration are excluded. Cross-storage crash atomicity, huge restores and
+installed-browser recovery remain separate acceptance gates.
+
 ## Clean Dexie v1 runtime and external-only legacy recovery (2026-10-11)
 
 **New decision supersedes older migration/export references below.** The

@@ -13,3 +13,5 @@ export { FixedChatGptCapture } from './archive-fixed-runtime'
 export type { FixedChatGptView } from './archive-fixed-runtime'
 
 export { createFixedArchiveUiAdapter } from './archive-fixed-ui-adapter'
+
+export { chatGptPortableBackupPorts, exportChatGptPortableArchive, inspectChatGptPortableArchive, restoreChatGptPortableArchive } from './archive-fixed-portable'

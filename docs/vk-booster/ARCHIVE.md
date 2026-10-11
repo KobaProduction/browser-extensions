@@ -76,8 +76,8 @@ VK now adapts its fixed owner-scoped Dexie v1 message/snapshot tables to a
 shared portable TAR writer and Reader. The TAR contains only plain JSONL
 chunks, schema, optional durable settings and a final integrity manifest;
 **one GZIP stream** compresses the whole TAR. No nested compression or raw
-physical IndexedDB file copies. The interface selects sections, chunk size,
-progress and local file output; the restore validates exact owner/channel,
+physical IndexedDB file copies. The internal operator API accepts section
+selection, chunk size, progress and a file sink; the restore validates exact owner/channel,
 physical table schema and hashes before the provider performs one IndexedDB
 transaction. External media and tab/session storage are excluded. This is
 not yet accepted as crash-safe installed-browser recovery. See the

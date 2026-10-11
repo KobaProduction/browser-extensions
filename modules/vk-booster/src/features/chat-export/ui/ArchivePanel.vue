@@ -1,9 +1,8 @@
 <script setup lang="ts">
 /** VK-only archive API adapter. Generic ArchiveManager owns presentation, never VK storage. */
 
-import type { BackupTarChoice, BackupTarInspection } from '@kobaproduction/browser-storage'
 import { Badge, Button } from '@kobaproduction/browser-ui'
-import { ArchiveProgressBar, PortableBackupPanel } from '@kobaproduction/browser-widgets'
+import { ArchiveProgressBar } from '@kobaproduction/browser-widgets'
 import { Archive, Download, Settings2, ShieldAlert } from 'lucide-vue-next'
 import { computed, onMounted, onUnmounted, ref, useId } from 'vue'
 import { vkPreferencesLoadError, vkPreferencesPersistence } from '../model/durable-preferences'
@@ -104,127 +103,6 @@ async function exportDexie() {
     fixedBusy.value = false
   }
 }
-const portableBusy = ref(false)
-const portableFile = ref<File | null>(null)
-const portableInspected = ref<BackupTarInspection | null>(null)
-const portableError = ref('')
-const portableMessage = ref('')
-const tarProgress = ref<import('@kobaproduction/browser-storage').BackupTarProgress | null>(null)
-const portablePreview = computed(() =>
-  portableInspected.value
-    ? {
-        settings: portableInspected.value.manifest.includes.settings,
-        indexeddb: portableInspected.value.manifest.includes.indexeddb,
-        rows: portableInspected.value.rows,
-        createdAt: portableInspected.value.manifest.createdAt,
-      }
-    : null,
-)
-async function downloadPortable(choice: BackupTarChoice) {
-  if (!api || portableBusy.value || !hasVerifiedPeer.value || fixedBusy.value) return
-  portableBusy.value = true
-  portableError.value = ''
-  portableMessage.value = ''
-  tarProgress.value = null
-  try {
-    const filename = choice.compression === 'gzip' ? 'vk-portable-v1.tar.gz' : 'vk-portable-v1.tar'
-    // Must ask for user file access synchronously from this button's gesture;
-    // authenticated VK API calls may otherwise consume transient activation.
-    const picker = (
-      window as Window & {
-        showSaveFilePicker?: (options: {
-          suggestedName: string
-          types: Array<{ description: string; accept: Record<string, string[]> }>
-        }) => Promise<FileSystemFileHandle>
-      }
-    ).showSaveFilePicker
-    const handle = picker
-      ? await picker({
-          suggestedName: filename,
-          types: [
-            {
-              description: 'Portable TAR backup',
-              accept:
-                choice.compression === 'gzip'
-                  ? { 'application/gzip': ['.gz'] }
-                  : { 'application/x-tar': ['.tar'] },
-            },
-          ],
-        })
-      : undefined
-    const sink = handle ? await handle.createWritable() : undefined
-    const blob = await api.backupPortable(choice, {
-      sink,
-      onProgress: (next) => {
-        tarProgress.value = next
-      },
-    })
-    if (blob) {
-      const url = URL.createObjectURL(blob)
-      try {
-        const link = document.createElement('a')
-        link.href = url
-        link.download = filename
-        link.click()
-      } finally {
-        window.setTimeout(() => URL.revokeObjectURL(url), 30_000)
-      }
-    }
-    portableMessage.value = 'Резервная копия сформирована. Проверь файл в загрузках или выбранной папке.'
-  } catch (error) {
-    portableError.value =
-      error instanceof Error && error.name === 'AbortError'
-        ? 'Выбор файла отменён; резервная копия не создавалась.'
-        : 'Не удалось создать TAR.GZ-архив. Исходные данные не изменены.'
-  } finally {
-    portableBusy.value = false
-  }
-}
-async function inspectPortableFile(file: File) {
-  if (!api || portableBusy.value || !hasVerifiedPeer.value) return
-  portableBusy.value = true
-  portableFile.value = null
-  portableInspected.value = null
-  portableError.value = ''
-  portableMessage.value = ''
-  tarProgress.value = null
-  try {
-    const inspected = await api.inspectPortable(file, (next) => {
-      tarProgress.value = next
-    })
-    portableFile.value = file
-    portableInspected.value = inspected
-  } catch {
-    portableError.value = 'Файл повреждён, несовместим или относится к другому владельцу/каналу.'
-  } finally {
-    portableBusy.value = false
-  }
-}
-async function restorePortableSelection(selected: Pick<BackupTarChoice, 'settings' | 'indexeddb'>) {
-  if (!api || !portableFile.value || portableBusy.value || !hasVerifiedPeer.value) return
-  portableBusy.value = true
-  portableError.value = ''
-  portableMessage.value = ''
-  tarProgress.value = null
-  try {
-    await api.restorePortable(portableFile.value, selected, (next) => {
-      tarProgress.value = next
-    })
-    status.value = api.status()
-    fixedLimit.value = Math.min(3000, Math.max(1, status.value.options.limit))
-    fixedPreview.value = []
-    fixedCursor.value = undefined
-    fixedNextCursor.value = undefined
-    portableMessage.value = 'Выбранные разделы восстановлены. Reader обновлён.'
-    portableFile.value = null
-    portableInspected.value = null
-  } catch {
-    portableError.value = 'Восстановление отклонено: проверь файл, владельца и доступное место.'
-  } finally {
-    portableBusy.value = false
-  }
-}
-
 const tabs: { id: View; label: string; icon: typeof Archive }[] = [
   { id: 'capture', label: 'Выгрузка', icon: Download },
   { id: 'reader', label: 'Архив', icon: Archive },
@@ -317,8 +195,6 @@ function refreshActiveConversation() {
     fixedCursor.value = undefined
     fixedNextCursor.value = undefined
     fixedError.value = ''
-    portableFile.value = null
-    portableInspected.value = null
   }
   if (
     !previous ||
@@ -396,11 +272,11 @@ onUnmounted(() => {
           <input v-model.number="fixedLimit" class="booster-input" type="number" min="1" max="3000" :disabled="fixedBusy" />
         </label>
         <div class="flex flex-wrap gap-2">
-          <Button :disabled="fixedBusy || portableBusy || !hasVerifiedPeer" @click="captureDexie">
+          <Button :disabled="fixedBusy || !hasVerifiedPeer" @click="captureDexie">
             <Download class="size-4" aria-hidden="true" />Сохранить в Dexie
           </Button>
           <Button variant="outline" :disabled="!fixedBusy" @click="api?.stop()">Остановить</Button>
-          <Button variant="outline" :disabled="fixedBusy || portableBusy || !hasVerifiedPeer" @click="exportDexie">Экспорт .jsonl.gz</Button>
+          <Button variant="outline" :disabled="fixedBusy || !hasVerifiedPeer" @click="exportDexie">Экспорт .jsonl.gz</Button>
         </div>
         <p v-if="fixedSaved !== null" role="status">Новых сообщений: {{ fixedSaved }}.</p>
         <ArchiveProgressBar
@@ -430,9 +306,9 @@ onUnmounted(() => {
           <span>Чтение только текущей подтверждённой VK-переписки. До 80 записей на страницу.</span>
         </div>
         <div class="flex flex-wrap gap-2">
-          <Button variant="outline" :disabled="fixedBusy || fixedReading || portableBusy || !hasVerifiedPeer" @click="readDexie()">Открыть Reader</Button>
-          <Button variant="outline" :disabled="fixedBusy || fixedReading || portableBusy || !fixedNextCursor" @click="readDexie(fixedNextCursor)">Следующие 80</Button>
-          <Button variant="outline" :disabled="fixedBusy || fixedReading || portableBusy || !fixedCursor" @click="readDexie()">К началу</Button>
+          <Button variant="outline" :disabled="fixedBusy || fixedReading || !hasVerifiedPeer" @click="readDexie()">Открыть Reader</Button>
+          <Button variant="outline" :disabled="fixedBusy || fixedReading || !fixedNextCursor" @click="readDexie(fixedNextCursor)">Следующие 80</Button>
+          <Button variant="outline" :disabled="fixedBusy || fixedReading || !fixedCursor" @click="readDexie()">К началу</Button>
         </div>
         <ol class="max-h-96 overflow-y-auto space-y-2" aria-label="Сохранённые сообщения">
           <li v-for="message in fixedPreview" :key="message.id" class="border-b border-border py-2">
@@ -496,17 +372,6 @@ onUnmounted(() => {
         <p v-if="preferencesError" role="alert" class="m-0 text-sm text-destructive">{{ preferencesError }}</p>
         <p v-if="preferencesMessage" role="status" class="m-0 text-sm">{{ preferencesMessage }}</p>
       </section>
-      <PortableBackupPanel
-        :available="{ settings: true, indexeddb: true }"
-        :pending="portableBusy || fixedBusy || !!status?.busy || !hasVerifiedPeer"
-        :inspected="portablePreview"
-        :error="portableError"
-        :success="portableMessage"
-        :progress="tarProgress"
-        @export="downloadPortable"
-        @inspect="inspectPortableFile"
-        @restore="restorePortableSelection"
-      />
     </div>
   </section>
 </template>

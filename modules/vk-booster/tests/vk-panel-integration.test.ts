@@ -58,7 +58,7 @@ test('peer-aware Dexie Reader retains only bounded local records and never expos
   expect(panel).not.toContain('ArchiveCanonicalMigrator')
 })
 
-test('settings and full portable IndexedDB backup coexist in the same Control Center', () => {
+test('ordinary settings omit internal full-database recovery controls', () => {
   expect(panel).toContain("tab === 'settings'")
   expect(panel).toContain('exportVkCaptureSettings(api)')
   expect(panel).toContain('restoreVkCaptureSettings(')
@@ -66,9 +66,8 @@ test('settings and full portable IndexedDB backup coexist in the same Control Ce
   expect(panel).toContain('await port.write(options)')
   expect(panel).toContain('preferencesConfirmed')
   expect(panel).toContain('status.folderPending || !!status.blockedReason')
-  expect(panel).toContain('<PortableBackupPanel')
-  expect(panel).toContain('api.backupPortable(')
-  expect(panel).toContain('api.inspectPortable(')
-  expect(panel).toContain('api.restorePortable(')
+  expect(panel).not.toContain('<PortableBackupPanel')
+  expect(panel).not.toContain('api.backupPortable(')
+  expect(panel).not.toContain('api.restorePortable(')
   expect(panel).not.toContain('restoreCanonicalBackup')
 })
