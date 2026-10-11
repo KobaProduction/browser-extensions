@@ -45,6 +45,17 @@ bun run check
 bun run build
 ```
 
+After a fresh Git checkout, enable the tracked pre-push hook **locally**:
+
+```bash
+git config --local core.hooksPath .githooks
+```
+
+The executable `.githooks/pre-push` requires the same strict checks,
+full builds and built-artifact validation before Git push. Confirm the
+configured hook path when moving to another checkout; server-side PR CI
+runs independently and does not depend on a local Git hook.
+
 The [release/channel contract](docs/DEV_PROD_CHANNELS.md) defines continuous DEV
 prereleases and explicitly approved PROD publication. Different products can
 advance independently. **VK Booster's current 2.3.10 base is frozen during development**;
