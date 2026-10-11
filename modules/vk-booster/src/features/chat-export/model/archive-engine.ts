@@ -7,12 +7,24 @@ import {
 } from '@kobaproduction/browser-archive'
 import type { DeliveryTarget } from '@kobaproduction/browser-core'
 import { instanceKey, instanceScope, SHELL_OPEN_FEATURE_EVENT } from '@kobaproduction/browser-core'
+import type {
+  BackupTarChoice,
+  BackupTarOptions,
+  BackupTarReporter,
+} from '@kobaproduction/browser-storage'
 import { assets, download as downloadVkAsset } from '../api/vk-media'
 import { createVkProvider } from '../api/vk-provider'
 import { FixedVkDexieRepository } from './archive-fixed-dexie'
 import { selectVkArchivePreview } from './archive-preview'
 import { archiveContextBlock, conversationPeerFromPath } from './conversation-context'
+import { vkPreferencesPersistence } from './durable-preferences'
 import { viewerHTML } from './offline-viewer'
+import {
+  exportVkPortableBackup,
+  inspectVkPortableBackup,
+  restoreVkPortableBackup,
+  vkPortableBackupPorts,
+} from './portable-backup'
 import type {
   ArchiveApi,
   ArchiveOptions,
@@ -48,6 +60,7 @@ export function installVkArchive(target: DeliveryTarget = 'userscript'): void {
     meta: VkArchiveMeta | null = null,
     rows: VkMessage[] = [],
     busy = false,
+    backupRunning = false,
     stopRequested = false,
     folderLoading = false,
     folderPickerOpen = false
@@ -576,7 +589,7 @@ export function installVkArchive(target: DeliveryTarget = 'userscript'): void {
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 3000)
       throw Error('Dexie capture limit must be 1–3000')
     const peerId = currentPeer()
-    if (!peerId || busy || folderLoading || folderPickerOpen)
+    if (!peerId || busy || backupRunning || folderLoading || folderPickerOpen)
       throw Error('Select one VK conversation before saving')
     cfg.peerId = peerId
     busy = true
@@ -632,9 +645,11 @@ export function installVkArchive(target: DeliveryTarget = 'userscript'): void {
   }
   async function withFixed<T>(
     operation: (repo: FixedVkDexieRepository, peerId: number) => Promise<T>,
+    allowBackup = false,
   ): Promise<T> {
     const peerId = currentPeer()
-    if (!peerId || busy || folderPickerOpen) throw Error('VK conversation is not available')
+    if (!peerId || busy || (!allowBackup && backupRunning) || folderPickerOpen)
+      throw Error('VK conversation is not available')
     cfg.peerId = peerId
     if (!(await auth())) throw Error('VK API authorization unavailable')
     const repo = await openFixedArchive(peerId)
@@ -702,6 +717,40 @@ export function installVkArchive(target: DeliveryTarget = 'userscript'): void {
     })
   }
 
+  async function withBackup<T>(
+    operation: (ports: ReturnType<typeof vkPortableBackupPorts>) => Promise<T>,
+  ): Promise<T> {
+    if (backupRunning || busy || folderPickerOpen || folderLoading)
+      throw Error('Another VK operation is in progress')
+    const storage = vkPreferencesPersistence()
+    if (!storage) throw Error('Persistent VK settings adapter is unavailable')
+    backupRunning = true
+    try {
+      return await withFixed(
+        async (repo) => operation(vkPortableBackupPorts(apiObject, repo, storage)),
+        true,
+      )
+    } finally {
+      backupRunning = false
+    }
+  }
+  async function backupPortable(
+    options: BackupTarChoice,
+    output?: BackupTarOptions,
+  ): Promise<Blob | null> {
+    return withBackup((ports) => exportVkPortableBackup(ports, options, output))
+  }
+  async function inspectPortable(backup: Blob, progress?: BackupTarReporter) {
+    return withBackup((ports) => inspectVkPortableBackup(ports, backup, progress))
+  }
+  async function restorePortable(
+    backup: Blob,
+    chosen: Pick<BackupTarChoice, 'settings' | 'indexeddb'>,
+    progress?: BackupTarReporter,
+  ) {
+    return withBackup((ports) => restoreVkPortableBackup(ports, backup, chosen, progress))
+  }
+
   function refresh() {
     const snapshot = status()
     for (const listener of subscribers)
@@ -736,6 +785,9 @@ export function installVkArchive(target: DeliveryTarget = 'userscript'): void {
     captureFixed,
     readFixed,
     exportFixed,
+    backupPortable,
+    inspectPortable,
+    restorePortable,
     // Public readers receive independent JSON-shaped snapshots; callers cannot mutate
     // the in-memory rows that the next v1 checkpoint will persist.
     getMessages: () => (archiveReadable() ? structuredClone(rows) : []),

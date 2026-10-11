@@ -1,4 +1,10 @@
 import { instanceKey } from '@kobaproduction/browser-core'
+import type {
+  BackupTarChoice,
+  BackupTarInspection,
+  BackupTarOptions,
+  BackupTarReporter,
+} from '@kobaproduction/browser-storage'
 import type { ArchiveManagerOptions } from '@kobaproduction/browser-widgets'
 
 export type ArchiveMode = 'recent' | 'incremental' | 'backfill'
@@ -142,6 +148,13 @@ export interface ArchiveApi {
   captureFixed(limit?: number): Promise<{ saved: number; alreadySaved: number; available: number }>
   readFixed(limit?: number, afterMessageId?: number): Promise<readonly VkMessage[]>
   exportFixed(): Promise<Blob>
+  backupPortable(options: BackupTarChoice, output?: BackupTarOptions): Promise<Blob | null>
+  inspectPortable(backup: Blob, progress?: BackupTarReporter): Promise<BackupTarInspection>
+  restorePortable(
+    backup: Blob,
+    selected: Pick<BackupTarChoice, 'settings' | 'indexeddb'>,
+    progress?: BackupTarReporter,
+  ): Promise<BackupTarInspection>
   getMessages(): VkMessage[]
   previewMessages(options: { limit: number; offset?: number; query?: string }): {
     messages: VkMessage[]
