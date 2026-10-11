@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Koba Browser Tools [DEV]
 // @namespace    https://github.com/KobaProduction/browser-extensions/dev/all-in-one
-// @version      0.5.39
+// @version      0.5.40
 // @description  Koba Browser Tools / Koba Browser Tools
 // @homepageURL   https://github.com/KobaProduction/browser-extensions
 // @updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/all-in-one.user.js
@@ -826,8 +826,8 @@
     }
     return Object.fromEntries(entries);
   }
-  const BOOSTER_BASE_VERSION = "2.0.12";
-  const injectedVersion = "2.0.12".trim();
+  const BOOSTER_BASE_VERSION = "2.0.13";
+  const injectedVersion = "2.0.13".trim();
   const BOOSTER_BUILD_VERSION = injectedVersion || BOOSTER_BASE_VERSION;
   const BOOSTER_VERSION = BOOSTER_BUILD_VERSION;
   // @__NO_SIDE_EFFECTS__
@@ -860,9 +860,9 @@
   const isFunction = (val) => typeof val === "function";
   const isString = (val) => typeof val === "string";
   const isSymbol = (val) => typeof val === "symbol";
-  const isObject = (val) => val !== null && typeof val === "object";
+  const isObject$1 = (val) => val !== null && typeof val === "object";
   const isPromise = (val) => {
-    return (isObject(val) || isFunction(val)) && isFunction(val.then) && isFunction(val.catch);
+    return (isObject$1(val) || isFunction(val)) && isFunction(val.then) && isFunction(val.catch);
   };
   const objectToString = Object.prototype.toString;
   const toTypeString = (value) => objectToString.call(value);
@@ -936,7 +936,7 @@
         }
       }
       return res;
-    } else if (isString(value) || isObject(value)) {
+    } else if (isString(value) || isObject$1(value)) {
       return value;
     }
   }
@@ -964,7 +964,7 @@
           res += normalized + " ";
         }
       }
-    } else if (isObject(value)) {
+    } else if (isObject$1(value)) {
       for (const name in value) {
         if (value[name]) {
           res += name + " ";
@@ -1060,8 +1060,8 @@
     if (aValidType || bValidType) {
       return aValidType && bValidType ? looseCompareNested(a, b, seen, looseCompareArrays) : false;
     }
-    aValidType = isObject(a);
-    bValidType = isObject(b);
+    aValidType = isObject$1(a);
+    bValidType = isObject$1(b);
     if (aValidType || bValidType) {
       if (!aValidType || !bValidType) {
         return false;
@@ -1077,7 +1077,7 @@
     return !!(val && val["__v_isRef"] === true);
   };
   const toDisplayString = (val) => {
-    return isString(val) ? val : val == null ? "" : isArray(val) || isObject(val) && (val.toString === objectToString || !isFunction(val.toString)) ? isRef$1(val) ? toDisplayString(val.value) : JSON.stringify(val, replacer, 2) : String(val);
+    return isString(val) ? val : val == null ? "" : isArray(val) || isObject$1(val) && (val.toString === objectToString || !isFunction(val.toString)) ? isRef$1(val) ? toDisplayString(val.value) : JSON.stringify(val, replacer, 2) : String(val);
   };
   const replacer = (_key, val) => {
     if (isRef$1(val)) {
@@ -1098,7 +1098,7 @@
       };
     } else if (isSymbol(val)) {
       return stringifySymbol(val);
-    } else if (isObject(val) && !isArray(val) && !isPlainObject(val)) {
+    } else if (isObject$1(val) && !isArray(val) && !isPlainObject(val)) {
       return String(val);
     }
     return val;
@@ -1980,9 +1980,9 @@
       }
       if (/* @__PURE__ */ isRef(res)) {
         const value = targetIsArray && isIntegerKey(key) ? res : res.value;
-        return isReadonly2 && isObject(value) ? /* @__PURE__ */ readonly(value) : value;
+        return isReadonly2 && isObject$1(value) ? /* @__PURE__ */ readonly(value) : value;
       }
-      if (isObject(res)) {
+      if (isObject$1(res)) {
         return isReadonly2 ? /* @__PURE__ */ readonly(res) : /* @__PURE__ */ reactive(res);
       }
       return res;
@@ -2326,7 +2326,7 @@
     );
   }
   function createReactiveObject(target, isReadonly2, baseHandlers, collectionHandlers, proxyMap) {
-    if (!isObject(target)) {
+    if (!isObject$1(target)) {
       return target;
     }
     if (target["__v_raw"] && !(isReadonly2 && target["__v_isReactive"])) {
@@ -2380,8 +2380,8 @@
     }
     return value;
   }
-  const toReactive = (value) => isObject(value) ? /* @__PURE__ */ reactive(value) : value;
-  const toReadonly = (value) => isObject(value) ? /* @__PURE__ */ readonly(value) : value;
+  const toReactive = (value) => isObject$1(value) ? /* @__PURE__ */ reactive(value) : value;
+  const toReadonly = (value) => isObject$1(value) ? /* @__PURE__ */ readonly(value) : value;
   // @__NO_SIDE_EFFECTS__
   function isRef(r2) {
     return r2 ? r2["__v_isRef"] === true : false;
@@ -2654,7 +2654,7 @@
     return watchHandle;
   }
   function traverse(value, depth = Infinity, seen) {
-    if (depth <= 0 || !isObject(value) || value["__v_skip"]) {
+    if (depth <= 0 || !isObject$1(value) || value["__v_skip"]) {
       return value;
     }
     seen = seen || /* @__PURE__ */ new Map();
@@ -3535,7 +3535,7 @@
           ret[i] = renderItem(i + 1, i, void 0, cached);
         }
       }
-    } else if (isObject(source)) {
+    } else if (isObject$1(source)) {
       if (source[Symbol.iterator]) {
         ret = Array.from(
           source,
@@ -3814,7 +3814,7 @@
     }
     if (dataOptions) {
       const data = dataOptions.call(publicThis, publicThis);
-      if (!isObject(data)) ;
+      if (!isObject$1(data)) ;
       else {
         instance.data = /* @__PURE__ */ reactive(data);
       }
@@ -3903,7 +3903,7 @@
     for (const key in injectOptions) {
       const opt = injectOptions[key];
       let injected;
-      if (isObject(opt)) {
+      if (isObject$1(opt)) {
         if ("default" in opt) {
           injected = inject(
             opt.from || key,
@@ -3948,7 +3948,7 @@
       {
         watch(getter, raw.bind(publicThis));
       }
-    } else if (isObject(raw)) {
+    } else if (isObject$1(raw)) {
       if (isArray(raw)) {
         raw.forEach((r2) => createWatcher(r2, ctx, publicThis, key));
       } else {
@@ -3984,7 +3984,7 @@
       }
       mergeOptions(resolved, base, optionMergeStrategies);
     }
-    if (isObject(base)) {
+    if (isObject$1(base)) {
       cache.set(base, resolved);
     }
     return resolved;
@@ -4122,7 +4122,7 @@
       if (!isFunction(rootComponent)) {
         rootComponent = extend({}, rootComponent);
       }
-      if (rootProps != null && !isObject(rootProps)) {
+      if (rootProps != null && !isObject$1(rootProps)) {
         rootProps = null;
       }
       const context = createAppContext();
@@ -4301,7 +4301,7 @@
       }
     }
     if (!raw && !hasExtends) {
-      if (isObject(comp)) {
+      if (isObject$1(comp)) {
         cache.set(comp, null);
       }
       return null;
@@ -4311,7 +4311,7 @@
     } else {
       extend(normalized, raw);
     }
-    if (isObject(comp)) {
+    if (isObject$1(comp)) {
       cache.set(comp, normalized);
     }
     return normalized;
@@ -4506,7 +4506,7 @@
   function hasPropValueChanged(nextProps, prevProps, key) {
     const nextProp = nextProps[key];
     const prevProp = prevProps[key];
-    if (key === "style" && isObject(nextProp) && isObject(prevProp)) {
+    if (key === "style" && isObject$1(nextProp) && isObject$1(prevProp)) {
       return !looseEqual(nextProp, prevProp);
     }
     return nextProp !== prevProp;
@@ -4754,7 +4754,7 @@
       }
     }
     if (!raw && !hasExtends) {
-      if (isObject(comp)) {
+      if (isObject$1(comp)) {
         cache.set(comp, EMPTY_ARR);
       }
       return EMPTY_ARR;
@@ -4804,7 +4804,7 @@
       }
     }
     const res = [normalized, needCastKeys];
-    if (isObject(comp)) {
+    if (isObject$1(comp)) {
       cache.set(comp, res);
     }
     return res;
@@ -6471,14 +6471,14 @@
       if (klass && !isString(klass)) {
         props.class = normalizeClass(klass);
       }
-      if (isObject(style)) {
+      if (isObject$1(style)) {
         if (/* @__PURE__ */ isProxy(style) && !isArray(style)) {
           style = extend({}, style);
         }
         props.style = normalizeStyle(style);
       }
     }
-    const shapeFlag = isString(type) ? 1 : isSuspense(type) ? 128 : isTeleport(type) ? 64 : isObject(type) ? 4 : isFunction(type) ? 2 : 0;
+    const shapeFlag = isString(type) ? 1 : isSuspense(type) ? 128 : isTeleport(type) ? 64 : isObject$1(type) ? 4 : isFunction(type) ? 2 : 0;
     return createBaseVNode(
       type,
       props,
@@ -6854,7 +6854,7 @@
       } else {
         instance.render = setupResult;
       }
-    } else if (isObject(setupResult)) {
+    } else if (isObject$1(setupResult)) {
       instance.setupState = proxyRefs(setupResult);
     } else ;
     finishComponentSetup(instance);
@@ -6951,7 +6951,7 @@
       setBlockTracking(-1);
       const l = arguments.length;
       if (l === 2) {
-        if (isObject(propsOrChildren) && !isArray(propsOrChildren)) {
+        if (isObject$1(propsOrChildren) && !isArray(propsOrChildren)) {
           if (isVNode(propsOrChildren)) {
             return createVNode(type, null, [propsOrChildren]);
           }
@@ -8180,8 +8180,8 @@
     ["path", { d: "M18 6 6 18", key: "1bl5f8" }],
     ["path", { d: "m6 6 12 12", key: "d8bk6v" }]
   ]);
-  const _hoisted_1$j = ["aria-label", "onKeydown"];
-  const _sfc_main$l = /* @__PURE__ */ defineComponent({
+  const _hoisted_1$k = ["aria-label", "onKeydown"];
+  const _sfc_main$n = /* @__PURE__ */ defineComponent({
     __name: "FloatingInfoPopover",
     props: {
       mode: { default: "hover" },
@@ -8328,7 +8328,7 @@
               ]
             }, [
               renderSlot(_ctx.$slots, "trigger")
-            ], 42, _hoisted_1$j),
+            ], 42, _hoisted_1$k),
             createBaseVNode(
               "div",
               {
@@ -8355,8 +8355,8 @@
       };
     }
   });
-  const _hoisted_1$i = ["innerHTML"];
-  const _sfc_main$k = /* @__PURE__ */ defineComponent({
+  const _hoisted_1$j = ["innerHTML"];
+  const _sfc_main$m = /* @__PURE__ */ defineComponent({
     __name: "JsonViewer",
     props: {
       value: {}
@@ -8389,12 +8389,12 @@
         return openBlock(), createElementBlock("pre", {
           class: "booster-json-viewer",
           innerHTML: html.value
-        }, null, 8, _hoisted_1$i);
+        }, null, 8, _hoisted_1$j);
       };
     }
   });
-  const _hoisted_1$h = ["innerHTML"];
-  const _sfc_main$j = /* @__PURE__ */ defineComponent({
+  const _hoisted_1$i = ["innerHTML"];
+  const _sfc_main$l = /* @__PURE__ */ defineComponent({
     __name: "MarkdownContent",
     props: {
       text: {}
@@ -8431,7 +8431,7 @@
         const separator = lines[start + 1]?.trim() ?? "";
         if (!/^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(separator)) return null;
         const cells = (line) => line.trim().replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim());
-        const header = cells(lines[start] ?? "");
+        const header2 = cells(lines[start] ?? "");
         const rows = [];
         let end = start + 2;
         while (end < lines.length && lines[end]?.includes("|") && lines[end]?.trim()) {
@@ -8440,7 +8440,7 @@
         }
         return {
           end,
-          html: `<div class="booster-markdown-table-wrap"><table><thead><tr>${header.map((cell) => `<th>${inline(cell)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${inline(cell)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`
+          html: `<div class="booster-markdown-table-wrap"><table><thead><tr>${header2.map((cell) => `<th>${inline(cell)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${inline(cell)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`
         };
       }
       function renderMarkdown(source) {
@@ -8532,12 +8532,12 @@
         return openBlock(), createElementBlock("div", {
           class: "booster-markdown",
           innerHTML: html.value
-        }, null, 8, _hoisted_1$h);
+        }, null, 8, _hoisted_1$i);
       };
     }
   });
-  const _hoisted_1$g = ["aria-label"];
-  const _sfc_main$i = /* @__PURE__ */ defineComponent({
+  const _hoisted_1$h = ["aria-label"];
+  const _sfc_main$k = /* @__PURE__ */ defineComponent({
     __name: "ModalSurface",
     props: {
       label: {},
@@ -8598,7 +8598,7 @@
             onKeydown: key
           }, [
             renderSlot(_ctx.$slots, "default")
-          ], 42, _hoisted_1$g)
+          ], 42, _hoisted_1$h)
         ]);
       };
     }
@@ -9495,17 +9495,17 @@
   function translate(locale, key) {
     return messages[locale][key] ?? messages.en[key];
   }
-  const _hoisted_1$f = { class: "booster-meta-lines" };
-  const _hoisted_2$f = { class: "booster-meta-label" };
-  const _hoisted_3$e = { class: "booster-meta-value" };
-  const _hoisted_4$e = { class: "booster-meta-label" };
-  const _hoisted_5$c = { class: "booster-meta-value" };
-  const _hoisted_6$c = { class: "booster-meta-lines" };
-  const _hoisted_7$c = { class: "booster-meta-label" };
-  const _hoisted_8$b = { class: "booster-meta-value" };
-  const _hoisted_9$b = { class: "booster-meta-label" };
-  const _hoisted_10$b = { class: "booster-meta-value" };
-  const _sfc_main$h = /* @__PURE__ */ defineComponent({
+  const _hoisted_1$g = { class: "booster-meta-lines" };
+  const _hoisted_2$g = { class: "booster-meta-label" };
+  const _hoisted_3$f = { class: "booster-meta-value" };
+  const _hoisted_4$f = { class: "booster-meta-label" };
+  const _hoisted_5$d = { class: "booster-meta-value" };
+  const _hoisted_6$d = { class: "booster-meta-lines" };
+  const _hoisted_7$d = { class: "booster-meta-label" };
+  const _hoisted_8$c = { class: "booster-meta-value" };
+  const _hoisted_9$c = { class: "booster-meta-label" };
+  const _hoisted_10$c = { class: "booster-meta-value" };
+  const _sfc_main$j = /* @__PURE__ */ defineComponent({
     __name: "RecordMetaBadges",
     props: {
       metadata: {},
@@ -9545,22 +9545,22 @@
             class: normalizeClass(["booster-meta-badges", { compact: __props.compact }])
           },
           [
-            createVNode(_sfc_main$l, { label: timeLabel.value }, {
+            createVNode(_sfc_main$n, { label: timeLabel.value }, {
               trigger: withCtx(() => [
                 createVNode(unref(Clock3), { class: "size-3.5" })
               ]),
               default: withCtx(() => [
-                createBaseVNode("div", _hoisted_1$f, [
+                createBaseVNode("div", _hoisted_1$g, [
                   createBaseVNode(
                     "strong",
-                    _hoisted_2$f,
+                    _hoisted_2$g,
                     toDisplayString(t("reader.sentAt")),
                     1
                     /* TEXT */
                   ),
                   createBaseVNode(
                     "span",
-                    _hoisted_3$e,
+                    _hoisted_3$f,
                     toDisplayString(sent.value || t("reader.timeUnknown")),
                     1
                     /* TEXT */
@@ -9571,14 +9571,14 @@
                     [
                       createBaseVNode(
                         "strong",
-                        _hoisted_4$e,
+                        _hoisted_4$f,
                         toDisplayString(t("reader.editedAt")),
                         1
                         /* TEXT */
                       ),
                       createBaseVNode(
                         "span",
-                        _hoisted_5$c,
+                        _hoisted_5$d,
                         toDisplayString(edited.value),
                         1
                         /* TEXT */
@@ -9592,7 +9592,7 @@
               _: 1
               /* STABLE */
             }, 8, ["label"]),
-            __props.showModel && modelLabel.value ? (openBlock(), createBlock(_sfc_main$l, {
+            __props.showModel && modelLabel.value ? (openBlock(), createBlock(_sfc_main$n, {
               key: 0,
               label: modelLabel.value
             }, {
@@ -9600,21 +9600,21 @@
                 createVNode(unref(BrainCircuit), { class: "size-3.5" })
               ]),
               default: withCtx(() => [
-                createBaseVNode("div", _hoisted_6$c, [
+                createBaseVNode("div", _hoisted_6$d, [
                   __props.metadata.model ? (openBlock(), createElementBlock(
                     Fragment,
                     { key: 0 },
                     [
                       createBaseVNode(
                         "strong",
-                        _hoisted_7$c,
+                        _hoisted_7$d,
                         toDisplayString(t("reader.model")),
                         1
                         /* TEXT */
                       ),
                       createBaseVNode(
                         "span",
-                        _hoisted_8$b,
+                        _hoisted_8$c,
                         toDisplayString(__props.metadata.model),
                         1
                         /* TEXT */
@@ -9629,14 +9629,14 @@
                     [
                       createBaseVNode(
                         "strong",
-                        _hoisted_9$b,
+                        _hoisted_9$c,
                         toDisplayString(t("reader.thinking")),
                         1
                         /* TEXT */
                       ),
                       createBaseVNode(
                         "span",
-                        _hoisted_10$b,
+                        _hoisted_10$c,
                         toDisplayString(__props.metadata.thinking),
                         1
                         /* TEXT */
@@ -9675,48 +9675,48 @@
       return null;
     }
   }
-  const _hoisted_1$e = { class: "booster-record-header" };
-  const _hoisted_2$e = {
+  const _hoisted_1$f = { class: "booster-record-header" };
+  const _hoisted_2$f = {
     key: 0,
     class: "booster-record-edited"
   };
-  const _hoisted_3$d = { class: "booster-record-header-tools" };
-  const _hoisted_4$d = ["title", "aria-label"];
-  const _hoisted_5$b = { class: "booster-record-header booster-record-internal-header" };
-  const _hoisted_6$b = { class: "booster-record-kind" };
-  const _hoisted_7$b = { class: "booster-meta-lines" };
-  const _hoisted_8$a = { class: "booster-meta-label" };
-  const _hoisted_9$a = { class: "booster-meta-value" };
-  const _hoisted_10$a = { class: "booster-meta-label" };
-  const _hoisted_11$a = { class: "booster-meta-value" };
-  const _hoisted_12$9 = { class: "booster-record-header-tools" };
-  const _hoisted_13$9 = ["title", "aria-label"];
-  const _hoisted_14$9 = ["src"];
-  const _hoisted_15$9 = {
+  const _hoisted_3$e = { class: "booster-record-header-tools" };
+  const _hoisted_4$e = ["title", "aria-label"];
+  const _hoisted_5$c = { class: "booster-record-header booster-record-internal-header" };
+  const _hoisted_6$c = { class: "booster-record-kind" };
+  const _hoisted_7$c = { class: "booster-meta-lines" };
+  const _hoisted_8$b = { class: "booster-meta-label" };
+  const _hoisted_9$b = { class: "booster-meta-value" };
+  const _hoisted_10$b = { class: "booster-meta-label" };
+  const _hoisted_11$b = { class: "booster-meta-value" };
+  const _hoisted_12$a = { class: "booster-record-header-tools" };
+  const _hoisted_13$a = ["title", "aria-label"];
+  const _hoisted_14$a = ["src"];
+  const _hoisted_15$a = {
     key: 1,
     class: "booster-tool-icon booster-tool-icon-fallback"
   };
-  const _hoisted_16$8 = { class: "booster-tool-copy" };
-  const _hoisted_17$7 = ["title"];
-  const _hoisted_18$7 = { key: 0 };
-  const _hoisted_19$6 = ["href", "title"];
-  const _hoisted_20$6 = ["title"];
-  const _hoisted_21$6 = ["title"];
-  const _hoisted_22$6 = {
+  const _hoisted_16$9 = { class: "booster-tool-copy" };
+  const _hoisted_17$8 = ["title"];
+  const _hoisted_18$8 = { key: 0 };
+  const _hoisted_19$7 = ["href", "title"];
+  const _hoisted_20$7 = ["title"];
+  const _hoisted_21$7 = ["title"];
+  const _hoisted_22$7 = {
     key: 0,
     class: "booster-tool-expanded"
   };
-  const _hoisted_23$6 = ["disabled"];
-  const _hoisted_24$6 = { class: "booster-internal-preview" };
-  const _hoisted_25$5 = {
+  const _hoisted_23$7 = ["disabled"];
+  const _hoisted_24$7 = { class: "booster-internal-preview" };
+  const _hoisted_25$6 = {
     key: 0,
     class: "booster-tool-expanded"
   };
-  const _hoisted_26$5 = ["title", "aria-label"];
-  const _hoisted_27$5 = { class: "booster-json-modal" };
-  const _hoisted_28$5 = { class: "booster-record-modal-header" };
+  const _hoisted_26$6 = ["title", "aria-label"];
+  const _hoisted_27$6 = { class: "booster-json-modal" };
+  const _hoisted_28$6 = { class: "booster-record-modal-header" };
   const _hoisted_29$5 = ["aria-label"];
-  const _sfc_main$g = /* @__PURE__ */ defineComponent({
+  const _sfc_main$i = /* @__PURE__ */ defineComponent({
     __name: "ArchiveRecord",
     props: {
       item: {},
@@ -9785,7 +9785,7 @@
               Fragment,
               { key: 0 },
               [
-                createBaseVNode("header", _hoisted_1$e, [
+                createBaseVNode("header", _hoisted_1$f, [
                   createBaseVNode(
                     "strong",
                     null,
@@ -9795,13 +9795,13 @@
                   ),
                   __props.item.metadata.edited ? (openBlock(), createElementBlock(
                     "span",
-                    _hoisted_2$e,
+                    _hoisted_2$f,
                     toDisplayString(t("reader.editedShort")),
                     1
                     /* TEXT */
                   )) : createCommentVNode("v-if", true),
-                  createBaseVNode("span", _hoisted_3$d, [
-                    createVNode(_sfc_main$h, {
+                  createBaseVNode("span", _hoisted_3$e, [
+                    createVNode(_sfc_main$j, {
                       metadata: __props.item.metadata,
                       locale: __props.locale,
                       "show-model": __props.item.kind === "answer"
@@ -9814,10 +9814,10 @@
                       onClick: _cache[0] || (_cache[0] = ($event) => rawOpen.value = true)
                     }, [
                       createVNode(unref(FileJson2), { class: "size-3.5" })
-                    ], 8, _hoisted_4$d)
+                    ], 8, _hoisted_4$e)
                   ])
                 ]),
-                createVNode(_sfc_main$j, {
+                createVNode(_sfc_main$l, {
                   text: __props.item.text || t("reader.noText")
                 }, null, 8, ["text"])
               ],
@@ -9827,9 +9827,9 @@
               Fragment,
               { key: 1 },
               [
-                createBaseVNode("header", _hoisted_5$b, [
-                  createBaseVNode("span", _hoisted_6$b, [
-                    reasoningInfo.value ? (openBlock(), createBlock(_sfc_main$l, {
+                createBaseVNode("header", _hoisted_5$c, [
+                  createBaseVNode("span", _hoisted_6$c, [
+                    reasoningInfo.value ? (openBlock(), createBlock(_sfc_main$n, {
                       key: 0,
                       label: reasoningInfo.value,
                       align: "start"
@@ -9838,21 +9838,21 @@
                         createVNode(unref(Brain), { class: "size-4" })
                       ]),
                       default: withCtx(() => [
-                        createBaseVNode("div", _hoisted_7$b, [
+                        createBaseVNode("div", _hoisted_7$c, [
                           __props.item.metadata.model ? (openBlock(), createElementBlock(
                             Fragment,
                             { key: 0 },
                             [
                               createBaseVNode(
                                 "strong",
-                                _hoisted_8$a,
+                                _hoisted_8$b,
                                 toDisplayString(t("reader.model")),
                                 1
                                 /* TEXT */
                               ),
                               createBaseVNode(
                                 "span",
-                                _hoisted_9$a,
+                                _hoisted_9$b,
                                 toDisplayString(__props.item.metadata.model),
                                 1
                                 /* TEXT */
@@ -9867,14 +9867,14 @@
                             [
                               createBaseVNode(
                                 "strong",
-                                _hoisted_10$a,
+                                _hoisted_10$b,
                                 toDisplayString(t("reader.thinking")),
                                 1
                                 /* TEXT */
                               ),
                               createBaseVNode(
                                 "span",
-                                _hoisted_11$a,
+                                _hoisted_11$b,
                                 toDisplayString(__props.item.metadata.thinking),
                                 1
                                 /* TEXT */
@@ -9899,7 +9899,7 @@
                       /* TEXT */
                     )
                   ]),
-                  createBaseVNode("span", _hoisted_12$9, [
+                  createBaseVNode("span", _hoisted_12$a, [
                     createBaseVNode("button", {
                       class: "booster-record-icon-button",
                       type: "button",
@@ -9908,7 +9908,7 @@
                       onClick: _cache[1] || (_cache[1] = ($event) => rawOpen.value = true)
                     }, [
                       createVNode(unref(FileJson2), { class: "size-3.5" })
-                    ], 8, _hoisted_13$9),
+                    ], 8, _hoisted_13$a),
                     hasText.value ? (openBlock(), createElementBlock("button", {
                       key: 0,
                       class: "booster-record-expand",
@@ -9937,7 +9937,7 @@
                     class: normalizeClass(["booster-reasoning-preview", { expanded: isReasoningExpanded.value }])
                   },
                   [
-                    createVNode(_sfc_main$j, { text: displayText.value }, null, 8, ["text"])
+                    createVNode(_sfc_main$l, { text: displayText.value }, null, 8, ["text"])
                   ],
                   2
                   /* CLASS */
@@ -9963,11 +9963,11 @@
                       alt: "",
                       loading: "lazy",
                       referrerpolicy: "no-referrer"
-                    }, null, 8, _hoisted_14$9)) : (openBlock(), createElementBlock("span", _hoisted_15$9, [
+                    }, null, 8, _hoisted_14$a)) : (openBlock(), createElementBlock("span", _hoisted_15$a, [
                       (openBlock(), createBlock(resolveDynamicComponent(toolGlyph.value), { class: "size-4" }))
                     ])),
-                    createBaseVNode("div", _hoisted_16$8, [
-                      createBaseVNode("strong", { title: toolName.value }, toDisplayString(toolName.value), 9, _hoisted_17$7),
+                    createBaseVNode("div", _hoisted_16$9, [
+                      createBaseVNode("strong", { title: toolName.value }, toDisplayString(toolName.value), 9, _hoisted_17$8),
                       createBaseVNode("span", null, [
                         createTextVNode(
                           toDisplayString(t("reader." + __props.item.kind)) + " ",
@@ -9990,7 +9990,7 @@
                       ]),
                       preview.value && !expanded.value ? (openBlock(), createElementBlock(
                         "p",
-                        _hoisted_18$7,
+                        _hoisted_18$8,
                         toDisplayString(preview.value),
                         1
                         /* TEXT */
@@ -10001,7 +10001,7 @@
                       onClick: _cache[5] || (_cache[5] = withModifiers(() => {
                       }, ["stop"]))
                     }, [
-                      createVNode(_sfc_main$h, {
+                      createVNode(_sfc_main$j, {
                         metadata: __props.item.metadata,
                         locale: __props.locale
                       }, null, 8, ["metadata", "locale"]),
@@ -10014,7 +10014,7 @@
                         title: t("reader.openTool") + ": " + toolLink.value
                       }, [
                         createVNode(unref(ExternalLink), { class: "size-3.5" })
-                      ], 8, _hoisted_19$6)) : createCommentVNode("v-if", true),
+                      ], 8, _hoisted_19$7)) : createCommentVNode("v-if", true),
                       hasToolDetails.value ? (openBlock(), createElementBlock("button", {
                         key: 1,
                         type: "button",
@@ -10023,7 +10023,7 @@
                         onClick: _cache[3] || (_cache[3] = ($event) => expanded.value = !expanded.value)
                       }, [
                         createVNode(unref(CodeXml), { class: "size-3.5" })
-                      ], 8, _hoisted_20$6)) : createCommentVNode("v-if", true),
+                      ], 8, _hoisted_20$7)) : createCommentVNode("v-if", true),
                       createBaseVNode("button", {
                         type: "button",
                         class: "booster-tool-action",
@@ -10031,17 +10031,17 @@
                         onClick: _cache[4] || (_cache[4] = ($event) => rawOpen.value = true)
                       }, [
                         createVNode(unref(FileJson2), { class: "size-3.5" })
-                      ], 8, _hoisted_21$6)
+                      ], 8, _hoisted_21$7)
                     ])
                   ],
                   2
                   /* CLASS */
                 ),
-                expanded.value && hasToolDetails.value ? (openBlock(), createElementBlock("div", _hoisted_22$6, [
-                  hasText.value ? (openBlock(), createBlock(_sfc_main$j, {
+                expanded.value && hasToolDetails.value ? (openBlock(), createElementBlock("div", _hoisted_22$7, [
+                  hasText.value ? (openBlock(), createBlock(_sfc_main$l, {
                     key: 0,
                     text: displayText.value
-                  }, null, 8, ["text"])) : (openBlock(), createBlock(_sfc_main$k, {
+                  }, null, 8, ["text"])) : (openBlock(), createBlock(_sfc_main$m, {
                     key: 1,
                     value: toolDetails.value
                   }, null, 8, ["value"]))
@@ -10071,7 +10071,7 @@
                   ]),
                   createBaseVNode(
                     "span",
-                    _hoisted_24$6,
+                    _hoisted_24$7,
                     toDisplayString(expanded.value ? "" : preview.value || __props.item.record.contentType || __props.item.record.messageType || t("reader.metadataOnly")),
                     1
                     /* TEXT */
@@ -10083,9 +10083,9 @@
                     key: 1,
                     class: "size-3.5"
                   })) : createCommentVNode("v-if", true)
-                ], 10, _hoisted_23$6),
-                expanded.value && hasText.value ? (openBlock(), createElementBlock("div", _hoisted_25$5, [
-                  createVNode(_sfc_main$j, { text: displayText.value }, null, 8, ["text"])
+                ], 10, _hoisted_23$7),
+                expanded.value && hasText.value ? (openBlock(), createElementBlock("div", _hoisted_25$6, [
+                  createVNode(_sfc_main$l, { text: displayText.value }, null, 8, ["text"])
                 ])) : createCommentVNode("v-if", true),
                 createBaseVNode("button", {
                   class: "booster-record-icon-button booster-record-raw-corner",
@@ -10095,20 +10095,20 @@
                   onClick: _cache[8] || (_cache[8] = ($event) => rawOpen.value = true)
                 }, [
                   createVNode(unref(FileJson2), { class: "size-3.5" })
-                ], 8, _hoisted_26$5)
+                ], 8, _hoisted_26$6)
               ],
               64
               /* STABLE_FRAGMENT */
             )),
-            rawOpen.value ? (openBlock(), createBlock(_sfc_main$i, {
+            rawOpen.value ? (openBlock(), createBlock(_sfc_main$k, {
               key: 4,
               label: t("reader.raw"),
               wide: "",
               onClose: _cache[10] || (_cache[10] = ($event) => rawOpen.value = false)
             }, {
               default: withCtx(() => [
-                createBaseVNode("div", _hoisted_27$5, [
-                  createBaseVNode("header", _hoisted_28$5, [
+                createBaseVNode("div", _hoisted_27$6, [
+                  createBaseVNode("header", _hoisted_28$6, [
                     createBaseVNode("div", null, [
                       createBaseVNode(
                         "strong",
@@ -10134,7 +10134,7 @@
                       createVNode(unref(X), { class: "size-4" })
                     ], 8, _hoisted_29$5)
                   ]),
-                  createVNode(_sfc_main$k, {
+                  createVNode(_sfc_main$m, {
                     value: __props.item.record.raw
                   }, null, 8, ["value"])
                 ])
@@ -10149,50 +10149,50 @@
       };
     }
   });
-  const _hoisted_1$d = ["aria-label", "onKeydown"];
-  const _hoisted_2$d = { class: "booster-maintenance-heading" };
-  const _hoisted_3$c = { class: "booster-maintenance-title" };
-  const _hoisted_4$c = ["disabled", "aria-label"];
-  const _hoisted_5$a = { class: "booster-maintenance-content" };
-  const _hoisted_6$a = {
+  const _hoisted_1$e = ["aria-label", "onKeydown"];
+  const _hoisted_2$e = { class: "booster-maintenance-heading" };
+  const _hoisted_3$d = { class: "booster-maintenance-title" };
+  const _hoisted_4$d = ["disabled", "aria-label"];
+  const _hoisted_5$b = { class: "booster-maintenance-content" };
+  const _hoisted_6$b = {
     key: 0,
     class: "booster-maintenance-loading",
     role: "status"
   };
-  const _hoisted_7$a = { class: "booster-maintenance-stats" };
-  const _hoisted_8$9 = {
+  const _hoisted_7$b = { class: "booster-maintenance-stats" };
+  const _hoisted_8$a = {
     key: 0,
     class: "booster-maintenance-section"
   };
-  const _hoisted_9$9 = { class: "booster-maintenance-section-title" };
-  const _hoisted_10$9 = {
+  const _hoisted_9$a = { class: "booster-maintenance-section-title" };
+  const _hoisted_10$a = {
     key: 0,
     class: "booster-maintenance-warning"
   };
-  const _hoisted_11$9 = ["disabled"];
-  const _hoisted_12$8 = {
+  const _hoisted_11$a = ["disabled"];
+  const _hoisted_12$9 = {
     key: 1,
     class: "booster-maintenance-section"
   };
-  const _hoisted_13$8 = { class: "booster-maintenance-section-title" };
-  const _hoisted_14$8 = { class: "booster-maintenance-actions" };
-  const _hoisted_15$8 = ["disabled"];
-  const _hoisted_16$7 = ["disabled"];
-  const _hoisted_17$6 = ["disabled"];
-  const _hoisted_18$6 = ["disabled"];
-  const _hoisted_19$5 = ["disabled"];
-  const _hoisted_20$5 = {
+  const _hoisted_13$9 = { class: "booster-maintenance-section-title" };
+  const _hoisted_14$9 = { class: "booster-maintenance-actions" };
+  const _hoisted_15$9 = ["disabled"];
+  const _hoisted_16$8 = ["disabled"];
+  const _hoisted_17$7 = ["disabled"];
+  const _hoisted_18$7 = ["disabled"];
+  const _hoisted_19$6 = ["disabled"];
+  const _hoisted_20$6 = {
     key: 2,
     class: "booster-maintenance-section"
   };
-  const _hoisted_21$5 = { class: "booster-maintenance-section-title" };
-  const _hoisted_22$5 = { class: "booster-maintenance-actions" };
-  const _hoisted_23$5 = ["disabled"];
-  const _hoisted_24$5 = ["disabled"];
-  const _hoisted_25$4 = { class: "booster-note" };
-  const _hoisted_26$4 = { class: "booster-maintenance-section" };
-  const _hoisted_27$4 = { class: "booster-maintenance-backup-tools" };
-  const _hoisted_28$4 = ["disabled"];
+  const _hoisted_21$6 = { class: "booster-maintenance-section-title" };
+  const _hoisted_22$6 = { class: "booster-maintenance-actions" };
+  const _hoisted_23$6 = ["disabled"];
+  const _hoisted_24$6 = ["disabled"];
+  const _hoisted_25$5 = { class: "booster-note" };
+  const _hoisted_26$5 = { class: "booster-maintenance-section" };
+  const _hoisted_27$5 = { class: "booster-maintenance-backup-tools" };
+  const _hoisted_28$5 = ["disabled"];
   const _hoisted_29$4 = { class: "booster-maintenance-backup-restore" };
   const _hoisted_30$4 = ["disabled"];
   const _hoisted_31$4 = { class: "booster-maintenance-check" };
@@ -10283,7 +10283,7 @@
   const _hoisted_67$1 = { class: "booster-maintenance-footer" };
   const _hoisted_68$1 = ["disabled"];
   const _hoisted_69$1 = ["disabled"];
-  const _sfc_main$f = /* @__PURE__ */ defineComponent({
+  const _sfc_main$h = /* @__PURE__ */ defineComponent({
     __name: "ArchiveMaintenanceWidget",
     props: {
       archiveAdapter: {},
@@ -10541,8 +10541,8 @@
             "aria-label": label("Управление архивом", "Archive management"),
             onKeydown: withKeys(withModifiers(close, ["stop", "prevent"]), ["esc"])
           }, [
-            createBaseVNode("header", _hoisted_2$d, [
-              createBaseVNode("div", _hoisted_3$c, [
+            createBaseVNode("header", _hoisted_2$e, [
+              createBaseVNode("div", _hoisted_3$d, [
                 createVNode(unref(Database), { class: "size-5" }),
                 createBaseVNode("div", null, [
                   createBaseVNode(
@@ -10571,10 +10571,10 @@
                 onClick: close
               }, [
                 createVNode(unref(X), { class: "size-4" })
-              ], 8, _hoisted_4$c)
+              ], 8, _hoisted_4$d)
             ]),
-            createBaseVNode("div", _hoisted_5$a, [
-              loading.value ? (openBlock(), createElementBlock("div", _hoisted_6$a, [
+            createBaseVNode("div", _hoisted_5$b, [
+              loading.value ? (openBlock(), createElementBlock("div", _hoisted_6$b, [
                 createVNode(unref(LoaderCircle), { class: "size-4 booster-reader-spinner" }),
                 createTextVNode(
                   " " + toDisplayString(label("Проверка локальных записей…", "Inspecting local archive…")),
@@ -10585,7 +10585,7 @@
                 Fragment,
                 { key: 1 },
                 [
-                  createBaseVNode("div", _hoisted_7$a, [
+                  createBaseVNode("div", _hoisted_7$b, [
                     createBaseVNode("div", null, [
                       createBaseVNode(
                         "span",
@@ -10635,8 +10635,8 @@
                       )
                     ])
                   ]),
-                  isMigrationNeeded.value ? (openBlock(), createElementBlock("section", _hoisted_8$9, [
-                    createBaseVNode("div", _hoisted_9$9, [
+                  isMigrationNeeded.value ? (openBlock(), createElementBlock("section", _hoisted_8$a, [
+                    createBaseVNode("div", _hoisted_9$a, [
                       createVNode(unref(ArrowLeftRight), { class: "size-4" }),
                       createBaseVNode(
                         "h3",
@@ -10658,7 +10658,7 @@
                     ),
                     unverified.value ? (openBlock(), createElementBlock(
                       "p",
-                      _hoisted_10$9,
+                      _hoisted_10$a,
                       toDisplayString(label(
                         `Требуется подтверждение владельца: ${inventory.value.unboundConversations} без идентификатора, ${inventory.value.conflictingConversations} с отличающимся ID.`,
                         `Owner confirmation required: ${inventory.value.unboundConversations} unknown, ${inventory.value.conflictingConversations} mismatched.`
@@ -10671,10 +10671,10 @@
                       class: "booster-action-primary",
                       disabled: busy.value,
                       onClick: migrate
-                    }, toDisplayString(label("Перенести подтверждённые записи", "Migrate verified records")), 9, _hoisted_11$9)
+                    }, toDisplayString(label("Перенести подтверждённые записи", "Migrate verified records")), 9, _hoisted_11$a)
                   ])) : createCommentVNode("v-if", true),
-                  inventory.value.activeGeneration ? (openBlock(), createElementBlock("section", _hoisted_12$8, [
-                    createBaseVNode("div", _hoisted_13$8, [
+                  inventory.value.activeGeneration ? (openBlock(), createElementBlock("section", _hoisted_12$9, [
+                    createBaseVNode("div", _hoisted_13$9, [
                       createVNode(unref(RefreshCw), { class: "size-4" }),
                       createBaseVNode(
                         "h3",
@@ -10694,7 +10694,7 @@
                       1
                       /* TEXT */
                     ),
-                    createBaseVNode("div", _hoisted_14$8, [
+                    createBaseVNode("div", _hoisted_14$9, [
                       createBaseVNode("button", {
                         type: "button",
                         class: "booster-action-primary",
@@ -10713,36 +10713,36 @@
                           1
                           /* TEXT */
                         )
-                      ], 8, _hoisted_15$8),
+                      ], 8, _hoisted_15$9),
                       createBaseVNode("button", {
                         type: "button",
                         class: "booster-action-secondary",
                         disabled: busy.value,
                         onClick: _cache[1] || (_cache[1] = ($event) => reconcile(168))
-                      }, toDisplayString(label("За 7 дней", "Last 7 days")), 9, _hoisted_16$7)
+                      }, toDisplayString(label("За 7 дней", "Last 7 days")), 9, _hoisted_16$8)
                     ]),
                     createBaseVNode("button", {
                       type: "button",
                       class: "booster-action-secondary",
                       disabled: busy.value || !__props.archiveAdapter.reconcileArchiveAll,
                       onClick: _cache[2] || (_cache[2] = ($event) => reconcileAll(false))
-                    }, toDisplayString(label("Сверить всю историю", "Reconcile all history")), 9, _hoisted_17$6),
+                    }, toDisplayString(label("Сверить всю историю", "Reconcile all history")), 9, _hoisted_17$7),
                     createBaseVNode("button", {
                       type: "button",
                       class: "booster-action-secondary",
                       disabled: busy.value || !__props.archiveAdapter.inspectSkippedOwnershipAll,
                       onClick: inspectAllSkipped
-                    }, toDisplayString(label("Показать все пропущенные диалоги", "Inspect all skipped chats")), 9, _hoisted_18$6),
+                    }, toDisplayString(label("Показать все пропущенные диалоги", "Inspect all skipped chats")), 9, _hoisted_18$7),
                     ownerInspection.value?.skippedMessages ? (openBlock(), createElementBlock("button", {
                       key: 0,
                       type: "button",
                       class: "booster-maintenance-link",
                       disabled: busy.value,
                       onClick: _cache[3] || (_cache[3] = ($event) => inspectSkipped(168))
-                    }, toDisplayString(label("Проверить также за 7 дней", "Inspect last 7 days too")), 9, _hoisted_19$5)) : createCommentVNode("v-if", true)
+                    }, toDisplayString(label("Проверить также за 7 дней", "Inspect last 7 days too")), 9, _hoisted_19$6)) : createCommentVNode("v-if", true)
                   ])) : createCommentVNode("v-if", true),
-                  inventory.value.activeGeneration ? (openBlock(), createElementBlock("section", _hoisted_20$5, [
-                    createBaseVNode("div", _hoisted_21$5, [
+                  inventory.value.activeGeneration ? (openBlock(), createElementBlock("section", _hoisted_20$6, [
+                    createBaseVNode("div", _hoisted_21$6, [
                       createVNode(unref(ClipboardCheck), { class: "size-4" }),
                       createBaseVNode(
                         "h3",
@@ -10762,23 +10762,23 @@
                       1
                       /* TEXT */
                     ),
-                    createBaseVNode("div", _hoisted_22$5, [
+                    createBaseVNode("div", _hoisted_22$6, [
                       createBaseVNode("button", {
                         type: "button",
                         class: "booster-action-secondary",
                         disabled: busy.value,
                         onClick: verifyCounts
-                      }, toDisplayString(label("Сверить количество", "Compare counts")), 9, _hoisted_23$5),
+                      }, toDisplayString(label("Сверить количество", "Compare counts")), 9, _hoisted_23$6),
                       createBaseVNode("button", {
                         type: "button",
                         class: "booster-action-secondary",
                         disabled: busy.value || !__props.archiveAdapter.auditArchiveIntegrity,
                         onClick: verifyIntegrity
-                      }, toDisplayString(label("Глубокая SHA-256 сверка", "Deep SHA-256 audit")), 9, _hoisted_24$5)
+                      }, toDisplayString(label("Глубокая SHA-256 сверка", "Deep SHA-256 audit")), 9, _hoisted_24$6)
                     ]),
                     createBaseVNode(
                       "p",
-                      _hoisted_25$4,
+                      _hoisted_25$5,
                       toDisplayString(label(
                         "Глубокая проверка читает исходные сообщения и проверяет их сохранённые копии. Для больших архивов может потребоваться длительная обработка, без изменения записей.",
                         "Deep audit verifies saved source contents and fingerprints. Large archives can take time; records are never modified."
@@ -10787,8 +10787,8 @@
                       /* TEXT */
                     )
                   ])) : createCommentVNode("v-if", true),
-                  createBaseVNode("section", _hoisted_26$4, [
-                    createBaseVNode("details", _hoisted_27$4, [
+                  createBaseVNode("section", _hoisted_26$5, [
+                    createBaseVNode("details", _hoisted_27$5, [
                       createBaseVNode(
                         "summary",
                         null,
@@ -10811,7 +10811,7 @@
                         class: "booster-action-secondary",
                         disabled: busy.value || !inventory.value.activeGeneration || !__props.archiveAdapter.exportCanonicalBackup,
                         onClick: saveBackup
-                      }, toDisplayString(label("Сохранить копию .ndjson.gz", "Save .ndjson.gz backup")), 9, _hoisted_28$4),
+                      }, toDisplayString(label("Сохранить копию .ndjson.gz", "Save .ndjson.gz backup")), 9, _hoisted_28$5),
                       createBaseVNode("div", _hoisted_29$4, [
                         createBaseVNode("label", null, [
                           createTextVNode(
@@ -11275,7 +11275,7 @@
                 onClick: close
               }, toDisplayString(label("Закрыть", "Close")), 9, _hoisted_69$1)
             ])
-          ], 40, _hoisted_1$d)
+          ], 40, _hoisted_1$e)
         ]);
       };
     }
@@ -13526,32 +13526,32 @@
     const result = source.replace(/\[image_asset_pointer\]\s*(?:sediment:\/\/\S+)?/gi, ` ${imageLabel} · `).replace(/\[(?:file|attachment)_asset_pointer\]\s*(?:sediment:\/\/\S+)?/gi, ` ${fileLabel} · `).replace(/\bsediment:\/\/\S+/gi, "").replace(/cite[^]*/g, "").replace(/!\[([^\]]*)\]\([^\n)]*\)/g, (_, name) => name || imageLabel).replace(/\[([^\]]+)\]\((?:https?:\/\/|mailto:)[^\s)]*(?:\s+"[^"]*")?\)/g, "$1").replace(/^(?:\s{0,3}#{1,6}\s+|\s{0,3}>\s*)/gm, "").replace(/\*\*([^*\n]+)\*\*/g, "$1").replace(new RegExp("(?<!\\w)[*_]([^*_\\n]+)[*_](?!\\w)", "g"), "$1").replace(/`([^`\n]+)`/g, "$1").replace(/[\r\n\t ]+/g, " ").trim();
     return result.slice(0, 180);
   }
-  const _hoisted_1$c = ["aria-label"];
-  const _hoisted_2$c = { class: "booster-history-header" };
-  const _hoisted_3$b = { class: "booster-history-heading" };
-  const _hoisted_4$b = ["aria-label"];
-  const _hoisted_5$9 = { class: "booster-history-state" };
-  const _hoisted_6$9 = { class: "booster-history-range" };
-  const _hoisted_7$9 = { class: "booster-history-explainer" };
-  const _hoisted_8$8 = {
+  const _hoisted_1$d = ["aria-label"];
+  const _hoisted_2$d = { class: "booster-history-header" };
+  const _hoisted_3$c = { class: "booster-history-heading" };
+  const _hoisted_4$c = ["aria-label"];
+  const _hoisted_5$a = { class: "booster-history-state" };
+  const _hoisted_6$a = { class: "booster-history-range" };
+  const _hoisted_7$a = { class: "booster-history-explainer" };
+  const _hoisted_8$9 = {
     key: 0,
     class: "booster-history-evidence"
   };
-  const _hoisted_9$8 = { key: 0 };
-  const _hoisted_10$8 = {
+  const _hoisted_9$9 = { key: 0 };
+  const _hoisted_10$9 = {
     key: 1,
     class: "booster-history-list"
   };
-  const _hoisted_11$8 = ["aria-current", "data-archive-history-key", "onClick"];
-  const _hoisted_12$7 = { class: "booster-history-list-rail" };
-  const _hoisted_13$7 = { class: "booster-history-list-copy" };
-  const _hoisted_14$7 = { class: "booster-history-list-meta" };
-  const _hoisted_15$7 = { class: "booster-history-list-preview" };
-  const _hoisted_16$6 = { class: "booster-history-footer" };
-  const _hoisted_17$5 = ["disabled", "aria-label"];
-  const _hoisted_18$5 = ["disabled", "aria-label"];
+  const _hoisted_11$9 = ["aria-current", "data-archive-history-key", "onClick"];
+  const _hoisted_12$8 = { class: "booster-history-list-rail" };
+  const _hoisted_13$8 = { class: "booster-history-list-copy" };
+  const _hoisted_14$8 = { class: "booster-history-list-meta" };
+  const _hoisted_15$8 = { class: "booster-history-list-preview" };
+  const _hoisted_16$7 = { class: "booster-history-footer" };
+  const _hoisted_17$6 = ["disabled", "aria-label"];
+  const _hoisted_18$6 = ["disabled", "aria-label"];
   const PAGE_SIZE = 140;
-  const _sfc_main$e = /* @__PURE__ */ defineComponent({
+  const _sfc_main$g = /* @__PURE__ */ defineComponent({
     __name: "ArchiveFlowGraph",
     props: {
       thread: {},
@@ -13808,11 +13808,11 @@
           "aria-label": __props.locale === "ru" ? "Навигатор сохранённой истории" : "Saved history navigator",
           onKeydown: _cache[3] || (_cache[3] = withKeys(withModifiers(($event) => emit2("close"), ["stop"]), ["esc"]))
         }, [
-          createBaseVNode("header", _hoisted_2$c, [
+          createBaseVNode("header", _hoisted_2$d, [
             createBaseVNode("div", null, [
               createBaseVNode(
                 "div",
-                _hoisted_3$b,
+                _hoisted_3$c,
                 toDisplayString(__props.locale === "ru" ? "История сообщений" : "Message history"),
                 1
                 /* TEXT */
@@ -13830,9 +13830,9 @@
               class: "booster-history-close",
               "aria-label": __props.locale === "ru" ? "Закрыть историю" : "Close history",
               onClick: _cache[0] || (_cache[0] = ($event) => emit2("close"))
-            }, "×", 8, _hoisted_4$b)
+            }, "×", 8, _hoisted_4$c)
           ]),
-          createBaseVNode("div", _hoisted_5$9, [
+          createBaseVNode("div", _hoisted_5$a, [
             createBaseVNode(
               "span",
               {
@@ -13851,7 +13851,7 @@
             ),
             createBaseVNode(
               "span",
-              _hoisted_6$9,
+              _hoisted_6$a,
               toDisplayString(pageStart.value + 1) + "–" + toDisplayString(pageEnd.value) + " / " + toDisplayString(ordered.value.length),
               1
               /* TEXT */
@@ -13859,12 +13859,12 @@
           ]),
           createBaseVNode(
             "p",
-            _hoisted_7$9,
+            _hoisted_7$a,
             toDisplayString(sparseHistory.value ? __props.locale === "ru" ? "Для этого диалога недостаточно подтверждённых связей. Показан порядок сохранённых сообщений, без вымышленных веток." : "Not enough verified ancestry. Showing saved messages in order, without invented branches." : __props.locale === "ru" ? "Нажмите на сообщение, чтобы перейти к нему. Линии показывают только сохранённые связи." : "Select a message to read it. Lines show recorded parent links only."),
             1
             /* TEXT */
           ),
-          data.value.missingParents || data.value.cyclicParents ? (openBlock(), createElementBlock("div", _hoisted_8$8, [
+          data.value.missingParents || data.value.cyclicParents ? (openBlock(), createElementBlock("div", _hoisted_8$9, [
             createTextVNode(
               toDisplayString(__props.locale === "ru" ? "Неизвестных родителей" : "Unknown parents") + ": " + toDisplayString(data.value.missingParents) + " ",
               1
@@ -13872,13 +13872,13 @@
             ),
             data.value.cyclicParents ? (openBlock(), createElementBlock(
               "span",
-              _hoisted_9$8,
+              _hoisted_9$9,
               " · " + toDisplayString(__props.locale === "ru" ? "Циклы" : "Cycles") + ": " + toDisplayString(data.value.cyclicParents),
               1
               /* TEXT */
             )) : createCommentVNode("v-if", true)
           ])) : createCommentVNode("v-if", true),
-          sparseHistory.value ? (openBlock(), createElementBlock("div", _hoisted_10$8, [
+          sparseHistory.value ? (openBlock(), createElementBlock("div", _hoisted_10$9, [
             (openBlock(true), createElementBlock(
               Fragment,
               null,
@@ -13891,7 +13891,7 @@
                   "data-archive-history-key": item.hash,
                   onClick: ($event) => emit2("navigate", messageKey(item.hash))
                 }, [
-                  createBaseVNode("span", _hoisted_12$7, [
+                  createBaseVNode("span", _hoisted_12$8, [
                     createBaseVNode(
                       "span",
                       {
@@ -13902,23 +13902,23 @@
                       /* CLASS */
                     )
                   ]),
-                  createBaseVNode("span", _hoisted_13$7, [
+                  createBaseVNode("span", _hoisted_13$8, [
                     createBaseVNode(
                       "span",
-                      _hoisted_14$7,
+                      _hoisted_14$8,
                       toDisplayString(messageLabel(item.hash)) + " · " + toDisplayString(pageStart.value + index + 1),
                       1
                       /* TEXT */
                     ),
                     createBaseVNode(
                       "span",
-                      _hoisted_15$7,
+                      _hoisted_15$8,
                       toDisplayString(messageText(item.hash) || "…"),
                       1
                       /* TEXT */
                     )
                   ])
-                ], 8, _hoisted_11$8);
+                ], 8, _hoisted_11$9);
               }),
               128
               /* KEYED_FRAGMENT */
@@ -13940,21 +13940,21 @@
           ), [
             [vShow, !sparseHistory.value]
           ]),
-          createBaseVNode("footer", _hoisted_16$6, [
+          createBaseVNode("footer", _hoisted_16$7, [
             createBaseVNode("button", {
               type: "button",
               disabled: pageStart.value === 0,
               "aria-label": __props.locale === "ru" ? "Ранее в графе" : "Earlier graph nodes",
               onClick: _cache[1] || (_cache[1] = ($event) => displayPage(pageStart.value - PAGE_SIZE))
-            }, "← " + toDisplayString(__props.locale === "ru" ? "Ранее" : "Earlier"), 9, _hoisted_17$5),
+            }, "← " + toDisplayString(__props.locale === "ru" ? "Ранее" : "Earlier"), 9, _hoisted_17$6),
             createBaseVNode("button", {
               type: "button",
               disabled: pageEnd.value >= ordered.value.length,
               "aria-label": __props.locale === "ru" ? "Позже в графе" : "Later graph nodes",
               onClick: _cache[2] || (_cache[2] = ($event) => displayPage(pageStart.value + PAGE_SIZE))
-            }, toDisplayString(__props.locale === "ru" ? "Позже" : "Later") + " →", 9, _hoisted_18$5)
+            }, toDisplayString(__props.locale === "ru" ? "Позже" : "Later") + " →", 9, _hoisted_18$6)
           ])
-        ], 40, _hoisted_1$c);
+        ], 40, _hoisted_1$d);
       };
     }
   });
@@ -14026,15 +14026,15 @@
     const latest = turns.slice(Math.max(0, turns.length - Math.max(1, visibleCount)));
     return order === "newest-first" ? latest.reverse() : latest;
   }
-  const _hoisted_1$b = { class: "booster-identity" };
-  const _hoisted_2$b = ["title"];
-  const _hoisted_3$a = ["aria-label", "title"];
-  const _hoisted_4$a = {
+  const _hoisted_1$c = { class: "booster-identity" };
+  const _hoisted_2$c = ["title"];
+  const _hoisted_3$b = ["aria-label", "title"];
+  const _hoisted_4$b = {
     key: 1,
     class: "booster-sr-only",
     role: "status"
   };
-  const _sfc_main$d = /* @__PURE__ */ defineComponent({
+  const _sfc_main$f = /* @__PURE__ */ defineComponent({
     __name: "CopyIdentity",
     props: {
       label: {},
@@ -14075,11 +14075,11 @@
       }
       onBeforeUnmount(() => clearTimeout(timer));
       return (_ctx, _cache) => {
-        return openBlock(), createElementBlock("span", _hoisted_1$b, [
+        return openBlock(), createElementBlock("span", _hoisted_1$c, [
           createBaseVNode("span", {
             class: "booster-identity-label",
             title: __props.label
-          }, toDisplayString(__props.label), 9, _hoisted_2$b),
+          }, toDisplayString(__props.label), 9, _hoisted_2$c),
           __props.identifier ? (openBlock(), createElementBlock("button", {
             key: 0,
             type: "button",
@@ -14095,10 +14095,10 @@
               key: 1,
               class: "size-3"
             }))
-          ], 8, _hoisted_3$a)) : createCommentVNode("v-if", true),
+          ], 8, _hoisted_3$b)) : createCommentVNode("v-if", true),
           state.value !== "copy" ? (openBlock(), createElementBlock(
             "span",
-            _hoisted_4$a,
+            _hoisted_4$b,
             toDisplayString(unref(translate)(__props.locale, `identity.${state.value}`)),
             1
             /* TEXT */
@@ -14129,65 +14129,65 @@
       }))
     }));
   }
-  const _hoisted_1$a = ["lang"];
-  const _hoisted_2$a = ["data-archive-drag-handle"];
-  const _hoisted_3$9 = { class: "booster-reader-heading" };
-  const _hoisted_4$9 = { class: "booster-header-actions" };
-  const _hoisted_5$8 = ["aria-label", "title", "aria-expanded"];
-  const _hoisted_6$8 = {
+  const _hoisted_1$b = ["lang"];
+  const _hoisted_2$b = ["data-archive-drag-handle"];
+  const _hoisted_3$a = { class: "booster-reader-heading" };
+  const _hoisted_4$a = { class: "booster-header-actions" };
+  const _hoisted_5$9 = ["aria-label", "title", "aria-expanded"];
+  const _hoisted_6$9 = {
     key: 0,
     class: "booster-reader-tools-menu",
     role: "menu"
   };
-  const _hoisted_7$8 = ["disabled", "title", "aria-label"];
-  const _hoisted_8$7 = ["title", "aria-label"];
-  const _hoisted_9$7 = ["aria-label"];
-  const _hoisted_10$7 = {
+  const _hoisted_7$9 = ["disabled", "title", "aria-label"];
+  const _hoisted_8$8 = ["title", "aria-label"];
+  const _hoisted_9$8 = ["aria-label"];
+  const _hoisted_10$8 = {
     key: 0,
     role: "alert",
     class: "booster-error"
   };
-  const _hoisted_11$7 = {
+  const _hoisted_11$8 = {
     key: 1,
     role: "status",
     class: "booster-note"
   };
-  const _hoisted_12$6 = { class: "booster-reader-layout" };
-  const _hoisted_13$6 = { class: "booster-reader-sidebar" };
-  const _hoisted_14$6 = ["aria-label", "placeholder"];
-  const _hoisted_15$6 = {
+  const _hoisted_12$7 = { class: "booster-reader-layout" };
+  const _hoisted_13$7 = { class: "booster-reader-sidebar" };
+  const _hoisted_14$7 = ["aria-label", "placeholder"];
+  const _hoisted_15$7 = {
     key: 0,
     role: "status",
     class: "booster-note"
   };
-  const _hoisted_16$5 = {
+  const _hoisted_16$6 = {
     key: 1,
     class: "booster-note"
   };
-  const _hoisted_17$4 = {
+  const _hoisted_17$5 = {
     key: 2,
     class: "booster-note"
   };
-  const _hoisted_18$4 = { class: "booster-reader-group-header" };
-  const _hoisted_19$4 = ["aria-expanded", "onClick"];
-  const _hoisted_20$4 = {
+  const _hoisted_18$5 = { class: "booster-reader-group-header" };
+  const _hoisted_19$5 = ["aria-expanded", "onClick"];
+  const _hoisted_20$5 = {
     key: 0,
     class: "booster-reader-chat-list"
   };
-  const _hoisted_21$4 = ["title", "onClick"];
-  const _hoisted_22$4 = { class: "booster-reader-main" };
-  const _hoisted_23$4 = { class: "booster-reader-pinned" };
-  const _hoisted_24$4 = { class: "booster-reader-chat-header" };
-  const _hoisted_25$3 = {
+  const _hoisted_21$5 = ["title", "onClick"];
+  const _hoisted_22$5 = { class: "booster-reader-main" };
+  const _hoisted_23$5 = { class: "booster-reader-pinned" };
+  const _hoisted_24$5 = { class: "booster-reader-chat-header" };
+  const _hoisted_25$4 = {
     key: 0,
     class: "booster-reader-project-label"
   };
-  const _hoisted_26$3 = {
+  const _hoisted_26$4 = {
     key: 0,
     class: "booster-note"
   };
-  const _hoisted_27$3 = { class: "booster-reader-chat-actions" };
-  const _hoisted_28$3 = ["disabled", "aria-expanded", "aria-label"];
+  const _hoisted_27$4 = { class: "booster-reader-chat-actions" };
+  const _hoisted_28$4 = ["disabled", "aria-expanded", "aria-label"];
   const _hoisted_29$3 = ["aria-expanded"];
   const _hoisted_30$3 = ["disabled"];
   const _hoisted_31$3 = ["disabled"];
@@ -14286,7 +14286,7 @@
     class: "booster-note"
   };
   const NONE = "__outside_projects__";
-  const _sfc_main$c = /* @__PURE__ */ defineComponent({
+  const _sfc_main$e = /* @__PURE__ */ defineComponent({
     __name: "ArchiveBrowser",
     props: {
       archiveAdapter: {},
@@ -15008,7 +15008,7 @@
             class: "booster-section-header",
             "data-archive-drag-handle": __props.windowed ? "" : void 0
           }, [
-            createBaseVNode("div", _hoisted_3$9, [
+            createBaseVNode("div", _hoisted_3$a, [
               __props.windowed ? (openBlock(), createBlock(unref(GripHorizontal), {
                 key: 0,
                 class: "booster-archive-grip size-4"
@@ -15031,7 +15031,7 @@
                 )
               ])
             ]),
-            createBaseVNode("div", _hoisted_4$9, [
+            createBaseVNode("div", _hoisted_4$a, [
               __props.canReturnToExport ? (openBlock(), createElementBlock("button", {
                 key: 0,
                 type: "button",
@@ -15063,8 +15063,8 @@
                     onClick: _cache[1] || (_cache[1] = ($event) => toolsMenuOpen.value = !toolsMenuOpen.value)
                   }, [
                     createVNode(unref(Ellipsis), { class: "size-5" })
-                  ], 8, _hoisted_5$8),
-                  toolsMenuOpen.value ? (openBlock(), createElementBlock("div", _hoisted_6$8, [
+                  ], 8, _hoisted_5$9),
+                  toolsMenuOpen.value ? (openBlock(), createElementBlock("div", _hoisted_6$9, [
                     __props.archiveAdapter.startArchiveMigration || __props.archiveAdapter.exportNativeSourceBackup ? (openBlock(), createElementBlock("button", {
                       key: 0,
                       type: "button",
@@ -15136,7 +15136,7 @@
                 onClick: retryLocation
               }, [
                 createVNode(unref(RefreshCw), { class: "size-4" })
-              ], 8, _hoisted_7$8),
+              ], 8, _hoisted_7$9),
               __props.windowed ? (openBlock(), createElementBlock("button", {
                 key: 1,
                 type: "button",
@@ -15146,7 +15146,7 @@
                 onClick: _cache[6] || (_cache[6] = ($event) => emit2("minimize"))
               }, [
                 createVNode(unref(Minus), { class: "size-4" })
-              ], 8, _hoisted_8$7)) : createCommentVNode("v-if", true),
+              ], 8, _hoisted_8$8)) : createCommentVNode("v-if", true),
               createBaseVNode("button", {
                 type: "button",
                 class: "booster-icon-button",
@@ -15154,48 +15154,48 @@
                 onClick: _cache[7] || (_cache[7] = ($event) => emit2("close"))
               }, [
                 createVNode(unref(X), { class: "size-4" })
-              ], 8, _hoisted_9$7)
+              ], 8, _hoisted_9$8)
             ])
-          ], 8, _hoisted_2$a),
+          ], 8, _hoisted_2$b),
           archiveToolError.value ? (openBlock(), createElementBlock(
             "p",
-            _hoisted_10$7,
+            _hoisted_10$8,
             toDisplayString(archiveToolError.value),
             1
             /* TEXT */
           )) : createCommentVNode("v-if", true),
           accountPending.value ? (openBlock(), createElementBlock(
             "p",
-            _hoisted_11$7,
+            _hoisted_11$8,
             toDisplayString(__props.locale === "ru" ? "Ожидание подтверждения аккаунта ChatGPT…" : "Waiting for ChatGPT account verification…"),
             1
             /* TEXT */
           )) : createCommentVNode("v-if", true),
-          createBaseVNode("div", _hoisted_12$6, [
-            createBaseVNode("aside", _hoisted_13$6, [
+          createBaseVNode("div", _hoisted_12$7, [
+            createBaseVNode("aside", _hoisted_13$7, [
               withDirectives(createBaseVNode("input", {
                 "onUpdate:modelValue": _cache[8] || (_cache[8] = ($event) => search.value = $event),
                 type: "search",
                 "aria-label": t("reader.search"),
                 placeholder: t("reader.search")
-              }, null, 8, _hoisted_14$6), [
+              }, null, 8, _hoisted_14$7), [
                 [vModelText, search.value]
               ]),
               listLoading.value && !conversations.value.length ? (openBlock(), createElementBlock(
                 "p",
-                _hoisted_15$6,
+                _hoisted_15$7,
                 toDisplayString(t("reader.loading")),
                 1
                 /* TEXT */
               )) : !conversations.value.length ? (openBlock(), createElementBlock(
                 "p",
-                _hoisted_16$5,
+                _hoisted_16$6,
                 toDisplayString(emptyArchiveMessage.value),
                 1
                 /* TEXT */
               )) : !groups.value.length ? (openBlock(), createElementBlock(
                 "p",
-                _hoisted_17$4,
+                _hoisted_17$5,
                 toDisplayString(t("reader.noResults")),
                 1
                 /* TEXT */
@@ -15208,7 +15208,7 @@
                     key: group.id,
                     class: "booster-reader-group"
                   }, [
-                    createBaseVNode("div", _hoisted_18$4, [
+                    createBaseVNode("div", _hoisted_18$5, [
                       createBaseVNode("button", {
                         class: "booster-group-toggle",
                         type: "button",
@@ -15236,15 +15236,15 @@
                           1
                           /* TEXT */
                         )
-                      ], 8, _hoisted_19$4),
-                      group.id !== NONE ? (openBlock(), createBlock(_sfc_main$d, {
+                      ], 8, _hoisted_19$5),
+                      group.id !== NONE ? (openBlock(), createBlock(_sfc_main$f, {
                         key: 0,
                         label: "",
                         identifier: group.id,
                         locale: __props.locale
                       }, null, 8, ["identifier", "locale"])) : createCommentVNode("v-if", true)
                     ]),
-                    expanded.value.has(group.id) || search.value.trim() ? (openBlock(), createElementBlock("div", _hoisted_20$4, [
+                    expanded.value.has(group.id) || search.value.trim() ? (openBlock(), createElementBlock("div", _hoisted_20$5, [
                       (openBlock(true), createElementBlock(
                         Fragment,
                         null,
@@ -15268,7 +15268,7 @@
                               1
                               /* TEXT */
                             )
-                          ], 14, _hoisted_21$4);
+                          ], 14, _hoisted_21$5);
                         }),
                         128
                         /* KEYED_FRAGMENT */
@@ -15280,8 +15280,8 @@
                 /* KEYED_FRAGMENT */
               ))
             ]),
-            createBaseVNode("main", _hoisted_22$4, [
-              createBaseVNode("div", _hoisted_23$4, [
+            createBaseVNode("main", _hoisted_22$5, [
+              createBaseVNode("div", _hoisted_23$5, [
                 createBaseVNode("button", {
                   class: "booster-mobile-back",
                   type: "button",
@@ -15298,24 +15298,24 @@
                   Fragment,
                   { key: 0 },
                   [
-                    createBaseVNode("header", _hoisted_24$4, [
+                    createBaseVNode("header", _hoisted_24$5, [
                       createBaseVNode("div", null, [
                         createBaseVNode("h2", null, [
                           selected.value.projectId ? (openBlock(), createElementBlock(
                             "span",
-                            _hoisted_25$3,
+                            _hoisted_25$4,
                             toDisplayString(projectLabel(selected.value.projectId)) + " / ",
                             1
                             /* TEXT */
                           )) : createCommentVNode("v-if", true),
-                          createVNode(_sfc_main$d, {
+                          createVNode(_sfc_main$f, {
                             label: selected.value.title || t("identity.untitled"),
                             identifier: selected.value.conversationId,
                             locale: __props.locale
                           }, null, 8, ["label", "identifier", "locale"])
                         ]),
-                        selected.value.branchSourceConversationId ? (openBlock(), createElementBlock("p", _hoisted_26$3, [
-                          createVNode(_sfc_main$d, {
+                        selected.value.branchSourceConversationId ? (openBlock(), createElementBlock("p", _hoisted_26$4, [
+                          createVNode(_sfc_main$f, {
                             label: t("reader.branch") + ": " + (selected.value.branchSourceTitle || t("identity.untitled")),
                             identifier: selected.value.branchSourceConversationId,
                             locale: __props.locale
@@ -15323,7 +15323,7 @@
                         ])) : createCommentVNode("v-if", true)
                       ])
                     ]),
-                    createBaseVNode("div", _hoisted_27$3, [
+                    createBaseVNode("div", _hoisted_27$4, [
                       createBaseVNode("button", {
                         class: "booster-action-secondary",
                         type: "button",
@@ -15362,7 +15362,7 @@
                           1
                           /* TEXT */
                         )
-                      ], 10, _hoisted_28$3),
+                      ], 10, _hoisted_28$4),
                       forkChoices.value.length ? (openBlock(), createElementBlock("button", {
                         key: 0,
                         class: "booster-action-secondary booster-reader-fork-toggle",
@@ -15626,7 +15626,7 @@
                   1
                   /* TEXT */
                 )) : createCommentVNode("v-if", true),
-                historyOpen.value && selected.value && navigationNodes.value.length && !threadLoading.value ? (openBlock(), createBlock(_sfc_main$e, {
+                historyOpen.value && selected.value && navigationNodes.value.length && !threadLoading.value ? (openBlock(), createBlock(_sfc_main$g, {
                   key: selectedId.value ?? "",
                   thread: thread.value,
                   locale: __props.locale,
@@ -15701,7 +15701,7 @@
                                   class: normalizeClass({ "booster-message-target": requestedMessageId.value === item.record.messageId }),
                                   tabindex: "-1"
                                 }, [
-                                  createVNode(_sfc_main$g, {
+                                  createVNode(_sfc_main$i, {
                                     item,
                                     locale: __props.locale,
                                     "expand-reasoning": reasoningExpanded.value,
@@ -15731,7 +15731,7 @@
                                     class: normalizeClass({ "booster-message-target": requestedMessageId.value === item.record.messageId }),
                                     tabindex: "-1"
                                   }, [
-                                    createVNode(_sfc_main$g, {
+                                    createVNode(_sfc_main$i, {
                                       item,
                                       locale: __props.locale,
                                       "expand-reasoning": reasoningExpanded.value,
@@ -15754,7 +15754,7 @@
                                   class: normalizeClass({ "booster-message-target": requestedMessageId.value === item.record.messageId }),
                                   tabindex: "-1"
                                 }, [
-                                  createVNode(_sfc_main$g, {
+                                  createVNode(_sfc_main$i, {
                                     item,
                                     locale: __props.locale,
                                     "expand-reasoning": reasoningExpanded.value,
@@ -15784,50 +15784,50 @@
               ])
             ])
           ]),
-          maintenanceOpen.value && (__props.archiveAdapter.startArchiveMigration || __props.archiveAdapter.exportNativeSourceBackup) ? (openBlock(), createBlock(_sfc_main$f, {
+          maintenanceOpen.value && (__props.archiveAdapter.startArchiveMigration || __props.archiveAdapter.exportNativeSourceBackup) ? (openBlock(), createBlock(_sfc_main$h, {
             key: 2,
             "archive-adapter": __props.archiveAdapter,
             locale: __props.locale,
             onClose: closeMaintenance,
             onUpdated: afterMaintenance
           }, null, 8, ["archive-adapter", "locale"])) : createCommentVNode("v-if", true)
-        ], 10, _hoisted_1$a);
+        ], 10, _hoisted_1$b);
       };
     }
   });
-  const _hoisted_1$9 = { class: "booster-capture-settings" };
-  const _hoisted_2$9 = { class: "booster-note" };
-  const _hoisted_3$8 = {
+  const _hoisted_1$a = { class: "booster-capture-settings" };
+  const _hoisted_2$a = { class: "booster-note" };
+  const _hoisted_3$9 = {
     key: 0,
     class: "booster-form-body"
   };
-  const _hoisted_4$8 = ["disabled"];
-  const _hoisted_5$7 = { value: "default" };
-  const _hoisted_6$7 = ["value"];
-  const _hoisted_7$7 = ["disabled"];
-  const _hoisted_8$6 = {
+  const _hoisted_4$9 = ["disabled"];
+  const _hoisted_5$8 = { value: "default" };
+  const _hoisted_6$8 = ["value"];
+  const _hoisted_7$8 = ["disabled"];
+  const _hoisted_8$7 = {
     key: 0,
     value: "inherit"
   };
-  const _hoisted_9$6 = { value: "on" };
-  const _hoisted_10$6 = { value: "off" };
-  const _hoisted_11$6 = ["disabled"];
-  const _hoisted_12$5 = { class: "booster-note" };
-  const _hoisted_13$5 = ["disabled"];
-  const _hoisted_14$5 = {
+  const _hoisted_9$7 = { value: "on" };
+  const _hoisted_10$7 = { value: "off" };
+  const _hoisted_11$7 = ["disabled"];
+  const _hoisted_12$6 = { class: "booster-note" };
+  const _hoisted_13$6 = ["disabled"];
+  const _hoisted_14$6 = {
     key: 1,
     role: "alert",
     class: "booster-error"
   };
-  const _hoisted_15$5 = {
+  const _hoisted_15$6 = {
     key: 2,
     role: "status"
   };
-  const _hoisted_16$4 = {
+  const _hoisted_16$5 = {
     key: 1,
     class: "booster-note"
   };
-  const _sfc_main$b = /* @__PURE__ */ defineComponent({
+  const _sfc_main$d = /* @__PURE__ */ defineComponent({
     __name: "CaptureSettings",
     props: {
       settingsAdapter: {},
@@ -15920,7 +15920,7 @@
         }
       }
       return (_ctx, _cache) => {
-        return openBlock(), createElementBlock("section", _hoisted_1$9, [
+        return openBlock(), createElementBlock("section", _hoisted_1$a, [
           createBaseVNode(
             "h3",
             null,
@@ -15930,12 +15930,12 @@
           ),
           createBaseVNode(
             "p",
-            _hoisted_2$9,
+            _hoisted_2$a,
             toDisplayString(t("capture.explanation")),
             1
             /* TEXT */
           ),
-          settings.value ? (openBlock(), createElementBlock("div", _hoisted_3$8, [
+          settings.value ? (openBlock(), createElementBlock("div", _hoisted_3$9, [
             createBaseVNode("label", null, [
               createTextVNode(
                 toDisplayString(t("capture.scope")),
@@ -15948,7 +15948,7 @@
               }, [
                 createBaseVNode(
                   "option",
-                  _hoisted_5$7,
+                  _hoisted_5$8,
                   toDisplayString(t("capture.global")),
                   1
                   /* TEXT */
@@ -15960,16 +15960,16 @@
                     return openBlock(), createElementBlock("option", {
                       key: keyFor(scope),
                       value: keyFor(scope)
-                    }, toDisplayString(t(scope.scope === "project" ? "capture.project" : "capture.conversation")) + ": " + toDisplayString(scope.title || t(scope.scope === "project" ? "identity.unknownProject" : "identity.untitled")), 9, _hoisted_6$7);
+                    }, toDisplayString(t(scope.scope === "project" ? "capture.project" : "capture.conversation")) + ": " + toDisplayString(scope.title || t(scope.scope === "project" ? "identity.unknownProject" : "identity.untitled")), 9, _hoisted_6$8);
                   }),
                   128
                   /* KEYED_FRAGMENT */
                 ))
-              ], 8, _hoisted_4$8), [
+              ], 8, _hoisted_4$9), [
                 [vModelSelect, selected.value]
               ])
             ]),
-            target.value ? (openBlock(), createBlock(_sfc_main$d, {
+            target.value ? (openBlock(), createBlock(_sfc_main$f, {
               key: 0,
               label: target.value.title || t(target.value.scope === "project" ? "identity.unknownProject" : "identity.untitled"),
               identifier: target.value.id,
@@ -15987,26 +15987,26 @@
               }, [
                 target.value ? (openBlock(), createElementBlock(
                   "option",
-                  _hoisted_8$6,
+                  _hoisted_8$7,
                   toDisplayString(t("capture.inherit")),
                   1
                   /* TEXT */
                 )) : createCommentVNode("v-if", true),
                 createBaseVNode(
                   "option",
-                  _hoisted_9$6,
+                  _hoisted_9$7,
                   toDisplayString(t("capture.on")),
                   1
                   /* TEXT */
                 ),
                 createBaseVNode(
                   "option",
-                  _hoisted_10$6,
+                  _hoisted_10$7,
                   toDisplayString(t("capture.off")),
                   1
                   /* TEXT */
                 )
-              ], 8, _hoisted_7$7), [
+              ], 8, _hoisted_7$8), [
                 [vModelSelect, mode2.value]
               ])
             ]),
@@ -16071,10 +16071,10 @@
                   /* TEXT */
                 )
               ])
-            ], 8, _hoisted_11$6),
+            ], 8, _hoisted_11$7),
             createBaseVNode(
               "p",
-              _hoisted_12$5,
+              _hoisted_12$6,
               toDisplayString(t("capture.scopeHint")),
               1
               /* TEXT */
@@ -16084,24 +16084,24 @@
               class: "booster-action-primary",
               disabled: busy.value,
               onClick: save
-            }, toDisplayString(t(busy.value ? "control.saving" : "capture.apply")), 9, _hoisted_13$5),
+            }, toDisplayString(t(busy.value ? "control.saving" : "capture.apply")), 9, _hoisted_13$6),
             error.value ? (openBlock(), createElementBlock(
               "p",
-              _hoisted_14$5,
+              _hoisted_14$6,
               toDisplayString(t("common.saveError")),
               1
               /* TEXT */
             )) : createCommentVNode("v-if", true),
             saved.value ? (openBlock(), createElementBlock(
               "p",
-              _hoisted_15$5,
+              _hoisted_15$6,
               toDisplayString(t("capture.saved")),
               1
               /* TEXT */
             )) : createCommentVNode("v-if", true)
           ])) : (openBlock(), createElementBlock(
             "p",
-            _hoisted_16$4,
+            _hoisted_16$5,
             toDisplayString(t(error.value ? "common.saveError" : "control.loading")),
             1
             /* TEXT */
@@ -16110,11 +16110,11 @@
       };
     }
   });
-  const _hoisted_1$8 = ["lang"];
-  const _hoisted_2$8 = { class: "booster-section-header" };
-  const _hoisted_3$7 = { class: "booster-reader-heading" };
-  const _hoisted_4$7 = ["aria-label"];
-  const _sfc_main$a = /* @__PURE__ */ defineComponent({
+  const _hoisted_1$9 = ["lang"];
+  const _hoisted_2$9 = { class: "booster-section-header" };
+  const _hoisted_3$8 = { class: "booster-reader-heading" };
+  const _hoisted_4$8 = ["aria-label"];
+  const _sfc_main$c = /* @__PURE__ */ defineComponent({
     __name: "CaptureSettingsSurface",
     props: {
       settingsAdapter: {},
@@ -16132,8 +16132,8 @@
           class: "booster-capture-surface",
           lang: __props.locale
         }, [
-          createBaseVNode("header", _hoisted_2$8, [
-            createBaseVNode("div", _hoisted_3$7, [
+          createBaseVNode("header", _hoisted_2$9, [
+            createBaseVNode("div", _hoisted_3$8, [
               createVNode(unref(ShieldCheck), { class: "size-5" }),
               createBaseVNode("div", null, [
                 createBaseVNode(
@@ -16159,15 +16159,15 @@
               onClick: _cache[0] || (_cache[0] = ($event) => emit2("close"))
             }, [
               createVNode(unref(X), { class: "size-4" })
-            ], 8, _hoisted_4$7)
+            ], 8, _hoisted_4$8)
           ]),
-          createVNode(_sfc_main$b, {
+          createVNode(_sfc_main$d, {
             "settings-adapter": __props.settingsAdapter,
             "archive-adapter": __props.archiveAdapter,
             context: __props.context,
             locale: __props.locale
           }, null, 8, ["settings-adapter", "archive-adapter", "context", "locale"])
-        ], 8, _hoisted_1$8);
+        ], 8, _hoisted_1$9);
       };
     }
   });
@@ -19443,7 +19443,7 @@
   function cn$1(...inputs) {
     return twMerge(clsx(inputs));
   }
-  const _sfc_main$9 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$b = /* @__PURE__ */ defineComponent({
     __name: "Badge",
     props: {
       variant: {},
@@ -19471,7 +19471,7 @@
       };
     }
   });
-  const _sfc_main$8 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$a = /* @__PURE__ */ defineComponent({
     __name: "Button",
     props: {
       variant: { default: "default" },
@@ -25744,12 +25744,475 @@
       throw new Error("Backup product, channel, owner or installation mismatch");
     }
   }
+  var encoder = new TextEncoder();
+  var decoder = new TextDecoder("utf-8", { fatal: true });
+  var BLOCK = 512;
+  var MAX_ENTRY_BYTES = 8 * 1024 * 1024;
+  var MAX_NAME_BYTES = 100;
+  var allowedName = (name) => /^[a-z][a-z0-9_./-]*$/.test(name) && !name.includes("..") && !name.includes("//") && !name.startsWith("/") && encoder.encode(name).length <= MAX_NAME_BYTES;
+  function octal(buffer, start, size, value) {
+    if (!Number.isSafeInteger(value) || value < 0 || value.toString(8).length >= size)
+      throw Error("TAR numeric field exceeds ustar limits");
+    const valueBytes = encoder.encode(value.toString(8).padStart(size - 1, "0"));
+    buffer.set(valueBytes, start);
+    buffer[start + size - 1] = 0;
+  }
+  function parseOctal(bytes) {
+    const value = decoder.decode(bytes).replace(/\0.*$/s, "").trim();
+    if (!/^[0-7]+$/.test(value))
+      throw Error("Invalid TAR octal field");
+    const number = Number.parseInt(value, 8);
+    if (!Number.isSafeInteger(number) || number < 0)
+      throw Error("Invalid TAR numeric value");
+    return number;
+  }
+  function header(name, length) {
+    if (!allowedName(name) || length > MAX_ENTRY_BYTES || length < 0)
+      throw Error("Invalid TAR file path or excessive single entry");
+    const bytes = new Uint8Array(BLOCK);
+    bytes.set(encoder.encode(name), 0);
+    octal(bytes, 100, 8, 384);
+    octal(bytes, 108, 8, 0);
+    octal(bytes, 116, 8, 0);
+    octal(bytes, 124, 12, length);
+    octal(bytes, 136, 12, Math.floor(Date.now() / 1e3));
+    bytes.fill(32, 148, 156);
+    bytes[156] = 48;
+    bytes.set(encoder.encode("ustar\0"), 257);
+    bytes.set(encoder.encode("00"), 263);
+    octal(bytes, 148, 8, bytes.reduce((sum, n) => sum + n, 0));
+    return bytes;
+  }
+  class TarStreamWriter {
+    writer;
+    names = /* @__PURE__ */ new Set();
+    closed = false;
+    constructor(sink) {
+      this.writer = sink.getWriter();
+    }
+    async add(name, bytes) {
+      if (this.closed || this.names.has(name))
+        throw Error("TAR closed or duplicate file");
+      this.names.add(name);
+      await this.writer.write(header(name, bytes.length));
+      await this.writer.write(bytes);
+      const pad = (BLOCK - bytes.length % BLOCK) % BLOCK;
+      if (pad)
+        await this.writer.write(new Uint8Array(pad));
+    }
+    async finish() {
+      if (this.closed)
+        throw Error("TAR writer already finished");
+      this.closed = true;
+      try {
+        await this.writer.write(new Uint8Array(BLOCK * 2));
+        await this.writer.close();
+      } finally {
+        this.writer.releaseLock();
+      }
+    }
+    async abort(error) {
+      if (this.closed)
+        return;
+      this.closed = true;
+      try {
+        await this.writer.abort(error);
+      } finally {
+        this.writer.releaseLock();
+      }
+    }
+  }
+  class StreamCursor {
+    pending = new Uint8Array(0);
+    reader;
+    constructor(stream) {
+      this.reader = stream.getReader();
+    }
+    async take(size) {
+      if (!Number.isSafeInteger(size) || size < 0 || size > MAX_ENTRY_BYTES + BLOCK)
+        throw Error("TAR bounded reader refuses excessive entry");
+      const output = new Uint8Array(size);
+      let at = 0;
+      while (at < size) {
+        if (!this.pending.length) {
+          const next = await this.reader.read();
+          if (next.done)
+            throw Error("Unexpected end of TAR stream");
+          this.pending = next.value;
+        }
+        const n = Math.min(size - at, this.pending.length);
+        output.set(this.pending.subarray(0, n), at);
+        at += n;
+        this.pending = this.pending.subarray(n);
+      }
+      return output;
+    }
+    async eof() {
+      while (true) {
+        if (this.pending.some((b) => b !== 0))
+          return false;
+        const next = await this.reader.read();
+        if (next.done)
+          return true;
+        this.pending = next.value;
+      }
+    }
+    async close() {
+      await this.reader.cancel().catch(() => {
+        return;
+      });
+      this.reader.releaseLock();
+    }
+  }
+  async function* readTarEntries(input) {
+    const cursor = new StreamCursor(input);
+    const seen = /* @__PURE__ */ new Set();
+    try {
+      while (true) {
+        const bytes = await cursor.take(BLOCK);
+        if (bytes.every((n) => n === 0)) {
+          if (!(await cursor.take(BLOCK)).every((n) => n === 0) || !await cursor.eof())
+            throw Error("Unexpected data after TAR terminator");
+          return;
+        }
+        const provided = parseOctal(bytes.subarray(148, 156));
+        let sum = 0;
+        for (let i = 0; i < BLOCK; i++)
+          sum += i >= 148 && i < 156 ? 32 : bytes[i] ?? 0;
+        if (provided !== sum || decoder.decode(bytes.subarray(257, 263)) !== "ustar\0" || bytes[156] !== 48)
+          throw Error("Invalid TAR header or unsupported entry type");
+        const end = bytes.indexOf(0);
+        if (end < 1 || end > MAX_NAME_BYTES)
+          throw Error("TAR missing filename");
+        const name = decoder.decode(bytes.subarray(0, end));
+        if (!allowedName(name) || seen.has(name))
+          throw Error("Unsafe or repeated TAR path");
+        seen.add(name);
+        const length = parseOctal(bytes.subarray(124, 136));
+        if (length > MAX_ENTRY_BYTES)
+          throw Error("TAR chunk exceeds memory bound");
+        const data = await cursor.take(length);
+        const pad = (BLOCK - length % BLOCK) % BLOCK;
+        if (pad && !(await cursor.take(pad)).every((n) => n === 0))
+          throw Error("Nonzero TAR padding");
+        yield { name, bytes: data };
+      }
+    } finally {
+      await cursor.close();
+    }
+  }
+  var encoder2 = new TextEncoder();
+  var decoder2 = new TextDecoder("utf-8", { fatal: true });
+  var CHUNK_LIMIT = 8 * 1024 * 1024;
+  var SETTINGS_LIMIT = 512 * 1024;
+  var RESTORE_LIMIT = 128 * 1024 * 1024;
+  var FALLBACK_BLOB_LIMIT = 128 * 1024 * 1024;
+  var MAX_RECORDS = Number.MAX_SAFE_INTEGER;
+  var DEFAULT_ROWS = 1024;
+  var MANIFEST = "manifest.json";
+  var SCHEMA = "indexeddb/schema.json";
+  var SETTINGS = "persistent/settings.json";
+  var json = (value) => JSON.stringify(value);
+  var isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+  async function digest(bytes) {
+    return [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((v) => v.toString(16).padStart(2, "0")).join("");
+  }
+  function notify(onProgress, phase, completed, total, entries) {
+    onProgress?.({
+      phase,
+      completed,
+      total,
+      entries,
+      percent: total === 0 ? 100 : Math.min(100, Math.floor(100 * completed / total))
+    });
+  }
+  function validate(ports, choice) {
+    assertServiceScope(ports.scope);
+    if (!choice.settings && !choice.indexeddb || choice.settings && !ports.settings || choice.indexeddb && !ports.indexeddb)
+      throw Error("No supported persistent backup section selected");
+    if (ports.settings)
+      assertMatchingScope(ports.scope, ports.settings.scope);
+    if (ports.indexeddb)
+      assertMatchingScope(ports.scope, ports.indexeddb.scope);
+  }
+  function validateChunkRows(n) {
+    if (!Number.isSafeInteger(n) || n < 64 || n > 2048)
+      throw Error("TAR chunk size must be 64–2048 records");
+    return n;
+  }
+  function schemaOf(ports, enabled) {
+    const p2 = enabled ? ports.indexeddb : void 0;
+    if (enabled && (!p2 || Object.keys(p2.schema).sort().join(",") !== [...p2.stores].sort().join(",")))
+      throw Error("IndexedDB schema layout must be declared explicitly");
+    return {
+      schemaVersion: p2?.schemaVersion ?? null,
+      stores: p2 ? [...p2.stores] : [],
+      layout: p2?.schema ?? null
+    };
+  }
+  async function exportBackupTar(ports, choice, options = {}) {
+    validate(ports, choice);
+    if (choice.compression !== "gzip" && choice.compression !== "none")
+      throw Error("Unknown TAR compression");
+    const pageSize = validateChunkRows(choice.chunkRows ?? DEFAULT_ROWS);
+    const schema = schemaOf(ports, choice.indexeddb);
+    const counts = choice.indexeddb && ports.indexeddb ? await ports.indexeddb.countRows() : {};
+    if (Object.keys(counts).sort().join(",") !== [...schema.stores].sort().join(",") || Object.values(counts).some((n) => !Number.isSafeInteger(n) || n < 0))
+      throw Error("Invalid IndexedDB table counts");
+    const total = Object.values(counts).reduce((a, b) => a + b, 0) + Number(choice.settings);
+    if (!Number.isSafeInteger(total) || total > MAX_RECORDS)
+      throw Error("Unsupported record count");
+    notify(options.onProgress, "counting", 0, total, 0);
+    const parts = [];
+    let fallbackBytes = 0;
+    const destination = options.sink ?? new WritableStream({
+      write(bytes) {
+        fallbackBytes += bytes.length;
+        if (fallbackBytes > FALLBACK_BLOB_LIMIT)
+          throw Error("Select a file destination for a large TAR backup");
+        parts.push(bytes.slice());
+      }
+    });
+    const gzip = choice.compression === "gzip" ? new CompressionStream("gzip") : null;
+    const pump = gzip ? gzip.readable.pipeTo(destination) : null;
+    const writer = new TarStreamWriter(gzip ? gzip.writable : destination);
+    let done = 0, entries = 0;
+    const chunks = [];
+    let settingsDigest = null;
+    try {
+      if (choice.settings && ports.settings) {
+        const value = ports.settings.validateSettings(await ports.settings.exportSettings());
+        const bytes = encoder2.encode(json({ schemaVersion: ports.settings.schemaVersion, value }));
+        if (bytes.length > SETTINGS_LIMIT)
+          throw Error("Settings backup exceeds portable limit");
+        await writer.add(SETTINGS, bytes);
+        settingsDigest = await digest(bytes);
+        done++;
+        notify(options.onProgress, "writing", done, total, ++entries);
+      }
+      const schemaBytes = encoder2.encode(json(schema));
+      await writer.add(SCHEMA, schemaBytes);
+      const schemaDigest = await digest(schemaBytes);
+      entries++;
+      if (choice.indexeddb && ports.indexeddb) {
+        const allowed = new Set(schema.stores);
+        let current = "", lines = [], size = 0, sequence2 = 0;
+        const flush = async () => {
+          if (!lines.length)
+            return;
+          const bytes = encoder2.encode(lines.join(""));
+          const path = `indexeddb/${current}/${String(sequence2++).padStart(8, "0")}.jsonl`;
+          await writer.add(path, bytes);
+          chunks.push({
+            path,
+            store: current,
+            rows: lines.length,
+            size: bytes.length,
+            sha256: await digest(bytes)
+          });
+          lines = [];
+          size = 0;
+          notify(options.onProgress, "writing", done, total, ++entries);
+        };
+        for await (const row of ports.indexeddb.readRows(pageSize)) {
+          if (!allowed.has(row.store) || !row.key || row.key.length > 1024)
+            throw Error("Invalid IndexedDB export record");
+          if (row.store !== current) {
+            await flush();
+            current = row.store;
+            sequence2 = 0;
+          }
+          const line = `${json({ key: row.key, value: row.value })}
+`;
+          const length = encoder2.encode(line).length;
+          if (length > CHUNK_LIMIT)
+            throw Error("Record exceeds maximum TAR chunk size");
+          if (lines.length >= pageSize || size + length > CHUNK_LIMIT)
+            await flush();
+          lines.push(line);
+          size += length;
+          done++;
+          if ((done - Number(choice.settings)) % pageSize === 0)
+            notify(options.onProgress, "reading", done, total, entries);
+        }
+        await flush();
+        if (done !== total)
+          throw Error("IndexedDB row counts changed during backup");
+        const after = await ports.indexeddb.countRows();
+        if (json(after) !== json(counts))
+          throw Error("IndexedDB changed during backup");
+      }
+      const manifest = {
+        format: "koba-portable-tar",
+        version: 1,
+        createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+        scope: { ...ports.scope },
+        compression: choice.compression,
+        includes: {
+          settings: choice.settings,
+          indexeddb: choice.indexeddb,
+          session: false,
+          attachments: false
+        },
+        stores: schema.stores,
+        indexedSchema: schema.schemaVersion,
+        counts,
+        rows: total - Number(choice.settings),
+        chunks,
+        settingsDigest,
+        schemaDigest
+      };
+      const manifestBytes = encoder2.encode(json(manifest));
+      if (manifestBytes.length > CHUNK_LIMIT)
+        throw Error("Manifest too large");
+      await writer.add(MANIFEST, manifestBytes);
+      entries++;
+      await writer.finish();
+      if (pump)
+        await pump;
+      notify(options.onProgress, "done", total, total, entries);
+      return options.sink ? null : new Blob(parts, {
+        type: choice.compression === "gzip" ? "application/gzip" : "application/x-tar"
+      });
+    } catch (error) {
+      await writer.abort(error).catch(() => {
+        return;
+      });
+      if (pump)
+        await pump.catch(() => {
+          return;
+        });
+      throw error;
+    }
+  }
+  async function scan(ports, blob, collect, progress) {
+    assertServiceScope(ports.scope);
+    if (!blob.size)
+      throw Error("Empty TAR archive");
+    const header2 = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
+    const compressed = header2[0] === 31 && header2[1] === 139;
+    const stream = compressed ? blob.stream().pipeThrough(new DecompressionStream("gzip")) : blob.stream();
+    const observed = [];
+    const byStore = /* @__PURE__ */ Object.create(null);
+    const records = [];
+    const unique = /* @__PURE__ */ new Set();
+    let schemaBytes = null, settingsBytes = null;
+    let settings, manifest, rows = 0, entries = 0, retained = 0;
+    for await (const file of readTarEntries(stream)) {
+      entries++;
+      if (manifest)
+        throw Error("Unexpected files after TAR manifest");
+      if (file.name === SETTINGS) {
+        if (settingsBytes || file.bytes.length > SETTINGS_LIMIT)
+          throw Error("Duplicate or oversized settings file");
+        settingsBytes = file.bytes;
+        continue;
+      }
+      if (file.name === SCHEMA) {
+        if (schemaBytes)
+          throw Error("Duplicate TAR schema");
+        schemaBytes = file.bytes;
+        continue;
+      }
+      if (file.name === MANIFEST) {
+        const value = JSON.parse(decoder2.decode(file.bytes));
+        if (!isObject(value) || value.format !== "koba-portable-tar" || value.version !== 1 || !isObject(value.scope) || !isObject(value.includes) || value.includes.session !== false || value.includes.attachments !== false || typeof value.includes.settings !== "boolean" || typeof value.includes.indexeddb !== "boolean" || !Array.isArray(value.stores) || !Array.isArray(value.chunks) || !isObject(value.counts) || !Number.isSafeInteger(value.rows) || typeof value.createdAt !== "string" || !Number.isFinite(Date.parse(value.createdAt)))
+          throw Error("Unsupported TAR manifest");
+        assertMatchingScope(ports.scope, value.scope);
+        manifest = value;
+        if (manifest.compression !== (compressed ? "gzip" : "none"))
+          throw Error("TAR compression mismatch");
+        continue;
+      }
+      const match = /^indexeddb\/([a-z][a-z0-9_-]*)\/([0-9]{8})\.jsonl$/.exec(file.name);
+      if (!match || !ports.indexeddb?.stores.includes(match[1] ?? ""))
+        throw Error("Unknown or disallowed TAR file");
+      const store = match[1];
+      const lines = decoder2.decode(file.bytes).split(`
+`);
+      if (lines.pop() !== "" || !lines.length)
+        throw Error("Malformed TAR JSONL chunk");
+      for (const line of lines) {
+        const data = JSON.parse(line);
+        if (!isObject(data) || Object.keys(data).sort().join(",") !== "key,value" || typeof data.key !== "string" || !data.key || data.key.length > 1024)
+          throw Error("Invalid TAR record");
+        const id = `${store}:${data.key}`;
+        if (unique.has(id))
+          throw Error("Duplicate TAR IndexedDB primary key");
+        unique.add(id);
+        rows++;
+        if (!Number.isSafeInteger(rows))
+          throw Error("Excessive TAR record count");
+        if (collect) {
+          retained += encoder2.encode(line).length;
+          if (retained > RESTORE_LIMIT)
+            throw Error("Full restore exceeds current transaction memory; staged restore required");
+          records.push({ store, key: data.key, value: data.value });
+        }
+      }
+      byStore[store] = (byStore[store] ?? 0) + lines.length;
+      observed.push({
+        path: file.name,
+        store,
+        rows: lines.length,
+        size: file.bytes.length,
+        sha256: await digest(file.bytes)
+      });
+      notify(progress, "verifying", rows, 0, entries);
+    }
+    if (!manifest || !schemaBytes || manifest.rows !== rows || json(manifest.chunks) !== json(observed) || json(manifest.counts) !== json(Object.fromEntries(manifest.stores.map((s) => [s, byStore[s] ?? 0]))))
+      throw Error("TAR manifest counts or chunk checksums disagree");
+    validate(ports, manifest.includes);
+    const schema = schemaOf(ports, manifest.includes.indexeddb);
+    if (json(JSON.parse(decoder2.decode(schemaBytes))) !== json(schema) || await digest(schemaBytes) !== manifest.schemaDigest || manifest.indexedSchema !== schema.schemaVersion || json(manifest.stores) !== json(schema.stores))
+      throw Error("TAR IndexedDB schema mismatch");
+    if (manifest.includes.settings) {
+      if (!settingsBytes || await digest(settingsBytes) !== manifest.settingsDigest || !ports.settings)
+        throw Error("TAR persistent settings integrity mismatch");
+      const entry = JSON.parse(decoder2.decode(settingsBytes));
+      if (!isObject(entry) || entry.schemaVersion !== ports.settings.schemaVersion)
+        throw Error("Unsupported TAR settings schema");
+      settings = ports.settings.validateSettings(entry.value);
+      if (json(settings) !== json(entry.value))
+        throw Error("Noncanonical settings restore");
+    } else if (settingsBytes || manifest.settingsDigest !== null)
+      throw Error("Unexpected TAR settings file");
+    notify(progress, "done", rows, rows, entries);
+    return { manifest, settings, records, entries };
+  }
+  async function inspectBackupTar(ports, blob, progress) {
+    const scanned = await scan(ports, blob, false, progress);
+    return { manifest: scanned.manifest, rows: scanned.manifest.rows, entries: scanned.entries };
+  }
+  async function restoreBackupTar(ports, blob, selection, progress) {
+    if (!selection.settings && !selection.indexeddb)
+      throw Error("No restore sections selected");
+    const inspected = await inspectBackupTar(ports, blob, progress);
+    if (selection.settings && !inspected.manifest.includes.settings || selection.indexeddb && !inspected.manifest.includes.indexeddb)
+      throw Error("Requested restore section missing");
+    const payload = await scan(ports, blob, selection.indexeddb, progress);
+    notify(progress, "restoring", 0, inspected.rows + Number(selection.settings), inspected.entries);
+    if (selection.settings && ports.settings) {
+      const before = ports.settings.validateSettings(await ports.settings.exportSettings());
+      await ports.settings.restoreSettingsAtomically(payload.settings);
+      try {
+        if (selection.indexeddb && ports.indexeddb)
+          await ports.indexeddb.restoreAtomically(payload.records);
+      } catch (error) {
+        await ports.settings.restoreSettingsAtomically(before);
+        throw error;
+      }
+    } else if (selection.indexeddb && ports.indexeddb)
+      await ports.indexeddb.restoreAtomically(payload.records);
+    notify(progress, "done", inspected.rows + Number(selection.settings), inspected.rows + Number(selection.settings), inspected.entries);
+    return inspected;
+  }
   var FORMAT = "koba-settings-backup-v1";
   var MAX_BYTES$1 = 512 * 1024;
   var isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
   async function checksum(text) {
-    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-    return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+    const digest2 = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    return Array.from(new Uint8Array(digest2), (value) => value.toString(16).padStart(2, "0")).join("");
   }
   function settingsJson(value) {
     const valueJson = JSON.stringify(value);
@@ -25883,49 +26346,49 @@
   async function restoreChatGptSettings(adapter, blob) {
     return restoreSettingsBackup(chatGptSettingsBackupPort(adapter), blob);
   }
-  const _hoisted_1$7 = ["lang"];
-  const _hoisted_2$7 = {
+  const _hoisted_1$8 = ["lang"];
+  const _hoisted_2$8 = {
     key: 0,
     class: "booster-control-header"
   };
-  const _hoisted_3$6 = { class: "booster-header-copy" };
-  const _hoisted_4$6 = { class: "flex items-center gap-2" };
-  const _hoisted_5$6 = {
+  const _hoisted_3$7 = { class: "booster-header-copy" };
+  const _hoisted_4$7 = { class: "flex items-center gap-2" };
+  const _hoisted_5$7 = {
     key: 0,
     class: "booster-header-actions"
   };
-  const _hoisted_6$6 = { class: "booster-header-toggle-label" };
-  const _hoisted_7$6 = ["aria-pressed"];
-  const _hoisted_8$5 = {
+  const _hoisted_6$7 = { class: "booster-header-toggle-label" };
+  const _hoisted_7$7 = ["aria-pressed"];
+  const _hoisted_8$6 = {
     key: 1,
     class: "booster-loading"
   };
-  const _hoisted_9$5 = {
+  const _hoisted_9$6 = {
     key: 2,
     class: "booster-settings-layout"
   };
-  const _hoisted_10$5 = { class: "booster-settings-nav" };
-  const _hoisted_11$5 = { class: "booster-settings-content" };
-  const _hoisted_12$4 = { class: "booster-setting-card" };
-  const _hoisted_13$4 = { class: "booster-setting-copy" };
-  const _hoisted_14$4 = ["value"];
-  const _hoisted_15$4 = { value: "latest" };
-  const _hoisted_16$3 = { value: "first" };
-  const _hoisted_17$3 = {
+  const _hoisted_10$6 = { class: "booster-settings-nav" };
+  const _hoisted_11$6 = { class: "booster-settings-content" };
+  const _hoisted_12$5 = { class: "booster-setting-card" };
+  const _hoisted_13$5 = { class: "booster-setting-copy" };
+  const _hoisted_14$5 = ["value"];
+  const _hoisted_15$5 = { value: "latest" };
+  const _hoisted_16$4 = { value: "first" };
+  const _hoisted_17$4 = {
     key: 0,
     class: "booster-danger-zone"
   };
-  const _hoisted_18$3 = { class: "booster-setting-copy" };
-  const _hoisted_19$3 = { class: "flex items-center gap-2" };
-  const _hoisted_20$3 = { class: "booster-setting-copy" };
-  const _hoisted_21$3 = { class: "flex items-center gap-2" };
-  const _hoisted_22$3 = ["disabled"];
-  const _hoisted_23$3 = { class: "booster-setting-copy" };
-  const _hoisted_24$3 = { class: "flex items-center gap-2" };
-  const _hoisted_25$2 = ["disabled"];
-  const _hoisted_26$2 = { class: "booster-setting-copy" };
-  const _hoisted_27$2 = { class: "flex items-center gap-2" };
-  const _hoisted_28$2 = { class: "booster-alert-setting-actions" };
+  const _hoisted_18$4 = { class: "booster-setting-copy" };
+  const _hoisted_19$4 = { class: "flex items-center gap-2" };
+  const _hoisted_20$4 = { class: "booster-setting-copy" };
+  const _hoisted_21$4 = { class: "flex items-center gap-2" };
+  const _hoisted_22$4 = ["disabled"];
+  const _hoisted_23$4 = { class: "booster-setting-copy" };
+  const _hoisted_24$4 = { class: "flex items-center gap-2" };
+  const _hoisted_25$3 = ["disabled"];
+  const _hoisted_26$3 = { class: "booster-setting-copy" };
+  const _hoisted_27$3 = { class: "flex items-center gap-2" };
+  const _hoisted_28$3 = { class: "booster-alert-setting-actions" };
   const _hoisted_29$2 = ["disabled"];
   const _hoisted_30$2 = { class: "booster-alert-threshold" };
   const _hoisted_31$2 = ["value", "disabled"];
@@ -26027,7 +26490,7 @@
   };
   const _hoisted_104 = { class: "booster-destructive-actions" };
   const _hoisted_105 = ["disabled"];
-  const _sfc_main$7 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$9 = /* @__PURE__ */ defineComponent({
     __name: "ControlCenterPanel",
     props: {
       settingsAdapter: {},
@@ -26273,9 +26736,9 @@
           class: normalizeClass(["booster-control-center", { "booster-control-embedded": __props.embedded }]),
           lang: locale.value
         }, [
-          !__props.embedded ? (openBlock(), createElementBlock("header", _hoisted_2$7, [
-            createBaseVNode("div", _hoisted_3$6, [
-              createBaseVNode("div", _hoisted_4$6, [
+          !__props.embedded ? (openBlock(), createElementBlock("header", _hoisted_2$8, [
+            createBaseVNode("div", _hoisted_3$7, [
+              createBaseVNode("div", _hoisted_4$7, [
                 createBaseVNode(
                   "strong",
                   null,
@@ -26283,7 +26746,7 @@
                   1
                   /* TEXT */
                 ),
-                createVNode(unref(_sfc_main$9), { variant: "outline" }, {
+                createVNode(unref(_sfc_main$b), { variant: "outline" }, {
                   default: withCtx(() => [
                     createTextVNode(
                       toDisplayString(__props.targetLabel),
@@ -26294,7 +26757,7 @@
                   _: 1
                   /* STABLE */
                 }),
-                createVNode(unref(_sfc_main$9), {
+                createVNode(unref(_sfc_main$b), {
                   variant: "outline",
                   title: unref(BOOSTER_VERSION)
                 }, {
@@ -26317,10 +26780,10 @@
                 /* TEXT */
               )
             ]),
-            settings.value ? (openBlock(), createElementBlock("div", _hoisted_5$6, [
+            settings.value ? (openBlock(), createElementBlock("div", _hoisted_5$7, [
               createBaseVNode(
                 "span",
-                _hoisted_6$6,
+                _hoisted_6$7,
                 toDisplayString(t("control.booster")),
                 1
                 /* TEXT */
@@ -26338,8 +26801,8 @@
                   -1
                   /* CACHED */
                 )
-              ])], 10, _hoisted_7$6),
-              __props.showClose ? (openBlock(), createBlock(unref(_sfc_main$8), {
+              ])], 10, _hoisted_7$7),
+              __props.showClose ? (openBlock(), createBlock(unref(_sfc_main$a), {
                 key: 0,
                 variant: "ghost",
                 size: "icon",
@@ -26357,12 +26820,12 @@
           ])) : createCommentVNode("v-if", true),
           !ready.value || !settings.value ? (openBlock(), createElementBlock(
             "div",
-            _hoisted_8$5,
+            _hoisted_8$6,
             toDisplayString(t("control.loading")),
             1
             /* TEXT */
-          )) : (openBlock(), createElementBlock("div", _hoisted_9$5, [
-            createBaseVNode("nav", _hoisted_10$5, [
+          )) : (openBlock(), createElementBlock("div", _hoisted_9$6, [
+            createBaseVNode("nav", _hoisted_10$6, [
               createBaseVNode(
                 "button",
                 {
@@ -26432,13 +26895,13 @@
                 /* CLASS */
               )
             ]),
-            createBaseVNode("main", _hoisted_11$5, [
+            createBaseVNode("main", _hoisted_11$6, [
               activeSection.value === "archive" ? (openBlock(), createElementBlock(
                 Fragment,
                 { key: 0 },
                 [
-                  createBaseVNode("section", _hoisted_12$4, [
-                    createBaseVNode("div", _hoisted_13$4, [
+                  createBaseVNode("section", _hoisted_12$5, [
+                    createBaseVNode("div", _hoisted_13$5, [
                       createBaseVNode(
                         "b",
                         null,
@@ -26461,29 +26924,29 @@
                     }, [
                       createBaseVNode(
                         "option",
-                        _hoisted_15$4,
+                        _hoisted_15$5,
                         toDisplayString(locale.value === "ru" ? "Конец истории" : "Latest messages"),
                         1
                         /* TEXT */
                       ),
                       createBaseVNode(
                         "option",
-                        _hoisted_16$3,
+                        _hoisted_16$4,
                         toDisplayString(locale.value === "ru" ? "Начало сохранённой истории" : "First saved messages"),
                         1
                         /* TEXT */
                       )
-                    ], 40, _hoisted_14$4)
+                    ], 40, _hoisted_14$5)
                   ]),
-                  createVNode(_sfc_main$b, {
+                  createVNode(_sfc_main$d, {
                     "settings-adapter": __props.settingsAdapter,
                     "archive-adapter": __props.archiveAdapter,
                     context: __props.captureContext,
                     locale: locale.value
                   }, null, 8, ["settings-adapter", "archive-adapter", "context", "locale"]),
-                  __props.archiveAdapter ? (openBlock(), createElementBlock("section", _hoisted_17$3, [
-                    createBaseVNode("div", _hoisted_18$3, [
-                      createBaseVNode("div", _hoisted_19$3, [
+                  __props.archiveAdapter ? (openBlock(), createElementBlock("section", _hoisted_17$4, [
+                    createBaseVNode("div", _hoisted_18$4, [
+                      createBaseVNode("div", _hoisted_19$4, [
                         createVNode(unref(TriangleAlert), { class: "size-4" }),
                         createBaseVNode(
                           "b",
@@ -26529,8 +26992,8 @@
                       class: normalizeClass(["booster-setting-card", { "booster-setting-disabled": !settings.value.enabled }])
                     },
                     [
-                      createBaseVNode("div", _hoisted_20$3, [
-                        createBaseVNode("div", _hoisted_21$3, [
+                      createBaseVNode("div", _hoisted_20$4, [
+                        createBaseVNode("div", _hoisted_21$4, [
                           createVNode(unref(Clock3), { class: "size-4" }),
                           createBaseVNode(
                             "b",
@@ -26539,7 +27002,7 @@
                             1
                             /* TEXT */
                           ),
-                          createVNode(unref(_sfc_main$9), {
+                          createVNode(unref(_sfc_main$b), {
                             variant: settings.value.features.messageMetadata && settings.value.enabled ? "default" : "secondary"
                           }, {
                             default: withCtx(() => [
@@ -26574,7 +27037,7 @@
                           -1
                           /* CACHED */
                         )
-                      ])], 10, _hoisted_22$3)
+                      ])], 10, _hoisted_22$4)
                     ],
                     2
                     /* CLASS */
@@ -26585,8 +27048,8 @@
                       class: normalizeClass(["booster-setting-card", { "booster-setting-disabled": !settings.value.enabled }])
                     },
                     [
-                      createBaseVNode("div", _hoisted_23$3, [
-                        createBaseVNode("div", _hoisted_24$3, [
+                      createBaseVNode("div", _hoisted_23$4, [
+                        createBaseVNode("div", _hoisted_24$4, [
                           createVNode(unref(Activity), { class: "size-4" }),
                           createBaseVNode(
                             "b",
@@ -26595,7 +27058,7 @@
                             1
                             /* TEXT */
                           ),
-                          createVNode(unref(_sfc_main$9), {
+                          createVNode(unref(_sfc_main$b), {
                             variant: settings.value.features.activityIndicator && settings.value.enabled ? "default" : "secondary"
                           }, {
                             default: withCtx(() => [
@@ -26630,7 +27093,7 @@
                           -1
                           /* CACHED */
                         )
-                      ])], 10, _hoisted_25$2)
+                      ])], 10, _hoisted_25$3)
                     ],
                     2
                     /* CLASS */
@@ -26641,8 +27104,8 @@
                       class: normalizeClass(["booster-setting-card booster-setting-card-stack", { "booster-setting-disabled": !settings.value.enabled }])
                     },
                     [
-                      createBaseVNode("div", _hoisted_26$2, [
-                        createBaseVNode("div", _hoisted_27$2, [
+                      createBaseVNode("div", _hoisted_26$3, [
+                        createBaseVNode("div", _hoisted_27$3, [
                           createVNode(unref(Clock3), { class: "size-4" }),
                           createBaseVNode(
                             "b",
@@ -26651,7 +27114,7 @@
                             1
                             /* TEXT */
                           ),
-                          createVNode(unref(_sfc_main$9), {
+                          createVNode(unref(_sfc_main$b), {
                             variant: settings.value.features.requestTimer && settings.value.enabled ? "default" : "secondary"
                           }, {
                             default: withCtx(() => [
@@ -26673,7 +27136,7 @@
                           /* TEXT */
                         )
                       ]),
-                      createBaseVNode("div", _hoisted_28$2, [
+                      createBaseVNode("div", _hoisted_28$3, [
                         createBaseVNode("button", {
                           type: "button",
                           class: normalizeClass(["booster-switch", { "booster-switch-on": settings.value.features.requestTimer }]),
@@ -26734,7 +27197,7 @@
                             1
                             /* TEXT */
                           ),
-                          createVNode(unref(_sfc_main$9), {
+                          createVNode(unref(_sfc_main$b), {
                             variant: settings.value.features.toolInspector && settings.value.enabled ? "default" : "secondary"
                           }, {
                             default: withCtx(() => [
@@ -26790,7 +27253,7 @@
                             1
                             /* TEXT */
                           ),
-                          createVNode(unref(_sfc_main$9), {
+                          createVNode(unref(_sfc_main$b), {
                             variant: settings.value.alerts.responseCompleteSound && settings.value.enabled ? "default" : "secondary"
                           }, {
                             default: withCtx(() => [
@@ -26846,7 +27309,7 @@
                             1
                             /* TEXT */
                           ),
-                          createVNode(unref(_sfc_main$9), {
+                          createVNode(unref(_sfc_main$b), {
                             variant: settings.value.alerts.longRunningSound && settings.value.enabled ? "default" : "secondary"
                           }, {
                             default: withCtx(() => [
@@ -27064,7 +27527,7 @@
                             1
                             /* TEXT */
                           ),
-                          createVNode(unref(_sfc_main$9), {
+                          createVNode(unref(_sfc_main$b), {
                             variant: settings.value.observer.enabled && settings.value.enabled ? "default" : "secondary"
                           }, {
                             default: withCtx(() => [
@@ -27520,7 +27983,7 @@
                           /* TEXT */
                         )
                       ]),
-                      createVNode(unref(_sfc_main$8), {
+                      createVNode(unref(_sfc_main$a), {
                         variant: "outline",
                         size: "sm",
                         disabled: settingsBackupBusy.value,
@@ -27568,7 +28031,7 @@
                           /* TEXT */
                         )
                       ]),
-                      createVNode(unref(_sfc_main$8), {
+                      createVNode(unref(_sfc_main$a), {
                         variant: "outline",
                         size: "sm",
                         disabled: settingsBackupBusy.value || !settingsBackupFile.value || !settingsBackupApproved.value,
@@ -27679,7 +28142,7 @@
                             1
                             /* TEXT */
                           ),
-                          createVNode(unref(_sfc_main$9), {
+                          createVNode(unref(_sfc_main$b), {
                             variant: tokenConfigured.value ? "default" : "secondary"
                           }, {
                             default: withCtx(() => [
@@ -27708,7 +28171,7 @@
                           ), [
                             [vModelText, tokenDraft.value]
                           ]),
-                          createVNode(unref(_sfc_main$8), {
+                          createVNode(unref(_sfc_main$a), {
                             variant: "outline",
                             size: "sm",
                             disabled: !tokenDraft.value.trim(),
@@ -27724,7 +28187,7 @@
                             _: 1
                             /* STABLE */
                           }, 8, ["disabled"]),
-                          tokenConfigured.value ? (openBlock(), createBlock(unref(_sfc_main$8), {
+                          tokenConfigured.value ? (openBlock(), createBlock(unref(_sfc_main$a), {
                             key: 0,
                             variant: "ghost",
                             size: "sm",
@@ -27743,7 +28206,7 @@
                             _: 1
                             /* STABLE */
                           })) : createCommentVNode("v-if", true)
-                        ])) : (openBlock(), createBlock(unref(_sfc_main$8), {
+                        ])) : (openBlock(), createBlock(unref(_sfc_main$a), {
                           key: 1,
                           variant: "outline",
                           size: "sm",
@@ -27762,7 +28225,7 @@
                         }))
                       ])) : createCommentVNode("v-if", true),
                       createBaseVNode("div", _hoisted_95, [
-                        createVNode(unref(_sfc_main$8), {
+                        createVNode(unref(_sfc_main$a), {
                           variant: "outline",
                           size: "sm",
                           disabled: telemetryTestState.value === "testing" || !settings.value.telemetry.endpoint || !tokenConfigured.value,
@@ -27812,7 +28275,7 @@
               ])
             ])
           ])),
-          archiveResetOpen.value ? (openBlock(), createBlock(_sfc_main$i, {
+          archiveResetOpen.value ? (openBlock(), createBlock(_sfc_main$k, {
             key: 3,
             label: t("archiveReset.confirmTitle"),
             onClose: _cache[22] || (_cache[22] = ($event) => !archiveResetting.value && (archiveResetOpen.value = false))
@@ -27853,7 +28316,7 @@
                   )) : createCommentVNode("v-if", true)
                 ]),
                 createBaseVNode("div", _hoisted_104, [
-                  createVNode(unref(_sfc_main$8), {
+                  createVNode(unref(_sfc_main$a), {
                     variant: "outline",
                     disabled: archiveResetting.value,
                     onClick: _cache[21] || (_cache[21] = ($event) => archiveResetOpen.value = false)
@@ -27880,7 +28343,7 @@
             _: 1
             /* STABLE */
           }, 8, ["label"])) : createCommentVNode("v-if", true)
-        ], 10, _hoisted_1$7);
+        ], 10, _hoisted_1$8);
       };
     }
   });
@@ -29341,7 +29804,7 @@
     let frame = 0;
     let lastEmittedKey = "";
     let lastActiveTurnId = null;
-    const scan = () => {
+    const scan2 = () => {
       frame = 0;
       if (stopped) return;
       const state = readConversationActivity();
@@ -29376,7 +29839,7 @@
     };
     const queue2 = () => {
       if (stopped || frame) return;
-      frame = requestAnimationFrame(scan);
+      frame = requestAnimationFrame(scan2);
     };
     const observer = new MutationObserver((records) => {
       if (!records.some((record2) => {
@@ -29436,7 +29899,7 @@
     let stopped = false;
     let scheduled;
     const pending = /* @__PURE__ */ new Set();
-    const scan = (root = document) => {
+    const scan2 = (root = document) => {
       if (stopped) return;
       onScan(findConversationMessageTargets(root), root);
     };
@@ -29445,7 +29908,7 @@
       if (stopped) return;
       const roots = pending.size ? [...pending] : [document];
       pending.clear();
-      for (const root of roots) scan(root);
+      for (const root of roots) scan2(root);
     };
     const queue2 = (root) => {
       pending.add(root);
@@ -29935,14 +30398,14 @@
     const body = response.clone().body;
     if (!body) return;
     const reader = body.getReader();
-    const decoder = new TextDecoder();
+    const decoder3 = new TextDecoder();
     let buffer = "";
     void (async () => {
       try {
         while (true) {
           const { done, value } = await reader.read();
           if (done || requestEpoch !== currentEpoch()) break;
-          buffer += decoder.decode(value, { stream: true });
+          buffer += decoder3.decode(value, { stream: true });
           buffer = buffer.replace(/\r\n/g, "\n");
           let boundary = buffer.indexOf("\n\n");
           while (boundary >= 0) {
@@ -30403,13 +30866,13 @@
     const body = response.clone().body;
     if (!body) return;
     const reader = body.getReader();
-    const decoder = new TextDecoder();
+    const decoder3 = new TextDecoder();
     void (async () => {
       try {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          const text = decoder.decode(value, { stream: true });
+          const text = decoder3.decode(value, { stream: true });
           if (!text) continue;
           emit({
             id: context.id,
@@ -31075,6 +31538,15 @@
     }
     return parts.join("");
   }
+  function fromBase64(value) {
+    if (typeof value !== "string" || value.length > 4e8)
+      throw new Error("Invalid portable binary value");
+    const decoded = atob(value);
+    const output = new Uint8Array(decoded.length);
+    for (let i = 0; i < decoded.length; i++)
+      output[i] = decoded.charCodeAt(i);
+    return output;
+  }
   var typed = /* @__PURE__ */ new Set([
     "Int8Array",
     "Uint8Array",
@@ -31152,11 +31624,130 @@
     }
     return encode(value, 0);
   }
+  function decodeArchiveClone(value) {
+    function decode(input, depth) {
+      if (depth > 150)
+        throw new Error("Encoded archive structure exceeds maximum nesting depth");
+      if (!Array.isArray(input)) {
+        if (input === null || typeof input === "string" || typeof input === "boolean" || typeof input === "number" && Number.isFinite(input))
+          return input;
+        throw new Error("Invalid encoded archive primitive");
+      }
+      const [tag2, ...fields2] = input;
+      if (tag2 === "undefined" && !fields2.length)
+        return;
+      if (tag2 === "number" && typeof fields2[0] === "string") {
+        if (fields2[0] === "NaN")
+          return Number.NaN;
+        if (fields2[0] === "Infinity")
+          return Infinity;
+        if (fields2[0] === "-Infinity")
+          return -Infinity;
+        if (fields2[0] === "0" || fields2[0] === "-0")
+          return -0;
+        throw new Error("Invalid encoded numeric value");
+      }
+      if (tag2 === "bigint" && typeof fields2[0] === "string")
+        return BigInt(fields2[0]);
+      if (tag2 === "date" && (typeof fields2[0] === "number" || fields2[0] === "NaN"))
+        return new Date(fields2[0] === "NaN" ? Number.NaN : fields2[0]);
+      if (tag2 === "regexp" && typeof fields2[0] === "string" && typeof fields2[1] === "string")
+        return new RegExp(fields2[0], fields2[1]);
+      if (tag2 === "buffer")
+        return fromBase64(fields2[0]).buffer;
+      if (tag2 === "blob" && typeof fields2[0] === "string")
+        return new Blob([fromBase64(fields2[1])], { type: fields2[0] });
+      if (tag2 === "file" && typeof fields2[0] === "string" && typeof fields2[1] === "number" && typeof fields2[2] === "string")
+        return new File([fromBase64(fields2[3])], fields2[0], { lastModified: fields2[1], type: fields2[2] });
+      if (tag2 === "view") {
+        const [name, offset, size, encoded] = fields2;
+        if (typeof name !== "string" || !typed.has(name) || !Number.isSafeInteger(offset) || !Number.isSafeInteger(size) || offset < 0 || size < 0)
+          throw new Error("Invalid portable typed view");
+        const buffer = fromBase64(encoded).buffer;
+        if (offset + size > buffer.byteLength)
+          throw new Error("Portable view out of bounds");
+        switch (name) {
+          case "DataView":
+            return new DataView(buffer, offset, size);
+          case "Int8Array":
+            return new Int8Array(buffer, offset, size);
+          case "Uint8Array":
+            return new Uint8Array(buffer, offset, size);
+          case "Uint8ClampedArray":
+            return new Uint8ClampedArray(buffer, offset, size);
+          case "Int16Array":
+            return new Int16Array(buffer, offset, size / 2);
+          case "Uint16Array":
+            return new Uint16Array(buffer, offset, size / 2);
+          case "Int32Array":
+            return new Int32Array(buffer, offset, size / 4);
+          case "Uint32Array":
+            return new Uint32Array(buffer, offset, size / 4);
+          case "Float32Array":
+            return new Float32Array(buffer, offset, size / 4);
+          case "Float64Array":
+            return new Float64Array(buffer, offset, size / 8);
+          case "BigInt64Array":
+            return new BigInt64Array(buffer, offset, size / 8);
+          case "BigUint64Array":
+            return new BigUint64Array(buffer, offset, size / 8);
+        }
+      }
+      if (tag2 === "array") {
+        const length = fields2[0];
+        const entries = fields2[1];
+        if (!Number.isSafeInteger(length) || length < 0 || length > 2e7 || !Array.isArray(entries))
+          throw new Error("Invalid portable archive array length");
+        const result = new Array(length);
+        for (const pair of entries) {
+          if (!Array.isArray(pair) || pair.length !== 2 || typeof pair[0] !== "string" || pair[0] === "length" || /^(0|[1-9]\d*)$/.test(pair[0]) && Number(pair[0]) >= length)
+            throw new Error("Invalid portable archive array index");
+          Object.defineProperty(result, pair[0], {
+            value: decode(pair[1], depth + 1),
+            enumerable: true,
+            writable: true,
+            configurable: true
+          });
+        }
+        return result;
+      }
+      const pairs = fields2[0];
+      if (!Array.isArray(pairs))
+        throw new Error("Encoded archive collection is not an array");
+      if (tag2 === "map") {
+        const result = /* @__PURE__ */ new Map();
+        for (const pair of pairs) {
+          if (!Array.isArray(pair) || pair.length !== 2)
+            throw new Error("Malformed encoded Map");
+          result.set(decode(pair[0], depth + 1), decode(pair[1], depth + 1));
+        }
+        return result;
+      }
+      if (tag2 === "set")
+        return new Set(pairs.map((row) => decode(row, depth + 1)));
+      if (tag2 === "object") {
+        const object = /* @__PURE__ */ Object.create(null);
+        for (const pair of pairs) {
+          if (!Array.isArray(pair) || pair.length !== 2 || typeof pair[0] !== "string")
+            throw new Error("Malformed archive object property");
+          Object.defineProperty(object, pair[0], {
+            value: decode(pair[1], depth + 1),
+            enumerable: true,
+            writable: true,
+            configurable: true
+          });
+        }
+        return object;
+      }
+      throw new Error("Unknown structured archive type tag");
+    }
+    return decode(value, 0);
+  }
   async function archiveSha256Hex(bytes) {
     const data = typeof bytes === "string" ? new TextEncoder().encode(bytes) : bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
     const safeBytes2 = data.buffer instanceof ArrayBuffer ? data : new Uint8Array(data);
-    const digest = await crypto.subtle.digest("SHA-256", safeBytes2);
-    return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+    const digest2 = await crypto.subtle.digest("SHA-256", safeBytes2);
+    return Array.from(new Uint8Array(digest2), (value) => value.toString(16).padStart(2, "0")).join("");
   }
   async function createGzipFromChunks(input, signal) {
     if (typeof CompressionStream !== "function")
@@ -31525,14 +32116,14 @@
       control.trigger.setAttribute("aria-label", t("messageMeta.title"));
       const body = document.createElement("div");
       body.className = "booster-message-meta-body";
-      const header = document.createElement("header");
-      header.className = "booster-message-meta-header";
+      const header2 = document.createElement("header");
+      header2.className = "booster-message-meta-header";
       const heading = document.createElement("strong");
       heading.textContent = t("messageMeta.title");
       const stamp = document.createElement("span");
       stamp.textContent = shortTime(current.sentAt, locale);
-      header.append(heading, stamp);
-      body.append(header);
+      header2.append(heading, stamp);
+      body.append(header2);
       const lines = document.createElement("div");
       lines.className = "booster-meta-lines";
       appendLine(lines, t("reader.sentAt"), sent || unknown);
@@ -31620,24 +32211,24 @@
     };
   }
   const _hoisted_1$3$1 = ["aria-busy"];
-  const _hoisted_2$6 = {
+  const _hoisted_2$7 = {
     key: 0,
     class: "flex items-center justify-between gap-2"
   };
-  const _hoisted_3$5 = {
+  const _hoisted_3$6 = {
     role: "status",
     "aria-live": "polite"
   };
-  const _hoisted_4$5 = {
+  const _hoisted_4$6 = {
     key: 0,
     class: "tabular-nums"
   };
-  const _hoisted_5$5 = ["value", "aria-label"];
-  const _hoisted_6$5 = {
+  const _hoisted_5$6 = ["value", "aria-label"];
+  const _hoisted_6$6 = {
     key: 1,
     class: "text-xs text-muted-foreground"
   };
-  const _hoisted_7$5 = {
+  const _hoisted_7$6 = {
     key: 2,
     role: "alert",
     class: "text-sm text-destructive"
@@ -31666,17 +32257,17 @@
           class: normalizeClass(__props.compact ? "w-full" : "booster-shared-archive-progress"),
           "aria-busy": __props.busy
         }, [
-          !__props.compact ? (openBlock(), createElementBlock("div", _hoisted_2$6, [
+          !__props.compact ? (openBlock(), createElementBlock("div", _hoisted_2$7, [
             createBaseVNode(
               "span",
-              _hoisted_3$5,
+              _hoisted_3$6,
               toDisplayString(__props.label),
               1
               /* TEXT */
             ),
             progress.value !== null ? (openBlock(), createElementBlock(
               "strong",
-              _hoisted_4$5,
+              _hoisted_4$6,
               toDisplayString(progress.value) + "%",
               1
               /* TEXT */
@@ -31687,17 +32278,17 @@
             value: progress.value ?? void 0,
             max: "100",
             "aria-label": __props.ariaLabel || __props.label
-          }, null, 8, _hoisted_5$5),
+          }, null, 8, _hoisted_5$6),
           __props.detail ? (openBlock(), createElementBlock(
             "p",
-            _hoisted_6$5,
+            _hoisted_6$6,
             toDisplayString(__props.detail),
             1
             /* TEXT */
           )) : createCommentVNode("v-if", true),
           __props.error ? (openBlock(), createElementBlock(
             "p",
-            _hoisted_7$5,
+            _hoisted_7$6,
             toDisplayString(__props.error),
             1
             /* TEXT */
@@ -31707,8 +32298,8 @@
       };
     }
   });
-  const _hoisted_1$6 = ["aria-modal", "aria-label"];
-  const _sfc_main$2$2 = /* @__PURE__ */ defineComponent({
+  const _hoisted_1$7 = ["aria-modal", "aria-label"];
+  const _sfc_main$2$1 = /* @__PURE__ */ defineComponent({
     __name: "ModalSurface",
     props: {
       label: {},
@@ -31782,7 +32373,7 @@
               renderSlot(_ctx.$slots, "chrome"),
               renderSlot(_ctx.$slots, "default"),
               renderSlot(_ctx.$slots, "handles")
-            ], 46, _hoisted_1$6)
+            ], 46, _hoisted_1$7)
           ],
           2
           /* CLASS */
@@ -31821,7 +32412,7 @@
       };
     }
   });
-  const _sfc_main$6 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$8 = /* @__PURE__ */ defineComponent({
     __name: "Button",
     props: {
       variant: { default: "default" },
@@ -31925,18 +32516,18 @@
       }
     };
   }
-  const _hoisted_1$5 = ["title"];
-  const _hoisted_2$5 = { class: "booster-scope-title" };
-  const _hoisted_3$4 = { class: "booster-scope-kind" };
-  const _hoisted_4$4 = { class: "booster-meta-lines" };
-  const _hoisted_5$4 = { class: "booster-meta-label" };
-  const _hoisted_6$4 = { class: "booster-meta-value" };
-  const _hoisted_7$4 = { class: "booster-meta-label" };
-  const _hoisted_8$4 = { class: "booster-meta-value" };
-  const _hoisted_9$4 = { class: "booster-meta-label" };
-  const _hoisted_10$4 = { class: "booster-meta-value" };
-  const _hoisted_11$4 = { class: "booster-scope-actions" };
-  const _sfc_main$5 = /* @__PURE__ */ defineComponent({
+  const _hoisted_1$6 = ["title"];
+  const _hoisted_2$6 = { class: "booster-scope-title" };
+  const _hoisted_3$5 = { class: "booster-scope-kind" };
+  const _hoisted_4$5 = { class: "booster-meta-lines" };
+  const _hoisted_5$5 = { class: "booster-meta-label" };
+  const _hoisted_6$5 = { class: "booster-meta-value" };
+  const _hoisted_7$5 = { class: "booster-meta-label" };
+  const _hoisted_8$5 = { class: "booster-meta-value" };
+  const _hoisted_9$5 = { class: "booster-meta-label" };
+  const _hoisted_10$5 = { class: "booster-meta-value" };
+  const _hoisted_11$5 = { class: "booster-scope-actions" };
+  const _sfc_main$7 = /* @__PURE__ */ defineComponent({
     __name: "ScopeArchiveControl",
     props: {
       model: {}
@@ -31951,7 +32542,7 @@
           class: normalizeClass(["booster-chat-save-marker", { "is-enabled": __props.model.effectiveEnabled, "is-work": __props.model.workConversation }]),
           title: label(),
           "aria-hidden": "true"
-        }, null, 10, _hoisted_1$5)) : (openBlock(), createBlock(_sfc_main$l, {
+        }, null, 10, _hoisted_1$6)) : (openBlock(), createBlock(_sfc_main$n, {
           key: 1,
           mode: "click",
           label: label()
@@ -31978,64 +32569,64 @@
               createBaseVNode("header", null, [
                 createBaseVNode(
                   "strong",
-                  _hoisted_2$5,
+                  _hoisted_2$6,
                   toDisplayString(__props.model.context.title || t("identity.unknownProject")),
                   1
                   /* TEXT */
                 ),
                 createBaseVNode(
                   "span",
-                  _hoisted_3$4,
+                  _hoisted_3$5,
                   toDisplayString(t("capture.project")),
                   1
                   /* TEXT */
                 )
               ]),
-              createBaseVNode("div", _hoisted_4$4, [
+              createBaseVNode("div", _hoisted_4$5, [
                 createBaseVNode(
                   "strong",
-                  _hoisted_5$4,
+                  _hoisted_5$5,
                   toDisplayString(t("scope.localArchive")),
                   1
                   /* TEXT */
                 ),
                 createBaseVNode(
                   "span",
-                  _hoisted_6$4,
+                  _hoisted_6$5,
                   toDisplayString(__props.model.archivedCount > 0 ? t("scope.archived") + " · " + __props.model.archivedCount : t("scope.notArchived")),
                   1
                   /* TEXT */
                 ),
                 createBaseVNode(
                   "strong",
-                  _hoisted_7$4,
+                  _hoisted_7$5,
                   toDisplayString(t("capture.policy")),
                   1
                   /* TEXT */
                 ),
                 createBaseVNode(
                   "span",
-                  _hoisted_8$4,
+                  _hoisted_8$5,
                   toDisplayString(t(__props.model.effectiveEnabled ? "dock.autoOn" : "dock.autoOff")),
                   1
                   /* TEXT */
                 ),
                 createBaseVNode(
                   "strong",
-                  _hoisted_9$4,
+                  _hoisted_9$5,
                   toDisplayString(t("scope.rule")),
                   1
                   /* TEXT */
                 ),
                 createBaseVNode(
                   "span",
-                  _hoisted_10$4,
+                  _hoisted_10$5,
                   toDisplayString(t("scope.source." + __props.model.source)),
                   1
                   /* TEXT */
                 )
               ]),
-              createBaseVNode("div", _hoisted_11$4, [
+              createBaseVNode("div", _hoisted_11$5, [
                 createBaseVNode(
                   "button",
                   {
@@ -32129,7 +32720,7 @@
       const mountPoint = document.createElement("span");
       projectShadow.append(mountPoint);
       projectModel = /* @__PURE__ */ reactive({ ...current });
-      app = createApp(_sfc_main$5, { model: projectModel });
+      app = createApp(_sfc_main$7, { model: projectModel });
       app.mount(mountPoint);
     };
     const render = () => {
@@ -32155,43 +32746,43 @@
       }
     };
   }
-  const _hoisted_1$4 = ["lang"];
-  const _hoisted_2$4 = ["src"];
-  const _hoisted_3$3 = { class: "min-w-0 flex-1" };
-  const _hoisted_4$3 = { key: 0 };
-  const _hoisted_5$3 = { class: "booster-meta-lines" };
-  const _hoisted_6$3 = { class: "booster-meta-label" };
-  const _hoisted_7$3 = { class: "booster-meta-value" };
-  const _hoisted_8$3 = { class: "booster-meta-label" };
-  const _hoisted_9$3 = { class: "booster-meta-value" };
-  const _hoisted_10$3 = { class: "booster-meta-label" };
-  const _hoisted_11$3 = { class: "booster-meta-value" };
-  const _hoisted_12$3 = { class: "booster-meta-label" };
-  const _hoisted_13$3 = { class: "booster-meta-value" };
-  const _hoisted_14$3 = { class: "booster-meta-label" };
-  const _hoisted_15$3 = { class: "booster-meta-value" };
-  const _hoisted_16$2 = { class: "booster-meta-label" };
-  const _hoisted_17$2 = { class: "booster-meta-value" };
-  const _hoisted_18$2 = { class: "booster-meta-label" };
-  const _hoisted_19$2 = { class: "booster-meta-value booster-tool-path" };
-  const _hoisted_20$2 = ["href"];
-  const _hoisted_21$2 = {
+  const _hoisted_1$5 = ["lang"];
+  const _hoisted_2$5 = ["src"];
+  const _hoisted_3$4 = { class: "min-w-0 flex-1" };
+  const _hoisted_4$4 = { key: 0 };
+  const _hoisted_5$4 = { class: "booster-meta-lines" };
+  const _hoisted_6$4 = { class: "booster-meta-label" };
+  const _hoisted_7$4 = { class: "booster-meta-value" };
+  const _hoisted_8$4 = { class: "booster-meta-label" };
+  const _hoisted_9$4 = { class: "booster-meta-value" };
+  const _hoisted_10$4 = { class: "booster-meta-label" };
+  const _hoisted_11$4 = { class: "booster-meta-value" };
+  const _hoisted_12$4 = { class: "booster-meta-label" };
+  const _hoisted_13$4 = { class: "booster-meta-value" };
+  const _hoisted_14$4 = { class: "booster-meta-label" };
+  const _hoisted_15$4 = { class: "booster-meta-value" };
+  const _hoisted_16$3 = { class: "booster-meta-label" };
+  const _hoisted_17$3 = { class: "booster-meta-value" };
+  const _hoisted_18$3 = { class: "booster-meta-label" };
+  const _hoisted_19$3 = { class: "booster-meta-value booster-tool-path" };
+  const _hoisted_20$3 = ["href"];
+  const _hoisted_21$3 = {
     key: 1,
     class: "booster-tool-payload"
   };
-  const _hoisted_22$2 = {
+  const _hoisted_22$3 = {
     key: 2,
     class: "booster-tool-payload"
   };
-  const _hoisted_23$2 = {
+  const _hoisted_23$3 = {
     key: 3,
     class: "booster-tool-evidence"
   };
-  const _hoisted_24$2 = {
+  const _hoisted_24$3 = {
     key: 0,
     class: "booster-tool-attributes"
   };
-  const _sfc_main$4 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$6 = /* @__PURE__ */ defineComponent({
     __name: "ToolInspector",
     props: {
       model: {},
@@ -32241,7 +32832,7 @@
         }, 1200);
       }
       return (_ctx, _cache) => {
-        return openBlock(), createBlock(_sfc_main$l, {
+        return openBlock(), createBlock(_sfc_main$n, {
           mode: "hover-click",
           label: t("tool.inspect"),
           align: "start",
@@ -32261,14 +32852,14 @@
                   src: __props.model.tool.iconUrl,
                   alt: "",
                   class: "booster-live-tool-icon"
-                }, null, 8, _hoisted_2$4)) : isWebTool.value ? (openBlock(), createBlock(unref(Globe), {
+                }, null, 8, _hoisted_2$5)) : isWebTool.value ? (openBlock(), createBlock(unref(Globe), {
                   key: 1,
                   class: "size-4 shrink-0"
                 })) : (openBlock(), createBlock(unref(Wrench), {
                   key: 2,
                   class: "size-4 shrink-0"
                 })),
-                createBaseVNode("div", _hoisted_3$3, [
+                createBaseVNode("div", _hoisted_3$4, [
                   createBaseVNode(
                     "strong",
                     null,
@@ -32278,13 +32869,13 @@
                   ),
                   __props.model.tool.action ? (openBlock(), createElementBlock(
                     "span",
-                    _hoisted_4$3,
+                    _hoisted_4$4,
                     toDisplayString(__props.model.tool.action),
                     1
                     /* TEXT */
                   )) : createCommentVNode("v-if", true)
                 ]),
-                pinned ? (openBlock(), createBlock(unref(_sfc_main$8), {
+                pinned ? (openBlock(), createBlock(unref(_sfc_main$a), {
                   key: 3,
                   variant: "ghost",
                   size: "icon-sm",
@@ -32304,21 +32895,21 @@
                   /* STABLE */
                 }, 8, ["title"])) : createCommentVNode("v-if", true)
               ]),
-              createBaseVNode("div", _hoisted_5$3, [
+              createBaseVNode("div", _hoisted_5$4, [
                 durationLabel.value ? (openBlock(), createElementBlock(
                   Fragment,
                   { key: 0 },
                   [
                     createBaseVNode(
                       "strong",
-                      _hoisted_6$3,
+                      _hoisted_6$4,
                       toDisplayString(t("tool.duration")),
                       1
                       /* TEXT */
                     ),
                     createBaseVNode(
                       "span",
-                      _hoisted_7$3,
+                      _hoisted_7$4,
                       toDisplayString(durationLabel.value),
                       1
                       /* TEXT */
@@ -32333,14 +32924,14 @@
                   [
                     createBaseVNode(
                       "strong",
-                      _hoisted_8$3,
+                      _hoisted_8$4,
                       toDisplayString(t("tool.provider")),
                       1
                       /* TEXT */
                     ),
                     createBaseVNode(
                       "span",
-                      _hoisted_9$3,
+                      _hoisted_9$4,
                       toDisplayString(__props.model.tool.provider),
                       1
                       /* TEXT */
@@ -32355,14 +32946,14 @@
                   [
                     createBaseVNode(
                       "strong",
-                      _hoisted_10$3,
+                      _hoisted_10$4,
                       toDisplayString(t("tool.action")),
                       1
                       /* TEXT */
                     ),
                     createBaseVNode(
                       "span",
-                      _hoisted_11$3,
+                      _hoisted_11$4,
                       toDisplayString(__props.model.tool.action),
                       1
                       /* TEXT */
@@ -32377,14 +32968,14 @@
                   [
                     createBaseVNode(
                       "strong",
-                      _hoisted_12$3,
+                      _hoisted_12$4,
                       toDisplayString(t("tool.startedAt")),
                       1
                       /* TEXT */
                     ),
                     createBaseVNode(
                       "span",
-                      _hoisted_13$3,
+                      _hoisted_13$4,
                       toDisplayString(startedAt.value),
                       1
                       /* TEXT */
@@ -32399,14 +32990,14 @@
                   [
                     createBaseVNode(
                       "strong",
-                      _hoisted_14$3,
+                      _hoisted_14$4,
                       toDisplayString(t("tool.finishedAt")),
                       1
                       /* TEXT */
                     ),
                     createBaseVNode(
                       "span",
-                      _hoisted_15$3,
+                      _hoisted_15$4,
                       toDisplayString(finishedAt.value),
                       1
                       /* TEXT */
@@ -32421,14 +33012,14 @@
                   [
                     createBaseVNode(
                       "strong",
-                      _hoisted_16$2,
+                      _hoisted_16$3,
                       toDisplayString(t("tool.recipient")),
                       1
                       /* TEXT */
                     ),
                     createBaseVNode(
                       "span",
-                      _hoisted_17$2,
+                      _hoisted_17$3,
                       toDisplayString(__props.model.tool.recipient),
                       1
                       /* TEXT */
@@ -32443,14 +33034,14 @@
                   [
                     createBaseVNode(
                       "strong",
-                      _hoisted_18$2,
+                      _hoisted_18$3,
                       toDisplayString(t("tool.path")),
                       1
                       /* TEXT */
                     ),
                     createBaseVNode(
                       "span",
-                      _hoisted_19$2,
+                      _hoisted_19$3,
                       toDisplayString(__props.model.tool.path),
                       1
                       /* TEXT */
@@ -32475,8 +33066,8 @@
                   1
                   /* TEXT */
                 )
-              ], 8, _hoisted_20$2)) : createCommentVNode("v-if", true),
-              pinned && __props.model.tool.payload !== null ? (openBlock(), createElementBlock("div", _hoisted_21$2, [
+              ], 8, _hoisted_20$3)) : createCommentVNode("v-if", true),
+              pinned && __props.model.tool.payload !== null ? (openBlock(), createElementBlock("div", _hoisted_21$3, [
                 createBaseVNode(
                   "strong",
                   null,
@@ -32484,11 +33075,11 @@
                   1
                   /* TEXT */
                 ),
-                createVNode(_sfc_main$k, {
+                createVNode(_sfc_main$m, {
                   value: __props.model.tool.payload
                 }, null, 8, ["value"])
               ])) : createCommentVNode("v-if", true),
-              pinned && __props.model.tool.result !== null ? (openBlock(), createElementBlock("div", _hoisted_22$2, [
+              pinned && __props.model.tool.result !== null ? (openBlock(), createElementBlock("div", _hoisted_22$3, [
                 createBaseVNode(
                   "strong",
                   null,
@@ -32496,11 +33087,11 @@
                   1
                   /* TEXT */
                 ),
-                createVNode(_sfc_main$k, {
+                createVNode(_sfc_main$m, {
                   value: __props.model.tool.result
                 }, null, 8, ["value"])
               ])) : createCommentVNode("v-if", true),
-              pinned && (Object.keys(__props.model.attributes).length || __props.model.visibleText) ? (openBlock(), createElementBlock("details", _hoisted_23$2, [
+              pinned && (Object.keys(__props.model.attributes).length || __props.model.visibleText) ? (openBlock(), createElementBlock("details", _hoisted_23$3, [
                 createBaseVNode(
                   "summary",
                   null,
@@ -32508,7 +33099,7 @@
                   1
                   /* TEXT */
                 ),
-                Object.keys(__props.model.attributes).length ? (openBlock(), createElementBlock("dl", _hoisted_24$2, [
+                Object.keys(__props.model.attributes).length ? (openBlock(), createElementBlock("dl", _hoisted_24$3, [
                   (openBlock(true), createElementBlock(
                     Fragment,
                     null,
@@ -32548,7 +33139,7 @@
                   /* TEXT */
                 )
               ])) : createCommentVNode("v-if", true)
-            ], 8, _hoisted_1$4)
+            ], 8, _hoisted_1$5)
           ]),
           _: 1
           /* STABLE */
@@ -32567,7 +33158,7 @@
     shadow.append(mountPoint);
     const state = /* @__PURE__ */ reactive({ model, now: 0 });
     const app = createApp({
-      render: () => h(_sfc_main$4, { model: state.model, now: state.now })
+      render: () => h(_sfc_main$6, { model: state.model, now: state.now })
     });
     app.mount(mountPoint);
     return {
@@ -38779,12 +39370,12 @@
     const counts = {};
     const initialCounts = {};
     for (const store of stores) initialCounts[store] = await countNativeStore(db, store);
-    let digest = "start";
-    const encoder = new TextEncoder();
+    let digest2 = "start";
+    const encoder3 = new TextEncoder();
     const encodeLine = async (row, footer = false) => {
       const line = JSON.stringify(row);
-      if (!footer) digest = await archiveSha256Hex(digest + "\n" + line);
-      return encoder.encode(line + "\n");
+      if (!footer) digest2 = await archiveSha256Hex(digest2 + "\n" + line);
+      return encoder3.encode(line + "\n");
     };
     const content = async function* () {
       yield await encodeLine({
@@ -38812,7 +39403,7 @@
         if (counts[store] !== initialCounts[store] || counts[store] !== await countNativeStore(db, store))
           throw Error("Legacy archive changed during export; retry while capture is paused");
       }
-      yield await encodeLine({ kind: "footer", format, counts, digest }, true);
+      yield await encodeLine({ kind: "footer", format, counts, digest: digest2 }, true);
     };
     try {
       return { blob: await createGzipFromChunks(content()), counts, databaseVersion: db.version };
@@ -38900,13 +39491,13 @@
     async capture(page, owner, epoch) {
       if (this.stopped || this.state.accountEpoch() !== epoch || this.state.verifiedAccountId() !== owner) return;
       const settings = await this.settings.get();
-      const header = this.state.header(page.conversationId);
+      const header2 = this.state.header(page.conversationId);
       const session = this.collectionSession?.current();
       const manual = Boolean(this.collectionSession?.permits(session, owner, page.conversationId));
       const rule = captureRuleForOperation(
         settings.archive,
         page.conversationId,
-        header?.projectId ?? null,
+        header2?.projectId ?? null,
         manual,
         settings.enabled
       );
@@ -38933,8 +39524,8 @@
         await store.addObservation({
           accountId: owner,
           conversationId: page.conversationId,
-          projectId: header?.projectId ?? null,
-          conversationTitle: header?.title ?? null,
+          projectId: header2?.projectId ?? null,
+          conversationTitle: header2?.title ?? null,
           sourceKind: "native",
           sourceVersion: NATIVE_HISTORY_CONTRACT_VERSION,
           observedAtMs: page.timestamp,
@@ -38952,12 +39543,12 @@
       const settings = await this.settings.get();
       if (!settings.enabled || hasConversationDraft() || hasPendingComposerAttachments() || isConversationGenerating() || typeof document !== "undefined" && document.hidden)
         throw Error("Manual archive collection is currently blocked");
-      const header = this.state.header(id);
+      const header2 = this.state.header(id);
       const run = this.collectionSession.begin({
         accountId: account,
         conversationId: id,
-        projectId: header?.projectId ?? null,
-        selectedTipId: header?.currentNodeId ?? null
+        projectId: header2?.projectId ?? null,
+        selectedTipId: header2?.currentNodeId ?? null
       });
       this.collectionSession.requireCurrent(run);
       for (const page of this.state.pages(id)) {
@@ -39102,12 +39693,12 @@
         if (this.stopped || this.state.accountEpoch() !== epoch || this.state.verifiedAccountId() !== owner)
           throw Error("Account changed during export");
       };
-      let digest = "start";
+      let digest2 = "start";
       let count = 0;
       const source = async function* () {
         const encode = async (row, footer = false) => {
           const line = JSON.stringify(row);
-          if (!footer) digest = await archiveSha256Hex(digest + "\n" + line);
+          if (!footer) digest2 = await archiveSha256Hex(digest2 + "\n" + line);
           return new TextEncoder().encode(line + "\n");
         };
         yield await encode({
@@ -39133,7 +39724,7 @@
           cursor = records.at(-1)?.messageId;
           if (records.length < 128) break;
         }
-        yield await encode({ kind: "footer", count, digest }, true);
+        yield await encode({ kind: "footer", count, digest: digest2 }, true);
       };
       const result = await createGzipFromChunks(source());
       assertOwner();
@@ -39661,68 +40252,68 @@
     };
     return { feature, startEarly };
   }
-  const _hoisted_1$3 = ["lang"];
-  const _hoisted_2$3 = {
+  const _hoisted_1$4 = ["lang"];
+  const _hoisted_2$4 = {
     class: "booster-dock-context",
     "aria-label": "ChatGPT Booster"
   };
-  const _hoisted_3$2 = { class: "booster-dock-context-info" };
-  const _hoisted_4$2 = {
+  const _hoisted_3$3 = { class: "booster-dock-context-info" };
+  const _hoisted_4$3 = {
     key: 0,
     role: "status"
   };
-  const _hoisted_5$2 = {
+  const _hoisted_5$3 = {
     key: 1,
     class: "booster-dock-counts"
   };
-  const _hoisted_6$2 = {
+  const _hoisted_6$3 = {
     key: 2,
     class: "booster-dock-history-state"
   };
-  const _hoisted_7$2 = ["disabled"];
-  const _hoisted_8$2 = {
+  const _hoisted_7$3 = ["disabled"];
+  const _hoisted_8$3 = {
     key: 0,
     class: "booster-error",
     role: "alert"
   };
-  const _hoisted_9$2 = {
+  const _hoisted_9$3 = {
     key: 1,
     class: "booster-dock-progress",
     role: "status"
   };
-  const _hoisted_10$2 = ["aria-label"];
-  const _hoisted_11$2 = ["aria-label"];
-  const _hoisted_12$2 = ["aria-pressed"];
-  const _hoisted_13$2 = ["aria-pressed", "disabled"];
-  const _hoisted_14$2 = ["disabled"];
-  const _hoisted_15$2 = ["aria-pressed"];
-  const _hoisted_16$1 = ["aria-pressed"];
-  const _hoisted_17$1 = ["aria-label"];
-  const _hoisted_18$1 = ["aria-label", "aria-expanded"];
-  const _hoisted_19$1 = {
+  const _hoisted_10$3 = ["aria-label"];
+  const _hoisted_11$3 = ["aria-label"];
+  const _hoisted_12$3 = ["aria-pressed"];
+  const _hoisted_13$3 = ["aria-pressed", "disabled"];
+  const _hoisted_14$3 = ["disabled"];
+  const _hoisted_15$3 = ["aria-pressed"];
+  const _hoisted_16$2 = ["aria-pressed"];
+  const _hoisted_17$2 = ["aria-label"];
+  const _hoisted_18$2 = ["aria-label", "aria-expanded"];
+  const _hoisted_19$2 = {
     key: 0,
     class: "booster-reader-tools-menu",
     role: "menu"
   };
-  const _hoisted_20$1 = {
+  const _hoisted_20$2 = {
     key: 2,
     class: "booster-stack-card",
     "aria-label": "Фиксированный Dexie архив ChatGPT"
   };
-  const _hoisted_21$1 = { class: "booster-setting-copy" };
-  const _hoisted_22$1 = { key: 0 };
-  const _hoisted_23$1 = {
+  const _hoisted_21$2 = { class: "booster-setting-copy" };
+  const _hoisted_22$2 = { key: 0 };
+  const _hoisted_23$2 = {
     key: 1,
     role: "status"
   };
-  const _hoisted_24$1 = { class: "flex flex-wrap gap-2" };
-  const _hoisted_25$1 = ["disabled"];
-  const _hoisted_26$1 = ["disabled"];
-  const _hoisted_27$1 = {
+  const _hoisted_24$2 = { class: "flex flex-wrap gap-2" };
+  const _hoisted_25$2 = ["disabled"];
+  const _hoisted_26$2 = ["disabled"];
+  const _hoisted_27$2 = {
     key: 0,
     role: "alert"
   };
-  const _hoisted_28$1 = {
+  const _hoisted_28$2 = {
     key: 1,
     class: "max-h-60 overflow-y-auto p-2"
   };
@@ -39758,7 +40349,7 @@
     key: 0,
     role: "alert"
   };
-  const _sfc_main$3 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$5 = /* @__PURE__ */ defineComponent({
     __name: "ChatGptPanel",
     setup(__props) {
       const tab = /* @__PURE__ */ ref("archive");
@@ -40140,14 +40731,14 @@
           class: "booster-chatgpt-panel",
           lang: locale.value
         }, [
-          createBaseVNode("header", _hoisted_2$3, [
-            createBaseVNode("div", _hoisted_3$2, [
-              createVNode(_sfc_main$d, {
+          createBaseVNode("header", _hoisted_2$4, [
+            createBaseVNode("div", _hoisted_3$3, [
+              createVNode(_sfc_main$f, {
                 label: current.value.conversationTitle || tr("Текущий диалог", "Current conversation"),
                 identifier: current.value.conversationId,
                 locale: locale.value
               }, null, 8, ["label", "identifier", "locale"]),
-              current.value.projectId ? (openBlock(), createBlock(_sfc_main$d, {
+              current.value.projectId ? (openBlock(), createBlock(_sfc_main$f, {
                 key: 0,
                 label: current.value.projectTitle || tr("Проект", "Project"),
                 identifier: current.value.projectId,
@@ -40156,12 +40747,12 @@
             ]),
             loading.value ? (openBlock(), createElementBlock(
               "p",
-              _hoisted_4$2,
+              _hoisted_4$3,
               toDisplayString(tr("Чтение состояния…", "Reading status…")),
               1
               /* TEXT */
             )) : createCommentVNode("v-if", true),
-            coverage.value ? (openBlock(), createElementBlock("div", _hoisted_5$2, [
+            coverage.value ? (openBlock(), createElementBlock("div", _hoisted_5$3, [
               createBaseVNode("span", null, [
                 createTextVNode(
                   toDisplayString(tr("Сообщений", "Messages")) + ": ",
@@ -40186,7 +40777,7 @@
             ])) : createCommentVNode("v-if", true),
             current.value.conversationId ? (openBlock(), createElementBlock(
               "div",
-              _hoisted_6$2,
+              _hoisted_6$3,
               toDisplayString(coverage.value?.hasOlderServerHistory === true ? tr("Есть более ранняя история", "Older server history available") : coverage.value?.hasOlderServerHistory === false ? tr("Начало истории достигнуто", "Start of history reached") : tr("Полнота истории не проверена", "History completeness unverified")),
               1
               /* TEXT */
@@ -40203,16 +40794,16 @@
                 1
                 /* TEXT */
               )
-            ], 8, _hoisted_7$2)
+            ], 8, _hoisted_7$3)
           ]),
           error.value ? (openBlock(), createElementBlock(
             "p",
-            _hoisted_8$2,
+            _hoisted_8$3,
             toDisplayString(error.value),
             1
             /* TEXT */
           )) : createCommentVNode("v-if", true),
-          active.value ? (openBlock(), createElementBlock("div", _hoisted_9$2, [
+          active.value ? (openBlock(), createElementBlock("div", _hoisted_9$3, [
             createBaseVNode(
               "span",
               null,
@@ -40227,7 +40818,7 @@
               onClick: stopCollection
             }, [
               createVNode(unref(Square), { class: "size-4" })
-            ], 8, _hoisted_10$2)
+            ], 8, _hoisted_10$3)
           ])) : createCommentVNode("v-if", true),
           createBaseVNode("nav", {
             class: "booster-export-recovery-actions",
@@ -40245,7 +40836,7 @@
                 1
                 /* TEXT */
               )
-            ], 8, _hoisted_12$2),
+            ], 8, _hoisted_12$3),
             createBaseVNode("button", {
               class: "booster-action-secondary",
               type: "button",
@@ -40259,7 +40850,7 @@
                 1
                 /* TEXT */
               )
-            ], 8, _hoisted_13$2),
+            ], 8, _hoisted_13$3),
             !context.value?.archiveAdapter.collectionInsideExportOnly ? (openBlock(), createElementBlock("button", {
               key: 0,
               class: "booster-action-secondary",
@@ -40273,7 +40864,7 @@
                 1
                 /* TEXT */
               )
-            ], 8, _hoisted_14$2)) : createCommentVNode("v-if", true),
+            ], 8, _hoisted_14$3)) : createCommentVNode("v-if", true),
             createBaseVNode("button", {
               class: "booster-action-secondary",
               type: "button",
@@ -40286,7 +40877,7 @@
                 1
                 /* TEXT */
               )
-            ], 8, _hoisted_15$2),
+            ], 8, _hoisted_15$3),
             createBaseVNode("button", {
               class: "booster-action-secondary",
               type: "button",
@@ -40299,7 +40890,7 @@
                 1
                 /* TEXT */
               )
-            ], 8, _hoisted_16$1),
+            ], 8, _hoisted_16$2),
             createBaseVNode("button", {
               class: "booster-action-secondary",
               type: "button",
@@ -40315,7 +40906,7 @@
                 1
                 /* TEXT */
               )
-            ], 8, _hoisted_17$1),
+            ], 8, _hoisted_17$2),
             createBaseVNode(
               "div",
               {
@@ -40339,8 +40930,8 @@
                     1
                     /* TEXT */
                   )
-                ], 8, _hoisted_18$1),
-                archiveMenuOpen.value ? (openBlock(), createElementBlock("div", _hoisted_19$1, [
+                ], 8, _hoisted_18$2),
+                archiveMenuOpen.value ? (openBlock(), createElementBlock("div", _hoisted_19$2, [
                   createBaseVNode("button", {
                     type: "button",
                     role: "menuitem",
@@ -40388,9 +40979,9 @@
               544
               /* NEED_HYDRATION, NEED_PATCH */
             )
-          ], 8, _hoisted_11$2),
-          context.value?.fixedArchive && current.value.conversationId && tab.value === "archive" ? (openBlock(), createElementBlock("section", _hoisted_20$1, [
-            createBaseVNode("div", _hoisted_21$1, [
+          ], 8, _hoisted_11$3),
+          context.value?.fixedArchive && current.value.conversationId && tab.value === "archive" ? (openBlock(), createElementBlock("section", _hoisted_20$2, [
+            createBaseVNode("div", _hoisted_21$2, [
               createBaseVNode(
                 "b",
                 null,
@@ -40410,35 +41001,35 @@
               ),
               fixedCount.value !== null ? (openBlock(), createElementBlock(
                 "small",
-                _hoisted_22$1,
+                _hoisted_22$2,
                 toDisplayString(tr("Сохранено", "Saved")) + ": " + toDisplayString(fixedCount.value),
                 1
                 /* TEXT */
               )) : createCommentVNode("v-if", true),
-              context.value.fixedArchive.captureFailed() ? (openBlock(), createElementBlock("small", _hoisted_23$1, "Исходное сообщение изменилось; прежний снимок сохранён.")) : createCommentVNode("v-if", true)
+              context.value.fixedArchive.captureFailed() ? (openBlock(), createElementBlock("small", _hoisted_23$2, "Исходное сообщение изменилось; прежний снимок сохранён.")) : createCommentVNode("v-if", true)
             ]),
-            createBaseVNode("div", _hoisted_24$1, [
+            createBaseVNode("div", _hoisted_24$2, [
               createBaseVNode("button", {
                 type: "button",
                 class: "booster-action-secondary",
                 disabled: fixedBusy.value,
                 onClick: readFixedArchive
-              }, toDisplayString(tr("Читать Dexie", "Read Dexie")), 9, _hoisted_25$1),
+              }, toDisplayString(tr("Читать Dexie", "Read Dexie")), 9, _hoisted_25$2),
               createBaseVNode("button", {
                 type: "button",
                 class: "booster-action-secondary",
                 disabled: fixedBusy.value,
                 onClick: exportFixedArchive
-              }, toDisplayString(tr("Экспорт Dexie JSON.gz", "Export Dexie JSON.gz")), 9, _hoisted_26$1)
+              }, toDisplayString(tr("Экспорт Dexie JSON.gz", "Export Dexie JSON.gz")), 9, _hoisted_26$2)
             ]),
             fixedError.value ? (openBlock(), createElementBlock(
               "p",
-              _hoisted_27$1,
+              _hoisted_27$2,
               toDisplayString(fixedError.value),
               1
               /* TEXT */
             )) : createCommentVNode("v-if", true),
-            fixedPreview.value.length ? (openBlock(), createElementBlock("ol", _hoisted_28$1, [
+            fixedPreview.value.length ? (openBlock(), createElementBlock("ol", _hoisted_28$2, [
               (openBlock(true), createElementBlock(
                 Fragment,
                 null,
@@ -40485,7 +41076,7 @@
             Fragment,
             { key: 4 },
             [
-              tab.value === "archive" ? (openBlock(), createBlock(_sfc_main$c, {
+              tab.value === "archive" ? (openBlock(), createBlock(_sfc_main$e, {
                 key: 0,
                 "archive-adapter": context.value.archiveAdapter,
                 "initial-conversation-id": archiveInitial.value,
@@ -40540,14 +41131,14 @@
                   1
                   /* TEXT */
                 )) : createCommentVNode("v-if", true)
-              ])) : tab.value === "capture" ? (openBlock(), createBlock(_sfc_main$a, {
+              ])) : tab.value === "capture" ? (openBlock(), createBlock(_sfc_main$c, {
                 key: 2,
                 "settings-adapter": context.value.settingsAdapter,
                 "archive-adapter": context.value.archiveAdapter,
                 context: captureContext.value,
                 locale: locale.value,
                 onClose: endCapture
-              }, null, 8, ["settings-adapter", "archive-adapter", "context", "locale"])) : tab.value === "settings" ? (openBlock(), createBlock(_sfc_main$7, {
+              }, null, 8, ["settings-adapter", "archive-adapter", "context", "locale"])) : tab.value === "settings" ? (openBlock(), createBlock(_sfc_main$9, {
                 key: 3,
                 "settings-adapter": context.value.settingsAdapter,
                 "archive-adapter": context.value.archiveAdapter,
@@ -40626,7 +41217,7 @@
               /* TEXT */
             )) : createCommentVNode("v-if", true)
           ])) : createCommentVNode("v-if", true)
-        ], 8, _hoisted_1$3);
+        ], 8, _hoisted_1$4);
       };
     }
   });
@@ -47096,6 +47687,99 @@
         throw Error("VK source record identity unavailable");
       return this.db.snapshots.get(JSON.stringify([this.scope.ownerId, peerId, messageId]));
     }
+    /** VK-specific table adapter; the common backup engine knows no VK fields. */
+    backupPort() {
+      const self2 = this;
+      const owner = this.scope.ownerId;
+      if (!owner) throw Error("Verified VK owner is required for backups");
+      return {
+        scope: this.scope,
+        schemaVersion: VK_FIXED_RECORD_VERSION,
+        stores: ["messages", "snapshots"],
+        schema: Object.fromEntries(
+          self2.db.tables.map((table) => [
+            table.name,
+            {
+              primaryKey: table.schema.primKey.src,
+              indexes: table.schema.indexes.map((index) => index.src)
+            }
+          ])
+        ),
+        async countRows() {
+          return {
+            messages: await self2.db.messages.where("ownerId").equals(owner).count(),
+            snapshots: await self2.db.snapshots.where("ownerId").equals(owner).count()
+          };
+        },
+        async *readRows(pageSize) {
+          if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 2048)
+            throw Error("Invalid VK backup page size");
+          const counts = await Promise.all([
+            self2.db.messages.where("ownerId").equals(owner).count(),
+            self2.db.snapshots.where("ownerId").equals(owner).count()
+          ]);
+          const prefix = `${JSON.stringify([owner]).slice(0, -1)},`;
+          const upper = `${prefix}￿`;
+          for (const store of ["messages", "snapshots"]) {
+            const table = self2.db[store];
+            let last;
+            while (true) {
+              const page = await table.where("key").between(last ?? prefix, upper, last === void 0, false).limit(pageSize).toArray();
+              for (const record2 of page) {
+                if (record2.ownerId !== owner || !record2.key.startsWith(prefix))
+                  throw Error("Unexpected VK backup account");
+                yield { store, key: record2.key, value: await encodeArchiveClone(record2) };
+              }
+              last = page.at(-1)?.key;
+              if (page.length < pageSize) break;
+            }
+          }
+          const after = await Promise.all([
+            self2.db.messages.where("ownerId").equals(owner).count(),
+            self2.db.snapshots.where("ownerId").equals(owner).count()
+          ]);
+          if (after[0] !== counts[0] || after[1] !== counts[1])
+            throw Error("VK archive changed during backup; retry after capture stops");
+        },
+        async restoreAtomically(input) {
+          const messages2 = [];
+          const snapshots = [];
+          const msgKeys = /* @__PURE__ */ new Set(), snapshotKeys = /* @__PURE__ */ new Set();
+          for (const row of input) {
+            if (row.store !== "messages" && row.store !== "snapshots") throw Error("Unknown VK table");
+            const value = decodeArchiveClone(row.value);
+            if (!value || typeof value !== "object" || Array.isArray(value))
+              throw Error("Invalid VK record");
+            const record2 = value;
+            if (record2.ownerId !== owner || record2.key !== row.key || typeof row.key !== "string")
+              throw Error("VK backup owner/key mismatch");
+            if (row.store === "messages") {
+              if (record2.schemaVersion !== VK_FIXED_RECORD_VERSION || !Number.isSafeInteger(record2.peerId) || record2.peerId <= 0 || !Number.isSafeInteger(record2.messageId) || record2.messageId <= 0 || row.key !== JSON.stringify([owner, record2.peerId, record2.messageId]) || msgKeys.has(row.key))
+                throw Error("Invalid fixed VK backup message");
+              msgKeys.add(row.key);
+              messages2.push(value);
+            } else {
+              if (typeof record2.sourceVersion !== "string" || !record2.sourceVersion || !Number.isSafeInteger(record2.recordedAtMs) || record2.recordedAtMs < 0 || !record2.raw || typeof record2.raw !== "object" || Array.isArray(record2.raw) || snapshotKeys.has(row.key))
+                throw Error("Invalid fixed VK backup source");
+              const original = record2.raw;
+              const keyParts = JSON.parse(row.key);
+              if (!Array.isArray(keyParts) || keyParts[0] !== owner || original.id !== keyParts[2] || original.peer_id !== void 0 && original.peer_id !== keyParts[1])
+                throw Error("Invalid VK backup snapshot identity");
+              snapshotKeys.add(row.key);
+              snapshots.push(value);
+            }
+          }
+          if (msgKeys.size !== snapshotKeys.size || [...msgKeys].some((key) => !snapshotKeys.has(key)))
+            throw Error("VK backup projection/snapshot consistency mismatch");
+          await self2.db.transaction("rw", self2.db.messages, self2.db.snapshots, async () => {
+            await self2.db.messages.where("ownerId").equals(owner).delete();
+            await self2.db.snapshots.where("ownerId").equals(owner).delete();
+            if (messages2.length) await self2.db.messages.bulkAdd(messages2);
+            if (snapshots.length) await self2.db.snapshots.bulkAdd(snapshots);
+          });
+        }
+      };
+    }
     close() {
       this.db.close();
     }
@@ -47111,281 +47795,6 @@
     if (archivePeerId !== pagePeerId)
       return "Открыта другая переписка VK. Для неё выбери соответствующую папку архива.";
     return null;
-  }
-  function installVkArchive(target = "userscript") {
-    const VERSION = "1.0.0";
-    const apiKey = instanceKey("VKExport", "vk-booster:prod");
-    const published = globalThis;
-    if (published[apiKey]?.version === VERSION) return;
-    const currentPeer = () => conversationPeerFromPath(location.pathname);
-    const cfg = {
-      peerId: currentPeer() ?? 0,
-      mode: "recent",
-      limit: 10,
-      from: "",
-      through: "",
-      pageSize: 50,
-      delay: 450,
-      media: true
-    };
-    let rows = [], busy = false, stopRequested = false, folderLoading = false, folderPickerOpen = false;
-    let prog = {
-      phase: "Ожидание",
-      done: 0,
-      total: 0,
-      newCount: 0,
-      downloaded: 0,
-      failed: 0
-    };
-    const subscribers = /* @__PURE__ */ new Set();
-    const sleep = (ms) => new Promise((r2) => setTimeout(r2, ms));
-    const validDay2 = (d) => !d || /^\d{4}-\d\d-\d\d$/.test(d) && new Date(Date.parse(d + "T00:00:00+03:00") + 108e5).toISOString().slice(0, 10) === d;
-    function status() {
-      const pagePeer = currentPeer();
-      if (!busy && pagePeer !== null) cfg.peerId = pagePeer;
-      return {
-        version: VERSION,
-        folder: null,
-        activePeerId: pagePeer,
-        blockedReason: archiveContextBlock(cfg.peerId, pagePeer),
-        busy,
-        folderPending: false,
-        options: { ...cfg },
-        progress: { ...prog },
-        messages: rows.length,
-        checkpoint: null
-      };
-    }
-    function configure(v = {}) {
-      if (busy || folderLoading || folderPickerOpen) throw Error("Заверши текущую операцию с архивом");
-      const pagePeer = currentPeer();
-      const o = { ...cfg, ...v, peerId: v.peerId ?? (pagePeer ?? cfg.peerId) };
-      if (pagePeer !== null && o.peerId !== pagePeer) throw Error("Выбран другой диалог VK");
-      if (!["recent", "incremental", "backfill"].includes(o.mode)) throw Error("Режим");
-      if (!Number.isSafeInteger(o.limit) || o.limit < 1 || o.limit > 1e5)
-        throw Error("Количество: 1–100000");
-      if (!Number.isSafeInteger(o.pageSize) || o.pageSize < 1 || o.pageSize > 100)
-        throw Error("Пачка: 1–100");
-      if (!Number.isSafeInteger(o.delay) || o.delay < 300) throw Error("Пауза: от 300 мс");
-      if (!validDay2(o.from) || !validDay2(o.through) || o.from && o.through && o.from > o.through)
-        throw Error("Диапазон дат");
-      Object.assign(cfg, o);
-      return status();
-    }
-    async function useFolder(handle) {
-      throw Error("Файловая папка не подключается в основном режиме Dexie.");
-    }
-    async function selectFolder() {
-      throw Error("Файловая папка больше не является основным архивом. Используй экспорт Dexie.");
-    }
-    const vk = createVkProvider(cfg, { sleep, refresh });
-    const auth = () => vk.auth();
-    const history = (offset, count) => vk.history(offset, count);
-    const api = (method, p2) => vk.api(method, p2);
-    async function buildViewer() {
-      throw Error("Сначала выбери папку");
-    }
-    function progress(phase, done, total, extra = {}) {
-      prog = { phase, done, total, ...extra };
-      refresh();
-    }
-    function stop() {
-      stopRequested = true;
-      refresh();
-    }
-    async function run(options = {}) {
-      throw Error("Историческая файловая выгрузка недоступна как основное хранилище. Используй Dexie.");
-    }
-    async function openFixedArchive(peerId) {
-      const scope = instanceScope();
-      if (!/^(vk-booster|all-in-one):(dev|prod)$/.test(scope))
-        throw Error("Unsupported VK installation scope");
-      const user = await api("users.get", {});
-      const first = Array.isArray(user) ? user[0] : void 0;
-      const owner = first && typeof first === "object" ? first.id : void 0;
-      if (typeof owner !== "number" || !Number.isSafeInteger(owner) || owner <= 0)
-        throw Error("Authenticated VK account verification required for Dexie");
-      if (currentPeer() !== peerId) throw Error("VK peer changed during account verification");
-      return new FixedVkDexieRepository({
-        productId: "vk-booster",
-        channel: scope.endsWith(":dev") ? "dev" : "prod",
-        installationId: scope.split(":")[0] + "-" + target,
-        ownerId: "vk-user-" + owner
-      });
-    }
-    async function captureFixed(limit = 100) {
-      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 3e3)
-        throw Error("Dexie capture limit must be 1–3000");
-      const peerId = currentPeer();
-      if (!peerId || busy || folderLoading || folderPickerOpen)
-        throw Error("Select one VK conversation before saving");
-      cfg.peerId = peerId;
-      busy = true;
-      stopRequested = false;
-      progress("Dexie: сообщения", 0, limit);
-      let repo;
-      let saved = 0, alreadySaved = 0, available = 0;
-      try {
-        if (!await auth()) throw Error("VK API authorization unavailable");
-        repo = await openFixedArchive(peerId);
-        let offset = 0;
-        while (offset < limit && !stopRequested) {
-          if (currentPeer() !== peerId) throw Error("VK peer changed during Dexie capture");
-          const requestSize = Math.min(100, limit - offset);
-          const page = await history(offset, requestSize);
-          if (currentPeer() !== peerId) throw Error("VK peer changed during Dexie capture");
-          available = page.count;
-          if (!page.items.length) break;
-          for (const item of page.items) {
-            if (stopRequested || currentPeer() !== peerId) break;
-            if (item.peer_id !== void 0 && item.peer_id !== peerId)
-              throw Error("VK source returned a different conversation");
-            const previous = await repo.getOriginal(peerId, item.id);
-            if (previous) {
-              if (JSON.stringify(previous.raw) !== JSON.stringify(item))
-                throw Error("VK message changed: explicit source revision required");
-              alreadySaved++;
-            } else {
-              await repo.addOriginal(peerId, item, "vk-history-current", Date.now());
-              saved++;
-            }
-          }
-          offset += page.items.length;
-          progress("Dexie: сообщения", Math.min(offset, limit), limit, { newCount: saved });
-          if (page.items.length < requestSize || offset >= page.count) break;
-          await sleep(Math.max(450, cfg.delay));
-        }
-        progress(
-          stopRequested ? "Dexie: остановлено" : "Dexie: сохранено",
-          saved + alreadySaved,
-          Math.min(limit, available),
-          { newCount: saved }
-        );
-        if (currentPeer() !== peerId) throw Error("VK peer changed before capture completion");
-        return { saved, alreadySaved, available };
-      } finally {
-        repo?.close();
-        busy = false;
-        refresh();
-      }
-    }
-    async function withFixed(operation) {
-      const peerId = currentPeer();
-      if (!peerId || busy || folderPickerOpen) throw Error("VK conversation is not available");
-      cfg.peerId = peerId;
-      if (!await auth()) throw Error("VK API authorization unavailable");
-      const repo = await openFixedArchive(peerId);
-      try {
-        const result = await operation(repo, peerId);
-        if (currentPeer() !== peerId) throw Error("VK peer changed during fixed archive read");
-        return result;
-      } finally {
-        repo.close();
-      }
-    }
-    async function readFixed(limit = 80, afterMessageId) {
-      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500)
-        throw Error("Invalid fixed archive page size");
-      return withFixed(async (repo, peerId) => {
-        const rows2 = await repo.listMessages(peerId, limit, afterMessageId);
-        const messages2 = [];
-        for (const row of rows2) {
-          const original = await repo.getOriginal(peerId, row.messageId);
-          if (!original) throw Error("Missing immutable VK source snapshot");
-          messages2.push(original.raw);
-        }
-        return messages2;
-      });
-    }
-    async function exportFixed() {
-      return withFixed(async (repo, peerId) => {
-        let cursor;
-        let count = 0, digest = "start";
-        const encode = async (row, footer = false) => {
-          const line = JSON.stringify(row);
-          if (!footer) digest = await archiveSha256Hex(digest + "\n" + line);
-          return new TextEncoder().encode(line + "\n");
-        };
-        async function* records() {
-          yield await encode({
-            kind: "header",
-            schema: "koba-fixed-vk-v1",
-            peerId,
-            completeness: "unknown",
-            source: "verified-vk-history"
-          });
-          while (true) {
-            if (currentPeer() !== peerId) throw Error("VK peer changed during export");
-            const page = await repo.listMessages(peerId, 128, cursor);
-            if (!page.length) break;
-            for (const message of page) {
-              if (currentPeer() !== peerId) throw Error("VK peer changed during export");
-              const original = await repo.getOriginal(peerId, message.messageId);
-              if (!original) throw Error("Missing immutable VK source");
-              yield await encode({
-                kind: "message",
-                fixed: message,
-                snapshot: { ...original, raw: await encodeArchiveClone(original.raw) }
-              });
-              count++;
-            }
-            cursor = page.at(-1)?.messageId;
-            if (page.length < 128) break;
-          }
-          yield await encode({ kind: "footer", count, digest }, true);
-        }
-        return createGzipFromChunks(records());
-      });
-    }
-    function refresh() {
-      const snapshot = status();
-      for (const listener of subscribers)
-        try {
-          listener(snapshot);
-        } catch {
-        }
-    }
-    function subscribe(listener) {
-      subscribers.add(listener);
-      listener(status());
-      return () => subscribers.delete(listener);
-    }
-    function show() {
-      window.dispatchEvent(new CustomEvent(SHELL_OPEN_FEATURE_EVENT, { detail: { id: "vk-booster" } }));
-    }
-    function hide() {
-    }
-    const apiObject = {
-      version: VERSION,
-      configure,
-      selectFolder,
-      useFolder,
-      run,
-      resume: () => run({}),
-      stop,
-      status,
-      show,
-      hide,
-      subscribe,
-      buildViewer,
-      captureFixed,
-      readFixed,
-      exportFixed,
-      // Public readers receive independent JSON-shaped snapshots; callers cannot mutate
-      // the in-memory rows that the next v1 checkpoint will persist.
-      getMessages: () => [],
-      previewMessages: (options) => {
-        return { messages: [], matching: 0 };
-      },
-      previewAttachments: (messageIds) => {
-        return {};
-      },
-      destroy() {
-        subscribers.clear();
-        if (published[apiKey] === apiObject) delete published[apiKey];
-      }
-    };
-    published[apiKey] = Object.freeze(apiObject);
   }
   const fields = ["mode", "limit", "from", "through", "pageSize", "delay", "media"];
   const fieldNames = [...fields].sort().join(",");
@@ -47551,6 +47960,338 @@
       startupError = "Не удалось загрузить постоянные параметры VK; используются параметры сессии.";
     }
   }
+  function vkPortableBackupPorts(api, repository, persistence) {
+    const sessionPort = vkCaptureSettingsPort(api, persistence.scopeId);
+    const settings = {
+      scope: repository.scope,
+      schemaVersion: sessionPort.schemaVersion,
+      exportSettings: () => sessionPort.exportSettings(),
+      validateSettings: validateVkCapturePreferences,
+      async restoreSettingsAtomically(next) {
+        const before = await sessionPort.exportSettings();
+        await persistence.write(next);
+        try {
+          await sessionPort.restoreSettingsAtomically(next);
+        } catch (error) {
+          await persistence.write(before);
+          throw error;
+        }
+      }
+    };
+    return { scope: repository.scope, settings, indexeddb: repository.backupPort() };
+  }
+  function exportVkPortableBackup(ports, options, output) {
+    return exportBackupTar(ports, options, output);
+  }
+  function inspectVkPortableBackup(ports, backup, progress) {
+    return inspectBackupTar(ports, backup, progress);
+  }
+  function restoreVkPortableBackup(ports, backup, selected, progress) {
+    return restoreBackupTar(ports, backup, selected, progress);
+  }
+  function installVkArchive(target = "userscript") {
+    const VERSION = "1.0.0";
+    const apiKey = instanceKey("VKExport", "vk-booster:prod");
+    const published = globalThis;
+    if (published[apiKey]?.version === VERSION) return;
+    const currentPeer = () => conversationPeerFromPath(location.pathname);
+    const cfg = {
+      peerId: currentPeer() ?? 0,
+      mode: "recent",
+      limit: 10,
+      from: "",
+      through: "",
+      pageSize: 50,
+      delay: 450,
+      media: true
+    };
+    let rows = [], busy = false, backupRunning = false, stopRequested = false, folderLoading = false, folderPickerOpen = false;
+    let prog = {
+      phase: "Ожидание",
+      done: 0,
+      total: 0,
+      newCount: 0,
+      downloaded: 0,
+      failed: 0
+    };
+    const subscribers = /* @__PURE__ */ new Set();
+    const sleep = (ms) => new Promise((r2) => setTimeout(r2, ms));
+    const validDay2 = (d) => !d || /^\d{4}-\d\d-\d\d$/.test(d) && new Date(Date.parse(d + "T00:00:00+03:00") + 108e5).toISOString().slice(0, 10) === d;
+    function status() {
+      const pagePeer = currentPeer();
+      if (!busy && pagePeer !== null) cfg.peerId = pagePeer;
+      return {
+        version: VERSION,
+        folder: null,
+        activePeerId: pagePeer,
+        blockedReason: archiveContextBlock(cfg.peerId, pagePeer),
+        busy,
+        folderPending: false,
+        options: { ...cfg },
+        progress: { ...prog },
+        messages: rows.length,
+        checkpoint: null
+      };
+    }
+    function configure(v = {}) {
+      if (busy || folderLoading || folderPickerOpen) throw Error("Заверши текущую операцию с архивом");
+      const pagePeer = currentPeer();
+      const o = { ...cfg, ...v, peerId: v.peerId ?? (pagePeer ?? cfg.peerId) };
+      if (pagePeer !== null && o.peerId !== pagePeer) throw Error("Выбран другой диалог VK");
+      if (!["recent", "incremental", "backfill"].includes(o.mode)) throw Error("Режим");
+      if (!Number.isSafeInteger(o.limit) || o.limit < 1 || o.limit > 1e5)
+        throw Error("Количество: 1–100000");
+      if (!Number.isSafeInteger(o.pageSize) || o.pageSize < 1 || o.pageSize > 100)
+        throw Error("Пачка: 1–100");
+      if (!Number.isSafeInteger(o.delay) || o.delay < 300) throw Error("Пауза: от 300 мс");
+      if (!validDay2(o.from) || !validDay2(o.through) || o.from && o.through && o.from > o.through)
+        throw Error("Диапазон дат");
+      Object.assign(cfg, o);
+      return status();
+    }
+    async function useFolder(handle) {
+      throw Error("Файловая папка не подключается в основном режиме Dexie.");
+    }
+    async function selectFolder() {
+      throw Error("Файловая папка больше не является основным архивом. Используй экспорт Dexie.");
+    }
+    const vk = createVkProvider(cfg, { sleep, refresh });
+    const auth = () => vk.auth();
+    const history = (offset, count) => vk.history(offset, count);
+    const api = (method, p2) => vk.api(method, p2);
+    async function buildViewer() {
+      throw Error("Сначала выбери папку");
+    }
+    function progress(phase, done, total, extra = {}) {
+      prog = { phase, done, total, ...extra };
+      refresh();
+    }
+    function stop() {
+      stopRequested = true;
+      refresh();
+    }
+    async function run(options = {}) {
+      throw Error("Историческая файловая выгрузка недоступна как основное хранилище. Используй Dexie.");
+    }
+    async function openFixedArchive(peerId) {
+      const scope = instanceScope();
+      if (!/^(vk-booster|all-in-one):(dev|prod)$/.test(scope))
+        throw Error("Unsupported VK installation scope");
+      const user = await api("users.get", {});
+      const first = Array.isArray(user) ? user[0] : void 0;
+      const owner = first && typeof first === "object" ? first.id : void 0;
+      if (typeof owner !== "number" || !Number.isSafeInteger(owner) || owner <= 0)
+        throw Error("Authenticated VK account verification required for Dexie");
+      if (currentPeer() !== peerId) throw Error("VK peer changed during account verification");
+      return new FixedVkDexieRepository({
+        productId: "vk-booster",
+        channel: scope.endsWith(":dev") ? "dev" : "prod",
+        installationId: scope.split(":")[0] + "-" + target,
+        ownerId: "vk-user-" + owner
+      });
+    }
+    async function captureFixed(limit = 100) {
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 3e3)
+        throw Error("Dexie capture limit must be 1–3000");
+      const peerId = currentPeer();
+      if (!peerId || busy || backupRunning || folderLoading || folderPickerOpen)
+        throw Error("Select one VK conversation before saving");
+      cfg.peerId = peerId;
+      busy = true;
+      stopRequested = false;
+      progress("Dexie: сообщения", 0, limit);
+      let repo;
+      let saved = 0, alreadySaved = 0, available = 0;
+      try {
+        if (!await auth()) throw Error("VK API authorization unavailable");
+        repo = await openFixedArchive(peerId);
+        let offset = 0;
+        while (offset < limit && !stopRequested) {
+          if (currentPeer() !== peerId) throw Error("VK peer changed during Dexie capture");
+          const requestSize = Math.min(100, limit - offset);
+          const page = await history(offset, requestSize);
+          if (currentPeer() !== peerId) throw Error("VK peer changed during Dexie capture");
+          available = page.count;
+          if (!page.items.length) break;
+          for (const item of page.items) {
+            if (stopRequested || currentPeer() !== peerId) break;
+            if (item.peer_id !== void 0 && item.peer_id !== peerId)
+              throw Error("VK source returned a different conversation");
+            const previous = await repo.getOriginal(peerId, item.id);
+            if (previous) {
+              if (JSON.stringify(previous.raw) !== JSON.stringify(item))
+                throw Error("VK message changed: explicit source revision required");
+              alreadySaved++;
+            } else {
+              await repo.addOriginal(peerId, item, "vk-history-current", Date.now());
+              saved++;
+            }
+          }
+          offset += page.items.length;
+          progress("Dexie: сообщения", Math.min(offset, limit), limit, { newCount: saved });
+          if (page.items.length < requestSize || offset >= page.count) break;
+          await sleep(Math.max(450, cfg.delay));
+        }
+        progress(
+          stopRequested ? "Dexie: остановлено" : "Dexie: сохранено",
+          saved + alreadySaved,
+          Math.min(limit, available),
+          { newCount: saved }
+        );
+        if (currentPeer() !== peerId) throw Error("VK peer changed before capture completion");
+        return { saved, alreadySaved, available };
+      } finally {
+        repo?.close();
+        busy = false;
+        refresh();
+      }
+    }
+    async function withFixed(operation, allowBackup = false) {
+      const peerId = currentPeer();
+      if (!peerId || busy || !allowBackup && backupRunning || folderPickerOpen)
+        throw Error("VK conversation is not available");
+      cfg.peerId = peerId;
+      if (!await auth()) throw Error("VK API authorization unavailable");
+      const repo = await openFixedArchive(peerId);
+      try {
+        const result = await operation(repo, peerId);
+        if (currentPeer() !== peerId) throw Error("VK peer changed during fixed archive read");
+        return result;
+      } finally {
+        repo.close();
+      }
+    }
+    async function readFixed(limit = 80, afterMessageId) {
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500)
+        throw Error("Invalid fixed archive page size");
+      return withFixed(async (repo, peerId) => {
+        const rows2 = await repo.listMessages(peerId, limit, afterMessageId);
+        const messages2 = [];
+        for (const row of rows2) {
+          const original = await repo.getOriginal(peerId, row.messageId);
+          if (!original) throw Error("Missing immutable VK source snapshot");
+          messages2.push(original.raw);
+        }
+        return messages2;
+      });
+    }
+    async function exportFixed() {
+      return withFixed(async (repo, peerId) => {
+        let cursor;
+        let count = 0, digest2 = "start";
+        const encode = async (row, footer = false) => {
+          const line = JSON.stringify(row);
+          if (!footer) digest2 = await archiveSha256Hex(digest2 + "\n" + line);
+          return new TextEncoder().encode(line + "\n");
+        };
+        async function* records() {
+          yield await encode({
+            kind: "header",
+            schema: "koba-fixed-vk-v1",
+            peerId,
+            completeness: "unknown",
+            source: "verified-vk-history"
+          });
+          while (true) {
+            if (currentPeer() !== peerId) throw Error("VK peer changed during export");
+            const page = await repo.listMessages(peerId, 128, cursor);
+            if (!page.length) break;
+            for (const message of page) {
+              if (currentPeer() !== peerId) throw Error("VK peer changed during export");
+              const original = await repo.getOriginal(peerId, message.messageId);
+              if (!original) throw Error("Missing immutable VK source");
+              yield await encode({
+                kind: "message",
+                fixed: message,
+                snapshot: { ...original, raw: await encodeArchiveClone(original.raw) }
+              });
+              count++;
+            }
+            cursor = page.at(-1)?.messageId;
+            if (page.length < 128) break;
+          }
+          yield await encode({ kind: "footer", count, digest: digest2 }, true);
+        }
+        return createGzipFromChunks(records());
+      });
+    }
+    async function withBackup(operation) {
+      if (backupRunning || busy || folderPickerOpen || folderLoading)
+        throw Error("Another VK operation is in progress");
+      const storage = vkPreferencesPersistence();
+      if (!storage) throw Error("Persistent VK settings adapter is unavailable");
+      backupRunning = true;
+      try {
+        return await withFixed(
+          async (repo) => operation(vkPortableBackupPorts(apiObject, repo, storage)),
+          true
+        );
+      } finally {
+        backupRunning = false;
+      }
+    }
+    async function backupPortable(options, output) {
+      return withBackup((ports) => exportVkPortableBackup(ports, options, output));
+    }
+    async function inspectPortable(backup, progress2) {
+      return withBackup((ports) => inspectVkPortableBackup(ports, backup, progress2));
+    }
+    async function restorePortable(backup, chosen, progress2) {
+      return withBackup((ports) => restoreVkPortableBackup(ports, backup, chosen, progress2));
+    }
+    function refresh() {
+      const snapshot = status();
+      for (const listener of subscribers)
+        try {
+          listener(snapshot);
+        } catch {
+        }
+    }
+    function subscribe(listener) {
+      subscribers.add(listener);
+      listener(status());
+      return () => subscribers.delete(listener);
+    }
+    function show() {
+      window.dispatchEvent(new CustomEvent(SHELL_OPEN_FEATURE_EVENT, { detail: { id: "vk-booster" } }));
+    }
+    function hide() {
+    }
+    const apiObject = {
+      version: VERSION,
+      configure,
+      selectFolder,
+      useFolder,
+      run,
+      resume: () => run({}),
+      stop,
+      status,
+      show,
+      hide,
+      subscribe,
+      buildViewer,
+      captureFixed,
+      readFixed,
+      exportFixed,
+      backupPortable,
+      inspectPortable,
+      restorePortable,
+      // Public readers receive independent JSON-shaped snapshots; callers cannot mutate
+      // the in-memory rows that the next v1 checkpoint will persist.
+      getMessages: () => [],
+      previewMessages: (options) => {
+        return { messages: [], matching: 0 };
+      },
+      previewAttachments: (messageIds) => {
+        return {};
+      },
+      destroy() {
+        subscribers.clear();
+        if (published[apiKey] === apiObject) delete published[apiKey];
+      }
+    };
+    published[apiKey] = Object.freeze(apiObject);
+  }
   function archiveApi() {
     const key = instanceKey("VKExport", "vk-booster:prod");
     return globalThis[key];
@@ -47574,7 +48315,7 @@
       setVkPreferencesPersistence(null);
     }
   };
-  const _sfc_main$2$1 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$3 = /* @__PURE__ */ defineComponent({
     __name: "ArchiveProgressBar",
     props: {
       label: {},
@@ -47592,6 +48333,334 @@
           compact: __props.compact,
           detail: __props.counter ? `${__props.counter}${__props.percent !== null && __props.percentLabel ? ` · ${__props.percentLabel} ${__props.percent}%` : ""}` : null
         }, null, 8, ["label", "completed", "compact", "detail"]);
+      };
+    }
+  });
+  const _hoisted_1$3 = {
+    class: "booster-stack-card",
+    "aria-label": "Резервная копия приложения"
+  };
+  const _hoisted_2$3 = { class: "booster-field" };
+  const _hoisted_3$2 = { class: "flex items-center gap-2" };
+  const _hoisted_4$2 = ["disabled"];
+  const _hoisted_5$2 = { class: "booster-field" };
+  const _hoisted_6$2 = { class: "flex items-center gap-2" };
+  const _hoisted_7$2 = ["disabled"];
+  const _hoisted_8$2 = { class: "booster-field" };
+  const _hoisted_9$2 = { class: "flex items-center gap-2" };
+  const _hoisted_10$2 = ["disabled"];
+  const _hoisted_11$2 = { class: "booster-field" };
+  const _hoisted_12$2 = ["disabled"];
+  const _hoisted_13$2 = { class: "booster-field" };
+  const _hoisted_14$2 = ["disabled"];
+  const _hoisted_15$2 = {
+    role: "status",
+    class: "m-0 text-xs"
+  };
+  const _hoisted_16$1 = {
+    key: 0,
+    class: "booster-field"
+  };
+  const _hoisted_17$1 = { class: "flex items-center gap-2" };
+  const _hoisted_18$1 = ["disabled"];
+  const _hoisted_19$1 = {
+    key: 1,
+    class: "booster-field"
+  };
+  const _hoisted_20$1 = { class: "flex items-center gap-2" };
+  const _hoisted_21$1 = ["disabled"];
+  const _hoisted_22$1 = { class: "booster-field" };
+  const _hoisted_23$1 = { class: "flex items-center gap-2" };
+  const _hoisted_24$1 = ["disabled"];
+  const _hoisted_25$1 = {
+    key: 1,
+    class: "booster-setting-copy",
+    role: "status",
+    "aria-live": "polite"
+  };
+  const _hoisted_26$1 = ["value", "max"];
+  const _hoisted_27$1 = {
+    key: 2,
+    role: "alert",
+    class: "m-0 text-sm text-destructive"
+  };
+  const _hoisted_28$1 = {
+    key: 3,
+    role: "status",
+    class: "m-0 text-sm"
+  };
+  const _sfc_main$4 = /* @__PURE__ */ defineComponent({
+    __name: "PortableBackupPanel",
+    props: {
+      available: {},
+      pending: { type: Boolean },
+      inspected: {},
+      error: {},
+      success: {},
+      progress: {}
+    },
+    emits: ["export", "inspect", "restore"],
+    setup(__props, { emit: __emit }) {
+      const props = __props;
+      const emit2 = __emit;
+      const settings = /* @__PURE__ */ ref(true);
+      const indexeddb = /* @__PURE__ */ ref(true);
+      const gzip = /* @__PURE__ */ ref(true);
+      const chunkRows = /* @__PURE__ */ ref(1024);
+      const restoreSettings = /* @__PURE__ */ ref(true);
+      const restoreIndexed = /* @__PURE__ */ ref(true);
+      const confirmed = /* @__PURE__ */ ref(false);
+      const canExport = computed(
+        () => !props.pending && (settings.value && props.available.settings || indexeddb.value && props.available.indexeddb)
+      );
+      const canRestore = computed(
+        () => !!props.inspected && !props.pending && confirmed.value && (restoreSettings.value && props.inspected.settings || restoreIndexed.value && props.inspected.indexeddb)
+      );
+      function fileChanged(e) {
+        const input = e.target;
+        const file = input.files?.[0];
+        confirmed.value = false;
+        if (file) emit2("inspect", file);
+        input.value = "";
+      }
+      return (_ctx, _cache) => {
+        return openBlock(), createElementBlock("section", _hoisted_1$3, [
+          _cache[18] || (_cache[18] = createBaseVNode(
+            "div",
+            { class: "booster-setting-copy" },
+            [
+              createBaseVNode("b", null, "Резервная копия"),
+              createBaseVNode("small", null, "Постоянные настройки и IndexedDB — независимо. Состояние текущей вкладки и сессии никогда не входит в резервную копию.")
+            ],
+            -1
+            /* CACHED */
+          )),
+          createBaseVNode("label", _hoisted_2$3, [
+            createBaseVNode("span", _hoisted_3$2, [
+              withDirectives(createBaseVNode("input", {
+                "onUpdate:modelValue": _cache[0] || (_cache[0] = ($event) => settings.value = $event),
+                type: "checkbox",
+                disabled: __props.pending || !__props.available.settings
+              }, null, 8, _hoisted_4$2), [
+                [vModelCheckbox, settings.value]
+              ]),
+              _cache[9] || (_cache[9] = createTextVNode(
+                "Persistent-настройки (Pinia / браузерное хранилище)",
+                -1
+                /* CACHED */
+              ))
+            ])
+          ]),
+          createBaseVNode("label", _hoisted_5$2, [
+            createBaseVNode("span", _hoisted_6$2, [
+              withDirectives(createBaseVNode("input", {
+                "onUpdate:modelValue": _cache[1] || (_cache[1] = ($event) => indexeddb.value = $event),
+                type: "checkbox",
+                disabled: __props.pending || !__props.available.indexeddb
+              }, null, 8, _hoisted_7$2), [
+                [vModelCheckbox, indexeddb.value]
+              ]),
+              _cache[10] || (_cache[10] = createTextVNode(
+                "Все записи доступных таблиц IndexedDB",
+                -1
+                /* CACHED */
+              ))
+            ])
+          ]),
+          createBaseVNode("label", _hoisted_8$2, [
+            createBaseVNode("span", _hoisted_9$2, [
+              withDirectives(createBaseVNode("input", {
+                "onUpdate:modelValue": _cache[2] || (_cache[2] = ($event) => gzip.value = $event),
+                type: "checkbox",
+                disabled: __props.pending
+              }, null, 8, _hoisted_10$2), [
+                [vModelCheckbox, gzip.value]
+              ]),
+              _cache[11] || (_cache[11] = createTextVNode(
+                "Сжать весь TAR (GZIP)",
+                -1
+                /* CACHED */
+              ))
+            ])
+          ]),
+          createBaseVNode("label", _hoisted_11$2, [
+            createBaseVNode(
+              "span",
+              null,
+              "Размер чанка: " + toDisplayString(chunkRows.value) + " записей IndexedDB",
+              1
+              /* TEXT */
+            ),
+            withDirectives(createBaseVNode("input", {
+              "onUpdate:modelValue": _cache[3] || (_cache[3] = ($event) => chunkRows.value = $event),
+              type: "range",
+              min: "64",
+              max: "2048",
+              step: "64",
+              disabled: __props.pending
+            }, null, 8, _hoisted_12$2), [
+              [
+                vModelText,
+                chunkRows.value,
+                void 0,
+                { number: true }
+              ]
+            ])
+          ]),
+          createVNode(unref(_sfc_main$8), {
+            size: "sm",
+            variant: "outline",
+            disabled: !canExport.value,
+            onClick: _cache[4] || (_cache[4] = ($event) => emit2("export", { settings: settings.value && __props.available.settings, indexeddb: indexeddb.value && __props.available.indexeddb, compression: gzip.value ? "gzip" : "none", chunkRows: chunkRows.value }))
+          }, {
+            default: withCtx(() => [..._cache[12] || (_cache[12] = [
+              createTextVNode(
+                "Сохранить TAR / TAR.GZ",
+                -1
+                /* CACHED */
+              )
+            ])]),
+            _: 1
+            /* STABLE */
+          }, 8, ["disabled"]),
+          createBaseVNode("label", _hoisted_13$2, [
+            _cache[13] || (_cache[13] = createBaseVNode(
+              "span",
+              null,
+              "Проверить файл резервной копии",
+              -1
+              /* CACHED */
+            )),
+            createBaseVNode("input", {
+              type: "file",
+              class: "booster-input w-full",
+              accept: ".tar,.tar.gz,.tgz,application/x-tar,application/gzip",
+              disabled: __props.pending,
+              onChange: fileChanged
+            }, null, 40, _hoisted_14$2)
+          ]),
+          __props.inspected ? (openBlock(), createElementBlock(
+            Fragment,
+            { key: 0 },
+            [
+              createBaseVNode(
+                "p",
+                _hoisted_15$2,
+                "Файл проверен: " + toDisplayString(__props.inspected.rows) + " записей IndexedDB, " + toDisplayString(__props.inspected.createdAt) + ".",
+                1
+                /* TEXT */
+              ),
+              __props.inspected.settings ? (openBlock(), createElementBlock("label", _hoisted_16$1, [
+                createBaseVNode("span", _hoisted_17$1, [
+                  withDirectives(createBaseVNode("input", {
+                    "onUpdate:modelValue": _cache[5] || (_cache[5] = ($event) => restoreSettings.value = $event),
+                    type: "checkbox",
+                    disabled: __props.pending
+                  }, null, 8, _hoisted_18$1), [
+                    [vModelCheckbox, restoreSettings.value]
+                  ]),
+                  _cache[14] || (_cache[14] = createTextVNode(
+                    "Восстановить persistent-настройки",
+                    -1
+                    /* CACHED */
+                  ))
+                ])
+              ])) : createCommentVNode("v-if", true),
+              __props.inspected.indexeddb ? (openBlock(), createElementBlock("label", _hoisted_19$1, [
+                createBaseVNode("span", _hoisted_20$1, [
+                  withDirectives(createBaseVNode("input", {
+                    "onUpdate:modelValue": _cache[6] || (_cache[6] = ($event) => restoreIndexed.value = $event),
+                    type: "checkbox",
+                    disabled: __props.pending
+                  }, null, 8, _hoisted_21$1), [
+                    [vModelCheckbox, restoreIndexed.value]
+                  ]),
+                  _cache[15] || (_cache[15] = createTextVNode(
+                    "Восстановить IndexedDB (заменить записи этого владельца)",
+                    -1
+                    /* CACHED */
+                  ))
+                ])
+              ])) : createCommentVNode("v-if", true),
+              createBaseVNode("label", _hoisted_22$1, [
+                createBaseVNode("span", _hoisted_23$1, [
+                  withDirectives(createBaseVNode("input", {
+                    "onUpdate:modelValue": _cache[7] || (_cache[7] = ($event) => confirmed.value = $event),
+                    type: "checkbox",
+                    disabled: __props.pending
+                  }, null, 8, _hoisted_24$1), [
+                    [vModelCheckbox, confirmed.value]
+                  ]),
+                  _cache[16] || (_cache[16] = createTextVNode(
+                    "Подтверждаю восстановление выбранных разделов",
+                    -1
+                    /* CACHED */
+                  ))
+                ])
+              ]),
+              createVNode(unref(_sfc_main$8), {
+                size: "sm",
+                variant: "outline",
+                disabled: !canRestore.value,
+                onClick: _cache[8] || (_cache[8] = ($event) => emit2("restore", { settings: restoreSettings.value && !!__props.inspected?.settings, indexeddb: restoreIndexed.value && !!__props.inspected?.indexeddb }))
+              }, {
+                default: withCtx(() => [..._cache[17] || (_cache[17] = [
+                  createTextVNode(
+                    "Восстановить выбранное",
+                    -1
+                    /* CACHED */
+                  )
+                ])]),
+                _: 1
+                /* STABLE */
+              }, 8, ["disabled"])
+            ],
+            64
+            /* STABLE_FRAGMENT */
+          )) : createCommentVNode("v-if", true),
+          __props.progress ? (openBlock(), createElementBlock("div", _hoisted_25$1, [
+            createBaseVNode(
+              "span",
+              null,
+              "Этап: " + toDisplayString(__props.progress.phase) + " · " + toDisplayString(__props.progress.completed) + " из " + toDisplayString(__props.progress.total) + " записей",
+              1
+              /* TEXT */
+            ),
+            createBaseVNode(
+              "span",
+              null,
+              toDisplayString(__props.progress.percent) + "% · файлов в архиве: " + toDisplayString(__props.progress.entries),
+              1
+              /* TEXT */
+            ),
+            createBaseVNode("progress", {
+              class: "w-full",
+              value: __props.progress.completed,
+              max: Math.max(1, __props.progress.total)
+            }, null, 8, _hoisted_26$1)
+          ])) : createCommentVNode("v-if", true),
+          __props.error ? (openBlock(), createElementBlock(
+            "p",
+            _hoisted_27$1,
+            toDisplayString(__props.error),
+            1
+            /* TEXT */
+          )) : createCommentVNode("v-if", true),
+          __props.success ? (openBlock(), createElementBlock(
+            "p",
+            _hoisted_28$1,
+            toDisplayString(__props.success),
+            1
+            /* TEXT */
+          )) : createCommentVNode("v-if", true),
+          _cache[19] || (_cache[19] = createBaseVNode(
+            "p",
+            { class: "m-0 text-xs text-muted-foreground" },
+            "Один переносимый TAR.GZ: manifest.json, persistent/settings.json, indexeddb/schema.json и обычные JSONL-чанки таблиц, сжатые общим потоком GZIP. Внешние медиафайлы не включаются.",
+            -1
+            /* CACHED */
+          ))
+        ]);
       };
     }
   });
@@ -47778,6 +48847,107 @@
           fixedBusy.value = false;
         }
       }
+      const portableBusy = /* @__PURE__ */ ref(false);
+      const portableFile = /* @__PURE__ */ ref(null);
+      const portableInspected = /* @__PURE__ */ ref(null);
+      const portableError = /* @__PURE__ */ ref("");
+      const portableMessage = /* @__PURE__ */ ref("");
+      const tarProgress = /* @__PURE__ */ ref(null);
+      const portablePreview = computed(
+        () => portableInspected.value ? {
+          settings: portableInspected.value.manifest.includes.settings,
+          indexeddb: portableInspected.value.manifest.includes.indexeddb,
+          rows: portableInspected.value.rows,
+          createdAt: portableInspected.value.manifest.createdAt
+        } : null
+      );
+      async function downloadPortable(choice) {
+        if (!api || portableBusy.value || !hasVerifiedPeer.value || fixedBusy.value) return;
+        portableBusy.value = true;
+        portableError.value = "";
+        portableMessage.value = "";
+        tarProgress.value = null;
+        try {
+          const filename = choice.compression === "gzip" ? "vk-portable-v1.tar.gz" : "vk-portable-v1.tar";
+          const picker = window.showSaveFilePicker;
+          const handle = picker ? await picker({
+            suggestedName: filename,
+            types: [
+              {
+                description: "Portable TAR backup",
+                accept: choice.compression === "gzip" ? { "application/gzip": [".gz"] } : { "application/x-tar": [".tar"] }
+              }
+            ]
+          }) : void 0;
+          const sink = handle ? await handle.createWritable() : void 0;
+          const blob = await api.backupPortable(choice, {
+            sink,
+            onProgress: (next) => {
+              tarProgress.value = next;
+            }
+          });
+          if (blob) {
+            const url = URL.createObjectURL(blob);
+            try {
+              const link = document.createElement("a");
+              link.href = url;
+              link.download = filename;
+              link.click();
+            } finally {
+              window.setTimeout(() => URL.revokeObjectURL(url), 3e4);
+            }
+          }
+          portableMessage.value = "Резервная копия сформирована. Проверь файл в загрузках или выбранной папке.";
+        } catch (error2) {
+          portableError.value = error2 instanceof Error && error2.name === "AbortError" ? "Выбор файла отменён; резервная копия не создавалась." : "Не удалось создать TAR.GZ-архив. Исходные данные не изменены.";
+        } finally {
+          portableBusy.value = false;
+        }
+      }
+      async function inspectPortableFile(file) {
+        if (!api || portableBusy.value || !hasVerifiedPeer.value) return;
+        portableBusy.value = true;
+        portableFile.value = null;
+        portableInspected.value = null;
+        portableError.value = "";
+        portableMessage.value = "";
+        tarProgress.value = null;
+        try {
+          const inspected = await api.inspectPortable(file, (next) => {
+            tarProgress.value = next;
+          });
+          portableFile.value = file;
+          portableInspected.value = inspected;
+        } catch {
+          portableError.value = "Файл повреждён, несовместим или относится к другому владельцу/каналу.";
+        } finally {
+          portableBusy.value = false;
+        }
+      }
+      async function restorePortableSelection(selected) {
+        if (!api || !portableFile.value || portableBusy.value || !hasVerifiedPeer.value) return;
+        portableBusy.value = true;
+        portableError.value = "";
+        portableMessage.value = "";
+        tarProgress.value = null;
+        try {
+          await api.restorePortable(portableFile.value, selected, (next) => {
+            tarProgress.value = next;
+          });
+          status.value = api.status();
+          fixedLimit.value = Math.min(3e3, Math.max(1, status.value.options.limit));
+          fixedPreview.value = [];
+          fixedCursor.value = void 0;
+          fixedNextCursor.value = void 0;
+          portableMessage.value = "Выбранные разделы восстановлены. Reader обновлён.";
+          portableFile.value = null;
+          portableInspected.value = null;
+        } catch {
+          portableError.value = "Восстановление отклонено: проверь файл, владельца и доступное место.";
+        } finally {
+          portableBusy.value = false;
+        }
+      }
       const tabs = [
         { id: "capture", label: "Выгрузка", icon: Download },
         { id: "reader", label: "Архив", icon: Archive },
@@ -47863,6 +49033,8 @@
           fixedCursor.value = void 0;
           fixedNextCursor.value = void 0;
           fixedError.value = "";
+          portableFile.value = null;
+          portableInspected.value = null;
         }
         if (!previous || next.activePeerId !== previous.activePeerId || next.blockedReason !== previous.blockedReason || next.options.peerId !== previous.options.peerId)
           status.value = next;
@@ -47933,7 +49105,7 @@
               Fragment,
               null,
               renderList(tabs, (item) => {
-                return createVNode(unref(_sfc_main$6), {
+                return createVNode(unref(_sfc_main$8), {
                   id: unref(tabPrefix) + "-tab-" + item.id,
                   key: item.id,
                   type: "button",
@@ -48007,8 +49179,8 @@
                 ])
               ]),
               createBaseVNode("div", _hoisted_13$1, [
-                createVNode(unref(_sfc_main$6), {
-                  disabled: fixedBusy.value || !hasVerifiedPeer.value,
+                createVNode(unref(_sfc_main$8), {
+                  disabled: fixedBusy.value || portableBusy.value || !hasVerifiedPeer.value,
                   onClick: captureDexie
                 }, {
                   default: withCtx(() => [
@@ -48025,7 +49197,7 @@
                   _: 1
                   /* STABLE */
                 }, 8, ["disabled"]),
-                createVNode(unref(_sfc_main$6), {
+                createVNode(unref(_sfc_main$8), {
                   variant: "outline",
                   disabled: !fixedBusy.value,
                   onClick: _cache[1] || (_cache[1] = ($event) => unref(api)?.stop())
@@ -48040,9 +49212,9 @@
                   _: 1
                   /* STABLE */
                 }, 8, ["disabled"]),
-                createVNode(unref(_sfc_main$6), {
+                createVNode(unref(_sfc_main$8), {
                   variant: "outline",
-                  disabled: fixedBusy.value || !hasVerifiedPeer.value,
+                  disabled: fixedBusy.value || portableBusy.value || !hasVerifiedPeer.value,
                   onClick: exportDexie
                 }, {
                   default: withCtx(() => [..._cache[10] || (_cache[10] = [
@@ -48063,7 +49235,7 @@
                 1
                 /* TEXT */
               )) : createCommentVNode("v-if", true),
-              captureProgress.value?.total ? (openBlock(), createBlock(unref(_sfc_main$2$1), {
+              captureProgress.value?.total ? (openBlock(), createBlock(unref(_sfc_main$3), {
                 key: 1,
                 label: "Прогресс сохранения VK в Dexie",
                 percent: Math.min(100, Math.round(100 * (captureProgress.value.done / captureProgress.value.total))),
@@ -48121,9 +49293,9 @@
                 /* CACHED */
               )),
               createBaseVNode("div", _hoisted_20, [
-                createVNode(unref(_sfc_main$6), {
+                createVNode(unref(_sfc_main$8), {
                   variant: "outline",
-                  disabled: fixedBusy.value || fixedReading.value || !hasVerifiedPeer.value,
+                  disabled: fixedBusy.value || fixedReading.value || portableBusy.value || !hasVerifiedPeer.value,
                   onClick: _cache[2] || (_cache[2] = ($event) => readDexie())
                 }, {
                   default: withCtx(() => [..._cache[13] || (_cache[13] = [
@@ -48136,9 +49308,9 @@
                   _: 1
                   /* STABLE */
                 }, 8, ["disabled"]),
-                createVNode(unref(_sfc_main$6), {
+                createVNode(unref(_sfc_main$8), {
                   variant: "outline",
-                  disabled: fixedBusy.value || fixedReading.value || !fixedNextCursor.value,
+                  disabled: fixedBusy.value || fixedReading.value || portableBusy.value || !fixedNextCursor.value,
                   onClick: _cache[3] || (_cache[3] = ($event) => readDexie(fixedNextCursor.value))
                 }, {
                   default: withCtx(() => [..._cache[14] || (_cache[14] = [
@@ -48151,9 +49323,9 @@
                   _: 1
                   /* STABLE */
                 }, 8, ["disabled"]),
-                createVNode(unref(_sfc_main$6), {
+                createVNode(unref(_sfc_main$8), {
                   variant: "outline",
-                  disabled: fixedBusy.value || fixedReading.value || !fixedCursor.value,
+                  disabled: fixedBusy.value || fixedReading.value || portableBusy.value || !fixedCursor.value,
                   onClick: _cache[4] || (_cache[4] = ($event) => readDexie())
                 }, {
                   default: withCtx(() => [..._cache[15] || (_cache[15] = [
@@ -48233,7 +49405,7 @@
                 /* CACHED */
               )),
               createBaseVNode("div", _hoisted_27, [
-                createVNode(unref(_sfc_main$6), {
+                createVNode(unref(_sfc_main$8), {
                   variant: "outline",
                   size: "sm",
                   disabled: preferencesBusy.value || status.value.busy || status.value.folderPending || !!status.value.blockedReason,
@@ -48282,7 +49454,7 @@
                   ))
                 ])
               ])) : createCommentVNode("v-if", true),
-              preferencesFile.value ? (openBlock(), createBlock(unref(_sfc_main$6), {
+              preferencesFile.value ? (openBlock(), createBlock(unref(_sfc_main$8), {
                 key: 1,
                 variant: "outline",
                 size: "sm",
@@ -48321,19 +49493,17 @@
                 /* TEXT */
               )) : createCommentVNode("v-if", true)
             ])) : createCommentVNode("v-if", true),
-            _cache[22] || (_cache[22] = createBaseVNode(
-              "section",
-              { class: "booster-stack-card" },
-              [
-                createBaseVNode("div", { class: "booster-setting-copy" }, [
-                  createBaseVNode("b", null, "Архив и восстановление"),
-                  createBaseVNode("span", null, "Backup/restore сообщений и вложений — отдельная операция для Dexie. Эта кнопка сохраняет только настройки.")
-                ]),
-                createBaseVNode("p", { class: "m-0 text-xs text-muted-foreground" }, " Архив хранится в Dexie. Экспорт .jsonl.gz выполняется отдельно на вкладке «Выгрузка». Backup/restore самих сообщений пока не реализован; профиль JSON сохраняет только настройки. ")
-              ],
-              -1
-              /* CACHED */
-            ))
+            createVNode(unref(_sfc_main$4), {
+              available: { settings: true, indexeddb: true },
+              pending: portableBusy.value || fixedBusy.value || !!status.value?.busy || !hasVerifiedPeer.value,
+              inspected: portablePreview.value,
+              error: portableError.value,
+              success: portableMessage.value,
+              progress: tarProgress.value,
+              onExport: downloadPortable,
+              onInspect: inspectPortableFile,
+              onRestore: restorePortableSelection
+            }, null, 8, ["pending", "inspected", "error", "success", "progress"])
           ], 8, _hoisted_25), [
             [vShow, tab.value === "settings"]
           ])
@@ -48808,7 +49978,7 @@
                 _: 1
                 /* STABLE */
               }),
-              createVNode(unref(_sfc_main$6), {
+              createVNode(unref(_sfc_main$8), {
                 variant: "ghost",
                 size: "icon",
                 class: "size-8",
@@ -48959,7 +50129,7 @@
                           /* CACHED */
                         )
                       ])], 10, _hoisted_13),
-                      feature.state === "active" ? (openBlock(), createBlock(unref(_sfc_main$6), {
+                      feature.state === "active" ? (openBlock(), createBlock(unref(_sfc_main$8), {
                         key: 0,
                         variant: "outline",
                         size: "sm",
@@ -49255,7 +50425,7 @@
       });
       return (_ctx, _cache) => {
         return openBlock(), createElementBlock("div", _hoisted_1, [
-          open.value ? (openBlock(), createBlock(unref(_sfc_main$2$2), {
+          open.value ? (openBlock(), createBlock(unref(_sfc_main$2$1), {
             key: 0,
             label: __props.title,
             floating: widePanel.value,
@@ -49461,7 +50631,7 @@
   }
   if (isChatGptPage())
     bootstrapUserscript([createChatGptUserscriptFeature()], "Koba Browser Tools", {
-      "chatgpt-booster": _sfc_main$3
+      "chatgpt-booster": _sfc_main$5
     });
   else if (vkBoosterFeature.match(new URL(location.href)))
     bootstrapUserscript([vkBoosterFeature], "Koba Browser Tools", { "vk-booster": _sfc_main$2 });
