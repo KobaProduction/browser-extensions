@@ -67,7 +67,7 @@ const chatgpt: Feature = {
   id: 'chatgpt-booster',
   title: 'ChatGPT Booster',
   description: 'DEMO: история, оригинальные метаданные и аналитика',
-  presentation: { panel: 'wide', version: '2.0.17', installation: installLabel },
+  presentation: { panel: 'wide', version: '2.0.18', installation: installLabel },
   launcher: { mode: 'quick-menu' },
   quickActions: [
     {
@@ -221,6 +221,12 @@ function diagnose() {
       warnings.push('Expected compact quick menu, no full modal')
     if ((scene.view === 'archive' || scene.view === 'settings') && !modal)
       warnings.push('Expected full module panel')
+    if ((scene.view === 'archive' || scene.view === 'settings') && modal) {
+      if (!modal.classList.contains('booster-dialog-floating'))
+        warnings.push('Selected single-host panel is not floating')
+      if (!modal.querySelector('.booster-floating-resize'))
+        warnings.push('Floating panel has no resize handle')
+    }
     if (scene.view === 'closed' && (modal || quick))
       warnings.push('Closed launcher unexpectedly opened a surface')
     if (!modal && !shadow?.querySelector('.booster-launcher')) warnings.push('Docked launcher absent')
@@ -254,7 +260,7 @@ function diagnose() {
     }
     if (quick) {
       const badges = quick.querySelector('.booster-quick-badges')?.textContent || ''
-      if (!badges.match(/2\.0\.17|1\.0\.0/)) warnings.push('Version badge missing')
+      if (!badges.match(/2\.0\.18|1\.0\.0/)) warnings.push('Version badge missing')
       if (
         scene.scene === 'empty' &&
         quick.textContent?.includes('Сохранено сообщений') &&

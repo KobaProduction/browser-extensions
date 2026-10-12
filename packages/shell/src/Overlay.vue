@@ -231,7 +231,11 @@ function viewport(): Viewport {
 }
 function restoreWorkspace() {
   lastViewport = viewport()
-  let ratios = DEFAULT_WORKSPACE
+  // First opening follows the user's persisted launcher edge.
+  let ratios: WorkspaceRatios = {
+    ...DEFAULT_WORKSPACE,
+    xRatio: dockSide.value === 'left' ? 0 : 1,
+  }
   try {
     const saved: unknown = JSON.parse(localStorage.getItem(instanceKey(WORKSPACE_KEY)) || 'null')
     if (
@@ -334,6 +338,10 @@ async function refreshQuickMetrics() {
   }
 }
 async function activateLauncher() {
+  if (minimized.value) {
+    openPanel()
+    return
+  }
   const click = singleFeature.value?.launcher
   if (click?.mode === 'action') {
     if (quickBusy.value) return
@@ -450,15 +458,17 @@ const workspaceStyle = computed(() => ({
   width: workspace.value.width + 'px',
   height: workspace.value.height + 'px',
 }))
-const widePanel = computed(
+// Single-host installations also own a real floating workspace; a provider
+// with one visible feature must not silently fall back to a centered modal.
+const floatingPanel = computed(
   () =>
-    !standalone.value &&
+    Boolean(singleFeature.value) ||
     props.runtime.features.some(
       (feature) => feature.id === selectedSection.value && feature.presentation?.panel === 'wide',
     ),
 )
-watch(widePanel, (wide) => {
-  if (!wide) workspaceDrag = undefined
+watch(floatingPanel, (floating) => {
+  if (!floating) workspaceDrag = undefined
 })
 function openPanel() {
   quickOpen.value = false
@@ -499,9 +509,9 @@ onBeforeUnmount(() => {
 <template>
   <div class="booster-overlay-root">
     <ModalSurface v-if="open" :label="singleFeature?.title || title"
-      :floating="widePanel" :surface-style="widePanel ? workspaceStyle : undefined"
-      :surface-class="standalone ? 'booster-modal-surface booster-modal-surface-single' : widePanel ? 'booster-modal-surface booster-modal-surface-wide' : 'booster-modal-surface'" @close="closePanel">
-      <template v-if="widePanel" #chrome>
+      :floating="floatingPanel" :surface-style="floatingPanel ? workspaceStyle : undefined"
+      :surface-class="floatingPanel ? 'booster-modal-surface booster-modal-surface-wide' : 'booster-modal-surface'" @close="closePanel">
+      <template v-if="floatingPanel" #chrome>
         <div class="booster-floating-chrome" aria-label="Переместить рабочее окно"
           @pointerdown="onWorkspaceDown($event, 'move')" @pointermove="onWorkspaceMove"
           @pointerup="onWorkspaceUp" @pointercancel="onWorkspaceUp">
@@ -517,8 +527,8 @@ onBeforeUnmount(() => {
             @click="closePanel"><X class="size-4" /></button>
         </div>
       </template>
-      <ControlCenterPanel :runtime="runtime" :views="views" :title="singleFeature?.title || title" :selected-section="selectedSection" @select="selectedSection = $event" @close="closePanel" />
-      <template v-if="widePanel" #handles>
+      <ControlCenterPanel :runtime="runtime" :views="views" :title="singleFeature?.title || title" :selected-section="selectedSection" :floating="floatingPanel" @select="selectedSection = $event" @close="closePanel" />
+      <template v-if="floatingPanel" #handles>
         <button type="button" class="booster-floating-resize" aria-label="Изменить размер окна — используйте стрелки"
           @pointerdown="onWorkspaceDown($event, 'resize')" @pointermove="onWorkspaceMove"
           @pointerup="onWorkspaceUp" @pointercancel="onWorkspaceUp"
