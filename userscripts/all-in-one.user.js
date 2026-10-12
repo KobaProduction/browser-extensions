@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Koba Browser Tools [DEV]
 // @namespace    https://github.com/KobaProduction/browser-extensions/dev/all-in-one
-// @version      0.5.45
+// @version      0.5.46
 // @description  Koba Browser Tools / Koba Browser Tools
 // @homepageURL   https://github.com/KobaProduction/browser-extensions
 // @updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/all-in-one.user.js
@@ -34,6 +34,63 @@
   }
   function instanceKey(base, legacyOwner) {
     return scopedIdentity(base, instanceScope(), legacyOwner);
+  }
+  var APPLICATION_TELEMETRY = /* @__PURE__ */ Symbol("koba.application.telemetry");
+  var APPROVED_SIGNALS = /* @__PURE__ */ new Set([
+    "archive.capture.started",
+    "archive.capture.completed",
+    "archive.capture.failed",
+    "archive.export.completed",
+    "archive.export.failed",
+    "archive.audit.completed",
+    "archive.backup.completed",
+    "archive.restore.completed"
+  ]);
+  var SCOPED_TELEMETRY_SCHEMA_VERSION = 1;
+  function isScopedTelemetryName(name) {
+    return APPROVED_SIGNALS.has(name);
+  }
+  class ScopedTelemetry {
+    service;
+    scope;
+    sink;
+    enabled = false;
+    constructor(service, scope, sink) {
+      this.service = service;
+      this.scope = scope;
+      this.sink = sink;
+      if (!/^[a-zA-Z][\w -]{2,64}$/.test(service) || !/^[a-z][a-z0-9-]*:(dev|prod)$/.test(scope))
+        throw Error("Invalid telemetry service scope");
+    }
+    available() {
+      return Boolean(this.sink);
+    }
+    isEnabled() {
+      return this.enabled && this.available();
+    }
+    setEnabled(value) {
+      this.enabled = value && this.available();
+    }
+    async record(name, count, durationMs) {
+      if (!this.isEnabled() || !this.sink || !isScopedTelemetryName(name))
+        return;
+      const event = {
+        service: this.service,
+        serviceId: this.service,
+        scope: this.scope,
+        productId: this.scope.split(":")[0] ?? "",
+        channel: this.scope.endsWith(":dev") ? "dev" : "prod",
+        schemaVersion: SCOPED_TELEMETRY_SCHEMA_VERSION,
+        name,
+        timestamp: Date.now(),
+        ...Number.isFinite(count) && count !== void 0 && count >= 0 ? { count: Math.floor(count) } : {},
+        ...Number.isFinite(durationMs) && durationMs !== void 0 && durationMs >= 0 ? { durationMs: Math.round(durationMs) } : {}
+      };
+      try {
+        await this.sink.send(event);
+      } catch {
+      }
+    }
   }
   var SHELL_OPEN_FEATURE_EVENT = instanceKey("koba:open-feature");
   var SHELL_CLOSE_EVENT = instanceKey("koba:close-shell");
@@ -355,7 +412,7 @@
       language: null,
       sourcePath: "content"
     });
-    const append = (index, elementKind, sourcePath, text, language = null) => {
+    const append = (index, elementKind, sourcePath, text2, language = null) => {
       elements.push({
         elementId: JSON.stringify([key, "content", index]),
         messageKey: key,
@@ -363,7 +420,7 @@
         siblingOrder: index,
         kind: elementKind,
         visibility,
-        text,
+        text: text2,
         language,
         sourcePath
       });
@@ -886,8 +943,8 @@
     }
     return Object.fromEntries(entries);
   }
-  const BOOSTER_BASE_VERSION = "2.0.18";
-  const injectedVersion = "2.0.18".trim();
+  const BOOSTER_BASE_VERSION = "2.0.19";
+  const injectedVersion = "2.0.19".trim();
   const BOOSTER_BUILD_VERSION = injectedVersion || BOOSTER_BASE_VERSION;
   const BOOSTER_VERSION = BOOSTER_BUILD_VERSION;
   // @__NO_SIDE_EFFECTS__
@@ -6613,11 +6670,11 @@
     }
     return cloned;
   }
-  function createTextVNode(text = " ", flag = 0) {
-    return createVNode(Text, null, text, flag);
+  function createTextVNode(text2 = " ", flag = 0) {
+    return createVNode(Text, null, text2, flag);
   }
-  function createCommentVNode(text = "", asBlock = false) {
-    return asBlock ? (openBlock(), createBlock(Comment, null, text)) : createVNode(Comment, null, text);
+  function createCommentVNode(text2 = "", asBlock = false) {
+    return asBlock ? (openBlock(), createBlock(Comment, null, text2)) : createVNode(Comment, null, text2);
   }
   function normalizeVNode(child) {
     if (child == null || typeof child === "boolean") {
@@ -7067,13 +7124,13 @@
       }
       return el;
     },
-    createText: (text) => doc.createTextNode(text),
-    createComment: (text) => doc.createComment(text),
-    setText: (node, text) => {
-      node.nodeValue = text;
+    createText: (text2) => doc.createTextNode(text2),
+    createComment: (text2) => doc.createComment(text2),
+    setText: (node, text2) => {
+      node.nodeValue = text2;
     },
-    setElementText: (el, text) => {
-      el.textContent = text;
+    setElementText: (el, text2) => {
+      el.textContent = text2;
     },
     parentNode: (node) => node.parentNode,
     nextSibling: (node) => node.nextSibling,
@@ -7525,13 +7582,13 @@
   }
   const assignKey = /* @__PURE__ */ Symbol("_assign");
   const initialValueKey = /* @__PURE__ */ Symbol("_initialValue");
-  function castValue(value, trim, number) {
+  function castValue(value, trim, number2) {
     if (trim) value = value.trim();
-    if (number) value = looseToNumber(value);
+    if (number2) value = looseToNumber(value);
     return value;
   }
   const vModelText = {
-    created(el, { modifiers: { lazy, trim, number } }, vnode) {
+    created(el, { modifiers: { lazy, trim, number: number2 } }, vnode) {
       if (el.parentNode) {
         if (el.type === "text") {
           el[initialValueKey] = el.defaultValue.replace(/[\r\n]/g, "");
@@ -7540,7 +7597,7 @@
         }
       }
       el[assignKey] = getModelAssigner(vnode);
-      const castToNumber = number || vnode.props && vnode.props.type === "number";
+      const castToNumber = number2 || vnode.props && vnode.props.type === "number";
       addEventListener$1(el, lazy ? "change" : "input", (e) => {
         if (e.target.composing) return;
         el[assignKey](castValue(el.value, trim, castToNumber));
@@ -7557,20 +7614,20 @@
       }
     },
     // set value on mounted so it's after min/max for type="range"
-    mounted(el, { value, modifiers: { trim, number } }) {
+    mounted(el, { value, modifiers: { trim, number: number2 } }) {
       const newValue = value == null ? "" : value;
       const initialValue = el[initialValueKey];
       delete el[initialValueKey];
       if (initialValue !== void 0 && (el.type === "text" || el.type === "textarea") && el.value !== initialValue) {
-        el[assignKey](castValue(el.value, trim, number));
+        el[assignKey](castValue(el.value, trim, number2));
       } else {
         el.value = newValue;
       }
     },
-    beforeUpdate(el, { value, oldValue, modifiers: { lazy, trim, number } }, vnode) {
+    beforeUpdate(el, { value, oldValue, modifiers: { lazy, trim, number: number2 } }, vnode) {
       el[assignKey] = getModelAssigner(vnode);
       if (el.composing) return;
-      const elValue = (number || el.type === "number") && !/^0\d/.test(el.value) ? looseToNumber(el.value) : el.value;
+      const elValue = (number2 || el.type === "number") && !/^0\d/.test(el.value) ? looseToNumber(el.value) : el.value;
       const newValue = value == null ? "" : value;
       if (elValue === newValue) {
         return;
@@ -7645,11 +7702,11 @@
   const vModelSelect = {
     // <select multiple> value need to be deep traversed
     deep: true,
-    created(el, { value, modifiers: { number } }, vnode) {
+    created(el, { value, modifiers: { number: number2 } }, vnode) {
       el._modelValue = value;
       addEventListener$1(el, "change", () => {
         const selectedVal = Array.prototype.filter.call(el.options, (o) => o.selected).map(
-          (o) => number ? looseToNumber(getValue(o)) : getValue(o)
+          (o) => number2 ? looseToNumber(getValue(o)) : getValue(o)
         );
         const multiple = el.multiple;
         const assignedValue = multiple ? isSet(el._modelValue) ? new Set(selectedVal) : selectedVal : selectedVal[0];
@@ -7897,15 +7954,185 @@
       }
     };
   }
+  async function readArchiveMedia(response, options) {
+    const { maxBytes, expectedBytes = null } = options;
+    if (!Number.isSafeInteger(maxBytes) || maxBytes < 1)
+      throw new Error("Invalid media limit");
+    if (expectedBytes !== null && (!Number.isSafeInteger(expectedBytes) || expectedBytes < 0))
+      throw new Error("Invalid expected media size");
+    if (!response.ok)
+      throw new Error("Media HTTP " + response.status);
+    const mime = (response.headers.get("content-type") || "application/octet-stream").split(";", 1)[0] ?? "application/octet-stream".trim().toLowerCase();
+    if (mime === "text/html" || mime === "application/xhtml+xml")
+      throw new Error("HTML returned instead of media");
+    const lengthHeader = response.headers.get("content-length");
+    if (lengthHeader !== null && /^\d+$/.test(lengthHeader) && Number(lengthHeader) > maxBytes)
+      throw new Error("Media exceeds size limit");
+    if (!response.body)
+      throw new Error("Missing media stream");
+    const reader = response.body.getReader();
+    const chunks = [];
+    let size = 0, complete = false;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          complete = true;
+          break;
+        }
+        size += value.byteLength;
+        if (size > maxBytes)
+          throw new Error("Media exceeds size limit");
+        chunks.push(value);
+      }
+    } finally {
+      if (!complete)
+        await reader.cancel().catch(() => {
+          return;
+        });
+      reader.releaseLock();
+    }
+    if (!size || expectedBytes !== null && size !== expectedBytes)
+      throw new Error("Invalid original media size");
+    const bytes2 = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes2.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    const digest2 = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes2));
+    const sha256 = Array.from(digest2, (x) => x.toString(16).padStart(2, "0")).join("");
+    return { bytes: bytes2, size, sha256, mime };
+  }
+  function entryName(path) {
+    if (!path || path.startsWith("/") || path.includes("\\") || path.split("/").some((segment) => !segment || segment === "." || segment === "..") || [...path].some((character) => character.charCodeAt(0) < 32))
+      throw Error("Unsafe ZIP entry path");
+    return encoder$1.encode(path);
+  }
+  var encoder$1 = new TextEncoder();
+  var crcTable;
+  function table() {
+    if (crcTable)
+      return crcTable;
+    crcTable = new Uint32Array(256);
+    for (let index = 0; index < 256; index++) {
+      let value = index;
+      for (let bit = 0; bit < 8; bit++)
+        value = value & 1 ? 3988292384 ^ value >>> 1 : value >>> 1;
+      crcTable[index] = value >>> 0;
+    }
+    return crcTable;
+  }
+  function crc32Update(initial, bytes2) {
+    let crc = initial;
+    const values = table();
+    for (const byte of bytes2)
+      crc = (values[(crc ^ byte) & 255] ?? 0) ^ crc >>> 8;
+    return crc >>> 0;
+  }
+  function view(size) {
+    return new DataView(new ArrayBuffer(size));
+  }
+  function bytes(value) {
+    return new Uint8Array(value.buffer);
+  }
+  function asArrayBuffer(value) {
+    const copy = new Uint8Array(value.byteLength);
+    copy.set(value);
+    return copy.buffer;
+  }
+  function concat(parts) {
+    const length = parts.reduce((sum, part) => sum + part.byteLength, 0);
+    const result = new Uint8Array(length);
+    let offset = 0;
+    for (const part of parts) {
+      result.set(part, offset);
+      offset += part.byteLength;
+    }
+    return result;
+  }
+  function dosDateTime(date = /* @__PURE__ */ new Date()) {
+    const year = Math.max(1980, date.getFullYear());
+    return {
+      time: date.getHours() << 11 | date.getMinutes() << 5 | Math.floor(date.getSeconds() / 2),
+      date: year - 1980 << 9 | date.getMonth() + 1 << 5 | date.getDate()
+    };
+  }
+  async function createStoredZipFromBlobs(entries, signal, onProgress) {
+    if (entries.length > 65535)
+      throw new Error("export.tooManyFiles");
+    entries.reduce((total, entry) => total + entry.blob.size, 0);
+    let completedBytes = 0;
+    const parts = [];
+    const centrals = [];
+    const stamp = dosDateTime();
+    let offset = 0;
+    for (const entry of entries) {
+      const name = entryName(entry.path);
+      if (name.byteLength > 65535 || entry.blob.size > 4294967295)
+        throw new Error("export.fileTooLarge");
+      if (offset + 30 + name.byteLength + entry.blob.size > 4294967295)
+        throw new Error("export.packageTooLarge");
+      let crc = 4294967295;
+      for (let position = 0; position < entry.blob.size; position += 64 * 1024) {
+        const block = new Uint8Array(await entry.blob.slice(position, position + 64 * 1024).arrayBuffer());
+        crc = crc32Update(crc, block);
+        completedBytes += block.byteLength;
+      }
+      crc = (crc ^ 4294967295) >>> 0;
+      const local = view(30);
+      local.setUint32(0, 67324752, true);
+      local.setUint16(4, 20, true);
+      local.setUint16(6, 2048, true);
+      local.setUint16(8, 0, true);
+      local.setUint16(10, stamp.time, true);
+      local.setUint16(12, stamp.date, true);
+      local.setUint32(14, crc, true);
+      local.setUint32(18, entry.blob.size, true);
+      local.setUint32(22, entry.blob.size, true);
+      local.setUint16(26, name.byteLength, true);
+      local.setUint16(28, 0, true);
+      parts.push(asArrayBuffer(bytes(local)), asArrayBuffer(name), entry.blob);
+      const central = view(46);
+      central.setUint32(0, 33639248, true);
+      central.setUint16(4, 20, true);
+      central.setUint16(6, 20, true);
+      central.setUint16(8, 2048, true);
+      central.setUint16(10, 0, true);
+      central.setUint16(12, stamp.time, true);
+      central.setUint16(14, stamp.date, true);
+      central.setUint32(16, crc, true);
+      central.setUint32(20, entry.blob.size, true);
+      central.setUint32(24, entry.blob.size, true);
+      central.setUint16(28, name.byteLength, true);
+      central.setUint32(42, offset, true);
+      centrals.push(concat([bytes(central), name]));
+      offset += 30 + name.byteLength + entry.blob.size;
+    }
+    const centralBytes = concat(centrals);
+    if (offset + centralBytes.byteLength + 22 > 4294967295)
+      throw new Error("export.packageTooLarge");
+    const end = view(22);
+    end.setUint32(0, 101010256, true);
+    end.setUint16(4, 0, true);
+    end.setUint16(6, 0, true);
+    end.setUint16(8, entries.length, true);
+    end.setUint16(10, entries.length, true);
+    end.setUint32(12, centralBytes.byteLength, true);
+    end.setUint32(16, offset, true);
+    return new Blob([...parts, asArrayBuffer(centralBytes), asArrayBuffer(bytes(end))], {
+      type: "application/zip"
+    });
+  }
   var safeBytes = (buffer) => buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
   function toBase64(data) {
-    const bytes = safeBytes(data);
+    const bytes2 = safeBytes(data);
     const parts = [];
-    for (let offset = 0; offset < bytes.length; offset += 32766) {
-      let text = "";
-      for (const byte of bytes.subarray(offset, offset + 32766))
-        text += String.fromCharCode(byte);
-      parts.push(btoa(text));
+    for (let offset = 0; offset < bytes2.length; offset += 32766) {
+      let text2 = "";
+      for (const byte of bytes2.subarray(offset, offset + 32766))
+        text2 += String.fromCharCode(byte);
+      parts.push(btoa(text2));
     }
     return parts.join("");
   }
@@ -8114,8 +8341,8 @@
     }
     return decode(value, 0);
   }
-  async function archiveSha256Hex(bytes) {
-    const data = typeof bytes === "string" ? new TextEncoder().encode(bytes) : bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  async function archiveSha256Hex(bytes2) {
+    const data = typeof bytes2 === "string" ? new TextEncoder().encode(bytes2) : bytes2 instanceof Uint8Array ? bytes2 : new Uint8Array(bytes2);
     const safeBytes2 = data.buffer instanceof ArrayBuffer ? data : new Uint8Array(data);
     const digest2 = await crypto.subtle.digest("SHA-256", safeBytes2);
     return Array.from(new Uint8Array(digest2), (value) => value.toString(16).padStart(2, "0")).join("");
@@ -8133,8 +8360,8 @@
           if (next.done)
             controller.close();
           else {
-            const safe = next.value.buffer instanceof ArrayBuffer ? next.value : new Uint8Array(next.value);
-            controller.enqueue(safe);
+            const safe2 = next.value.buffer instanceof ArrayBuffer ? next.value : new Uint8Array(next.value);
+            controller.enqueue(safe2);
           }
         } catch (error) {
           controller.error(error);
@@ -8165,406 +8392,6 @@
     }
     return new Blob(parts, { type: "application/gzip" });
   }
-  const toKebabCase = (string) => string.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
-  const toCamelCase = (string) => string.replace(
-    /^([A-Z])|[\s-_]+(\w)/g,
-    (match, p1, p2) => p2 ? p2.toUpperCase() : p1.toLowerCase()
-  );
-  const toPascalCase = (string) => {
-    const camelCase = toCamelCase(string);
-    return camelCase.charAt(0).toUpperCase() + camelCase.slice(1);
-  };
-  const mergeClasses = (...classes) => classes.filter((className, index, array) => {
-    return Boolean(className) && className.trim() !== "" && array.indexOf(className) === index;
-  }).join(" ").trim();
-  const isEmptyString = (value) => value === "";
-  var defaultAttributes = {
-    xmlns: "http://www.w3.org/2000/svg",
-    width: 24,
-    height: 24,
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "currentColor",
-    "stroke-width": 2,
-    "stroke-linecap": "round",
-    "stroke-linejoin": "round"
-  };
-  const Icon = ({
-    name,
-    iconNode,
-    absoluteStrokeWidth,
-    "absolute-stroke-width": absoluteStrokeWidthKebabCase,
-    strokeWidth,
-    "stroke-width": strokeWidthKebabCase,
-    size = defaultAttributes.width,
-    color = defaultAttributes.stroke,
-    ...props
-  }, { slots }) => {
-    return h(
-      "svg",
-      {
-        ...defaultAttributes,
-        ...props,
-        width: size,
-        height: size,
-        stroke: color,
-        "stroke-width": isEmptyString(absoluteStrokeWidth) || isEmptyString(absoluteStrokeWidthKebabCase) || absoluteStrokeWidth === true || absoluteStrokeWidthKebabCase === true ? Number(strokeWidth || strokeWidthKebabCase || defaultAttributes["stroke-width"]) * 24 / Number(size) : strokeWidth || strokeWidthKebabCase || defaultAttributes["stroke-width"],
-        class: mergeClasses(
-          "lucide",
-          props.class,
-          ...name ? [`lucide-${toKebabCase(toPascalCase(name))}-icon`, `lucide-${toKebabCase(name)}`] : ["lucide-icon"]
-        )
-      },
-      [...iconNode.map((child) => h(...child)), ...slots.default ? [slots.default()] : []]
-    );
-  };
-  const createLucideIcon = (iconName, iconNode) => (props, { slots, attrs }) => h(
-    Icon,
-    {
-      ...attrs,
-      ...props,
-      iconNode,
-      name: iconName
-    },
-    slots
-  );
-  const Activity = createLucideIcon("activity", [
-    [
-      "path",
-      {
-        d: "M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2",
-        key: "169zse"
-      }
-    ]
-  ]);
-  const Archive = createLucideIcon("archive", [
-    ["rect", { width: "20", height: "5", x: "2", y: "3", rx: "1", key: "1wp1u1" }],
-    ["path", { d: "M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8", key: "1s80jp" }],
-    ["path", { d: "M10 12h4", key: "a56b0p" }]
-  ]);
-  const ArrowDownLeft = createLucideIcon("arrow-down-left", [
-    ["path", { d: "M17 7 7 17", key: "15tmo1" }],
-    ["path", { d: "M17 17H7V7", key: "1org7z" }]
-  ]);
-  const ArrowLeft = createLucideIcon("arrow-left", [
-    ["path", { d: "m12 19-7-7 7-7", key: "1l729n" }],
-    ["path", { d: "M19 12H5", key: "x3x0zl" }]
-  ]);
-  const ArrowUpRight = createLucideIcon("arrow-up-right", [
-    ["path", { d: "M7 7h10v10", key: "1tivn9" }],
-    ["path", { d: "M7 17 17 7", key: "1vkiza" }]
-  ]);
-  const ArrowUpToLine = createLucideIcon("arrow-up-to-line", [
-    ["path", { d: "M5 3h14", key: "7usisc" }],
-    ["path", { d: "m18 13-6-6-6 6", key: "1kf1n9" }],
-    ["path", { d: "M12 7v14", key: "1akyts" }]
-  ]);
-  const BrainCircuit = createLucideIcon("brain-circuit", [
-    [
-      "path",
-      {
-        d: "M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z",
-        key: "l5xja"
-      }
-    ],
-    ["path", { d: "M9 13a4.5 4.5 0 0 0 3-4", key: "10igwf" }],
-    ["path", { d: "M6.003 5.125A3 3 0 0 0 6.401 6.5", key: "105sqy" }],
-    ["path", { d: "M3.477 10.896a4 4 0 0 1 .585-.396", key: "ql3yin" }],
-    ["path", { d: "M6 18a4 4 0 0 1-1.967-.516", key: "2e4loj" }],
-    ["path", { d: "M12 13h4", key: "1ku699" }],
-    ["path", { d: "M12 18h6a2 2 0 0 1 2 2v1", key: "105ag5" }],
-    ["path", { d: "M12 8h8", key: "1lhi5i" }],
-    ["path", { d: "M16 8V5a2 2 0 0 1 2-2", key: "u6izg6" }],
-    ["circle", { cx: "16", cy: "13", r: ".5", key: "ry7gng" }],
-    ["circle", { cx: "18", cy: "3", r: ".5", key: "1aiba7" }],
-    ["circle", { cx: "20", cy: "21", r: ".5", key: "yhc1fs" }],
-    ["circle", { cx: "20", cy: "8", r: ".5", key: "1e43v0" }]
-  ]);
-  const Brain = createLucideIcon("brain", [
-    ["path", { d: "M12 18V5", key: "adv99a" }],
-    ["path", { d: "M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4", key: "1e3is1" }],
-    ["path", { d: "M17.598 6.5A3 3 0 1 0 12 5a3 3 0 1 0-5.598 1.5", key: "1gqd8o" }],
-    ["path", { d: "M17.997 5.125a4 4 0 0 1 2.526 5.77", key: "iwvgf7" }],
-    ["path", { d: "M18 18a4 4 0 0 0 2-7.464", key: "efp6ie" }],
-    ["path", { d: "M19.967 17.483A4 4 0 1 1 12 18a4 4 0 1 1-7.967-.517", key: "1gq6am" }],
-    ["path", { d: "M6 18a4 4 0 0 1-2-7.464", key: "k1g0md" }],
-    ["path", { d: "M6.003 5.125a4 4 0 0 0-2.526 5.77", key: "q97ue3" }]
-  ]);
-  const ChartColumn = createLucideIcon("chart-column", [
-    ["path", { d: "M3 3v16a2 2 0 0 0 2 2h16", key: "c24i48" }],
-    ["path", { d: "M18 17V9", key: "2bz60n" }],
-    ["path", { d: "M13 17V5", key: "1frdt8" }],
-    ["path", { d: "M8 17v-3", key: "17ska0" }]
-  ]);
-  const Check = createLucideIcon("check", [["path", { d: "M20 6 9 17l-5-5", key: "1gmf2c" }]]);
-  const ChevronDown = createLucideIcon("chevron-down", [
-    ["path", { d: "m6 9 6 6 6-6", key: "qrunsl" }]
-  ]);
-  const ChevronRight = createLucideIcon("chevron-right", [
-    ["path", { d: "m9 18 6-6-6-6", key: "mthhwq" }]
-  ]);
-  const Clipboard = createLucideIcon("clipboard", [
-    ["rect", { width: "8", height: "4", x: "8", y: "2", rx: "1", ry: "1", key: "tgr4d6" }],
-    [
-      "path",
-      {
-        d: "M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2",
-        key: "116196"
-      }
-    ]
-  ]);
-  const Clock3 = createLucideIcon("clock-3", [
-    ["path", { d: "M12 6v6h4", key: "135r8i" }],
-    ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }]
-  ]);
-  const CodeXml = createLucideIcon("code-xml", [
-    ["path", { d: "m18 16 4-4-4-4", key: "1inbqp" }],
-    ["path", { d: "m6 8-4 4 4 4", key: "15zrgr" }],
-    ["path", { d: "m14.5 4-5 16", key: "e7oirm" }]
-  ]);
-  const Copy = createLucideIcon("copy", [
-    ["rect", { width: "14", height: "14", x: "8", y: "8", rx: "2", ry: "2", key: "17jyea" }],
-    ["path", { d: "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2", key: "zix9uf" }]
-  ]);
-  const Database = createLucideIcon("database", [
-    ["ellipse", { cx: "12", cy: "5", rx: "9", ry: "3", key: "msslwz" }],
-    ["path", { d: "M3 5V19A9 3 0 0 0 21 19V5", key: "1wlel7" }],
-    ["path", { d: "M3 12A9 3 0 0 0 21 12", key: "mv7ke4" }]
-  ]);
-  const Download = createLucideIcon("download", [
-    ["path", { d: "M12 15V3", key: "m9g1x1" }],
-    ["path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", key: "ih7n3h" }],
-    ["path", { d: "m7 10 5 5 5-5", key: "brsn70" }]
-  ]);
-  const Earth = createLucideIcon("earth", [
-    ["path", { d: "M21.54 15H17a2 2 0 0 0-2 2v4.54", key: "1djwo0" }],
-    [
-      "path",
-      {
-        d: "M7 3.34V5a3 3 0 0 0 3 3a2 2 0 0 1 2 2c0 1.1.9 2 2 2a2 2 0 0 0 2-2c0-1.1.9-2 2-2h3.17",
-        key: "1tzkfa"
-      }
-    ],
-    ["path", { d: "M11 21.95V18a2 2 0 0 0-2-2a2 2 0 0 1-2-2v-1a2 2 0 0 0-2-2H2.05", key: "14pb5j" }],
-    ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }]
-  ]);
-  const ExternalLink = createLucideIcon("external-link", [
-    ["path", { d: "M15 3h6v6", key: "1q9fwt" }],
-    ["path", { d: "M10 14 21 3", key: "gplh6r" }],
-    ["path", { d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6", key: "a6xqqp" }]
-  ]);
-  const FileJson2 = createLucideIcon("file-json-2", [
-    ["path", { d: "M4 22h14a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v4", key: "1pf5j1" }],
-    ["path", { d: "M14 2v4a2 2 0 0 0 2 2h4", key: "tnqrlb" }],
-    [
-      "path",
-      { d: "M4 12a1 1 0 0 0-1 1v1a1 1 0 0 1-1 1 1 1 0 0 1 1 1v1a1 1 0 0 0 1 1", key: "fq0c9t" }
-    ],
-    [
-      "path",
-      { d: "M8 18a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1 1 1 0 0 1-1-1v-1a1 1 0 0 0-1-1", key: "4gibmv" }
-    ]
-  ]);
-  const FolderArchive = createLucideIcon("folder-archive", [
-    ["circle", { cx: "15", cy: "19", r: "2", key: "u2pros" }],
-    [
-      "path",
-      {
-        d: "M20.9 19.8A2 2 0 0 0 22 18V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h5.1",
-        key: "1jj40k"
-      }
-    ],
-    ["path", { d: "M15 11v-1", key: "cntcp" }],
-    ["path", { d: "M15 17v-2", key: "1279jj" }]
-  ]);
-  const FolderOpen = createLucideIcon("folder-open", [
-    [
-      "path",
-      {
-        d: "m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2",
-        key: "usdka0"
-      }
-    ]
-  ]);
-  const GitBranch = createLucideIcon("git-branch", [
-    ["line", { x1: "6", x2: "6", y1: "3", y2: "15", key: "17qcm7" }],
-    ["circle", { cx: "18", cy: "6", r: "3", key: "1h7g24" }],
-    ["circle", { cx: "6", cy: "18", r: "3", key: "fqmcym" }],
-    ["path", { d: "M18 9a9 9 0 0 1-9 9", key: "n2h4wq" }]
-  ]);
-  const Github = createLucideIcon("github", [
-    [
-      "path",
-      {
-        d: "M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4",
-        key: "tonef"
-      }
-    ],
-    ["path", { d: "M9 18c-4.51 2-5-2-7-2", key: "9comsn" }]
-  ]);
-  const Globe = createLucideIcon("globe", [
-    ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
-    ["path", { d: "M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20", key: "13o1zl" }],
-    ["path", { d: "M2 12h20", key: "9i4pu4" }]
-  ]);
-  const GripHorizontal = createLucideIcon("grip-horizontal", [
-    ["circle", { cx: "12", cy: "9", r: "1", key: "124mty" }],
-    ["circle", { cx: "19", cy: "9", r: "1", key: "1ruzo2" }],
-    ["circle", { cx: "5", cy: "9", r: "1", key: "1a8b28" }],
-    ["circle", { cx: "12", cy: "15", r: "1", key: "1e56xg" }],
-    ["circle", { cx: "19", cy: "15", r: "1", key: "1a92ep" }],
-    ["circle", { cx: "5", cy: "15", r: "1", key: "5r1jwy" }]
-  ]);
-  const GripVertical = createLucideIcon("grip-vertical", [
-    ["circle", { cx: "9", cy: "12", r: "1", key: "1vctgf" }],
-    ["circle", { cx: "9", cy: "5", r: "1", key: "hp0tcf" }],
-    ["circle", { cx: "9", cy: "19", r: "1", key: "fkjjf6" }],
-    ["circle", { cx: "15", cy: "12", r: "1", key: "1tmaij" }],
-    ["circle", { cx: "15", cy: "5", r: "1", key: "19l28e" }],
-    ["circle", { cx: "15", cy: "19", r: "1", key: "f4zoj3" }]
-  ]);
-  const Grip = createLucideIcon("grip", [
-    ["circle", { cx: "12", cy: "5", r: "1", key: "gxeob9" }],
-    ["circle", { cx: "19", cy: "5", r: "1", key: "w8mnmm" }],
-    ["circle", { cx: "5", cy: "5", r: "1", key: "lttvr7" }],
-    ["circle", { cx: "12", cy: "12", r: "1", key: "41hilf" }],
-    ["circle", { cx: "19", cy: "12", r: "1", key: "1wjl8i" }],
-    ["circle", { cx: "5", cy: "12", r: "1", key: "1pcz8c" }],
-    ["circle", { cx: "12", cy: "19", r: "1", key: "lyex9k" }],
-    ["circle", { cx: "19", cy: "19", r: "1", key: "shf9b7" }],
-    ["circle", { cx: "5", cy: "19", r: "1", key: "bfqh0e" }]
-  ]);
-  const Image = createLucideIcon("image", [
-    ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", ry: "2", key: "1m3agn" }],
-    ["circle", { cx: "9", cy: "9", r: "2", key: "af1f0g" }],
-    ["path", { d: "m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21", key: "1xmnt7" }]
-  ]);
-  const Info = createLucideIcon("info", [
-    ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
-    ["path", { d: "M12 16v-4", key: "1dtifu" }],
-    ["path", { d: "M12 8h.01", key: "e9boi3" }]
-  ]);
-  const Languages = createLucideIcon("languages", [
-    ["path", { d: "m5 8 6 6", key: "1wu5hv" }],
-    ["path", { d: "m4 14 6-6 2-3", key: "1k1g8d" }],
-    ["path", { d: "M2 5h12", key: "or177f" }],
-    ["path", { d: "M7 2h1", key: "1t2jsx" }],
-    ["path", { d: "m22 22-5-10-5 10", key: "don7ne" }],
-    ["path", { d: "M14 18h6", key: "1m8k6r" }]
-  ]);
-  const Layers = createLucideIcon("layers", [
-    [
-      "path",
-      {
-        d: "M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z",
-        key: "zw3jo"
-      }
-    ],
-    [
-      "path",
-      {
-        d: "M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12",
-        key: "1wduqc"
-      }
-    ],
-    [
-      "path",
-      {
-        d: "M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17",
-        key: "kqbvx6"
-      }
-    ]
-  ]);
-  const LoaderCircle = createLucideIcon("loader-circle", [
-    ["path", { d: "M21 12a9 9 0 1 1-6.219-8.56", key: "13zald" }]
-  ]);
-  const Minus = createLucideIcon("minus", [["path", { d: "M5 12h14", key: "1ays0h" }]]);
-  const RefreshCcw = createLucideIcon("refresh-ccw", [
-    ["path", { d: "M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8", key: "14sxne" }],
-    ["path", { d: "M3 3v5h5", key: "1xhq8a" }],
-    ["path", { d: "M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16", key: "1hlbsb" }],
-    ["path", { d: "M16 16h5v5", key: "ccwih5" }]
-  ]);
-  const RefreshCw = createLucideIcon("refresh-cw", [
-    ["path", { d: "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8", key: "v9h5vc" }],
-    ["path", { d: "M21 3v5h-5", key: "1q7to0" }],
-    ["path", { d: "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16", key: "3uifl3" }],
-    ["path", { d: "M8 16H3v5", key: "1cv678" }]
-  ]);
-  const Search = createLucideIcon("search", [
-    ["path", { d: "m21 21-4.34-4.34", key: "14j7rj" }],
-    ["circle", { cx: "11", cy: "11", r: "8", key: "4ej97u" }]
-  ]);
-  const Settings2 = createLucideIcon("settings-2", [
-    ["path", { d: "M14 17H5", key: "gfn3mx" }],
-    ["path", { d: "M19 7h-9", key: "6i9tg" }],
-    ["circle", { cx: "17", cy: "17", r: "3", key: "18b49y" }],
-    ["circle", { cx: "7", cy: "7", r: "3", key: "dfmy0x" }]
-  ]);
-  const ShieldAlert = createLucideIcon("shield-alert", [
-    [
-      "path",
-      {
-        d: "M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z",
-        key: "oel41y"
-      }
-    ],
-    ["path", { d: "M12 8v4", key: "1got3b" }],
-    ["path", { d: "M12 16h.01", key: "1drbdi" }]
-  ]);
-  const ShieldCheck = createLucideIcon("shield-check", [
-    [
-      "path",
-      {
-        d: "M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z",
-        key: "oel41y"
-      }
-    ],
-    ["path", { d: "m9 12 2 2 4-4", key: "dzmm74" }]
-  ]);
-  const SlidersHorizontal = createLucideIcon("sliders-horizontal", [
-    ["path", { d: "M10 5H3", key: "1qgfaw" }],
-    ["path", { d: "M12 19H3", key: "yhmn1j" }],
-    ["path", { d: "M14 3v4", key: "1sua03" }],
-    ["path", { d: "M16 17v4", key: "1q0r14" }],
-    ["path", { d: "M21 12h-9", key: "1o4lsq" }],
-    ["path", { d: "M21 19h-5", key: "1rlt1p" }],
-    ["path", { d: "M21 5h-7", key: "1oszz2" }],
-    ["path", { d: "M8 10v4", key: "tgpxqk" }],
-    ["path", { d: "M8 12H3", key: "a7s4jb" }]
-  ]);
-  const SquareTerminal = createLucideIcon("square-terminal", [
-    ["path", { d: "m7 11 2-2-2-2", key: "1lz0vl" }],
-    ["path", { d: "M11 13h4", key: "1p7l4v" }],
-    ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", ry: "2", key: "1m3agn" }]
-  ]);
-  const Square = createLucideIcon("square", [
-    ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", key: "afitv7" }]
-  ]);
-  const TriangleAlert = createLucideIcon("triangle-alert", [
-    [
-      "path",
-      {
-        d: "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3",
-        key: "wmoenq"
-      }
-    ],
-    ["path", { d: "M12 9v4", key: "juzpu7" }],
-    ["path", { d: "M12 17h.01", key: "p32p05" }]
-  ]);
-  const Wrench = createLucideIcon("wrench", [
-    [
-      "path",
-      {
-        d: "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z",
-        key: "1ngwbx"
-      }
-    ]
-  ]);
-  const X = createLucideIcon("x", [
-    ["path", { d: "M18 6 6 18", key: "1bl5f8" }],
-    ["path", { d: "m6 6 12 12", key: "d8bk6v" }]
-  ]);
   function r(e) {
     var t, f, n = "";
     if ("string" == typeof e || "number" == typeof e) n += e;
@@ -11834,21 +11661,21 @@
     };
   };
   const twMerge = /* @__PURE__ */ createTailwindMerge(getDefaultConfig);
-  const _hoisted_1$3$1 = ["aria-busy"];
-  const _hoisted_2$f = {
+  const _hoisted_1$3$2 = ["aria-busy"];
+  const _hoisted_2$g = {
     key: 0,
     class: "flex items-center justify-between gap-2"
   };
-  const _hoisted_3$f = {
+  const _hoisted_3$g = {
     role: "status",
     "aria-live": "polite"
   };
-  const _hoisted_4$e = {
+  const _hoisted_4$f = {
     key: 0,
     class: "tabular-nums"
   };
-  const _hoisted_5$c = ["value", "aria-label"];
-  const _hoisted_6$c = {
+  const _hoisted_5$d = ["value", "aria-label"];
+  const _hoisted_6$d = {
     key: 1,
     class: "text-xs text-muted-foreground"
   };
@@ -11857,7 +11684,7 @@
     role: "alert",
     class: "text-sm text-destructive"
   };
-  const _sfc_main$5$1 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$5$2 = /* @__PURE__ */ defineComponent({
     __name: "ArchiveProgress",
     props: {
       label: {},
@@ -11881,17 +11708,17 @@
           class: normalizeClass(__props.compact ? "w-full" : "booster-shared-archive-progress"),
           "aria-busy": __props.busy
         }, [
-          !__props.compact ? (openBlock(), createElementBlock("div", _hoisted_2$f, [
+          !__props.compact ? (openBlock(), createElementBlock("div", _hoisted_2$g, [
             createBaseVNode(
               "span",
-              _hoisted_3$f,
+              _hoisted_3$g,
               toDisplayString(__props.label),
               1
               /* TEXT */
             ),
             progress.value !== null ? (openBlock(), createElementBlock(
               "strong",
-              _hoisted_4$e,
+              _hoisted_4$f,
               toDisplayString(progress.value) + "%",
               1
               /* TEXT */
@@ -11902,10 +11729,10 @@
             value: progress.value ?? void 0,
             max: "100",
             "aria-label": __props.ariaLabel || __props.label
-          }, null, 8, _hoisted_5$c),
+          }, null, 8, _hoisted_5$d),
           __props.detail ? (openBlock(), createElementBlock(
             "p",
-            _hoisted_6$c,
+            _hoisted_6$d,
             toDisplayString(__props.detail),
             1
             /* TEXT */
@@ -11918,12 +11745,12 @@
             /* TEXT */
           )) : createCommentVNode("v-if", true),
           renderSlot(_ctx.$slots, "default")
-        ], 10, _hoisted_1$3$1);
+        ], 10, _hoisted_1$3$2);
       };
     }
   });
   const _hoisted_1$2$1 = ["aria-label", "onKeydown"];
-  const _sfc_main$4$2 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$4$1 = /* @__PURE__ */ defineComponent({
     __name: "FloatingInfoPopover",
     props: {
       mode: { default: "hover" },
@@ -12098,7 +11925,7 @@
     }
   });
   const _hoisted_1$1$2 = ["innerHTML"];
-  const _sfc_main$3$1 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$3$2 = /* @__PURE__ */ defineComponent({
     __name: "JsonViewer",
     props: {
       value: {}
@@ -12135,7 +11962,7 @@
       };
     }
   });
-  const _hoisted_1$g = ["aria-modal", "aria-label"];
+  const _hoisted_1$h = ["aria-modal", "aria-label"];
   const _sfc_main$2$1 = /* @__PURE__ */ defineComponent({
     __name: "ModalSurface",
     props: {
@@ -12159,12 +11986,12 @@
           return;
         }
         if (event.key !== "Tab" || !root.value || props.floating) return;
-        const items = [
+        const items2 = [
           ...root.value.querySelectorAll(
             'button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]'
           )
         ].filter((item) => item.getClientRects().length);
-        const first = items[0], last = items.at(-1);
+        const first = items2[0], last = items2.at(-1);
         const active = root.value.getRootNode().activeElement;
         if (!first || !last) {
           event.preventDefault();
@@ -12210,7 +12037,7 @@
               renderSlot(_ctx.$slots, "chrome"),
               renderSlot(_ctx.$slots, "default"),
               renderSlot(_ctx.$slots, "handles")
-            ], 46, _hoisted_1$g)
+            ], 46, _hoisted_1$h)
           ],
           2
           /* CLASS */
@@ -12249,7 +12076,7 @@
       };
     }
   });
-  const _sfc_main$i = /* @__PURE__ */ defineComponent({
+  const _sfc_main$j = /* @__PURE__ */ defineComponent({
     __name: "Button",
     props: {
       variant: { default: "default" },
@@ -12283,7 +12110,407 @@
       };
     }
   });
-  const _sfc_main$4$1 = /* @__PURE__ */ defineComponent({
+  const toKebabCase = (string) => string.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+  const toCamelCase = (string) => string.replace(
+    /^([A-Z])|[\s-_]+(\w)/g,
+    (match, p1, p2) => p2 ? p2.toUpperCase() : p1.toLowerCase()
+  );
+  const toPascalCase = (string) => {
+    const camelCase = toCamelCase(string);
+    return camelCase.charAt(0).toUpperCase() + camelCase.slice(1);
+  };
+  const mergeClasses = (...classes) => classes.filter((className, index, array) => {
+    return Boolean(className) && className.trim() !== "" && array.indexOf(className) === index;
+  }).join(" ").trim();
+  const isEmptyString = (value) => value === "";
+  var defaultAttributes = {
+    xmlns: "http://www.w3.org/2000/svg",
+    width: 24,
+    height: 24,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    "stroke-width": 2,
+    "stroke-linecap": "round",
+    "stroke-linejoin": "round"
+  };
+  const Icon = ({
+    name,
+    iconNode,
+    absoluteStrokeWidth,
+    "absolute-stroke-width": absoluteStrokeWidthKebabCase,
+    strokeWidth,
+    "stroke-width": strokeWidthKebabCase,
+    size = defaultAttributes.width,
+    color = defaultAttributes.stroke,
+    ...props
+  }, { slots }) => {
+    return h(
+      "svg",
+      {
+        ...defaultAttributes,
+        ...props,
+        width: size,
+        height: size,
+        stroke: color,
+        "stroke-width": isEmptyString(absoluteStrokeWidth) || isEmptyString(absoluteStrokeWidthKebabCase) || absoluteStrokeWidth === true || absoluteStrokeWidthKebabCase === true ? Number(strokeWidth || strokeWidthKebabCase || defaultAttributes["stroke-width"]) * 24 / Number(size) : strokeWidth || strokeWidthKebabCase || defaultAttributes["stroke-width"],
+        class: mergeClasses(
+          "lucide",
+          props.class,
+          ...name ? [`lucide-${toKebabCase(toPascalCase(name))}-icon`, `lucide-${toKebabCase(name)}`] : ["lucide-icon"]
+        )
+      },
+      [...iconNode.map((child) => h(...child)), ...slots.default ? [slots.default()] : []]
+    );
+  };
+  const createLucideIcon = (iconName, iconNode) => (props, { slots, attrs }) => h(
+    Icon,
+    {
+      ...attrs,
+      ...props,
+      iconNode,
+      name: iconName
+    },
+    slots
+  );
+  const Activity = createLucideIcon("activity", [
+    [
+      "path",
+      {
+        d: "M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2",
+        key: "169zse"
+      }
+    ]
+  ]);
+  const Archive = createLucideIcon("archive", [
+    ["rect", { width: "20", height: "5", x: "2", y: "3", rx: "1", key: "1wp1u1" }],
+    ["path", { d: "M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8", key: "1s80jp" }],
+    ["path", { d: "M10 12h4", key: "a56b0p" }]
+  ]);
+  const ArrowDownLeft = createLucideIcon("arrow-down-left", [
+    ["path", { d: "M17 7 7 17", key: "15tmo1" }],
+    ["path", { d: "M17 17H7V7", key: "1org7z" }]
+  ]);
+  const ArrowLeft = createLucideIcon("arrow-left", [
+    ["path", { d: "m12 19-7-7 7-7", key: "1l729n" }],
+    ["path", { d: "M19 12H5", key: "x3x0zl" }]
+  ]);
+  const ArrowUpRight = createLucideIcon("arrow-up-right", [
+    ["path", { d: "M7 7h10v10", key: "1tivn9" }],
+    ["path", { d: "M7 17 17 7", key: "1vkiza" }]
+  ]);
+  const ArrowUpToLine = createLucideIcon("arrow-up-to-line", [
+    ["path", { d: "M5 3h14", key: "7usisc" }],
+    ["path", { d: "m18 13-6-6-6 6", key: "1kf1n9" }],
+    ["path", { d: "M12 7v14", key: "1akyts" }]
+  ]);
+  const BrainCircuit = createLucideIcon("brain-circuit", [
+    [
+      "path",
+      {
+        d: "M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z",
+        key: "l5xja"
+      }
+    ],
+    ["path", { d: "M9 13a4.5 4.5 0 0 0 3-4", key: "10igwf" }],
+    ["path", { d: "M6.003 5.125A3 3 0 0 0 6.401 6.5", key: "105sqy" }],
+    ["path", { d: "M3.477 10.896a4 4 0 0 1 .585-.396", key: "ql3yin" }],
+    ["path", { d: "M6 18a4 4 0 0 1-1.967-.516", key: "2e4loj" }],
+    ["path", { d: "M12 13h4", key: "1ku699" }],
+    ["path", { d: "M12 18h6a2 2 0 0 1 2 2v1", key: "105ag5" }],
+    ["path", { d: "M12 8h8", key: "1lhi5i" }],
+    ["path", { d: "M16 8V5a2 2 0 0 1 2-2", key: "u6izg6" }],
+    ["circle", { cx: "16", cy: "13", r: ".5", key: "ry7gng" }],
+    ["circle", { cx: "18", cy: "3", r: ".5", key: "1aiba7" }],
+    ["circle", { cx: "20", cy: "21", r: ".5", key: "yhc1fs" }],
+    ["circle", { cx: "20", cy: "8", r: ".5", key: "1e43v0" }]
+  ]);
+  const Brain = createLucideIcon("brain", [
+    ["path", { d: "M12 18V5", key: "adv99a" }],
+    ["path", { d: "M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4", key: "1e3is1" }],
+    ["path", { d: "M17.598 6.5A3 3 0 1 0 12 5a3 3 0 1 0-5.598 1.5", key: "1gqd8o" }],
+    ["path", { d: "M17.997 5.125a4 4 0 0 1 2.526 5.77", key: "iwvgf7" }],
+    ["path", { d: "M18 18a4 4 0 0 0 2-7.464", key: "efp6ie" }],
+    ["path", { d: "M19.967 17.483A4 4 0 1 1 12 18a4 4 0 1 1-7.967-.517", key: "1gq6am" }],
+    ["path", { d: "M6 18a4 4 0 0 1-2-7.464", key: "k1g0md" }],
+    ["path", { d: "M6.003 5.125a4 4 0 0 0-2.526 5.77", key: "q97ue3" }]
+  ]);
+  const ChartColumn = createLucideIcon("chart-column", [
+    ["path", { d: "M3 3v16a2 2 0 0 0 2 2h16", key: "c24i48" }],
+    ["path", { d: "M18 17V9", key: "2bz60n" }],
+    ["path", { d: "M13 17V5", key: "1frdt8" }],
+    ["path", { d: "M8 17v-3", key: "17ska0" }]
+  ]);
+  const Check = createLucideIcon("check", [["path", { d: "M20 6 9 17l-5-5", key: "1gmf2c" }]]);
+  const ChevronDown = createLucideIcon("chevron-down", [
+    ["path", { d: "m6 9 6 6 6-6", key: "qrunsl" }]
+  ]);
+  const ChevronRight = createLucideIcon("chevron-right", [
+    ["path", { d: "m9 18 6-6-6-6", key: "mthhwq" }]
+  ]);
+  const Clipboard = createLucideIcon("clipboard", [
+    ["rect", { width: "8", height: "4", x: "8", y: "2", rx: "1", ry: "1", key: "tgr4d6" }],
+    [
+      "path",
+      {
+        d: "M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2",
+        key: "116196"
+      }
+    ]
+  ]);
+  const Clock3 = createLucideIcon("clock-3", [
+    ["path", { d: "M12 6v6h4", key: "135r8i" }],
+    ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }]
+  ]);
+  const CodeXml = createLucideIcon("code-xml", [
+    ["path", { d: "m18 16 4-4-4-4", key: "1inbqp" }],
+    ["path", { d: "m6 8-4 4 4 4", key: "15zrgr" }],
+    ["path", { d: "m14.5 4-5 16", key: "e7oirm" }]
+  ]);
+  const Copy = createLucideIcon("copy", [
+    ["rect", { width: "14", height: "14", x: "8", y: "8", rx: "2", ry: "2", key: "17jyea" }],
+    ["path", { d: "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2", key: "zix9uf" }]
+  ]);
+  const Database = createLucideIcon("database", [
+    ["ellipse", { cx: "12", cy: "5", rx: "9", ry: "3", key: "msslwz" }],
+    ["path", { d: "M3 5V19A9 3 0 0 0 21 19V5", key: "1wlel7" }],
+    ["path", { d: "M3 12A9 3 0 0 0 21 12", key: "mv7ke4" }]
+  ]);
+  const Download = createLucideIcon("download", [
+    ["path", { d: "M12 15V3", key: "m9g1x1" }],
+    ["path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", key: "ih7n3h" }],
+    ["path", { d: "m7 10 5 5 5-5", key: "brsn70" }]
+  ]);
+  const Earth = createLucideIcon("earth", [
+    ["path", { d: "M21.54 15H17a2 2 0 0 0-2 2v4.54", key: "1djwo0" }],
+    [
+      "path",
+      {
+        d: "M7 3.34V5a3 3 0 0 0 3 3a2 2 0 0 1 2 2c0 1.1.9 2 2 2a2 2 0 0 0 2-2c0-1.1.9-2 2-2h3.17",
+        key: "1tzkfa"
+      }
+    ],
+    ["path", { d: "M11 21.95V18a2 2 0 0 0-2-2a2 2 0 0 1-2-2v-1a2 2 0 0 0-2-2H2.05", key: "14pb5j" }],
+    ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }]
+  ]);
+  const ExternalLink = createLucideIcon("external-link", [
+    ["path", { d: "M15 3h6v6", key: "1q9fwt" }],
+    ["path", { d: "M10 14 21 3", key: "gplh6r" }],
+    ["path", { d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6", key: "a6xqqp" }]
+  ]);
+  const FileJson2 = createLucideIcon("file-json-2", [
+    ["path", { d: "M4 22h14a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v4", key: "1pf5j1" }],
+    ["path", { d: "M14 2v4a2 2 0 0 0 2 2h4", key: "tnqrlb" }],
+    [
+      "path",
+      { d: "M4 12a1 1 0 0 0-1 1v1a1 1 0 0 1-1 1 1 1 0 0 1 1 1v1a1 1 0 0 0 1 1", key: "fq0c9t" }
+    ],
+    [
+      "path",
+      { d: "M8 18a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1 1 1 0 0 1-1-1v-1a1 1 0 0 0-1-1", key: "4gibmv" }
+    ]
+  ]);
+  const FolderArchive = createLucideIcon("folder-archive", [
+    ["circle", { cx: "15", cy: "19", r: "2", key: "u2pros" }],
+    [
+      "path",
+      {
+        d: "M20.9 19.8A2 2 0 0 0 22 18V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h5.1",
+        key: "1jj40k"
+      }
+    ],
+    ["path", { d: "M15 11v-1", key: "cntcp" }],
+    ["path", { d: "M15 17v-2", key: "1279jj" }]
+  ]);
+  const FolderOpen = createLucideIcon("folder-open", [
+    [
+      "path",
+      {
+        d: "m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2",
+        key: "usdka0"
+      }
+    ]
+  ]);
+  const GitBranch = createLucideIcon("git-branch", [
+    ["line", { x1: "6", x2: "6", y1: "3", y2: "15", key: "17qcm7" }],
+    ["circle", { cx: "18", cy: "6", r: "3", key: "1h7g24" }],
+    ["circle", { cx: "6", cy: "18", r: "3", key: "fqmcym" }],
+    ["path", { d: "M18 9a9 9 0 0 1-9 9", key: "n2h4wq" }]
+  ]);
+  const Github = createLucideIcon("github", [
+    [
+      "path",
+      {
+        d: "M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4",
+        key: "tonef"
+      }
+    ],
+    ["path", { d: "M9 18c-4.51 2-5-2-7-2", key: "9comsn" }]
+  ]);
+  const Globe = createLucideIcon("globe", [
+    ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
+    ["path", { d: "M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20", key: "13o1zl" }],
+    ["path", { d: "M2 12h20", key: "9i4pu4" }]
+  ]);
+  const GripHorizontal = createLucideIcon("grip-horizontal", [
+    ["circle", { cx: "12", cy: "9", r: "1", key: "124mty" }],
+    ["circle", { cx: "19", cy: "9", r: "1", key: "1ruzo2" }],
+    ["circle", { cx: "5", cy: "9", r: "1", key: "1a8b28" }],
+    ["circle", { cx: "12", cy: "15", r: "1", key: "1e56xg" }],
+    ["circle", { cx: "19", cy: "15", r: "1", key: "1a92ep" }],
+    ["circle", { cx: "5", cy: "15", r: "1", key: "5r1jwy" }]
+  ]);
+  const GripVertical = createLucideIcon("grip-vertical", [
+    ["circle", { cx: "9", cy: "12", r: "1", key: "1vctgf" }],
+    ["circle", { cx: "9", cy: "5", r: "1", key: "hp0tcf" }],
+    ["circle", { cx: "9", cy: "19", r: "1", key: "fkjjf6" }],
+    ["circle", { cx: "15", cy: "12", r: "1", key: "1tmaij" }],
+    ["circle", { cx: "15", cy: "5", r: "1", key: "19l28e" }],
+    ["circle", { cx: "15", cy: "19", r: "1", key: "f4zoj3" }]
+  ]);
+  const Grip = createLucideIcon("grip", [
+    ["circle", { cx: "12", cy: "5", r: "1", key: "gxeob9" }],
+    ["circle", { cx: "19", cy: "5", r: "1", key: "w8mnmm" }],
+    ["circle", { cx: "5", cy: "5", r: "1", key: "lttvr7" }],
+    ["circle", { cx: "12", cy: "12", r: "1", key: "41hilf" }],
+    ["circle", { cx: "19", cy: "12", r: "1", key: "1wjl8i" }],
+    ["circle", { cx: "5", cy: "12", r: "1", key: "1pcz8c" }],
+    ["circle", { cx: "12", cy: "19", r: "1", key: "lyex9k" }],
+    ["circle", { cx: "19", cy: "19", r: "1", key: "shf9b7" }],
+    ["circle", { cx: "5", cy: "19", r: "1", key: "bfqh0e" }]
+  ]);
+  const Image = createLucideIcon("image", [
+    ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", ry: "2", key: "1m3agn" }],
+    ["circle", { cx: "9", cy: "9", r: "2", key: "af1f0g" }],
+    ["path", { d: "m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21", key: "1xmnt7" }]
+  ]);
+  const Info = createLucideIcon("info", [
+    ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
+    ["path", { d: "M12 16v-4", key: "1dtifu" }],
+    ["path", { d: "M12 8h.01", key: "e9boi3" }]
+  ]);
+  const Languages = createLucideIcon("languages", [
+    ["path", { d: "m5 8 6 6", key: "1wu5hv" }],
+    ["path", { d: "m4 14 6-6 2-3", key: "1k1g8d" }],
+    ["path", { d: "M2 5h12", key: "or177f" }],
+    ["path", { d: "M7 2h1", key: "1t2jsx" }],
+    ["path", { d: "m22 22-5-10-5 10", key: "don7ne" }],
+    ["path", { d: "M14 18h6", key: "1m8k6r" }]
+  ]);
+  const Layers = createLucideIcon("layers", [
+    [
+      "path",
+      {
+        d: "M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z",
+        key: "zw3jo"
+      }
+    ],
+    [
+      "path",
+      {
+        d: "M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12",
+        key: "1wduqc"
+      }
+    ],
+    [
+      "path",
+      {
+        d: "M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17",
+        key: "kqbvx6"
+      }
+    ]
+  ]);
+  const LoaderCircle = createLucideIcon("loader-circle", [
+    ["path", { d: "M21 12a9 9 0 1 1-6.219-8.56", key: "13zald" }]
+  ]);
+  const Minus = createLucideIcon("minus", [["path", { d: "M5 12h14", key: "1ays0h" }]]);
+  const RefreshCcw = createLucideIcon("refresh-ccw", [
+    ["path", { d: "M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8", key: "14sxne" }],
+    ["path", { d: "M3 3v5h5", key: "1xhq8a" }],
+    ["path", { d: "M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16", key: "1hlbsb" }],
+    ["path", { d: "M16 16h5v5", key: "ccwih5" }]
+  ]);
+  const RefreshCw = createLucideIcon("refresh-cw", [
+    ["path", { d: "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8", key: "v9h5vc" }],
+    ["path", { d: "M21 3v5h-5", key: "1q7to0" }],
+    ["path", { d: "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16", key: "3uifl3" }],
+    ["path", { d: "M8 16H3v5", key: "1cv678" }]
+  ]);
+  const Search = createLucideIcon("search", [
+    ["path", { d: "m21 21-4.34-4.34", key: "14j7rj" }],
+    ["circle", { cx: "11", cy: "11", r: "8", key: "4ej97u" }]
+  ]);
+  const Settings2 = createLucideIcon("settings-2", [
+    ["path", { d: "M14 17H5", key: "gfn3mx" }],
+    ["path", { d: "M19 7h-9", key: "6i9tg" }],
+    ["circle", { cx: "17", cy: "17", r: "3", key: "18b49y" }],
+    ["circle", { cx: "7", cy: "7", r: "3", key: "dfmy0x" }]
+  ]);
+  const ShieldAlert = createLucideIcon("shield-alert", [
+    [
+      "path",
+      {
+        d: "M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z",
+        key: "oel41y"
+      }
+    ],
+    ["path", { d: "M12 8v4", key: "1got3b" }],
+    ["path", { d: "M12 16h.01", key: "1drbdi" }]
+  ]);
+  const ShieldCheck = createLucideIcon("shield-check", [
+    [
+      "path",
+      {
+        d: "M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z",
+        key: "oel41y"
+      }
+    ],
+    ["path", { d: "m9 12 2 2 4-4", key: "dzmm74" }]
+  ]);
+  const SlidersHorizontal = createLucideIcon("sliders-horizontal", [
+    ["path", { d: "M10 5H3", key: "1qgfaw" }],
+    ["path", { d: "M12 19H3", key: "yhmn1j" }],
+    ["path", { d: "M14 3v4", key: "1sua03" }],
+    ["path", { d: "M16 17v4", key: "1q0r14" }],
+    ["path", { d: "M21 12h-9", key: "1o4lsq" }],
+    ["path", { d: "M21 19h-5", key: "1rlt1p" }],
+    ["path", { d: "M21 5h-7", key: "1oszz2" }],
+    ["path", { d: "M8 10v4", key: "tgpxqk" }],
+    ["path", { d: "M8 12H3", key: "a7s4jb" }]
+  ]);
+  const SquareTerminal = createLucideIcon("square-terminal", [
+    ["path", { d: "m7 11 2-2-2-2", key: "1lz0vl" }],
+    ["path", { d: "M11 13h4", key: "1p7l4v" }],
+    ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", ry: "2", key: "1m3agn" }]
+  ]);
+  const Square = createLucideIcon("square", [
+    ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", key: "afitv7" }]
+  ]);
+  const TriangleAlert = createLucideIcon("triangle-alert", [
+    [
+      "path",
+      {
+        d: "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3",
+        key: "wmoenq"
+      }
+    ],
+    ["path", { d: "M12 9v4", key: "juzpu7" }],
+    ["path", { d: "M12 17h.01", key: "p32p05" }]
+  ]);
+  const Wrench = createLucideIcon("wrench", [
+    [
+      "path",
+      {
+        d: "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z",
+        key: "1ngwbx"
+      }
+    ]
+  ]);
+  const X = createLucideIcon("x", [
+    ["path", { d: "M18 6 6 18", key: "1bl5f8" }],
+    ["path", { d: "m6 6 12 12", key: "d8bk6v" }]
+  ]);
+  const _sfc_main$5$1 = /* @__PURE__ */ defineComponent({
     __name: "ArchiveProgressBar",
     props: {
       label: {},
@@ -12294,13 +12521,81 @@
     },
     setup(__props) {
       return (_ctx, _cache) => {
-        return openBlock(), createBlock(unref(_sfc_main$5$1), {
+        return openBlock(), createBlock(unref(_sfc_main$5$2), {
           label: __props.label,
           completed: __props.percent,
           total: 100,
           compact: __props.compact,
           detail: __props.counter ? `${__props.counter}${__props.percent !== null && __props.percentLabel ? ` · ${__props.percentLabel} ${__props.percent}%` : ""}` : null
         }, null, 8, ["label", "completed", "compact", "detail"]);
+      };
+    }
+  });
+  const _hoisted_1$3$1 = { class: "flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs" };
+  const _hoisted_2$3$1 = { class: "min-w-0 break-words text-foreground" };
+  const _hoisted_3$2$1 = ["datetime"];
+  const _hoisted_4$2$1 = { class: "max-h-80 max-w-[min(380px,85vw)] overflow-auto p-2 text-xs" };
+  const _sfc_main$3$1 = /* @__PURE__ */ defineComponent({
+    __name: "ArchiveMessageHeader",
+    props: {
+      author: {},
+      sentAt: { default: null },
+      locale: { default: "ru-RU" },
+      metadata: {},
+      inspectLabel: { default: "Метаданные сообщения" }
+    },
+    setup(__props) {
+      const props = __props;
+      const timestamp = computed(() => {
+        const raw = props.sentAt;
+        if (raw === null || raw === void 0 || !Number.isFinite(raw) || raw <= 0) return null;
+        const milliseconds = raw < 1e10 ? raw * 1e3 : raw;
+        const date = new Date(milliseconds);
+        return Number.isNaN(date.getTime()) ? null : date;
+      });
+      const readable = computed(
+        () => timestamp.value?.toLocaleString(props.locale, {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit"
+        }) ?? ""
+      );
+      return (_ctx, _cache) => {
+        return openBlock(), createElementBlock("div", _hoisted_1$3$1, [
+          createBaseVNode(
+            "strong",
+            _hoisted_2$3$1,
+            toDisplayString(__props.author),
+            1
+            /* TEXT */
+          ),
+          timestamp.value ? (openBlock(), createElementBlock("time", {
+            key: 0,
+            datetime: timestamp.value.toISOString(),
+            class: "text-muted-foreground"
+          }, toDisplayString(readable.value), 9, _hoisted_3$2$1)) : createCommentVNode("v-if", true),
+          __props.metadata !== void 0 ? (openBlock(), createBlock(unref(_sfc_main$4$1), {
+            key: 1,
+            mode: "hover-click",
+            label: __props.inspectLabel
+          }, {
+            trigger: withCtx(() => [
+              createVNode(unref(Info), {
+                class: "size-3.5",
+                "aria-hidden": "true"
+              })
+            ]),
+            default: withCtx(() => [
+              createBaseVNode("div", _hoisted_4$2$1, [
+                createVNode(unref(_sfc_main$3$2), { value: __props.metadata }, null, 8, ["value"])
+              ])
+            ]),
+            _: 1
+            /* STABLE */
+          }, 8, ["label"])) : createCommentVNode("v-if", true)
+        ]);
       };
     }
   });
@@ -12327,7 +12622,7 @@
       const emit2 = __emit;
       return (_ctx, _cache) => {
         return openBlock(), createElementBlock("div", _hoisted_1$1$1, [
-          !__props.busy ? (openBlock(), createBlock(unref(_sfc_main$i), {
+          !__props.busy ? (openBlock(), createBlock(unref(_sfc_main$j), {
             key: 0,
             type: "button",
             variant: "outline",
@@ -12348,7 +12643,7 @@
             ]),
             _: 1
             /* STABLE */
-          }, 8, ["disabled"])) : (openBlock(), createBlock(unref(_sfc_main$i), {
+          }, 8, ["disabled"])) : (openBlock(), createBlock(unref(_sfc_main$j), {
             key: 1,
             type: "button",
             variant: "outline",
@@ -12369,7 +12664,7 @@
             _: 1
             /* STABLE */
           })),
-          __props.total !== null && __props.total !== void 0 && __props.total > 0 ? (openBlock(), createBlock(_sfc_main$4$1, {
+          __props.total !== null && __props.total !== void 0 && __props.total > 0 ? (openBlock(), createBlock(_sfc_main$5$1, {
             key: 2,
             label: __props.label,
             percent: Math.max(0, Math.min(100, Math.round(100 * (__props.processed ?? 0) / __props.total))),
@@ -12387,8 +12682,11 @@
       };
     }
   });
-  const _hoisted_1$f = ["innerHTML"];
-  const _sfc_main$h = /* @__PURE__ */ defineComponent({
+  function useApplicationTelemetry() {
+    return inject(APPLICATION_TELEMETRY, null);
+  }
+  const _hoisted_1$g = ["innerHTML"];
+  const _sfc_main$i = /* @__PURE__ */ defineComponent({
     __name: "MarkdownContent",
     props: {
       text: {}
@@ -12408,19 +12706,19 @@
       }
       function inline(value) {
         const code = [];
-        let text = value.replace(/`([^`]+)`/g, (_, content) => {
+        let text2 = value.replace(/`([^`]+)`/g, (_, content) => {
           const index = code.push(`<code>${escapeHtml(content)}</code>`) - 1;
           return `\0CODE${index}\0`;
         });
-        text = escapeHtml(text);
-        text = text.replace(/\[([^\]]+)\]\(([^\s)]+)(?:\s+&quot;[^&]*&quot;)?\)/g, (_, label, href) => {
-          const safe = safeLink(href.replaceAll("&amp;", "&"));
-          return safe ? `<a href="${escapeHtml(safe)}" target="_blank" rel="noreferrer noopener">${label}</a>` : `${label} (${href})`;
+        text2 = escapeHtml(text2);
+        text2 = text2.replace(/\[([^\]]+)\]\(([^\s)]+)(?:\s+&quot;[^&]*&quot;)?\)/g, (_, label, href) => {
+          const safe2 = safeLink(href.replaceAll("&amp;", "&"));
+          return safe2 ? `<a href="${escapeHtml(safe2)}" target="_blank" rel="noreferrer noopener">${label}</a>` : `${label} (${href})`;
         });
-        text = text.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/__([^_]+)__/g, "<strong>$1</strong>").replace(/~~([^~]+)~~/g, "<del>$1</del>").replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>").replace(/(^|[^_])_([^_\n]+)_/g, "$1<em>$2</em>");
-        return text.replace(/\u0000CODE(\d+)\u0000/g, (_, index) => code[Number(index)] ?? "");
+        text2 = text2.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/__([^_]+)__/g, "<strong>$1</strong>").replace(/~~([^~]+)~~/g, "<del>$1</del>").replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>").replace(/(^|[^_])_([^_\n]+)_/g, "$1<em>$2</em>");
+        return text2.replace(/\u0000CODE(\d+)\u0000/g, (_, index) => code[Number(index)] ?? "");
       }
-      function table(lines, start) {
+      function table2(lines, start) {
         if (start + 1 >= lines.length || !lines[start]?.includes("|")) return null;
         const separator = lines[start + 1]?.trim() ?? "";
         if (!/^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(separator)) return null;
@@ -12467,7 +12765,7 @@
             out.push(`<pre><code${language ? ` data-language="${escapeHtml(language)}"` : ""}>${escapeHtml(body.join("\n"))}</code></pre>`);
             continue;
           }
-          const parsedTable = table(lines, index);
+          const parsedTable = table2(lines, index);
           if (parsedTable) {
             flushParagraph();
             flushList();
@@ -12526,7 +12824,7 @@
         return openBlock(), createElementBlock("div", {
           class: "booster-markdown",
           innerHTML: html.value
-        }, null, 8, _hoisted_1$f);
+        }, null, 8, _hoisted_1$g);
       };
     }
   });
@@ -13422,17 +13720,17 @@
   function translate(locale, key) {
     return messages[locale][key] ?? messages.en[key];
   }
-  const _hoisted_1$e = { class: "booster-meta-lines" };
-  const _hoisted_2$e = { class: "booster-meta-label" };
-  const _hoisted_3$e = { class: "booster-meta-value" };
-  const _hoisted_4$d = { class: "booster-meta-label" };
-  const _hoisted_5$b = { class: "booster-meta-value" };
-  const _hoisted_6$b = { class: "booster-meta-lines" };
+  const _hoisted_1$f = { class: "booster-meta-lines" };
+  const _hoisted_2$f = { class: "booster-meta-label" };
+  const _hoisted_3$f = { class: "booster-meta-value" };
+  const _hoisted_4$e = { class: "booster-meta-label" };
+  const _hoisted_5$c = { class: "booster-meta-value" };
+  const _hoisted_6$c = { class: "booster-meta-lines" };
   const _hoisted_7$b = { class: "booster-meta-label" };
   const _hoisted_8$b = { class: "booster-meta-value" };
   const _hoisted_9$b = { class: "booster-meta-label" };
   const _hoisted_10$b = { class: "booster-meta-value" };
-  const _sfc_main$g = /* @__PURE__ */ defineComponent({
+  const _sfc_main$h = /* @__PURE__ */ defineComponent({
     __name: "RecordMetaBadges",
     props: {
       metadata: {},
@@ -13472,22 +13770,22 @@
             class: normalizeClass(["booster-meta-badges", { compact: __props.compact }])
           },
           [
-            createVNode(unref(_sfc_main$4$2), { label: timeLabel.value }, {
+            createVNode(unref(_sfc_main$4$1), { label: timeLabel.value }, {
               trigger: withCtx(() => [
                 createVNode(unref(Clock3), { class: "size-3.5" })
               ]),
               default: withCtx(() => [
-                createBaseVNode("div", _hoisted_1$e, [
+                createBaseVNode("div", _hoisted_1$f, [
                   createBaseVNode(
                     "strong",
-                    _hoisted_2$e,
+                    _hoisted_2$f,
                     toDisplayString(t("reader.sentAt")),
                     1
                     /* TEXT */
                   ),
                   createBaseVNode(
                     "span",
-                    _hoisted_3$e,
+                    _hoisted_3$f,
                     toDisplayString(sent.value || t("reader.timeUnknown")),
                     1
                     /* TEXT */
@@ -13498,14 +13796,14 @@
                     [
                       createBaseVNode(
                         "strong",
-                        _hoisted_4$d,
+                        _hoisted_4$e,
                         toDisplayString(t("reader.editedAt")),
                         1
                         /* TEXT */
                       ),
                       createBaseVNode(
                         "span",
-                        _hoisted_5$b,
+                        _hoisted_5$c,
                         toDisplayString(edited.value),
                         1
                         /* TEXT */
@@ -13519,7 +13817,7 @@
               _: 1
               /* STABLE */
             }, 8, ["label"]),
-            __props.showModel && modelLabel.value ? (openBlock(), createBlock(unref(_sfc_main$4$2), {
+            __props.showModel && modelLabel.value ? (openBlock(), createBlock(unref(_sfc_main$4$1), {
               key: 0,
               label: modelLabel.value
             }, {
@@ -13527,7 +13825,7 @@
                 createVNode(unref(BrainCircuit), { class: "size-3.5" })
               ]),
               default: withCtx(() => [
-                createBaseVNode("div", _hoisted_6$b, [
+                createBaseVNode("div", _hoisted_6$c, [
                   __props.metadata.model ? (openBlock(), createElementBlock(
                     Fragment,
                     { key: 0 },
@@ -13584,16 +13882,16 @@
       };
     }
   });
-  function omitRepeatedRecordHeading(text, heading) {
-    const trimmed = text.trim();
+  function omitRepeatedRecordHeading(text2, heading) {
+    const trimmed = text2.trim();
     if (!trimmed || !heading.trim()) return trimmed;
     const lines = trimmed.split(/\r?\n/);
     const normalize = (value) => value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
     if (normalize(lines[0] ?? "") === normalize(heading)) return lines.slice(1).join("\n").trim();
     return trimmed;
   }
-  function parseArchiveStructuredText(text) {
-    const trimmed = text.trim();
+  function parseArchiveStructuredText(text2) {
+    const trimmed = text2.trim();
     if (!(trimmed.startsWith("{") || trimmed.startsWith("["))) return null;
     try {
       const parsed = JSON.parse(trimmed);
@@ -13602,15 +13900,15 @@
       return null;
     }
   }
-  const _hoisted_1$d = { class: "booster-record-header" };
-  const _hoisted_2$d = {
+  const _hoisted_1$e = { class: "booster-record-header" };
+  const _hoisted_2$e = {
     key: 0,
     class: "booster-record-edited"
   };
-  const _hoisted_3$d = { class: "booster-record-header-tools" };
-  const _hoisted_4$c = ["title", "aria-label"];
-  const _hoisted_5$a = { class: "booster-record-header booster-record-internal-header" };
-  const _hoisted_6$a = { class: "booster-record-kind" };
+  const _hoisted_3$e = { class: "booster-record-header-tools" };
+  const _hoisted_4$d = ["title", "aria-label"];
+  const _hoisted_5$b = { class: "booster-record-header booster-record-internal-header" };
+  const _hoisted_6$b = { class: "booster-record-kind" };
   const _hoisted_7$a = { class: "booster-meta-lines" };
   const _hoisted_8$a = { class: "booster-meta-label" };
   const _hoisted_9$a = { class: "booster-meta-value" };
@@ -13624,7 +13922,7 @@
     class: "booster-tool-icon booster-tool-icon-fallback"
   };
   const _hoisted_16$7 = { class: "booster-tool-copy" };
-  const _hoisted_17$5 = ["title"];
+  const _hoisted_17$6 = ["title"];
   const _hoisted_18$5 = { key: 0 };
   const _hoisted_19$4 = ["href", "title"];
   const _hoisted_20$4 = ["title"];
@@ -13643,7 +13941,7 @@
   const _hoisted_27$3 = { class: "booster-json-modal" };
   const _hoisted_28$3 = { class: "booster-record-modal-header" };
   const _hoisted_29$3 = ["aria-label"];
-  const _sfc_main$f = /* @__PURE__ */ defineComponent({
+  const _sfc_main$g = /* @__PURE__ */ defineComponent({
     __name: "ArchiveRecord",
     props: {
       item: {},
@@ -13666,8 +13964,8 @@
       const toolDetails = computed(() => toolPayload.value ?? tool.value?.result ?? structuredText.value);
       const displayText = computed(() => {
         const heading = props.item.kind === "tool_call" || props.item.kind === "tool_result" ? toolName.value : t("reader." + props.item.kind);
-        const text = omitRepeatedRecordHeading(props.item.text, heading);
-        return (props.item.kind === "tool_call" || props.item.kind === "tool_result") && parseArchiveStructuredText(text) !== null ? "" : text;
+        const text2 = omitRepeatedRecordHeading(props.item.text, heading);
+        return (props.item.kind === "tool_call" || props.item.kind === "tool_result") && parseArchiveStructuredText(text2) !== null ? "" : text2;
       });
       const hasText = computed(() => {
         const value = displayText.value.trim();
@@ -13677,8 +13975,8 @@
         );
       });
       const preview = computed(() => {
-        const text = displayText.value.trim();
-        return text.length > 220 ? text.slice(0, 220).trimEnd() + "…" : text;
+        const text2 = displayText.value.trim();
+        return text2.length > 220 ? text2.slice(0, 220).trimEnd() + "…" : text2;
       });
       const isReasoningExpanded = computed(() => props.expandReasoning || expanded.value);
       const toolLink = computed(() => tool.value?.link ?? null);
@@ -13712,23 +14010,21 @@
               Fragment,
               { key: 0 },
               [
-                createBaseVNode("header", _hoisted_1$d, [
-                  createBaseVNode(
-                    "strong",
-                    null,
-                    toDisplayString(t("reader." + __props.item.kind)),
-                    1
-                    /* TEXT */
-                  ),
+                createBaseVNode("header", _hoisted_1$e, [
+                  createVNode(unref(_sfc_main$3$1), {
+                    author: t("reader." + __props.item.kind),
+                    "sent-at": __props.item.metadata.sentAt,
+                    locale: __props.locale
+                  }, null, 8, ["author", "sent-at", "locale"]),
                   __props.item.metadata.edited ? (openBlock(), createElementBlock(
                     "span",
-                    _hoisted_2$d,
+                    _hoisted_2$e,
                     toDisplayString(t("reader.editedShort")),
                     1
                     /* TEXT */
                   )) : createCommentVNode("v-if", true),
-                  createBaseVNode("span", _hoisted_3$d, [
-                    createVNode(_sfc_main$g, {
+                  createBaseVNode("span", _hoisted_3$e, [
+                    createVNode(_sfc_main$h, {
                       metadata: __props.item.metadata,
                       locale: __props.locale,
                       "show-model": __props.item.kind === "answer"
@@ -13741,10 +14037,10 @@
                       onClick: _cache[0] || (_cache[0] = ($event) => rawOpen.value = true)
                     }, [
                       createVNode(unref(FileJson2), { class: "size-3.5" })
-                    ], 8, _hoisted_4$c)
+                    ], 8, _hoisted_4$d)
                   ])
                 ]),
-                createVNode(_sfc_main$h, {
+                createVNode(_sfc_main$i, {
                   text: __props.item.text || t("reader.noText")
                 }, null, 8, ["text"])
               ],
@@ -13754,9 +14050,9 @@
               Fragment,
               { key: 1 },
               [
-                createBaseVNode("header", _hoisted_5$a, [
-                  createBaseVNode("span", _hoisted_6$a, [
-                    reasoningInfo.value ? (openBlock(), createBlock(unref(_sfc_main$4$2), {
+                createBaseVNode("header", _hoisted_5$b, [
+                  createBaseVNode("span", _hoisted_6$b, [
+                    reasoningInfo.value ? (openBlock(), createBlock(unref(_sfc_main$4$1), {
                       key: 0,
                       label: reasoningInfo.value,
                       align: "start"
@@ -13864,7 +14160,7 @@
                     class: normalizeClass(["booster-reasoning-preview", { expanded: isReasoningExpanded.value }])
                   },
                   [
-                    createVNode(_sfc_main$h, { text: displayText.value }, null, 8, ["text"])
+                    createVNode(_sfc_main$i, { text: displayText.value }, null, 8, ["text"])
                   ],
                   2
                   /* CLASS */
@@ -13894,7 +14190,7 @@
                       (openBlock(), createBlock(resolveDynamicComponent(toolGlyph.value), { class: "size-4" }))
                     ])),
                     createBaseVNode("div", _hoisted_16$7, [
-                      createBaseVNode("strong", { title: toolName.value }, toDisplayString(toolName.value), 9, _hoisted_17$5),
+                      createBaseVNode("strong", { title: toolName.value }, toDisplayString(toolName.value), 9, _hoisted_17$6),
                       createBaseVNode("span", null, [
                         createTextVNode(
                           toDisplayString(t("reader." + __props.item.kind)) + " ",
@@ -13928,7 +14224,7 @@
                       onClick: _cache[5] || (_cache[5] = withModifiers(() => {
                       }, ["stop"]))
                     }, [
-                      createVNode(_sfc_main$g, {
+                      createVNode(_sfc_main$h, {
                         metadata: __props.item.metadata,
                         locale: __props.locale
                       }, null, 8, ["metadata", "locale"]),
@@ -13965,10 +14261,10 @@
                   /* CLASS */
                 ),
                 expanded.value && hasToolDetails.value ? (openBlock(), createElementBlock("div", _hoisted_22$4, [
-                  hasText.value ? (openBlock(), createBlock(_sfc_main$h, {
+                  hasText.value ? (openBlock(), createBlock(_sfc_main$i, {
                     key: 0,
                     text: displayText.value
-                  }, null, 8, ["text"])) : (openBlock(), createBlock(unref(_sfc_main$3$1), {
+                  }, null, 8, ["text"])) : (openBlock(), createBlock(unref(_sfc_main$3$2), {
                     key: 1,
                     value: toolDetails.value
                   }, null, 8, ["value"]))
@@ -14012,7 +14308,7 @@
                   })) : createCommentVNode("v-if", true)
                 ], 10, _hoisted_23$4),
                 expanded.value && hasText.value ? (openBlock(), createElementBlock("div", _hoisted_25$3, [
-                  createVNode(_sfc_main$h, { text: displayText.value }, null, 8, ["text"])
+                  createVNode(_sfc_main$i, { text: displayText.value }, null, 8, ["text"])
                 ])) : createCommentVNode("v-if", true),
                 createBaseVNode("button", {
                   class: "booster-record-icon-button booster-record-raw-corner",
@@ -14061,7 +14357,7 @@
                       createVNode(unref(X), { class: "size-4" })
                     ], 8, _hoisted_29$3)
                   ]),
-                  createVNode(unref(_sfc_main$3$1), {
+                  createVNode(unref(_sfc_main$3$2), {
                     value: __props.item.record.raw
                   }, null, 8, ["value"])
                 ])
@@ -15600,27 +15896,27 @@
     return g;
   }
   function createText(options) {
-    var text = document.createElementNS(SVG_NAMESPACE, "text");
-    text.setAttribute("alignment-baseline", "central");
-    text.setAttribute("dominant-baseline", "central");
-    text.textContent = options.content;
+    var text2 = document.createElementNS(SVG_NAMESPACE, "text");
+    text2.setAttribute("alignment-baseline", "central");
+    text2.setAttribute("dominant-baseline", "central");
+    text2.textContent = options.content;
     if (options.fill) {
-      text.setAttribute("fill", options.fill);
+      text2.setAttribute("fill", options.fill);
     }
     if (options.font) {
-      text.setAttribute("style", "font: " + options.font);
+      text2.setAttribute("style", "font: " + options.font);
     }
     if (options.anchor) {
-      text.setAttribute("text-anchor", options.anchor);
+      text2.setAttribute("text-anchor", options.anchor);
     }
     if (options.translate) {
-      text.setAttribute("x", options.translate.x.toString());
-      text.setAttribute("y", options.translate.y.toString());
+      text2.setAttribute("x", options.translate.x.toString());
+      text2.setAttribute("y", options.translate.y.toString());
     }
     if (options.onClick) {
-      text.addEventListener("click", options.onClick);
+      text2.addEventListener("click", options.onClick);
     }
-    return text;
+    return text2;
   }
   function createCircle(options) {
     var circle = document.createElementNS(SVG_NAMESPACE, "circle");
@@ -15705,7 +16001,7 @@
       stroke: branch2.style.label.strokeColor || commit2.style.color,
       fill: branch2.style.label.bgColor
     });
-    var text = createText({
+    var text2 = createText({
       content: branch2.name,
       translate: {
         x: PADDING_X$1,
@@ -15716,19 +16012,19 @@
     });
     var branchLabel = createG({ children: [rect] });
     var observer = new MutationObserver(function() {
-      var _a = text.getBBox(), height = _a.height, width = _a.width;
+      var _a = text2.getBBox(), height = _a.height, width = _a.width;
       var boxWidth = width + 2 * PADDING_X$1;
       var boxHeight = height + 2 * PADDING_Y$1;
       rect.setAttribute("width", boxWidth.toString());
       rect.setAttribute("height", boxHeight.toString());
-      text.setAttribute("y", (boxHeight / 2).toString());
+      text2.setAttribute("y", (boxHeight / 2).toString());
     });
     observer.observe(branchLabel, {
       attributes: false,
       subtree: false,
       childList: true
     });
-    branchLabel.appendChild(text);
+    branchLabel.appendChild(text2);
     return branchLabel;
   }
   var PADDING_X = 10;
@@ -15739,7 +16035,7 @@
       fill: tag2.style.bgColor,
       stroke: tag2.style.strokeColor
     });
-    var text = createText({
+    var text2 = createText({
       content: tag2.name,
       fill: tag2.style.color,
       font: tag2.style.font,
@@ -15748,7 +16044,7 @@
     var result = createG({ children: [path] });
     var offset = tag2.style.pointerWidth;
     var observer = new MutationObserver(function() {
-      var _a = text.getBBox(), height = _a.height, width = _a.width;
+      var _a = text2.getBBox(), height = _a.height, width = _a.width;
       if (height === 0 || width === 0)
         return;
       var radius = tag2.style.borderRadius;
@@ -15769,21 +16065,21 @@
         "z"
       ].join(" ");
       path.setAttribute("d", pathD.toString());
-      text.setAttribute("x", (offset + PADDING_X).toString());
+      text2.setAttribute("x", (offset + PADDING_X).toString());
     });
     observer.observe(result, {
       attributes: false,
       subtree: false,
       childList: true
     });
-    result.appendChild(text);
+    result.appendChild(text2);
     return result;
   }
   var PADDING = 10;
   var OFFSET = 10;
   function createTooltip(commit2) {
     var path = createPath({ d: "", fill: "#EEE" });
-    var text = createText({
+    var text2 = createText({
       translate: { x: OFFSET + PADDING, y: 0 },
       content: commit2.hashAbbrev + " - " + commit2.subject,
       fill: "#333"
@@ -15794,7 +16090,7 @@
       children: [path]
     });
     var observer = new MutationObserver(function() {
-      var width = text.getBBox().width;
+      var width = text2.getBBox().width;
       var radius = 5;
       var boxHeight = 50;
       var boxWidth = OFFSET + width + 2 * PADDING;
@@ -15819,7 +16115,7 @@
       subtree: false,
       childList: true
     });
-    tooltip.appendChild(text);
+    tooltip.appendChild(text2);
     return tooltip;
   }
   function createGitgraph(graphContainer, options) {
@@ -16011,7 +16307,7 @@
         setMessageRef(commit2, message);
         return message;
       }
-      var text = createText({
+      var text2 = createText({
         content: commit2.message,
         fill: commit2.style.message.color || "",
         font: commit2.style.message.font,
@@ -16019,7 +16315,7 @@
       });
       message = createG({
         translate: { x: 0, y: commit2.style.dot.size },
-        children: [text]
+        children: [text2]
       });
       if (commit2.body) {
         var body = createForeignObject({
@@ -16322,12 +16618,12 @@
     const result = source.replace(/\[image_asset_pointer\]\s*(?:sediment:\/\/\S+)?/gi, ` ${imageLabel} · `).replace(/\[(?:file|attachment)_asset_pointer\]\s*(?:sediment:\/\/\S+)?/gi, ` ${fileLabel} · `).replace(/\bsediment:\/\/\S+/gi, "").replace(/cite[^]*/g, "").replace(/!\[([^\]]*)\]\([^\n)]*\)/g, (_, name) => name || imageLabel).replace(/\[([^\]]+)\]\((?:https?:\/\/|mailto:)[^\s)]*(?:\s+"[^"]*")?\)/g, "$1").replace(/^(?:\s{0,3}#{1,6}\s+|\s{0,3}>\s*)/gm, "").replace(/\*\*([^*\n]+)\*\*/g, "$1").replace(new RegExp("(?<!\\w)[*_]([^*_\\n]+)[*_](?!\\w)", "g"), "$1").replace(/`([^`\n]+)`/g, "$1").replace(/[\r\n\t ]+/g, " ").trim();
     return result.slice(0, 180);
   }
-  const _hoisted_1$c = ["aria-label"];
-  const _hoisted_2$c = { class: "booster-history-header" };
-  const _hoisted_3$c = { class: "booster-history-heading" };
-  const _hoisted_4$b = ["aria-label"];
-  const _hoisted_5$9 = { class: "booster-history-state" };
-  const _hoisted_6$9 = { class: "booster-history-range" };
+  const _hoisted_1$d = ["aria-label"];
+  const _hoisted_2$d = { class: "booster-history-header" };
+  const _hoisted_3$d = { class: "booster-history-heading" };
+  const _hoisted_4$c = ["aria-label"];
+  const _hoisted_5$a = { class: "booster-history-state" };
+  const _hoisted_6$a = { class: "booster-history-range" };
   const _hoisted_7$9 = { class: "booster-history-explainer" };
   const _hoisted_8$9 = {
     key: 0,
@@ -16344,10 +16640,10 @@
   const _hoisted_14$7 = { class: "booster-history-list-meta" };
   const _hoisted_15$6 = { class: "booster-history-list-preview" };
   const _hoisted_16$6 = { class: "booster-history-footer" };
-  const _hoisted_17$4 = ["disabled", "aria-label"];
+  const _hoisted_17$5 = ["disabled", "aria-label"];
   const _hoisted_18$4 = ["disabled", "aria-label"];
   const PAGE_SIZE = 140;
-  const _sfc_main$e = /* @__PURE__ */ defineComponent({
+  const _sfc_main$f = /* @__PURE__ */ defineComponent({
     __name: "ArchiveFlowGraph",
     props: {
       thread: {},
@@ -16372,17 +16668,17 @@
       const chronologicalItems = computed(() => {
         const byCommit = new Map(data.value.commits.map((commit2) => [commit2.hash, commit2]));
         const seen = /* @__PURE__ */ new Set();
-        const items = [];
+        const items2 = [];
         for (const turn of props.thread.turns) {
           for (const message of turn.messages) {
             const id = message.record.messageId;
             const commit2 = byCommit.get(id);
             if (!commit2 || seen.has(id)) continue;
             seen.add(id);
-            items.push(commit2);
+            items2.push(commit2);
           }
         }
-        return items;
+        return items2;
       });
       const displayItems = computed(() => sparseHistory.value ? chronologicalItems.value : ordered.value);
       const pageItems = computed(() => displayItems.value.slice(pageStart.value, pageEnd.value));
@@ -16604,11 +16900,11 @@
           "aria-label": __props.locale === "ru" ? "Навигатор сохранённой истории" : "Saved history navigator",
           onKeydown: _cache[3] || (_cache[3] = withKeys(withModifiers(($event) => emit2("close"), ["stop"]), ["esc"]))
         }, [
-          createBaseVNode("header", _hoisted_2$c, [
+          createBaseVNode("header", _hoisted_2$d, [
             createBaseVNode("div", null, [
               createBaseVNode(
                 "div",
-                _hoisted_3$c,
+                _hoisted_3$d,
                 toDisplayString(__props.locale === "ru" ? "История сообщений" : "Message history"),
                 1
                 /* TEXT */
@@ -16626,9 +16922,9 @@
               class: "booster-history-close",
               "aria-label": __props.locale === "ru" ? "Закрыть историю" : "Close history",
               onClick: _cache[0] || (_cache[0] = ($event) => emit2("close"))
-            }, "×", 8, _hoisted_4$b)
+            }, "×", 8, _hoisted_4$c)
           ]),
-          createBaseVNode("div", _hoisted_5$9, [
+          createBaseVNode("div", _hoisted_5$a, [
             createBaseVNode(
               "span",
               {
@@ -16647,7 +16943,7 @@
             ),
             createBaseVNode(
               "span",
-              _hoisted_6$9,
+              _hoisted_6$a,
               toDisplayString(pageStart.value + 1) + "–" + toDisplayString(pageEnd.value) + " / " + toDisplayString(ordered.value.length),
               1
               /* TEXT */
@@ -16742,7 +17038,7 @@
               disabled: pageStart.value === 0,
               "aria-label": __props.locale === "ru" ? "Ранее в графе" : "Earlier graph nodes",
               onClick: _cache[1] || (_cache[1] = ($event) => displayPage(pageStart.value - PAGE_SIZE))
-            }, "← " + toDisplayString(__props.locale === "ru" ? "Ранее" : "Earlier"), 9, _hoisted_17$4),
+            }, "← " + toDisplayString(__props.locale === "ru" ? "Ранее" : "Earlier"), 9, _hoisted_17$5),
             createBaseVNode("button", {
               type: "button",
               disabled: pageEnd.value >= ordered.value.length,
@@ -16750,7 +17046,7 @@
               onClick: _cache[2] || (_cache[2] = ($event) => displayPage(pageStart.value + PAGE_SIZE))
             }, toDisplayString(__props.locale === "ru" ? "Позже" : "Later") + " →", 9, _hoisted_18$4)
           ])
-        ], 40, _hoisted_1$c);
+        ], 40, _hoisted_1$d);
       };
     }
   });
@@ -16822,15 +17118,15 @@
     const latest = turns.slice(Math.max(0, turns.length - Math.max(1, visibleCount)));
     return order === "newest-first" ? latest.reverse() : latest;
   }
-  const _hoisted_1$b = { class: "booster-identity" };
-  const _hoisted_2$b = ["title"];
-  const _hoisted_3$b = ["aria-label", "title"];
-  const _hoisted_4$a = {
+  const _hoisted_1$c = { class: "booster-identity" };
+  const _hoisted_2$c = ["title"];
+  const _hoisted_3$c = ["aria-label", "title"];
+  const _hoisted_4$b = {
     key: 1,
     class: "booster-sr-only",
     role: "status"
   };
-  const _sfc_main$d = /* @__PURE__ */ defineComponent({
+  const _sfc_main$e = /* @__PURE__ */ defineComponent({
     __name: "CopyIdentity",
     props: {
       label: {},
@@ -16871,11 +17167,11 @@
       }
       onBeforeUnmount(() => clearTimeout(timer));
       return (_ctx, _cache) => {
-        return openBlock(), createElementBlock("span", _hoisted_1$b, [
+        return openBlock(), createElementBlock("span", _hoisted_1$c, [
           createBaseVNode("span", {
             class: "booster-identity-label",
             title: __props.label
-          }, toDisplayString(__props.label), 9, _hoisted_2$b),
+          }, toDisplayString(__props.label), 9, _hoisted_2$c),
           __props.identifier ? (openBlock(), createElementBlock("button", {
             key: 0,
             type: "button",
@@ -16891,10 +17187,10 @@
               key: 1,
               class: "size-3"
             }))
-          ], 8, _hoisted_3$b)) : createCommentVNode("v-if", true),
+          ], 8, _hoisted_3$c)) : createCommentVNode("v-if", true),
           state.value !== "copy" ? (openBlock(), createElementBlock(
             "span",
-            _hoisted_4$a,
+            _hoisted_4$b,
             toDisplayString(unref(translate)(__props.locale, `identity.${state.value}`)),
             1
             /* TEXT */
@@ -16915,9 +17211,9 @@
         group.push(item);
         groups.set(parentId, group);
       }
-    return [...groups.entries()].filter(([, items]) => items.length > 1).map(([id, items]) => ({
+    return [...groups.entries()].filter(([, items2]) => items2.length > 1).map(([id, items2]) => ({
       id,
-      variants: items.map((item) => ({
+      variants: items2.map((item) => ({
         key: item.record.messageKey,
         messageId: item.record.messageId,
         text: item.text,
@@ -16925,12 +17221,12 @@
       }))
     }));
   }
-  const _hoisted_1$a = ["lang"];
-  const _hoisted_2$a = ["data-archive-drag-handle"];
-  const _hoisted_3$a = { class: "booster-reader-heading" };
-  const _hoisted_4$9 = { class: "booster-header-actions" };
-  const _hoisted_5$8 = ["disabled", "title", "aria-label"];
-  const _hoisted_6$8 = ["title", "aria-label"];
+  const _hoisted_1$b = ["lang"];
+  const _hoisted_2$b = ["data-archive-drag-handle"];
+  const _hoisted_3$b = { class: "booster-reader-heading" };
+  const _hoisted_4$a = { class: "booster-header-actions" };
+  const _hoisted_5$9 = ["disabled", "title", "aria-label"];
+  const _hoisted_6$9 = ["title", "aria-label"];
   const _hoisted_7$8 = ["aria-label"];
   const _hoisted_8$8 = {
     key: 0,
@@ -16955,7 +17251,7 @@
   };
   const _hoisted_15$5 = { class: "booster-reader-group-header" };
   const _hoisted_16$5 = ["aria-expanded", "onClick"];
-  const _hoisted_17$3 = {
+  const _hoisted_17$4 = {
     key: 0,
     class: "booster-reader-chat-list"
   };
@@ -16987,78 +17283,78 @@
   };
   const _hoisted_35$2 = ["aria-expanded"];
   const _hoisted_36$2 = ["aria-label", "placeholder"];
-  const _hoisted_37$1 = ["disabled"];
-  const _hoisted_38$1 = {
+  const _hoisted_37$2 = ["disabled"];
+  const _hoisted_38$2 = {
     key: 2,
     class: "booster-reader-find"
   };
-  const _hoisted_39$1 = ["placeholder", "aria-label"];
-  const _hoisted_40$1 = {
+  const _hoisted_39$2 = ["placeholder", "aria-label"];
+  const _hoisted_40$2 = {
     key: 0,
     class: "booster-note"
   };
-  const _hoisted_41$1 = {
+  const _hoisted_41$2 = {
     key: 3,
     class: "booster-note"
   };
-  const _hoisted_42$1 = {
+  const _hoisted_42$2 = {
     key: 4,
     class: "booster-note"
   };
-  const _hoisted_43$1 = { class: "booster-reader-summary" };
-  const _hoisted_44$1 = {
+  const _hoisted_43$2 = { class: "booster-reader-summary" };
+  const _hoisted_44$2 = {
     key: 0,
     class: "booster-reader-coverage"
   };
-  const _hoisted_45$1 = ["title", "aria-label"];
-  const _hoisted_46$1 = {
+  const _hoisted_45$2 = ["title", "aria-label"];
+  const _hoisted_46$2 = {
     key: 0,
     role: "alert",
     class: "booster-error"
   };
-  const _hoisted_47$1 = {
+  const _hoisted_47$2 = {
     key: 1,
     role: "alert",
     class: "booster-error"
   };
-  const _hoisted_48$1 = {
+  const _hoisted_48$2 = {
     key: 2,
     role: "alert",
     class: "booster-error"
   };
-  const _hoisted_49$1 = { class: "booster-reader-reading-surface" };
-  const _hoisted_50$1 = {
+  const _hoisted_49$2 = { class: "booster-reader-reading-surface" };
+  const _hoisted_50$2 = {
     key: 0,
     class: "booster-reader-older-loading",
     role: "status",
     "aria-live": "polite"
   };
-  const _hoisted_51$1 = {
+  const _hoisted_51$2 = {
     key: 1,
     class: "booster-note"
   };
-  const _hoisted_52$1 = {
+  const _hoisted_52$2 = {
     key: 0,
     role: "status",
     class: "booster-reader-loading"
   };
-  const _hoisted_53$1 = {
+  const _hoisted_53$2 = {
     key: 1,
     class: "booster-reader-exchanges"
   };
-  const _hoisted_54$1 = {
+  const _hoisted_54$2 = {
     key: 0,
     class: "booster-note"
   };
-  const _hoisted_55$1 = {
+  const _hoisted_55$2 = {
     key: 0,
     class: "booster-note"
   };
-  const _hoisted_56$1 = {
+  const _hoisted_56$2 = {
     key: 1,
     class: "booster-note"
   };
-  const _hoisted_57$1 = ["data-archive-node", "data-archive-message"];
+  const _hoisted_57$2 = ["data-archive-node", "data-archive-message"];
   const _hoisted_58$1 = {
     key: 2,
     class: "booster-exchange-details"
@@ -17071,7 +17367,7 @@
     class: "booster-note"
   };
   const NONE = "__outside_projects__";
-  const _sfc_main$c = /* @__PURE__ */ defineComponent({
+  const _sfc_main$d = /* @__PURE__ */ defineComponent({
     __name: "ArchiveBrowser",
     props: {
       archiveAdapter: {},
@@ -17164,10 +17460,10 @@
           group.push(conversation);
           byProject.set(key, group);
         }
-        return [...byProject].flatMap(([id, items]) => {
+        return [...byProject].flatMap(([id, items2]) => {
           const label = projectLabel(id === NONE ? null : id);
-          const rows = archiveConversationForest(items, search.value, label);
-          return rows.length ? [{ id, rows, count: items.length, label }] : [];
+          const rows = archiveConversationForest(items2, search.value, label);
+          return rows.length ? [{ id, rows, count: items2.length, label }] : [];
         });
       });
       const filteredTurns = computed(() => {
@@ -17497,8 +17793,8 @@
       async function navigateToNode(index) {
         const total = navigationNodes.value.length;
         if (!total) return;
-        const safe = Math.max(0, Math.min(total - 1, index));
-        const item = navigationNodes.value[safe];
+        const safe2 = Math.max(0, Math.min(total - 1, index));
+        const item = navigationNodes.value[safe2];
         if (!item) return;
         let turnIndex = filteredTurns.value.findIndex((turn) => turn.messages.some((message) => message.record.messageKey === item.record.messageKey));
         if (turnIndex < 0 && textSearch.value) {
@@ -17517,7 +17813,7 @@
         if (target) target.scrollIntoView({ block: "center", behavior: "instant" });
         else if (readingScroll.value) {
           const viewport = readingScroll.value;
-          viewport.scrollTop = safe / Math.max(1, total - 1) * (viewport.scrollHeight - viewport.clientHeight);
+          viewport.scrollTop = safe2 / Math.max(1, total - 1) * (viewport.scrollHeight - viewport.clientHeight);
         }
         onReadingScroll();
       }
@@ -17669,9 +17965,9 @@
         const owner = props.archiveAdapter.currentAccountId?.();
         const revision = listRevision;
         try {
-          const items = await props.archiveAdapter.listConversations();
+          const items2 = await props.archiveAdapter.listConversations();
           if (alive && revision === listRevision && props.archiveAdapter.currentAccountId?.() === owner)
-            conversations.value = items;
+            conversations.value = items2;
         } catch {
         }
       }
@@ -17741,7 +18037,7 @@
             class: "booster-section-header",
             "data-archive-drag-handle": __props.windowed ? "" : void 0
           }, [
-            createBaseVNode("div", _hoisted_3$a, [
+            createBaseVNode("div", _hoisted_3$b, [
               __props.windowed ? (openBlock(), createBlock(unref(GripHorizontal), {
                 key: 0,
                 class: "booster-archive-grip size-4"
@@ -17764,7 +18060,7 @@
                 )
               ])
             ]),
-            createBaseVNode("div", _hoisted_4$9, [
+            createBaseVNode("div", _hoisted_4$a, [
               __props.canReturnToExport ? (openBlock(), createElementBlock("button", {
                 key: 0,
                 type: "button",
@@ -17787,7 +18083,7 @@
                 onClick: retryLocation
               }, [
                 createVNode(unref(RefreshCw), { class: "size-4" })
-              ], 8, _hoisted_5$8),
+              ], 8, _hoisted_5$9),
               __props.windowed ? (openBlock(), createElementBlock("button", {
                 key: 1,
                 type: "button",
@@ -17797,7 +18093,7 @@
                 onClick: _cache[1] || (_cache[1] = ($event) => emit2("minimize"))
               }, [
                 createVNode(unref(Minus), { class: "size-4" })
-              ], 8, _hoisted_6$8)) : createCommentVNode("v-if", true),
+              ], 8, _hoisted_6$9)) : createCommentVNode("v-if", true),
               createBaseVNode("button", {
                 type: "button",
                 class: "booster-icon-button",
@@ -17807,7 +18103,7 @@
                 createVNode(unref(X), { class: "size-4" })
               ], 8, _hoisted_7$8)
             ])
-          ], 8, _hoisted_2$a),
+          ], 8, _hoisted_2$b),
           accountPending.value ? (openBlock(), createElementBlock(
             "p",
             _hoisted_8$8,
@@ -17881,14 +18177,14 @@
                           /* TEXT */
                         )
                       ], 8, _hoisted_16$5),
-                      group.id !== NONE ? (openBlock(), createBlock(_sfc_main$d, {
+                      group.id !== NONE ? (openBlock(), createBlock(_sfc_main$e, {
                         key: 0,
                         label: "",
                         identifier: group.id,
                         locale: __props.locale
                       }, null, 8, ["identifier", "locale"])) : createCommentVNode("v-if", true)
                     ]),
-                    expanded.value.has(group.id) || search.value.trim() ? (openBlock(), createElementBlock("div", _hoisted_17$3, [
+                    expanded.value.has(group.id) || search.value.trim() ? (openBlock(), createElementBlock("div", _hoisted_17$4, [
                       (openBlock(true), createElementBlock(
                         Fragment,
                         null,
@@ -17952,14 +18248,14 @@
                             1
                             /* TEXT */
                           )) : createCommentVNode("v-if", true),
-                          createVNode(_sfc_main$d, {
+                          createVNode(_sfc_main$e, {
                             label: selected.value.title || t("identity.untitled"),
                             identifier: selected.value.conversationId,
                             locale: __props.locale
                           }, null, 8, ["label", "identifier", "locale"])
                         ]),
                         selected.value.branchSourceConversationId ? (openBlock(), createElementBlock("p", _hoisted_23$3, [
-                          createVNode(_sfc_main$d, {
+                          createVNode(_sfc_main$e, {
                             label: t("reader.branch") + ": " + (selected.value.branchSourceTitle || t("identity.untitled")),
                             identifier: selected.value.branchSourceConversationId,
                             locale: __props.locale
@@ -18127,24 +18423,24 @@
                             type: "submit",
                             class: "booster-action-secondary",
                             disabled: threadLoading.value || !messageLookup.value.trim()
-                          }, toDisplayString(t("reader.openMessage")), 9, _hoisted_37$1)
+                          }, toDisplayString(t("reader.openMessage")), 9, _hoisted_37$2)
                         ],
                         32
                         /* NEED_HYDRATION */
                       )) : createCommentVNode("v-if", true)
                     ])) : createCommentVNode("v-if", true),
-                    searchOpen.value ? (openBlock(), createElementBlock("div", _hoisted_38$1, [
+                    searchOpen.value ? (openBlock(), createElementBlock("div", _hoisted_38$2, [
                       withDirectives(createBaseVNode("input", {
                         "onUpdate:modelValue": _cache[14] || (_cache[14] = ($event) => textSearch.value = $event),
                         type: "search",
                         placeholder: t("reader.searchMessages"),
                         "aria-label": t("reader.searchMessages")
-                      }, null, 8, _hoisted_39$1), [
+                      }, null, 8, _hoisted_39$2), [
                         [vModelText, textSearch.value]
                       ]),
                       usingIndexedWindows.value && (hasOlderStored.value || hasNewerStored.value || knownStoredCount.value > thread.value.recordCount) ? (openBlock(), createElementBlock(
                         "p",
-                        _hoisted_40$1,
+                        _hoisted_40$2,
                         toDisplayString(t("reader.windowSearchOnly")),
                         1
                         /* TEXT */
@@ -18152,19 +18448,19 @@
                     ])) : createCommentVNode("v-if", true),
                     readSource.value === "saved" ? (openBlock(), createElementBlock(
                       "p",
-                      _hoisted_41$1,
+                      _hoisted_41$2,
                       toDisplayString(t("reader.savedInspection")),
                       1
                       /* TEXT */
                     )) : createCommentVNode("v-if", true),
                     unsequencedTarget.value ? (openBlock(), createElementBlock(
                       "p",
-                      _hoisted_42$1,
+                      _hoisted_42$2,
                       toDisplayString(t("reader.targetUnsequenced")),
                       1
                       /* TEXT */
                     )) : createCommentVNode("v-if", true),
-                    createBaseVNode("div", _hoisted_43$1, [
+                    createBaseVNode("div", _hoisted_43$2, [
                       createBaseVNode("span", null, [
                         createTextVNode(
                           toDisplayString(t("dock.messages")) + ": ",
@@ -18199,7 +18495,7 @@
                       ]),
                       usingIndexedWindows.value && hasUnsequencedRecords.value ? (openBlock(), createElementBlock(
                         "span",
-                        _hoisted_44$1,
+                        _hoisted_44$2,
                         toDisplayString(__props.locale === "ru" ? "Есть сообщения без подтверждённого времени" : "Some messages have no confirmed chronology"),
                         1
                         /* TEXT */
@@ -18215,14 +18511,14 @@
                           1
                           /* TEXT */
                         )
-                      ], 8, _hoisted_45$1)
+                      ], 8, _hoisted_45$2)
                     ])
                   ],
                   64
                   /* STABLE_FRAGMENT */
                 )) : createCommentVNode("v-if", true)
               ]),
-              staleSavedWindow.value ? (openBlock(), createElementBlock("p", _hoisted_46$1, [
+              staleSavedWindow.value ? (openBlock(), createElementBlock("p", _hoisted_46$2, [
                 createTextVNode(
                   toDisplayString(t("reader.staleWindow")) + " ",
                   1
@@ -18242,20 +18538,20 @@
               ])) : createCommentVNode("v-if", true),
               navigationError.value ? (openBlock(), createElementBlock(
                 "p",
-                _hoisted_47$1,
+                _hoisted_47$2,
                 toDisplayString(t(navigationError.value)),
                 1
                 /* TEXT */
               )) : createCommentVNode("v-if", true),
               error.value ? (openBlock(), createElementBlock(
                 "p",
-                _hoisted_48$1,
+                _hoisted_48$2,
                 toDisplayString(t("reader.error")),
                 1
                 /* TEXT */
               )) : createCommentVNode("v-if", true),
-              createBaseVNode("div", _hoisted_49$1, [
-                loadingOlder.value ? (openBlock(), createElementBlock("div", _hoisted_50$1, [
+              createBaseVNode("div", _hoisted_49$2, [
+                loadingOlder.value ? (openBlock(), createElementBlock("div", _hoisted_50$2, [
                   createVNode(unref(LoaderCircle), { class: "size-4 booster-reader-spinner" }),
                   createTextVNode(
                     toDisplayString(t(loadingDirection.value === "newer" ? "reader.loadingNewer" : "reader.loadingEarlier")) + " · " + toDisplayString(displayedTurns.value.length) + "/" + toDisplayString(filteredTurns.value.length),
@@ -18265,12 +18561,12 @@
                 ])) : createCommentVNode("v-if", true),
                 historyOpen.value && usingIndexedWindows.value && (hasOlderStored.value || hasNewerStored.value || knownStoredCount.value > thread.value.recordCount) ? (openBlock(), createElementBlock(
                   "p",
-                  _hoisted_51$1,
+                  _hoisted_51$2,
                   toDisplayString(t("reader.windowGraphOnly")),
                   1
                   /* TEXT */
                 )) : createCommentVNode("v-if", true),
-                historyOpen.value && selected.value && navigationNodes.value.length && !threadLoading.value ? (openBlock(), createBlock(_sfc_main$e, {
+                historyOpen.value && selected.value && navigationNodes.value.length && !threadLoading.value ? (openBlock(), createBlock(_sfc_main$f, {
                   key: selectedId.value ?? "",
                   thread: thread.value,
                   locale: __props.locale,
@@ -18287,7 +18583,7 @@
                     onScrollPassive: onReadingScroll
                   },
                   [
-                    threadLoading.value ? (openBlock(), createElementBlock("p", _hoisted_52$1, [
+                    threadLoading.value ? (openBlock(), createElementBlock("p", _hoisted_52$2, [
                       createVNode(unref(LoaderCircle), { class: "size-4 booster-reader-spinner" }),
                       createTextVNode(
                         toDisplayString(t("reader.loading")),
@@ -18305,10 +18601,10 @@
                         1
                         /* TEXT */
                       )
-                    ])) : selected.value ? (openBlock(), createElementBlock("div", _hoisted_53$1, [
+                    ])) : selected.value ? (openBlock(), createElementBlock("div", _hoisted_53$2, [
                       !filteredTurns.value.length ? (openBlock(), createElementBlock(
                         "p",
-                        _hoisted_54$1,
+                        _hoisted_54$2,
                         toDisplayString(t("reader.noResults")),
                         1
                         /* TEXT */
@@ -18323,13 +18619,13 @@
                           }, [
                             turn.association === "unassigned" ? (openBlock(), createElementBlock(
                               "p",
-                              _hoisted_55$1,
+                              _hoisted_55$2,
                               toDisplayString(t("reader.unassigned")),
                               1
                               /* TEXT */
                             )) : turn.association === "adjacency" ? (openBlock(), createElementBlock(
                               "p",
-                              _hoisted_56$1,
+                              _hoisted_56$2,
                               toDisplayString(t("reader.adjacency")),
                               1
                               /* TEXT */
@@ -18345,13 +18641,13 @@
                                   class: normalizeClass({ "booster-message-target": requestedMessageId.value === item.record.messageId }),
                                   tabindex: "-1"
                                 }, [
-                                  createVNode(_sfc_main$f, {
+                                  createVNode(_sfc_main$g, {
                                     item,
                                     locale: __props.locale,
                                     "expand-reasoning": reasoningExpanded.value,
                                     focused: requestedMessageId.value === item.record.messageId
                                   }, null, 8, ["item", "locale", "expand-reasoning", "focused"])
-                                ], 10, _hoisted_57$1);
+                                ], 10, _hoisted_57$2);
                               }),
                               128
                               /* KEYED_FRAGMENT */
@@ -18375,7 +18671,7 @@
                                     class: normalizeClass({ "booster-message-target": requestedMessageId.value === item.record.messageId }),
                                     tabindex: "-1"
                                   }, [
-                                    createVNode(_sfc_main$f, {
+                                    createVNode(_sfc_main$g, {
                                       item,
                                       locale: __props.locale,
                                       "expand-reasoning": reasoningExpanded.value,
@@ -18398,7 +18694,7 @@
                                   class: normalizeClass({ "booster-message-target": requestedMessageId.value === item.record.messageId }),
                                   tabindex: "-1"
                                 }, [
-                                  createVNode(_sfc_main$f, {
+                                  createVNode(_sfc_main$g, {
                                     item,
                                     locale: __props.locale,
                                     "expand-reasoning": reasoningExpanded.value,
@@ -18428,7 +18724,7 @@
               ])
             ])
           ])
-        ], 10, _hoisted_1$a);
+        ], 10, _hoisted_1$b);
       };
     }
   });
@@ -18463,15 +18759,15 @@
       }
     };
   }
-  const _hoisted_1$9 = { class: "booster-capture-settings" };
-  const _hoisted_2$9 = { class: "booster-note" };
-  const _hoisted_3$9 = {
+  const _hoisted_1$a = { class: "booster-capture-settings" };
+  const _hoisted_2$a = { class: "booster-note" };
+  const _hoisted_3$a = {
     key: 0,
     class: "booster-form-body"
   };
-  const _hoisted_4$8 = ["disabled"];
-  const _hoisted_5$7 = { value: "default" };
-  const _hoisted_6$7 = ["value"];
+  const _hoisted_4$9 = ["disabled"];
+  const _hoisted_5$8 = { value: "default" };
+  const _hoisted_6$8 = ["value"];
   const _hoisted_7$7 = ["disabled"];
   const _hoisted_8$7 = {
     key: 0,
@@ -18495,7 +18791,7 @@
     key: 1,
     class: "booster-note"
   };
-  const _sfc_main$b = /* @__PURE__ */ defineComponent({
+  const _sfc_main$c = /* @__PURE__ */ defineComponent({
     __name: "CaptureSettings",
     props: {
       settingsAdapter: {},
@@ -18588,7 +18884,7 @@
         }
       }
       return (_ctx, _cache) => {
-        return openBlock(), createElementBlock("section", _hoisted_1$9, [
+        return openBlock(), createElementBlock("section", _hoisted_1$a, [
           createBaseVNode(
             "h3",
             null,
@@ -18598,12 +18894,12 @@
           ),
           createBaseVNode(
             "p",
-            _hoisted_2$9,
+            _hoisted_2$a,
             toDisplayString(t("capture.explanation")),
             1
             /* TEXT */
           ),
-          settings.value ? (openBlock(), createElementBlock("div", _hoisted_3$9, [
+          settings.value ? (openBlock(), createElementBlock("div", _hoisted_3$a, [
             createBaseVNode("label", null, [
               createTextVNode(
                 toDisplayString(t("capture.scope")),
@@ -18616,7 +18912,7 @@
               }, [
                 createBaseVNode(
                   "option",
-                  _hoisted_5$7,
+                  _hoisted_5$8,
                   toDisplayString(t("capture.global")),
                   1
                   /* TEXT */
@@ -18628,16 +18924,16 @@
                     return openBlock(), createElementBlock("option", {
                       key: keyFor(scope),
                       value: keyFor(scope)
-                    }, toDisplayString(t(scope.scope === "project" ? "capture.project" : "capture.conversation")) + ": " + toDisplayString(scope.title || t(scope.scope === "project" ? "identity.unknownProject" : "identity.untitled")), 9, _hoisted_6$7);
+                    }, toDisplayString(t(scope.scope === "project" ? "capture.project" : "capture.conversation")) + ": " + toDisplayString(scope.title || t(scope.scope === "project" ? "identity.unknownProject" : "identity.untitled")), 9, _hoisted_6$8);
                   }),
                   128
                   /* KEYED_FRAGMENT */
                 ))
-              ], 8, _hoisted_4$8), [
+              ], 8, _hoisted_4$9), [
                 [vModelSelect, selected.value]
               ])
             ]),
-            target.value ? (openBlock(), createBlock(_sfc_main$d, {
+            target.value ? (openBlock(), createBlock(_sfc_main$e, {
               key: 0,
               label: target.value.title || t(target.value.scope === "project" ? "identity.unknownProject" : "identity.untitled"),
               identifier: target.value.id,
@@ -18778,11 +19074,11 @@
       };
     }
   });
-  const _hoisted_1$8 = ["lang"];
-  const _hoisted_2$8 = { class: "booster-section-header" };
-  const _hoisted_3$8 = { class: "booster-reader-heading" };
-  const _hoisted_4$7 = ["aria-label"];
-  const _sfc_main$a = /* @__PURE__ */ defineComponent({
+  const _hoisted_1$9 = ["lang"];
+  const _hoisted_2$9 = { class: "booster-section-header" };
+  const _hoisted_3$9 = { class: "booster-reader-heading" };
+  const _hoisted_4$8 = ["aria-label"];
+  const _sfc_main$b = /* @__PURE__ */ defineComponent({
     __name: "CaptureSettingsSurface",
     props: {
       settingsAdapter: {},
@@ -18800,8 +19096,8 @@
           class: "booster-capture-surface",
           lang: __props.locale
         }, [
-          createBaseVNode("header", _hoisted_2$8, [
-            createBaseVNode("div", _hoisted_3$8, [
+          createBaseVNode("header", _hoisted_2$9, [
+            createBaseVNode("div", _hoisted_3$9, [
               createVNode(unref(ShieldCheck), { class: "size-5" }),
               createBaseVNode("div", null, [
                 createBaseVNode(
@@ -18827,22 +19123,22 @@
               onClick: _cache[0] || (_cache[0] = ($event) => emit2("close"))
             }, [
               createVNode(unref(X), { class: "size-4" })
-            ], 8, _hoisted_4$7)
+            ], 8, _hoisted_4$8)
           ]),
-          createVNode(_sfc_main$b, {
+          createVNode(_sfc_main$c, {
             "settings-adapter": __props.settingsAdapter,
             "archive-adapter": __props.archiveAdapter,
             context: __props.context,
             locale: __props.locale
           }, null, 8, ["settings-adapter", "archive-adapter", "context", "locale"])
-        ], 8, _hoisted_1$8);
+        ], 8, _hoisted_1$9);
       };
     }
   });
   function cn(...inputs) {
     return twMerge(clsx(inputs));
   }
-  const _sfc_main$9 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$a = /* @__PURE__ */ defineComponent({
     __name: "Badge",
     props: {
       variant: {},
@@ -18870,7 +19166,7 @@
       };
     }
   });
-  const _sfc_main$8 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$9 = /* @__PURE__ */ defineComponent({
     __name: "Button",
     props: {
       variant: { default: "default" },
@@ -18906,18 +19202,18 @@
       };
     }
   });
-  const _hoisted_1$7 = ["lang"];
-  const _hoisted_2$7 = {
+  const _hoisted_1$8 = ["lang"];
+  const _hoisted_2$8 = {
     key: 0,
     class: "booster-control-header"
   };
-  const _hoisted_3$7 = { class: "booster-header-copy" };
-  const _hoisted_4$6 = { class: "flex items-center gap-2" };
-  const _hoisted_5$6 = {
+  const _hoisted_3$8 = { class: "booster-header-copy" };
+  const _hoisted_4$7 = { class: "flex items-center gap-2" };
+  const _hoisted_5$7 = {
     key: 0,
     class: "booster-header-actions"
   };
-  const _hoisted_6$6 = { class: "booster-header-toggle-label" };
+  const _hoisted_6$7 = { class: "booster-header-toggle-label" };
   const _hoisted_7$6 = ["aria-pressed"];
   const _hoisted_8$6 = {
     key: 1,
@@ -18934,7 +19230,7 @@
   const _hoisted_14$4 = ["value"];
   const _hoisted_15$3 = { value: "latest" };
   const _hoisted_16$3 = { value: "first" };
-  const _hoisted_17$2 = {
+  const _hoisted_17$3 = {
     key: 0,
     class: "booster-danger-zone"
   };
@@ -18957,27 +19253,27 @@
   const _hoisted_34$1 = ["disabled"];
   const _hoisted_35$1 = { class: "booster-setting-copy" };
   const _hoisted_36$1 = { class: "flex items-center gap-2" };
-  const _hoisted_37 = ["disabled"];
-  const _hoisted_38 = { class: "booster-setting-copy" };
-  const _hoisted_39 = { class: "flex items-center gap-2" };
-  const _hoisted_40 = { class: "booster-alert-setting-actions" };
-  const _hoisted_41 = ["disabled"];
-  const _hoisted_42 = { class: "booster-alert-threshold" };
-  const _hoisted_43 = ["value", "disabled"];
-  const _hoisted_44 = { class: "booster-setting-copy" };
-  const _hoisted_45 = { class: "flex items-center gap-2" };
-  const _hoisted_46 = { class: "booster-range-grid" };
-  const _hoisted_47 = ["value", "disabled"];
-  const _hoisted_48 = { class: "booster-setting-copy" };
-  const _hoisted_49 = { class: "flex items-center gap-2" };
-  const _hoisted_50 = { class: "booster-range-grid" };
-  const _hoisted_51 = ["value"];
-  const _hoisted_52 = ["value"];
-  const _hoisted_53 = { class: "booster-setting-copy" };
-  const _hoisted_54 = { class: "flex items-center gap-2" };
-  const _hoisted_55 = ["disabled"];
-  const _hoisted_56 = { class: "booster-setting-copy" };
-  const _hoisted_57 = { class: "flex items-center gap-2" };
+  const _hoisted_37$1 = ["disabled"];
+  const _hoisted_38$1 = { class: "booster-setting-copy" };
+  const _hoisted_39$1 = { class: "flex items-center gap-2" };
+  const _hoisted_40$1 = { class: "booster-alert-setting-actions" };
+  const _hoisted_41$1 = ["disabled"];
+  const _hoisted_42$1 = { class: "booster-alert-threshold" };
+  const _hoisted_43$1 = ["value", "disabled"];
+  const _hoisted_44$1 = { class: "booster-setting-copy" };
+  const _hoisted_45$1 = { class: "flex items-center gap-2" };
+  const _hoisted_46$1 = { class: "booster-range-grid" };
+  const _hoisted_47$1 = ["value", "disabled"];
+  const _hoisted_48$1 = { class: "booster-setting-copy" };
+  const _hoisted_49$1 = { class: "flex items-center gap-2" };
+  const _hoisted_50$1 = { class: "booster-range-grid" };
+  const _hoisted_51$1 = ["value"];
+  const _hoisted_52$1 = ["value"];
+  const _hoisted_53$1 = { class: "booster-setting-copy" };
+  const _hoisted_54$1 = { class: "flex items-center gap-2" };
+  const _hoisted_55$1 = ["disabled"];
+  const _hoisted_56$1 = { class: "booster-setting-copy" };
+  const _hoisted_57$1 = { class: "flex items-center gap-2" };
   const _hoisted_58 = ["disabled"];
   const _hoisted_59 = {
     key: 2,
@@ -19035,7 +19331,7 @@
   };
   const _hoisted_95 = { class: "booster-destructive-actions" };
   const _hoisted_96 = ["disabled"];
-  const _sfc_main$7 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$8 = /* @__PURE__ */ defineComponent({
     __name: "ControlCenterPanel",
     props: {
       settingsAdapter: {},
@@ -19230,9 +19526,9 @@
           class: normalizeClass(["booster-control-center", { "booster-control-embedded": __props.embedded }]),
           lang: locale.value
         }, [
-          !__props.embedded ? (openBlock(), createElementBlock("header", _hoisted_2$7, [
-            createBaseVNode("div", _hoisted_3$7, [
-              createBaseVNode("div", _hoisted_4$6, [
+          !__props.embedded ? (openBlock(), createElementBlock("header", _hoisted_2$8, [
+            createBaseVNode("div", _hoisted_3$8, [
+              createBaseVNode("div", _hoisted_4$7, [
                 createBaseVNode(
                   "strong",
                   null,
@@ -19240,7 +19536,7 @@
                   1
                   /* TEXT */
                 ),
-                createVNode(unref(_sfc_main$9), { variant: "outline" }, {
+                createVNode(unref(_sfc_main$a), { variant: "outline" }, {
                   default: withCtx(() => [
                     createTextVNode(
                       toDisplayString(__props.targetLabel),
@@ -19251,7 +19547,7 @@
                   _: 1
                   /* STABLE */
                 }),
-                createVNode(unref(_sfc_main$9), {
+                createVNode(unref(_sfc_main$a), {
                   variant: "outline",
                   title: unref(BOOSTER_VERSION)
                 }, {
@@ -19274,10 +19570,10 @@
                 /* TEXT */
               )
             ]),
-            settings.value ? (openBlock(), createElementBlock("div", _hoisted_5$6, [
+            settings.value ? (openBlock(), createElementBlock("div", _hoisted_5$7, [
               createBaseVNode(
                 "span",
-                _hoisted_6$6,
+                _hoisted_6$7,
                 toDisplayString(t("control.booster")),
                 1
                 /* TEXT */
@@ -19296,7 +19592,7 @@
                   /* CACHED */
                 )
               ])], 10, _hoisted_7$6),
-              __props.showClose ? (openBlock(), createBlock(unref(_sfc_main$8), {
+              __props.showClose ? (openBlock(), createBlock(unref(_sfc_main$9), {
                 key: 0,
                 variant: "ghost",
                 size: "icon",
@@ -19432,13 +19728,13 @@
                       )
                     ], 40, _hoisted_14$4)
                   ]),
-                  createVNode(_sfc_main$b, {
+                  createVNode(_sfc_main$c, {
                     "settings-adapter": __props.settingsAdapter,
                     "archive-adapter": __props.archiveAdapter,
                     context: __props.captureContext,
                     locale: locale.value
                   }, null, 8, ["settings-adapter", "archive-adapter", "context", "locale"]),
-                  __props.archiveAdapter ? (openBlock(), createElementBlock("section", _hoisted_17$2, [
+                  __props.archiveAdapter ? (openBlock(), createElementBlock("section", _hoisted_17$3, [
                     createBaseVNode("div", _hoisted_18$2, [
                       createBaseVNode("div", _hoisted_19$2, [
                         createVNode(unref(TriangleAlert), { class: "size-4" }),
@@ -19496,7 +19792,7 @@
                             1
                             /* TEXT */
                           ),
-                          createVNode(unref(_sfc_main$9), {
+                          createVNode(unref(_sfc_main$a), {
                             variant: settings.value.features.messageMetadata && settings.value.enabled ? "default" : "secondary"
                           }, {
                             default: withCtx(() => [
@@ -19552,7 +19848,7 @@
                             1
                             /* TEXT */
                           ),
-                          createVNode(unref(_sfc_main$9), {
+                          createVNode(unref(_sfc_main$a), {
                             variant: settings.value.features.activityIndicator && settings.value.enabled ? "default" : "secondary"
                           }, {
                             default: withCtx(() => [
@@ -19608,7 +19904,7 @@
                             1
                             /* TEXT */
                           ),
-                          createVNode(unref(_sfc_main$9), {
+                          createVNode(unref(_sfc_main$a), {
                             variant: settings.value.features.requestTimer && settings.value.enabled ? "default" : "secondary"
                           }, {
                             default: withCtx(() => [
@@ -19691,7 +19987,7 @@
                             1
                             /* TEXT */
                           ),
-                          createVNode(unref(_sfc_main$9), {
+                          createVNode(unref(_sfc_main$a), {
                             variant: settings.value.features.toolInspector && settings.value.enabled ? "default" : "secondary"
                           }, {
                             default: withCtx(() => [
@@ -19747,7 +20043,7 @@
                             1
                             /* TEXT */
                           ),
-                          createVNode(unref(_sfc_main$9), {
+                          createVNode(unref(_sfc_main$a), {
                             variant: settings.value.alerts.responseCompleteSound && settings.value.enabled ? "default" : "secondary"
                           }, {
                             default: withCtx(() => [
@@ -19782,7 +20078,7 @@
                           -1
                           /* CACHED */
                         )
-                      ])], 10, _hoisted_37)
+                      ])], 10, _hoisted_37$1)
                     ],
                     2
                     /* CLASS */
@@ -19793,8 +20089,8 @@
                       class: normalizeClass(["booster-setting-card booster-setting-card-stack", { "booster-setting-disabled": !settings.value.enabled }])
                     },
                     [
-                      createBaseVNode("div", _hoisted_38, [
-                        createBaseVNode("div", _hoisted_39, [
+                      createBaseVNode("div", _hoisted_38$1, [
+                        createBaseVNode("div", _hoisted_39$1, [
                           createVNode(unref(TriangleAlert), { class: "size-4" }),
                           createBaseVNode(
                             "b",
@@ -19803,7 +20099,7 @@
                             1
                             /* TEXT */
                           ),
-                          createVNode(unref(_sfc_main$9), {
+                          createVNode(unref(_sfc_main$a), {
                             variant: settings.value.alerts.longRunningSound && settings.value.enabled ? "default" : "secondary"
                           }, {
                             default: withCtx(() => [
@@ -19825,7 +20121,7 @@
                           /* TEXT */
                         )
                       ]),
-                      createBaseVNode("div", _hoisted_40, [
+                      createBaseVNode("div", _hoisted_40$1, [
                         createBaseVNode("button", {
                           type: "button",
                           class: normalizeClass(["booster-switch", { "booster-switch-on": settings.value.alerts.longRunningSound }]),
@@ -19839,8 +20135,8 @@
                             -1
                             /* CACHED */
                           )
-                        ])], 10, _hoisted_41),
-                        createBaseVNode("label", _hoisted_42, [
+                        ])], 10, _hoisted_41$1),
+                        createBaseVNode("label", _hoisted_42$1, [
                           createBaseVNode("span", null, [
                             createTextVNode(
                               toDisplayString(t("control.longRunningThreshold")) + " ",
@@ -19863,7 +20159,7 @@
                             value: settings.value.alerts.longRunningThresholdMs,
                             disabled: !settings.value.enabled || !settings.value.alerts.longRunningSound,
                             onChange: setLongRunningThreshold
-                          }, null, 40, _hoisted_43)
+                          }, null, 40, _hoisted_43$1)
                         ])
                       ])
                     ],
@@ -19876,8 +20172,8 @@
                       class: normalizeClass(["booster-setting-card booster-setting-card-stack", { "booster-setting-disabled": !settings.value.enabled }])
                     },
                     [
-                      createBaseVNode("div", _hoisted_44, [
-                        createBaseVNode("div", _hoisted_45, [
+                      createBaseVNode("div", _hoisted_44$1, [
+                        createBaseVNode("div", _hoisted_45$1, [
                           createVNode(unref(RefreshCcw), { class: "size-4" }),
                           createBaseVNode(
                             "b",
@@ -19895,7 +20191,7 @@
                           /* TEXT */
                         )
                       ]),
-                      createBaseVNode("div", _hoisted_46, [
+                      createBaseVNode("div", _hoisted_46$1, [
                         createBaseVNode("label", null, [
                           createBaseVNode("span", null, [
                             createTextVNode(
@@ -19919,7 +20215,7 @@
                             value: settings.value.monitoring.intervalMs,
                             disabled: !settings.value.enabled,
                             onChange: setMonitoringInterval
-                          }, null, 40, _hoisted_47)
+                          }, null, 40, _hoisted_47$1)
                         ])
                       ])
                     ],
@@ -19932,8 +20228,8 @@
                       class: normalizeClass(["booster-setting-card booster-setting-card-stack", { "booster-setting-disabled": !settings.value.enabled }])
                     },
                     [
-                      createBaseVNode("div", _hoisted_48, [
-                        createBaseVNode("div", _hoisted_49, [
+                      createBaseVNode("div", _hoisted_48$1, [
+                        createBaseVNode("div", _hoisted_49$1, [
                           createVNode(unref(SlidersHorizontal), { class: "size-4" }),
                           createBaseVNode(
                             "b",
@@ -19951,7 +20247,7 @@
                           /* TEXT */
                         )
                       ]),
-                      createBaseVNode("div", _hoisted_50, [
+                      createBaseVNode("div", _hoisted_50$1, [
                         createBaseVNode("label", null, [
                           createBaseVNode("span", null, [
                             createTextVNode(
@@ -19974,7 +20270,7 @@
                             step: "100",
                             value: settings.value.historyLoader.speedPxPerSecond,
                             onChange: setHistoryScrollSpeed
-                          }, null, 40, _hoisted_51)
+                          }, null, 40, _hoisted_51$1)
                         ]),
                         createBaseVNode("label", null, [
                           createBaseVNode("span", null, [
@@ -19998,7 +20294,7 @@
                             step: "10",
                             value: settings.value.historyLoader.pauseMs,
                             onChange: setHistoryScrollPause
-                          }, null, 40, _hoisted_52)
+                          }, null, 40, _hoisted_52$1)
                         ])
                       ])
                     ],
@@ -20011,8 +20307,8 @@
                       class: normalizeClass(["booster-setting-card", { "booster-setting-disabled": !settings.value.enabled }])
                     },
                     [
-                      createBaseVNode("div", _hoisted_53, [
-                        createBaseVNode("div", _hoisted_54, [
+                      createBaseVNode("div", _hoisted_53$1, [
+                        createBaseVNode("div", _hoisted_54$1, [
                           createVNode(unref(Activity), { class: "size-4" }),
                           createBaseVNode(
                             "b",
@@ -20021,7 +20317,7 @@
                             1
                             /* TEXT */
                           ),
-                          createVNode(unref(_sfc_main$9), {
+                          createVNode(unref(_sfc_main$a), {
                             variant: settings.value.observer.enabled && settings.value.enabled ? "default" : "secondary"
                           }, {
                             default: withCtx(() => [
@@ -20056,7 +20352,7 @@
                           -1
                           /* CACHED */
                         )
-                      ])], 10, _hoisted_55)
+                      ])], 10, _hoisted_55$1)
                     ],
                     2
                     /* CLASS */
@@ -20067,8 +20363,8 @@
                       class: normalizeClass(["booster-setting-card", { "booster-setting-disabled": !settings.value.observer.enabled }])
                     },
                     [
-                      createBaseVNode("div", _hoisted_56, [
-                        createBaseVNode("div", _hoisted_57, [
+                      createBaseVNode("div", _hoisted_56$1, [
+                        createBaseVNode("div", _hoisted_57$1, [
                           createVNode(unref(ShieldCheck), { class: "size-4" }),
                           createBaseVNode(
                             "b",
@@ -20538,7 +20834,7 @@
                             1
                             /* TEXT */
                           ),
-                          createVNode(unref(_sfc_main$9), {
+                          createVNode(unref(_sfc_main$a), {
                             variant: tokenConfigured.value ? "default" : "secondary"
                           }, {
                             default: withCtx(() => [
@@ -20567,7 +20863,7 @@
                           ), [
                             [vModelText, tokenDraft.value]
                           ]),
-                          createVNode(unref(_sfc_main$8), {
+                          createVNode(unref(_sfc_main$9), {
                             variant: "outline",
                             size: "sm",
                             disabled: !tokenDraft.value.trim(),
@@ -20583,7 +20879,7 @@
                             _: 1
                             /* STABLE */
                           }, 8, ["disabled"]),
-                          tokenConfigured.value ? (openBlock(), createBlock(unref(_sfc_main$8), {
+                          tokenConfigured.value ? (openBlock(), createBlock(unref(_sfc_main$9), {
                             key: 0,
                             variant: "ghost",
                             size: "sm",
@@ -20602,7 +20898,7 @@
                             _: 1
                             /* STABLE */
                           })) : createCommentVNode("v-if", true)
-                        ])) : (openBlock(), createBlock(unref(_sfc_main$8), {
+                        ])) : (openBlock(), createBlock(unref(_sfc_main$9), {
                           key: 1,
                           variant: "outline",
                           size: "sm",
@@ -20621,7 +20917,7 @@
                         }))
                       ])) : createCommentVNode("v-if", true),
                       createBaseVNode("div", _hoisted_86, [
-                        createVNode(unref(_sfc_main$8), {
+                        createVNode(unref(_sfc_main$9), {
                           variant: "outline",
                           size: "sm",
                           disabled: telemetryTestState.value === "testing" || !settings.value.telemetry.endpoint || !tokenConfigured.value,
@@ -20712,7 +21008,7 @@
                   )) : createCommentVNode("v-if", true)
                 ]),
                 createBaseVNode("div", _hoisted_95, [
-                  createVNode(unref(_sfc_main$8), {
+                  createVNode(unref(_sfc_main$9), {
                     variant: "outline",
                     disabled: archiveResetting.value,
                     onClick: _cache[20] || (_cache[20] = ($event) => archiveResetOpen.value = false)
@@ -20739,11 +21035,11 @@
             _: 1
             /* STABLE */
           }, 8, ["label"])) : createCommentVNode("v-if", true)
-        ], 10, _hoisted_1$7);
+        ], 10, _hoisted_1$8);
       };
     }
   });
-  const styles$1 = '/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */\n@layer properties {\n  @supports (((-webkit-hyphens: none)) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color: rgb(from red r g b)))) {\n    *, :before, :after, ::backdrop {\n      --tw-rotate-x: initial;\n      --tw-rotate-y: initial;\n      --tw-rotate-z: initial;\n      --tw-skew-x: initial;\n      --tw-skew-y: initial;\n      --tw-space-y-reverse: 0;\n      --tw-border-style: solid;\n      --tw-leading: initial;\n      --tw-font-weight: initial;\n      --tw-ordinal: initial;\n      --tw-slashed-zero: initial;\n      --tw-numeric-figure: initial;\n      --tw-numeric-spacing: initial;\n      --tw-numeric-fraction: initial;\n      --tw-shadow: 0 0 #0000;\n      --tw-shadow-color: initial;\n      --tw-shadow-alpha: 100%;\n      --tw-inset-shadow: 0 0 #0000;\n      --tw-inset-shadow-color: initial;\n      --tw-inset-shadow-alpha: 100%;\n      --tw-ring-color: initial;\n      --tw-ring-shadow: 0 0 #0000;\n      --tw-inset-ring-color: initial;\n      --tw-inset-ring-shadow: 0 0 #0000;\n      --tw-ring-inset: initial;\n      --tw-ring-offset-width: 0px;\n      --tw-ring-offset-color: #fff;\n      --tw-ring-offset-shadow: 0 0 #0000;\n      --tw-outline-style: solid;\n      --tw-blur: initial;\n      --tw-brightness: initial;\n      --tw-contrast: initial;\n      --tw-grayscale: initial;\n      --tw-hue-rotate: initial;\n      --tw-invert: initial;\n      --tw-opacity: initial;\n      --tw-saturate: initial;\n      --tw-sepia: initial;\n      --tw-drop-shadow: initial;\n      --tw-drop-shadow-color: initial;\n      --tw-drop-shadow-alpha: 100%;\n      --tw-drop-shadow-size: initial;\n    }\n  }\n}\n\n@layer theme {\n  :root, :host {\n    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",\n      "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",\n      "Segoe UI Symbol", "Noto Color Emoji";\n    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",\n      "Courier New", monospace;\n    --spacing: .25rem;\n    --text-xs: .75rem;\n    --text-xs--line-height: calc(1 / .75);\n    --text-sm: .875rem;\n    --text-sm--line-height: calc(1.25 / .875);\n    --text-base: 1rem;\n    --text-base--line-height: calc(1.5 / 1);\n    --font-weight-medium: 500;\n    --font-weight-semibold: 600;\n    --animate-spin: spin 1s linear infinite;\n    --default-transition-duration: .15s;\n    --default-transition-timing-function: cubic-bezier(.4, 0, .2, 1);\n    --default-font-family: var(--font-sans);\n    --default-mono-font-family: var(--font-mono);\n  }\n}\n\n@layer base {\n  *, :after, :before, ::backdrop {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  ::file-selector-button {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  html, :host {\n    -webkit-text-size-adjust: 100%;\n    tab-size: 4;\n    line-height: 1.5;\n    font-family: var(--default-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");\n    font-feature-settings: var(--default-font-feature-settings, normal);\n    font-variation-settings: var(--default-font-variation-settings, normal);\n    -webkit-tap-highlight-color: transparent;\n  }\n\n  hr {\n    height: 0;\n    color: inherit;\n    border-top-width: 1px;\n  }\n\n  abbr:where([title]) {\n    -webkit-text-decoration: underline dotted;\n    text-decoration: underline dotted;\n  }\n\n  h1, h2, h3, h4, h5, h6 {\n    font-size: inherit;\n    font-weight: inherit;\n  }\n\n  a {\n    color: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    text-decoration: inherit;\n  }\n\n  b, strong {\n    font-weight: bolder;\n  }\n\n  code, kbd, samp, pre {\n    font-family: var(--default-mono-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);\n    font-feature-settings: var(--default-mono-font-feature-settings, normal);\n    font-variation-settings: var(--default-mono-font-variation-settings, normal);\n    font-size: 1em;\n  }\n\n  small {\n    font-size: 80%;\n  }\n\n  sub, sup {\n    vertical-align: baseline;\n    font-size: 75%;\n    line-height: 0;\n    position: relative;\n  }\n\n  sub {\n    bottom: -.25em;\n  }\n\n  sup {\n    top: -.5em;\n  }\n\n  table {\n    text-indent: 0;\n    border-color: inherit;\n    border-collapse: collapse;\n  }\n\n  :-moz-focusring:where(:not(iframe)) {\n    outline: auto;\n  }\n\n  progress {\n    vertical-align: baseline;\n  }\n\n  summary {\n    display: list-item;\n  }\n\n  ol, ul, menu {\n    list-style: none;\n  }\n\n  img, svg, video, canvas, audio, iframe, embed, object {\n    vertical-align: middle;\n    display: block;\n  }\n\n  img, video {\n    max-width: 100%;\n    height: auto;\n  }\n\n  button, input, select, optgroup, textarea {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  ::file-selector-button {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  :where(select:is([multiple], [size])) optgroup {\n    font-weight: bolder;\n  }\n\n  :where(select:is([multiple], [size])) optgroup option {\n    padding-inline-start: 20px;\n  }\n\n  ::file-selector-button {\n    margin-inline-end: 4px;\n  }\n\n  ::placeholder {\n    opacity: 1;\n  }\n\n  @supports (not ((-webkit-appearance: -apple-pay-button))) or (contain-intrinsic-size: 1px) {\n    ::placeholder {\n      color: currentColor;\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      ::placeholder {\n        color: color-mix(in oklab, currentcolor 50%, transparent);\n      }\n    }\n  }\n\n  textarea {\n    resize: vertical;\n  }\n\n  ::-webkit-search-decoration {\n    -webkit-appearance: none;\n  }\n\n  ::-webkit-date-and-time-value {\n    min-height: 1lh;\n    text-align: inherit;\n  }\n\n  ::-webkit-datetime-edit {\n    display: inline-flex;\n  }\n\n  ::-webkit-datetime-edit-fields-wrapper {\n    padding: 0;\n  }\n\n  ::-webkit-datetime-edit {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-year-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-month-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-day-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-hour-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-minute-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-second-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-millisecond-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-meridiem-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-calendar-picker-indicator {\n    line-height: 1;\n  }\n\n  :-moz-ui-invalid {\n    box-shadow: none;\n  }\n\n  button, input:where([type="button"], [type="reset"], [type="submit"]) {\n    appearance: button;\n  }\n\n  ::file-selector-button {\n    appearance: button;\n  }\n\n  ::-webkit-inner-spin-button {\n    height: auto;\n  }\n\n  ::-webkit-outer-spin-button {\n    height: auto;\n  }\n\n  [hidden]:where(:not([hidden="until-found"])) {\n    display: none !important;\n  }\n}\n\n@layer components;\n\n@layer utilities {\n  .collapse {\n    visibility: collapse;\n  }\n\n  .visible {\n    visibility: visible;\n  }\n\n  .absolute {\n    position: absolute;\n  }\n\n  .fixed {\n    position: fixed;\n  }\n\n  .relative {\n    position: relative;\n  }\n\n  .static {\n    position: static;\n  }\n\n  .sticky {\n    position: sticky;\n  }\n\n  .isolate {\n    isolation: isolate;\n  }\n\n  .col-span-2 {\n    grid-column: span 2 / span 2;\n  }\n\n  .container {\n    width: 100%;\n  }\n\n  @media (min-width: 40rem) {\n    .container {\n      max-width: 40rem;\n    }\n  }\n\n  @media (min-width: 48rem) {\n    .container {\n      max-width: 48rem;\n    }\n  }\n\n  @media (min-width: 64rem) {\n    .container {\n      max-width: 64rem;\n    }\n  }\n\n  @media (min-width: 80rem) {\n    .container {\n      max-width: 80rem;\n    }\n  }\n\n  @media (min-width: 96rem) {\n    .container {\n      max-width: 96rem;\n    }\n  }\n\n  .m-0 {\n    margin: 0;\n  }\n\n  .m-1 {\n    margin: var(--spacing);\n  }\n\n  .mt-1 {\n    margin-top: var(--spacing);\n  }\n\n  .mt-2 {\n    margin-top: calc(var(--spacing) * 2);\n  }\n\n  .mb-2 {\n    margin-bottom: calc(var(--spacing) * 2);\n  }\n\n  .block {\n    display: block;\n  }\n\n  .contents {\n    display: contents;\n  }\n\n  .flex {\n    display: flex;\n  }\n\n  .grid {\n    display: grid;\n  }\n\n  .hidden {\n    display: none;\n  }\n\n  .inline {\n    display: inline;\n  }\n\n  .inline-flex {\n    display: inline-flex;\n  }\n\n  .table {\n    display: table;\n  }\n\n  .size-3 {\n    width: calc(var(--spacing) * 3);\n    height: calc(var(--spacing) * 3);\n  }\n\n  .size-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n    height: calc(var(--spacing) * 3.5);\n  }\n\n  .size-4 {\n    width: calc(var(--spacing) * 4);\n    height: calc(var(--spacing) * 4);\n  }\n\n  .size-5 {\n    width: calc(var(--spacing) * 5);\n    height: calc(var(--spacing) * 5);\n  }\n\n  .size-6 {\n    width: calc(var(--spacing) * 6);\n    height: calc(var(--spacing) * 6);\n  }\n\n  .size-7 {\n    width: calc(var(--spacing) * 7);\n    height: calc(var(--spacing) * 7);\n  }\n\n  .size-8 {\n    width: calc(var(--spacing) * 8);\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-7 {\n    height: calc(var(--spacing) * 7);\n  }\n\n  .h-8 {\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-9 {\n    height: calc(var(--spacing) * 9);\n  }\n\n  .max-h-96 {\n    max-height: calc(var(--spacing) * 96);\n  }\n\n  .max-h-\\[420px\\] {\n    max-height: 420px;\n  }\n\n  .min-h-\\[130px\\] {\n    min-height: 130px;\n  }\n\n  .w-full {\n    width: 100%;\n  }\n\n  .min-w-0 {\n    min-width: 0;\n  }\n\n  .flex-1 {\n    flex: 1;\n  }\n\n  .shrink-0 {\n    flex-shrink: 0;\n  }\n\n  .grow {\n    flex-grow: 1;\n  }\n\n  .rotate-180 {\n    rotate: 180deg;\n  }\n\n  .transform {\n    transform: var(--tw-rotate-x, ) var(--tw-rotate-y, ) var(--tw-rotate-z, ) var(--tw-skew-x, ) var(--tw-skew-y, );\n  }\n\n  .animate-spin {\n    animation: var(--animate-spin);\n  }\n\n  .cursor-pointer {\n    cursor: pointer;\n  }\n\n  .resize {\n    resize: both;\n  }\n\n  .grid-cols-2 {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }\n\n  .flex-col {\n    flex-direction: column;\n  }\n\n  .flex-wrap {\n    flex-wrap: wrap;\n  }\n\n  .items-center {\n    align-items: center;\n  }\n\n  .items-start {\n    align-items: flex-start;\n  }\n\n  .justify-between {\n    justify-content: space-between;\n  }\n\n  .justify-center {\n    justify-content: center;\n  }\n\n  .gap-0\\.5 {\n    gap: calc(var(--spacing) * .5);\n  }\n\n  .gap-1 {\n    gap: var(--spacing);\n  }\n\n  .gap-2 {\n    gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-3 {\n    gap: calc(var(--spacing) * 3);\n  }\n\n  :where(.space-y-2 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 2) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 2) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  .self-start {\n    align-self: flex-start;\n  }\n\n  .truncate {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    overflow: hidden;\n  }\n\n  .overflow-x-hidden {\n    overflow-x: hidden;\n  }\n\n  .overflow-y-auto {\n    overflow-y: auto;\n  }\n\n  .rounded-lg {\n    border-radius: var(--radius);\n  }\n\n  .rounded-md {\n    border-radius: calc(var(--radius) - 2px);\n  }\n\n  .border {\n    border-style: var(--tw-border-style);\n    border-width: 1px;\n  }\n\n  .border-t {\n    border-top-style: var(--tw-border-style);\n    border-top-width: 1px;\n  }\n\n  .border-b {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 1px;\n  }\n\n  .border-l-2 {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 2px;\n  }\n\n  .border-border {\n    border-color: var(--border);\n  }\n\n  .border-transparent {\n    border-color: #0000;\n  }\n\n  .bg-background {\n    background-color: var(--background);\n  }\n\n  .bg-card {\n    background-color: var(--card);\n  }\n\n  .bg-primary {\n    background-color: var(--primary);\n  }\n\n  .bg-secondary {\n    background-color: var(--secondary);\n  }\n\n  .p-0 {\n    padding: 0;\n  }\n\n  .p-3 {\n    padding: calc(var(--spacing) * 3);\n  }\n\n  .px-2 {\n    padding-inline: calc(var(--spacing) * 2);\n  }\n\n  .px-3 {\n    padding-inline: calc(var(--spacing) * 3);\n  }\n\n  .px-4 {\n    padding-inline: calc(var(--spacing) * 4);\n  }\n\n  .py-0\\.5 {\n    padding-block: calc(var(--spacing) * .5);\n  }\n\n  .py-2 {\n    padding-block: calc(var(--spacing) * 2);\n  }\n\n  .pt-2 {\n    padding-top: calc(var(--spacing) * 2);\n  }\n\n  .pl-2 {\n    padding-left: calc(var(--spacing) * 2);\n  }\n\n  .text-base {\n    font-size: var(--text-base);\n    line-height: var(--tw-leading, var(--text-base--line-height));\n  }\n\n  .text-sm {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n\n  .text-xs {\n    font-size: var(--text-xs);\n    line-height: var(--tw-leading, var(--text-xs--line-height));\n  }\n\n  .text-\\[11px\\] {\n    font-size: 11px;\n  }\n\n  .leading-4 {\n    --tw-leading: calc(var(--spacing) * 4);\n    line-height: calc(var(--spacing) * 4);\n  }\n\n  .font-medium {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n\n  .font-semibold {\n    --tw-font-weight: var(--font-weight-semibold);\n    font-weight: var(--font-weight-semibold);\n  }\n\n  .break-words {\n    overflow-wrap: break-word;\n  }\n\n  .whitespace-nowrap {\n    white-space: nowrap;\n  }\n\n  .whitespace-pre-wrap {\n    white-space: pre-wrap;\n  }\n\n  .text-foreground {\n    color: var(--foreground);\n  }\n\n  .text-muted-foreground {\n    color: var(--muted-foreground);\n  }\n\n  .text-primary-foreground {\n    color: var(--primary-foreground);\n  }\n\n  .text-secondary-foreground {\n    color: var(--secondary-foreground);\n  }\n\n  .ordinal {\n    --tw-ordinal: ordinal;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .tabular-nums {\n    --tw-numeric-spacing: tabular-nums;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .accent-primary {\n    accent-color: var(--primary);\n  }\n\n  .shadow {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .outline {\n    outline-style: var(--tw-outline-style);\n    outline-width: 1px;\n  }\n\n  .blur {\n    --tw-blur: blur(8px);\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .filter {\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .transition {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-colors {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-transform {\n    transition-property: transform, translate, scale, rotate;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .outline-none {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  .select-none {\n    -webkit-user-select: none;\n    user-select: none;\n  }\n\n  @media (hover: hover) {\n    .hover\\:bg-accent:hover {\n      background-color: var(--accent);\n    }\n\n    .hover\\:bg-primary\\/90:hover {\n      background-color: var(--primary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-primary\\/90:hover {\n        background-color: color-mix(in oklab, var(--primary) 90%, transparent);\n      }\n    }\n\n    .hover\\:text-accent-foreground:hover {\n      color: var(--accent-foreground);\n    }\n  }\n\n  .focus-visible\\:ring-2:focus-visible {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus-visible\\:ring-ring:focus-visible {\n    --tw-ring-color: var(--ring);\n  }\n\n  .disabled\\:pointer-events-none:disabled {\n    pointer-events: none;\n  }\n\n  .disabled\\:opacity-50:disabled {\n    opacity: .5;\n  }\n}\n\n:host {\n  --background: oklch(98.5% 0 0);\n  --foreground: oklch(14.5% 0 0);\n  --card: oklch(100% 0 0);\n  --card-foreground: oklch(14.5% 0 0);\n  --primary: oklch(20.5% 0 0);\n  --primary-foreground: oklch(98.5% 0 0);\n  --secondary: oklch(97% 0 0);\n  --secondary-foreground: oklch(20.5% 0 0);\n  --muted: oklch(97% 0 0);\n  --muted-foreground: oklch(55.6% 0 0);\n  --accent: oklch(97% 0 0);\n  --accent-foreground: oklch(20.5% 0 0);\n  --border: oklch(92.2% 0 0);\n  --ring: oklch(70.8% 0 0);\n  --radius: .625rem;\n  all: initial;\n  color: var(--foreground);\n  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;\n}\n\n@media (prefers-color-scheme: dark) {\n  :host {\n    --background: oklch(14.5% 0 0);\n    --foreground: oklch(98.5% 0 0);\n    --card: oklch(20.5% 0 0);\n    --card-foreground: oklch(98.5% 0 0);\n    --primary: oklch(92.2% 0 0);\n    --primary-foreground: oklch(20.5% 0 0);\n    --secondary: oklch(26.9% 0 0);\n    --secondary-foreground: oklch(98.5% 0 0);\n    --muted: oklch(26.9% 0 0);\n    --muted-foreground: oklch(70.8% 0 0);\n    --accent: oklch(26.9% 0 0);\n    --accent-foreground: oklch(98.5% 0 0);\n    --border: oklch(100% 0 0 / .12);\n    --ring: oklch(55.6% 0 0);\n  }\n}\n\n* {\n  box-sizing: border-box;\n  border-color: var(--border);\n}\n\n.booster-shell {\n  z-index: 2147483647;\n  position: fixed;\n  bottom: 20px;\n  right: 20px;\n}\n\n.booster-button {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 42px;\n  height: 42px;\n  color: var(--card-foreground);\n  cursor: pointer;\n  border-radius: 14px;\n  font: 700 15px / 1 inherit;\n  box-shadow: 0 10px 30px #0003;\n}\n\n.booster-panel {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 300px;\n  color: var(--card-foreground);\n  border-radius: 16px;\n  margin-bottom: 10px;\n  padding: 14px;\n  box-shadow: 0 18px 45px #0000003d;\n}\n\n.booster-panel h2 {\n  margin: 0 0 6px;\n  font-size: 15px;\n  font-weight: 700;\n}\n\n.booster-panel p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.45;\n}\n\n.booster-control-center {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(760px, 100vw - 32px);\n  color: var(--card-foreground);\n  border-radius: 18px;\n  margin-bottom: 10px;\n  overflow: hidden;\n  box-shadow: 0 22px 60px #00000047;\n}\n\n.booster-control-header, .booster-control-footer {\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  display: flex;\n}\n\n.booster-control-header {\n  border-bottom: 1px solid var(--border);\n  padding: 14px 14px 12px;\n}\n\n.booster-control-header strong {\n  font-size: 14px;\n}\n\n.booster-control-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-control-body {\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-loading {\n  color: var(--muted-foreground);\n  padding: 18px;\n  font-size: 12px;\n}\n\n.booster-section-label {\n  color: var(--muted-foreground);\n  letter-spacing: .08em;\n  text-transform: uppercase;\n  padding: 2px 2px 0;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-setting-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 12px;\n  display: flex;\n}\n\n.booster-setting-card-stack {\n  align-items: stretch;\n  display: grid;\n}\n\n.booster-range-grid {\n  gap: 10px;\n  min-width: 220px;\n  display: grid;\n}\n\n.booster-range-grid label {\n  gap: 5px;\n  display: grid;\n}\n\n.booster-range-grid label > span {\n  color: var(--muted-foreground);\n  justify-content: space-between;\n  gap: 12px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-range-grid label > span b {\n  color: var(--foreground);\n  font-variant-numeric: tabular-nums;\n}\n\n.booster-range-grid input[type="range"] {\n  width: 100%;\n  accent-color: var(--primary);\n}\n\n.booster-setting-disabled {\n  opacity: .55;\n}\n\n.booster-setting-copy {\n  gap: 5px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-setting-copy b {\n  font-size: 12px;\n}\n\n.booster-setting-copy > span {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.4;\n}\n\n.booster-switch {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  cursor: pointer;\n  border-radius: 999px;\n  flex: none;\n  width: 36px;\n  height: 20px;\n  padding: 0;\n  transition: background .12s, border-color .12s;\n  position: relative;\n}\n\n.booster-switch:disabled {\n  cursor: not-allowed;\n}\n\n.booster-switch > span {\n  background: var(--foreground);\n  border-radius: 999px;\n  width: 14px;\n  height: 14px;\n  transition: transform .12s;\n  position: absolute;\n  top: 2px;\n  left: 2px;\n}\n\n.booster-switch-on {\n  background: var(--primary);\n  border-color: var(--primary);\n}\n\n.booster-switch-on > span {\n  background: var(--primary-foreground);\n  transform: translateX(16px);\n}\n\n.booster-info-card {\n  background: var(--muted);\n  color: var(--foreground);\n  border-radius: 12px;\n  padding: 11px 12px;\n  font-size: 11px;\n}\n\n.booster-info-card ul {\n  color: var(--muted-foreground);\n  gap: 4px;\n  margin: 8px 0 0 18px;\n  padding: 0;\n  line-height: 1.35;\n  display: grid;\n}\n\n.booster-control-footer {\n  padding-top: 2px;\n}\n\n.booster-save-state {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 5px;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-overlay-root {\n  pointer-events: none;\n}\n\n.booster-launcher {\n  z-index: 2147483647;\n  border: 2px solid var(--primary);\n  justify-content: center;\n  align-items: center;\n  gap: 1px;\n  width: 46px;\n  height: 46px;\n  display: inline-flex;\n  position: fixed;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher {\n    border: 2px solid color-mix(in oklab, var(--primary) 55%, transparent);\n  }\n}\n\n.booster-launcher {\n  background: var(--primary);\n  color: var(--primary-foreground);\n  box-shadow: 0 12px 36px #00000047, 0 0 0 3px var(--primary);\n  border-radius: 15px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher {\n    box-shadow: 0 12px 36px #00000047, 0 0 0 3px color-mix(in oklab, var(--primary) 18%, transparent);\n  }\n}\n\n.booster-launcher {\n  cursor: grab;\n  pointer-events: auto;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  font: 800 17px / 1 inherit;\n}\n\n.booster-launcher:hover {\n  transform: scale(1.04);\n}\n\n.booster-launcher-dragging {\n  cursor: grabbing;\n  transform: scale(1.06);\n}\n\n.booster-launcher-grip {\n  opacity: .7;\n  width: 11px;\n  height: 11px;\n}\n\n.booster-modal-backdrop {\n  z-index: 2147483646;\n  -webkit-backdrop-filter: blur(3px);\n  backdrop-filter: blur(3px);\n  pointer-events: auto;\n  background: #00000061;\n  place-items: center;\n  padding: 16px;\n  display: grid;\n  position: fixed;\n  inset: 0;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n  max-height: calc(100vh - 32px);\n  overflow: auto;\n}\n\n.booster-modal-surface .booster-control-center {\n  width: 100%;\n  margin: 0;\n}\n\n.booster-popup-host {\n  background: var(--background);\n  min-width: 360px;\n}\n\n.booster-select {\n  border: 1px solid var(--border);\n  background: var(--background);\n  min-width: 92px;\n  height: 32px;\n  color: var(--foreground);\n  cursor: pointer;\n  border-radius: 8px;\n  outline: none;\n  flex: none;\n  padding: 0 28px 0 10px;\n  font: 500 12px / 1 inherit;\n}\n\n.booster-select:focus {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-stack-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-stack-card label {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-input {\n  border: 1px solid var(--border);\n  background: var(--background);\n  width: 100%;\n  min-width: 0;\n  height: 32px;\n  color: var(--foreground);\n  border-radius: 8px;\n  outline: none;\n  padding: 0 10px;\n  font: 500 11px / 1 inherit;\n}\n\n.booster-input:focus {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-counter-grid {\n  color: var(--muted-foreground);\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 6px 12px;\n  margin-top: 8px;\n  display: grid;\n}\n\n.booster-counter-grid span {\n  justify-content: space-between;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-counter-grid b {\n  color: var(--foreground);\n}\n\n.booster-header-copy {\n  min-width: 0;\n}\n\n.booster-header-actions {\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-header-toggle-label {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  font-weight: 600;\n}\n\n.booster-settings-layout {\n  grid-template-columns: 150px minmax(0, 1fr);\n  min-height: 360px;\n  display: grid;\n}\n\n.booster-settings-nav {\n  border-right: 1px solid var(--border);\n  background: var(--muted);\n  align-content: start;\n  gap: 4px;\n  padding: 12px 8px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-settings-nav {\n    background: color-mix(in oklab, var(--muted) 58%, transparent);\n  }\n}\n\n.booster-settings-nav button {\n  width: 100%;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  border-radius: 9px;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 10px;\n  font: 600 11px / 1.2 inherit;\n  display: flex;\n}\n\n.booster-settings-nav button:hover, .booster-settings-nav button.active {\n  background: var(--background);\n  color: var(--foreground);\n}\n\n.booster-settings-content {\n  align-content: start;\n  gap: 10px;\n  min-width: 0;\n  padding: 14px;\n  display: grid;\n}\n\n.booster-setting-card-flat {\n  border: 0;\n  border-bottom: 1px solid var(--border);\n  border-radius: 0;\n  padding: 0 0 10px;\n}\n\n.booster-analytics-grid {\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 12px;\n  display: grid;\n}\n\n.booster-counter-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  padding: 12px;\n}\n\n.booster-counter-title {\n  margin-bottom: 8px;\n  font-size: 12px;\n  font-weight: 700;\n}\n\n.booster-disclosure {\n  width: 100%;\n  color: var(--foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 0;\n  display: flex;\n}\n\n.booster-disclosure > span {\n  gap: 3px;\n  display: grid;\n}\n\n.booster-disclosure b {\n  font-size: 12px;\n}\n\n.booster-disclosure small {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.rotate-180 {\n  transform: rotate(180deg);\n}\n\n.booster-telemetry-body {\n  gap: 10px;\n  padding-top: 10px;\n  display: grid;\n}\n\n.booster-field {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-telemetry-test-row {\n  align-items: center;\n  gap: 10px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-test-success {\n  color: oklch(62% .17 145);\n  font-size: 11px;\n}\n\n.booster-test-error {\n  color: oklch(63% .2 25);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n}\n\n@media (max-width: 620px) {\n  .booster-control-center, .booster-modal-surface {\n    width: calc(100vw - 20px);\n  }\n\n  .booster-settings-layout {\n    grid-template-columns: 1fr;\n  }\n\n  .booster-settings-nav {\n    border-right: 0;\n    border-bottom: 1px solid var(--border);\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n\n  .booster-settings-nav button {\n    justify-content: center;\n  }\n\n  .booster-analytics-grid {\n    grid-template-columns: 1fr;\n  }\n}\n\n.booster-launcher-icon {\n  width: 21px;\n  height: 21px;\n}\n\n.booster-launcher-open {\n  box-shadow: 0 14px 40px #00000057, 0 0 0 4px var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher-open {\n    box-shadow: 0 14px 40px #00000057, 0 0 0 4px color-mix(in oklab, var(--primary) 24%, transparent);\n  }\n}\n\n.booster-quick-menu {\n  z-index: 2147483647;\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 330px;\n  color: var(--card-foreground);\n  pointer-events: auto;\n  border-radius: 18px;\n  position: fixed;\n  overflow: hidden;\n  box-shadow: 0 22px 60px #0000004d;\n}\n\n.booster-quick-header, .booster-loader-status, .booster-quick-actions, .booster-quick-context, .booster-quick-empty, .booster-loader-error {\n  padding: 12px 14px;\n}\n\n.booster-quick-header, .booster-loader-status {\n  justify-content: space-between;\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-quick-header {\n  border-bottom: 1px solid var(--border);\n}\n\n.booster-quick-header > div, .booster-loader-status > div {\n  gap: 2px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-quick-header strong, .booster-loader-status strong {\n  font-size: 13px;\n}\n\n.booster-quick-header span, .booster-loader-status span, .booster-quick-context code, .booster-quick-empty, .booster-loader-error {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.booster-icon-button {\n  border: 1px solid var(--border);\n  background: var(--secondary);\n  width: 30px;\n  height: 30px;\n  color: var(--secondary-foreground);\n  cursor: pointer;\n  border-radius: 9px;\n  flex: none;\n  justify-content: center;\n  align-items: center;\n  display: inline-flex;\n}\n\n.booster-icon-button:hover {\n  background: var(--accent);\n}\n\n.booster-quick-context {\n  gap: 7px;\n  display: grid;\n}\n\n.booster-quick-context > strong {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 13px;\n  overflow: hidden;\n}\n\n.booster-quick-context code {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  overflow: hidden;\n}\n\n.booster-quick-chips, .booster-archive-meta {\n  flex-wrap: wrap;\n  gap: 5px;\n  display: flex;\n}\n\n.booster-quick-chips span, .booster-archive-meta span {\n  background: var(--muted);\n  max-width: 100%;\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  border-radius: 999px;\n  padding: 3px 6px;\n  font-size: 10px;\n  overflow: hidden;\n}\n\n.booster-loader-status {\n  border-top: 1px solid var(--border);\n  border-bottom: 1px solid var(--border);\n  background: var(--secondary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-loader-status {\n    background: color-mix(in oklab, var(--secondary) 70%, transparent);\n  }\n}\n\n.booster-loader-error {\n  border-top: 1px solid var(--border);\n}\n\n.booster-spin {\n  animation: 1.2s linear infinite booster-spin;\n}\n\n@keyframes booster-spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n.booster-quick-actions {\n  grid-template-columns: 1fr 1fr;\n  gap: 8px;\n  display: grid;\n}\n\n.booster-quick-primary, .booster-quick-secondary {\n  border: 1px solid var(--border);\n  cursor: pointer;\n  border-radius: 11px;\n  justify-content: center;\n  align-items: center;\n  gap: 7px;\n  min-height: 38px;\n  font: 600 11px / 1.2 inherit;\n  display: inline-flex;\n}\n\n.booster-quick-primary {\n  background: var(--primary);\n  color: var(--primary-foreground);\n}\n\n.booster-quick-secondary {\n  background: var(--secondary);\n  color: var(--secondary-foreground);\n}\n\n.booster-quick-primary:disabled, .booster-quick-secondary:disabled {\n  cursor: not-allowed;\n  opacity: .45;\n}\n\n.booster-archive-backdrop {\n  padding: 10px;\n}\n\n.booster-archive-surface {\n  pointer-events: auto;\n  width: min(1180px, 100vw - 20px);\n  height: min(820px, 100vh - 20px);\n}\n\n.booster-archive-browser {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 100%;\n  height: 100%;\n  color: var(--card-foreground);\n  border-radius: 20px;\n  grid-template-rows: auto minmax(0, 1fr);\n  display: grid;\n  overflow: hidden;\n  box-shadow: 0 28px 80px #00000061;\n}\n\n.booster-archive-header {\n  border-bottom: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  min-height: 58px;\n  padding: 10px 14px;\n  display: flex;\n}\n\n.booster-archive-title, .booster-archive-header-actions {\n  align-items: center;\n  gap: 9px;\n  display: flex;\n}\n\n.booster-archive-title > div {\n  gap: 1px;\n  display: grid;\n}\n\n.booster-archive-title strong {\n  font-size: 14px;\n}\n\n.booster-archive-title span {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-archive-layout {\n  grid-template-columns: 300px minmax(0, 1fr);\n  min-height: 0;\n  display: grid;\n}\n\n.booster-archive-sidebar {\n  border-right: 1px solid var(--border);\n  background: var(--secondary);\n  padding: 10px;\n  overflow: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-sidebar {\n    background: color-mix(in oklab, var(--secondary) 38%, var(--card));\n  }\n}\n\n.booster-archive-group {\n  margin-bottom: 12px;\n}\n\n.booster-archive-project {\n  color: var(--muted-foreground);\n  text-transform: uppercase;\n  align-items: center;\n  gap: 6px;\n  padding: 6px 7px;\n  font-size: 10px;\n  font-weight: 700;\n  display: flex;\n}\n\n.booster-archive-project span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-archive-conversation {\n  width: 100%;\n  color: inherit;\n  text-align: left;\n  cursor: pointer;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 11px;\n  gap: 3px;\n  margin: 2px 0;\n  padding: 9px 10px;\n  display: grid;\n}\n\n.booster-archive-conversation:hover, .booster-archive-conversation.active {\n  border-color: var(--border);\n  background: var(--card);\n}\n\n.booster-archive-conversation strong, .booster-archive-conversation span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  overflow: hidden;\n}\n\n.booster-archive-conversation strong {\n  font-size: 12px;\n}\n\n.booster-archive-conversation span {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-archive-content {\n  background: var(--background);\n  min-width: 0;\n  overflow: auto;\n}\n\n.booster-archive-conversation-head {\n  z-index: 2;\n  border-bottom: 1px solid var(--border);\n  background: var(--card);\n  justify-content: space-between;\n  align-items: flex-start;\n  gap: 14px;\n  padding: 12px 16px;\n  display: flex;\n  position: sticky;\n  top: 0;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-conversation-head {\n    background: color-mix(in oklab, var(--card) 94%, transparent);\n  }\n}\n\n.booster-archive-conversation-head {\n  -webkit-backdrop-filter: blur(10px);\n  backdrop-filter: blur(10px);\n}\n\n.booster-archive-conversation-head > div:first-child {\n  grid-template-columns: auto minmax(0, 1fr);\n  align-items: center;\n  gap: 2px 8px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-archive-conversation-head strong {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 13px;\n  overflow: hidden;\n}\n\n.booster-archive-conversation-head span {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  grid-column: 2;\n  font-size: 9px;\n  overflow: hidden;\n}\n\n.booster-archive-back {\n  background: var(--secondary);\n  width: 28px;\n  height: 28px;\n  color: var(--secondary-foreground);\n  cursor: pointer;\n  border: 0;\n  border-radius: 8px;\n  grid-row: 1 / span 2;\n  justify-content: center;\n  align-items: center;\n  display: inline-flex;\n}\n\n.booster-archive-messages {\n  gap: 10px;\n  padding: 14px 16px 40px;\n  display: grid;\n}\n\n.booster-archive-message {\n  border: 1px solid var(--border);\n  background: var(--card);\n  border-radius: 14px;\n  max-width: 920px;\n  padding: 11px 13px;\n}\n\n.booster-archive-message.role-user {\n  background: var(--secondary);\n  margin-left: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-message.role-user {\n    background: color-mix(in oklab, var(--secondary) 82%, var(--card));\n  }\n}\n\n.booster-archive-message.role-tool {\n  border-style: dashed;\n}\n\n.booster-archive-message-head {\n  color: var(--muted-foreground);\n  text-transform: uppercase;\n  flex-wrap: wrap;\n  gap: 5px 10px;\n  margin-bottom: 8px;\n  font-size: 9px;\n  display: flex;\n}\n\n.booster-archive-message-head strong {\n  color: var(--foreground);\n}\n\n.booster-archive-message-text {\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  font-size: 12px;\n  line-height: 1.55;\n}\n\n.booster-raw-toggle {\n  color: var(--muted-foreground);\n  cursor: pointer;\n  background: none;\n  border: 0;\n  align-items: center;\n  gap: 4px;\n  margin-top: 10px;\n  padding: 0;\n  font: 600 10px / 1 inherit;\n  display: inline-flex;\n}\n\n.booster-archive-raw {\n  background: var(--muted);\n  max-height: 360px;\n  color: var(--foreground);\n  white-space: pre-wrap;\n  border-radius: 10px;\n  margin: 9px 0 0;\n  padding: 10px;\n  font: 10px / 1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;\n  overflow: auto;\n}\n\n.booster-archive-empty, .booster-archive-error {\n  color: var(--muted-foreground);\n  padding: 24px;\n  font-size: 12px;\n}\n\n.booster-archive-error {\n  color: #dc2626;\n}\n\n@media (max-width: 760px) {\n  .booster-archive-layout {\n    grid-template-columns: 220px minmax(0, 1fr);\n  }\n\n  .booster-quick-menu {\n    width: min(330px, 100vw - 24px);\n  }\n}\n\n.booster-identity {\n  vertical-align: middle;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  max-width: 100%;\n  display: inline-flex;\n}\n\n.booster-dock {\n  z-index: 2147483647;\n  pointer-events: auto;\n  width: 44px;\n  height: 44px;\n  position: fixed;\n}\n\n.booster-dock-toggle {\n  z-index: 2;\n  border: 1px solid var(--border);\n  background: var(--primary);\n  width: 44px;\n  height: 44px;\n  color: var(--primary-foreground);\n  cursor: grab;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  justify-content: center;\n  align-items: center;\n  padding: 0;\n  display: flex;\n  position: relative;\n}\n\n.booster-dock.right .booster-dock-toggle {\n  border-radius: 12px 0 0 12px;\n}\n\n.booster-dock.left .booster-dock-toggle {\n  border-radius: 0 12px 12px 0;\n}\n\n.booster-dock.dragging .booster-dock-toggle {\n  cursor: grabbing;\n}\n\n.booster-dock-shell {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(284px, 100vw);\n  color: var(--card-foreground);\n  position: absolute;\n  overflow: hidden;\n  box-shadow: 0 12px 32px #00000038;\n}\n\n.booster-dock.right .booster-dock-shell {\n  border-radius: 16px 0 0 16px;\n  right: 0;\n}\n\n.booster-dock.left .booster-dock-shell {\n  border-radius: 0 16px 16px 0;\n  left: 0;\n}\n\n.booster-dock.grow-up .booster-dock-shell {\n  padding-bottom: 44px;\n  bottom: 0;\n}\n\n.booster-dock.grow-down .booster-dock-shell {\n  padding-top: 44px;\n  top: 0;\n}\n\n.booster-dock-content {\n  overscroll-behavior: contain;\n  overflow-y: auto;\n}\n\n.booster-dock-close-bar {\n  box-sizing: border-box;\n  background: var(--primary);\n  height: 44px;\n  color: var(--primary-foreground);\n  letter-spacing: .01em;\n  cursor: grab;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  border: 0;\n  align-items: center;\n  gap: 8px;\n  padding: 0 12px;\n  font: 650 11px / 1 inherit;\n  display: flex;\n  position: absolute;\n  left: -1px;\n  right: -1px;\n}\n\n.booster-dock.grow-up .booster-dock-close-bar {\n  border-top: 1px solid var(--primary-foreground);\n  bottom: -1px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-dock.grow-up .booster-dock-close-bar {\n    border-top: 1px solid color-mix(in oklab, var(--primary-foreground) 18%, transparent);\n  }\n}\n\n.booster-dock.grow-down .booster-dock-close-bar {\n  border-bottom: 1px solid var(--primary-foreground);\n  top: -1px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-dock.grow-down .booster-dock-close-bar {\n    border-bottom: 1px solid color-mix(in oklab, var(--primary-foreground) 18%, transparent);\n  }\n}\n\n.booster-dock.right .booster-dock-close-bar, .booster-dock.left .booster-dock-close-bar {\n  justify-content: flex-start;\n  padding-inline: 12px;\n}\n\n.booster-dock-close-bar:hover {\n  filter: brightness(1.04);\n}\n\n.booster-dock-close-bar:active {\n  cursor: grabbing;\n}\n\n.booster-dock-close-bar svg {\n  flex: none;\n}\n\n.booster-dock-context {\n  gap: 5px;\n  padding: 11px 12px 7px;\n  display: grid;\n}\n\n.booster-dock-context > .booster-identity:first-child {\n  font-size: 13px;\n  font-weight: 650;\n}\n\n.booster-dock-context > .booster-identity {\n  font-size: 12px;\n}\n\n.booster-dock-context p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 11px;\n  line-height: 1.5;\n}\n\n.booster-dock-context time {\n  font-size: 10px;\n  display: block;\n}\n\n.booster-dock-counts {\n  color: var(--muted-foreground);\n  flex-wrap: wrap;\n  gap: 6px 10px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-dock-counts b {\n  color: var(--foreground);\n  font-weight: 650;\n}\n\n.booster-capture-shortcut {\n  color: var(--muted-foreground);\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n  background: none;\n  border: 0;\n  align-items: center;\n  gap: 6px;\n  padding: 3px 0;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-dock-actions {\n  flex-direction: column;\n  gap: 1px;\n  padding: 4px 5px 6px;\n  display: flex;\n}\n\n.booster-dock-actions > button {\n  width: 100%;\n  min-height: 34px;\n  color: inherit;\n  text-align: left;\n  font: inherit;\n  cursor: pointer;\n  background: none;\n  border: 0;\n  border-radius: 8px;\n  align-items: center;\n  gap: 10px;\n  padding: 6px 9px;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-dock-actions > button:hover:not(:disabled) {\n  background: var(--muted);\n}\n\n.booster-dock-actions > button:disabled {\n  opacity: .4;\n  cursor: not-allowed;\n}\n\n.booster-dock.grow-down .booster-dock-content {\n  flex-direction: column-reverse;\n  display: flex;\n}\n\n.booster-dock.grow-down .booster-dock-actions {\n  flex-direction: column-reverse;\n}\n\n.booster-dock-progress {\n  border-block: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: center;\n  gap: 8px;\n  padding: 8px 12px;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-identity-label {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-identity-copy {\n  width: 24px;\n  height: 24px;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  opacity: 0;\n  background: none;\n  border: 0;\n  border-radius: 5px;\n  flex: none;\n  justify-content: center;\n  align-items: center;\n  padding: 4px;\n  display: inline-flex;\n}\n\n.booster-identity:hover .booster-identity-copy, .booster-identity:focus-within .booster-identity-copy, .booster-reader-group-header:hover .booster-identity-copy {\n  opacity: 1;\n}\n\n.booster-identity-copy:hover {\n  background: var(--muted);\n}\n\n.booster-sr-only {\n  clip-path: inset(50%);\n  white-space: nowrap;\n  width: 1px;\n  height: 1px;\n  position: absolute;\n  overflow: hidden;\n}\n\n.booster-modal-backdrop {\n  -webkit-backdrop-filter: none;\n  backdrop-filter: none;\n}\n\n.booster-dialog {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(760px, 100vw - 32px);\n  max-height: calc(100dvh - 32px);\n  color: var(--card-foreground);\n  pointer-events: auto;\n  border-radius: 16px;\n  outline: none;\n  font-size: 14px;\n  overflow: auto;\n  box-shadow: 0 20px 60px #0000004d;\n}\n\n.booster-dialog .booster-control-center {\n  width: 100%;\n  box-shadow: none;\n  border: 0;\n  border-radius: 0;\n  margin: 0;\n}\n\n.booster-dialog-wide {\n  width: min(1220px, 100vw - 32px);\n  height: min(860px, 100dvh - 32px);\n  overflow: hidden;\n}\n\n.booster-section-header {\n  border-bottom: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  min-height: 64px;\n  padding: 12px 18px;\n  display: flex;\n}\n\n.booster-section-header strong {\n  font-size: 15px;\n}\n\n.booster-section-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-form-body {\n  gap: 16px;\n  padding: 20px;\n  line-height: 1.5;\n  display: grid;\n}\n\n.booster-form-body h2, .booster-capture-settings h3 {\n  margin: 0;\n  font-size: 16px;\n  font-weight: 650;\n}\n\n.booster-form-body > label {\n  gap: 6px;\n  font-size: 12px;\n  font-weight: 600;\n  display: grid;\n}\n\n.booster-form-body select, .booster-reader input {\n  border: 1px solid var(--border);\n  background: var(--background);\n  width: 100%;\n  min-width: 0;\n  min-height: 38px;\n  color: var(--foreground);\n  font: inherit;\n  border-radius: 8px;\n  padding: 8px 10px;\n  font-size: 12px;\n}\n\n.booster-checkboxes {\n  border: 0;\n  gap: 10px;\n  margin: 0;\n  padding: 0;\n  display: grid;\n}\n\n.booster-checkboxes label {\n  align-items: center;\n  gap: 8px;\n  font-size: 13px;\n  display: flex;\n}\n\n.booster-checkboxes input {\n  width: 16px;\n  height: 16px;\n}\n\n.booster-export-suboptions {\n  border-inline-start: 1px solid var(--border);\n  gap: 8px;\n  margin-inline-start: 22px;\n  padding-inline-start: 12px;\n  display: grid;\n}\n\n.booster-note {\n  color: var(--muted-foreground);\n  overflow-wrap: anywhere;\n  margin: 8px 0;\n  font-size: 12px;\n  line-height: 1.6;\n}\n\n.booster-notice {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  border-radius: 8px;\n  margin: 0;\n  padding: 12px;\n  font-size: 12px;\n  line-height: 1.6;\n}\n\n.booster-error {\n  color: var(--foreground);\n  border: 1px solid #c2410c;\n  border-radius: 8px;\n  margin: 8px 12px;\n  padding: 8px 10px;\n  font-size: 12px;\n  line-height: 1.5;\n}\n\n.booster-action-primary, .booster-action-secondary {\n  border: 1px solid var(--border);\n  cursor: pointer;\n  min-height: 38px;\n  font: inherit;\n  border-radius: 8px;\n  justify-content: center;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 14px;\n  font-size: 12px;\n  display: inline-flex;\n}\n\n.booster-action-primary {\n  background: var(--primary);\n  color: var(--primary-foreground);\n  text-decoration: none;\n}\n\n.booster-action-secondary {\n  background: var(--secondary);\n  color: var(--secondary-foreground);\n}\n\n.booster-action-primary:disabled, .booster-action-secondary:disabled, .booster-icon-button:disabled {\n  opacity: .45;\n  cursor: not-allowed;\n}\n\n.booster-capture-settings > .booster-form-body {\n  padding-inline: 0;\n}\n\n.booster-reader {\n  grid-template-rows: auto minmax(0, 1fr);\n  height: 100%;\n  display: grid;\n}\n\n.booster-reader-heading {\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-reader-layout {\n  grid-template-columns: minmax(210px, 27%) minmax(0, 1fr);\n  min-height: 0;\n  display: grid;\n}\n\n.booster-reader-sidebar {\n  border-right: 1px solid var(--border);\n  background: var(--card);\n  overscroll-behavior: contain;\n  min-width: 0;\n  padding: 12px;\n  overflow: auto;\n}\n\n.booster-reader-group {\n  margin-top: 12px;\n}\n\n.booster-reader-group-header {\n  align-items: center;\n  gap: 2px;\n  min-height: 38px;\n  display: flex;\n}\n\n.booster-group-toggle {\n  min-width: 0;\n  color: inherit;\n  cursor: pointer;\n  text-align: left;\n  font: inherit;\n  background: none;\n  border: 0;\n  flex: 1;\n  align-items: center;\n  gap: 6px;\n  padding: 6px 0;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-group-toggle svg {\n  flex-shrink: 0;\n}\n\n.booster-group-toggle span {\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-group-toggle small {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-reader-chat-list {\n  gap: 3px;\n  padding-left: 10px;\n  display: grid;\n}\n\n.booster-reader-chat-list > button {\n  color: inherit;\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 8px;\n  align-items: center;\n  gap: 6px;\n  padding: 10px;\n  font-size: 12px;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-reader-chat-list > button:hover, .booster-reader-chat-list > button.active {\n  background: var(--muted);\n  border-color: var(--border);\n}\n\n.booster-reader-main {\n  background: var(--background);\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-reader-chat-header {\n  justify-content: space-between;\n  align-items: flex-start;\n  gap: 12px;\n  display: flex;\n}\n\n.booster-reader-chat-header > div {\n  min-width: 0;\n}\n\n.booster-reader-chat-header h2 {\n  margin: 0 0 4px;\n  font-size: 18px;\n  line-height: 1.4;\n}\n\n.booster-reader-chat-header > div > .booster-identity {\n  color: var(--muted-foreground);\n  font-size: 12px;\n}\n\n.booster-reader-summary {\n  color: var(--muted-foreground);\n  flex-wrap: wrap;\n  gap: 6px 14px;\n  margin-block: 10px 0;\n  font-size: 11px;\n  display: flex;\n}\n\n.booster-reader-summary b {\n  color: var(--foreground);\n}\n\n.booster-reader-summary p {\n  flex-basis: 100%;\n  margin: 2px 0 0;\n  line-height: 1.5;\n}\n\n.booster-reader-exchanges {\n  gap: 20px;\n  margin-top: 0;\n  display: grid;\n}\n\n.booster-exchange {\n  border-bottom: 1px solid var(--border);\n  padding-bottom: 16px;\n}\n\n.booster-graph-message {\n  margin-left: calc(min(var(--graph-lane, 0), 3) * 15px);\n  grid-template-columns: 34px minmax(0, 1fr);\n  align-items: stretch;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-graph-rail {\n  background: linear-gradient(var(--border), var(--border)) center / 2px 100% no-repeat;\n  justify-content: center;\n  min-height: 40px;\n  display: flex;\n  position: relative;\n}\n\n.booster-graph-dot {\n  border: 2px solid var(--background);\n  outline: 2px solid var(--primary);\n  background: var(--primary);\n  z-index: 1;\n  border-radius: 50%;\n  align-self: flex-start;\n  width: 12px;\n  height: 12px;\n  margin-top: 14px;\n  position: sticky;\n  top: 12px;\n}\n\n.booster-graph-dot.is-assistant {\n  background: var(--secondary);\n  outline-color: var(--muted-foreground);\n  border-radius: 4px;\n}\n\n.booster-graph-message.is-fork .booster-graph-rail:before {\n  content: "";\n  border-top: 2px solid var(--primary);\n  border-radius: 6px;\n  position: absolute;\n  top: 20px;\n  left: 0;\n  right: 50%;\n}\n\n.booster-graph-content {\n  min-width: 0;\n  padding-bottom: 10px;\n}\n\n.booster-graph-branch-label {\n  border: 1px solid var(--border);\n  color: var(--muted-foreground);\n  border-radius: 999px;\n  align-items: center;\n  gap: 5px;\n  margin: 2px 0 8px 4px;\n  padding: 3px 8px;\n  font-size: 11px;\n  display: inline-flex;\n}\n\n.booster-mobile-back {\n  display: none;\n}\n\n.booster-dialog :is(button, input, select, summary):focus-visible, .booster-dock :is(button, summary):focus-visible {\n  outline: 2px solid var(--ring);\n  outline-offset: 2px;\n}\n\n@media (hover: none) {\n  .booster-identity-copy {\n    opacity: 1;\n  }\n}\n\n@media (max-width: 640px) {\n  .booster-reader-layout {\n    display: block;\n  }\n\n  .booster-reader-sidebar, .booster-reader-main {\n    height: 100%;\n  }\n\n  .booster-reader-sidebar {\n    display: none;\n  }\n\n  .booster-reader-list-mode .booster-reader-sidebar {\n    display: block;\n  }\n\n  .booster-reader-main {\n    padding: 0;\n  }\n\n  .booster-reader-list-mode .booster-reader-main {\n    display: none;\n  }\n\n  .booster-mobile-back {\n    color: inherit;\n    font: inherit;\n    cursor: pointer;\n    background: none;\n    border: 0;\n    align-items: center;\n    gap: 6px;\n    margin-bottom: 12px;\n    padding: 6px 0;\n    font-size: 12px;\n    display: inline-flex;\n  }\n\n  .booster-reader-chat-header {\n    flex-wrap: wrap;\n  }\n\n  .booster-dialog, .booster-dialog-wide {\n    width: calc(100vw - 16px);\n    max-height: calc(100dvh - 16px);\n  }\n\n  .booster-modal-backdrop {\n    padding: 8px;\n  }\n}\n\n.booster-archive-workspace-root {\n  z-index: 2147483645;\n  pointer-events: none;\n  position: fixed;\n  inset: 0;\n}\n\n.booster-archive-workspace {\n  border: 1px solid var(--border);\n  background: var(--background);\n  pointer-events: auto;\n  resize: none;\n  border-radius: 14px;\n  min-width: 520px;\n  min-height: 360px;\n  position: fixed;\n  overflow: hidden;\n  box-shadow: 0 22px 70px #00000052;\n}\n\n.booster-archive-workspace .booster-reader {\n  border-radius: inherit;\n  background: var(--background);\n  height: 100%;\n  overflow: hidden;\n}\n\n.booster-archive-workspace [data-archive-drag-handle] {\n  cursor: move;\n  -webkit-user-select: none;\n  user-select: none;\n  touch-action: none;\n}\n\n.booster-archive-grip {\n  color: var(--muted-foreground);\n  flex: none;\n}\n\n.booster-archive-resize {\n  z-index: 4;\n  background: linear-gradient(135deg, transparent 0 48%, var(--muted-foreground) 49% 54%, transparent 55% 64%, var(--muted-foreground) 65% 70%, transparent 71%);\n  opacity: .55;\n  cursor: nwse-resize;\n  touch-action: none;\n  border: 0;\n  width: 18px;\n  height: 18px;\n  padding: 0;\n  position: absolute;\n  bottom: 0;\n  right: 0;\n}\n\n.booster-archive-dock-button {\n  z-index: 2147483646;\n  border: 1px solid var(--primary);\n  place-items: center;\n  width: 42px;\n  height: 42px;\n  padding: 0;\n  display: grid;\n  position: fixed;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-dock-button {\n    border: 1px solid color-mix(in oklab, var(--primary) 60%, var(--border));\n  }\n}\n\n.booster-archive-dock-button {\n  background: var(--primary);\n  color: var(--primary-foreground);\n  cursor: grab;\n  pointer-events: auto;\n  touch-action: none;\n  border-radius: 10px 0 0 10px;\n  box-shadow: 0 10px 30px #00000047;\n}\n\n.booster-archive-dock-button[style*="left: 0px"] {\n  border-radius: 0 10px 10px 0;\n}\n\n.booster-archive-dock-button:active {\n  cursor: grabbing;\n}\n\n.booster-archive-dock-corner {\n  opacity: .65;\n  width: 9px;\n  height: 9px;\n  position: absolute;\n  bottom: 3px;\n  right: 3px;\n}\n\n.booster-reader-chat-actions {\n  flex-wrap: wrap;\n  justify-content: flex-end;\n  gap: 6px;\n  display: flex;\n}\n\n.booster-exchange-details {\n  border-left: 2px solid var(--border);\n  gap: 6px;\n  margin: 10px 0 10px 12px;\n  padding: 8px 0 8px 12px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-exchange-details {\n    border-left: 2px solid color-mix(in oklab, var(--border) 78%, var(--primary));\n  }\n}\n\n.booster-exchange-details-label {\n  color: var(--muted-foreground);\n  letter-spacing: .04em;\n  text-transform: uppercase;\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-markdown {\n  overflow-wrap: anywhere;\n  font-size: 13px;\n  line-height: 1.65;\n}\n\n.booster-markdown > :first-child {\n  margin-top: 0;\n}\n\n.booster-markdown > :last-child {\n  margin-bottom: 0;\n}\n\n.booster-markdown p {\n  margin: .55em 0;\n}\n\n.booster-markdown h1, .booster-markdown h2, .booster-markdown h3, .booster-markdown h4, .booster-markdown h5, .booster-markdown h6 {\n  color: var(--foreground);\n  margin: 1em 0 .45em;\n  font-weight: 700;\n  line-height: 1.3;\n}\n\n.booster-markdown h1 {\n  font-size: 1.45em;\n}\n\n.booster-markdown h2 {\n  font-size: 1.28em;\n}\n\n.booster-markdown h3 {\n  font-size: 1.14em;\n}\n\n.booster-markdown :is(ul, ol) {\n  margin: .6em 0;\n  padding-left: 1.45em;\n}\n\n.booster-markdown li {\n  margin: .22em 0;\n}\n\n.booster-markdown blockquote {\n  border-left: 3px solid var(--border);\n  color: var(--muted-foreground);\n  margin: .7em 0;\n  padding: .2em 0 .2em .9em;\n}\n\n.booster-markdown code {\n  background: var(--muted);\n  border-radius: 5px;\n  padding: .15em .35em;\n  font: .92em / 1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n}\n\n.booster-markdown pre {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  border-radius: 9px;\n  max-width: 100%;\n  margin: .75em 0;\n  padding: 11px 12px;\n  overflow: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-markdown pre {\n    background: color-mix(in oklab, var(--muted) 72%, var(--background));\n  }\n}\n\n.booster-markdown pre code {\n  white-space: pre;\n  background: none;\n  padding: 0;\n}\n\n.booster-markdown a {\n  color: var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-markdown a {\n    color: color-mix(in oklab, var(--primary) 78%, #3b82f6);\n  }\n}\n\n.booster-markdown a {\n  text-underline-offset: 2px;\n  text-decoration: underline;\n}\n\n.booster-markdown hr {\n  background: var(--border);\n  border: 0;\n  height: 1px;\n  margin: 1em 0;\n}\n\n.booster-markdown-table-wrap {\n  max-width: 100%;\n  margin: .8em 0;\n  overflow-x: auto;\n}\n\n.booster-markdown table {\n  border-collapse: collapse;\n  width: max-content;\n  min-width: 100%;\n  font-size: 12px;\n}\n\n.booster-markdown :is(th, td) {\n  border: 1px solid var(--border);\n  text-align: left;\n  vertical-align: top;\n  padding: 6px 9px;\n}\n\n.booster-markdown th {\n  background: var(--muted);\n}\n\n.booster-record {\n  border: 1px solid var(--border);\n  background: var(--card);\n  border-radius: 11px;\n  min-width: 0;\n  max-width: 100%;\n  margin-block: 7px;\n  padding: 11px 13px;\n  position: relative;\n  overflow: hidden;\n}\n\n.booster-record-user {\n  background: var(--muted);\n  margin-left: min(52px, 8%);\n}\n\n.booster-record-reasoning, .booster-record-tool_call, .booster-record-tool_result, .booster-record-internal {\n  background: var(--muted);\n  margin-block: 4px;\n  padding: 8px 10px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-record-reasoning, .booster-record-tool_call, .booster-record-tool_result, .booster-record-internal {\n    background: color-mix(in oklab, var(--muted) 45%, var(--background));\n  }\n}\n\n.booster-record-header {\n  color: var(--muted-foreground);\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 5px 10px;\n  margin-bottom: 8px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-record-header strong {\n  color: var(--foreground);\n  font-size: 11px;\n}\n\n.booster-record-internal-header {\n  justify-content: space-between;\n}\n\n.booster-record-kind {\n  align-items: center;\n  gap: 6px;\n  display: inline-flex;\n}\n\n.booster-record-expand, .booster-record-meta-button, .booster-tool-action {\n  color: var(--muted-foreground);\n  cursor: pointer;\n  background: none;\n  border: 0;\n  border-radius: 6px;\n  align-items: center;\n  gap: 4px;\n  padding: 3px 6px;\n  font: 600 10px / 1.25 inherit;\n  display: inline-flex;\n}\n\n.booster-record-expand:hover, .booster-record-meta-button:hover, .booster-tool-action:hover {\n  background: var(--muted);\n  color: var(--foreground);\n}\n\n.booster-record-meta-button {\n  margin-top: 7px;\n}\n\n.booster-reasoning-preview {\n  max-height: 76px;\n  color: var(--foreground);\n  position: relative;\n  overflow: hidden;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reasoning-preview {\n    color: color-mix(in oklab, var(--foreground) 82%, var(--muted-foreground));\n  }\n}\n\n.booster-reasoning-preview:not(.expanded):after {\n  background: linear-gradient(transparent, var(--muted));\n  height: 30px;\n  position: absolute;\n  bottom: 0;\n  left: 0;\n  right: 0;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reasoning-preview:not(.expanded):after {\n    background: linear-gradient(transparent, color-mix(in oklab, var(--muted) 45%, var(--background)));\n  }\n}\n\n.booster-reasoning-preview:not(.expanded):after {\n  content: "";\n  pointer-events: none;\n}\n\n.booster-reasoning-preview.expanded {\n  max-height: none;\n  overflow: visible;\n}\n\n.booster-reasoning-preview .booster-markdown {\n  font-size: 11px;\n  line-height: 1.55;\n}\n\n.booster-tool-row {\n  grid-template-columns: 28px minmax(0, 1fr) auto;\n  align-items: center;\n  gap: 8px;\n  display: grid;\n}\n\n.booster-tool-icon {\n  border: 1px solid var(--border);\n  object-fit: cover;\n  background: var(--background);\n  border-radius: 7px;\n  width: 28px;\n  height: 28px;\n}\n\n.booster-tool-icon-fallback {\n  color: var(--muted-foreground);\n  place-items: center;\n  display: grid;\n}\n\n.booster-tool-copy {\n  gap: 1px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-tool-copy strong {\n  color: var(--foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n.booster-tool-copy > span {\n  color: var(--muted-foreground);\n  font-size: 9px;\n}\n\n.booster-tool-copy p {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  margin: 2px 0 0;\n  font-size: 10px;\n  overflow: hidden;\n}\n\n.booster-tool-actions {\n  align-items: center;\n  gap: 2px;\n  display: flex;\n}\n\n.booster-json-viewer {\n  background: var(--background);\n  max-height: min(70vh, 620px);\n  margin: 0;\n  padding: 14px 16px 22px;\n  overflow: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-json-viewer {\n    background: color-mix(in oklab, var(--background) 86%, #0f172a);\n  }\n}\n\n.booster-json-viewer {\n  color: var(--foreground);\n  tab-size: 2;\n  white-space: pre;\n  font: 11px / 1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n}\n\n.booster-tool-expanded {\n  border-top: 1px solid var(--border);\n  margin-top: 8px;\n  padding-top: 8px;\n}\n\n.booster-tool-expanded .booster-markdown {\n  font-size: 11px;\n}\n\n.booster-tool-expanded .booster-json-viewer {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  max-height: 260px;\n  font-size: 10px;\n}\n\n.booster-internal-row {\n  width: 100%;\n  color: inherit;\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  grid-template-columns: auto minmax(0, 1fr) auto;\n  align-items: center;\n  gap: 8px;\n  padding: 0;\n  display: grid;\n}\n\n.booster-internal-row > span:first-child {\n  align-items: center;\n  gap: 5px;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-internal-preview {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 10px;\n  overflow: hidden;\n}\n\n.booster-record-modal-header {\n  border-bottom: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: flex-start;\n  gap: 14px;\n  padding: 12px 14px;\n  display: flex;\n}\n\n.booster-record-modal-header > div {\n  gap: 2px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-record-modal-header strong {\n  font-size: 13px;\n}\n\n.booster-record-modal-header span {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 10px;\n  overflow: hidden;\n}\n\n.booster-json-key {\n  color: #60a5fa;\n}\n\n.booster-json-string {\n  color: #86efac;\n}\n\n.booster-json-number {\n  color: #fbbf24;\n}\n\n.booster-json-boolean {\n  color: #c084fc;\n}\n\n.booster-json-null {\n  color: #94a3b8;\n}\n\n.booster-capture-surface {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 14px;\n  overflow: hidden;\n}\n\n.booster-capture-surface > .booster-capture-settings {\n  padding: 14px 16px 18px;\n}\n\n@media (max-width: 680px) {\n  .booster-archive-workspace {\n    border-radius: 10px;\n    min-width: 0;\n    min-height: 0;\n  }\n\n  .booster-tool-row {\n    grid-template-columns: 26px minmax(0, 1fr);\n  }\n\n  .booster-tool-actions {\n    grid-column: 2;\n    justify-content: flex-start;\n  }\n\n  .booster-reader-chat-actions {\n    justify-content: flex-start;\n    width: 100%;\n  }\n}\n\n.booster-analytics-dashboard {\n  gap: 12px;\n  display: grid;\n}\n\n.booster-analytics-header {\n  justify-content: space-between;\n  align-items: flex-start;\n  gap: 14px;\n  display: flex;\n}\n\n.booster-analytics-header > div {\n  gap: 3px;\n  display: grid;\n}\n\n.booster-analytics-header strong {\n  font-size: 14px;\n}\n\n.booster-analytics-header span {\n  max-width: 520px;\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.45;\n}\n\n.booster-analytics-reset {\n  white-space: nowrap;\n  min-height: 30px;\n  padding: 5px 8px;\n}\n\n.booster-analytics-metrics {\n  grid-template-columns: repeat(3, minmax(0, 1fr));\n  gap: 8px;\n  display: grid;\n}\n\n.booster-analytics-metrics article {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 11px;\n  gap: 2px;\n  min-width: 0;\n  padding: 10px 11px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-analytics-metrics article {\n    background: color-mix(in oklab, var(--background) 82%, var(--muted));\n  }\n}\n\n.booster-analytics-metrics :where(article > span), .booster-analytics-metrics :where(small) {\n  color: var(--muted-foreground);\n  font-size: 9px;\n  line-height: 1.35;\n}\n\n.booster-analytics-metrics strong {\n  font-variant-numeric: tabular-nums;\n  margin-top: 2px;\n  font-size: 24px;\n  line-height: 1;\n}\n\n.booster-analytics-metrics article.warning {\n  border-color: #ef4444;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-analytics-metrics article.warning {\n    border-color: color-mix(in oklab, #ef4444 45%, var(--border));\n  }\n}\n\n.booster-analytics-metrics article.warning {\n  background: #ef4444;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-analytics-metrics article.warning {\n    background: color-mix(in oklab, #ef4444 8%, var(--background));\n  }\n}\n\n.booster-analytics-flow-grid {\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 8px;\n  display: grid;\n}\n\n.booster-analytics-flow-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 11px;\n  gap: 9px;\n  padding: 11px;\n  display: grid;\n}\n\n.booster-analytics-flow-card > header {\n  justify-content: space-between;\n  align-items: center;\n  gap: 8px;\n  font-size: 11px;\n  display: flex;\n}\n\n.booster-analytics-flow-card :where(header > span) {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 5px;\n  display: inline-flex;\n}\n\n.booster-analytics-flow-card :where(header b) {\n  font-variant-numeric: tabular-nums;\n  font-size: 12px;\n}\n\n.booster-analytics-flow-row {\n  color: var(--muted-foreground);\n  grid-template-columns: minmax(88px, .9fr) minmax(80px, 1.3fr) auto;\n  align-items: center;\n  gap: 7px;\n  font-size: 9px;\n  display: grid;\n}\n\n.booster-analytics-flow-row > div {\n  background: var(--muted);\n  border-radius: 999px;\n  height: 5px;\n  overflow: hidden;\n}\n\n.booster-analytics-flow-row i {\n  border-radius: inherit;\n  background: var(--primary);\n  height: 100%;\n  display: block;\n}\n\n.booster-analytics-flow-row b {\n  min-width: 24px;\n  color: var(--foreground);\n  text-align: right;\n  font-variant-numeric: tabular-nums;\n  font-size: 10px;\n}\n\n.booster-analytics-footer {\n  background: var(--muted);\n  color: var(--muted-foreground);\n  border-radius: 9px;\n  flex-wrap: wrap;\n  justify-content: space-between;\n  gap: 8px 16px;\n  padding: 8px 10px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-analytics-footer span {\n  align-items: center;\n  gap: 5px;\n  display: inline-flex;\n}\n\n.booster-analytics-footer b {\n  color: var(--foreground);\n  font-weight: 650;\n}\n\n.booster-analytics-footer .warning {\n  color: #ef4444;\n}\n\n@media (max-width: 720px) {\n  .booster-analytics-metrics, .booster-analytics-flow-grid {\n    grid-template-columns: 1fr;\n  }\n\n  .booster-analytics-header {\n    flex-direction: column;\n  }\n}\n\n.booster-record-header {\n  min-width: 0;\n}\n\n.booster-record-header-tools {\n  align-items: center;\n  gap: 2px;\n  margin-left: auto;\n  display: inline-flex;\n}\n\n.booster-record-icon-button {\n  width: 24px;\n  height: 24px;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  background: none;\n  border: 0;\n  border-radius: 6px;\n  flex: none;\n  justify-content: center;\n  align-items: center;\n  padding: 0;\n  display: inline-flex;\n}\n\n.booster-record-icon-button:hover {\n  background: var(--muted);\n  color: var(--foreground);\n}\n\n.booster-record-edited {\n  color: var(--muted-foreground);\n  white-space: nowrap;\n  font-size: 9px;\n}\n\n.booster-record-raw-corner {\n  position: absolute;\n  top: 5px;\n  right: 5px;\n}\n\n.booster-tool-row {\n  min-width: 0;\n  max-width: 100%;\n  overflow: hidden;\n}\n\n.booster-tool-row.is-clickable {\n  cursor: pointer;\n}\n\n.booster-tool-copy, .booster-tool-actions {\n  min-width: 0;\n}\n\n.booster-tool-actions {\n  flex: none;\n}\n\n.booster-tool-action {\n  flex: none;\n  text-decoration: none;\n}\n\n.booster-tool-expanded {\n  min-width: 0;\n  max-width: 100%;\n  overflow: auto hidden;\n}\n\n.booster-internal-row {\n  min-width: 0;\n  max-width: 100%;\n  overflow: hidden;\n}\n\n.booster-internal-row.disabled {\n  cursor: default;\n  opacity: .8;\n}\n\n.booster-internal-preview {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  max-width: 100%;\n  padding-right: 2px;\n}\n\n.booster-json-modal {\n  background: var(--background);\n  flex-direction: column;\n  width: 100%;\n  min-width: 0;\n  height: 100%;\n  min-height: 0;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-json-modal .booster-json-viewer {\n  box-sizing: border-box;\n  flex: auto;\n  width: 100%;\n  min-width: 0;\n  max-width: 100%;\n  max-height: none;\n  overflow: auto;\n}\n\n.booster-dialog-wide:has(.booster-json-modal) {\n  min-width: 0;\n  min-height: 0;\n  display: flex;\n}\n\n.booster-reader-main, .booster-reader-exchanges, .booster-exchange, .booster-exchange-details {\n  min-width: 0;\n  max-width: 100%;\n}\n\n.booster-reader-main {\n  overflow-x: hidden;\n}\n\n.booster-export-status {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  border-radius: 10px;\n  grid-template-columns: auto minmax(0, 1fr) auto;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 10px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-export-status {\n    background: color-mix(in oklab, var(--muted) 52%, var(--background));\n  }\n}\n\n.booster-export-status.warning {\n  border-color: #f59e0b;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-export-status.warning {\n    border-color: color-mix(in oklab, #f59e0b 44%, var(--border));\n  }\n}\n\n.booster-export-status.warning {\n  background: #f59e0b;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-export-status.warning {\n    background: color-mix(in oklab, #f59e0b 7%, var(--background));\n  }\n}\n\n.booster-export-status > div {\n  gap: 2px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-export-status strong {\n  font-size: 10px;\n  line-height: 1.4;\n}\n\n.booster-export-status span {\n  color: var(--muted-foreground);\n  font-size: 9px;\n}\n\n.booster-export-status .booster-action-secondary {\n  white-space: nowrap;\n  min-height: 30px;\n  padding: 5px 8px;\n}\n\n.booster-dock-context > .booster-dock-history-state {\n  color: var(--muted-foreground);\n  font-size: 9px;\n  line-height: 1.35;\n}\n\n.booster-export-preferences {\n  gap: 8px;\n  display: grid;\n}\n\n.booster-export-preferences > label {\n  gap: 6px;\n  font-size: 12px;\n  font-weight: 600;\n  display: grid;\n}\n\n.booster-export-preferences > .booster-note {\n  margin: 0;\n}\n\n.booster-reader-message-jump, .booster-reader-message-jump form, .booster-export-preview-record {\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-reader-message-jump input {\n  flex: 1;\n  min-width: 160px;\n}\n\n.booster-export-preview-record > span {\n  overflow-wrap: anywhere;\n  flex: 220px;\n}\n\n.booster-message-target {\n  outline: 2px solid var(--primary);\n  outline-offset: 2px;\n  border-radius: 6px;\n}\n\n[data-archive-message] {\n  scroll-margin-block: 20px;\n}\n\n.booster-export-readiness {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  gap: 10px;\n  padding: 12px;\n  font-size: 12px;\n  display: grid;\n}\n\n.booster-export-readiness > header, .booster-export-recovery-actions {\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-export-readiness > header {\n  justify-content: space-between;\n}\n\n.booster-export-readiness dl {\n  gap: 6px;\n  margin: 0;\n  display: grid;\n}\n\n.booster-export-readiness dl > div {\n  flex-wrap: wrap;\n  justify-content: space-between;\n  gap: 6px 12px;\n  display: flex;\n}\n\n.booster-export-readiness dd {\n  text-align: end;\n  margin: 0;\n}\n\n.booster-export-readiness p {\n  margin: 0;\n}\n\n.booster-export-blockers {\n  gap: 6px;\n  margin: 0;\n  padding-inline-start: 18px;\n  display: grid;\n}\n\n.booster-export-blockers li {\n  overflow-wrap: anywhere;\n}\n\n.booster-export-progress {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  gap: 8px;\n  padding: 10px;\n  display: grid;\n}\n\n.booster-export-progress > p {\n  overflow-wrap: anywhere;\n  margin: 0;\n  font-size: 12px;\n}\n\n.booster-export-progress progress {\n  width: 100%;\n  height: 8px;\n  accent-color: var(--primary);\n  display: block;\n}\n\n.booster-export-preview-content {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  gap: 8px;\n  max-height: min(360px, 48vh);\n  padding: 10px;\n  display: grid;\n  overflow: auto;\n}\n\n.booster-export-preview-content .booster-note {\n  white-space: pre-wrap;\n  margin: 0;\n}\n\n.booster-export-preview-skeleton {\n  gap: 8px;\n  display: grid;\n}\n\n.booster-export-preview-skeleton > span {\n  background: var(--muted);\n  border-radius: 6px;\n  height: 30px;\n  display: block;\n}\n\n.booster-export-dialog input[type="text"] {\n  border: 1px solid var(--border);\n  background: var(--background);\n  width: 100%;\n  min-height: 38px;\n  color: var(--foreground);\n  font: inherit;\n  border-radius: 8px;\n  padding: 8px 10px;\n}\n\n.booster-meta-badges {\n  align-items: center;\n  gap: 2px;\n  display: inline-flex;\n}\n\n.booster-meta-badges.compact {\n  gap: 0;\n}\n\n.booster-meta-trigger {\n  width: 28px;\n  height: 28px;\n  color: var(--muted-foreground);\n  cursor: help;\n  border-radius: 8px;\n  outline: none;\n  justify-content: center;\n  align-items: center;\n  display: inline-flex;\n}\n\n.booster-meta-trigger.is-clickable {\n  cursor: pointer;\n}\n\n.booster-meta-trigger:hover, .booster-meta-trigger:focus-visible {\n  background: var(--muted);\n  color: var(--foreground);\n}\n\n.booster-meta-trigger:focus-visible {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-floating-popover {\n  z-index: 2147483647;\n  border: 1px solid var(--border, #94a3b842);\n  background: var(--popover, #202020);\n  width: max-content;\n  min-width: 190px;\n  max-width: min(420px, 100vw - 16px);\n  color: var(--popover-foreground, #f4f4f5);\n  letter-spacing: normal;\n  white-space: normal;\n  pointer-events: none;\n  border-radius: 10px;\n  margin: 0;\n  padding: 9px 10px;\n  font-family: inherit;\n  font-size: 12px;\n  font-weight: 400;\n  line-height: 1.45;\n  position: fixed;\n  inset: auto;\n  box-shadow: 0 14px 38px #0000006b;\n}\n\n.booster-floating-popover:has(.booster-message-meta-body), .booster-floating-popover:has(.booster-tool-detail-popover) {\n  border-color: #4ade8052;\n  box-shadow: 0 14px 38px #0000006b, 0 0 0 1px #22c55e0d;\n}\n\n.booster-floating-popover.is-interactive {\n  pointer-events: auto;\n}\n\n.booster-floating-popover:not(:popover-open):not(.is-open) {\n  display: none;\n}\n\n.booster-meta-lines {\n  grid-template-columns: max-content minmax(0, 1fr);\n  gap: 3px 10px;\n  display: grid;\n}\n\n.booster-meta-label {\n  color: var(--muted-foreground);\n  font-size: 10px;\n  font-weight: 600;\n}\n\n.booster-meta-value {\n  overflow-wrap: anywhere;\n  min-width: 0;\n  color: var(--popover-foreground);\n  font-variant-numeric: tabular-nums;\n}\n\n.booster-scope-popover {\n  gap: 10px;\n  min-width: 260px;\n  display: grid;\n}\n\n.booster-scope-popover > header {\n  gap: 1px;\n  display: grid;\n}\n\n.booster-scope-title {\n  max-width: 280px;\n  color: var(--foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 12px;\n  overflow: hidden;\n}\n\n.booster-scope-kind {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-scope-actions {\n  flex-wrap: wrap;\n  gap: 5px;\n  display: flex;\n}\n\n.booster-scope-actions button {\n  border: 1px solid var(--border);\n  background: var(--background);\n  min-height: 28px;\n  color: var(--foreground);\n  cursor: pointer;\n  font: inherit;\n  border-radius: 7px;\n  align-items: center;\n  gap: 5px;\n  padding: 4px 8px;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-scope-actions button:hover {\n  background: var(--muted);\n}\n\n.booster-live-tool-row {\n  width: min(100%, 48rem);\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 6px;\n  padding: 4px 0;\n  display: flex;\n}\n\n.booster-live-tool-copy {\n  flex: auto;\n  align-items: baseline;\n  gap: 6px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-live-tool-name {\n  color: var(--foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 11px;\n  font-weight: 650;\n  overflow: hidden;\n}\n\n.booster-live-tool-action-name {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 10px;\n  overflow: hidden;\n}\n\n.booster-live-tool-details {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(100%, 48rem);\n  color: var(--card-foreground);\n  border-radius: 12px;\n  margin-top: 4px;\n  padding: 10px;\n  box-shadow: 0 8px 24px #0000001f;\n}\n\n.booster-chat-save-marker {\n  background: none;\n  border-radius: 999px;\n  flex: 0 0 6px;\n  width: 6px;\n  height: 6px;\n  display: block;\n}\n\n.booster-chat-save-marker.is-enabled {\n  background: #22c55e;\n  box-shadow: 0 0 0 1px #22c55e40, 0 0 6px #22c55e61;\n}\n\n.booster-chat-save-marker.is-work {\n  background: #ef4444;\n  box-shadow: 0 0 0 1px #ef444452, 0 0 8px #ef44448c;\n}\n\n.booster-project-status-badge {\n  color: #a1a1aa;\n  background: #ffffff08;\n  border: 1px solid #94a3b852;\n  border-radius: 8px;\n  justify-content: center;\n  align-items: center;\n  width: 24px;\n  height: 24px;\n  transition: border-color .12s, background-color .12s, color .12s;\n  display: inline-flex;\n}\n\n.booster-project-status-badge.is-enabled {\n  color: #4ade80;\n  background: #22c55e14;\n  border-color: #22c55eb8;\n}\n\n.booster-project-status-badge.is-disabled {\n  color: #f87171;\n  background: #ef444412;\n  border-color: #ef444494;\n}\n\n.booster-agent-activity {\n  border: 1px solid var(--border, #94a3b838);\n  background: var(--background, #202020);\n  border-radius: 999px;\n  align-items: center;\n  gap: 6px;\n  max-width: min(100%, 520px);\n  min-height: 28px;\n  padding: 3px 8px;\n  display: inline-flex;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-agent-activity {\n    background: color-mix(in srgb, var(--background, #202020) 88%, transparent);\n  }\n}\n\n.booster-agent-activity {\n  color: var(--muted-foreground);\n  pointer-events: auto;\n  font-size: 11px;\n  line-height: 1.2;\n}\n\n.booster-agent-activity[data-phase="tool"] {\n  border-style: dashed;\n}\n\n.booster-agent-activity > svg {\n  flex: none;\n}\n\n.booster-agent-activity-phase {\n  color: var(--foreground);\n  flex: none;\n  font-weight: 600;\n}\n\n.booster-agent-activity-label {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-agent-activity-timer {\n  min-width: 3.2em;\n  color: var(--foreground);\n  font-variant-numeric: tabular-nums;\n  text-align: end;\n  flex: none;\n  margin-inline-start: auto;\n}\n\n.booster-danger-zone {\n  background: #7f1d1d14;\n  border: 1px solid #ef444473;\n  border-radius: 12px;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 12px;\n  display: flex;\n}\n\n.booster-danger-zone .booster-setting-copy > div, .booster-danger-zone .booster-setting-copy b {\n  color: #f87171;\n}\n\n.booster-destructive-button {\n  color: #fff;\n  cursor: pointer;\n  background: #b91c1c;\n  border: 1px solid #ef44448c;\n  border-radius: 8px;\n  flex: none;\n  min-height: 34px;\n  padding: 7px 12px;\n  font-size: 12px;\n  font-weight: 700;\n}\n\n.booster-destructive-button:hover:not(:disabled) {\n  background: #991b1b;\n}\n\n.booster-destructive-button:disabled {\n  opacity: .55;\n  cursor: default;\n}\n\n.booster-destructive-dialog {\n  grid-template-columns: auto minmax(0, 1fr);\n  gap: 14px;\n  padding: 22px;\n  display: grid;\n}\n\n.booster-destructive-dialog strong {\n  color: #f87171;\n  letter-spacing: .025em;\n  font-size: 17px;\n}\n\n.booster-destructive-dialog p {\n  color: var(--muted-foreground);\n  margin: 8px 0 0;\n  font-size: 12px;\n  line-height: 1.55;\n}\n\n.booster-destructive-icon {\n  color: #f87171;\n  background: #7f1d1d33;\n  border-radius: 50%;\n  justify-content: center;\n  align-items: center;\n  width: 42px;\n  height: 42px;\n  display: flex;\n}\n\n.booster-destructive-warning {\n  color: #f87171;\n  font-weight: 700;\n}\n\n.booster-destructive-actions {\n  grid-column: 1 / -1;\n  justify-content: flex-end;\n  gap: 8px;\n  padding-top: 4px;\n  display: flex;\n}\n\n.booster-meta-trigger-time {\n  color: #4ade80;\n  font-variant-numeric: tabular-nums;\n  cursor: pointer;\n  background: #22c55e17;\n  border: 1px solid #4ade806b;\n  gap: 0;\n  width: 26px;\n  min-width: 26px;\n  height: 26px;\n  padding: 0;\n}\n\n.booster-meta-trigger-time:hover, .booster-meta-trigger-time:focus-visible {\n  color: #86efac;\n  background: #22c55e29;\n  border-color: #4ade80b8;\n}\n\n.booster-meta-time-text {\n  letter-spacing: .01em;\n  font-size: 9px;\n  font-weight: 650;\n}\n\n.booster-message-meta-popover {\n  max-width: min(420px, 100vw - 16px);\n}\n\n.booster-message-meta-body {\n  gap: 12px;\n  min-width: 260px;\n  display: grid;\n}\n\n.booster-message-meta-header {\n  border-bottom: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: baseline;\n  gap: 12px;\n  padding-bottom: 7px;\n  display: flex;\n}\n\n.booster-message-meta-header strong {\n  color: var(--popover-foreground);\n  font-size: 12px;\n  font-weight: 650;\n}\n\n.booster-message-meta-header span {\n  color: #4ade80;\n  font-variant-numeric: tabular-nums;\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-meta-raw-toggle {\n  border: 1px solid var(--border);\n  width: fit-content;\n  color: var(--muted-foreground);\n  font: inherit;\n  cursor: pointer;\n  background: none;\n  border-radius: 7px;\n  padding: 4px 7px;\n}\n\n.booster-meta-raw-toggle:hover {\n  background: var(--muted);\n  color: var(--foreground);\n}\n\n.booster-message-meta-raw {\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  background: #0003;\n  border-radius: 8px;\n  max-width: 390px;\n  max-height: 260px;\n  margin: 0;\n  padding: 8px;\n  font: 10px / 1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n  overflow: auto;\n}\n\n.booster-live-tool-icon {\n  object-fit: cover;\n  border-radius: 999px;\n  flex: 0 0 16px;\n  width: 16px;\n  height: 16px;\n}\n\n.booster-tool-time-chip {\n  color: #c084fc;\n  font-variant-numeric: tabular-nums;\n  background: #7e22ce1c;\n  border: 1px solid #a855f775;\n  gap: 5px;\n  width: auto;\n  min-width: 76px;\n  padding: 0 8px;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-tool-time-chip:hover, .booster-tool-time-chip:focus-visible {\n  color: #d8b4fe;\n  background: #7e22ce30;\n  border-color: #c084fcc2;\n}\n\n.booster-agent-activity[data-phase="thinking"], .booster-agent-activity[data-phase="tool"], .booster-agent-activity[data-phase="responding"], .booster-agent-activity[data-phase="complete"] {\n  color: #4ade80;\n  background: #22c55e17;\n  border-color: #4ade807a;\n}\n\n.booster-agent-activity[data-phase="thinking"] .booster-agent-activity-phase, .booster-agent-activity[data-phase="tool"] .booster-agent-activity-phase, .booster-agent-activity[data-phase="responding"] .booster-agent-activity-phase, .booster-agent-activity[data-phase="complete"] .booster-agent-activity-phase, .booster-agent-activity[data-phase="thinking"] .booster-agent-activity-timer, .booster-agent-activity[data-phase="tool"] .booster-agent-activity-timer, .booster-agent-activity[data-phase="responding"] .booster-agent-activity-timer, .booster-agent-activity[data-phase="complete"] .booster-agent-activity-timer {\n  color: currentColor;\n}\n\n.booster-tool-inspect-trigger {\n  color: #4ade80;\n  pointer-events: auto;\n  background: #22c55e14;\n  border: 1px solid #4ade8061;\n  border-radius: 7px;\n  width: 24px;\n  height: 24px;\n}\n\n.booster-tool-inspect-trigger:hover, .booster-tool-inspect-trigger:focus-visible {\n  color: #86efac;\n  background: #22c55e26;\n  border-color: #4ade80ad;\n}\n\n.booster-tool-detail-popover {\n  gap: 10px;\n  width: min(390px, 100vw - 24px);\n  display: grid;\n}\n\n.booster-tool-detail-popover > header {\n  align-items: center;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-tool-detail-popover > header strong {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  color: var(--popover-foreground);\n  font-size: 11px;\n  display: block;\n  overflow: hidden;\n}\n\n.booster-tool-detail-popover > header span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  color: var(--muted-foreground);\n  font-size: 10px;\n  display: block;\n  overflow: hidden;\n}\n\n.booster-tool-payload {\n  gap: 5px;\n  display: grid;\n}\n\n.booster-tool-payload > strong, .booster-tool-evidence > summary {\n  color: var(--muted-foreground);\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-tool-evidence > summary {\n  cursor: pointer;\n}\n\n.booster-tool-attributes {\n  grid-template-columns: max-content minmax(0, 1fr);\n  gap: 3px 8px;\n  margin: 8px 0 0;\n  font: 9px / 1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n  display: grid;\n}\n\n.booster-tool-attributes dt {\n  color: var(--muted-foreground);\n}\n\n.booster-tool-attributes dd {\n  overflow-wrap: anywhere;\n  min-width: 0;\n  margin: 0;\n}\n\n.booster-tool-evidence pre {\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  background: #0003;\n  border-radius: 7px;\n  max-height: 180px;\n  margin: 8px 0 0;\n  padding: 7px;\n  font: 9px / 1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n  overflow: auto;\n}\n\n.booster-tool-link {\n  overflow-wrap: anywhere;\n  color: #4ade80;\n  align-items: center;\n  gap: 4px;\n  min-width: 0;\n  text-decoration: none;\n  display: inline-flex;\n}\n\n.booster-tool-link:hover {\n  color: #86efac;\n  text-decoration: underline;\n}\n\n.booster-work-mode-warning {\n  color: #fca5a5;\n  background: #ef44441a;\n  border: 1px solid #ef44448c;\n  border-radius: 999px;\n  align-items: center;\n  gap: 7px;\n  padding: 4px 9px;\n  font-family: inherit;\n  font-size: 10px;\n  line-height: 1.25;\n  display: inline-flex;\n}\n\n.booster-work-mode-warning strong {\n  color: #f87171;\n  font-weight: 750;\n}\n\n.booster-work-mode-warning > span:before {\n  content: "·";\n  color: #f87171b8;\n  margin-inline-end: 7px;\n}\n\n.booster-request-status {\n  color: #86efac;\n  font-variant-numeric: tabular-nums;\n  background: #22c55e12;\n  border: 1px solid #4ade8047;\n  border-radius: 999px;\n  align-items: center;\n  gap: 6px;\n  padding: 3px 8px;\n  font-family: inherit;\n  font-size: 10px;\n  line-height: 1.25;\n  display: inline-flex;\n}\n\n.booster-request-spinner {\n  border: 1.5px solid #4ade8047;\n  border-top-color: #4ade80;\n  border-radius: 50%;\n  flex: 0 0 11px;\n  width: 11px;\n  height: 11px;\n  animation: .9s linear infinite booster-request-spin;\n}\n\n@keyframes booster-request-spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n.booster-request-status > span {\n  align-items: center;\n  gap: 4px;\n  display: inline-flex;\n}\n\n.booster-request-status > span + span:before {\n  content: "·";\n  color: var(--muted-foreground);\n}\n\n.booster-request-status-label {\n  color: var(--muted-foreground);\n  font-weight: 500;\n}\n\n.booster-request-status strong {\n  color: #4ade80;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-request-status[data-phase="tool"] strong {\n  color: #c084fc;\n}\n\n.booster-request-status[data-phase="responding"] strong {\n  color: #86efac;\n}\n\n.booster-alert-setting-actions {\n  grid-template-columns: auto minmax(180px, 1fr);\n  align-items: center;\n  gap: 14px;\n  display: grid;\n}\n\n.booster-alert-threshold {\n  gap: 5px;\n  display: grid;\n}\n\n.booster-alert-threshold > span {\n  color: var(--muted-foreground);\n  justify-content: space-between;\n  gap: 10px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-alert-threshold b {\n  color: var(--foreground);\n  font-variant-numeric: tabular-nums;\n}\n\n.booster-alert-threshold input[type="range"] {\n  width: 100%;\n  accent-color: var(--primary);\n}\n\n.booster-tool-path {\n  max-width: 280px;\n  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n  font-size: 9px;\n}\n\n.booster-reader-pinned {\n  border-bottom: 1px solid var(--border);\n  background: var(--background);\n  flex: none;\n  min-width: 0;\n  max-height: 52%;\n  padding: 12px 20px 10px;\n  overflow: auto;\n}\n\n.booster-reader-reading-surface {\n  flex: 1 1 0;\n  min-width: 0;\n  min-height: 0;\n  position: relative;\n}\n\n.booster-reader-scroll {\n  scrollbar-gutter: stable;\n  overscroll-behavior: contain;\n  min-width: 0;\n  height: 100%;\n  padding: 18px 20px 30px;\n  overflow: hidden auto;\n}\n\n.booster-reader-chat-header h2 {\n  overflow-wrap: anywhere;\n  font-size: 16px;\n}\n\n.booster-reader-chat-actions {\n  justify-content: flex-start;\n  margin-top: 9px;\n}\n\n.booster-reader-find {\n  margin-top: 8px;\n}\n\n.booster-reader-find input {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 100%;\n  min-width: 0;\n  color: var(--foreground);\n  font: inherit;\n  border-radius: 8px;\n  padding: 8px 10px;\n  font-size: 12px;\n  display: block;\n}\n\n.booster-reader-chat-list > button span {\n  text-overflow: ellipsis;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-reader-chat-list > button.is-branch {\n  border-inline-start: 2px solid var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reader-chat-list > button.is-branch {\n    border-inline-start: 2px solid color-mix(in oklab, var(--primary) 35%, transparent);\n  }\n}\n\n.booster-reader-branch-icon {\n  opacity: .66;\n  flex: none;\n}\n\n.booster-reader-loading {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 8px;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-reader-older-loading {\n  z-index: 2;\n  border: 1px solid var(--border);\n  background: var(--card);\n  color: var(--foreground);\n  white-space: nowrap;\n  pointer-events: none;\n  border-radius: 100px;\n  align-items: center;\n  gap: 7px;\n  padding: 8px 12px;\n  font-size: 11px;\n  display: flex;\n  position: absolute;\n  inset: 6px auto auto 50%;\n  transform: translateX(-50%);\n  box-shadow: 0 3px 12px #0000001f;\n}\n\n.booster-reader-spinner {\n  flex: none;\n  animation: .9s linear infinite booster-archive-spin;\n}\n\n@keyframes booster-archive-spin {\n  to {\n    rotate: 360deg;\n  }\n}\n\n@media (prefers-reduced-motion: reduce) {\n  .booster-reader-spinner {\n    animation: none;\n  }\n}\n\n@media (max-width: 640px) {\n  .booster-reader-pinned {\n    padding: 10px 12px;\n  }\n\n  .booster-reader-scroll {\n    padding: 12px 12px 24px;\n  }\n}\n\n.booster-reader-reading-surface > .booster-reader-scroll {\n  flex: auto;\n  min-width: 0;\n}\n\n.booster-reader-map {\n  border-left: 1px solid var(--border);\n  background: var(--card);\n  flex-direction: column;\n  flex: 0 0 108px;\n  order: 2;\n  align-items: center;\n  width: 108px;\n  padding: 7px 3px;\n  display: flex;\n}\n\n.booster-reader-map-track {\n  background: linear-gradient(var(--border), var(--border)) center / 2px 100% no-repeat;\n  flex: 1;\n  width: 100%;\n  min-height: 0;\n  position: relative;\n}\n\n.booster-reader-map-node {\n  left: calc(18px + min(var(--map-lane, 0), 3) * 23px);\n  border: 1px solid var(--background);\n  background: var(--muted-foreground);\n  cursor: pointer;\n  z-index: 1;\n  border-radius: 3px;\n  width: 8px;\n  height: 8px;\n  padding: 0;\n  position: absolute;\n  transform: translate(-50%, -50%);\n}\n\n.booster-reader-map-node.is-user {\n  background: var(--primary);\n  border-radius: 50%;\n}\n\n.booster-reader-map-node.is-fork {\n  width: 12px;\n  height: 12px;\n  box-shadow: 0 0 0 2px var(--primary);\n}\n\n.booster-reader-map-node:hover, .booster-reader-map-node:focus-visible, .booster-reader-map-node.is-near {\n  outline: 1px solid var(--ring);\n  z-index: 4;\n  width: 13px;\n  height: 13px;\n}\n\n.booster-reader-map-position {\n  border: 1px solid var(--ring);\n  background: var(--primary);\n  height: 19px;\n  position: absolute;\n  left: 0;\n  right: 0;\n  transform: translateY(-50%);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reader-map-position {\n    background: color-mix(in oklab, var(--primary) 16%, transparent);\n  }\n}\n\n.booster-reader-map-position {\n  pointer-events: none;\n  z-index: 0;\n  border-radius: 6px;\n}\n\n.booster-reader-map-end {\n  color: var(--foreground);\n  cursor: pointer;\n  background: none;\n  border: 0;\n  font-size: 15px;\n}\n\n.booster-reader-pinned {\n  max-height: 35%;\n  padding: 8px 12px;\n}\n\n.booster-reader-summary {\n  align-items: center;\n  margin-top: 4px;\n}\n\n.booster-reader-coverage {\n  align-items: center;\n  gap: 5px;\n  display: inline-flex;\n}\n\n.booster-reader-project-label {\n  color: var(--muted-foreground);\n  font-weight: 400;\n}\n\n.booster-reader-chat-actions {\n  margin-top: 4px;\n}\n\n.booster-reader-chat-actions .booster-action-secondary {\n  padding: 5px 8px;\n}\n\n.booster-reader-heading {\n  justify-content: center;\n}\n\n.booster-reader-exchanges {\n  gap: 12px;\n}\n\n.booster-reader-map-node.is-fork:after {\n  content: "";\n  width: calc(min(var(--map-lane, 0), 3) * 23px);\n  border-top: 2px solid var(--primary);\n  position: absolute;\n  top: 50%;\n  right: 80%;\n}\n\n.booster-reader-loading {\n  justify-content: center;\n  min-height: 130px;\n  font-size: 13px;\n}\n\n.booster-reader-map-node {\n  transition: top .1s ease-out, width .12s ease-out, height .12s ease-out;\n}\n\n.booster-reader-map-node:hover:before, .booster-reader-map-node:focus-visible:before {\n  content: attr(data-preview);\n  z-index: 12;\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 240px;\n  min-width: 170px;\n  max-width: min(240px, 60vw);\n  color: var(--foreground);\n  white-space: normal;\n  text-align: left;\n  pointer-events: none;\n  border-radius: 8px;\n  padding: 10px 12px;\n  font-size: 12px;\n  font-weight: 400;\n  line-height: 1.45;\n  position: absolute;\n  top: -8px;\n  right: calc(100% + 15px);\n  box-shadow: 0 7px 24px oklab(0% none none / .18);\n}\n\n.booster-reader .booster-section-header {\n  min-height: 42px;\n  padding-block: 6px;\n}\n\n.booster-reader-heading {\n  gap: 7px;\n}\n\n.booster-reader-heading strong {\n  font-size: 12px;\n}\n\n.booster-reader-heading p {\n  opacity: .7;\n  margin: 0;\n  font-size: 10px;\n}\n\n.booster-reader-older-loading {\n  border-radius: 10px;\n  font-size: 12px;\n  inset: 50% auto auto 50%;\n}\n\n.booster-reader-map-links {\n  pointer-events: none;\n  width: 100%;\n  height: 100%;\n  position: absolute;\n  inset: 0;\n  overflow: visible;\n}\n\n.booster-reader-map-links path {\n  fill: none;\n  stroke: var(--primary);\n  stroke-width: 1.5px;\n  vector-effect: non-scaling-stroke;\n  opacity: .58;\n}\n\n.booster-reader-fork-choices {\n  flex-wrap: wrap;\n  gap: 6px;\n  max-height: 115px;\n  margin-top: 6px;\n  display: flex;\n  overflow: auto;\n}\n\n.booster-reader-fork-group {\n  border: 1px solid var(--border);\n  border-radius: 7px;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 5px;\n  padding: 5px 8px;\n  font-size: 11px;\n  display: flex;\n}\n\n.booster-reader-fork-group > span {\n  color: var(--muted-foreground);\n  font-weight: 600;\n}\n\n.booster-reader-fork-choice {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  background: var(--secondary);\n  border: 1px solid var(--border);\n  cursor: pointer;\n  border-radius: 6px;\n  max-width: 180px;\n  padding: 4px 6px;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n.booster-reader-fork-choice:hover, .booster-reader-fork-choice:focus-visible {\n  border-color: var(--ring);\n}\n\n.booster-reader-map-track {\n  background: none;\n}\n\n.booster-reader-map-links path {\n  stroke-width: 2.5px;\n  opacity: .95;\n}\n\n.booster-reader-map-node.is-fork {\n  background: var(--primary);\n  box-shadow: 0 0 0 3px var(--card), 0 0 0 5px var(--primary);\n}\n\n.booster-reader-map-node.is-fork:after {\n  display: none;\n}\n\n@media (max-width: 700px) {\n  .booster-reader-map {\n    flex-basis: 88px;\n    width: 88px;\n  }\n\n  .booster-reader-map-node {\n    left: calc(12px + min(var(--map-lane, 0), 3) * 19px);\n  }\n}\n\n.booster-reader-map-warning {\n  border: 1px solid var(--border);\n  width: 19px;\n  height: 19px;\n  color: var(--foreground);\n  text-align: center;\n  cursor: help;\n  border-radius: 50%;\n  font-size: 12px;\n}\n\n.booster-archive-flow-graph {\n  scrollbar-gutter: stable;\n  overflow-x: auto;\n}\n\n.booster-gitgraph-content {\n  width: max-content;\n  min-width: 0;\n  padding: 4px 8px 10px;\n}\n\n.booster-gitgraph-segment {\n  width: max-content;\n}\n\n.booster-gitgraph-gap {\n  border-left: 2px dashed var(--border);\n  height: 21px;\n  color: var(--muted-foreground);\n  padding: 1px 9px;\n  font-size: 13px;\n  line-height: 20px;\n}\n\n.booster-gitgraph-segment-canvas svg g[data-archive-graph-node] {\n  cursor: pointer;\n  outline: none;\n}\n\n.booster-gitgraph-segment-canvas svg g[data-archive-graph-node]:is(:hover, :focus-visible) > use {\n  filter: drop-shadow(0 0 3px var(--ring));\n}\n\n.booster-gitgraph-segment-canvas svg g[data-archive-graph-node][aria-current="true"] > use {\n  filter: drop-shadow(0 0 3px var(--foreground));\n}\n\n.booster-reader-reading-surface {\n  display: block;\n}\n\n.booster-reader-reading-surface > .booster-reader-scroll {\n  width: 100%;\n  height: 100%;\n}\n\n.booster-reader-history-toggle.active {\n  background: var(--muted);\n  border-color: var(--ring);\n}\n\n.booster-archive-flow-graph {\n  z-index: 5;\n  order: unset;\n  overscroll-behavior: contain;\n  border: 1px solid var(--border);\n  background: var(--background);\n  scrollbar-gutter: stable;\n  border-radius: 12px;\n  flex: none;\n  width: min(360px, 100% - 16px);\n  max-width: none;\n  height: auto;\n  display: block;\n  position: absolute;\n  inset: 8px 8px 8px auto;\n  overflow: hidden auto;\n  box-shadow: 0 10px 32px #00000047;\n}\n\n.booster-history-header {\n  z-index: 3;\n  border-bottom: 1px solid var(--border);\n  background: var(--background);\n  justify-content: space-between;\n  align-items: flex-start;\n  gap: 10px;\n  min-width: 0;\n  padding: 15px 14px 10px;\n  display: flex;\n  position: sticky;\n  top: 0;\n}\n\n.booster-history-header > div {\n  min-width: 0;\n}\n\n.booster-history-heading {\n  color: var(--foreground);\n  font-size: 14px;\n  font-weight: 650;\n  line-height: 20px;\n}\n\n.booster-history-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-history-close {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 28px;\n  height: 28px;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  border-radius: 7px;\n  flex: 0 0 28px;\n  place-items: center;\n  font-size: 19px;\n  display: grid;\n}\n\n.booster-history-close:hover {\n  color: var(--foreground);\n  background: var(--muted);\n}\n\n.booster-history-state {\n  color: var(--foreground);\n  align-items: center;\n  gap: 7px;\n  padding: 12px 14px 0;\n  font-size: 11px;\n  font-weight: 550;\n  display: flex;\n}\n\n.booster-history-state-dot {\n  background: var(--primary);\n  border-radius: 50%;\n  flex: 0 0 7px;\n  width: 7px;\n  height: 7px;\n}\n\n.booster-history-state-dot.is-unverified {\n  background: var(--muted-foreground);\n}\n\n.booster-history-range {\n  color: var(--muted-foreground);\n  font-variant-numeric: tabular-nums;\n  white-space: nowrap;\n  margin-left: auto;\n  font-weight: 400;\n}\n\n.booster-history-explainer {\n  color: var(--muted-foreground);\n  margin: 6px 14px 0;\n  font-size: 11px;\n  line-height: 1.45;\n}\n\n.booster-history-evidence {\n  background: var(--muted);\n  color: var(--muted-foreground);\n  border-radius: 6px;\n  margin: 10px 14px 2px;\n  padding: 7px 9px;\n  font-size: 10px;\n}\n\n.booster-gitgraph-content {\n  width: 100%;\n  min-width: 0;\n  min-height: 0;\n  padding: 12px 9px 16px;\n  display: block;\n}\n\n.booster-gitgraph-segment {\n  width: 100%;\n  position: relative;\n}\n\n.booster-gitgraph-segment-canvas {\n  min-width: 0;\n}\n\n.booster-gitgraph-segment-labels {\n  pointer-events: none;\n  height: 100%;\n  position: absolute;\n  inset: 0 8px 0 80px;\n}\n\n.booster-graph-message {\n  width: 100%;\n  height: 28px;\n  color: var(--foreground);\n  text-align: left;\n  cursor: pointer;\n  pointer-events: auto;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 5px;\n  flex-direction: column;\n  justify-content: center;\n  gap: 1px;\n  padding: 1px 7px;\n  display: flex;\n  position: absolute;\n  right: 0;\n}\n\n.booster-graph-message:hover, .booster-graph-message:focus-visible {\n  border-color: var(--border);\n  background: var(--muted);\n}\n\n.booster-graph-message[aria-current="true"] {\n  background: var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-graph-message[aria-current="true"] {\n    background: color-mix(in oklab, var(--primary) 12%, var(--card));\n  }\n}\n\n.booster-graph-message[aria-current="true"] {\n  border-color: var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-graph-message[aria-current="true"] {\n    border-color: color-mix(in oklab, var(--primary) 35%, var(--border));\n  }\n}\n\n.booster-graph-message-role {\n  color: var(--muted-foreground);\n  font-size: 9px;\n  line-height: 12px;\n}\n\n.booster-graph-message-preview {\n  width: 100%;\n  color: var(--foreground);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  font-size: 11px;\n  line-height: 14px;\n  overflow: hidden;\n}\n\n.booster-history-list {\n  flex-direction: column;\n  gap: 2px;\n  padding: 12px 9px 14px;\n  display: flex;\n}\n\n.booster-history-list-row {\n  width: 100%;\n  min-height: 48px;\n  color: var(--foreground);\n  text-align: left;\n  cursor: pointer;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 8px;\n  align-items: stretch;\n  gap: 10px;\n  padding: 6px 8px;\n  display: flex;\n}\n\n.booster-history-list-row:hover, .booster-history-list-row:focus-visible {\n  background: var(--muted);\n  border-color: var(--border);\n}\n\n.booster-history-list-row[aria-current="true"] {\n  background: var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-history-list-row[aria-current="true"] {\n    background: color-mix(in oklab, var(--primary) 10%, var(--card));\n  }\n}\n\n.booster-history-list-row[aria-current="true"] {\n  border-color: var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-history-list-row[aria-current="true"] {\n    border-color: color-mix(in oklab, var(--primary) 32%, var(--border));\n  }\n}\n\n.booster-history-list-rail {\n  flex: 0 0 12px;\n  justify-content: center;\n  padding-top: 7px;\n  display: flex;\n}\n\n.booster-history-list-dot {\n  border: 2px solid var(--muted-foreground);\n  border-radius: 50%;\n  width: 8px;\n  height: 8px;\n}\n\n.booster-history-list-dot.is-user {\n  background: var(--primary);\n  border-color: var(--primary);\n}\n\n.booster-history-list-copy {\n  flex-direction: column;\n  flex: 1;\n  gap: 3px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-history-list-meta {\n  color: var(--muted-foreground);\n  font-size: 10px;\n  line-height: 13px;\n}\n\n.booster-history-list-preview {\n  -webkit-line-clamp: 2;\n  overflow-wrap: anywhere;\n  -webkit-box-orient: vertical;\n  font-size: 11px;\n  line-height: 1.4;\n  display: -webkit-box;\n  overflow: hidden;\n}\n\n.booster-history-footer {\n  z-index: 3;\n  border-top: 1px solid var(--border);\n  background: var(--background);\n  justify-content: space-between;\n  gap: 8px;\n  padding: 10px 12px;\n  display: flex;\n  position: sticky;\n  bottom: 0;\n}\n\n.booster-history-footer button {\n  border: 1px solid var(--border);\n  background: var(--card);\n  color: var(--foreground);\n  font: inherit;\n  cursor: pointer;\n  border-radius: 7px;\n  padding: 6px 10px;\n  font-size: 11px;\n}\n\n.booster-history-footer button:disabled {\n  opacity: .35;\n  cursor: not-allowed;\n}\n\n.booster-history-close:focus-visible, .booster-history-footer button:focus-visible, .booster-history-list-row:focus-visible, .booster-graph-message:focus-visible {\n  outline: 2px solid var(--ring);\n  outline-offset: 2px;\n}\n\n@media (max-width: 700px) {\n  .booster-archive-flow-graph {\n    width: 100%;\n    box-shadow: none;\n    scrollbar-gutter: auto;\n    border: 0;\n    border-radius: 0;\n    inset: 0;\n  }\n\n  .booster-history-header {\n    padding-right: 16px;\n  }\n\n  .booster-history-state {\n    flex-wrap: wrap;\n  }\n\n  .booster-history-range {\n    text-align: right;\n    flex: 100%;\n  }\n}\n\n.booster-reader {\n  position: relative;\n}\n\n.booster-reader-heading {\n  justify-content: flex-start;\n  min-width: 0;\n}\n\n.booster-reader-heading > div {\n  min-width: 0;\n}\n\n.booster-reader-heading strong {\n  line-height: 1.25;\n  display: block;\n}\n\n.booster-reader > .booster-section-header > .booster-header-actions {\n  flex: none;\n  gap: 6px;\n}\n\n.booster-reader-tools {\n  position: relative;\n}\n\n.booster-reader-tools-menu {\n  z-index: 12;\n  border: 1px solid var(--border);\n  background: var(--popover, var(--card));\n  border-radius: 10px;\n  min-width: 222px;\n  padding: 5px;\n  display: grid;\n  position: absolute;\n  top: calc(100% + 8px);\n  right: 0;\n  box-shadow: 0 12px 30px #00000047;\n}\n\n.booster-reader-tools-menu button {\n  width: 100%;\n  color: var(--foreground);\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n  background: none;\n  border: 0;\n  border-radius: 7px;\n  align-items: center;\n  gap: 9px;\n  padding: 10px 12px;\n  font-size: 12px;\n  line-height: 1.35;\n  display: flex;\n}\n\n.booster-reader-tools-menu button:hover, .booster-reader-tools-menu button:focus-visible {\n  background: var(--accent);\n}\n\n.booster-maintenance-backdrop {\n  z-index: 18;\n  background: #000000b3;\n  justify-content: center;\n  align-items: center;\n  min-width: 0;\n  padding: clamp(12px, 3vw, 28px);\n  display: flex;\n  position: absolute;\n  inset: 0;\n}\n\n.booster-maintenance-widget {\n  border: 1px solid var(--border);\n  background: var(--background);\n  width: min(100%, 570px);\n  min-height: 0;\n  max-height: min(700px, 100%);\n  color: var(--foreground);\n  font: inherit;\n  border-radius: 14px;\n  flex-direction: column;\n  display: flex;\n  overflow: hidden;\n  box-shadow: 0 24px 70px #00000059;\n}\n\n.booster-maintenance-heading {\n  border-bottom: 1px solid var(--border);\n  flex: none;\n  justify-content: space-between;\n  align-items: center;\n  gap: 14px;\n  padding: 15px 18px;\n  display: flex;\n}\n\n.booster-maintenance-title {\n  align-items: center;\n  gap: 11px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-maintenance-title > div {\n  min-width: 0;\n}\n\n.booster-maintenance-title h2 {\n  margin: 0;\n  font-size: 16px;\n  font-weight: 650;\n  line-height: 1.35;\n}\n\n.booster-maintenance-title p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-maintenance-content {\n  overscroll-behavior: contain;\n  scrollbar-gutter: stable;\n  align-content: start;\n  gap: 14px;\n  min-height: 0;\n  padding: 16px 18px;\n  display: grid;\n  overflow: hidden auto;\n}\n\n.booster-maintenance-stats {\n  grid-template-columns: repeat(3, minmax(0, 1fr));\n  gap: 8px;\n  display: grid;\n}\n\n.booster-maintenance-stats > div {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  border-radius: 9px;\n  gap: 5px;\n  min-width: 0;\n  padding: 11px;\n  display: grid;\n}\n\n.booster-maintenance-stats span {\n  color: var(--muted-foreground);\n  font-size: 10px;\n  line-height: 1.4;\n}\n\n.booster-maintenance-stats strong {\n  font-variant-numeric: tabular-nums;\n  font-size: 20px;\n  font-weight: 650;\n}\n\n.booster-maintenance-section {\n  border: 1px solid var(--border);\n  border-radius: 10px;\n  gap: 11px;\n  min-width: 0;\n  padding: 15px;\n  display: grid;\n}\n\n.booster-maintenance-section-title {\n  align-items: center;\n  gap: 9px;\n  display: flex;\n}\n\n.booster-maintenance-section h3 {\n  margin: 0;\n  font-size: 13px;\n  font-weight: 650;\n}\n\n.booster-maintenance-section p, .booster-maintenance-result p, .booster-maintenance-progress p {\n  color: var(--muted-foreground);\n  overflow-wrap: anywhere;\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.5;\n}\n\n.booster-maintenance-section .booster-maintenance-warning {\n  color: var(--foreground);\n  border-left: 2px solid #d97706;\n  padding-left: 10px;\n}\n\n.booster-maintenance-widget .booster-maintenance-check {\n  min-width: 0;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  align-items: flex-start;\n  gap: 10px;\n  font-size: 11px;\n  line-height: 1.5;\n  display: flex;\n}\n\n.booster-maintenance-widget .booster-maintenance-check input {\n  width: 16px;\n  height: 16px;\n  min-height: 16px;\n  accent-color: var(--primary);\n  flex: 0 0 16px;\n  margin: 1px 0 0;\n  padding: 0;\n}\n\n.booster-maintenance-actions {\n  flex-wrap: wrap;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-maintenance-actions button {\n  flex: 170px;\n  min-width: 0;\n}\n\n.booster-maintenance-actions button small {\n  opacity: .8;\n  font-size: 10px;\n  display: block;\n}\n\n.booster-maintenance-section > button {\n  justify-self: start;\n  max-width: 100%;\n}\n\n.booster-maintenance-loading, .booster-maintenance-progress, .booster-maintenance-result {\n  border: 1px solid var(--border);\n  border-radius: 9px;\n  align-items: flex-start;\n  gap: 10px;\n  min-width: 0;\n  padding: 12px;\n  font-size: 12px;\n  line-height: 1.5;\n  display: flex;\n}\n\n.booster-maintenance-result svg, .booster-maintenance-progress svg {\n  flex: none;\n}\n\n.booster-maintenance-result strong, .booster-maintenance-progress strong {\n  margin-bottom: 3px;\n  font-size: 12px;\n  display: block;\n}\n\n.booster-maintenance-error {\n  color: var(--foreground);\n  overflow-wrap: anywhere;\n  border: 1px solid #c2410c;\n  border-radius: 8px;\n  margin: 0;\n  padding: 10px;\n  font-size: 12px;\n}\n\n.booster-maintenance-footer {\n  border-top: 1px solid var(--border);\n  flex: none;\n  justify-content: flex-end;\n  gap: 8px;\n  padding: 12px 18px;\n  display: flex;\n}\n\n@media (max-width: 620px) {\n  .booster-maintenance-backdrop {\n    padding: 8px;\n  }\n\n  .booster-maintenance-heading, .booster-maintenance-content {\n    padding: 12px;\n  }\n\n  .booster-maintenance-stats strong {\n    font-size: 17px;\n  }\n\n  .booster-maintenance-stats > div {\n    padding: 8px;\n  }\n\n  .booster-reader > .booster-section-header {\n    padding: 8px 10px;\n  }\n}\n\n.booster-maintenance-owner-list {\n  gap: 8px;\n  max-height: 290px;\n  display: grid;\n  overflow-y: auto;\n}\n\n.booster-maintenance-owner-row {\n  border: 1px solid var(--border);\n  cursor: pointer;\n  border-radius: 8px;\n  align-items: flex-start;\n  gap: 10px;\n  padding: 10px;\n  display: flex;\n}\n\n.booster-maintenance-owner-row > input[type="checkbox"] {\n  width: 16px;\n  height: 16px;\n  accent-color: var(--primary);\n  flex: 0 0 16px;\n  margin: 2px 0 0;\n  padding: 0;\n}\n\n.booster-maintenance-owner-description {\n  gap: 4px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-maintenance-owner-description > strong {\n  overflow-wrap: anywhere;\n  font-size: 12px;\n}\n\n.booster-maintenance-owner-description > span, .booster-maintenance-owner-caution {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.45;\n}\n\n.booster-maintenance-owner-description details {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.booster-maintenance-owner-description summary {\n  cursor: pointer;\n}\n\n.booster-maintenance-owner-description code {\n  overflow-wrap: anywhere;\n  margin-top: 5px;\n  font: 10px / 1.4 ui-monospace, monospace;\n  display: block;\n}\n\n.booster-maintenance-owner-description small {\n  margin-top: 6px;\n  display: block;\n}\n\n.booster-maintenance-link {\n  color: var(--foreground);\n  font: inherit;\n  cursor: pointer;\n  background: none;\n  border: 0;\n  justify-self: start;\n  padding: 0;\n  font-size: 11px;\n  text-decoration: underline;\n}\n\n.booster-maintenance-link:disabled {\n  opacity: .5;\n  cursor: not-allowed;\n}\n\n.booster-export-disclosure {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  padding: 10px 12px;\n  font-size: 12px;\n}\n\n.booster-export-disclosure > summary {\n  cursor: pointer;\n  font-weight: 600;\n}\n\n.booster-export-disclosure > summary small {\n  color: var(--muted-foreground);\n  margin-inline-start: 8px;\n  font-weight: 400;\n}\n\n.booster-export-disclosure[open] > section, .booster-export-disclosure[open] > label, .booster-export-disclosure[open] > p {\n  margin-block-start: 12px;\n}\n\n.booster-maintenance-backup-tools > summary {\n  cursor: pointer;\n  font-weight: 600;\n}\n\n.booster-maintenance-backup-tools > p {\n  margin-block: 10px;\n}\n\n.booster-maintenance-backup-restore {\n  gap: 12px;\n  margin-block-start: 14px;\n  display: grid;\n}\n\n.booster-maintenance-backup-restore > label {\n  gap: 8px;\n  display: grid;\n}\n\n.booster-maintenance-backup-restore input[type="file"] {\n  max-width: 100%;\n}\n\n.booster-control-embedded {\n  box-shadow: none;\n  background: none;\n  border: 0;\n  width: 100%;\n  max-width: none;\n}\n\n.booster-control-embedded > .booster-settings-layout {\n  min-height: 0;\n  max-height: none;\n}\n\n.booster-chatgpt-panel {\n  flex-direction: column;\n  gap: 10px;\n  width: 100%;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-chatgpt-panel > .booster-dock-context {\n  border: 1px solid var(--border);\n  background: var(--card);\n  border-radius: 10px;\n  gap: 7px;\n}\n\n.booster-chatgpt-panel .booster-dock-context-info {\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 6px 16px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-chatgpt-panel .booster-dock-context-info .booster-identity {\n  min-width: 0;\n  max-width: 100%;\n}\n\n.booster-chatgpt-panel .booster-capture-shortcut {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  width: fit-content;\n  min-height: 32px;\n  padding-inline: 8px;\n  font-size: 12px;\n}\n\n.booster-chatgpt-panel > .booster-export-recovery-actions {\n  border-bottom: 1px solid var(--border);\n  min-width: 0;\n  padding-block: 5px;\n}\n\n.booster-chatgpt-panel > .booster-export-recovery-actions > button, .booster-chatgpt-panel > .booster-export-recovery-actions > .booster-reader-tools > button {\n  justify-content: center;\n  align-items: center;\n  gap: 6px;\n  min-height: 34px;\n  display: inline-flex;\n}\n\n.booster-chatgpt-panel > .booster-reader, .booster-chatgpt-panel > .booster-capture-surface {\n  min-width: 0;\n}\n\n@media (max-width: 600px) {\n  .booster-chatgpt-panel > .booster-export-recovery-actions {\n    flex-wrap: wrap;\n  }\n\n  .booster-chatgpt-panel > .booster-export-recovery-actions > button {\n    flex: auto;\n  }\n\n  .booster-chatgpt-panel .booster-reader-tools-menu {\n    min-width: min(260px, 85vw);\n    right: 0;\n  }\n}\n\n.booster-export-presets {\n  border: 1px solid var(--border);\n  border-radius: 10px;\n  gap: 8px;\n  min-width: 0;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-export-presets > strong {\n  font-size: 13px;\n}\n\n.booster-export-presets .booster-export-recovery-actions {\n  flex-wrap: wrap;\n}\n\n.booster-export-presets .booster-export-recovery-actions > button {\n  white-space: normal;\n  overflow-wrap: anywhere;\n  max-width: 100%;\n  min-height: 34px;\n}\n\n.booster-export-presets button[aria-pressed="true"] {\n  background: var(--accent);\n  color: var(--accent-foreground);\n  border-color: var(--ring);\n}\n\n@media (max-width: 560px) {\n  .booster-export-presets {\n    padding: 8px;\n  }\n\n  .booster-export-presets .booster-export-recovery-actions > button {\n    flex: 130px;\n  }\n}\n\n@property --tw-rotate-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-z {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-space-y-reverse {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-border-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-leading {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-font-weight {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ordinal {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-slashed-zero {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-figure {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-spacing {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-fraction {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-inset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-ring-inset {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-offset-width {\n  syntax: "<length>";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-ring-offset-color {\n  syntax: "*";\n  inherits: false;\n  initial-value: #fff;\n}\n\n@property --tw-ring-offset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-outline-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-blur {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-brightness {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-contrast {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-grayscale {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-hue-rotate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-invert {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-opacity {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-saturate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-sepia {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-drop-shadow-size {\n  syntax: "*";\n  inherits: false\n}\n\n@keyframes spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n';
+  const styles$1 = '/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */\n@layer properties {\n  @supports (((-webkit-hyphens: none)) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color: rgb(from red r g b)))) {\n    *, :before, :after, ::backdrop {\n      --tw-rotate-x: initial;\n      --tw-rotate-y: initial;\n      --tw-rotate-z: initial;\n      --tw-skew-x: initial;\n      --tw-skew-y: initial;\n      --tw-space-y-reverse: 0;\n      --tw-border-style: solid;\n      --tw-leading: initial;\n      --tw-font-weight: initial;\n      --tw-ordinal: initial;\n      --tw-slashed-zero: initial;\n      --tw-numeric-figure: initial;\n      --tw-numeric-spacing: initial;\n      --tw-numeric-fraction: initial;\n      --tw-shadow: 0 0 #0000;\n      --tw-shadow-color: initial;\n      --tw-shadow-alpha: 100%;\n      --tw-inset-shadow: 0 0 #0000;\n      --tw-inset-shadow-color: initial;\n      --tw-inset-shadow-alpha: 100%;\n      --tw-ring-color: initial;\n      --tw-ring-shadow: 0 0 #0000;\n      --tw-inset-ring-color: initial;\n      --tw-inset-ring-shadow: 0 0 #0000;\n      --tw-ring-inset: initial;\n      --tw-ring-offset-width: 0px;\n      --tw-ring-offset-color: #fff;\n      --tw-ring-offset-shadow: 0 0 #0000;\n      --tw-outline-style: solid;\n      --tw-blur: initial;\n      --tw-brightness: initial;\n      --tw-contrast: initial;\n      --tw-grayscale: initial;\n      --tw-hue-rotate: initial;\n      --tw-invert: initial;\n      --tw-opacity: initial;\n      --tw-saturate: initial;\n      --tw-sepia: initial;\n      --tw-drop-shadow: initial;\n      --tw-drop-shadow-color: initial;\n      --tw-drop-shadow-alpha: 100%;\n      --tw-drop-shadow-size: initial;\n    }\n  }\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reader-chat-list > button.is-branch {\n    border-inline-start: 2px solid color-mix(in oklab, var(--primary) 35%, transparent);\n  }\n}\n\n.booster-exchange {\n  border-bottom: 1px solid var(--border);\n  min-width: 0;\n  max-width: 100%;\n  padding-bottom: 16px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-exchange-details {\n    border-left: 2px solid color-mix(in oklab, var(--border) 78%, var(--primary));\n  }\n}\n\n.booster-reader-exchanges, .booster-exchange-details {\n  min-width: 0;\n  max-width: 100%;\n}\n\n.booster-meta-trigger {\n  width: 28px;\n  height: 28px;\n  color: var(--muted-foreground);\n  cursor: help;\n  border-radius: 8px;\n  outline: none;\n  justify-content: center;\n  align-items: center;\n  display: inline-flex;\n}\n\n.booster-meta-trigger.is-clickable {\n  cursor: pointer;\n}\n\n.booster-meta-trigger:hover, .booster-meta-trigger:focus-visible {\n  background: var(--muted);\n  color: var(--foreground);\n}\n\n.booster-meta-trigger:focus-visible {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-floating-popover {\n  z-index: 2147483647;\n  border: 1px solid var(--border, #94a3b842);\n  background: var(--popover, #202020);\n  width: max-content;\n  min-width: 190px;\n  max-width: min(420px, 100vw - 16px);\n  color: var(--popover-foreground, #f4f4f5);\n  letter-spacing: normal;\n  white-space: normal;\n  pointer-events: none;\n  border-radius: 10px;\n  margin: 0;\n  padding: 9px 10px;\n  font-family: inherit;\n  font-size: 12px;\n  font-weight: 400;\n  line-height: 1.45;\n  position: fixed;\n  inset: auto;\n  box-shadow: 0 14px 38px #0000006b;\n}\n\n.booster-floating-popover:has(.booster-message-meta-body), .booster-floating-popover:has(.booster-tool-detail-popover) {\n  border-color: #4ade8052;\n  box-shadow: 0 14px 38px #0000006b, 0 0 0 1px #22c55e0d;\n}\n\n.booster-floating-popover.is-interactive {\n  pointer-events: auto;\n}\n\n.booster-floating-popover:not(:popover-open):not(.is-open) {\n  display: none;\n}\n\n.booster-meta-lines {\n  grid-template-columns: max-content minmax(0, 1fr);\n  gap: 3px 10px;\n  display: grid;\n}\n\n.booster-meta-label {\n  color: var(--muted-foreground);\n  font-size: 10px;\n  font-weight: 600;\n}\n\n.booster-meta-value {\n  overflow-wrap: anywhere;\n  min-width: 0;\n  color: var(--popover-foreground);\n  font-variant-numeric: tabular-nums;\n}\n\n.booster-json-viewer {\n  background: var(--background);\n  max-height: min(70vh, 620px);\n  margin: 0;\n  padding: 14px 16px 22px;\n  overflow: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-json-viewer {\n    background: color-mix(in oklab, var(--background) 86%, #0f172a);\n  }\n}\n\n.booster-json-viewer {\n  color: var(--foreground);\n  tab-size: 2;\n  white-space: pre;\n  font: 11px / 1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n}\n\n.booster-json-key {\n  color: #60a5fa;\n}\n\n.booster-json-string {\n  color: #86efac;\n}\n\n.booster-json-number {\n  color: #fbbf24;\n}\n\n.booster-json-boolean {\n  color: #c084fc;\n}\n\n.booster-json-null {\n  color: #94a3b8;\n}\n\n@layer theme {\n  :root, :host {\n    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",\n      "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",\n      "Segoe UI Symbol", "Noto Color Emoji";\n    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",\n      "Courier New", monospace;\n    --spacing: .25rem;\n    --text-xs: .75rem;\n    --text-xs--line-height: calc(1 / .75);\n    --text-sm: .875rem;\n    --text-sm--line-height: calc(1.25 / .875);\n    --text-base: 1rem;\n    --text-base--line-height: calc(1.5 / 1);\n    --font-weight-medium: 500;\n    --font-weight-semibold: 600;\n    --animate-spin: spin 1s linear infinite;\n    --default-transition-duration: .15s;\n    --default-transition-timing-function: cubic-bezier(.4, 0, .2, 1);\n    --default-font-family: var(--font-sans);\n    --default-mono-font-family: var(--font-mono);\n  }\n}\n\n@layer base {\n  *, :after, :before, ::backdrop {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  ::file-selector-button {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  html, :host {\n    -webkit-text-size-adjust: 100%;\n    tab-size: 4;\n    line-height: 1.5;\n    font-family: var(--default-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");\n    font-feature-settings: var(--default-font-feature-settings, normal);\n    font-variation-settings: var(--default-font-variation-settings, normal);\n    -webkit-tap-highlight-color: transparent;\n  }\n\n  hr {\n    height: 0;\n    color: inherit;\n    border-top-width: 1px;\n  }\n\n  abbr:where([title]) {\n    -webkit-text-decoration: underline dotted;\n    text-decoration: underline dotted;\n  }\n\n  h1, h2, h3, h4, h5, h6 {\n    font-size: inherit;\n    font-weight: inherit;\n  }\n\n  a {\n    color: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    text-decoration: inherit;\n  }\n\n  b, strong {\n    font-weight: bolder;\n  }\n\n  code, kbd, samp, pre {\n    font-family: var(--default-mono-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);\n    font-feature-settings: var(--default-mono-font-feature-settings, normal);\n    font-variation-settings: var(--default-mono-font-variation-settings, normal);\n    font-size: 1em;\n  }\n\n  small {\n    font-size: 80%;\n  }\n\n  sub, sup {\n    vertical-align: baseline;\n    font-size: 75%;\n    line-height: 0;\n    position: relative;\n  }\n\n  sub {\n    bottom: -.25em;\n  }\n\n  sup {\n    top: -.5em;\n  }\n\n  table {\n    text-indent: 0;\n    border-color: inherit;\n    border-collapse: collapse;\n  }\n\n  :-moz-focusring:where(:not(iframe)) {\n    outline: auto;\n  }\n\n  progress {\n    vertical-align: baseline;\n  }\n\n  summary {\n    display: list-item;\n  }\n\n  ol, ul, menu {\n    list-style: none;\n  }\n\n  img, svg, video, canvas, audio, iframe, embed, object {\n    vertical-align: middle;\n    display: block;\n  }\n\n  img, video {\n    max-width: 100%;\n    height: auto;\n  }\n\n  button, input, select, optgroup, textarea {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  ::file-selector-button {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  :where(select:is([multiple], [size])) optgroup {\n    font-weight: bolder;\n  }\n\n  :where(select:is([multiple], [size])) optgroup option {\n    padding-inline-start: 20px;\n  }\n\n  ::file-selector-button {\n    margin-inline-end: 4px;\n  }\n\n  ::placeholder {\n    opacity: 1;\n  }\n\n  @supports (not ((-webkit-appearance: -apple-pay-button))) or (contain-intrinsic-size: 1px) {\n    ::placeholder {\n      color: currentColor;\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      ::placeholder {\n        color: color-mix(in oklab, currentcolor 50%, transparent);\n      }\n    }\n  }\n\n  textarea {\n    resize: vertical;\n  }\n\n  ::-webkit-search-decoration {\n    -webkit-appearance: none;\n  }\n\n  ::-webkit-date-and-time-value {\n    min-height: 1lh;\n    text-align: inherit;\n  }\n\n  ::-webkit-datetime-edit {\n    display: inline-flex;\n  }\n\n  ::-webkit-datetime-edit-fields-wrapper {\n    padding: 0;\n  }\n\n  ::-webkit-datetime-edit {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-year-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-month-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-day-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-hour-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-minute-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-second-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-millisecond-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-meridiem-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-calendar-picker-indicator {\n    line-height: 1;\n  }\n\n  :-moz-ui-invalid {\n    box-shadow: none;\n  }\n\n  button, input:where([type="button"], [type="reset"], [type="submit"]) {\n    appearance: button;\n  }\n\n  ::file-selector-button {\n    appearance: button;\n  }\n\n  ::-webkit-inner-spin-button {\n    height: auto;\n  }\n\n  ::-webkit-outer-spin-button {\n    height: auto;\n  }\n\n  [hidden]:where(:not([hidden="until-found"])) {\n    display: none !important;\n  }\n}\n\n@layer components;\n\n@layer utilities {\n  .collapse {\n    visibility: collapse;\n  }\n\n  .visible {\n    visibility: visible;\n  }\n\n  .absolute {\n    position: absolute;\n  }\n\n  .fixed {\n    position: fixed;\n  }\n\n  .relative {\n    position: relative;\n  }\n\n  .static {\n    position: static;\n  }\n\n  .sticky {\n    position: sticky;\n  }\n\n  .isolate {\n    isolation: isolate;\n  }\n\n  .col-span-2 {\n    grid-column: span 2 / span 2;\n  }\n\n  .container {\n    width: 100%;\n  }\n\n  @media (min-width: 40rem) {\n    .container {\n      max-width: 40rem;\n    }\n  }\n\n  @media (min-width: 48rem) {\n    .container {\n      max-width: 48rem;\n    }\n  }\n\n  @media (min-width: 64rem) {\n    .container {\n      max-width: 64rem;\n    }\n  }\n\n  @media (min-width: 80rem) {\n    .container {\n      max-width: 80rem;\n    }\n  }\n\n  @media (min-width: 96rem) {\n    .container {\n      max-width: 96rem;\n    }\n  }\n\n  .m-0 {\n    margin: 0;\n  }\n\n  .m-1 {\n    margin: var(--spacing);\n  }\n\n  .mt-1 {\n    margin-top: var(--spacing);\n  }\n\n  .mt-2 {\n    margin-top: calc(var(--spacing) * 2);\n  }\n\n  .mt-3 {\n    margin-top: calc(var(--spacing) * 3);\n  }\n\n  .mb-2 {\n    margin-bottom: calc(var(--spacing) * 2);\n  }\n\n  .block {\n    display: block;\n  }\n\n  .contents {\n    display: contents;\n  }\n\n  .flex {\n    display: flex;\n  }\n\n  .grid {\n    display: grid;\n  }\n\n  .hidden {\n    display: none;\n  }\n\n  .inline {\n    display: inline;\n  }\n\n  .inline-flex {\n    display: inline-flex;\n  }\n\n  .table {\n    display: table;\n  }\n\n  .size-3 {\n    width: calc(var(--spacing) * 3);\n    height: calc(var(--spacing) * 3);\n  }\n\n  .size-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n    height: calc(var(--spacing) * 3.5);\n  }\n\n  .size-4 {\n    width: calc(var(--spacing) * 4);\n    height: calc(var(--spacing) * 4);\n  }\n\n  .size-5 {\n    width: calc(var(--spacing) * 5);\n    height: calc(var(--spacing) * 5);\n  }\n\n  .size-6 {\n    width: calc(var(--spacing) * 6);\n    height: calc(var(--spacing) * 6);\n  }\n\n  .size-7 {\n    width: calc(var(--spacing) * 7);\n    height: calc(var(--spacing) * 7);\n  }\n\n  .size-8 {\n    width: calc(var(--spacing) * 8);\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-7 {\n    height: calc(var(--spacing) * 7);\n  }\n\n  .h-8 {\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-9 {\n    height: calc(var(--spacing) * 9);\n  }\n\n  .max-h-64 {\n    max-height: calc(var(--spacing) * 64);\n  }\n\n  .max-h-80 {\n    max-height: calc(var(--spacing) * 80);\n  }\n\n  .max-h-\\[420px\\] {\n    max-height: 420px;\n  }\n\n  .max-h-\\[min\\(65vh\\,560px\\)\\] {\n    max-height: min(65vh, 560px);\n  }\n\n  .min-h-\\[130px\\] {\n    min-height: 130px;\n  }\n\n  .w-full {\n    width: 100%;\n  }\n\n  .max-w-\\[88\\%\\] {\n    max-width: 88%;\n  }\n\n  .max-w-\\[min\\(380px\\,85vw\\)\\] {\n    max-width: min(380px, 85vw);\n  }\n\n  .max-w-full {\n    max-width: 100%;\n  }\n\n  .min-w-0 {\n    min-width: 0;\n  }\n\n  .flex-1 {\n    flex: 1;\n  }\n\n  .shrink-0 {\n    flex-shrink: 0;\n  }\n\n  .grow {\n    flex-grow: 1;\n  }\n\n  .rotate-180 {\n    rotate: 180deg;\n  }\n\n  .transform {\n    transform: var(--tw-rotate-x, ) var(--tw-rotate-y, ) var(--tw-rotate-z, ) var(--tw-skew-x, ) var(--tw-skew-y, );\n  }\n\n  .animate-spin {\n    animation: var(--animate-spin);\n  }\n\n  .cursor-pointer {\n    cursor: pointer;\n  }\n\n  .resize {\n    resize: both;\n  }\n\n  .grid-cols-2 {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }\n\n  .flex-col {\n    flex-direction: column;\n  }\n\n  .flex-wrap {\n    flex-wrap: wrap;\n  }\n\n  .items-center {\n    align-items: center;\n  }\n\n  .items-start {\n    align-items: flex-start;\n  }\n\n  .justify-between {\n    justify-content: space-between;\n  }\n\n  .justify-center {\n    justify-content: center;\n  }\n\n  .justify-end {\n    justify-content: flex-end;\n  }\n\n  .justify-start {\n    justify-content: flex-start;\n  }\n\n  .gap-0\\.5 {\n    gap: calc(var(--spacing) * .5);\n  }\n\n  .gap-1 {\n    gap: var(--spacing);\n  }\n\n  .gap-2 {\n    gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-3 {\n    gap: calc(var(--spacing) * 3);\n  }\n\n  :where(.space-y-3 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 3) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 3) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  .gap-x-2 {\n    column-gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-y-1 {\n    row-gap: var(--spacing);\n  }\n\n  .self-start {\n    align-self: flex-start;\n  }\n\n  .truncate {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    overflow: hidden;\n  }\n\n  .overflow-auto {\n    overflow: auto;\n  }\n\n  .overflow-x-hidden {\n    overflow-x: hidden;\n  }\n\n  .overflow-y-auto {\n    overflow-y: auto;\n  }\n\n  .rounded-lg {\n    border-radius: var(--radius);\n  }\n\n  .rounded-md {\n    border-radius: calc(var(--radius) - 2px);\n  }\n\n  .border {\n    border-style: var(--tw-border-style);\n    border-width: 1px;\n  }\n\n  .border-t {\n    border-top-style: var(--tw-border-style);\n    border-top-width: 1px;\n  }\n\n  .border-l-2 {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 2px;\n  }\n\n  .border-border {\n    border-color: var(--border);\n  }\n\n  .border-transparent {\n    border-color: #0000;\n  }\n\n  .bg-background {\n    background-color: var(--background);\n  }\n\n  .bg-card {\n    background-color: var(--card);\n  }\n\n  .bg-muted\\/45 {\n    background-color: var(--muted);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-muted\\/45 {\n      background-color: color-mix(in oklab, var(--muted) 45%, transparent);\n    }\n  }\n\n  .bg-primary, .bg-primary\\/10 {\n    background-color: var(--primary);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-primary\\/10 {\n      background-color: color-mix(in oklab, var(--primary) 10%, transparent);\n    }\n  }\n\n  .bg-secondary {\n    background-color: var(--secondary);\n  }\n\n  .object-contain {\n    object-fit: contain;\n  }\n\n  .p-0 {\n    padding: 0;\n  }\n\n  .p-2 {\n    padding: calc(var(--spacing) * 2);\n  }\n\n  .p-3 {\n    padding: calc(var(--spacing) * 3);\n  }\n\n  .px-2 {\n    padding-inline: calc(var(--spacing) * 2);\n  }\n\n  .px-3 {\n    padding-inline: calc(var(--spacing) * 3);\n  }\n\n  .px-4 {\n    padding-inline: calc(var(--spacing) * 4);\n  }\n\n  .py-0\\.5 {\n    padding-block: calc(var(--spacing) * .5);\n  }\n\n  .py-2 {\n    padding-block: calc(var(--spacing) * 2);\n  }\n\n  .pt-2 {\n    padding-top: calc(var(--spacing) * 2);\n  }\n\n  .pt-3 {\n    padding-top: calc(var(--spacing) * 3);\n  }\n\n  .pl-2 {\n    padding-left: calc(var(--spacing) * 2);\n  }\n\n  .text-base {\n    font-size: var(--text-base);\n    line-height: var(--tw-leading, var(--text-base--line-height));\n  }\n\n  .text-sm {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n\n  .text-xs {\n    font-size: var(--text-xs);\n    line-height: var(--tw-leading, var(--text-xs--line-height));\n  }\n\n  .text-\\[11px\\] {\n    font-size: 11px;\n  }\n\n  .leading-4 {\n    --tw-leading: calc(var(--spacing) * 4);\n    line-height: calc(var(--spacing) * 4);\n  }\n\n  .font-medium {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n\n  .font-semibold {\n    --tw-font-weight: var(--font-weight-semibold);\n    font-weight: var(--font-weight-semibold);\n  }\n\n  .break-words {\n    overflow-wrap: break-word;\n  }\n\n  .whitespace-nowrap {\n    white-space: nowrap;\n  }\n\n  .whitespace-pre-wrap {\n    white-space: pre-wrap;\n  }\n\n  .text-foreground {\n    color: var(--foreground);\n  }\n\n  .text-muted-foreground {\n    color: var(--muted-foreground);\n  }\n\n  .text-primary {\n    color: var(--primary);\n  }\n\n  .text-primary-foreground {\n    color: var(--primary-foreground);\n  }\n\n  .text-secondary-foreground {\n    color: var(--secondary-foreground);\n  }\n\n  .ordinal {\n    --tw-ordinal: ordinal;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .tabular-nums {\n    --tw-numeric-spacing: tabular-nums;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .underline {\n    text-decoration-line: underline;\n  }\n\n  .underline-offset-2 {\n    text-underline-offset: 2px;\n  }\n\n  .accent-primary {\n    accent-color: var(--primary);\n  }\n\n  .shadow {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .outline {\n    outline-style: var(--tw-outline-style);\n    outline-width: 1px;\n  }\n\n  .blur {\n    --tw-blur: blur(8px);\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .filter {\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .transition {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-colors {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-transform {\n    transition-property: transform, translate, scale, rotate;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .outline-none {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  .select-none {\n    -webkit-user-select: none;\n    user-select: none;\n  }\n\n  @media (hover: hover) {\n    .hover\\:bg-accent:hover {\n      background-color: var(--accent);\n    }\n\n    .hover\\:bg-primary\\/90:hover {\n      background-color: var(--primary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-primary\\/90:hover {\n        background-color: color-mix(in oklab, var(--primary) 90%, transparent);\n      }\n    }\n\n    .hover\\:text-accent-foreground:hover {\n      color: var(--accent-foreground);\n    }\n  }\n\n  .focus-visible\\:ring-2:focus-visible {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus-visible\\:ring-ring:focus-visible {\n    --tw-ring-color: var(--ring);\n  }\n\n  .disabled\\:pointer-events-none:disabled {\n    pointer-events: none;\n  }\n\n  .disabled\\:opacity-50:disabled {\n    opacity: .5;\n  }\n}\n\n:host {\n  --background: oklch(98.5% 0 0);\n  --foreground: oklch(14.5% 0 0);\n  --card: oklch(100% 0 0);\n  --card-foreground: oklch(14.5% 0 0);\n  --primary: oklch(20.5% 0 0);\n  --primary-foreground: oklch(98.5% 0 0);\n  --secondary: oklch(97% 0 0);\n  --secondary-foreground: oklch(20.5% 0 0);\n  --muted: oklch(97% 0 0);\n  --muted-foreground: oklch(55.6% 0 0);\n  --accent: oklch(97% 0 0);\n  --accent-foreground: oklch(20.5% 0 0);\n  --border: oklch(92.2% 0 0);\n  --ring: oklch(70.8% 0 0);\n  --radius: .625rem;\n  all: initial;\n  color: var(--foreground);\n  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;\n}\n\n@media (prefers-color-scheme: dark) {\n  :host {\n    --background: oklch(14.5% 0 0);\n    --foreground: oklch(98.5% 0 0);\n    --card: oklch(20.5% 0 0);\n    --card-foreground: oklch(98.5% 0 0);\n    --primary: oklch(92.2% 0 0);\n    --primary-foreground: oklch(20.5% 0 0);\n    --secondary: oklch(26.9% 0 0);\n    --secondary-foreground: oklch(98.5% 0 0);\n    --muted: oklch(26.9% 0 0);\n    --muted-foreground: oklch(70.8% 0 0);\n    --accent: oklch(26.9% 0 0);\n    --accent-foreground: oklch(98.5% 0 0);\n    --border: oklch(100% 0 0 / .12);\n    --ring: oklch(55.6% 0 0);\n  }\n}\n\n* {\n  box-sizing: border-box;\n  border-color: var(--border);\n}\n\n.booster-shell {\n  z-index: 2147483647;\n  position: fixed;\n  bottom: 20px;\n  right: 20px;\n}\n\n.booster-button {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 42px;\n  height: 42px;\n  color: var(--card-foreground);\n  cursor: pointer;\n  border-radius: 14px;\n  font: 700 15px / 1 inherit;\n  box-shadow: 0 10px 30px #0003;\n}\n\n.booster-panel {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 300px;\n  color: var(--card-foreground);\n  border-radius: 16px;\n  margin-bottom: 10px;\n  padding: 14px;\n  box-shadow: 0 18px 45px #0000003d;\n}\n\n.booster-panel h2 {\n  margin: 0 0 6px;\n  font-size: 15px;\n  font-weight: 700;\n}\n\n.booster-panel p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.45;\n}\n\n.booster-control-center {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(760px, 100vw - 32px);\n  color: var(--card-foreground);\n  border-radius: 18px;\n  margin-bottom: 10px;\n  overflow: hidden;\n  box-shadow: 0 22px 60px #00000047;\n}\n\n.booster-control-header, .booster-control-footer {\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  display: flex;\n}\n\n.booster-control-header {\n  border-bottom: 1px solid var(--border);\n  padding: 14px 14px 12px;\n}\n\n.booster-control-header strong {\n  font-size: 14px;\n}\n\n.booster-control-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-control-body {\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-loading {\n  color: var(--muted-foreground);\n  padding: 18px;\n  font-size: 12px;\n}\n\n.booster-section-label {\n  color: var(--muted-foreground);\n  letter-spacing: .08em;\n  text-transform: uppercase;\n  padding: 2px 2px 0;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-setting-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 12px;\n  display: flex;\n}\n\n.booster-setting-card-stack {\n  align-items: stretch;\n  display: grid;\n}\n\n.booster-range-grid {\n  gap: 10px;\n  min-width: 220px;\n  display: grid;\n}\n\n.booster-range-grid label {\n  gap: 5px;\n  display: grid;\n}\n\n.booster-range-grid label > span {\n  color: var(--muted-foreground);\n  justify-content: space-between;\n  gap: 12px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-range-grid label > span b {\n  color: var(--foreground);\n  font-variant-numeric: tabular-nums;\n}\n\n.booster-range-grid input[type="range"] {\n  width: 100%;\n  accent-color: var(--primary);\n}\n\n.booster-setting-disabled {\n  opacity: .55;\n}\n\n.booster-setting-copy {\n  gap: 5px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-setting-copy b {\n  font-size: 12px;\n}\n\n.booster-setting-copy > span {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.4;\n}\n\n.booster-switch {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  cursor: pointer;\n  border-radius: 999px;\n  flex: none;\n  width: 36px;\n  height: 20px;\n  padding: 0;\n  transition: background .12s, border-color .12s;\n  position: relative;\n}\n\n.booster-switch:disabled {\n  cursor: not-allowed;\n}\n\n.booster-switch > span {\n  background: var(--foreground);\n  border-radius: 999px;\n  width: 14px;\n  height: 14px;\n  transition: transform .12s;\n  position: absolute;\n  top: 2px;\n  left: 2px;\n}\n\n.booster-switch-on {\n  background: var(--primary);\n  border-color: var(--primary);\n}\n\n.booster-switch-on > span {\n  background: var(--primary-foreground);\n  transform: translateX(16px);\n}\n\n.booster-info-card {\n  background: var(--muted);\n  color: var(--foreground);\n  border-radius: 12px;\n  padding: 11px 12px;\n  font-size: 11px;\n}\n\n.booster-info-card ul {\n  color: var(--muted-foreground);\n  gap: 4px;\n  margin: 8px 0 0 18px;\n  padding: 0;\n  line-height: 1.35;\n  display: grid;\n}\n\n.booster-control-footer {\n  padding-top: 2px;\n}\n\n.booster-save-state {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 5px;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-overlay-root {\n  pointer-events: none;\n}\n\n.booster-launcher {\n  z-index: 2147483647;\n  border: 2px solid var(--primary);\n  justify-content: center;\n  align-items: center;\n  gap: 1px;\n  width: 46px;\n  height: 46px;\n  display: inline-flex;\n  position: fixed;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher {\n    border: 2px solid color-mix(in oklab, var(--primary) 55%, transparent);\n  }\n}\n\n.booster-launcher {\n  background: var(--primary);\n  color: var(--primary-foreground);\n  box-shadow: 0 12px 36px #00000047, 0 0 0 3px var(--primary);\n  border-radius: 15px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher {\n    box-shadow: 0 12px 36px #00000047, 0 0 0 3px color-mix(in oklab, var(--primary) 18%, transparent);\n  }\n}\n\n.booster-launcher {\n  cursor: grab;\n  pointer-events: auto;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  font: 800 17px / 1 inherit;\n}\n\n.booster-launcher:hover {\n  transform: scale(1.04);\n}\n\n.booster-launcher-dragging {\n  cursor: grabbing;\n  transform: scale(1.06);\n}\n\n.booster-launcher-grip {\n  opacity: .7;\n  width: 11px;\n  height: 11px;\n}\n\n.booster-modal-backdrop {\n  z-index: 2147483646;\n  -webkit-backdrop-filter: blur(3px);\n  backdrop-filter: blur(3px);\n  pointer-events: auto;\n  background: #00000061;\n  place-items: center;\n  padding: 16px;\n  display: grid;\n  position: fixed;\n  inset: 0;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n  max-height: calc(100vh - 32px);\n  overflow: auto;\n}\n\n.booster-modal-surface .booster-control-center {\n  width: 100%;\n  margin: 0;\n}\n\n.booster-popup-host {\n  background: var(--background);\n  min-width: 360px;\n}\n\n.booster-select {\n  border: 1px solid var(--border);\n  background: var(--background);\n  min-width: 92px;\n  height: 32px;\n  color: var(--foreground);\n  cursor: pointer;\n  border-radius: 8px;\n  outline: none;\n  flex: none;\n  padding: 0 28px 0 10px;\n  font: 500 12px / 1 inherit;\n}\n\n.booster-select:focus {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-stack-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-stack-card label {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-input {\n  border: 1px solid var(--border);\n  background: var(--background);\n  width: 100%;\n  min-width: 0;\n  height: 32px;\n  color: var(--foreground);\n  border-radius: 8px;\n  outline: none;\n  padding: 0 10px;\n  font: 500 11px / 1 inherit;\n}\n\n.booster-input:focus {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-counter-grid {\n  color: var(--muted-foreground);\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 6px 12px;\n  margin-top: 8px;\n  display: grid;\n}\n\n.booster-counter-grid span {\n  justify-content: space-between;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-counter-grid b {\n  color: var(--foreground);\n}\n\n.booster-header-copy {\n  min-width: 0;\n}\n\n.booster-header-actions {\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-header-toggle-label {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  font-weight: 600;\n}\n\n.booster-settings-layout {\n  grid-template-columns: 150px minmax(0, 1fr);\n  min-height: 360px;\n  display: grid;\n}\n\n.booster-settings-nav {\n  border-right: 1px solid var(--border);\n  background: var(--muted);\n  align-content: start;\n  gap: 4px;\n  padding: 12px 8px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-settings-nav {\n    background: color-mix(in oklab, var(--muted) 58%, transparent);\n  }\n}\n\n.booster-settings-nav button {\n  width: 100%;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  border-radius: 9px;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 10px;\n  font: 600 11px / 1.2 inherit;\n  display: flex;\n}\n\n.booster-settings-nav button:hover, .booster-settings-nav button.active {\n  background: var(--background);\n  color: var(--foreground);\n}\n\n.booster-settings-content {\n  align-content: start;\n  gap: 10px;\n  min-width: 0;\n  padding: 14px;\n  display: grid;\n}\n\n.booster-setting-card-flat {\n  border: 0;\n  border-bottom: 1px solid var(--border);\n  border-radius: 0;\n  padding: 0 0 10px;\n}\n\n.booster-analytics-grid {\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 12px;\n  display: grid;\n}\n\n.booster-counter-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  padding: 12px;\n}\n\n.booster-counter-title {\n  margin-bottom: 8px;\n  font-size: 12px;\n  font-weight: 700;\n}\n\n.booster-disclosure {\n  width: 100%;\n  color: var(--foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 0;\n  display: flex;\n}\n\n.booster-disclosure > span {\n  gap: 3px;\n  display: grid;\n}\n\n.booster-disclosure b {\n  font-size: 12px;\n}\n\n.booster-disclosure small {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.rotate-180 {\n  transform: rotate(180deg);\n}\n\n.booster-telemetry-body {\n  gap: 10px;\n  padding-top: 10px;\n  display: grid;\n}\n\n.booster-field {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-telemetry-test-row {\n  align-items: center;\n  gap: 10px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-test-success {\n  color: oklch(62% .17 145);\n  font-size: 11px;\n}\n\n.booster-test-error {\n  color: oklch(63% .2 25);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n}\n\n@media (max-width: 620px) {\n  .booster-control-center, .booster-modal-surface {\n    width: calc(100vw - 20px);\n  }\n\n  .booster-settings-layout {\n    grid-template-columns: 1fr;\n  }\n\n  .booster-settings-nav {\n    border-right: 0;\n    border-bottom: 1px solid var(--border);\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n\n  .booster-settings-nav button {\n    justify-content: center;\n  }\n\n  .booster-analytics-grid {\n    grid-template-columns: 1fr;\n  }\n}\n\n.booster-launcher-icon {\n  width: 21px;\n  height: 21px;\n}\n\n.booster-launcher-open {\n  box-shadow: 0 14px 40px #00000057, 0 0 0 4px var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher-open {\n    box-shadow: 0 14px 40px #00000057, 0 0 0 4px color-mix(in oklab, var(--primary) 24%, transparent);\n  }\n}\n\n.booster-quick-menu {\n  z-index: 2147483647;\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 330px;\n  color: var(--card-foreground);\n  pointer-events: auto;\n  border-radius: 18px;\n  position: fixed;\n  overflow: hidden;\n  box-shadow: 0 22px 60px #0000004d;\n}\n\n.booster-quick-header, .booster-loader-status, .booster-quick-actions, .booster-quick-context, .booster-quick-empty, .booster-loader-error {\n  padding: 12px 14px;\n}\n\n.booster-quick-header, .booster-loader-status {\n  justify-content: space-between;\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-quick-header {\n  border-bottom: 1px solid var(--border);\n}\n\n.booster-quick-header > div, .booster-loader-status > div {\n  gap: 2px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-quick-header strong, .booster-loader-status strong {\n  font-size: 13px;\n}\n\n.booster-quick-header span, .booster-loader-status span, .booster-quick-context code, .booster-quick-empty, .booster-loader-error {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.booster-icon-button {\n  border: 1px solid var(--border);\n  background: var(--secondary);\n  width: 30px;\n  height: 30px;\n  color: var(--secondary-foreground);\n  cursor: pointer;\n  border-radius: 9px;\n  flex: none;\n  justify-content: center;\n  align-items: center;\n  display: inline-flex;\n}\n\n.booster-icon-button:hover {\n  background: var(--accent);\n}\n\n.booster-quick-context {\n  gap: 7px;\n  display: grid;\n}\n\n.booster-quick-context > strong {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 13px;\n  overflow: hidden;\n}\n\n.booster-quick-context code {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  overflow: hidden;\n}\n\n.booster-quick-chips, .booster-archive-meta {\n  flex-wrap: wrap;\n  gap: 5px;\n  display: flex;\n}\n\n.booster-quick-chips span, .booster-archive-meta span {\n  background: var(--muted);\n  max-width: 100%;\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  border-radius: 999px;\n  padding: 3px 6px;\n  font-size: 10px;\n  overflow: hidden;\n}\n\n.booster-loader-status {\n  border-top: 1px solid var(--border);\n  border-bottom: 1px solid var(--border);\n  background: var(--secondary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-loader-status {\n    background: color-mix(in oklab, var(--secondary) 70%, transparent);\n  }\n}\n\n.booster-loader-error {\n  border-top: 1px solid var(--border);\n}\n\n.booster-spin {\n  animation: 1.2s linear infinite booster-spin;\n}\n\n@keyframes booster-spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n.booster-quick-actions {\n  grid-template-columns: 1fr 1fr;\n  gap: 8px;\n  display: grid;\n}\n\n.booster-quick-primary, .booster-quick-secondary {\n  border: 1px solid var(--border);\n  cursor: pointer;\n  border-radius: 11px;\n  justify-content: center;\n  align-items: center;\n  gap: 7px;\n  min-height: 38px;\n  font: 600 11px / 1.2 inherit;\n  display: inline-flex;\n}\n\n.booster-quick-primary {\n  background: var(--primary);\n  color: var(--primary-foreground);\n}\n\n.booster-quick-secondary {\n  background: var(--secondary);\n  color: var(--secondary-foreground);\n}\n\n.booster-quick-primary:disabled, .booster-quick-secondary:disabled {\n  cursor: not-allowed;\n  opacity: .45;\n}\n\n.booster-archive-backdrop {\n  padding: 10px;\n}\n\n.booster-archive-surface {\n  pointer-events: auto;\n  width: min(1180px, 100vw - 20px);\n  height: min(820px, 100vh - 20px);\n}\n\n.booster-archive-browser {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 100%;\n  height: 100%;\n  color: var(--card-foreground);\n  border-radius: 20px;\n  grid-template-rows: auto minmax(0, 1fr);\n  display: grid;\n  overflow: hidden;\n  box-shadow: 0 28px 80px #00000061;\n}\n\n.booster-archive-header {\n  border-bottom: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  min-height: 58px;\n  padding: 10px 14px;\n  display: flex;\n}\n\n.booster-archive-title, .booster-archive-header-actions {\n  align-items: center;\n  gap: 9px;\n  display: flex;\n}\n\n.booster-archive-title > div {\n  gap: 1px;\n  display: grid;\n}\n\n.booster-archive-title strong {\n  font-size: 14px;\n}\n\n.booster-archive-title span {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-archive-layout {\n  grid-template-columns: 300px minmax(0, 1fr);\n  min-height: 0;\n  display: grid;\n}\n\n.booster-archive-sidebar {\n  border-right: 1px solid var(--border);\n  background: var(--secondary);\n  padding: 10px;\n  overflow: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-sidebar {\n    background: color-mix(in oklab, var(--secondary) 38%, var(--card));\n  }\n}\n\n.booster-archive-group {\n  margin-bottom: 12px;\n}\n\n.booster-archive-project {\n  color: var(--muted-foreground);\n  text-transform: uppercase;\n  align-items: center;\n  gap: 6px;\n  padding: 6px 7px;\n  font-size: 10px;\n  font-weight: 700;\n  display: flex;\n}\n\n.booster-archive-project span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-archive-conversation {\n  width: 100%;\n  color: inherit;\n  text-align: left;\n  cursor: pointer;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 11px;\n  gap: 3px;\n  margin: 2px 0;\n  padding: 9px 10px;\n  display: grid;\n}\n\n.booster-archive-conversation:hover, .booster-archive-conversation.active {\n  border-color: var(--border);\n  background: var(--card);\n}\n\n.booster-archive-conversation strong, .booster-archive-conversation span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  overflow: hidden;\n}\n\n.booster-archive-conversation strong {\n  font-size: 12px;\n}\n\n.booster-archive-conversation span {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-archive-content {\n  background: var(--background);\n  min-width: 0;\n  overflow: auto;\n}\n\n.booster-archive-conversation-head {\n  z-index: 2;\n  border-bottom: 1px solid var(--border);\n  background: var(--card);\n  justify-content: space-between;\n  align-items: flex-start;\n  gap: 14px;\n  padding: 12px 16px;\n  display: flex;\n  position: sticky;\n  top: 0;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-conversation-head {\n    background: color-mix(in oklab, var(--card) 94%, transparent);\n  }\n}\n\n.booster-archive-conversation-head {\n  -webkit-backdrop-filter: blur(10px);\n  backdrop-filter: blur(10px);\n}\n\n.booster-archive-conversation-head > div:first-child {\n  grid-template-columns: auto minmax(0, 1fr);\n  align-items: center;\n  gap: 2px 8px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-archive-conversation-head strong {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 13px;\n  overflow: hidden;\n}\n\n.booster-archive-conversation-head span {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  grid-column: 2;\n  font-size: 9px;\n  overflow: hidden;\n}\n\n.booster-archive-back {\n  background: var(--secondary);\n  width: 28px;\n  height: 28px;\n  color: var(--secondary-foreground);\n  cursor: pointer;\n  border: 0;\n  border-radius: 8px;\n  grid-row: 1 / span 2;\n  justify-content: center;\n  align-items: center;\n  display: inline-flex;\n}\n\n.booster-archive-messages {\n  gap: 10px;\n  padding: 14px 16px 40px;\n  display: grid;\n}\n\n.booster-archive-message {\n  border: 1px solid var(--border);\n  background: var(--card);\n  border-radius: 14px;\n  max-width: 920px;\n  padding: 11px 13px;\n}\n\n.booster-archive-message.role-user {\n  background: var(--secondary);\n  margin-left: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-message.role-user {\n    background: color-mix(in oklab, var(--secondary) 82%, var(--card));\n  }\n}\n\n.booster-archive-message.role-tool {\n  border-style: dashed;\n}\n\n.booster-archive-message-head {\n  color: var(--muted-foreground);\n  text-transform: uppercase;\n  flex-wrap: wrap;\n  gap: 5px 10px;\n  margin-bottom: 8px;\n  font-size: 9px;\n  display: flex;\n}\n\n.booster-archive-message-head strong {\n  color: var(--foreground);\n}\n\n.booster-archive-message-text {\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  font-size: 12px;\n  line-height: 1.55;\n}\n\n.booster-raw-toggle {\n  color: var(--muted-foreground);\n  cursor: pointer;\n  background: none;\n  border: 0;\n  align-items: center;\n  gap: 4px;\n  margin-top: 10px;\n  padding: 0;\n  font: 600 10px / 1 inherit;\n  display: inline-flex;\n}\n\n.booster-archive-raw {\n  background: var(--muted);\n  max-height: 360px;\n  color: var(--foreground);\n  white-space: pre-wrap;\n  border-radius: 10px;\n  margin: 9px 0 0;\n  padding: 10px;\n  font: 10px / 1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;\n  overflow: auto;\n}\n\n.booster-archive-empty, .booster-archive-error {\n  color: var(--muted-foreground);\n  padding: 24px;\n  font-size: 12px;\n}\n\n.booster-archive-error {\n  color: #dc2626;\n}\n\n@media (max-width: 760px) {\n  .booster-archive-layout {\n    grid-template-columns: 220px minmax(0, 1fr);\n  }\n\n  .booster-quick-menu {\n    width: min(330px, 100vw - 24px);\n  }\n}\n\n.booster-identity {\n  vertical-align: middle;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  max-width: 100%;\n  display: inline-flex;\n}\n\n.booster-dock {\n  z-index: 2147483647;\n  pointer-events: auto;\n  width: 44px;\n  height: 44px;\n  position: fixed;\n}\n\n.booster-dock-toggle {\n  z-index: 2;\n  border: 1px solid var(--border);\n  background: var(--primary);\n  width: 44px;\n  height: 44px;\n  color: var(--primary-foreground);\n  cursor: grab;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  justify-content: center;\n  align-items: center;\n  padding: 0;\n  display: flex;\n  position: relative;\n}\n\n.booster-dock.right .booster-dock-toggle {\n  border-radius: 12px 0 0 12px;\n}\n\n.booster-dock.left .booster-dock-toggle {\n  border-radius: 0 12px 12px 0;\n}\n\n.booster-dock.dragging .booster-dock-toggle {\n  cursor: grabbing;\n}\n\n.booster-dock-shell {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(284px, 100vw);\n  color: var(--card-foreground);\n  position: absolute;\n  overflow: hidden;\n  box-shadow: 0 12px 32px #00000038;\n}\n\n.booster-dock.right .booster-dock-shell {\n  border-radius: 16px 0 0 16px;\n  right: 0;\n}\n\n.booster-dock.left .booster-dock-shell {\n  border-radius: 0 16px 16px 0;\n  left: 0;\n}\n\n.booster-dock.grow-up .booster-dock-shell {\n  padding-bottom: 44px;\n  bottom: 0;\n}\n\n.booster-dock.grow-down .booster-dock-shell {\n  padding-top: 44px;\n  top: 0;\n}\n\n.booster-dock-content {\n  overscroll-behavior: contain;\n  overflow-y: auto;\n}\n\n.booster-dock-close-bar {\n  box-sizing: border-box;\n  background: var(--primary);\n  height: 44px;\n  color: var(--primary-foreground);\n  letter-spacing: .01em;\n  cursor: grab;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  border: 0;\n  align-items: center;\n  gap: 8px;\n  padding: 0 12px;\n  font: 650 11px / 1 inherit;\n  display: flex;\n  position: absolute;\n  left: -1px;\n  right: -1px;\n}\n\n.booster-dock.grow-up .booster-dock-close-bar {\n  border-top: 1px solid var(--primary-foreground);\n  bottom: -1px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-dock.grow-up .booster-dock-close-bar {\n    border-top: 1px solid color-mix(in oklab, var(--primary-foreground) 18%, transparent);\n  }\n}\n\n.booster-dock.grow-down .booster-dock-close-bar {\n  border-bottom: 1px solid var(--primary-foreground);\n  top: -1px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-dock.grow-down .booster-dock-close-bar {\n    border-bottom: 1px solid color-mix(in oklab, var(--primary-foreground) 18%, transparent);\n  }\n}\n\n.booster-dock.right .booster-dock-close-bar, .booster-dock.left .booster-dock-close-bar {\n  justify-content: flex-start;\n  padding-inline: 12px;\n}\n\n.booster-dock-close-bar:hover {\n  filter: brightness(1.04);\n}\n\n.booster-dock-close-bar:active {\n  cursor: grabbing;\n}\n\n.booster-dock-close-bar svg {\n  flex: none;\n}\n\n.booster-dock-context {\n  gap: 5px;\n  padding: 11px 12px 7px;\n  display: grid;\n}\n\n.booster-dock-context > .booster-identity:first-child {\n  font-size: 13px;\n  font-weight: 650;\n}\n\n.booster-dock-context > .booster-identity {\n  font-size: 12px;\n}\n\n.booster-dock-context p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 11px;\n  line-height: 1.5;\n}\n\n.booster-dock-context time {\n  font-size: 10px;\n  display: block;\n}\n\n.booster-dock-counts {\n  color: var(--muted-foreground);\n  flex-wrap: wrap;\n  gap: 6px 10px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-dock-counts b {\n  color: var(--foreground);\n  font-weight: 650;\n}\n\n.booster-capture-shortcut {\n  color: var(--muted-foreground);\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n  background: none;\n  border: 0;\n  align-items: center;\n  gap: 6px;\n  padding: 3px 0;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-dock-actions {\n  flex-direction: column;\n  gap: 1px;\n  padding: 4px 5px 6px;\n  display: flex;\n}\n\n.booster-dock-actions > button {\n  width: 100%;\n  min-height: 34px;\n  color: inherit;\n  text-align: left;\n  font: inherit;\n  cursor: pointer;\n  background: none;\n  border: 0;\n  border-radius: 8px;\n  align-items: center;\n  gap: 10px;\n  padding: 6px 9px;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-dock-actions > button:hover:not(:disabled) {\n  background: var(--muted);\n}\n\n.booster-dock-actions > button:disabled {\n  opacity: .4;\n  cursor: not-allowed;\n}\n\n.booster-dock.grow-down .booster-dock-content {\n  flex-direction: column-reverse;\n  display: flex;\n}\n\n.booster-dock.grow-down .booster-dock-actions {\n  flex-direction: column-reverse;\n}\n\n.booster-dock-progress {\n  border-block: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: center;\n  gap: 8px;\n  padding: 8px 12px;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-identity-label {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-identity-copy {\n  width: 24px;\n  height: 24px;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  opacity: 0;\n  background: none;\n  border: 0;\n  border-radius: 5px;\n  flex: none;\n  justify-content: center;\n  align-items: center;\n  padding: 4px;\n  display: inline-flex;\n}\n\n.booster-identity:hover .booster-identity-copy, .booster-identity:focus-within .booster-identity-copy, .booster-reader-group-header:hover .booster-identity-copy {\n  opacity: 1;\n}\n\n.booster-identity-copy:hover {\n  background: var(--muted);\n}\n\n.booster-sr-only {\n  clip-path: inset(50%);\n  white-space: nowrap;\n  width: 1px;\n  height: 1px;\n  position: absolute;\n  overflow: hidden;\n}\n\n.booster-modal-backdrop {\n  -webkit-backdrop-filter: none;\n  backdrop-filter: none;\n}\n\n.booster-dialog {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(760px, 100vw - 32px);\n  max-height: calc(100dvh - 32px);\n  color: var(--card-foreground);\n  pointer-events: auto;\n  border-radius: 16px;\n  outline: none;\n  font-size: 14px;\n  overflow: auto;\n  box-shadow: 0 20px 60px #0000004d;\n}\n\n.booster-dialog .booster-control-center {\n  width: 100%;\n  box-shadow: none;\n  border: 0;\n  border-radius: 0;\n  margin: 0;\n}\n\n.booster-dialog-wide {\n  width: min(1220px, 100vw - 32px);\n  height: min(860px, 100dvh - 32px);\n  overflow: hidden;\n}\n\n.booster-section-header {\n  border-bottom: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  min-height: 64px;\n  padding: 12px 18px;\n  display: flex;\n}\n\n.booster-section-header strong {\n  font-size: 15px;\n}\n\n.booster-section-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-form-body {\n  gap: 16px;\n  padding: 20px;\n  line-height: 1.5;\n  display: grid;\n}\n\n.booster-form-body h2, .booster-capture-settings h3 {\n  margin: 0;\n  font-size: 16px;\n  font-weight: 650;\n}\n\n.booster-form-body > label {\n  gap: 6px;\n  font-size: 12px;\n  font-weight: 600;\n  display: grid;\n}\n\n.booster-form-body select, .booster-reader input {\n  border: 1px solid var(--border);\n  background: var(--background);\n  width: 100%;\n  min-width: 0;\n  min-height: 38px;\n  color: var(--foreground);\n  font: inherit;\n  border-radius: 8px;\n  padding: 8px 10px;\n  font-size: 12px;\n}\n\n.booster-checkboxes {\n  border: 0;\n  gap: 10px;\n  margin: 0;\n  padding: 0;\n  display: grid;\n}\n\n.booster-checkboxes label {\n  align-items: center;\n  gap: 8px;\n  font-size: 13px;\n  display: flex;\n}\n\n.booster-checkboxes input {\n  width: 16px;\n  height: 16px;\n}\n\n.booster-export-suboptions {\n  border-inline-start: 1px solid var(--border);\n  gap: 8px;\n  margin-inline-start: 22px;\n  padding-inline-start: 12px;\n  display: grid;\n}\n\n.booster-note {\n  color: var(--muted-foreground);\n  overflow-wrap: anywhere;\n  margin: 8px 0;\n  font-size: 12px;\n  line-height: 1.6;\n}\n\n.booster-notice {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  border-radius: 8px;\n  margin: 0;\n  padding: 12px;\n  font-size: 12px;\n  line-height: 1.6;\n}\n\n.booster-error {\n  color: var(--foreground);\n  border: 1px solid #c2410c;\n  border-radius: 8px;\n  margin: 8px 12px;\n  padding: 8px 10px;\n  font-size: 12px;\n  line-height: 1.5;\n}\n\n.booster-action-primary, .booster-action-secondary {\n  border: 1px solid var(--border);\n  cursor: pointer;\n  min-height: 38px;\n  font: inherit;\n  border-radius: 8px;\n  justify-content: center;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 14px;\n  font-size: 12px;\n  display: inline-flex;\n}\n\n.booster-action-primary {\n  background: var(--primary);\n  color: var(--primary-foreground);\n  text-decoration: none;\n}\n\n.booster-action-secondary {\n  background: var(--secondary);\n  color: var(--secondary-foreground);\n}\n\n.booster-action-primary:disabled, .booster-action-secondary:disabled, .booster-icon-button:disabled {\n  opacity: .45;\n  cursor: not-allowed;\n}\n\n.booster-capture-settings > .booster-form-body {\n  padding-inline: 0;\n}\n\n.booster-reader {\n  grid-template-rows: auto minmax(0, 1fr);\n  height: 100%;\n  display: grid;\n}\n\n.booster-reader-heading {\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-reader-layout {\n  grid-template-columns: minmax(210px, 27%) minmax(0, 1fr);\n  min-height: 0;\n  display: grid;\n}\n\n.booster-reader-sidebar {\n  border-right: 1px solid var(--border);\n  background: var(--card);\n  overscroll-behavior: contain;\n  min-width: 0;\n  padding: 12px;\n  overflow: auto;\n}\n\n.booster-reader-group {\n  margin-top: 12px;\n}\n\n.booster-reader-group-header {\n  align-items: center;\n  gap: 2px;\n  min-height: 38px;\n  display: flex;\n}\n\n.booster-group-toggle {\n  min-width: 0;\n  color: inherit;\n  cursor: pointer;\n  text-align: left;\n  font: inherit;\n  background: none;\n  border: 0;\n  flex: 1;\n  align-items: center;\n  gap: 6px;\n  padding: 6px 0;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-group-toggle svg {\n  flex-shrink: 0;\n}\n\n.booster-group-toggle span {\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-group-toggle small {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-reader-chat-list {\n  gap: 3px;\n  padding-left: 10px;\n  display: grid;\n}\n\n.booster-reader-chat-list > button {\n  color: inherit;\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 8px;\n  align-items: center;\n  gap: 6px;\n  padding: 10px;\n  font-size: 12px;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-reader-chat-list > button:hover, .booster-reader-chat-list > button.active {\n  background: var(--muted);\n  border-color: var(--border);\n}\n\n.booster-reader-main {\n  background: var(--background);\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-reader-chat-header {\n  justify-content: space-between;\n  align-items: flex-start;\n  gap: 12px;\n  display: flex;\n}\n\n.booster-reader-chat-header > div {\n  min-width: 0;\n}\n\n.booster-reader-chat-header h2 {\n  margin: 0 0 4px;\n  font-size: 18px;\n  line-height: 1.4;\n}\n\n.booster-reader-chat-header > div > .booster-identity {\n  color: var(--muted-foreground);\n  font-size: 12px;\n}\n\n.booster-reader-summary {\n  color: var(--muted-foreground);\n  flex-wrap: wrap;\n  gap: 6px 14px;\n  margin-block: 10px 0;\n  font-size: 11px;\n  display: flex;\n}\n\n.booster-reader-summary b {\n  color: var(--foreground);\n}\n\n.booster-reader-summary p {\n  flex-basis: 100%;\n  margin: 2px 0 0;\n  line-height: 1.5;\n}\n\n.booster-reader-exchanges {\n  gap: 20px;\n  margin-top: 0;\n  display: grid;\n}\n\n.booster-exchange {\n  border-bottom: 1px solid var(--border);\n  padding-bottom: 16px;\n}\n\n.booster-graph-message {\n  margin-left: calc(min(var(--graph-lane, 0), 3) * 15px);\n  grid-template-columns: 34px minmax(0, 1fr);\n  align-items: stretch;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-graph-rail {\n  background: linear-gradient(var(--border), var(--border)) center / 2px 100% no-repeat;\n  justify-content: center;\n  min-height: 40px;\n  display: flex;\n  position: relative;\n}\n\n.booster-graph-dot {\n  border: 2px solid var(--background);\n  outline: 2px solid var(--primary);\n  background: var(--primary);\n  z-index: 1;\n  border-radius: 50%;\n  align-self: flex-start;\n  width: 12px;\n  height: 12px;\n  margin-top: 14px;\n  position: sticky;\n  top: 12px;\n}\n\n.booster-graph-dot.is-assistant {\n  background: var(--secondary);\n  outline-color: var(--muted-foreground);\n  border-radius: 4px;\n}\n\n.booster-graph-message.is-fork .booster-graph-rail:before {\n  content: "";\n  border-top: 2px solid var(--primary);\n  border-radius: 6px;\n  position: absolute;\n  top: 20px;\n  left: 0;\n  right: 50%;\n}\n\n.booster-graph-content {\n  min-width: 0;\n  padding-bottom: 10px;\n}\n\n.booster-graph-branch-label {\n  border: 1px solid var(--border);\n  color: var(--muted-foreground);\n  border-radius: 999px;\n  align-items: center;\n  gap: 5px;\n  margin: 2px 0 8px 4px;\n  padding: 3px 8px;\n  font-size: 11px;\n  display: inline-flex;\n}\n\n.booster-mobile-back {\n  display: none;\n}\n\n.booster-dialog :is(button, input, select, summary):focus-visible, .booster-dock :is(button, summary):focus-visible {\n  outline: 2px solid var(--ring);\n  outline-offset: 2px;\n}\n\n@media (hover: none) {\n  .booster-identity-copy {\n    opacity: 1;\n  }\n}\n\n@media (max-width: 640px) {\n  .booster-reader-layout {\n    display: block;\n  }\n\n  .booster-reader-sidebar, .booster-reader-main {\n    height: 100%;\n  }\n\n  .booster-reader-sidebar {\n    display: none;\n  }\n\n  .booster-reader-list-mode .booster-reader-sidebar {\n    display: block;\n  }\n\n  .booster-reader-main {\n    padding: 0;\n  }\n\n  .booster-reader-list-mode .booster-reader-main {\n    display: none;\n  }\n\n  .booster-mobile-back {\n    color: inherit;\n    font: inherit;\n    cursor: pointer;\n    background: none;\n    border: 0;\n    align-items: center;\n    gap: 6px;\n    margin-bottom: 12px;\n    padding: 6px 0;\n    font-size: 12px;\n    display: inline-flex;\n  }\n\n  .booster-reader-chat-header {\n    flex-wrap: wrap;\n  }\n\n  .booster-dialog, .booster-dialog-wide {\n    width: calc(100vw - 16px);\n    max-height: calc(100dvh - 16px);\n  }\n\n  .booster-modal-backdrop {\n    padding: 8px;\n  }\n}\n\n.booster-archive-workspace-root {\n  z-index: 2147483645;\n  pointer-events: none;\n  position: fixed;\n  inset: 0;\n}\n\n.booster-archive-workspace {\n  border: 1px solid var(--border);\n  background: var(--background);\n  pointer-events: auto;\n  resize: none;\n  border-radius: 14px;\n  min-width: 520px;\n  min-height: 360px;\n  position: fixed;\n  overflow: hidden;\n  box-shadow: 0 22px 70px #00000052;\n}\n\n.booster-archive-workspace .booster-reader {\n  border-radius: inherit;\n  background: var(--background);\n  height: 100%;\n  overflow: hidden;\n}\n\n.booster-archive-workspace [data-archive-drag-handle] {\n  cursor: move;\n  -webkit-user-select: none;\n  user-select: none;\n  touch-action: none;\n}\n\n.booster-archive-grip {\n  color: var(--muted-foreground);\n  flex: none;\n}\n\n.booster-archive-resize {\n  z-index: 4;\n  background: linear-gradient(135deg, transparent 0 48%, var(--muted-foreground) 49% 54%, transparent 55% 64%, var(--muted-foreground) 65% 70%, transparent 71%);\n  opacity: .55;\n  cursor: nwse-resize;\n  touch-action: none;\n  border: 0;\n  width: 18px;\n  height: 18px;\n  padding: 0;\n  position: absolute;\n  bottom: 0;\n  right: 0;\n}\n\n.booster-archive-dock-button {\n  z-index: 2147483646;\n  border: 1px solid var(--primary);\n  place-items: center;\n  width: 42px;\n  height: 42px;\n  padding: 0;\n  display: grid;\n  position: fixed;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-dock-button {\n    border: 1px solid color-mix(in oklab, var(--primary) 60%, var(--border));\n  }\n}\n\n.booster-archive-dock-button {\n  background: var(--primary);\n  color: var(--primary-foreground);\n  cursor: grab;\n  pointer-events: auto;\n  touch-action: none;\n  border-radius: 10px 0 0 10px;\n  box-shadow: 0 10px 30px #00000047;\n}\n\n.booster-archive-dock-button[style*="left: 0px"] {\n  border-radius: 0 10px 10px 0;\n}\n\n.booster-archive-dock-button:active {\n  cursor: grabbing;\n}\n\n.booster-archive-dock-corner {\n  opacity: .65;\n  width: 9px;\n  height: 9px;\n  position: absolute;\n  bottom: 3px;\n  right: 3px;\n}\n\n.booster-reader-chat-actions {\n  flex-wrap: wrap;\n  justify-content: flex-end;\n  gap: 6px;\n  display: flex;\n}\n\n.booster-exchange-details {\n  border-left: 2px solid var(--border);\n  gap: 6px;\n  margin: 10px 0 10px 12px;\n  padding: 8px 0 8px 12px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-exchange-details {\n    border-left: 2px solid color-mix(in oklab, var(--border) 78%, var(--primary));\n  }\n}\n\n.booster-exchange-details-label {\n  color: var(--muted-foreground);\n  letter-spacing: .04em;\n  text-transform: uppercase;\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-markdown {\n  overflow-wrap: anywhere;\n  font-size: 13px;\n  line-height: 1.65;\n}\n\n.booster-markdown > :first-child {\n  margin-top: 0;\n}\n\n.booster-markdown > :last-child {\n  margin-bottom: 0;\n}\n\n.booster-markdown p {\n  margin: .55em 0;\n}\n\n.booster-markdown h1, .booster-markdown h2, .booster-markdown h3, .booster-markdown h4, .booster-markdown h5, .booster-markdown h6 {\n  color: var(--foreground);\n  margin: 1em 0 .45em;\n  font-weight: 700;\n  line-height: 1.3;\n}\n\n.booster-markdown h1 {\n  font-size: 1.45em;\n}\n\n.booster-markdown h2 {\n  font-size: 1.28em;\n}\n\n.booster-markdown h3 {\n  font-size: 1.14em;\n}\n\n.booster-markdown :is(ul, ol) {\n  margin: .6em 0;\n  padding-left: 1.45em;\n}\n\n.booster-markdown li {\n  margin: .22em 0;\n}\n\n.booster-markdown blockquote {\n  border-left: 3px solid var(--border);\n  color: var(--muted-foreground);\n  margin: .7em 0;\n  padding: .2em 0 .2em .9em;\n}\n\n.booster-markdown code {\n  background: var(--muted);\n  border-radius: 5px;\n  padding: .15em .35em;\n  font: .92em / 1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n}\n\n.booster-markdown pre {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  border-radius: 9px;\n  max-width: 100%;\n  margin: .75em 0;\n  padding: 11px 12px;\n  overflow: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-markdown pre {\n    background: color-mix(in oklab, var(--muted) 72%, var(--background));\n  }\n}\n\n.booster-markdown pre code {\n  white-space: pre;\n  background: none;\n  padding: 0;\n}\n\n.booster-markdown a {\n  color: var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-markdown a {\n    color: color-mix(in oklab, var(--primary) 78%, #3b82f6);\n  }\n}\n\n.booster-markdown a {\n  text-underline-offset: 2px;\n  text-decoration: underline;\n}\n\n.booster-markdown hr {\n  background: var(--border);\n  border: 0;\n  height: 1px;\n  margin: 1em 0;\n}\n\n.booster-markdown-table-wrap {\n  max-width: 100%;\n  margin: .8em 0;\n  overflow-x: auto;\n}\n\n.booster-markdown table {\n  border-collapse: collapse;\n  width: max-content;\n  min-width: 100%;\n  font-size: 12px;\n}\n\n.booster-markdown :is(th, td) {\n  border: 1px solid var(--border);\n  text-align: left;\n  vertical-align: top;\n  padding: 6px 9px;\n}\n\n.booster-markdown th {\n  background: var(--muted);\n}\n\n.booster-record {\n  border: 1px solid var(--border);\n  background: var(--card);\n  border-radius: 11px;\n  min-width: 0;\n  max-width: 100%;\n  margin-block: 7px;\n  padding: 11px 13px;\n  position: relative;\n  overflow: hidden;\n}\n\n.booster-record-user {\n  background: var(--muted);\n  margin-left: min(52px, 8%);\n}\n\n.booster-record-reasoning, .booster-record-tool_call, .booster-record-tool_result, .booster-record-internal {\n  background: var(--muted);\n  margin-block: 4px;\n  padding: 8px 10px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-record-reasoning, .booster-record-tool_call, .booster-record-tool_result, .booster-record-internal {\n    background: color-mix(in oklab, var(--muted) 45%, var(--background));\n  }\n}\n\n.booster-record-header {\n  color: var(--muted-foreground);\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 5px 10px;\n  margin-bottom: 8px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-record-header strong {\n  color: var(--foreground);\n  font-size: 11px;\n}\n\n.booster-record-internal-header {\n  justify-content: space-between;\n}\n\n.booster-record-kind {\n  align-items: center;\n  gap: 6px;\n  display: inline-flex;\n}\n\n.booster-record-expand, .booster-record-meta-button, .booster-tool-action {\n  color: var(--muted-foreground);\n  cursor: pointer;\n  background: none;\n  border: 0;\n  border-radius: 6px;\n  align-items: center;\n  gap: 4px;\n  padding: 3px 6px;\n  font: 600 10px / 1.25 inherit;\n  display: inline-flex;\n}\n\n.booster-record-expand:hover, .booster-record-meta-button:hover, .booster-tool-action:hover {\n  background: var(--muted);\n  color: var(--foreground);\n}\n\n.booster-record-meta-button {\n  margin-top: 7px;\n}\n\n.booster-reasoning-preview {\n  max-height: 76px;\n  color: var(--foreground);\n  position: relative;\n  overflow: hidden;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reasoning-preview {\n    color: color-mix(in oklab, var(--foreground) 82%, var(--muted-foreground));\n  }\n}\n\n.booster-reasoning-preview:not(.expanded):after {\n  background: linear-gradient(transparent, var(--muted));\n  height: 30px;\n  position: absolute;\n  bottom: 0;\n  left: 0;\n  right: 0;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reasoning-preview:not(.expanded):after {\n    background: linear-gradient(transparent, color-mix(in oklab, var(--muted) 45%, var(--background)));\n  }\n}\n\n.booster-reasoning-preview:not(.expanded):after {\n  content: "";\n  pointer-events: none;\n}\n\n.booster-reasoning-preview.expanded {\n  max-height: none;\n  overflow: visible;\n}\n\n.booster-reasoning-preview .booster-markdown {\n  font-size: 11px;\n  line-height: 1.55;\n}\n\n.booster-tool-row {\n  grid-template-columns: 28px minmax(0, 1fr) auto;\n  align-items: center;\n  gap: 8px;\n  display: grid;\n}\n\n.booster-tool-icon {\n  border: 1px solid var(--border);\n  object-fit: cover;\n  background: var(--background);\n  border-radius: 7px;\n  width: 28px;\n  height: 28px;\n}\n\n.booster-tool-icon-fallback {\n  color: var(--muted-foreground);\n  place-items: center;\n  display: grid;\n}\n\n.booster-tool-copy {\n  gap: 1px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-tool-copy strong {\n  color: var(--foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n.booster-tool-copy > span {\n  color: var(--muted-foreground);\n  font-size: 9px;\n}\n\n.booster-tool-copy p {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  margin: 2px 0 0;\n  font-size: 10px;\n  overflow: hidden;\n}\n\n.booster-tool-actions {\n  align-items: center;\n  gap: 2px;\n  display: flex;\n}\n\n.booster-tool-expanded {\n  border-top: 1px solid var(--border);\n  margin-top: 8px;\n  padding-top: 8px;\n}\n\n.booster-tool-expanded .booster-markdown {\n  font-size: 11px;\n}\n\n.booster-tool-expanded .booster-json-viewer {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  max-height: 260px;\n  font-size: 10px;\n}\n\n.booster-internal-row {\n  width: 100%;\n  color: inherit;\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  grid-template-columns: auto minmax(0, 1fr) auto;\n  align-items: center;\n  gap: 8px;\n  padding: 0;\n  display: grid;\n}\n\n.booster-internal-row > span:first-child {\n  align-items: center;\n  gap: 5px;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-internal-preview {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 10px;\n  overflow: hidden;\n}\n\n.booster-record-modal-header {\n  border-bottom: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: flex-start;\n  gap: 14px;\n  padding: 12px 14px;\n  display: flex;\n}\n\n.booster-record-modal-header > div {\n  gap: 2px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-record-modal-header strong {\n  font-size: 13px;\n}\n\n.booster-record-modal-header span {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 10px;\n  overflow: hidden;\n}\n\n.booster-capture-surface {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 14px;\n  overflow: hidden;\n}\n\n.booster-capture-surface > .booster-capture-settings {\n  padding: 14px 16px 18px;\n}\n\n@media (max-width: 680px) {\n  .booster-archive-workspace {\n    border-radius: 10px;\n    min-width: 0;\n    min-height: 0;\n  }\n\n  .booster-tool-row {\n    grid-template-columns: 26px minmax(0, 1fr);\n  }\n\n  .booster-tool-actions {\n    grid-column: 2;\n    justify-content: flex-start;\n  }\n\n  .booster-reader-chat-actions {\n    justify-content: flex-start;\n    width: 100%;\n  }\n}\n\n.booster-analytics-dashboard {\n  gap: 12px;\n  display: grid;\n}\n\n.booster-analytics-header {\n  justify-content: space-between;\n  align-items: flex-start;\n  gap: 14px;\n  display: flex;\n}\n\n.booster-analytics-header > div {\n  gap: 3px;\n  display: grid;\n}\n\n.booster-analytics-header strong {\n  font-size: 14px;\n}\n\n.booster-analytics-header span {\n  max-width: 520px;\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.45;\n}\n\n.booster-analytics-reset {\n  white-space: nowrap;\n  min-height: 30px;\n  padding: 5px 8px;\n}\n\n.booster-analytics-metrics {\n  grid-template-columns: repeat(3, minmax(0, 1fr));\n  gap: 8px;\n  display: grid;\n}\n\n.booster-analytics-metrics article {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 11px;\n  gap: 2px;\n  min-width: 0;\n  padding: 10px 11px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-analytics-metrics article {\n    background: color-mix(in oklab, var(--background) 82%, var(--muted));\n  }\n}\n\n.booster-analytics-metrics :where(article > span), .booster-analytics-metrics :where(small) {\n  color: var(--muted-foreground);\n  font-size: 9px;\n  line-height: 1.35;\n}\n\n.booster-analytics-metrics strong {\n  font-variant-numeric: tabular-nums;\n  margin-top: 2px;\n  font-size: 24px;\n  line-height: 1;\n}\n\n.booster-analytics-metrics article.warning {\n  border-color: #ef4444;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-analytics-metrics article.warning {\n    border-color: color-mix(in oklab, #ef4444 45%, var(--border));\n  }\n}\n\n.booster-analytics-metrics article.warning {\n  background: #ef4444;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-analytics-metrics article.warning {\n    background: color-mix(in oklab, #ef4444 8%, var(--background));\n  }\n}\n\n.booster-analytics-flow-grid {\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 8px;\n  display: grid;\n}\n\n.booster-analytics-flow-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 11px;\n  gap: 9px;\n  padding: 11px;\n  display: grid;\n}\n\n.booster-analytics-flow-card > header {\n  justify-content: space-between;\n  align-items: center;\n  gap: 8px;\n  font-size: 11px;\n  display: flex;\n}\n\n.booster-analytics-flow-card :where(header > span) {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 5px;\n  display: inline-flex;\n}\n\n.booster-analytics-flow-card :where(header b) {\n  font-variant-numeric: tabular-nums;\n  font-size: 12px;\n}\n\n.booster-analytics-flow-row {\n  color: var(--muted-foreground);\n  grid-template-columns: minmax(88px, .9fr) minmax(80px, 1.3fr) auto;\n  align-items: center;\n  gap: 7px;\n  font-size: 9px;\n  display: grid;\n}\n\n.booster-analytics-flow-row > div {\n  background: var(--muted);\n  border-radius: 999px;\n  height: 5px;\n  overflow: hidden;\n}\n\n.booster-analytics-flow-row i {\n  border-radius: inherit;\n  background: var(--primary);\n  height: 100%;\n  display: block;\n}\n\n.booster-analytics-flow-row b {\n  min-width: 24px;\n  color: var(--foreground);\n  text-align: right;\n  font-variant-numeric: tabular-nums;\n  font-size: 10px;\n}\n\n.booster-analytics-footer {\n  background: var(--muted);\n  color: var(--muted-foreground);\n  border-radius: 9px;\n  flex-wrap: wrap;\n  justify-content: space-between;\n  gap: 8px 16px;\n  padding: 8px 10px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-analytics-footer span {\n  align-items: center;\n  gap: 5px;\n  display: inline-flex;\n}\n\n.booster-analytics-footer b {\n  color: var(--foreground);\n  font-weight: 650;\n}\n\n.booster-analytics-footer .warning {\n  color: #ef4444;\n}\n\n@media (max-width: 720px) {\n  .booster-analytics-metrics, .booster-analytics-flow-grid {\n    grid-template-columns: 1fr;\n  }\n\n  .booster-analytics-header {\n    flex-direction: column;\n  }\n}\n\n.booster-record-header {\n  min-width: 0;\n}\n\n.booster-record-header-tools {\n  align-items: center;\n  gap: 2px;\n  margin-left: auto;\n  display: inline-flex;\n}\n\n.booster-record-icon-button {\n  width: 24px;\n  height: 24px;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  background: none;\n  border: 0;\n  border-radius: 6px;\n  flex: none;\n  justify-content: center;\n  align-items: center;\n  padding: 0;\n  display: inline-flex;\n}\n\n.booster-record-icon-button:hover {\n  background: var(--muted);\n  color: var(--foreground);\n}\n\n.booster-record-edited {\n  color: var(--muted-foreground);\n  white-space: nowrap;\n  font-size: 9px;\n}\n\n.booster-record-raw-corner {\n  position: absolute;\n  top: 5px;\n  right: 5px;\n}\n\n.booster-tool-row {\n  min-width: 0;\n  max-width: 100%;\n  overflow: hidden;\n}\n\n.booster-tool-row.is-clickable {\n  cursor: pointer;\n}\n\n.booster-tool-copy, .booster-tool-actions {\n  min-width: 0;\n}\n\n.booster-tool-actions {\n  flex: none;\n}\n\n.booster-tool-action {\n  flex: none;\n  text-decoration: none;\n}\n\n.booster-tool-expanded {\n  min-width: 0;\n  max-width: 100%;\n  overflow: auto hidden;\n}\n\n.booster-internal-row {\n  min-width: 0;\n  max-width: 100%;\n  overflow: hidden;\n}\n\n.booster-internal-row.disabled {\n  cursor: default;\n  opacity: .8;\n}\n\n.booster-internal-preview {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  max-width: 100%;\n  padding-right: 2px;\n}\n\n.booster-json-modal {\n  background: var(--background);\n  flex-direction: column;\n  width: 100%;\n  min-width: 0;\n  height: 100%;\n  min-height: 0;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-json-modal .booster-json-viewer {\n  box-sizing: border-box;\n  flex: auto;\n  width: 100%;\n  min-width: 0;\n  max-width: 100%;\n  max-height: none;\n  overflow: auto;\n}\n\n.booster-dialog-wide:has(.booster-json-modal) {\n  min-width: 0;\n  min-height: 0;\n  display: flex;\n}\n\n.booster-reader-main, .booster-reader-exchanges, .booster-exchange, .booster-exchange-details {\n  min-width: 0;\n  max-width: 100%;\n}\n\n.booster-reader-main {\n  overflow-x: hidden;\n}\n\n.booster-export-status {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  border-radius: 10px;\n  grid-template-columns: auto minmax(0, 1fr) auto;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 10px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-export-status {\n    background: color-mix(in oklab, var(--muted) 52%, var(--background));\n  }\n}\n\n.booster-export-status.warning {\n  border-color: #f59e0b;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-export-status.warning {\n    border-color: color-mix(in oklab, #f59e0b 44%, var(--border));\n  }\n}\n\n.booster-export-status.warning {\n  background: #f59e0b;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-export-status.warning {\n    background: color-mix(in oklab, #f59e0b 7%, var(--background));\n  }\n}\n\n.booster-export-status > div {\n  gap: 2px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-export-status strong {\n  font-size: 10px;\n  line-height: 1.4;\n}\n\n.booster-export-status span {\n  color: var(--muted-foreground);\n  font-size: 9px;\n}\n\n.booster-export-status .booster-action-secondary {\n  white-space: nowrap;\n  min-height: 30px;\n  padding: 5px 8px;\n}\n\n.booster-dock-context > .booster-dock-history-state {\n  color: var(--muted-foreground);\n  font-size: 9px;\n  line-height: 1.35;\n}\n\n.booster-export-preferences {\n  gap: 8px;\n  display: grid;\n}\n\n.booster-export-preferences > label {\n  gap: 6px;\n  font-size: 12px;\n  font-weight: 600;\n  display: grid;\n}\n\n.booster-export-preferences > .booster-note {\n  margin: 0;\n}\n\n.booster-reader-message-jump, .booster-reader-message-jump form, .booster-export-preview-record {\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-reader-message-jump input {\n  flex: 1;\n  min-width: 160px;\n}\n\n.booster-export-preview-record > span {\n  overflow-wrap: anywhere;\n  flex: 220px;\n}\n\n.booster-message-target {\n  outline: 2px solid var(--primary);\n  outline-offset: 2px;\n  border-radius: 6px;\n}\n\n[data-archive-message] {\n  scroll-margin-block: 20px;\n}\n\n.booster-export-readiness {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  gap: 10px;\n  padding: 12px;\n  font-size: 12px;\n  display: grid;\n}\n\n.booster-export-readiness > header, .booster-export-recovery-actions {\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-export-readiness > header {\n  justify-content: space-between;\n}\n\n.booster-export-readiness dl {\n  gap: 6px;\n  margin: 0;\n  display: grid;\n}\n\n.booster-export-readiness dl > div {\n  flex-wrap: wrap;\n  justify-content: space-between;\n  gap: 6px 12px;\n  display: flex;\n}\n\n.booster-export-readiness dd {\n  text-align: end;\n  margin: 0;\n}\n\n.booster-export-readiness p {\n  margin: 0;\n}\n\n.booster-export-blockers {\n  gap: 6px;\n  margin: 0;\n  padding-inline-start: 18px;\n  display: grid;\n}\n\n.booster-export-blockers li {\n  overflow-wrap: anywhere;\n}\n\n.booster-export-progress {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  gap: 8px;\n  padding: 10px;\n  display: grid;\n}\n\n.booster-export-progress > p {\n  overflow-wrap: anywhere;\n  margin: 0;\n  font-size: 12px;\n}\n\n.booster-export-progress progress {\n  width: 100%;\n  height: 8px;\n  accent-color: var(--primary);\n  display: block;\n}\n\n.booster-export-preview-content {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  gap: 8px;\n  max-height: min(360px, 48vh);\n  padding: 10px;\n  display: grid;\n  overflow: auto;\n}\n\n.booster-export-preview-content .booster-note {\n  white-space: pre-wrap;\n  margin: 0;\n}\n\n.booster-export-preview-skeleton {\n  gap: 8px;\n  display: grid;\n}\n\n.booster-export-preview-skeleton > span {\n  background: var(--muted);\n  border-radius: 6px;\n  height: 30px;\n  display: block;\n}\n\n.booster-export-dialog input[type="text"] {\n  border: 1px solid var(--border);\n  background: var(--background);\n  width: 100%;\n  min-height: 38px;\n  color: var(--foreground);\n  font: inherit;\n  border-radius: 8px;\n  padding: 8px 10px;\n}\n\n.booster-meta-badges {\n  align-items: center;\n  gap: 2px;\n  display: inline-flex;\n}\n\n.booster-meta-badges.compact {\n  gap: 0;\n}\n\n.booster-scope-popover {\n  gap: 10px;\n  min-width: 260px;\n  display: grid;\n}\n\n.booster-scope-popover > header {\n  gap: 1px;\n  display: grid;\n}\n\n.booster-scope-title {\n  max-width: 280px;\n  color: var(--foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 12px;\n  overflow: hidden;\n}\n\n.booster-scope-kind {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-scope-actions {\n  flex-wrap: wrap;\n  gap: 5px;\n  display: flex;\n}\n\n.booster-scope-actions button {\n  border: 1px solid var(--border);\n  background: var(--background);\n  min-height: 28px;\n  color: var(--foreground);\n  cursor: pointer;\n  font: inherit;\n  border-radius: 7px;\n  align-items: center;\n  gap: 5px;\n  padding: 4px 8px;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-scope-actions button:hover {\n  background: var(--muted);\n}\n\n.booster-live-tool-row {\n  width: min(100%, 48rem);\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 6px;\n  padding: 4px 0;\n  display: flex;\n}\n\n.booster-live-tool-copy {\n  flex: auto;\n  align-items: baseline;\n  gap: 6px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-live-tool-name {\n  color: var(--foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 11px;\n  font-weight: 650;\n  overflow: hidden;\n}\n\n.booster-live-tool-action-name {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 10px;\n  overflow: hidden;\n}\n\n.booster-live-tool-details {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(100%, 48rem);\n  color: var(--card-foreground);\n  border-radius: 12px;\n  margin-top: 4px;\n  padding: 10px;\n  box-shadow: 0 8px 24px #0000001f;\n}\n\n.booster-chat-save-marker {\n  background: none;\n  border-radius: 999px;\n  flex: 0 0 6px;\n  width: 6px;\n  height: 6px;\n  display: block;\n}\n\n.booster-chat-save-marker.is-enabled {\n  background: #22c55e;\n  box-shadow: 0 0 0 1px #22c55e40, 0 0 6px #22c55e61;\n}\n\n.booster-chat-save-marker.is-work {\n  background: #ef4444;\n  box-shadow: 0 0 0 1px #ef444452, 0 0 8px #ef44448c;\n}\n\n.booster-project-status-badge {\n  color: #a1a1aa;\n  background: #ffffff08;\n  border: 1px solid #94a3b852;\n  border-radius: 8px;\n  justify-content: center;\n  align-items: center;\n  width: 24px;\n  height: 24px;\n  transition: border-color .12s, background-color .12s, color .12s;\n  display: inline-flex;\n}\n\n.booster-project-status-badge.is-enabled {\n  color: #4ade80;\n  background: #22c55e14;\n  border-color: #22c55eb8;\n}\n\n.booster-project-status-badge.is-disabled {\n  color: #f87171;\n  background: #ef444412;\n  border-color: #ef444494;\n}\n\n.booster-agent-activity {\n  border: 1px solid var(--border, #94a3b838);\n  background: var(--background, #202020);\n  border-radius: 999px;\n  align-items: center;\n  gap: 6px;\n  max-width: min(100%, 520px);\n  min-height: 28px;\n  padding: 3px 8px;\n  display: inline-flex;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-agent-activity {\n    background: color-mix(in srgb, var(--background, #202020) 88%, transparent);\n  }\n}\n\n.booster-agent-activity {\n  color: var(--muted-foreground);\n  pointer-events: auto;\n  font-size: 11px;\n  line-height: 1.2;\n}\n\n.booster-agent-activity[data-phase="tool"] {\n  border-style: dashed;\n}\n\n.booster-agent-activity > svg {\n  flex: none;\n}\n\n.booster-agent-activity-phase {\n  color: var(--foreground);\n  flex: none;\n  font-weight: 600;\n}\n\n.booster-agent-activity-label {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-agent-activity-timer {\n  min-width: 3.2em;\n  color: var(--foreground);\n  font-variant-numeric: tabular-nums;\n  text-align: end;\n  flex: none;\n  margin-inline-start: auto;\n}\n\n.booster-danger-zone {\n  background: #7f1d1d14;\n  border: 1px solid #ef444473;\n  border-radius: 12px;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 12px;\n  display: flex;\n}\n\n.booster-danger-zone .booster-setting-copy > div, .booster-danger-zone .booster-setting-copy b {\n  color: #f87171;\n}\n\n.booster-destructive-button {\n  color: #fff;\n  cursor: pointer;\n  background: #b91c1c;\n  border: 1px solid #ef44448c;\n  border-radius: 8px;\n  flex: none;\n  min-height: 34px;\n  padding: 7px 12px;\n  font-size: 12px;\n  font-weight: 700;\n}\n\n.booster-destructive-button:hover:not(:disabled) {\n  background: #991b1b;\n}\n\n.booster-destructive-button:disabled {\n  opacity: .55;\n  cursor: default;\n}\n\n.booster-destructive-dialog {\n  grid-template-columns: auto minmax(0, 1fr);\n  gap: 14px;\n  padding: 22px;\n  display: grid;\n}\n\n.booster-destructive-dialog strong {\n  color: #f87171;\n  letter-spacing: .025em;\n  font-size: 17px;\n}\n\n.booster-destructive-dialog p {\n  color: var(--muted-foreground);\n  margin: 8px 0 0;\n  font-size: 12px;\n  line-height: 1.55;\n}\n\n.booster-destructive-icon {\n  color: #f87171;\n  background: #7f1d1d33;\n  border-radius: 50%;\n  justify-content: center;\n  align-items: center;\n  width: 42px;\n  height: 42px;\n  display: flex;\n}\n\n.booster-destructive-warning {\n  color: #f87171;\n  font-weight: 700;\n}\n\n.booster-destructive-actions {\n  grid-column: 1 / -1;\n  justify-content: flex-end;\n  gap: 8px;\n  padding-top: 4px;\n  display: flex;\n}\n\n.booster-meta-trigger-time {\n  color: #4ade80;\n  font-variant-numeric: tabular-nums;\n  cursor: pointer;\n  background: #22c55e17;\n  border: 1px solid #4ade806b;\n  gap: 0;\n  width: 26px;\n  min-width: 26px;\n  height: 26px;\n  padding: 0;\n}\n\n.booster-meta-trigger-time:hover, .booster-meta-trigger-time:focus-visible {\n  color: #86efac;\n  background: #22c55e29;\n  border-color: #4ade80b8;\n}\n\n.booster-meta-time-text {\n  letter-spacing: .01em;\n  font-size: 9px;\n  font-weight: 650;\n}\n\n.booster-message-meta-popover {\n  max-width: min(420px, 100vw - 16px);\n}\n\n.booster-message-meta-body {\n  gap: 12px;\n  min-width: 260px;\n  display: grid;\n}\n\n.booster-message-meta-header {\n  border-bottom: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: baseline;\n  gap: 12px;\n  padding-bottom: 7px;\n  display: flex;\n}\n\n.booster-message-meta-header strong {\n  color: var(--popover-foreground);\n  font-size: 12px;\n  font-weight: 650;\n}\n\n.booster-message-meta-header span {\n  color: #4ade80;\n  font-variant-numeric: tabular-nums;\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-meta-raw-toggle {\n  border: 1px solid var(--border);\n  width: fit-content;\n  color: var(--muted-foreground);\n  font: inherit;\n  cursor: pointer;\n  background: none;\n  border-radius: 7px;\n  padding: 4px 7px;\n}\n\n.booster-meta-raw-toggle:hover {\n  background: var(--muted);\n  color: var(--foreground);\n}\n\n.booster-message-meta-raw {\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  background: #0003;\n  border-radius: 8px;\n  max-width: 390px;\n  max-height: 260px;\n  margin: 0;\n  padding: 8px;\n  font: 10px / 1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n  overflow: auto;\n}\n\n.booster-live-tool-icon {\n  object-fit: cover;\n  border-radius: 999px;\n  flex: 0 0 16px;\n  width: 16px;\n  height: 16px;\n}\n\n.booster-tool-time-chip {\n  color: #c084fc;\n  font-variant-numeric: tabular-nums;\n  background: #7e22ce1c;\n  border: 1px solid #a855f775;\n  gap: 5px;\n  width: auto;\n  min-width: 76px;\n  padding: 0 8px;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-tool-time-chip:hover, .booster-tool-time-chip:focus-visible {\n  color: #d8b4fe;\n  background: #7e22ce30;\n  border-color: #c084fcc2;\n}\n\n.booster-agent-activity[data-phase="thinking"], .booster-agent-activity[data-phase="tool"], .booster-agent-activity[data-phase="responding"], .booster-agent-activity[data-phase="complete"] {\n  color: #4ade80;\n  background: #22c55e17;\n  border-color: #4ade807a;\n}\n\n.booster-agent-activity[data-phase="thinking"] .booster-agent-activity-phase, .booster-agent-activity[data-phase="tool"] .booster-agent-activity-phase, .booster-agent-activity[data-phase="responding"] .booster-agent-activity-phase, .booster-agent-activity[data-phase="complete"] .booster-agent-activity-phase, .booster-agent-activity[data-phase="thinking"] .booster-agent-activity-timer, .booster-agent-activity[data-phase="tool"] .booster-agent-activity-timer, .booster-agent-activity[data-phase="responding"] .booster-agent-activity-timer, .booster-agent-activity[data-phase="complete"] .booster-agent-activity-timer {\n  color: currentColor;\n}\n\n.booster-tool-inspect-trigger {\n  color: #4ade80;\n  pointer-events: auto;\n  background: #22c55e14;\n  border: 1px solid #4ade8061;\n  border-radius: 7px;\n  width: 24px;\n  height: 24px;\n}\n\n.booster-tool-inspect-trigger:hover, .booster-tool-inspect-trigger:focus-visible {\n  color: #86efac;\n  background: #22c55e26;\n  border-color: #4ade80ad;\n}\n\n.booster-tool-detail-popover {\n  gap: 10px;\n  width: min(390px, 100vw - 24px);\n  display: grid;\n}\n\n.booster-tool-detail-popover > header {\n  align-items: center;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-tool-detail-popover > header strong {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  color: var(--popover-foreground);\n  font-size: 11px;\n  display: block;\n  overflow: hidden;\n}\n\n.booster-tool-detail-popover > header span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  color: var(--muted-foreground);\n  font-size: 10px;\n  display: block;\n  overflow: hidden;\n}\n\n.booster-tool-payload {\n  gap: 5px;\n  display: grid;\n}\n\n.booster-tool-payload > strong, .booster-tool-evidence > summary {\n  color: var(--muted-foreground);\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-tool-evidence > summary {\n  cursor: pointer;\n}\n\n.booster-tool-attributes {\n  grid-template-columns: max-content minmax(0, 1fr);\n  gap: 3px 8px;\n  margin: 8px 0 0;\n  font: 9px / 1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n  display: grid;\n}\n\n.booster-tool-attributes dt {\n  color: var(--muted-foreground);\n}\n\n.booster-tool-attributes dd {\n  overflow-wrap: anywhere;\n  min-width: 0;\n  margin: 0;\n}\n\n.booster-tool-evidence pre {\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  background: #0003;\n  border-radius: 7px;\n  max-height: 180px;\n  margin: 8px 0 0;\n  padding: 7px;\n  font: 9px / 1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n  overflow: auto;\n}\n\n.booster-tool-link {\n  overflow-wrap: anywhere;\n  color: #4ade80;\n  align-items: center;\n  gap: 4px;\n  min-width: 0;\n  text-decoration: none;\n  display: inline-flex;\n}\n\n.booster-tool-link:hover {\n  color: #86efac;\n  text-decoration: underline;\n}\n\n.booster-work-mode-warning {\n  color: #fca5a5;\n  background: #ef44441a;\n  border: 1px solid #ef44448c;\n  border-radius: 999px;\n  align-items: center;\n  gap: 7px;\n  padding: 4px 9px;\n  font-family: inherit;\n  font-size: 10px;\n  line-height: 1.25;\n  display: inline-flex;\n}\n\n.booster-work-mode-warning strong {\n  color: #f87171;\n  font-weight: 750;\n}\n\n.booster-work-mode-warning > span:before {\n  content: "·";\n  color: #f87171b8;\n  margin-inline-end: 7px;\n}\n\n.booster-request-status {\n  color: #86efac;\n  font-variant-numeric: tabular-nums;\n  background: #22c55e12;\n  border: 1px solid #4ade8047;\n  border-radius: 999px;\n  align-items: center;\n  gap: 6px;\n  padding: 3px 8px;\n  font-family: inherit;\n  font-size: 10px;\n  line-height: 1.25;\n  display: inline-flex;\n}\n\n.booster-request-spinner {\n  border: 1.5px solid #4ade8047;\n  border-top-color: #4ade80;\n  border-radius: 50%;\n  flex: 0 0 11px;\n  width: 11px;\n  height: 11px;\n  animation: .9s linear infinite booster-request-spin;\n}\n\n@keyframes booster-request-spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n.booster-request-status > span {\n  align-items: center;\n  gap: 4px;\n  display: inline-flex;\n}\n\n.booster-request-status > span + span:before {\n  content: "·";\n  color: var(--muted-foreground);\n}\n\n.booster-request-status-label {\n  color: var(--muted-foreground);\n  font-weight: 500;\n}\n\n.booster-request-status strong {\n  color: #4ade80;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-request-status[data-phase="tool"] strong {\n  color: #c084fc;\n}\n\n.booster-request-status[data-phase="responding"] strong {\n  color: #86efac;\n}\n\n.booster-alert-setting-actions {\n  grid-template-columns: auto minmax(180px, 1fr);\n  align-items: center;\n  gap: 14px;\n  display: grid;\n}\n\n.booster-alert-threshold {\n  gap: 5px;\n  display: grid;\n}\n\n.booster-alert-threshold > span {\n  color: var(--muted-foreground);\n  justify-content: space-between;\n  gap: 10px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-alert-threshold b {\n  color: var(--foreground);\n  font-variant-numeric: tabular-nums;\n}\n\n.booster-alert-threshold input[type="range"] {\n  width: 100%;\n  accent-color: var(--primary);\n}\n\n.booster-tool-path {\n  max-width: 280px;\n  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n  font-size: 9px;\n}\n\n.booster-reader-pinned {\n  border-bottom: 1px solid var(--border);\n  background: var(--background);\n  flex: none;\n  min-width: 0;\n  max-height: 52%;\n  padding: 12px 20px 10px;\n  overflow: auto;\n}\n\n.booster-reader-reading-surface {\n  flex: 1 1 0;\n  min-width: 0;\n  min-height: 0;\n  position: relative;\n}\n\n.booster-reader-scroll {\n  scrollbar-gutter: stable;\n  overscroll-behavior: contain;\n  min-width: 0;\n  height: 100%;\n  padding: 18px 20px 30px;\n  overflow: hidden auto;\n}\n\n.booster-reader-chat-header h2 {\n  overflow-wrap: anywhere;\n  font-size: 16px;\n}\n\n.booster-reader-chat-actions {\n  justify-content: flex-start;\n  margin-top: 9px;\n}\n\n.booster-reader-find {\n  margin-top: 8px;\n}\n\n.booster-reader-find input {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 100%;\n  min-width: 0;\n  color: var(--foreground);\n  font: inherit;\n  border-radius: 8px;\n  padding: 8px 10px;\n  font-size: 12px;\n  display: block;\n}\n\n.booster-reader-chat-list > button span {\n  text-overflow: ellipsis;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-reader-chat-list > button.is-branch {\n  border-inline-start: 2px solid var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reader-chat-list > button.is-branch {\n    border-inline-start: 2px solid color-mix(in oklab, var(--primary) 35%, transparent);\n  }\n}\n\n.booster-reader-branch-icon {\n  opacity: .66;\n  flex: none;\n}\n\n.booster-reader-loading {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 8px;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-reader-older-loading {\n  z-index: 2;\n  border: 1px solid var(--border);\n  background: var(--card);\n  color: var(--foreground);\n  white-space: nowrap;\n  pointer-events: none;\n  border-radius: 100px;\n  align-items: center;\n  gap: 7px;\n  padding: 8px 12px;\n  font-size: 11px;\n  display: flex;\n  position: absolute;\n  inset: 6px auto auto 50%;\n  transform: translateX(-50%);\n  box-shadow: 0 3px 12px #0000001f;\n}\n\n.booster-reader-spinner {\n  flex: none;\n  animation: .9s linear infinite booster-archive-spin;\n}\n\n@keyframes booster-archive-spin {\n  to {\n    rotate: 360deg;\n  }\n}\n\n@media (prefers-reduced-motion: reduce) {\n  .booster-reader-spinner {\n    animation: none;\n  }\n}\n\n@media (max-width: 640px) {\n  .booster-reader-pinned {\n    padding: 10px 12px;\n  }\n\n  .booster-reader-scroll {\n    padding: 12px 12px 24px;\n  }\n}\n\n.booster-reader-reading-surface > .booster-reader-scroll {\n  flex: auto;\n  min-width: 0;\n}\n\n.booster-reader-map {\n  border-left: 1px solid var(--border);\n  background: var(--card);\n  flex-direction: column;\n  flex: 0 0 108px;\n  order: 2;\n  align-items: center;\n  width: 108px;\n  padding: 7px 3px;\n  display: flex;\n}\n\n.booster-reader-map-track {\n  background: linear-gradient(var(--border), var(--border)) center / 2px 100% no-repeat;\n  flex: 1;\n  width: 100%;\n  min-height: 0;\n  position: relative;\n}\n\n.booster-reader-map-node {\n  left: calc(18px + min(var(--map-lane, 0), 3) * 23px);\n  border: 1px solid var(--background);\n  background: var(--muted-foreground);\n  cursor: pointer;\n  z-index: 1;\n  border-radius: 3px;\n  width: 8px;\n  height: 8px;\n  padding: 0;\n  position: absolute;\n  transform: translate(-50%, -50%);\n}\n\n.booster-reader-map-node.is-user {\n  background: var(--primary);\n  border-radius: 50%;\n}\n\n.booster-reader-map-node.is-fork {\n  width: 12px;\n  height: 12px;\n  box-shadow: 0 0 0 2px var(--primary);\n}\n\n.booster-reader-map-node:hover, .booster-reader-map-node:focus-visible, .booster-reader-map-node.is-near {\n  outline: 1px solid var(--ring);\n  z-index: 4;\n  width: 13px;\n  height: 13px;\n}\n\n.booster-reader-map-position {\n  border: 1px solid var(--ring);\n  background: var(--primary);\n  height: 19px;\n  position: absolute;\n  left: 0;\n  right: 0;\n  transform: translateY(-50%);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reader-map-position {\n    background: color-mix(in oklab, var(--primary) 16%, transparent);\n  }\n}\n\n.booster-reader-map-position {\n  pointer-events: none;\n  z-index: 0;\n  border-radius: 6px;\n}\n\n.booster-reader-map-end {\n  color: var(--foreground);\n  cursor: pointer;\n  background: none;\n  border: 0;\n  font-size: 15px;\n}\n\n.booster-reader-pinned {\n  max-height: 35%;\n  padding: 8px 12px;\n}\n\n.booster-reader-summary {\n  align-items: center;\n  margin-top: 4px;\n}\n\n.booster-reader-coverage {\n  align-items: center;\n  gap: 5px;\n  display: inline-flex;\n}\n\n.booster-reader-project-label {\n  color: var(--muted-foreground);\n  font-weight: 400;\n}\n\n.booster-reader-chat-actions {\n  margin-top: 4px;\n}\n\n.booster-reader-chat-actions .booster-action-secondary {\n  padding: 5px 8px;\n}\n\n.booster-reader-heading {\n  justify-content: center;\n}\n\n.booster-reader-exchanges {\n  gap: 12px;\n}\n\n.booster-reader-map-node.is-fork:after {\n  content: "";\n  width: calc(min(var(--map-lane, 0), 3) * 23px);\n  border-top: 2px solid var(--primary);\n  position: absolute;\n  top: 50%;\n  right: 80%;\n}\n\n.booster-reader-loading {\n  justify-content: center;\n  min-height: 130px;\n  font-size: 13px;\n}\n\n.booster-reader-map-node {\n  transition: top .1s ease-out, width .12s ease-out, height .12s ease-out;\n}\n\n.booster-reader-map-node:hover:before, .booster-reader-map-node:focus-visible:before {\n  content: attr(data-preview);\n  z-index: 12;\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 240px;\n  min-width: 170px;\n  max-width: min(240px, 60vw);\n  color: var(--foreground);\n  white-space: normal;\n  text-align: left;\n  pointer-events: none;\n  border-radius: 8px;\n  padding: 10px 12px;\n  font-size: 12px;\n  font-weight: 400;\n  line-height: 1.45;\n  position: absolute;\n  top: -8px;\n  right: calc(100% + 15px);\n  box-shadow: 0 7px 24px oklab(0% none none / .18);\n}\n\n.booster-reader .booster-section-header {\n  min-height: 42px;\n  padding-block: 6px;\n}\n\n.booster-reader-heading {\n  gap: 7px;\n}\n\n.booster-reader-heading strong {\n  font-size: 12px;\n}\n\n.booster-reader-heading p {\n  opacity: .7;\n  margin: 0;\n  font-size: 10px;\n}\n\n.booster-reader-older-loading {\n  border-radius: 10px;\n  font-size: 12px;\n  inset: 50% auto auto 50%;\n}\n\n.booster-reader-map-links {\n  pointer-events: none;\n  width: 100%;\n  height: 100%;\n  position: absolute;\n  inset: 0;\n  overflow: visible;\n}\n\n.booster-reader-map-links path {\n  fill: none;\n  stroke: var(--primary);\n  stroke-width: 1.5px;\n  vector-effect: non-scaling-stroke;\n  opacity: .58;\n}\n\n.booster-reader-fork-choices {\n  flex-wrap: wrap;\n  gap: 6px;\n  max-height: 115px;\n  margin-top: 6px;\n  display: flex;\n  overflow: auto;\n}\n\n.booster-reader-fork-group {\n  border: 1px solid var(--border);\n  border-radius: 7px;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 5px;\n  padding: 5px 8px;\n  font-size: 11px;\n  display: flex;\n}\n\n.booster-reader-fork-group > span {\n  color: var(--muted-foreground);\n  font-weight: 600;\n}\n\n.booster-reader-fork-choice {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  background: var(--secondary);\n  border: 1px solid var(--border);\n  cursor: pointer;\n  border-radius: 6px;\n  max-width: 180px;\n  padding: 4px 6px;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n.booster-reader-fork-choice:hover, .booster-reader-fork-choice:focus-visible {\n  border-color: var(--ring);\n}\n\n.booster-reader-map-track {\n  background: none;\n}\n\n.booster-reader-map-links path {\n  stroke-width: 2.5px;\n  opacity: .95;\n}\n\n.booster-reader-map-node.is-fork {\n  background: var(--primary);\n  box-shadow: 0 0 0 3px var(--card), 0 0 0 5px var(--primary);\n}\n\n.booster-reader-map-node.is-fork:after {\n  display: none;\n}\n\n@media (max-width: 700px) {\n  .booster-reader-map {\n    flex-basis: 88px;\n    width: 88px;\n  }\n\n  .booster-reader-map-node {\n    left: calc(12px + min(var(--map-lane, 0), 3) * 19px);\n  }\n}\n\n.booster-reader-map-warning {\n  border: 1px solid var(--border);\n  width: 19px;\n  height: 19px;\n  color: var(--foreground);\n  text-align: center;\n  cursor: help;\n  border-radius: 50%;\n  font-size: 12px;\n}\n\n.booster-archive-flow-graph {\n  scrollbar-gutter: stable;\n  overflow-x: auto;\n}\n\n.booster-gitgraph-content {\n  width: max-content;\n  min-width: 0;\n  padding: 4px 8px 10px;\n}\n\n.booster-gitgraph-segment {\n  width: max-content;\n}\n\n.booster-gitgraph-gap {\n  border-left: 2px dashed var(--border);\n  height: 21px;\n  color: var(--muted-foreground);\n  padding: 1px 9px;\n  font-size: 13px;\n  line-height: 20px;\n}\n\n.booster-gitgraph-segment-canvas svg g[data-archive-graph-node] {\n  cursor: pointer;\n  outline: none;\n}\n\n.booster-gitgraph-segment-canvas svg g[data-archive-graph-node]:is(:hover, :focus-visible) > use {\n  filter: drop-shadow(0 0 3px var(--ring));\n}\n\n.booster-gitgraph-segment-canvas svg g[data-archive-graph-node][aria-current="true"] > use {\n  filter: drop-shadow(0 0 3px var(--foreground));\n}\n\n.booster-reader-reading-surface {\n  display: block;\n}\n\n.booster-reader-reading-surface > .booster-reader-scroll {\n  width: 100%;\n  height: 100%;\n}\n\n.booster-reader-history-toggle.active {\n  background: var(--muted);\n  border-color: var(--ring);\n}\n\n.booster-archive-flow-graph {\n  z-index: 5;\n  order: unset;\n  overscroll-behavior: contain;\n  border: 1px solid var(--border);\n  background: var(--background);\n  scrollbar-gutter: stable;\n  border-radius: 12px;\n  flex: none;\n  width: min(360px, 100% - 16px);\n  max-width: none;\n  height: auto;\n  display: block;\n  position: absolute;\n  inset: 8px 8px 8px auto;\n  overflow: hidden auto;\n  box-shadow: 0 10px 32px #00000047;\n}\n\n.booster-history-header {\n  z-index: 3;\n  border-bottom: 1px solid var(--border);\n  background: var(--background);\n  justify-content: space-between;\n  align-items: flex-start;\n  gap: 10px;\n  min-width: 0;\n  padding: 15px 14px 10px;\n  display: flex;\n  position: sticky;\n  top: 0;\n}\n\n.booster-history-header > div {\n  min-width: 0;\n}\n\n.booster-history-heading {\n  color: var(--foreground);\n  font-size: 14px;\n  font-weight: 650;\n  line-height: 20px;\n}\n\n.booster-history-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-history-close {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 28px;\n  height: 28px;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  border-radius: 7px;\n  flex: 0 0 28px;\n  place-items: center;\n  font-size: 19px;\n  display: grid;\n}\n\n.booster-history-close:hover {\n  color: var(--foreground);\n  background: var(--muted);\n}\n\n.booster-history-state {\n  color: var(--foreground);\n  align-items: center;\n  gap: 7px;\n  padding: 12px 14px 0;\n  font-size: 11px;\n  font-weight: 550;\n  display: flex;\n}\n\n.booster-history-state-dot {\n  background: var(--primary);\n  border-radius: 50%;\n  flex: 0 0 7px;\n  width: 7px;\n  height: 7px;\n}\n\n.booster-history-state-dot.is-unverified {\n  background: var(--muted-foreground);\n}\n\n.booster-history-range {\n  color: var(--muted-foreground);\n  font-variant-numeric: tabular-nums;\n  white-space: nowrap;\n  margin-left: auto;\n  font-weight: 400;\n}\n\n.booster-history-explainer {\n  color: var(--muted-foreground);\n  margin: 6px 14px 0;\n  font-size: 11px;\n  line-height: 1.45;\n}\n\n.booster-history-evidence {\n  background: var(--muted);\n  color: var(--muted-foreground);\n  border-radius: 6px;\n  margin: 10px 14px 2px;\n  padding: 7px 9px;\n  font-size: 10px;\n}\n\n.booster-gitgraph-content {\n  width: 100%;\n  min-width: 0;\n  min-height: 0;\n  padding: 12px 9px 16px;\n  display: block;\n}\n\n.booster-gitgraph-segment {\n  width: 100%;\n  position: relative;\n}\n\n.booster-gitgraph-segment-canvas {\n  min-width: 0;\n}\n\n.booster-gitgraph-segment-labels {\n  pointer-events: none;\n  height: 100%;\n  position: absolute;\n  inset: 0 8px 0 80px;\n}\n\n.booster-graph-message {\n  width: 100%;\n  height: 28px;\n  color: var(--foreground);\n  text-align: left;\n  cursor: pointer;\n  pointer-events: auto;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 5px;\n  flex-direction: column;\n  justify-content: center;\n  gap: 1px;\n  padding: 1px 7px;\n  display: flex;\n  position: absolute;\n  right: 0;\n}\n\n.booster-graph-message:hover, .booster-graph-message:focus-visible {\n  border-color: var(--border);\n  background: var(--muted);\n}\n\n.booster-graph-message[aria-current="true"] {\n  background: var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-graph-message[aria-current="true"] {\n    background: color-mix(in oklab, var(--primary) 12%, var(--card));\n  }\n}\n\n.booster-graph-message[aria-current="true"] {\n  border-color: var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-graph-message[aria-current="true"] {\n    border-color: color-mix(in oklab, var(--primary) 35%, var(--border));\n  }\n}\n\n.booster-graph-message-role {\n  color: var(--muted-foreground);\n  font-size: 9px;\n  line-height: 12px;\n}\n\n.booster-graph-message-preview {\n  width: 100%;\n  color: var(--foreground);\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  font-size: 11px;\n  line-height: 14px;\n  overflow: hidden;\n}\n\n.booster-history-list {\n  flex-direction: column;\n  gap: 2px;\n  padding: 12px 9px 14px;\n  display: flex;\n}\n\n.booster-history-list-row {\n  width: 100%;\n  min-height: 48px;\n  color: var(--foreground);\n  text-align: left;\n  cursor: pointer;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 8px;\n  align-items: stretch;\n  gap: 10px;\n  padding: 6px 8px;\n  display: flex;\n}\n\n.booster-history-list-row:hover, .booster-history-list-row:focus-visible {\n  background: var(--muted);\n  border-color: var(--border);\n}\n\n.booster-history-list-row[aria-current="true"] {\n  background: var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-history-list-row[aria-current="true"] {\n    background: color-mix(in oklab, var(--primary) 10%, var(--card));\n  }\n}\n\n.booster-history-list-row[aria-current="true"] {\n  border-color: var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-history-list-row[aria-current="true"] {\n    border-color: color-mix(in oklab, var(--primary) 32%, var(--border));\n  }\n}\n\n.booster-history-list-rail {\n  flex: 0 0 12px;\n  justify-content: center;\n  padding-top: 7px;\n  display: flex;\n}\n\n.booster-history-list-dot {\n  border: 2px solid var(--muted-foreground);\n  border-radius: 50%;\n  width: 8px;\n  height: 8px;\n}\n\n.booster-history-list-dot.is-user {\n  background: var(--primary);\n  border-color: var(--primary);\n}\n\n.booster-history-list-copy {\n  flex-direction: column;\n  flex: 1;\n  gap: 3px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-history-list-meta {\n  color: var(--muted-foreground);\n  font-size: 10px;\n  line-height: 13px;\n}\n\n.booster-history-list-preview {\n  -webkit-line-clamp: 2;\n  overflow-wrap: anywhere;\n  -webkit-box-orient: vertical;\n  font-size: 11px;\n  line-height: 1.4;\n  display: -webkit-box;\n  overflow: hidden;\n}\n\n.booster-history-footer {\n  z-index: 3;\n  border-top: 1px solid var(--border);\n  background: var(--background);\n  justify-content: space-between;\n  gap: 8px;\n  padding: 10px 12px;\n  display: flex;\n  position: sticky;\n  bottom: 0;\n}\n\n.booster-history-footer button {\n  border: 1px solid var(--border);\n  background: var(--card);\n  color: var(--foreground);\n  font: inherit;\n  cursor: pointer;\n  border-radius: 7px;\n  padding: 6px 10px;\n  font-size: 11px;\n}\n\n.booster-history-footer button:disabled {\n  opacity: .35;\n  cursor: not-allowed;\n}\n\n.booster-history-close:focus-visible, .booster-history-footer button:focus-visible, .booster-history-list-row:focus-visible, .booster-graph-message:focus-visible {\n  outline: 2px solid var(--ring);\n  outline-offset: 2px;\n}\n\n@media (max-width: 700px) {\n  .booster-archive-flow-graph {\n    width: 100%;\n    box-shadow: none;\n    scrollbar-gutter: auto;\n    border: 0;\n    border-radius: 0;\n    inset: 0;\n  }\n\n  .booster-history-header {\n    padding-right: 16px;\n  }\n\n  .booster-history-state {\n    flex-wrap: wrap;\n  }\n\n  .booster-history-range {\n    text-align: right;\n    flex: 100%;\n  }\n}\n\n.booster-reader {\n  position: relative;\n}\n\n.booster-reader-heading {\n  justify-content: flex-start;\n  min-width: 0;\n}\n\n.booster-reader-heading > div {\n  min-width: 0;\n}\n\n.booster-reader-heading strong {\n  line-height: 1.25;\n  display: block;\n}\n\n.booster-reader > .booster-section-header > .booster-header-actions {\n  flex: none;\n  gap: 6px;\n}\n\n.booster-reader-tools {\n  position: relative;\n}\n\n.booster-reader-tools-menu {\n  z-index: 12;\n  border: 1px solid var(--border);\n  background: var(--popover, var(--card));\n  border-radius: 10px;\n  min-width: 222px;\n  padding: 5px;\n  display: grid;\n  position: absolute;\n  top: calc(100% + 8px);\n  right: 0;\n  box-shadow: 0 12px 30px #00000047;\n}\n\n.booster-reader-tools-menu button {\n  width: 100%;\n  color: var(--foreground);\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n  background: none;\n  border: 0;\n  border-radius: 7px;\n  align-items: center;\n  gap: 9px;\n  padding: 10px 12px;\n  font-size: 12px;\n  line-height: 1.35;\n  display: flex;\n}\n\n.booster-reader-tools-menu button:hover, .booster-reader-tools-menu button:focus-visible {\n  background: var(--accent);\n}\n\n.booster-maintenance-backdrop {\n  z-index: 18;\n  background: #000000b3;\n  justify-content: center;\n  align-items: center;\n  min-width: 0;\n  padding: clamp(12px, 3vw, 28px);\n  display: flex;\n  position: absolute;\n  inset: 0;\n}\n\n.booster-maintenance-widget {\n  border: 1px solid var(--border);\n  background: var(--background);\n  width: min(100%, 570px);\n  min-height: 0;\n  max-height: min(700px, 100%);\n  color: var(--foreground);\n  font: inherit;\n  border-radius: 14px;\n  flex-direction: column;\n  display: flex;\n  overflow: hidden;\n  box-shadow: 0 24px 70px #00000059;\n}\n\n.booster-maintenance-heading {\n  border-bottom: 1px solid var(--border);\n  flex: none;\n  justify-content: space-between;\n  align-items: center;\n  gap: 14px;\n  padding: 15px 18px;\n  display: flex;\n}\n\n.booster-maintenance-title {\n  align-items: center;\n  gap: 11px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-maintenance-title > div {\n  min-width: 0;\n}\n\n.booster-maintenance-title h2 {\n  margin: 0;\n  font-size: 16px;\n  font-weight: 650;\n  line-height: 1.35;\n}\n\n.booster-maintenance-title p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-maintenance-content {\n  overscroll-behavior: contain;\n  scrollbar-gutter: stable;\n  align-content: start;\n  gap: 14px;\n  min-height: 0;\n  padding: 16px 18px;\n  display: grid;\n  overflow: hidden auto;\n}\n\n.booster-maintenance-stats {\n  grid-template-columns: repeat(3, minmax(0, 1fr));\n  gap: 8px;\n  display: grid;\n}\n\n.booster-maintenance-stats > div {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  border-radius: 9px;\n  gap: 5px;\n  min-width: 0;\n  padding: 11px;\n  display: grid;\n}\n\n.booster-maintenance-stats span {\n  color: var(--muted-foreground);\n  font-size: 10px;\n  line-height: 1.4;\n}\n\n.booster-maintenance-stats strong {\n  font-variant-numeric: tabular-nums;\n  font-size: 20px;\n  font-weight: 650;\n}\n\n.booster-maintenance-section {\n  border: 1px solid var(--border);\n  border-radius: 10px;\n  gap: 11px;\n  min-width: 0;\n  padding: 15px;\n  display: grid;\n}\n\n.booster-maintenance-section-title {\n  align-items: center;\n  gap: 9px;\n  display: flex;\n}\n\n.booster-maintenance-section h3 {\n  margin: 0;\n  font-size: 13px;\n  font-weight: 650;\n}\n\n.booster-maintenance-section p, .booster-maintenance-result p, .booster-maintenance-progress p {\n  color: var(--muted-foreground);\n  overflow-wrap: anywhere;\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.5;\n}\n\n.booster-maintenance-section .booster-maintenance-warning {\n  color: var(--foreground);\n  border-left: 2px solid #d97706;\n  padding-left: 10px;\n}\n\n.booster-maintenance-widget .booster-maintenance-check {\n  min-width: 0;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  align-items: flex-start;\n  gap: 10px;\n  font-size: 11px;\n  line-height: 1.5;\n  display: flex;\n}\n\n.booster-maintenance-widget .booster-maintenance-check input {\n  width: 16px;\n  height: 16px;\n  min-height: 16px;\n  accent-color: var(--primary);\n  flex: 0 0 16px;\n  margin: 1px 0 0;\n  padding: 0;\n}\n\n.booster-maintenance-actions {\n  flex-wrap: wrap;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-maintenance-actions button {\n  flex: 170px;\n  min-width: 0;\n}\n\n.booster-maintenance-actions button small {\n  opacity: .8;\n  font-size: 10px;\n  display: block;\n}\n\n.booster-maintenance-section > button {\n  justify-self: start;\n  max-width: 100%;\n}\n\n.booster-maintenance-loading, .booster-maintenance-progress, .booster-maintenance-result {\n  border: 1px solid var(--border);\n  border-radius: 9px;\n  align-items: flex-start;\n  gap: 10px;\n  min-width: 0;\n  padding: 12px;\n  font-size: 12px;\n  line-height: 1.5;\n  display: flex;\n}\n\n.booster-maintenance-result svg, .booster-maintenance-progress svg {\n  flex: none;\n}\n\n.booster-maintenance-result strong, .booster-maintenance-progress strong {\n  margin-bottom: 3px;\n  font-size: 12px;\n  display: block;\n}\n\n.booster-maintenance-error {\n  color: var(--foreground);\n  overflow-wrap: anywhere;\n  border: 1px solid #c2410c;\n  border-radius: 8px;\n  margin: 0;\n  padding: 10px;\n  font-size: 12px;\n}\n\n.booster-maintenance-footer {\n  border-top: 1px solid var(--border);\n  flex: none;\n  justify-content: flex-end;\n  gap: 8px;\n  padding: 12px 18px;\n  display: flex;\n}\n\n@media (max-width: 620px) {\n  .booster-maintenance-backdrop {\n    padding: 8px;\n  }\n\n  .booster-maintenance-heading, .booster-maintenance-content {\n    padding: 12px;\n  }\n\n  .booster-maintenance-stats strong {\n    font-size: 17px;\n  }\n\n  .booster-maintenance-stats > div {\n    padding: 8px;\n  }\n\n  .booster-reader > .booster-section-header {\n    padding: 8px 10px;\n  }\n}\n\n.booster-maintenance-owner-list {\n  gap: 8px;\n  max-height: 290px;\n  display: grid;\n  overflow-y: auto;\n}\n\n.booster-maintenance-owner-row {\n  border: 1px solid var(--border);\n  cursor: pointer;\n  border-radius: 8px;\n  align-items: flex-start;\n  gap: 10px;\n  padding: 10px;\n  display: flex;\n}\n\n.booster-maintenance-owner-row > input[type="checkbox"] {\n  width: 16px;\n  height: 16px;\n  accent-color: var(--primary);\n  flex: 0 0 16px;\n  margin: 2px 0 0;\n  padding: 0;\n}\n\n.booster-maintenance-owner-description {\n  gap: 4px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-maintenance-owner-description > strong {\n  overflow-wrap: anywhere;\n  font-size: 12px;\n}\n\n.booster-maintenance-owner-description > span, .booster-maintenance-owner-caution {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.45;\n}\n\n.booster-maintenance-owner-description details {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.booster-maintenance-owner-description summary {\n  cursor: pointer;\n}\n\n.booster-maintenance-owner-description code {\n  overflow-wrap: anywhere;\n  margin-top: 5px;\n  font: 10px / 1.4 ui-monospace, monospace;\n  display: block;\n}\n\n.booster-maintenance-owner-description small {\n  margin-top: 6px;\n  display: block;\n}\n\n.booster-maintenance-link {\n  color: var(--foreground);\n  font: inherit;\n  cursor: pointer;\n  background: none;\n  border: 0;\n  justify-self: start;\n  padding: 0;\n  font-size: 11px;\n  text-decoration: underline;\n}\n\n.booster-maintenance-link:disabled {\n  opacity: .5;\n  cursor: not-allowed;\n}\n\n.booster-export-disclosure {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  padding: 10px 12px;\n  font-size: 12px;\n}\n\n.booster-export-disclosure > summary {\n  cursor: pointer;\n  font-weight: 600;\n}\n\n.booster-export-disclosure > summary small {\n  color: var(--muted-foreground);\n  margin-inline-start: 8px;\n  font-weight: 400;\n}\n\n.booster-export-disclosure[open] > section, .booster-export-disclosure[open] > label, .booster-export-disclosure[open] > p {\n  margin-block-start: 12px;\n}\n\n.booster-maintenance-backup-tools > summary {\n  cursor: pointer;\n  font-weight: 600;\n}\n\n.booster-maintenance-backup-tools > p {\n  margin-block: 10px;\n}\n\n.booster-maintenance-backup-restore {\n  gap: 12px;\n  margin-block-start: 14px;\n  display: grid;\n}\n\n.booster-maintenance-backup-restore > label {\n  gap: 8px;\n  display: grid;\n}\n\n.booster-maintenance-backup-restore input[type="file"] {\n  max-width: 100%;\n}\n\n.booster-control-embedded {\n  box-shadow: none;\n  background: none;\n  border: 0;\n  width: 100%;\n  max-width: none;\n}\n\n.booster-control-embedded > .booster-settings-layout {\n  min-height: 0;\n  max-height: none;\n}\n\n.booster-chatgpt-panel {\n  flex-direction: column;\n  gap: 10px;\n  width: 100%;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-chatgpt-panel > .booster-dock-context {\n  border: 1px solid var(--border);\n  background: var(--card);\n  border-radius: 10px;\n  gap: 7px;\n}\n\n.booster-chatgpt-panel .booster-dock-context-info {\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 6px 16px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-chatgpt-panel .booster-dock-context-info .booster-identity {\n  min-width: 0;\n  max-width: 100%;\n}\n\n.booster-chatgpt-panel .booster-capture-shortcut {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  width: fit-content;\n  min-height: 32px;\n  padding-inline: 8px;\n  font-size: 12px;\n}\n\n.booster-chatgpt-panel > .booster-export-recovery-actions {\n  border-bottom: 1px solid var(--border);\n  min-width: 0;\n  padding-block: 5px;\n}\n\n.booster-chatgpt-panel > .booster-export-recovery-actions > button, .booster-chatgpt-panel > .booster-export-recovery-actions > .booster-reader-tools > button {\n  justify-content: center;\n  align-items: center;\n  gap: 6px;\n  min-height: 34px;\n  display: inline-flex;\n}\n\n.booster-chatgpt-panel > .booster-reader, .booster-chatgpt-panel > .booster-capture-surface {\n  min-width: 0;\n}\n\n@media (max-width: 600px) {\n  .booster-chatgpt-panel > .booster-export-recovery-actions {\n    flex-wrap: wrap;\n  }\n\n  .booster-chatgpt-panel > .booster-export-recovery-actions > button {\n    flex: auto;\n  }\n\n  .booster-chatgpt-panel .booster-reader-tools-menu {\n    min-width: min(260px, 85vw);\n    right: 0;\n  }\n}\n\n.booster-export-presets {\n  border: 1px solid var(--border);\n  border-radius: 10px;\n  gap: 8px;\n  min-width: 0;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-export-presets > strong {\n  font-size: 13px;\n}\n\n.booster-export-presets .booster-export-recovery-actions {\n  flex-wrap: wrap;\n}\n\n.booster-export-presets .booster-export-recovery-actions > button {\n  white-space: normal;\n  overflow-wrap: anywhere;\n  max-width: 100%;\n  min-height: 34px;\n}\n\n.booster-export-presets button[aria-pressed="true"] {\n  background: var(--accent);\n  color: var(--accent-foreground);\n  border-color: var(--ring);\n}\n\n@media (max-width: 560px) {\n  .booster-export-presets {\n    padding: 8px;\n  }\n\n  .booster-export-presets .booster-export-recovery-actions > button {\n    flex: 130px;\n  }\n}\n\n@property --tw-rotate-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-z {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-space-y-reverse {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-border-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-leading {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-font-weight {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ordinal {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-slashed-zero {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-figure {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-spacing {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-fraction {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-inset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-ring-inset {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-offset-width {\n  syntax: "<length>";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-ring-offset-color {\n  syntax: "*";\n  inherits: false;\n  initial-value: #fff;\n}\n\n@property --tw-ring-offset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-outline-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-blur {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-brightness {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-contrast {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-grayscale {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-hue-rotate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-invert {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-opacity {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-saturate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-sepia {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-drop-shadow-size {\n  syntax: "*";\n  inherits: false\n}\n\n@keyframes spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n';
   let sharedSheet;
   let constructedSheetsUnavailable = false;
   function boosterStyleSheet() {
@@ -20783,10 +21079,10 @@
   const SEARCH_ACTIVITY_HEADER_SELECTOR = '[class~="group/activity-header"]';
   const TURN_ACTIONS_SELECTOR = ".turn-action-controls";
   const WORK_SUBAGENT_ACTIVITY_SELECTOR = '[data-testid="chatgpt-subagent-activity"]';
-  function parseChatGptWorkSubagentActivityText(text) {
-    if (/начал\(-и\) работу|started work(?:ing)?/i.test(text)) return "working";
-    if (/завершил\(-и\) работу|completed work|finished work/i.test(text)) return "done";
-    if (/прерван|остановлен|interrupted|cancelled|canceled/i.test(text)) return "interrupted";
+  function parseChatGptWorkSubagentActivityText(text2) {
+    if (/начал\(-и\) работу|started work(?:ing)?/i.test(text2)) return "working";
+    if (/завершил\(-и\) работу|completed work|finished work/i.test(text2)) return "done";
+    if (/прерван|остановлен|interrupted|cancelled|canceled/i.test(text2)) return "interrupted";
     return "unknown";
   }
   function chatGptWorkSubagentUsageCount(root = document) {
@@ -20803,8 +21099,8 @@
   }
   function chatGptWorkSubagentActivity(root = document) {
     return includeSelf(root, WORK_SUBAGENT_ACTIVITY_SELECTOR).flatMap((element) => {
-      const text = (element.textContent ?? "").trim();
-      const status = parseChatGptWorkSubagentActivityText(text);
+      const text2 = (element.textContent ?? "").trim();
+      const status = parseChatGptWorkSubagentActivityText(text2);
       if (status === "unknown") return [];
       const displayName = element.querySelector('[role="button"]')?.textContent?.trim() || null;
       return [{ displayName, status }];
@@ -21230,8 +21526,8 @@
   function structuredPayloads(element) {
     const values = /* @__PURE__ */ new Set();
     for (const node of element.querySelectorAll("pre, code, [data-json], [data-payload]")) {
-      const text = compact$1(node.textContent ?? "");
-      if (text.length >= 2) values.add(text);
+      const text2 = compact$1(node.textContent ?? "");
+      if (text2.length >= 2) values.add(text2);
     }
     for (const key of ["data-json", "data-payload"]) {
       const value = element.getAttribute(key);
@@ -21240,13 +21536,13 @@
     return [...values].slice(0, 8);
   }
   function parseStreamingToolStatus(value) {
-    const text = compact$1(value);
-    if (!text) return null;
-    const query = text.match(
+    const text2 = compact$1(value);
+    if (!text2) return null;
+    const query = text2.match(
       /(?:поиск по запросу|search(?:ing)?(?: the web)? for)\s*[«“"]([^»”"]+)[»”"]/i
     )?.[1] ?? null;
     if (query) return { name: "web.search", payload: { query } };
-    return { name: "tool.activity", payload: { status: text } };
+    return { name: "tool.activity", payload: { status: text2 } };
   }
   function streamingStatusTool(element) {
     if (!element.matches("[data-streaming-response-status]")) return null;
@@ -21260,7 +21556,7 @@
     if (!isInsideConversationAssistantTurn(element)) return { score: 0, signals: [] };
     const signals = ["assistant conversation turn"];
     let score = 2;
-    const text = compact$1(element.textContent || "").slice(0, 800);
+    const text2 = compact$1(element.textContent || "").slice(0, 800);
     const metadata = [
       element.getAttribute("data-testid"),
       element.getAttribute("aria-label"),
@@ -21272,11 +21568,11 @@
       score += 3;
       signals.push("tool-like metadata");
     }
-    if (TOOL_WORDS.test(text)) {
+    if (TOOL_WORDS.test(text2)) {
       score += 2;
       signals.push("tool-like text");
     }
-    if (TOOL_ACTIONS.test(text)) {
+    if (TOOL_ACTIONS.test(text2)) {
       score += 2;
       signals.push("tool action text");
     }
@@ -21311,8 +21607,8 @@
     const activityRows = chatGptToolActivityRows(searchRoot);
     const highSignal = activityRows.length > 0 || rootElement?.matches(HIGH_SIGNAL_SELECTOR) || searchRoot.querySelector(HIGH_SIGNAL_SELECTOR);
     if (!highSignal) {
-      const text = compact$1(searchRoot.textContent ?? "").slice(0, 1600);
-      if (!TOOL_WORDS.test(text) && !TOOL_ACTIONS.test(text)) return [];
+      const text2 = compact$1(searchRoot.textContent ?? "").slice(0, 1600);
+      if (!TOOL_WORDS.test(text2) && !TOOL_ACTIONS.test(text2)) return [];
     }
     const candidates = [
       .../* @__PURE__ */ new Set([...activityRows, ...searchRoot.querySelectorAll(CANDIDATE_SELECTOR)])
@@ -22095,10 +22391,10 @@
     return value.replace(/\s+/g, " ").trim();
   }
   function dedupeRepeatedText(value) {
-    const text = compact(value);
-    if (!text) return "";
-    const match = text.match(/^(.{2,}?)\1$/u);
-    return match?.[1]?.trim() || text;
+    const text2 = compact(value);
+    if (!text2) return "";
+    const match = text2.match(/^(.{2,}?)\1$/u);
+    return match?.[1]?.trim() || text2;
   }
   function activityPhase(section, tool, statusText) {
     if (tool) return "tool";
@@ -22111,7 +22407,7 @@
     if (!section) return `${active ? "1" : "0"}|${phase}|${label ?? ""}|${toolLabel ?? ""}`;
     const adapter = resolveChatGptDomAdapter(section);
     const message = adapter?.assistantMessage(section) ?? null;
-    const text = compact(message?.textContent ?? "");
+    const text2 = compact(message?.textContent ?? "");
     return [
       adapter?.turnId(section) ?? "",
       adapter?.turnState(section) ?? "",
@@ -22120,8 +22416,8 @@
       label ?? "",
       toolLabel ?? "",
       message?.getAttribute("data-markdown-talvt-render-state") ?? "",
-      text.length,
-      text.slice(-180)
+      text2.length,
+      text2.slice(-180)
     ].join("|");
   }
   function readConversationActivity() {
@@ -22314,7 +22610,7 @@
     if (!conversationId || !targets.length) return void 0;
     const observedAt = Date.now();
     const records = targets.map((target) => {
-      const text = (target.message.textContent || "").trim();
+      const text2 = (target.message.textContent || "").trim();
       const role = target.role;
       return {
         messageKey: conversationId + ":" + target.messageId,
@@ -22338,7 +22634,7 @@
         raw: {
           id: target.messageId,
           author: { role },
-          content: { content_type: "text", parts: [text] },
+          content: { content_type: "text", parts: [text2] },
           metadata: { booster_dom_snapshot: true },
           recipient: role === "assistant" ? "all" : null
         }
@@ -22398,10 +22694,10 @@
     return `${hours}:${String(minutes % 60).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
   }
   function normalizedLabel(value) {
-    const text = value?.replace(/\s+/g, " ").trim() ?? "";
-    if (!text) return "";
-    const match = text.match(/^(.{2,}?)\1$/u);
-    return match?.[1]?.trim() || text;
+    const text2 = value?.replace(/\s+/g, " ").trim() ?? "";
+    if (!text2) return "";
+    const match = text2.match(/^(.{2,}?)\1$/u);
+    return match?.[1]?.trim() || text2;
   }
   function mountAgentActivity(into, initial, locale) {
     const host = document.createElement("div");
@@ -22840,12 +23136,12 @@
       }
     };
   }
-  const _hoisted_1$6 = ["title"];
-  const _hoisted_2$6 = { class: "booster-scope-title" };
-  const _hoisted_3$6 = { class: "booster-scope-kind" };
-  const _hoisted_4$5 = { class: "booster-meta-lines" };
-  const _hoisted_5$5 = { class: "booster-meta-label" };
-  const _hoisted_6$5 = { class: "booster-meta-value" };
+  const _hoisted_1$7 = ["title"];
+  const _hoisted_2$7 = { class: "booster-scope-title" };
+  const _hoisted_3$7 = { class: "booster-scope-kind" };
+  const _hoisted_4$6 = { class: "booster-meta-lines" };
+  const _hoisted_5$6 = { class: "booster-meta-label" };
+  const _hoisted_6$6 = { class: "booster-meta-value" };
   const _hoisted_7$5 = { class: "booster-meta-label" };
   const _hoisted_8$5 = { class: "booster-meta-value" };
   const _hoisted_9$5 = { class: "booster-meta-label" };
@@ -22866,7 +23162,7 @@
           class: normalizeClass(["booster-chat-save-marker", { "is-enabled": __props.model.effectiveEnabled, "is-work": __props.model.workConversation }]),
           title: label(),
           "aria-hidden": "true"
-        }, null, 10, _hoisted_1$6)) : (openBlock(), createBlock(unref(_sfc_main$4$2), {
+        }, null, 10, _hoisted_1$7)) : (openBlock(), createBlock(unref(_sfc_main$4$1), {
           key: 1,
           mode: "click",
           label: label()
@@ -22893,30 +23189,30 @@
               createBaseVNode("header", null, [
                 createBaseVNode(
                   "strong",
-                  _hoisted_2$6,
+                  _hoisted_2$7,
                   toDisplayString(__props.model.context.title || t("identity.unknownProject")),
                   1
                   /* TEXT */
                 ),
                 createBaseVNode(
                   "span",
-                  _hoisted_3$6,
+                  _hoisted_3$7,
                   toDisplayString(t("capture.project")),
                   1
                   /* TEXT */
                 )
               ]),
-              createBaseVNode("div", _hoisted_4$5, [
+              createBaseVNode("div", _hoisted_4$6, [
                 createBaseVNode(
                   "strong",
-                  _hoisted_5$5,
+                  _hoisted_5$6,
                   toDisplayString(t("scope.localArchive")),
                   1
                   /* TEXT */
                 ),
                 createBaseVNode(
                   "span",
-                  _hoisted_6$5,
+                  _hoisted_6$6,
                   toDisplayString(__props.model.archivedCount > 0 ? t("scope.archived") + " · " + __props.model.archivedCount : t("scope.notArchived")),
                   1
                   /* TEXT */
@@ -23072,10 +23368,10 @@
   }
   const _hoisted_1$5 = ["lang"];
   const _hoisted_2$5 = ["src"];
-  const _hoisted_3$5 = { class: "min-w-0 flex-1" };
+  const _hoisted_3$6 = { class: "min-w-0 flex-1" };
   const _hoisted_4$4 = { key: 0 };
-  const _hoisted_5$4 = { class: "booster-meta-lines" };
-  const _hoisted_6$4 = { class: "booster-meta-label" };
+  const _hoisted_5$5 = { class: "booster-meta-lines" };
+  const _hoisted_6$5 = { class: "booster-meta-label" };
   const _hoisted_7$4 = { class: "booster-meta-value" };
   const _hoisted_8$4 = { class: "booster-meta-label" };
   const _hoisted_9$4 = { class: "booster-meta-value" };
@@ -23086,7 +23382,7 @@
   const _hoisted_14$3 = { class: "booster-meta-label" };
   const _hoisted_15$2 = { class: "booster-meta-value" };
   const _hoisted_16$2 = { class: "booster-meta-label" };
-  const _hoisted_17$1 = { class: "booster-meta-value" };
+  const _hoisted_17$2 = { class: "booster-meta-value" };
   const _hoisted_18$1 = { class: "booster-meta-label" };
   const _hoisted_19$1 = { class: "booster-meta-value booster-tool-path" };
   const _hoisted_20$1 = ["href"];
@@ -23156,7 +23452,7 @@
         }, 1200);
       }
       return (_ctx, _cache) => {
-        return openBlock(), createBlock(unref(_sfc_main$4$2), {
+        return openBlock(), createBlock(unref(_sfc_main$4$1), {
           mode: "hover-click",
           label: t("tool.inspect"),
           align: "start",
@@ -23183,7 +23479,7 @@
                   key: 2,
                   class: "size-4 shrink-0"
                 })),
-                createBaseVNode("div", _hoisted_3$5, [
+                createBaseVNode("div", _hoisted_3$6, [
                   createBaseVNode(
                     "strong",
                     null,
@@ -23199,7 +23495,7 @@
                     /* TEXT */
                   )) : createCommentVNode("v-if", true)
                 ]),
-                pinned ? (openBlock(), createBlock(unref(_sfc_main$8), {
+                pinned ? (openBlock(), createBlock(unref(_sfc_main$9), {
                   key: 3,
                   variant: "ghost",
                   size: "icon-sm",
@@ -23219,14 +23515,14 @@
                   /* STABLE */
                 }, 8, ["title"])) : createCommentVNode("v-if", true)
               ]),
-              createBaseVNode("div", _hoisted_5$4, [
+              createBaseVNode("div", _hoisted_5$5, [
                 durationLabel.value ? (openBlock(), createElementBlock(
                   Fragment,
                   { key: 0 },
                   [
                     createBaseVNode(
                       "strong",
-                      _hoisted_6$4,
+                      _hoisted_6$5,
                       toDisplayString(t("tool.duration")),
                       1
                       /* TEXT */
@@ -23343,7 +23639,7 @@
                     ),
                     createBaseVNode(
                       "span",
-                      _hoisted_17$1,
+                      _hoisted_17$2,
                       toDisplayString(__props.model.tool.recipient),
                       1
                       /* TEXT */
@@ -23399,7 +23695,7 @@
                   1
                   /* TEXT */
                 ),
-                createVNode(unref(_sfc_main$3$1), {
+                createVNode(unref(_sfc_main$3$2), {
                   value: __props.model.tool.payload
                 }, null, 8, ["value"])
               ])) : createCommentVNode("v-if", true),
@@ -23411,7 +23707,7 @@
                   1
                   /* TEXT */
                 ),
-                createVNode(unref(_sfc_main$3$1), {
+                createVNode(unref(_sfc_main$3$2), {
                   value: __props.model.tool.result
                 }, null, 8, ["value"])
               ])) : createCommentVNode("v-if", true),
@@ -24144,8 +24440,8 @@
     const routeProjectId = conversationCatalogProjectId(sourceUrl);
     if (routeProjectId === void 0) return null;
     const value = requestPayload(payload);
-    const items = Array.isArray(value?.items) ? value.items : [];
-    const normalized = items.flatMap((item) => {
+    const items2 = Array.isArray(value?.items) ? value.items : [];
+    const normalized = items2.flatMap((item) => {
       const record2 = requestPayload(item);
       if (!record2 || typeof record2.id !== "string") return [];
       const gizmoId = typeof record2.gizmo_id === "string" && record2.gizmo_id.startsWith("g-p-") ? record2.gizmo_id : null;
@@ -24249,35 +24545,35 @@
   }
   function sanitizeBodyPreview(value, maxChars) {
     if (value == null) return void 0;
-    let text;
+    let text2;
     if (typeof value === "string") {
       try {
-        text = JSON.stringify(redact(JSON.parse(value)));
+        text2 = JSON.stringify(redact(JSON.parse(value)));
       } catch {
-        text = value;
+        text2 = value;
       }
     } else if (value instanceof URLSearchParams) {
       const params = new URLSearchParams(value);
       for (const [key] of params) if (SECRET_KEY.test(key)) params.set(key, "[REDACTED]");
-      text = params.toString();
+      text2 = params.toString();
     } else if (value instanceof FormData) {
       const result = {};
       for (const [key, child] of value.entries()) {
         result[key] = SECRET_KEY.test(key) ? "[REDACTED]" : typeof child === "string" ? child : `[Blob ${child.type || "unknown"} ${child.size}B]`;
       }
-      text = JSON.stringify(result);
+      text2 = JSON.stringify(result);
     } else if (value instanceof Blob) {
       return `[Blob ${value.type || "unknown"} ${value.size}B]`;
     } else if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) {
       return "[Binary]";
     } else {
       try {
-        text = JSON.stringify(redact(value));
+        text2 = JSON.stringify(redact(value));
       } catch {
-        text = String(value);
+        text2 = String(value);
       }
     }
-    const redacted = redactTextSecrets(text);
+    const redacted = redactTextSecrets(text2);
     return redacted.length > maxChars ? `${redacted.slice(0, maxChars)}…` : redacted;
   }
   let observerTarget = typeof window === "undefined" ? void 0 : window;
@@ -24441,8 +24737,8 @@
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          const text = decoder3.decode(value, { stream: true });
-          if (!text) continue;
+          const text2 = decoder3.decode(value, { stream: true });
+          if (!text2) continue;
           emit({
             id: context.id,
             kind: "fetch",
@@ -24453,7 +24749,7 @@
             url: context.url,
             contentType,
             size: value.byteLength,
-            bodyPreview: sanitizeBodyPreview(text, config.maxBodyChars)
+            bodyPreview: sanitizeBodyPreview(text2, config.maxBodyChars)
           });
         }
       } catch (error) {
@@ -24951,12 +25247,12 @@
     const WrappedWebSocket = function(url, protocols) {
       const ws = protocols === void 0 ? new OriginalWebSocket(url) : new OriginalWebSocket(url, protocols);
       let id;
-      let safe;
+      let safe2;
       const diagnosticMeta = () => {
         if (!transportEmissionEnabled) return void 0;
         id ??= nextId("websocket");
-        safe ??= sanitizeTransportUrl(String(url));
-        return { id, safe };
+        safe2 ??= sanitizeTransportUrl(String(url));
+        return { id, safe: safe2 };
       };
       const originalSendWs = ws.send.bind(ws);
       ws.send = (data) => {
@@ -25033,12 +25329,12 @@
     const WrappedEventSource = function(url, eventSourceInitDict) {
       const source = new OriginalEventSource(url, eventSourceInitDict);
       let id;
-      let safe;
+      let safe2;
       const diagnosticMeta = () => {
         if (!transportEmissionEnabled) return void 0;
         id ??= nextId("eventsource");
-        safe ??= sanitizeTransportUrl(String(url));
-        return { id, safe };
+        safe2 ??= sanitizeTransportUrl(String(url));
+        return { id, safe: safe2 };
       };
       source.addEventListener("open", () => {
         const meta = diagnosticMeta();
@@ -25701,7 +25997,7 @@
       return true;
     }
   }
-  function record$1(value) {
+  function record$2(value) {
     return value && typeof value === "object" && !Array.isArray(value) ? value : void 0;
   }
   function stringOrNull(value) {
@@ -25714,13 +26010,13 @@
     return typeof value === "boolean" ? value : null;
   }
   function jsonHash(value) {
-    const text = JSON.stringify(value);
+    const text2 = JSON.stringify(value);
     let hash = 2166136261;
-    for (let index = 0; index < text.length; index += 1) {
-      hash ^= text.charCodeAt(index);
+    for (let index = 0; index < text2.length; index += 1) {
+      hash ^= text2.charCodeAt(index);
       hash = Math.imul(hash, 16777619);
     }
-    return `fnv1a32:${(hash >>> 0).toString(16).padStart(8, "0")}:${text.length}`;
+    return `fnv1a32:${(hash >>> 0).toString(16).padStart(8, "0")}:${text2.length}`;
   }
   function normalizeConversationProjectId(payload) {
     const gizmoId = stringOrNull(payload.gizmo_id);
@@ -25732,9 +26028,9 @@
   function normalizeConversationMessage(raw, conversationId, projectId, observedAt, previous) {
     const messageId = stringOrNull(raw.id);
     if (!messageId) return void 0;
-    const author = record$1(raw.author);
-    const content = record$1(raw.content);
-    const metadata = record$1(raw.metadata);
+    const author = record$2(raw.author);
+    const content = record$2(raw.content);
+    const metadata = record$2(raw.metadata);
     return {
       messageKey: `${conversationId}:${messageId}`,
       messageId,
@@ -27022,12 +27318,12 @@
       for (const record2 of records)
         for (const key of /* @__PURE__ */ new Set([record2.turnExchangeId, record2.workingTurnId])) {
           if (!key) continue;
-          const items = this.#turnRecords.get(key) ?? [];
-          items.push(record2);
-          this.#turnRecords.set(key, items);
+          const items2 = this.#turnRecords.get(key) ?? [];
+          items2.push(record2);
+          this.#turnRecords.set(key, items2);
         }
-      for (const items of this.#turnRecords.values())
-        items.sort(
+      for (const items2 of this.#turnRecords.values())
+        items2.sort(
           (a, b) => (sourceTime(a.createTime) ?? Number.POSITIVE_INFINITY) - (sourceTime(b.createTime) ?? Number.POSITIVE_INFINITY)
         );
       this.#recordConversationId = conversationId;
@@ -27046,12 +27342,12 @@
       return this.stateStore.recordsForMessageIds(conversationId, chatGptTurnMessageIds(section));
     }
     #sourceActivity(section, observed) {
-      const items = this.#turnItemsForSection(section);
+      const items2 = this.#turnItemsForSection(section);
       const conversationId = currentConversationId() ?? null;
       const lifecycle = conversationId ? this.stateStore.lifecycle(conversationId) : void 0;
       const lifecycleActive = lifecycle ? lifecycle.state === "in_progress" || lifecycle.state === "stop_requested" : observed.active;
       const lifecyclePhase = lifecycleActive ? observed.phase : lifecycle?.state === "complete" || lifecycle?.state === "stopped" || lifecycle?.state === "cancelled" || lifecycle?.state === "failed" ? "complete" : observed.phase;
-      if (!items.length)
+      if (!items2.length)
         return {
           ...observed,
           active: lifecycleActive,
@@ -27064,7 +27360,7 @@
           durationMs: null,
           reasoningDurationMs: null
         };
-      const ordered = [...items].sort(
+      const ordered = [...items2].sort(
         (a, b) => (sourceTime(a.createTime) ?? Number.POSITIVE_INFINITY) - (sourceTime(b.createTime) ?? Number.POSITIVE_INFINITY)
       );
       const user = ordered.find((item) => item.role === "user");
@@ -27199,8 +27495,8 @@
       const anchor = messageIds.map((id) => this.#records.get(id)).find(Boolean);
       const key = anchor?.turnExchangeId ?? anchor?.workingTurnId;
       if (!key) return [];
-      const items = this.#turnRecords.get(key) ?? [];
-      const candidates = items.filter(
+      const items2 = this.#turnRecords.get(key) ?? [];
+      const candidates = items2.filter(
         (item) => item.role === "assistant" && Boolean(item.recipient && item.recipient !== "all") && Boolean(toolInvocationFromRecord(item))
       );
       const concrete = candidates.filter(hasConcreteConnectorPayload);
@@ -27212,8 +27508,8 @@
         const callTime = sourceTime(call.createTime);
         const nextCall = calls[index + 1];
         const nextCallTime = nextCall ? sourceTime(nextCall.createTime) : null;
-        const direct = items.find((item) => item.role === "tool" && item.parentId === call.messageId);
-        const adjacent = callTime === null ? void 0 : items.find((item) => {
+        const direct = items2.find((item) => item.role === "tool" && item.parentId === call.messageId);
+        const adjacent = callTime === null ? void 0 : items2.find((item) => {
           if (item.role !== "tool") return false;
           const time = sourceTime(item.createTime);
           return time !== null && time >= callTime && (nextCallTime === null || time < nextCallTime);
@@ -27241,15 +27537,15 @@
         const metadata = record2 ? archiveRecordMetadata(record2) : UNKNOWN_METADATA;
         if (settings.features.messageMetadata) {
           const activity = target.role === "assistant" ? this.#activitySnapshots.get(target.section) ?? this.#historicalActivity(target) : null;
-          const view = { ...metadata, raw: record2?.raw ?? null, activity };
+          const view2 = { ...metadata, raw: record2?.raw ?? null, activity };
           const mounted = this.#messageMounts.get(target.message);
           if (mounted?.element.isConnected && target.metadataMount.contains(mounted.element)) {
-            mounted.update(view);
+            mounted.update(view2);
           } else {
             mounted?.unmount();
             this.#messageMounts.set(
               target.message,
-              mountMessageMetadata(target.metadataMount, view, locale)
+              mountMessageMetadata(target.metadataMount, view2, locale)
             );
           }
         }
@@ -27919,9 +28215,9 @@
         }
         return rv;
       }
-      var concat = [].concat;
+      var concat2 = [].concat;
       function flatten(a) {
-        return concat.apply([], a);
+        return concat2.apply([], a);
       }
       var intrinsicTypeNames = "BigUint64Array,BigInt64Array,Array,Boolean,String,Date,RegExp,Blob,File,FileList,FileSystemFileHandle,FileSystemDirectoryHandle,ArrayBuffer,DataView,Uint8ClampedArray,ImageBitmap,ImageData,Map,Set,CryptoKey".split(",").concat(flatten([8, 16, 32, 64].map(function(num) {
         return ["Int", "Uint", "Float"].map(function(t) {
@@ -28983,8 +29279,8 @@
           return new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
         return new Uint8Array(a);
       }
-      function builtInDeletionTrigger(table, keys2, res) {
-        var yProps = table.schema.yProps;
+      function builtInDeletionTrigger(table2, keys2, res) {
+        var yProps = table2.schema.yProps;
         if (!yProps)
           return res;
         if (keys2 && res.numFailures > 0)
@@ -28993,7 +29289,7 @@
           });
         return Promise.all(yProps.map(function(_a2) {
           var updatesTable = _a2.updatesTable;
-          return keys2 ? table.db.table(updatesTable).where("k").anyOf(keys2).delete() : table.db.table(updatesTable).clear();
+          return keys2 ? table2.db.table(updatesTable).where("k").anyOf(keys2).delete() : table2.db.table(updatesTable).clear();
         })).then(function() {
           return res;
         });
@@ -30089,12 +30385,12 @@
               error = ex;
             }
           var whereCtx = whereClause._ctx;
-          var table = whereCtx.table;
-          var readingHook = table.hook.reading.fire;
+          var table2 = whereCtx.table;
+          var readingHook = table2.hook.reading.fire;
           this._ctx = {
-            table,
+            table: table2,
             index: whereCtx.index,
-            isPrimKey: !whereCtx.index || table.schema.primKey.keyPath && whereCtx.index === table.schema.primKey.name,
+            isPrimKey: !whereCtx.index || table2.schema.primKey.keyPath && whereCtx.index === table2.schema.primKey.name,
             range: keyRange,
             keysOnly: false,
             dir: "next",
@@ -30505,10 +30801,10 @@
         return WhereClause2;
       })();
       function createWhereClauseConstructor(db) {
-        return makeClassConstructor(WhereClause.prototype, function WhereClause2(table, index, orCollection) {
+        return makeClassConstructor(WhereClause.prototype, function WhereClause2(table2, index, orCollection) {
           this.db = db;
           this._ctx = {
-            table,
+            table: table2,
             index: index === ":id" ? null : index,
             or: orCollection
           };
@@ -30836,8 +31132,8 @@
           return {
             schema: {
               name: db2.name,
-              tables: tables2.map(function(table) {
-                return trans.objectStore(table);
+              tables: tables2.map(function(table2) {
+                return trans.objectStore(table2);
               }).map(function(store) {
                 var { keyPath, autoIncrement } = store;
                 var compound = isArray2(keyPath);
@@ -31172,8 +31468,8 @@
           return createDbCoreTable(tableSchema);
         });
         var tableMap = {};
-        tables.forEach(function(table) {
-          return tableMap[table.name] = table;
+        tables.forEach(function(table2) {
+          return tableMap[table2.name] = table2;
         });
         return {
           stack: "dbcore",
@@ -31207,14 +31503,14 @@
         var idbdb = tmpTrans.db;
         var stacks = createMiddlewareStacks(db._middlewares, idbdb, db._deps, tmpTrans);
         db.core = stacks.dbcore;
-        db.tables.forEach(function(table) {
-          var tableName = table.name;
+        db.tables.forEach(function(table2) {
+          var tableName = table2.name;
           if (db.core.schema.tables.some(function(tbl) {
             return tbl.name === tableName;
           })) {
-            table.core = db.core.table(tableName);
+            table2.core = db.core.table(tableName);
             if (db[tableName] instanceof db.Table) {
-              db[tableName].core = table.core;
+              db[tableName].core = table2.core;
             }
           }
         });
@@ -31366,8 +31662,8 @@
               generateMiddlewareStacks(db, idbUpgradeTrans);
               trans._memoizedTables = {};
               var upgradeSchema_1 = shallowClone(newSchema);
-              diff.del.forEach(function(table) {
-                upgradeSchema_1[table] = oldSchema[table];
+              diff.del.forEach(function(table2) {
+                upgradeSchema_1[table2] = oldSchema[table2];
               });
               removeTablesApi(db, [db.Transaction.prototype]);
               setApiOnPlace(db, [db.Transaction.prototype], keys(upgradeSchema_1), upgradeSchema_1);
@@ -31425,18 +31721,18 @@
           add: [],
           change: []
         };
-        var table;
-        for (table in oldSchema) {
-          if (!newSchema[table])
-            diff.del.push(table);
+        var table2;
+        for (table2 in oldSchema) {
+          if (!newSchema[table2])
+            diff.del.push(table2);
         }
-        for (table in newSchema) {
-          var oldDef = oldSchema[table], newDef = newSchema[table];
+        for (table2 in newSchema) {
+          var oldDef = oldSchema[table2], newDef = newSchema[table2];
           if (!oldDef) {
-            diff.add.push([table, newDef]);
+            diff.add.push([table2, newDef]);
           } else {
             var change = {
-              name: table,
+              name: table2,
               def: newDef,
               recreate: false,
               del: [],
@@ -32119,12 +32415,12 @@
         }).then(function() {
           if (wasCreated) {
             var everything_1 = {};
-            db.tables.forEach(function(table) {
-              table.schema.indexes.forEach(function(idx) {
+            db.tables.forEach(function(table2) {
+              table2.schema.indexes.forEach(function(idx) {
                 if (idx.name)
-                  everything_1["idb://".concat(db.name, "/").concat(table.name, "/").concat(idx.name)] = new RangeSet2(-Infinity, [[[]]]);
+                  everything_1["idb://".concat(db.name, "/").concat(table2.name, "/").concat(idx.name)] = new RangeSet2(-Infinity, [[[]]]);
               });
-              everything_1["idb://".concat(db.name, "/").concat(table.name, "/")] = everything_1["idb://".concat(db.name, "/").concat(table.name, "/:dels")] = new RangeSet2(-Infinity, [[[]]]);
+              everything_1["idb://".concat(db.name, "/").concat(table2.name, "/")] = everything_1["idb://".concat(db.name, "/").concat(table2.name, "/:dels")] = new RangeSet2(-Infinity, [[[]]]);
             });
             globalEvents(DEXIE_STORAGE_MUTATED_EVENT_NAME).fire(everything_1);
             signalSubscribersNow(everything_1, true);
@@ -32224,8 +32520,8 @@
       }
       function createVirtualIndexMiddleware(down) {
         return __assign(__assign({}, down), { table: function(tableName) {
-          var table = down.table(tableName);
-          var schema = table.schema;
+          var table2 = down.table(tableName);
+          var schema = table2.schema;
           var indexLookup = /* @__PURE__ */ Object.create(null);
           var allVirtualIndexes = [];
           function addVirtualIndexes(keyPath, keyTail, lowLevelIndex) {
@@ -32273,14 +32569,14 @@
               range: translateRange(req.query.range, index2.keyTail)
             } }) : req;
           }
-          var result = __assign(__assign({}, table), { schema: __assign(__assign({}, schema), { primaryKey, indexes: allVirtualIndexes, getIndexByKeyPath: findBestIndex }), count: function(req) {
-            return table.count(translateRequest(req));
+          var result = __assign(__assign({}, table2), { schema: __assign(__assign({}, schema), { primaryKey, indexes: allVirtualIndexes, getIndexByKeyPath: findBestIndex }), count: function(req) {
+            return table2.count(translateRequest(req));
           }, query: function(req) {
-            return table.query(translateRequest(req));
+            return table2.query(translateRequest(req));
           }, openCursor: function(req) {
             var _a3 = req.query.index, { keyTail, isVirtual, keyLength } = _a3;
             if (!isVirtual)
-              return table.openCursor(req);
+              return table2.openCursor(req);
             function createVirtualCursor(cursor) {
               function _continue(key) {
                 key != null ? cursor.continue(pad(key, req.reverse ? down.MAX_KEY : down.MIN_KEY, keyTail)) : req.unique ? cursor.continue(cursor.key.slice(0, keyLength).concat(req.reverse ? down.MIN_KEY : down.MAX_KEY, keyTail)) : cursor.continue();
@@ -32311,7 +32607,7 @@
               });
               return virtualCursor;
             }
-            return table.openCursor(translateRequest(req)).then(function(cursor) {
+            return table2.openCursor(translateRequest(req)).then(function(cursor) {
               return cursor && createVirtualCursor(cursor);
             });
           } });
@@ -32492,8 +32788,8 @@
           } });
         }
       };
-      function getExistingValues(table, req, effectiveKeys) {
-        return req.type === "add" ? Promise.resolve([]) : table.getMany({
+      function getExistingValues(table2, req, effectiveKeys) {
+        return req.type === "add" ? Promise.resolve([]) : table2.getMany({
           trans: req.trans,
           keys: effectiveKeys,
           cache: "immutable"
@@ -32523,16 +32819,16 @@
         create: function(core) {
           return {
             table: function(tableName) {
-              var table = core.table(tableName);
-              return __assign(__assign({}, table), { getMany: function(req) {
+              var table2 = core.table(tableName);
+              return __assign(__assign({}, table2), { getMany: function(req) {
                 if (!req.cache) {
-                  return table.getMany(req);
+                  return table2.getMany(req);
                 }
                 var cachedResult = getFromTransactionCache(req.keys, req.trans["_cache"], req.cache === "clone");
                 if (cachedResult) {
                   return DexiePromise.resolve(cachedResult);
                 }
-                return table.getMany(req).then(function(res) {
+                return table2.getMany(req).then(function(res) {
                   req.trans["_cache"] = {
                     keys: req.keys,
                     values: req.cache === "clone" ? deepClone(res) : res
@@ -32542,14 +32838,14 @@
               }, mutate: function(req) {
                 if (req.type !== "add")
                   req.trans["_cache"] = null;
-                return table.mutate(req);
+                return table2.mutate(req);
               } });
             }
           };
         }
       };
-      function isCachableContext(ctx, table) {
-        return ctx.trans.mode === "readonly" && !!ctx.subscr && !ctx.trans.explicit && ctx.trans.db._options.cache !== "disabled" && !table.schema.primaryKey.outbound;
+      function isCachableContext(ctx, table2) {
+        return ctx.trans.mode === "readonly" && !!ctx.subscr && !ctx.trans.explicit && ctx.trans.db._options.cache !== "disabled" && !table2.schema.primaryKey.outbound;
       }
       function isCachableRequest(type2, req) {
         switch (type2) {
@@ -32578,14 +32874,14 @@
             }
             return core.transaction(stores, mode2, options);
           }, table: function(tableName) {
-            var table = core.table(tableName);
-            var schema = table.schema;
+            var table2 = core.table(tableName);
+            var schema = table2.schema;
             var { primaryKey, indexes } = schema;
             var { extractKey, outbound } = primaryKey;
             var indexesWithAutoIncPK = primaryKey.autoIncrement && indexes.filter(function(index) {
               return index.compound && index.keyPath.includes(primaryKey.keyPath);
             });
-            var tableClone = __assign(__assign({}, table), { mutate: function(req) {
+            var tableClone = __assign(__assign({}, table2), { mutate: function(req) {
               var _a2, _b;
               var trans = req.trans;
               var mutatedParts = req.mutatedParts || (req.mutatedParts = {});
@@ -32626,7 +32922,7 @@
                   return getRangeSet(idx.name).add(FULL_RANGE);
                 });
               }
-              return table.mutate(req).then(function(res) {
+              return table2.mutate(req).then(function(res) {
                 if (keys2 && (req.type === "add" || req.type === "put")) {
                   pkRangeSet.addKeys(res.results);
                   if (indexesWithAutoIncPK) {
@@ -32671,7 +32967,7 @@
               tableClone[method] = function(req) {
                 var subscr = PSD.subscr;
                 var isLiveQuery = !!subscr;
-                var cachable = isCachableContext(PSD, table) && isCachableRequest(method, req);
+                var cachable = isCachableContext(PSD, table2) && isCachableRequest(method, req);
                 var obsSet = cachable ? req.obsSet = {} : subscr;
                 if (isLiveQuery) {
                   var getRangeSet = function(indexName) {
@@ -32690,8 +32986,8 @@
                     if (method === "count") {
                       delsRangeSet_1.add(FULL_RANGE);
                     } else {
-                      var keysPromise_1 = method === "query" && outbound && req.values && table.query(__assign(__assign({}, req), { values: false }));
-                      return table[method].apply(this, arguments).then(function(res) {
+                      var keysPromise_1 = method === "query" && outbound && req.values && table2.query(__assign(__assign({}, req), { values: false }));
+                      return table2[method].apply(this, arguments).then(function(res) {
                         if (method === "query") {
                           if (outbound && req.values) {
                             return keysPromise_1.then(function(_a3) {
@@ -32736,7 +33032,7 @@
                     }
                   }
                 }
-                return table[method].apply(this, arguments);
+                return table2[method].apply(this, arguments);
               };
             });
             return tableClone;
@@ -32799,13 +33095,13 @@
       function isWithinRange(key, range) {
         return isAboveLower(key, range) && isBelowUpper(key, range);
       }
-      function applyOptimisticOps(result, req, ops, table, cacheEntry, immutable) {
+      function applyOptimisticOps(result, req, ops, table2, cacheEntry, immutable) {
         if (!ops || ops.length === 0)
           return result;
         var index = req.query.index;
         var multiEntry = index.multiEntry;
         var queryRange = req.query.range;
-        var primaryKey = table.schema.primaryKey;
+        var primaryKey = table2.schema.primaryKey;
         var extractPrimKey = primaryKey.extractKey;
         var extractIndex = index.extractKey;
         var extractLowLevelIndex = (index.lowLevelIndex || index).extractKey;
@@ -33005,7 +33301,7 @@
                       var storeName = stores_1[_i];
                       var tblCache = cache["idb://".concat(dbName, "/").concat(storeName)];
                       if (tblCache) {
-                        var table = core.table(storeName);
+                        var table2 = core.table(storeName);
                         var ops = tblCache.optimisticOps.filter(function(op) {
                           return op.trans === idbtrans;
                         });
@@ -33033,7 +33329,7 @@
                               if (entry.res != null && idbtrans.mutatedParts) {
                                 if (wasCommitted && !entry.dirty) {
                                   var freezeResults = Object.isFrozen(entry.res);
-                                  var modRes = applyOptimisticOps(entry.res, entry.req, ops, table, entry, freezeResults);
+                                  var modRes = applyOptimisticOps(entry.res, entry.req, ops, table2, entry, freezeResults);
                                   if (entry.dirty) {
                                     delArrayItem(entries, entry);
                                     entry.subscribers.forEach(function(requery) {
@@ -33517,8 +33813,8 @@
           mode2 = mode2.replace("!", "").replace("?", "");
           var idbMode, storeNames;
           try {
-            storeNames = tables.map(function(table) {
-              var storeName = table instanceof _this.Table ? table.name : table;
+            storeNames = tables.map(function(table2) {
+              var storeName = table2 instanceof _this.Table ? table2.name : table2;
               if (typeof storeName !== "string")
                 throw new TypeError("Invalid table argument to Dexie.transaction(). Only Table or String are allowed");
               return storeName;
@@ -33910,15 +34206,15 @@
       return Dexie$12;
     });
   });
-  function assertServiceScope(scope) {
+  function assertServiceScope$1(scope) {
     if (!/^[a-z][a-z0-9-]{1,63}$/.test(scope.productId) || scope.channel !== "dev" && scope.channel !== "prod" || scope.ownerId !== void 0 && (!scope.ownerId || scope.ownerId.length > 256) || scope.installationId !== void 0 && !/^[a-zA-Z0-9_-]{1,128}$/.test(scope.installationId)) {
       throw new Error("Invalid product/channel/owner scope");
     }
     return scope;
   }
   function assertMatchingScope(expected, actual) {
-    assertServiceScope(expected);
-    assertServiceScope(actual);
+    assertServiceScope$1(expected);
+    assertServiceScope$1(actual);
     if (expected.productId !== actual.productId || expected.channel !== actual.channel || expected.ownerId !== actual.ownerId || expected.installationId !== actual.installationId) {
       throw new Error("Backup product, channel, owner or installation mismatch");
     }
@@ -33936,31 +34232,31 @@
     buffer.set(valueBytes, start);
     buffer[start + size - 1] = 0;
   }
-  function parseOctal(bytes) {
-    const value = decoder.decode(bytes).replace(/\0.*$/s, "").trim();
+  function parseOctal(bytes2) {
+    const value = decoder.decode(bytes2).replace(/\0.*$/s, "").trim();
     if (!/^[0-7]+$/.test(value))
       throw Error("Invalid TAR octal field");
-    const number = Number.parseInt(value, 8);
-    if (!Number.isSafeInteger(number) || number < 0)
+    const number2 = Number.parseInt(value, 8);
+    if (!Number.isSafeInteger(number2) || number2 < 0)
       throw Error("Invalid TAR numeric value");
-    return number;
+    return number2;
   }
   function header(name, length) {
     if (!allowedName(name) || length > MAX_ENTRY_BYTES || length < 0)
       throw Error("Invalid TAR file path or excessive single entry");
-    const bytes = new Uint8Array(BLOCK);
-    bytes.set(encoder.encode(name), 0);
-    octal(bytes, 100, 8, 384);
-    octal(bytes, 108, 8, 0);
-    octal(bytes, 116, 8, 0);
-    octal(bytes, 124, 12, length);
-    octal(bytes, 136, 12, Math.floor(Date.now() / 1e3));
-    bytes.fill(32, 148, 156);
-    bytes[156] = 48;
-    bytes.set(encoder.encode("ustar\0"), 257);
-    bytes.set(encoder.encode("00"), 263);
-    octal(bytes, 148, 8, bytes.reduce((sum, n) => sum + n, 0));
-    return bytes;
+    const bytes2 = new Uint8Array(BLOCK);
+    bytes2.set(encoder.encode(name), 0);
+    octal(bytes2, 100, 8, 384);
+    octal(bytes2, 108, 8, 0);
+    octal(bytes2, 116, 8, 0);
+    octal(bytes2, 124, 12, length);
+    octal(bytes2, 136, 12, Math.floor(Date.now() / 1e3));
+    bytes2.fill(32, 148, 156);
+    bytes2[156] = 48;
+    bytes2.set(encoder.encode("ustar\0"), 257);
+    bytes2.set(encoder.encode("00"), 263);
+    octal(bytes2, 148, 8, bytes2.reduce((sum, n) => sum + n, 0));
+    return bytes2;
   }
   class TarStreamWriter {
     writer;
@@ -33969,13 +34265,13 @@
     constructor(sink) {
       this.writer = sink.getWriter();
     }
-    async add(name, bytes) {
+    async add(name, bytes2) {
       if (this.closed || this.names.has(name))
         throw Error("TAR closed or duplicate file");
       this.names.add(name);
-      await this.writer.write(header(name, bytes.length));
-      await this.writer.write(bytes);
-      const pad = (BLOCK - bytes.length % BLOCK) % BLOCK;
+      await this.writer.write(header(name, bytes2.length));
+      await this.writer.write(bytes2);
+      const pad = (BLOCK - bytes2.length % BLOCK) % BLOCK;
       if (pad)
         await this.writer.write(new Uint8Array(pad));
     }
@@ -34048,26 +34344,26 @@
     const seen = /* @__PURE__ */ new Set();
     try {
       while (true) {
-        const bytes = await cursor.take(BLOCK);
-        if (bytes.every((n) => n === 0)) {
+        const bytes2 = await cursor.take(BLOCK);
+        if (bytes2.every((n) => n === 0)) {
           if (!(await cursor.take(BLOCK)).every((n) => n === 0) || !await cursor.eof())
             throw Error("Unexpected data after TAR terminator");
           return;
         }
-        const provided = parseOctal(bytes.subarray(148, 156));
+        const provided = parseOctal(bytes2.subarray(148, 156));
         let sum = 0;
         for (let i = 0; i < BLOCK; i++)
-          sum += i >= 148 && i < 156 ? 32 : bytes[i] ?? 0;
-        if (provided !== sum || decoder.decode(bytes.subarray(257, 263)) !== "ustar\0" || bytes[156] !== 48)
+          sum += i >= 148 && i < 156 ? 32 : bytes2[i] ?? 0;
+        if (provided !== sum || decoder.decode(bytes2.subarray(257, 263)) !== "ustar\0" || bytes2[156] !== 48)
           throw Error("Invalid TAR header or unsupported entry type");
-        const end = bytes.indexOf(0);
+        const end = bytes2.indexOf(0);
         if (end < 1 || end > MAX_NAME_BYTES)
           throw Error("TAR missing filename");
-        const name = decoder.decode(bytes.subarray(0, end));
+        const name = decoder.decode(bytes2.subarray(0, end));
         if (!allowedName(name) || seen.has(name))
           throw Error("Unsafe or repeated TAR path");
         seen.add(name);
-        const length = parseOctal(bytes.subarray(124, 136));
+        const length = parseOctal(bytes2.subarray(124, 136));
         if (length > MAX_ENTRY_BYTES)
           throw Error("TAR chunk exceeds memory bound");
         const data = await cursor.take(length);
@@ -34093,8 +34389,8 @@
   var SETTINGS = "persistent/settings.json";
   var json = (value) => JSON.stringify(value);
   var isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
-  async function digest(bytes) {
-    return [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((v) => v.toString(16).padStart(2, "0")).join("");
+  async function digest(bytes2) {
+    return [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes2))].map((v) => v.toString(16).padStart(2, "0")).join("");
   }
   function notify(onProgress, phase, completed, total, entries) {
     onProgress?.({
@@ -34106,7 +34402,7 @@
     });
   }
   function validate(ports, choice) {
-    assertServiceScope(ports.scope);
+    assertServiceScope$1(ports.scope);
     if (!choice.settings && !choice.indexeddb || choice.settings && !ports.settings || choice.indexeddb && !ports.indexeddb)
       throw Error("No supported persistent backup section selected");
     if (ports.settings)
@@ -34145,11 +34441,11 @@
     const parts = [];
     let fallbackBytes = 0;
     const destination = options.sink ?? new WritableStream({
-      write(bytes) {
-        fallbackBytes += bytes.length;
+      write(bytes2) {
+        fallbackBytes += bytes2.length;
         if (fallbackBytes > FALLBACK_BLOB_LIMIT)
           throw Error("Select a file destination for a large TAR backup");
-        parts.push(bytes.slice());
+        parts.push(bytes2.slice());
       }
     });
     const gzip = choice.compression === "gzip" ? new CompressionStream("gzip") : null;
@@ -34161,11 +34457,11 @@
     try {
       if (choice.settings && ports.settings) {
         const value = ports.settings.validateSettings(await ports.settings.exportSettings());
-        const bytes = encoder2.encode(json({ schemaVersion: ports.settings.schemaVersion, value }));
-        if (bytes.length > SETTINGS_LIMIT)
+        const bytes2 = encoder2.encode(json({ schemaVersion: ports.settings.schemaVersion, value }));
+        if (bytes2.length > SETTINGS_LIMIT)
           throw Error("Settings backup exceeds portable limit");
-        await writer.add(SETTINGS, bytes);
-        settingsDigest = await digest(bytes);
+        await writer.add(SETTINGS, bytes2);
+        settingsDigest = await digest(bytes2);
         done++;
         notify(options.onProgress, "writing", done, total, ++entries);
       }
@@ -34179,15 +34475,15 @@
         const flush = async () => {
           if (!lines.length)
             return;
-          const bytes = encoder2.encode(lines.join(""));
+          const bytes2 = encoder2.encode(lines.join(""));
           const path = `indexeddb/${current}/${String(sequence2++).padStart(8, "0")}.jsonl`;
-          await writer.add(path, bytes);
+          await writer.add(path, bytes2);
           chunks.push({
             path,
             store: current,
             rows: lines.length,
-            size: bytes.length,
-            sha256: await digest(bytes)
+            size: bytes2.length,
+            sha256: await digest(bytes2)
           });
           lines = [];
           size = 0;
@@ -34265,7 +34561,7 @@
     }
   }
   async function scan(ports, blob, collect, progress) {
-    assertServiceScope(ports.scope);
+    assertServiceScope$1(ports.scope);
     if (!blob.size)
       throw Error("Empty TAR archive");
     const header2 = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
@@ -37467,7 +37763,7 @@
     DexieYProvider: DexieYProvider$1
   } = Dexie$1;
   function fixedArchiveDatabaseName(scope) {
-    assertServiceScope(scope);
+    assertServiceScope$1(scope);
     if (scope.productId !== "chatgpt-booster" || !scope.installationId || !scope.ownerId)
       throw Error("Canonical Dexie requires a verified ChatGPT owner and installation");
     return `koba-chatgpt-canonical-v1:${scope.channel}:${scope.installationId}`;
@@ -37700,12 +37996,12 @@
       if (!owner) throw Error("Verified ChatGPT owner required for recovery");
       const stores = ["projects", "conversations", "messages", "elements", "snapshots"];
       const tables = stores.map((name) => ({ name, table: self2.db[name] }));
-      const schema = Object.fromEntries(tables.map(({ name, table }) => [
+      const schema = Object.fromEntries(tables.map(({ name, table: table2 }) => [
         name,
-        { primaryKey: table.schema.primKey.src, indexes: table.schema.indexes.map((index) => index.src) }
+        { primaryKey: table2.schema.primKey.src, indexes: table2.schema.indexes.map((index) => index.src) }
       ]));
       const countRows = async () => Object.fromEntries(await Promise.all(
-        tables.map(async ({ name, table }) => [name, await table.where("accountId").equals(owner).count()])
+        tables.map(async ({ name, table: table2 }) => [name, await table2.where("accountId").equals(owner).count()])
       ));
       return {
         scope: this.scope,
@@ -37717,12 +38013,12 @@
           if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 2048)
             throw Error("Invalid ChatGPT recovery page size");
           const before = await countRows();
-          for (const { name, table } of tables) {
-            const keyField = table.schema.primKey.name;
+          for (const { name, table: table2 } of tables) {
+            const keyField = table2.schema.primKey.name;
             if (!keyField) throw Error("Missing canonical primary key");
             let cursor;
             while (true) {
-              const page = cursor === void 0 ? await table.orderBy(keyField).limit(pageSize).toArray() : await table.where(keyField).above(cursor).limit(pageSize).toArray();
+              const page = cursor === void 0 ? await table2.orderBy(keyField).limit(pageSize).toArray() : await table2.where(keyField).above(cursor).limit(pageSize).toArray();
               for (const value of page) {
                 const data = value;
                 const key = data[keyField];
@@ -37819,7 +38115,7 @@
               throw Error("Canonical element projection disagrees with stored content");
           }
           await self2.db.transaction("rw", self2.db.projects, self2.db.conversations, self2.db.messages, self2.db.elements, self2.db.snapshots, async () => {
-            for (const { table } of tables) await table.where("accountId").equals(owner).delete();
+            for (const { table: table2 } of tables) await table2.where("accountId").equals(owner).delete();
             if (buckets.projects.length) await self2.db.projects.bulkAdd(buckets.projects);
             if (buckets.conversations.length) await self2.db.conversations.bulkAdd(buckets.conversations);
             if (buckets.messages.length) await self2.db.messages.bulkAdd(buckets.messages);
@@ -38001,19 +38297,19 @@
       const owner = this.state.verifiedAccountId();
       const epoch = this.state.accountEpoch();
       if (!owner) throw Error("Unverified owner");
-      const items = await this.repo(owner).listConversations();
+      const items2 = await this.repo(owner).listConversations();
       if (this.state.accountEpoch() !== epoch || this.state.verifiedAccountId() !== owner)
         throw Error("Account changed during conversation read");
-      return items.map(({ conversationId, projectId, title }) => ({ conversationId, projectId, title }));
+      return items2.map(({ conversationId, projectId, title }) => ({ conversationId, projectId, title }));
     }
     async listSavedProjects() {
       const owner = this.state.verifiedAccountId();
       const epoch = this.state.accountEpoch();
       if (!owner) throw Error("Unverified owner");
-      const items = await this.repo(owner).listProjects();
+      const items2 = await this.repo(owner).listProjects();
       if (this.state.accountEpoch() !== epoch || this.state.verifiedAccountId() !== owner)
         throw Error("Account changed during project read");
-      return items.map(({ projectId, title }) => ({ projectId, title }));
+      return items2.map(({ projectId, title }) => ({ projectId, title }));
     }
     async hasMessagesBefore(id, cursor) {
       return this.boundary(id, cursor, "before");
@@ -38373,9 +38669,9 @@
       },
       listMessages: async (id) => {
         const owner = account(), epoch = memory.accountEpoch();
-        const items = await capture.readConversation(id);
+        const items2 = await capture.readConversation(id);
         guard(owner, epoch);
-        return items.map((item) => {
+        return items2.map((item) => {
           const normalized = normalizeConversationMessage(item.raw, id, null, item.observedAtMs);
           if (!normalized) throw Error("Saved source cannot be normalized for the fixed Reader");
           return normalized;
@@ -38415,9 +38711,9 @@
       },
       getThread: async (id) => {
         const owner = account(), epoch = memory.accountEpoch();
-        const items = await capture.readConversation(id);
+        const items2 = await capture.readConversation(id);
         guard(owner, epoch);
-        return buildArchiveThread(items.map((item) => {
+        return buildArchiveThread(items2.map((item) => {
           const record2 = normalizeConversationMessage(item.raw, id, null, item.observedAtMs);
           if (!record2) throw Error("Saved source cannot be normalized");
           return record2;
@@ -39064,12 +39360,12 @@
         }, [
           tab.value === "archive" ? (openBlock(), createElementBlock("header", _hoisted_2$4, [
             createBaseVNode("div", _hoisted_3$4, [
-              createVNode(_sfc_main$d, {
+              createVNode(_sfc_main$e, {
                 label: current.value.conversationTitle || tr("Текущий диалог", "Current conversation"),
                 identifier: current.value.conversationId,
                 locale: locale.value
               }, null, 8, ["label", "identifier", "locale"]),
-              current.value.projectId ? (openBlock(), createBlock(_sfc_main$d, {
+              current.value.projectId ? (openBlock(), createBlock(_sfc_main$e, {
                 key: 0,
                 label: current.value.projectTitle || tr("Проект", "Project"),
                 identifier: current.value.projectId,
@@ -39165,7 +39461,7 @@
             Fragment,
             { key: 5 },
             [
-              tab.value === "archive" ? (openBlock(), createBlock(_sfc_main$c, {
+              tab.value === "archive" ? (openBlock(), createBlock(_sfc_main$d, {
                 key: 0,
                 "archive-adapter": context.value.archiveAdapter,
                 "initial-conversation-id": archiveInitial.value,
@@ -39220,14 +39516,14 @@
                   1
                   /* TEXT */
                 )) : createCommentVNode("v-if", true)
-              ])) : tab.value === "capture" ? (openBlock(), createBlock(_sfc_main$a, {
+              ])) : tab.value === "capture" ? (openBlock(), createBlock(_sfc_main$b, {
                 key: 2,
                 "settings-adapter": context.value.settingsAdapter,
                 "archive-adapter": context.value.archiveAdapter,
                 context: captureContext.value,
                 locale: locale.value,
                 onClose: endCapture
-              }, null, 8, ["settings-adapter", "archive-adapter", "context", "locale"])) : tab.value === "settings" ? (openBlock(), createBlock(_sfc_main$7, {
+              }, null, 8, ["settings-adapter", "archive-adapter", "context", "locale"])) : tab.value === "settings" ? (openBlock(), createBlock(_sfc_main$8, {
                 key: 3,
                 "settings-adapter": context.value.settingsAdapter,
                 "archive-adapter": context.value.archiveAdapter,
@@ -39265,7 +39561,7 @@
         return cached;
     }
     target = mod != null ? __create(__getProtoOf(mod)) : {};
-    const to = __defProp(target, "default", { value: mod, enumerable: true });
+    const to = isNodeMode || !mod || !mod.__esModule || !__hasOwnProp.call(mod, "default") ? __defProp(target, "default", { value: mod, enumerable: true }) : target;
     if (mod && typeof mod === "object" || typeof mod === "function") {
       for (let key of __getOwnPropNames(mod))
         if (!__hasOwnProp.call(to, key))
@@ -39480,9 +39776,9 @@
         }
         return rv;
       }
-      var concat = [].concat;
+      var concat2 = [].concat;
       function flatten(a) {
-        return concat.apply([], a);
+        return concat2.apply([], a);
       }
       var intrinsicTypeNames = "BigUint64Array,BigInt64Array,Array,Boolean,String,Date,RegExp,Blob,File,FileList,FileSystemFileHandle,FileSystemDirectoryHandle,ArrayBuffer,DataView,Uint8ClampedArray,ImageBitmap,ImageData,Map,Set,CryptoKey".split(",").concat(flatten([8, 16, 32, 64].map(function(num) {
         return ["Int", "Uint", "Float"].map(function(t) {
@@ -40006,14 +40302,14 @@
         },
         follow: function(fn, zoneProps) {
           return new DexiePromise(function(resolve2, reject) {
-            return newScope(function(resolve3, reject2) {
+            return newScope(function(resolve22, reject2) {
               var psd = PSD;
               psd.unhandleds = [];
               psd.onunhandled = reject2;
               psd.finalize = callBoth(function() {
                 var _this = this;
                 run_at_end_of_this_or_next_physical_tick(function() {
-                  _this.unhandleds.length === 0 ? resolve3() : reject2(_this.unhandleds[0]);
+                  _this.unhandleds.length === 0 ? resolve22() : reject2(_this.unhandleds[0]);
                 });
               }, psd.finalize);
               fn();
@@ -40544,8 +40840,8 @@
           return new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
         return new Uint8Array(a);
       }
-      function builtInDeletionTrigger(table, keys2, res) {
-        var yProps = table.schema.yProps;
+      function builtInDeletionTrigger(table2, keys2, res) {
+        var yProps = table2.schema.yProps;
         if (!yProps)
           return res;
         if (keys2 && res.numFailures > 0)
@@ -40554,7 +40850,7 @@
           });
         return Promise.all(yProps.map(function(_a2) {
           var updatesTable = _a2.updatesTable;
-          return keys2 ? table.db.table(updatesTable).where("k").anyOf(keys2).delete() : table.db.table(updatesTable).clear();
+          return keys2 ? table2.db.table(updatesTable).where("k").anyOf(keys2).delete() : table2.db.table(updatesTable).clear();
         })).then(function() {
           return res;
         });
@@ -41650,12 +41946,12 @@
               error = ex;
             }
           var whereCtx = whereClause._ctx;
-          var table = whereCtx.table;
-          var readingHook = table.hook.reading.fire;
+          var table2 = whereCtx.table;
+          var readingHook = table2.hook.reading.fire;
           this._ctx = {
-            table,
+            table: table2,
             index: whereCtx.index,
-            isPrimKey: !whereCtx.index || table.schema.primKey.keyPath && whereCtx.index === table.schema.primKey.name,
+            isPrimKey: !whereCtx.index || table2.schema.primKey.keyPath && whereCtx.index === table2.schema.primKey.name,
             range: keyRange,
             keysOnly: false,
             dir: "next",
@@ -42066,10 +42362,10 @@
         return WhereClause2;
       })();
       function createWhereClauseConstructor(db) {
-        return makeClassConstructor(WhereClause.prototype, function WhereClause2(table, index, orCollection) {
+        return makeClassConstructor(WhereClause.prototype, function WhereClause2(table2, index, orCollection) {
           this.db = db;
           this._ctx = {
-            table,
+            table: table2,
             index: index === ":id" ? null : index,
             or: orCollection
           };
@@ -42191,17 +42487,17 @@
             });
           } else if (bWriteLock) {
             return newScope(function() {
-              var p3 = new DexiePromise(function(resolve2, reject) {
+              var p22 = new DexiePromise(function(resolve2, reject) {
                 _this._lock();
                 var rv = fn(resolve2, reject, _this);
                 if (rv && rv.then)
                   rv.then(resolve2, reject);
               });
-              p3.finally(function() {
+              p22.finally(function() {
                 return _this._unlock();
               });
-              p3._lib = true;
-              return p3;
+              p22._lib = true;
+              return p22;
             });
           } else {
             var p2 = new DexiePromise(function(resolve2, reject) {
@@ -42397,8 +42693,8 @@
           return {
             schema: {
               name: db2.name,
-              tables: tables2.map(function(table) {
-                return trans.objectStore(table);
+              tables: tables2.map(function(table2) {
+                return trans.objectStore(table2);
               }).map(function(store) {
                 var { keyPath, autoIncrement } = store;
                 var compound = isArray2(keyPath);
@@ -42733,8 +43029,8 @@
           return createDbCoreTable(tableSchema);
         });
         var tableMap = {};
-        tables.forEach(function(table) {
-          return tableMap[table.name] = table;
+        tables.forEach(function(table2) {
+          return tableMap[table2.name] = table2;
         });
         return {
           stack: "dbcore",
@@ -42768,14 +43064,14 @@
         var idbdb = tmpTrans.db;
         var stacks = createMiddlewareStacks(db._middlewares, idbdb, db._deps, tmpTrans);
         db.core = stacks.dbcore;
-        db.tables.forEach(function(table) {
-          var tableName = table.name;
+        db.tables.forEach(function(table2) {
+          var tableName = table2.name;
           if (db.core.schema.tables.some(function(tbl) {
             return tbl.name === tableName;
           })) {
-            table.core = db.core.table(tableName);
+            table2.core = db.core.table(tableName);
             if (db[tableName] instanceof db.Table) {
-              db[tableName].core = table.core;
+              db[tableName].core = table2.core;
             }
           }
         });
@@ -42927,8 +43223,8 @@
               generateMiddlewareStacks(db, idbUpgradeTrans);
               trans._memoizedTables = {};
               var upgradeSchema_1 = shallowClone(newSchema);
-              diff.del.forEach(function(table) {
-                upgradeSchema_1[table] = oldSchema[table];
+              diff.del.forEach(function(table2) {
+                upgradeSchema_1[table2] = oldSchema[table2];
               });
               removeTablesApi(db, [db.Transaction.prototype]);
               setApiOnPlace(db, [db.Transaction.prototype], keys(upgradeSchema_1), upgradeSchema_1);
@@ -42986,18 +43282,18 @@
           add: [],
           change: []
         };
-        var table;
-        for (table in oldSchema) {
-          if (!newSchema[table])
-            diff.del.push(table);
+        var table2;
+        for (table2 in oldSchema) {
+          if (!newSchema[table2])
+            diff.del.push(table2);
         }
-        for (table in newSchema) {
-          var oldDef = oldSchema[table], newDef = newSchema[table];
+        for (table2 in newSchema) {
+          var oldDef = oldSchema[table2], newDef = newSchema[table2];
           if (!oldDef) {
-            diff.add.push([table, newDef]);
+            diff.add.push([table2, newDef]);
           } else {
             var change = {
-              name: table,
+              name: table2,
               def: newDef,
               recreate: false,
               del: [],
@@ -43680,12 +43976,12 @@
         }).then(function() {
           if (wasCreated) {
             var everything_1 = {};
-            db.tables.forEach(function(table) {
-              table.schema.indexes.forEach(function(idx) {
+            db.tables.forEach(function(table2) {
+              table2.schema.indexes.forEach(function(idx) {
                 if (idx.name)
-                  everything_1["idb://".concat(db.name, "/").concat(table.name, "/").concat(idx.name)] = new RangeSet2(-Infinity, [[[]]]);
+                  everything_1["idb://".concat(db.name, "/").concat(table2.name, "/").concat(idx.name)] = new RangeSet2(-Infinity, [[[]]]);
               });
-              everything_1["idb://".concat(db.name, "/").concat(table.name, "/")] = everything_1["idb://".concat(db.name, "/").concat(table.name, "/:dels")] = new RangeSet2(-Infinity, [[[]]]);
+              everything_1["idb://".concat(db.name, "/").concat(table2.name, "/")] = everything_1["idb://".concat(db.name, "/").concat(table2.name, "/:dels")] = new RangeSet2(-Infinity, [[[]]]);
             });
             globalEvents(DEXIE_STORAGE_MUTATED_EVENT_NAME).fire(everything_1);
             signalSubscribersNow(everything_1, true);
@@ -43785,8 +44081,8 @@
       }
       function createVirtualIndexMiddleware(down) {
         return __assign(__assign({}, down), { table: function(tableName) {
-          var table = down.table(tableName);
-          var schema = table.schema;
+          var table2 = down.table(tableName);
+          var schema = table2.schema;
           var indexLookup = /* @__PURE__ */ Object.create(null);
           var allVirtualIndexes = [];
           function addVirtualIndexes(keyPath, keyTail, lowLevelIndex) {
@@ -43834,14 +44130,14 @@
               range: translateRange(req.query.range, index2.keyTail)
             } }) : req;
           }
-          var result = __assign(__assign({}, table), { schema: __assign(__assign({}, schema), { primaryKey, indexes: allVirtualIndexes, getIndexByKeyPath: findBestIndex }), count: function(req) {
-            return table.count(translateRequest(req));
+          var result = __assign(__assign({}, table2), { schema: __assign(__assign({}, schema), { primaryKey, indexes: allVirtualIndexes, getIndexByKeyPath: findBestIndex }), count: function(req) {
+            return table2.count(translateRequest(req));
           }, query: function(req) {
-            return table.query(translateRequest(req));
+            return table2.query(translateRequest(req));
           }, openCursor: function(req) {
             var _a3 = req.query.index, { keyTail, isVirtual, keyLength } = _a3;
             if (!isVirtual)
-              return table.openCursor(req);
+              return table2.openCursor(req);
             function createVirtualCursor(cursor) {
               function _continue(key) {
                 key != null ? cursor.continue(pad(key, req.reverse ? down.MAX_KEY : down.MIN_KEY, keyTail)) : req.unique ? cursor.continue(cursor.key.slice(0, keyLength).concat(req.reverse ? down.MIN_KEY : down.MAX_KEY, keyTail)) : cursor.continue();
@@ -43872,7 +44168,7 @@
               });
               return virtualCursor;
             }
-            return table.openCursor(translateRequest(req)).then(function(cursor) {
+            return table2.openCursor(translateRequest(req)).then(function(cursor) {
               return cursor && createVirtualCursor(cursor);
             });
           } });
@@ -44053,8 +44349,8 @@
           } });
         }
       };
-      function getExistingValues(table, req, effectiveKeys) {
-        return req.type === "add" ? Promise.resolve([]) : table.getMany({
+      function getExistingValues(table2, req, effectiveKeys) {
+        return req.type === "add" ? Promise.resolve([]) : table2.getMany({
           trans: req.trans,
           keys: effectiveKeys,
           cache: "immutable"
@@ -44084,16 +44380,16 @@
         create: function(core) {
           return {
             table: function(tableName) {
-              var table = core.table(tableName);
-              return __assign(__assign({}, table), { getMany: function(req) {
+              var table2 = core.table(tableName);
+              return __assign(__assign({}, table2), { getMany: function(req) {
                 if (!req.cache) {
-                  return table.getMany(req);
+                  return table2.getMany(req);
                 }
                 var cachedResult = getFromTransactionCache(req.keys, req.trans["_cache"], req.cache === "clone");
                 if (cachedResult) {
                   return DexiePromise.resolve(cachedResult);
                 }
-                return table.getMany(req).then(function(res) {
+                return table2.getMany(req).then(function(res) {
                   req.trans["_cache"] = {
                     keys: req.keys,
                     values: req.cache === "clone" ? deepClone(res) : res
@@ -44103,14 +44399,14 @@
               }, mutate: function(req) {
                 if (req.type !== "add")
                   req.trans["_cache"] = null;
-                return table.mutate(req);
+                return table2.mutate(req);
               } });
             }
           };
         }
       };
-      function isCachableContext(ctx, table) {
-        return ctx.trans.mode === "readonly" && !!ctx.subscr && !ctx.trans.explicit && ctx.trans.db._options.cache !== "disabled" && !table.schema.primaryKey.outbound;
+      function isCachableContext(ctx, table2) {
+        return ctx.trans.mode === "readonly" && !!ctx.subscr && !ctx.trans.explicit && ctx.trans.db._options.cache !== "disabled" && !table2.schema.primaryKey.outbound;
       }
       function isCachableRequest(type2, req) {
         switch (type2) {
@@ -44139,14 +44435,14 @@
             }
             return core.transaction(stores, mode2, options);
           }, table: function(tableName) {
-            var table = core.table(tableName);
-            var schema = table.schema;
+            var table2 = core.table(tableName);
+            var schema = table2.schema;
             var { primaryKey, indexes } = schema;
             var { extractKey, outbound } = primaryKey;
             var indexesWithAutoIncPK = primaryKey.autoIncrement && indexes.filter(function(index) {
               return index.compound && index.keyPath.includes(primaryKey.keyPath);
             });
-            var tableClone = __assign(__assign({}, table), { mutate: function(req) {
+            var tableClone = __assign(__assign({}, table2), { mutate: function(req) {
               var _a2, _b;
               var trans = req.trans;
               var mutatedParts = req.mutatedParts || (req.mutatedParts = {});
@@ -44187,7 +44483,7 @@
                   return getRangeSet(idx.name).add(FULL_RANGE);
                 });
               }
-              return table.mutate(req).then(function(res) {
+              return table2.mutate(req).then(function(res) {
                 if (keys2 && (req.type === "add" || req.type === "put")) {
                   pkRangeSet.addKeys(res.results);
                   if (indexesWithAutoIncPK) {
@@ -44232,7 +44528,7 @@
               tableClone[method] = function(req) {
                 var subscr = PSD.subscr;
                 var isLiveQuery = !!subscr;
-                var cachable = isCachableContext(PSD, table) && isCachableRequest(method, req);
+                var cachable = isCachableContext(PSD, table2) && isCachableRequest(method, req);
                 var obsSet = cachable ? req.obsSet = {} : subscr;
                 if (isLiveQuery) {
                   var getRangeSet = function(indexName) {
@@ -44251,8 +44547,8 @@
                     if (method === "count") {
                       delsRangeSet_1.add(FULL_RANGE);
                     } else {
-                      var keysPromise_1 = method === "query" && outbound && req.values && table.query(__assign(__assign({}, req), { values: false }));
-                      return table[method].apply(this, arguments).then(function(res) {
+                      var keysPromise_1 = method === "query" && outbound && req.values && table2.query(__assign(__assign({}, req), { values: false }));
+                      return table2[method].apply(this, arguments).then(function(res) {
                         if (method === "query") {
                           if (outbound && req.values) {
                             return keysPromise_1.then(function(_a3) {
@@ -44297,7 +44593,7 @@
                     }
                   }
                 }
-                return table[method].apply(this, arguments);
+                return table2[method].apply(this, arguments);
               };
             });
             return tableClone;
@@ -44360,13 +44656,13 @@
       function isWithinRange(key, range) {
         return isAboveLower(key, range) && isBelowUpper(key, range);
       }
-      function applyOptimisticOps(result, req, ops, table, cacheEntry, immutable) {
+      function applyOptimisticOps(result, req, ops, table2, cacheEntry, immutable) {
         if (!ops || ops.length === 0)
           return result;
         var index = req.query.index;
         var multiEntry = index.multiEntry;
         var queryRange = req.query.range;
-        var primaryKey = table.schema.primaryKey;
+        var primaryKey = table2.schema.primaryKey;
         var extractPrimKey = primaryKey.extractKey;
         var extractIndex = index.extractKey;
         var extractLowLevelIndex = (index.lowLevelIndex || index).extractKey;
@@ -44566,7 +44862,7 @@
                       var storeName = stores_1[_i];
                       var tblCache = cache["idb://".concat(dbName, "/").concat(storeName)];
                       if (tblCache) {
-                        var table = core.table(storeName);
+                        var table2 = core.table(storeName);
                         var ops = tblCache.optimisticOps.filter(function(op) {
                           return op.trans === idbtrans;
                         });
@@ -44594,7 +44890,7 @@
                               if (entry.res != null && idbtrans.mutatedParts) {
                                 if (wasCommitted && !entry.dirty) {
                                   var freezeResults = Object.isFrozen(entry.res);
-                                  var modRes = applyOptimisticOps(entry.res, entry.req, ops, table, entry, freezeResults);
+                                  var modRes = applyOptimisticOps(entry.res, entry.req, ops, table2, entry, freezeResults);
                                   if (entry.dirty) {
                                     delArrayItem(entries, entry);
                                     entry.subscribers.forEach(function(requery) {
@@ -45078,8 +45374,8 @@
           mode2 = mode2.replace("!", "").replace("?", "");
           var idbMode, storeNames;
           try {
-            storeNames = tables.map(function(table) {
-              var storeName = table instanceof _this.Table ? table.name : table;
+            storeNames = tables.map(function(table2) {
+              var storeName = table2 instanceof _this.Table ? table2.name : table2;
               if (typeof storeName !== "string")
                 throw new TypeError("Invalid table argument to Dexie.transaction(). Only Table or String are allowed");
               return storeName;
@@ -45471,7 +45767,13 @@
       return Dexie$12;
     });
   });
-  var import_dexie = __toESM(require_dexie());
+  function assertServiceScope(scope) {
+    if (!/^[a-z][a-z0-9-]{1,63}$/.test(scope.productId) || scope.channel !== "dev" && scope.channel !== "prod" || scope.ownerId !== void 0 && (!scope.ownerId || scope.ownerId.length > 256) || scope.installationId !== void 0 && !/^[a-zA-Z0-9_-]{1,128}$/.test(scope.installationId)) {
+      throw new Error("Invalid product/channel/owner scope");
+    }
+    return scope;
+  }
+  var import_dexie = __toESM(require_dexie(), 1);
   var DexieSymbol = /* @__PURE__ */ Symbol.for("Dexie");
   var Dexie = globalThis[DexieSymbol] || (globalThis[DexieSymbol] = import_dexie.default);
   if (import_dexie.default.semVer !== Dexie.semVer) {
@@ -45490,6 +45792,438 @@
     remove,
     DexieYProvider
   } = Dexie;
+  var import_wrapper_default = Dexie;
+  var EVENTS = /* @__PURE__ */ new Set([
+    "feature.started",
+    "feature.stopped",
+    "feature.failed",
+    "archive.capture.started",
+    "archive.capture.completed",
+    "archive.capture.failed",
+    "archive.export.completed",
+    "archive.export.failed",
+    "archive.audit.completed",
+    "archive.backup.completed",
+    "archive.restore.completed"
+  ]);
+  function isTechnicalTelemetryName(name) {
+    return EVENTS.has(name);
+  }
+  var MAX_EVENTS = 5e3;
+  function telemetryDatabaseName(scope) {
+    assertServiceScope(scope);
+    if (!scope.installationId)
+      throw Error("Telemetry requires a verified installation scope");
+    if (scope.ownerId !== void 0)
+      throw Error("Account-linked telemetry is not supported");
+    return `koba-telemetry:${scope.productId}:${scope.channel}:${scope.installationId}`;
+  }
+  class TelemetryDatabase extends import_wrapper_default {
+    events;
+    metadata;
+    constructor(name, options) {
+      super(name, options);
+      this.version(1).stores({ events: "++id,state,leaseUntil,timestamp", metadata: "key" });
+    }
+  }
+  class DexieTelemetryJournal {
+    databaseName;
+    db;
+    maxEvents;
+    constructor(scope, options, maxEvents = MAX_EVENTS) {
+      if (!Number.isSafeInteger(maxEvents) || maxEvents < 1 || maxEvents > MAX_EVENTS)
+        throw Error("Invalid telemetry retention limit");
+      this.maxEvents = maxEvents;
+      this.databaseName = telemetryDatabaseName(scope);
+      this.db = new TelemetryDatabase(this.databaseName, options);
+    }
+    async append(input) {
+      if (!EVENTS.has(input.name) || !/^[a-zA-Z][\w -]{2,64}$/.test(input.serviceId) || !Number.isSafeInteger(input.timestamp) || input.timestamp < 0 || input.count !== void 0 && (!Number.isSafeInteger(input.count) || input.count < 0 || input.count > 1e6) || input.durationMs !== void 0 && (!Number.isSafeInteger(input.durationMs) || input.durationMs < 0 || input.durationMs > 864e5))
+        throw Error("Unsafe technical telemetry event");
+      await this.db.transaction("rw", this.db.events, this.db.metadata, async () => {
+        const excess = Math.max(0, await this.db.events.count() + 1 - this.maxEvents);
+        if (excess) {
+          const oldest = await this.db.events.orderBy("id").limit(excess).primaryKeys();
+          await this.db.events.bulkDelete(oldest);
+          const prior = (await this.db.metadata.get("retention"))?.discarded ?? 0;
+          await this.db.metadata.put({ key: "retention", discarded: prior + oldest.length });
+        }
+        await this.db.events.add({
+          serviceId: input.serviceId,
+          name: input.name,
+          timestamp: input.timestamp,
+          ...input.count === void 0 ? {} : { count: input.count },
+          ...input.durationMs === void 0 ? {} : { durationMs: input.durationMs },
+          state: "pending",
+          leaseOwner: null,
+          leaseUntil: 0,
+          attempts: 0
+        });
+      });
+    }
+    async claim(owner, now = Date.now(), limit = 50) {
+      if (!/^[a-zA-Z0-9_-]{8,128}$/.test(owner) || !Number.isSafeInteger(now) || now < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 50)
+        throw Error("Invalid telemetry lease");
+      return this.db.transaction("rw", this.db.events, async () => {
+        const rows = await this.db.events.orderBy("id").filter((row) => row.state === "pending" || row.leaseUntil <= now).limit(limit).toArray();
+        for (const row of rows) {
+          row.state = "sending";
+          row.leaseOwner = owner;
+          row.leaseUntil = now + 45e3;
+          row.attempts++;
+        }
+        await this.db.events.bulkPut(rows);
+        return rows;
+      });
+    }
+    async acknowledge(owner, ids) {
+      return this.db.transaction("rw", this.db.events, async () => {
+        let removed = 0;
+        for (const id of ids) {
+          const row = await this.db.events.get(id);
+          if (row?.state === "sending" && row.leaseOwner === owner) {
+            await this.db.events.delete(id);
+            removed++;
+          }
+        }
+        return removed;
+      });
+    }
+    async release(owner, ids) {
+      await this.db.transaction("rw", this.db.events, async () => {
+        for (const id of ids) {
+          const row = await this.db.events.get(id);
+          if (row?.state === "sending" && row.leaseOwner === owner)
+            await this.db.events.put({ ...row, state: "pending", leaseOwner: null, leaseUntil: 0 });
+        }
+      });
+    }
+    async summary() {
+      const [pending, sending, retained] = await Promise.all([
+        this.db.events.where("state").equals("pending").count(),
+        this.db.events.where("state").equals("sending").count(),
+        this.db.metadata.get("retention")
+      ]);
+      return { pending, sending, discarded: retained?.discarded ?? 0 };
+    }
+    async clear() {
+      await this.db.transaction("rw", this.db.events, this.db.metadata, async () => {
+        await this.db.events.clear();
+        await this.db.metadata.clear();
+      });
+    }
+    close() {
+      this.db.close();
+    }
+  }
+  function asTelemetryPort(scope, emitter) {
+    assertServiceScope(scope);
+    if (emitter.scope !== `${scope.productId}:${scope.channel}`)
+      throw new Error("Telemetry emitter product/channel mismatch");
+    return {
+      scope,
+      get available() {
+        return emitter.available();
+      },
+      get enabled() {
+        return emitter.isEnabled();
+      },
+      async emit(name, count, durationMs) {
+        if (!isScopedTelemetryName(name))
+          return;
+        await emitter.record(name, count, durationMs);
+      }
+    };
+  }
+  async function sendOtlpRequest(request) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15e3);
+    try {
+      const response = await fetch(request.url, {
+        method: "POST",
+        credentials: "omit",
+        redirect: "error",
+        signal: controller.signal,
+        headers: request.headers,
+        body: request.body
+      });
+      if (!response.ok)
+        throw new Error("OTLP collector did not acknowledge batch");
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  function resolveOtlpLogsEndpoint(value) {
+    let endpoint;
+    try {
+      endpoint = new URL(value.trim());
+    } catch {
+      throw Error("Invalid OTLP endpoint");
+    }
+    if (endpoint.protocol !== "https:" || endpoint.username || endpoint.password || endpoint.search || endpoint.hash || !endpoint.hostname)
+      throw Error("OTLP transport requires an HTTPS endpoint without credentials or query");
+    if (endpoint.pathname.endsWith("/v1/logs"))
+      return endpoint.href;
+    return new URL("v1/logs", endpoint.href.replace(/\/?$/, "/")).href;
+  }
+  function otlpValue(value) {
+    return typeof value === "number" ? { intValue: String(value) } : { stringValue: value };
+  }
+  function scopedOtlpPayload(rows, scope, version2) {
+    assertServiceScope(scope);
+    if (!/^\d+\.\d+\.\d+$/.test(version2))
+      throw Error("Invalid telemetry version");
+    if (rows.some((row) => !isTechnicalTelemetryName(row.name) || !/^[a-zA-Z][\w -]{2,64}$/.test(row.serviceId)))
+      throw Error("Invalid or private OTLP event");
+    const byService = /* @__PURE__ */ new Map();
+    for (const row of rows) {
+      const bucket = byService.get(row.serviceId) ?? [];
+      bucket.push(row);
+      byService.set(row.serviceId, bucket);
+    }
+    return JSON.stringify({
+      resourceLogs: [...byService.entries()].map(([serviceId, records]) => ({
+        resource: {
+          attributes: [
+            ["service.name", serviceId],
+            ["service.namespace", "koba"],
+            ["service.version", version2],
+            ["service.product", scope.productId],
+            ["deployment.environment", scope.channel]
+          ].map(([key, value]) => ({ key, value: otlpValue(value ?? "") }))
+        },
+        scopeLogs: [
+          {
+            scope: { name: `koba.${scope.productId}.${scope.channel}`, version: version2 },
+            logRecords: records.map((event) => ({
+              timeUnixNano: String(BigInt(event.timestamp) * 1000000n),
+              severityNumber: event.name.endsWith("failed") ? 17 : 9,
+              severityText: event.name.endsWith("failed") ? "ERROR" : "INFO",
+              body: { stringValue: event.name },
+              attributes: [
+                ...event.count === void 0 ? [] : [{ key: "event.count", value: otlpValue(event.count) }],
+                ...event.durationMs === void 0 ? [] : [{ key: "event.duration_ms", value: otlpValue(event.durationMs) }]
+              ]
+            }))
+          }
+        ]
+      }))
+    });
+  }
+  class ScopedOtlpService {
+    journal;
+    emitter;
+    port;
+    leaseOwner;
+    sender;
+    scope;
+    version;
+    timer;
+    stopped = false;
+    busy = false;
+    constructor(options) {
+      this.scope = assertServiceScope(options.scope);
+      if (!/^\d+\.\d+\.\d+$/.test(options.version))
+        throw Error("Invalid telemetry version");
+      this.version = options.version;
+      this.sender = options.sender ?? sendOtlpRequest;
+      this.journal = options.journal ?? new DexieTelemetryJournal(this.scope);
+      this.leaseOwner = crypto.randomUUID().replaceAll("-", "");
+      this.emitter = new ScopedTelemetry(options.serviceId, `${this.scope.productId}:${this.scope.channel}`, {
+        send: async (event) => {
+          if (event.productId !== this.scope.productId || event.channel !== this.scope.channel)
+            throw Error("Telemetry scope mismatch");
+          await this.journal.append(event);
+        }
+      });
+      this.port = asTelemetryPort(this.scope, this.emitter);
+    }
+    setLocalEnabled(enabled) {
+      this.emitter.setEnabled(enabled);
+      if (!enabled)
+        this.stopDelivery();
+    }
+    async flush(connection) {
+      if (!this.emitter.isEnabled() || !connection.enabled || this.busy || this.stopped)
+        return 0;
+      const url = resolveOtlpLogsEndpoint(connection.endpoint);
+      if (typeof navigator !== "undefined" && navigator.onLine === false)
+        return 0;
+      this.busy = true;
+      let ids = [];
+      try {
+        const rows = await this.journal.claim(this.leaseOwner);
+        ids = rows.map((x) => x.id).filter((id) => id !== void 0);
+        if (rows.length === 0)
+          return 0;
+        await this.sender({
+          url,
+          headers: { "content-type": "application/json" },
+          body: scopedOtlpPayload(rows, this.scope, this.version)
+        });
+        return await this.journal.acknowledge(this.leaseOwner, ids);
+      } catch {
+        if (ids.length)
+          await this.journal.release(this.leaseOwner, ids);
+        return 0;
+      } finally {
+        this.busy = false;
+      }
+    }
+    startDelivery(getConnection) {
+      this.stopped = false;
+      if (this.timer !== void 0)
+        return;
+      let delay = 3e4;
+      const cycle = async () => {
+        if (this.stopped)
+          return;
+        try {
+          const connection = await getConnection();
+          if (connection.enabled && this.emitter.isEnabled()) {
+            const delivered = await this.flush(connection);
+            delay = delivered > 0 ? 3e4 : Math.min(3e5, delay * 2);
+          }
+        } catch {
+          delay = Math.min(3e5, delay * 2);
+        }
+        if (!this.stopped)
+          this.timer = setTimeout(() => {
+            this.timer = void 0;
+            cycle();
+          }, delay);
+      };
+      this.timer = setTimeout(() => {
+        this.timer = void 0;
+        cycle();
+      }, delay);
+    }
+    stopDelivery() {
+      this.stopped = true;
+      if (this.timer !== void 0)
+        clearTimeout(this.timer);
+      this.timer = void 0;
+    }
+    close() {
+      this.stopDelivery();
+      this.journal.close();
+    }
+  }
+  var OPT_IN_KEY = "telemetry.local.enabled";
+  function createApplicationTelemetry(target, store, scopeId = instanceScope(), journal) {
+    const match = /^(vk-booster|chatgpt-booster|all-in-one):(dev|prod)$/.exec(scopeId);
+    if (!match)
+      throw Error("Telemetry requires compiled product/channel identity");
+    const productId = match[1] ?? "";
+    const scope = {
+      productId,
+      channel: match[2],
+      installationId: `${productId}-${target}`
+    };
+    const version2 = /^\d+\.\d+\.\d+$/.test("2.0.19") ? "2.0.19" : "0.0.0";
+    const service = new ScopedOtlpService({
+      scope,
+      serviceId: productId === "vk-booster" ? "VK Booster Service" : productId === "chatgpt-booster" ? "ChatGPT Booster Service" : "Koba Browser Tools",
+      version: version2,
+      ...{}
+    });
+    const listeners = /* @__PURE__ */ new Set();
+    let enabled = false;
+    let closed = false;
+    const notify2 = () => {
+      for (const listener of listeners)
+        listener();
+    };
+    let loading;
+    function initialize() {
+      if (!loading)
+        loading = (async () => {
+          try {
+            const pref = await store.get(OPT_IN_KEY) === true;
+            if (closed)
+              return;
+            enabled = pref;
+            service.setLocalEnabled(pref);
+          } catch {
+            enabled = false;
+            service.setLocalEnabled(false);
+          }
+          notify2();
+        })();
+      return loading;
+    }
+    initialize();
+    return {
+      async status() {
+        await initialize();
+        if (closed)
+          return {
+            available: false,
+            localEnabled: false,
+            remoteAvailable: false,
+            remoteEnabled: false,
+            pending: null,
+            discarded: null
+          };
+        if (!enabled)
+          return {
+            available: true,
+            localEnabled: false,
+            remoteAvailable: false,
+            remoteEnabled: false,
+            pending: null,
+            discarded: null
+          };
+        try {
+          const summary = await service.journal.summary();
+          return {
+            available: true,
+            localEnabled: enabled,
+            remoteAvailable: false,
+            remoteEnabled: false,
+            pending: summary.pending + summary.sending,
+            discarded: summary.discarded
+          };
+        } catch {
+          return {
+            available: true,
+            localEnabled: enabled,
+            remoteAvailable: false,
+            remoteEnabled: false,
+            pending: null,
+            discarded: null
+          };
+        }
+      },
+      async setLocalEnabled(next) {
+        await initialize();
+        if (closed)
+          throw Error("Telemetry controller closed");
+        await store.set(OPT_IN_KEY, next);
+        service.setLocalEnabled(next);
+        enabled = next;
+        notify2();
+      },
+      async record(name, count, durationMs) {
+        await initialize();
+        if (!closed && enabled)
+          await service.emitter.record(name, count, durationMs);
+        notify2();
+      },
+      subscribe(listener) {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      },
+      close() {
+        closed = true;
+        enabled = false;
+        service.close();
+        listeners.clear();
+      }
+    };
+  }
   function createSettingsStore(target, namespace = "koba-browser") {
     const scopedNamespace = instanceKey(namespace);
     return {
@@ -45514,6 +46248,81 @@
     };
     window.addEventListener("storage", changed);
     return () => window.removeEventListener("storage", changed);
+  }
+  const record$1 = (v) => v !== null && typeof v === "object" && !Array.isArray(v) ? v : {};
+  const text = (v) => typeof v === "string" ? v : "";
+  const number = (v) => typeof v === "number" && Number.isFinite(v) ? v : null;
+  const items = (v) => Array.isArray(v) ? v : [];
+  function safe(value) {
+    const raw = String(value || "file").normalize("NFC").replace(/[\\/:*?"<>|\p{Cc}]/gu, "_").replace(/^\.+/, "_").trim();
+    let out = "", n = 0;
+    for (const ch of raw) {
+      const m = new TextEncoder().encode(ch).length;
+      if (n + m > 150) break;
+      out += ch;
+      n += m;
+    }
+    return out || "file";
+  }
+  const ext = (s, fallback = "bin") => String(s || fallback).replace(/[^a-zA-Z0-9]/g, "").toLowerCase() || fallback;
+  function assets(message) {
+    const out = [];
+    function descend(n, ctx, depth) {
+      if (depth > 8) return;
+      for (const [i, att] of (n.attachments || []).entries()) {
+        const type = att.type || "unknown";
+        const v = record$1(att[type]), key = [message.id, ctx, i, type].join(":");
+        const choices = [];
+        const add2 = (url, name, size = null) => {
+          if (typeof url === "string" && /^https?:\/\//i.test(url))
+            choices.push({ url, name: safe(name), size: number(size) });
+        };
+        if (type === "doc" && (record$1(v.preview).audio_msg || v.type === 5)) {
+          const a = record$1(record$1(v.preview).audio_msg);
+          add2(a.link_ogg, "Голосовое.ogg");
+          add2(a.link_mp3, "Голосовое.mp3");
+          if (!choices.length) add2(v.url, "Голосовое." + ext(v.ext, "ogg"), v.size);
+        } else if (type === "doc") {
+          const title = text(v.title), extension = ext(v.ext);
+          add2(
+            v.url,
+            safe(title || "Документ") + (title.toLowerCase().endsWith("." + extension) ? "" : "." + extension),
+            v.size
+          );
+        } else if (type === "photo") {
+          const sizes = items(v.sizes).map(record$1).filter((s) => text(s.url)).sort(
+            (a, b) => (number(b.width) || 0) * (number(b.height) || 0) - (number(a.width) || 0) * (number(a.height) || 0)
+          );
+          const url = text(sizes[0]?.url);
+          add2(url, "Фото." + ext(url.split("?")[0]?.match(/\.([a-z0-9]{3,4})$/i)?.[1], "jpg"));
+        } else if (type === "audio_message") {
+          add2(v.link_ogg, "Голосовое.ogg");
+          add2(v.link_mp3, "Голосовое.mp3");
+        } else if (type === "audio") add2(v.url, "Аудио.mp3");
+        else if (type === "graffiti") add2(v.url, "Граффити.png");
+        else if (type === "sticker") {
+          const images = items(v.images_with_background || v.images).map(record$1);
+          add2(images.at(-1)?.url, "Стикер.png");
+        } else if (type === "video") {
+          const files = Object.entries(record$1(v.files)).filter(([k, url]) => /^mp4_\d+$/.test(k) && typeof url === "string").sort(([a], [b]) => parseInt(b.slice(4), 10) - parseInt(a.slice(4), 10));
+          add2(files[0]?.[1], "Видео.mp4");
+        }
+        out.push({
+          key,
+          rootId: message.id,
+          type,
+          choices,
+          sourceId: n.id ?? null,
+          context: ctx,
+          external: type === "link" && /^https?:\/\//i.test(text(v.url)) ? text(v.url) : null,
+          transcript: type === "audio_message" ? text(v.transcript) || null : type === "doc" ? text(record$1(record$1(v.preview).audio_msg).transcript) || null : null
+        });
+      }
+      if (n.reply_message) descend(n.reply_message, ctx + ".reply", depth + 1);
+      for (const [i, f] of (n.fwd_messages || []).entries()) descend(f, ctx + ".fwd" + i, depth + 1);
+    }
+    descend(message, "root", 0);
+    return out;
   }
   const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value) ? value : null;
   function hasVerifiedOwner(value) {
@@ -45659,7 +46468,7 @@
     }
   }
   function fixedVkDatabaseName(scope) {
-    assertServiceScope(scope);
+    assertServiceScope$1(scope);
     if (scope.productId !== "vk-booster" || !scope.installationId || !scope.ownerId)
       throw Error("VK Dexie needs verified product, installation and owner");
     return `koba-vk-canonical-v1:${scope.channel}:${scope.installationId}`;
@@ -45686,7 +46495,7 @@
       if (source.out !== void 0 && ![0, 1, true, false].includes(source.out))
         throw Error("Unknown VK message direction");
       const outgoing = source.out === void 0 ? null : source.out === 1 || source.out === true;
-      const text = typeof source.text === "string" ? source.text : null;
+      const text2 = typeof source.text === "string" ? source.text : null;
       const attachmentCount = Array.isArray(source.attachments) ? source.attachments.length : null;
       const data = {
         key,
@@ -45697,7 +46506,7 @@
         date,
         senderId,
         outgoing,
-        text,
+        text: text2,
         attachmentCount
       };
       const snapshot = {
@@ -45746,11 +46555,11 @@
         schemaVersion: VK_FIXED_RECORD_VERSION,
         stores: ["messages", "snapshots"],
         schema: Object.fromEntries(
-          self2.db.tables.map((table) => [
-            table.name,
+          self2.db.tables.map((table2) => [
+            table2.name,
             {
-              primaryKey: table.schema.primKey.src,
-              indexes: table.schema.indexes.map((index) => index.src)
+              primaryKey: table2.schema.primKey.src,
+              indexes: table2.schema.indexes.map((index) => index.src)
             }
           ])
         ),
@@ -45770,10 +46579,10 @@
           const prefix = `${JSON.stringify([owner]).slice(0, -1)},`;
           const upper = `${prefix}￿`;
           for (const store of ["messages", "snapshots"]) {
-            const table = self2.db[store];
+            const table2 = self2.db[store];
             let last;
             while (true) {
-              const page = await table.where("key").between(last ?? prefix, upper, last === void 0, false).limit(pageSize).toArray();
+              const page = await table2.where("key").between(last ?? prefix, upper, last === void 0, false).limit(pageSize).toArray();
               for (const record2 of page) {
                 if (record2.ownerId !== owner || !record2.key.startsWith(prefix))
                   throw Error("Unexpected VK backup account");
@@ -46026,6 +46835,120 @@
   function restoreVkPortableBackup(ports, backup, selected, progress) {
     return restoreBackupTar(ports, backup, selected, progress);
   }
+  function verifiedVkParticipants(response) {
+    if (!Array.isArray(response)) return [];
+    return response.flatMap((entry) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+      const row = entry;
+      const id = row.id;
+      if (typeof id !== "number" || !Number.isSafeInteger(id) || id <= 0) return [];
+      const first = typeof row.first_name === "string" ? row.first_name.trim() : "";
+      const last = typeof row.last_name === "string" ? row.last_name.trim() : "";
+      const name = [first, last].filter(Boolean).join(" ");
+      if (!name) return [];
+      const url = typeof row.photo_100 === "string" && /^https:\/\//i.test(row.photo_100) ? row.photo_100 : null;
+      return [{ id, name, avatarUrl: url }];
+    });
+  }
+  async function createVkUserExportZip(reader, peerId, options, verifyPeer, onProgress) {
+    if (options.chunkRows !== 100 && options.chunkRows !== 500) throw Error("Invalid VK export page size");
+    verifyPeer();
+    const total = await reader.countMessages(peerId);
+    verifyPeer();
+    if (!total) throw Error("No saved VK messages for ZIP export");
+    const entries = [];
+    const chunkManifest = [];
+    const missing = [];
+    const downloaded = new Map(options.downloadedMedia?.map((item) => [item.key, item]) ?? []);
+    const exportedPaths = /* @__PURE__ */ new Set();
+    let includedBytes = 0;
+    let includedCount = 0;
+    let cursor;
+    let processed = 0;
+    while (processed < total) {
+      verifyPeer();
+      const page = await reader.listMessages(
+        peerId,
+        Math.min(options.chunkRows, total - processed),
+        cursor
+      );
+      if (!page.length) throw Error("VK export source changed during paging");
+      const rawRows = [];
+      for (const row of page) {
+        verifyPeer();
+        const original = await reader.getOriginal(peerId, row.messageId);
+        if (!original || original.ownerId !== row.ownerId)
+          throw Error("Missing verified original VK snapshot");
+        const raw = original.raw;
+        if (raw.id !== row.messageId || raw.peer_id !== void 0 && raw.peer_id !== peerId)
+          throw Error("Mismatched VK source snapshot during export");
+        rawRows.push({
+          id: row.messageId,
+          sentAt: row.date,
+          senderId: row.senderId,
+          outgoing: row.outgoing,
+          text: row.text,
+          snapshot: { sourceVersion: original.sourceVersion, original: await encodeArchiveClone(raw) }
+        });
+        if (options.includeReferences) {
+          for (const ref2 of assets(raw)) {
+            if (ref2.type === "link") continue;
+            const candidate = downloaded.get(ref2.key);
+            let path2 = null;
+            if (candidate?.blob instanceof Blob && candidate.blob.size > 0 && candidate.blob.size <= 64 * 1024 * 1024 && includedBytes + candidate.blob.size <= 512 * 1024 * 1024) {
+              const safe2 = candidate.name.normalize("NFC").replace(/[\\/:*?"<>|]/g, "_").replace(/^\.+/, "_").slice(0, 96) || "attachment";
+              path2 = `attachments/${row.messageId}/${safe2}`;
+              if (exportedPaths.has(path2))
+                path2 = `attachments/${row.messageId}/${ref2.key.replace(/[^a-z0-9_-]/gi, "_")}-${safe2}`;
+              exportedPaths.add(path2);
+              entries.push({ path: path2, blob: candidate.blob });
+              includedBytes += candidate.blob.size;
+              includedCount++;
+            }
+            missing.push({
+              messageId: row.messageId,
+              key: ref2.key,
+              type: ref2.type,
+              status: path2 ? "included" : "not_downloaded",
+              localPath: path2
+            });
+          }
+        }
+        processed++;
+      }
+      const path = `messages/${String(chunkManifest.length + 1).padStart(6, "0")}.json`;
+      const body = JSON.stringify(rawRows);
+      chunkManifest.push({ path, records: rawRows.length, sha256: await archiveSha256Hex(body) });
+      entries.push({ path, blob: new Blob([body], { type: "application/json" }) });
+      cursor = page.at(-1)?.messageId;
+      onProgress?.({ phase: "reading", done: processed, total });
+    }
+    verifyPeer();
+    if (await reader.countMessages(peerId) !== total) throw Error("VK archive changed during ZIP export");
+    const manifest = {
+      format: "koba-vk-conversation-zip-v1",
+      exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      peerId,
+      recordCount: total,
+      completeness: "unknown",
+      attachmentBytesIncluded: includedBytes,
+      attachmentFilesIncluded: includedCount,
+      missingAttachmentCount: missing.filter((entry) => entry.status === "not_downloaded").length,
+      chunks: chunkManifest,
+      attachmentManifest: options.includeReferences ? "attachments/status.json" : null,
+      note: "This user export contains saved original message snapshots, not a full IndexedDB backup."
+    };
+    if (options.includeReferences)
+      entries.push({
+        path: "attachments/status.json",
+        blob: new Blob([JSON.stringify(missing)], { type: "application/json" })
+      });
+    entries.push({ path: "manifest.json", blob: new Blob([JSON.stringify(manifest, null, 2)]) });
+    onProgress?.({ phase: "packaging", done: processed, total });
+    const zip = await createStoredZipFromBlobs(entries);
+    verifyPeer();
+    return zip;
+  }
   function installVkArchive(target = "userscript") {
     const VERSION = "1.0.0";
     const apiKey = instanceKey("VKExport", "vk-booster:prod");
@@ -46235,6 +47158,16 @@
         repo.close();
       }
     }
+    async function resolveParticipants(userIds) {
+      const peerId = currentPeer();
+      if (!peerId || busy || !userIds.length) return [];
+      const ids = [...new Set(userIds)].filter((id) => Number.isSafeInteger(id) && id > 0).slice(0, 100);
+      if (!ids.length) return [];
+      if (!await auth()) return [];
+      const response = await api("users.get", { user_ids: ids.join(","), fields: "photo_100" });
+      if (currentPeer() !== peerId) throw Error("VK peer changed while loading participant labels");
+      return verifiedVkParticipants(response).filter((person) => ids.includes(person.id));
+    }
     async function countFixed() {
       return withFixed(async (repo, peerId) => repo.countMessages(peerId));
     }
@@ -46291,6 +47224,19 @@
         }
         return createGzipFromChunks(records());
       });
+    }
+    async function exportUserZip(options, onProgress) {
+      return withFixed(
+        (repo, peerId) => createVkUserExportZip(
+          repo,
+          peerId,
+          options,
+          () => {
+            if (currentPeer() !== peerId) throw Error("VK conversation changed during ZIP export");
+          },
+          onProgress
+        )
+      );
     }
     async function withBackup(operation) {
       if (backupRunning || busy || folderPickerOpen || folderLoading)
@@ -46349,8 +47295,10 @@
       buildViewer,
       captureFixed,
       countFixed,
+      resolveParticipants,
       readFixed,
       exportFixed,
+      exportUserZip,
       backupPortable,
       inspectPortable,
       restorePortable,
@@ -46376,8 +47324,8 @@
   }
   const vkRequestedView = /* @__PURE__ */ ref(null);
   const presentation = { panel: "standard", version: "1.0.0", installation: "Browser extension" };
-  function openVkView(view) {
-    vkRequestedView.value = view;
+  function openVkView(view2) {
+    vkRequestedView.value = view2;
     window.dispatchEvent(new CustomEvent(SHELL_OPEN_FEATURE_EVENT, { detail: { id: "vk-booster" } }));
   }
   const vkBoosterFeature = {
@@ -46506,7 +47454,7 @@
     open: false
   };
   const _hoisted_16$1 = { class: "booster-field" };
-  const _hoisted_17 = ["disabled"];
+  const _hoisted_17$1 = ["disabled"];
   const _hoisted_18 = { class: "booster-field" };
   const _hoisted_19 = ["disabled"];
   const _hoisted_20 = {
@@ -46541,22 +47489,72 @@
   };
   const _hoisted_29 = { class: "flex flex-wrap gap-2" };
   const _hoisted_30 = {
-    class: "max-h-96 overflow-y-auto space-y-2",
-    "aria-label": "Сохранённые сообщения"
-  };
-  const _hoisted_31 = { class: "whitespace-pre-wrap break-words" };
-  const _hoisted_32 = { key: 0 };
-  const _hoisted_33 = {
     key: 0,
+    class: "text-sm text-muted-foreground",
+    role: "status"
+  };
+  const _hoisted_31 = {
+    key: 1,
+    class: "text-sm text-muted-foreground",
+    role: "status"
+  };
+  const _hoisted_32 = {
+    key: 2,
+    class: "text-xs text-muted-foreground"
+  };
+  const _hoisted_33 = {
+    "aria-label": "Сохранённые сообщения",
+    class: "max-h-[min(65vh,560px)] min-w-0 overflow-y-auto space-y-3 p-2"
+  };
+  const _hoisted_34 = {
+    key: 0,
+    class: "mt-2 whitespace-pre-wrap break-words text-sm"
+  };
+  const _hoisted_35 = {
+    key: 1,
+    class: "mt-2 text-xs text-muted-foreground"
+  };
+  const _hoisted_36 = ["src", "alt"];
+  const _hoisted_37 = { class: "break-words text-muted-foreground" };
+  const _hoisted_38 = ["href", "download"];
+  const _hoisted_39 = {
+    key: 3,
+    class: "text-destructive",
+    role: "alert"
+  };
+  const _hoisted_40 = {
+    key: 3,
     role: "alert",
     class: "text-sm text-destructive"
   };
-  const _hoisted_34 = ["id", "aria-labelledby"];
-  const _hoisted_35 = {
+  const _hoisted_41 = {
+    key: 0,
+    class: "booster-stack-card",
+    "aria-label": "Параметры пользовательского экспорта ZIP"
+  };
+  const _hoisted_42 = { class: "booster-field" };
+  const _hoisted_43 = ["disabled"];
+  const _hoisted_44 = { class: "flex items-center gap-2 text-sm" };
+  const _hoisted_45 = ["disabled"];
+  const _hoisted_46 = { class: "flex flex-wrap gap-2" };
+  const _hoisted_47 = {
+    key: 1,
+    role: "status",
+    class: "text-sm"
+  };
+  const _hoisted_48 = ["id", "aria-labelledby"];
+  const _hoisted_49 = {
     class: "booster-stack-card",
     "aria-label": "Постоянные параметры VK"
   };
-  const _hoisted_36 = {
+  const _hoisted_50 = { class: "booster-field" };
+  const _hoisted_51 = ["disabled"];
+  const _hoisted_52 = { class: "booster-field" };
+  const _hoisted_53 = ["disabled"];
+  const _hoisted_54 = { class: "booster-field" };
+  const _hoisted_55 = ["disabled"];
+  const _hoisted_56 = { class: "flex flex-wrap items-center gap-2" };
+  const _hoisted_57 = {
     key: 0,
     role: "alert",
     class: "m-0 text-sm text-destructive"
@@ -46565,6 +47563,7 @@
     __name: "ArchivePanel",
     setup(__props) {
       const api = archiveApi();
+      const telemetry = useApplicationTelemetry();
       const status = /* @__PURE__ */ ref(api?.status() ?? null);
       const tab = /* @__PURE__ */ ref("capture");
       const tabPrefix = useId();
@@ -46608,6 +47607,69 @@
       const fixedCursor = /* @__PURE__ */ ref();
       const fixedNextCursor = /* @__PURE__ */ ref();
       const fixedReading = /* @__PURE__ */ ref(false);
+      let readerGeneration = 0;
+      const participantNames = /* @__PURE__ */ ref({});
+      const nameLookupError = /* @__PURE__ */ ref("");
+      const attachments = /* @__PURE__ */ ref({});
+      const downloading = /* @__PURE__ */ ref({});
+      const attachmentErrors = /* @__PURE__ */ ref({});
+      const exportOpen = /* @__PURE__ */ ref(false);
+      const exportChunkRows = /* @__PURE__ */ ref(500);
+      const exportIncludeReferences = /* @__PURE__ */ ref(true);
+      const exportPrepared = /* @__PURE__ */ ref(null);
+      const exportProgress = /* @__PURE__ */ ref(null);
+      function senderName(message) {
+        const id = message.from_id;
+        if (typeof id === "number") {
+          const name = participantNames.value[id];
+          if (name) return name;
+        }
+        if (message.out === 1 || message.out === true) return "Вы";
+        return id && Number.isSafeInteger(id) ? `Участник ${id} (имя не получено)` : "Неизвестный отправитель";
+      }
+      function messageMedia(message) {
+        return assets(message).filter((item) => item.type !== "link");
+      }
+      async function requestMedia(asset) {
+        if (downloading.value[asset.key] || attachments.value[asset.key] || !hasVerifiedPeer.value) return;
+        downloading.value = { ...downloading.value, [asset.key]: true };
+        const peer = api?.status().activePeerId;
+        attachmentErrors.value = { ...attachmentErrors.value, [asset.key]: "" };
+        try {
+          const first = asset.choices.find((item) => /^https:\/\//i.test(item.url));
+          if (!first) throw Error("Нет доступной HTTPS-ссылки для вложения.");
+          const response = await fetch(first.url, { credentials: "omit", signal: AbortSignal.timeout(3e4) });
+          const result = await readArchiveMedia(response, {
+            maxBytes: 64 * 1024 * 1024,
+            expectedBytes: first.size
+          });
+          if (!peer || api?.status().activePeerId !== peer) throw Error("Переписка изменилась.");
+          const blob = new Blob([result.bytes], { type: result.mime });
+          attachments.value = {
+            ...attachments.value,
+            [asset.key]: {
+              blob,
+              url: URL.createObjectURL(blob),
+              name: first.name
+            }
+          };
+        } catch {
+          attachmentErrors.value = {
+            ...attachmentErrors.value,
+            [asset.key]: "Не удалось загрузить оригинал. Ссылка может быть недоступна или истекла."
+          };
+        } finally {
+          downloading.value = { ...downloading.value, [asset.key]: false };
+        }
+      }
+      function resetPreparedExport() {
+        exportPrepared.value = null;
+        exportProgress.value = null;
+      }
+      function showUserExportOptions() {
+        exportOpen.value = true;
+        resetPreparedExport();
+      }
       const hasVerifiedPeer = computed(() => !!status.value?.activePeerId && !status.value?.blockedReason);
       async function persistCaptureOptions() {
         if (!api) throw Error("VK unavailable");
@@ -46642,6 +47704,8 @@
       async function captureDexie() {
         if (!api || fixedBusy.value || !hasVerifiedPeer.value) return;
         fixedBusy.value = true;
+        resetPreparedExport();
+        void telemetry?.record("archive.capture.started");
         activeOperation.value = "capture";
         fixedError.value = "";
         try {
@@ -46650,6 +47714,7 @@
           await collector.start();
           const latest = api.status();
           fixedSaved.value = latest.progress.newCount ?? null;
+          void telemetry?.record("archive.capture.completed", latest.progress.newCount ?? 0);
           reportedTotal.value = latest.progress.total || null;
           captureComplete.value = latest.progress.phase === "Dexie: сохранено";
           attachmentReferences.value = latest.progress.attachmentReferences ?? null;
@@ -46657,6 +47722,7 @@
           fixedCursor.value = void 0;
           fixedNextCursor.value = void 0;
         } catch (error2) {
+          void telemetry?.record("archive.capture.failed");
           captureComplete.value = false;
           fixedError.value = `Сбор прерван. ${vkArchiveErrorMessage(error2)}`;
         } finally {
@@ -46668,47 +47734,94 @@
         if (!api || fixedBusy.value || fixedReading.value || !hasVerifiedPeer.value) return;
         fixedReading.value = true;
         fixedError.value = "";
+        const ticket = ++readerGeneration;
+        const peer = api.status().activePeerId;
         try {
           const rows = await api.readFixed(80, cursor);
+          if (ticket !== readerGeneration || api.status().activePeerId !== peer) return;
           fixedPreview.value = rows;
           fixedCursor.value = cursor;
           fixedNextCursor.value = rows.length === 80 ? rows.at(-1)?.id : void 0;
-        } catch (error2) {
-          fixedPreview.value = [];
-          fixedCursor.value = void 0;
-          fixedNextCursor.value = void 0;
-          fixedError.value = `Чтение: ${vkArchiveErrorMessage(error2)}`;
-        } finally {
           fixedReading.value = false;
+          const ids = [
+            ...new Set(
+              rows.map((row) => row.from_id).filter((id) => typeof id === "number" && Number.isSafeInteger(id) && id > 0)
+            )
+          ];
+          void api.resolveParticipants(ids).then((people) => {
+            if (ticket !== readerGeneration || api.status().activePeerId !== peer) return;
+            participantNames.value = Object.fromEntries(people.map((person) => [person.id, person.name]));
+            nameLookupError.value = ids.length > people.length ? "Часть имён VK не предоставил. Идентификаторы показаны без подмены." : "";
+          }).catch(() => {
+            if (ticket === readerGeneration && api.status().activePeerId === peer)
+              nameLookupError.value = "VK не предоставил имена участников. Сообщения сохранены и доступны.";
+          });
+        } catch (error2) {
+          if (ticket === readerGeneration) {
+            fixedPreview.value = [];
+            fixedCursor.value = void 0;
+            fixedNextCursor.value = void 0;
+            fixedError.value = `Чтение: ${vkArchiveErrorMessage(error2)}`;
+          }
+        } finally {
+          if (ticket === readerGeneration) fixedReading.value = false;
         }
       }
-      async function exportDexie() {
-        if (!api || fixedBusy.value || !hasVerifiedPeer.value) return;
+      async function prepareUserZip() {
+        if (!api || fixedBusy.value || !hasVerifiedPeer.value || !exportOpen.value) return;
         fixedBusy.value = true;
         activeOperation.value = "export";
         fixedError.value = "";
+        resetPreparedExport();
         try {
-          const blob = await api.exportFixed();
-          const url = URL.createObjectURL(blob);
-          try {
-            const link = document.createElement("a");
-            link.href = url;
-            link.download = "vk-fixed-v1-original.jsonl.gz";
-            document.body.append(link);
-            try {
-              link.click();
-            } finally {
-              link.remove();
+          const loaded = Object.entries(attachments.value).map(([key, value]) => ({
+            key,
+            name: value.name,
+            blob: value.blob
+          }));
+          const result = await api.exportUserZip(
+            {
+              chunkRows: exportChunkRows.value,
+              includeReferences: exportIncludeReferences.value,
+              downloadedMedia: loaded
+            },
+            (progress) => {
+              exportProgress.value = progress;
             }
-          } finally {
-            window.setTimeout(() => URL.revokeObjectURL(url), 3e4);
-          }
+          );
+          if (!result.size) throw Error("ZIP export returned an empty archive");
+          exportPrepared.value = result;
+          void telemetry?.record("archive.export.completed");
         } catch (error2) {
-          fixedError.value = `Экспорт: ${vkArchiveErrorMessage(error2)}`;
+          void telemetry?.record("archive.export.failed");
+          fixedError.value = `Экспорт ZIP: ${vkArchiveErrorMessage(error2)}`;
         } finally {
           activeOperation.value = null;
           fixedBusy.value = false;
         }
+      }
+      function downloadPreparedZip() {
+        const blob = exportPrepared.value;
+        if (!blob || fixedBusy.value || !hasVerifiedPeer.value) return;
+        const url = URL.createObjectURL(blob);
+        try {
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = "vk-saved-conversation.zip";
+          document.body.append(link);
+          try {
+            link.click();
+          } finally {
+            link.remove();
+          }
+        } finally {
+          window.setTimeout(() => URL.revokeObjectURL(url), 3e4);
+        }
+      }
+      function enterTab(view2) {
+        tab.value = view2;
+        if (view2 === "reader" && !fixedPreview.value.length && !fixedReading.value && hasVerifiedPeer.value)
+          void readDexie();
       }
       const tabs = [
         { id: "capture", label: "Выгрузка", icon: Download },
@@ -46722,7 +47835,7 @@
         const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length;
         const selected = tabs[next];
         if (!selected) return;
-        tab.value = selected.id;
+        enterTab(selected.id);
         const target = event.currentTarget.parentElement?.querySelector(
           "#" + tabPrefix + "-tab-" + selected.id
         );
@@ -46735,12 +47848,12 @@
           if (!requested) return;
           vkRequestedView.value = null;
           if (requested === "export") {
-            tab.value = "reader";
-            void exportDexie();
+            enterTab("reader");
+            showUserExportOptions();
           } else if (requested === "collect") {
             tab.value = "capture";
             void captureDexie();
-          } else tab.value = requested;
+          } else enterTab(requested);
         },
         { immediate: true }
       );
@@ -46751,6 +47864,8 @@
         if (!next) return;
         const previous = status.value;
         if (previous?.activePeerId !== next.activePeerId) {
+          readerGeneration++;
+          fixedReading.value = false;
           fixedPreview.value = [];
           fixedSaved.value = null;
           captureComplete.value = null;
@@ -46759,6 +47874,11 @@
           fixedCursor.value = void 0;
           fixedNextCursor.value = void 0;
           fixedError.value = "";
+          nameLookupError.value = "";
+          participantNames.value = {};
+          for (const file of Object.values(attachments.value)) URL.revokeObjectURL(file.url);
+          attachments.value = {};
+          resetPreparedExport();
         }
         if (!previous || next.activePeerId !== previous.activePeerId || next.blockedReason !== previous.blockedReason || next.options.peerId !== previous.options.peerId)
           status.value = next;
@@ -46768,10 +47888,12 @@
           status.value = next;
         });
         peerTimer = setInterval(refreshActiveConversation, 1500);
+        if (tab.value === "reader" && hasVerifiedPeer.value) void readDexie();
       });
       onUnmounted(() => {
         unsubscribe?.();
         if (peerTimer !== void 0) clearInterval(peerTimer);
+        for (const file of Object.values(attachments.value)) URL.revokeObjectURL(file.url);
       });
       return (_ctx, _cache) => {
         return openBlock(), createElementBlock("section", _hoisted_1$3, [
@@ -46782,7 +47904,7 @@
                   class: "size-4 shrink-0",
                   "aria-hidden": "true"
                 }),
-                _cache[9] || (_cache[9] = createBaseVNode(
+                _cache[15] || (_cache[15] = createBaseVNode(
                   "b",
                   null,
                   "VK Booster · Архив v1",
@@ -46829,7 +47951,7 @@
               Fragment,
               null,
               renderList(tabs, (item) => {
-                return createVNode(unref(_sfc_main$i), {
+                return createVNode(unref(_sfc_main$j), {
                   id: unref(tabPrefix) + "-tab-" + item.id,
                   key: item.id,
                   type: "button",
@@ -46839,7 +47961,7 @@
                   "aria-controls": unref(tabPrefix) + "-panel-" + item.id,
                   "aria-selected": tab.value === item.id,
                   tabindex: tab.value === item.id ? 0 : -1,
-                  onClick: ($event) => tab.value = item.id,
+                  onClick: ($event) => enterTab(item.id),
                   onKeydown: ($event) => onTabKeydown($event, item.id)
                 }, {
                   default: withCtx(() => [
@@ -46870,7 +47992,7 @@
             class: "flex min-w-0 flex-col gap-3"
           }, [
             createBaseVNode("section", _hoisted_10$2, [
-              _cache[17] || (_cache[17] = createBaseVNode(
+              _cache[23] || (_cache[23] = createBaseVNode(
                 "div",
                 { class: "booster-setting-copy" },
                 [
@@ -46881,7 +48003,7 @@
                 /* CACHED */
               )),
               createBaseVNode("div", _hoisted_11$2, [
-                createVNode(unref(_sfc_main$i), {
+                createVNode(unref(_sfc_main$j), {
                   type: "button",
                   size: "sm",
                   variant: captureRange.value === "all" ? "default" : "outline",
@@ -46889,7 +48011,7 @@
                   disabled: fixedBusy.value,
                   onClick: _cache[0] || (_cache[0] = ($event) => captureRange.value = "all")
                 }, {
-                  default: withCtx(() => [..._cache[10] || (_cache[10] = [
+                  default: withCtx(() => [..._cache[16] || (_cache[16] = [
                     createTextVNode(
                       "Вся история",
                       -1
@@ -46899,7 +48021,7 @@
                   _: 1
                   /* STABLE */
                 }, 8, ["variant", "aria-pressed", "disabled"]),
-                createVNode(unref(_sfc_main$i), {
+                createVNode(unref(_sfc_main$j), {
                   type: "button",
                   size: "sm",
                   variant: captureRange.value === "recent" ? "default" : "outline",
@@ -46907,7 +48029,7 @@
                   disabled: fixedBusy.value,
                   onClick: _cache[1] || (_cache[1] = ($event) => captureRange.value = "recent")
                 }, {
-                  default: withCtx(() => [..._cache[11] || (_cache[11] = [
+                  default: withCtx(() => [..._cache[17] || (_cache[17] = [
                     createTextVNode(
                       "Последние N",
                       -1
@@ -46919,7 +48041,7 @@
                 }, 8, ["variant", "aria-pressed", "disabled"])
               ]),
               captureRange.value === "recent" ? (openBlock(), createElementBlock("label", _hoisted_12$1, [
-                _cache[12] || (_cache[12] = createTextVNode(
+                _cache[18] || (_cache[18] = createTextVNode(
                   "Сообщений (1–100 000) ",
                   -1
                   /* CACHED */
@@ -46942,7 +48064,7 @@
                 ])
               ])) : (openBlock(), createElementBlock("p", _hoisted_14$1, "Без искусственного ограничения в 3000 сообщений. VK может ограничивать частоту API-запросов; при необходимости автоматически делаются паузы.")),
               createBaseVNode("details", _hoisted_15$1, [
-                _cache[15] || (_cache[15] = createBaseVNode(
+                _cache[21] || (_cache[21] = createBaseVNode(
                   "summary",
                   { class: "cursor-pointer select-none font-medium text-sm" },
                   "Скорость и размер запросов",
@@ -46950,7 +48072,7 @@
                   /* CACHED */
                 )),
                 createBaseVNode("label", _hoisted_16$1, [
-                  _cache[13] || (_cache[13] = createTextVNode(
+                  _cache[19] || (_cache[19] = createTextVNode(
                     "Сообщений за запрос ",
                     -1
                     /* CACHED */
@@ -46971,7 +48093,7 @@
                     step: "10",
                     disabled: fixedBusy.value,
                     onChange: saveCaptureOptions
-                  }, null, 40, _hoisted_17), [
+                  }, null, 40, _hoisted_17$1), [
                     [
                       vModelText,
                       requestPageSize.value,
@@ -46981,7 +48103,7 @@
                   ])
                 ]),
                 createBaseVNode("label", _hoisted_18, [
-                  _cache[14] || (_cache[14] = createTextVNode(
+                  _cache[20] || (_cache[20] = createTextVNode(
                     "Пауза между запросами ",
                     -1
                     /* CACHED */
@@ -47011,7 +48133,7 @@
                     ]
                   ])
                 ]),
-                _cache[16] || (_cache[16] = createBaseVNode(
+                _cache[22] || (_cache[22] = createBaseVNode(
                   "small",
                   null,
                   "При ограничении скорости VK запрос повторяется с увеличенной паузой. Значения сохраняются при отпускании слайдера.",
@@ -47054,14 +48176,14 @@
             ]),
             createBaseVNode("section", _hoisted_24, [
               createBaseVNode("div", _hoisted_25, [
-                _cache[18] || (_cache[18] = createBaseVNode(
+                _cache[24] || (_cache[24] = createBaseVNode(
                   "b",
                   null,
                   "2 · Вложения и файлы",
                   -1
                   /* CACHED */
                 )),
-                _cache[19] || (_cache[19] = createBaseVNode(
+                _cache[25] || (_cache[25] = createBaseVNode(
                   "span",
                   null,
                   "После сохранения сообщений можно будет догружать оригинальные файлы отдельной задачей с возобновлением. Пока Dexie сохраняет только метаданные и ссылки; бинарные файлы не скачаны.",
@@ -47088,18 +48210,18 @@
             class: "flex min-w-0 flex-col gap-3"
           }, [
             createBaseVNode("section", _hoisted_28, [
-              _cache[22] || (_cache[22] = createBaseVNode(
+              _cache[29] || (_cache[29] = createBaseVNode(
                 "div",
                 { class: "booster-setting-copy" },
                 [
-                  createBaseVNode("b", null, "Сообщения из Dexie"),
-                  createBaseVNode("span", null, "Чтение только текущей подтверждённой VK-переписки. До 80 записей на страницу.")
+                  createBaseVNode("b", null, "Сохранённая переписка"),
+                  createBaseVNode("span", null, "Автор, дата и направление сообщений показаны сразу. Подробные исходные метаданные доступны по значку информации.")
                 ],
                 -1
                 /* CACHED */
               )),
               createBaseVNode("div", _hoisted_29, [
-                createVNode(unref(_sfc_main$i), {
+                createVNode(unref(_sfc_main$j), {
                   variant: "outline",
                   disabled: fixedBusy.value || fixedReading.value || !hasVerifiedPeer.value,
                   onClick: _cache[6] || (_cache[6] = ($event) => readDexie())
@@ -47111,7 +48233,7 @@
                       "aria-hidden": "true"
                     })) : createCommentVNode("v-if", true),
                     createTextVNode(
-                      toDisplayString(fixedReading.value ? "Чтение..." : "Открыть Reader"),
+                      " " + toDisplayString(fixedReading.value ? "Чтение..." : "Обновить Reader"),
                       1
                       /* TEXT */
                     )
@@ -47119,32 +48241,27 @@
                   _: 1
                   /* STABLE */
                 }, 8, ["disabled"]),
-                createVNode(unref(_sfc_main$i), {
+                createVNode(unref(_sfc_main$j), {
                   variant: "outline",
                   disabled: fixedBusy.value || !hasVerifiedPeer.value,
-                  onClick: exportDexie
+                  onClick: showUserExportOptions
                 }, {
-                  default: withCtx(() => [
-                    activeOperation.value === "export" ? (openBlock(), createBlock(unref(LoaderCircle), {
-                      key: 0,
-                      class: "size-4 animate-spin",
-                      "aria-hidden": "true"
-                    })) : createCommentVNode("v-if", true),
+                  default: withCtx(() => [..._cache[26] || (_cache[26] = [
                     createTextVNode(
-                      toDisplayString(activeOperation.value === "export" ? "Подготовка архива..." : "Экспорт JSONL.gz"),
-                      1
-                      /* TEXT */
+                      " Экспорт ZIP · параметры ",
+                      -1
+                      /* CACHED */
                     )
-                  ]),
+                  ])]),
                   _: 1
                   /* STABLE */
                 }, 8, ["disabled"]),
-                createVNode(unref(_sfc_main$i), {
+                createVNode(unref(_sfc_main$j), {
                   variant: "outline",
                   disabled: fixedBusy.value || fixedReading.value || !fixedNextCursor.value,
                   onClick: _cache[7] || (_cache[7] = ($event) => readDexie(fixedNextCursor.value))
                 }, {
-                  default: withCtx(() => [..._cache[20] || (_cache[20] = [
+                  default: withCtx(() => [..._cache[27] || (_cache[27] = [
                     createTextVNode(
                       "Следующие 80",
                       -1
@@ -47154,12 +48271,12 @@
                   _: 1
                   /* STABLE */
                 }, 8, ["disabled"]),
-                createVNode(unref(_sfc_main$i), {
+                createVNode(unref(_sfc_main$j), {
                   variant: "outline",
                   disabled: fixedBusy.value || fixedReading.value || !fixedCursor.value,
                   onClick: _cache[8] || (_cache[8] = ($event) => readDexie())
                 }, {
-                  default: withCtx(() => [..._cache[21] || (_cache[21] = [
+                  default: withCtx(() => [..._cache[28] || (_cache[28] = [
                     createTextVNode(
                       "К началу",
                       -1
@@ -47170,37 +48287,116 @@
                   /* STABLE */
                 }, 8, ["disabled"])
               ]),
-              createBaseVNode("ol", _hoisted_30, [
+              fixedReading.value ? (openBlock(), createElementBlock("p", _hoisted_30, "Загружаем сохранённые сообщения...")) : createCommentVNode("v-if", true),
+              !fixedReading.value && !fixedPreview.value.length ? (openBlock(), createElementBlock("p", _hoisted_31, " В этом диалоге ещё нет сохранённых сообщений или Reader недоступен. ")) : createCommentVNode("v-if", true),
+              nameLookupError.value ? (openBlock(), createElementBlock(
+                "p",
+                _hoisted_32,
+                toDisplayString(nameLookupError.value),
+                1
+                /* TEXT */
+              )) : createCommentVNode("v-if", true),
+              createBaseVNode("div", _hoisted_33, [
                 (openBlock(true), createElementBlock(
                   Fragment,
                   null,
                   renderList(fixedPreview.value, (message) => {
-                    return openBlock(), createElementBlock("li", {
-                      key: message.id,
-                      class: "border-b border-border py-2"
-                    }, [
-                      createBaseVNode(
-                        "b",
-                        null,
-                        "Сообщение " + toDisplayString(message.id),
-                        1
-                        /* TEXT */
-                      ),
-                      createBaseVNode(
-                        "p",
-                        _hoisted_31,
-                        toDisplayString(message.text || "Без текста"),
-                        1
-                        /* TEXT */
-                      ),
-                      message.attachments?.length ? (openBlock(), createElementBlock(
-                        "small",
-                        _hoisted_32,
-                        "Вложений в исходных данных: " + toDisplayString(message.attachments.length),
-                        1
-                        /* TEXT */
-                      )) : createCommentVNode("v-if", true)
-                    ]);
+                    return openBlock(), createElementBlock(
+                      "article",
+                      {
+                        key: message.id,
+                        class: normalizeClass(["flex min-w-0", message.out === 1 || message.out === true ? "justify-end" : "justify-start"])
+                      },
+                      [
+                        createBaseVNode(
+                          "div",
+                          {
+                            class: normalizeClass(["min-w-0 max-w-[88%] rounded-lg border border-border p-3", message.out === 1 || message.out === true ? "bg-primary/10" : "bg-muted/45"])
+                          },
+                          [
+                            createVNode(unref(_sfc_main$3$1), {
+                              author: senderName(message),
+                              "sent-at": message.date,
+                              metadata: message,
+                              "inspect-label": "Все исходные метаданные сообщения"
+                            }, null, 8, ["author", "sent-at", "metadata"]),
+                            message.text ? (openBlock(), createElementBlock(
+                              "p",
+                              _hoisted_34,
+                              toDisplayString(message.text),
+                              1
+                              /* TEXT */
+                            )) : (openBlock(), createElementBlock("p", _hoisted_35, "Сообщение без текста")),
+                            (openBlock(true), createElementBlock(
+                              Fragment,
+                              null,
+                              renderList(messageMedia(message), (asset) => {
+                                return openBlock(), createElementBlock("div", {
+                                  key: asset.key,
+                                  class: "mt-2 flex min-w-0 flex-col gap-1 border-t border-border pt-2"
+                                }, [
+                                  asset.type === "photo" && attachments.value[asset.key] ? (openBlock(), createElementBlock("img", {
+                                    key: 0,
+                                    src: attachments.value[asset.key]?.url,
+                                    alt: attachments.value[asset.key]?.name || "Фото из сообщения",
+                                    class: "max-h-64 max-w-full rounded-md object-contain",
+                                    loading: "lazy",
+                                    referrerpolicy: "no-referrer"
+                                  }, null, 8, _hoisted_36)) : createCommentVNode("v-if", true),
+                                  createBaseVNode(
+                                    "small",
+                                    _hoisted_37,
+                                    toDisplayString(asset.type) + " · " + toDisplayString(asset.choices[0]?.name || "Вложение") + " · " + toDisplayString(attachments.value[asset.key] ? "загружено в текущем сеансе" : "оригинал не загружен"),
+                                    1
+                                    /* TEXT */
+                                  ),
+                                  !attachments.value[asset.key] ? (openBlock(), createBlock(unref(_sfc_main$j), {
+                                    key: 1,
+                                    size: "sm",
+                                    variant: "outline",
+                                    disabled: downloading.value[asset.key] || !hasVerifiedPeer.value,
+                                    onClick: ($event) => requestMedia(asset)
+                                  }, {
+                                    default: withCtx(() => [
+                                      downloading.value[asset.key] ? (openBlock(), createBlock(unref(LoaderCircle), {
+                                        key: 0,
+                                        class: "size-3.5 animate-spin",
+                                        "aria-hidden": "true"
+                                      })) : createCommentVNode("v-if", true),
+                                      createTextVNode(
+                                        " " + toDisplayString(downloading.value[asset.key] ? "Загрузка..." : "Загрузить оригинал"),
+                                        1
+                                        /* TEXT */
+                                      )
+                                    ]),
+                                    _: 2
+                                    /* DYNAMIC */
+                                  }, 1032, ["disabled", "onClick"])) : (openBlock(), createElementBlock("a", {
+                                    key: 2,
+                                    href: attachments.value[asset.key]?.url,
+                                    download: attachments.value[asset.key]?.name,
+                                    class: "text-xs text-primary underline underline-offset-2"
+                                  }, "Скачать загруженный файл", 8, _hoisted_38)),
+                                  attachmentErrors.value[asset.key] ? (openBlock(), createElementBlock(
+                                    "small",
+                                    _hoisted_39,
+                                    toDisplayString(attachmentErrors.value[asset.key]),
+                                    1
+                                    /* TEXT */
+                                  )) : createCommentVNode("v-if", true)
+                                ]);
+                              }),
+                              128
+                              /* KEYED_FRAGMENT */
+                            ))
+                          ],
+                          2
+                          /* CLASS */
+                        )
+                      ],
+                      2
+                      /* CLASS */
+                    );
                   }),
                   128
                   /* KEYED_FRAGMENT */
@@ -47208,12 +48404,134 @@
               ]),
               fixedError.value ? (openBlock(), createElementBlock(
                 "p",
-                _hoisted_33,
+                _hoisted_40,
                 toDisplayString(fixedError.value),
                 1
                 /* TEXT */
               )) : createCommentVNode("v-if", true)
-            ])
+            ]),
+            exportOpen.value ? (openBlock(), createElementBlock("section", _hoisted_41, [
+              _cache[34] || (_cache[34] = createBaseVNode(
+                "div",
+                { class: "booster-setting-copy" },
+                [
+                  createBaseVNode("b", null, "Экспорт сообщений в ZIP"),
+                  createBaseVNode("span", null, "Отдельно от резервного бэкапа TAR.GZ. В ZIP войдут все уже сохранённые сообщения с оригинальными метаданными."),
+                  createBaseVNode("small", null, "Полнота удалённой истории не подтверждается автоматически; исходные файлы включаются только после их явной загрузки.")
+                ],
+                -1
+                /* CACHED */
+              )),
+              createBaseVNode("label", _hoisted_42, [
+                _cache[31] || (_cache[31] = createTextVNode(
+                  "Сообщений в одном JSON-файле ",
+                  -1
+                  /* CACHED */
+                )),
+                withDirectives(createBaseVNode("select", {
+                  "onUpdate:modelValue": _cache[9] || (_cache[9] = ($event) => exportChunkRows.value = $event),
+                  class: "booster-input",
+                  disabled: fixedBusy.value,
+                  onChange: resetPreparedExport
+                }, [..._cache[30] || (_cache[30] = [
+                  createBaseVNode(
+                    "option",
+                    { value: 100 },
+                    "100",
+                    -1
+                    /* CACHED */
+                  ),
+                  createBaseVNode(
+                    "option",
+                    { value: 500 },
+                    "500",
+                    -1
+                    /* CACHED */
+                  )
+                ])], 40, _hoisted_43), [
+                  [
+                    vModelSelect,
+                    exportChunkRows.value,
+                    void 0,
+                    { number: true }
+                  ]
+                ])
+              ]),
+              createBaseVNode("label", _hoisted_44, [
+                withDirectives(createBaseVNode("input", {
+                  "onUpdate:modelValue": _cache[10] || (_cache[10] = ($event) => exportIncludeReferences.value = $event),
+                  type: "checkbox",
+                  disabled: fixedBusy.value,
+                  onChange: resetPreparedExport
+                }, null, 40, _hoisted_45), [
+                  [vModelCheckbox, exportIncludeReferences.value]
+                ]),
+                _cache[32] || (_cache[32] = createTextVNode(
+                  " Добавить manifest вложений в папку attachments/ ",
+                  -1
+                  /* CACHED */
+                ))
+              ]),
+              createBaseVNode("div", _hoisted_46, [
+                createVNode(unref(_sfc_main$j), {
+                  disabled: fixedBusy.value || !hasVerifiedPeer.value,
+                  onClick: prepareUserZip
+                }, {
+                  default: withCtx(() => [
+                    fixedBusy.value ? (openBlock(), createBlock(unref(LoaderCircle), {
+                      key: 0,
+                      class: "size-4 animate-spin",
+                      "aria-hidden": "true"
+                    })) : createCommentVNode("v-if", true),
+                    createTextVNode(
+                      " " + toDisplayString(fixedBusy.value ? "Подготавливаем ZIP..." : "Подготовить ZIP"),
+                      1
+                      /* TEXT */
+                    )
+                  ]),
+                  _: 1
+                  /* STABLE */
+                }, 8, ["disabled"]),
+                exportPrepared.value ? (openBlock(), createBlock(unref(_sfc_main$j), {
+                  key: 0,
+                  variant: "outline",
+                  disabled: fixedBusy.value,
+                  onClick: downloadPreparedZip
+                }, {
+                  default: withCtx(() => [
+                    createTextVNode(
+                      " Скачать ZIP · " + toDisplayString(Math.ceil(exportPrepared.value.size / 1024)) + " КиБ ",
+                      1
+                      /* TEXT */
+                    )
+                  ]),
+                  _: 1
+                  /* STABLE */
+                }, 8, ["disabled"])) : createCommentVNode("v-if", true),
+                createVNode(unref(_sfc_main$j), {
+                  size: "sm",
+                  variant: "ghost",
+                  onClick: _cache[11] || (_cache[11] = ($event) => exportOpen.value = false)
+                }, {
+                  default: withCtx(() => [..._cache[33] || (_cache[33] = [
+                    createTextVNode(
+                      "Закрыть параметры",
+                      -1
+                      /* CACHED */
+                    )
+                  ])]),
+                  _: 1
+                  /* STABLE */
+                })
+              ]),
+              exportProgress.value ? (openBlock(), createBlock(unref(_sfc_main$5$1), {
+                key: 0,
+                label: exportProgress.value.phase === "reading" ? "Читаем Dexie" : "Упаковываем ZIP",
+                percent: exportProgress.value.total ? Math.round(exportProgress.value.done / exportProgress.value.total * 100) : null,
+                counter: `${exportProgress.value.done} из ${exportProgress.value.total}`
+              }, null, 8, ["label", "percent", "counter"])) : createCommentVNode("v-if", true),
+              exportPrepared.value ? (openBlock(), createElementBlock("p", _hoisted_47, "ZIP подготовлен. Файл сохранится только после нажатия «Скачать ZIP».")) : createCommentVNode("v-if", true)
+            ])) : createCommentVNode("v-if", true)
           ], 8, _hoisted_27), [
             [vShow, tab.value === "reader"]
           ]),
@@ -47224,8 +48542,8 @@
             tabindex: "0",
             class: "flex min-w-0 flex-col gap-3"
           }, [
-            createBaseVNode("section", _hoisted_35, [
-              _cache[23] || (_cache[23] = createBaseVNode(
+            createBaseVNode("section", _hoisted_49, [
+              _cache[38] || (_cache[38] = createBaseVNode(
                 "div",
                 { class: "booster-setting-copy" },
                 [
@@ -47235,15 +48553,111 @@
                 -1
                 /* CACHED */
               )),
+              createBaseVNode("label", _hoisted_50, [
+                _cache[35] || (_cache[35] = createTextVNode(
+                  "Последние N сообщений ",
+                  -1
+                  /* CACHED */
+                )),
+                withDirectives(createBaseVNode("input", {
+                  "onUpdate:modelValue": _cache[12] || (_cache[12] = ($event) => fixedLimit.value = $event),
+                  type: "number",
+                  min: "1",
+                  max: "100000",
+                  class: "booster-input",
+                  disabled: fixedBusy.value,
+                  onChange: saveCaptureOptions
+                }, null, 40, _hoisted_51), [
+                  [
+                    vModelText,
+                    fixedLimit.value,
+                    void 0,
+                    { number: true }
+                  ]
+                ])
+              ]),
+              createBaseVNode("label", _hoisted_52, [
+                createTextVNode(
+                  "Размер запроса VK: " + toDisplayString(requestPageSize.value) + " ",
+                  1
+                  /* TEXT */
+                ),
+                withDirectives(createBaseVNode("input", {
+                  "onUpdate:modelValue": _cache[13] || (_cache[13] = ($event) => requestPageSize.value = $event),
+                  type: "range",
+                  min: "10",
+                  max: "100",
+                  step: "10",
+                  class: "w-full accent-primary",
+                  disabled: fixedBusy.value,
+                  onChange: saveCaptureOptions
+                }, null, 40, _hoisted_53), [
+                  [
+                    vModelText,
+                    requestPageSize.value,
+                    void 0,
+                    { number: true }
+                  ]
+                ])
+              ]),
+              createBaseVNode("label", _hoisted_54, [
+                createTextVNode(
+                  "Пауза между страницами: " + toDisplayString(requestDelay.value) + " мс ",
+                  1
+                  /* TEXT */
+                ),
+                withDirectives(createBaseVNode("input", {
+                  "onUpdate:modelValue": _cache[14] || (_cache[14] = ($event) => requestDelay.value = $event),
+                  type: "range",
+                  min: "300",
+                  max: "3000",
+                  step: "50",
+                  class: "w-full accent-primary",
+                  disabled: fixedBusy.value,
+                  onChange: saveCaptureOptions
+                }, null, 40, _hoisted_55), [
+                  [
+                    vModelText,
+                    requestDelay.value,
+                    void 0,
+                    { number: true }
+                  ]
+                ])
+              ]),
+              createBaseVNode("div", _hoisted_56, [
+                createVNode(unref(_sfc_main$j), {
+                  variant: "outline",
+                  size: "sm",
+                  disabled: fixedBusy.value,
+                  onClick: saveCaptureOptions
+                }, {
+                  default: withCtx(() => [..._cache[36] || (_cache[36] = [
+                    createTextVNode(
+                      " Сохранить параметры ",
+                      -1
+                      /* CACHED */
+                    )
+                  ])]),
+                  _: 1
+                  /* STABLE */
+                }, 8, ["disabled"]),
+                _cache[37] || (_cache[37] = createBaseVNode(
+                  "small",
+                  { class: "text-muted-foreground" },
+                  "Сохраняются отдельно от сообщений Dexie и не включают токены.",
+                  -1
+                  /* CACHED */
+                ))
+              ]),
               durableSettingsError.value ? (openBlock(), createElementBlock(
                 "p",
-                _hoisted_36,
+                _hoisted_57,
                 toDisplayString(durableSettingsError.value),
                 1
                 /* TEXT */
               )) : createCommentVNode("v-if", true)
             ])
-          ], 8, _hoisted_34), [
+          ], 8, _hoisted_48), [
             [vShow, tab.value === "settings"]
           ])
         ]);
@@ -47583,6 +48997,132 @@
     );
     return feature;
   }
+  const _hoisted_1$6 = {
+    class: "booster-stack-card",
+    "aria-label": "Телеметрия приложения"
+  };
+  const _hoisted_2$6 = {
+    key: 0,
+    class: "text-sm text-muted-foreground"
+  };
+  const _hoisted_3$5 = {
+    key: 1,
+    class: "flex flex-wrap items-center gap-2"
+  };
+  const _hoisted_4$5 = { class: "text-xs text-muted-foreground" };
+  const _hoisted_5$4 = {
+    key: 2,
+    class: "text-muted-foreground"
+  };
+  const _hoisted_6$4 = {
+    key: 3,
+    role: "alert",
+    class: "text-sm text-destructive"
+  };
+  const _sfc_main$7 = /* @__PURE__ */ defineComponent({
+    __name: "ApplicationTelemetrySettings",
+    setup(__props) {
+      const controller = inject(APPLICATION_TELEMETRY, null);
+      const busy = /* @__PURE__ */ ref(false);
+      const error = /* @__PURE__ */ ref("");
+      const state = /* @__PURE__ */ ref(null);
+      let cleanup;
+      let disposed = false;
+      async function refresh() {
+        if (!controller) return;
+        try {
+          const next = await controller.status();
+          if (!disposed) state.value = next;
+        } catch {
+          if (!disposed) error.value = "Статус телеметрии недоступен.";
+        }
+      }
+      async function toggle() {
+        if (!controller || busy.value) return;
+        busy.value = true;
+        error.value = "";
+        try {
+          await controller.setLocalEnabled(!state.value?.localEnabled);
+          await refresh();
+        } catch {
+          error.value = "Не удалось сохранить согласие на локальную телеметрию.";
+        } finally {
+          busy.value = false;
+        }
+      }
+      onMounted(() => {
+        cleanup = controller?.subscribe(() => {
+          void refresh();
+        });
+        void refresh();
+      });
+      onUnmounted(() => {
+        disposed = true;
+        cleanup?.();
+      });
+      return (_ctx, _cache) => {
+        return openBlock(), createElementBlock("section", _hoisted_1$6, [
+          _cache[0] || (_cache[0] = createBaseVNode(
+            "div",
+            { class: "booster-setting-copy" },
+            [
+              createBaseVNode("b", null, "Телеметрия приложения"),
+              createBaseVNode("small", null, "Единая техническая диагностика VK, ChatGPT и all-in-one. Без текста сообщений, идентификаторов переписок и токенов.")
+            ],
+            -1
+            /* CACHED */
+          )),
+          !unref(controller) || state.value?.available === false ? (openBlock(), createElementBlock("p", _hoisted_2$6, "Недоступна в этой установке.")) : (openBlock(), createElementBlock("div", _hoisted_3$5, [
+            createVNode(unref(_sfc_main$j), {
+              type: "button",
+              variant: "outline",
+              size: "sm",
+              disabled: busy.value || !state.value,
+              onClick: toggle
+            }, {
+              default: withCtx(() => [
+                createTextVNode(
+                  toDisplayString(state.value?.localEnabled ? "Выключить локальный сбор" : "Включить локальный сбор"),
+                  1
+                  /* TEXT */
+                )
+              ]),
+              _: 1
+              /* STABLE */
+            }, 8, ["disabled"]),
+            createBaseVNode(
+              "span",
+              _hoisted_4$5,
+              toDisplayString(state.value?.localEnabled ? "Локальный сбор включён" : "По умолчанию выключен"),
+              1
+              /* TEXT */
+            )
+          ])),
+          state.value?.localEnabled ? (openBlock(), createElementBlock(
+            "small",
+            _hoisted_5$4,
+            " Ожидают доставки: " + toDisplayString(state.value.pending ?? "недоступно") + ". Вытеснено по лимиту: " + toDisplayString(state.value.discarded ?? "недоступно") + ". ",
+            1
+            /* TEXT */
+          )) : createCommentVNode("v-if", true),
+          _cache[1] || (_cache[1] = createBaseVNode(
+            "small",
+            { class: "text-muted-foreground" },
+            "Отправка на сервер не настроена и выключена. Локальное согласие не включает сетевую передачу.",
+            -1
+            /* CACHED */
+          )),
+          error.value ? (openBlock(), createElementBlock(
+            "p",
+            _hoisted_6$4,
+            toDisplayString(error.value),
+            1
+            /* TEXT */
+          )) : createCommentVNode("v-if", true)
+        ]);
+      };
+    }
+  });
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
   }
@@ -47643,6 +49183,7 @@
     key: 4,
     class: "booster-setting-card"
   };
+  const _hoisted_17 = { class: "mt-3 border-t border-border pt-3" };
   const _sfc_main$2 = /* @__PURE__ */ defineComponent({
     __name: "ControlCenterPanel",
     props: {
@@ -47830,7 +49371,7 @@
                   _: 1
                   /* STABLE */
                 })) : createCommentVNode("v-if", true),
-                !__props.floating ? (openBlock(), createBlock(unref(_sfc_main$i), {
+                !__props.floating ? (openBlock(), createBlock(unref(_sfc_main$j), {
                   key: 1,
                   variant: "ghost",
                   size: "icon",
@@ -47989,7 +49530,7 @@
                             /* CACHED */
                           )
                         ])], 10, _hoisted_14),
-                        feature.state === "active" ? (openBlock(), createBlock(unref(_sfc_main$i), {
+                        feature.state === "active" ? (openBlock(), createBlock(unref(_sfc_main$j), {
                           key: 0,
                           variant: "outline",
                           size: "sm",
@@ -48032,7 +49573,17 @@
                     -1
                     /* CACHED */
                   )
-                ])]))
+                ])])),
+                createBaseVNode("details", _hoisted_17, [
+                  _cache[13] || (_cache[13] = createBaseVNode(
+                    "summary",
+                    { class: "cursor-pointer select-none text-sm font-medium" },
+                    "Телеметрия и диагностика",
+                    -1
+                    /* CACHED */
+                  )),
+                  createVNode(unref(_sfc_main$7))
+                ])
               ])
             ])
           ],
@@ -48833,7 +50384,7 @@
       };
     }
   });
-  const styles = '/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */\n@layer properties {\n  @supports (((-webkit-hyphens: none)) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color: rgb(from red r g b)))) {\n    *, :before, :after, ::backdrop {\n      --tw-rotate-x: initial;\n      --tw-rotate-y: initial;\n      --tw-rotate-z: initial;\n      --tw-skew-x: initial;\n      --tw-skew-y: initial;\n      --tw-space-y-reverse: 0;\n      --tw-border-style: solid;\n      --tw-leading: initial;\n      --tw-font-weight: initial;\n      --tw-ordinal: initial;\n      --tw-slashed-zero: initial;\n      --tw-numeric-figure: initial;\n      --tw-numeric-spacing: initial;\n      --tw-numeric-fraction: initial;\n      --tw-shadow: 0 0 #0000;\n      --tw-shadow-color: initial;\n      --tw-shadow-alpha: 100%;\n      --tw-inset-shadow: 0 0 #0000;\n      --tw-inset-shadow-color: initial;\n      --tw-inset-shadow-alpha: 100%;\n      --tw-ring-color: initial;\n      --tw-ring-shadow: 0 0 #0000;\n      --tw-inset-ring-color: initial;\n      --tw-inset-ring-shadow: 0 0 #0000;\n      --tw-ring-inset: initial;\n      --tw-ring-offset-width: 0px;\n      --tw-ring-offset-color: #fff;\n      --tw-ring-offset-shadow: 0 0 #0000;\n      --tw-outline-style: solid;\n      --tw-blur: initial;\n      --tw-brightness: initial;\n      --tw-contrast: initial;\n      --tw-grayscale: initial;\n      --tw-hue-rotate: initial;\n      --tw-invert: initial;\n      --tw-opacity: initial;\n      --tw-saturate: initial;\n      --tw-sepia: initial;\n      --tw-drop-shadow: initial;\n      --tw-drop-shadow-color: initial;\n      --tw-drop-shadow-alpha: 100%;\n      --tw-drop-shadow-size: initial;\n    }\n  }\n}\n\n@layer theme {\n  :root, :host {\n    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",\n      "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",\n      "Segoe UI Symbol", "Noto Color Emoji";\n    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",\n      "Courier New", monospace;\n    --spacing: .25rem;\n    --text-xs: .75rem;\n    --text-xs--line-height: calc(1 / .75);\n    --text-sm: .875rem;\n    --text-sm--line-height: calc(1.25 / .875);\n    --text-base: 1rem;\n    --text-base--line-height: calc(1.5 / 1);\n    --font-weight-medium: 500;\n    --font-weight-semibold: 600;\n    --animate-spin: spin 1s linear infinite;\n    --default-transition-duration: .15s;\n    --default-transition-timing-function: cubic-bezier(.4, 0, .2, 1);\n    --default-font-family: var(--font-sans);\n    --default-mono-font-family: var(--font-mono);\n  }\n}\n\n@layer base {\n  *, :after, :before, ::backdrop {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  ::file-selector-button {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  html, :host {\n    -webkit-text-size-adjust: 100%;\n    tab-size: 4;\n    line-height: 1.5;\n    font-family: var(--default-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");\n    font-feature-settings: var(--default-font-feature-settings, normal);\n    font-variation-settings: var(--default-font-variation-settings, normal);\n    -webkit-tap-highlight-color: transparent;\n  }\n\n  hr {\n    height: 0;\n    color: inherit;\n    border-top-width: 1px;\n  }\n\n  abbr:where([title]) {\n    -webkit-text-decoration: underline dotted;\n    text-decoration: underline dotted;\n  }\n\n  h1, h2, h3, h4, h5, h6 {\n    font-size: inherit;\n    font-weight: inherit;\n  }\n\n  a {\n    color: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    text-decoration: inherit;\n  }\n\n  b, strong {\n    font-weight: bolder;\n  }\n\n  code, kbd, samp, pre {\n    font-family: var(--default-mono-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);\n    font-feature-settings: var(--default-mono-font-feature-settings, normal);\n    font-variation-settings: var(--default-mono-font-variation-settings, normal);\n    font-size: 1em;\n  }\n\n  small {\n    font-size: 80%;\n  }\n\n  sub, sup {\n    vertical-align: baseline;\n    font-size: 75%;\n    line-height: 0;\n    position: relative;\n  }\n\n  sub {\n    bottom: -.25em;\n  }\n\n  sup {\n    top: -.5em;\n  }\n\n  table {\n    text-indent: 0;\n    border-color: inherit;\n    border-collapse: collapse;\n  }\n\n  :-moz-focusring:where(:not(iframe)) {\n    outline: auto;\n  }\n\n  progress {\n    vertical-align: baseline;\n  }\n\n  summary {\n    display: list-item;\n  }\n\n  ol, ul, menu {\n    list-style: none;\n  }\n\n  img, svg, video, canvas, audio, iframe, embed, object {\n    vertical-align: middle;\n    display: block;\n  }\n\n  img, video {\n    max-width: 100%;\n    height: auto;\n  }\n\n  button, input, select, optgroup, textarea {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  ::file-selector-button {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  :where(select:is([multiple], [size])) optgroup {\n    font-weight: bolder;\n  }\n\n  :where(select:is([multiple], [size])) optgroup option {\n    padding-inline-start: 20px;\n  }\n\n  ::file-selector-button {\n    margin-inline-end: 4px;\n  }\n\n  ::placeholder {\n    opacity: 1;\n  }\n\n  @supports (not ((-webkit-appearance: -apple-pay-button))) or (contain-intrinsic-size: 1px) {\n    ::placeholder {\n      color: currentColor;\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      ::placeholder {\n        color: color-mix(in oklab, currentcolor 50%, transparent);\n      }\n    }\n  }\n\n  textarea {\n    resize: vertical;\n  }\n\n  ::-webkit-search-decoration {\n    -webkit-appearance: none;\n  }\n\n  ::-webkit-date-and-time-value {\n    min-height: 1lh;\n    text-align: inherit;\n  }\n\n  ::-webkit-datetime-edit {\n    display: inline-flex;\n  }\n\n  ::-webkit-datetime-edit-fields-wrapper {\n    padding: 0;\n  }\n\n  ::-webkit-datetime-edit {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-year-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-month-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-day-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-hour-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-minute-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-second-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-millisecond-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-meridiem-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-calendar-picker-indicator {\n    line-height: 1;\n  }\n\n  :-moz-ui-invalid {\n    box-shadow: none;\n  }\n\n  button, input:where([type="button"], [type="reset"], [type="submit"]) {\n    appearance: button;\n  }\n\n  ::file-selector-button {\n    appearance: button;\n  }\n\n  ::-webkit-inner-spin-button {\n    height: auto;\n  }\n\n  ::-webkit-outer-spin-button {\n    height: auto;\n  }\n\n  [hidden]:where(:not([hidden="until-found"])) {\n    display: none !important;\n  }\n}\n\n@layer components;\n\n@layer utilities {\n  .collapse {\n    visibility: collapse;\n  }\n\n  .visible {\n    visibility: visible;\n  }\n\n  .absolute {\n    position: absolute;\n  }\n\n  .fixed {\n    position: fixed;\n  }\n\n  .relative {\n    position: relative;\n  }\n\n  .static {\n    position: static;\n  }\n\n  .sticky {\n    position: sticky;\n  }\n\n  .isolate {\n    isolation: isolate;\n  }\n\n  .col-span-2 {\n    grid-column: span 2 / span 2;\n  }\n\n  .container {\n    width: 100%;\n  }\n\n  @media (min-width: 40rem) {\n    .container {\n      max-width: 40rem;\n    }\n  }\n\n  @media (min-width: 48rem) {\n    .container {\n      max-width: 48rem;\n    }\n  }\n\n  @media (min-width: 64rem) {\n    .container {\n      max-width: 64rem;\n    }\n  }\n\n  @media (min-width: 80rem) {\n    .container {\n      max-width: 80rem;\n    }\n  }\n\n  @media (min-width: 96rem) {\n    .container {\n      max-width: 96rem;\n    }\n  }\n\n  .m-0 {\n    margin: 0;\n  }\n\n  .m-1 {\n    margin: var(--spacing);\n  }\n\n  .mt-1 {\n    margin-top: var(--spacing);\n  }\n\n  .mt-2 {\n    margin-top: calc(var(--spacing) * 2);\n  }\n\n  .mb-2 {\n    margin-bottom: calc(var(--spacing) * 2);\n  }\n\n  .block {\n    display: block;\n  }\n\n  .contents {\n    display: contents;\n  }\n\n  .flex {\n    display: flex;\n  }\n\n  .grid {\n    display: grid;\n  }\n\n  .hidden {\n    display: none;\n  }\n\n  .inline {\n    display: inline;\n  }\n\n  .inline-flex {\n    display: inline-flex;\n  }\n\n  .table {\n    display: table;\n  }\n\n  .size-3 {\n    width: calc(var(--spacing) * 3);\n    height: calc(var(--spacing) * 3);\n  }\n\n  .size-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n    height: calc(var(--spacing) * 3.5);\n  }\n\n  .size-4 {\n    width: calc(var(--spacing) * 4);\n    height: calc(var(--spacing) * 4);\n  }\n\n  .size-5 {\n    width: calc(var(--spacing) * 5);\n    height: calc(var(--spacing) * 5);\n  }\n\n  .size-6 {\n    width: calc(var(--spacing) * 6);\n    height: calc(var(--spacing) * 6);\n  }\n\n  .size-7 {\n    width: calc(var(--spacing) * 7);\n    height: calc(var(--spacing) * 7);\n  }\n\n  .size-8 {\n    width: calc(var(--spacing) * 8);\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-7 {\n    height: calc(var(--spacing) * 7);\n  }\n\n  .h-8 {\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-9 {\n    height: calc(var(--spacing) * 9);\n  }\n\n  .max-h-96 {\n    max-height: calc(var(--spacing) * 96);\n  }\n\n  .max-h-\\[420px\\] {\n    max-height: 420px;\n  }\n\n  .min-h-\\[130px\\] {\n    min-height: 130px;\n  }\n\n  .w-full {\n    width: 100%;\n  }\n\n  .min-w-0 {\n    min-width: 0;\n  }\n\n  .flex-1 {\n    flex: 1;\n  }\n\n  .shrink-0 {\n    flex-shrink: 0;\n  }\n\n  .grow {\n    flex-grow: 1;\n  }\n\n  .rotate-180 {\n    rotate: 180deg;\n  }\n\n  .transform {\n    transform: var(--tw-rotate-x, ) var(--tw-rotate-y, ) var(--tw-rotate-z, ) var(--tw-skew-x, ) var(--tw-skew-y, );\n  }\n\n  .animate-spin {\n    animation: var(--animate-spin);\n  }\n\n  .cursor-pointer {\n    cursor: pointer;\n  }\n\n  .resize {\n    resize: both;\n  }\n\n  .grid-cols-2 {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }\n\n  .flex-col {\n    flex-direction: column;\n  }\n\n  .flex-wrap {\n    flex-wrap: wrap;\n  }\n\n  .items-center {\n    align-items: center;\n  }\n\n  .items-start {\n    align-items: flex-start;\n  }\n\n  .justify-between {\n    justify-content: space-between;\n  }\n\n  .justify-center {\n    justify-content: center;\n  }\n\n  .gap-0\\.5 {\n    gap: calc(var(--spacing) * .5);\n  }\n\n  .gap-1 {\n    gap: var(--spacing);\n  }\n\n  .gap-2 {\n    gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-3 {\n    gap: calc(var(--spacing) * 3);\n  }\n\n  :where(.space-y-2 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 2) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 2) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  .self-start {\n    align-self: flex-start;\n  }\n\n  .truncate {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    overflow: hidden;\n  }\n\n  .overflow-x-hidden {\n    overflow-x: hidden;\n  }\n\n  .overflow-y-auto {\n    overflow-y: auto;\n  }\n\n  .rounded-lg {\n    border-radius: var(--radius);\n  }\n\n  .rounded-md {\n    border-radius: calc(var(--radius) - 2px);\n  }\n\n  .border {\n    border-style: var(--tw-border-style);\n    border-width: 1px;\n  }\n\n  .border-t {\n    border-top-style: var(--tw-border-style);\n    border-top-width: 1px;\n  }\n\n  .border-b {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 1px;\n  }\n\n  .border-l-2 {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 2px;\n  }\n\n  .border-border {\n    border-color: var(--border);\n  }\n\n  .border-transparent {\n    border-color: #0000;\n  }\n\n  .bg-background {\n    background-color: var(--background);\n  }\n\n  .bg-card {\n    background-color: var(--card);\n  }\n\n  .bg-primary {\n    background-color: var(--primary);\n  }\n\n  .bg-secondary {\n    background-color: var(--secondary);\n  }\n\n  .p-0 {\n    padding: 0;\n  }\n\n  .p-3 {\n    padding: calc(var(--spacing) * 3);\n  }\n\n  .px-2 {\n    padding-inline: calc(var(--spacing) * 2);\n  }\n\n  .px-3 {\n    padding-inline: calc(var(--spacing) * 3);\n  }\n\n  .px-4 {\n    padding-inline: calc(var(--spacing) * 4);\n  }\n\n  .py-0\\.5 {\n    padding-block: calc(var(--spacing) * .5);\n  }\n\n  .py-2 {\n    padding-block: calc(var(--spacing) * 2);\n  }\n\n  .pt-2 {\n    padding-top: calc(var(--spacing) * 2);\n  }\n\n  .pl-2 {\n    padding-left: calc(var(--spacing) * 2);\n  }\n\n  .text-base {\n    font-size: var(--text-base);\n    line-height: var(--tw-leading, var(--text-base--line-height));\n  }\n\n  .text-sm {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n\n  .text-xs {\n    font-size: var(--text-xs);\n    line-height: var(--tw-leading, var(--text-xs--line-height));\n  }\n\n  .text-\\[11px\\] {\n    font-size: 11px;\n  }\n\n  .leading-4 {\n    --tw-leading: calc(var(--spacing) * 4);\n    line-height: calc(var(--spacing) * 4);\n  }\n\n  .font-medium {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n\n  .font-semibold {\n    --tw-font-weight: var(--font-weight-semibold);\n    font-weight: var(--font-weight-semibold);\n  }\n\n  .break-words {\n    overflow-wrap: break-word;\n  }\n\n  .whitespace-nowrap {\n    white-space: nowrap;\n  }\n\n  .whitespace-pre-wrap {\n    white-space: pre-wrap;\n  }\n\n  .text-foreground {\n    color: var(--foreground);\n  }\n\n  .text-muted-foreground {\n    color: var(--muted-foreground);\n  }\n\n  .text-primary-foreground {\n    color: var(--primary-foreground);\n  }\n\n  .text-secondary-foreground {\n    color: var(--secondary-foreground);\n  }\n\n  .ordinal {\n    --tw-ordinal: ordinal;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .tabular-nums {\n    --tw-numeric-spacing: tabular-nums;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .accent-primary {\n    accent-color: var(--primary);\n  }\n\n  .shadow {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .outline {\n    outline-style: var(--tw-outline-style);\n    outline-width: 1px;\n  }\n\n  .blur {\n    --tw-blur: blur(8px);\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .filter {\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .transition {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-colors {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-transform {\n    transition-property: transform, translate, scale, rotate;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .outline-none {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  .select-none {\n    -webkit-user-select: none;\n    user-select: none;\n  }\n\n  @media (hover: hover) {\n    .hover\\:bg-accent:hover {\n      background-color: var(--accent);\n    }\n\n    .hover\\:bg-primary\\/90:hover {\n      background-color: var(--primary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-primary\\/90:hover {\n        background-color: color-mix(in oklab, var(--primary) 90%, transparent);\n      }\n    }\n\n    .hover\\:text-accent-foreground:hover {\n      color: var(--accent-foreground);\n    }\n  }\n\n  .focus-visible\\:ring-2:focus-visible {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus-visible\\:ring-ring:focus-visible {\n    --tw-ring-color: var(--ring);\n  }\n\n  .disabled\\:pointer-events-none:disabled {\n    pointer-events: none;\n  }\n\n  .disabled\\:opacity-50:disabled {\n    opacity: .5;\n  }\n}\n\n.booster-reader-sidebar {\n  border-right: 1px solid var(--border);\n  background: var(--card);\n  overscroll-behavior: contain;\n  min-width: 0;\n  padding: 12px;\n  overflow: auto;\n}\n\n.booster-reader-group {\n  margin-top: 12px;\n}\n\n.booster-reader-group-header {\n  align-items: center;\n  gap: 2px;\n  min-height: 38px;\n  display: flex;\n}\n\n.booster-group-toggle {\n  min-width: 0;\n  color: inherit;\n  cursor: pointer;\n  text-align: left;\n  font: inherit;\n  background: none;\n  border: 0;\n  flex: 1;\n  align-items: center;\n  gap: 6px;\n  padding: 6px 0;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-group-toggle svg {\n  flex-shrink: 0;\n}\n\n.booster-group-toggle span {\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-group-toggle small {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-reader-chat-list {\n  gap: 3px;\n  padding-left: 10px;\n  display: grid;\n}\n\n.booster-reader-chat-list > button {\n  color: inherit;\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 8px;\n  align-items: center;\n  gap: 6px;\n  padding: 10px;\n  font-size: 12px;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-reader-chat-list > button:hover, .booster-reader-chat-list > button.active {\n  background: var(--muted);\n  border-color: var(--border);\n}\n\n.booster-reader-chat-list > button span {\n  text-overflow: ellipsis;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-reader-chat-list > button.is-branch {\n  border-inline-start: 2px solid var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reader-chat-list > button.is-branch {\n    border-inline-start: 2px solid color-mix(in oklab, var(--primary) 35%, transparent);\n  }\n}\n\n.booster-reader-branch-icon {\n  opacity: .66;\n  flex: none;\n}\n\n.booster-reader-exchanges {\n  gap: 12px;\n  margin-top: 0;\n  display: grid;\n}\n\n.booster-exchange {\n  border-bottom: 1px solid var(--border);\n  min-width: 0;\n  max-width: 100%;\n  padding-bottom: 16px;\n}\n\n.booster-exchange-details {\n  border-left: 2px solid var(--border);\n  gap: 6px;\n  margin: 10px 0 10px 12px;\n  padding: 8px 0 8px 12px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-exchange-details {\n    border-left: 2px solid color-mix(in oklab, var(--border) 78%, var(--primary));\n  }\n}\n\n.booster-exchange-details-label {\n  color: var(--muted-foreground);\n  letter-spacing: .04em;\n  text-transform: uppercase;\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-message-target {\n  outline: 2px solid var(--primary);\n  outline-offset: 2px;\n  border-radius: 6px;\n}\n\n[data-archive-message] {\n  scroll-margin-block: 20px;\n}\n\n.booster-reader-exchanges, .booster-exchange-details {\n  min-width: 0;\n  max-width: 100%;\n}\n\n:host {\n  --background: oklch(98.5% 0 0);\n  --foreground: oklch(14.5% 0 0);\n  --card: oklch(100% 0 0);\n  --card-foreground: oklch(14.5% 0 0);\n  --primary: oklch(20.5% 0 0);\n  --primary-foreground: oklch(98.5% 0 0);\n  --secondary: oklch(97% 0 0);\n  --secondary-foreground: oklch(20.5% 0 0);\n  --muted: oklch(97% 0 0);\n  --muted-foreground: oklch(55.6% 0 0);\n  --accent: oklch(97% 0 0);\n  --accent-foreground: oklch(20.5% 0 0);\n  --border: oklch(92.2% 0 0);\n  --ring: oklch(70.8% 0 0);\n  --radius: .625rem;\n  all: initial;\n  color: var(--foreground);\n  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;\n}\n\n@media (prefers-color-scheme: dark) {\n  :host {\n    --background: oklch(14.5% 0 0);\n    --foreground: oklch(98.5% 0 0);\n    --card: oklch(20.5% 0 0);\n    --card-foreground: oklch(98.5% 0 0);\n    --primary: oklch(92.2% 0 0);\n    --primary-foreground: oklch(20.5% 0 0);\n    --secondary: oklch(26.9% 0 0);\n    --secondary-foreground: oklch(98.5% 0 0);\n    --muted: oklch(26.9% 0 0);\n    --muted-foreground: oklch(70.8% 0 0);\n    --accent: oklch(26.9% 0 0);\n    --accent-foreground: oklch(98.5% 0 0);\n    --border: oklch(100% 0 0 / .12);\n    --ring: oklch(55.6% 0 0);\n  }\n}\n\n* {\n  box-sizing: border-box;\n  border-color: var(--border);\n}\n\n.booster-shell {\n  z-index: 2147483647;\n  position: fixed;\n  bottom: 20px;\n  right: 20px;\n}\n\n.booster-button {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 42px;\n  height: 42px;\n  color: var(--card-foreground);\n  cursor: pointer;\n  border-radius: 14px;\n  font: 700 15px / 1 inherit;\n  box-shadow: 0 10px 30px #0003;\n}\n\n.booster-panel {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 300px;\n  color: var(--card-foreground);\n  border-radius: 16px;\n  margin-bottom: 10px;\n  padding: 14px;\n  box-shadow: 0 18px 45px #0000003d;\n}\n\n.booster-panel h2 {\n  margin: 0 0 6px;\n  font-size: 15px;\n  font-weight: 700;\n}\n\n.booster-panel p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.45;\n}\n\n.booster-control-center {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(760px, 100vw - 32px);\n  color: var(--card-foreground);\n  border-radius: 18px;\n  margin-bottom: 10px;\n  overflow: hidden;\n  box-shadow: 0 22px 60px #00000047;\n}\n\n.booster-control-header, .booster-control-footer {\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  display: flex;\n}\n\n.booster-control-header {\n  border-bottom: 1px solid var(--border);\n  padding: 14px 14px 12px;\n}\n\n.booster-control-header strong {\n  font-size: 14px;\n}\n\n.booster-control-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-control-body {\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-loading {\n  color: var(--muted-foreground);\n  padding: 18px;\n  font-size: 12px;\n}\n\n.booster-section-label {\n  color: var(--muted-foreground);\n  letter-spacing: .08em;\n  text-transform: uppercase;\n  padding: 2px 2px 0;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-setting-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 12px;\n  display: flex;\n}\n\n.booster-setting-disabled {\n  opacity: .55;\n}\n\n.booster-setting-copy {\n  gap: 5px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-setting-copy b {\n  font-size: 12px;\n}\n\n.booster-setting-copy > span {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.4;\n}\n\n.booster-switch {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  cursor: pointer;\n  border-radius: 999px;\n  flex: none;\n  width: 36px;\n  height: 20px;\n  padding: 0;\n  transition: background .12s, border-color .12s;\n  position: relative;\n}\n\n.booster-switch:disabled {\n  cursor: not-allowed;\n}\n\n.booster-switch > span {\n  background: var(--foreground);\n  border-radius: 999px;\n  width: 14px;\n  height: 14px;\n  transition: transform .12s;\n  position: absolute;\n  top: 2px;\n  left: 2px;\n}\n\n.booster-switch-on {\n  background: var(--primary);\n  border-color: var(--primary);\n}\n\n.booster-switch-on > span {\n  background: var(--primary-foreground);\n  transform: translateX(16px);\n}\n\n.booster-info-card {\n  background: var(--muted);\n  color: var(--foreground);\n  border-radius: 12px;\n  padding: 11px 12px;\n  font-size: 11px;\n}\n\n.booster-info-card ul {\n  color: var(--muted-foreground);\n  gap: 4px;\n  margin: 8px 0 0 18px;\n  padding: 0;\n  line-height: 1.35;\n  display: grid;\n}\n\n.booster-control-footer {\n  padding-top: 2px;\n}\n\n.booster-save-state {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 5px;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-overlay-root {\n  pointer-events: none;\n}\n\n.booster-launcher {\n  z-index: 2147483647;\n  border: 2px solid var(--primary);\n  justify-content: center;\n  align-items: center;\n  gap: 1px;\n  width: 46px;\n  height: 46px;\n  display: inline-flex;\n  position: fixed;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher {\n    border: 2px solid color-mix(in oklab, var(--primary) 55%, transparent);\n  }\n}\n\n.booster-launcher {\n  background: var(--primary);\n  color: var(--primary-foreground);\n  box-shadow: 0 12px 36px #00000047, 0 0 0 3px var(--primary);\n  border-radius: 15px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher {\n    box-shadow: 0 12px 36px #00000047, 0 0 0 3px color-mix(in oklab, var(--primary) 18%, transparent);\n  }\n}\n\n.booster-launcher {\n  cursor: grab;\n  pointer-events: auto;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  font: 800 17px / 1 inherit;\n}\n\n.booster-launcher:hover {\n  transform: scale(1.04);\n}\n\n.booster-launcher-dragging {\n  cursor: grabbing;\n  transform: scale(1.06);\n}\n\n.booster-launcher-icon {\n  flex-shrink: 0;\n  width: 20px;\n  height: 20px;\n}\n\n.booster-modal-backdrop {\n  z-index: 2147483646;\n  -webkit-backdrop-filter: blur(3px);\n  backdrop-filter: blur(3px);\n  pointer-events: auto;\n  background: #00000061;\n  place-items: center;\n  padding: 16px;\n  display: grid;\n  position: fixed;\n  inset: 0;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n  max-height: calc(100vh - 32px);\n  overflow: auto;\n}\n\n.booster-modal-surface .booster-control-center {\n  width: 100%;\n  margin: 0;\n}\n\n.booster-popup-host {\n  background: var(--background);\n  min-width: 360px;\n}\n\n.booster-select {\n  border: 1px solid var(--border);\n  background: var(--background);\n  min-width: 92px;\n  height: 32px;\n  color: var(--foreground);\n  cursor: pointer;\n  border-radius: 8px;\n  outline: none;\n  flex: none;\n  padding: 0 28px 0 10px;\n  font: 500 12px / 1 inherit;\n}\n\n.booster-select:focus {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-stack-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-stack-card label {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-input {\n  border: 1px solid var(--border);\n  background: var(--background);\n  width: 100%;\n  min-width: 0;\n  height: 32px;\n  color: var(--foreground);\n  border-radius: 8px;\n  outline: none;\n  padding: 0 10px;\n  font: 500 11px / 1 inherit;\n}\n\n.booster-input:focus {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-counter-grid {\n  color: var(--muted-foreground);\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 6px 12px;\n  margin-top: 8px;\n  display: grid;\n}\n\n.booster-counter-grid span {\n  justify-content: space-between;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-counter-grid b {\n  color: var(--foreground);\n}\n\n.booster-header-copy {\n  min-width: 0;\n}\n\n.booster-header-actions {\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-header-toggle-label {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  font-weight: 600;\n}\n\n.booster-settings-layout {\n  grid-template-columns: 150px minmax(0, 1fr);\n  min-height: 360px;\n  display: grid;\n}\n\n.booster-settings-nav {\n  border-right: 1px solid var(--border);\n  background: var(--muted);\n  align-content: start;\n  gap: 4px;\n  padding: 12px 8px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-settings-nav {\n    background: color-mix(in oklab, var(--muted) 58%, transparent);\n  }\n}\n\n.booster-settings-nav button {\n  width: 100%;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  border-radius: 9px;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 10px;\n  font: 600 11px / 1.2 inherit;\n  display: flex;\n}\n\n.booster-settings-nav button:hover, .booster-settings-nav button.active {\n  background: var(--background);\n  color: var(--foreground);\n}\n\n.booster-settings-content {\n  align-content: start;\n  gap: 10px;\n  min-width: 0;\n  padding: 14px;\n  display: grid;\n}\n\n.booster-setting-card-flat {\n  border: 0;\n  border-bottom: 1px solid var(--border);\n  border-radius: 0;\n  padding: 0 0 10px;\n}\n\n.booster-analytics-grid {\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 12px;\n  display: grid;\n}\n\n.booster-counter-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  padding: 12px;\n}\n\n.booster-counter-title {\n  margin-bottom: 8px;\n  font-size: 12px;\n  font-weight: 700;\n}\n\n.booster-disclosure {\n  width: 100%;\n  color: var(--foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 0;\n  display: flex;\n}\n\n.booster-disclosure > span {\n  gap: 3px;\n  display: grid;\n}\n\n.booster-disclosure b {\n  font-size: 12px;\n}\n\n.booster-disclosure small {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.rotate-180 {\n  transform: rotate(180deg);\n}\n\n.booster-telemetry-body {\n  gap: 10px;\n  padding-top: 10px;\n  display: grid;\n}\n\n.booster-field {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-telemetry-test-row {\n  align-items: center;\n  gap: 10px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-test-success {\n  color: oklch(62% .17 145);\n  font-size: 11px;\n}\n\n.booster-test-error {\n  color: oklch(63% .2 25);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n}\n\n@media (max-width: 620px) {\n  .booster-control-center, .booster-modal-surface {\n    width: calc(100vw - 20px);\n  }\n\n  .booster-settings-layout {\n    grid-template-columns: 1fr;\n  }\n\n  .booster-settings-nav {\n    border-right: 0;\n    border-bottom: 1px solid var(--border);\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n\n  .booster-settings-nav button {\n    justify-content: center;\n  }\n\n  .booster-analytics-grid {\n    grid-template-columns: 1fr;\n  }\n}\n\n.booster-modal-surface.booster-modal-surface-wide {\n  width: min(1320px, 100vw - 32px);\n}\n\n.booster-modal-surface-wide > .booster-control-center {\n  width: 100%;\n}\n\n@media (max-width: 620px) {\n  .booster-modal-surface.booster-modal-surface-wide {\n    width: calc(100vw - 20px);\n  }\n}\n\n.booster-modal-backdrop.booster-modal-backdrop-floating {\n  -webkit-backdrop-filter: none;\n  backdrop-filter: none;\n  pointer-events: none;\n  background: none;\n  padding: 0;\n  display: block;\n}\n\n.booster-modal-surface.booster-modal-surface-wide.booster-dialog-floating {\n  pointer-events: auto;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  max-height: none;\n  padding: 0;\n  display: flex;\n  position: fixed;\n  overflow: hidden;\n}\n\n.booster-dialog-floating > .booster-control-center {\n  flex: auto;\n  min-height: 0;\n  overflow: auto;\n}\n\n.booster-floating-chrome {\n  border-bottom: 1px solid var(--border);\n  background: var(--muted);\n  cursor: move;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  flex: none;\n  align-items: center;\n  gap: 8px;\n  min-height: 38px;\n  padding: 4px 8px 4px 12px;\n  display: flex;\n}\n\n.booster-floating-chrome > span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  flex: auto;\n  min-width: 0;\n  font-size: 12px;\n  font-weight: 600;\n  overflow: hidden;\n}\n\n.booster-floating-chrome > button {\n  cursor: pointer;\n  border-radius: 6px;\n  flex: none;\n  place-items: center;\n  width: 30px;\n  height: 30px;\n  display: grid;\n}\n\n.booster-floating-chrome > button:focus-visible, .booster-floating-resize:focus-visible {\n  outline: 2px solid var(--ring);\n}\n\n.booster-floating-resize {\n  background: var(--muted);\n  cursor: nwse-resize;\n  touch-action: none;\n  border-top-left-radius: 7px;\n  place-items: center;\n  width: 28px;\n  height: 28px;\n  display: grid;\n  position: absolute;\n  bottom: 0;\n  right: 0;\n}\n\n.booster-launcher-docked {\n  border-radius: 12px;\n  width: 42px;\n  height: 42px;\n  box-shadow: 0 8px 24px #00000038;\n}\n\n.booster-quick-menu {\n  z-index: 2147483646;\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(294px, 100vw - 58px);\n  max-height: min(480px, 100dvh - 16px);\n  color: var(--card-foreground);\n  pointer-events: auto;\n  font: inherit;\n  border-radius: 14px;\n  position: fixed;\n  overflow: auto;\n  box-shadow: 0 16px 45px #00000052;\n}\n\n.booster-quick-header, .booster-quick-footer {\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  padding: 11px 12px;\n  display: flex;\n}\n\n.booster-quick-header {\n  border-bottom: 1px solid var(--border);\n}\n\n.booster-quick-identity {\n  gap: 5px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-quick-identity > strong {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 13px;\n  overflow: hidden;\n}\n\n.booster-quick-badges {\n  flex-wrap: wrap;\n  gap: 5px;\n  display: flex;\n}\n\n.booster-quick-badges > span {\n  border: 1px solid var(--border);\n  color: var(--muted-foreground);\n  border-radius: 7px;\n  padding: 2px 6px;\n  font-size: 10px;\n}\n\n.booster-quick-close {\n  width: 30px;\n  height: 30px;\n  color: inherit;\n  cursor: pointer;\n  background: none;\n  border: 0;\n  border-radius: 8px;\n  flex-shrink: 0;\n  place-items: center;\n  display: grid;\n}\n\n.booster-quick-actions {\n  padding: 6px;\n}\n\n.booster-quick-actions > button {\n  width: 100%;\n  min-height: 37px;\n  color: inherit;\n  cursor: pointer;\n  font: inherit;\n  text-align: left;\n  background: none;\n  border: 0;\n  border-radius: 8px;\n  align-items: center;\n  gap: 10px;\n  padding: 7px 9px;\n  font-size: 12px;\n  font-weight: 500;\n  line-height: 1.3;\n  display: flex;\n}\n\n.booster-quick-actions > button:hover:not(:disabled), .booster-quick-actions > button:focus-visible, .booster-quick-close:hover {\n  background: var(--muted);\n}\n\n.booster-quick-actions > button:disabled {\n  opacity: .48;\n  cursor: not-allowed;\n}\n\n.booster-quick-footer {\n  border-top: 1px solid var(--border);\n}\n\n.booster-quick-status {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.booster-quick-status.is-active {\n  color: var(--foreground);\n}\n\n.booster-quick-toggle {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  cursor: pointer;\n  border-radius: 99px;\n  width: 38px;\n  height: 22px;\n  padding: 2px;\n}\n\n.booster-quick-toggle > span {\n  background: var(--foreground);\n  border-radius: 50%;\n  width: 16px;\n  height: 16px;\n  transition: transform .13s;\n  display: block;\n}\n\n.booster-quick-toggle[aria-checked="true"] {\n  background: var(--primary);\n}\n\n.booster-quick-metrics {\n  border-bottom: 1px solid var(--border);\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 8px;\n  padding: 8px 11px;\n  display: grid;\n}\n\n.booster-quick-metrics > div {\n  gap: 3px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-quick-metrics span {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-quick-metrics b {\n  color: var(--foreground);\n  font-variant-numeric: tabular-nums;\n  font-size: 15px;\n}\n\n.booster-quick-toggle[aria-checked="true"] > span {\n  background: var(--primary-foreground);\n  transform: translateX(16px);\n}\n\n.booster-quick-toggle:disabled {\n  opacity: .5;\n  cursor: wait;\n}\n\n.booster-quick-error {\n  background: var(--card);\n  color: var(--foreground);\n  pointer-events: none;\n  padding: 7px;\n  position: fixed;\n  bottom: 10px;\n  left: 10px;\n}\n\n.booster-modal-surface.booster-modal-surface-single {\n  width: min(820px, 100vw - 24px);\n  max-height: min(86dvh, 760px);\n  overflow: auto;\n}\n\n.booster-control-standalone {\n  width: 100%;\n  margin: 0;\n}\n\n.booster-control-standalone > .booster-settings-layout {\n  min-height: 0;\n  display: block;\n}\n\n.booster-control-standalone > .booster-settings-layout > .booster-settings-content {\n  width: 100%;\n  min-width: 0;\n}\n\n@media (max-width: 620px) {\n  .booster-control-standalone > .booster-control-header {\n    flex-direction: column;\n    align-items: stretch;\n    gap: 9px;\n    padding: 12px;\n  }\n\n  .booster-control-standalone > .booster-control-header > .booster-header-copy > div {\n    flex-wrap: wrap;\n    gap: 6px;\n  }\n\n  .booster-control-standalone > .booster-control-header .booster-header-copy strong {\n    flex-basis: 100%;\n  }\n\n  .booster-control-standalone > .booster-control-header > .booster-header-actions {\n    flex-wrap: wrap;\n    justify-content: space-between;\n    gap: 8px;\n    display: flex;\n  }\n\n  .booster-control-standalone > .booster-control-header > .booster-header-actions > button:last-child {\n    margin-left: auto;\n  }\n\n  .booster-modal-surface.booster-modal-surface-single {\n    width: calc(100vw - 16px);\n    max-height: calc(100dvh - 16px);\n  }\n}\n\n@property --tw-rotate-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-z {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-space-y-reverse {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-border-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-leading {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-font-weight {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ordinal {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-slashed-zero {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-figure {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-spacing {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-fraction {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-inset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-ring-inset {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-offset-width {\n  syntax: "<length>";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-ring-offset-color {\n  syntax: "*";\n  inherits: false;\n  initial-value: #fff;\n}\n\n@property --tw-ring-offset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-outline-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-blur {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-brightness {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-contrast {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-grayscale {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-hue-rotate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-invert {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-opacity {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-saturate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-sepia {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-drop-shadow-size {\n  syntax: "*";\n  inherits: false\n}\n\n@keyframes spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n';
+  const styles = '/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */\n@layer properties {\n  @supports (((-webkit-hyphens: none)) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color: rgb(from red r g b)))) {\n    *, :before, :after, ::backdrop {\n      --tw-rotate-x: initial;\n      --tw-rotate-y: initial;\n      --tw-rotate-z: initial;\n      --tw-skew-x: initial;\n      --tw-skew-y: initial;\n      --tw-space-y-reverse: 0;\n      --tw-border-style: solid;\n      --tw-leading: initial;\n      --tw-font-weight: initial;\n      --tw-ordinal: initial;\n      --tw-slashed-zero: initial;\n      --tw-numeric-figure: initial;\n      --tw-numeric-spacing: initial;\n      --tw-numeric-fraction: initial;\n      --tw-shadow: 0 0 #0000;\n      --tw-shadow-color: initial;\n      --tw-shadow-alpha: 100%;\n      --tw-inset-shadow: 0 0 #0000;\n      --tw-inset-shadow-color: initial;\n      --tw-inset-shadow-alpha: 100%;\n      --tw-ring-color: initial;\n      --tw-ring-shadow: 0 0 #0000;\n      --tw-inset-ring-color: initial;\n      --tw-inset-ring-shadow: 0 0 #0000;\n      --tw-ring-inset: initial;\n      --tw-ring-offset-width: 0px;\n      --tw-ring-offset-color: #fff;\n      --tw-ring-offset-shadow: 0 0 #0000;\n      --tw-outline-style: solid;\n      --tw-blur: initial;\n      --tw-brightness: initial;\n      --tw-contrast: initial;\n      --tw-grayscale: initial;\n      --tw-hue-rotate: initial;\n      --tw-invert: initial;\n      --tw-opacity: initial;\n      --tw-saturate: initial;\n      --tw-sepia: initial;\n      --tw-drop-shadow: initial;\n      --tw-drop-shadow-color: initial;\n      --tw-drop-shadow-alpha: 100%;\n      --tw-drop-shadow-size: initial;\n    }\n  }\n}\n\n@layer theme {\n  :root, :host {\n    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",\n      "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",\n      "Segoe UI Symbol", "Noto Color Emoji";\n    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",\n      "Courier New", monospace;\n    --spacing: .25rem;\n    --text-xs: .75rem;\n    --text-xs--line-height: calc(1 / .75);\n    --text-sm: .875rem;\n    --text-sm--line-height: calc(1.25 / .875);\n    --text-base: 1rem;\n    --text-base--line-height: calc(1.5 / 1);\n    --font-weight-medium: 500;\n    --font-weight-semibold: 600;\n    --animate-spin: spin 1s linear infinite;\n    --default-transition-duration: .15s;\n    --default-transition-timing-function: cubic-bezier(.4, 0, .2, 1);\n    --default-font-family: var(--font-sans);\n    --default-mono-font-family: var(--font-mono);\n  }\n}\n\n@layer base {\n  *, :after, :before, ::backdrop {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  ::file-selector-button {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  html, :host {\n    -webkit-text-size-adjust: 100%;\n    tab-size: 4;\n    line-height: 1.5;\n    font-family: var(--default-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");\n    font-feature-settings: var(--default-font-feature-settings, normal);\n    font-variation-settings: var(--default-font-variation-settings, normal);\n    -webkit-tap-highlight-color: transparent;\n  }\n\n  hr {\n    height: 0;\n    color: inherit;\n    border-top-width: 1px;\n  }\n\n  abbr:where([title]) {\n    -webkit-text-decoration: underline dotted;\n    text-decoration: underline dotted;\n  }\n\n  h1, h2, h3, h4, h5, h6 {\n    font-size: inherit;\n    font-weight: inherit;\n  }\n\n  a {\n    color: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    text-decoration: inherit;\n  }\n\n  b, strong {\n    font-weight: bolder;\n  }\n\n  code, kbd, samp, pre {\n    font-family: var(--default-mono-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);\n    font-feature-settings: var(--default-mono-font-feature-settings, normal);\n    font-variation-settings: var(--default-mono-font-variation-settings, normal);\n    font-size: 1em;\n  }\n\n  small {\n    font-size: 80%;\n  }\n\n  sub, sup {\n    vertical-align: baseline;\n    font-size: 75%;\n    line-height: 0;\n    position: relative;\n  }\n\n  sub {\n    bottom: -.25em;\n  }\n\n  sup {\n    top: -.5em;\n  }\n\n  table {\n    text-indent: 0;\n    border-color: inherit;\n    border-collapse: collapse;\n  }\n\n  :-moz-focusring:where(:not(iframe)) {\n    outline: auto;\n  }\n\n  progress {\n    vertical-align: baseline;\n  }\n\n  summary {\n    display: list-item;\n  }\n\n  ol, ul, menu {\n    list-style: none;\n  }\n\n  img, svg, video, canvas, audio, iframe, embed, object {\n    vertical-align: middle;\n    display: block;\n  }\n\n  img, video {\n    max-width: 100%;\n    height: auto;\n  }\n\n  button, input, select, optgroup, textarea {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  ::file-selector-button {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  :where(select:is([multiple], [size])) optgroup {\n    font-weight: bolder;\n  }\n\n  :where(select:is([multiple], [size])) optgroup option {\n    padding-inline-start: 20px;\n  }\n\n  ::file-selector-button {\n    margin-inline-end: 4px;\n  }\n\n  ::placeholder {\n    opacity: 1;\n  }\n\n  @supports (not ((-webkit-appearance: -apple-pay-button))) or (contain-intrinsic-size: 1px) {\n    ::placeholder {\n      color: currentColor;\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      ::placeholder {\n        color: color-mix(in oklab, currentcolor 50%, transparent);\n      }\n    }\n  }\n\n  textarea {\n    resize: vertical;\n  }\n\n  ::-webkit-search-decoration {\n    -webkit-appearance: none;\n  }\n\n  ::-webkit-date-and-time-value {\n    min-height: 1lh;\n    text-align: inherit;\n  }\n\n  ::-webkit-datetime-edit {\n    display: inline-flex;\n  }\n\n  ::-webkit-datetime-edit-fields-wrapper {\n    padding: 0;\n  }\n\n  ::-webkit-datetime-edit {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-year-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-month-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-day-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-hour-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-minute-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-second-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-millisecond-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-meridiem-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-calendar-picker-indicator {\n    line-height: 1;\n  }\n\n  :-moz-ui-invalid {\n    box-shadow: none;\n  }\n\n  button, input:where([type="button"], [type="reset"], [type="submit"]) {\n    appearance: button;\n  }\n\n  ::file-selector-button {\n    appearance: button;\n  }\n\n  ::-webkit-inner-spin-button {\n    height: auto;\n  }\n\n  ::-webkit-outer-spin-button {\n    height: auto;\n  }\n\n  [hidden]:where(:not([hidden="until-found"])) {\n    display: none !important;\n  }\n}\n\n@layer components;\n\n@layer utilities {\n  .collapse {\n    visibility: collapse;\n  }\n\n  .visible {\n    visibility: visible;\n  }\n\n  .absolute {\n    position: absolute;\n  }\n\n  .fixed {\n    position: fixed;\n  }\n\n  .relative {\n    position: relative;\n  }\n\n  .static {\n    position: static;\n  }\n\n  .sticky {\n    position: sticky;\n  }\n\n  .isolate {\n    isolation: isolate;\n  }\n\n  .col-span-2 {\n    grid-column: span 2 / span 2;\n  }\n\n  .container {\n    width: 100%;\n  }\n\n  @media (min-width: 40rem) {\n    .container {\n      max-width: 40rem;\n    }\n  }\n\n  @media (min-width: 48rem) {\n    .container {\n      max-width: 48rem;\n    }\n  }\n\n  @media (min-width: 64rem) {\n    .container {\n      max-width: 64rem;\n    }\n  }\n\n  @media (min-width: 80rem) {\n    .container {\n      max-width: 80rem;\n    }\n  }\n\n  @media (min-width: 96rem) {\n    .container {\n      max-width: 96rem;\n    }\n  }\n\n  .m-0 {\n    margin: 0;\n  }\n\n  .m-1 {\n    margin: var(--spacing);\n  }\n\n  .mt-1 {\n    margin-top: var(--spacing);\n  }\n\n  .mt-2 {\n    margin-top: calc(var(--spacing) * 2);\n  }\n\n  .mt-3 {\n    margin-top: calc(var(--spacing) * 3);\n  }\n\n  .mb-2 {\n    margin-bottom: calc(var(--spacing) * 2);\n  }\n\n  .block {\n    display: block;\n  }\n\n  .contents {\n    display: contents;\n  }\n\n  .flex {\n    display: flex;\n  }\n\n  .grid {\n    display: grid;\n  }\n\n  .hidden {\n    display: none;\n  }\n\n  .inline {\n    display: inline;\n  }\n\n  .inline-flex {\n    display: inline-flex;\n  }\n\n  .table {\n    display: table;\n  }\n\n  .size-3 {\n    width: calc(var(--spacing) * 3);\n    height: calc(var(--spacing) * 3);\n  }\n\n  .size-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n    height: calc(var(--spacing) * 3.5);\n  }\n\n  .size-4 {\n    width: calc(var(--spacing) * 4);\n    height: calc(var(--spacing) * 4);\n  }\n\n  .size-5 {\n    width: calc(var(--spacing) * 5);\n    height: calc(var(--spacing) * 5);\n  }\n\n  .size-6 {\n    width: calc(var(--spacing) * 6);\n    height: calc(var(--spacing) * 6);\n  }\n\n  .size-7 {\n    width: calc(var(--spacing) * 7);\n    height: calc(var(--spacing) * 7);\n  }\n\n  .size-8 {\n    width: calc(var(--spacing) * 8);\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-7 {\n    height: calc(var(--spacing) * 7);\n  }\n\n  .h-8 {\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-9 {\n    height: calc(var(--spacing) * 9);\n  }\n\n  .max-h-64 {\n    max-height: calc(var(--spacing) * 64);\n  }\n\n  .max-h-80 {\n    max-height: calc(var(--spacing) * 80);\n  }\n\n  .max-h-\\[420px\\] {\n    max-height: 420px;\n  }\n\n  .max-h-\\[min\\(65vh\\,560px\\)\\] {\n    max-height: min(65vh, 560px);\n  }\n\n  .min-h-\\[130px\\] {\n    min-height: 130px;\n  }\n\n  .w-full {\n    width: 100%;\n  }\n\n  .max-w-\\[88\\%\\] {\n    max-width: 88%;\n  }\n\n  .max-w-\\[min\\(380px\\,85vw\\)\\] {\n    max-width: min(380px, 85vw);\n  }\n\n  .max-w-full {\n    max-width: 100%;\n  }\n\n  .min-w-0 {\n    min-width: 0;\n  }\n\n  .flex-1 {\n    flex: 1;\n  }\n\n  .shrink-0 {\n    flex-shrink: 0;\n  }\n\n  .grow {\n    flex-grow: 1;\n  }\n\n  .rotate-180 {\n    rotate: 180deg;\n  }\n\n  .transform {\n    transform: var(--tw-rotate-x, ) var(--tw-rotate-y, ) var(--tw-rotate-z, ) var(--tw-skew-x, ) var(--tw-skew-y, );\n  }\n\n  .animate-spin {\n    animation: var(--animate-spin);\n  }\n\n  .cursor-pointer {\n    cursor: pointer;\n  }\n\n  .resize {\n    resize: both;\n  }\n\n  .grid-cols-2 {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }\n\n  .flex-col {\n    flex-direction: column;\n  }\n\n  .flex-wrap {\n    flex-wrap: wrap;\n  }\n\n  .items-center {\n    align-items: center;\n  }\n\n  .items-start {\n    align-items: flex-start;\n  }\n\n  .justify-between {\n    justify-content: space-between;\n  }\n\n  .justify-center {\n    justify-content: center;\n  }\n\n  .justify-end {\n    justify-content: flex-end;\n  }\n\n  .justify-start {\n    justify-content: flex-start;\n  }\n\n  .gap-0\\.5 {\n    gap: calc(var(--spacing) * .5);\n  }\n\n  .gap-1 {\n    gap: var(--spacing);\n  }\n\n  .gap-2 {\n    gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-3 {\n    gap: calc(var(--spacing) * 3);\n  }\n\n  :where(.space-y-3 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 3) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 3) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  .gap-x-2 {\n    column-gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-y-1 {\n    row-gap: var(--spacing);\n  }\n\n  .self-start {\n    align-self: flex-start;\n  }\n\n  .truncate {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    overflow: hidden;\n  }\n\n  .overflow-auto {\n    overflow: auto;\n  }\n\n  .overflow-x-hidden {\n    overflow-x: hidden;\n  }\n\n  .overflow-y-auto {\n    overflow-y: auto;\n  }\n\n  .rounded-lg {\n    border-radius: var(--radius);\n  }\n\n  .rounded-md {\n    border-radius: calc(var(--radius) - 2px);\n  }\n\n  .border {\n    border-style: var(--tw-border-style);\n    border-width: 1px;\n  }\n\n  .border-t {\n    border-top-style: var(--tw-border-style);\n    border-top-width: 1px;\n  }\n\n  .border-l-2 {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 2px;\n  }\n\n  .border-border {\n    border-color: var(--border);\n  }\n\n  .border-transparent {\n    border-color: #0000;\n  }\n\n  .bg-background {\n    background-color: var(--background);\n  }\n\n  .bg-card {\n    background-color: var(--card);\n  }\n\n  .bg-muted\\/45 {\n    background-color: var(--muted);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-muted\\/45 {\n      background-color: color-mix(in oklab, var(--muted) 45%, transparent);\n    }\n  }\n\n  .bg-primary, .bg-primary\\/10 {\n    background-color: var(--primary);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-primary\\/10 {\n      background-color: color-mix(in oklab, var(--primary) 10%, transparent);\n    }\n  }\n\n  .bg-secondary {\n    background-color: var(--secondary);\n  }\n\n  .object-contain {\n    object-fit: contain;\n  }\n\n  .p-0 {\n    padding: 0;\n  }\n\n  .p-2 {\n    padding: calc(var(--spacing) * 2);\n  }\n\n  .p-3 {\n    padding: calc(var(--spacing) * 3);\n  }\n\n  .px-2 {\n    padding-inline: calc(var(--spacing) * 2);\n  }\n\n  .px-3 {\n    padding-inline: calc(var(--spacing) * 3);\n  }\n\n  .px-4 {\n    padding-inline: calc(var(--spacing) * 4);\n  }\n\n  .py-0\\.5 {\n    padding-block: calc(var(--spacing) * .5);\n  }\n\n  .py-2 {\n    padding-block: calc(var(--spacing) * 2);\n  }\n\n  .pt-2 {\n    padding-top: calc(var(--spacing) * 2);\n  }\n\n  .pt-3 {\n    padding-top: calc(var(--spacing) * 3);\n  }\n\n  .pl-2 {\n    padding-left: calc(var(--spacing) * 2);\n  }\n\n  .text-base {\n    font-size: var(--text-base);\n    line-height: var(--tw-leading, var(--text-base--line-height));\n  }\n\n  .text-sm {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n\n  .text-xs {\n    font-size: var(--text-xs);\n    line-height: var(--tw-leading, var(--text-xs--line-height));\n  }\n\n  .text-\\[11px\\] {\n    font-size: 11px;\n  }\n\n  .leading-4 {\n    --tw-leading: calc(var(--spacing) * 4);\n    line-height: calc(var(--spacing) * 4);\n  }\n\n  .font-medium {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n\n  .font-semibold {\n    --tw-font-weight: var(--font-weight-semibold);\n    font-weight: var(--font-weight-semibold);\n  }\n\n  .break-words {\n    overflow-wrap: break-word;\n  }\n\n  .whitespace-nowrap {\n    white-space: nowrap;\n  }\n\n  .whitespace-pre-wrap {\n    white-space: pre-wrap;\n  }\n\n  .text-foreground {\n    color: var(--foreground);\n  }\n\n  .text-muted-foreground {\n    color: var(--muted-foreground);\n  }\n\n  .text-primary {\n    color: var(--primary);\n  }\n\n  .text-primary-foreground {\n    color: var(--primary-foreground);\n  }\n\n  .text-secondary-foreground {\n    color: var(--secondary-foreground);\n  }\n\n  .ordinal {\n    --tw-ordinal: ordinal;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .tabular-nums {\n    --tw-numeric-spacing: tabular-nums;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .underline {\n    text-decoration-line: underline;\n  }\n\n  .underline-offset-2 {\n    text-underline-offset: 2px;\n  }\n\n  .accent-primary {\n    accent-color: var(--primary);\n  }\n\n  .shadow {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .outline {\n    outline-style: var(--tw-outline-style);\n    outline-width: 1px;\n  }\n\n  .blur {\n    --tw-blur: blur(8px);\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .filter {\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .transition {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-colors {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-transform {\n    transition-property: transform, translate, scale, rotate;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .outline-none {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  .select-none {\n    -webkit-user-select: none;\n    user-select: none;\n  }\n\n  @media (hover: hover) {\n    .hover\\:bg-accent:hover {\n      background-color: var(--accent);\n    }\n\n    .hover\\:bg-primary\\/90:hover {\n      background-color: var(--primary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-primary\\/90:hover {\n        background-color: color-mix(in oklab, var(--primary) 90%, transparent);\n      }\n    }\n\n    .hover\\:text-accent-foreground:hover {\n      color: var(--accent-foreground);\n    }\n  }\n\n  .focus-visible\\:ring-2:focus-visible {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus-visible\\:ring-ring:focus-visible {\n    --tw-ring-color: var(--ring);\n  }\n\n  .disabled\\:pointer-events-none:disabled {\n    pointer-events: none;\n  }\n\n  .disabled\\:opacity-50:disabled {\n    opacity: .5;\n  }\n}\n\n.booster-reader-sidebar {\n  border-right: 1px solid var(--border);\n  background: var(--card);\n  overscroll-behavior: contain;\n  min-width: 0;\n  padding: 12px;\n  overflow: auto;\n}\n\n.booster-reader-group {\n  margin-top: 12px;\n}\n\n.booster-reader-group-header {\n  align-items: center;\n  gap: 2px;\n  min-height: 38px;\n  display: flex;\n}\n\n.booster-group-toggle {\n  min-width: 0;\n  color: inherit;\n  cursor: pointer;\n  text-align: left;\n  font: inherit;\n  background: none;\n  border: 0;\n  flex: 1;\n  align-items: center;\n  gap: 6px;\n  padding: 6px 0;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-group-toggle svg {\n  flex-shrink: 0;\n}\n\n.booster-group-toggle span {\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-group-toggle small {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-reader-chat-list {\n  gap: 3px;\n  padding-left: 10px;\n  display: grid;\n}\n\n.booster-reader-chat-list > button {\n  color: inherit;\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n  white-space: nowrap;\n  text-overflow: ellipsis;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 8px;\n  align-items: center;\n  gap: 6px;\n  padding: 10px;\n  font-size: 12px;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-reader-chat-list > button:hover, .booster-reader-chat-list > button.active {\n  background: var(--muted);\n  border-color: var(--border);\n}\n\n.booster-reader-chat-list > button span {\n  text-overflow: ellipsis;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-reader-chat-list > button.is-branch {\n  border-inline-start: 2px solid var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reader-chat-list > button.is-branch {\n    border-inline-start: 2px solid color-mix(in oklab, var(--primary) 35%, transparent);\n  }\n}\n\n.booster-reader-branch-icon {\n  opacity: .66;\n  flex: none;\n}\n\n.booster-reader-exchanges {\n  gap: 12px;\n  margin-top: 0;\n  display: grid;\n}\n\n.booster-exchange {\n  border-bottom: 1px solid var(--border);\n  min-width: 0;\n  max-width: 100%;\n  padding-bottom: 16px;\n}\n\n.booster-exchange-details {\n  border-left: 2px solid var(--border);\n  gap: 6px;\n  margin: 10px 0 10px 12px;\n  padding: 8px 0 8px 12px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-exchange-details {\n    border-left: 2px solid color-mix(in oklab, var(--border) 78%, var(--primary));\n  }\n}\n\n.booster-exchange-details-label {\n  color: var(--muted-foreground);\n  letter-spacing: .04em;\n  text-transform: uppercase;\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-message-target {\n  outline: 2px solid var(--primary);\n  outline-offset: 2px;\n  border-radius: 6px;\n}\n\n[data-archive-message] {\n  scroll-margin-block: 20px;\n}\n\n.booster-reader-exchanges, .booster-exchange-details {\n  min-width: 0;\n  max-width: 100%;\n}\n\n.booster-meta-trigger {\n  width: 28px;\n  height: 28px;\n  color: var(--muted-foreground);\n  cursor: help;\n  border-radius: 8px;\n  outline: none;\n  justify-content: center;\n  align-items: center;\n  display: inline-flex;\n}\n\n.booster-meta-trigger.is-clickable {\n  cursor: pointer;\n}\n\n.booster-meta-trigger:hover, .booster-meta-trigger:focus-visible {\n  background: var(--muted);\n  color: var(--foreground);\n}\n\n.booster-meta-trigger:focus-visible {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-floating-popover {\n  z-index: 2147483647;\n  border: 1px solid var(--border, #94a3b842);\n  background: var(--popover, #202020);\n  width: max-content;\n  min-width: 190px;\n  max-width: min(420px, 100vw - 16px);\n  color: var(--popover-foreground, #f4f4f5);\n  letter-spacing: normal;\n  white-space: normal;\n  pointer-events: none;\n  border-radius: 10px;\n  margin: 0;\n  padding: 9px 10px;\n  font-family: inherit;\n  font-size: 12px;\n  font-weight: 400;\n  line-height: 1.45;\n  position: fixed;\n  inset: auto;\n  box-shadow: 0 14px 38px #0000006b;\n}\n\n.booster-floating-popover:has(.booster-message-meta-body), .booster-floating-popover:has(.booster-tool-detail-popover) {\n  border-color: #4ade8052;\n  box-shadow: 0 14px 38px #0000006b, 0 0 0 1px #22c55e0d;\n}\n\n.booster-floating-popover.is-interactive {\n  pointer-events: auto;\n}\n\n.booster-floating-popover:not(:popover-open):not(.is-open) {\n  display: none;\n}\n\n.booster-meta-lines {\n  grid-template-columns: max-content minmax(0, 1fr);\n  gap: 3px 10px;\n  display: grid;\n}\n\n.booster-meta-label {\n  color: var(--muted-foreground);\n  font-size: 10px;\n  font-weight: 600;\n}\n\n.booster-meta-value {\n  overflow-wrap: anywhere;\n  min-width: 0;\n  color: var(--popover-foreground);\n  font-variant-numeric: tabular-nums;\n}\n\n.booster-json-viewer {\n  background: var(--background);\n  max-height: min(70vh, 620px);\n  margin: 0;\n  padding: 14px 16px 22px;\n  overflow: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-json-viewer {\n    background: color-mix(in oklab, var(--background) 86%, #0f172a);\n  }\n}\n\n.booster-json-viewer {\n  color: var(--foreground);\n  tab-size: 2;\n  white-space: pre;\n  font: 11px / 1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n}\n\n.booster-json-key {\n  color: #60a5fa;\n}\n\n.booster-json-string {\n  color: #86efac;\n}\n\n.booster-json-number {\n  color: #fbbf24;\n}\n\n.booster-json-boolean {\n  color: #c084fc;\n}\n\n.booster-json-null {\n  color: #94a3b8;\n}\n\n:host {\n  --background: oklch(98.5% 0 0);\n  --foreground: oklch(14.5% 0 0);\n  --card: oklch(100% 0 0);\n  --card-foreground: oklch(14.5% 0 0);\n  --primary: oklch(20.5% 0 0);\n  --primary-foreground: oklch(98.5% 0 0);\n  --secondary: oklch(97% 0 0);\n  --secondary-foreground: oklch(20.5% 0 0);\n  --muted: oklch(97% 0 0);\n  --muted-foreground: oklch(55.6% 0 0);\n  --accent: oklch(97% 0 0);\n  --accent-foreground: oklch(20.5% 0 0);\n  --border: oklch(92.2% 0 0);\n  --ring: oklch(70.8% 0 0);\n  --radius: .625rem;\n  all: initial;\n  color: var(--foreground);\n  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;\n}\n\n@media (prefers-color-scheme: dark) {\n  :host {\n    --background: oklch(14.5% 0 0);\n    --foreground: oklch(98.5% 0 0);\n    --card: oklch(20.5% 0 0);\n    --card-foreground: oklch(98.5% 0 0);\n    --primary: oklch(92.2% 0 0);\n    --primary-foreground: oklch(20.5% 0 0);\n    --secondary: oklch(26.9% 0 0);\n    --secondary-foreground: oklch(98.5% 0 0);\n    --muted: oklch(26.9% 0 0);\n    --muted-foreground: oklch(70.8% 0 0);\n    --accent: oklch(26.9% 0 0);\n    --accent-foreground: oklch(98.5% 0 0);\n    --border: oklch(100% 0 0 / .12);\n    --ring: oklch(55.6% 0 0);\n  }\n}\n\n* {\n  box-sizing: border-box;\n  border-color: var(--border);\n}\n\n.booster-shell {\n  z-index: 2147483647;\n  position: fixed;\n  bottom: 20px;\n  right: 20px;\n}\n\n.booster-button {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 42px;\n  height: 42px;\n  color: var(--card-foreground);\n  cursor: pointer;\n  border-radius: 14px;\n  font: 700 15px / 1 inherit;\n  box-shadow: 0 10px 30px #0003;\n}\n\n.booster-panel {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 300px;\n  color: var(--card-foreground);\n  border-radius: 16px;\n  margin-bottom: 10px;\n  padding: 14px;\n  box-shadow: 0 18px 45px #0000003d;\n}\n\n.booster-panel h2 {\n  margin: 0 0 6px;\n  font-size: 15px;\n  font-weight: 700;\n}\n\n.booster-panel p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.45;\n}\n\n.booster-control-center {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(760px, 100vw - 32px);\n  color: var(--card-foreground);\n  border-radius: 18px;\n  margin-bottom: 10px;\n  overflow: hidden;\n  box-shadow: 0 22px 60px #00000047;\n}\n\n.booster-control-header, .booster-control-footer {\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  display: flex;\n}\n\n.booster-control-header {\n  border-bottom: 1px solid var(--border);\n  padding: 14px 14px 12px;\n}\n\n.booster-control-header strong {\n  font-size: 14px;\n}\n\n.booster-control-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-control-body {\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-loading {\n  color: var(--muted-foreground);\n  padding: 18px;\n  font-size: 12px;\n}\n\n.booster-section-label {\n  color: var(--muted-foreground);\n  letter-spacing: .08em;\n  text-transform: uppercase;\n  padding: 2px 2px 0;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-setting-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 12px;\n  display: flex;\n}\n\n.booster-setting-disabled {\n  opacity: .55;\n}\n\n.booster-setting-copy {\n  gap: 5px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-setting-copy b {\n  font-size: 12px;\n}\n\n.booster-setting-copy > span {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.4;\n}\n\n.booster-switch {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  cursor: pointer;\n  border-radius: 999px;\n  flex: none;\n  width: 36px;\n  height: 20px;\n  padding: 0;\n  transition: background .12s, border-color .12s;\n  position: relative;\n}\n\n.booster-switch:disabled {\n  cursor: not-allowed;\n}\n\n.booster-switch > span {\n  background: var(--foreground);\n  border-radius: 999px;\n  width: 14px;\n  height: 14px;\n  transition: transform .12s;\n  position: absolute;\n  top: 2px;\n  left: 2px;\n}\n\n.booster-switch-on {\n  background: var(--primary);\n  border-color: var(--primary);\n}\n\n.booster-switch-on > span {\n  background: var(--primary-foreground);\n  transform: translateX(16px);\n}\n\n.booster-info-card {\n  background: var(--muted);\n  color: var(--foreground);\n  border-radius: 12px;\n  padding: 11px 12px;\n  font-size: 11px;\n}\n\n.booster-info-card ul {\n  color: var(--muted-foreground);\n  gap: 4px;\n  margin: 8px 0 0 18px;\n  padding: 0;\n  line-height: 1.35;\n  display: grid;\n}\n\n.booster-control-footer {\n  padding-top: 2px;\n}\n\n.booster-save-state {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 5px;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-overlay-root {\n  pointer-events: none;\n}\n\n.booster-launcher {\n  z-index: 2147483647;\n  border: 2px solid var(--primary);\n  justify-content: center;\n  align-items: center;\n  gap: 1px;\n  width: 46px;\n  height: 46px;\n  display: inline-flex;\n  position: fixed;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher {\n    border: 2px solid color-mix(in oklab, var(--primary) 55%, transparent);\n  }\n}\n\n.booster-launcher {\n  background: var(--primary);\n  color: var(--primary-foreground);\n  box-shadow: 0 12px 36px #00000047, 0 0 0 3px var(--primary);\n  border-radius: 15px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-launcher {\n    box-shadow: 0 12px 36px #00000047, 0 0 0 3px color-mix(in oklab, var(--primary) 18%, transparent);\n  }\n}\n\n.booster-launcher {\n  cursor: grab;\n  pointer-events: auto;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  font: 800 17px / 1 inherit;\n}\n\n.booster-launcher:hover {\n  transform: scale(1.04);\n}\n\n.booster-launcher-dragging {\n  cursor: grabbing;\n  transform: scale(1.06);\n}\n\n.booster-launcher-icon {\n  flex-shrink: 0;\n  width: 20px;\n  height: 20px;\n}\n\n.booster-modal-backdrop {\n  z-index: 2147483646;\n  -webkit-backdrop-filter: blur(3px);\n  backdrop-filter: blur(3px);\n  pointer-events: auto;\n  background: #00000061;\n  place-items: center;\n  padding: 16px;\n  display: grid;\n  position: fixed;\n  inset: 0;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n  max-height: calc(100vh - 32px);\n  overflow: auto;\n}\n\n.booster-modal-surface .booster-control-center {\n  width: 100%;\n  margin: 0;\n}\n\n.booster-popup-host {\n  background: var(--background);\n  min-width: 360px;\n}\n\n.booster-select {\n  border: 1px solid var(--border);\n  background: var(--background);\n  min-width: 92px;\n  height: 32px;\n  color: var(--foreground);\n  cursor: pointer;\n  border-radius: 8px;\n  outline: none;\n  flex: none;\n  padding: 0 28px 0 10px;\n  font: 500 12px / 1 inherit;\n}\n\n.booster-select:focus {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-stack-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-stack-card label {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-input {\n  border: 1px solid var(--border);\n  background: var(--background);\n  width: 100%;\n  min-width: 0;\n  height: 32px;\n  color: var(--foreground);\n  border-radius: 8px;\n  outline: none;\n  padding: 0 10px;\n  font: 500 11px / 1 inherit;\n}\n\n.booster-input:focus {\n  box-shadow: 0 0 0 2px var(--ring);\n}\n\n.booster-counter-grid {\n  color: var(--muted-foreground);\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 6px 12px;\n  margin-top: 8px;\n  display: grid;\n}\n\n.booster-counter-grid span {\n  justify-content: space-between;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-counter-grid b {\n  color: var(--foreground);\n}\n\n.booster-header-copy {\n  min-width: 0;\n}\n\n.booster-header-actions {\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-header-toggle-label {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  font-weight: 600;\n}\n\n.booster-settings-layout {\n  grid-template-columns: 150px minmax(0, 1fr);\n  min-height: 360px;\n  display: grid;\n}\n\n.booster-settings-nav {\n  border-right: 1px solid var(--border);\n  background: var(--muted);\n  align-content: start;\n  gap: 4px;\n  padding: 12px 8px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-settings-nav {\n    background: color-mix(in oklab, var(--muted) 58%, transparent);\n  }\n}\n\n.booster-settings-nav button {\n  width: 100%;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  border-radius: 9px;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 10px;\n  font: 600 11px / 1.2 inherit;\n  display: flex;\n}\n\n.booster-settings-nav button:hover, .booster-settings-nav button.active {\n  background: var(--background);\n  color: var(--foreground);\n}\n\n.booster-settings-content {\n  align-content: start;\n  gap: 10px;\n  min-width: 0;\n  padding: 14px;\n  display: grid;\n}\n\n.booster-setting-card-flat {\n  border: 0;\n  border-bottom: 1px solid var(--border);\n  border-radius: 0;\n  padding: 0 0 10px;\n}\n\n.booster-analytics-grid {\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 12px;\n  display: grid;\n}\n\n.booster-counter-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  padding: 12px;\n}\n\n.booster-counter-title {\n  margin-bottom: 8px;\n  font-size: 12px;\n  font-weight: 700;\n}\n\n.booster-disclosure {\n  width: 100%;\n  color: var(--foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 0;\n  display: flex;\n}\n\n.booster-disclosure > span {\n  gap: 3px;\n  display: grid;\n}\n\n.booster-disclosure b {\n  font-size: 12px;\n}\n\n.booster-disclosure small {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.rotate-180 {\n  transform: rotate(180deg);\n}\n\n.booster-telemetry-body {\n  gap: 10px;\n  padding-top: 10px;\n  display: grid;\n}\n\n.booster-field {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-telemetry-test-row {\n  align-items: center;\n  gap: 10px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-test-success {\n  color: oklch(62% .17 145);\n  font-size: 11px;\n}\n\n.booster-test-error {\n  color: oklch(63% .2 25);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n}\n\n@media (max-width: 620px) {\n  .booster-control-center, .booster-modal-surface {\n    width: calc(100vw - 20px);\n  }\n\n  .booster-settings-layout {\n    grid-template-columns: 1fr;\n  }\n\n  .booster-settings-nav {\n    border-right: 0;\n    border-bottom: 1px solid var(--border);\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n\n  .booster-settings-nav button {\n    justify-content: center;\n  }\n\n  .booster-analytics-grid {\n    grid-template-columns: 1fr;\n  }\n}\n\n.booster-modal-surface.booster-modal-surface-wide {\n  width: min(1320px, 100vw - 32px);\n}\n\n.booster-modal-surface-wide > .booster-control-center {\n  width: 100%;\n}\n\n@media (max-width: 620px) {\n  .booster-modal-surface.booster-modal-surface-wide {\n    width: calc(100vw - 20px);\n  }\n}\n\n.booster-modal-backdrop.booster-modal-backdrop-floating {\n  -webkit-backdrop-filter: none;\n  backdrop-filter: none;\n  pointer-events: none;\n  background: none;\n  padding: 0;\n  display: block;\n}\n\n.booster-modal-surface.booster-modal-surface-wide.booster-dialog-floating {\n  pointer-events: auto;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  max-height: none;\n  padding: 0;\n  display: flex;\n  position: fixed;\n  overflow: hidden;\n}\n\n.booster-dialog-floating > .booster-control-center {\n  flex: auto;\n  min-height: 0;\n  overflow: auto;\n}\n\n.booster-floating-chrome {\n  border-bottom: 1px solid var(--border);\n  background: var(--muted);\n  cursor: move;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  flex: none;\n  align-items: center;\n  gap: 8px;\n  min-height: 38px;\n  padding: 4px 8px 4px 12px;\n  display: flex;\n}\n\n.booster-floating-chrome > span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  flex: auto;\n  min-width: 0;\n  font-size: 12px;\n  font-weight: 600;\n  overflow: hidden;\n}\n\n.booster-floating-chrome > button {\n  cursor: pointer;\n  border-radius: 6px;\n  flex: none;\n  place-items: center;\n  width: 30px;\n  height: 30px;\n  display: grid;\n}\n\n.booster-floating-chrome > button:focus-visible, .booster-floating-resize:focus-visible {\n  outline: 2px solid var(--ring);\n}\n\n.booster-floating-resize {\n  background: var(--muted);\n  cursor: nwse-resize;\n  touch-action: none;\n  border-top-left-radius: 7px;\n  place-items: center;\n  width: 28px;\n  height: 28px;\n  display: grid;\n  position: absolute;\n  bottom: 0;\n  right: 0;\n}\n\n.booster-launcher-docked {\n  border-radius: 12px;\n  width: 42px;\n  height: 42px;\n  box-shadow: 0 8px 24px #00000038;\n}\n\n.booster-quick-menu {\n  z-index: 2147483646;\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(294px, 100vw - 58px);\n  max-height: min(480px, 100dvh - 16px);\n  color: var(--card-foreground);\n  pointer-events: auto;\n  font: inherit;\n  border-radius: 14px;\n  position: fixed;\n  overflow: auto;\n  box-shadow: 0 16px 45px #00000052;\n}\n\n.booster-quick-header, .booster-quick-footer {\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  padding: 11px 12px;\n  display: flex;\n}\n\n.booster-quick-header {\n  border-bottom: 1px solid var(--border);\n}\n\n.booster-quick-identity {\n  gap: 5px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-quick-identity > strong {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 13px;\n  overflow: hidden;\n}\n\n.booster-quick-badges {\n  flex-wrap: wrap;\n  gap: 5px;\n  display: flex;\n}\n\n.booster-quick-badges > span {\n  border: 1px solid var(--border);\n  color: var(--muted-foreground);\n  border-radius: 7px;\n  padding: 2px 6px;\n  font-size: 10px;\n}\n\n.booster-quick-close {\n  width: 30px;\n  height: 30px;\n  color: inherit;\n  cursor: pointer;\n  background: none;\n  border: 0;\n  border-radius: 8px;\n  flex-shrink: 0;\n  place-items: center;\n  display: grid;\n}\n\n.booster-quick-actions {\n  padding: 6px;\n}\n\n.booster-quick-actions > button {\n  width: 100%;\n  min-height: 37px;\n  color: inherit;\n  cursor: pointer;\n  font: inherit;\n  text-align: left;\n  background: none;\n  border: 0;\n  border-radius: 8px;\n  align-items: center;\n  gap: 10px;\n  padding: 7px 9px;\n  font-size: 12px;\n  font-weight: 500;\n  line-height: 1.3;\n  display: flex;\n}\n\n.booster-quick-actions > button:hover:not(:disabled), .booster-quick-actions > button:focus-visible, .booster-quick-close:hover {\n  background: var(--muted);\n}\n\n.booster-quick-actions > button:disabled {\n  opacity: .48;\n  cursor: not-allowed;\n}\n\n.booster-quick-footer {\n  border-top: 1px solid var(--border);\n}\n\n.booster-quick-status {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.booster-quick-status.is-active {\n  color: var(--foreground);\n}\n\n.booster-quick-toggle {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  cursor: pointer;\n  border-radius: 99px;\n  width: 38px;\n  height: 22px;\n  padding: 2px;\n}\n\n.booster-quick-toggle > span {\n  background: var(--foreground);\n  border-radius: 50%;\n  width: 16px;\n  height: 16px;\n  transition: transform .13s;\n  display: block;\n}\n\n.booster-quick-toggle[aria-checked="true"] {\n  background: var(--primary);\n}\n\n.booster-quick-metrics {\n  border-bottom: 1px solid var(--border);\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 8px;\n  padding: 8px 11px;\n  display: grid;\n}\n\n.booster-quick-metrics > div {\n  gap: 3px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-quick-metrics span {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-quick-metrics b {\n  color: var(--foreground);\n  font-variant-numeric: tabular-nums;\n  font-size: 15px;\n}\n\n.booster-quick-toggle[aria-checked="true"] > span {\n  background: var(--primary-foreground);\n  transform: translateX(16px);\n}\n\n.booster-quick-toggle:disabled {\n  opacity: .5;\n  cursor: wait;\n}\n\n.booster-quick-error {\n  background: var(--card);\n  color: var(--foreground);\n  pointer-events: none;\n  padding: 7px;\n  position: fixed;\n  bottom: 10px;\n  left: 10px;\n}\n\n.booster-modal-surface.booster-modal-surface-single {\n  width: min(820px, 100vw - 24px);\n  max-height: min(86dvh, 760px);\n  overflow: auto;\n}\n\n.booster-control-standalone {\n  width: 100%;\n  margin: 0;\n}\n\n.booster-control-standalone > .booster-settings-layout {\n  min-height: 0;\n  display: block;\n}\n\n.booster-control-standalone > .booster-settings-layout > .booster-settings-content {\n  width: 100%;\n  min-width: 0;\n}\n\n@media (max-width: 620px) {\n  .booster-control-standalone > .booster-control-header {\n    flex-direction: column;\n    align-items: stretch;\n    gap: 9px;\n    padding: 12px;\n  }\n\n  .booster-control-standalone > .booster-control-header > .booster-header-copy > div {\n    flex-wrap: wrap;\n    gap: 6px;\n  }\n\n  .booster-control-standalone > .booster-control-header .booster-header-copy strong {\n    flex-basis: 100%;\n  }\n\n  .booster-control-standalone > .booster-control-header > .booster-header-actions {\n    flex-wrap: wrap;\n    justify-content: space-between;\n    gap: 8px;\n    display: flex;\n  }\n\n  .booster-control-standalone > .booster-control-header > .booster-header-actions > button:last-child {\n    margin-left: auto;\n  }\n\n  .booster-modal-surface.booster-modal-surface-single {\n    width: calc(100vw - 16px);\n    max-height: calc(100dvh - 16px);\n  }\n}\n\n@property --tw-rotate-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-z {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-space-y-reverse {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-border-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-leading {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-font-weight {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ordinal {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-slashed-zero {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-figure {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-spacing {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-fraction {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-inset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-ring-inset {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-offset-width {\n  syntax: "<length>";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-ring-offset-color {\n  syntax: "*";\n  inherits: false;\n  initial-value: #fff;\n}\n\n@property --tw-ring-offset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-outline-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-blur {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-brightness {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-contrast {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-grayscale {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-hue-rotate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-invert {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-opacity {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-saturate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-sepia {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-drop-shadow-size {\n  syntax: "*";\n  inherits: false\n}\n\n@keyframes spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n';
   function mountControlCenter(options) {
     document.getElementById(instanceKey("koba-browser-tools-root"))?.remove();
     const host = document.createElement("div");
@@ -48858,6 +50409,7 @@
         views: options.views || {}
       })
     });
+    app.provide(APPLICATION_TELEMETRY, options.telemetry ?? null);
     app.mount(node);
     return {
       open() {
@@ -48873,6 +50425,7 @@
     };
   }
   function bootstrapUserscript(features, title = "Koba Browser Tools", views = {}) {
+    const telemetry = createApplicationTelemetry("userscript", createSettingsStore());
     const runtime = new FeatureRuntime(features, {
       target: "userscript",
       url: new URL(location.href),
@@ -48882,12 +50435,19 @@
     const unsubscribeState = onInstallationStateChange("userscript", () => {
       void runtime.refreshFromSettings();
     });
-    window.addEventListener("pagehide", unsubscribeState, { once: true });
+    window.addEventListener(
+      "pagehide",
+      () => {
+        unsubscribeState();
+        telemetry.close();
+      },
+      { once: true }
+    );
     let open = () => {
     };
     const launch = async () => {
       await runtime.start();
-      const ui = mountControlCenter({ runtime, title, launcher: true, views });
+      const ui = mountControlCenter({ runtime, title, launcher: true, views, telemetry });
       open = ui.open;
     };
     if (typeof GM_registerMenuCommand === "function") {
