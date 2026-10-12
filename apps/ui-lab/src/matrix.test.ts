@@ -40,4 +40,15 @@ test('test runner captures browser exceptions as failures and does not confuse l
   const runner = await Bun.file(new URL('../scripts/browser-matrix.mjs', import.meta.url)).text()
   expect(runner).toContain('MATRIX_BROWSER_FAILURE')
   expect(runner).toContain('report.failed === 0 && report.executed === report.total')
+  expect(runner).toContain('MALFORMED_FAILURE_RECORD')
+  const pipeline = await Bun.file(
+    new URL('../../../.github/workflows/ui-acceptance.yml', import.meta.url),
+  ).text()
+  expect(pipeline).toContain('include-hidden-files: true')
+})
+
+test('aggregate browser matrix checks against duplicate platform navigation', async () => {
+  const code = await Bun.file(new URL('./preview.ts', import.meta.url)).text()
+  expect(code).toContain('Duplicate platform navigation in single-host aggregate')
+  expect(code).toContain("scene.product.startsWith('all-in-one')")
 })

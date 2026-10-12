@@ -234,6 +234,12 @@ function diagnose() {
     }
     if (scene.view === 'settings' && !vkHost && scene.scene !== 'disabled' && !productGrid)
       warnings.push('ChatGPT nested settings grid not mounted')
+    if (scene.product.startsWith('all-in-one') && scene.view === 'settings') {
+      const sharedNav = shadow?.querySelector(
+        '.booster-control-center > .booster-settings-layout > .booster-settings-nav',
+      )
+      if (sharedNav) warnings.push('Duplicate platform navigation in single-host aggregate')
+    }
     const launcher = shadow?.querySelector<HTMLElement>('.booster-launcher')
     if (launcher) {
       const box = launcher.getBoundingClientRect()

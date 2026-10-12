@@ -35,4 +35,6 @@ test('standalone shell CSS cannot override provider settings layout via descenda
     '.booster-control-standalone > .booster-settings-layout > .booster-settings-content',
   )
   expect(css).not.toContain('.booster-control-standalone .booster-settings-layout {')
+  expect(css).toContain('.booster-control-standalone > .booster-control-header')
+  expect(css).toContain('flex-direction: column')
 })

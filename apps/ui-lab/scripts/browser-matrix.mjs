@@ -157,8 +157,15 @@ try {
     await writeFile(join(output, name), Buffer.from(png.data, 'base64'))
   }
   await screenshot(`matrix-${mode}-final.png`)
-  // Capture repros for up to the first 6 failures, with direct fixture links.
-  for (const [i, row] of (report.failures || []).slice(0, 6).entries()) {
+  // CI must keep the JSON evidence even if a screenshot fixture has malformed data.
+  // Malformed cases fail the matrix, but must not crash screenshot collection.
+  if (report.failed) console.error('Browser matrix failures:', JSON.stringify(report.failures))
+  for (const [i, row] of (Array.isArray(report.failures) ? report.failures : []).slice(0, 6).entries()) {
+    if (typeof row?.id !== 'string' || row.id.split(':').length !== 6) {
+      console.error('MALFORMED_FAILURE_RECORD:', JSON.stringify(row))
+      exitCode = 1
+      continue
+    }
     const parts = row.id.split(':')
     const keys = ['product', 'scene', 'view', 'viewport', 'method', 'side']
     const fields = Object.fromEntries(keys.map((key, i) => [key, parts[i]]))

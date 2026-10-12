@@ -59,5 +59,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ui-acceptance-evidence
-          path: apps/ui-lab/.local/*
+          path: apps/ui-lab/.local/
+          include-hidden-files: true
           if-no-files-found: ignore

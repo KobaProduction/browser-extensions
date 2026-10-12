@@ -28,6 +28,9 @@ test('standalone launcher snaps to a viewport edge and opens a compact quick men
 })
 
 test('standalone full settings show method/version and hide duplicate shared navigation', () => {
+  expect(panel).toContain('feature.match(props.runtime.context.url)')
+  expect(panel).toContain('matchingFeatures.value.length === 1')
+  expect(panel).not.toContain('props.runtime.features.length === 1')
   expect(panel).toContain('booster-control-standalone')
   expect(panel).toContain('v-if="!standalone" class="booster-settings-nav"')
   expect(panel).toContain('singleFeature.presentation.installation')
