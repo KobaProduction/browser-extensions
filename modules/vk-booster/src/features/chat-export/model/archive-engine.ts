@@ -36,6 +36,8 @@ import type {
   VkCheckpoint,
   VkMessage,
 } from './types'
+import { verifiedVkParticipants } from './vk-participants'
+import { createVkUserExportZip, type VkExportProgress, type VkUserExportOptions } from './vk-user-export'
 /* VK Booster initial v1 provider composition; shared paging and UI are source-neutral. */
 export function installVkArchive(target: DeliveryTarget = 'userscript'): void {
   const VERSION = '1.0.0'
@@ -711,6 +713,17 @@ export function installVkArchive(target: DeliveryTarget = 'userscript'): void {
       repo.close()
     }
   }
+  async function resolveParticipants(userIds: readonly number[]) {
+    const peerId = currentPeer()
+    if (!peerId || busy || !userIds.length) return []
+    const ids = [...new Set(userIds)].filter((id) => Number.isSafeInteger(id) && id > 0).slice(0, 100)
+    if (!ids.length) return []
+    if (!(await auth())) return []
+    const response = await api('users.get', { user_ids: ids.join(','), fields: 'photo_100' })
+    if (currentPeer() !== peerId) throw Error('VK peer changed while loading participant labels')
+    return verifiedVkParticipants(response).filter((person) => ids.includes(person.id))
+  }
+
   async function countFixed(): Promise<number> {
     return withFixed(async (repo, peerId) => repo.countMessages(peerId))
   }
@@ -768,6 +781,23 @@ export function installVkArchive(target: DeliveryTarget = 'userscript'): void {
       }
       return createGzipFromChunks(records())
     })
+  }
+
+  async function exportUserZip(
+    options: VkUserExportOptions,
+    onProgress?: (progress: VkExportProgress) => void,
+  ): Promise<Blob> {
+    return withFixed((repo, peerId) =>
+      createVkUserExportZip(
+        repo,
+        peerId,
+        options,
+        () => {
+          if (currentPeer() !== peerId) throw Error('VK conversation changed during ZIP export')
+        },
+        onProgress,
+      ),
+    )
   }
 
   async function withBackup<T>(
@@ -837,8 +867,10 @@ export function installVkArchive(target: DeliveryTarget = 'userscript'): void {
     buildViewer,
     captureFixed,
     countFixed,
+    resolveParticipants,
     readFixed,
     exportFixed,
+    exportUserZip,
     backupPortable,
     inspectPortable,
     restorePortable,

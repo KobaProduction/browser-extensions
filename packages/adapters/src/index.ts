@@ -71,6 +71,7 @@ export function onInstallationStateChange(target: DeliveryTarget, listener: () =
   return () => window.removeEventListener('storage', changed)
 }
 
+export { createApplicationTelemetry } from './application-telemetry'
 export { attachChromeInstallationToggle } from './installation-popup'
 export type { OtlpDeliveryConfiguration, OtlpRequest, OtlpSender } from './scoped-otlp'
 export {

@@ -138,6 +138,7 @@ async function pack(name: string) {
       const css = await Promise.all([
         readFile(join(widgetsSrc, 'archive-conversation-list.css'), 'utf8'),
         readFile(join(widgetsSrc, 'archive-transcript.css'), 'utf8'),
+        readFile(join(widgetsSrc, 'archive-metadata.css'), 'utf8'),
       ])
       await writeFile(join(dir, 'styles.css'), css.join('\n'))
     }

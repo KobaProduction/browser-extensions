@@ -1,4 +1,9 @@
-import { type FeatureRuntime, instanceKey } from '@kobaproduction/browser-core'
+import {
+  APPLICATION_TELEMETRY,
+  type ApplicationTelemetryController,
+  type FeatureRuntime,
+  instanceKey,
+} from '@kobaproduction/browser-core'
 import { type App, type Component, createApp, h } from 'vue'
 import Overlay from './Overlay.vue'
 import styles from './styles.css?inline'
@@ -8,6 +13,7 @@ export interface ControlCenterOptions {
   title?: string
   launcher?: boolean
   views?: Record<string, Component>
+  telemetry?: ApplicationTelemetryController
 }
 export interface ControlCenter {
   open(): void
@@ -43,6 +49,7 @@ export function mountControlCenter(options: ControlCenterOptions): ControlCenter
         views: options.views || {},
       }),
   })
+  app.provide(APPLICATION_TELEMETRY, options.telemetry ?? null)
   app.mount(node)
   return {
     open() {

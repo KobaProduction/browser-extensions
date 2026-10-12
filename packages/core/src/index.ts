@@ -236,6 +236,8 @@ export function defaultCapabilities(_target: DeliveryTarget): ReadonlySet<Capabi
   return new Set<Capability>(['page-dom', 'origin-storage', 'local-files'])
 }
 
+export type { ApplicationTelemetryController, ApplicationTelemetryStatus } from './application-telemetry'
+export { APPLICATION_TELEMETRY } from './application-telemetry'
 export type { ScopedTelemetryEvent, ScopedTelemetryName, ScopedTelemetrySink } from './scoped-telemetry'
 export {
   isScopedTelemetryName,

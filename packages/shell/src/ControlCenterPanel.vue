@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { FeatureRuntime } from '@kobaproduction/browser-core'
 import { Badge, Button } from '@kobaproduction/browser-ui'
+import { ApplicationTelemetrySettings } from '@kobaproduction/browser-widgets'
 import { BarChart3, FolderArchive, SlidersHorizontal, Wrench, X } from 'lucide-vue-next'
 import { type Component, computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
@@ -153,6 +154,10 @@ function openModule(id: string) {
         <template v-else>
           <section class="booster-setting-card"><div class="booster-setting-copy"><b>Настройки</b><span>Включение модулей — на вкладке «Модули». Настройки экспорта — внутри VK Booster.</span></div></section>
         </template>
+        <details class="mt-3 border-t border-border pt-3">
+          <summary class="cursor-pointer select-none text-sm font-medium">Телеметрия и диагностика</summary>
+          <ApplicationTelemetrySettings />
+        </details>
       </main>
     </div>
   </section>

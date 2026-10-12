@@ -173,5 +173,8 @@ export type {
   LinearScanState,
 } from './scan-linear'
 export { scanLinearArchive } from './scan-linear'
+export type { ZipEntry } from './stored-zip'
+/** One ZIP32 implementation reused by ChatGPT and VK export adapters. */
+export { createStoredZip, createStoredZipFromBlobs } from './stored-zip'
 export type { ArchiveCloneNode } from './structured'
 export { decodeArchiveClone, encodeArchiveClone } from './structured'

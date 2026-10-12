@@ -303,6 +303,33 @@ export function createMockVkArchive(scene: LabScene, method: LabMethod) {
     peer_id: 9001,
     date: 1760000000 + i * 90,
     from_id: i % 2 ? 33 : 44,
+    out: i % 2,
+    ...(i === 1
+      ? {
+          attachments: [
+            {
+              type: 'photo',
+              photo: {
+                sizes: [{ url: 'https://example.invalid/demo-photo.png', width: 640, height: 480 }],
+              },
+            },
+          ],
+        }
+      : i === 4
+        ? {
+            attachments: [
+              {
+                type: 'doc',
+                doc: {
+                  title: 'Методичка.pdf',
+                  ext: 'pdf',
+                  size: 12800,
+                  url: 'https://example.invalid/demo-doc.pdf',
+                },
+              },
+            ],
+          }
+        : {}),
     text: `DEMO VK ${i + 1}: только синтетический пример переписки.`,
   }))
   let cancelled = false
@@ -425,8 +452,24 @@ export function createMockVkArchive(scene: LabScene, method: LabMethod) {
       if (!peer || status.blockedReason) throw Error('Synthetic peer unavailable')
       return rows.length
     },
+    async resolveParticipants(userIds: readonly number[]) {
+      return userIds
+        .filter((id) => id === 33 || id === 44)
+        .map((id) => ({
+          id,
+          name: id === 33 ? 'Анна Смирнова' : 'Алексей Иванов',
+          avatarUrl: null,
+        }))
+    },
     async readFixed(limit = 80, after?: number) {
       return rows.filter((m) => after === undefined || m.id > after).slice(0, limit)
+    },
+    async exportUserZip() {
+      const { createStoredZip } = await import('@kobaproduction/browser-archive')
+      return createStoredZip([
+        { path: 'messages/000001.json', bytes: new TextEncoder().encode(JSON.stringify(rows)) },
+        { path: 'manifest.json', bytes: new TextEncoder().encode('{"complete":false}') },
+      ])
     },
     async exportFixed() {
       return new Blob([JSON.stringify(rows)], { type: 'application/json' })

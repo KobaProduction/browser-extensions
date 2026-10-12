@@ -107,3 +107,18 @@ message contents, IDs, tokens, paths or raw exception objects. No network
 sender or collector is made active by this target decision. Before installed
 product acceptance, this section describes required wiring, not a proven
 runtime service.
+
+
+## Application settings composition (Extension 18 source)
+
+The shared Control Center provides one `ApplicationTelemetrySettings` widget
+for VK, ChatGPT and all-in-one. Browser installation entrypoints inject one
+product/channel/target-scoped `ApplicationTelemetryController`. The explicit
+local consent is saved via the same scoped application settings adapter and
+defaults OFF; the optional Dexie journal records only pre-allowlisted
+technical signal names and numeric counts. Capture/export events are emitted
+by the owning provider but never block archive operations. The UI shows
+local collection state and queue counters or an honest unavailable state.
+**Remote sending is not configured or enabled by this local UI**; actual
+collector setup, separate remote consent and delivery verification remain
+outside this source-stage integration.

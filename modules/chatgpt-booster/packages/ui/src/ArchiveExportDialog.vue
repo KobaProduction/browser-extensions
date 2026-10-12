@@ -26,9 +26,11 @@ import Info from 'lucide-vue-next/dist/esm/icons/info.js'
 import X from 'lucide-vue-next/dist/esm/icons/x.js'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ArchiveProgress } from '@kobaproduction/browser-ui'
+import { useApplicationTelemetry } from '@kobaproduction/browser-widgets'
 import { translate, type SupportedLocale, type TranslationKey } from './i18n'
 import type { ArchiveCoverageView, ArchiveDataAdapter, ArchiveExportPreview } from './mount'
 import { archiveExportPresetOptions, type ArchiveExportPreset } from './archive-export-presets'
+const appTelemetry = useApplicationTelemetry()
 const props = defineProps<{ archiveAdapter: ArchiveDataAdapter; settingsAdapter: SettingsAdapter; conversationId: string; title?: string | null; locale: SupportedLocale; suspended?: boolean }>()
 const emit = defineEmits<{ close: []; 'open-archive': [conversationId: string, location?: ArchiveMessageLocation]; 'open-capture': [context: ArchiveCaptureContext]; 'open-backups': [] }>()
 const options = ref<ArchiveExportOptions>({ ...DEFAULT_EXPORT_OPTIONS })
@@ -708,6 +710,7 @@ async function download() {
     preparedBytes.value = outcome.blob.size
     complete.value = true
     incomplete.value = !outcome.complete
+    void appTelemetry?.record('archive.export.completed')
   } catch (cause) {
     if (!ownsRun()) return
     if (cause instanceof DOMException && cause.name === 'AbortError') {
@@ -715,6 +718,7 @@ async function download() {
     } else if (cause instanceof ArchiveExportBlockedError) {
       failedBlocker.value = cause.reason
     } else {
+      void appTelemetry?.record('archive.export.failed')
       error.value = cause instanceof Error && [
         'archive.error.incompatibleSource', 'archive.error.unverifiedPath',
         'archive.error.sourceChanged',

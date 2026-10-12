@@ -1,5 +1,9 @@
 import { isChatGptPage } from '@chatgpt-booster/core'
-import { createSettingsStore, onInstallationStateChange } from '@kobaproduction/browser-adapters'
+import {
+  createApplicationTelemetry,
+  createSettingsStore,
+  onInstallationStateChange,
+} from '@kobaproduction/browser-adapters'
 import {
   type Capability,
   FeatureRuntime,
@@ -25,6 +29,7 @@ if (isChatGptPage()) {
         error instanceof Error ? error.name : 'unknown',
       ),
     )
+  const telemetry = createApplicationTelemetry('chromium', createSettingsStore('chromium'))
   const runtime = new FeatureRuntime([feature], {
     target: 'chromium',
     url: new URL(location.href),
@@ -34,11 +39,19 @@ if (isChatGptPage()) {
   const unsubscribeState = onInstallationStateChange('chromium', () => {
     void runtime.refreshFromSettings()
   })
-  window.addEventListener('pagehide', unsubscribeState, { once: true })
+  window.addEventListener(
+    'pagehide',
+    () => {
+      unsubscribeState()
+      telemetry.close()
+    },
+    { once: true },
+  )
   const launch = async () => {
     await runtime.start()
     const ui = mountControlCenter({
       runtime,
+      telemetry,
       title: 'ChatGPT Booster',
       views: { 'chatgpt-booster': ChatGptPanel },
     })

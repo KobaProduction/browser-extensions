@@ -1,4 +1,8 @@
-import { createSettingsStore, onInstallationStateChange } from '@kobaproduction/browser-adapters'
+import {
+  createApplicationTelemetry,
+  createSettingsStore,
+  onInstallationStateChange,
+} from '@kobaproduction/browser-adapters'
 import {
   defaultCapabilities,
   type Feature,
@@ -12,6 +16,7 @@ export function bootstrapUserscript(
   title = 'Koba Browser Tools',
   views: Record<string, Component> = {},
 ) {
+  const telemetry = createApplicationTelemetry('userscript', createSettingsStore('userscript'))
   const runtime = new FeatureRuntime(features, {
     target: 'userscript',
     url: new URL(location.href),
@@ -21,11 +26,18 @@ export function bootstrapUserscript(
   const unsubscribeState = onInstallationStateChange('userscript', () => {
     void runtime.refreshFromSettings()
   })
-  window.addEventListener('pagehide', unsubscribeState, { once: true })
+  window.addEventListener(
+    'pagehide',
+    () => {
+      unsubscribeState()
+      telemetry.close()
+    },
+    { once: true },
+  )
   let open: () => void = () => {}
   const launch = async () => {
     await runtime.start()
-    const ui = mountControlCenter({ runtime, title, launcher: true, views })
+    const ui = mountControlCenter({ runtime, title, launcher: true, views, telemetry })
     open = ui.open
   }
   if (typeof GM_registerMenuCommand === 'function') {

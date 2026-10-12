@@ -244,3 +244,15 @@ internal-element, tool-call and reasoning counts for the *verified current
 conversation*, not estimates of remote completeness. History Loader stays
 ChatGPT-owned behind the shared conversation-collection port. Existing
 telemetry, retention and capture authorization semantics are preserved.
+
+
+## Shared Reader/ZIP composition (Extension 18 source)
+
+ChatGPT ArchiveRecord now reuses the same provider-neutral metadata header
+as VK, while ChatGPT preserves its richer message renderer and its existing
+export wizard. The existing ZIP32 packaging implementation has been moved
+without duplicating it to `packages/archive` and is also called by VK
+user export. Shared application-level telemetry settings are composed at
+the installer/Shell boundary, default OFF; the existing ChatGPT-specific
+telemetry adapter is not silently replaced. The source-level refactor
+requires both consumer build and browser-layout acceptance before release.
