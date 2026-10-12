@@ -21,7 +21,7 @@ The **full Cartesian matrix contains 1152 configurations**. For fast PR checks a
 
 ## Required browser assertions
 
-- Shared Shell mounts exactly once, launch button can dock on either edge, and menu/modal remain inside the viewport.
+- Shared Shell mounts exactly once; the launcher docks at either edge. An opened provider workspace floats over the host page (not a forced centered modal), starts at the launcher edge, supports dragging, keyboard movement, resizing, minimizing/restoring, and preserves its scoped geometry without viewport overflow. Quick menu remains compact.
 - Quick menu shows product, version, delivery method, state, available actions and provider-specific counters without unwanted scrolling at standard heights.
 - Full settings preserve provider-owned navigation, not the shared Shell's duplicate sidebar. ChatGPT nested settings remain a bounded two-column grid on supported desktop widths; narrow viewports must have no horizontal overflow.
 - Clicking the launcher opens the quick menu and Escape closes it. Provider-defined actions open their intended surface; disabled installations cannot execute capture and may be re-enabled.

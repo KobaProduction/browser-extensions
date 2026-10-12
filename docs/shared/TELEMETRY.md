@@ -89,3 +89,21 @@ URLs/error text into it yet. ChatGPT and VK have independent first-party
 fixed-schema Dexie repositories under development. Real product telemetry
 capture, consent, server probes and remote delivery follow acceptance of the
 application persistence boundary and are tracked separately in Issue #30.
+
+## Application-owned connection contract (Extension 16 target)
+
+Every installable application composes the same telemetry settings and
+provider-neutral TelemetryPort at its application entry point, not inside
+individual archive adapters. The configured product/channel/installation
+selects the local journal and service identity; a provider may decline the
+capability without changing other products. All applications present the
+same availability, local consent, remote-consent, queue/error and revoke
+states. Missing endpoint or denied capability is shown as unavailable, not
+silently treated as successful delivery.
+
+**Safety remains binding:** local collection starts OFF; remote delivery
+requires a second explicit opt-in and a validated endpoint. Never send
+message contents, IDs, tokens, paths or raw exception objects. No network
+sender or collector is made active by this target decision. Before installed
+product acceptance, this section describes required wiring, not a proven
+runtime service.

@@ -9,6 +9,7 @@ const props = defineProps<{
   views: Record<string, Component>
   title: string
   selectedSection: string
+  floating?: boolean
 }>()
 const emit = defineEmits<{ close: []; select: [section: string] }>()
 // The aggregate can register many features while only one matches this host.
@@ -97,7 +98,7 @@ function openModule(id: string) {
           @click="toggleInstallation"><span/></button>
         <Badge variant="secondary">{{installationActive ? 'Установка включена' : 'Установка выключена'}}</Badge>
         <Badge v-if="!standalone" variant="secondary">{{activeFeatures.length}} активен</Badge>
-        <Button variant="ghost" size="icon" class="size-8" title="Закрыть" @click="emit('close')"><X class="size-4"/></Button>
+        <Button v-if="!floating" variant="ghost" size="icon" class="size-8" title="Закрыть" @click="emit('close')"><X class="size-4"/></Button>
       </div>
     </header>
     <div class="booster-settings-layout">

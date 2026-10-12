@@ -1,7 +1,7 @@
 {
   "id": "all-in-one",
   "name": "Koba Browser Tools",
-  "version": "0.5.18",
+  "version": "0.5.19",
   "release": true,
   "dependencies": ["vk-booster", "chatgpt-booster"]
 }
