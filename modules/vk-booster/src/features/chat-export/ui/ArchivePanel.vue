@@ -288,13 +288,13 @@ onUnmounted(() => {
           <input v-model.number="fixedLimit" class="booster-input" type="number" min="1" max="100000" :disabled="fixedBusy" @change="saveCaptureOptions" />
         </label>
         <p v-else class="text-xs text-muted-foreground">Без искусственного ограничения в 3000 сообщений. VK может ограничивать частоту API-запросов; при необходимости автоматически делаются паузы.</p>
-        <details class="booster-collection-advanced" :open="false">
-          <summary>Скорость и размер запросов</summary>
+        <details class="booster-collection-advanced rounded-md border border-border p-3 text-sm" :open="false">
+          <summary class="cursor-pointer select-none font-medium text-sm">Скорость и размер запросов</summary>
           <label class="booster-field">Сообщений за запрос <b>{{ requestPageSize }}</b>
-            <input v-model.number="requestPageSize" type="range" min="10" max="100" step="10" :disabled="fixedBusy" @change="saveCaptureOptions" />
+            <input v-model.number="requestPageSize" type="range" class="w-full accent-primary" min="10" max="100" step="10" :disabled="fixedBusy" @change="saveCaptureOptions" />
           </label>
           <label class="booster-field">Пауза между запросами <b>{{ requestDelay }} мс</b>
-            <input v-model.number="requestDelay" type="range" min="300" max="3000" step="50" :disabled="fixedBusy" @change="saveCaptureOptions" />
+            <input v-model.number="requestDelay" type="range" class="w-full accent-primary" min="300" max="3000" step="50" :disabled="fixedBusy" @change="saveCaptureOptions" />
           </label>
           <small>При ограничении скорости VK запрос повторяется с увеличенной паузой. Значения сохраняются при отпускании слайдера.</small>
         </details>
