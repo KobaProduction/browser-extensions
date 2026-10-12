@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VK Booster [DEV]
 // @namespace    https://github.com/KobaProduction/browser-extensions/dev/vk-booster
-// @version      1.0.44
+// @version      1.0.45
 // @description  Koba Browser Tools / VK Booster
 // @homepageURL   https://github.com/KobaProduction/browser-extensions
 // @updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/vk-booster.user.js
@@ -6801,6 +6801,11 @@
     return new Blob(parts, { type: "application/gzip" });
   }
   const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value) ? value : null;
+  function hasVerifiedOwner(value) {
+    if (!Array.isArray(value) || !value.length) return false;
+    const first = record(value[0]);
+    return !!first && typeof first.id === "number" && Number.isSafeInteger(first.id) && first.id > 0;
+  }
   function isHistory(value) {
     const r2 = record(value);
     return !!r2 && Number.isSafeInteger(r2.count) && typeof r2.count === "number" && r2.count >= 0 && Array.isArray(r2.items) && r2.items.every((item) => {
@@ -6882,7 +6887,7 @@
             offset: 0,
             rev: 0
           });
-          if (isHistory(result)) {
+          if (isHistory(result) && hasVerifiedOwner(await api("users.get", {}))) {
             refresh();
             return true;
           }
@@ -28068,6 +28073,8 @@
     const message = error instanceof Error ? error.message : "";
     if (/VK HTTP 429|VK HTTP 5\d\d|VK API 6/.test(message))
       return "VK временно ограничил запросы. Подожди и попробуй снова.";
+    if (/VK API (5|1116)(?:\b|$)/.test(message))
+      return "VK не принимает токен для этого метода. Проверь авторизацию и доступ приложения к истории.";
     if (/VK HTTP 401|VK HTTP 403|VK API (7|15|27|30)/.test(message))
       return "VK отклонил доступ к истории. Проверь авторизацию.";
     if (/peer changed|conversation changed|different conversation|другой диалог/i.test(message))
@@ -28242,11 +28249,15 @@
       const hasVerifiedPeer = computed(() => !!status.value?.activePeerId && !status.value?.blockedReason);
       async function persistCaptureOptions() {
         if (!api) throw Error("VK unavailable");
+        const { mode, from, through, media } = api.status().options;
         const options = validateVkCapturePreferences({
-          ...api.status().options,
+          mode,
           limit: fixedLimit.value,
+          from,
+          through,
           pageSize: requestPageSize.value,
-          delay: requestDelay.value
+          delay: requestDelay.value,
+          media
         });
         api.configure(options);
         const port = vkPreferencesPersistence();
