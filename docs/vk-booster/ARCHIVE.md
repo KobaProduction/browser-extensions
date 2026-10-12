@@ -114,3 +114,12 @@ metadata stays with immutable source snapshots; reported reference counts
 never imply local media files were downloaded. A dedicated media pipeline
 (permissioned file sink, URL expiry/refresh, receipts, bounded retry and
 restart) is required before describing the export as a full offline archive.
+
+## Export feedback (Extension 16; browser validation pending)
+
+The JSONL.GZ UI now activates a temporary document-attached download link,
+then removes it and later revokes the generated URL. Export and Reader show
+separate loading indicators. Errors are categorized into safe user guidance
+without reflecting arbitrary provider exception text or credentials. This is
+source-level hardening, not proof that live VK download succeeds. Binary media
+and the canonical Dexie schema remain unchanged.

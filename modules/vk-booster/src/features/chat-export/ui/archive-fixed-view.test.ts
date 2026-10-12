@@ -35,4 +35,8 @@ test('VK export workflow exposes complete scan, bounded page controls and truthf
   expect(source).toContain('бинарные файлы не скачаны')
   expect(source).toContain('!hasVerifiedPeer')
   expect(source).toContain('vkRequestedView.value = null')
+  expect(source).toContain('document.body.append(link)')
+  expect(source).toContain('link.remove()')
+  expect(source).toContain('vkArchiveErrorMessage(error)')
+  expect(source).toContain('Подготовка архива...')
 })
