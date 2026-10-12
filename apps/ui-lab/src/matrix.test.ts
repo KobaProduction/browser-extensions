@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { isProxy, reactive } from 'vue'
 import { buildLabMatrix, matrixReport } from './matrix'
 
 test('matrix covers source, surface, viewport, delivery and launcher edge deterministically', () => {
@@ -51,4 +52,29 @@ test('aggregate browser matrix checks against duplicate platform navigation', as
   const code = await Bun.file(new URL('./preview.ts', import.meta.url)).text()
   expect(code).toContain('Duplicate platform navigation in single-host aggregate')
   expect(code).toContain("scene.product.startsWith('all-in-one')")
+})
+
+test('failure evidence is a cloneable snapshot of reactive Vue matrix state', () => {
+  const cases = buildLabMatrix('smoke')
+  const id = cases[0]?.id ?? 'missing'
+  const rows = reactive([
+    { id, status: 'fail' as const, warnings: ['Synthetic viewport overflow'], elapsedMs: 42 },
+  ])
+  const report = matrixReport('smoke', cases, rows)
+  const failure = report.failures[0]
+  expect(isProxy(failure)).toBe(false)
+  expect(isProxy(failure?.warnings)).toBe(false)
+  expect(structuredClone(report)).toEqual(report)
+  expect(JSON.parse(JSON.stringify(report)).failures).toEqual([
+    { id, status: 'fail', warnings: ['Synthetic viewport overflow'], elapsedMs: 42 },
+  ])
+
+  rows[0]?.warnings.push('Later live-state warning')
+  if (rows[0]) rows[0].elapsedMs = 99
+  expect(failure).toEqual({
+    id,
+    status: 'fail',
+    warnings: ['Synthetic viewport overflow'],
+    elapsedMs: 42,
+  })
 })

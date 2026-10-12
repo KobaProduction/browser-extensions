@@ -66,7 +66,16 @@ export function matrixReport(
   cases: readonly LabMatrixCase[],
   results: readonly LabMatrixResult[],
 ) {
-  const failures = results.filter((row) => row.status === 'fail')
+  // Vue callers supply reactive rows. Export independent plain data so both
+  // postMessage structured cloning and CDP returnByValue retain the evidence.
+  const failures = results
+    .filter((row) => row.status === 'fail')
+    .map(({ id, status, warnings, elapsedMs }) => ({
+      id,
+      status,
+      warnings: [...warnings],
+      elapsedMs,
+    }))
   return {
     schemaVersion: 1,
     mode,
