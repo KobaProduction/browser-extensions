@@ -65,11 +65,17 @@ const fixedReading = ref(false)
 const hasVerifiedPeer = computed(() => !!status.value?.activePeerId && !status.value?.blockedReason)
 async function persistCaptureOptions() {
   if (!api) throw Error('VK unavailable')
+  // ArchiveOptions includes peerId, which must never enter the persisted
+  // seven-field preferences envelope (strictly validated below).
+  const { mode, from, through, media } = api.status().options
   const options = validateVkCapturePreferences({
-    ...api.status().options,
+    mode,
     limit: fixedLimit.value,
+    from,
+    through,
     pageSize: requestPageSize.value,
     delay: requestDelay.value,
+    media,
   })
   api.configure(options)
   const port = vkPreferencesPersistence()
