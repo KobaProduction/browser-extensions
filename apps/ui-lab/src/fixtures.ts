@@ -378,19 +378,52 @@ export function createMockVkArchive(scene: LabScene, method: LabMethod) {
     },
     async captureFixed(limit = 100) {
       if (!peer || status.blockedReason) throw Error('Synthetic peer unavailable')
+      if (limit !== 'all' && (!Number.isSafeInteger(limit) || limit < 1 || limit > 100000))
+        throw Error('Invalid synthetic capture limit')
+      const requested = limit === 'all' ? rows.length : Math.min(limit, rows.length)
       cancelled = false
-      status = { ...status, busy: true, progress: { phase: 'Dexie: сообщения', done: 0, total: limit } }
+      status = {
+        ...status,
+        busy: true,
+        progress: { phase: 'Dexie: сообщения', done: 0, total: requested },
+      }
       announce()
       await sleep(230)
-      if (cancelled) return { saved: 0, alreadySaved: 0, available: rows.length }
+      if (cancelled)
+        return {
+          saved: 0,
+          alreadySaved: 0,
+          available: rows.length,
+          complete: false,
+          attachmentReferences: 0,
+        }
+      const saved = Math.min(requested, 8)
+      const complete = requested >= rows.length
       status = {
         ...status,
         busy: false,
-        progress: { phase: 'Готово', done: limit, total: limit, newCount: Math.min(limit, 8) },
+        progress: {
+          phase: complete ? 'Dexie: сохранено' : 'Dexie: частично',
+          done: requested,
+          total: requested,
+          newCount: saved,
+          scanned: requested,
+          attachmentReferences: 0,
+        },
         messages: rows.length,
       }
       announce()
-      return { saved: Math.min(limit, 8), alreadySaved: Math.max(0, limit - 8), available: rows.length }
+      return {
+        saved,
+        alreadySaved: Math.max(0, requested - saved),
+        available: rows.length,
+        complete,
+        attachmentReferences: 0,
+      }
+    },
+    async countFixed() {
+      if (!peer || status.blockedReason) throw Error('Synthetic peer unavailable')
+      return rows.length
     },
     async readFixed(limit = 80, after?: number) {
       return rows.filter((m) => after === undefined || m.id > after).slice(0, limit)
