@@ -687,7 +687,7 @@
   position: fixed;
   z-index: 2147483646;
   width: min(294px, calc(100vw - 58px));
-  max-height: min(360px, calc(100dvh - 16px));
+  max-height: min(480px, calc(100dvh - 16px));
   overflow: auto;
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -851,15 +851,39 @@
   width: 100%;
   margin: 0;
 }
-.booster-control-standalone .booster-settings-layout {
+/* Do not flatten the nested provider settings grid; only the outer shell. */
+.booster-control-standalone > .booster-settings-layout {
   display: block;
   min-height: 0;
 }
-.booster-control-standalone .booster-settings-content {
+.booster-control-standalone > .booster-settings-layout > .booster-settings-content {
   min-width: 0;
   width: 100%;
 }
 @media (max-width: 620px) {
+  /* Keep header identity and installation controls on separate usable rows. */
+  .booster-control-standalone > .booster-control-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 9px;
+    padding: 12px;
+  }
+  .booster-control-standalone > .booster-control-header > .booster-header-copy > div {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .booster-control-standalone > .booster-control-header .booster-header-copy strong {
+    flex-basis: 100%;
+  }
+  .booster-control-standalone > .booster-control-header > .booster-header-actions {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .booster-control-standalone > .booster-control-header > .booster-header-actions > button:last-child {
+    margin-left: auto;
+  }
   .booster-modal-surface.booster-modal-surface-single {
     width: calc(100vw - 16px);
     max-height: calc(100dvh - 16px);

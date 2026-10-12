@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { FeatureQuickAction, FeatureQuickMetric } from '@kobaproduction/browser-core'
 import { Archive, ArrowUpToLine, Download, FolderOpen, Settings2, ShieldCheck, X } from 'lucide-vue-next'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 
 const props = defineProps<{
   title: string
@@ -12,7 +13,17 @@ const props = defineProps<{
   actions: readonly FeatureQuickAction[]
   metrics?: readonly FeatureQuickMetric[]
 }>()
-const emit = defineEmits<{ close: []; select: [id: string]; toggle: [] }>()
+const emit = defineEmits<{ close: []; select: [id: string]; toggle: []; resize: [height: number] }>()
+const root = ref<HTMLElement | null>(null)
+let observer: ResizeObserver | undefined
+onMounted(() => {
+  if (typeof ResizeObserver !== 'function' || !root.value) return
+  observer = new ResizeObserver(() => {
+    if (root.value) emit('resize', root.value.getBoundingClientRect().height)
+  })
+  observer.observe(root.value)
+})
+onBeforeUnmount(() => observer?.disconnect())
 const icons = {
   archive: Archive,
   collect: ArrowUpToLine,
@@ -24,7 +35,7 @@ const icons = {
 </script>
 
 <template>
-  <section class="booster-quick-menu" role="dialog" :aria-label="`${title}: быстрое меню`">
+  <section ref="root" class="booster-quick-menu" role="dialog" :aria-label="`${title}: быстрое меню`">
     <header class="booster-quick-header">
       <div class="booster-quick-identity">
         <strong>{{ title }}</strong>

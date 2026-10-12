@@ -14,6 +14,7 @@ code for implementation details.
 4. [Backups and restore](BACKUP_AND_RESTORE.md) — independent export/import of
    settings and large data with validation and rollback.
 5. [Telemetry](TELEMETRY.md) — provider-neutral opt-in telemetry and scopes.
+6. [Browser UI acceptance](UI_ACCEPTANCE.md) — shared Shell geometry, fixture matrix and browser acceptance gates.
 
 For actual release automation, see [DEV/PROD channels](../DEV_PROD_CHANNELS.md),
 [release operations](../RELEASES.md) and

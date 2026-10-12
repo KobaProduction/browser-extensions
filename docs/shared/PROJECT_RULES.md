@@ -116,6 +116,9 @@ changed combined head. PROD still requires installed-browser/data and
 explicit promotion acceptance. Do not disable automatic DEV to work
 around conflicts; resolve the integration before merging.
 
+For changes to shared or provider UI, run the [browser UI acceptance matrix](UI_ACCEPTANCE.md)
+before independent review. Source/type/build success cannot substitute for actual Chromium layout and interaction evidence.
+
 ## Engineering workflow
 
 Use `AGENTS.md` as a **router**, not a second copy of these rules. Load only

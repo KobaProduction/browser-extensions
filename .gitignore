@@ -7,3 +7,5 @@ coverage/
 .DS_Store
 *.tsbuildinfo
 .work/
+# Generated acceptance screenshots and matrix results (not source).
+apps/ui-lab/.local/

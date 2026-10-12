@@ -24,7 +24,10 @@
     "build:chatgpt": "bun scripts/build.ts --module chatgpt-booster",
     "lint": "biome check --error-on-warnings .",
     "lint:fix": "biome check --write .",
-    "build:shared": "bun scripts/build.ts --module packages"
+    "build:shared": "bun scripts/build.ts --module packages",
+    "ui:lab": "bun run --cwd apps/ui-lab dev",
+    "ui:lab:build": "bun run --cwd apps/ui-lab build",
+    "ui:lab:test": "bun run --cwd apps/ui-lab test"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",

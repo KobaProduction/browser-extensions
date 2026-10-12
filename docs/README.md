@@ -14,6 +14,9 @@ evidence; they must reference these contracts instead of duplicating them.
 | All-in-one | [all-in-one/README.md](all-in-one/README.md) | Composition without cross-channel storage collisions |
 | Shared infrastructure | [shared/README.md](shared/README.md) | Environment, storage, backup, telemetry and engineering rules |
 
+Local visual UI acceptance environment: [UI Acceptance Lab](../apps/ui-lab/README.md);
+its shared [browser acceptance contract](shared/UI_ACCEPTANCE.md) defines the matrix and validation levels.
+
 ## Architecture and operations
 
 - [TARGET_ARCHITECTURE.md](TARGET_ARCHITECTURE.md) — accepted DDD + FSD + Ports &
