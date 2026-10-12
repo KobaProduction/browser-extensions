@@ -15,6 +15,12 @@ test('VK Dexie is sole UI archive source with a dedicated Reader and persisted s
   const adapter = readFileSync(new URL('../model/chat-collection-port.ts', import.meta.url), 'utf8')
   expect(adapter).toContain('api.captureFixed(')
   expect(text).toContain('collector.start()')
+  // The strict durable settings validator does not accept ArchiveOptions.peerId.
+  expect(text).not.toContain('...api.status().options')
+  expect(text).toContain('const { mode, from, through, media } = api.status().options')
+  expect(text).toContain('limit: fixedLimit.value')
+  expect(text).toContain('pageSize: requestPageSize.value')
+  expect(text).toContain('delay: requestDelay.value')
   expect(text).toContain('api.readFixed(')
   expect(text).toContain('api.exportFixed(')
   expect(text).not.toContain('<ArchiveManager')
