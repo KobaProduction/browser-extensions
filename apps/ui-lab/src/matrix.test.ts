@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { isProxy, reactive } from 'vue'
-import { buildLabMatrix, matrixReport } from './matrix'
+import { buildLabMatrix, matrixReport, viewportDimensions } from './matrix'
 
 test('matrix covers source, surface, viewport, delivery and launcher edge deterministically', () => {
   const smoke = buildLabMatrix('smoke')
@@ -77,4 +77,21 @@ test('failure evidence is a cloneable snapshot of reactive Vue matrix state', ()
     warnings: ['Synthetic viewport overflow'],
     elapsedMs: 42,
   })
+})
+
+test('screenshot replay uses canonical matrix viewports and verifies actual PNG dimensions', async () => {
+  const report = matrixReport('extended', buildLabMatrix('extended'), [])
+  expect(report.viewports).toEqual(viewportDimensions)
+  expect(structuredClone(report).viewports.mobile).toEqual([390, 780])
+  const runner = await Bun.file(new URL('../scripts/browser-matrix.mjs', import.meta.url)).text()
+  expect(runner).toContain('report.viewports?.[fields.viewport]')
+  expect(runner).toContain('measured.view === fields.view')
+  expect(runner).toContain("measured.gridDisplay === 'grid'")
+  expect(runner.replace(/\s+/g, ' ')).toContain('measured.width === width && measured.height === height')
+  expect(runner).toContain('bytes.readUInt32BE(16), bytes.readUInt32BE(20)')
+  expect(runner).toContain(`screenshots-\${mode}.json`)
+  expect(runner.replace(/\s+/g, ' ')).toContain('&& !invalidEvidence ? 0 : 1')
+  const preview = await Bun.file(new URL('./preview.ts', import.meta.url)).text()
+  expect(preview).toContain('settingsNavigationWarnings({')
+  expect(preview).toContain('findPlatformSettingsNav(shadow)')
 })

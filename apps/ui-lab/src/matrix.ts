@@ -79,6 +79,9 @@ export function matrixReport(
   return {
     schemaVersion: 1,
     mode,
+    viewports: Object.fromEntries(
+      Object.entries(viewportDimensions).map(([name, size]) => [name, [...size]]),
+    ),
     total: cases.length,
     executed: results.length,
     passed: results.length - failures.length,

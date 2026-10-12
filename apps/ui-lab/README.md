@@ -17,7 +17,7 @@ Open `http://127.0.0.1:5173/`. The server binds **localhost only** by default. U
 
 Use the top controls to vary product (ChatGPT, VK or all-in-one at either supported host), channel-independent delivery label (Tampermonkey/MV3), data state (saved/empty/loading/error/long text/disabled), initial surface (quick menu/settings/archive/collapsed), launcher edge (left/right), and viewport (desktop/tablet/mobile). Each configuration loads in its own iframe to give fixed-position elements an accurate viewport. Click and drag the actual launcher, open sections and press Escape; the faux collection supports start/stop and deterministic progress.
 
-A visual diagnostics strip reports shell mounting, displayed modal/quick menu, overflow beyond the iframe viewport, and preservation of the ChatGPT **nested two-column settings** layout. Any diagnostics warning or visible overlap/clipping fails visual acceptance and should be captured as a screenshot and fixed before PR review. The lab's synthetic counters are **not real saved message counts** and green checks are **not** account, transport, IndexedDB migration, media or physical-browser-extension acceptance.
+A visual diagnostics strip reports shell mounting, displayed modal/quick menu, overflow beyond the iframe viewport, and preservation of the ChatGPT nested settings layout: **two columns on desktop/tablet and full-width top navigation at 620px and below**. Any diagnostics warning or visible overlap/clipping fails visual acceptance and should be captured as a screenshot and fixed before PR review. The lab's synthetic counters are **not real saved message counts** and green checks are **not** account, transport, IndexedDB migration, media or physical-browser-extension acceptance.
 
 ## Safety
 
@@ -36,3 +36,22 @@ node apps/ui-lab/scripts/browser-matrix.mjs --full      # 1152 scenarios
 ```
 
 Set `CHROME_BIN` if Chrome is not on `PATH`. On Linux, the browser must have its required system libraries; an unlaunchable browser is **BLOCKED**, not a passing test. Generated reports and screenshots are in ignored `apps/ui-lab/.local/`. GitHub Actions [.github/workflows/ui-acceptance.yml](../../.github/workflows/ui-acceptance.yml) runs the 288-case browser gate on an Ubuntu-hosted Chrome after fixture/unit and Vite build checks; `workflow_dispatch` can request full 1152. The acceptance matrix checks geometry and synthetic interaction, not real service transport or storage.
+
+
+## Diagnostic and screenshot evidence contract
+
+Platform navigation checks are anchored to the outer Shell, not the embedded
+provider Control Center. Responsive geometry checks run for every enabled
+ChatGPT settings scene, not only interaction samples. They distinguish the
+mobile top row from the desktop sidebar and fail on missing content, wrong
+column counts, overlap, zero-size regions and horizontal viewport overflow.
+Negative DOM/geometry fixtures protect these failure paths.
+
+Screenshot replay uses the same canonical viewport dimensions as the matrix.
+The runner waits for the expected preview surface, verifies its measured
+viewport and checks PNG dimensions before recording each image. The ignored
+`screenshots-<mode>.json` pairs each image with its scenario, requested and
+measured sizes. The runner also captures mobile settings and aggregate
+settings at all three widths. A malformed replay or mismatched screenshot
+cannot turn a failed matrix into a pass. These remain synthetic UI evidence,
+not installed-product or user-data acceptance.

@@ -152,23 +152,30 @@ try {
   console.log(
     `MATRIX ${mode}: ${report.executed}/${report.total} checked, ${report.passed} passed, ${report.failed} failed; report: ${pathname}`,
   )
-  const screenshot = async (name) => {
+  const screenshot = async (name, expectedSize) => {
     const png = await command('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
-    await writeFile(join(output, name), Buffer.from(png.data, 'base64'))
+    const bytes = Buffer.from(png.data, 'base64')
+    if (bytes.length < 24 || bytes.toString('ascii', 1, 4) !== 'PNG')
+      throw Error(`Screenshot is not a PNG: ${name}`)
+    const size = [bytes.readUInt32BE(16), bytes.readUInt32BE(20)]
+    if (expectedSize && size.some((value, i) => value !== expectedSize[i]))
+      throw Error(`Screenshot viewport mismatch: ${name} (${size} != ${expectedSize})`)
+    await writeFile(join(output, name), bytes)
+    return size
   }
-  await screenshot(`matrix-${mode}-final.png`)
-  // CI must keep the JSON evidence even if a screenshot fixture has malformed data.
-  // Malformed cases fail the matrix, but must not crash screenshot collection.
-  if (report.failed) console.error('Browser matrix failures:', JSON.stringify(report.failures))
-  for (const [i, row] of (Array.isArray(report.failures) ? report.failures : []).slice(0, 6).entries()) {
-    if (typeof row?.id !== 'string' || row.id.split(':').length !== 6) {
-      console.error('MALFORMED_FAILURE_RECORD:', JSON.stringify(row))
-      exitCode = 1
-      continue
-    }
-    const parts = row.id.split(':')
-    const keys = ['product', 'scene', 'view', 'viewport', 'method', 'side']
-    const fields = Object.fromEntries(keys.map((key, i) => [key, parts[i]]))
+  await screenshot(`matrix-${mode}-final.png`, [1500, 1050])
+  const screenshots = []
+  const capturePreview = async (name, fields) => {
+    const size = report.viewports?.[fields.viewport]
+    if (!Array.isArray(size) || size.length !== 2 || size.some((v) => !Number.isInteger(v) || v <= 0))
+      throw Error(`Unknown or invalid scenario viewport: ${fields.viewport}`)
+    const [width, height] = size
+    await command('Emulation.setDeviceMetricsOverride', {
+      width,
+      height,
+      deviceScaleFactor: 1,
+      mobile: false,
+    })
     const query = new URLSearchParams({
       product: fields.product,
       scene: fields.scene,
@@ -177,8 +184,57 @@ try {
       side: fields.side,
     })
     await command('Page.navigate', { url: `${baseUrl}/preview.html?${query}` })
-    await delay(850)
-    await screenshot(`matrix-${mode}-failure-${i + 1}.png`)
+    // Reject a previous navigation or a panel whose provider is still hydrating.
+    const previewMatches = (measured) => {
+      const needsSettingsGrid =
+        fields.view === 'settings' &&
+        fields.scene !== 'disabled' &&
+        ['chatgpt', 'all-in-one'].includes(fields.product)
+      return (
+        measured?.shell &&
+        measured.product === fields.product &&
+        measured.scene === fields.scene &&
+        measured.view === fields.view &&
+        measured.method === fields.method &&
+        measured.side === fields.side &&
+        measured.width === width &&
+        measured.height === height &&
+        (!needsSettingsGrid || measured.gridDisplay === 'grid') &&
+        (fields.view === 'quick'
+          ? measured.quick && !measured.modal
+          : fields.view === 'closed'
+            ? !measured.quick && !measured.modal
+            : measured.modal)
+      )
+    }
+    let measured
+    const readyDeadline = Date.now() + 15000
+    while (Date.now() < readyDeadline) {
+      measured = await evaluate(
+        'document.readyState === "complete" ? window.__uiLabPreviewReport ?? null : null',
+      )
+      if (previewMatches(measured)) break
+      await delay(100)
+    }
+    if (!previewMatches(measured))
+      throw Error(`Preview did not mount at the requested viewport: ${name}`)
+    const pngSize = await screenshot(name, size)
+    screenshots.push({ file: name, scenario: fields, requestedSize: size, pngSize, measured })
+    await writeFile(join(output, `screenshots-${mode}.json`), JSON.stringify(screenshots, null, 2))
+  }
+  // Keep matrix results even if a replay record is malformed; never promote it to PASS.
+  let invalidEvidence = false
+  if (report.failed) console.error('Browser matrix failures:', JSON.stringify(report.failures))
+  for (const [i, row] of (Array.isArray(report.failures) ? report.failures : []).slice(0, 6).entries()) {
+    if (typeof row?.id !== 'string' || row.id.split(':').length !== 6) {
+      console.error('MALFORMED_FAILURE_RECORD:', JSON.stringify(row))
+      invalidEvidence = true
+      continue
+    }
+    const parts = row.id.split(':')
+    const keys = ['product', 'scene', 'view', 'viewport', 'method', 'side']
+    const fields = Object.fromEntries(keys.map((key, i) => [key, parts[i]]))
+    await capturePreview(`matrix-${mode}-failure-${i + 1}.png`, fields)
   }
   const samples = [
     ['chatgpt', 'saved', 'settings', 'tampermonkey', 'right', 'desktop'],
@@ -187,15 +243,23 @@ try {
     ['vk', 'saved', 'quick', 'chromium', 'right', 'mobile'],
     ['all-in-one', 'saved', 'quick', 'tampermonkey', 'right', 'desktop'],
     ['all-in-one-vk', 'saved', 'archive', 'chromium', 'left', 'tablet'],
+    ['chatgpt', 'saved', 'settings', 'tampermonkey', 'left', 'mobile'],
+    ['all-in-one', 'saved', 'settings', 'tampermonkey', 'left', 'desktop'],
+    ['all-in-one', 'saved', 'settings', 'chromium', 'right', 'tablet'],
+    ['all-in-one', 'saved', 'settings', 'tampermonkey', 'left', 'mobile'],
   ]
   for (const [i, sample] of samples.entries()) {
-    const [product, scene, view, method, side] = sample
-    const q = new URLSearchParams({ product, scene, view, method, side })
-    await command('Page.navigate', { url: `${baseUrl}/preview.html?${q}` })
-    await delay(780)
-    await screenshot(`matrix-${mode}-sample-${i + 1}-${product}-${view}.png`)
+    const [product, scene, view, method, side, viewport] = sample
+    await capturePreview(`matrix-${mode}-sample-${i + 1}-${product}-${view}.png`, {
+      product,
+      scene,
+      view,
+      method,
+      side,
+      viewport,
+    })
   }
-  exitCode = report.failed === 0 && report.executed === report.total ? 0 : 1
+  exitCode = report.failed === 0 && report.executed === report.total && !invalidEvidence ? 0 : 1
 } catch (error) {
   console.error('MATRIX_BROWSER_FAILURE:', String(error))
   if (lastErr) console.error('Chrome stderr tail:', lastErr.slice(-1500))

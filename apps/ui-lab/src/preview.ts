@@ -19,6 +19,7 @@ import {
   createMockVkArchive,
   fixtureSize,
 } from './fixtures'
+import { findPlatformSettingsNav, settingsNavigationWarnings } from './navigation-diagnostics'
 import { readScenario } from './scenes'
 import './preview.css'
 
@@ -241,9 +242,7 @@ function diagnose() {
     if (scene.view === 'settings' && !vkHost && scene.scene !== 'disabled' && !productGrid)
       warnings.push('ChatGPT nested settings grid not mounted')
     if (scene.product.startsWith('all-in-one') && scene.view === 'settings') {
-      const sharedNav = shadow?.querySelector(
-        '.booster-control-center > .booster-settings-layout > .booster-settings-nav',
-      )
+      const sharedNav = shadow ? findPlatformSettingsNav(shadow) : null
       if (sharedNav) warnings.push('Duplicate platform navigation in single-host aggregate')
     }
     const launcher = shadow?.querySelector<HTMLElement>('.booster-launcher')
@@ -283,17 +282,37 @@ function diagnose() {
     gridDisplay !== 'grid'
   )
     warnings.push('Навигация настроек потеряла двухколоночную сетку')
+  if (scene.view === 'settings' && !vkHost && scene.scene !== 'disabled' && productGrid) {
+    const navigation = productGrid.querySelector<HTMLElement>(':scope > .booster-settings-nav')
+    const content = productGrid.querySelector<HTMLElement>(':scope > .booster-settings-content')
+    if (!navigation || !content) warnings.push('Settings navigation or content missing')
+    else
+      warnings.push(
+        ...settingsNavigationWarnings({
+          viewportWidth: innerWidth,
+          columns: getComputedStyle(productGrid).gridTemplateColumns.trim().split(/\s+/).length,
+          navigation: navigation.getBoundingClientRect(),
+          content: content.getBoundingClientRect(),
+        }),
+      )
+  }
   if (scene.view !== 'closed' && !modal && !quick) warnings.push('Панель не открылась')
   const data = {
     product: scene.product,
     scene: scene.scene,
+    view: scene.view,
+    method: scene.method,
+    side: scene.side,
     viewport: `${innerWidth}×${innerHeight}`,
+    width: innerWidth,
+    height: innerHeight,
     shell: Boolean(root),
     modal: Boolean(modal),
     quick: Boolean(quick),
     gridDisplay,
     warnings,
   }
+  ;(window as Window & { __uiLabPreviewReport?: unknown }).__uiLabPreviewReport = data
   // Matrix sends exactly one final result per iframe. Avoid flooding the parent
   // (and remote browser automation) with intermediate mutation diagnostics.
   if (!matrixId)
@@ -339,8 +358,6 @@ async function checkInteractions(): Promise<string[]> {
       const tabs = nav?.querySelectorAll('button')
       if (!tabs?.length || tabs.length < 4)
         warnings.push('Nested ChatGPT settings navigation incomplete')
-      if (nav && nav.getBoundingClientRect().width > Math.max(250, innerWidth * 0.5))
-        warnings.push('Settings navigation occupies too much width')
     }
   } else if (scene.view === 'archive' && scene.scene === 'saved') {
     const capture = query('.booster-conversation-collection button') as HTMLButtonElement | null
