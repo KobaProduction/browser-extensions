@@ -11,8 +11,13 @@ const props = defineProps<{
   selectedSection: string
 }>()
 const emit = defineEmits<{ close: []; select: [section: string] }>()
-const standalone = props.runtime.features.length === 1
-const singleFeature = standalone ? props.runtime.features[0] : undefined
+// The aggregate can register many features while only one matches this host.
+// Keep the Shell's navigation policy aligned with Overlay.vue's active-site matching.
+const matchingFeatures = computed(() =>
+  props.runtime.features.filter((feature) => feature.match(props.runtime.context.url)),
+)
+const standalone = computed(() => matchingFeatures.value.length === 1)
+const singleFeature = computed(() => (standalone.value ? matchingFeatures.value[0] : undefined))
 const section = ref(props.selectedSection)
 watch(
   () => props.selectedSection,

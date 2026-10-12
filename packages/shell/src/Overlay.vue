@@ -31,6 +31,7 @@ const props = defineProps<{
 }>()
 const open = ref(false)
 const quickOpen = ref(false)
+const quickMenuHeight = ref(360)
 const quickBusy = ref(false)
 const quickError = ref('')
 const quickMetrics = ref<readonly import('@kobaproduction/browser-core').FeatureQuickMetric[]>([])
@@ -439,7 +440,8 @@ function onModuleOpen(event: Event) {
 }
 const launcherStyle = computed(() => ({ left: position.value.x + 'px', top: position.value.y + 'px' }))
 const quickMenuStyle = computed(() => ({
-  top: Math.max(8, Math.min(position.value.y - 110, window.innerHeight - 320)) + 'px',
+  top:
+    Math.max(8, Math.min(position.value.y - 110, window.innerHeight - quickMenuHeight.value - 8)) + 'px',
   ...(dockSide.value === 'right' ? { right: BUTTON_SIZE + 6 + 'px' } : { left: BUTTON_SIZE + 6 + 'px' }),
 }))
 const workspaceStyle = computed(() => ({
@@ -529,10 +531,10 @@ onBeforeUnmount(() => {
       :enabled="installationEnabled" :active="featureActive"
       :busy="quickBusy" :actions="menuActions" :metrics="quickMetrics"
       @close="quickOpen = false; launcherButton?.focus()"
-      @select="selectQuick" @toggle="toggleQuickInstallation" />
+      @select="selectQuick" @toggle="toggleQuickInstallation" @resize="quickMenuHeight = $event" />
     <p v-if="quickOpen && quickError" class="booster-quick-error" role="alert">{{ quickError }}</p>
     <button
-      v-if="launcher"
+      v-if="launcher && (!standalone || !open)"
       ref="launcherButton"
       class="booster-launcher"
       :class="{ 'booster-launcher-dragging': dragging, 'booster-launcher-docked': standalone }"

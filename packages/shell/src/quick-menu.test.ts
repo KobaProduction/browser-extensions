@@ -21,15 +21,22 @@ test('standalone launcher snaps to a viewport edge and opens a compact quick men
   expect(overlay).toContain('<QuickMenu')
   expect(overlay).toContain('standalone ? quickOpen : open')
   expect(css).toContain('.booster-quick-menu')
+  expect(overlay).toContain('quickMenuHeight.value')
+  expect(overlay).toContain('@resize="quickMenuHeight = $event"')
+  expect(css).toContain('max-height: min(480px, calc(100dvh - 16px))')
   expect(css).toContain('.booster-launcher-docked')
 })
 
 test('standalone full settings show method/version and hide duplicate shared navigation', () => {
+  expect(panel).toContain('feature.match(props.runtime.context.url)')
+  expect(panel).toContain('matchingFeatures.value.length === 1')
+  expect(panel).not.toContain('props.runtime.features.length === 1')
   expect(panel).toContain('booster-control-standalone')
   expect(panel).toContain('v-if="!standalone" class="booster-settings-nav"')
   expect(panel).toContain('singleFeature.presentation.installation')
   expect(panel).toContain('singleFeature.presentation.version')
   expect(overlay).toContain('booster-modal-surface-single')
+  expect(overlay).toContain('v-if="launcher && (!standalone || !open)"')
   expect(overlay).toContain('!standalone.value &&')
 })
 
