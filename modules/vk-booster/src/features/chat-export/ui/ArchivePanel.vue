@@ -5,8 +5,9 @@ import type { ChatCollectionSnapshot } from '@kobaproduction/browser-archive'
 import { createChatCollectionController } from '@kobaproduction/browser-archive'
 import { Badge, Button } from '@kobaproduction/browser-ui'
 import { ConversationCollectionAction } from '@kobaproduction/browser-widgets'
-import { Archive, Download, Settings2, ShieldAlert } from 'lucide-vue-next'
+import { Archive, Download, LoaderCircle, Settings2, ShieldAlert } from 'lucide-vue-next'
 import { computed, onMounted, onUnmounted, ref, useId, watch } from 'vue'
+import { vkArchiveErrorMessage } from '../model/archive-error-feedback'
 import { vkChatCollectionPort } from '../model/chat-collection-port'
 import { vkPreferencesLoadError, vkPreferencesPersistence } from '../model/durable-preferences'
 import { validateVkCapturePreferences } from '../model/settings-backup'
@@ -20,12 +21,14 @@ type View = 'capture' | 'reader' | 'settings'
 const tab = ref<View>('capture')
 const tabPrefix = useId()
 const selectedStatus = computed(() => {
+  if (activeOperation.value === 'export') return 'Экспорт архива'
   if (status.value?.busy || fixedBusy.value) return 'Захват сообщений'
   if (status.value?.blockedReason)
     return status.value.activePeerId ? 'Другой диалог' : 'Открой переписку'
   return status.value?.activePeerId ? 'Dexie v1' : 'Открой переписку'
 })
 const fixedBusy = ref(false)
+const activeOperation = ref<'capture' | 'export' | null>(null)
 const captureRange = ref<'all' | 'recent'>('all')
 const fixedLimit = ref(Math.min(100000, Math.max(1, status.value?.options.limit ?? 100)))
 const requestPageSize = ref(status.value?.options.pageSize ?? 50)
@@ -89,6 +92,7 @@ async function saveCaptureOptions() {
 async function captureDexie() {
   if (!api || fixedBusy.value || !hasVerifiedPeer.value) return
   fixedBusy.value = true
+  activeOperation.value = 'capture'
   fixedError.value = ''
   try {
     await persistCaptureOptions()
@@ -102,10 +106,11 @@ async function captureDexie() {
     fixedPreview.value = []
     fixedCursor.value = undefined
     fixedNextCursor.value = undefined
-  } catch {
+  } catch (error) {
     captureComplete.value = false
-    fixedError.value = 'Сбор прерван. Сохранённые сообщения остаются в Dexie — можно повторить операцию.'
+    fixedError.value = `Сбор прерван. ${vkArchiveErrorMessage(error)}`
   } finally {
+    activeOperation.value = null
     fixedBusy.value = false
   }
 }
@@ -118,11 +123,11 @@ async function readDexie(cursor?: number) {
     fixedPreview.value = rows
     fixedCursor.value = cursor
     fixedNextCursor.value = rows.length === 80 ? rows.at(-1)?.id : undefined
-  } catch {
+  } catch (error) {
     fixedPreview.value = []
     fixedCursor.value = undefined
     fixedNextCursor.value = undefined
-    fixedError.value = 'Dexie-архив недоступен для текущего проверенного диалога.'
+    fixedError.value = `Чтение: ${vkArchiveErrorMessage(error)}`
   } finally {
     fixedReading.value = false
   }
@@ -130,6 +135,7 @@ async function readDexie(cursor?: number) {
 async function exportDexie() {
   if (!api || fixedBusy.value || !hasVerifiedPeer.value) return
   fixedBusy.value = true
+  activeOperation.value = 'export'
   fixedError.value = ''
   try {
     const blob = await api.exportFixed()
@@ -138,13 +144,19 @@ async function exportDexie() {
       const link = document.createElement('a')
       link.href = url
       link.download = 'vk-fixed-v1-original.jsonl.gz'
-      link.click()
+      document.body.append(link)
+      try {
+        link.click()
+      } finally {
+        link.remove()
+      }
     } finally {
       window.setTimeout(() => URL.revokeObjectURL(url), 30_000)
     }
-  } catch {
-    fixedError.value = 'Экспорт Dexie не выполнен. Сохранённая история не изменена.'
+  } catch (error) {
+    fixedError.value = `Экспорт: ${vkArchiveErrorMessage(error)}`
   } finally {
+    activeOperation.value = null
     fixedBusy.value = false
   }
 }
@@ -332,8 +344,8 @@ onUnmounted(() => {
           <span>Чтение только текущей подтверждённой VK-переписки. До 80 записей на страницу.</span>
         </div>
         <div class="flex flex-wrap gap-2">
-          <Button variant="outline" :disabled="fixedBusy || fixedReading || !hasVerifiedPeer" @click="readDexie()">Открыть Reader</Button>
-          <Button variant="outline" :disabled="fixedBusy || !hasVerifiedPeer" @click="exportDexie">Экспорт JSONL.gz</Button>
+          <Button variant="outline" :disabled="fixedBusy || fixedReading || !hasVerifiedPeer" @click="readDexie()"><LoaderCircle v-if="fixedReading" class="size-4 animate-spin" aria-hidden="true" />{{ fixedReading ? 'Чтение...' : 'Открыть Reader' }}</Button>
+          <Button variant="outline" :disabled="fixedBusy || !hasVerifiedPeer" @click="exportDexie"><LoaderCircle v-if="activeOperation === 'export'" class="size-4 animate-spin" aria-hidden="true" />{{ activeOperation === 'export' ? 'Подготовка архива...' : 'Экспорт JSONL.gz' }}</Button>
           <Button variant="outline" :disabled="fixedBusy || fixedReading || !fixedNextCursor" @click="readDexie(fixedNextCursor)">Следующие 80</Button>
           <Button variant="outline" :disabled="fixedBusy || fixedReading || !fixedCursor" @click="readDexie()">К началу</Button>
         </div>
