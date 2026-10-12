@@ -91,7 +91,8 @@ if (process.argv.includes('--built'))
         throw Error('Aggregate distribution has lost its provider dependency graph')
       if (
         !user.includes('// @match        https://chatgpt.com/*') ||
-        !user.includes('// @match        https://vk.ru/im*') ||
+        !user.includes('// @match        https://vk.ru/*') ||
+        !user.includes('// @match        https://vk.com/*') ||
         !user.includes('// @grant        unsafeWindow') ||
         !user.includes('// @connect      *')
       )
@@ -110,6 +111,20 @@ if (process.argv.includes('--built'))
         )
       )
         throw Error('Aggregate MV3 distribution does not include both host adapters')
+    }
+    // Site-wide VK shell must be injected on feed/profiles/groups, not just /im.
+    if (id !== 'chatgpt-booster') {
+      const vkMatches = ['https://vk.ru/*', 'https://vk.com/*']
+      for (const host of vkMatches) {
+        if (
+          !user.includes(`// @match        ${host}`) ||
+          !chrome.content_scripts?.some(
+            (entry: { matches?: string[]; js?: string[] }) =>
+              entry.js?.includes('content.js') && entry.matches?.includes(host),
+          )
+        )
+          throw Error('VK site-wide userscript/content script scope missing: ' + host)
+      }
     }
     if (
       id === 'vk-booster' &&

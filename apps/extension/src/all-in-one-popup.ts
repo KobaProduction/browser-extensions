@@ -5,7 +5,7 @@ const status = document.getElementById('status') as HTMLElement
 button.onclick = async () => {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-    if (!tab?.id || !/^https:\/\/(?:(?:vk\.ru|vk\.com)\/im|chatgpt\.com\/)/.test(tab.url || '')) {
+    if (!tab?.id || !/^https:\/\/(?:(?:vk\.ru|vk\.com)\/|chatgpt\.com\/)/.test(tab.url || '')) {
       status.textContent = 'Откройте VK или ChatGPT'
       return
     }
@@ -16,4 +16,4 @@ button.onclick = async () => {
   }
 }
 
-attachChromeInstallationToggle(document.body, /^https:\/\/(?:vk\.ru\/im|vk\.com\/im|chatgpt\.com\/)/)
+attachChromeInstallationToggle(document.body, /^https:\/\/(?:vk\.ru\/|vk\.com\/|chatgpt\.com\/)/)

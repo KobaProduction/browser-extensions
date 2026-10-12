@@ -115,6 +115,11 @@ export class FixedVkDexieRepository {
       throw Error('VK archive owner or record identity unavailable')
     return this.db.messages.get(JSON.stringify([this.scope.ownerId, peerId, messageId]))
   }
+  async countMessages(peerId: number): Promise<number> {
+    if (!positive(peerId) || !this.scope.ownerId) throw Error('Verified VK peer and owner required')
+    return this.db.messages.where('[ownerId+peerId]').equals([this.scope.ownerId, peerId]).count()
+  }
+
   async listMessages(peerId: number, limit = 100, afterMessageId?: number): Promise<FixedVkMessage[]> {
     if (
       !positive(peerId) ||

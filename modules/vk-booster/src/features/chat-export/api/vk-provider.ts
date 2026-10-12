@@ -82,8 +82,8 @@ export function createVkProvider(
       body,
       signal: AbortSignal.timeout(25000),
     })
-    if ((resp.status === 429 || resp.status >= 500) && attempt < 2) {
-      await sleep(1000 * (attempt + 1))
+    if ((resp.status === 429 || resp.status >= 500) && attempt < 4) {
+      await sleep(Math.min(12000, 1000 * 2 ** attempt))
       return api(method, params, attempt + 1)
     }
     if (!resp.ok) throw Error('VK HTTP ' + resp.status)
@@ -91,6 +91,11 @@ export function createVkProvider(
       obj = record(data)
     if (obj?.error) {
       const error = record(obj.error)
+      // VK code 6 explicitly asks clients to slow down. Retry a bounded number of times.
+      if (error?.error_code === 6 && attempt < 4) {
+        await sleep(Math.min(12000, 1000 * 2 ** attempt))
+        return api(method, params, attempt + 1)
+      }
       throw Error('VK API ' + String(error?.error_code ?? 'unknown'))
     }
     return obj?.response

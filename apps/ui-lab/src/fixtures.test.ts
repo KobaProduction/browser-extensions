@@ -30,8 +30,23 @@ test('VK fixture has deterministic records and its capture never touches a live 
   try {
     expect(api.status().messages).toBe(32)
     expect((await api.readFixed(10)).length).toBe(10)
-    expect((await api.captureFixed(10)).saved).toBe(8)
-    expect(api.status().progress.phase).toBe('Готово')
+    expect(await api.countFixed()).toBe(32)
+    expect(await api.captureFixed(10)).toMatchObject({
+      saved: 8,
+      alreadySaved: 2,
+      available: 32,
+      complete: false,
+      attachmentReferences: 0,
+    })
+    expect(api.status().progress.phase).toBe('Dexie: частично')
+    expect(await api.captureFixed('all')).toMatchObject({
+      saved: 8,
+      alreadySaved: 24,
+      available: 32,
+      complete: true,
+      attachmentReferences: 0,
+    })
+    expect(api.status().progress.phase).toBe('Dexie: сохранено')
     await expect(api.restorePortable(new Blob(), { settings: true, indexeddb: true })).rejects.toThrow(
       'disabled',
     )
