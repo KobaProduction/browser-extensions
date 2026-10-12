@@ -1,9 +1,14 @@
-import { createSettingsStore, onInstallationStateChange } from '@kobaproduction/browser-adapters'
+import {
+  createApplicationTelemetry,
+  createSettingsStore,
+  onInstallationStateChange,
+} from '@kobaproduction/browser-adapters'
 import { type Capability, FeatureRuntime, FeatureSettings } from '@kobaproduction/browser-core'
 import { mountControlCenter } from '@kobaproduction/browser-shell'
 import { vkBoosterFeature } from '@kobaproduction/module-vk-booster'
 import ArchivePanel from '@kobaproduction/module-vk-booster/ui'
 
+const telemetry = createApplicationTelemetry('chromium', createSettingsStore('chromium'))
 const runtime = new FeatureRuntime([vkBoosterFeature], {
   target: 'chromium',
   url: new URL(location.href),
@@ -14,10 +19,22 @@ const runtime = new FeatureRuntime([vkBoosterFeature], {
 const unsubscribeState = onInstallationStateChange('chromium', () => {
   void runtime.refreshFromSettings()
 })
-window.addEventListener('pagehide', unsubscribeState, { once: true })
+window.addEventListener(
+  'pagehide',
+  () => {
+    unsubscribeState()
+    telemetry.close()
+  },
+  { once: true },
+)
 async function launch() {
   await runtime.start()
-  const ui = mountControlCenter({ runtime, launcher: true, views: { 'vk-booster': ArchivePanel } })
+  const ui = mountControlCenter({
+    runtime,
+    launcher: true,
+    views: { 'vk-booster': ArchivePanel },
+    telemetry,
+  })
   chrome.runtime.onMessage.addListener(
     (message: { type?: string; id?: string; enabled?: boolean }, _, sendResponse) => {
       if (message?.type === 'koba:installation-status') {

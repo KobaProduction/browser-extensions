@@ -154,8 +154,16 @@ export interface ArchiveApi {
     attachmentReferences: number
   }>
   countFixed(): Promise<number>
+  resolveParticipants(
+    userIds: readonly number[],
+  ): Promise<readonly import('./vk-participants').VkParticipant[]>
   readFixed(limit?: number, afterMessageId?: number): Promise<readonly VkMessage[]>
   exportFixed(): Promise<Blob>
+  /** End-user ZIP export; distinct from internal TAR.GZ recovery and legacy JSONL.GZ. */
+  exportUserZip(
+    options: import('./vk-user-export').VkUserExportOptions,
+    onProgress?: (progress: import('./vk-user-export').VkExportProgress) => void,
+  ): Promise<Blob>
   backupPortable(options: BackupTarChoice, output?: BackupTarOptions): Promise<Blob | null>
   inspectPortable(backup: Blob, progress?: BackupTarReporter): Promise<BackupTarInspection>
   restorePortable(

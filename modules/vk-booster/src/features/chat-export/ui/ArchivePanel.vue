@@ -2,19 +2,28 @@
 /** VK-only archive API adapter. Generic ArchiveManager owns presentation, never VK storage. */
 
 import type { ChatCollectionSnapshot } from '@kobaproduction/browser-archive'
-import { createChatCollectionController } from '@kobaproduction/browser-archive'
+import { createChatCollectionController, readArchiveMedia } from '@kobaproduction/browser-archive'
 import { Badge, Button } from '@kobaproduction/browser-ui'
-import { ConversationCollectionAction } from '@kobaproduction/browser-widgets'
+import {
+  ArchiveMessageHeader,
+  ArchiveProgressBar,
+  ConversationCollectionAction,
+  useApplicationTelemetry,
+} from '@kobaproduction/browser-widgets'
 import { Archive, Download, LoaderCircle, Settings2, ShieldAlert } from 'lucide-vue-next'
 import { computed, onMounted, onUnmounted, ref, useId, watch } from 'vue'
+import { assets } from '../api/vk-media'
 import { vkArchiveErrorMessage } from '../model/archive-error-feedback'
 import { vkChatCollectionPort } from '../model/chat-collection-port'
 import { vkPreferencesLoadError, vkPreferencesPersistence } from '../model/durable-preferences'
 import { validateVkCapturePreferences } from '../model/settings-backup'
+import type { VkAsset } from '../model/types'
 import { type ArchiveStatus, archiveApi, type VkMessage } from '../model/types'
 import { vkRequestedView } from '../model/ui-navigation'
+import type { VkExportProgress } from '../model/vk-user-export'
 
 const api = archiveApi()
+const telemetry = useApplicationTelemetry()
 const status = ref<ArchiveStatus | null>(api?.status() ?? null)
 const error = ref('')
 type View = 'capture' | 'reader' | 'settings'
@@ -62,6 +71,70 @@ const fixedPreview = ref<readonly VkMessage[]>([])
 const fixedCursor = ref<number | undefined>()
 const fixedNextCursor = ref<number | undefined>()
 const fixedReading = ref(false)
+let readerGeneration = 0
+const participantNames = ref<Record<number, string>>({})
+const nameLookupError = ref('')
+const attachments = ref<Record<string, { blob: Blob; url: string; name: string }>>({})
+const downloading = ref<Record<string, boolean>>({})
+const attachmentErrors = ref<Record<string, string>>({})
+const exportOpen = ref(false)
+const exportChunkRows = ref<100 | 500>(500)
+const exportIncludeReferences = ref(true)
+const exportPrepared = ref<Blob | null>(null)
+const exportProgress = ref<VkExportProgress | null>(null)
+function senderName(message: VkMessage): string {
+  const id = message.from_id
+  if (typeof id === 'number') {
+    const name = participantNames.value[id]
+    if (name) return name
+  }
+  if (message.out === 1 || message.out === true) return 'Вы'
+  return id && Number.isSafeInteger(id) ? `Участник ${id} (имя не получено)` : 'Неизвестный отправитель'
+}
+function messageMedia(message: VkMessage): VkAsset[] {
+  return assets(message).filter((item) => item.type !== 'link')
+}
+async function requestMedia(asset: VkAsset) {
+  if (downloading.value[asset.key] || attachments.value[asset.key] || !hasVerifiedPeer.value) return
+  downloading.value = { ...downloading.value, [asset.key]: true }
+  const peer = api?.status().activePeerId
+  attachmentErrors.value = { ...attachmentErrors.value, [asset.key]: '' }
+  try {
+    const first = asset.choices.find((item) => /^https:\/\//i.test(item.url))
+    if (!first) throw Error('Нет доступной HTTPS-ссылки для вложения.')
+    const response = await fetch(first.url, { credentials: 'omit', signal: AbortSignal.timeout(30000) })
+    const result = await readArchiveMedia(response, {
+      maxBytes: 64 * 1024 * 1024,
+      expectedBytes: first.size,
+    })
+    if (!peer || api?.status().activePeerId !== peer) throw Error('Переписка изменилась.')
+    const blob = new Blob([result.bytes], { type: result.mime })
+    attachments.value = {
+      ...attachments.value,
+      [asset.key]: {
+        blob,
+        url: URL.createObjectURL(blob),
+        name: first.name,
+      },
+    }
+  } catch {
+    attachmentErrors.value = {
+      ...attachmentErrors.value,
+      [asset.key]: 'Не удалось загрузить оригинал. Ссылка может быть недоступна или истекла.',
+    }
+  } finally {
+    downloading.value = { ...downloading.value, [asset.key]: false }
+  }
+}
+function resetPreparedExport() {
+  exportPrepared.value = null
+  exportProgress.value = null
+}
+function showUserExportOptions() {
+  exportOpen.value = true
+  resetPreparedExport()
+}
+
 const hasVerifiedPeer = computed(() => !!status.value?.activePeerId && !status.value?.blockedReason)
 async function persistCaptureOptions() {
   if (!api) throw Error('VK unavailable')
@@ -98,6 +171,8 @@ async function saveCaptureOptions() {
 async function captureDexie() {
   if (!api || fixedBusy.value || !hasVerifiedPeer.value) return
   fixedBusy.value = true
+  resetPreparedExport()
+  void telemetry?.record('archive.capture.started')
   activeOperation.value = 'capture'
   fixedError.value = ''
   try {
@@ -106,6 +181,7 @@ async function captureDexie() {
     await collector.start()
     const latest = api.status()
     fixedSaved.value = latest.progress.newCount ?? null
+    void telemetry?.record('archive.capture.completed', latest.progress.newCount ?? 0)
     reportedTotal.value = latest.progress.total || null
     captureComplete.value = latest.progress.phase === 'Dexie: сохранено'
     attachmentReferences.value = latest.progress.attachmentReferences ?? null
@@ -113,6 +189,7 @@ async function captureDexie() {
     fixedCursor.value = undefined
     fixedNextCursor.value = undefined
   } catch (error) {
+    void telemetry?.record('archive.capture.failed')
     captureComplete.value = false
     fixedError.value = `Сбор прерван. ${vkArchiveErrorMessage(error)}`
   } finally {
@@ -124,47 +201,104 @@ async function readDexie(cursor?: number) {
   if (!api || fixedBusy.value || fixedReading.value || !hasVerifiedPeer.value) return
   fixedReading.value = true
   fixedError.value = ''
+  const ticket = ++readerGeneration
+  const peer = api.status().activePeerId
   try {
     const rows = await api.readFixed(80, cursor)
+    if (ticket !== readerGeneration || api.status().activePeerId !== peer) return
     fixedPreview.value = rows
     fixedCursor.value = cursor
     fixedNextCursor.value = rows.length === 80 ? rows.at(-1)?.id : undefined
-  } catch (error) {
-    fixedPreview.value = []
-    fixedCursor.value = undefined
-    fixedNextCursor.value = undefined
-    fixedError.value = `Чтение: ${vkArchiveErrorMessage(error)}`
-  } finally {
     fixedReading.value = false
+    // Names are fetched separately. An unavailable VK users.get cannot
+    // delay the saved transcript or erase records from the Reader.
+    const ids = [
+      ...new Set(
+        rows
+          .map((row) => row.from_id)
+          .filter((id): id is number => typeof id === 'number' && Number.isSafeInteger(id) && id > 0),
+      ),
+    ]
+    void api
+      .resolveParticipants(ids)
+      .then((people) => {
+        if (ticket !== readerGeneration || api.status().activePeerId !== peer) return
+        participantNames.value = Object.fromEntries(people.map((person) => [person.id, person.name]))
+        nameLookupError.value =
+          ids.length > people.length
+            ? 'Часть имён VK не предоставил. Идентификаторы показаны без подмены.'
+            : ''
+      })
+      .catch(() => {
+        if (ticket === readerGeneration && api.status().activePeerId === peer)
+          nameLookupError.value = 'VK не предоставил имена участников. Сообщения сохранены и доступны.'
+      })
+  } catch (error) {
+    if (ticket === readerGeneration) {
+      fixedPreview.value = []
+      fixedCursor.value = undefined
+      fixedNextCursor.value = undefined
+      fixedError.value = `Чтение: ${vkArchiveErrorMessage(error)}`
+    }
+  } finally {
+    if (ticket === readerGeneration) fixedReading.value = false
   }
 }
-async function exportDexie() {
-  if (!api || fixedBusy.value || !hasVerifiedPeer.value) return
+async function prepareUserZip() {
+  if (!api || fixedBusy.value || !hasVerifiedPeer.value || !exportOpen.value) return
   fixedBusy.value = true
   activeOperation.value = 'export'
   fixedError.value = ''
+  resetPreparedExport()
   try {
-    const blob = await api.exportFixed()
-    const url = URL.createObjectURL(blob)
-    try {
-      const link = document.createElement('a')
-      link.href = url
-      link.download = 'vk-fixed-v1-original.jsonl.gz'
-      document.body.append(link)
-      try {
-        link.click()
-      } finally {
-        link.remove()
-      }
-    } finally {
-      window.setTimeout(() => URL.revokeObjectURL(url), 30_000)
-    }
+    const loaded = Object.entries(attachments.value).map(([key, value]) => ({
+      key,
+      name: value.name,
+      blob: value.blob,
+    }))
+    const result = await api.exportUserZip(
+      {
+        chunkRows: exportChunkRows.value,
+        includeReferences: exportIncludeReferences.value,
+        downloadedMedia: loaded,
+      },
+      (progress) => {
+        exportProgress.value = progress
+      },
+    )
+    if (!result.size) throw Error('ZIP export returned an empty archive')
+    exportPrepared.value = result
+    void telemetry?.record('archive.export.completed')
   } catch (error) {
-    fixedError.value = `Экспорт: ${vkArchiveErrorMessage(error)}`
+    void telemetry?.record('archive.export.failed')
+    fixedError.value = `Экспорт ZIP: ${vkArchiveErrorMessage(error)}`
   } finally {
     activeOperation.value = null
     fixedBusy.value = false
   }
+}
+function downloadPreparedZip() {
+  const blob = exportPrepared.value
+  if (!blob || fixedBusy.value || !hasVerifiedPeer.value) return
+  const url = URL.createObjectURL(blob)
+  try {
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'vk-saved-conversation.zip'
+    document.body.append(link)
+    try {
+      link.click()
+    } finally {
+      link.remove()
+    }
+  } finally {
+    window.setTimeout(() => URL.revokeObjectURL(url), 30_000)
+  }
+}
+function enterTab(view: View) {
+  tab.value = view
+  if (view === 'reader' && !fixedPreview.value.length && !fixedReading.value && hasVerifiedPeer.value)
+    void readDexie()
 }
 const tabs: { id: View; label: string; icon: typeof Archive }[] = [
   { id: 'capture', label: 'Выгрузка', icon: Download },
@@ -183,7 +317,7 @@ function onTabKeydown(event: KeyboardEvent, active: View) {
         : (index + (event.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length
   const selected = tabs[next]
   if (!selected) return
-  tab.value = selected.id
+  enterTab(selected.id)
   const target = (event.currentTarget as HTMLElement).parentElement?.querySelector<HTMLElement>(
     '#' + tabPrefix + '-tab-' + selected.id,
   )
@@ -199,12 +333,12 @@ watch(
     // full API scan or export just because the last route was 'collect'.
     vkRequestedView.value = null
     if (requested === 'export') {
-      tab.value = 'reader'
-      void exportDexie()
+      enterTab('reader')
+      showUserExportOptions()
     } else if (requested === 'collect') {
       tab.value = 'capture'
       void captureDexie()
-    } else tab.value = requested
+    } else enterTab(requested)
   },
   { immediate: true },
 )
@@ -215,6 +349,8 @@ function refreshActiveConversation() {
   if (!next) return
   const previous = status.value
   if (previous?.activePeerId !== next.activePeerId) {
+    readerGeneration++
+    fixedReading.value = false
     fixedPreview.value = []
     fixedSaved.value = null
     captureComplete.value = null
@@ -223,6 +359,11 @@ function refreshActiveConversation() {
     fixedCursor.value = undefined
     fixedNextCursor.value = undefined
     fixedError.value = ''
+    nameLookupError.value = ''
+    participantNames.value = {}
+    for (const file of Object.values(attachments.value)) URL.revokeObjectURL(file.url)
+    attachments.value = {}
+    resetPreparedExport()
   }
   if (
     !previous ||
@@ -238,10 +379,12 @@ onMounted(() => {
   })
   // Detect host SPA peer change while the Control Center is open.
   peerTimer = setInterval(refreshActiveConversation, 1500)
+  if (tab.value === 'reader' && hasVerifiedPeer.value) void readDexie()
 })
 onUnmounted(() => {
   unsubscribe?.()
   if (peerTimer !== undefined) clearInterval(peerTimer)
+  for (const file of Object.values(attachments.value)) URL.revokeObjectURL(file.url)
 })
 </script>
 <template>
@@ -275,7 +418,7 @@ onUnmounted(() => {
         :aria-controls="tabPrefix + '-panel-' + item.id"
         :aria-selected="tab === item.id"
         :tabindex="tab === item.id ? 0 : -1"
-        @click="tab = item.id"
+        @click="enterTab(item.id)"
         @keydown="onTabKeydown($event, item.id)"
       >
         <component :is="item.icon" class="size-4" aria-hidden="true" />
@@ -346,23 +489,88 @@ onUnmounted(() => {
     >
       <section class="booster-stack-card" aria-label="Reader Dexie">
         <div class="booster-setting-copy">
-          <b>Сообщения из Dexie</b>
-          <span>Чтение только текущей подтверждённой VK-переписки. До 80 записей на страницу.</span>
+          <b>Сохранённая переписка</b>
+          <span>Автор, дата и направление сообщений показаны сразу. Подробные исходные метаданные доступны по значку информации.</span>
         </div>
         <div class="flex flex-wrap gap-2">
-          <Button variant="outline" :disabled="fixedBusy || fixedReading || !hasVerifiedPeer" @click="readDexie()"><LoaderCircle v-if="fixedReading" class="size-4 animate-spin" aria-hidden="true" />{{ fixedReading ? 'Чтение...' : 'Открыть Reader' }}</Button>
-          <Button variant="outline" :disabled="fixedBusy || !hasVerifiedPeer" @click="exportDexie"><LoaderCircle v-if="activeOperation === 'export'" class="size-4 animate-spin" aria-hidden="true" />{{ activeOperation === 'export' ? 'Подготовка архива...' : 'Экспорт JSONL.gz' }}</Button>
+          <Button variant="outline" :disabled="fixedBusy || fixedReading || !hasVerifiedPeer" @click="readDexie()">
+            <LoaderCircle v-if="fixedReading" class="size-4 animate-spin" aria-hidden="true" />
+            {{ fixedReading ? 'Чтение...' : 'Обновить Reader' }}
+          </Button>
+          <Button variant="outline" :disabled="fixedBusy || !hasVerifiedPeer" @click="showUserExportOptions">
+            Экспорт ZIP · параметры
+          </Button>
           <Button variant="outline" :disabled="fixedBusy || fixedReading || !fixedNextCursor" @click="readDexie(fixedNextCursor)">Следующие 80</Button>
           <Button variant="outline" :disabled="fixedBusy || fixedReading || !fixedCursor" @click="readDexie()">К началу</Button>
         </div>
-        <ol class="max-h-96 overflow-y-auto space-y-2" aria-label="Сохранённые сообщения">
-          <li v-for="message in fixedPreview" :key="message.id" class="border-b border-border py-2">
-            <b>Сообщение {{ message.id }}</b>
-            <p class="whitespace-pre-wrap break-words">{{ message.text || 'Без текста' }}</p>
-            <small v-if="message.attachments?.length">Вложений в исходных данных: {{ message.attachments.length }}</small>
-          </li>
-        </ol>
+        <p v-if="fixedReading" class="text-sm text-muted-foreground" role="status">Загружаем сохранённые сообщения...</p>
+        <p v-if="!fixedReading && !fixedPreview.length" class="text-sm text-muted-foreground" role="status">
+          В этом диалоге ещё нет сохранённых сообщений или Reader недоступен.
+        </p>
+        <p v-if="nameLookupError" class="text-xs text-muted-foreground">{{ nameLookupError }}</p>
+        <div aria-label="Сохранённые сообщения" class="max-h-[min(65vh,560px)] min-w-0 overflow-y-auto space-y-3 p-2">
+          <article
+            v-for="message in fixedPreview"
+            :key="message.id"
+            class="flex min-w-0"
+            :class="message.out === 1 || message.out === true ? 'justify-end' : 'justify-start'"
+          >
+            <div class="min-w-0 max-w-[88%] rounded-lg border border-border p-3"
+              :class="message.out === 1 || message.out === true ? 'bg-primary/10' : 'bg-muted/45'">
+              <ArchiveMessageHeader :author="senderName(message)" :sent-at="message.date"
+                :metadata="message" inspect-label="Все исходные метаданные сообщения" />
+              <p v-if="message.text" class="mt-2 whitespace-pre-wrap break-words text-sm">{{ message.text }}</p>
+              <p v-else class="mt-2 text-xs text-muted-foreground">Сообщение без текста</p>
+              <div v-for="asset in messageMedia(message)" :key="asset.key" class="mt-2 flex min-w-0 flex-col gap-1 border-t border-border pt-2">
+                <img v-if="asset.type === 'photo' && attachments[asset.key]"
+                  :src="attachments[asset.key]?.url" :alt="attachments[asset.key]?.name || 'Фото из сообщения'"
+                  class="max-h-64 max-w-full rounded-md object-contain" loading="lazy" referrerpolicy="no-referrer" />
+                <small class="break-words text-muted-foreground">{{ asset.type }} · {{ asset.choices[0]?.name || 'Вложение' }}
+                  · {{ attachments[asset.key] ? 'загружено в текущем сеансе' : 'оригинал не загружен' }}</small>
+                <Button v-if="!attachments[asset.key]" size="sm" variant="outline"
+                  :disabled="downloading[asset.key] || !hasVerifiedPeer" @click="requestMedia(asset)">
+                  <LoaderCircle v-if="downloading[asset.key]" class="size-3.5 animate-spin" aria-hidden="true" />
+                  {{ downloading[asset.key] ? 'Загрузка...' : 'Загрузить оригинал' }}
+                </Button>
+                <a v-else :href="attachments[asset.key]?.url" :download="attachments[asset.key]?.name"
+                  class="text-xs text-primary underline underline-offset-2">Скачать загруженный файл</a>
+                <small v-if="attachmentErrors[asset.key]" class="text-destructive" role="alert">{{ attachmentErrors[asset.key] }}</small>
+              </div>
+            </div>
+          </article>
+        </div>
         <p v-if="fixedError" role="alert" class="text-sm text-destructive">{{ fixedError }}</p>
+      </section>
+      <section v-if="exportOpen" class="booster-stack-card" aria-label="Параметры пользовательского экспорта ZIP">
+        <div class="booster-setting-copy">
+          <b>Экспорт сообщений в ZIP</b>
+          <span>Отдельно от резервного бэкапа TAR.GZ. В ZIP войдут все уже сохранённые сообщения с оригинальными метаданными.</span>
+          <small>Полнота удалённой истории не подтверждается автоматически; исходные файлы включаются только после их явной загрузки.</small>
+        </div>
+        <label class="booster-field">Сообщений в одном JSON-файле
+          <select v-model.number="exportChunkRows" class="booster-input" :disabled="fixedBusy" @change="resetPreparedExport">
+            <option :value="100">100</option>
+            <option :value="500">500</option>
+          </select>
+        </label>
+        <label class="flex items-center gap-2 text-sm">
+          <input v-model="exportIncludeReferences" type="checkbox" :disabled="fixedBusy" @change="resetPreparedExport" />
+          Добавить manifest вложений в папку attachments/
+        </label>
+        <div class="flex flex-wrap gap-2">
+          <Button :disabled="fixedBusy || !hasVerifiedPeer" @click="prepareUserZip">
+            <LoaderCircle v-if="fixedBusy" class="size-4 animate-spin" aria-hidden="true" />
+            {{ fixedBusy ? 'Подготавливаем ZIP...' : 'Подготовить ZIP' }}
+          </Button>
+          <Button v-if="exportPrepared" variant="outline" :disabled="fixedBusy" @click="downloadPreparedZip">
+            Скачать ZIP · {{ Math.ceil(exportPrepared.size / 1024) }} КиБ
+          </Button>
+          <Button size="sm" variant="ghost" @click="exportOpen = false">Закрыть параметры</Button>
+        </div>
+        <ArchiveProgressBar v-if="exportProgress" :label="exportProgress.phase === 'reading' ? 'Читаем Dexie' : 'Упаковываем ZIP'"
+          :percent="exportProgress.total ? Math.round(exportProgress.done / exportProgress.total * 100) : null"
+          :counter="`${exportProgress.done} из ${exportProgress.total}`" />
+        <p v-if="exportPrepared" role="status" class="text-sm">ZIP подготовлен. Файл сохранится только после нажатия «Скачать ZIP».</p>
       </section>
     </div>
     <div
@@ -377,6 +585,24 @@ onUnmounted(() => {
         <div class="booster-setting-copy">
           <b>Параметры сохранения</b>
           <small>Размер пачки, пауза и число сообщений сохраняются при изменении и восстанавливаются при следующем запуске.</small>
+        </div>
+        <label class="booster-field">Последние N сообщений
+          <input v-model.number="fixedLimit" type="number" min="1" max="100000"
+            class="booster-input" :disabled="fixedBusy" @change="saveCaptureOptions" />
+        </label>
+        <label class="booster-field">Размер запроса VK: {{ requestPageSize }}
+          <input v-model.number="requestPageSize" type="range" min="10" max="100" step="10"
+            class="w-full accent-primary" :disabled="fixedBusy" @change="saveCaptureOptions" />
+        </label>
+        <label class="booster-field">Пауза между страницами: {{ requestDelay }} мс
+          <input v-model.number="requestDelay" type="range" min="300" max="3000" step="50"
+            class="w-full accent-primary" :disabled="fixedBusy" @change="saveCaptureOptions" />
+        </label>
+        <div class="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" :disabled="fixedBusy" @click="saveCaptureOptions">
+            Сохранить параметры
+          </Button>
+          <small class="text-muted-foreground">Сохраняются отдельно от сообщений Dexie и не включают токены.</small>
         </div>
         <p v-if="durableSettingsError" role="alert" class="m-0 text-sm text-destructive">{{ durableSettingsError }}</p>
       </section>

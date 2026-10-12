@@ -31,6 +31,13 @@ test('VK fixture has deterministic records and its capture never touches a live 
     expect(api.status().messages).toBe(32)
     expect((await api.readFixed(10)).length).toBe(10)
     expect(await api.countFixed()).toBe(32)
+    expect((await api.resolveParticipants([33, 44])).map((p) => p.name)).toEqual([
+      'Анна Смирнова',
+      'Алексей Иванов',
+    ])
+    expect((await api.exportUserZip({ chunkRows: 100, includeReferences: true })).type).toBe(
+      'application/zip',
+    )
     expect(await api.captureFixed(10)).toMatchObject({
       saved: 8,
       alreadySaved: 2,

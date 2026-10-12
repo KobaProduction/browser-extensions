@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { FloatingInfoPopover, JsonViewer, ModalSurface } from '@kobaproduction/browser-ui'
+import { ArchiveMessageHeader } from '@kobaproduction/browser-widgets'
 import type { ArchiveItemView } from '@chatgpt-booster/core'
 import Brain from 'lucide-vue-next/dist/esm/icons/brain.js'
 import ChevronDown from 'lucide-vue-next/dist/esm/icons/chevron-down.js'
@@ -90,7 +91,7 @@ const reasoningInfo = computed(() =>
   <section class="booster-record" :class="'booster-record-' + item.kind">
     <template v-if="item.kind === 'user' || item.kind === 'answer'">
       <header class="booster-record-header">
-        <strong>{{ t(('reader.' + item.kind) as TranslationKey) }}</strong>
+        <ArchiveMessageHeader :author="t(('reader.' + item.kind) as TranslationKey)" :sent-at="item.metadata.sentAt" :locale="locale" />
         <span v-if="item.metadata.edited" class="booster-record-edited">{{ t('reader.editedShort') }}</span>
         <span class="booster-record-header-tools">
           <RecordMetaBadges

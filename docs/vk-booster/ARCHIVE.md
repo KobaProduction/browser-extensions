@@ -123,3 +123,30 @@ separate loading indicators. Errors are categorized into safe user guidance
 without reflecting arbitrary provider exception text or credentials. This is
 source-level hardening, not proof that live VK download succeeds. Binary media
 and the canonical Dexie schema remain unchanged.
+
+
+## Conversation Reader and end-user ZIP export (Extension 18; local validation)
+
+The ordinary **Archive** tab reads its first bounded Dexie page immediately
+on entry, displays chronological conversation bubbles aligned by stored
+`out` direction, and shows VK `from_id`, source `date` and text. Optional
+`users.get` lookups resolve first/last names without changing immutable
+source snapshots; lookup errors retain messages with an honest ID fallback.
+A shared archive header displays author/time and an accessible, inspectable
+original-source metadata popover, also reused in ChatGPT Booster.
+
+**End-user export is separate from internal TAR.GZ recovery.** Clicking the
+export shortcut opens a ZIP preparation form and never downloads immediately.
+Choices are bounded JSON chunk size and an attachment-reference manifest.
+ZIP includes all *locally saved, owner/peer-verified* source snapshots grouped
+as `messages/*.json`, a manifest including chunk hashes and incomplete-source
+disclosure, and `attachments/status.json` when selected. Only binary media
+explicitly downloaded in the current authorized Reader session are included
+under `attachments/`; other assets remain listed as not downloaded. A
+permissioned persistent media store and restartable bulk attachment capture
+are not yet implemented. The old raw JSONL.GZ service API remains available
+for internal use but is **not** the user-facing export button.
+
+This change extends the shared ChatGPT ZIP writer through
+`packages/archive`, rather than duplicating a VK-only codec. Installed
+VK/ChatGPT acceptance and DEV publication are separate from local tests.

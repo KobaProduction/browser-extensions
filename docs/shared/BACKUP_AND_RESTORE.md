@@ -196,3 +196,18 @@ vk-portable-v1.tar.gz
   `packages/storage`; the shared widget stays presentation-only; VK schemas
   and source snapshots remain entirely VK-owned. No unfinished ChatGPT
   migration implementation was imported.
+
+
+## User-facing conversation export (new owner decision, Extension 18)
+
+Ordinary user conversation **export** is not an IndexedDB settings/data
+**backup**. The common `packages/archive` ZIP32 writer now owns validated
+relative paths and ZIP framing for both ChatGPT and VK consumers; native
+providers supply their own source JSON chunks, completeness evidence and
+available binary attachments. A user export begins with a visible options
+and preparation stage, then requires a second explicit download click.
+Missing original media are disclosed in the manifest, never silently
+represented as packaged bytes. The internal operator-only **single-stream
+TAR.GZ** backup remains a distinct restore-validated workflow with no nested
+archives. This update does not authorize exposing private restore operations
+in the ordinary module UI.
