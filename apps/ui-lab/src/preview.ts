@@ -67,7 +67,7 @@ const chatgpt: Feature = {
   id: 'chatgpt-booster',
   title: 'ChatGPT Booster',
   description: 'DEMO: история, оригинальные метаданные и аналитика',
-  presentation: { panel: 'wide', version: '2.0.16', installation: installLabel },
+  presentation: { panel: 'wide', version: '2.0.17', installation: installLabel },
   launcher: { mode: 'quick-menu' },
   quickActions: [
     {
@@ -254,7 +254,7 @@ function diagnose() {
     }
     if (quick) {
       const badges = quick.querySelector('.booster-quick-badges')?.textContent || ''
-      if (!badges.match(/2\.0\.16|1\.0\.0/)) warnings.push('Version badge missing')
+      if (!badges.match(/2\.0\.17|1\.0\.0/)) warnings.push('Version badge missing')
       if (
         scene.scene === 'empty' &&
         quick.textContent?.includes('Сохранено сообщений') &&
