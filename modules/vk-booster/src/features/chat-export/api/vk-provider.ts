@@ -4,6 +4,13 @@ import type { ArchiveOptions, LegacyVkArchive, VkHistoryResponse, VkMessage } fr
 type JsonRecord = Record<string, unknown>
 const record = (value: unknown): JsonRecord | null =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as JsonRecord) : null
+/** VK may allow a token to read a dialog yet reject users.get.
+ * Never accept it for an owner-scoped Dexie archive without both permissions. */
+function hasVerifiedOwner(value: unknown): boolean {
+  if (!Array.isArray(value) || !value.length) return false
+  const first = record(value[0])
+  return !!first && typeof first.id === 'number' && Number.isSafeInteger(first.id) && first.id > 0
+}
 function isHistory(value: unknown): value is VkHistoryResponse {
   const r = record(value)
   return (
@@ -111,7 +118,7 @@ export function createVkProvider(
           offset: 0,
           rev: 0,
         })
-        if (isHistory(result)) {
+        if (isHistory(result) && hasVerifiedOwner(await api('users.get', {}))) {
           refresh()
           return true
         }

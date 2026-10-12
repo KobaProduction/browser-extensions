@@ -154,6 +154,11 @@ Object.assign(globalThis, {
     if (String(url).includes('/method/')) {
       const p = new URLSearchParams(o?.body as string | URLSearchParams)
       expect(p.get('access_token')).toBe(tok)
+      // The current provider validates history *and* the authenticated owner.
+      // Owner verification is not a history page and must not shift the
+      // synthetic capture-paging / pauseAfter call counters.
+      if (String(url).includes('/method/users.get'))
+        return new Response(JSON.stringify({ response: [{ id: 554433 }] }), { status: 200 })
       apiCalls++
       if (pauseAfter && apiCalls === pauseAfter) {
         queueMicrotask(() => globalThis.VKExport?.stop())

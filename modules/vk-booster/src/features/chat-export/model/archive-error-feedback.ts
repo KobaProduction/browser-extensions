@@ -3,6 +3,8 @@ export function vkArchiveErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : ''
   if (/VK HTTP 429|VK HTTP 5\d\d|VK API 6/.test(message))
     return 'VK временно ограничил запросы. Подожди и попробуй снова.'
+  if (/VK API (5|1116)(?:\b|$)/.test(message))
+    return 'VK не принимает токен для этого метода. Проверь авторизацию и доступ приложения к истории.'
   if (/VK HTTP 401|VK HTTP 403|VK API (7|15|27|30)/.test(message))
     return 'VK отклонил доступ к истории. Проверь авторизацию.'
   if (/peer changed|conversation changed|different conversation|другой диалог/i.test(message))
