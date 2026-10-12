@@ -222,7 +222,13 @@ function diagnose() {
       warnings.push('Expected full module panel')
     if (scene.view === 'closed' && (modal || quick))
       warnings.push('Closed launcher unexpectedly opened a surface')
-    if (!shadow?.querySelector('.booster-launcher')) warnings.push('Docked launcher absent')
+    if (!modal && !shadow?.querySelector('.booster-launcher')) warnings.push('Docked launcher absent')
+    if (
+      modal &&
+      shadow?.querySelector('.booster-launcher') &&
+      shadow?.querySelector('.booster-control-standalone')
+    )
+      warnings.push('Docked launcher overlays active standalone modal')
     if (scene.view === 'quick' && quick) {
       if (!quick.textContent?.includes(vkHost ? 'VK Booster' : 'ChatGPT Booster'))
         warnings.push('Quick menu title mismatch')

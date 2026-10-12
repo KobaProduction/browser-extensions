@@ -534,7 +534,7 @@ onBeforeUnmount(() => {
       @select="selectQuick" @toggle="toggleQuickInstallation" @resize="quickMenuHeight = $event" />
     <p v-if="quickOpen && quickError" class="booster-quick-error" role="alert">{{ quickError }}</p>
     <button
-      v-if="launcher"
+      v-if="launcher && (!standalone || !open)"
       ref="launcherButton"
       class="booster-launcher"
       :class="{ 'booster-launcher-dragging': dragging, 'booster-launcher-docked': standalone }"

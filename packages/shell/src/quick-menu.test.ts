@@ -36,6 +36,7 @@ test('standalone full settings show method/version and hide duplicate shared nav
   expect(panel).toContain('singleFeature.presentation.installation')
   expect(panel).toContain('singleFeature.presentation.version')
   expect(overlay).toContain('booster-modal-surface-single')
+  expect(overlay).toContain('v-if="launcher && (!standalone || !open)"')
   expect(overlay).toContain('!standalone.value &&')
 })
 
