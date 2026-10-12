@@ -5,8 +5,8 @@ const status = document.getElementById('status') as HTMLElement
 button.onclick = async () => {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-    if (!tab?.id || !/^https:\/\/(vk\.ru|vk\.com)\/im/.test(tab.url || '')) {
-      status.textContent = 'Откройте переписку VK'
+    if (!tab?.id || !/^https:\/\/(vk\.ru|vk\.com)\//.test(tab.url || '')) {
+      status.textContent = 'Откройте сайт VK'
       return
     }
     await chrome.tabs.sendMessage(tab.id, { type: 'koba:open' })
@@ -16,4 +16,4 @@ button.onclick = async () => {
   }
 }
 
-attachChromeInstallationToggle(document.body, /^https:\/\/(?:vk\.ru|vk\.com)\/im/)
+attachChromeInstallationToggle(document.body, /^https:\/\/(?:vk\.ru|vk\.com)\//)

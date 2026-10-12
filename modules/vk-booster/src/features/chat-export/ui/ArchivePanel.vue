@@ -21,13 +21,22 @@ const tab = ref<View>('capture')
 const tabPrefix = useId()
 const selectedStatus = computed(() => {
   if (status.value?.busy || fixedBusy.value) return 'Захват сообщений'
-  if (status.value?.blockedReason) return 'Другой диалог'
+  if (status.value?.blockedReason)
+    return status.value.activePeerId ? 'Другой диалог' : 'Открой переписку'
   return status.value?.activePeerId ? 'Dexie v1' : 'Открой переписку'
 })
 const fixedBusy = ref(false)
-const fixedLimit = ref(Math.min(3000, Math.max(1, status.value?.options.limit ?? 100)))
+const captureRange = ref<'all' | 'recent'>('all')
+const fixedLimit = ref(Math.min(100000, Math.max(1, status.value?.options.limit ?? 100)))
+const requestPageSize = ref(status.value?.options.pageSize ?? 50)
+const requestDelay = ref(status.value?.options.delay ?? 450)
+const captureComplete = ref<boolean | null>(null)
+const reportedTotal = ref<number | null>(null)
+const attachmentReferences = ref<number | null>(null)
 const collector = api
-  ? createChatCollectionController(vkChatCollectionPort(api, () => fixedLimit.value))
+  ? createChatCollectionController(
+      vkChatCollectionPort(api, () => (captureRange.value === 'all' ? 'all' : fixedLimit.value)),
+    )
   : null
 const collectionState = ref<ChatCollectionSnapshot>(
   collector?.snapshot() ?? {
@@ -51,9 +60,14 @@ const fixedCursor = ref<number | undefined>()
 const fixedNextCursor = ref<number | undefined>()
 const fixedReading = ref(false)
 const hasVerifiedPeer = computed(() => !!status.value?.activePeerId && !status.value?.blockedReason)
-async function persistCaptureLimit() {
+async function persistCaptureOptions() {
   if (!api) throw Error('VK unavailable')
-  const options = validateVkCapturePreferences({ ...api.status().options, limit: fixedLimit.value })
+  const options = validateVkCapturePreferences({
+    ...api.status().options,
+    limit: fixedLimit.value,
+    pageSize: requestPageSize.value,
+    delay: requestDelay.value,
+  })
   api.configure(options)
   const port = vkPreferencesPersistence()
   try {
@@ -64,20 +78,33 @@ async function persistCaptureLimit() {
     durableSettingsError.value = 'Не удалось сохранить параметры для следующего запуска.'
   }
 }
+async function saveCaptureOptions() {
+  if (!api || fixedBusy.value) return
+  try {
+    await persistCaptureOptions()
+  } catch {
+    fixedError.value = 'Проверь количество сообщений, размер пачки и задержку.'
+  }
+}
 async function captureDexie() {
   if (!api || fixedBusy.value || !hasVerifiedPeer.value) return
   fixedBusy.value = true
   fixedError.value = ''
   try {
-    await persistCaptureLimit()
+    await persistCaptureOptions()
     if (!collector) throw Error('VK collector unavailable')
     await collector.start()
-    fixedSaved.value = api.status().progress.newCount ?? null
+    const latest = api.status()
+    fixedSaved.value = latest.progress.newCount ?? null
+    reportedTotal.value = latest.progress.total || null
+    captureComplete.value = latest.progress.phase === 'Dexie: сохранено'
+    attachmentReferences.value = latest.progress.attachmentReferences ?? null
     fixedPreview.value = []
     fixedCursor.value = undefined
     fixedNextCursor.value = undefined
   } catch {
-    fixedError.value = 'Не удалось сохранить историю в Dexie: проверь VK API и текущий диалог.'
+    captureComplete.value = false
+    fixedError.value = 'Сбор прерван. Сохранённые сообщения остаются в Dexie — можно повторить операцию.'
   } finally {
     fixedBusy.value = false
   }
@@ -150,6 +177,9 @@ watch(
   vkRequestedView,
   (requested) => {
     if (!requested) return
+    // Navigation commands are one-shot; reopening a view must never replay a
+    // full API scan or export just because the last route was 'collect'.
+    vkRequestedView.value = null
     if (requested === 'export') {
       tab.value = 'reader'
       void exportDexie()
@@ -169,6 +199,9 @@ function refreshActiveConversation() {
   if (previous?.activePeerId !== next.activePeerId) {
     fixedPreview.value = []
     fixedSaved.value = null
+    captureComplete.value = null
+    reportedTotal.value = null
+    attachmentReferences.value = null
     fixedCursor.value = undefined
     fixedNextCursor.value = undefined
     fixedError.value = ''
@@ -240,25 +273,49 @@ onUnmounted(() => {
       tabindex="0"
       class="flex min-w-0 flex-col gap-3"
     >
-      <section class="booster-stack-card" aria-label="Захват в Dexie">
+      <section class="booster-stack-card" aria-label="Сбор истории VK">
         <div class="booster-setting-copy">
-          <b>Локальный архив Dexie v1</b>
-          <span>Сохраняет оригинальные записи текущего проверенного диалога. Повторный захват пропускает совпадающие сообщения.</span>
+          <b>1 · История переписки</b>
+          <span>Получает сообщения напрямую через VK API, сохраняет оригиналы в Dexie. Работает в открытом проверенном диалоге, без прокрутки сайта.</span>
         </div>
-        <label class="booster-field">Количество последних сообщений (1–3000)
-          <input v-model.number="fixedLimit" class="booster-input" type="number" min="1" max="3000" :disabled="fixedBusy" />
+        <div class="flex flex-wrap gap-2" role="group" aria-label="Объём выгрузки">
+          <Button type="button" size="sm" :variant="captureRange === 'all' ? 'default' : 'outline'"
+            :aria-pressed="captureRange === 'all'" :disabled="fixedBusy" @click="captureRange = 'all'">Вся история</Button>
+          <Button type="button" size="sm" :variant="captureRange === 'recent' ? 'default' : 'outline'"
+            :aria-pressed="captureRange === 'recent'" :disabled="fixedBusy" @click="captureRange = 'recent'">Последние N</Button>
+        </div>
+        <label v-if="captureRange === 'recent'" class="booster-field">Сообщений (1–100 000)
+          <input v-model.number="fixedLimit" class="booster-input" type="number" min="1" max="100000" :disabled="fixedBusy" @change="saveCaptureOptions" />
         </label>
-        <div class="flex flex-wrap gap-2">
-          <ConversationCollectionAction label="Собрать сообщения"
-            :busy="fixedBusy" :disabled="!hasVerifiedPeer"
-            :processed="collectionState.processed" :total="collectionState.total"
-            :saved="fixedSaved" @start="captureDexie" @stop="collector?.stop()" />
-          <Button variant="outline" :disabled="fixedBusy || !hasVerifiedPeer" @click="exportDexie">Экспорт .jsonl.gz</Button>
-        </div>
-        <p v-if="fixedSaved !== null" role="status">Новых сообщений: {{ fixedSaved }}.</p>
+        <p v-else class="text-xs text-muted-foreground">Без искусственного ограничения в 3000 сообщений. VK может ограничивать частоту API-запросов; при необходимости автоматически делаются паузы.</p>
+        <details class="booster-collection-advanced" :open="false">
+          <summary>Скорость и размер запросов</summary>
+          <label class="booster-field">Сообщений за запрос <b>{{ requestPageSize }}</b>
+            <input v-model.number="requestPageSize" type="range" min="10" max="100" step="10" :disabled="fixedBusy" @change="saveCaptureOptions" />
+          </label>
+          <label class="booster-field">Пауза между запросами <b>{{ requestDelay }} мс</b>
+            <input v-model.number="requestDelay" type="range" min="300" max="3000" step="50" :disabled="fixedBusy" @change="saveCaptureOptions" />
+          </label>
+          <small>При ограничении скорости VK запрос повторяется с увеличенной паузой. Значения сохраняются при отпускании слайдера.</small>
+        </details>
+        <ConversationCollectionAction :label="captureRange === 'all' ? 'Собрать всю историю' : 'Собрать последние сообщения'"
+          :busy="fixedBusy" :disabled="!hasVerifiedPeer"
+          :processed="collectionState.processed" :total="collectionState.total"
+          :saved="collectionState.saved" @start="captureDexie" @stop="collector?.stop()" />
+        <p v-if="!hasVerifiedPeer" class="text-sm text-muted-foreground">Открой конкретную VK-переписку — на остальных страницах сайта доступны настройки и меню.</p>
+        <p v-if="fixedSaved !== null" role="status" class="text-sm">
+          Сохранено новых: {{ fixedSaved }}. Обработано: {{ collectionState.processed }}{{ reportedTotal !== null ? ` из ${reportedTotal}` : '' }}.
+          {{ captureComplete ? 'Обход доступной истории завершён.' : 'Обход частичный: можно продолжить повторным сбором.' }}
+        </p>
         <p v-if="fixedError" role="alert" class="text-sm text-destructive">{{ fixedError }}</p>
         <p v-if="durableSettingsError" role="alert" class="text-sm text-destructive">{{ durableSettingsError }}</p>
-        <p class="text-xs text-muted-foreground">Экспорт содержит исходные записи; вложения не считаются скачанными файлами. Захват можно безопасно повторить после остановки.</p>
+      </section>
+      <section class="booster-stack-card" aria-label="Догрузка вложений">
+        <div class="booster-setting-copy">
+          <b>2 · Вложения и файлы</b>
+          <span>После сохранения сообщений можно будет догружать оригинальные файлы отдельной задачей с возобновлением. Пока Dexie сохраняет только метаданные и ссылки; бинарные файлы не скачаны.</span>
+          <small v-if="attachmentReferences !== null">Ссылок на вложения верхнего уровня в обработанной истории: {{ attachmentReferences }}. Скачано оригинальных файлов: 0.</small>
+        </div>
       </section>
     </div>
     <div
@@ -276,6 +333,7 @@ onUnmounted(() => {
         </div>
         <div class="flex flex-wrap gap-2">
           <Button variant="outline" :disabled="fixedBusy || fixedReading || !hasVerifiedPeer" @click="readDexie()">Открыть Reader</Button>
+          <Button variant="outline" :disabled="fixedBusy || !hasVerifiedPeer" @click="exportDexie">Экспорт JSONL.gz</Button>
           <Button variant="outline" :disabled="fixedBusy || fixedReading || !fixedNextCursor" @click="readDexie(fixedNextCursor)">Следующие 80</Button>
           <Button variant="outline" :disabled="fixedBusy || fixedReading || !fixedCursor" @click="readDexie()">К началу</Button>
         </div>
@@ -300,7 +358,7 @@ onUnmounted(() => {
       <section class="booster-stack-card" aria-label="Постоянные параметры VK">
         <div class="booster-setting-copy">
           <b>Параметры сохранения</b>
-          <small>Настройки захвата сохраняются автоматически и восстанавливаются при следующем запуске.</small>
+          <small>Размер пачки, пауза и число сообщений сохраняются при изменении и восстанавливаются при следующем запуске.</small>
         </div>
         <p v-if="durableSettingsError" role="alert" class="m-0 text-sm text-destructive">{{ durableSettingsError }}</p>
       </section>

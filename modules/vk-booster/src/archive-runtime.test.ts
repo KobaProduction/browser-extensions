@@ -911,7 +911,7 @@ test('fixed Dexie VK capture reads verified owner, persists new history, preview
   try {
     const fresh = reload()
     const saved = await fresh.captureFixed(10)
-    expect(saved).toMatchObject({ saved: 10, alreadySaved: 0 })
+    expect(saved).toMatchObject({ saved: 10, alreadySaved: 0, complete: false })
     expect(saved.available).toBeGreaterThanOrEqual(3000)
     const repeated = await fresh.captureFixed(10)
     expect(repeated).toMatchObject({ saved: 0, alreadySaved: 10 })
@@ -937,6 +937,17 @@ test('fixed Dexie VK capture reads verified owner, persists new history, preview
     expect(lines.at(-1)).toMatchObject({ kind: 'footer', count: 10 })
     // Dexie capture is not allowed to touch the existing file-backed archive.
     expect(((await read('metadata.json')) as VkArchiveMeta).schema).toBe(1)
+    // Full VK pagination must cover more than the historic 3000-message cap.
+    const complete = await fresh.captureFixed('all')
+    expect(complete).toMatchObject({
+      saved: all.length - 10,
+      alreadySaved: 10,
+      available: all.length,
+      complete: true,
+    })
+    expect(fresh.status().progress.done).toBe(all.length)
+    expect(await fresh.countFixed()).toBe(all.length)
+    expect((await fresh.readFixed(1))[0]?.id).toBe(1)
     fresh.destroy()
   } finally {
     globalThis.fetch = previous
@@ -945,7 +956,7 @@ test('fixed Dexie VK capture reads verified owner, persists new history, preview
     Dexie.dependencies.indexedDB = priorDexie.indexedDB
     Dexie.dependencies.IDBKeyRange = priorDexie.IDBKeyRange
   }
-})
+}, 20000)
 
 test('VK file writer is unavailable unless running unbundled synthetic tests', async () => {
   const previousTestMode = globalThis.__VK_EXPORT_TEST_MODE

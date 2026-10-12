@@ -1,5 +1,6 @@
 import { type Feature, SHELL_OPEN_FEATURE_EVENT } from '@kobaproduction/browser-core'
 import { installVkArchive } from './archive-runtime'
+import { conversationPeerFromLocation } from './features/chat-export/model/conversation-context'
 import {
   loadVkCaptureDefaults,
   setVkPreferencesPersistence,
@@ -17,21 +18,39 @@ export const vkBoosterFeature: Feature = {
   title: 'VK Booster',
   presentation,
   launcher: { mode: 'quick-menu' },
+  async quickMetrics() {
+    const api = archiveApi()
+    const peerId = conversationPeerFromLocation(location)
+    if (!api || !peerId || api.status().blockedReason) return []
+    const saved = await api.countFixed()
+    if (conversationPeerFromLocation(location) !== peerId) return []
+    return [
+      { label: 'Сохранено сообщений', value: saved },
+      { label: 'Диалог VK', value: peerId },
+    ]
+  },
   quickActions: [
     { id: 'settings', label: 'Настройки', icon: 'settings', run: () => openVkView('settings') },
     { id: 'archive', label: 'Открыть архив', icon: 'archive', run: () => openVkView('reader') },
-    { id: 'collect', label: 'Собрать диалог', icon: 'collect', run: () => openVkView('collect') },
+    {
+      id: 'collect',
+      label: 'Собрать диалог',
+      icon: 'collect',
+      enabled: () => conversationPeerFromLocation(location) !== null,
+      run: () => openVkView('collect'),
+    },
     {
       id: 'export',
       label: 'Экспорт сохранённого чата',
       icon: 'export',
+      enabled: () => conversationPeerFromLocation(location) !== null,
       run: () => openVkView('export'),
     },
   ],
   description: 'История переписки, вложения и офлайн-просмотр',
   targets: ['userscript', 'chromium'],
   requiredCapabilities: ['page-dom', 'origin-storage', 'local-files'],
-  match: (url) => /^(vk\.ru|vk\.com)$/.test(url.hostname) && url.pathname.startsWith('/im'),
+  match: (url) => /^(vk\.ru|vk\.com)$/.test(url.hostname),
   async start(context) {
     presentation.installation = context.target === 'userscript' ? 'Tampermonkey' : 'Chromium'
     installVkArchive(context.target)

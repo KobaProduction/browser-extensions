@@ -36,6 +36,8 @@ test('VK Dexie v1 fixes our fields but preserves every original source field', a
   expect((await db.getOriginal(100, 7))?.raw).toEqual(original)
   await expect(db.addOriginal(100, original, 'vk.api.observed', 10000)).rejects.toThrow('already saved')
   expect(await db.listMessages(100)).toHaveLength(1)
+  expect(await db.countMessages(100)).toBe(1)
+  expect(await db.countMessages(200)).toBe(0)
   expect(await db.listMessages(100, 1, 7)).toHaveLength(0)
   db.close()
 })

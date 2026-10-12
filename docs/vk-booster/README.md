@@ -55,3 +55,13 @@ source paging and stop behavior inside VK. The generic conversation-collection
 controller and presentation are reused with ChatGPT; their providers do not
 share physical databases or source APIs. No full-database backup controls are
 added to the ordinary VK UI.
+
+## Full-history capture and wider site coverage
+
+The quick launcher and non-chat settings are available on all VK pages;
+archive capture/export still requires an opened, verified VK dialog.
+The capture UI defaults to all available message history, with an optional
+latest-N mode and adjustable batch size/delay. Original messages persist
+in canonical Dexie v1. Binary attachments are **not yet downloaded**; stage
+2 is explicitly separated and requires its own permissions/integrity gates.
+See [archive contract](ARCHIVE.md) for rate, completeness and ownership rules.

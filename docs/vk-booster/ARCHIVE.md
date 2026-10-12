@@ -20,7 +20,7 @@ adapter, not automatic archive migration services.
   peer changes and unknown ownership. Repeated capture skips unchanged rows;
   a conflicting upstream original is rejected until an explicit revision
   policy is accepted.
-- Capture reads bounded VK API pages (maximum request 3,000). The Reader
+- Capture reads bounded VK API pages (at most 100 messages per request); the product no longer applies an arbitrary 3,000-message ceiling to the full-history mode. The Reader
   reads 80 records per bounded page, using a stable source-message ID cursor.
   User Stop halts scanning at message/page boundaries; a subsequent manual
   capture can resume without duplicating previously saved originals. This is
@@ -82,3 +82,35 @@ physical table schema and hashes before the provider performs one IndexedDB
 transaction. External media and tab/session storage are excluded. This is
 not yet accepted as crash-safe installed-browser recovery. See the
 [shared backup contract](../shared/BACKUP_AND_RESTORE.md).
+
+## Site-wide launcher and full-history VK capture (2026-10-12)
+
+The VK Booster Shell/quick menu runs on **all HTTPS paths** under `vk.com` and
+`vk.ru`, including feed, profile, communities and messenger. The Chrome popup,
+Tampermonkey @match and all-in-one composition use the same site-wide matcher.
+Opening settings and reading module state do not require an active chat. The
+**capture, conversation Reader and export remain gated** on a valid current
+VK conversation and verified owner, with `/im/convo/<numeric>` or legacy
+`/im?sel=<numeric>` selected peer; no background mass-collection on unrelated
+pages. A broader site scope must never be treated as archive authorization.
+
+The default capture action now scans the **full history reported by VK**, in
+bounded pages (10–100 messages each), writing original responses and their
+canonical projections to the same fixed Dexie schema v1. A second user mode
+collects only the most recent N messages (up to the existing validated
+100,000 setting). Page size and inter-request delay (300–3000 ms) are real,
+user-adjustable and scoped durable preferences. The VK provider has bounded
+exponential backoff for explicit API code 6 and HTTP 429/5xx; it does **not**
+bypass remote API rate/permission limits. Completion reflects the stable
+server-reported count, not a promise that VK history cannot change while
+scanning. Missing/short pages, account/peer changes and source conflicts fail
+closed without deleting already saved messages. The scan can be stopped and
+restarted: saved originals are deduplicated; durable O(1) offset continuation
+remains a future efficiency improvement, not a completed guarantee.
+
+The UI separates **stage 1: message capture** from **stage 2: attachment
+bytes**, which is not yet implemented against Dexie. The original attachment
+metadata stays with immutable source snapshots; reported reference counts
+never imply local media files were downloaded. A dedicated media pipeline
+(permissioned file sink, URL expiry/refresh, receipts, bounded retry and
+restart) is required before describing the export as a full offline archive.

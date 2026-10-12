@@ -113,6 +113,7 @@ export interface ArchiveProgress {
   newCount?: number
   scanned?: number
   downloaded?: number
+  attachmentReferences?: number
   failed?: number
   error?: string
 }
@@ -145,7 +146,14 @@ export interface ArchiveApi {
   show(): void
   hide(): void
   buildViewer(): Promise<{ messages: number }>
-  captureFixed(limit?: number): Promise<{ saved: number; alreadySaved: number; available: number }>
+  captureFixed(limit?: number | 'all'): Promise<{
+    saved: number
+    alreadySaved: number
+    available: number
+    complete: boolean
+    attachmentReferences: number
+  }>
+  countFixed(): Promise<number>
   readFixed(limit?: number, afterMessageId?: number): Promise<readonly VkMessage[]>
   exportFixed(): Promise<Blob>
   backupPortable(options: BackupTarChoice, output?: BackupTarOptions): Promise<Blob | null>
