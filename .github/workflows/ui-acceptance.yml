@@ -1,0 +1,63 @@
+name: Browser UI acceptance matrix
+on:
+  pull_request:
+    paths:
+      - 'apps/ui-lab/**'
+      - 'packages/ui/**'
+      - 'packages/shell/**'
+      - 'packages/widgets/**'
+      - 'modules/chatgpt-booster/**'
+      - 'modules/vk-booster/**'
+      - '.github/workflows/ui-acceptance.yml'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Browser acceptance coverage (extended=288, full=1152)'
+        type: choice
+        required: true
+        default: extended
+        options: [extended, full]
+permissions:
+  contents: read
+jobs:
+  visual-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with: {bun-version: '1.4.2'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Install sources
+        run: bun install --frozen-lockfile
+      - name: Validate fixtures and real Vue source
+        run: |
+          bun run ui:lab:test
+          bun run ui:lab:build
+      - name: Verify Chrome availability
+        run: |
+          command -v google-chrome || command -v chromium
+          google-chrome --version || chromium --version
+      - name: Start fixture-only local UI
+        run: |
+          bun run ui:lab > /tmp/ui-lab-vite.log 2>&1 &
+          echo $! > /tmp/ui-lab-vite.pid
+          for i in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:5173/preview.html >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/ui-lab-vite.log
+          exit 1
+      - name: Chromium full DOM+geometry+interaction matrix
+        env:
+          UI_LAB_MATRIX_TIMEOUT_MS: '1500000'
+        run: |
+          node apps/ui-lab/scripts/browser-matrix.mjs ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'full' && '--full' || '' }}
+      - name: Publish acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-acceptance-evidence
+          path: apps/ui-lab/.local/*
+          if-no-files-found: ignore

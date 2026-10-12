@@ -21,6 +21,9 @@ test('standalone launcher snaps to a viewport edge and opens a compact quick men
   expect(overlay).toContain('<QuickMenu')
   expect(overlay).toContain('standalone ? quickOpen : open')
   expect(css).toContain('.booster-quick-menu')
+  expect(overlay).toContain('quickMenuHeight.value')
+  expect(overlay).toContain('@resize="quickMenuHeight = $event"')
+  expect(css).toContain('max-height: min(480px, calc(100dvh - 16px))')
   expect(css).toContain('.booster-launcher-docked')
 })
 
