@@ -12,6 +12,14 @@ test('reads original binary data with a bounded result and digest', async () => 
 })
 test('rejects HTML masquerading as media and mismatched original size', async () => {
   await expect(
+    readArchiveMedia(
+      new Response('<html/>', { headers: { 'content-type': ' Text/HTML ; charset=UTF-8' } }),
+      {
+        maxBytes: 100,
+      },
+    ),
+  ).rejects.toThrow('HTML')
+  await expect(
     readArchiveMedia(new Response('<html/>', { headers: { 'content-type': 'text/html' } }), {
       maxBytes: 100,
     }),

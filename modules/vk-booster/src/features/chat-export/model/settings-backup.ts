@@ -1,3 +1,5 @@
+import { createSettingsBackupSource } from '@kobaproduction/browser-adapters'
+import type { ApplicationBackupSource } from '@kobaproduction/browser-core'
 import { instanceScope } from '@kobaproduction/browser-core'
 import {
   exportSettingsBackup,
@@ -10,6 +12,9 @@ import type { ArchiveApi, ArchiveOptions } from './types'
 
 /** Capture preferences only. No conversation, owner, checkpoint or folder identity. */
 export type VkCapturePreferences = Omit<ArchiveOptions, 'peerId'>
+export function defaultVkCapturePreferences(): VkCapturePreferences {
+  return { mode: 'recent', limit: 10, from: '', through: '', pageSize: 50, delay: 450, media: true }
+}
 const fields = ['mode', 'limit', 'from', 'through', 'pageSize', 'delay', 'media'] as const
 const fieldNames = [...fields].sort().join(',')
 
@@ -58,11 +63,77 @@ function withoutPeer(options: ArchiveOptions): VkCapturePreferences {
   return validateVkCapturePreferences(Object.fromEntries(fields.map((name) => [name, options[name]])))
 }
 
+/** The same scoped settings source is usable with or without the archive child. */
+export function createVkPreferencesBackupSource(
+  persistence: VkPreferencesPersistence,
+  live?: {
+    read(): VkCapturePreferences
+    apply(value: VkCapturePreferences): void
+    requireIdle(): void
+  },
+): ApplicationBackupSource {
+  const [productId, channel, extra] = persistence.scopeId.split(':')
+  if (
+    (productId !== 'vk-booster' && productId !== 'all-in-one') ||
+    (channel !== 'dev' && channel !== 'prod') ||
+    extra !== undefined
+  )
+    throw Error('Invalid VK settings scope')
+  const port: PersistentSettingsPort<VkCapturePreferences> = {
+    scope: { productId, channel, installationId: `${productId}-${persistence.target}` },
+    schemaVersion: 1,
+    validateSettings: validateVkCapturePreferences,
+    async exportSettings() {
+      return validateVkCapturePreferences(
+        live?.read() ?? (await persistence.read()) ?? defaultVkCapturePreferences(),
+      )
+    },
+    async restoreSettingsAtomically(value) {
+      live?.requireIdle()
+      const next = validateVkCapturePreferences(value),
+        before = await port.exportSettings()
+      live?.requireIdle()
+      await persistence.write(next)
+      try {
+        live?.apply(next)
+      } catch (error) {
+        await persistence.write(before)
+        throw error
+      }
+    },
+  }
+  return createSettingsBackupSource('vk-booster.settings', 'Параметры VK Booster', port)
+}
+
+export function unavailableVkArchiveBackupSource(
+  settings: ApplicationBackupSource,
+  reason: string,
+): ApplicationBackupSource {
+  return {
+    id: 'vk-booster.indexeddb',
+    label: 'Архив VK проверенного аккаунта',
+    kind: 'indexeddb',
+    available: false,
+    reason,
+    scope: { ...settings.scope, productId: 'vk-booster' },
+    schema: null,
+    readRows() {
+      throw Error(reason)
+    },
+    validateRows() {
+      throw Error(reason)
+    },
+    async restoreRows() {
+      throw Error(reason)
+    },
+  }
+}
+
 /** A session preset, not persisted application settings and NOT a v1 archive backup.
  * The selected VK peer and folder always remain under the archive engine's control. */
 export function vkCaptureSettingsPort(
-  api: ArchiveApi,
-  scopeId = instanceScope() || 'vk-booster:prod',
+  api: Pick<ArchiveApi, 'status' | 'configure'>,
+  scopeId = instanceScope(),
 ): PersistentSettingsPort<VkCapturePreferences> {
   const [productId, channel, extra] = scopeId.split(':')
   if (

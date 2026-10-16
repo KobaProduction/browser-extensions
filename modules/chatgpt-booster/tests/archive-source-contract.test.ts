@@ -4,7 +4,13 @@ import {
   ArchiveSourceGate,
   NATIVE_HISTORY_CONTRACT_V1,
   NATIVE_HISTORY_CONTRACT_V2,
+  NATIVE_HISTORY_CONTRACT_V3,
+  NATIVE_HISTORY_CONTRACT_V4,
+  NATIVE_HISTORY_CONTRACT_V5,
+  NATIVE_HISTORY_CONTRACT_V6,
+  NATIVE_HISTORY_CONTRACT_V7,
   NATIVE_HISTORY_CONTRACT_VERSION,
+  registeredNativeHistoryAdapters,
 } from '../packages/features/src/archive-source-contract'
 import { ConversationArchiveStore } from '../packages/features/src/archive-store'
 import { ConversationStateStore } from '../packages/features/src/conversation-state'
@@ -27,10 +33,7 @@ function message(id: string, patch: Record<string, unknown> = {}) {
   }
 }
 
-function page(
-  messages: unknown[] = [message('m1')],
-  initial = true,
-): ConversationArchiveEventDetail {
+function page(messages: unknown[] = [message('m1')], initial = true): ConversationArchiveEventDetail {
   return {
     kind: 'conversation-page',
     conversationId: 'conversation',
@@ -54,6 +57,53 @@ function page(
 }
 
 describe('ChatGPT native page source contract', () => {
+  test('v7 admits the observed exclusive key string in page and stream, without changing v1-v6', () => {
+    const incoming = message('synthetic-exclusive', {
+      metadata: { exclusive_key: 'synthetic-exclusive-key', rebase_developer_message: true },
+    })
+    const raw = JSON.stringify(incoming)
+    new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V7).inspect(page([incoming]))
+    new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V7).inspectStreamMessage(
+      'conversation',
+      incoming,
+    )
+    expect(JSON.stringify(incoming)).toBe(raw)
+    for (const version of [
+      NATIVE_HISTORY_CONTRACT_V1,
+      NATIVE_HISTORY_CONTRACT_V2,
+      NATIVE_HISTORY_CONTRACT_V3,
+      NATIVE_HISTORY_CONTRACT_V4,
+      NATIVE_HISTORY_CONTRACT_V5,
+      NATIVE_HISTORY_CONTRACT_V6,
+    ]) {
+      expect(() => new ArchiveSourceGate(false, version).inspect(page([incoming]))).toThrow(
+        ArchiveContractError,
+      )
+      expect(() =>
+        new ArchiveSourceGate(false, version).inspectStreamMessage('conversation', incoming),
+      ).toThrow(ArchiveContractError)
+    }
+  })
+  test('v7 rejects unobserved exclusive key types and unrelated fields', () => {
+    for (const value of [null, false, 12, [], {}]) {
+      expect(() =>
+        new ArchiveSourceGate().inspect(
+          page([message('invalid', { metadata: { exclusive_key: value } })]),
+        ),
+      ).toThrow(ArchiveContractError)
+      expect(() =>
+        new ArchiveSourceGate().inspectStreamMessage(
+          'conversation',
+          message('invalid', { metadata: { exclusive_key: value } }),
+        ),
+      ).toThrow(ArchiveContractError)
+    }
+    expect(() =>
+      new ArchiveSourceGate().inspect(
+        page([message('unknown', { metadata: { exclusive_key_unknown: 'synthetic' } })]),
+      ),
+    ).toThrow(ArchiveContractError)
+  })
   test('accepts known history envelopes and preserves original objects verbatim', () => {
     const first = page()
     const earlier = page([message('m0')], false)
@@ -63,7 +113,7 @@ describe('ChatGPT native page source contract', () => {
     gate.inspect(earlier)
     expect(JSON.stringify(first.payload)).toBe(raw)
     expect(gate.get('conversation')).toBeUndefined()
-    expect(NATIVE_HISTORY_CONTRACT_VERSION).toContain('v3')
+    expect(NATIVE_HISTORY_CONTRACT_VERSION).toBe(NATIVE_HISTORY_CONTRACT_V7)
   })
 
   test('accepts observed nullable native creation timestamps unchanged', () => {
@@ -136,7 +186,7 @@ describe('ChatGPT native page source contract', () => {
     }
     const incoming = page([message('observed', { metadata })])
     const raw = JSON.stringify(incoming.payload)
-    new ArchiveSourceGate().inspect(incoming)
+    new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V3).inspect(incoming)
     expect(JSON.stringify(incoming.payload)).toBe(raw)
     const previous = new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V2)
     expect(() => previous.inspect(incoming)).toThrow(ArchiveContractError)
@@ -153,12 +203,216 @@ describe('ChatGPT native page source contract', () => {
       { genui_components: null },
       { unexpected_new_native_field: true },
     ]) {
-      const gate = new ArchiveSourceGate()
-      expect(() => gate.inspect(page([message('changed', { metadata })]))).toThrow(
-        ArchiveContractError,
-      )
+      const gate = new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V3)
+      expect(() => gate.inspect(page([message('changed', { metadata })]))).toThrow(ArchiveContractError)
       expect(gate.get('conversation')?.path).toContain('.metadata.')
     }
+  })
+
+  test('v4 accepts only confirmed streaming placement types without changing v1-v3 signatures', () => {
+    for (const streaming_parent_id of ['synthetic-stream-parent', null]) {
+      const record = message('stream-v4', {
+        metadata: { streaming_parent_id, streaming_parent_revision: 0, has_versions: true },
+      })
+      const raw = JSON.stringify(record)
+      const gate = new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V4)
+      gate.inspect(page([record]))
+      gate.inspectStreamMessage('conversation', record)
+      expect(JSON.stringify(record)).toBe(raw)
+      for (const version of [
+        NATIVE_HISTORY_CONTRACT_V1,
+        NATIVE_HISTORY_CONTRACT_V2,
+        NATIVE_HISTORY_CONTRACT_V3,
+      ]) {
+        const pageGate = new ArchiveSourceGate(false, version)
+        expect(() => pageGate.inspect(page([record]))).toThrow(ArchiveContractError)
+        expect(pageGate.get('conversation')).toMatchObject({ version, reason: 'unexpected' })
+        const streamGate = new ArchiveSourceGate(false, version)
+        expect(() => streamGate.inspectStreamMessage('conversation', record)).toThrow(
+          ArchiveContractError,
+        )
+        expect(streamGate.get('conversation')?.path).toBe('stream.message.metadata.streaming_parent_id')
+      }
+    }
+    const old = new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V3)
+    expect(() =>
+      old.inspectStreamMessage(
+        'conversation',
+        message('version-flag', { metadata: { has_versions: true } }),
+      ),
+    ).toThrow(ArchiveContractError)
+    expect(old.get('conversation')?.path).toBe('stream.message.metadata.has_versions')
+    expect(registeredNativeHistoryAdapters().map((adapter) => adapter.version)).toEqual([
+      NATIVE_HISTORY_CONTRACT_V1,
+      NATIVE_HISTORY_CONTRACT_V2,
+      NATIVE_HISTORY_CONTRACT_V3,
+      NATIVE_HISTORY_CONTRACT_V4,
+      NATIVE_HISTORY_CONTRACT_V5,
+      NATIVE_HISTORY_CONTRACT_V6,
+      NATIVE_HISTORY_CONTRACT_V7,
+    ])
+  })
+
+  test('v4 rejects empty/incorrect streaming IDs, noninteger/nullable revisions and unknown metadata', () => {
+    for (const metadata of [
+      { streaming_parent_id: '' },
+      { streaming_parent_id: 42 },
+      { streaming_parent_id: [] },
+      { streaming_parent_revision: null },
+      { streaming_parent_revision: -1 },
+      { streaming_parent_revision: 0.5 },
+      { streaming_parent_revision: Number.NaN },
+      { streaming_parent_revision: Number.POSITIVE_INFINITY },
+      { streaming_parent_revision: '0' },
+      { has_versions: 'true' },
+      { unobserved_native_metadata: true },
+    ]) {
+      const record = message('invalid-v4', { metadata })
+      expect(() =>
+        new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V4).inspect(page([record])),
+      ).toThrow(ArchiveContractError)
+      expect(() =>
+        new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V4).inspectStreamMessage(
+          'conversation',
+          record,
+        ),
+      ).toThrow(ArchiveContractError)
+    }
+  })
+
+  test('v5 checkpoint acceptance restores the complete page and its original timestamps/tool records', () => {
+    const checkpoint = {
+      notification_id: 'synthetic-notification',
+      source: 'synthetic-origin',
+      source_id: null,
+      triggered_at: '2026-10-16T00:00:00Z',
+    }
+    const records = [
+      message('synthetic-user', { author: { role: 'user', name: null, metadata: {} } }),
+      message('synthetic-assistant', { recipient: 'synthetic_tool', end_turn: false }),
+      message('synthetic-tool', {
+        author: { role: 'tool', name: 'synthetic_tool', metadata: {} },
+        content: { content_type: 'execution_output', text: 'Synthetic output' },
+        metadata: { parent_id: 'synthetic-assistant', notification_trigger_checkpoint: checkpoint },
+      }),
+    ]
+    const incoming = page(records)
+    const raw = JSON.stringify(incoming)
+    const previous = new ConversationStateStore(
+      {} as Window,
+      new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V4),
+    )
+    expect(() => previous.ingestPage(incoming)).toThrow(ArchiveContractError)
+    expect(previous.listMessages('conversation')).toEqual([])
+    expect(previous.sourceGate.get('conversation')?.path).toBe(
+      'payload.messages[2].metadata.notification_trigger_checkpoint',
+    )
+    const current = new ConversationStateStore(
+      {} as Window,
+      new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V5),
+    )
+    current.ingestPage(incoming)
+    expect(current.listMessages('conversation')).toHaveLength(3)
+    expect(current.getMessage('conversation', 'synthetic-tool')?.raw).toBe(records[2])
+    expect(current.getMessage('conversation', 'synthetic-tool')?.role).toBe('tool')
+    expect(current.getMessage('conversation', 'synthetic-tool')?.createTime).toBe(1_800_000_000)
+    expect(JSON.stringify(incoming)).toBe(raw)
+    const stream = new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V5)
+    stream.inspectStreamMessage('conversation', records[2] as Record<string, unknown>)
+    for (const version of [
+      NATIVE_HISTORY_CONTRACT_V1,
+      NATIVE_HISTORY_CONTRACT_V2,
+      NATIVE_HISTORY_CONTRACT_V3,
+      NATIVE_HISTORY_CONTRACT_V4,
+    ])
+      expect(() =>
+        new ArchiveSourceGate(false, version).inspectStreamMessage(
+          'conversation',
+          records[2] as Record<string, unknown>,
+        ),
+      ).toThrow(ArchiveContractError)
+  })
+
+  test('v5 checkpoint requires exactly the observed keys and types, with source_id null only', () => {
+    const checkpoint: Record<string, unknown> = {
+      notification_id: 'synthetic-notification',
+      source: 'synthetic-origin',
+      source_id: null,
+      triggered_at: 'synthetic-time',
+    }
+    const invalid: unknown[] = [null, [], 'checkpoint', { ...checkpoint, extra: true }]
+    for (const key of Object.keys(checkpoint)) {
+      const missing = { ...checkpoint }
+      delete missing[key]
+      invalid.push(missing, { ...checkpoint, [key]: key === 'source_id' ? 'unobserved-id' : null })
+    }
+    invalid.push({ ...checkpoint, source_id: {} }, { ...checkpoint, source_id: 0 })
+    for (const value of invalid) {
+      const record = message('invalid-checkpoint', {
+        metadata: { notification_trigger_checkpoint: value },
+      })
+      expect(() =>
+        new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V5).inspect(page([record])),
+      ).toThrow(ArchiveContractError)
+      expect(() =>
+        new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V5).inspectStreamMessage(
+          'conversation',
+          record,
+        ),
+      ).toThrow(ArchiveContractError)
+    }
+    expect(() =>
+      new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V5).inspect(
+        page([message('unknown-v5', { metadata: { unseen_work_metadata: true } })]),
+      ),
+    ).toThrow(ArchiveContractError)
+  })
+
+  test('v6 retains the observed opaque user signal object without widening legacy metadata', () => {
+    const opaque = {
+      feedback_form: { version: 1, fields: [{ type: 'synthetic', options: ['synthetic-choice'] }] },
+      arbitrary_nested: { retained: true, nullable: null },
+    }
+    const record = message('synthetic-feedback', { metadata: { user_signal_metadata: opaque } })
+    const incoming = page([record])
+    const original = JSON.stringify(incoming)
+    const gate = new ArchiveSourceGate()
+    const state = new ConversationStateStore({} as Window, gate)
+    state.ingestPage(incoming)
+    gate.inspectStreamMessage('conversation', record)
+    expect(state.getMessage('conversation', record.id)?.raw).toBe(record)
+    expect((record.metadata as Record<string, unknown>).user_signal_metadata).toBe(opaque)
+    expect(JSON.stringify(incoming)).toBe(original)
+    for (const version of [
+      NATIVE_HISTORY_CONTRACT_V1,
+      NATIVE_HISTORY_CONTRACT_V2,
+      NATIVE_HISTORY_CONTRACT_V3,
+      NATIVE_HISTORY_CONTRACT_V4,
+      NATIVE_HISTORY_CONTRACT_V5,
+    ]) {
+      const legacy = new ArchiveSourceGate(false, version)
+      expect(() => legacy.inspect(page([record]))).toThrow(ArchiveContractError)
+      expect(legacy.get('conversation')).toMatchObject({
+        version,
+        reason: 'unexpected',
+        path: 'payload.messages[0].metadata.user_signal_metadata',
+      })
+    }
+  })
+
+  test('v6 rejects unobserved user signal outer types and unrelated unknown metadata', () => {
+    for (const value of [null, [], 'signal', 0, false]) {
+      const record = message('invalid-user-signal', { metadata: { user_signal_metadata: value } })
+      expect(() => new ArchiveSourceGate().inspect(page([record]))).toThrow(ArchiveContractError)
+      expect(() => new ArchiveSourceGate().inspectStreamMessage('conversation', record)).toThrow(
+        ArchiveContractError,
+      )
+    }
+    expect(() =>
+      new ArchiveSourceGate().inspect(
+        page([message('unknown-v6', { metadata: { unknown_feedback_key: {} } })]),
+      ),
+    ).toThrow(ArchiveContractError)
   })
 
   test('v2 rejects unknown nested serialization and incompatible types', () => {

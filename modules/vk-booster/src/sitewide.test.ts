@@ -12,7 +12,7 @@ const manifest = JSON.parse(
 test('VK launcher matches the whole VK site but chat capture is guarded by current peer', () => {
   for (const host of ['vk.com', 'vk.ru']) {
     for (const path of ['/feed', '/id12', '/club14', '/im', '/im/convo/123'])
-      expect(vkBoosterFeature.match(new URL('https://' + host + path))).toBe(true)
+      expect(vkBoosterFeature.match(new URL(`https://${host}${path}`))).toBe(true)
   }
   expect(vkBoosterFeature.match(new URL('https://chatgpt.com/'))).toBe(false)
   expect(src).toContain('conversationPeerFromLocation(location) !== null')

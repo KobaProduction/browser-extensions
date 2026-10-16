@@ -12,6 +12,8 @@ export interface AgentActivitySnapshot {
   phaseStartedAt: number | null
   completedAt: number | null
   lastActivityAt: number | null
+  lastSummaryAt?: number | null
+  previousSummaryAt?: number | null
   durationMs: number | null
   reasoningDurationMs: number | null
   label: string | null

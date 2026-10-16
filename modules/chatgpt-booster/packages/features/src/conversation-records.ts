@@ -3,9 +3,7 @@ import type { ArchivedMessage } from './archive-store'
 type RawRecord = Record<string, unknown>
 
 function record(value: unknown): RawRecord | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as RawRecord)
-    : undefined
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as RawRecord) : undefined
 }
 
 function stringOrNull(value: unknown): string | null {

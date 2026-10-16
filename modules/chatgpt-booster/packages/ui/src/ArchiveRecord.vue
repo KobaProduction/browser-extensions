@@ -1,40 +1,57 @@
 <script setup lang="ts">
-import { FloatingInfoPopover, JsonViewer, ModalSurface } from '@kobaproduction/browser-ui'
-import { ArchiveMessageHeader } from '@kobaproduction/browser-widgets'
 import type { ArchiveItemView } from '@chatgpt-booster/core'
+import {
+  Button,
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+  FloatingInfoPopover,
+  JsonViewer,
+  ModalSurface,
+} from '@kobaproduction/browser-ui'
+import { ArchiveMessageHeader } from '@kobaproduction/browser-widgets'
 import Brain from 'lucide-vue-next/dist/esm/icons/brain.js'
 import ChevronDown from 'lucide-vue-next/dist/esm/icons/chevron-down.js'
 import ChevronRight from 'lucide-vue-next/dist/esm/icons/chevron-right.js'
 import Code2 from 'lucide-vue-next/dist/esm/icons/code-xml.js'
+import Globe2 from 'lucide-vue-next/dist/esm/icons/earth.js'
 import ExternalLink from 'lucide-vue-next/dist/esm/icons/external-link.js'
 import FileJson2 from 'lucide-vue-next/dist/esm/icons/file-json-2.js'
 import GitBranch from 'lucide-vue-next/dist/esm/icons/git-branch.js'
 import Github from 'lucide-vue-next/dist/esm/icons/github.js'
-import Globe2 from 'lucide-vue-next/dist/esm/icons/earth.js'
 import ImageIcon from 'lucide-vue-next/dist/esm/icons/image.js'
 import Search from 'lucide-vue-next/dist/esm/icons/search.js'
 import TerminalSquare from 'lucide-vue-next/dist/esm/icons/square-terminal.js'
 import Wrench from 'lucide-vue-next/dist/esm/icons/wrench.js'
 import X from 'lucide-vue-next/dist/esm/icons/x.js'
 import { computed, ref, watch } from 'vue'
-
-import MarkdownContent from './MarkdownContent.vue'
-
-import RecordMetaBadges from './RecordMetaBadges.vue'
-import { translate, type SupportedLocale, type TranslationKey } from './i18n'
 import { omitRepeatedRecordHeading, parseArchiveStructuredText } from './archive-presentation'
+import { type SupportedLocale, type TranslationKey, translate } from './i18n'
+import MarkdownContent from './MarkdownContent.vue'
+import RecordMetaBadges from './RecordMetaBadges.vue'
 
 const props = withDefaults(
-  defineProps<{ item: ArchiveItemView; locale: SupportedLocale; expandReasoning?: boolean; focused?: boolean }>(),
+  defineProps<{
+    item: ArchiveItemView
+    locale: SupportedLocale
+    expandReasoning?: boolean
+    focused?: boolean
+  }>(),
   { expandReasoning: false },
 )
 const expanded = ref(false)
 const rawOpen = ref(false)
-watch(() => props.focused, (focused) => { if (focused) expanded.value = true }, { immediate: true })
+watch(
+  () => props.focused,
+  (focused) => {
+    if (focused) expanded.value = true
+  },
+  { immediate: true },
+)
 const t = (key: TranslationKey) => translate(props.locale, key)
 
 const tool = computed(() => props.item.tool)
-const toolName = computed(() => tool.value?.label ?? t(('reader.' + props.item.kind) as TranslationKey))
+const toolName = computed(() => tool.value?.label ?? t(`reader.${props.item.kind}` as TranslationKey))
 const toolPayload = computed(() => tool.value?.payload ?? null)
 const structuredText = computed(() => parseArchiveStructuredText(props.item.text))
 const toolDetails = computed(() => toolPayload.value ?? tool.value?.result ?? structuredText.value)
@@ -42,7 +59,7 @@ const displayText = computed(() => {
   const heading =
     props.item.kind === 'tool_call' || props.item.kind === 'tool_result'
       ? toolName.value
-      : t(('reader.' + props.item.kind) as TranslationKey)
+      : t(`reader.${props.item.kind}` as TranslationKey)
   const text = omitRepeatedRecordHeading(props.item.text, heading)
   // A tool payload already has a dedicated structured inspector; do not repeat raw JSON as prose.
   return (props.item.kind === 'tool_call' || props.item.kind === 'tool_result') &&
@@ -59,7 +76,7 @@ const hasText = computed(() => {
 })
 const preview = computed(() => {
   const text = displayText.value.trim()
-  return text.length > 220 ? text.slice(0, 220).trimEnd() + '…' : text
+  return text.length > 220 ? `${text.slice(0, 220).trimEnd()}…` : text
 })
 const isReasoningExpanded = computed(() => props.expandReasoning || expanded.value)
 
@@ -79,8 +96,8 @@ const toolGlyph = computed(() => {
 })
 const reasoningInfo = computed(() =>
   [
-    props.item.metadata.model && t('reader.model') + ': ' + props.item.metadata.model,
-    props.item.metadata.thinking && t('reader.thinking') + ': ' + props.item.metadata.thinking,
+    props.item.metadata.model && `${t('reader.model')}: ${props.item.metadata.model}`,
+    props.item.metadata.thinking && `${t('reader.thinking')}: ${props.item.metadata.thinking}`,
   ]
     .filter(Boolean)
     .join('\n'),
@@ -99,13 +116,13 @@ const reasoningInfo = computed(() =>
             :locale="locale"
             :show-model="item.kind === 'answer'"
           />
-          <button
+          <Button variant="ghost" size="icon-sm"
             class="booster-record-icon-button"
             type="button"
             :title="t('reader.raw')"
             :aria-label="t('reader.raw')"
             @click="rawOpen = true"
-          ><FileJson2 class="size-3.5" /></button>
+          ><FileJson2 class="size-3.5" /></Button>
         </span>
       </header>
       <MarkdownContent :text="item.text || t('reader.noText')" />
@@ -133,14 +150,14 @@ const reasoningInfo = computed(() =>
           <strong>{{ t('reader.reasoning') }}</strong>
         </span>
         <span class="booster-record-header-tools">
-          <button
+          <Button variant="ghost" size="icon-sm"
             class="booster-record-icon-button"
             type="button"
             :title="t('reader.raw')"
             :aria-label="t('reader.raw')"
             @click="rawOpen = true"
-          ><FileJson2 class="size-3.5" /></button>
-          <button
+          ><FileJson2 class="size-3.5" /></Button>
+          <Button variant="outline"
             v-if="hasText"
             class="booster-record-expand"
             type="button"
@@ -149,7 +166,7 @@ const reasoningInfo = computed(() =>
             <ChevronDown v-if="isReasoningExpanded" class="size-3.5" />
             <ChevronRight v-else class="size-3.5" />
             {{ t(isReasoningExpanded ? 'reader.collapse' : 'reader.expand') }}
-          </button>
+          </Button>
         </span>
       </header>
       <div v-if="hasText" class="booster-reasoning-preview" :class="{ expanded: isReasoningExpanded }">
@@ -158,10 +175,9 @@ const reasoningInfo = computed(() =>
     </template>
 
     <template v-else-if="item.kind === 'tool_call' || item.kind === 'tool_result'">
+      <Collapsible v-model:open="expanded">
       <div
         class="booster-tool-row"
-        :class="{ 'is-clickable': hasToolDetails }"
-        @click="hasToolDetails && (expanded = !expanded)"
       >
         <img
           v-if="toolIcon"
@@ -186,67 +202,65 @@ const reasoningInfo = computed(() =>
         </div>
         <div class="booster-tool-actions" @click.stop>
           <RecordMetaBadges :metadata="item.metadata" :locale="locale" />
-          <a
-            v-if="toolLink"
+          <Button v-if="toolLink" variant="ghost" size="icon-sm" as-child><a
             class="booster-tool-action"
             :href="toolLink"
             target="_blank"
             rel="noreferrer noopener"
             :title="t('reader.openTool') + ': ' + toolLink"
-          ><ExternalLink class="size-3.5" /></a>
-          <button
-            v-if="hasToolDetails"
+          ><ExternalLink class="size-3.5" /></a></Button>
+          <CollapsibleTrigger v-if="hasToolDetails" as-child><Button variant="ghost" size="icon-sm"
             type="button"
             class="booster-tool-action"
             :title="t(expanded ? 'reader.hide' : 'reader.show')"
-            @click="expanded = !expanded"
-          ><Code2 class="size-3.5" /></button>
-          <button
+          ><Code2 class="size-3.5" /></Button></CollapsibleTrigger>
+          <Button variant="ghost" size="icon-sm"
             type="button"
             class="booster-tool-action"
             :title="t('reader.raw')"
             @click="rawOpen = true"
-          ><FileJson2 class="size-3.5" /></button>
+          ><FileJson2 class="size-3.5" /></Button>
         </div>
       </div>
-      <div v-if="expanded && hasToolDetails" class="booster-tool-expanded">
+      <CollapsibleContent v-if="hasToolDetails" class="booster-tool-expanded">
         <MarkdownContent v-if="hasText" :text="displayText" />
         <JsonViewer v-else :value="toolDetails" />
-      </div>
+      </CollapsibleContent>
+      </Collapsible>
     </template>
 
     <template v-else>
-      <button
-        class="booster-internal-row"
+      <Button variant="outline"
+        class="booster-internal-row h-auto min-h-9 w-full justify-start whitespace-normal text-start"
         type="button"
         :class="{ disabled: !hasText }"
         :disabled="!hasText"
         @click="expanded = !expanded"
       >
-        <span><Code2 class="size-4" /><strong>{{ t('reader.internal') }}</strong></span>
+        <span class="inline-flex shrink-0 items-center gap-2"><Code2 class="size-4" /><strong>{{ t('reader.internal') }}</strong></span>
         <span class="booster-internal-preview">
           {{ expanded ? '' : (preview || item.record.contentType || item.record.messageType || t('reader.metadataOnly')) }}
         </span>
         <ChevronDown v-if="expanded && hasText" class="size-3.5" />
         <ChevronRight v-else-if="hasText" class="size-3.5" />
-      </button>
+      </Button>
       <div v-if="expanded && hasText" class="booster-tool-expanded">
         <MarkdownContent :text="displayText" />
       </div>
-      <button
+      <Button variant="ghost" size="icon-sm"
         class="booster-record-icon-button booster-record-raw-corner"
         type="button"
         :title="t('reader.raw')"
         :aria-label="t('reader.raw')"
         @click="rawOpen = true"
-      ><FileJson2 class="size-3.5" /></button>
+      ><FileJson2 class="size-3.5" /></Button>
     </template>
 
     <ModalSurface v-if="rawOpen" :label="t('reader.raw')" wide @close="rawOpen = false">
       <div class="booster-json-modal">
         <header class="booster-record-modal-header">
           <div><strong>{{ t('reader.raw') }}</strong><span>{{ item.record.messageId }}</span></div>
-          <button class="booster-icon-button" type="button" :aria-label="t('common.close')" @click="rawOpen = false"><X class="size-4" /></button>
+          <Button variant="ghost" size="icon-sm" class="booster-icon-button" type="button" :aria-label="t('common.close')" @click="rawOpen = false"><X class="size-4" /></Button>
         </header>
         <JsonViewer :value="item.record.raw" />
       </div>

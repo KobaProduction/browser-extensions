@@ -1,85 +1,26 @@
 import { expect, test } from 'bun:test'
-import { readFile } from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
+import { compileScript, compileTemplate, parse } from 'vue/compiler-sfc'
 
-const read = async (name: string) => readFile(new URL(name, import.meta.url), 'utf8')
-test('shared launcher uses the ChatGPT Booster draggable overlay contract', async () => {
-  const source = await read('./Overlay.vue')
-  expect(source).toContain('onPointerDown')
-  expect(source).toContain('onPointerMove')
-  expect(source).toContain('savePosition')
-  expect(source).toContain('ModalSurface')
-  expect(source).toContain('booster-modal-surface booster-modal-surface-wide')
-  const modal = await read('../../ui/src/components/booster/ModalSurface.vue')
-  expect(modal).toContain('booster-modal-backdrop')
-  expect(modal).toContain(':aria-modal="floating ?')
-  expect(source).toContain('ControlCenterPanel')
-})
-test('draggable launcher supports keyboard activation without double-toggling pointer clicks', async () => {
-  const source = await read('./Overlay.vue')
-  expect(source).toContain('@click="onLauncherClick"')
-  expect(source).toContain('event.detail === 0')
-  expect(source).toContain('@pointerup="onPointerUp"')
-  expect(source).toContain(':aria-expanded="standalone ? quickOpen : open"')
-  expect(source).toContain('aria-haspopup="dialog"')
-})
-
-test('launcher matches shared ChatGPT Booster icon rather than legacy B glyph', async () => {
-  const overlay = await read('./Overlay.vue')
-  const style = await read('./styles.css')
-  expect(overlay).toContain('<Layers3 v-else class="booster-launcher-icon"')
-  expect(overlay).toContain('<X v-if="standalone ? quickOpen : open" class="booster-launcher-icon"')
-  expect(overlay).not.toContain('<span>B</span>')
-  expect(style).toContain('.booster-launcher-icon')
-})
-
-test('central shell allows supplied feature views without provider-specific imports', async () => {
-  const source = await read('./ControlCenterPanel.vue')
-  expect(source).toMatch(/views:\s*Record<string,\s*Component>/)
-  expect(source).toContain('booster-settings-nav')
-  expect(source).not.toContain('VKArchive')
-  expect(source).not.toContain('chatgpt.com')
-})
-
-test('shared shell supports a provider-neutral wide archive panel and explicit close', async () => {
-  const source = await read('./Overlay.vue')
-  expect(source).toContain("feature.presentation?.panel === 'wide'")
-  expect(source).toContain('SHELL_CLOSE_EVENT')
-  expect(source).toContain('booster-modal-surface-wide')
-  expect(source).not.toContain('chatgpt-booster')
-})
-
-test('shared shell tracks navigation state for wide vs standard module presentation', async () => {
-  const modal = await read('./Overlay.vue')
-  const panel = await read('./ControlCenterPanel.vue')
-  expect(modal).toContain('@select="selectedSection = $event"')
-  expect(panel).toContain("emit('select', id)")
-  expect(panel).toContain('@click="selectSection(feature.id)"')
-})
-
-test('wide and single-host workspaces float with keyboard movement and resize', async () => {
-  const source = await read('./Overlay.vue')
-  const modal = await read('../../ui/src/components/booster/ModalSurface.vue')
-  const css = await read('./styles.css')
-  expect(source).toContain('workspaceRect(')
-  expect(source).toContain('workspaceRatios(')
-  expect(source).toContain('instanceKey(WORKSPACE_KEY)')
-  expect(source).toContain('minimizeWorkspace')
-  expect(source).toContain('onWorkspaceKey')
-  expect(source).toContain('onWorkspaceDown')
-  expect(source).toContain(':floating="floatingPanel"')
-  expect(source).toContain('v-if="floatingPanel" #chrome')
-  expect(source).toContain('v-if="floatingPanel" #handles')
-  expect(source).toContain("minimized ? 'Восстановить окно")
-  expect(source).not.toContain('<ArchiveWorkspace')
-  expect(source).not.toContain('ChatGPT Booster · {{ title }}')
-  expect(source).toContain('{{ title }} · {{ selectedSection }}')
-  expect(source).toContain('Boolean(singleFeature.value)')
-  expect(source).toContain('floatingPanel ? workspaceStyle : undefined')
-  expect(source).toContain("xRatio: dockSide.value === 'left' ? 0 : 1")
-  expect(source).toContain('if (minimized.value) {')
-  expect(source).toContain('Boolean(singleFeature.value)')
-  expect(modal).toContain('!root.value || props.floating')
-  expect(modal).toContain("floating ? 'false' : 'true'")
-  expect(css).toContain('.booster-modal-backdrop.booster-modal-backdrop-floating')
-  expect(css).toContain('pointer-events: none;')
-})
+// Interaction assertions live in behavioral unit and browser suites. This gate
+// catches broken SFC composition instead of pinning obsolete rendered markup.
+for (const name of [
+  'Overlay.vue',
+  'ControlCenterPanel.vue',
+  'QuickMenu.vue',
+  'LauncherIndicators.vue',
+  'SiteToolsEntry.vue',
+])
+  test(`${name} compiles as a shared Vue surface`, () => {
+    const source = readFileSync(new URL(name, import.meta.url), 'utf8')
+    const { descriptor, errors } = parse(source, { filename: name })
+    expect(errors).toHaveLength(0)
+    const script = compileScript(descriptor, { id: `shared-${name}` })
+    const template = compileTemplate({
+      source: descriptor.template?.content ?? '',
+      filename: name,
+      id: `shared-${name}`,
+      compilerOptions: { bindingMetadata: script.bindings },
+    })
+    expect(template.errors).toHaveLength(0)
+  })

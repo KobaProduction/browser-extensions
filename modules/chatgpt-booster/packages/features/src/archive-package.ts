@@ -37,7 +37,12 @@ export interface ArchivePackageResult {
 }
 
 import { createStoredZip, type ZipEntry } from '@kobaproduction/browser-archive'
-export { createStoredZip, createStoredZipFromBlobs, createGzipFromBlob } from '@kobaproduction/browser-archive'
+
+export {
+  createGzipFromBlob,
+  createStoredZip,
+  createStoredZipFromBlobs,
+} from '@kobaproduction/browser-archive'
 
 const encoder = new TextEncoder()
 
@@ -46,7 +51,6 @@ function asArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   copy.set(bytes)
   return copy.buffer
 }
-
 
 function safeName(value: string) {
   return (
@@ -124,9 +128,7 @@ export async function createArchivePackage(
   let includedAssetBytes = 0
   for (const reference of requested) {
     if (signal?.aborted)
-      throw signal.reason instanceof Error
-        ? signal.reason
-        : new DOMException('Aborted', 'AbortError')
+      throw signal.reason instanceof Error ? signal.reason : new DOMException('Aborted', 'AbortError')
     const storedAsset = stored.get(reference.assetId)
     const url = storedAsset?.downloadUrl
       ? archiveAssetContentUrl(storedAsset.downloadUrl, reference.assetId)
@@ -187,8 +189,7 @@ export async function createArchivePackage(
           : null,
       })
     } catch (error) {
-      if (signal?.aborted || (error instanceof DOMException && error.name === 'AbortError'))
-        throw error
+      if (signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) throw error
       manifestAssets.push({
         ...reference,
         path: null,

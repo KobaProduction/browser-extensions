@@ -13,9 +13,7 @@ export function archiveConversationForest(
   query = '',
   projectLabel = '',
 ): ArchiveTreeRow[] {
-  const byId = new Map(
-    conversations.map((conversation) => [conversation.conversationId, conversation]),
-  )
+  const byId = new Map(conversations.map((conversation) => [conversation.conversationId, conversation]))
   const children = new Map<string, ArchiveConversationView[]>()
   const roots: ArchiveConversationView[] = []
   for (const conversation of conversations) {
@@ -73,8 +71,10 @@ export function archiveConversationForest(
         })
       }
       const descendants = children.get(id) ?? []
-      for (let index = descendants.length - 1; index >= 0; index--)
-        stack.push({ conversation: descendants[index]!, depth: depth + 1 })
+      for (let index = descendants.length - 1; index >= 0; index--) {
+        const descendant = descendants[index]
+        if (descendant) stack.push({ conversation: descendant, depth: depth + 1 })
+      }
     }
   }
   for (const root of roots) traverse(root)
@@ -106,11 +106,16 @@ export function archiveNavigatorSample<T>(
 ): { item: T; index: number }[] {
   if (!items.length) return []
   const selected = new Set<number>([0, items.length - 1])
-  for (let i = 0; i < items.length; i++) if (isFork(items[i]!)) selected.add(i)
+  for (const [index, item] of items.entries()) if (isFork(item)) selected.add(index)
   const remaining = Math.max(0, maximum - selected.size)
   for (let slot = 1; slot <= remaining; slot++)
     selected.add(Math.round((slot * (items.length - 1)) / (remaining + 1)))
-  return [...selected].sort((a, b) => a - b).map((index) => ({ item: items[index]!, index }))
+  return [...selected]
+    .sort((a, b) => a - b)
+    .map((index) => {
+      if (!(index in items)) throw Error('Archive navigator sample index is missing')
+      return { item: items[index] as T, index }
+    })
 }
 
 /** Fisheye chronology: endpoints stay fixed; nearby checkpoints get more room. */

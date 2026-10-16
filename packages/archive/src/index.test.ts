@@ -87,7 +87,7 @@ test('streaming GZIP round-trips an archive without creating an uncompressed who
   async function* source() {
     for (let i = 0; i < 48; i++)
       yield new TextEncoder().encode(
-        JSON.stringify({ row: i, content: 'tool-output'.repeat(2048) }) + '\n',
+        `${JSON.stringify({ row: i, content: 'tool-output'.repeat(2048) })}\n`,
       )
   }
   const { createGzipFromChunks } = await import('./index')

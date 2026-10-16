@@ -16,10 +16,11 @@ import type {
   SettingsAdapter,
   TelemetryControlAdapter,
 } from '@chatgpt-booster/core'
+import { UI_PORTAL_TARGET } from '@kobaproduction/browser-ui'
 import { type App, createApp } from 'vue'
 import BoosterOverlay from './BoosterOverlay.vue'
 import ControlCenterPanel from './ControlCenterPanel.vue'
-import { installBoosterShadowStyles } from './shadow-styles'
+import { createBoosterShadowSurface } from './shadow-styles'
 
 const ROOT_ID = 'chatgpt-booster-root'
 
@@ -57,6 +58,7 @@ export interface ArchiveMessageView {
 }
 
 export interface ArchiveCoverageView {
+  integrity?: import('@kobaproduction/browser-archive').ArchiveConversationIntegrity
   evidenceVersion?: number
   verifiedAt?: number | null
   historyPageCount?: number
@@ -126,6 +128,27 @@ export interface ArchiveSkippedOwnerEntry {
 }
 
 export interface ArchiveDataAdapter {
+  liveConversations?(): readonly ArchiveConversationView[]
+  retryWorkspace?(conversationId: string): void
+  workspaceStatus?(conversationId: string): {
+    loading: boolean
+    loaded: number
+    missingParents: number
+    failed: boolean
+  }
+  getBranchPath?(conversationId: string, tipId: string): Promise<readonly string[]>
+  getMessageVersions?(
+    conversationId: string,
+    messageId: string,
+  ): Promise<
+    readonly {
+      observedAtMs: number
+      decision: string
+      thread: ArchiveThreadView
+    }[]
+  >
+  /** Commit events refresh the Reader automatically; historical adapters stay pinned. */
+  liveSavedUpdates?: boolean
   getCurrentContext(): Promise<ArchiveCurrentContext>
   currentConversationId(): string | null
   currentProjectId(): string | null
@@ -158,9 +181,7 @@ export interface ArchiveDataAdapter {
   }>
   reconcileArchiveAll?(
     approvedLegacy: readonly string[],
-  ): Promise<
-    NonNullable<Awaited<ReturnType<NonNullable<ArchiveDataAdapter['reconcileArchiveRecent']>>>>
-  >
+  ): Promise<NonNullable<Awaited<ReturnType<NonNullable<ArchiveDataAdapter['reconcileArchiveRecent']>>>>>
   inspectSkippedOwnershipAll?(): Promise<{
     examined: number
     skippedMessages: number
@@ -238,6 +259,26 @@ export interface ArchiveDataAdapter {
   archiveMigrationProgress?(): { status: string; conversations: number; messages: number }
   subscribeContextChange?(listener: () => void): () => void
   getThread(conversationId: string): Promise<ArchiveThreadView>
+  getPositionWindow?(
+    conversationId: string,
+    position: 'first' | 'middle' | 'latest',
+    request?: ArchiveWindowRequest,
+  ): Promise<ArchiveThreadWindow>
+  getRangeMessageIds?(
+    conversationId: string,
+    firstId: string,
+    lastId: string,
+  ): Promise<readonly string[]>
+  getTimeline?(conversationId: string): Promise<
+    readonly {
+      id: string
+      key: string
+      parentId: string | null
+      label: string
+      preview: string
+      uncertain: boolean
+    }[]
+  >
   /** v4 only: progressively materialize bounded IndexedDB windows. */
   getThreadWindow?(
     conversationId: string,
@@ -309,12 +350,7 @@ export interface BoosterUiOptions {
 }
 
 function createIsolatedMount(host: HTMLElement) {
-  const shadow = host.attachShadow({ mode: 'open' })
-  installBoosterShadowStyles(shadow)
-
-  const mountPoint = document.createElement('div')
-  shadow.append(mountPoint)
-  return mountPoint
+  return createBoosterShadowSurface(host, 'div')
 }
 
 export function mountBoosterUi(options: BoosterUiOptions): MountedBoosterUi {
@@ -326,8 +362,9 @@ export function mountBoosterUi(options: BoosterUiOptions): MountedBoosterUi {
     'position:fixed!important;inset:0!important;width:0!important;height:0!important;z-index:2147483647!important;pointer-events:none!important;overflow:visible!important;'
   document.documentElement.append(host)
 
-  const mountPoint = createIsolatedMount(host)
+  const { mountPoint, portal } = createIsolatedMount(host)
   const app: App = createApp(BoosterOverlay, { ...options })
+  app.provide(UI_PORTAL_TARGET, portal)
   app.mount(mountPoint)
 
   return {
@@ -339,11 +376,12 @@ export function mountBoosterUi(options: BoosterUiOptions): MountedBoosterUi {
 }
 
 export function mountControlCenter(host: HTMLElement, options: BoosterUiOptions): MountedBoosterUi {
-  const mountPoint = createIsolatedMount(host)
+  const { mountPoint, portal } = createIsolatedMount(host)
   const app: App = createApp(ControlCenterPanel, {
     ...options,
     showClose: false,
   })
+  app.provide(UI_PORTAL_TARGET, portal)
   app.mount(mountPoint)
 
   return {

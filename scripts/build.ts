@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process'
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
@@ -6,6 +5,12 @@ import vue from '@vitejs/plugin-vue'
 import ts from 'typescript'
 import { build as viteBuild } from 'vite'
 import { buildChatGptModule } from './build-chatgpt'
+import {
+  assertIsolatedDexieBundle,
+  browserDependencyAliases,
+  deliveryTarget,
+  packExtension,
+} from './build-platform'
 import { manifest } from './catalog'
 import { changedModules } from './changed'
 import {
@@ -55,26 +60,44 @@ async function viteBundle(
   external: string[] = [],
   productVersion?: string,
 ) {
+  const application = currentProduct ? await manifest(currentProduct) : null
+  const components =
+    currentProduct === 'all-in-one'
+      ? await Promise.all(
+          ['vk-booster', 'chatgpt-booster'].map(async (id) => {
+            const component = await manifest(id)
+            return { id, title: component.name, version: component.version }
+          }),
+        )
+      : []
   await viteBuild({
     configFile: false,
     root,
     logLevel: 'error',
     plugins: plugins(),
+    resolve: { alias: browserDependencyAliases(root) },
     // Browser bundles must not depend on Node globals. Vue's published runtime
     // still refers to process.env.NODE_ENV when bundled as an IIFE library.
     define: {
       'process.env.NODE_ENV': JSON.stringify('production'),
       'process.env': '{}',
       __BOOSTER_BUILD_VERSION__: JSON.stringify(productVersion ?? ''),
+      __BOOSTER_APPLICATION_VERSION__: JSON.stringify(application?.version ?? ''),
+      __BOOSTER_APPLICATION__: JSON.stringify(
+        application
+          ? {
+              id: currentProduct,
+              title: application.name,
+              version: devDisplayVersion(application.version, channel, run),
+              components,
+            }
+          : null,
+      ),
       __BOOSTER_BUILD_SHA__: JSON.stringify(process.env.GITHUB_SHA ?? ''),
       __BOOSTER_INSTANCE_SCOPE__: JSON.stringify(
         currentProduct ? channelIdentity(currentProduct, channel) : '',
       ),
-      __BOOSTER_DELIVERY_TARGET__: JSON.stringify(
-        src.includes('/apps/extension/') || src.includes('/packages/extension/')
-          ? 'chromium'
-          : 'userscript',
-      ),
+      __BOOSTER_DELIVERY_TARGET__: JSON.stringify(deliveryTarget(src)),
     },
     build: {
       outDir: dir,
@@ -85,7 +108,9 @@ async function viteBundle(
       rollupOptions: external.length ? { external } : undefined,
     },
   })
-  return readFile(join(dir, file), 'utf8')
+  const output = await readFile(join(dir, file), 'utf8')
+  assertIsolatedDexieBundle(output)
+  return output
 }
 function emitTypes(name: string, src: string, dir: string) {
   const config = ts.readConfigFile(join(root, 'tsconfig.json'), ts.sys.readFile)
@@ -100,6 +125,7 @@ function emitTypes(name: string, src: string, dir: string) {
       ...parsed.options.paths,
       '@kobaproduction/browser-core': ['packages/core/dist/index.d.ts'],
       '@kobaproduction/browser-storage': ['packages/storage/dist/index.d.ts'],
+      '@kobaproduction/browser-archive': ['packages/archive/dist/index.d.ts'],
     },
     rootDir: join(root, 'packages', name, 'src'),
     outDir: dir,
@@ -131,6 +157,7 @@ async function pack(name: string) {
       '@kobaproduction/browser-ui',
       'clsx',
       'tailwind-merge',
+      'dexie',
     ])
     await copyFile(join(root, 'packages', name, 'types/index.d.ts'), join(dir, 'index.d.ts'))
     if (name === 'widgets') {
@@ -152,13 +179,14 @@ async function pack(name: string) {
         '@kobaproduction/browser-core',
         '@kobaproduction/browser-adapters',
         '@kobaproduction/browser-ui',
+        'dexie',
       ],
     })
-    if (!compiled.success) throw Error('Shared package build failed: ' + name)
+    if (!compiled.success) throw Error(`Shared package build failed: ${name}`)
     emitTypes(name, src, dir)
   }
 }
-for (const name of ['core', 'storage', 'adapters', 'archive', 'ui', 'widgets', 'shell']) await pack(name)
+for (const name of ['core', 'storage', 'archive', 'adapters', 'ui', 'widgets', 'shell']) await pack(name)
 if (requested === 'packages') {
   console.log('Shared packages built')
   process.exit(0)
@@ -166,7 +194,7 @@ if (requested === 'packages') {
 for (const id of ids) {
   currentProduct = id
   const info = await manifest(id)
-  if (!info.release) throw Error('Module ' + id + ' is not releasable')
+  if (!info.release) throw Error(`Module ${id} is not releasable`)
   if (id === 'chatgpt-booster') {
     await buildChatGptModule(root, target, info.version, viteBundle, channel, run)
     continue
@@ -190,33 +218,35 @@ for (const id of ids) {
     const url = userscriptChannelUrl(id, channel)
     const header = [
       '// ==UserScript==',
-      '// @name         ' + userscriptChannelName(info.name, channel),
+      `// @name         ${userscriptChannelName(info.name, channel)}`,
       '// @namespace    https://github.com/KobaProduction/browser-extensions' +
-        (channel === 'dev' ? '/dev/' + id : ''),
-      '// @version      ' + channelVersion(info.version, channel, run),
-      '// @description  Koba Browser Tools / ' + info.name,
+        (channel === 'dev' ? `/dev/${id}` : ''),
+      `// @version      ${channelVersion(info.version, channel, run)}`,
+      `// @description  Koba Browser Tools / ${info.name}`,
       '// @homepageURL   https://github.com/KobaProduction/browser-extensions',
-      '// @updateURL    ' + url,
-      '// @downloadURL  ' + url,
+      `// @updateURL    ${url}`,
+      `// @downloadURL  ${url}`,
       '// @match        https://vk.ru/*',
       '// @match        https://vk.com/*',
       ...(id === 'all-in-one' ? ['// @match        https://chatgpt.com/*'] : []),
-      '// @run-at       ' + (id === 'all-in-one' ? 'document-start' : 'document-idle'),
+      `// @run-at       ${id === 'all-in-one' ? 'document-start' : 'document-idle'}`,
+      ...(channel === 'dev' ? ['// @run-in       incognito-tabs'] : []),
+      '// @grant        GM_info',
       '// @grant        GM_registerMenuCommand',
-      ...(id === 'all-in-one'
-        ? [
-            '// @grant        GM_getValue',
-            '// @grant        GM_setValue',
-            '// @grant        GM_xmlhttpRequest',
-            '// @grant        unsafeWindow',
-            '// @connect      *',
-          ]
-        : []),
+      '// @grant        GM_getValue',
+      '// @grant        GM_setValue',
+      '// @grant        GM_deleteValue',
+      '// @grant        GM_listValues',
+      '// @grant        GM_addValueChangeListener',
+      '// @grant        GM_removeValueChangeListener',
+      '// @grant        GM_xmlhttpRequest',
+      '// @connect      *',
+      ...(id === 'all-in-one' ? ['// @grant        unsafeWindow'] : []),
       '// @sandbox      raw',
       '// ==/UserScript==',
       '',
     ].join('\n')
-    await writeFile(join(dir, id + '.user.js'), header + '\n' + output)
+    await writeFile(join(dir, `${id}.user.js`), `${header}\n${output}`)
   }
   if (target !== 'userscript') {
     const ext = join(dir, 'extension')
@@ -230,22 +260,32 @@ for (const id of ids) {
       id === 'all-in-one' ? (await manifest('chatgpt-booster')).version : undefined,
     )
     await writeFile(join(ext, 'content.js'), content)
-    const popup = await Bun.build({
-      entrypoints: [
-        join(root, 'apps/extension/src', id === 'all-in-one' ? 'all-in-one-popup.ts' : 'popup.ts'),
-      ],
-      target: 'browser',
-      format: 'esm',
-    })
-    const popupOutput = popup.outputs[0]
-    if (!popup.success || !popupOutput) throw Error('Popup build failed')
-    await writeFile(join(ext, 'popup.js'), await popupOutput.text())
+    const popup = await viteBundle(
+      join(root, 'apps/extension/src', id === 'all-in-one' ? 'all-in-one-popup.ts' : 'popup.ts'),
+      join(dir, '_popup'),
+      'bundle.js',
+      'es',
+    )
+    await writeFile(join(ext, 'popup.js'), popup)
     const base = JSON.parse(await readFile('apps/extension/src/manifest.json', 'utf8'))
     base.version = chromeVersion(info.version, channel, run)
     base.version_name = devDisplayVersion(info.version, channel, run)
     if (channel === 'dev') base.key = devExtensionPublicKeys[id]
     base.name = channelDisplayName(info.name, channel)
-    await writeFile(join(ext, 'manifest.json'), JSON.stringify(base, null, 2) + '\n')
+    if (channel === 'dev') base.incognito = 'split'
+    base.permissions = [...new Set([...base.permissions, 'alarms'])]
+    base.optional_host_permissions = ['https://*/*']
+    base.background = { service_worker: 'background.js', type: 'module' }
+    if (id !== 'all-in-one') {
+      await viteBundle(
+        join(root, 'apps/extension/src/shared-background.ts'),
+        join(dir, '_background'),
+        'bundle.js',
+        'es',
+      )
+      await copyFile(join(dir, '_background/bundle.js'), join(ext, 'background.js'))
+    }
+    await writeFile(join(ext, 'manifest.json'), `${JSON.stringify(base, null, 2)}\n`)
     await copyFile(join(root, 'apps/extension/src/popup.html'), join(ext, 'popup.html'))
     if (id === 'all-in-one') {
       base.host_permissions.push('https://chatgpt.com/*')
@@ -273,7 +313,7 @@ for (const id of ids) {
       )
       await copyFile(join(dir, '_observer', 'bundle.js'), join(ext, 'observer.js'))
       await viteBundle(
-        join(root, 'modules/chatgpt-booster/packages/extension/src/background/index.ts'),
+        join(root, 'apps/extension/src/chatgpt-background.ts'),
         join(dir, '_background'),
         'bundle.js',
         'es',
@@ -281,16 +321,9 @@ for (const id of ids) {
         (await manifest('chatgpt-booster')).version,
       )
       await copyFile(join(dir, '_background', 'bundle.js'), join(ext, 'background.js'))
-      await writeFile(join(ext, 'manifest.json'), JSON.stringify(base, null, 2) + '\n')
+      await writeFile(join(ext, 'manifest.json'), `${JSON.stringify(base, null, 2)}\n`)
     }
-    const child = spawn('zip', ['-q', '-r', '../' + id + '-extension.zip', '.'], {
-      cwd: ext,
-      stdio: 'inherit',
-    })
-    await new Promise<void>((ok, bad) => {
-      child.on('exit', (c) => (c === 0 ? ok() : bad(Error('zip failed'))))
-      child.on('error', bad)
-    })
+    await packExtension(ext, join(dir, `${id}-extension.zip`))
   }
-  console.log('Built ' + id + ' ' + info.version + ' (' + target + ')')
+  console.log(`Built ${id} ${info.version} (${target})`)
 }

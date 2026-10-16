@@ -1,6 +1,6 @@
 {
   "name": "@kobaproduction/module-chatgpt-booster",
-  "version": "2.0.19",
+  "version": "2.0.20",
   "private": true,
   "type": "module",
   "exports": {
@@ -9,6 +9,8 @@
   },
   "dependencies": {
     "@kobaproduction/browser-core": "workspace:*",
+    "@kobaproduction/browser-adapters": "workspace:*",
+    "@kobaproduction/browser-storage": "workspace:*",
     "@kobaproduction/browser-shell": "workspace:*",
     "@kobaproduction/browser-ui": "workspace:*",
     "@chatgpt-booster/core": "workspace:*",

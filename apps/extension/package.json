@@ -12,6 +12,7 @@
     "vue": "^3.5.22",
     "@kobaproduction/module-chatgpt-booster": "workspace:*",
     "@chatgpt-booster/core": "workspace:*",
+    "@chatgpt-booster/extension": "workspace:*",
     "@chatgpt-booster/observer": "workspace:*",
     "@chatgpt-booster/ui": "workspace:*"
   }

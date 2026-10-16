@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "../../ui/src/theme.css";
 @import "@kobaproduction/browser-widgets/styles.css";
 @source "./**/*.{vue,ts}";
 @source "../../ui/src/**/*.{vue,ts}";
@@ -6,50 +7,12 @@
 @source "../../../modules/vk-booster/src/**/*.{vue,ts}";
 
 :host {
-  --background: oklch(0.985 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --border: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --radius: 0.625rem;
-
   all: initial;
   color: var(--foreground);
-  font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
 }
-
-@media (prefers-color-scheme: dark) {
-  :host {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --border: oklch(1 0 0 / 12%);
-    --ring: oklch(0.556 0 0);
-  }
-}
-
 * {
   box-sizing: border-box;
-  border-color: var(--border);
 }
 
 .booster-shell {
@@ -57,18 +20,6 @@
   right: 20px;
   bottom: 20px;
   z-index: 2147483647;
-}
-
-.booster-button {
-  width: 42px;
-  height: 42px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--card);
-  color: var(--card-foreground);
-  box-shadow: 0 10px 30px rgb(0 0 0 / 20%);
-  cursor: pointer;
-  font: 700 15px / 1 inherit;
 }
 
 .booster-panel {
@@ -95,30 +46,11 @@
   line-height: 1.45;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-border: var(--border);
-  --color-ring: var(--ring);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-}
-
 .booster-control-center {
   width: min(760px, calc(100vw - 32px));
   margin-bottom: 10px;
   overflow: hidden;
+  min-width: 0;
   border: 1px solid var(--border);
   border-radius: 18px;
   background: var(--card);
@@ -135,12 +67,14 @@
 }
 
 .booster-control-header {
+  flex-wrap: wrap;
   padding: 14px 14px 12px;
   border-bottom: 1px solid var(--border);
 }
 
 .booster-control-header strong {
   font-size: 14px;
+  overflow-wrap: anywhere;
 }
 
 .booster-control-header p {
@@ -176,9 +110,6 @@
   justify-content: space-between;
   gap: 16px;
   padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--background);
 }
 
 .booster-setting-disabled {
@@ -199,46 +130,6 @@
   color: var(--muted-foreground);
   font-size: 11px;
   line-height: 1.4;
-}
-
-.booster-switch {
-  position: relative;
-  width: 36px;
-  height: 20px;
-  flex: 0 0 auto;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--muted);
-  cursor: pointer;
-  transition:
-    background 120ms ease,
-    border-color 120ms ease;
-}
-
-.booster-switch:disabled {
-  cursor: not-allowed;
-}
-
-.booster-switch > span {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 14px;
-  height: 14px;
-  border-radius: 999px;
-  background: var(--foreground);
-  transition: transform 120ms ease;
-}
-
-.booster-switch-on {
-  background: var(--primary);
-  border-color: var(--primary);
-}
-
-.booster-switch-on > span {
-  transform: translateX(16px);
-  background: var(--primary-foreground);
 }
 
 .booster-info-card {
@@ -278,32 +169,20 @@
   position: fixed;
   z-index: 2147483647;
   display: inline-flex;
-  width: 46px;
-  height: 46px;
+  width: 44px;
+  height: 44px;
   align-items: center;
   justify-content: center;
   gap: 1px;
-  border: 2px solid color-mix(in oklab, var(--primary) 55%, transparent);
   border-radius: 15px;
-  background: var(--primary);
-  color: var(--primary-foreground);
-  box-shadow:
-    0 12px 36px rgb(0 0 0 / 28%),
-    0 0 0 3px color-mix(in oklab, var(--primary) 18%, transparent);
   cursor: grab;
-  font: 800 17px / 1 inherit;
   pointer-events: auto;
   touch-action: none;
   user-select: none;
 }
 
-.booster-launcher:hover {
-  transform: scale(1.04);
-}
-
 .booster-launcher-dragging {
   cursor: grabbing;
-  transform: scale(1.06);
 }
 
 .booster-launcher-icon {
@@ -315,12 +194,12 @@
 .booster-modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 2147483646;
+  /* The host/portal owns site isolation. Keep registry surfaces/child portals
+     above this backdrop inside that one stacking context. */
+  z-index: 40;
   display: grid;
   place-items: center;
   padding: 16px;
-  background: rgb(0 0 0 / 38%);
-  backdrop-filter: blur(3px);
   pointer-events: auto;
 }
 
@@ -333,6 +212,9 @@
 .booster-modal-surface .booster-control-center {
   width: 100%;
   margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .booster-popup-host {
@@ -340,31 +222,10 @@
   background: var(--background);
 }
 
-.booster-select {
-  min-width: 92px;
-  height: 32px;
-  flex: 0 0 auto;
-  padding: 0 28px 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--background);
-  color: var(--foreground);
-  font: 500 12px / 1 inherit;
-  cursor: pointer;
-  outline: none;
-}
-
-.booster-select:focus {
-  box-shadow: 0 0 0 2px var(--ring);
-}
-
 .booster-stack-card {
   display: grid;
   gap: 10px;
   padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--background);
 }
 
 .booster-stack-card label {
@@ -372,23 +233,6 @@
   gap: 6px;
   color: var(--muted-foreground);
   font-size: 11px;
-}
-
-.booster-input {
-  width: 100%;
-  min-width: 0;
-  height: 32px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--background);
-  color: var(--foreground);
-  font: 500 11px / 1 inherit;
-  outline: none;
-}
-
-.booster-input:focus {
-  box-shadow: 0 0 0 2px var(--ring);
 }
 
 .booster-counter-grid {
@@ -427,38 +271,8 @@
 
 .booster-settings-layout {
   display: grid;
-  grid-template-columns: 150px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   min-height: 360px;
-}
-
-.booster-settings-nav {
-  display: grid;
-  align-content: start;
-  gap: 4px;
-  padding: 12px 8px;
-  border-right: 1px solid var(--border);
-  background: color-mix(in oklab, var(--muted) 58%, transparent);
-}
-
-.booster-settings-nav button {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 9px 10px;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  color: var(--muted-foreground);
-  cursor: pointer;
-  font: 600 11px / 1.2 inherit;
-  text-align: left;
-}
-
-.booster-settings-nav button:hover,
-.booster-settings-nav button.active {
-  background: var(--background);
-  color: var(--foreground);
 }
 
 .booster-settings-content {
@@ -466,6 +280,7 @@
   align-content: start;
   gap: 10px;
   min-width: 0;
+  min-height: 0;
   padding: 14px;
 }
 
@@ -495,34 +310,6 @@
   font-weight: 700;
 }
 
-.booster-disclosure {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  width: 100%;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--foreground);
-  cursor: pointer;
-  text-align: left;
-}
-
-.booster-disclosure > span {
-  display: grid;
-  gap: 3px;
-}
-
-.booster-disclosure b {
-  font-size: 12px;
-}
-
-.booster-disclosure small {
-  color: var(--muted-foreground);
-  font-size: 11px;
-}
-
 .rotate-180 {
   transform: rotate(180deg);
 }
@@ -548,14 +335,14 @@
 }
 
 .booster-test-success {
-  color: oklch(0.62 0.17 145);
+  color: var(--success);
   font-size: 11px;
 }
 
 .booster-test-error {
   min-width: 0;
   overflow: hidden;
-  color: oklch(0.63 0.2 25);
+  color: var(--destructive);
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -573,16 +360,6 @@
 
   .booster-settings-layout {
     grid-template-columns: 1fr;
-  }
-
-  .booster-settings-nav {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .booster-settings-nav button {
-    justify-content: center;
   }
 
   .booster-analytics-grid {
@@ -613,10 +390,14 @@
 }
 .booster-modal-surface.booster-modal-surface-wide.booster-dialog-floating {
   position: fixed;
-  max-height: none;
+  max-width: calc(100dvw - 16px);
+  max-height: calc(100dvh - 16px);
   min-width: 0;
   min-height: 0;
   padding: 0;
+  gap: 0;
+  transform: none;
+  translate: none;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -625,7 +406,14 @@
 .booster-dialog-floating > .booster-control-center {
   min-height: 0;
   flex: 1 1 auto;
-  overflow: auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 .booster-floating-chrome {
   flex: 0 0 auto;
@@ -649,51 +437,124 @@
   font-size: 12px;
   font-weight: 600;
 }
-.booster-floating-chrome > button {
-  display: grid;
-  place-items: center;
+.booster-floating-chrome > button:not([role="switch"]) {
   width: 30px;
   height: 30px;
   flex: 0 0 auto;
-  cursor: pointer;
-  border-radius: 6px;
 }
-.booster-floating-chrome > button:focus-visible,
-.booster-floating-resize:focus-visible {
-  outline: 2px solid var(--ring);
+.booster-workspace-error {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 6px 12px;
+  color: var(--destructive);
+  font-size: 12px;
 }
 .booster-floating-resize {
   position: absolute;
   bottom: 0;
   right: 0;
-  display: grid;
-  place-items: center;
   width: 28px;
   height: 28px;
-  background: var(--muted);
   cursor: nwse-resize;
   touch-action: none;
-  border-top-left-radius: 7px;
 }
 
 /* Compact side-docked quick menu shared by single-product Boosters. */
 .booster-launcher-docked {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 22%);
+  width: 44px;
+  height: 44px;
 }
-.booster-quick-menu {
+.booster-edge-toolkit {
   position: fixed;
-  z-index: 2147483646;
-  width: min(294px, calc(100vw - 58px));
-  max-height: min(480px, calc(100dvh - 16px));
-  overflow: auto;
-  border: 1px solid var(--border);
+  width: 44px;
+  height: 44px;
+  z-index: 2147483647;
+  pointer-events: auto;
+}
+.booster-edge-toolkit > .booster-launcher {
+  position: relative;
+  transform: none;
+}
+.booster-edge-toolkit.attached.right > .booster-launcher {
+  border-radius: 12px 0 0 12px;
+}
+.booster-edge-toolkit.attached.left > .booster-launcher {
+  border-radius: 0 12px 12px 0;
+}
+.booster-edge-shell {
+  position: absolute;
+  top: auto;
+  width: var(--booster-dock-width, min(294px, 100vw));
+  overflow: hidden;
+}
+.booster-edge-toolkit > .booster-edge-shell {
+  left: var(--booster-dock-offset-x, 0px);
+}
+.booster-edge-toolkit.free > .booster-edge-shell {
   border-radius: 14px;
+}
+.booster-edge-toolkit.grow-up > .booster-edge-shell {
+  bottom: 0;
+  padding-bottom: 44px;
+}
+.booster-edge-toolkit.grow-down > .booster-edge-shell {
+  top: 0;
+  padding-top: 44px;
+}
+.booster-edge-toolkit.attached.right > .booster-edge-shell {
+  border-radius: 14px 0 0 14px;
+}
+.booster-edge-toolkit.attached.left > .booster-edge-shell {
+  border-radius: 0 14px 14px 0;
+}
+.booster-edge-toolkit > .booster-launcher.booster-edge-close-bar {
+  position: absolute;
+  top: 0;
+  width: var(--booster-dock-width, min(294px, 100vw));
+  height: 44px;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--border);
   background: var(--card);
   color: var(--card-foreground);
-  box-shadow: 0 16px 45px rgb(0 0 0 / 32%);
+  box-shadow: none;
+}
+.booster-edge-toolkit > .booster-launcher.booster-edge-close-bar:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+.booster-edge-toolkit > .booster-edge-close-bar {
+  left: var(--booster-dock-offset-x, 0px);
+}
+.booster-edge-toolkit.free.grow-up > .booster-edge-close-bar {
+  border-radius: 0 0 14px 14px;
+}
+.booster-edge-toolkit.free.grow-down > .booster-edge-close-bar {
+  border-radius: 14px 14px 0 0;
+}
+.booster-edge-toolkit.attached.right.grow-up > .booster-edge-close-bar {
+  border-radius: 0 0 0 14px;
+}
+.booster-edge-toolkit.attached.right.grow-down > .booster-edge-close-bar {
+  border-radius: 14px 0 0 0;
+}
+.booster-edge-toolkit.attached.left.grow-up > .booster-edge-close-bar {
+  border-radius: 0 0 14px 0;
+}
+.booster-edge-toolkit.attached.left.grow-down > .booster-edge-close-bar {
+  border-radius: 0 14px 0 0;
+}
+.booster-quick-menu {
+  position: relative;
+  width: 100%;
+  overflow: auto;
+  border: 0;
+  border-radius: 0;
+  background: var(--card);
+  color: var(--card-foreground);
   pointer-events: auto;
   font: inherit;
 }
@@ -707,6 +568,9 @@
 }
 .booster-quick-header {
   border-bottom: 1px solid var(--border);
+}
+.booster-quick-header > [role="switch"] {
+  flex: 0 0 auto;
 }
 .booster-quick-identity {
   min-width: 0;
@@ -724,54 +588,8 @@
   flex-wrap: wrap;
   gap: 5px;
 }
-.booster-quick-badges > span {
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  padding: 2px 6px;
-  color: var(--muted-foreground);
-  font-size: 10px;
-}
-.booster-quick-close {
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  width: 30px;
-  height: 30px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
 .booster-quick-actions {
-  padding: 6px;
-}
-.booster-quick-actions > button {
-  display: flex;
-  width: 100%;
-  min-height: 37px;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 9px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.3;
-  text-align: left;
-}
-.booster-quick-actions > button:hover:not(:disabled),
-.booster-quick-actions > button:focus-visible,
-.booster-quick-close:hover {
-  background: var(--muted);
-}
-.booster-quick-actions > button:disabled {
-  opacity: 0.48;
-  cursor: not-allowed;
+  padding: 4px 0;
 }
 .booster-quick-footer {
   border-top: 1px solid var(--border);
@@ -783,37 +601,18 @@
 .booster-quick-status.is-active {
   color: var(--foreground);
 }
-.booster-quick-toggle {
-  width: 38px;
-  height: 22px;
-  border: 1px solid var(--border);
-  border-radius: 99px;
-  background: var(--muted);
-  padding: 2px;
-  cursor: pointer;
-}
-.booster-quick-toggle > span {
-  display: block;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--foreground);
-  transition: transform 130ms ease;
-}
-.booster-quick-toggle[aria-checked="true"] {
-  background: var(--primary);
-}
 .booster-quick-metrics {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  padding: 8px 11px;
-  gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  padding: 6px 12px;
+  gap: 4px 12px;
   border-bottom: 1px solid var(--border);
 }
 .booster-quick-metrics > div {
-  display: grid;
+  display: flex;
+  align-items: baseline;
   min-width: 0;
-  gap: 3px;
+  gap: 6px;
 }
 .booster-quick-metrics span {
   color: var(--muted-foreground);
@@ -821,18 +620,11 @@
 }
 .booster-quick-metrics b {
   color: var(--foreground);
-  font-size: 15px;
+  font-size: 11px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
-.booster-quick-toggle[aria-checked="true"] > span {
-  background: var(--primary-foreground);
-  transform: translateX(16px);
-}
-.booster-quick-toggle:disabled {
-  opacity: 0.5;
-  cursor: wait;
-}
 .booster-quick-error {
   position: fixed;
   bottom: 10px;
@@ -842,6 +634,27 @@
   padding: 7px;
   pointer-events: none;
 }
+
+/* Scroll areas belong to the Shell; their colors follow the same theme. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
+}
+
 .booster-modal-surface.booster-modal-surface-single {
   width: min(820px, calc(100vw - 24px));
   max-height: min(86dvh, 760px);
@@ -851,7 +664,7 @@
   width: 100%;
   margin: 0;
 }
-/* Do not flatten the nested provider settings grid; only the outer shell. */
+/* The shared catalog owns navigation; the content is one column. */
 .booster-control-standalone > .booster-settings-layout {
   display: block;
   min-height: 0;
@@ -863,9 +676,9 @@
 @media (max-width: 620px) {
   /* Keep header identity and installation controls on separate usable rows. */
   .booster-control-standalone > .booster-control-header {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 9px;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
     padding: 12px;
   }
   .booster-control-standalone > .booster-control-header > .booster-header-copy > div {
@@ -887,5 +700,338 @@
   .booster-modal-surface.booster-modal-surface-single {
     width: calc(100vw - 16px);
     max-height: calc(100dvh - 16px);
+  }
+}
+
+/* A broad desktop can compare modules; tablets keep compact rows. */
+@media (min-width: 1024px) {
+  .booster-control-embedded
+    > .booster-settings-layout
+    > .booster-settings-content[data-settings-section="modules"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+@media (min-width: 621px) and (max-width: 1023px) {
+  .booster-control-embedded
+    > .booster-settings-layout
+    > .booster-settings-content[data-settings-section="modules"] {
+    gap: 6px;
+    padding: 10px;
+  }
+  .booster-settings-content[data-settings-section="modules"] > .booster-setting-card {
+    padding: 9px 10px;
+    gap: 10px;
+    border-radius: 8px;
+  }
+}
+
+/* Phones use one full-screen surface with no desktop window furniture. */
+.booster-modal-backdrop.booster-modal-backdrop-fullscreen {
+  padding: 0;
+  background: var(--background);
+  backdrop-filter: none;
+}
+.booster-modal-surface.booster-modal-fullscreen {
+  position: fixed;
+  inset: 0;
+  width: 100dvw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  min-width: 0;
+  min-height: 0;
+  translate: none;
+  transform: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.booster-modal-fullscreen > .booster-control-center {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: hidden;
+}
+.booster-dialog-floating .booster-control-header {
+  justify-content: flex-end;
+  padding: 6px 12px;
+}
+.booster-modal-fullscreen > .booster-control-center > .booster-control-header {
+  flex: 0 0 auto;
+  padding-top: max(12px, env(safe-area-inset-top));
+}
+.booster-dialog-floating > .booster-control-center > .booster-control-header {
+  flex: 0 0 auto;
+}
+.booster-modal-fullscreen > .booster-control-center > .settings-catalog,
+.booster-dialog-floating > .booster-control-center > .settings-catalog {
+  flex: 0 1 auto;
+  min-width: 0;
+  min-height: 0;
+  max-height: 50dvh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+.booster-modal-fullscreen > .booster-control-center > .booster-settings-layout,
+.booster-dialog-floating > .booster-control-center > .booster-settings-layout {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.booster-modal-fullscreen
+  > .booster-control-center
+  > .booster-settings-layout
+  > .booster-settings-content,
+.booster-dialog-floating
+  > .booster-control-center
+  > .booster-settings-layout
+  > .booster-settings-content {
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+}
+.booster-settings-content > * {
+  min-width: 0;
+  max-width: 100%;
+}
+/* Bounded provider workspaces use the available pane at every width. The
+   provider owns its internal scrolling; phone focus only hides catalog chrome. */
+.booster-control-center:has([data-panel-content-focus])
+  > .booster-settings-layout
+  > .booster-settings-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+}
+.booster-control-center:has([data-panel-content-focus])
+  > .booster-settings-layout
+  > .booster-settings-content
+  > :has([data-panel-content-focus]),
+.booster-control-center:has([data-panel-content-focus])
+  > .booster-settings-layout
+  > .booster-settings-content
+  > [data-panel-content-focus] {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+.booster-edge-toolkit > .booster-launcher.booster-launcher-floating:not(.booster-edge-close-bar) {
+  border-radius: 50% 50% 50% 18%;
+}
+.booster-shell-settings {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  min-width: 0;
+}
+.booster-settings-layout-catalog {
+  grid-template-columns: minmax(0, 1fr);
+}
+.booster-shell-settings-body {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.booster-shell-settings h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.booster-shell-settings p {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.booster-capability-group {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.booster-capability-row {
+  margin-left: 12px;
+}
+.booster-component-versions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 16px;
+  margin: 0;
+  font-size: 12px;
+}
+.booster-component-versions dt {
+  overflow-wrap: anywhere;
+}
+.booster-component-versions dd {
+  margin: 0;
+  color: var(--muted-foreground);
+}
+.booster-version {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+.booster-floating-identity {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+.booster-floating-identity .booster-version {
+  flex: 0 0 auto;
+}
+.booster-indicator-legend {
+  display: grid;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.booster-indicator-legend li {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  min-width: 0;
+}
+.booster-indicator-copy {
+  display: flex;
+  flex: 1;
+  align-items: baseline;
+  justify-content: space-between;
+  min-width: 0;
+  gap: 8px;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.booster-indicator-copy strong {
+  flex: 0 0 auto;
+  font-weight: 500;
+}
+.booster-indicator-copy > span {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  text-align: right;
+}
+.booster-signal-dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: var(--muted-foreground);
+}
+.booster-signal-dot[data-status="active"],
+.booster-signal-dot[data-status="connecting"] {
+  background: var(--chart-2);
+}
+.booster-signal-dot[data-status="success"] {
+  background: var(--success);
+}
+.booster-signal-dot[data-status="error"] {
+  background: var(--destructive);
+}
+.booster-signal-dot[data-status="warning"],
+.booster-signal-dot[data-status="offline"] {
+  background: var(--warning, var(--chart-5));
+}
+.booster-launcher-signals {
+  position: absolute;
+  bottom: 4px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 3px;
+  pointer-events: none;
+}
+.booster-launcher-signals .booster-signal-dot {
+  width: 4px;
+  height: 4px;
+  margin: 0;
+}
+/* Provider signals decorate the real Button; registry focus/hover semantics remain. */
+.booster-launcher[data-indicator-tone]:not([data-indicator-tone="idle"])::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  padding: 2px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    135deg,
+    var(--booster-signal-color),
+    var(--booster-signal-end, var(--booster-signal-color))
+  );
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+.booster-launcher[data-indicator-tone="active"] {
+  --booster-signal-color: var(--chart-2);
+  --booster-signal-end: var(--chart-4);
+}
+.booster-launcher[data-indicator-tone="success"] {
+  --booster-signal-color: var(--success);
+}
+.booster-launcher[data-indicator-tone="warning"] {
+  --booster-signal-color: var(--warning, var(--chart-5));
+}
+.booster-launcher[data-indicator-tone="error"] {
+  --booster-signal-color: var(--destructive);
+}
+.booster-quick-identity {
+  display: flex;
+  gap: 5px 8px;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+.booster-quick-context {
+  width: 100%;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+@media (max-width: 620px) {
+  .booster-shell-settings {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+  .booster-modal-fullscreen > .booster-control-center > .settings-catalog {
+    overflow: hidden;
+  }
+  .booster-header-copy > div {
+    flex-wrap: wrap;
+  }
+  .booster-header-actions {
+    gap: 6px;
+  }
+  .booster-capability-row {
+    margin-left: 0;
+  }
+  .booster-control-center:has([data-panel-content-focus="true"]) > .settings-catalog {
+    display: none;
   }
 }

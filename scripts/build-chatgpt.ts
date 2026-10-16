@@ -1,6 +1,6 @@
-import { spawn } from 'node:child_process'
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { packExtension } from './build-platform'
 import {
   channelDisplayName,
   channelVersion,
@@ -45,18 +45,24 @@ export async function buildChatGptModule(
     )
     const header = [
       '// ==UserScript==',
-      '// @name         ' + userscriptChannelName('ChatGPT Booster', channel),
+      `// @name         ${userscriptChannelName('ChatGPT Booster', channel)}`,
       '// @namespace    https://github.com/KobaProduction/browser-extensions' +
         (channel === 'dev' ? '/dev/chatgpt-booster' : ''),
-      '// @version      ' + channelVersion(version, channel, run),
+      `// @version      ${channelVersion(version, channel, run)}`,
       '// @description  ChatGPT Booster — archive and browser tools',
-      '// @updateURL    ' + userscriptChannelUrl(id, channel),
-      '// @downloadURL  ' + userscriptChannelUrl(id, channel),
+      `// @updateURL    ${userscriptChannelUrl(id, channel)}`,
+      `// @downloadURL  ${userscriptChannelUrl(id, channel)}`,
       '// @match        https://chatgpt.com/*',
       '// @run-at       document-start',
+      ...(channel === 'dev' ? ['// @run-in       incognito-tabs'] : []),
+      '// @grant        GM_info',
       '// @grant        GM_registerMenuCommand',
       '// @grant        GM_getValue',
       '// @grant        GM_setValue',
+      '// @grant        GM_deleteValue',
+      '// @grant        GM_listValues',
+      '// @grant        GM_addValueChangeListener',
+      '// @grant        GM_removeValueChangeListener',
       '// @grant        GM_xmlhttpRequest',
       '// @grant        unsafeWindow',
       '// @connect      *',
@@ -64,7 +70,7 @@ export async function buildChatGptModule(
       '// ==/UserScript==',
       '',
     ].join('\n')
-    await writeFile(join(dir, id + '.user.js'), header + '\n' + output)
+    await writeFile(join(dir, `${id}.user.js`), `${header}\n${output}`)
   }
   if (target !== 'userscript') {
     const ext = join(dir, 'extension')
@@ -88,7 +94,7 @@ export async function buildChatGptModule(
     )
     await copyFile(join(dir, '_observer', 'bundle.js'), join(ext, 'observer.js'))
     await bundle(
-      join(extRoot, 'src/background/index.ts'),
+      join(root, 'apps/extension/src/chatgpt-background.ts'),
       join(dir, '_background'),
       'bundle.js',
       'es',
@@ -113,12 +119,13 @@ export async function buildChatGptModule(
     await writeFile(join(ext, 'popup.html'), html)
     const manifest = {
       manifest_version: 3,
+      ...(channel === 'dev' ? { incognito: 'split' } : {}),
       name: channelDisplayName('ChatGPT Booster', channel),
       version: chromeVersion(version, channel, run),
       version_name: devDisplayVersion(version, channel, run),
       ...(channel === 'dev' ? { key: devExtensionPublicKeys[id] } : {}),
       description: 'ChatGPT archive with shared browser tools shell',
-      permissions: ['storage', 'scripting'],
+      permissions: ['storage', 'scripting', 'alarms'],
       host_permissions: ['https://chatgpt.com/*'],
       // This is NOT granted on installation. Explicit user action is required for a configured HTTPS telemetry endpoint.
       optional_host_permissions: ['https://*/*'],
@@ -134,15 +141,8 @@ export async function buildChatGptModule(
       ],
       background: { service_worker: 'background.js', type: 'module' },
     }
-    await writeFile(join(ext, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n')
-    const child = spawn('zip', ['-q', '-r', '../chatgpt-booster-extension.zip', '.'], {
-      cwd: ext,
-      stdio: 'inherit',
-    })
-    await new Promise<void>((done, fail) => {
-      child.once('exit', (code) => (code === 0 ? done() : fail(new Error('ZIP packaging failed'))))
-      child.once('error', fail)
-    })
+    await writeFile(join(ext, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
+    await packExtension(ext, join(dir, 'chatgpt-booster-extension.zip'))
   }
-  console.log('Built ChatGPT Booster', version, '(' + target + ')')
+  console.log('Built ChatGPT Booster', version, `(${target})`)
 }

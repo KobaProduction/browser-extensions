@@ -89,7 +89,7 @@ export interface StagedMigrationResult {
 }
 function required(value: string, label: string): string {
   if (typeof value !== 'string' || !value.trim() || value.length > 1024)
-    throw Error('Invalid migration ' + label)
+    throw Error(`Invalid migration ${label}`)
   return value
 }
 function aborted(): DOMException {
@@ -276,7 +276,7 @@ export function browserMigrationLock(prefix: string): MigrationLock {
     async exclusive<T>(scope: string, operation: () => Promise<T>): Promise<T> {
       if (typeof navigator === 'undefined' || !navigator.locks?.request)
         throw Error('Cross-tab migration lock unavailable')
-      return navigator.locks.request(prefix + ':' + scope, { mode: 'exclusive' }, operation)
+      return navigator.locks.request(`${prefix}:${scope}`, { mode: 'exclusive' }, operation)
     },
   }
 }

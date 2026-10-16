@@ -1,5 +1,11 @@
 # Architecture
 
+The active 2026-10-14 owner correction batch is defined by
+[the live archive contract](../../../docs/chatgpt-booster/LIVE_ARCHIVE_CONTRACT.md).
+Its source-driven lifecycle, preserved observation versions and shared
+settings/telemetry/recovery composition supersede the historical checkpoints
+below. Builds/tests/browser checks are deferred until the batch ends.
+
 ChatGPT Booster is one codebase with two browser delivery targets.
 
 ```text

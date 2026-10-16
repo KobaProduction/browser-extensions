@@ -9,8 +9,8 @@ cutover and publication remain separately gated acceptance levels.
 | Product | Version | Entry point | Tampermonkey | MV3 | Publication |
 | --- | --- | --- | --- | --- | --- |
 | VK Booster | 1.0.0 (first-PROD candidate) | `modules/vk-booster` | Separate VK only | Separate VK only | Independently tagged |
-| ChatGPT Booster | 2.0.13 | `modules/chatgpt-booster` | Separate ChatGPT only | Separate ChatGPT observer, worker, popup | Independently tagged, manual approval |
-| All-in-one | 0.5.14 | `apps/userscript/src/all-in-one.ts`, `apps/extension/src/all-in-one-content.ts` | VK and ChatGPT by site | VK plus ChatGPT observer and worker | Own tag/channel, manual approval |
+| ChatGPT Booster | 2.0.20 | `modules/chatgpt-booster` | Separate ChatGPT only | Separate ChatGPT observer, worker, popup | Independently tagged, manual approval |
+| All-in-one | 0.5.22 | `apps/userscript/src/all-in-one.ts`, `apps/extension/src/all-in-one-content.ts` | VK and ChatGPT by site | VK plus ChatGPT observer and worker | Own tag/channel, manual approval |
 
 `apps/all-in-one.json` declares dependencies on VK and ChatGPT. Its one
 Control Center and feature registry select the corresponding provider on the

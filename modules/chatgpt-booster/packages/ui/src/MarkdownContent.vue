@@ -21,24 +21,32 @@ function safeLink(value: string) {
 }
 function inline(value: string) {
   const code: string[] = []
+  // A literal delimiter separates escaped prose from already escaped code tokens.
+  const delimiter = String.fromCharCode(0)
   let text = value.replace(/`([^`]+)`/g, (_, content: string) => {
     const index = code.push(`<code>${escapeHtml(content)}</code>`) - 1
-    return `\u0000CODE${index}\u0000`
+    return `${delimiter}CODE${index}${delimiter}`
   })
   text = escapeHtml(text)
-  text = text.replace(/\[([^\]]+)\]\(([^\s)]+)(?:\s+&quot;[^&]*&quot;)?\)/g, (_, label: string, href: string) => {
-    const safe = safeLink(href.replaceAll('&amp;', '&'))
-    return safe
-      ? `<a href="${escapeHtml(safe)}" target="_blank" rel="noreferrer noopener">${label}</a>`
-      : `${label} (${href})`
-  })
+  text = text.replace(
+    /\[([^\]]+)\]\(([^\s)]+)(?:\s+&quot;[^&]*&quot;)?\)/g,
+    (_, label: string, href: string) => {
+      const safe = safeLink(href.replaceAll('&amp;', '&'))
+      return safe
+        ? `<a href="${escapeHtml(safe)}" target="_blank" rel="noreferrer noopener">${label}</a>`
+        : `${label} (${href})`
+    },
+  )
   text = text
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/__([^_]+)__/g, '<strong>$1</strong>')
     .replace(/~~([^~]+)~~/g, '<del>$1</del>')
     .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
     .replace(/(^|[^_])_([^_\n]+)_/g, '$1<em>$2</em>')
-  return text.replace(/\u0000CODE(\d+)\u0000/g, (_, index: string) => code[Number(index)] ?? '')
+  return text.replace(
+    new RegExp(`${delimiter}CODE(\\d+)${delimiter}`, 'g'),
+    (_, index: string) => code[Number(index)] ?? '',
+  )
 }
 function table(lines: string[], start: number) {
   if (start + 1 >= lines.length || !lines[start]?.includes('|')) return null
@@ -74,13 +82,16 @@ function renderMarkdown(source: string) {
   }
   const flushList = () => {
     if (!list) return
-    out.push(`<${list.type}>${list.items.map((item) => `<li>${inline(item)}</li>`).join('')}</${list.type}>`)
+    out.push(
+      `<${list.type}>${list.items.map((item) => `<li>${inline(item)}</li>`).join('')}</${list.type}>`,
+    )
     list = null
   }
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index] ?? ''
     if (line.trim().startsWith('```')) {
-      flushParagraph(); flushList()
+      flushParagraph()
+      flushList()
       const language = line.trim().slice(3).trim()
       const body: string[] = []
       index++
@@ -88,16 +99,23 @@ function renderMarkdown(source: string) {
         body.push(lines[index] ?? '')
         index++
       }
-      out.push(`<pre><code${language ? ` data-language="${escapeHtml(language)}"` : ''}>${escapeHtml(body.join('\n'))}</code></pre>`)
+      out.push(
+        `<pre><code${language ? ` data-language="${escapeHtml(language)}"` : ''}>${escapeHtml(body.join('\n'))}</code></pre>`,
+      )
       continue
     }
     const parsedTable = table(lines, index)
     if (parsedTable) {
-      flushParagraph(); flushList(); out.push(parsedTable.html); index = parsedTable.end - 1; continue
+      flushParagraph()
+      flushList()
+      out.push(parsedTable.html)
+      index = parsedTable.end - 1
+      continue
     }
     const heading = line.match(/^(#{1,6})\s+(.+)$/)
     if (heading) {
-      flushParagraph(); flushList()
+      flushParagraph()
+      flushList()
       const level = heading[1]?.length ?? 1
       out.push(`<h${level}>${inline(heading[2] ?? '')}</h${level}>`)
       continue
@@ -113,23 +131,31 @@ function renderMarkdown(source: string) {
       continue
     }
     if (/^\s*>/.test(line)) {
-      flushParagraph(); flushList()
+      flushParagraph()
+      flushList()
       const quote = [line.replace(/^\s*>\s?/, '')]
       while (index + 1 < lines.length && /^\s*>/.test(lines[index + 1] ?? '')) {
-        index++; quote.push((lines[index] ?? '').replace(/^\s*>\s?/, ''))
+        index++
+        quote.push((lines[index] ?? '').replace(/^\s*>\s?/, ''))
       }
       out.push(`<blockquote>${inline(quote.join('\n')).replaceAll('\n', '<br>')}</blockquote>`)
       continue
     }
     if (/^\s*(?:---+|\*\*\*+)\s*$/.test(line)) {
-      flushParagraph(); flushList(); out.push('<hr>'); continue
+      flushParagraph()
+      flushList()
+      out.push('<hr>')
+      continue
     }
     if (!line.trim()) {
-      flushParagraph(); flushList(); continue
+      flushParagraph()
+      flushList()
+      continue
     }
     paragraph.push(line)
   }
-  flushParagraph(); flushList()
+  flushParagraph()
+  flushList()
   return out.join('')
 }
 const html = computed(() => renderMarkdown(props.text))

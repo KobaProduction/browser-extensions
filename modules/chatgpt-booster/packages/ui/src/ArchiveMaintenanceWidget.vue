@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import type { ArchiveDataAdapter, ArchiveSkippedOwnerEntry } from './mount'
-import type { SupportedLocale } from './i18n'
 import ArrowLeftRight from 'lucide-vue-next/dist/esm/icons/arrow-left-right.js'
 import CheckCircle2 from 'lucide-vue-next/dist/esm/icons/circle-check.js'
 import ClipboardCheck from 'lucide-vue-next/dist/esm/icons/clipboard-check.js'
@@ -9,11 +7,13 @@ import LoaderCircle from 'lucide-vue-next/dist/esm/icons/loader-circle.js'
 import RefreshCw from 'lucide-vue-next/dist/esm/icons/refresh-cw.js'
 import X from 'lucide-vue-next/dist/esm/icons/x.js'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import type { SupportedLocale } from './i18n'
+import type { ArchiveDataAdapter, ArchiveSkippedOwnerEntry } from './mount'
 
 const props = defineProps<{ archiveAdapter: ArchiveDataAdapter; locale: SupportedLocale }>()
 const emit = defineEmits<{ close: []; updated: [] }>()
 const ru = computed(() => props.locale === 'ru')
-const label = (ruText: string, enText: string) => ru.value ? ruText : enText
+const label = (ruText: string, enText: string) => (ru.value ? ruText : enText)
 type Inventory = Awaited<ReturnType<NonNullable<ArchiveDataAdapter['getArchiveMigrationOverview']>>>
 type Delta = Awaited<ReturnType<NonNullable<ArchiveDataAdapter['reconcileArchiveRecent']>>>
 type Audit = Awaited<ReturnType<NonNullable<ArchiveDataAdapter['auditArchiveCoverage']>>>
@@ -40,9 +40,10 @@ function onNativeSourceFile(event: Event) {
   nativeSourceMessage.value = ''
 }
 function saveNativeSourceBackup() {
-  if (!props.archiveAdapter.exportNativeSourceBackup) return
+  const operation = props.archiveAdapter.exportNativeSourceBackup?.bind(props.archiveAdapter)
+  if (!operation) return
   void work(async () => {
-    const blob = await props.archiveAdapter.exportNativeSourceBackup!()
+    const blob = await operation()
     if (!blob.size) throw new Error('Original source backup is empty')
     const url = URL.createObjectURL(blob)
     try {
@@ -52,17 +53,21 @@ function saveNativeSourceBackup() {
       document.body.appendChild(link)
       link.click()
       link.remove()
-      nativeSourceMessage.value = label('Исходные записи подготовлены. Проверь сохранение файла браузером.',
-        'Native source records prepared. Verify that the browser saved the file.')
-    } finally { setTimeout(() => URL.revokeObjectURL(url), 30_000) }
+      nativeSourceMessage.value = label(
+        'Исходные записи подготовлены. Проверь сохранение файла браузером.',
+        'Native source records prepared. Verify that the browser saved the file.',
+      )
+    } finally {
+      setTimeout(() => URL.revokeObjectURL(url), 30_000)
+    }
   })
 }
 function restoreNativeSourceBackup() {
-  if (!nativeSourceFile.value || !nativeSourceApproved.value ||
-      !props.archiveAdapter.importNativeSourceBackup) return
+  const operation = props.archiveAdapter.importNativeSourceBackup?.bind(props.archiveAdapter)
+  if (!nativeSourceFile.value || !nativeSourceApproved.value || !operation) return
   const file = nativeSourceFile.value
   void work(async () => {
-    nativeSourceResult.value = await props.archiveAdapter.importNativeSourceBackup!(file)
+    nativeSourceResult.value = await operation(file)
     nativeSourceApproved.value = false
     nativeSourceFile.value = null
     ownerInspection.value = undefined
@@ -78,10 +83,11 @@ function onBackupFile(event: Event) {
   backupMessage.value = ''
 }
 function saveBackup() {
-  if (!props.archiveAdapter.exportCanonicalBackup) return
+  const operation = props.archiveAdapter.exportCanonicalBackup?.bind(props.archiveAdapter)
+  if (!operation) return
   void work(async () => {
     backupMessage.value = ''
-    const blob = await props.archiveAdapter.exportCanonicalBackup!()
+    const blob = await operation()
     if (!blob.size) throw new Error('The canonical backup is empty')
     const url = URL.createObjectURL(blob)
     try {
@@ -91,8 +97,10 @@ function saveBackup() {
       document.body.appendChild(a)
       a.click()
       a.remove()
-      backupMessage.value = label('Копия подготовлена. Проверь, что браузер сохранил файл.',
-        'Backup prepared. Verify the browser saved the file.')
+      backupMessage.value = label(
+        'Копия подготовлена. Проверь, что браузер сохранил файл.',
+        'Backup prepared. Verify the browser saved the file.',
+      )
     } finally {
       setTimeout(() => URL.revokeObjectURL(url), 30_000)
     }
@@ -100,10 +108,11 @@ function saveBackup() {
 }
 function restoreBackupFile() {
   const file = backupFile.value
-  if (!file || !backupApproved.value || !props.archiveAdapter.restoreCanonicalBackup) return
+  const operation = props.archiveAdapter.restoreCanonicalBackup?.bind(props.archiveAdapter)
+  if (!file || !backupApproved.value || !operation) return
   void work(async () => {
     backupMessage.value = ''
-    backupRestoreResult.value = await props.archiveAdapter.restoreCanonicalBackup!(file)
+    backupRestoreResult.value = await operation(file)
     backupApproved.value = false
     backupFile.value = null
     audit.value = undefined
@@ -112,11 +121,16 @@ function restoreBackupFile() {
     await inspect()
   })
 }
-const integrityProblems = computed(() => integrity.value
-  ? integrity.value.invalidSourceRecords + integrity.value.missingCanonicalRecords +
-    integrity.value.mismatchedPreferredRecords + integrity.value.missingSnapshotRecords +
-    integrity.value.changedSnapshotRecords + integrity.value.changedProjectionRecords
-  : 0)
+const integrityProblems = computed(() =>
+  integrity.value
+    ? integrity.value.invalidSourceRecords +
+      integrity.value.missingCanonicalRecords +
+      integrity.value.mismatchedPreferredRecords +
+      integrity.value.missingSnapshotRecords +
+      integrity.value.changedSnapshotRecords +
+      integrity.value.changedProjectionRecords
+    : 0,
+)
 const ownerInspection = ref<{
   examined: number
   skippedMessages: number
@@ -126,13 +140,15 @@ const ownerInspection = ref<{
 const ownerInspectionHours = ref<48 | 168>(48)
 const lastReconcileHours = ref<48 | 168>(48)
 const selectedLegacyIds = ref<string[]>([])
-const skippedList = computed(() =>
-  ownerInspection.value?.skippedConversations ?? report.value?.skippedConversations ?? [])
+const skippedList = computed(
+  () => ownerInspection.value?.skippedConversations ?? report.value?.skippedConversations ?? [],
+)
 const selectedLegacyCount = computed(() => selectedLegacyIds.value.length)
 const progress = ref({ conversations: 0, messages: 0, status: 'idle' })
 const busy = computed(() => loading.value || active.value)
-const unverified = computed(() => (inventory.value?.unboundConversations ?? 0) +
-  (inventory.value?.conflictingConversations ?? 0))
+const unverified = computed(
+  () => (inventory.value?.unboundConversations ?? 0) + (inventory.value?.conflictingConversations ?? 0),
+)
 // A sum of v3+v4 headers double-counts overlapping IDs and cannot be used
 // as the number of missing chats. Only the account-scoped read-only audit can.
 const missing = computed(() => audit.value?.conversationCountShortfall ?? null)
@@ -161,7 +177,10 @@ async function inspect() {
     }
   } catch (cause) {
     if (alive && id === requestId)
-      error.value = cause instanceof Error ? cause.message : label('Не удалось проверить архив.', 'Archive check failed.')
+      error.value =
+        cause instanceof Error
+          ? cause.message
+          : label('Не удалось проверить архив.', 'Archive check failed.')
   } finally {
     if (alive && id === requestId) loading.value = false
   }
@@ -170,25 +189,31 @@ async function work(fn: () => Promise<void>) {
   if (busy.value) return
   active.value = true
   error.value = ''
-  try { await fn() }
-  catch (cause) { error.value = cause instanceof Error ? cause.message : label('Операция не выполнена.', 'Operation failed.') }
-  finally { active.value = false }
+  try {
+    await fn()
+  } catch (cause) {
+    error.value =
+      cause instanceof Error ? cause.message : label('Операция не выполнена.', 'Operation failed.')
+  } finally {
+    active.value = false
+  }
 }
 function migrate() {
-  if (!props.archiveAdapter.startArchiveMigration) return
+  const operation = props.archiveAdapter.startArchiveMigration?.bind(props.archiveAdapter)
+  if (!operation) return
   void work(async () => {
-    await props.archiveAdapter.startArchiveMigration!(false)
+    await operation(false)
     emit('updated')
     await inspect()
   })
 }
 function reconcile(hours: 48 | 168, approveSelected = false) {
-  if (!props.archiveAdapter.reconcileArchiveRecent || (approveSelected && !selectedLegacyCount.value))
-    return
+  const operation = props.archiveAdapter.reconcileArchiveRecent?.bind(props.archiveAdapter)
+  if (!operation || (approveSelected && !selectedLegacyCount.value)) return
   void work(async () => {
     lastReconcileHours.value = hours
     const approved = approveSelected ? [...selectedLegacyIds.value] : []
-    report.value = await props.archiveAdapter.reconcileArchiveRecent!(hours, approved)
+    report.value = await operation(hours, approved)
     selectedLegacyIds.value = []
     ownerInspection.value = undefined
     emit('updated')
@@ -196,19 +221,19 @@ function reconcile(hours: 48 | 168, approveSelected = false) {
   })
 }
 function inspectAllSkipped() {
-  if (!props.archiveAdapter.inspectSkippedOwnershipAll) return
+  const operation = props.archiveAdapter.inspectSkippedOwnershipAll?.bind(props.archiveAdapter)
+  if (!operation) return
   void work(async () => {
     selectedLegacyIds.value = []
-    ownerInspection.value = await props.archiveAdapter.inspectSkippedOwnershipAll!()
+    ownerInspection.value = await operation()
     report.value = undefined
   })
 }
 function reconcileAll(approveSelected = false) {
-  if (!props.archiveAdapter.reconcileArchiveAll || (approveSelected && !selectedLegacyCount.value)) return
+  const operation = props.archiveAdapter.reconcileArchiveAll?.bind(props.archiveAdapter)
+  if (!operation || (approveSelected && !selectedLegacyCount.value)) return
   void work(async () => {
-    report.value = await props.archiveAdapter.reconcileArchiveAll!(
-      approveSelected ? [...selectedLegacyIds.value] : [],
-    )
+    report.value = await operation(approveSelected ? [...selectedLegacyIds.value] : [])
     selectedLegacyIds.value = []
     ownerInspection.value = undefined
     emit('updated')
@@ -216,21 +241,28 @@ function reconcileAll(approveSelected = false) {
   })
 }
 function inspectSkipped(hours: 48 | 168) {
-  if (!props.archiveAdapter.inspectSkippedOwnership) return
+  const operation = props.archiveAdapter.inspectSkippedOwnership?.bind(props.archiveAdapter)
+  if (!operation) return
   void work(async () => {
     ownerInspectionHours.value = hours
     selectedLegacyIds.value = []
-    ownerInspection.value = await props.archiveAdapter.inspectSkippedOwnership!(hours)
+    ownerInspection.value = await operation(hours)
     report.value = undefined
   })
 }
 function verifyIntegrity() {
-  if (!props.archiveAdapter.auditArchiveIntegrity) return
-  void work(async () => { integrity.value = await props.archiveAdapter.auditArchiveIntegrity!() })
+  const operation = props.archiveAdapter.auditArchiveIntegrity?.bind(props.archiveAdapter)
+  if (!operation) return
+  void work(async () => {
+    integrity.value = await operation()
+  })
 }
 function verifyCounts() {
-  if (!props.archiveAdapter.auditArchiveCoverage) return
-  void work(async () => { audit.value = await props.archiveAdapter.auditArchiveCoverage!() })
+  const operation = props.archiveAdapter.auditArchiveCoverage?.bind(props.archiveAdapter)
+  if (!operation) return
+  void work(async () => {
+    audit.value = await operation()
+  })
 }
 function close() {
   if (!active.value) emit('close')
@@ -240,15 +272,20 @@ onMounted(() => {
   closeButton.value?.focus()
   unsubscribe = props.archiveAdapter.subscribeArchiveMigration?.(() => {
     const state = props.archiveAdapter.archiveMigrationProgress?.()
-    if (state) progress.value = {
-      status: state.status,
-      conversations: state.conversations,
-      messages: state.messages,
-    }
+    if (state)
+      progress.value = {
+        status: state.status,
+        conversations: state.conversations,
+        messages: state.messages,
+      }
   })
   void inspect()
 })
-onBeforeUnmount(() => { alive = false; ++requestId; unsubscribe?.() })
+onBeforeUnmount(() => {
+  alive = false
+  ++requestId
+  unsubscribe?.()
+})
 </script>
 
 <template>

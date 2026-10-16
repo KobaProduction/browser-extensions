@@ -22,8 +22,8 @@ export function nextDevRelease(
 ): DevRelease {
   if (!isProduct(id)) throw Error('Unknown DEV product')
   channelVersion(baseVersion, 'prod', 1)
-  const legacy = new RegExp('^' + id + '/v[0-9]+\\.[0-9]+\\.[0-9]+-dev\\.([0-9]+)$')
-  const prefixed = new RegExp('^dev-' + id + '/v[0-9]+\\.[0-9]+\\.([0-9]+)$')
+  const legacy = new RegExp(`^${id}/v[0-9]+\\.[0-9]+\\.[0-9]+-dev\\.([0-9]+)$`)
+  const prefixed = new RegExp(`^dev-${id}/v[0-9]+\\.[0-9]+\\.([0-9]+)$`)
   let latest = 0
   for (const tag of tags) {
     const match = legacy.exec(tag) ?? prefixed.exec(tag)
@@ -36,7 +36,7 @@ export function nextDevRelease(
   const major = Number(parts[0])
   const minor = Number(parts[1])
   const patch = Number(parts[2])
-  const sourcePrefix = 'dev-' + id + '/v' + major + '.' + minor + '.'
+  const sourcePrefix = `dev-${id}/v${major}.${minor}.`
   // Re-running the same validated commit must not publish a new release
   // just because its previous tag already exists. Recover a partly
   // completed channel publication against the same immutable release.
@@ -51,7 +51,7 @@ export function nextDevRelease(
     return {
       counter: count,
       tag,
-      title: 'dev-' + id + ' v' + major + '.' + minor + '.' + count,
+      title: `dev-${id} v${major}.${minor}.${count}`,
       reused: true,
     }
   }
@@ -59,8 +59,8 @@ export function nextDevRelease(
   const numeric = channelVersion(baseVersion, 'dev', counter)
   return {
     counter,
-    tag: 'dev-' + id + '/v' + numeric,
-    title: 'dev-' + id + ' v' + numeric,
+    tag: `dev-${id}/v${numeric}`,
+    title: `dev-${id} v${numeric}`,
     reused: false,
   }
 }

@@ -1,8 +1,11 @@
 <script setup lang="ts">
 /** Provider-neutral capture controls. Identity, collection and persistence belong to the caller. */
-import { Button } from '@kobaproduction/browser-ui'
+import { Button, useLocalizedText } from '@kobaproduction/browser-ui'
 import { ArrowUpToLine, Square } from 'lucide-vue-next'
 import ArchiveProgressBar from './ArchiveProgressBar.vue'
+import { WIDGET_UI_MESSAGES } from './ui-messages'
+
+const text = useLocalizedText(WIDGET_UI_MESSAGES)
 
 const props = withDefaults(
   defineProps<{
@@ -25,13 +28,13 @@ const emit = defineEmits<{ start: []; stop: [] }>()
       <ArrowUpToLine class="size-4" aria-hidden="true" />{{ label }}
     </Button>
     <Button v-else type="button" variant="outline" size="sm" @click="emit('stop')">
-      <Square class="size-4" aria-hidden="true" />{{ stopLabel }}
+      <Square class="size-4" aria-hidden="true" />{{ text(stopLabel) }}
     </Button>
     <ArchiveProgressBar v-if="total !== null && total !== undefined && total > 0"
       :label="label" :percent="Math.max(0, Math.min(100, Math.round(100 * (processed ?? 0) / total)))"
       :counter="`${processed ?? 0} / ${total}`" compact />
     <span v-if="saved !== undefined && saved !== null" class="text-xs text-muted-foreground" role="status">
-      {{ savedLabel }}: {{ saved }}
+      {{ text(savedLabel) }}: {{ saved }}
     </span>
   </div>
 </template>

@@ -47,7 +47,7 @@ function requireSchema(options: IndexedMigrationStoreOptions): void {
     throw Error('Migration journal and manifest stores must differ')
   const names = new Set(options.db.objectStoreNames)
   for (const name of [options.journalStore, options.manifestStore, ...options.stagingStores])
-    if (!names.has(name)) throw Error('Migration schema missing store: ' + name)
+    if (!names.has(name)) throw Error(`Migration schema missing store: ${name}`)
   if (
     options.stagingStores.includes(options.journalStore) ||
     options.stagingStores.includes(options.manifestStore)

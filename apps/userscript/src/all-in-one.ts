@@ -7,7 +7,7 @@ import { bootstrapUserscript } from './runtime'
 
 // Exactly one page runtime and one shared Control Center per eligible host.
 if (isChatGptPage())
-  bootstrapUserscript([createChatGptUserscriptFeature()], 'Koba Browser Tools', {
+  bootstrapUserscript((telemetry) => [createChatGptUserscriptFeature(telemetry)], 'Koba Browser Tools', {
     'chatgpt-booster': ChatGptPanel,
   })
 else if (vkBoosterFeature.match(new URL(location.href)))

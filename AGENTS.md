@@ -30,6 +30,7 @@ GitHub Issues track only current tasks/evidence, never the sole rule authority.
 | Storage/Pinia/Dexie/identity/session | [Environment and storage](docs/shared/ENVIRONMENTS_AND_STORAGE.md) | `packages/storage/`, `packages/adapters/` |
 | Backup/import/restore | [Backup contract](docs/shared/BACKUP_AND_RESTORE.md) | Provider repository + shared ports |
 | Telemetry/metrics | [Telemetry contract](docs/shared/TELEMETRY.md) | `packages/core/` and provider adapter |
+| UI, responsive layouts and local acceptance | [UI acceptance](docs/shared/UI_ACCEPTANCE.md), [UI Lab](apps/ui-lab/README.md) | `packages/shell/`, provider UI, `apps/ui-lab/` |
 | Build, versions, release | [Project rules](docs/shared/PROJECT_RULES.md), [release channels](docs/DEV_PROD_CHANNELS.md) | `scripts/`, `.github/workflows/` |
 | Issue/PR creation | [Issue routing](docs/ISSUE_ROUTING.md) | Required `Target extension` |
 
@@ -54,3 +55,18 @@ GitHub Issues track only current tasks/evidence, never the sole rule authority.
 
 Changes to these decisions belong in the owning documentation contract; link
 to that contract rather than adding more copies to this router.
+
+For UI work, apply the existing AI Agent Workflow
+[UI/layout skill](https://github.com/ArthurKoba/ai-agent-workflow/blob/main/skills/frontend-engineering/ui-layout.md)
+and [interface review skill](https://github.com/ArthurKoba/ai-agent-workflow/blob/main/skills/interface-design-review.md).
+Use the project's existing components and semantic theme tokens; the local
+UI acceptance contract owns this project's responsive and testing decisions.
+The owner's latest directive requires real **shadcn-vue registry primitives only**
+for interactive UI, exported from the shared UI package. Do not create native
+or handwritten lookalikes, duplicate provider registries or competing sidebars.
+Read the relevant [owner UI decisions](docs/shared/UI_DECISIONS.md) before
+changing an interaction contract. Record the correction and why the prior
+behavior was wrong; generalize reusable lessons in the owning workflow skill.
+The owner's latest direction authorizes local synthetic tests, isolated browser
+validation and a loopback WebSocket fixture. This supersedes the earlier
+build/test deferral. Review, installed-browser and release gates remain separate.

@@ -1,5 +1,36 @@
 # Current architecture and host permission model
 
+## ChatGPT RAM gateway and archive workspace (2026-10-16)
+
+`ConversationStateStore` composes the exported `ConversationObservationGateway`
+before source projection. `FixedChatGptCapture` consumes admitted gateway entries
+and replays them when routing policy changes; local writes and acknowledged
+external delivery have separate queues. `ConversationArchiveWorkspace` retains
+UUID-keyed preferred records and relationship indexes, presents live RAM first,
+then hydrates canonical originals in read-only chunks of at most 160 rows.
+The Reader displays hydration/missing-parent progress; received/saved menu
+counters measure different circuits. Explicit saved-revision inspection and
+canonical exports retain their proof guards. Source details and boundaries:
+[ChatGPT live contract](chatgpt-booster/LIVE_ARCHIVE_CONTRACT.md).
+
+## Responsive UI and local explorer checkpoint
+
+The shared Shell renders full-screen panels at 620px and below; larger viewports
+retain floating geometry. Embedded module settings use desktop cards and compact
+tablet rows. UI Acceptance Lab starts with a direction map and mounts real
+components only inside a selected task; product and aggregate host selection
+are independent. The [UI acceptance contract](shared/UI_ACCEPTANCE.md) owns
+behavior and browser gates. This does not establish installed-product acceptance.
+
+The compact side toolkit now shares one dock/close bar with its launcher, following
+the retained ChatGPT dock interaction. The provider supplies context visibility
+and context-change notifications for quick actions; VK exposes conversation tools
+only for a current conversation. The lab restores presentation when replacing
+its synthetic host adapters, without transferring provider records or operations.
+Local source/build and synthetic browser evidence is recorded in
+[REFACTOR_PROGRESS.md](REFACTOR_PROGRESS.md). Installed-product acceptance remains
+separate.
+
 > This page describes **current/transitional implementation**. The
 > approved **target** architecture is [TARGET_ARCHITECTURE.md](TARGET_ARCHITECTURE.md)
 > (DDD + FSD + Ports & Adapters; reusable archive/widgets and app shells).
@@ -375,11 +406,26 @@ Settings persistence is separate from canonical archive persistence.
 
 `packages/storage` owns streaming POSIX ustar with a single GZIP stream,
 bounded plain JSONL chunks, exact IndexedDB schema and integrity manifest.
-The shared backup UI is only a presentation adapter. VK owns its Dexie
-message/source record validation. Large export and recovery have separate
-gates: current restore buffers at most 128 MiB, with no staged generation
-or cross-storage crash atomicity. Provider-neutral infrastructure is reusable
-without exposing low-level backups in ordinary user workflows.
+The shared backup UI is a presentation adapter; providers own their Dexie
+record/graph validation and atomic scoped replacement. The former 128 MiB
+decompressed restore/rollback buffer describes the earlier implementation.
+Current source stages sealed input and rollback in a separate known scoped
+temporary Dexie registry, with immutable indexed readers and a durable journal.
+It does not change primary schemas or activate migration generations.
+
+Large user-selected output streams to a temporary File System Access sink and
+publishes only after final provider validation. Compressed Blob fallback remains
+128 MiB. Sectioned backup manifest v2 supports checksummed sequential fragments
+for large rows while retaining v1 input compatibility. Wire chunks/manifest stay
+bounded to 4 MiB, one reassembled serialized row to 64 MiB, and TAR entries to
+8 MiB. Persistent staging requires enough quota for input and
+rollback, and long provider transactions still need browser acceptance. A scoped
+origin Web Lock prevents concurrent local operations, but cannot make GM state
+on different origins or different storage backends crash-atomic. Interrupted
+rollback remains available for explicit recovery/discard after reload; no startup
+restore or orphan deletion runs. UI Lab injects a bounded memory-only stage.
+See [the current backup contract](shared/BACKUP_AND_RESTORE.md); source readiness
+does not establish large-data, installed-browser or release acceptance.
 
 ## ChatGPT UI decomposition checkpoint (Extension 15)
 
@@ -401,3 +447,45 @@ The ordinary ChatGPT and VK panels reuse `ConversationCollectionAction` from
 from `packages/archive`. Their actual ChatGPT History Loader and VK Dexie
 record-fetch implementations remain behind their respective adapters.
 No installed-browser visual or data acceptance is implied by source tests.
+# Configurable framework source checkpoint (2026-10-14)
+
+The common core now accepts contributed settings categories, independently
+enabled module lifecycles and backup sections. Shell owns one responsive catalog,
+edge toolkit, application identity/version and independent display preferences.
+Shared UI owns schema-driven site injection and catalog primitives. Shared
+telemetry owns consent, scoped journals, delivery queue and local history; MV3
+uses an extension worker, Tampermonkey uses its scoped GM store. Archive commit
+invalidation carries no private data and providers revalidate their own reads.
+
+These are local source changes. The owner now permits local synthetic checks,
+isolated browser validation and a loopback WebSocket fixture. The change has not
+been published. The full requested
+scope and remaining limits are in [REFACTOR_PROGRESS.md](REFACTOR_PROGRESS.md).
+
+## Ordinary export correction checkpoint (2026-10-14)
+
+ChatGPT and VK reuse shared chunked JSON/Markdown/text formatting, range and
+integrity contracts, source codecs and Blob-backed ZIP packaging. Provider
+authorization, completeness evidence, source revisions and branch/version policy
+remain at their boundaries. The correction removes a whole-output string from
+built-in ChatGPT formatting, preserves source versions for prototype-name IDs,
+and rechecks owner/cancellation after the last awaited source check. Graph audit
+retains lightweight relationship facts. Selected source/variant data and the
+output Blob still scale with size; no constant-memory or universally faster
+export is claimed. The [ordinary export contract](shared/CONVERSATION_EXPORT.md)
+owns exact behavior, focused evidence and remaining data/browser acceptance.
+
+## Shared versioned message authority (2026-10-14)
+
+`packages/archive/src/message-model.ts` owns the single `ArchiveMessageV1`
+contract for both providers. New ChatGPT/VK schema-1 snapshots store the additive
+`normalized` envelope, with provider/owner/conversation/message identity,
+author/time/content/context, explicit relationship/evidence state and a source
+reference. Provider projection/index rows remain compatibility caches; native
+originals remain separate lossless companions. The same validated stored DTO
+feeds local reading, ordinary export and normalized remote publication. Legacy
+rows adapt in memory without rewriting or changing tables/indexes. Strict
+source/identity/version checks reject inconsistent envelopes; unknown source
+content remains opaque. Per-message terminal evidence cannot establish an
+entire conversation's completeness. See the
+[message and export contract](shared/CONVERSATION_EXPORT.md).

@@ -8,10 +8,16 @@ export interface ServiceScope {
 
 export function assertServiceScope(scope: ServiceScope): ServiceScope {
   if (
+    !scope ||
+    typeof scope !== 'object' ||
+    Array.isArray(scope) ||
+    typeof scope.productId !== 'string' ||
     !/^[a-z][a-z0-9-]{1,63}$/.test(scope.productId) ||
     (scope.channel !== 'dev' && scope.channel !== 'prod') ||
-    (scope.ownerId !== undefined && (!scope.ownerId || scope.ownerId.length > 256)) ||
-    (scope.installationId !== undefined && !/^[a-zA-Z0-9_-]{1,128}$/.test(scope.installationId))
+    (scope.ownerId !== undefined &&
+      (typeof scope.ownerId !== 'string' || !scope.ownerId || scope.ownerId.length > 256)) ||
+    (scope.installationId !== undefined &&
+      (typeof scope.installationId !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(scope.installationId)))
   ) {
     throw new Error('Invalid product/channel/owner scope')
   }

@@ -52,9 +52,7 @@ export async function runUiTests(
     }
   }
   async function close() {
-    const minimizedArchive = shadow().querySelector<HTMLButtonElement>(
-      '.booster-archive-dock-button',
-    )
+    const minimizedArchive = shadow().querySelector<HTMLButtonElement>('.booster-archive-dock-button')
     if (minimizedArchive) {
       minimizedArchive.click()
       await delay()
@@ -167,59 +165,50 @@ export async function runUiTests(
         const panel = shadow().querySelector('.booster-dock-shell')
         assert(panel, 'no left panel')
         assert(bounds(panel).x === 0 && bounds(panel).bottom <= innerHeight, 'left panel overflows')
-        assert(
-          shadow().querySelector('.booster-dock.grow-down'),
-          'panel did not choose downward space',
-        )
+        assert(shadow().querySelector('.booster-dock.grow-down'), 'panel did not choose downward space')
         await close()
         return { side: saved.side, ratio: saved.heightRatio }
       },
     )
-    await check(
-      'Escape restores toggle focus and touch pointer drag persists an edge',
-      async () => {
-        await close()
-        const toggle = button('.booster-dock-toggle')
-        toggle.click()
-        await delay()
-        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-        await delay()
-        const collapsed = button('.booster-dock-toggle')
-        assert(collapsed.getAttribute('aria-expanded') === 'false', 'Escape did not close dock')
-        assert(shadow().activeElement === collapsed, 'Escape did not restore toggle focus')
+    await check('Escape restores toggle focus and touch pointer drag persists an edge', async () => {
+      await close()
+      const toggle = button('.booster-dock-toggle')
+      toggle.click()
+      await delay()
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      await delay()
+      const collapsed = button('.booster-dock-toggle')
+      assert(collapsed.getAttribute('aria-expanded') === 'false', 'Escape did not close dock')
+      assert(shadow().activeElement === collapsed, 'Escape did not restore toggle focus')
 
-        const before = bounds(collapsed)
-        const targetY = (innerHeight - 44) * 0.72 + 22
-        for (const [type, x, y] of [
-          ['pointerdown', before.x + 22, before.y + 22],
-          ['pointermove', innerWidth - 22, targetY],
-          ['pointerup', innerWidth - 22, targetY],
-        ] as const)
-          collapsed.dispatchEvent(
-            new PointerEvent(type, {
-              pointerId: 77,
-              pointerType: 'touch',
-              button: 0,
-              bubbles: true,
-              clientX: x,
-              clientY: y,
-            }),
-          )
-        collapsed.click()
-        await delay()
-        const saved = (await settings.get()).launcher
-        assert(saved.side === 'right', 'touch drag did not snap to right edge')
-        assert(
-          Math.abs(saved.heightRatio - 0.72) < 0.01,
-          'touch drag height ratio was not persisted',
+      const before = bounds(collapsed)
+      const targetY = (innerHeight - 44) * 0.72 + 22
+      for (const [type, x, y] of [
+        ['pointerdown', before.x + 22, before.y + 22],
+        ['pointermove', innerWidth - 22, targetY],
+        ['pointerup', innerWidth - 22, targetY],
+      ] as const)
+        collapsed.dispatchEvent(
+          new PointerEvent(type, {
+            pointerId: 77,
+            pointerType: 'touch',
+            button: 0,
+            bubbles: true,
+            clientX: x,
+            clientY: y,
+          }),
         )
-        assert(
-          button('.booster-dock-toggle').getAttribute('aria-expanded') === 'false',
-          'touch drag toggled dock',
-        )
-        return { side: saved.side, ratio: saved.heightRatio }
-      },
-    )
+      collapsed.click()
+      await delay()
+      const saved = (await settings.get()).launcher
+      assert(saved.side === 'right', 'touch drag did not snap to right edge')
+      assert(Math.abs(saved.heightRatio - 0.72) < 0.01, 'touch drag height ratio was not persisted')
+      assert(
+        button('.booster-dock-toggle').getAttribute('aria-expanded') === 'false',
+        'touch drag toggled dock',
+      )
+      return { side: saved.side, ratio: saved.heightRatio }
+    })
 
     await check(
       'archive is a movable/minimizable workspace with Markdown and compact internal records',
@@ -235,10 +224,7 @@ export async function runUiTests(
         const workspace = shadow().querySelector<HTMLElement>('.booster-archive-workspace')
         const reader = shadow().querySelector<HTMLElement>('.booster-reader')
         assert(workspace && reader, 'floating archive workspace missing')
-        assert(
-          !reader.closest('.booster-modal-backdrop'),
-          'archive still blocks the host as a modal',
-        )
+        assert(!reader.closest('.booster-modal-backdrop'), 'archive still blocks the host as a modal')
         assert(same(hostBefore, bounds(main)), 'archive workspace changed host layout')
 
         const beforeWindow = bounds(workspace)
@@ -309,8 +295,7 @@ export async function runUiTests(
         )
         await delay()
         assert(
-          bounds(workspace).width < movedWindow.width ||
-            bounds(workspace).height < movedWindow.height,
+          bounds(workspace).width < movedWindow.width || bounds(workspace).height < movedWindow.height,
           'archive did not resize',
         )
 
@@ -359,10 +344,7 @@ export async function runUiTests(
         )
         docked.click()
         await delay()
-        assert(
-          !shadow().querySelector('.booster-reader'),
-          'drag release incorrectly restored archive',
-        )
+        assert(!shadow().querySelector('.booster-reader'), 'drag release incorrectly restored archive')
         window.dispatchEvent(
           new CustomEvent('chatgpt-booster:open-archive', {
             detail: { conversationId: context.conversationId },
@@ -373,9 +355,7 @@ export async function runUiTests(
         assert(restored, 'reopening archive while minimized did not restore the workspace')
 
         const projects = [...restored.querySelectorAll<HTMLButtonElement>('.booster-group-toggle')]
-        const activeProject = projects.find((item) =>
-          item.textContent?.includes('Koba Infrastructure'),
-        )
+        const activeProject = projects.find((item) => item.textContent?.includes('Koba Infrastructure'))
         const otherProject = projects.find((item) => item.textContent?.includes('Другой проект'))
         assert(
           activeProject?.getAttribute('aria-expanded') === 'true' &&
@@ -419,26 +399,13 @@ export async function runUiTests(
           restored.querySelectorAll('.booster-exchange').length === expectedTurns,
           'scrolling toward history did not load older exchanges',
         )
-        assert(
-          viewport.scrollTop > 0,
-          'prepending older exchanges did not preserve the scroll anchor',
-        )
-        assert(
-          same(bounds(pinned), pinnedBefore),
-          'scrolling messages moved the pinned reader controls',
-        )
-        assert(
-          restored.querySelector('.booster-record-reasoning'),
-          'reasoning preview is not visible',
-        )
-        assert(
-          restored.querySelector('.booster-record-tool_call'),
-          'tool-call preview is not visible',
-        )
+        assert(viewport.scrollTop > 0, 'prepending older exchanges did not preserve the scroll anchor')
+        assert(same(bounds(pinned), pinnedBefore), 'scrolling messages moved the pinned reader controls')
+        assert(restored.querySelector('.booster-record-reasoning'), 'reasoning preview is not visible')
+        assert(restored.querySelector('.booster-record-tool_call'), 'tool-call preview is not visible')
         const toolCall = restored.querySelector<HTMLElement>('.booster-record-tool_call')
         assert(
-          toolCall?.textContent?.includes('Koba GitHub') &&
-            toolCall.textContent.includes('get file'),
+          toolCall?.textContent?.includes('Koba GitHub') && toolCall.textContent.includes('get file'),
           'nested MCP tool name was not resolved from functions.exec payload',
         )
         assert(
@@ -486,9 +453,9 @@ export async function runUiTests(
         )
 
         assert(
-          ![
-            ...restored.querySelectorAll<HTMLButtonElement>('.booster-record-tool_call button'),
-          ].some((item) => item.textContent?.trim() === 'Run'),
+          ![...restored.querySelectorAll<HTMLButtonElement>('.booster-record-tool_call button')].some(
+            (item) => item.textContent?.trim() === 'Run',
+          ),
           'obsolete Run control is still visible',
         )
         const firstAnswer = restored.querySelector<HTMLElement>('.booster-record-answer')
@@ -516,10 +483,7 @@ export async function runUiTests(
         await delay()
         const popover = firstAnswer?.querySelector<HTMLElement>('.booster-floating-popover')
         assert(popover, 'timestamp top-layer popover is missing')
-        assert(
-          popover.matches(':popover-open'),
-          'timestamp popover did not enter the browser top layer',
-        )
+        assert(popover.matches(':popover-open'), 'timestamp popover did not enter the browser top layer')
         metadataTriggers[0]?.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }))
         await delay()
         const raw = restored.querySelector<HTMLButtonElement>(
@@ -611,17 +575,12 @@ export async function runUiTests(
           'jump to earliest endpoint rendered all intervening exchanges',
         )
         assert(
-          restored
-            .querySelector('.booster-exchange:first-child')
-            ?.textContent?.includes('Вопрос 1'),
+          restored.querySelector('.booster-exchange:first-child')?.textContent?.includes('Вопрос 1'),
           'earliest saved exchange did not open',
         )
         otherProject.click()
         await delay()
-        assert(
-          otherProject.getAttribute('aria-expanded') === 'true',
-          'other project cannot be expanded',
-        )
+        assert(otherProject.getAttribute('aria-expanded') === 'true', 'other project cannot be expanded')
 
         const archiveClose = restored.querySelector<HTMLButtonElement>(
           '.booster-header-actions button:last-child',
@@ -641,81 +600,71 @@ export async function runUiTests(
       },
     )
 
-    await check(
-      'archive follows ChatGPT SPA conversation changes while it stays open',
-      async () => {
-        await close()
-        button('.booster-dock-toggle').click()
-        await delay()
-        button('.booster-dock-actions > button:nth-child(3)').click()
-        await delay()
-        const original = { ...context }
-        Object.assign(context, {
-          conversationId: 'fixture-other',
-          conversationTitle: 'Другой диалог',
-          projectId: 'g-p-22222222222222222222222222222222',
-          projectTitle: 'Другой проект · тест',
-        })
-        await waitFor(
-          () =>
-            Boolean(
-              shadow()
-                .querySelector('.booster-reader-chat-header')
-                ?.textContent?.includes('Другой диалог'),
-            ),
-          'SPA next chat',
-        )
-        assert(
-          shadow()
-            .querySelector('.booster-reader-chat-header')
-            ?.textContent?.includes('Другой диалог'),
-          'archive did not follow the new chat',
-        )
-        Object.assign(context, original)
-        await waitFor(
-          () =>
-            Boolean(
-              shadow()
-                .querySelector('.booster-reader-chat-header')
-                ?.textContent?.includes('Проверка панели и архива'),
-            ),
-          'SPA original chat',
-        )
-        assert(
-          shadow()
-            .querySelector('.booster-reader-chat-header')
-            ?.textContent?.includes('Проверка панели и архива'),
-          'archive did not return to current chat',
-        )
-        await close()
-      },
-    )
+    await check('archive follows ChatGPT SPA conversation changes while it stays open', async () => {
+      await close()
+      button('.booster-dock-toggle').click()
+      await delay()
+      button('.booster-dock-actions > button:nth-child(3)').click()
+      await delay()
+      const original = { ...context }
+      Object.assign(context, {
+        conversationId: 'fixture-other',
+        conversationTitle: 'Другой диалог',
+        projectId: 'g-p-22222222222222222222222222222222',
+        projectTitle: 'Другой проект · тест',
+      })
+      await waitFor(
+        () =>
+          Boolean(
+            shadow()
+              .querySelector('.booster-reader-chat-header')
+              ?.textContent?.includes('Другой диалог'),
+          ),
+        'SPA next chat',
+      )
+      assert(
+        shadow().querySelector('.booster-reader-chat-header')?.textContent?.includes('Другой диалог'),
+        'archive did not follow the new chat',
+      )
+      Object.assign(context, original)
+      await waitFor(
+        () =>
+          Boolean(
+            shadow()
+              .querySelector('.booster-reader-chat-header')
+              ?.textContent?.includes('Проверка панели и архива'),
+          ),
+        'SPA original chat',
+      )
+      assert(
+        shadow()
+          .querySelector('.booster-reader-chat-header')
+          ?.textContent?.includes('Проверка панели и архива'),
+        'archive did not return to current chat',
+      )
+      await close()
+    })
 
-    await check(
-      'selective saving opens as a dedicated surface without unrelated settings',
-      async () => {
-        await close()
-        button('.booster-dock-toggle').click()
-        await delay()
-        button('.booster-capture-shortcut').click()
-        await delay()
-        const capture = shadow().querySelector<HTMLElement>('.booster-capture-surface')
-        assert(capture, 'dedicated capture surface missing')
-        assert(
-          !capture.querySelector('.booster-settings-nav'),
-          'capture surface still contains full settings navigation',
-        )
-        assert(
-          !capture.textContent?.includes('Телеметрия') && !capture.textContent?.includes('Язык'),
-          'unrelated settings leaked into capture surface',
-        )
-        capture
-          .querySelector<HTMLButtonElement>('.booster-section-header .booster-icon-button')
-          ?.click()
-        await delay()
-        await close()
-      },
-    )
+    await check('selective saving opens as a dedicated surface without unrelated settings', async () => {
+      await close()
+      button('.booster-dock-toggle').click()
+      await delay()
+      button('.booster-capture-shortcut').click()
+      await delay()
+      const capture = shadow().querySelector<HTMLElement>('.booster-capture-surface')
+      assert(capture, 'dedicated capture surface missing')
+      assert(
+        !capture.querySelector('.booster-settings-nav'),
+        'capture surface still contains full settings navigation',
+      )
+      assert(
+        !capture.textContent?.includes('Телеметрия') && !capture.textContent?.includes('Язык'),
+        'unrelated settings leaked into capture surface',
+      )
+      capture.querySelector<HTMLButtonElement>('.booster-section-header .booster-icon-button')?.click()
+      await delay()
+      await close()
+    })
 
     await check('analytics renders as a compact activity dashboard', async () => {
       await close()
@@ -838,10 +787,7 @@ export async function runUiTests(
       listSearch.value = 'Другой проект'
       listSearch.dispatchEvent(new Event('input', { bubbles: true }))
       await delay()
-      assert(
-        reader.querySelectorAll('.booster-reader-group').length === 1,
-        'project/chat search failed',
-      )
+      assert(reader.querySelectorAll('.booster-reader-group').length === 1, 'project/chat search failed')
       listSearch.value = ''
       listSearch.dispatchEvent(new Event('input', { bubbles: true }))
       await delay()
@@ -874,8 +820,7 @@ export async function runUiTests(
       refresh.click()
       await waitFor(
         () =>
-          Number(reader.querySelector('.booster-reader-summary b')?.textContent ?? '0') ===
-          before + 2,
+          Number(reader.querySelector('.booster-reader-summary b')?.textContent ?? '0') === before + 2,
         'reread saved exchange',
       )
       const after = Number(reader.querySelector('.booster-reader-summary b')?.textContent ?? '0')
@@ -912,155 +857,148 @@ export async function runUiTests(
       return { before, after }
     })
 
-    await check(
-      'prepared JSON and Markdown exports contain the selected browser payload',
-      async () => {
-        await close()
+    await check('prepared JSON and Markdown exports contain the selected browser payload', async () => {
+      await close()
+      button('.booster-dock-toggle').click()
+      await delay()
+      button('.booster-dock-actions > button:nth-child(1)').click()
+      await delay()
+      const dialog = shadow().querySelector<HTMLElement>('.booster-export-dialog')
+      assert(dialog, 'export dialog missing')
+      const exportDialog = dialog
+      const [format, level] = [...exportDialog.querySelectorAll<HTMLSelectElement>('select')]
+      assert(format && level, 'export selectors missing')
+      const formatSelect = format
+      level.value = 'conversation'
+      level.dispatchEvent(new Event('change', { bubbles: true }))
+
+      async function prepare(formatValue: 'json' | 'markdown') {
+        formatSelect.value = formatValue
+        formatSelect.dispatchEvent(new Event('change', { bubbles: true }))
+        await delay()
+        const prepareButton = exportDialog.querySelector<HTMLButtonElement>('.booster-action-primary')
+        assert(prepareButton, 'prepare button missing')
+        prepareButton.click()
+        await delay()
+        const ready = exportDialog.querySelector<HTMLAnchorElement>('.booster-export-ready')
+        assert(ready, 'prepared download link missing')
+        const response = await fetch(ready.href)
+        assert(response.ok, 'prepared blob URL was unreadable in browser')
+        return { text: await response.text(), name: ready.download }
+      }
+
+      const json = await prepare('json')
+      const parsed = JSON.parse(json.text)
+      assert(parsed.schema === 'chatgpt-booster.export.v1', 'JSON export schema missing')
+      assert(json.name.endsWith('.json'), 'JSON download filename extension incorrect')
+
+      const markdown = await prepare('markdown')
+      assert(markdown.text.startsWith('# '), 'Markdown export body missing heading')
+      assert(markdown.name.endsWith('.md'), 'Markdown download filename extension incorrect')
+      await close()
+
+      button('.booster-dock-toggle').click()
+      await delay()
+      button('.booster-dock-actions > button:nth-child(1)').click()
+      await delay()
+      const reopened = shadow().querySelector<HTMLElement>('.booster-export-dialog')
+      assert(reopened, 'export dialog did not reopen')
+      const [rememberedFormat, rememberedLevel] = [
+        ...reopened.querySelectorAll<HTMLSelectElement>('select'),
+      ]
+      assert(
+        rememberedFormat?.value === 'markdown' && rememberedLevel?.value === 'conversation',
+        'last export format/level were not remembered',
+      )
+      await close()
+      return { jsonBytes: json.text.length, markdownBytes: markdown.text.length }
+    })
+
+    await check('archive loading, empty, missing-current and error states are explicit', async () => {
+      await close()
+      const originalContext = { ...context }
+      const originalListConversations = adapter.listConversations
+      const originalListProjects = adapter.listProjects
+      try {
+        Object.assign(context, {
+          conversationId: 'fixture-unsaved',
+          conversationTitle: 'Несохранённый чат',
+          projectId: null,
+          projectTitle: null,
+        })
         button('.booster-dock-toggle').click()
-        await delay()
-        button('.booster-dock-actions > button:nth-child(1)').click()
-        await delay()
-        const dialog = shadow().querySelector<HTMLElement>('.booster-export-dialog')
-        assert(dialog, 'export dialog missing')
-        const exportDialog = dialog
-        const [format, level] = [...exportDialog.querySelectorAll<HTMLSelectElement>('select')]
-        assert(format && level, 'export selectors missing')
-        const formatSelect = format
-        level.value = 'conversation'
-        level.dispatchEvent(new Event('change', { bubbles: true }))
-
-        async function prepare(formatValue: 'json' | 'markdown') {
-          formatSelect.value = formatValue
-          formatSelect.dispatchEvent(new Event('change', { bubbles: true }))
-          await delay()
-          const prepareButton =
-            exportDialog.querySelector<HTMLButtonElement>('.booster-action-primary')
-          assert(prepareButton, 'prepare button missing')
-          prepareButton.click()
-          await delay()
-          const ready = exportDialog.querySelector<HTMLAnchorElement>('.booster-export-ready')
-          assert(ready, 'prepared download link missing')
-          const response = await fetch(ready.href)
-          assert(response.ok, 'prepared blob URL was unreadable in browser')
-          return { text: await response.text(), name: ready.download }
-        }
-
-        const json = await prepare('json')
-        const parsed = JSON.parse(json.text)
-        assert(parsed.schema === 'chatgpt-booster.export.v1', 'JSON export schema missing')
-        assert(json.name.endsWith('.json'), 'JSON download filename extension incorrect')
-
-        const markdown = await prepare('markdown')
-        assert(markdown.text.startsWith('# '), 'Markdown export body missing heading')
-        assert(markdown.name.endsWith('.md'), 'Markdown download filename extension incorrect')
-        await close()
-
-        button('.booster-dock-toggle').click()
-        await delay()
-        button('.booster-dock-actions > button:nth-child(1)').click()
-        await delay()
-        const reopened = shadow().querySelector<HTMLElement>('.booster-export-dialog')
-        assert(reopened, 'export dialog did not reopen')
-        const [rememberedFormat, rememberedLevel] = [
-          ...reopened.querySelectorAll<HTMLSelectElement>('select'),
-        ]
+        await new Promise((resolve) => setTimeout(resolve, 1100))
+        button('.booster-dock-actions > button:nth-child(3)').click()
+        await waitFor(
+          () =>
+            Boolean(
+              shadow()
+                .querySelector('.booster-reader')
+                ?.textContent?.includes(translate('ru', 'reader.missing')),
+            ),
+          'missing conversation state',
+        )
         assert(
-          rememberedFormat?.value === 'markdown' && rememberedLevel?.value === 'conversation',
-          'last export format/level were not remembered',
+          shadow()
+            .querySelector('.booster-reader')
+            ?.textContent?.includes(translate('ru', 'reader.missing')),
+          `missing-current-chat state not shown: ${shadow().querySelector('.booster-reader')?.textContent?.slice(-190)}`,
         )
         await close()
-        return { jsonBytes: json.text.length, markdownBytes: markdown.text.length }
-      },
-    )
 
-    await check(
-      'archive loading, empty, missing-current and error states are explicit',
-      async () => {
-        await close()
-        const originalContext = { ...context }
-        const originalListConversations = adapter.listConversations
-        const originalListProjects = adapter.listProjects
-        try {
-          Object.assign(context, {
-            conversationId: 'fixture-unsaved',
-            conversationTitle: 'Несохранённый чат',
-            projectId: null,
-            projectTitle: null,
-          })
-          button('.booster-dock-toggle').click()
-          await new Promise((resolve) => setTimeout(resolve, 1100))
-          button('.booster-dock-actions > button:nth-child(3)').click()
-          await waitFor(
-            () =>
-              Boolean(
-                shadow()
-                  .querySelector('.booster-reader')
-                  ?.textContent?.includes(translate('ru', 'reader.missing')),
-              ),
-            'missing conversation state',
-          )
-          assert(
-            shadow()
-              .querySelector('.booster-reader')
-              ?.textContent?.includes(translate('ru', 'reader.missing')),
-            `missing-current-chat state not shown: ${shadow().querySelector('.booster-reader')?.textContent?.slice(-190)}`,
-          )
-          await close()
-
-          let releaseList: (() => void) | undefined
-          const gate = new Promise<void>((resolve) => {
-            releaseList = resolve
-          })
-          adapter.listConversations = async () => {
-            await gate
-            return []
-          }
-          adapter.listProjects = async () => []
-          button('.booster-dock-toggle').click()
-          await delay()
-          button('.booster-dock-actions > button:nth-child(3)').click()
-          await new Promise((resolve) => setTimeout(resolve, 25))
-          assert(
-            shadow()
-              .querySelector('.booster-reader')
-              ?.textContent?.includes(translate('ru', 'reader.loading')),
-            'loading state missing',
-          )
-          releaseList?.()
-          await waitFor(
-            () =>
-              Boolean(
-                shadow()
-                  .querySelector('.booster-reader')
-                  ?.textContent?.includes(translate('ru', 'reader.empty')),
-              ),
-            'empty archive list',
-          )
-          assert(
-            shadow()
-              .querySelector('.booster-reader')
-              ?.textContent?.includes(translate('ru', 'reader.empty')),
-            'empty state missing',
-          )
-          await close()
-
-          adapter.listConversations = async () => {
-            throw new Error('fixture read failure')
-          }
-          button('.booster-dock-toggle').click()
-          await delay()
-          button('.booster-dock-actions > button:nth-child(3)').click()
-          await delay()
-          assert(shadow().querySelector('.booster-reader .booster-error'), 'error state missing')
-          await close()
-        } finally {
-          adapter.listConversations = originalListConversations
-          adapter.listProjects = originalListProjects
-          Object.assign(context, originalContext)
-          await close()
+        let releaseList: (() => void) | undefined
+        const gate = new Promise<void>((resolve) => {
+          releaseList = resolve
+        })
+        adapter.listConversations = async () => {
+          await gate
+          return []
         }
-      },
-    )
+        adapter.listProjects = async () => []
+        button('.booster-dock-toggle').click()
+        await delay()
+        button('.booster-dock-actions > button:nth-child(3)').click()
+        await new Promise((resolve) => setTimeout(resolve, 25))
+        assert(
+          shadow()
+            .querySelector('.booster-reader')
+            ?.textContent?.includes(translate('ru', 'reader.loading')),
+          'loading state missing',
+        )
+        releaseList?.()
+        await waitFor(
+          () =>
+            Boolean(
+              shadow()
+                .querySelector('.booster-reader')
+                ?.textContent?.includes(translate('ru', 'reader.empty')),
+            ),
+          'empty archive list',
+        )
+        assert(
+          shadow()
+            .querySelector('.booster-reader')
+            ?.textContent?.includes(translate('ru', 'reader.empty')),
+          'empty state missing',
+        )
+        await close()
+
+        adapter.listConversations = async () => {
+          throw new Error('fixture read failure')
+        }
+        button('.booster-dock-toggle').click()
+        await delay()
+        button('.booster-dock-actions > button:nth-child(3)').click()
+        await delay()
+        assert(shadow().querySelector('.booster-reader .booster-error'), 'error state missing')
+        await close()
+      } finally {
+        adapter.listConversations = originalListConversations
+        adapter.listProjects = originalListProjects
+        Object.assign(context, originalContext)
+        await close()
+      }
+    })
 
     await check('archive ignores a late thread result after fast chat switching', async () => {
       await close()
@@ -1080,9 +1018,9 @@ export async function runUiTests(
         return await originalGetThread(id)
       }
       try {
-        const otherGroup = [
-          ...reader.querySelectorAll<HTMLButtonElement>('.booster-group-toggle'),
-        ].find((item) => item.textContent?.includes('Другой проект'))
+        const otherGroup = [...reader.querySelectorAll<HTMLButtonElement>('.booster-group-toggle')].find(
+          (item) => item.textContent?.includes('Другой проект'),
+        )
         assert(otherGroup, 'other project group missing')
         if (otherGroup.getAttribute('aria-expanded') !== 'true') otherGroup.click()
         await delay()
@@ -1108,9 +1046,7 @@ export async function runUiTests(
         await waitFor(
           () =>
             Boolean(
-              reader.querySelector<HTMLButtonElement>(
-                '.booster-reader-history-toggle:not(:disabled)',
-              ),
+              reader.querySelector<HTMLButtonElement>('.booster-reader-history-toggle:not(:disabled)'),
             ),
           'restored history action is enabled',
         )
@@ -1132,94 +1068,85 @@ export async function runUiTests(
       }
     })
 
-    await check(
-      'archive branch forest renders nested depth and ancestor-aware search',
-      async () => {
+    await check('archive branch forest renders nested depth and ancestor-aware search', async () => {
+      await close()
+      await settings.update({ language: 'ru' })
+      const originalListConversations = adapter.listConversations
+      const baseline = await originalListConversations()
+      const root = baseline.find((item) => item.conversationId === context.conversationId)
+      assert(root, 'fixture source conversation missing')
+      const branch = {
+        ...root,
+        conversationId: 'fixture-browser-branch',
+        title: 'Ветка продукта',
+        branchSourceConversationId: root.conversationId,
+        branchSourceTitle: root.title,
+      }
+      const nested = {
+        ...root,
+        conversationId: 'fixture-browser-nested',
+        title: 'Вложенная ветка продукта',
+        branchSourceConversationId: branch.conversationId,
+        branchSourceTitle: branch.title,
+      }
+      adapter.listConversations = async () => [...baseline, branch, nested]
+      try {
+        button('.booster-dock-toggle').click()
+        await delay()
+        button('.booster-dock-actions > button:nth-child(3)').click()
+        await delay()
+        const reader = shadow().querySelector<HTMLElement>('.booster-reader')
+        assert(reader, 'archive browser missing')
+        const project = [...reader.querySelectorAll<HTMLButtonElement>('.booster-group-toggle')].find(
+          (item) => item.textContent?.includes('Koba Infrastructure'),
+        )
+        assert(project, 'fixture project missing')
+        if (project.getAttribute('aria-expanded') !== 'true') project.click()
+        await delay()
+        const rows = [...reader.querySelectorAll<HTMLButtonElement>('.booster-reader-chat-list button')]
+        const rootRow = rows.find((item) => item.textContent?.includes(root.title ?? '#none'))
+        const branchRow = rows.find((item) => item.textContent?.includes(branch.title))
+        const nestedRow = rows.find((item) => item.textContent?.includes(nested.title))
+        assert(rootRow && branchRow && nestedRow, 'tree is missing one branch generation')
+        assert(
+          Number.parseFloat(rootRow.style.paddingInlineStart) <
+            Number.parseFloat(branchRow.style.paddingInlineStart) &&
+            Number.parseFloat(branchRow.style.paddingInlineStart) <
+              Number.parseFloat(nestedRow.style.paddingInlineStart),
+          'nested conversations have no increasing depth',
+        )
+        assert(
+          branchRow.querySelector('.booster-reader-branch-icon') &&
+            nestedRow.querySelector('.booster-reader-branch-icon'),
+          'nested rows lack branch signifiers',
+        )
+        const searchInput = reader.querySelector<HTMLInputElement>('.booster-reader-sidebar > input')
+        assert(searchInput, 'archive project search missing')
+        searchInput.value = nested.title
+        searchInput.dispatchEvent(new Event('input', { bubbles: true }))
+        await delay()
+        const matched = [
+          ...reader.querySelectorAll<HTMLButtonElement>('.booster-reader-chat-list button'),
+        ]
+        assert(matched.length === 3, 'search did not preserve exactly the known ancestor chain')
+        assert(
+          matched.some((item) => item.textContent?.includes(root.title ?? '#none')) &&
+            matched.some((item) => item.textContent?.includes(branch.title)) &&
+            matched.some((item) => item.textContent?.includes(nested.title)),
+          'search lost branch ancestry',
+        )
+        matched.find((item) => item.textContent?.includes(nested.title))?.click()
+        await delay()
+        assert(
+          reader.querySelector('.booster-reader-chat-header')?.textContent?.includes(nested.title),
+          'nested branch is not selectable',
+        )
+        return { nestedDepth: 2, searchAncestors: 2 }
+      } finally {
+        adapter.listConversations = originalListConversations
         await close()
-        await settings.update({ language: 'ru' })
-        const originalListConversations = adapter.listConversations
-        const baseline = await originalListConversations()
-        const root = baseline.find((item) => item.conversationId === context.conversationId)
-        assert(root, 'fixture source conversation missing')
-        const branch = {
-          ...root,
-          conversationId: 'fixture-browser-branch',
-          title: 'Ветка продукта',
-          branchSourceConversationId: root.conversationId,
-          branchSourceTitle: root.title,
-        }
-        const nested = {
-          ...root,
-          conversationId: 'fixture-browser-nested',
-          title: 'Вложенная ветка продукта',
-          branchSourceConversationId: branch.conversationId,
-          branchSourceTitle: branch.title,
-        }
-        adapter.listConversations = async () => [...baseline, branch, nested]
-        try {
-          button('.booster-dock-toggle').click()
-          await delay()
-          button('.booster-dock-actions > button:nth-child(3)').click()
-          await delay()
-          const reader = shadow().querySelector<HTMLElement>('.booster-reader')
-          assert(reader, 'archive browser missing')
-          const project = [
-            ...reader.querySelectorAll<HTMLButtonElement>('.booster-group-toggle'),
-          ].find((item) => item.textContent?.includes('Koba Infrastructure'))
-          assert(project, 'fixture project missing')
-          if (project.getAttribute('aria-expanded') !== 'true') project.click()
-          await delay()
-          const rows = [
-            ...reader.querySelectorAll<HTMLButtonElement>('.booster-reader-chat-list button'),
-          ]
-          const rootRow = rows.find((item) => item.textContent?.includes(root.title ?? '#none'))
-          const branchRow = rows.find((item) => item.textContent?.includes(branch.title))
-          const nestedRow = rows.find((item) => item.textContent?.includes(nested.title))
-          assert(rootRow && branchRow && nestedRow, 'tree is missing one branch generation')
-          assert(
-            Number.parseFloat(rootRow.style.paddingInlineStart) <
-              Number.parseFloat(branchRow.style.paddingInlineStart) &&
-              Number.parseFloat(branchRow.style.paddingInlineStart) <
-                Number.parseFloat(nestedRow.style.paddingInlineStart),
-            'nested conversations have no increasing depth',
-          )
-          assert(
-            branchRow.querySelector('.booster-reader-branch-icon') &&
-              nestedRow.querySelector('.booster-reader-branch-icon'),
-            'nested rows lack branch signifiers',
-          )
-          const searchInput = reader.querySelector<HTMLInputElement>(
-            '.booster-reader-sidebar > input',
-          )
-          assert(searchInput, 'archive project search missing')
-          searchInput.value = nested.title
-          searchInput.dispatchEvent(new Event('input', { bubbles: true }))
-          await delay()
-          const matched = [
-            ...reader.querySelectorAll<HTMLButtonElement>('.booster-reader-chat-list button'),
-          ]
-          assert(matched.length === 3, 'search did not preserve exactly the known ancestor chain')
-          assert(
-            matched.some((item) => item.textContent?.includes(root.title ?? '#none')) &&
-              matched.some((item) => item.textContent?.includes(branch.title)) &&
-              matched.some((item) => item.textContent?.includes(nested.title)),
-            'search lost branch ancestry',
-          )
-          matched.find((item) => item.textContent?.includes(nested.title))?.click()
-          await delay()
-          assert(
-            reader
-              .querySelector('.booster-reader-chat-header')
-              ?.textContent?.includes(nested.title),
-            'nested branch is not selectable',
-          )
-          return { nestedDepth: 2, searchAncestors: 2 }
-        } finally {
-          adapter.listConversations = originalListConversations
-          await close()
-        }
-      },
-    )
+      }
+    })
 
     await check(
       'Free-shaped fixture renders two internal message forks in the fixed navigator',
@@ -1231,10 +1158,7 @@ export async function runUiTests(
         await delay()
         const reader = shadow().querySelector<HTMLElement>('.booster-reader')
         assert(reader, 'archive missing for synthetic Free branching example')
-        await waitFor(
-          () => Boolean(reader.querySelector('.booster-reader-group')),
-          'archive groups',
-        )
+        await waitFor(() => Boolean(reader.querySelector('.booster-reader-group')), 'archive groups')
         const fixtureProject = [
           ...reader.querySelectorAll<HTMLButtonElement>('.booster-group-toggle'),
         ].find((item) => item.textContent?.includes('Koba Infrastructure'))
@@ -1242,9 +1166,9 @@ export async function runUiTests(
         await waitFor(
           () =>
             Boolean(
-              [
-                ...reader.querySelectorAll<HTMLButtonElement>('.booster-reader-chat-list button'),
-              ].find((item) => item.textContent?.includes('Две внутренние ветки')),
+              [...reader.querySelectorAll<HTMLButtonElement>('.booster-reader-chat-list button')].find(
+                (item) => item.textContent?.includes('Две внутренние ветки'),
+              ),
             ),
           'fixture fork chat entry',
         )
@@ -1301,19 +1225,14 @@ export async function runUiTests(
           forks.some((node) => Boolean(node.id)),
           'fork node lacks message preview',
         )
-        const switcher = activeReader.querySelector<HTMLButtonElement>(
-          '.booster-reader-fork-toggle',
-        )
+        const switcher = activeReader.querySelector<HTMLButtonElement>('.booster-reader-fork-toggle')
         assert(switcher, 'fork variant switcher is absent')
         switcher.click()
         await delay()
         const variants = [
           ...activeReader.querySelectorAll<HTMLButtonElement>('.booster-reader-fork-choice'),
         ]
-        assert(
-          variants.length === 4,
-          'two fork groups do not offer exactly four saved alternatives',
-        )
+        assert(variants.length === 4, 'two fork groups do not offer exactly four saved alternatives')
         variants.find((item) => item.textContent?.includes('редакция (ветка 2)'))?.click()
         await delay()
         assert(
@@ -1366,9 +1285,7 @@ export async function runUiTests(
             shadow()
               .querySelector('.booster-reader-chat-header')
               ?.textContent?.includes('Длинный связный диалог') &&
-              shadow().querySelector<HTMLButtonElement>(
-                '.booster-reader-history-toggle:not(:disabled)',
-              ),
+              shadow().querySelector<HTMLButtonElement>('.booster-reader-history-toggle:not(:disabled)'),
           ),
         'long conversation reading is ready',
       )
@@ -1379,9 +1296,7 @@ export async function runUiTests(
       await waitFor(
         () =>
           Boolean(
-            reader
-              ?.querySelector('.booster-history-range')
-              ?.textContent?.includes('161–300 / 300') &&
+            reader?.querySelector('.booster-history-range')?.textContent?.includes('161–300 / 300') &&
               reader.querySelectorAll('.booster-archive-flow-graph svg circle[id]').length === 140,
           ),
         '300-message bounded inspector',
@@ -1398,9 +1313,7 @@ export async function runUiTests(
       earlier.click()
       await waitFor(
         () =>
-          Boolean(
-            graph.querySelector('.booster-history-range')?.textContent?.includes('21–160 / 300'),
-          ),
+          Boolean(graph.querySelector('.booster-history-range')?.textContent?.includes('21–160 / 300')),
         'earlier 140-node graph window',
       )
       assert(

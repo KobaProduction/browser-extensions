@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { FloatingInfoPopover } from '@kobaproduction/browser-ui'
+import { Button, FloatingInfoPopover } from '@kobaproduction/browser-ui'
 import Archive from 'lucide-vue-next/dist/esm/icons/archive.js'
 import Settings2 from 'lucide-vue-next/dist/esm/icons/settings-2.js'
-
-import type { ScopeArchiveControlModel } from './scope-archive-control'
 import { translate } from './i18n'
+import type { ScopeArchiveControlModel } from './scope-archive-control'
 
 const props = defineProps<{ model: ScopeArchiveControlModel }>()
 const t = (key: Parameters<typeof translate>[1]) => translate(props.model.locale, key)
@@ -27,8 +26,8 @@ const label = () =>
   <FloatingInfoPopover v-else mode="click" :label="label()">
     <template #trigger>
       <span
-        class="booster-project-status-badge"
-        :class="model.effectiveEnabled ? 'is-enabled' : 'is-disabled'"
+        class="inline-flex items-center"
+        :class="model.effectiveEnabled ? 'text-success' : 'text-muted-foreground'"
       >
         <Archive class="size-3.5" />
       </span>
@@ -62,15 +61,18 @@ const label = () =>
       </div>
 
       <div class="booster-scope-actions">
-        <button type="button" @click="model.onSetEnabled(!model.effectiveEnabled)">
+        <Button type="button" size="sm" variant="outline" @click="model.onOpenArchive()">
+          <Archive class="size-3.5" />{{ t('reader.title') }}
+        </Button>
+        <Button type="button" size="sm" variant="outline" @click="model.onSetEnabled(!model.effectiveEnabled)">
           {{ t(model.effectiveEnabled ? 'capture.off' : 'capture.on') }}
-        </button>
-        <button v-if="model.hasOverride" type="button" @click="model.onInherit()">
+        </Button>
+        <Button v-if="model.hasOverride" type="button" size="sm" variant="ghost" @click="model.onInherit()">
           {{ t('capture.inherit') }}
-        </button>
-        <button type="button" @click="model.onSettings()">
+        </Button>
+        <Button type="button" size="sm" variant="ghost" @click="model.onSettings()">
           <Settings2 class="size-3.5" />{{ t('scope.settings') }}
-        </button>
+        </Button>
       </div>
     </section>
   </FloatingInfoPopover>

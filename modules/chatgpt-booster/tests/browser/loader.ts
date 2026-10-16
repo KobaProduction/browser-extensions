@@ -15,8 +15,7 @@ function finishTicket(ticketKey: string, expected?: TicketRef) {
       const stored = JSON.parse(sessionStorage.getItem(ticketKey) ?? 'null') as TicketRef | null
       if (
         stored &&
-        (stored.conversationId !== expected.conversationId ||
-          stored.startedAt !== expected.startedAt)
+        (stored.conversationId !== expected.conversationId || stored.startedAt !== expected.startedAt)
       )
         return
     } catch {
@@ -44,8 +43,7 @@ export async function runLoaderCancellationTests() {
         finishTicket(ticketKey, expected)
       },
     }
-    const state = (event: Event) =>
-      states.push({ ...(event as CustomEvent<HistoryLoaderState>).detail })
+    const state = (event: Event) => states.push({ ...(event as CustomEvent<HistoryLoaderState>).detail })
     const open = (event: Event) => {
       if ((event as CustomEvent).detail?.conversationId === id) archiveOpened = true
     }
@@ -105,8 +103,7 @@ export async function runLoaderCancellationTests() {
       await new Promise((resolve) => setTimeout(resolve, 40))
       if (archiveOpened || states.some((item) => item.phase === 'complete'))
         throw new Error('late DB completion opened an archive after cancellation')
-      if (!states.some((item) => item.phase === 'cancelled'))
-        throw new Error('cancelled state missing')
+      if (!states.some((item) => item.phase === 'cancelled')) throw new Error('cancelled state missing')
       if (!finishes || sessionStorage.getItem(ticketKey))
         throw new Error('temporary permission was not cleared')
       results.push({ name: `late complete after ${mode} must not report success`, pass: true })
@@ -156,8 +153,7 @@ export async function runLoaderScrollTest() {
 
   const states: HistoryLoaderState[] = []
   let opened = false
-  const state = (event: Event) =>
-    states.push({ ...(event as CustomEvent<HistoryLoaderState>).detail })
+  const state = (event: Event) => states.push({ ...(event as CustomEvent<HistoryLoaderState>).detail })
   const open = (event: Event) => {
     if ((event as CustomEvent).detail?.conversationId === id) opened = true
   }
@@ -239,9 +235,7 @@ export async function runLoaderScrollTest() {
     const waitStarted = Date.now()
     while (!opened && Date.now() - waitStarted < 2500)
       await new Promise((resolve) => setTimeout(resolve, 25))
-    const countedInitial = states.some(
-      (item) => item.phase === 'complete' && item.pagesLoaded === 2,
-    )
+    const countedInitial = states.some((item) => item.phase === 'complete' && item.pagesLoaded === 2)
     if (!scrolled || premature || !opened || !countedInitial || sessionStorage.getItem(ticketKey))
       throw new Error(
         `scroll=${scrolled}, premature=${premature}, complete=${opened}, ticket=${!!sessionStorage.getItem(ticketKey)}`,
@@ -317,8 +311,7 @@ export async function runLoaderIsolationTests() {
       finishCollection: (expected?: TicketRef) => finishTicket(ticketKey, expected),
     }
     const loader = new HistoryLoaderModule(memory, capture)
-    const state = (event: Event) =>
-      states.push({ ...(event as CustomEvent<HistoryLoaderState>).detail })
+    const state = (event: Event) => states.push({ ...(event as CustomEvent<HistoryLoaderState>).detail })
     try {
       if (!scroller) throw new Error('fixture scroller missing')
       history.replaceState(null, '', `/c/${id}`)
@@ -394,8 +387,7 @@ export async function runLoaderIsolationTests() {
       while (scroller.scrollTop >= before && Date.now() - started < 2000)
         await new Promise((resolve) => setTimeout(resolve, 25))
       if (scroller.scrollTop >= before) throw new Error('visible tab did not resume scrolling')
-      if (!states.some((item) => item.phase === 'scrolling'))
-        throw new Error('scrolling state missing')
+      if (!states.some((item) => item.phase === 'scrolling')) throw new Error('scrolling state missing')
     },
   )
 

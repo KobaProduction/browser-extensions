@@ -6,11 +6,7 @@ import {
   findChatGptTurnRoots,
   resolveChatGptDomAdapter,
 } from './chatgpt-dom-adapter'
-import {
-  currentConversationId,
-  currentConversationTitle,
-  currentProjectId,
-} from './conversation-scroll'
+import { currentConversationId, currentConversationTitle, currentProjectId } from './conversation-scroll'
 import { type ScheduledIdleTask, scheduleIdleTask } from './idle-task'
 
 export type ConversationMessageTarget = ChatGptMessageTarget
@@ -78,11 +74,19 @@ export function observeConversationDecorations(
   }
 
   const observer = new MutationObserver((records) => {
-    const main = document.querySelector<HTMLElement>('main')
     for (const record of records) {
       const target = record.target instanceof Element ? record.target : record.target.parentElement
-      if (main && target && target !== main && !main.contains(target) && !target.contains(main))
+      if (target?.closest('#chatgpt-booster-root, [data-chatgpt-booster]')) continue
+      // Inactive native workspaces remain connected. An ancestor visibility change
+      // must reselect placement in every main, rather than pinning the first main.
+      if (
+        target &&
+        record.type === 'attributes' &&
+        (target.matches('main') || target.querySelector('main'))
+      ) {
+        queue(document)
         continue
+      }
 
       if (target) {
         const turn = findChatGptTurnRoot(target)
@@ -92,7 +96,6 @@ export function observeConversationDecorations(
       for (const node of record.addedNodes) {
         if (!(node instanceof Element)) continue
         if (node.closest('#chatgpt-booster-root, [data-chatgpt-booster]')) continue
-        if (main && node !== main && !main.contains(node) && !node.contains(main)) continue
         const owner = findChatGptTurnRoot(node)
         if (owner) queue(owner)
         for (const turn of findChatGptTurnRoots(node)) queue(turn)
@@ -104,7 +107,7 @@ export function observeConversationDecorations(
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: [...CHATGPT_DOM_MUTATION_ATTRIBUTES],
+    attributeFilter: [...CHATGPT_DOM_MUTATION_ATTRIBUTES, 'class', 'style', 'hidden', 'aria-hidden'],
   })
   queue(document)
 
@@ -144,7 +147,7 @@ export function conversationDomSnapshotFromTargets(
     const text = (target.message.textContent || '').trim()
     const role = target.role
     return {
-      messageKey: conversationId + ':' + target.messageId,
+      messageKey: `${conversationId}:${target.messageId}`,
       messageId: target.messageId,
       conversationId,
       role,

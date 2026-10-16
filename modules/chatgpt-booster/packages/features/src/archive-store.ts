@@ -1,21 +1,17 @@
-import { requestResult as request, transactionComplete as transactionDone } from '@kobaproduction/browser-storage'
-import { instanceKey } from '@kobaproduction/browser-core'
 import {
   archiveRecordAttachments,
   buildArchiveThread,
   type ConversationDomSnapshot,
 } from '@chatgpt-booster/chatgpt'
+import { ARCHIVE_UPDATED_EVENT, type ArchiveAttachmentView, serverTimeMs } from '@chatgpt-booster/core'
+import { instanceKey } from '@kobaproduction/browser-core'
 import {
-  ARCHIVE_UPDATED_EVENT,
-  type ArchiveAttachmentView,
-  serverTimeMs,
-} from '@chatgpt-booster/core'
+  requestResult as request,
+  transactionComplete as transactionDone,
+} from '@kobaproduction/browser-storage'
 import { historyCoverage } from './archive-coverage'
 import { ArchiveSourceGate } from './archive-source-contract'
-import {
-  normalizeConversationMessage,
-  normalizeConversationProjectId,
-} from './conversation-records'
+import { normalizeConversationMessage, normalizeConversationProjectId } from './conversation-records'
 
 export { ARCHIVE_UPDATED_EVENT } from '@chatgpt-booster/core'
 
@@ -180,9 +176,7 @@ export interface ArchiveIngestSummary {
 type RawRecord = Record<string, unknown>
 
 function record(value: unknown): RawRecord | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as RawRecord)
-    : undefined
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as RawRecord) : undefined
 }
 
 function stringOrNull(value: unknown): string | null {
@@ -264,11 +258,7 @@ function openArchiveDatabase(): Promise<IDBDatabase> {
         createIndexIfMissing(conversations, 'projectId', 'projectId')
         createIndexIfMissing(conversations, 'updatedAt', 'updatedAt')
         createIndexIfMissing(conversations, 'archiveState', 'archiveState')
-        createIndexIfMissing(
-          conversations,
-          'branchSourceConversationId',
-          'branchSourceConversationId',
-        )
+        createIndexIfMissing(conversations, 'branchSourceConversationId', 'branchSourceConversationId')
         createIndexIfMissing(conversations, 'lastSeenAt', 'lastSeenAt')
       }
 
@@ -503,10 +493,7 @@ export class ConversationArchiveStore {
     const db = await this.#db()
     const tx = db.transaction('preloadPages', 'readonly')
     const items = await request<PreloadedConversationPage[]>(
-      tx
-        .objectStore('preloadPages')
-        .index('conversationId')
-        .getAll(IDBKeyRange.only(conversationId)),
+      tx.objectStore('preloadPages').index('conversationId').getAll(IDBKeyRange.only(conversationId)),
     )
     const now = Date.now()
     const live = items.filter((item) => item.expiresAt >= now)
@@ -567,8 +554,7 @@ export class ConversationArchiveStore {
     const orderedVisible = thread.turns
       .flatMap((turn) => turn.messages.map((item) => item.record))
       .sort(
-        (a, b) =>
-          serverTimeMs(a.createTime, a.firstSeenAt) - serverTimeMs(b.createTime, b.firstSeenAt),
+        (a, b) => serverTimeMs(a.createTime, a.firstSeenAt) - serverTimeMs(b.createTime, b.firstSeenAt),
       )
     const coverage: ConversationCoverage = {
       evidenceVersion: 1,
@@ -782,8 +768,7 @@ export class ConversationArchiveStore {
     )
     const selected = readId ? pages.filter((page) => page.readId === readId) : []
     const known = selected.every(
-      (page) =>
-        typeof page.omittedRecordCount === 'number' && Number.isFinite(page.omittedRecordCount),
+      (page) => typeof page.omittedRecordCount === 'number' && Number.isFinite(page.omittedRecordCount),
     )
     const omittedRecordCount = known
       ? selected.reduce((sum, page) => sum + (page.omittedRecordCount ?? 0), 0)
@@ -952,8 +937,7 @@ export class ConversationArchiveStore {
       return undefined
     }
 
-    const projectId =
-      'gizmo_id' in payload ? incomingProjectId : (oldConversation?.projectId ?? null)
+    const projectId = 'gizmo_id' in payload ? incomingProjectId : (oldConversation?.projectId ?? null)
     let insertedMessages = 0
     let updatedMessages = 0
     let unchangedMessages = 0
@@ -1070,8 +1054,7 @@ export class ConversationArchiveStore {
     const visibleRecords = counts.turns
       .flatMap((turn) => turn.messages.map((item) => item.record))
       .sort(
-        (a, b) =>
-          serverTimeMs(a.createTime, a.firstSeenAt) - serverTimeMs(b.createTime, b.firstSeenAt),
+        (a, b) => serverTimeMs(a.createTime, a.firstSeenAt) - serverTimeMs(b.createTime, b.firstSeenAt),
       )
     const coverage: ConversationCoverage = {
       evidenceVersion: 1,
@@ -1088,10 +1071,7 @@ export class ConversationArchiveStore {
           : (oldCoverage?.oldestKnownMessageId ?? ordered[0]?.messageId ?? messageIds[0] ?? null),
       newestKnownMessageId:
         hasPreviousPage === true
-          ? (ordered.at(-1)?.messageId ??
-            oldCoverage?.newestKnownMessageId ??
-            messageIds.at(-1) ??
-            null)
+          ? (ordered.at(-1)?.messageId ?? oldCoverage?.newestKnownMessageId ?? messageIds.at(-1) ?? null)
           : (oldCoverage?.newestKnownMessageId ??
             ordered.at(-1)?.messageId ??
             messageIds.at(-1) ??

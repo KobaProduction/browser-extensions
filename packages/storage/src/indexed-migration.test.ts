@@ -86,7 +86,7 @@ test('IndexedDB migration journal and generation activation commit atomically', 
     journalStore: 'migrationJournal',
     manifestStore: 'migrationManifest',
     stagingStores: ['staged'],
-    validateStagedRecord: (record, generation) => record.value.key === generation + ':one',
+    validateStagedRecord: (record, generation) => record.value.key === `${generation}:one`,
   })
   let verifiedBackup = false
   const ready = await runStagedMigration({
@@ -107,7 +107,7 @@ test('IndexedDB migration journal and generation activation commit atomically', 
       transform: async (records, generation) =>
         records.map((value) => ({
           store: 'staged',
-          value: { key: generation + ':' + value, generation },
+          value: { key: `${generation}:${value}`, generation },
         })),
     },
     acceptance: {

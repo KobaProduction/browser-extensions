@@ -1,8 +1,4 @@
-import {
-  type ArchiveRecordView,
-  serverTimeMs,
-  type ToolInvocationView,
-} from '@chatgpt-booster/core'
+import { type ArchiveRecordView, serverTimeMs, type ToolInvocationView } from '@chatgpt-booster/core'
 import {
   chatGptToolActivityRows,
   findChatGptTurnRoot,
@@ -141,9 +137,8 @@ export function parseStreamingToolStatus(value: string): { name: string; payload
   const text = compact(value)
   if (!text) return null
   const query =
-    text.match(
-      /(?:поиск по запросу|search(?:ing)?(?: the web)? for)\s*[«“"]([^»”"]+)[»”"]/i,
-    )?.[1] ?? null
+    text.match(/(?:поиск по запросу|search(?:ing)?(?: the web)? for)\s*[«“"]([^»”"]+)[»”"]/i)?.[1] ??
+    null
   if (query) return { name: 'web.search', payload: { query } }
   return { name: 'tool.activity', payload: { status: text } }
 }
@@ -325,8 +320,7 @@ function toolResultPayload(record: ArchiveRecordView | null | undefined): unknow
 
 function firstNonEmptyString(...values: unknown[]): string | null {
   return (
-    values.find((value): value is string => typeof value === 'string' && value.trim().length > 0) ??
-    null
+    values.find((value): value is string => typeof value === 'string' && value.trim().length > 0) ?? null
   )
 }
 
@@ -449,8 +443,7 @@ export function toolInvocationFromRecord(
   const searchModelQueries = asObject(metadata?.search_model_queries)
   const envelope = recordContentObject(record)
   const connectorPayload = parseJsonObject(metadata?.connector_tool_payload)
-  const path =
-    firstNonEmptyString(envelope?.path, metadata?.tool_path, metadata?.connector_path) ?? null
+  const path = firstNonEmptyString(envelope?.path, metadata?.tool_path, metadata?.connector_path) ?? null
   const pathParts = connectorPathParts(path)
   const payload =
     connectorPayload ??
@@ -462,7 +455,8 @@ export function toolInvocationFromRecord(
     record.raw.args ??
     record.raw.input ??
     metadata?.search_queries ??
-    (Array.isArray(searchModelQueries?.queries) ? { queries: searchModelQueries.queries } : null)
+    (Array.isArray(searchModelQueries?.queries) ? { queries: searchModelQueries.queries } : null) ??
+    (record.role === 'assistant' && recipient && recipient !== 'all' ? toolResultPayload(record) : null)
   const rawName =
     nestedToolName(payload ?? record.raw) ??
     firstNonEmptyString(
@@ -489,9 +483,7 @@ export function toolInvocationFromRecord(
     startedAt && finishedAt ? Math.max(0, serverTimeMs(finishedAt) - serverTimeMs(startedAt)) : null
   return {
     kind:
-      /^mcp__/.test(name) || /\bmcp\b/i.test(provider ?? '') || /mcp/i.test(path ?? '')
-        ? 'mcp'
-        : 'tool',
+      /^mcp__/.test(name) || /\bmcp\b/i.test(provider ?? '') || /mcp/i.test(path ?? '') ? 'mcp' : 'tool',
     provider,
     action,
     label,

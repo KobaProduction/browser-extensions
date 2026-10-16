@@ -1,14 +1,16 @@
+import { ConversationStreamDecoder } from './conversation-stream-decoder'
+import { registerNativeAccountConsumer } from './native-account-source'
+
+export type { ChatGptNativeAccountRegistry, ChatGptNativeAccountSource } from './native-account-source'
+export { bindNativeAccountSource } from './native-account-source'
 export const TRANSPORT_EVENT = 'chatgpt-booster:transport-event'
 export const TRANSPORT_BATCH_EVENT = 'chatgpt-booster:transport-batch'
 export const TRANSPORT_CONFIG_EVENT = 'chatgpt-booster:transport-config'
 declare const __BOOSTER_INSTANCE_SCOPE__: string | undefined
 declare const __BOOSTER_DELIVERY_TARGET__: string | undefined
-const observerScope = typeof __BOOSTER_INSTANCE_SCOPE__ === 'string'
-  ? __BOOSTER_INSTANCE_SCOPE__
-  : ''
-const observerTargetId = typeof __BOOSTER_DELIVERY_TARGET__ === 'string'
-  ? __BOOSTER_DELIVERY_TARGET__
-  : ''
+const observerScope = typeof __BOOSTER_INSTANCE_SCOPE__ === 'string' ? __BOOSTER_INSTANCE_SCOPE__ : ''
+const observerTargetId =
+  typeof __BOOSTER_DELIVERY_TARGET__ === 'string' ? __BOOSTER_DELIVERY_TARGET__ : ''
 export const TRANSPORT_CHANNEL = observerScope
   ? 'chatgpt-booster:transport:' + observerScope + (observerTargetId ? ':' + observerTargetId : '')
   : 'chatgpt-booster:transport'
@@ -62,9 +64,7 @@ function pageConversationId(pathname = location.pathname): string | undefined {
 
 function archiveProjectId(payload: Record<string, unknown>, conversationId: string) {
   const incoming =
-    typeof payload.gizmo_id === 'string' && payload.gizmo_id.startsWith('g-p-')
-      ? payload.gizmo_id
-      : null
+    typeof payload.gizmo_id === 'string' && payload.gizmo_id.startsWith('g-p-') ? payload.gizmo_id : null
   return 'gizmo_id' in payload ? incoming : (archiveProjects.get(conversationId) ?? null)
 }
 
@@ -168,8 +168,7 @@ export function conversationStreamStatusFromPayload(
   const conversationId = conversationStreamStatusTarget(sourceUrl)
   if (!conversationId) return null
   const record = requestPayload(payload)
-  const status =
-    httpStatus === 404 ? 'UNAVAILABLE' : normalizeConversationStreamStatus(record?.status)
+  const status = httpStatus === 404 ? 'UNAVAILABLE' : normalizeConversationStreamStatus(record?.status)
   if (!status) return null
   return { conversationId, status, observedAt, httpStatus }
 }
@@ -182,23 +181,25 @@ function publishConversationStreamStatus(detail: ConversationStreamStatusEventDe
   )
 }
 
-function observeConversationStreamStatusResponse(response: Response, sourceUrl: string) {
+function observeConversationStreamStatusResponse(
+  response: Response,
+  sourceUrl: string,
+  requestId?: string,
+) {
   if (!isConversationStreamStatusUrl(sourceUrl)) return
   const observedAt = Date.now()
   if (response.status === 404) {
-    publishConversationStreamStatus(
-      conversationStreamStatusFromPayload(sourceUrl, null, observedAt, response.status),
-    )
+    const detail = conversationStreamStatusFromPayload(sourceUrl, null, observedAt, response.status)
+    publishConversationStreamStatus(detail ? { ...detail, ...(requestId ? { requestId } : {}) } : null)
     return
   }
   void response
     .clone()
     .json()
-    .then((payload) =>
-      publishConversationStreamStatus(
-        conversationStreamStatusFromPayload(sourceUrl, payload, observedAt, response.status),
-      ),
-    )
+    .then((payload) => {
+      const detail = conversationStreamStatusFromPayload(sourceUrl, payload, observedAt, response.status)
+      publishConversationStreamStatus(detail ? { ...detail, ...(requestId ? { requestId } : {}) } : null)
+    })
     .catch(() => undefined)
 }
 
@@ -223,9 +224,7 @@ export function conversationStreamEventFromPayload(
     const errorCode =
       typeof value.error_code === 'string' && value.error_code.trim() ? value.error_code : null
     const errorReason =
-      typeof value.error_reason === 'string' && value.error_reason.trim()
-        ? value.error_reason
-        : null
+      typeof value.error_reason === 'string' && value.error_reason.trim() ? value.error_reason : null
     const canRetry = typeof value.can_retry === 'boolean' ? value.can_retry : null
     return {
       conversationId,
@@ -255,9 +254,7 @@ export function conversationStreamEventFromPayload(
   if (value.type === 'safety_review_update') {
     if (typeof value.active !== 'boolean') return null
     const protectionType =
-      value.protection_type === 'bio' || value.protection_type === 'cyber'
-        ? value.protection_type
-        : null
+      value.protection_type === 'bio' || value.protection_type === 'cyber' ? value.protection_type : null
     const message = typeof value.message === 'string' && value.message.trim() ? value.message : null
     return {
       conversationId,
@@ -277,6 +274,9 @@ function observeConversationStreamResponse(
   accountId: string | null,
   requestEpoch: number,
   currentEpoch: () => number,
+  requestId: string,
+  userMessageId: string | null,
+  onConversationKnown: (id: string) => void,
 ) {
   if (!response.ok || !/event-stream/i.test(response.headers.get('content-type') ?? '')) return
   const body = response.clone().body
@@ -284,12 +284,45 @@ function observeConversationStreamResponse(
   const reader = body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  let nativeConversationId = conversationId
+  const sourceDecoder = new ConversationStreamDecoder()
+  let terminalSeen = false
+  const publishRetainedGapEvidence = () => {
+    const baseline = sourceDecoder.retainedBaseline()
+    const normalized = baseline
+      ? conversationStreamEventFromPayload(baseline, nativeConversationId, Date.now())
+      : null
+    if (normalized?.kind === 'message' && requestEpoch === currentEpoch()) {
+      publishConversationStream({
+        ...normalized,
+        accountId,
+        requestId,
+        userMessageId,
+        evidence: sourceDecoder.takeGapEvidence(),
+      })
+    }
+  }
 
   void (async () => {
     try {
       while (true) {
         const { done, value } = await reader.read()
-        if (done || requestEpoch !== currentEpoch()) break
+        if (requestEpoch !== currentEpoch()) break
+        if (done) {
+          if (!terminalSeen)
+            publishConversationStream({
+              conversationId: nativeConversationId,
+              kind: 'error',
+              errorCode: 'stream_interrupted',
+              errorReason: null,
+              canRetry: true,
+              observedAt: Date.now(),
+              accountId,
+              requestId,
+              userMessageId,
+            })
+          break
+        }
         buffer += decoder.decode(value, { stream: true })
         buffer = buffer.replace(/\r\n/g, '\n')
         let boundary = buffer.indexOf('\n\n')
@@ -301,20 +334,92 @@ function observeConversationStreamResponse(
             .filter((line) => line.startsWith('data:'))
             .map((line) => line.slice(5).trimStart())
             .join('\n')
+          const eventType =
+            block
+              .split('\n')
+              .filter((line) => line.startsWith('event:'))
+              .at(-1)
+              ?.slice(6)
+              .trim() ?? null
+          if (data === '[DONE]' && requestEpoch === currentEpoch()) {
+            terminalSeen = true
+            publishConversationStream(
+              sourceDecoder.hasGap()
+                ? {
+                    conversationId: nativeConversationId,
+                    kind: 'error',
+                    errorCode: 'source_patch_gap',
+                    errorReason: null,
+                    canRetry: true,
+                    observedAt: Date.now(),
+                    accountId,
+                    requestId,
+                    userMessageId,
+                  }
+                : {
+                    conversationId: nativeConversationId,
+                    kind: 'complete',
+                    phase: 'main',
+                    observedAt: Date.now(),
+                    accountId,
+                    requestId,
+                    userMessageId,
+                  },
+            )
+          }
           if (data && data !== '[DONE]') {
             try {
-              const decoded = JSON.parse(data)
-              const normalized = conversationStreamEventFromPayload(
-                decoded,
-                conversationId,
-                Date.now(),
+              // Native SSE JSON-encodes the encoding name just like other data.
+              // Retain compatibility only with the exact bare v1 header.
+              const decoded = eventType === 'delta_encoding' && data === 'v1' ? data : JSON.parse(data)
+              const source = sourceDecoder.decode(decoded, eventType)
+              if (!source && sourceDecoder.hasGap()) {
+                publishConversationStream({
+                  conversationId: nativeConversationId,
+                  kind: 'error',
+                  errorCode: 'source_patch_gap',
+                  errorReason: null,
+                  canRetry: true,
+                  observedAt: Date.now(),
+                  accountId,
+                  requestId,
+                  userMessageId,
+                })
+                publishRetainedGapEvidence()
+              }
+              const normalized =
+                !source && sourceDecoder.hasGap()
+                  ? null
+                  : conversationStreamEventFromPayload(
+                      source?.payload ?? decoded,
+                      nativeConversationId,
+                      Date.now(),
+                    )
+              if (normalized?.conversationId) {
+                nativeConversationId = normalized.conversationId
+                onConversationKnown(nativeConversationId)
+              }
+              if (
+                (normalized?.kind === 'complete' && normalized.phase === 'main') ||
+                normalized?.kind === 'error' ||
+                (normalized?.kind === 'message' &&
+                  requestPayload(normalized.record.author)?.role === 'assistant' &&
+                  (normalized.record.recipient === undefined ||
+                    normalized.record.recipient === null ||
+                    normalized.record.recipient === 'all') &&
+                  (normalized.record.channel === undefined ||
+                    normalized.record.channel === null ||
+                    normalized.record.channel === 'final') &&
+                  normalized.record.end_turn === true &&
+                  normalized.record.status === 'finished_successfully')
               )
+                terminalSeen = true
               if (!normalized) {
                 const value = requestPayload(decoded)
                 const sourceId =
                   typeof value?.conversation_id === 'string'
                     ? value.conversation_id
-                    : conversationId
+                    : nativeConversationId
                 const expectedMessage =
                   value?.type === 'input_message' ||
                   (value?.message !== undefined &&
@@ -329,17 +434,59 @@ function observeConversationStreamResponse(
                     observerTarget.location.origin,
                   )
               }
-              if (requestEpoch === currentEpoch())
-                publishConversationStream(normalized ? { ...normalized, accountId } : null)
+              if (
+                requestEpoch === currentEpoch() &&
+                !(
+                  sourceDecoder.hasGap() &&
+                  (normalized?.kind === 'complete' || normalized?.kind === 'async-status')
+                )
+              )
+                publishConversationStream(
+                  normalized
+                    ? {
+                        ...normalized,
+                        accountId,
+                        requestId,
+                        userMessageId,
+                        ...(normalized.kind === 'message' && source
+                          ? { evidence: [...sourceDecoder.takeGapEvidence(), source.evidence] }
+                          : {}),
+                      }
+                    : null,
+                )
             } catch {
-              // Encoded deltas and ordinary content chunks are intentionally ignored.
+              sourceDecoder.markGap({ unparsedSourceData: data })
+              publishRetainedGapEvidence()
+              if (requestEpoch === currentEpoch())
+                publishConversationStream({
+                  conversationId: nativeConversationId,
+                  kind: 'error',
+                  errorCode: 'source_patch_gap',
+                  errorReason: null,
+                  canRetry: true,
+                  observedAt: Date.now(),
+                  accountId,
+                  requestId,
+                  userMessageId,
+                })
             }
           }
           boundary = buffer.indexOf('\n\n')
         }
       }
     } catch {
-      // Recovery/status observation owns transport failure classification.
+      if (!terminalSeen && requestEpoch === currentEpoch())
+        publishConversationStream({
+          conversationId: nativeConversationId,
+          kind: 'error',
+          errorCode: 'stream_interrupted',
+          errorReason: null,
+          canRetry: true,
+          observedAt: Date.now(),
+          accountId,
+          requestId,
+          userMessageId,
+        })
     } finally {
       reader.releaseLock()
     }
@@ -357,9 +504,7 @@ function isConversationStopUrl(sourceUrl: string) {
 
 function conversationIdFromBody(body: unknown): string | null {
   const payload = requestPayload(body)
-  return typeof payload?.conversation_id === 'string'
-    ? payload.conversation_id
-    : (pageConversationId() ?? null)
+  return typeof payload?.conversation_id === 'string' ? payload.conversation_id : null
 }
 
 export function conversationStopTargetFromBody(
@@ -383,9 +528,16 @@ function isConversationRequestUrl(sourceUrl: string) {
   try {
     const url = new URL(sourceUrl, 'https://chatgpt.com/')
     return (
-      url.origin === 'https://chatgpt.com' &&
-      /^\/backend-api\/(?:f\/)?conversation$/.test(url.pathname)
+      url.origin === 'https://chatgpt.com' && /^\/backend-api\/(?:f\/)?conversation$/.test(url.pathname)
     )
+  } catch {
+    return false
+  }
+}
+function isConversationResumeUrl(sourceUrl: string) {
+  try {
+    const url = new URL(sourceUrl, 'https://chatgpt.com/')
+    return url.origin === 'https://chatgpt.com' && url.pathname === '/backend-api/f/conversation/resume'
   } catch {
     return false
   }
@@ -480,10 +632,7 @@ export function conversationRequestTimingFromBody(
       : undefined
   return {
     ...(selection ? { submissionSelection: selection } : {}),
-    conversationId:
-      typeof payload?.conversation_id === 'string'
-        ? payload.conversation_id
-        : (pageConversationId() ?? null),
+    conversationId: typeof payload?.conversation_id === 'string' ? payload.conversation_id : null,
     userMessageId: typeof user?.id === 'string' ? user.id : null,
     ...(payload && Object.hasOwn(payload, 'conversation_origin')
       ? {
@@ -539,6 +688,30 @@ function isAccountCheckUrl(sourceUrl: string): boolean {
 function isConversationCatalogUrl(sourceUrl: string) {
   return conversationCatalogProjectId(sourceUrl) !== undefined
 }
+function nativeProjectDetailId(sourceUrl: string): string | null {
+  try {
+    const url = new URL(sourceUrl, 'https://chatgpt.com/')
+    if (url.origin !== 'https://chatgpt.com') return null
+    const match = url.pathname.match(/^\/backend-api\/gizmos\/([^/]+)$/)
+    const id = match?.[1] ? decodeURIComponent(match[1]) : ''
+    return id.startsWith('g-p-') && id.length > 4 && id.length <= 256 && !/[\s/?#]/.test(id) ? id : null
+  } catch {
+    return null
+  }
+}
+/** Retain only source-confirmed project identity and display name. */
+export function projectCatalogFromPayload(
+  sourceUrl: string,
+  payload: unknown,
+  observedAt: number,
+): ConversationCatalogEventDetail | null {
+  const id = nativeProjectDetailId(sourceUrl)
+  const gizmo = requestPayload(requestPayload(payload)?.gizmo)
+  const title = requestPayload(gizmo?.display)?.name
+  if (!id || gizmo?.id !== id || typeof title !== 'string' || !title.trim() || title.length > 4096)
+    return null
+  return { items: [], projects: [{ projectId: id, title }], observedAt }
+}
 
 export function conversationCatalogFromPayload(
   sourceUrl: string,
@@ -553,9 +726,7 @@ export function conversationCatalogFromPayload(
     const record = requestPayload(item)
     if (!record || typeof record.id !== 'string') return []
     const gizmoId =
-      typeof record.gizmo_id === 'string' && record.gizmo_id.startsWith('g-p-')
-        ? record.gizmo_id
-        : null
+      typeof record.gizmo_id === 'string' && record.gizmo_id.startsWith('g-p-') ? record.gizmo_id : null
     return [
       {
         conversationId: record.id,
@@ -586,7 +757,9 @@ function observeConversationCatalogResponse(
   currentEpoch: () => number,
   requestStartedAt: number,
 ) {
-  if (!response.ok || !isConversationCatalogUrl(sourceUrl)) return
+  const projectDetail = nativeProjectDetailId(sourceUrl) !== null
+  if (!response.ok || (!isConversationCatalogUrl(sourceUrl) && !projectDetail)) return
+  if (projectDetail && !accountId) return
   const contentType = response.headers.get('content-type') ?? ''
   if (!/json/i.test(contentType)) return
   void response
@@ -594,7 +767,9 @@ function observeConversationCatalogResponse(
     .json()
     .then((payload: unknown) => {
       if (currentEpoch() !== requestEpoch) return
-      const detail = conversationCatalogFromPayload(sourceUrl, payload, Date.now())
+      const detail = projectDetail
+        ? projectCatalogFromPayload(sourceUrl, payload, Date.now())
+        : conversationCatalogFromPayload(sourceUrl, payload, Date.now())
       if (detail) publishConversationCatalog({ ...detail, accountId, requestStartedAt })
     })
     .catch(() => undefined)
@@ -609,10 +784,7 @@ function isArchiveObservedUrl(sourceUrl: string) {
 
 function archiveNetwork(id: string, sourceUrl: string, phase: string, status?: number) {
   const conversationId = conversationHistoryId(sourceUrl)
-  if (
-    !conversationId ||
-    !captureAllowed(conversationId, archiveProjects.get(conversationId) ?? null)
-  )
+  if (!conversationId || !captureAllowed(conversationId, archiveProjects.get(conversationId) ?? null))
     return
   observerTarget?.postMessage(
     {
@@ -666,6 +838,7 @@ export interface ConversationSubmissionSelection {
 }
 
 export interface ConversationRequestEventDetail {
+  requestId?: string
   accountId?: string | null
   submissionSelection?: ConversationSubmissionSelection
   conversationId: string | null
@@ -677,6 +850,7 @@ export interface ConversationRequestEventDetail {
 }
 
 export interface ConversationStopEventDetail {
+  requestId?: string | undefined
   conversationId: string | null
   phase: 'requested' | 'confirmed' | 'failed'
   timestamp: number
@@ -686,6 +860,7 @@ export interface ConversationStopEventDetail {
 export type ConversationStreamStatus = 'IS_STREAMING' | 'COMPLETE' | 'FAILURE' | 'UNAVAILABLE'
 
 export interface ConversationStreamStatusEventDetail {
+  requestId?: string
   conversationId: string
   status: ConversationStreamStatus
   observedAt: number
@@ -697,6 +872,7 @@ export type ConversationStreamEventDetail = (
       conversationId: string | null
       kind: 'message'
       record: Record<string, unknown>
+      evidence?: readonly Record<string, unknown>[]
       observedAt: number
     }
   | {
@@ -727,7 +903,11 @@ export type ConversationStreamEventDetail = (
       canRetry: boolean | null
       observedAt: number
     }
-) & { accountId?: string | null }
+) & {
+  accountId?: string | null
+  requestId?: string | undefined
+  userMessageId?: string | null | undefined
+}
 
 export interface ConversationCatalogItem {
   projectKnown?: boolean
@@ -738,9 +918,9 @@ export interface ConversationCatalogItem {
 }
 
 /**
- * Account identity is accepted only after a native catalog request selector
- * matches an account ID listed in native account/check response.
- * Never infer the selected account from the default account record.
+ * A native catalog selector must match a validated native registry result (network or
+ * explicitly bound method). A single-account network registry can also prove an owner.
+ * Never infer the selected account from an arbitrary page message or default record alone.
  */
 export interface ConversationAccountEventDetail {
   accountId: string | null
@@ -750,6 +930,7 @@ export interface ConversationAccountEventDetail {
 export interface ConversationCatalogEventDetail {
   requestStartedAt?: number
   items: ConversationCatalogItem[]
+  projects?: { projectId: string; title: string }[]
   observedAt: number
   accountId?: string | null
 }
@@ -998,9 +1179,7 @@ export async function fetchArchiveAssetBytes(
         },
         target.location.origin,
       )
-      reject(
-        signal?.reason instanceof Error ? signal.reason : new DOMException('Aborted', 'AbortError'),
-      )
+      reject(signal?.reason instanceof Error ? signal.reason : new DOMException('Aborted', 'AbortError'))
     }
     const onMessage = (event: MessageEvent) => {
       if (event.origin !== target.location.origin || event.source !== target) return
@@ -1017,9 +1196,7 @@ export async function fetchArchiveAssetBytes(
         resolve(data.detail.bytes)
         return
       }
-      reject(
-        new Error(typeof data.detail.error === 'string' ? data.detail.error : 'Asset fetch failed'),
-      )
+      reject(new Error(typeof data.detail.error === 'string' ? data.detail.error : 'Asset fetch failed'))
     }
     const timer = setTimeout(() => {
       cleanup()
@@ -1096,8 +1273,7 @@ function isConversationHistoryPayload(value: unknown): value is Record<string, u
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const record = value as Record<string, unknown>
   return (
-    Array.isArray(record.messages) &&
-    Boolean(record.page_info && typeof record.page_info === 'object')
+    Array.isArray(record.messages) && Boolean(record.page_info && typeof record.page_info === 'object')
   )
 }
 
@@ -1279,10 +1455,12 @@ export function installTransportObserver(
 
   archivePolicy = { ...DENY_ARCHIVE }
   let verifiedAccountIds = new Set<string>()
+  let nativeRegistrySelectedId: string | null = null
   let selectedAccountId: string | null = null
   let confirmedCatalogAccountId: string | null = null
   let emittedAccountId: string | null = null
   let accountEpoch = 0
+  const activeRuns = new Map<string, { id: string; at: number }>()
   // Selection changes, not request count or page-load timing, govern whether
   // a native account-registry response is still attributable to this account.
   let accountSelectionSerial = 0
@@ -1294,6 +1472,7 @@ export function installTransportObserver(
     // Cached request pages from a prior account must never be replayed as
     // belonging to the new selected account.
     archiveReads.clear()
+    activeRuns.clear()
     archiveProjects.clear()
     bufferedInitialPages.clear()
     target.postMessage(
@@ -1321,8 +1500,7 @@ export function installTransportObserver(
         // transition, but not a response which spans another selection (even
         // an A -> B -> A change that returns to the same string).
         const unchanged =
-          accountSelectionSerial === selectionSerialAtRequest &&
-          selectedAtRequest === selectedAccountId
+          accountSelectionSerial === selectionSerialAtRequest && selectedAtRequest === selectedAccountId
         const initialSelection =
           selectedAtRequest === null &&
           selectedAccountId !== null &&
@@ -1338,6 +1516,7 @@ export function installTransportObserver(
           if (typeof account?.account_id === 'string' && account.account_id === key) ids.add(key)
         }
         verifiedAccountIds = ids
+        nativeRegistrySelectedId = null
         const confirmedByCatalog =
           selectedAccountId &&
           confirmedCatalogAccountId === selectedAccountId &&
@@ -1365,15 +1544,44 @@ export function installTransportObserver(
     if ((headerValue?.trim() || null) !== selectedAccountId) return
     confirmedCatalogAccountId = selectedAccountId
     const confirmed =
-      selectedAccountId && verifiedAccountIds.has(selectedAccountId) ? selectedAccountId : null
+      selectedAccountId &&
+      verifiedAccountIds.has(selectedAccountId) &&
+      (nativeRegistrySelectedId === null || nativeRegistrySelectedId === selectedAccountId)
+        ? selectedAccountId
+        : null
     publishAccount(confirmed, observedAt)
   }
+
+  const unregisterNativeAccount = registerNativeAccountConsumer(target, {
+    begin: () => ({ selected: selectedAccountId, serial: accountSelectionSerial }),
+    accept(registry, ticket) {
+      if (!observerActive) return
+      const started = ticket as { selected: string | null; serial: number }
+      const unchanged =
+        started.serial === accountSelectionSerial && started.selected === selectedAccountId
+      const initialSelection =
+        started.selected === null &&
+        selectedAccountId === registry.selectedAccountId &&
+        accountSelectionSerial === started.serial + 1
+      if (!unchanged && !initialSelection) return
+      if (selectedAccountId !== null && selectedAccountId !== registry.selectedAccountId) return
+      verifiedAccountIds = new Set(registry.accountIds)
+      nativeRegistrySelectedId = registry.selectedAccountId
+      publishAccount(
+        confirmedCatalogAccountId === registry.selectedAccountId &&
+          selectedAccountId === registry.selectedAccountId &&
+          verifiedAccountIds.has(registry.selectedAccountId)
+          ? registry.selectedAccountId
+          : null,
+        Date.now(),
+      )
+    },
+  })
 
   const onArchivePolicy = (event: MessageEvent) => {
     if (event.origin !== target.location.origin || event.source !== target) return
     const data = event.data
-    if (data?.channel !== TRANSPORT_CHANNEL || data.type !== ARCHIVE_POLICY_EVENT || !data.detail)
-      return
+    if (data?.channel !== TRANSPORT_CHANNEL || data.type !== ARCHIVE_POLICY_EVENT || !data.detail) return
     archivePolicy = { ...DENY_ARCHIVE, ...data.detail }
     const id = pageConversationId()
     const currentBuffered = id ? bufferedInitialPages.get(id) : undefined
@@ -1418,11 +1626,8 @@ export function installTransportObserver(
   const onArchiveAssetFetch = (event: MessageEvent) => {
     if (event.origin !== target.location.origin || event.source !== target) return
     const data = event.data
-    if (data?.channel !== TRANSPORT_CHANNEL || data.type !== ARCHIVE_ASSET_FETCH_REQUEST_EVENT)
-      return
-    const detail = data.detail as
-      | { requestId?: unknown; assetId?: unknown; url?: unknown }
-      | undefined
+    if (data?.channel !== TRANSPORT_CHANNEL || data.type !== ARCHIVE_ASSET_FETCH_REQUEST_EVENT) return
+    const detail = data.detail as { requestId?: unknown; assetId?: unknown; url?: unknown } | undefined
     if (
       typeof detail?.requestId !== 'string' ||
       typeof detail.assetId !== 'string' ||
@@ -1444,8 +1649,7 @@ export function installTransportObserver(
         if (Number.isFinite(announced) && announced > 512 * 1024 * 1024)
           throw new Error('Asset exceeds 512 MiB export limit')
         const buffer = await response.arrayBuffer()
-        if (buffer.byteLength > 512 * 1024 * 1024)
-          throw new Error('Asset exceeds 512 MiB export limit')
+        if (buffer.byteLength > 512 * 1024 * 1024) throw new Error('Asset exceeds 512 MiB export limit')
         target.postMessage(
           {
             channel: TRANSPORT_CHANNEL,
@@ -1483,8 +1687,7 @@ export function installTransportObserver(
   const onArchiveAssetFetchCancel = (event: MessageEvent) => {
     if (event.origin !== target.location.origin || event.source !== target) return
     const data = event.data
-    if (data?.channel !== TRANSPORT_CHANNEL || data.type !== ARCHIVE_ASSET_FETCH_CANCEL_EVENT)
-      return
+    if (data?.channel !== TRANSPORT_CHANNEL || data.type !== ARCHIVE_ASSET_FETCH_CANCEL_EVENT) return
     const requestId = data.detail?.requestId
     if (typeof requestId === 'string') archiveAssetFetches.get(requestId)?.abort()
   }
@@ -1517,6 +1720,7 @@ export function installTransportObserver(
         !isConversationStopUrl(rawUrl) &&
         !isConversationStreamStatusUrl(rawUrl) &&
         !isConversationCatalogUrl(rawUrl) &&
+        !nativeProjectDetailId(rawUrl) &&
         !isAccountCheckUrl(rawUrl)
       )
         return callUpstream(input, init)
@@ -1539,6 +1743,12 @@ export function installTransportObserver(
           new Headers(init.headers).forEach((value, key) => {
             headers.set(key, value)
           })
+        const projectOwnerAtRequest =
+          emittedAccountId &&
+          (!headers.get('chatgpt-account-id')?.trim() ||
+            headers.get('chatgpt-account-id')?.trim() === emittedAccountId)
+            ? emittedAccountId
+            : null
         // Revoke the verified account immediately when native ChatGPT starts
         // selecting another one, not after a potentially slow response.
         if (method.toUpperCase() === 'GET' && isConversationCatalogUrl(rawUrl)) {
@@ -1551,14 +1761,34 @@ export function installTransportObserver(
             publishAccount(null, requestBoundaryAt)
           }
         }
+        const conversationRequest = conversationRequestTimingFromBody(
+          rawUrl,
+          method,
+          init?.body,
+          requestBoundaryAt,
+        )
+        if (conversationRequest?.conversationId)
+          activeRuns.set(conversationRequest.conversationId, { id, at: requestBoundaryAt })
+        const statusConversationId = conversationStreamStatusTarget(rawUrl)
+        const statusRunAtRequest = statusConversationId
+          ? activeRuns.get(statusConversationId)?.id
+          : undefined
+        const resumeConversationId = isConversationResumeUrl(rawUrl)
+          ? conversationIdFromBody(init?.body)
+          : null
+        const resumeRunAtRequest = resumeConversationId
+          ? activeRuns.get(resumeConversationId)?.id
+          : undefined
         publishConversationRequest(
-          conversationRequestTimingFromBody(rawUrl, method, init?.body, requestBoundaryAt),
+          conversationRequest ? { ...conversationRequest, requestId: id } : null,
           emittedAccountId,
         )
         const stopConversationId = conversationStopTargetFromBody(rawUrl, method, init?.body)
+        const stopRunAtRequest = stopConversationId ? activeRuns.get(stopConversationId)?.id : undefined
         if (stopConversationId)
           publishConversationStop({
             conversationId: stopConversationId,
+            requestId: stopRunAtRequest,
             phase: 'requested',
             timestamp: requestBoundaryAt,
             status: null,
@@ -1581,9 +1811,40 @@ export function installTransportObserver(
         archiveNetwork(id, rawUrl, 'request')
         try {
           const response = await callUpstream(input, init)
+          if (!response.ok && (conversationRequest || resumeConversationId)) {
+            void response
+              .clone()
+              .json()
+              .catch(() => null)
+              .then((payload) => {
+                if (accountCheckEpoch !== accountEpoch || !observerActive) return
+                const error = requestPayload(payload),
+                  nested = requestPayload(error?.error)
+                const code = error?.code ?? error?.error_code ?? nested?.code
+                publishConversationStream({
+                  conversationId: conversationRequest?.conversationId ?? resumeConversationId,
+                  kind: 'error',
+                  errorCode:
+                    code === 'conversation_too_large' ||
+                    code === 'tokenless_resume_unavailable' ||
+                    code === 'persisted_final_available'
+                      ? code
+                      : resumeConversationId
+                        ? 'network_error'
+                        : 'request_rejected',
+                  errorReason: null,
+                  canRetry: response.status === 429 || response.status >= 500,
+                  observedAt: Date.now(),
+                  accountId: emittedAccountId,
+                  requestId: conversationRequest ? id : resumeRunAtRequest,
+                  userMessageId: conversationRequest?.userMessageId ?? null,
+                })
+              })
+          }
           if (stopConversationId)
             publishConversationStop({
               conversationId: stopConversationId,
+              requestId: stopRunAtRequest,
               phase: response.ok ? 'confirmed' : 'failed',
               timestamp: Date.now(),
               status: response.status,
@@ -1600,18 +1861,19 @@ export function installTransportObserver(
               )
             // Account confirmation caused by this request is allowed. A request
             // spanning another account selection is discarded, including A→B→A.
-            observeConversationCatalogResponse(
-              response,
-              rawUrl,
-              emittedAccountId,
-              accountEpoch,
-              () => accountEpoch,
-              requestBoundaryAt,
-            )
+            if (method.toUpperCase() === 'GET' || !nativeProjectDetailId(rawUrl))
+              observeConversationCatalogResponse(
+                response,
+                rawUrl,
+                nativeProjectDetailId(rawUrl) ? projectOwnerAtRequest : emittedAccountId,
+                accountEpoch,
+                () => (observerActive ? accountEpoch : -1),
+                requestBoundaryAt,
+              )
           }
           if (method.toUpperCase() === 'GET' && isAccountCheckUrl(rawUrl))
             verifyAccountCatalog(response, selectionSerialAtRequest, accountSelectedAtRequest)
-          observeConversationStreamStatusResponse(response, rawUrl)
+          observeConversationStreamStatusResponse(response, rawUrl, statusRunAtRequest)
           if (method.toUpperCase() === 'POST' && isConversationRequestUrl(rawUrl))
             observeConversationStreamResponse(
               response,
@@ -1619,6 +1881,23 @@ export function installTransportObserver(
               historyRead?.accountId ?? emittedAccountId,
               accountCheckEpoch,
               () => accountEpoch,
+              id,
+              conversationRequest?.userMessageId ?? null,
+              (nativeId) => {
+                if ((activeRuns.get(nativeId)?.at ?? 0) <= requestBoundaryAt)
+                  activeRuns.set(nativeId, { id, at: requestBoundaryAt })
+              },
+            )
+          if (method.toUpperCase() === 'POST' && resumeConversationId)
+            observeConversationStreamResponse(
+              response,
+              resumeConversationId,
+              emittedAccountId,
+              accountCheckEpoch,
+              () => accountEpoch,
+              resumeRunAtRequest ?? id,
+              null,
+              () => undefined,
             )
           observeArchiveAssetResponse(response, rawUrl)
           if (diagnosticsEnabled) {
@@ -1639,9 +1918,22 @@ export function installTransportObserver(
           }
           return response
         } catch (error) {
+          if ((conversationRequest || resumeConversationId) && accountCheckEpoch === accountEpoch)
+            publishConversationStream({
+              conversationId: conversationRequest?.conversationId ?? resumeConversationId,
+              kind: 'error',
+              errorCode: 'network_error',
+              errorReason: null,
+              canRetry: true,
+              observedAt: Date.now(),
+              accountId: emittedAccountId,
+              requestId: conversationRequest ? id : resumeRunAtRequest,
+              userMessageId: conversationRequest?.userMessageId ?? null,
+            })
           if (stopConversationId)
             publishConversationStop({
               conversationId: stopConversationId,
+              requestId: stopRunAtRequest,
               phase: 'failed',
               timestamp: Date.now(),
               status: null,
@@ -1703,7 +1995,10 @@ export function installTransportObserver(
     return originalOpen.call(this, method, url, asyncFlag, user ?? null, password ?? null)
   }
 
-  const wrappedXhrSend: typeof OriginalXHR.prototype.send = function (this: XMLHttpRequest, body?: Document | XMLHttpRequestBodyInit | null) {
+  const wrappedXhrSend: typeof OriginalXHR.prototype.send = function (
+    this: XMLHttpRequest,
+    body?: Document | XMLHttpRequestBodyInit | null,
+  ) {
     if (!observerActive) return originalSend.call(this, body)
     const meta = xhrMeta.get(this)
     if (!meta) return originalSend.call(this, body)
@@ -1722,19 +2017,32 @@ export function installTransportObserver(
     )
       return originalSend.call(this, body)
 
-    const id = diagnosticsEnabled ? nextId('xhr') : ''
+    const id = nextId('xhr')
     const safeUrl = diagnosticsEnabled ? sanitizeTransportUrl(meta.rawUrl) : ''
     const started = diagnosticsEnabled ? performance.now() : 0
     const requestBoundaryAt = Date.now()
+    const xhrAccountEpoch = accountEpoch
+    const requestTiming = conversationRequestTimingFromBody(
+      meta.rawUrl,
+      meta.method,
+      body,
+      requestBoundaryAt,
+    )
+    if (requestTiming?.conversationId)
+      activeRuns.set(requestTiming.conversationId, { id, at: requestBoundaryAt })
+    const statusId = conversationStreamStatusTarget(meta.rawUrl)
+    const statusRun = statusId ? activeRuns.get(statusId)?.id : undefined
     publishConversationRequest(
-      conversationRequestTimingFromBody(meta.rawUrl, meta.method, body, requestBoundaryAt),
+      requestTiming ? { ...requestTiming, requestId: id } : null,
       emittedAccountId,
     )
     const stopConversationId =
       meta.method.toUpperCase() === 'POST' && conversationStop ? conversationIdFromBody(body) : null
+    const stopRun = stopConversationId ? activeRuns.get(stopConversationId)?.id : undefined
     if (stopConversationId)
       publishConversationStop({
         conversationId: stopConversationId,
+        requestId: stopRun,
         phase: 'requested',
         timestamp: requestBoundaryAt,
         status: null,
@@ -1748,17 +2056,17 @@ export function installTransportObserver(
         timestamp: requestBoundaryAt,
         method: meta.method,
         url: safeUrl,
-        ...(config.captureBodies
-          ? { bodyPreview: sanitizeBodyPreview(body, config.maxBodyChars) }
-          : {}),
+        ...(config.captureBodies ? { bodyPreview: sanitizeBodyPreview(body, config.maxBodyChars) } : {}),
       })
 
     this.addEventListener(
       'loadend',
       () => {
+        if (!observerActive || xhrAccountEpoch !== accountEpoch) return
         if (stopConversationId)
           publishConversationStop({
             conversationId: stopConversationId,
+            requestId: stopRun,
             phase: this.status >= 200 && this.status < 300 ? 'confirmed' : 'failed',
             timestamp: Date.now(),
             status: this.status || null,
@@ -1778,10 +2086,15 @@ export function installTransportObserver(
           })
         if (conversationStreamStatus) {
           try {
-            const value =
-              this.responseType === 'json' ? this.response : JSON.parse(this.responseText)
+            const value = this.responseType === 'json' ? this.response : JSON.parse(this.responseText)
+            const detail = conversationStreamStatusFromPayload(
+              meta.rawUrl,
+              value,
+              Date.now(),
+              this.status,
+            )
             publishConversationStreamStatus(
-              conversationStreamStatusFromPayload(meta.rawUrl, value, Date.now(), this.status),
+              detail ? { ...detail, ...(statusRun ? { requestId: statusRun } : {}) } : null,
             )
           } catch {
             if (this.status === 404)
@@ -1790,10 +2103,21 @@ export function installTransportObserver(
               )
           }
         }
+        if (requestTiming && (this.status < 200 || this.status >= 300))
+          publishConversationStream({
+            conversationId: requestTiming.conversationId,
+            requestId: id,
+            userMessageId: requestTiming.userMessageId,
+            kind: 'error',
+            errorCode: this.status ? 'request_rejected' : 'network_error',
+            errorReason: null,
+            canRetry: true,
+            observedAt: Date.now(),
+            accountId: emittedAccountId,
+          })
         if (resolverObserved && this.status >= 200 && this.status < 300) {
           try {
-            const value =
-              this.responseType === 'json' ? this.response : JSON.parse(this.responseText)
+            const value = this.responseType === 'json' ? this.response : JSON.parse(this.responseText)
             publishAssetResolution(value, meta.rawUrl)
           } catch {
             // Resolver response was unavailable or not JSON.
@@ -1838,6 +2162,16 @@ export function installTransportObserver(
   ): WebSocket {
     const ws =
       protocols === undefined ? new OriginalWebSocket(url) : new OriginalWebSocket(url, protocols)
+    const socketAccountEpoch = accountEpoch
+    const socketDecoders = new Map<string, ConversationStreamDecoder>()
+    const sourceSocket = (() => {
+      try {
+        const host = new URL(String(url), target.location.href).hostname
+        return host === 'chatgpt.com' || host.endsWith('.chatgpt.com')
+      } catch {
+        return false
+      }
+    })()
     let id: string | undefined
     let safe: string | undefined
     const diagnosticMeta = () => {
@@ -1878,6 +2212,116 @@ export function installTransportObserver(
         })
     })
     ws.addEventListener('message', (event: MessageEvent) => {
+      // Native protocol messages drive lifecycle regardless of diagnostic opt-in.
+      // A generic socket close is never proof that an assistant completed a turn.
+      if (
+        observerActive &&
+        sourceSocket &&
+        socketAccountEpoch === accountEpoch &&
+        confirmedCatalogAccountId &&
+        typeof event.data === 'string'
+      ) {
+        try {
+          const envelope: unknown = JSON.parse(event.data)
+          const candidate = requestPayload(envelope)
+          const payload =
+            candidate?.type === 'message' && requestPayload(candidate.data) ? candidate.data : envelope
+          const value = requestPayload(payload)
+          const key =
+            typeof value?.stream_id === 'string'
+              ? value.stream_id
+              : typeof value?.conversation_id === 'string'
+                ? value.conversation_id
+                : null
+          let source: ReturnType<ConversationStreamDecoder['decode']> = null
+          let sourceDecoder: ConversationStreamDecoder | undefined
+          if (key) {
+            let decoder = socketDecoders.get(key)
+            if (!decoder) {
+              decoder = new ConversationStreamDecoder()
+              socketDecoders.set(key, decoder)
+            }
+            sourceDecoder = decoder
+            source = decoder.decode(payload)
+            if (decoder.hasGap()) {
+              const conversationId =
+                typeof value?.conversation_id === 'string' ? value.conversation_id : null
+              if (conversationId)
+                publishConversationStream({
+                  conversationId,
+                  kind: 'error',
+                  errorCode: 'source_patch_gap',
+                  errorReason: null,
+                  canRetry: true,
+                  observedAt: Date.now(),
+                  accountId: confirmedCatalogAccountId,
+                })
+              const baseline = decoder.retainedBaseline()
+              const retained = baseline
+                ? conversationStreamEventFromPayload(baseline, conversationId, Date.now())
+                : null
+              if (
+                retained?.kind === 'message' &&
+                retained.conversationId &&
+                shouldObserveArchiveConversation(retained.conversationId)
+              )
+                publishConversationStream({
+                  ...retained,
+                  accountId: confirmedCatalogAccountId,
+                  evidence: decoder.takeGapEvidence(),
+                })
+            }
+            if (socketDecoders.size > 32) {
+              const oldest = socketDecoders.keys().next().value
+              if (oldest !== undefined) socketDecoders.delete(oldest)
+            }
+          }
+          const detail =
+            !source && sourceDecoder?.hasGap()
+              ? null
+              : conversationStreamEventFromPayload(source?.payload ?? payload, null, Date.now())
+          if (
+            detail?.conversationId &&
+            shouldObserveArchiveConversation(detail.conversationId) &&
+            !(sourceDecoder?.hasGap() && (detail.kind === 'complete' || detail.kind === 'async-status'))
+          )
+            publishConversationStream({
+              ...detail,
+              accountId: confirmedCatalogAccountId,
+              ...(detail.kind === 'message' && source
+                ? { evidence: [...(sourceDecoder?.takeGapEvidence() ?? []), source.evidence] }
+                : {}),
+            })
+        } catch {
+          // The malformed packet has only socket-level correlation. Conservatively
+          // mark every known stream on this socket as interrupted; do not guess its
+          // message or fabricate a terminal event.
+          for (const decoder of socketDecoders.values()) {
+            decoder.markGap({ unparsedSocketEnvelope: event.data, correlation: 'socket_only' })
+            const baseline = decoder.retainedBaseline()
+            const retained = baseline
+              ? conversationStreamEventFromPayload(baseline, null, Date.now())
+              : null
+            if (retained?.conversationId && shouldObserveArchiveConversation(retained.conversationId)) {
+              publishConversationStream({
+                conversationId: retained.conversationId,
+                kind: 'error',
+                errorCode: 'source_patch_gap',
+                errorReason: null,
+                canRetry: true,
+                observedAt: Date.now(),
+                accountId: confirmedCatalogAccountId,
+              })
+              if (retained.kind === 'message')
+                publishConversationStream({
+                  ...retained,
+                  accountId: confirmedCatalogAccountId,
+                  evidence: decoder.takeGapEvidence(),
+                })
+            }
+          }
+        }
+      }
       const meta = diagnosticMeta()
       if (meta)
         emit({
@@ -1987,6 +2431,7 @@ export function installTransportObserver(
   WrappedEventSource.prototype = OriginalEventSource.prototype
 
   function setRealtimeTransportHooksEnabled(enabled: boolean) {
+    enabled = enabled || observerActive
     if (enabled) {
       if (target.WebSocket === OriginalWebSocket) target.WebSocket = WrappedWebSocket
       if (target.EventSource === OriginalEventSource) target.EventSource = WrappedEventSource
@@ -1996,9 +2441,11 @@ export function installTransportObserver(
     if (target.EventSource === WrappedEventSource) target.EventSource = OriginalEventSource
   }
 
+  setRealtimeTransportHooksEnabled(true)
   return () => {
     if (!observerActive) return
     observerActive = false
+    unregisterNativeAccount()
     target.removeEventListener('message', onConfig)
     target.removeEventListener('message', onArchivePolicy)
     target.removeEventListener('message', onArchiveAssetFetch)
@@ -2009,11 +2456,18 @@ export function installTransportObserver(
     shared.active.delete(marker)
     if (shared.active.size === 0) {
       // Only undo our own chain; do not clobber an unrelated site's newer hook.
-      if (currentDescriptor?.get && shared.fetchGetters.has(currentDescriptor.get as () => typeof target.fetch)) {
+      if (
+        currentDescriptor?.get &&
+        shared.fetchGetters.has(currentDescriptor.get as () => typeof target.fetch)
+      ) {
         if (shared.originalFetch) Object.defineProperty(target, 'fetch', shared.originalFetch)
-        else Object.defineProperty(target, 'fetch', {
-          configurable: true, enumerable: true, writable: true, value: shared.hostFetch,
-        })
+        else
+          Object.defineProperty(target, 'fetch', {
+            configurable: true,
+            enumerable: true,
+            writable: true,
+            value: shared.hostFetch,
+          })
       }
       if (shared.xhrOpens.has(OriginalXHR.prototype.open))
         OriginalXHR.prototype.open = shared.originalXhrOpen
@@ -2027,9 +2481,13 @@ export function installTransportObserver(
     } else {
       if (currentDescriptor?.get === ownFetchGetter) {
         if (originalFetchDescriptor) Object.defineProperty(target, 'fetch', originalFetchDescriptor)
-        else Object.defineProperty(target, 'fetch', {
-          configurable: true, writable: true, enumerable: true, value: fetchHost,
-        })
+        else
+          Object.defineProperty(target, 'fetch', {
+            configurable: true,
+            writable: true,
+            enumerable: true,
+            value: fetchHost,
+          })
       }
       if (OriginalXHR.prototype.open === wrappedXhrOpen) OriginalXHR.prototype.open = originalOpen
       if (OriginalXHR.prototype.send === wrappedXhrSend) OriginalXHR.prototype.send = originalSend

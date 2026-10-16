@@ -5,6 +5,11 @@
  * silently lost. No application source/owner information is interpreted. */
 export type ArchiveCloneNode = unknown
 
+/** Logical source depth; tagged JSON adds up to three edges per source edge. */
+export const ARCHIVE_CLONE_MAX_DEPTH = 150
+/** Object/Array/Map wrappers add three levels; a tagged scalar adds one. */
+export const ARCHIVE_CLONE_JSON_MAX_DEPTH = ARCHIVE_CLONE_MAX_DEPTH * 3 + 1
+
 const safeBytes = (buffer: ArrayBuffer | Uint8Array): Uint8Array =>
   buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer)
 function toBase64(data: ArrayBuffer | Uint8Array): string {
@@ -48,7 +53,8 @@ const isPlain = (value: object) => {
 export async function encodeArchiveClone(value: unknown): Promise<ArchiveCloneNode> {
   const visited = new Set<object>()
   async function encode(input: unknown, depth: number): Promise<ArchiveCloneNode> {
-    if (depth > 150) throw new Error('Archive structured data exceeds maximum nesting depth')
+    if (depth > ARCHIVE_CLONE_MAX_DEPTH)
+      throw new Error('Archive structured data exceeds maximum nesting depth')
     if (input === undefined) return ['undefined']
     if (input === null || typeof input === 'string' || typeof input === 'boolean') return input
     if (typeof input === 'number')
@@ -100,7 +106,8 @@ export async function encodeArchiveClone(value: unknown): Promise<ArchiveCloneNo
 
 export function decodeArchiveClone(value: ArchiveCloneNode): unknown {
   function decode(input: unknown, depth: number): unknown {
-    if (depth > 150) throw new Error('Encoded archive structure exceeds maximum nesting depth')
+    if (depth > ARCHIVE_CLONE_MAX_DEPTH)
+      throw new Error('Encoded archive structure exceeds maximum nesting depth')
     if (!Array.isArray(input)) {
       if (
         input === null ||

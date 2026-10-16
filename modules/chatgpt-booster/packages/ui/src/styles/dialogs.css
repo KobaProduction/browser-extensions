@@ -1,0 +1,105 @@
+.booster-dialog {
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+  color: var(--card-foreground);
+  outline: none;
+  box-shadow: 0 20px 60px rgb(0 0 0 / 30%);
+  font-size: 14px;
+  pointer-events: auto;
+}
+.booster-dialog .booster-control-center {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.booster-dialog-wide {
+  width: min(1220px, calc(100vw - 32px));
+  height: min(860px, calc(100dvh - 32px));
+  overflow: hidden;
+}
+.booster-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 64px;
+  padding: 12px 18px;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.booster-section-header strong {
+  font-size: 15px;
+}
+.booster-section-header p {
+  margin: 3px 0 0;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.booster-form-body {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  line-height: 1.5;
+}
+.booster-form-body h2,
+.booster-capture-settings h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+}
+.booster-form-body > label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.booster-checkboxes {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  margin: 0;
+}
+.booster-checkboxes label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.booster-export-suboptions {
+  display: grid;
+  gap: 8px;
+  margin-inline-start: 22px;
+  padding-inline-start: 12px;
+  border-inline-start: 1px solid var(--border);
+}
+.booster-note {
+  margin: 8px 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.booster-notice {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.booster-error {
+  margin: 8px 12px;
+  padding: 8px 10px;
+  border: 1px solid #c2410c;
+  border-radius: 8px;
+  color: var(--foreground);
+  font-size: 12px;
+  line-height: 1.5;
+}

@@ -1,0 +1,336 @@
+/* Canonical archive maintenance is a manual-only tool. It never consumes the
+   Reader's grid row or changes the document scroll position. */
+.booster-reader {
+  position: relative;
+}
+.booster-reader-heading {
+  min-width: 0;
+  justify-content: flex-start;
+}
+.booster-reader-heading > div {
+  min-width: 0;
+}
+.booster-reader-heading strong {
+  display: block;
+  line-height: 1.25;
+}
+.booster-reader > .booster-section-header > .booster-header-actions {
+  flex: 0 0 auto;
+  gap: 6px;
+}
+.booster-reader-tools {
+  position: relative;
+}
+.booster-maintenance-backdrop {
+  position: absolute;
+  z-index: 18;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: clamp(12px, 3vw, 28px);
+  background: rgb(0 0 0 / 70%);
+}
+.booster-maintenance-widget {
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 570px);
+  max-height: min(700px, 100%);
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--background);
+  box-shadow: 0 24px 70px rgb(0 0 0 / 35%);
+  color: var(--foreground);
+  font: inherit;
+}
+.booster-maintenance-heading {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 15px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.booster-maintenance-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 11px;
+}
+.booster-maintenance-title > div {
+  min-width: 0;
+}
+.booster-maintenance-title h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.booster-maintenance-title p {
+  margin: 3px 0 0;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.booster-maintenance-content {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 16px 18px;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.booster-maintenance-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.booster-maintenance-stats > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--muted);
+}
+.booster-maintenance-stats span {
+  font-size: 10px;
+  color: var(--muted-foreground);
+  line-height: 1.4;
+}
+.booster-maintenance-stats strong {
+  font-size: 20px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.booster-maintenance-section {
+  display: grid;
+  gap: 11px;
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.booster-maintenance-section-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.booster-maintenance-section h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+}
+.booster-maintenance-section p,
+.booster-maintenance-result p,
+.booster-maintenance-progress p {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.booster-maintenance-section .booster-maintenance-warning {
+  color: var(--foreground);
+  border-left: 2px solid #d97706;
+  padding-left: 10px;
+}
+.booster-maintenance-widget .booster-maintenance-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--muted-foreground);
+  line-height: 1.5;
+  cursor: pointer;
+}
+.booster-maintenance-widget .booster-maintenance-check input {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  min-height: 16px;
+  margin: 1px 0 0;
+  padding: 0;
+  accent-color: var(--primary);
+}
+.booster-maintenance-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.booster-maintenance-actions button {
+  flex: 1 1 170px;
+  min-width: 0;
+}
+
+.booster-maintenance-section > button {
+  justify-self: start;
+  max-width: 100%;
+}
+.booster-maintenance-loading,
+.booster-maintenance-progress,
+.booster-maintenance-result {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.booster-maintenance-result svg,
+.booster-maintenance-progress svg {
+  flex: 0 0 auto;
+}
+.booster-maintenance-result strong,
+.booster-maintenance-progress strong {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 12px;
+}
+.booster-maintenance-error {
+  margin: 0;
+  padding: 10px;
+  border: 1px solid #c2410c;
+  border-radius: 8px;
+  color: var(--foreground);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.booster-maintenance-footer {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+}
+@media (max-width: 620px) {
+  .booster-maintenance-backdrop {
+    padding: 8px;
+  }
+  .booster-maintenance-heading {
+    padding: 12px;
+  }
+  .booster-maintenance-content {
+    padding: 12px;
+  }
+  .booster-maintenance-stats strong {
+    font-size: 17px;
+  }
+  .booster-maintenance-stats > div {
+    padding: 8px;
+  }
+  .booster-reader > .booster-section-header {
+    padding: 8px 10px;
+  }
+}
+.booster-maintenance-owner-list {
+  display: grid;
+  gap: 8px;
+  max-height: 290px;
+  overflow-y: auto;
+}
+.booster-maintenance-owner-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.booster-maintenance-owner-row > input[type="checkbox"] {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  padding: 0;
+  accent-color: var(--primary);
+}
+.booster-maintenance-owner-description {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+.booster-maintenance-owner-description > strong {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.booster-maintenance-owner-description > span,
+.booster-maintenance-owner-caution {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.booster-maintenance-owner-description details {
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.booster-maintenance-owner-description summary {
+  cursor: pointer;
+}
+.booster-maintenance-owner-description code {
+  display: block;
+  margin-top: 5px;
+  font:
+    10px / 1.4 ui-monospace,
+    monospace;
+  overflow-wrap: anywhere;
+}
+.booster-maintenance-owner-description small {
+  display: block;
+  margin-top: 6px;
+}
+.booster-maintenance-link {
+  justify-self: start;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 11px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.booster-maintenance-link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Optional manual canonical backup tools never take over the Reader surface. */
+.booster-maintenance-backup-tools > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.booster-maintenance-backup-tools > p {
+  margin-block: 10px;
+}
+.booster-maintenance-backup-restore {
+  display: grid;
+  gap: 12px;
+  margin-block-start: 14px;
+}
+.booster-maintenance-backup-restore > label {
+  display: grid;
+  gap: 8px;
+}
+.booster-maintenance-backup-restore input[type="file"] {
+  max-width: 100%;
+}
+
+.booster-maintenance-actions button small {
+  display: block;
+  font-size: 10px;
+  opacity: 0.8;
+}

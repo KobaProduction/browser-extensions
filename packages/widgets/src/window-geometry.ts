@@ -23,21 +23,32 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value))
 }
 export function workspaceRect(value: WorkspaceRatios, viewport: Viewport): WorkspaceRect {
-  const minWidth = Math.min(560, Math.max(320, viewport.width - 24))
-  const minHeight = Math.min(420, Math.max(280, viewport.height - 24))
-  const width = clamp(
-    viewport.width * value.widthRatio,
-    minWidth,
-    Math.max(minWidth, viewport.width - 24),
-  )
+  const finite = (ratio: number, fallback: number) => (Number.isFinite(ratio) ? ratio : fallback)
+  const viewportWidth = Number.isFinite(viewport.width) ? Math.max(0, viewport.width) : 0
+  const viewportHeight = Number.isFinite(viewport.height) ? Math.max(0, viewport.height) : 0
+  const insetX = Math.min(8, viewportWidth / 2),
+    insetY = Math.min(8, viewportHeight / 2)
+  const maxWidth = Math.max(0, viewportWidth - insetX * 2)
+  const maxHeight = Math.max(0, viewportHeight - insetY * 2)
+  // A preferred minimum must never become larger than the available viewport.
+  // This same rectangle is used for rendering, pointer motion and persistence.
+  const width = clamp(viewportWidth * finite(value.widthRatio, 0.72), Math.min(560, maxWidth), maxWidth)
   const height = clamp(
-    viewport.height * value.heightRatio,
-    minHeight,
-    Math.max(minHeight, viewport.height - 24),
+    viewportHeight * finite(value.heightRatio, 0.82),
+    Math.min(420, maxHeight),
+    maxHeight,
   )
   return {
-    x: clamp(viewport.width * value.xRatio, 8, Math.max(8, viewport.width - width - 8)),
-    y: clamp(viewport.height * value.yRatio, 8, Math.max(8, viewport.height - height - 8)),
+    x: clamp(
+      viewportWidth * finite(value.xRatio, 0.08),
+      insetX,
+      Math.max(insetX, viewportWidth - width - insetX),
+    ),
+    y: clamp(
+      viewportHeight * finite(value.yRatio, 0.08),
+      insetY,
+      Math.max(insetY, viewportHeight - height - insetY),
+    ),
     width,
     height,
   }

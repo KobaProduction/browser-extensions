@@ -1,8 +1,11 @@
 {
   "name": "@chatgpt-booster/userscript",
-  "version": "2.0.19",
+  "version": "2.0.20",
   "private": true,
   "type": "module",
+  "exports": {
+    "./services": "./src/services.ts"
+  },
   "scripts": {
     "build": "bun ../../../../scripts/build.ts --module chatgpt-booster --target=userscript",
     "dev": "bun ../../../../scripts/build.ts --module chatgpt-booster --target=userscript --channel=dev --build-number=1",

@@ -24,6 +24,7 @@
     "registry": "https://npm.pkg.github.com"
   },
   "dependencies": {
+    "@kobaproduction/browser-core": "workspace:*",
     "dexie": "^4.4.6"
   }
 }

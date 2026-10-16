@@ -1,2 +1,5 @@
+export type { ApplicationIdentity } from './application'
 export type { ControlCenter, ControlCenterOptions } from './mount'
 export { mountControlCenter } from './mount'
+export type { BrowserToolsPopupOptions } from './popup'
+export { mountBrowserToolsPopup } from './popup'

@@ -80,7 +80,7 @@ function memoryDriver(previous: ActiveMigrationGeneration | null = null) {
     async transform(items: readonly string[], generation: string) {
       return items.map((key) => ({
         store: 'staged',
-        value: { key: generation + ':' + key, generation },
+        value: { key: `${generation}:${key}`, generation },
       }))
     },
   }

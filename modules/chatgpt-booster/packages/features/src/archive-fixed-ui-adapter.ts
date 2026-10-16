@@ -1,10 +1,13 @@
-import {
-  buildArchiveThread, currentConversationId, currentProjectId, currentConversationTitle, currentProjectTitle,
-} from '@chatgpt-booster/chatgpt'
-import type { ArchiveDataAdapter, ArchiveMessageView } from '@chatgpt-booster/ui'
-import type { ConversationStateStore } from './conversation-state'
+import { buildArchiveThread, currentConversationId, currentProjectId } from '@chatgpt-booster/chatgpt'
+import type { ArchiveDataAdapter, ArchiveMessageView, ArchiveThreadWindow } from '@chatgpt-booster/ui'
+import type { ArchiveMessageV1 } from '@kobaproduction/browser-archive'
+import { DEFAULT_ARCHIVE_EXPORT_PIPELINE } from './archive-export'
 import type { FixedChatGptCapture } from './archive-fixed-runtime'
+import { chatGptArchiveRecord } from './archive-message-adapter'
+import { sourceScopeContext } from './archive-scope-context'
+import { ConversationArchiveWorkspace } from './archive-workspace'
 import { normalizeConversationMessage } from './conversation-records'
+import type { ConversationStateStore } from './conversation-state'
 
 /**
  * Only live archive facade. Historical native v4 is never opened for Reader,
@@ -13,7 +16,15 @@ import { normalizeConversationMessage } from './conversation-records'
 export function createFixedArchiveUiAdapter(
   capture: FixedChatGptCapture,
   memory: ConversationStateStore,
+  workspace = new ConversationArchiveWorkspace(memory, capture),
 ): ArchiveDataAdapter {
+  const presentationRecord = (
+    source: { raw: Record<string, unknown>; observedAtMs: number; normalized?: ArchiveMessageV1 },
+    id: string,
+  ) =>
+    source.normalized
+      ? chatGptArchiveRecord(source.raw, source.normalized)
+      : normalizeConversationMessage(source.raw, id, null, source.observedAtMs)
   const account = () => {
     const id = memory.verifiedAccountId()
     if (!id) throw Error('Unverified ChatGPT account')
@@ -24,114 +35,442 @@ export function createFixedArchiveUiAdapter(
     if (memory.verifiedAccountId() !== owner || memory.accountEpoch() !== epoch)
       throw Error('Owner changed during saved archive read')
   }
+  const listProjects = async () => {
+    const owner = account(),
+      epoch = memory.accountEpoch()
+    const saved = await capture.listSavedProjects()
+    guard(owner, epoch)
+    const projects = new Map(saved.map((project) => [project.projectId, project]))
+    for (const project of memory.listProjects())
+      projects.set(project.projectId, { projectId: project.projectId, title: project.title })
+    return [...projects.values()].map(({ projectId, title }) => ({ projectId, title }))
+  }
+  const readSavedWindow = async (
+    id: string,
+    cursor: Parameters<NonNullable<ArchiveDataAdapter['getThreadWindow']>>[1],
+    direction: 'older' | 'newer' | 'first' | 'middle' = 'older',
+    request?: Parameters<NonNullable<ArchiveDataAdapter['getThreadWindow']>>[3],
+  ) => {
+    const owner = account(),
+      epoch = memory.accountEpoch()
+    const revision = await capture.sourceRevision(id)
+    const instanceId = await capture.sourceInstanceId(id)
+    if (request?.expectedRevision !== undefined && request.expectedRevision !== revision)
+      throw Error('archive.error.sourceChanged')
+    if (request?.expectedInstanceId && request.expectedInstanceId !== instanceId)
+      throw Error('archive.error.sourceChanged')
+    if (request?.expectedAccountId && request.expectedAccountId !== owner)
+      throw Error('Owner mismatch for saved Dexie window')
+    if (request?.signal?.aborted) throw Error('Reader cancelled')
+    const [rows, total] = await Promise.all([
+      capture.windowConversation(id, direction, cursor?.messageId),
+      capture.savedCount(id),
+    ])
+    guard(owner, epoch)
+    if (request?.signal?.aborted) throw Error('Reader cancelled')
+    const records = rows.map((item) => {
+      const record = presentationRecord(item, id)
+      if (!record) throw Error('Cannot decode saved canonical source')
+      return record
+    })
+    const first = rows[0]?.id,
+      last = rows.at(-1)?.id
+    const [hasOlder, hasNewer] = await Promise.all([
+      first ? capture.hasMessagesBefore(id, first) : false,
+      last ? capture.hasMessagesAfter(id, last) : false,
+    ])
+    if (
+      (await capture.sourceRevision(id)) !== revision ||
+      (await capture.sourceInstanceId(id)) !== instanceId
+    )
+      throw Error('archive.error.sourceChanged')
+    guard(owner, epoch)
+    // Cursor identity is stable; ordering is the provider's source timestamp
+    // projection. Missing timestamps remain explicitly unsequenced.
+    return {
+      thread: buildArchiveThread(records, { unknownTimeLast: true }),
+      olderCursor: first ? { sourceCreateTime: null, messageId: first } : null,
+      newerCursor: last ? { sourceCreateTime: null, messageId: last } : null,
+      hasOlderStored: hasOlder,
+      hasNewerStored: hasNewer,
+      loadedRecordCount: rows.length,
+      totalKnownRecordCount: total,
+      hasUnsequencedRecords: records.some((record) => record.createTime === null),
+      source: 'saved' as const,
+      sourceRevision: revision,
+      sourceInstanceId: instanceId,
+      accountId: owner,
+    }
+  }
+  const readWindow = async (
+    id: string,
+    cursor: Parameters<NonNullable<ArchiveDataAdapter['getThreadWindow']>>[1],
+    direction: 'older' | 'newer' | 'first' | 'middle' = 'older',
+    request?: Parameters<NonNullable<ArchiveDataAdapter['getThreadWindow']>>[3],
+  ): Promise<ArchiveThreadWindow> => {
+    if (request?.source === 'saved') return readSavedWindow(id, cursor, direction, request)
+    const owner = account(),
+      epoch = memory.accountEpoch()
+    if (request?.expectedAccountId && request.expectedAccountId !== owner)
+      throw Error('archive.error.auth')
+    await workspace.open(id)
+    guard(owner, epoch)
+    if (request?.signal?.aborted) throw new DOMException('Cancelled', 'AbortError')
+    const view = workspace.window(id, direction, cursor?.messageId)
+    const first = view.records[0],
+      last = view.records.at(-1)
+    return {
+      thread: buildArchiveThread(view.records, { unknownTimeLast: true }),
+      olderCursor: first ? { sourceCreateTime: first.createTime, messageId: first.messageId } : null,
+      newerCursor: last ? { sourceCreateTime: last.createTime, messageId: last.messageId } : null,
+      hasOlderStored: view.hasOlder,
+      hasNewerStored: view.hasNewer,
+      loadedRecordCount: view.records.length,
+      totalKnownRecordCount: view.total,
+      hasUnsequencedRecords: view.records.some((record) => record.createTime === null),
+      source: 'live',
+      sourceRevision: null,
+      sourceInstanceId: null,
+      accountId: owner,
+    }
+  }
   return {
+    liveConversations: () => {
+      if (!memory.verifiedAccountId()) return []
+      const byId = new Map(workspace.catalog().map((item) => [item.conversationId, item]))
+      const id = current(),
+        header = id ? memory.header(id) : undefined
+      if (id && header)
+        byId.set(id, { conversationId: id, projectId: header.projectId, title: header.title })
+      return [...byId.values()].map((item) => ({
+        ...item,
+        updatedAt: null,
+        lastSeenAt: 0,
+        archiveState: 'partial' as const,
+        branchSourceConversationId: null,
+        branchSourceTitle: null,
+      }))
+    },
+    workspaceStatus: (id) => workspace.status(id),
+    retryWorkspace: (id) => workspace.retry(id),
+    getBranchPath: async (id, tipId) => {
+      await workspace.open(id)
+      return workspace.branchPath(id, tipId)
+    },
+    getRangeMessageIds: async (id, firstId, lastId) => {
+      await workspace.open(id)
+      return workspace.range(id, firstId, lastId)
+    },
+    getTimeline: async (id) => {
+      const owner = account(),
+        epoch = memory.accountEpoch()
+      await workspace.open(id)
+      const metadata = workspace.records(id).map((record) => ({
+        id: record.messageId,
+        parentId: record.parentId,
+        parentKnown: Object.hasOwn((record.raw.metadata ?? {}) as object, 'parent_id'),
+        role: record.role,
+        channel: record.channel,
+        recipient: record.recipient,
+        preview: String(
+          (record.raw.content as { parts?: unknown[] })?.parts
+            ?.filter((part) => typeof part === 'string')
+            .join('') ?? '',
+        ).slice(0, 200),
+      }))
+      guard(owner, epoch)
+      const byId = new Map(metadata.map((message) => [message.id, message]))
+      const visible = new Set(
+        metadata
+          .filter(
+            (message) =>
+              message.role === 'user' ||
+              (message.role === 'assistant' &&
+                (!message.channel || message.channel === 'final') &&
+                (!message.recipient || message.recipient === 'all')),
+          )
+          .map((message) => message.id),
+      )
+      return metadata
+        .filter((message) => visible.has(message.id))
+        .map((message) => {
+          let parentId = message.parentId
+          let uncertain = !message.parentKnown
+          const seen = new Set([message.id])
+          while (parentId && byId.has(parentId) && !visible.has(parentId) && !seen.has(parentId)) {
+            seen.add(parentId)
+            const intermediate = byId.get(parentId)
+            if (!intermediate) {
+              uncertain = true
+              break
+            }
+            if (!intermediate.parentKnown) uncertain = true
+            parentId = intermediate.parentId
+          }
+          uncertain ||= Boolean(parentId && (!visible.has(parentId) || seen.has(parentId)))
+          return {
+            id: message.id,
+            key: JSON.stringify([owner, id, message.id]),
+            parentId: uncertain ? null : parentId,
+            label: message.role === 'user' ? 'User' : 'Assistant',
+            preview: message.preview,
+            uncertain,
+          }
+        })
+    },
+    liveSavedUpdates: true,
+    subscribeExportChanges: (id, listener) => {
+      const saved = capture.subscribeSaved((changed) => {
+        if (changed === null || changed === id) listener()
+      })
+      const live = workspace.subscribe((changed) => {
+        if (!changed || changed === id) listener()
+      })
+      return () => {
+        saved()
+        live()
+      }
+    },
+    getMessageVersions: async (id, messageId) => {
+      const owner = account(),
+        epoch = memory.accountEpoch()
+      const versions = await capture.messageVersions(id, messageId)
+      guard(owner, epoch)
+      return versions.map((version) => {
+        const record = presentationRecord(version, id)
+        if (!record) throw Error('Source variant cannot be decoded')
+        return {
+          observedAtMs: version.observedAtMs,
+          decision: version.decision,
+          thread: buildArchiveThread([record]),
+        }
+      })
+    },
     archiveGeneration: undefined,
     collectionInsideExportOnly: false,
     currentConversationId: current,
-    currentProjectId: () => currentProjectId() ?? null,
+    currentProjectId: () =>
+      memory.verifiedAccountId() ? (memory.header(current() ?? '')?.projectId ?? null) : null,
     currentAccountId: () => memory.verifiedAccountId(),
-    getCurrentContext: async () => ({
-      conversationId: current(), conversationTitle: currentConversationTitle() ?? null,
-      projectId: currentProjectId() ?? null, projectTitle: currentProjectTitle(currentProjectId() ?? '') ?? null,
-    }),
-    subscribeContextChange: handler => memory.subscribe(() => handler()),
+    getCurrentContext: async () => {
+      const owner = memory.verifiedAccountId(),
+        epoch = memory.accountEpoch()
+      const empty = {
+        conversationId: null,
+        conversationTitle: null,
+        projectId: null,
+        projectTitle: null,
+      }
+      if (!owner) return empty
+      const id = current(),
+        routeProject = currentProjectId()
+      const [conversations, projects] = await Promise.all([
+        capture.listSavedConversations(),
+        listProjects(),
+      ])
+      guard(owner, epoch)
+      const source = {
+        ownerId: owner,
+        nativeConversation: (candidate: string) => memory.header(candidate),
+        savedConversation: (candidate: string) =>
+          conversations.find((value) => value.conversationId === candidate),
+        savedProject: (candidate: string) => projects.find((value) => value.projectId === candidate),
+        currentNativeProjectId: id ? (memory.header(id)?.projectId ?? null) : null,
+      }
+      const context = id
+        ? sourceScopeContext({ scope: 'conversation', id, title: null }, source)
+        : routeProject
+          ? sourceScopeContext({ scope: 'project', id: routeProject, title: null }, source)
+          : undefined
+      if (!context) return empty
+      const projectId = context.scope === 'project' ? context.id : (context.projectId ?? null)
+      return {
+        conversationId: context.scope === 'conversation' ? context.id : null,
+        conversationTitle: context.scope === 'conversation' ? context.title : null,
+        projectId,
+        projectTitle: projects.find((value) => value.projectId === projectId)?.title ?? null,
+      }
+    },
+    subscribeContextChange: (handler) => {
+      const state = memory.subscribe(() => handler()),
+        saved = capture.subscribeSaved(() => handler())
+      return () => {
+        state()
+        saved()
+      }
+    },
     getCollectionState: () => capture.collectionSession.snapshot(),
     collectCurrent: () => capture.collectCurrent(),
     stopCollection: () => capture.stopCollection(),
     clearAll: () => Promise.reject(Error('Automatic archive deletion is disabled')),
-    getConversation: async id => {
-      const owner = account(), epoch = memory.accountEpoch()
-      const source = (await capture.listSavedConversations()).find(x => x.conversationId === id)
+    getConversation: async (id) => {
+      const owner = account(),
+        epoch = memory.accountEpoch()
+      const live = memory.header(id) ?? workspace.context(id)
+      const source =
+        live ?? (await capture.listSavedConversations()).find((x) => x.conversationId === id)
+      const origin = live
+        ? capture.cachedSavedBranchOrigin(id)
+        : source
+          ? await capture.savedBranchOrigin(id)
+          : null
       guard(owner, epoch)
-      return source ? {
-        ...source, updatedAt: null, lastSeenAt: 0, archiveState: 'partial',
-        branchSourceConversationId: null, branchSourceTitle: null,
-      } : undefined
+      return source
+        ? {
+            ...source,
+            updatedAt: null,
+            lastSeenAt: 0,
+            archiveState: 'partial',
+            branchSourceConversationId: origin?.conversationId ?? null,
+            branchSourceTitle: origin?.title ?? null,
+          }
+        : undefined
     },
-    listProjects: () => capture.listSavedProjects().then(list =>
-      list.map(x => ({ projectId: x.projectId, title: x.title }))),
+    listProjects,
     listConversations: async () => {
-      const owner = account(), epoch = memory.accountEpoch()
+      const owner = account(),
+        epoch = memory.accountEpoch()
       const source = await capture.listSavedConversations()
+      const byId = new Map(source.map((item) => [item.conversationId, item]))
+      for (const item of workspace.catalog()) byId.set(item.conversationId, item)
+      for (const snapshot of memory.listSnapshots())
+        byId.set(snapshot.conversationId, {
+          conversationId: snapshot.conversationId,
+          projectId: snapshot.projectId,
+          title: snapshot.title,
+        })
       guard(owner, epoch)
-      return source.map(x => ({
-        ...x, updatedAt: null, lastSeenAt: 0, archiveState: 'partial' as const,
-        branchSourceConversationId: null, branchSourceTitle: null,
-      }))
+      const result = []
+      for (const item of byId.values()) {
+        const origin = capture.cachedSavedBranchOrigin(item.conversationId)
+        result.push({
+          ...item,
+          updatedAt: null,
+          lastSeenAt: 0,
+          archiveState: 'partial' as const,
+          branchSourceConversationId: origin.conversationId,
+          branchSourceTitle: origin.title,
+        })
+      }
+      return result
     },
-    listMessages: async id => {
-      const owner = account(), epoch = memory.accountEpoch()
-      const items = await capture.readConversation(id)
+    listMessages: async (id) => {
+      const owner = account(),
+        epoch = memory.accountEpoch()
+      await workspace.open(id)
       guard(owner, epoch)
-      return items.map(item => {
-        const normalized = normalizeConversationMessage(item.raw, id, null, item.observedAtMs)
-        if (!normalized) throw Error('Saved source cannot be normalized for the fixed Reader')
-        return normalized as ArchiveMessageView
-      })
+      return workspace.records(id) as ArchiveMessageView[]
     },
-    getThreadWindow: async (id, cursor, direction = 'older', request) => {
-      const owner = account(), epoch = memory.accountEpoch()
+    getThreadWindow: readWindow,
+    getPositionWindow: (id, position, request) =>
+      readWindow(id, null, position === 'latest' ? 'older' : position, request),
+    getMessageWindow: async (id, messageId, request) => {
+      if (request?.source !== 'saved') {
+        const owner = account(),
+          epoch = memory.accountEpoch()
+        if (request?.expectedAccountId && request.expectedAccountId !== owner)
+          throw Error('archive.error.auth')
+        await workspace.open(id)
+        guard(owner, epoch)
+        if (request?.signal?.aborted) throw new DOMException('Cancelled', 'AbortError')
+        const view = workspace.window(id, 'older', messageId, true)
+        const first = view.records[0],
+          last = view.records.at(-1)
+        return {
+          thread: buildArchiveThread(view.records),
+          olderCursor: first ? { sourceCreateTime: first.createTime, messageId: first.messageId } : null,
+          newerCursor: last ? { sourceCreateTime: last.createTime, messageId: last.messageId } : null,
+          hasOlderStored: view.hasOlder,
+          hasNewerStored: view.hasNewer,
+          loadedRecordCount: view.records.length,
+          totalKnownRecordCount: view.total,
+          hasUnsequencedRecords: view.records.some((record) => record.createTime === null),
+          focusedMessageId: messageId,
+          source: 'live',
+          sourceRevision: null,
+          sourceInstanceId: null,
+          accountId: owner,
+        }
+      }
+      const owner = account(),
+        epoch = memory.accountEpoch()
+      const revision = await capture.sourceRevision(id)
+      const instanceId = await capture.sourceInstanceId(id)
+      if (request?.expectedRevision !== undefined && request.expectedRevision !== revision)
+        throw Error('archive.error.sourceChanged')
+      if (request?.expectedInstanceId && request.expectedInstanceId !== instanceId)
+        throw Error('archive.error.sourceChanged')
       if (request?.expectedAccountId && request.expectedAccountId !== owner)
-        throw Error('Owner mismatch for saved Dexie window')
-      if (request?.signal?.aborted) throw Error('Reader cancelled')
+        throw Error('archive.error.auth')
+      if (request?.signal?.aborted) throw new DOMException('Cancelled', 'AbortError')
       const [rows, total] = await Promise.all([
-        capture.windowConversation(id, direction, cursor?.messageId),
+        capture.windowAroundMessage(id, messageId),
         capture.savedCount(id),
       ])
       guard(owner, epoch)
-      if (request?.signal?.aborted) throw Error('Reader cancelled')
-      const records = rows.map(item => {
-        const record = normalizeConversationMessage(item.raw, id, null, item.observedAtMs)
-        if (!record) throw Error('Cannot decode saved canonical source')
+      if (request?.signal?.aborted) throw new DOMException('Cancelled', 'AbortError')
+      const records = rows.map((row) => {
+        const record = presentationRecord(row, id)
+        if (!record) throw Error('Cannot decode saved source')
         return record
       })
-      const first = rows[0]?.id, last = rows.at(-1)?.id
-      // Source message IDs are stable cursor keys; their ordering is not a
-      // fabricated proof of provider chronology or completeness.
+      const first = rows[0]?.id,
+        last = rows.at(-1)?.id
+      const [hasOlder, hasNewer] = await Promise.all([
+        first ? capture.hasMessagesBefore(id, first) : false,
+        last ? capture.hasMessagesAfter(id, last) : false,
+      ])
+      if (
+        (await capture.sourceRevision(id)) !== revision ||
+        (await capture.sourceInstanceId(id)) !== instanceId
+      )
+        throw Error('archive.error.sourceChanged')
+      guard(owner, epoch)
       return {
-        thread: buildArchiveThread(records, { unknownTimeLast: true }),
+        thread: buildArchiveThread(records),
         olderCursor: first ? { sourceCreateTime: null, messageId: first } : null,
         newerCursor: last ? { sourceCreateTime: null, messageId: last } : null,
-        hasOlderStored: Boolean(first && await capture.hasMessagesBefore(id, first)),
-        hasNewerStored: Boolean(last && await capture.hasMessagesAfter(id, last)),
-        loadedRecordCount: rows.length, totalKnownRecordCount: total,
-        hasUnsequencedRecords: true,
-        source: 'saved' as const, sourceRevision: null, sourceInstanceId: null, accountId: owner,
+        hasOlderStored: hasOlder,
+        hasNewerStored: hasNewer,
+        loadedRecordCount: rows.length,
+        totalKnownRecordCount: total,
+        hasUnsequencedRecords: records.some((record) => record.createTime === null),
+        focusedMessageId: messageId,
+        source: 'saved' as const,
+        sourceRevision: revision,
+        sourceInstanceId: instanceId,
+        accountId: owner,
       }
     },
-    getThread: async id => {
-      const owner = account(), epoch = memory.accountEpoch()
-      const items = await capture.readConversation(id)
+    getThread: async (id) => {
+      const owner = account(),
+        epoch = memory.accountEpoch()
+      await workspace.open(id)
       guard(owner, epoch)
-      return buildArchiveThread(items.map(item => {
-        const record = normalizeConversationMessage(item.raw, id, null, item.observedAtMs)
-        if (!record) throw Error('Saved source cannot be normalized')
-        return record
-      }))
+      return buildArchiveThread(workspace.records(id))
     },
-    getCoverage: async id => {
-      const owner = account(), epoch = memory.accountEpoch()
-      const count = await capture.savedCount(id)
+    getCoverage: async (id) => {
+      const owner = account(),
+        epoch = memory.accountEpoch()
+      await workspace.open(id)
+      const integrity = workspace.integrity(id),
+        count = workspace.status(id).loaded
       guard(owner, epoch)
       return {
-        conversationId: id, knownMessageCount: count,
-        hasOlderServerHistory: null, completeAtLastRead: false,
-        lastFullReadAt: null, storedStartMatchesCurrent: false,
-        storedLatestMatchesCurrent: false,
+        conversationId: id,
+        knownMessageCount: count,
+        integrity,
+        hasOlderServerHistory: integrity.start === 'verified' ? false : null,
+        oldestKnownVisibleMessageId: integrity.firstMessageId ?? null,
+        newestKnownVisibleMessageId: integrity.lastMessageId ?? null,
+        completeAtLastRead: integrity.chain === 'verified',
+        lastFullReadAt: null,
+        storedStartMatchesCurrent: false,
+        storedLatestMatchesCurrent: integrity.end === 'verified',
       }
     },
-    listExportFormats: () => [{
-      id: 'fixed-json-gzip', label: 'Fixed archive v1 — JSONL.gz',
-      mimeType: 'application/gzip', fileExtension: 'jsonl.gz', isDefault: true,
-    }],
-    exportConversation: async (id, options) => {
-      if (options.format !== 'fixed-json-gzip')
-        throw Error('Fixed archive exports only the lossless JSONL.gz contract')
-      const blob = await capture.exportConversation(id)
-      return {
-        blob, extension: 'jsonl.gz', packaged: true,
-        complete: false, includedAssets: 0, missingAssets: 0,
-      }
-    },
+    listExportFormats: () => DEFAULT_ARCHIVE_EXPORT_PIPELINE.listFormats(),
+    exportConversation: (id, options, signal, progress) =>
+      capture.exportUserConversation(id, options, signal, progress),
   }
 }

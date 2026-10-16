@@ -1,6 +1,8 @@
 import { createApp } from 'vue'
 import './lab.css'
 
+document.documentElement.classList.add('dark')
+
 function showLabFailure(error: unknown) {
   const root = document.getElementById('app')
   if (root) {

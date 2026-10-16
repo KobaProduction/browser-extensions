@@ -1,60 +1,6 @@
 /* Source-neutral metadata popover and JSON inspector shared by VK and ChatGPT. */
 .booster-meta-trigger {
-  display: inline-flex;
-  width: 28px;
-  height: 28px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  color: var(--muted-foreground);
-  cursor: help;
-  outline: none;
-}
-.booster-meta-trigger.is-clickable {
-  cursor: pointer;
-}
-.booster-meta-trigger:hover,
-.booster-meta-trigger:focus-visible {
-  background: var(--muted);
-  color: var(--foreground);
-}
-.booster-meta-trigger:focus-visible {
-  box-shadow: 0 0 0 2px var(--ring);
-}
-.booster-floating-popover {
-  position: fixed;
-  z-index: 2147483647;
-  inset: auto;
-  width: max-content;
-  min-width: 190px;
-  max-width: min(420px, calc(100vw - 16px));
-  margin: 0;
-  padding: 9px 10px;
-  border: 1px solid var(--border, rgb(148 163 184 / 26%));
-  border-radius: 10px;
-  background: var(--popover, #202020);
-  color: var(--popover-foreground, #f4f4f5);
-  box-shadow: 0 14px 38px rgb(0 0 0 / 42%);
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 1.45;
-  letter-spacing: normal;
-  white-space: normal;
-  pointer-events: none;
-}
-.booster-floating-popover:has(.booster-message-meta-body),
-.booster-floating-popover:has(.booster-tool-detail-popover) {
-  border-color: rgb(74 222 128 / 32%);
-  box-shadow:
-    0 14px 38px rgb(0 0 0 / 42%),
-    0 0 0 1px rgb(34 197 94 / 5%);
-}
-.booster-floating-popover.is-interactive {
-  pointer-events: auto;
-}
-.booster-floating-popover:not(:popover-open):not(.is-open) {
-  display: none;
+  flex-shrink: 0;
 }
 .booster-meta-lines {
   display: grid;
@@ -66,10 +12,14 @@
   font-size: 10px;
   font-weight: 600;
 }
+.booster-floating-tooltip .booster-meta-label {
+  color: inherit;
+  opacity: 0.75;
+}
 .booster-meta-value {
   min-width: 0;
   overflow-wrap: anywhere;
-  color: var(--popover-foreground);
+  color: inherit;
   font-variant-numeric: tabular-nums;
 }
 

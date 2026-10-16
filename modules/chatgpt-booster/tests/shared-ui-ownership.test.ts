@@ -1,17 +1,25 @@
-import { existsSync, readFileSync } from 'node:fs'
 import { expect, test } from 'bun:test'
-import { compileTemplate, parse } from 'vue/compiler-sfc'
+import { existsSync, readFileSync } from 'node:fs'
+import { compileScript, compileTemplate, parse } from 'vue/compiler-sfc'
 
 const ui = new URL('../packages/ui/src/', import.meta.url)
 const shared = new URL('../../../packages/ui/src/components/booster/', import.meta.url)
 
 const consumers: Record<string, string[]> = {
+  'ArchiveBrowser.vue': ['Button', 'Popover', 'Select', 'Collapsible'],
   'ArchiveRecord.vue': ['FloatingInfoPopover', 'JsonViewer', 'ModalSurface'],
   'BoosterOverlay.vue': ['ModalSurface'],
   'ControlCenterPanel.vue': ['ModalSurface'],
   'RecordMetaBadges.vue': ['FloatingInfoPopover'],
   'ScopeArchiveControl.vue': ['FloatingInfoPopover'],
-  'ToolInspector.vue': ['FloatingInfoPopover', 'JsonViewer'],
+  'ToolInspector.vue': [
+    'Dialog',
+    'DialogContent',
+    'DialogTitle',
+    'DialogTrigger',
+    'DialogClose',
+    'JsonViewer',
+  ],
 }
 
 test('ChatGPT composes reusable modal, popover and JSON UI from the shared package', () => {
@@ -29,16 +37,39 @@ test('ChatGPT composes reusable modal, popover and JSON UI from the shared packa
       expect(source).not.toContain(`from './${component}.vue'`)
       expect(descriptor.template?.content).toContain(`<${component}`)
     }
-    const compiled = compileTemplate({ source: descriptor.template?.content ?? '', filename: name, id: 'shared-ui-ownership' })
+    const compiled = compileTemplate({
+      source: descriptor.template?.content ?? '',
+      filename: name,
+      id: 'shared-ui-ownership',
+    })
     expect(compiled.errors).toHaveLength(0)
   }
+})
+
+test('Reader registry buttons survive TypeScript erasure as runtime components', () => {
+  const filename = 'ArchiveBrowser.vue'
+  const { descriptor } = parse(readFileSync(new URL(filename, ui), 'utf8'), { filename })
+  const script = compileScript(descriptor, { id: 'reader-runtime-components' })
+  expect(script.bindings.Button).toBe('setup-maybe-ref')
+  const template = compileTemplate({
+    source: descriptor.template?.content ?? '',
+    filename,
+    id: 'reader-runtime-components',
+    compilerOptions: { bindingMetadata: script.bindings },
+  })
+  expect(template.errors).toHaveLength(0)
+  expect(template.code).toContain('$setup["Button"]')
+  expect(template.code).not.toContain('_resolveComponent("Button")')
 })
 
 test('shared modal preserves floating behavior and native focus management', () => {
   const modal = readFileSync(new URL('ModalSurface.vue', shared), 'utf8')
   expect(modal).toContain('floating?: boolean')
   expect(modal).toContain('surfaceStyle?: Record<string, string>')
-  expect(modal).toContain('aria-modal')
-  expect(modal).toContain('onBeforeUnmount')
-  expect(modal).toContain('key(event: KeyboardEvent)')
+  expect(modal).toContain('<Dialog :open="true" :modal="!floating"')
+  expect(modal).toContain('<DialogContent')
+  expect(modal).toContain('<DialogTitle')
+  expect(modal).toContain(':style="surfaceStyle"')
+  expect(modal).toContain('@interact-outside="interactOutside"')
+  expect(modal).toContain("emit('close')")
 })

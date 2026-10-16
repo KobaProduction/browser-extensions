@@ -88,11 +88,9 @@ export class TransportObserverModule implements BoosterModule {
         console.warn('[ChatGPT Booster] Analytics persistence failed', error)
       })
     } else if (persistent) {
-      void Promise.all(details.map((detail) => persistent.recordTransport(detail))).catch(
-        (error) => {
-          console.warn('[ChatGPT Booster] Analytics persistence failed', error)
-        },
-      )
+      void Promise.all(details.map((detail) => persistent.recordTransport(detail))).catch((error) => {
+        console.warn('[ChatGPT Booster] Analytics persistence failed', error)
+      })
     }
 
     const telemetry = this.#telemetry

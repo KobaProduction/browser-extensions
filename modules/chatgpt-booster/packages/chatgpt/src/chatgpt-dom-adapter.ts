@@ -71,9 +71,7 @@ export function chatGptWorkSubagentUsageCount(root: ParentNode = document): numb
   return null
 }
 
-export function chatGptWorkSubagentActivity(
-  root: ParentNode = document,
-): ChatGptWorkSubagentActivity[] {
+export function chatGptWorkSubagentActivity(root: ParentNode = document): ChatGptWorkSubagentActivity[] {
   return includeSelf(root, WORK_SUBAGENT_ACTIVITY_SELECTOR).flatMap((element) => {
     const text = (element.textContent ?? '').trim()
     const status = parseChatGptWorkSubagentActivityText(text)
@@ -84,11 +82,35 @@ export function chatGptWorkSubagentActivity(
   })
 }
 
+function placementElement(root: ParentNode): HTMLElement | null {
+  // A native document/element can belong to another realm; global constructors may be absent.
+  return (root as Node).nodeType === 1 && typeof (root as Element).matches === 'function'
+    ? (root as HTMLElement)
+    : null
+}
+
 function includeSelf(root: ParentNode, selector: string): HTMLElement[] {
   const result: HTMLElement[] = []
-  if (root instanceof HTMLElement && root.matches(selector)) result.push(root)
+  const element = placementElement(root)
+  if (element?.matches(selector)) result.push(element)
   result.push(...root.querySelectorAll<HTMLElement>(selector))
   return result
+}
+
+/** Placement only: ChatGPT keeps inactive workspaces mounted with hidden ancestors. */
+export function isChatGptPlacementVisible(element: HTMLElement): boolean {
+  for (let node: HTMLElement | null = element; node; node = node.parentElement) {
+    if (node.hidden || node.getAttribute('aria-hidden') === 'true') return false
+    const style = node.ownerDocument.defaultView?.getComputedStyle(node)
+    if (
+      style?.display === 'none' ||
+      style?.visibility === 'hidden' ||
+      style?.visibility === 'collapse' ||
+      style?.contentVisibility === 'hidden'
+    )
+      return false
+  }
+  return true
 }
 
 function uniqueElements(elements: Iterable<HTMLElement>): HTMLElement[] {
@@ -114,8 +136,7 @@ function legacyNativeActions(section: HTMLElement): HTMLElement | null {
   const copy = section.querySelector<HTMLElement>('[data-testid="copy-turn-action-button"]')
   if (copy?.parentElement) return copy.parentElement
 
-  const role =
-    section.querySelector<HTMLElement>(LEGACY_MESSAGE_SELECTOR)?.dataset.messageAuthorRole
+  const role = section.querySelector<HTMLElement>(LEGACY_MESSAGE_SELECTOR)?.dataset.messageAuthorRole
   const selector =
     role === 'user'
       ? 'button[aria-label*="message" i], button[aria-label*="сообщение" i]'
@@ -145,32 +166,29 @@ function searchUnitActions(
   return rows.at(-1) ?? null
 }
 
-function metadataMountForActions(actions: HTMLElement): HTMLElement {
-  const more = [...actions.querySelectorAll<HTMLButtonElement>('button[aria-label]')].find(
-    (button) => /more actions|ещ[её] действия/i.test(button.getAttribute('aria-label') ?? ''),
-  )
-  return more?.parentElement ?? actions
-}
-
 const legacyTurnDomAdapter: ChatGptDomAdapter = {
   id: 'legacy-turn-v1',
   mutationAttributes: ['data-message-id', 'data-message-author-role', 'data-testid'],
   matches(root) {
-    if (root instanceof Element && root.closest('section[data-testid^="conversation-turn-"]'))
-      return true
-    return Boolean(root.querySelector(LEGACY_TURN_SELECTOR))
+    const owner = placementElement(root)?.closest<HTMLElement>(
+      'section[data-testid^="conversation-turn-"]',
+    )
+    return (
+      (!!owner && isChatGptPlacementVisible(owner)) ||
+      includeSelf(root, LEGACY_TURN_SELECTOR).some(isChatGptPlacementVisible)
+    )
   },
   findMessageTargets(root) {
     const result: ChatGptMessageTarget[] = []
     for (const section of includeSelf(root, LEGACY_TURN_SELECTOR)) {
+      if (!isChatGptPlacementVisible(section)) continue
       if (section.closest('#chatgpt-booster-root, [data-chatgpt-booster]')) continue
       const message = section.querySelector<HTMLElement>(LEGACY_MESSAGE_SELECTOR)
       const messageId = message?.dataset.messageId?.trim()
       const rawRole = message?.dataset.messageAuthorRole?.trim()
       const role = rawRole === 'user' || rawRole === 'assistant' ? rawRole : null
       const actions = legacyNativeActions(section)
-      const metadataMount =
-        section.querySelector<HTMLElement>('[data-conversation-screenshot-content]') ?? actions
+      const metadataMount = actions
       if (!message || !messageId || !role || !actions || !metadataMount) continue
       result.push({
         section,
@@ -188,7 +206,7 @@ const legacyTurnDomAdapter: ChatGptDomAdapter = {
     return element.closest<HTMLElement>('section[data-testid^="conversation-turn-"]')
   },
   findTurnRoots(root) {
-    return includeSelf(root, LEGACY_TURN_SELECTOR)
+    return includeSelf(root, LEGACY_TURN_SELECTOR).filter(isChatGptPlacementVisible)
   },
   latestAssistantTurn(root = document) {
     const turns = this.findTurnRoots(root).filter((turn) => this.isAssistantTurn(turn))
@@ -284,16 +302,19 @@ const searchUnitDomAdapter: ChatGptDomAdapter = {
     'aria-expanded',
   ],
   matches(root) {
-    if (root instanceof Element && root.closest('[data-turn-key]')) return true
-    return Boolean(
-      root.querySelector(
+    const owner = placementElement(root)?.closest<HTMLElement>('[data-turn-key]')
+    return (
+      (!!owner && isChatGptPlacementVisible(owner)) ||
+      includeSelf(
+        root,
         '[data-turn-key], [data-chatgpt-search-unit-key], [data-content-search-turn-key]',
-      ),
+      ).some(isChatGptPlacementVisible)
     )
   },
   findMessageTargets(root) {
     const result: ChatGptMessageTarget[] = []
     for (const unit of includeSelf(root, SEARCH_UNIT_SELECTOR)) {
+      if (!isChatGptPlacementVisible(unit)) continue
       if (unit.closest('#chatgpt-booster-root, [data-chatgpt-booster]')) continue
       const role = searchUnitRole(unit)
       if (!role) continue
@@ -310,9 +331,10 @@ const searchUnitDomAdapter: ChatGptDomAdapter = {
           : null) ?? searchUnitMessageId(unit)
       if (!messageId) continue
 
-      const actions = searchUnitActions(unit, section, role)
-      if (!actions) continue
-      const metadataMount = metadataMountForActions(actions)
+      const actions = searchUnitActions(unit, section, role) ?? unit
+      // Reuse the native action row for both user and assistant messages.
+      // A unit without actions still supplies a source-backed placement fallback.
+      const metadataMount = actions
       result.push({
         section,
         message,
@@ -329,7 +351,7 @@ const searchUnitDomAdapter: ChatGptDomAdapter = {
     return element.closest<HTMLElement>('[data-turn-key]')
   },
   findTurnRoots(root) {
-    return includeSelf(root, SEARCH_TURN_SELECTOR)
+    return includeSelf(root, SEARCH_TURN_SELECTOR).filter(isChatGptPlacementVisible)
   },
   latestAssistantTurn(root = document) {
     const turns = this.findTurnRoots(root).filter((turn) => this.isAssistantTurn(turn))
@@ -389,9 +411,7 @@ const searchUnitDomAdapter: ChatGptDomAdapter = {
     return turn.dataset.turnKey?.trim() || null
   },
   conversationAnchor(root) {
-    return root.querySelector<HTMLElement>(
-      'main [data-turn-key], main [data-chatgpt-search-unit-key]',
-    )
+    return root.querySelector<HTMLElement>('main [data-turn-key], main [data-chatgpt-search-unit-key]')
   },
   messageIds(turn) {
     const ids = new Set<string>()
@@ -445,9 +465,7 @@ export function chatGptDomAdapters(): readonly ChatGptDomAdapter[] {
   return adapters
 }
 
-export function resolveChatGptDomAdapter(
-  root: ParentNode = document,
-): ChatGptDomAdapter | undefined {
+export function resolveChatGptDomAdapter(root: ParentNode = document): ChatGptDomAdapter | undefined {
   return adapters.find((adapter) => adapter.matches(root))
 }
 
@@ -495,7 +513,18 @@ export function chatGptMessageBounds(root: ParentNode = document): {
 }
 
 export function chatGptRequestStatusAnchor(root: ParentNode = document): HTMLElement | null {
-  return resolveChatGptDomAdapter(root)?.requestStatusAnchor(root) ?? null
+  const native = resolveChatGptDomAdapter(root)?.requestStatusAnchor(root)
+  if (native && isChatGptPlacementVisible(native)) return native
+  // Work and new conversations can have no disclaimer or rendered turn yet.
+  // The composer supplies placement only; it never establishes generation state.
+  const editor = root.querySelector<HTMLElement>('#prompt-textarea')
+  const composer =
+    editor?.closest<HTMLElement>('form') ??
+    editor?.parentElement ??
+    [...root.querySelectorAll<HTMLElement>('form[data-chatgpt-composer]')].find(
+      isChatGptPlacementVisible,
+    )
+  return composer && isChatGptPlacementVisible(composer) ? composer : null
 }
 
 export function chatGptScrollHints(root: ParentNode = document): HTMLElement[] {
@@ -508,4 +537,6 @@ export function chatGptToolActivityRows(root: ParentNode): HTMLElement[] {
 
 export const CHATGPT_DOM_MUTATION_ATTRIBUTES = [
   ...new Set(adapters.flatMap((adapter) => [...adapter.mutationAttributes])),
+  'data-tool-call-id',
+  'data-call-id',
 ]

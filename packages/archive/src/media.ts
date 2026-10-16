@@ -20,10 +20,13 @@ export async function readArchiveMedia(
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) throw new Error('Invalid media limit')
   if (expectedBytes !== null && (!Number.isSafeInteger(expectedBytes) || expectedBytes < 0))
     throw new Error('Invalid expected media size')
-  if (!response.ok) throw new Error('Media HTTP ' + response.status)
-  const mime =
+  if (!response.ok) throw new Error(`Media HTTP ${response.status}`)
+  const mime = (
     (response.headers.get('content-type') || 'application/octet-stream').split(';', 1)[0] ??
-    'application/octet-stream'.trim().toLowerCase()
+    'application/octet-stream'
+  )
+    .trim()
+    .toLowerCase()
   if (mime === 'text/html' || mime === 'application/xhtml+xml')
     throw new Error('HTML returned instead of media')
   const lengthHeader = response.headers.get('content-length')

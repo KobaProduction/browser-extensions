@@ -1,0 +1,510 @@
+:host {
+  all: initial;
+  color: var(--foreground);
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  border-color: var(--border);
+}
+
+.booster-shell {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 2147483647;
+}
+
+.booster-button {
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--card-foreground);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 20%);
+  cursor: pointer;
+  font: 700 15px / 1 inherit;
+}
+
+.booster-panel {
+  width: 300px;
+  margin-bottom: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+  color: var(--card-foreground);
+  box-shadow: 0 18px 45px rgb(0 0 0 / 24%);
+}
+
+.booster-panel h2 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.booster-panel p {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.booster-control-center {
+  width: min(760px, calc(100vw - 32px));
+  margin-bottom: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--card);
+  color: var(--card-foreground);
+  box-shadow: 0 22px 60px rgb(0 0 0 / 28%);
+}
+
+.booster-control-header,
+.booster-control-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.booster-control-header {
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.booster-control-header strong {
+  font-size: 14px;
+}
+
+.booster-control-header p {
+  margin: 3px 0 0;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.booster-control-body {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.booster-loading {
+  padding: 18px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.booster-section-label {
+  padding: 2px 2px 0;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.booster-setting-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background);
+}
+
+.booster-setting-card-stack {
+  display: grid;
+  align-items: stretch;
+}
+
+.booster-setting-disabled {
+  opacity: 0.55;
+}
+
+.booster-setting-copy {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.booster-setting-copy b {
+  font-size: 12px;
+}
+
+.booster-setting-copy > span {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.booster-info-card {
+  padding: 11px 12px;
+  border-radius: 12px;
+  background: var(--muted);
+  color: var(--foreground);
+  font-size: 11px;
+}
+
+.booster-info-card ul {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0 18px;
+  padding: 0;
+  color: var(--muted-foreground);
+  line-height: 1.35;
+}
+
+.booster-control-footer {
+  padding-top: 2px;
+}
+
+.booster-save-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+
+.booster-overlay-root {
+  pointer-events: none;
+}
+
+.booster-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(0 0 0 / 38%);
+  backdrop-filter: none;
+  pointer-events: auto;
+}
+
+.booster-modal-surface {
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+}
+
+.booster-modal-surface .booster-control-center {
+  width: 100%;
+  margin: 0;
+}
+
+.booster-popup-host {
+  min-width: 360px;
+  background: var(--background);
+}
+
+.booster-stack-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background);
+}
+
+.booster-stack-card label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.booster-counter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 12px;
+  margin-top: 8px;
+  color: var(--muted-foreground);
+}
+
+.booster-counter-grid span {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.booster-counter-grid b {
+  color: var(--foreground);
+}
+
+.booster-header-copy {
+  min-width: 0;
+}
+
+.booster-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.booster-header-toggle-label {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.booster-settings-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 360px;
+}
+
+.booster-settings-nav {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: 12px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.booster-settings-content {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.booster-setting-card-flat {
+  padding: 0 0 10px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+}
+
+.booster-analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.booster-counter-card {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background);
+}
+
+.booster-counter-title {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.booster-disclosure {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  cursor: pointer;
+  text-align: left;
+}
+
+.booster-disclosure > span {
+  display: grid;
+  gap: 3px;
+}
+
+.booster-disclosure b {
+  font-size: 12px;
+}
+
+.booster-disclosure small {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.rotate-180 {
+  transform: rotate(180deg);
+}
+
+.booster-telemetry-body {
+  display: grid;
+  gap: 10px;
+  padding-top: 10px;
+}
+
+.booster-field {
+  display: grid;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.booster-telemetry-test-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.booster-test-success {
+  color: oklch(0.62 0.17 145);
+  font-size: 11px;
+}
+
+.booster-test-error {
+  min-width: 0;
+  overflow: hidden;
+  color: oklch(0.63 0.2 25);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 620px) {
+  .booster-control-center,
+  .booster-modal-surface {
+    width: calc(100vw - 20px);
+  }
+
+  .booster-settings-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .booster-settings-nav {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .booster-settings-nav button {
+    justify-content: center;
+  }
+
+  .booster-analytics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.booster-alert-setting-actions {
+  display: grid;
+  grid-template-columns: auto minmax(180px, 1fr);
+  align-items: center;
+  gap: 14px;
+}
+
+.booster-alert-threshold {
+  display: grid;
+  gap: 5px;
+}
+
+.booster-alert-threshold > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+
+.booster-alert-threshold b {
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}
+.booster-range-grid {
+  display: grid;
+  gap: 10px;
+  min-width: 220px;
+}
+
+.booster-range-grid label {
+  display: grid;
+  gap: 5px;
+}
+
+.booster-range-grid label > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+
+.booster-range-grid label > span b {
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.booster-control-center > .booster-settings-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+.booster-control-center .booster-settings-nav {
+  border-right: 0;
+  background: transparent;
+}
+
+.booster-danger-zone {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px;
+  border: 1px solid rgb(239 68 68 / 45%);
+  border-radius: 12px;
+  background: rgb(127 29 29 / 8%);
+}
+
+.booster-danger-zone .booster-setting-copy > div,
+.booster-danger-zone .booster-setting-copy b {
+  color: rgb(248 113 113);
+}
+
+.booster-destructive-dialog {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  padding: 22px;
+}
+
+.booster-destructive-dialog strong {
+  color: rgb(248 113 113);
+  font-size: 17px;
+  letter-spacing: 0.025em;
+}
+
+.booster-destructive-dialog p {
+  margin: 8px 0 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.booster-destructive-icon {
+  display: flex;
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgb(127 29 29 / 20%);
+  color: rgb(248 113 113);
+}
+
+.booster-destructive-warning {
+  color: rgb(248 113 113);
+  font-weight: 700;
+}
+
+.booster-destructive-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+}

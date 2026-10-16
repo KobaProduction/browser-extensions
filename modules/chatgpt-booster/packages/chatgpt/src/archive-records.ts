@@ -34,7 +34,7 @@ export function archiveRecordMetadata(record: ArchiveRecordView) {
       metadata?.reasoning_recap_type,
     ].find((value): value is string => typeof value === 'string' && value.trim().length > 0) ?? null
   return {
-    sentAt: record.createTime ?? record.firstSeenAt ?? null,
+    sentAt: record.createTime ?? null,
     editedAt: record.updateTime ?? null,
     edited,
     model:
@@ -52,8 +52,7 @@ export function archiveRecordMetadata(record: ArchiveRecordView) {
 export function archiveRecordKind(record: ArchiveRecordView): ArchiveRecordKind {
   const metadata = asRecord(record.raw.metadata)
   if (record.role === 'tool') return 'tool_result'
-  if (record.role === 'assistant' && record.recipient && record.recipient !== 'all')
-    return 'tool_call'
+  if (record.role === 'assistant' && record.recipient && record.recipient !== 'all') return 'tool_call'
   if (
     ['thoughts', 'reasoning_recap'].includes(record.contentType ?? '') ||
     record.channel === 'analysis'
@@ -143,6 +142,7 @@ export function archiveRecordAttachments(record: ArchiveRecordView): ArchiveAtta
 }
 
 export function archiveRecordText(record: ArchiveRecordView): string {
+  if (record.normalized) return archiveMessageText(record.normalized)
   const content = asRecord(record.raw.content)
   if (!content) return ''
   const parts = Array.isArray(content.parts)
@@ -211,8 +211,7 @@ export function buildArchiveThread(
   for (const record of ordered) {
     const ancestor = parentUser(record)
     if (ancestor)
-      for (const tag of tags(record))
-        if (!tagGroups.has(tag)) tagGroups.set(tag, userGroup(ancestor))
+      for (const tag of tags(record)) if (!tagGroups.has(tag)) tagGroups.set(tag, userGroup(ancestor))
   }
   let previousUser: string | undefined
   for (const record of ordered) {
@@ -227,8 +226,7 @@ export function buildArchiveThread(
       association = 'turn'
     } else if (!ancestor && id) association = 'turn'
     if (!id) {
-      const adjacent =
-        record.role !== 'system' && record.role !== 'developer' ? previousUser : undefined
+      const adjacent = record.role !== 'system' && record.role !== 'developer' ? previousUser : undefined
       id = adjacent ?? 'unassigned'
       association = adjacent ? 'adjacency' : 'unassigned'
     }
@@ -240,8 +238,7 @@ export function buildArchiveThread(
     }
     if (association === 'adjacency' || association === 'unassigned') group.association = association
     const metadata = archiveRecordMetadata(record)
-    const tool =
-      kind === 'tool_call' || kind === 'tool_result' ? toolInvocationFromRecord(record) : null
+    const tool = kind === 'tool_call' || kind === 'tool_result' ? toolInvocationFromRecord(record) : null
     const item: ArchiveItemView = {
       record,
       kind,
@@ -269,3 +266,5 @@ export function buildArchiveThread(
     detailCount: unique.length - messageCount,
   }
 }
+
+import { archiveMessageText } from '@kobaproduction/browser-archive'

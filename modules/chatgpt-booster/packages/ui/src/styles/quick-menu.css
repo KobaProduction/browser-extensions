@@ -1,0 +1,147 @@
+.booster-quick-menu {
+  position: fixed;
+  z-index: 2147483647;
+  width: 330px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--card);
+  color: var(--card-foreground);
+  box-shadow: 0 22px 60px rgb(0 0 0 / 30%);
+  pointer-events: auto;
+}
+
+.booster-quick-header,
+.booster-loader-status,
+.booster-quick-actions,
+.booster-quick-context,
+.booster-quick-empty,
+.booster-loader-error {
+  padding: 12px 14px;
+}
+
+.booster-quick-header,
+.booster-loader-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.booster-quick-header {
+  border-bottom: 1px solid var(--border);
+}
+
+.booster-quick-header > div,
+.booster-loader-status > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.booster-quick-header strong,
+.booster-loader-status strong {
+  font-size: 13px;
+}
+
+.booster-quick-header span,
+.booster-loader-status span,
+.booster-quick-context code,
+.booster-quick-empty,
+.booster-loader-error {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.booster-quick-context {
+  display: grid;
+  gap: 7px;
+}
+
+.booster-quick-context > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.booster-quick-context code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.booster-quick-chips,
+.booster-archive-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.booster-quick-chips span,
+.booster-archive-meta span {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.booster-loader-status {
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in oklab, var(--secondary) 70%, transparent);
+}
+
+.booster-loader-error {
+  border-top: 1px solid var(--border);
+}
+
+.booster-spin {
+  animation: booster-spin 1.2s linear infinite;
+}
+
+@keyframes booster-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.booster-quick-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.booster-quick-primary,
+.booster-quick-secondary {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  cursor: pointer;
+  font: 600 11px / 1.2 inherit;
+}
+
+.booster-quick-primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.booster-quick-secondary {
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+}
+
+.booster-quick-primary:disabled,
+.booster-quick-secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}

@@ -1,19 +1,15 @@
-import { attachChromeInstallationToggle } from '@kobaproduction/browser-adapters'
+import {
+  createBrowserToolsPopupCommands,
+  createInstallationLocale,
+  getApplicationIdentity,
+} from '@kobaproduction/browser-adapters'
+import { mountBrowserToolsPopup } from '@kobaproduction/browser-shell'
 
-const button = document.getElementById('open') as HTMLButtonElement
-const status = document.getElementById('status') as HTMLElement
-button.onclick = async () => {
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-    if (!tab?.id || !/^https:\/\/(?:(?:vk\.ru|vk\.com)\/|chatgpt\.com\/)/.test(tab.url || '')) {
-      status.textContent = 'Откройте VK или ChatGPT'
-      return
-    }
-    await chrome.tabs.sendMessage(tab.id, { type: 'koba:open' })
-    window.close()
-  } catch {
-    status.textContent = 'Откройте поддерживаемый сайт и обновите вкладку'
-  }
+const options = {
+  ...createBrowserToolsPopupCommands(/^https:\/\/(?:vk\.ru|vk\.com|chatgpt\.com)\//),
+  application: getApplicationIdentity('chromium'),
 }
-
-attachChromeInstallationToggle(document.body, /^https:\/\/(?:vk\.ru\/|vk\.com\/|chatgpt\.com\/)/)
+void createInstallationLocale('chromium').then(
+  (locale) => mountBrowserToolsPopup(document.body, { ...options, locale }),
+  () => mountBrowserToolsPopup(document.body, options),
+)

@@ -1,5 +1,4 @@
-import { instanceScope } from '@kobaproduction/browser-core'
-import type { ArchiveOptions, LegacyVkArchive, VkHistoryResponse, VkMessage } from '../model/types'
+import type { ArchiveOptions, VkHistoryResponse } from '../model/types'
 
 type JsonRecord = Record<string, unknown>
 const record = (value: unknown): JsonRecord | null =>
@@ -35,8 +34,11 @@ export function createVkProvider(
   history(offset: number, count: number): Promise<VkHistoryResponse>
   api(method: string, params: Record<string, string | number>): Promise<unknown>
   hasToken(): boolean
+  destroy(): void
 } {
   let token = ''
+  let disposed = false
+  const pending = new Set<AbortController>()
   function vkTokens(): string[] {
     const result: string[] = [],
       seen = new Set<string>()
@@ -79,46 +81,59 @@ export function createVkProvider(
     params: Record<string, string | number>,
     attempt = 0,
   ): Promise<unknown> {
+    if (disposed) throw Error('VK provider is stopped')
     const body = new URLSearchParams(
       Object.entries({ ...params, access_token: token }).map(([key, value]) => [key, String(value)]),
     )
-    const resp = await fetch('https://web.api.vk.ru/method/' + method + '?v=5.289&client_id=6287487', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body,
-      signal: AbortSignal.timeout(25000),
-    })
-    if ((resp.status === 429 || resp.status >= 500) && attempt < 4) {
-      await sleep(Math.min(12000, 1000 * 2 ** attempt))
-      return api(method, params, attempt + 1)
-    }
-    if (!resp.ok) throw Error('VK HTTP ' + resp.status)
-    const data: unknown = await resp.json(),
-      obj = record(data)
-    if (obj?.error) {
-      const error = record(obj.error)
-      // VK code 6 explicitly asks clients to slow down. Retry a bounded number of times.
-      if (error?.error_code === 6 && attempt < 4) {
+    const request = new AbortController()
+    const timeout = setTimeout(() => request.abort(), 25000)
+    pending.add(request)
+    try {
+      const resp = await fetch(`https://web.api.vk.ru/method/${method}?v=5.289&client_id=6287487`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+        signal: request.signal,
+      })
+      if (disposed) throw Error('VK provider is stopped')
+      if ((resp.status === 429 || resp.status >= 500) && attempt < 4) {
         await sleep(Math.min(12000, 1000 * 2 ** attempt))
         return api(method, params, attempt + 1)
       }
-      throw Error('VK API ' + String(error?.error_code ?? 'unknown'))
+      if (!resp.ok) {
+        if (resp.status === 401 || resp.status === 403) token = ''
+        throw Error(`VK HTTP ${resp.status}`)
+      }
+      const data: unknown = await resp.json(),
+        obj = record(data)
+      if (disposed) throw Error('VK provider is stopped')
+      if (obj?.error) {
+        const error = record(obj.error)
+        // VK code 6 explicitly asks clients to slow down. Retry a bounded number of times.
+        if (error?.error_code === 6 && attempt < 4) {
+          await sleep(Math.min(12000, 1000 * 2 ** attempt))
+          return api(method, params, attempt + 1)
+        }
+        if (error?.error_code === 5 || error?.error_code === 1116) token = ''
+        throw Error(`VK API ${String(error?.error_code ?? 'unknown')}`)
+      }
+      return obj?.response
+    } finally {
+      clearTimeout(timeout)
+      pending.delete(request)
     }
-    return obj?.response
   }
   async function auth(): Promise<boolean> {
+    if (disposed) return false
     if (token) return true
     for (const candidate of vkTokens()) {
+      if (disposed) return false
       try {
         token = candidate
-        const result = await api('messages.getHistory', {
-          peer_id: cfg.peerId,
-          count: 1,
-          offset: 0,
-          rev: 0,
-        })
-        if (isHistory(result) && hasVerifiedOwner(await api('users.get', {}))) {
+        // Owner verification is independent of a selected conversation. History
+        // permissions are checked by the actual capture request before writes.
+        if (hasVerifiedOwner(await api('users.get', {})) && !disposed) {
           refresh()
           return true
         }
@@ -127,8 +142,6 @@ export function createVkProvider(
       }
     }
     token = ''
-    const legacy = ['', 'vk-booster:prod'].includes(instanceScope()) ? globalThis.VKArchive : undefined
-    if (legacy?.state().authenticated && legacy.state().peer_id === cfg.peerId) return true
     refresh()
     return false
   }
@@ -138,32 +151,18 @@ export function createVkProvider(
       if (!isHistory(value)) throw Error('Неверный ответ истории')
       return value
     }
-    const legacy: LegacyVkArchive | undefined = ['', 'vk-booster:prod'].includes(instanceScope())
-      ? globalThis.VKArchive
-      : undefined
-    if (!legacy?.state().authenticated) throw Error('Не найдена авторизация VK')
-    const from = '1970-01-01',
-      through = '2099-12-31'
-    let chunk: ReturnType<LegacyVkArchive['getPart']> | undefined
-    try {
-      chunk = legacy.getPart(from, through)
-    } catch {
-      /* history not initialized */
-    }
-    while ((chunk?.next_offset || 0) < offset + count && !chunk?.complete) {
-      const before = chunk?.next_offset || 0
-      await legacy.captureRange({
-        from,
-        through,
-        maxPages: 1,
-        pageSize: Math.min(100, count),
-        delayMs: 450,
-      })
-      chunk = legacy.getPart(from, through)
-      if (chunk.next_offset <= before) break
-    }
-    const all: VkMessage[] = [...(chunk?.messages || [])].sort((a, b) => b.date - a.date || b.id - a.id)
-    return { items: all.slice(offset, offset + count), count: chunk?.conversation_total || all.length }
+    throw Error('Не найдена подтверждённая авторизация VK')
   }
-  return { auth, history, api, hasToken: () => Boolean(token) }
+  return {
+    auth,
+    history,
+    api,
+    hasToken: () => !disposed && Boolean(token),
+    destroy() {
+      disposed = true
+      token = ''
+      for (const request of pending) request.abort()
+      pending.clear()
+    },
+  }
 }

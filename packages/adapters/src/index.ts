@@ -1,32 +1,13 @@
 export { createArchiveFiles } from './folder-archive'
 
-import { type DeliveryTarget, instanceKey, type SettingsStore } from '@kobaproduction/browser-core'
-export function createSettingsStore(target: DeliveryTarget, namespace = 'koba-browser'): SettingsStore {
-  const scopedNamespace = instanceKey(namespace)
-  if (target === 'chromium')
-    return {
-      async get(key) {
-        const data = await chrome.storage.local.get(`${scopedNamespace}:${key}`)
-        return data[`${scopedNamespace}:${key}`] as boolean | undefined
-      },
-      async set(key, enabled) {
-        await chrome.storage.local.set({ [`${scopedNamespace}:${key}`]: enabled })
-      },
-    }
-  return {
-    async get(key) {
-      try {
-        const value = localStorage.getItem(`${scopedNamespace}:${key}`)
-        return value === null ? undefined : value === 'true'
-      } catch {
-        return undefined
-      }
-    },
-    async set(key, enabled) {
-      localStorage.setItem(`${scopedNamespace}:${key}`, String(enabled))
-    },
-  }
-}
+import type { DeliveryTarget } from '@kobaproduction/browser-core'
+
+export { isDevelopmentContextAllowed } from './development-context'
+export {
+  createInstallationLocale,
+  createSettingsStore,
+  onInstallationStateChange,
+} from './settings-storage'
 export interface ProxyProfile {
   id: string
   name: string
@@ -53,26 +34,39 @@ export function proxyAvailable(target: DeliveryTarget, granted: ReadonlySet<stri
   return target === 'chromium' && granted.has('proxy')
 }
 
-/** Observe just this installation's enable switch. One browser identity
- * never toggles the sibling DEV/PROD or other product; no DB is touched. */
-export function onInstallationStateChange(target: DeliveryTarget, listener: () => void): () => void {
-  const key = `${instanceKey('koba-browser')}:installation.enabled`
-  if (target === 'chromium') {
-    const changed = (items: Record<string, chrome.storage.StorageChange>, area: string) => {
-      if (area === 'local' && Object.hasOwn(items, key)) listener()
-    }
-    chrome.storage.onChanged.addListener(changed)
-    return () => chrome.storage.onChanged.removeListener(changed)
-  }
-  const changed = (event: StorageEvent) => {
-    if (event.key === key) listener()
-  }
-  window.addEventListener('storage', changed)
-  return () => window.removeEventListener('storage', changed)
-}
-
+export { createApplicationBackup } from './application-backup'
+export { getApplicationIdentity } from './application-identity'
 export { createApplicationTelemetry } from './application-telemetry'
+export { chooseBrowserBackupOutput } from './backup-file-output'
+export { createIndexedBackupSource, createSettingsBackupSource } from './backup-sources'
+export type { BrowserToolsPopupCommands, BrowserToolsPopupRenderer } from './browser-tools'
+export {
+  attachBrowserToolsPopup,
+  bindBrowserToolsMessages,
+  createBrowserToolsPopupCommands,
+} from './browser-tools'
 export { attachChromeInstallationToggle } from './installation-popup'
+export type {
+  RemoteArchiveSyncErrorCode,
+  RemoteArchiveSyncOptions,
+  RemoteArchiveSyncPhase,
+  RemoteArchiveSyncProgress,
+  RemoteArchiveSyncResult,
+} from './remote-archive-sync'
+export { RemoteArchiveSyncError, syncRemoteArchive } from './remote-archive-sync'
+export type {
+  RemoteCommandContext,
+  RemoteCommandHandlers,
+  RemotePublishOptions,
+  RemotePublishReceipt,
+  RemoteSession,
+  RemoteSessionOptions,
+  RemoteSessionStatus,
+} from './remote-session'
+export { createRemoteSession } from './remote-session'
+export type { RemoteSessionProbeOptions, RemoteSessionProbeResult } from './remote-session-probe'
+export { probeRemoteSession } from './remote-session-probe'
+export { createRuntimeTelemetry } from './runtime-telemetry'
 export type { OtlpDeliveryConfiguration, OtlpRequest, OtlpSender } from './scoped-otlp'
 export {
   resolveOtlpLogsEndpoint,
@@ -80,4 +74,6 @@ export {
   scopedOtlpPayload,
   sendOtlpRequest,
 } from './scoped-otlp'
+export { createTelemetryBackupSource } from './telemetry-backup'
+export { installApplicationTelemetryBackground } from './telemetry-bridge'
 export { asTelemetryPort } from './telemetry-port'

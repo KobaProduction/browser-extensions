@@ -104,6 +104,17 @@ export function vkPreferencesPersistence(): VkPreferencesPersistence | null {
 export function vkPreferencesLoadError(): string {
   return startupError
 }
+/** Apply already scoped provider defaults when a child archive module starts. */
+export async function applyVkCaptureDefaults(
+  configure: (value: VkCapturePreferences) => void,
+): Promise<void> {
+  try {
+    const saved = await activePreferences?.read()
+    if (saved) configure(saved)
+  } catch {
+    startupError = 'Не удалось загрузить постоянные параметры VK; используются параметры сессии.'
+  }
+}
 /** Runs before mounting the VK view, without opening or mutating an archive folder. */
 export async function loadVkCaptureDefaults(
   configure: (value: VkCapturePreferences) => void,
@@ -119,8 +130,7 @@ export async function loadVkCaptureDefaults(
       backend ?? browserPreferencesBackend(target),
     )
     setVkPreferencesPersistence(port)
-    const saved = await port.read()
-    if (saved) configure(saved)
+    await applyVkCaptureDefaults(configure)
   } catch {
     // Invalid or inaccessible storage never starts an archive or falls back to another scope.
     // Keep the product usable with default in-memory preferences and report the failure in UI.

@@ -1,5 +1,83 @@
 # Backup, import, restore and portability
 
+## Latest owner directive: selectable application recovery (2026-10-15)
+
+The owner explicitly requested user-facing backup/restore with independently
+selected application settings, provider settings, scoped local UI preferences,
+scoped session UI state and the full accessible canonical IndexedDB archive.
+This supersedes the older operator-only UI and blanket session exclusion below.
+It does **not** authorize exporting the host website's storage, credentials,
+authentication tickets, ongoing requests or historical v3/v4 databases.
+
+Shared core contracts register provider-owned `ApplicationBackupSource` sections;
+the shared storage layer writes one TAR.GZ containing ordinary JSONL sections
+and an exact-scope/schema/count/hash manifest. Both current provider archive
+ports retain structured-clone codecs and validate owned message/snapshot graphs.
+The current sectioned format writes manifest version 2 and reads versions 1 and
+2. Ordinary rows retain the original `{key,value}` JSONL shape. Rows larger than
+one wire chunk use sequential `row-fragments-v1` / `row-fragment-v1` envelopes
+with exact key, character/UTF-8 counts and a SHA-256 chain over lossless fragment
+representations. Reassembly validates identity, order, duplicates, completeness
+and integrity before exposing a logical row to staged provider validation.
+Manifest totals count logical rows, not fragments. Version-1 readers reject
+the new manifest; no historical backup or provider database is rewritten.
+The common settings UI inspects the entire file, displays its available sections
+and restores only the explicit selection after confirmation. External telemetry
+consent is revoked by restore and must be enabled again separately.
+Automation rules and WebSocket configuration are portable preferences, while
+remote credentials are separate scoped secrets. Restoring those preferences
+disables both automatic rules and remote connection until the owner enables
+them again; importing a file cannot send a message or connect to its endpoint.
+
+Layout/session sections are additionally bound to the current origin through
+its SHA-256 identity, because Web Storage and routable provider categories are
+host-local. A file from another host lists those UI sections as unavailable;
+other compatible sections remain selectable. Shared application switches keep
+their application/target scope. Only current-host declared leaf categories and
+registered provider view IDs are portable UI routes.
+
+Validation and rollback snapshots precede all writes. Database sections use
+provider transactions, followed by preferences and finally application activation
+flags. The runtime serializes recovery against lifecycle changes. This is not
+crash-atomic across IndexedDB, extension storage and browser Web Storage.
+Current application recovery now stages input and rollback records in a separate,
+known scoped temporary Dexie database, without changing provider schemas or
+opening historical generations. The full input is sealed and checked for exact
+scope/schema/count/hash and provider graph integrity before replacement. Readers
+use bounded key pages and indexed lookups; IndexedDB sections require staged
+provider validation/restore ports rather than a whole-archive array fallback.
+
+Export stages and validates its source, streams one TAR.GZ into a temporary File
+System Access destination where supported, then repeats provider validation
+before final file publication. The compressed Blob download fallback remains
+limited to 128 MiB. JSONL wire units/chunks and the manifest remain bounded to
+4 MiB; one reassembled serialized row has an explicit 64 MiB budget. Providers
+must reject an observation exceeding their supported portable-row budget before
+canonical publication, preserving prior records and reporting unsupported input.
+The TAR reader bounds each entry to 8 MiB. These are format and
+allocation bounds, not a 128 MiB total decompressed archive/rollback limit.
+Temporary storage must fit input plus rollback; quota failures before replacement
+leave primary data untouched. Large staged restores still use long provider
+transactions, whose quota, suspension and browser behaviour need acceptance.
+
+A durable journal records attempted sections before each replacement. Interrupted
+or failed rollback jobs retain sealed data for explicit retry or confirmed
+discard after reload; startup never restores or deletes orphaned jobs. Completed
+jobs left by cleanup failure are discard-only and do not invalidate a committed
+result. Persistent operations require an origin-scoped Web Lock for their known
+registry. This does not serialize another origin's GM settings or make different
+storage backends atomic. UI Lab injects a bounded memory-only stage factory and
+does not open persistent databases or require persistent recovery locks.
+
+Only verified owner rows on the current host are accessible. All-in-one does not
+silently open another host's or standalone extension's private databases. A full
+cross-origin aggregate archive backup needs explicit source-side capabilities.
+Local synthetic checks are now authorized by the owner's later directive.
+Staged selection, hash/scope/UTF-8 bounds, rollback/retry/cancellation/quota and
+temporary output publication have focused tests; persistent stage tests use
+real Dexie over fake IndexedDB. Installed-data acceptance remains separate.
+See [current refactor evidence](../REFACTOR_PROGRESS.md).
+
 ## Clean archive baseline; old-source migration is external (2026-10-11)
 
 The active ChatGPT Booster is **Dexie v1 only** (fixed canonical v4-era data

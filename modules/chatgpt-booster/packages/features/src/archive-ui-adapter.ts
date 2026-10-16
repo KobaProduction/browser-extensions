@@ -92,8 +92,7 @@ export function createArchiveUiAdapter(
         requestedBefore: page.requestedBefore,
         startCursor: typeof info.start_cursor === 'string' ? info.start_cursor : null,
         endCursor: typeof info.end_cursor === 'string' ? info.end_cursor : null,
-        hasPreviousPage:
-          typeof info.has_previous_page === 'boolean' ? info.has_previous_page : null,
+        hasPreviousPage: typeof info.has_previous_page === 'boolean' ? info.has_previous_page : null,
         hasNextPage: typeof info.has_next_page === 'boolean' ? info.has_next_page : null,
         observedAt: page.timestamp,
       }
@@ -163,8 +162,7 @@ export function createArchiveUiAdapter(
       return cacheRead(conversationReads, conversationId, cached).promise
 
     const pending = loadConversationView(conversationId).then(async (conversation) => {
-      if (effectiveRevision(conversationId) !== revision)
-        return await conversationView(conversationId)
+      if (effectiveRevision(conversationId) !== revision) return await conversationView(conversationId)
       return conversation
     })
     cacheRead(conversationReads, conversationId, { revision, promise: pending })
@@ -178,10 +176,7 @@ export function createArchiveUiAdapter(
     preload: Awaited<ReturnType<ConversationArchiveStore['getPreloadSnapshot']>>
   }
 
-  const readModels = new Map<
-    string,
-    { revision: number; promise: Promise<ConversationReadModel> }
-  >()
+  const readModels = new Map<string, { revision: number; promise: Promise<ConversationReadModel> }>()
 
   async function loadConversationReadModel(conversationId: string): Promise<ConversationReadModel> {
     const [stored, preload, persistedCoverage] = await Promise.all([
@@ -193,8 +188,7 @@ export function createArchiveUiAdapter(
       stored.map((record) => [record.messageKey, record]),
     )
     for (const record of preload?.records ?? []) merged.set(record.messageKey, record)
-    for (const record of stateStore.listMessages(conversationId))
-      merged.set(record.messageKey, record)
+    for (const record of stateStore.listMessages(conversationId)) merged.set(record.messageKey, record)
     const records = [...merged.values()]
     return { records, thread: buildArchiveThread(records), persistedCoverage, preload }
   }
@@ -256,8 +250,7 @@ export function createArchiveUiAdapter(
           currentFirstMessageId: current.firstMessageId,
           currentLastMessageId: current.lastMessageId,
           storedStartMatchesCurrent:
-            !!current.firstMessageId &&
-            memory.oldestKnownVisibleMessageId === current.firstMessageId,
+            !!current.firstMessageId && memory.oldestKnownVisibleMessageId === current.firstMessageId,
           storedLatestMatchesCurrent:
             !!current.lastMessageId && memory.newestKnownVisibleMessageId === current.lastMessageId,
         }
@@ -305,9 +298,7 @@ export function createArchiveUiAdapter(
     },
     listConversations: async () => {
       const stored = await store.listConversations().catch(() => [])
-      const byId = new Map(
-        stored.map((conversation) => [conversation.conversationId, conversation]),
-      )
+      const byId = new Map(stored.map((conversation) => [conversation.conversationId, conversation]))
       for (const snapshot of stateStore.listSnapshots()) {
         const memory = memoryConversationView(snapshot.conversationId)
         if (memory) byId.set(snapshot.conversationId, memory)
@@ -408,9 +399,7 @@ export function createArchiveUiAdapter(
         exportPipeline,
       )
       store.sourceGate.assertCompatible(conversationId)
-      const includedAssets = result.manifest.assets.filter(
-        (asset) => asset.status === 'included',
-      ).length
+      const includedAssets = result.manifest.assets.filter((asset) => asset.status === 'included').length
       return {
         packaged: true,
         complete: result.manifest.complete,

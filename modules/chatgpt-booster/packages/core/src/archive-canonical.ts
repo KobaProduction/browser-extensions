@@ -61,9 +61,7 @@ export interface CanonicalSourceSnapshotLink {
 
 type RecordValue = Record<string, unknown>
 const asRecord = (value: unknown): RecordValue | null =>
-  value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? (value as RecordValue)
-    : null
+  value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as RecordValue) : null
 const asText = (value: unknown): string | null => (typeof value === 'string' ? value : null)
 const asTime = (value: unknown): number | null =>
   typeof value === 'number' && Number.isFinite(value) ? value : null
@@ -143,10 +141,7 @@ export function projectNativeMessage(
         typeof part === 'string' ? part : null,
       )
     })
-  } else if (
-    (kind === 'code' || kind === 'execution_output') &&
-    typeof content?.text === 'string'
-  ) {
+  } else if ((kind === 'code' || kind === 'execution_output') && typeof content?.text === 'string') {
     append(
       0,
       kind === 'code' ? 'code' : 'tool_result',
@@ -179,8 +174,6 @@ export function projectNativeMessage(
     sourceCreateTime: asTime(raw.create_time),
     sourceUpdateTime: asTime(raw.update_time),
     elements,
-    renderCoverage: elements.some((element) => element.kind === 'opaque')
-      ? 'contains_opaque'
-      : 'typed',
+    renderCoverage: elements.some((element) => element.kind === 'opaque') ? 'contains_opaque' : 'typed',
   }
 }

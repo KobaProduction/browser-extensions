@@ -1,6 +1,6 @@
 {
   "name": "@chatgpt-booster/features",
-  "version": "2.0.19",
+  "version": "2.0.20",
   "private": true,
   "type": "module",
   "exports": {
@@ -16,8 +16,10 @@
     "@chatgpt-booster/telemetry": "workspace:*",
     "@chatgpt-booster/ui": "workspace:*",
     "@kobaproduction/browser-archive": "workspace:*",
+    "@kobaproduction/browser-adapters": "workspace:*",
     "@kobaproduction/browser-core": "workspace:*",
     "@kobaproduction/browser-storage": "workspace:*",
+    "@kobaproduction/browser-ui": "workspace:*",
     "dexie": "^4.4.6"
   },
   "devDependencies": {

@@ -1,6 +1,6 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": { "types": ["chrome", "node", "bun"], "noEmit": true },
-  "include": ["src/**/*.ts", "src/**/*.vue", "vite.config.ts"],
+  "include": ["src/**/*.ts", "src/**/*.vue", "vite.config.ts", "../../packages/ui/src/env.d.ts"],
   "exclude": ["src/**/*.test.ts", "dist"]
 }

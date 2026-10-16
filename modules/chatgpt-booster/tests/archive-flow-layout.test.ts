@@ -43,8 +43,12 @@ describe('GitGraph saved message DAG', () => {
     const by = new Map(result.commits.map((commit, index) => [commit.hash, { ...commit, index }]))
     expect(by.get('child-a')?.parents).toEqual(['root'])
     expect(by.get('child-b')?.parents).toEqual(['root'])
-    expect(by.get('root')!.index).toBeGreaterThan(by.get('child-a')!.index)
-    expect(by.get('root')!.index).toBeGreaterThan(by.get('child-b')!.index)
+    const root = by.get('root'),
+      childA = by.get('child-a'),
+      childB = by.get('child-b')
+    if (!root || !childA || !childB) throw Error('Expected root and both saved child commits')
+    expect(root.index).toBeGreaterThan(childA.index)
+    expect(root.index).toBeGreaterThan(childB.index)
     expect(result.commits.filter((commit) => commit.refs.length > 0)).toHaveLength(2)
   })
   test('orphan ancestry is reported but never invented', () => {
@@ -101,9 +105,7 @@ describe('GitGraph saved message DAG', () => {
     expect(segments).toHaveLength(1)
     expect(segments[0]?.clipped).toBe(true)
     expect(segments[0]?.commits.find((item) => item.hash === 'child')?.parents).toEqual([])
-    expect(segments[0]?.commits.find((item) => item.hash === 'grandchild')?.parents).toEqual([
-      'child',
-    ])
+    expect(segments[0]?.commits.find((item) => item.hash === 'grandchild')?.parents).toEqual(['child'])
   })
   test('corrupt cycles do not hang or create valid-looking loops', () => {
     const data = archiveGitgraphData(

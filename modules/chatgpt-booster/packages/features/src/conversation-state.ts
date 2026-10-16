@@ -1,5 +1,4 @@
 import type { ConversationDomSnapshot } from '@chatgpt-booster/chatgpt'
-import { currentConversationId } from '@chatgpt-booster/chatgpt'
 import type { BoosterModule } from '@chatgpt-booster/core'
 import { serverTimeMs } from '@chatgpt-booster/core'
 import {
@@ -22,16 +21,21 @@ import {
   TRANSPORT_CHANNEL,
 } from '@chatgpt-booster/observer'
 import {
+  advanceHistoryCoverage,
+  checkpointHistoryCoverage,
+  type HistoryCoverageCheckpoint,
+  nativePageEvidence,
+} from './archive-coverage'
+import { compareSourceObservation } from './archive-observation-policy'
+import {
   ArchiveContractError,
   ArchiveSourceGate,
   type ArchiveSubmissionSnapshot,
   sameSubmissionSelection,
 } from './archive-source-contract'
 import type { ArchivedMessage, ConversationArchiveStore } from './archive-store'
-import {
-  normalizeConversationMessage,
-  normalizeConversationProjectId,
-} from './conversation-records'
+import { ConversationObservationGateway } from './conversation-observation-gateway'
+import { normalizeConversationMessage, normalizeConversationProjectId } from './conversation-records'
 
 export type ConversationRunState =
   | 'unknown'
@@ -44,6 +48,9 @@ export type ConversationRunState =
   | 'failed'
 
 export interface ConversationLifecycleSnapshot {
+  requestId?: string | null
+  requestObservedAt?: number | null
+  transportHealth?: 'unknown' | 'healthy' | 'interrupted' | 'unavailable'
   state: ConversationRunState
   userMessageId: string | null
   startedAt: number | null
@@ -51,16 +58,19 @@ export interface ConversationLifecycleSnapshot {
   stopRequestedAt: number | null
   terminalCause: string | null
   updatedAt: number
+  lastActivityAt?: number | null
+  lastSummaryAt?: number | null
+  previousSummaryAt?: number | null
+  lastSummaryKey?: string | null
+  activityPhase?: 'thinking' | 'tool' | 'responding'
+  phaseStartedAt?: number | null
+  actionMessageId?: string | null
   source: 'initial' | 'request' | 'stop' | 'transport' | 'renderer' | 'hydrated' | 'unknown'
 }
 
 export type ConversationSubagentStatus = 'waiting' | 'working' | 'done' | 'failed' | 'interrupted'
 
-export type ConversationSubagentActivityKind =
-  | 'started'
-  | 'interacted'
-  | 'completed'
-  | 'interrupted'
+export type ConversationSubagentActivityKind = 'started' | 'interacted' | 'completed' | 'interrupted'
 
 export interface ConversationSubagentSnapshot {
   threadId: string
@@ -92,8 +102,15 @@ export interface ConversationStateChange {
   revision: number
   reason: 'page' | 'catalog' | 'request' | 'stop' | 'transport' | 'renderer' | 'dom' | 'hydrate'
 }
+export interface ConversationProjectCatalogEntry {
+  projectId: string
+  title: string
+  requestStartedAt: number
+  observedAt: number
+}
 
 interface MutableConversationState {
+  safetyReview?: { active: boolean; message: string | null; protectionType: 'bio' | 'cyber' | null }
   conversationId: string
   projectId: string | null
   conversationOrigin: string | null
@@ -105,6 +122,8 @@ interface MutableConversationState {
   records: Map<string, ArchivedMessage>
   turnIndex: Map<string, Set<string>>
   pages: Map<string, ConversationArchiveEventDetail>
+  pageCoverage?: HistoryCoverageCheckpoint | undefined
+  pageReplayIncomplete?: boolean | undefined
   headReadId: string | null
   headReadStartedAt: number | null
   catalogReadStartedAt: number | null
@@ -155,6 +174,18 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 function sourceTime(value: number | null | undefined): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return null
   return serverTimeMs(value)
+}
+
+function sourceSummaryKey(record: ArchivedMessage | undefined): string | null {
+  if (!record) return null
+  const content = asRecord(record.raw.content)
+  const thoughts = Array.isArray(content?.thoughts) ? content.thoughts : []
+  const last = asRecord(thoughts.at(-1))
+  if (typeof last?.summary === 'string' && last.summary.trim())
+    return JSON.stringify([record.messageId, thoughts.length - 1, last.summary])
+  const title = asRecord(record.raw.metadata)?.reasoning_title
+  if (typeof title === 'string' && title.trim()) return JSON.stringify([record.messageId, title])
+  return record.contentType === 'reasoning_recap' ? record.messageId : null
 }
 
 function visibleFinal(record: ArchivedMessage) {
@@ -236,8 +267,7 @@ function subagentsFromRecords(records: Iterable<ArchivedMessage>): ConversationS
   const ensure = (threadId: string, observedAt: number | null) => {
     const current = agents.get(threadId)
     if (current) {
-      if (observedAt !== null)
-        current.lastObservedAt = Math.max(current.lastObservedAt ?? 0, observedAt)
+      if (observedAt !== null) current.lastObservedAt = Math.max(current.lastObservedAt ?? 0, observedAt)
       return current
     }
     const created: ConversationSubagentSnapshot = {
@@ -260,8 +290,7 @@ function subagentsFromRecords(records: Iterable<ArchivedMessage>): ConversationS
       sourceTime(message.updateTime) ?? sourceTime(message.createTime) ?? message.lastSeenAt
 
     const activity = asRecord(metadata?.codex_sub_agent_activity)
-    const activityThreadId =
-      typeof activity?.agentThreadId === 'string' ? activity.agentThreadId : null
+    const activityThreadId = typeof activity?.agentThreadId === 'string' ? activity.agentThreadId : null
     const activityKind =
       typeof activity?.kind === 'string' &&
       SUBAGENT_ACTIVITY_KINDS.has(activity.kind as ConversationSubagentActivityKind)
@@ -319,17 +348,41 @@ function subagentsFromRecords(records: Iterable<ArchivedMessage>): ConversationS
   })
 }
 
+export interface RejectedConversationSource {
+  conversationId: string
+  accountId: string
+  observedAt: number
+  sourceKind: 'stream' | 'page'
+  raw: Record<string, unknown>
+  evidence?: readonly Record<string, unknown>[]
+}
 export class ConversationStateStore implements BoosterModule {
   readonly id = 'conversation-state'
+  readonly observations = new ConversationObservationGateway()
   #states = new Map<string, MutableConversationState>()
   #catalogOrigins = new Map<string, string | null>()
+  #projects = new Map<string, ConversationProjectCatalogEntry>()
   #verifiedAccountId: string | null = null
   #accountEpoch = 0
   #catalogListeners = new Set<(detail: ConversationCatalogEventDetail) => void>()
   #accountListeners = new Set<() => void>()
   #listeners = new Set<(change: ConversationStateChange) => void>()
   #pageListeners = new Set<(detail: ConversationArchiveEventDetail) => void>()
+  #rejectedSourceListeners = new Set<(detail: RejectedConversationSource) => void>()
+  #streamMessageListeners = new Set<
+    (detail: {
+      conversationId: string
+      raw: Record<string, unknown>
+      observedAt: number
+      accountId: string | null
+      activeRun: boolean
+      requestId?: string | null
+      evidence?: readonly Record<string, unknown>[]
+    }) => void
+  >()
   #active = false
+  #pendingRequests = new Map<string, ConversationRequestEventDetail>()
+  #runConversations = new Map<string, string>()
 
   constructor(
     private readonly messageSource: Window = window,
@@ -348,12 +401,23 @@ export class ConversationStateStore implements BoosterModule {
     window.removeEventListener('message', this.#onMessage)
     this.#listeners.clear()
     this.#pageListeners.clear()
+    this.#rejectedSourceListeners.clear()
+    this.#streamMessageListeners.clear()
     this.#accountListeners.clear()
     this.#catalogListeners.clear()
+    this.#pendingRequests.clear()
+    this.#runConversations.clear()
+    // Observation was detached: the native application may select another owner while disabled.
+    // A later activation must obtain fresh source proof before exposing or appending any data.
+    this.#verifiedAccountId = null
+    this.#states.clear()
+    this.#catalogOrigins.clear()
+    this.#projects.clear()
     this.#accountEpoch++
+    this.observations.reset(null, this.#accountEpoch)
   }
 
-  /** Only the native catalog request selector matched against the account registry qualifies. */
+  /** Only observer-verified native registry/selector evidence qualifies. */
   verifiedAccountId(): string | null {
     return this.#verifiedAccountId
   }
@@ -364,6 +428,13 @@ export class ConversationStateStore implements BoosterModule {
     this.#catalogListeners.add(listener)
     return () => this.#catalogListeners.delete(listener)
   }
+  listProjects(): readonly ConversationProjectCatalogEntry[] {
+    return this.#verifiedAccountId ? [...this.#projects.values()].map((entry) => ({ ...entry })) : []
+  }
+  project(projectId: string): ConversationProjectCatalogEntry | undefined {
+    const entry = this.#verifiedAccountId ? this.#projects.get(projectId) : undefined
+    return entry ? { ...entry } : undefined
+  }
 
   ingestAccount(detail: ConversationAccountEventDetail) {
     const next = typeof detail.accountId === 'string' && detail.accountId ? detail.accountId : null
@@ -372,8 +443,12 @@ export class ConversationStateStore implements BoosterModule {
     // attributed later. A switch also invalidates every prior RAM view.
     this.#accountEpoch++
     this.#states.clear()
+    this.#pendingRequests.clear()
+    this.#runConversations.clear()
     this.#catalogOrigins.clear()
+    this.#projects.clear()
     this.#verifiedAccountId = next
+    this.observations.reset(next, this.#accountEpoch)
     for (const listener of this.#accountListeners) {
       try {
         listener()
@@ -398,6 +473,35 @@ export class ConversationStateStore implements BoosterModule {
     return () => this.#pageListeners.delete(listener)
   }
 
+  subscribeStreamMessages(
+    listener: (detail: {
+      conversationId: string
+      raw: Record<string, unknown>
+      observedAt: number
+      accountId: string | null
+      activeRun: boolean
+      requestId?: string | null
+      evidence?: readonly Record<string, unknown>[]
+    }) => void,
+  ) {
+    this.#streamMessageListeners.add(listener)
+    return () => this.#streamMessageListeners.delete(listener)
+  }
+  subscribeRejectedSource(listener: (detail: RejectedConversationSource) => void) {
+    this.#rejectedSourceListeners.add(listener)
+    return () => this.#rejectedSourceListeners.delete(listener)
+  }
+  #rejectedSource(detail: Omit<RejectedConversationSource, 'accountId'>) {
+    const owner = this.#verifiedAccountId
+    if (!owner) return
+    for (const listener of this.#rejectedSourceListeners)
+      try {
+        listener({ ...detail, accountId: owner, raw: structuredClone(detail.raw) })
+      } catch {
+        /* Rejection evidence cannot bypass the source gate. */
+      }
+  }
+
   revision(conversationId: string) {
     return this.#states.get(conversationId)?.revision ?? 0
   }
@@ -406,11 +510,14 @@ export class ConversationStateStore implements BoosterModule {
     const value = this.#states.get(conversationId)?.lifecycle
     return value ? { ...value } : undefined
   }
+  safetyReview(conversationId: string) {
+    const value = this.#states.get(conversationId)?.safetyReview
+    return value ? { ...value } : undefined
+  }
 
   conversationOrigin(conversationId: string): string | null | undefined {
     return (
-      this.#states.get(conversationId)?.conversationOrigin ??
-      this.#catalogOrigins.get(conversationId)
+      this.#states.get(conversationId)?.conversationOrigin ?? this.#catalogOrigins.get(conversationId)
     )
   }
 
@@ -494,10 +601,30 @@ export class ConversationStateStore implements BoosterModule {
       (a, b) => a.timestamp - b.timestamp,
     )
   }
+  nativeHistoryCoverage(conversationId: string) {
+    const state = this.#states.get(conversationId)
+    return {
+      ...checkpointHistoryCoverage(state?.pageCoverage),
+      replayComplete: !state?.pageReplayIncomplete,
+    }
+  }
 
   ingestPage(detail: ConversationArchiveEventDetail) {
     if (detail.accountId !== undefined && detail.accountId !== this.#verifiedAccountId) return
-    this.sourceGate.inspect(detail)
+    if (detail.payload.conversation_id && detail.payload.conversation_id !== detail.conversationId)
+      return
+    const observation = this.observations.receive(detail.conversationId, { kind: 'page', detail })
+    try {
+      this.sourceGate.inspect(detail)
+    } catch (error) {
+      this.#rejectedSource({
+        conversationId: detail.conversationId,
+        observedAt: detail.timestamp,
+        sourceKind: 'page',
+        raw: detail.payload,
+      })
+      throw error
+    }
     const payload = detail.payload
     if (!payload || !Array.isArray(payload.messages)) return
     const conversationId =
@@ -514,9 +641,10 @@ export class ConversationStateStore implements BoosterModule {
         readStartedAt > state.headReadStartedAt ||
         (readStartedAt === state.headReadStartedAt && (detail.readId ?? null) === state.headReadId))
     if (freshHead) {
+      if (detail.readId !== state.headReadId || readStartedAt !== state.headReadStartedAt)
+        state.pageReplayIncomplete = false
       if (readStartedAt >= (state.catalogReadStartedAt ?? -Infinity)) {
-        if (Object.hasOwn(payload, 'gizmo_id'))
-          state.projectId = normalizeConversationProjectId(payload)
+        if (Object.hasOwn(payload, 'gizmo_id')) state.projectId = normalizeConversationProjectId(payload)
         if (typeof payload.title === 'string') state.title = payload.title
       }
       if (Object.hasOwn(payload, 'conversation_origin'))
@@ -536,8 +664,7 @@ export class ConversationStateStore implements BoosterModule {
       if (
         previousRead &&
         (readStartedAt < previousRead.startedAt ||
-          (readStartedAt === previousRead.startedAt &&
-            (detail.readId ?? '') !== previousRead.readId))
+          (readStartedAt === previousRead.startedAt && (detail.readId ?? '') !== previousRead.readId))
       )
         continue
       const oldVersion = previous && (asRecord(previous.raw)?.update_time ?? previous.createTime)
@@ -545,9 +672,7 @@ export class ConversationStateStore implements BoosterModule {
       if (
         previous &&
         (previous.lastSeenAt > observedAt ||
-          (typeof oldVersion === 'number' &&
-            typeof newVersion === 'number' &&
-            newVersion < oldVersion))
+          (typeof oldVersion === 'number' && typeof newVersion === 'number' && newVersion < oldVersion))
       )
         continue
       const normalized = normalizeConversationMessage(
@@ -562,22 +687,24 @@ export class ConversationStateStore implements BoosterModule {
       state.recordReads.set(raw.id, { readId: detail.readId ?? '', startedAt: readStartedAt })
     }
     const id = pageKey(detail)
+    state.pageCoverage = advanceHistoryCoverage(state.pageCoverage, nativePageEvidence(detail))
+    if (detail.isInitial)
+      for (const retained of state.pages.values())
+        if (!retained.isInitial)
+          state.pageCoverage = advanceHistoryCoverage(state.pageCoverage, nativePageEvidence(retained))
     const oldPage = state.pages.get(id)
     if (!oldPage || oldPage.timestamp <= observedAt) state.pages.set(id, detail)
     while (state.pages.size > MAX_PAGES_PER_CONVERSATION) {
-      const oldest = [...state.pages.entries()].sort(
-        (a, b) => a[1].timestamp - b[1].timestamp,
-      )[0]?.[0]
+      const oldest = [...state.pages.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp)[0]?.[0]
       if (!oldest) break
+      if (state.pages.get(oldest)?.readId === state.headReadId) state.pageReplayIncomplete = true
       state.pages.delete(oldest)
     }
     // Older continuations cannot roll back lifecycle evidence from a newer native submit.
-    if (
-      freshHead &&
-      !(state.lifecycle.source === 'request' && state.lifecycle.updatedAt > readStartedAt)
-    )
+    if (freshHead && (state.lifecycle.requestObservedAt ?? -Infinity) <= readStartedAt)
       this.#inferLifecycleFromPage(state, payload, observedAt)
     this.#touch(state, 'page')
+    this.observations.admit(observation, { kind: 'page', detail })
     for (const listener of this.#pageListeners) {
       try {
         listener(detail)
@@ -590,7 +717,37 @@ export class ConversationStateStore implements BoosterModule {
   ingestCatalog(detail: ConversationCatalogEventDetail) {
     if (detail.accountId !== undefined && detail.accountId !== this.#verifiedAccountId) return
     const startedAt = detail.requestStartedAt ?? detail.observedAt
-    if (!Number.isFinite(startedAt)) return
+    if (!Number.isFinite(startedAt) || !Number.isFinite(detail.observedAt)) return
+    const projects: { projectId: string; title: string }[] = []
+    if (this.#verifiedAccountId && detail.accountId === this.#verifiedAccountId)
+      for (const item of detail.projects ?? []) {
+        if (
+          typeof item.projectId !== 'string' ||
+          !item.projectId.startsWith('g-p-') ||
+          item.projectId.length <= 4 ||
+          item.projectId.length > 256 ||
+          /[\s/?#]/.test(item.projectId) ||
+          typeof item.title !== 'string' ||
+          !item.title.trim() ||
+          item.title.length > 4096
+        )
+          continue
+        const previous = this.#projects.get(item.projectId)
+        if (previous && startedAt <= previous.requestStartedAt) continue
+        this.#projects.delete(item.projectId)
+        this.#projects.set(item.projectId, {
+          projectId: item.projectId,
+          title: item.title,
+          requestStartedAt: startedAt,
+          observedAt: detail.observedAt,
+        })
+        projects.push({ projectId: item.projectId, title: item.title })
+      }
+    while (this.#projects.size > 200) {
+      const oldest = this.#projects.keys().next().value
+      if (oldest === undefined) break
+      this.#projects.delete(oldest)
+    }
     const changes: ConversationStateChange[] = []
     for (const item of detail.items) {
       const state = this.#states.get(item.conversationId)
@@ -606,8 +763,7 @@ export class ConversationStateStore implements BoosterModule {
       if (state) {
         const projectId =
           item.projectKnown === true ? item.projectId : (item.projectId ?? state.projectId)
-        changed ||=
-          projectId !== state.projectId || item.conversationOrigin !== state.conversationOrigin
+        changed ||= projectId !== state.projectId || item.conversationOrigin !== state.conversationOrigin
         state.projectId = projectId
         if (typeof item.title === 'string' && item.title.trim()) {
           changed ||= state.title !== item.title
@@ -640,28 +796,63 @@ export class ConversationStateStore implements BoosterModule {
       }
     for (const listener of this.#catalogListeners) {
       try {
-        listener(detail)
+        listener({ ...detail, ...(detail.projects ? { projects } : {}) })
       } catch {
         /* Optional persistence remains separate. */
       }
     }
   }
 
-  submissionSelection(
-    conversationId: string,
-    messageId: string,
-  ): ArchiveSubmissionSnapshot | undefined {
+  submissionSelection(conversationId: string, messageId: string): ArchiveSubmissionSnapshot | undefined {
     const snapshot = this.#states.get(conversationId)?.submissionSelections.get(messageId)
     return snapshot
       ? { selection: { ...snapshot.selection }, conflicted: snapshot.conflicted }
       : undefined
   }
 
+  #rememberRun(requestId: string, conversationId: string) {
+    this.#runConversations.set(requestId, conversationId)
+    while (this.#runConversations.size > 512) {
+      const oldest = this.#runConversations.keys().next().value
+      if (oldest === undefined) break
+      this.#runConversations.delete(oldest)
+    }
+  }
+
   ingestRequest(detail: ConversationRequestEventDetail) {
-    const conversationId = detail.conversationId ?? currentConversationId() ?? null
-    if (!conversationId) return
+    const conversationId =
+      detail.conversationId ??
+      (detail.requestId ? this.#runConversations.get(detail.requestId) : undefined) ??
+      null
     if (detail.accountId !== undefined && detail.accountId !== this.#verifiedAccountId) return
+    if (!conversationId) {
+      if (detail.requestId) {
+        this.#pendingRequests.set(detail.requestId, detail)
+        while (this.#pendingRequests.size > 128) {
+          const oldest = this.#pendingRequests.keys().next().value
+          if (oldest === undefined) break
+          this.#pendingRequests.delete(oldest)
+        }
+      }
+      return
+    }
+    if (
+      detail.requestId &&
+      this.#runConversations.has(detail.requestId) &&
+      this.#runConversations.get(detail.requestId) !== conversationId
+    )
+      return
+    if (detail.requestId) this.#rememberRun(detail.requestId, conversationId)
+    this.observations.receive(conversationId, { kind: 'request', detail })
     const state = this.#ensure(conversationId)
+    // Delayed/duplicate observations cannot replace a newer request or reopen its terminal state.
+    if (
+      state.lifecycle.requestObservedAt !== null &&
+      state.lifecycle.requestObservedAt !== undefined &&
+      (detail.observedAt < state.lifecycle.requestObservedAt ||
+        (!!detail.requestId && detail.requestId === state.lifecycle.requestId))
+    )
+      return
     if (
       detail.submissionSelection &&
       this.#verifiedAccountId &&
@@ -676,8 +867,7 @@ export class ConversationStateStore implements BoosterModule {
           selection: { ...(previous?.selection ?? detail.submissionSelection) },
           conflicted:
             previous?.conflicted === true ||
-            (!!previous &&
-              !sameSubmissionSelection(previous.selection, detail.submissionSelection)),
+            (!!previous && !sameSubmissionSelection(previous.selection, detail.submissionSelection)),
         })
         while (state.submissionSelections.size > 256) {
           const oldest = state.submissionSelections.keys().next().value
@@ -701,16 +891,32 @@ export class ConversationStateStore implements BoosterModule {
       terminalCause: null,
       updatedAt: detail.observedAt,
       source: 'request',
+      requestId: detail.requestId ?? null,
+      requestObservedAt: detail.observedAt,
+      transportHealth: 'healthy',
+      lastActivityAt: detail.observedAt,
+      lastSummaryAt: null,
+      previousSummaryAt: null,
+      lastSummaryKey: null,
+      activityPhase: 'thinking',
+      phaseStartedAt: detail.startedAt,
+      actionMessageId: null,
     }
     state.lastObservedAt = Math.max(state.lastObservedAt, detail.observedAt)
     this.#touch(state, 'request')
   }
 
   ingestStop(detail: ConversationStopEventDetail) {
-    const conversationId = detail.conversationId ?? currentConversationId() ?? null
+    const conversationId =
+      detail.conversationId ??
+      (detail.requestId ? this.#runConversations.get(detail.requestId) : undefined) ??
+      null
     if (!conversationId) return
-    const state = this.#ensure(conversationId)
+    this.observations.receive(conversationId, { kind: 'stop', detail })
+    const state = this.#states.get(conversationId)
+    if (!state || !['in_progress', 'stop_requested', 'stopped'].includes(state.lifecycle.state)) return
     const previous = state.lifecycle
+    if (previous.requestId && detail.requestId !== previous.requestId) return
     if (detail.phase === 'requested') {
       state.lifecycle = {
         ...previous,
@@ -743,9 +949,12 @@ export class ConversationStateStore implements BoosterModule {
   }
 
   ingestStreamStatus(detail: ConversationStreamStatusEventDetail) {
+    this.observations.receive(detail.conversationId, { kind: 'status', detail })
     if (detail.status !== 'COMPLETE') return
-    const state = this.#ensure(detail.conversationId)
+    const state = this.#states.get(detail.conversationId)
+    if (!state) return
     const previous = state.lifecycle
+    if (!previous.requestId || detail.requestId !== previous.requestId) return
     if (
       previous.state === 'stop_requested' ||
       previous.state === 'stopped' ||
@@ -765,33 +974,188 @@ export class ConversationStateStore implements BoosterModule {
   }
 
   ingestStreamEvent(detail: ConversationStreamEventDetail) {
-    const conversationId = detail.conversationId ?? currentConversationId() ?? null
+    if (detail.accountId !== undefined && detail.accountId !== this.#verifiedAccountId) return
+    const conversationId =
+      detail.conversationId ??
+      (detail.requestId ? this.#runConversations.get(detail.requestId) : undefined) ??
+      null
     if (!conversationId) return
     if (
-      detail.accountId !== undefined &&
-      this.#verifiedAccountId !== null &&
-      detail.accountId !== this.#verifiedAccountId
+      detail.requestId &&
+      this.#runConversations.has(detail.requestId) &&
+      this.#runConversations.get(detail.requestId) !== conversationId
     )
       return
-    if (detail.kind === 'message')
-      this.sourceGate.inspectStreamMessage(conversationId, detail.record)
-    const state = this.#ensure(conversationId)
+    const observation = this.observations.receive(conversationId, { kind: 'stream', detail })
     if (detail.kind === 'message') {
+      try {
+        this.sourceGate.inspectStreamMessage(conversationId, detail.record)
+      } catch (error) {
+        this.#rejectedSource({
+          conversationId,
+          observedAt: detail.observedAt,
+          sourceKind: 'stream',
+          raw: detail.record,
+          ...(detail.evidence ? { evidence: detail.evidence } : {}),
+        })
+        throw error
+      }
+    }
+    if (detail.requestId && this.#pendingRequests.has(detail.requestId)) {
+      const pending = this.#pendingRequests.get(detail.requestId)
+      this.#pendingRequests.delete(detail.requestId)
+      if (
+        pending &&
+        detail.observedAt - pending.observedAt >= 0 &&
+        detail.observedAt - pending.observedAt <= 120_000
+      )
+        this.ingestRequest({ ...pending, conversationId })
+    }
+    const state = this.#ensure(conversationId)
+    const historyUser = state.lifecycle.userMessageId
+      ? state.records.get(state.lifecycle.userMessageId)
+      : undefined
+    const streamMetadata = detail.kind === 'message' ? asRecord(detail.record.metadata) : null
+    const recoveredRun = Boolean(
+      !state.lifecycle.requestId &&
+        state.lifecycle.requestObservedAt == null &&
+        ['in_progress', 'stop_requested'].includes(state.lifecycle.state) &&
+        detail.observedAt >= (state.headReadStartedAt ?? 0) &&
+        historyUser &&
+        (detail.userMessageId === historyUser.messageId ||
+          (historyUser.turnExchangeId &&
+            streamMetadata?.turn_exchange_id === historyUser.turnExchangeId) ||
+          (historyUser.workingTurnId && streamMetadata?.working_turn_id === historyUser.workingTurnId)),
+    )
+    if (recoveredRun && detail.requestId) {
+      state.lifecycle = { ...state.lifecycle, requestId: detail.requestId }
+      this.#rememberRun(detail.requestId, conversationId)
+    }
+    const sameRun = state.lifecycle.requestId
+      ? detail.requestId === state.lifecycle.requestId
+      : state.lifecycle.source === 'request' && !detail.requestId
+        ? detail.userMessageId
+          ? detail.userMessageId === state.lifecycle.userMessageId
+          : true
+        : recoveredRun
+    if (detail.kind === 'message') {
+      const previousRecord =
+        typeof detail.record.id === 'string' ? state.records.get(detail.record.id) : undefined
       const normalized = normalizeConversationMessage(
         detail.record,
         conversationId,
         state.projectId,
         detail.observedAt,
-        typeof detail.record.id === 'string' ? state.records.get(detail.record.id) : undefined,
+        previousRecord,
       )
       if (!normalized) return
-      this.#mergeRecord(state, normalized)
+      const accepted = this.#mergeRecord(state, normalized)
+      // Message ancestry is not request correlation, especially during a retry of the same turn.
+      const affectsRun = accepted && sameRun
+      if (
+        affectsRun &&
+        normalized.role === 'user' &&
+        state.lifecycle.userMessageId !== normalized.messageId &&
+        (sourceTime(normalized.createTime) ?? 0) >= (state.lifecycle.startedAt ?? 0)
+      ) {
+        state.lifecycle = {
+          state: 'in_progress',
+          userMessageId: normalized.messageId,
+          requestId: detail.requestId ?? null,
+          requestObservedAt: detail.observedAt,
+          startedAt: sourceTime(normalized.createTime) ?? detail.observedAt,
+          completedAt: null,
+          stopRequestedAt: null,
+          terminalCause: null,
+          source: 'transport',
+          updatedAt: detail.observedAt,
+        }
+      } else if (
+        affectsRun &&
+        ACTIVE_MESSAGE_STATUS.has(normalized.status ?? '') &&
+        !['stop_requested', 'stopped', 'complete', 'failed', 'cancelled'].includes(state.lifecycle.state)
+      ) {
+        state.lifecycle = {
+          ...state.lifecycle,
+          state: 'in_progress',
+          completedAt: null,
+          terminalCause: null,
+          source: 'transport',
+          updatedAt: detail.observedAt,
+        }
+      }
+      if (affectsRun && detail.observedAt >= (state.lifecycle.lastActivityAt ?? 0)) {
+        const previous = state.lifecycle
+        const phase =
+          normalized.role === 'tool' || (normalized.recipient && normalized.recipient !== 'all')
+            ? 'tool'
+            : visibleFinal(normalized) && normalized.role === 'assistant'
+              ? 'responding'
+              : 'thinking'
+        const actionId = normalized.role === 'tool' ? normalized.parentId : normalized.messageId
+        const summaryKey = sourceSummaryKey(normalized)
+        const newSummary =
+          summaryKey !== null &&
+          summaryKey !== previous.lastSummaryKey &&
+          summaryKey !== sourceSummaryKey(previousRecord)
+        state.lifecycle = {
+          ...previous,
+          lastActivityAt: detail.observedAt,
+          activityPhase: phase,
+          phaseStartedAt:
+            phase !== previous.activityPhase || actionId !== previous.actionMessageId
+              ? detail.observedAt
+              : (previous.phaseStartedAt ?? previous.startedAt),
+          actionMessageId: actionId,
+          ...(newSummary
+            ? {
+                previousSummaryAt: previous.lastSummaryAt ?? null,
+                lastSummaryAt: detail.observedAt,
+                lastSummaryKey: summaryKey,
+              }
+            : {}),
+        }
+      }
+      if (
+        affectsRun &&
+        visibleFinal(normalized) &&
+        normalized.endTurn === true &&
+        normalized.status === 'finished_successfully' &&
+        !['stop_requested', 'stopped', 'failed'].includes(state.lifecycle.state)
+      ) {
+        state.lifecycle = {
+          ...state.lifecycle,
+          state: 'complete',
+          completedAt: sourceTime(normalized.updateTime) ?? detail.observedAt,
+          terminalCause: null,
+          source: 'transport',
+          updatedAt: detail.observedAt,
+        }
+      }
+      const source = {
+        conversationId,
+        raw: detail.record,
+        observedAt: detail.observedAt,
+        accountId: this.#verifiedAccountId,
+        activeRun: affectsRun,
+        requestId: detail.requestId ?? null,
+        ...(detail.evidence ? { evidence: detail.evidence } : {}),
+      }
+      if (source.accountId)
+        this.observations.admit(observation, {
+          kind: 'message',
+          detail: { ...source, accountId: source.accountId },
+        })
+      for (const listener of this.#streamMessageListeners) listener(source)
       state.lastObservedAt = Math.max(state.lastObservedAt, detail.observedAt)
       this.#touch(state, 'transport')
       return
     }
+    if (!sameRun || state.lifecycle.state === 'unknown' || state.lifecycle.state === 'idle') return
     const previous = state.lifecycle
     if (detail.kind === 'complete') {
+      // A tool/message segment can finish while the main agent keeps working.
+      if (detail.phase === 'message') return
       if (
         previous.state === 'stop_requested' ||
         previous.state === 'stopped' ||
@@ -812,6 +1176,25 @@ export class ConversationStateStore implements BoosterModule {
     }
     if (detail.kind === 'error') {
       const terminalCause = detail.errorCode ?? detail.errorReason ?? 'stream_error'
+      if (
+        [
+          'stream_interrupted',
+          'source_patch_gap',
+          'network_error',
+          'tokenless_resume_unavailable',
+          'persisted_final_available',
+        ].includes(terminalCause)
+      ) {
+        state.lifecycle = {
+          ...previous,
+          transportHealth:
+            terminalCause === 'tokenless_resume_unavailable' ? 'unavailable' : 'interrupted',
+          source: 'transport',
+          updatedAt: detail.observedAt,
+        }
+        this.#touch(state, 'transport')
+        return
+      }
       state.lifecycle = {
         ...previous,
         state: terminalCause === 'conversation_too_large' ? 'complete' : 'failed',
@@ -824,11 +1207,19 @@ export class ConversationStateStore implements BoosterModule {
       this.#touch(state, 'transport')
       return
     }
+    if (detail.kind === 'safety-review') {
+      state.safetyReview = {
+        active: detail.active,
+        message: detail.message,
+        protectionType: detail.protectionType,
+      }
+      state.lastObservedAt = Math.max(state.lastObservedAt, detail.observedAt)
+      this.#touch(state, 'transport')
+      return
+    }
     if (detail.kind === 'async-status') {
       if (asyncStatusIsActive(detail.asyncStatus)) {
-        if (
-          !['stop_requested', 'stopped', 'complete', 'cancelled', 'failed'].includes(previous.state)
-        ) {
+        if (!['stop_requested', 'stopped', 'complete', 'cancelled', 'failed'].includes(previous.state)) {
           state.lifecycle = {
             ...previous,
             state: 'in_progress',
@@ -854,89 +1245,15 @@ export class ConversationStateStore implements BoosterModule {
     }
   }
 
+  /** Renderer state is presentation-only and cannot change an observed request. */
   observeRendererState(
-    conversationId: string,
-    stateValue: string | null,
-    userMessageId: string | null,
-  ) {
-    const state = this.#ensure(conversationId)
-    const previous = state.lifecycle
-    const normalized = stateValue?.toLowerCase() ?? ''
-    let next = previous
-    if (normalized === 'in_progress') {
-      if (previous.state !== 'stop_requested') {
-        const nextUserMessageId = userMessageId ?? previous.userMessageId
-        const userRecord = nextUserMessageId ? state.records.get(nextUserMessageId) : undefined
-        const nextStartedAt =
-          sourceTime(userRecord?.createTime) ??
-          (nextUserMessageId === previous.userMessageId ? previous.startedAt : null)
-        const sameRun =
-          !nextUserMessageId ||
-          !previous.userMessageId ||
-          nextUserMessageId === previous.userMessageId
-        const terminal = ['stopped', 'complete', 'cancelled', 'failed'].includes(previous.state)
-        const regressesRun = Boolean(
-          nextUserMessageId &&
-            previous.userMessageId &&
-            nextUserMessageId !== previous.userMessageId &&
-            nextStartedAt &&
-            previous.startedAt &&
-            nextStartedAt < previous.startedAt,
-        )
-        const conflictsWithFreshRequest = Boolean(
-          previous.source === 'request' &&
-            previous.userMessageId &&
-            nextUserMessageId &&
-            nextUserMessageId !== previous.userMessageId,
-        )
-        if (!((terminal && sameRun) || regressesRun || conflictsWithFreshRequest)) {
-          if (
-            previous.state !== 'in_progress' ||
-            nextUserMessageId !== previous.userMessageId ||
-            nextStartedAt !== previous.startedAt
-          )
-            next = {
-              ...previous,
-              state: 'in_progress',
-              userMessageId: nextUserMessageId,
-              startedAt: nextStartedAt,
-              completedAt: null,
-              terminalCause: null,
-              source: 'renderer',
-            }
-        }
-      }
-    } else if (
-      normalized === 'complete' &&
-      previous.state !== 'stop_requested' &&
-      previous.state !== 'failed'
-    ) {
-      if (previous.state !== 'complete')
-        next = { ...previous, state: 'complete', source: 'renderer' }
-    }
-    if (next === previous) return
-    state.lifecycle = next
-    this.#touch(state, 'renderer')
-  }
+    _conversationId: string,
+    _stateValue: string | null,
+    _userMessageId: string | null,
+  ) {}
 
-  ingestDomSnapshot(snapshot: ConversationDomSnapshot) {
-    const state = this.#ensure(snapshot.conversationId)
-    state.projectId = snapshot.projectId ?? state.projectId
-    state.title = snapshot.title ?? state.title
-    state.lastObservedAt = Math.max(state.lastObservedAt, snapshot.observedAt)
-    for (const source of snapshot.records) {
-      const previous = state.records.get(source.messageId)
-      const normalized = normalizeConversationMessage(
-        source.raw,
-        snapshot.conversationId,
-        state.projectId,
-        snapshot.observedAt,
-        previous,
-      )
-      if (normalized) this.#mergeRecord(state, normalized)
-    }
-    this.#touch(state, 'dom')
-  }
+  /** DOM is a placement adapter only; native records come from observed protocol events. */
+  ingestDomSnapshot(_snapshot: ConversationDomSnapshot) {}
 
   async hydrate(conversationId: string, archive: Pick<ConversationArchiveStore, 'listMessages'>) {
     const state = this.#ensure(conversationId)
@@ -955,6 +1272,21 @@ export class ConversationStateStore implements BoosterModule {
         state.hydration = undefined
       })
     await state.hydration
+  }
+
+  /** Restore immutable saved presentation without inferring request state. */
+  async hydrateSavedWindow(conversationId: string, load: () => Promise<readonly ArchivedMessage[]>) {
+    if (!this.verifiedAccountId()) return
+    const epoch = this.#accountEpoch
+    const state = this.#ensure(conversationId)
+    const records = await load()
+    if (epoch !== this.#accountEpoch || this.#states.get(conversationId) !== state) return
+    let changed = false
+    for (const record of records) {
+      if (record.conversationId !== conversationId) continue
+      changed = this.#mergeRecord(state, record, true) || changed
+    }
+    if (changed) this.#touch(state, 'hydrate')
   }
 
   #onMessage = (event: MessageEvent) => {
@@ -1043,23 +1375,23 @@ export class ConversationStateStore implements BoosterModule {
       hydration: undefined,
     }
     this.#states.set(conversationId, state)
-    this.#evict()
+    this.#evict(conversationId)
     return state
   }
 
-  #mergeRecord(state: MutableConversationState, incoming: ArchivedMessage, hydration = false) {
+  #mergeRecord(state: MutableConversationState, incoming: ArchivedMessage, hydration = false): boolean {
     const previous = state.records.get(incoming.messageId)
+    if (previous && compareSourceObservation(previous.raw, incoming.raw) !== 'advance') return false
     if (previous && hydration) {
-      const previousSourceTime =
-        sourceTime(previous.updateTime) ?? sourceTime(previous.createTime) ?? 0
-      const incomingSourceTime =
-        sourceTime(incoming.updateTime) ?? sourceTime(incoming.createTime) ?? 0
+      const previousSourceTime = sourceTime(previous.updateTime) ?? sourceTime(previous.createTime) ?? 0
+      const incomingSourceTime = sourceTime(incoming.updateTime) ?? sourceTime(incoming.createTime) ?? 0
       const previousIsDom = asRecord(previous.raw.metadata)?.booster_dom_snapshot === true
-      if (!previousIsDom && previousSourceTime >= incomingSourceTime) return
+      if (!previousIsDom && previousSourceTime >= incomingSourceTime) return false
     }
     if (previous) this.#unindexRecord(state, previous)
     state.records.set(incoming.messageId, incoming)
     this.#indexRecord(state, incoming)
+    return true
   }
 
   #indexRecord(state: MutableConversationState, record: ArchivedMessage) {
@@ -1087,9 +1419,6 @@ export class ConversationStateStore implements BoosterModule {
   ) {
     if (state.lifecycle.state === 'stop_requested' && observedAt < state.lifecycle.updatedAt) return
     const records = [...state.records.values()].sort(recordSort)
-    const activeRecord = [...records]
-      .reverse()
-      .find((record) => ACTIVE_MESSAGE_STATUS.has(record.status?.toLowerCase() ?? ''))
     const hasAsyncStatus = Object.hasOwn(payload, 'async_status')
     const asyncStatus = payload.async_status
     const asyncActive = hasAsyncStatus && asyncStatusIsActive(asyncStatus)
@@ -1099,10 +1428,12 @@ export class ConversationStateStore implements BoosterModule {
     const latestTurnKey = latestUser?.turnExchangeId ?? latestUser?.workingTurnId ?? null
     const turnRecords = latestTurnKey
       ? records.filter(
-          (record) =>
-            record.turnExchangeId === latestTurnKey || record.workingTurnId === latestTurnKey,
+          (record) => record.turnExchangeId === latestTurnKey || record.workingTurnId === latestTurnKey,
         )
       : records
+    const activeRecord = [...turnRecords]
+      .reverse()
+      .find((record) => ACTIVE_MESSAGE_STATUS.has(record.status?.toLowerCase() ?? ''))
     const stoppedRecord = [...turnRecords]
       .reverse()
       .find((record) => STOPPED_MESSAGE_STATUS.has(record.status?.toLowerCase() ?? ''))
@@ -1112,9 +1443,7 @@ export class ConversationStateStore implements BoosterModule {
     const startedAt = sourceTime(latestUser?.createTime) ?? state.lifecycle.startedAt
     const userMessageId = latestUser?.messageId ?? state.lifecycle.userMessageId
     const isNewRun = Boolean(
-      userMessageId &&
-        state.lifecycle.userMessageId &&
-        userMessageId !== state.lifecycle.userMessageId,
+      userMessageId && state.lifecycle.userMessageId && userMessageId !== state.lifecycle.userMessageId,
     )
     if (
       (startedAt && startedAt !== state.lifecycle.startedAt) ||
@@ -1127,7 +1456,48 @@ export class ConversationStateStore implements BoosterModule {
         terminalCause: isNewRun ? null : state.lifecycle.terminalCause,
         updatedAt: observedAt,
         source: 'initial',
+        ...(isNewRun
+          ? {
+              requestId: null,
+              requestObservedAt: null,
+              lastActivityAt: null,
+              lastSummaryAt: null,
+              previousSummaryAt: null,
+              lastSummaryKey: null,
+              phaseStartedAt: null,
+              actionMessageId: null,
+            }
+          : {}),
       }
+
+    // A history read is not fresh activity. Recover only native timestamps;
+    // repeated reads/catalog polling must not reset the no-change counter.
+    if (state.lifecycle.lastActivityAt == null) {
+      const activity = turnRecords.filter((record) => record.role !== 'user')
+      const times = activity.flatMap((record) => {
+        const at = sourceTime(record.updateTime) ?? sourceTime(record.createTime)
+        return at ? [at] : []
+      })
+      const summaries = activity.flatMap((record) => {
+        const at = sourceTime(record.createTime)
+        return at && sourceSummaryKey(record) ? [at] : []
+      })
+      const distinctSummaries = [...new Set(summaries)].sort((a, b) => a - b)
+      const latest = activity.at(-1)
+      state.lifecycle = {
+        ...state.lifecycle,
+        lastActivityAt: times.length ? Math.max(...times) : startedAt,
+        lastSummaryAt: distinctSummaries.at(-1) ?? null,
+        previousSummaryAt: distinctSummaries.at(-2) ?? null,
+        activityPhase:
+          latest?.role === 'tool' || (latest?.recipient && latest.recipient !== 'all')
+            ? 'tool'
+            : latest && visibleFinal(latest)
+              ? 'responding'
+              : 'thinking',
+        phaseStartedAt: latest ? sourceTime(latest.createTime) : startedAt,
+      }
+    }
 
     if (asyncActive || (!asyncAuthoritative && activeRecord)) {
       if (state.lifecycle.state !== 'stop_requested')
@@ -1184,11 +1554,11 @@ export class ConversationStateStore implements BoosterModule {
     for (const listener of this.#listeners) listener(change)
   }
 
-  #evict() {
+  #evict(protectedId: string) {
     while (this.#states.size > MAX_CONVERSATIONS) {
-      const oldest = [...this.#states.values()].sort(
-        (a, b) => a.lastObservedAt - b.lastObservedAt,
-      )[0]
+      const oldest = [...this.#states.values()]
+        .filter((state) => state.conversationId !== protectedId)
+        .sort((a, b) => a.lastObservedAt - b.lastObservedAt)[0]
       if (!oldest) return
       this.#states.delete(oldest.conversationId)
     }

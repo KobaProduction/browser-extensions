@@ -66,8 +66,8 @@ describe('Booster canonical content model', () => {
     expect(msg.elements[1]?.sourcePath).toBe('content')
     expect(msg.elements[1]?.text).toBeNull()
     expect(msg.renderCoverage).toBe('contains_opaque')
-    expect(() =>
-      projectNativeMessage({ id: 'm2' }, { accountId: '', conversationId: 'chat' }),
-    ).toThrow('Canonical archive identity missing')
+    expect(() => projectNativeMessage({ id: 'm2' }, { accountId: '', conversationId: 'chat' })).toThrow(
+      'Canonical archive identity missing',
+    )
   })
 })

@@ -1,47 +1,133 @@
 <script setup lang="ts">
-/** VK-only archive API adapter. Generic ArchiveManager owns presentation, never VK storage. */
+import { useApplicationLocale, useLocalizedText } from '@kobaproduction/browser-ui'
+import { VK_UI_MESSAGES } from './ui-messages'
+/** VK tool adapter. Shared archive widgets own record and selection presentation. */
 
 import type { ChatCollectionSnapshot } from '@kobaproduction/browser-archive'
-import { createChatCollectionController, readArchiveMedia } from '@kobaproduction/browser-archive'
-import { Badge, Button } from '@kobaproduction/browser-ui'
+import { createChatCollectionController } from '@kobaproduction/browser-archive'
+import { SHELL_RESTORE_UI_EVENT } from '@kobaproduction/browser-core'
 import {
+  Button,
+  Card,
+  Checkbox,
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+  Input,
+  Label,
+  ModalSurface,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Slider,
+  Switch,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@kobaproduction/browser-ui'
+import {
+  ArchiveExportFormatFields,
   ArchiveMessageHeader,
   ArchiveProgressBar,
+  ArchiveReadingSurface,
+  ArchiveRecordList,
+  ArchiveSelectionScope,
+  ArchiveTimeline,
   ConversationCollectionAction,
   useApplicationTelemetry,
+  useArchiveFocusTracker,
 } from '@kobaproduction/browser-widgets'
-import { Archive, Download, LoaderCircle, Settings2, ShieldAlert } from 'lucide-vue-next'
-import { computed, onMounted, onUnmounted, ref, useId, watch } from 'vue'
-import { assets } from '../api/vk-media'
+import {
+  Archive,
+  ChevronDown,
+  Download,
+  History,
+  LoaderCircle,
+  Settings2,
+  ShieldAlert,
+} from 'lucide-vue-next'
+import { computed, nextTick, onMounted, onUnmounted, ref, useId, watch } from 'vue'
+import { assets } from '../api/vk-assets'
 import { vkArchiveErrorMessage } from '../model/archive-error-feedback'
 import { vkChatCollectionPort } from '../model/chat-collection-port'
 import { vkPreferencesLoadError, vkPreferencesPersistence } from '../model/durable-preferences'
-import { validateVkCapturePreferences } from '../model/settings-backup'
+import {
+  defaultVkCapturePreferences,
+  type VkCapturePreferences,
+  validateVkCapturePreferences,
+} from '../model/settings-backup'
 import type { VkAsset } from '../model/types'
-import { type ArchiveStatus, archiveApi, type VkMessage } from '../model/types'
-import { vkRequestedView } from '../model/ui-navigation'
-import type { VkExportProgress } from '../model/vk-user-export'
+import {
+  type ArchiveStatus,
+  archiveApi,
+  type VkArchiveCoverage,
+  type VkMessage,
+  type VkTimelineEntry,
+} from '../model/types'
+import { vkActiveView, vkRequestedView } from '../model/ui-navigation'
+import type { VkExportProgress, VkUserExportResult } from '../model/vk-user-export'
+
+const locale = useApplicationLocale()
+const text = useLocalizedText(VK_UI_MESSAGES)
 
 const api = archiveApi()
-const telemetry = useApplicationTelemetry()
+defineProps<{ installation?: string; version?: string; showCatalog?: boolean; showIdentity?: boolean }>()
+const telemetry = useApplicationTelemetry('vk-booster')
+const timelineId = useId()
 const status = ref<ArchiveStatus | null>(api?.status() ?? null)
-const error = ref('')
 type View = 'capture' | 'reader' | 'settings'
-const tab = ref<View>('capture')
-const tabPrefix = useId()
-const selectedStatus = computed(() => {
-  if (activeOperation.value === 'export') return 'Экспорт архива'
-  if (status.value?.busy || fixedBusy.value) return 'Захват сообщений'
-  if (status.value?.blockedReason)
-    return status.value.activePeerId ? 'Другой диалог' : 'Открой переписку'
-  return status.value?.activePeerId ? 'Dexie v1' : 'Открой переписку'
+const tab = ref<View>(status.value?.activePeerId ? vkActiveView.value : 'settings')
+watch(
+  tab,
+  (value, previous) => {
+    if (previous === 'reader' && value !== 'reader') leaveReader()
+    vkActiveView.value = value
+  },
+  { immediate: true },
+)
+watch(vkActiveView, (value) => {
+  if (tab.value !== value) enterTab(value)
 })
 const fixedBusy = ref(false)
 const activeOperation = ref<'capture' | 'export' | null>(null)
 const captureRange = ref<'all' | 'recent'>('all')
-const fixedLimit = ref(Math.min(100000, Math.max(1, status.value?.options.limit ?? 100)))
+const savedCapturePreferences = ref<VkCapturePreferences>(defaultVkCapturePreferences())
+const fixedLimit = ref(
+  Math.min(100000, Math.max(1, status.value?.options.limit ?? savedCapturePreferences.value.limit)),
+)
 const requestPageSize = ref(status.value?.options.pageSize ?? 50)
 const requestDelay = ref(status.value?.options.delay ?? 450)
+function applyCapturePreferences(saved: VkCapturePreferences) {
+  savedCapturePreferences.value = saved
+  fixedLimit.value = saved.limit
+  requestPageSize.value = saved.pageSize
+  requestDelay.value = saved.delay
+}
+async function refreshCapturePreferences() {
+  try {
+    const options = api?.status().options
+    const saved = options
+      ? validateVkCapturePreferences({
+          mode: options.mode,
+          limit: options.limit,
+          from: options.from,
+          through: options.through,
+          pageSize: options.pageSize,
+          delay: options.delay,
+          media: options.media,
+        })
+      : await vkPreferencesPersistence()?.read()
+    if (!disposed && saved) applyCapturePreferences(saved)
+  } catch {
+    if (!disposed) durableSettingsError.value = 'Не удалось загрузить постоянные параметры VK.'
+  }
+}
+function onRestorePreferences() {
+  if (!fixedBusy.value) void refreshCapturePreferences()
+}
 const captureComplete = ref<boolean | null>(null)
 const reportedTotal = ref<number | null>(null)
 const attachmentReferences = ref<number | null>(null)
@@ -71,59 +157,270 @@ const fixedPreview = ref<readonly VkMessage[]>([])
 const fixedCursor = ref<number | undefined>()
 const fixedNextCursor = ref<number | undefined>()
 const fixedReading = ref(false)
+const readerViewport = ref<HTMLElement | null>(null)
 let readerGeneration = 0
+let scopeGeneration = 0
+let disposed = false
+const readerFocus = useArchiveFocusTracker(
+  () => readerViewport.value,
+  () => !disposed && tab.value === 'reader' && !fixedReading.value,
+)
+let readerRevision = -1
+let readerWork: Promise<void> = Promise.resolve()
+let latestTimelineTarget: string | null = null
+let timelineNavigating = false
+let savedRefreshTimer: ReturnType<typeof setTimeout> | undefined
+let savedRevision = 0
+function scheduleSavedRefresh() {
+  if (savedRefreshTimer !== undefined) clearTimeout(savedRefreshTimer)
+  savedRefreshTimer = setTimeout(() => {
+    savedRefreshTimer = undefined
+    if (tab.value !== 'reader' || !hasVerifiedPeer.value) return
+    if (fixedReading.value || fixedBusy.value || api?.status().busy) {
+      scheduleSavedRefresh()
+      return
+    }
+    void readDexie(fixedCursor.value)
+  }, 350)
+}
 const participantNames = ref<Record<number, string>>({})
 const nameLookupError = ref('')
 const attachments = ref<Record<string, { blob: Blob; url: string; name: string }>>({})
 const downloading = ref<Record<string, boolean>>({})
 const attachmentErrors = ref<Record<string, string>>({})
+const mediaRequests = new Set<AbortController>()
+function stopMediaRequests() {
+  for (const request of mediaRequests) request.abort()
+  mediaRequests.clear()
+}
 const exportOpen = ref(false)
 const exportChunkRows = ref<100 | 500>(500)
+const exportFormat = ref<'json' | 'markdown' | 'text'>('json')
+const exportFormats = [
+  { id: 'json', label: 'JSON · оригиналы и метаданные' },
+  { id: 'markdown', label: 'Markdown' },
+  { id: 'text', label: 'Текст' },
+]
+const exportPackages = [
+  { id: 'none', label: 'Один файл' },
+  { id: 'zip', label: 'ZIP' },
+]
 const exportIncludeReferences = ref(true)
-const exportPrepared = ref<Blob | null>(null)
+const exportPackaging = ref<'zip' | 'none'>('zip')
+const exportIncludeMedia = ref(false)
+const exportIncludeOriginal = ref(false)
+const exportScope = ref<'all' | 'selected'>('all')
+const selectionEnabled = ref(false)
+const selectedMessageIds = ref<ReadonlySet<number>>(new Set())
+const selectedRecordIds = computed(() => new Set([...selectedMessageIds.value].map(String)))
+const exportPrepared = ref<VkUserExportResult | null>(null)
 const exportProgress = ref<VkExportProgress | null>(null)
+const speedOpen = ref(false)
+const coverage = ref<VkArchiveCoverage | null>(null)
+const timelineEntries = ref<readonly VkTimelineEntry[]>([])
+const activeMessageId = ref<string | null>(null)
+watch(readerFocus.activeMessageKey, (key) => {
+  if (key?.startsWith('vk:')) activeMessageId.value = key.slice(3)
+})
+const timelineBusy = ref(false)
+const timelineOpen = ref(true)
+const coverageOpen = ref(false)
+let timelineRevision = -1
+let timelineGeneration = 0
+let timelineRequest: AbortController | undefined, rangeRequest: AbortController | undefined
+function cancelReaderTasks() {
+  timelineRequest?.abort()
+  rangeRequest?.abort()
+  latestTimelineTarget = null
+}
+function leaveReader() {
+  cancelReaderTasks()
+  stopMediaRequests()
+  readerGeneration++
+  fixedReading.value = false
+}
+const timelineNodes = computed(() =>
+  timelineEntries.value.map((entry, index, entries) => {
+    const previous = entries[index - 1]
+    if (index > 0 && !previous) throw Error('Timeline entries must be dense')
+    return {
+      id: String(entry.id),
+      parentId: previous ? String(previous.id) : null,
+      label: `${entry.outgoing ? text('Вы') : entry.senderId ? `${text('Участник')} ${entry.senderId}` : text('Сообщение')} · #${entry.id}`,
+      preview: entry.text ?? '',
+      uncertain: coverage.value?.integrity.chain !== 'verified',
+    }
+  }),
+)
+const timelineVisible = computed(() => timelineOpen.value && timelineNodes.value.length > 0)
+const rangeStart = ref<VkMessage | null>(null),
+  rangeEnd = ref<VkMessage | null>(null),
+  rangeBusy = ref(false)
+async function refreshTimeline(peer: number | null | undefined, ticket: number) {
+  if (!api || timelineBusy.value || timelineRevision === savedRevision) return
+  timelineBusy.value = true
+  const generation = ++timelineGeneration
+  const request = new AbortController()
+  timelineRequest = request
+  const revision = savedRevision
+  try {
+    const [entries, summary] = await Promise.all([
+      api.timelineFixed?.(request.signal),
+      api.coverageFixed?.(),
+    ])
+    if (
+      disposed ||
+      generation !== timelineGeneration ||
+      request.signal.aborted ||
+      scopeGeneration !== ticket ||
+      api.status().activePeerId !== peer
+    )
+      return
+    if (entries) timelineEntries.value = entries
+    coverage.value = summary ?? null
+    timelineRevision = revision
+  } catch {
+    if (!request.signal.aborted && !disposed && scopeGeneration === ticket)
+      fixedError.value =
+        'Не удалось проверить таймлайн и полноту. Сохранённые сообщения остаются доступны.'
+  } finally {
+    if (generation === timelineGeneration) timelineBusy.value = false
+  }
+}
+async function navigateTimeline(id: string) {
+  const messageId = Number(id)
+  if (!Number.isSafeInteger(messageId) || messageId <= 0) return
+  latestTimelineTarget = id
+  if (timelineNavigating) return
+  timelineNavigating = true
+  const scope = scopeGeneration
+  try {
+    while (latestTimelineTarget && !disposed && tab.value === 'reader' && scope === scopeGeneration) {
+      const target = latestTimelineTarget
+      latestTimelineTarget = null
+      const targetId = Number(target)
+      if (!fixedPreview.value.some((message) => message.id === targetId))
+        await readDexie(targetId === 1 ? undefined : targetId - 1)
+      if (
+        !disposed &&
+        tab.value === 'reader' &&
+        scope === scopeGeneration &&
+        !latestTimelineTarget &&
+        fixedPreview.value.some((message) => message.id === targetId)
+      ) {
+        activeMessageId.value = target
+        readerFocus.pin(`vk:${target}`)
+        await nextTick()
+        if (disposed || tab.value !== 'reader' || scope !== scopeGeneration || latestTimelineTarget)
+          continue
+        const viewport = readerViewport.value
+        const node = [...(viewport?.querySelectorAll<HTMLElement>('[data-archive-message]') ?? [])].find(
+          (element) => element.dataset.archiveMessage === target,
+        )
+        if (viewport && node) {
+          const bounds = viewport.getBoundingClientRect(),
+            targetBounds = node.getBoundingClientRect()
+          viewport.scrollTop +=
+            targetBounds.top - bounds.top - Math.max(0, (bounds.height - targetBounds.height) / 2)
+        }
+      }
+    }
+  } finally {
+    timelineNavigating = false
+    const pending = latestTimelineTarget
+    if (pending && !disposed && tab.value === 'reader') void navigateTimeline(pending)
+  }
+}
+async function markRange(edge: 'first' | 'last') {
+  if (!activeMessageId.value || !api?.rangeFixed || rangeBusy.value) return
+  const current = fixedPreview.value.find((message) => String(message.id) === activeMessageId.value)
+  if (!current) return
+  if (edge === 'first') rangeStart.value = current
+  else rangeEnd.value = current
+  selectedMessageIds.value = new Set()
+  resetPreparedExport()
+  if (!rangeStart.value || !rangeEnd.value) return
+  const ticket = scopeGeneration,
+    peer = api.status().activePeerId
+  rangeBusy.value = true
+  const request = new AbortController()
+  rangeRequest = request
+  try {
+    const range = await api.rangeFixed(rangeStart.value.id, rangeEnd.value.id, request.signal)
+    if (request.signal.aborted || ticket !== scopeGeneration || api.status().activePeerId !== peer)
+      return
+    selectedMessageIds.value = new Set(range.messageIds)
+    rangeStart.value = range.first
+    rangeEnd.value = range.last
+  } catch {
+    if (!request.signal.aborted && ticket === scopeGeneration)
+      fixedError.value = 'Диапазон изменился или недоступен. Выбери границы повторно.'
+  } finally {
+    rangeBusy.value = false
+  }
+}
+function chooseTab(value: string | number) {
+  if (value === 'capture' || value === 'reader' || value === 'settings') enterTab(value)
+}
+function chooseChunkRows(value: unknown) {
+  if (value === '100' || value === '500') {
+    exportChunkRows.value = Number(value) as 100 | 500
+    resetPreparedExport()
+  }
+}
 function senderName(message: VkMessage): string {
   const id = message.from_id
   if (typeof id === 'number') {
     const name = participantNames.value[id]
     if (name) return name
   }
-  if (message.out === 1 || message.out === true) return 'Вы'
-  return id && Number.isSafeInteger(id) ? `Участник ${id} (имя не получено)` : 'Неизвестный отправитель'
+  if (message.out === 1 || message.out === true) return text('Вы')
+  return id && Number.isSafeInteger(id)
+    ? `${text('Участник')} ${id} (${text('имя не получено')})`
+    : text('Неизвестный отправитель')
 }
 function messageMedia(message: VkMessage): VkAsset[] {
   return assets(message).filter((item) => item.type !== 'link')
 }
-async function requestMedia(asset: VkAsset) {
-  if (downloading.value[asset.key] || attachments.value[asset.key] || !hasVerifiedPeer.value) return
+async function requestMedia(messageId: number, asset: VkAsset) {
+  if (
+    !api?.downloadAttachmentFixed ||
+    downloading.value[asset.key] ||
+    attachments.value[asset.key] ||
+    !hasVerifiedPeer.value
+  )
+    return
   downloading.value = { ...downloading.value, [asset.key]: true }
   const peer = api?.status().activePeerId
+  const scopeTicket = scopeGeneration
+  const request = new AbortController()
+  const timeout = setTimeout(() => request.abort(), 30000)
+  mediaRequests.add(request)
   attachmentErrors.value = { ...attachmentErrors.value, [asset.key]: '' }
   try {
-    const first = asset.choices.find((item) => /^https:\/\//i.test(item.url))
-    if (!first) throw Error('Нет доступной HTTPS-ссылки для вложения.')
-    const response = await fetch(first.url, { credentials: 'omit', signal: AbortSignal.timeout(30000) })
-    const result = await readArchiveMedia(response, {
-      maxBytes: 64 * 1024 * 1024,
-      expectedBytes: first.size,
-    })
-    if (!peer || api?.status().activePeerId !== peer) throw Error('Переписка изменилась.')
-    const blob = new Blob([result.bytes], { type: result.mime })
+    const result = await api.downloadAttachmentFixed(messageId, asset.key, request.signal)
+    if (disposed || scopeTicket !== scopeGeneration || !peer || api?.status().activePeerId !== peer)
+      throw Error('Переписка изменилась.')
+    const blob = result.blob
     attachments.value = {
       ...attachments.value,
       [asset.key]: {
         blob,
         url: URL.createObjectURL(blob),
-        name: first.name,
+        name: result.name,
       },
     }
   } catch {
+    if (disposed || request.signal.aborted || scopeTicket !== scopeGeneration) return
     attachmentErrors.value = {
       ...attachmentErrors.value,
       [asset.key]: 'Не удалось загрузить оригинал. Ссылка может быть недоступна или истекла.',
     }
   } finally {
-    downloading.value = { ...downloading.value, [asset.key]: false }
+    clearTimeout(timeout)
+    mediaRequests.delete(request)
+    if (!disposed && scopeTicket === scopeGeneration)
+      downloading.value = { ...downloading.value, [asset.key]: false }
   }
 }
 function resetPreparedExport() {
@@ -134,13 +431,48 @@ function showUserExportOptions() {
   exportOpen.value = true
   resetPreparedExport()
 }
+function selectMessage(id: string, checked: boolean) {
+  if (fixedBusy.value || rangeBusy.value) return
+  const messageId = Number(id)
+  if (!Number.isSafeInteger(messageId) || messageId <= 0) return
+  const next = new Set(selectedMessageIds.value)
+  if (checked) next.add(messageId)
+  else next.delete(messageId)
+  selectedMessageIds.value = next
+  rangeStart.value = null
+  rangeEnd.value = null
+  resetPreparedExport()
+}
+function selectPage() {
+  if (fixedBusy.value || rangeBusy.value) return
+  selectedMessageIds.value = new Set([
+    ...selectedMessageIds.value,
+    ...fixedPreview.value.map((message) => message.id),
+  ])
+  rangeStart.value = null
+  rangeEnd.value = null
+  resetPreparedExport()
+}
+function clearSelection() {
+  selectedMessageIds.value = new Set()
+  rangeStart.value = null
+  rangeEnd.value = null
+  resetPreparedExport()
+}
+watch(exportScope, resetPreparedExport)
+watch(exportFormat, resetPreparedExport)
+watch([exportPackaging, exportIncludeMedia, exportIncludeOriginal], resetPreparedExport)
+const messageKey = (message: VkMessage) => `vk:${message.id}`
+const messageId = (message: VkMessage) => message.id
+function selectionLabel(message: VkMessage) {
+  return `${text('Выбрать сообщение:')} ${senderName(message)}`
+}
 
 const hasVerifiedPeer = computed(() => !!status.value?.activePeerId && !status.value?.blockedReason)
 async function persistCaptureOptions() {
-  if (!api) throw Error('VK unavailable')
   // ArchiveOptions includes peerId, which must never enter the persisted
   // seven-field preferences envelope (strictly validated below).
-  const { mode, from, through, media } = api.status().options
+  const { mode, from, through, media } = api?.status().options ?? savedCapturePreferences.value
   const options = validateVkCapturePreferences({
     mode,
     limit: fixedLimit.value,
@@ -150,18 +482,19 @@ async function persistCaptureOptions() {
     delay: requestDelay.value,
     media,
   })
-  api.configure(options)
+  api?.configure(options)
   const port = vkPreferencesPersistence()
   try {
     if (!port) throw Error('VK settings storage unavailable')
     await port.write(options)
+    savedCapturePreferences.value = options
     durableSettingsError.value = ''
   } catch {
     durableSettingsError.value = 'Не удалось сохранить параметры для следующего запуска.'
   }
 }
 async function saveCaptureOptions() {
-  if (!api || fixedBusy.value) return
+  if (fixedBusy.value) return
   try {
     await persistCaptureOptions()
   } catch {
@@ -170,6 +503,8 @@ async function saveCaptureOptions() {
 }
 async function captureDexie() {
   if (!api || fixedBusy.value || !hasVerifiedPeer.value) return
+  const peer = api.status().activePeerId
+  const scopeTicket = scopeGeneration
   fixedBusy.value = true
   resetPreparedExport()
   void telemetry?.record('archive.capture.started')
@@ -179,37 +514,77 @@ async function captureDexie() {
     await persistCaptureOptions()
     if (!collector) throw Error('VK collector unavailable')
     await collector.start()
+    if (scopeTicket !== scopeGeneration || api.status().activePeerId !== peer) return
     const latest = api.status()
     fixedSaved.value = latest.progress.newCount ?? null
     void telemetry?.record('archive.capture.completed', latest.progress.newCount ?? 0)
     reportedTotal.value = latest.progress.total || null
     captureComplete.value = latest.progress.phase === 'Dexie: сохранено'
     attachmentReferences.value = latest.progress.attachmentReferences ?? null
-    fixedPreview.value = []
-    fixedCursor.value = undefined
-    fixedNextCursor.value = undefined
   } catch (error) {
+    if (scopeTicket !== scopeGeneration || api.status().activePeerId !== peer) return
     void telemetry?.record('archive.capture.failed')
     captureComplete.value = false
-    fixedError.value = `Сбор прерван. ${vkArchiveErrorMessage(error)}`
+    fixedError.value = `${text('Сбор прерван.')} ${text(vkArchiveErrorMessage(error))}`
   } finally {
     activeOperation.value = null
     fixedBusy.value = false
   }
 }
-async function readDexie(cursor?: number) {
-  if (!api || fixedBusy.value || fixedReading.value || !hasVerifiedPeer.value) return
+function readDexie(cursor?: number): Promise<void> {
+  const scope = scopeGeneration
+  const work = readerWork.then(async () => {
+    if (disposed || tab.value !== 'reader' || scope !== scopeGeneration) return
+    await readDexiePage(cursor)
+  })
+  readerWork = work.catch(() => undefined)
+  return work
+}
+async function readDexiePage(cursor?: number) {
+  if (!api || tab.value !== 'reader' || fixedBusy.value || fixedReading.value || !hasVerifiedPeer.value)
+    return
   fixedReading.value = true
   fixedError.value = ''
   const ticket = ++readerGeneration
   const peer = api.status().activePeerId
+  const revision = savedRevision
   try {
     const rows = await api.readFixed(80, cursor)
     if (ticket !== readerGeneration || api.status().activePeerId !== peer) return
+    const viewport = readerViewport.value
+    const preserveScroll = cursor === fixedCursor.value
+    const scrollTop = viewport?.scrollTop ?? 0
+    const bounds = viewport?.getBoundingClientRect()
+    const anchor =
+      preserveScroll && viewport && bounds
+        ? [...viewport.querySelectorAll<HTMLElement>('[data-archive-node]')].find(
+            (node) => node.getBoundingClientRect().bottom >= bounds.top,
+          )
+        : undefined
+    const anchorKey = anchor?.getAttribute('data-archive-node')
+    const anchorOffset = anchor && bounds ? anchor.getBoundingClientRect().top - bounds.top : null
     fixedPreview.value = rows
     fixedCursor.value = cursor
     fixedNextCursor.value = rows.length === 80 ? rows.at(-1)?.id : undefined
+    if (!activeMessageId.value || !rows.some((message) => String(message.id) === activeMessageId.value))
+      activeMessageId.value = rows[0] ? String(rows[0].id) : null
+    void refreshTimeline(peer, scopeGeneration)
+    readerRevision = revision
+    await nextTick()
+    if (ticket !== readerGeneration || api.status().activePeerId !== peer) return
+    if (viewport && viewport === readerViewport.value) {
+      viewport.scrollTop = preserveScroll ? scrollTop : 0
+      if (preserveScroll && anchorKey && anchorOffset !== null) {
+        const current = [...viewport.querySelectorAll<HTMLElement>('[data-archive-node]')].find(
+          (node) => node.getAttribute('data-archive-node') === anchorKey,
+        )
+        if (current)
+          viewport.scrollTop +=
+            current.getBoundingClientRect().top - viewport.getBoundingClientRect().top - anchorOffset
+      }
+    }
     fixedReading.value = false
+    readerFocus.schedule()
     // Names are fetched separately. An unavailable VK users.get cannot
     // delay the saved transcript or erase records from the Reader.
     const ids = [
@@ -235,17 +610,17 @@ async function readDexie(cursor?: number) {
       })
   } catch (error) {
     if (ticket === readerGeneration) {
-      fixedPreview.value = []
-      fixedCursor.value = undefined
-      fixedNextCursor.value = undefined
-      fixedError.value = `Чтение: ${vkArchiveErrorMessage(error)}`
+      fixedError.value = `${text('Чтение:')} ${text(vkArchiveErrorMessage(error))}`
     }
   } finally {
     if (ticket === readerGeneration) fixedReading.value = false
   }
 }
-async function prepareUserZip() {
-  if (!api || fixedBusy.value || !hasVerifiedPeer.value || !exportOpen.value) return
+async function prepareUserExport() {
+  if (!api || fixedBusy.value || rangeBusy.value || !hasVerifiedPeer.value || !exportOpen.value) return
+  if (exportScope.value === 'selected' && !selectedMessageIds.value.size) return
+  const peer = api.status().activePeerId
+  const scopeTicket = scopeGeneration
   fixedBusy.value = true
   activeOperation.value = 'export'
   fixedError.value = ''
@@ -256,35 +631,44 @@ async function prepareUserZip() {
       name: value.name,
       blob: value.blob,
     }))
-    const result = await api.exportUserZip(
+    const result = await api.exportUserConversation(
       {
         chunkRows: exportChunkRows.value,
         includeReferences: exportIncludeReferences.value,
+        format: exportFormat.value,
+        packaging: exportPackaging.value,
+        includeMedia: exportPackaging.value === 'zip' && exportIncludeMedia.value,
+        includeOriginal: exportIncludeOriginal.value,
+        messageIds: exportScope.value === 'selected' ? [...selectedMessageIds.value] : undefined,
         downloadedMedia: loaded,
       },
       (progress) => {
-        exportProgress.value = progress
+        if (scopeTicket === scopeGeneration && api.status().activePeerId === peer)
+          exportProgress.value = progress
       },
     )
-    if (!result.size) throw Error('ZIP export returned an empty archive')
+    if (scopeTicket !== scopeGeneration || api.status().activePeerId !== peer) return
+    if (!result.blob.size) throw Error('Export returned an empty file')
     exportPrepared.value = result
     void telemetry?.record('archive.export.completed')
   } catch (error) {
-    void telemetry?.record('archive.export.failed')
-    fixedError.value = `Экспорт ZIP: ${vkArchiveErrorMessage(error)}`
+    if (scopeTicket === scopeGeneration && api.status().activePeerId === peer) {
+      void telemetry?.record('archive.export.failed')
+      fixedError.value = `${text('Экспорт:')} ${text(vkArchiveErrorMessage(error))}`
+    }
   } finally {
     activeOperation.value = null
     fixedBusy.value = false
   }
 }
-function downloadPreparedZip() {
-  const blob = exportPrepared.value
-  if (!blob || fixedBusy.value || !hasVerifiedPeer.value) return
-  const url = URL.createObjectURL(blob)
+function downloadPreparedExport() {
+  const result = exportPrepared.value
+  if (!result || fixedBusy.value || !hasVerifiedPeer.value) return
+  const url = URL.createObjectURL(result.blob)
   try {
     const link = document.createElement('a')
     link.href = url
-    link.download = 'vk-saved-conversation.zip'
+    link.download = `vk-saved-conversation.${result.extension}`
     document.body.append(link)
     try {
       link.click()
@@ -296,33 +680,35 @@ function downloadPreparedZip() {
   }
 }
 function enterTab(view: View) {
+  if (view !== 'settings' && !hasVerifiedPeer.value) {
+    tab.value = 'settings'
+    return
+  }
   tab.value = view
-  if (view === 'reader' && !fixedPreview.value.length && !fixedReading.value && hasVerifiedPeer.value)
-    void readDexie()
+  if (view === 'reader') void refreshTimeline(api?.status().activePeerId, scopeGeneration)
+  if (
+    view === 'reader' &&
+    (!fixedPreview.value.length || readerRevision !== savedRevision) &&
+    !fixedReading.value &&
+    hasVerifiedPeer.value
+  )
+    void readDexie(fixedCursor.value)
 }
 const tabs: { id: View; label: string; icon: typeof Archive }[] = [
   { id: 'capture', label: 'Выгрузка', icon: Download },
   { id: 'reader', label: 'Архив', icon: Archive },
   { id: 'settings', label: 'Параметры', icon: Settings2 },
 ]
-function onTabKeydown(event: KeyboardEvent, active: View) {
-  if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return
-  event.preventDefault()
-  const index = tabs.findIndex((item) => item.id === active)
-  const next =
-    event.key === 'Home'
-      ? 0
-      : event.key === 'End'
-        ? tabs.length - 1
-        : (index + (event.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length
-  const selected = tabs[next]
-  if (!selected) return
-  enterTab(selected.id)
-  const target = (event.currentTarget as HTMLElement).parentElement?.querySelector<HTMLElement>(
-    '#' + tabPrefix + '-tab-' + selected.id,
-  )
-  target?.focus()
-}
+const visibleTabs = computed(() =>
+  tabs.filter((item) => item.id === 'settings' || hasVerifiedPeer.value),
+)
+watch(
+  hasVerifiedPeer,
+  (available) => {
+    if (!available) tab.value = 'settings'
+  },
+  { immediate: true },
+)
 const durableSettingsError = ref(vkPreferencesLoadError())
 
 watch(
@@ -332,6 +718,10 @@ watch(
     // Navigation commands are one-shot; reopening a view must never replay a
     // full API scan or export just because the last route was 'collect'.
     vkRequestedView.value = null
+    if (!hasVerifiedPeer.value && requested !== 'settings') {
+      tab.value = 'settings'
+      return
+    }
     if (requested === 'export') {
       enterTab('reader')
       showUserExportOptions()
@@ -344,14 +734,27 @@ watch(
 )
 let unsubscribe: (() => void) | undefined
 let peerTimer: ReturnType<typeof setInterval> | undefined
-function refreshActiveConversation() {
-  const next = api?.status()
+function refreshActiveConversation(next = api?.status()) {
   if (!next) return
   const previous = status.value
   if (previous?.activePeerId !== next.activePeerId) {
+    cancelReaderTasks()
     readerGeneration++
+    scopeGeneration++
+    latestTimelineTarget = null
+    stopMediaRequests()
+    readerRevision = -1
     fixedReading.value = false
     fixedPreview.value = []
+    timelineEntries.value = []
+    coverage.value = null
+    timelineRevision = -1
+    timelineGeneration++
+    timelineBusy.value = false
+    activeMessageId.value = null
+    readerFocus.reset()
+    rangeStart.value = null
+    rangeEnd.value = null
     fixedSaved.value = null
     captureComplete.value = null
     reportedTotal.value = null
@@ -363,6 +766,12 @@ function refreshActiveConversation() {
     participantNames.value = {}
     for (const file of Object.values(attachments.value)) URL.revokeObjectURL(file.url)
     attachments.value = {}
+    downloading.value = {}
+    attachmentErrors.value = {}
+    clearSelection()
+    selectionEnabled.value = false
+    exportScope.value = 'all'
+    exportOpen.value = false
     resetPreparedExport()
   }
   if (
@@ -374,238 +783,243 @@ function refreshActiveConversation() {
     status.value = next
 }
 onMounted(() => {
+  void refreshCapturePreferences()
+  window.addEventListener(SHELL_RESTORE_UI_EVENT, onRestorePreferences)
   unsubscribe = api?.subscribe((next) => {
+    const changed = (next.archiveRevision ?? 0) !== savedRevision
+    savedRevision = next.archiveRevision ?? 0
+    refreshActiveConversation(next)
     status.value = next
+    if (changed) {
+      resetPreparedExport()
+      scheduleSavedRefresh()
+    }
   })
   // Detect host SPA peer change while the Control Center is open.
-  peerTimer = setInterval(refreshActiveConversation, 1500)
+  peerTimer = setInterval(() => refreshActiveConversation(), 1500)
   if (tab.value === 'reader' && hasVerifiedPeer.value) void readDexie()
 })
 onUnmounted(() => {
+  disposed = true
+  readerFocus.dispose()
+  readerGeneration++
+  scopeGeneration++
+  stopMediaRequests()
+  cancelReaderTasks()
   unsubscribe?.()
+  window.removeEventListener(SHELL_RESTORE_UI_EVENT, onRestorePreferences)
+  if (savedRefreshTimer !== undefined) clearTimeout(savedRefreshTimer)
   if (peerTimer !== undefined) clearInterval(peerTimer)
   for (const file of Object.values(attachments.value)) URL.revokeObjectURL(file.url)
 })
 </script>
 <template>
-  <section class="flex min-w-0 flex-col gap-3" aria-label="VK Booster — управление архивом">
-    <header class="booster-setting-card">
-      <div class="booster-setting-copy min-w-0">
-        <div class="flex flex-wrap items-center gap-2">
-          <Archive class="size-4 shrink-0" aria-hidden="true" />
-          <b>VK Booster · Архив v1</b>
-          <Badge :variant="status?.blockedReason ? 'secondary' : status?.busy ? 'default' : 'outline'" :class="status?.blockedReason ? 'text-destructive' : ''">
-            {{ selectedStatus }}
-          </Badge>
-        </div>
-        <span v-if="hasVerifiedPeer">Текущий диалог: {{ status?.activePeerId }} · Данные в Dexie, без файловой папки</span>
-        <span v-else>Открой VK-переписку, чтобы работать с архивом.</span>
-      </div>
-    </header>
+  <section class="vk-archive-panel flex min-h-0 min-w-0 flex-col gap-3" :class="{ 'vk-archive-panel-reader': tab === 'reader' }" :aria-label="text('VK Booster — инструменты')" :data-provider-view="tab" :data-panel-content-focus="tab === 'reader' ? 'false' : undefined">
     <p v-if="status?.blockedReason" class="m-0 flex items-start gap-2 text-sm text-destructive" role="alert">
       <ShieldAlert class="size-4 shrink-0" aria-hidden="true" />
-      {{ status.blockedReason }}. Вернись в выбранный диалог перед работой с архивом.
-    </p>
-    <nav aria-label="Разделы VK Booster" class="flex flex-wrap gap-2" role="tablist">
-      <Button
-        v-for="item in tabs"
-        :id="tabPrefix + '-tab-' + item.id"
-        :key="item.id"
-        type="button"
-        role="tab"
-        size="sm"
-        :variant="tab === item.id ? 'default' : 'outline'"
-        :aria-controls="tabPrefix + '-panel-' + item.id"
-        :aria-selected="tab === item.id"
-        :tabindex="tab === item.id ? 0 : -1"
-        @click="enterTab(item.id)"
-        @keydown="onTabKeydown($event, item.id)"
-      >
+      {{ status.blockedReason }}{{ text('. Вернись в выбранный диалог перед работой с архивом. ') }}</p>
+    <Tabs :model-value="tab" class="min-h-0 min-w-0" :class="{ 'flex flex-1 flex-col': tab === 'reader' }" @update:model-value="chooseTab">
+    <TabsList v-if="showCatalog !== false" :aria-label="text('Разделы VK Booster')" class="flex h-auto w-full shrink-0 flex-wrap justify-start gap-1">
+      <TabsTrigger v-for="item in visibleTabs" :key="item.id" :value="item.id" class="gap-2">
         <component :is="item.icon" class="size-4" aria-hidden="true" />
-        {{ item.label }}
-      </Button>
-    </nav>
+        {{ text(item.label) }}
+      </TabsTrigger>
+    </TabsList>
     <!-- Capture and reader share the fixed owner-scoped Dexie repository. -->
-    <div
-      :id="tabPrefix + '-panel-capture'"
-      v-show="tab === 'capture'"
-      role="tabpanel"
-      :aria-labelledby="tabPrefix + '-tab-capture'"
-      tabindex="0"
-      class="flex min-w-0 flex-col gap-3"
-    >
-      <section class="booster-stack-card" aria-label="Сбор истории VK">
+    <TabsContent value="capture" class="flex min-w-0 flex-col gap-3">
+      <Card class="grid gap-3 p-4" :aria-label="text('Сбор истории VK')">
         <div class="booster-setting-copy">
-          <b>1 · История переписки</b>
-          <span>Получает сообщения напрямую через VK API, сохраняет оригиналы в Dexie. Работает в открытом проверенном диалоге, без прокрутки сайта.</span>
+          <b>{{ text('1 · История переписки') }}</b>
+          <span>{{ text('Получает сообщения напрямую через VK API, сохраняет оригиналы в Dexie. Работает в открытом проверенном диалоге, без прокрутки сайта.') }}</span>
         </div>
-        <div class="flex flex-wrap gap-2" role="group" aria-label="Объём выгрузки">
+        <div class="flex flex-wrap gap-2" role="group" :aria-label="text('Объём выгрузки')">
           <Button type="button" size="sm" :variant="captureRange === 'all' ? 'default' : 'outline'"
-            :aria-pressed="captureRange === 'all'" :disabled="fixedBusy" @click="captureRange = 'all'">Вся история</Button>
+            :aria-pressed="captureRange === 'all'" :disabled="fixedBusy" @click="captureRange = 'all'">{{ text('Вся история') }}</Button>
           <Button type="button" size="sm" :variant="captureRange === 'recent' ? 'default' : 'outline'"
-            :aria-pressed="captureRange === 'recent'" :disabled="fixedBusy" @click="captureRange = 'recent'">Последние N</Button>
+            :aria-pressed="captureRange === 'recent'" :disabled="fixedBusy" @click="captureRange = 'recent'">{{ text('Последние N') }}</Button>
         </div>
-        <label v-if="captureRange === 'recent'" class="booster-field">Сообщений (1–100 000)
-          <input v-model.number="fixedLimit" class="booster-input" type="number" min="1" max="100000" :disabled="fixedBusy" @change="saveCaptureOptions" />
-        </label>
-        <p v-else class="text-xs text-muted-foreground">Без искусственного ограничения в 3000 сообщений. VK может ограничивать частоту API-запросов; при необходимости автоматически делаются паузы.</p>
-        <details class="booster-collection-advanced rounded-md border border-border p-3 text-sm" :open="false">
-          <summary class="cursor-pointer select-none font-medium text-sm">Скорость и размер запросов</summary>
-          <label class="booster-field">Сообщений за запрос <b>{{ requestPageSize }}</b>
-            <input v-model.number="requestPageSize" type="range" class="w-full accent-primary" min="10" max="100" step="10" :disabled="fixedBusy" @change="saveCaptureOptions" />
-          </label>
-          <label class="booster-field">Пауза между запросами <b>{{ requestDelay }} мс</b>
-            <input v-model.number="requestDelay" type="range" class="w-full accent-primary" min="300" max="3000" step="50" :disabled="fixedBusy" @change="saveCaptureOptions" />
-          </label>
-          <small>При ограничении скорости VK запрос повторяется с увеличенной паузой. Значения сохраняются при отпускании слайдера.</small>
-        </details>
-        <ConversationCollectionAction :label="captureRange === 'all' ? 'Собрать всю историю' : 'Собрать последние сообщения'"
+        <Label v-if="captureRange === 'recent'" class="booster-field">{{ text('Сообщений (1–100 000) ') }}<Input :model-value="fixedLimit" type="number" min="1" max="100000" :disabled="fixedBusy" @update:model-value="fixedLimit = Number($event)" @change="saveCaptureOptions" />
+        </Label>
+        <p v-else class="text-xs text-muted-foreground">{{ text('Без искусственного ограничения в 3000 сообщений. VK может ограничивать частоту API-запросов; при необходимости автоматически делаются паузы.') }}</p>
+        <Collapsible v-model:open="speedOpen" class="grid gap-3">
+          <CollapsibleTrigger as-child><Button variant="outline" class="justify-between whitespace-normal text-left">{{ text('Скорость и размер запросов') }}<ChevronDown class="size-4" :class="{ 'rotate-180': speedOpen }" /></Button></CollapsibleTrigger>
+          <CollapsibleContent class="grid gap-3">
+          <Label class="booster-field">{{ text('Сообщений за запрос ') }}<b>{{ requestPageSize }}</b>
+            <Slider :model-value="[requestPageSize]" :min="10" :max="100" :step="10" :disabled="fixedBusy" :aria-label="text('Сообщений за запрос')" @update:model-value="requestPageSize = $event?.[0] ?? requestPageSize" @value-commit="saveCaptureOptions" />
+          </Label>
+          <Label class="booster-field">{{ text('Пауза между запросами ') }}<b>{{ requestDelay }}{{ text(' мс') }}</b>
+            <Slider :model-value="[requestDelay]" :min="300" :max="3000" :step="50" :disabled="fixedBusy" :aria-label="text('Пауза между запросами')" @update:model-value="requestDelay = $event?.[0] ?? requestDelay" @value-commit="saveCaptureOptions" />
+          </Label>
+          <small>{{ text('При ограничении скорости VK запрос повторяется с увеличенной паузой. Значения сохраняются при отпускании слайдера.') }}</small>
+          </CollapsibleContent>
+        </Collapsible>
+        <ConversationCollectionAction :label="captureRange === 'all' ? text('Собрать всю историю') : text('Собрать последние сообщения')"
           :busy="fixedBusy" :disabled="!hasVerifiedPeer"
           :processed="collectionState.processed" :total="collectionState.total"
           :saved="collectionState.saved" @start="captureDexie" @stop="collector?.stop()" />
-        <p v-if="!hasVerifiedPeer" class="text-sm text-muted-foreground">Открой конкретную VK-переписку — на остальных страницах сайта доступны настройки и меню.</p>
-        <p v-if="fixedSaved !== null" role="status" class="text-sm">
-          Сохранено новых: {{ fixedSaved }}. Обработано: {{ collectionState.processed }}{{ reportedTotal !== null ? ` из ${reportedTotal}` : '' }}.
-          {{ captureComplete ? 'Обход доступной истории завершён.' : 'Обход частичный: можно продолжить повторным сбором.' }}
+        <p v-if="!hasVerifiedPeer" class="text-sm text-muted-foreground">{{ text('Открой конкретную VK-переписку — на остальных страницах сайта доступны настройки и меню.') }}</p>
+        <p v-if="fixedSaved !== null" role="status" class="text-sm">{{ text(' Сохранено новых: ') }}{{ fixedSaved }}{{ text('. Обработано: ') }}{{ collectionState.processed }}{{ reportedTotal !== null ? `${text(' из ')}${reportedTotal}` : '' }}.
+          {{ captureComplete ? text('Обход доступной истории завершён.') : text('Обход частичный: можно продолжить повторным сбором.') }}
         </p>
-        <p v-if="fixedError" role="alert" class="text-sm text-destructive">{{ fixedError }}</p>
-        <p v-if="durableSettingsError" role="alert" class="text-sm text-destructive">{{ durableSettingsError }}</p>
-      </section>
-      <section class="booster-stack-card" aria-label="Догрузка вложений">
+        <p v-if="fixedError" role="alert" class="text-sm text-destructive">{{ text(fixedError) }}</p>
+        <p v-if="durableSettingsError" role="alert" class="text-sm text-destructive">{{ text(durableSettingsError) }}</p>
+      </Card>
+      <Card class="grid gap-3 p-4" :aria-label="text('Догрузка вложений')">
         <div class="booster-setting-copy">
-          <b>2 · Вложения и файлы</b>
-          <span>После сохранения сообщений можно будет догружать оригинальные файлы отдельной задачей с возобновлением. Пока Dexie сохраняет только метаданные и ссылки; бинарные файлы не скачаны.</span>
-          <small v-if="attachmentReferences !== null">Ссылок на вложения верхнего уровня в обработанной истории: {{ attachmentReferences }}. Скачано оригинальных файлов: 0.</small>
+          <b>{{ text('2 · Вложения и файлы') }}</b>
+          <span>{{ text('История сохраняет метаданные и ссылки. В архиве можно отдельно загрузить оригинал нужного вложения и включить загруженные файлы в ZIP. Загрузка начинается только по нажатию.') }}</span>
+          <small v-if="attachmentReferences !== null">{{ text('Ссылок на вложения верхнего уровня в обработанной истории: ') }}{{ attachmentReferences }}{{ text('. Файлов доступно для экспорта в этом окне: ') }}{{ Object.keys(attachments).length }}.</small>
         </div>
-      </section>
-    </div>
-    <div
-      :id="tabPrefix + '-panel-reader'"
-      v-show="tab === 'reader'"
-      role="tabpanel"
-      :aria-labelledby="tabPrefix + '-tab-reader'"
-      tabindex="0"
-      class="flex min-w-0 flex-col gap-3"
-    >
-      <section class="booster-stack-card" aria-label="Reader Dexie">
-        <div class="booster-setting-copy">
-          <b>Сохранённая переписка</b>
-          <span>Автор, дата и направление сообщений показаны сразу. Подробные исходные метаданные доступны по значку информации.</span>
-        </div>
-        <div class="flex flex-wrap gap-2">
-          <Button variant="outline" :disabled="fixedBusy || fixedReading || !hasVerifiedPeer" @click="readDexie()">
-            <LoaderCircle v-if="fixedReading" class="size-4 animate-spin" aria-hidden="true" />
-            {{ fixedReading ? 'Чтение...' : 'Обновить Reader' }}
-          </Button>
+      </Card>
+    </TabsContent>
+    <TabsContent value="reader" class="vk-reader flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden">
+      <section class="vk-reader-body flex min-h-0 min-w-0 flex-1 flex-col gap-2" :aria-label="text('Сохранённая переписка')">
+        <div class="flex shrink-0 flex-wrap items-center gap-2" role="toolbar" :aria-label="text('Действия с архивом VK')">
+          <Button v-if="timelineNodes.length" variant="outline" size="sm" :aria-pressed="timelineOpen" :aria-expanded="timelineVisible" :aria-controls="timelineId" :aria-label="timelineOpen ? text('Скрыть историю') : text('Показать историю')" @click="timelineOpen = !timelineOpen"><History class="size-4" /><span class="hidden sm:inline">{{ timelineOpen ? text('Скрыть историю') : text('Показать историю') }}</span></Button>
           <Button variant="outline" :disabled="fixedBusy || !hasVerifiedPeer" @click="showUserExportOptions">
-            Экспорт ZIP · параметры
-          </Button>
-          <Button variant="outline" :disabled="fixedBusy || fixedReading || !fixedNextCursor" @click="readDexie(fixedNextCursor)">Следующие 80</Button>
-          <Button variant="outline" :disabled="fixedBusy || fixedReading || !fixedCursor" @click="readDexie()">К началу</Button>
+            <Download class="size-4" />{{ text('Экспорт ') }}</Button>
+          <Button variant="outline" size="sm" :aria-pressed="selectionEnabled" :disabled="fixedBusy || rangeBusy" @click="selectionEnabled = !selectionEnabled">{{ text('Выбор сообщений') }}<span v-if="selectedMessageIds.size"> · {{ selectedMessageIds.size }}</span></Button>
+          <Button variant="outline" :disabled="fixedBusy || fixedReading || !fixedNextCursor" @click="readDexie(fixedNextCursor)">{{ text('Следующие 80') }}</Button>
+          <Button variant="outline" :disabled="fixedBusy || fixedReading || !fixedCursor" @click="readDexie()">{{ text('К началу') }}</Button>
         </div>
-        <p v-if="fixedReading" class="text-sm text-muted-foreground" role="status">Загружаем сохранённые сообщения...</p>
-        <p v-if="!fixedReading && !fixedPreview.length" class="text-sm text-muted-foreground" role="status">
-          В этом диалоге ещё нет сохранённых сообщений или Reader недоступен.
-        </p>
-        <p v-if="nameLookupError" class="text-xs text-muted-foreground">{{ nameLookupError }}</p>
-        <div aria-label="Сохранённые сообщения" class="max-h-[min(65vh,560px)] min-w-0 overflow-y-auto space-y-3 p-2">
+        <div v-if="selectionEnabled" class="flex shrink-0 flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" :disabled="fixedBusy || !fixedPreview.length" @click="selectPage">{{ text('Выбрать эту страницу') }}</Button>
+          <Button variant="ghost" size="sm" :disabled="fixedBusy || !selectedMessageIds.size" @click="clearSelection">{{ text('Очистить выбор') }}</Button>
+          <span class="text-xs text-muted-foreground">{{ text('Выбрано сообщений: ') }}{{ selectedMessageIds.size }}{{ text(' · выбор сохранится при переходе к следующим 80') }}</span>
+          <Button variant="outline" size="sm" :disabled="fixedBusy || rangeBusy || !activeMessageId" @click="markRange('first')">{{ text('Начало диапазона') }}</Button>
+          <Button variant="outline" size="sm" :disabled="fixedBusy || rangeBusy || !activeMessageId" @click="markRange('last')">{{ text('Конец диапазона') }}</Button>
+          <p v-if="rangeBusy" role="status" class="w-full text-xs"><LoaderCircle class="mr-1 inline size-3 animate-spin" aria-hidden="true" />{{ text('Проверяем все сохранённые сообщения между границами...') }}</p>
+          <p v-if="rangeStart || rangeEnd" class="w-full break-words text-xs text-muted-foreground">{{ text('От ') }}{{rangeStart ? `#${rangeStart.id}: ${(rangeStart.text || text('Без текста')).slice(0,100)}` : text('не выбрано')}}{{ text(' до ') }}{{rangeEnd ? `#${rangeEnd.id}: ${(rangeEnd.text || text('Без текста')).slice(0,100)}` : text('не выбрано')}}{{ text('. Границы можно выбирать на разных страницах таймлайна.') }}</p>
+        </div>
+        <Collapsible v-if="coverage" v-model:open="coverageOpen" class="shrink-0 min-w-0 border-y py-1">
+          <CollapsibleTrigger as-child><Button variant="ghost" size="sm" class="w-full justify-between gap-2 whitespace-normal text-left">{{ text('Сохранено ') }}{{coverage.savedCount}} · {{coverage.integrity.chain === 'verified' ? text('Обход подтверждён') : text('Полнота не подтверждена')}}<ChevronDown class="size-4 shrink-0" :class="{'rotate-180':coverageOpen}" /></Button></CollapsibleTrigger>
+          <CollapsibleContent class="grid max-h-48 gap-2 overflow-y-auto py-2" :aria-label="text('Проверка полноты истории')">
+          <p class="text-sm font-medium">{{coverage.integrity.chain === 'verified' ? text('Наблюдаемый обход VK подтверждён') : text('Полнота удалённой истории не подтверждена')}}</p>
+          <p class="text-xs text-muted-foreground">{{ text('Сохранено ') }}{{coverage.savedCount}}{{coverage.reportedCount !== null ? `${text('; VK сообщил ')}${coverage.reportedCount}` : ''}}{{ text('. Начало: ') }}{{coverage.integrity.start === 'verified' ? text('подтверждено') : text('не проверено')}}{{ text('; конец: ') }}{{coverage.integrity.end === 'verified' ? text('подтверждён') : text('не проверен')}}{{ text('. Промежутки между числовыми ID сами по себе не доказывают пропуски.') }}</p>
+          <div class="flex flex-wrap gap-2">
+            <Button v-if="coverage.first" variant="outline" size="sm" @click="navigateTimeline(String(coverage.first.id))">{{ text('Первое сохранённое · #') }}{{coverage.first.id}}</Button>
+            <Button v-if="coverage.last" variant="outline" size="sm" @click="navigateTimeline(String(coverage.last.id))">{{ text('Последнее сохранённое · #') }}{{coverage.last.id}}</Button>
+            <Button variant="ghost" size="sm" @click="captureRange = 'all'; enterTab('capture')">{{ text('Сбор и проверка истории') }}</Button>
+          </div>
+          <small class="text-muted-foreground">{{coverage.observedAtMs ? `${text('Проверка текущего сеанса: ')}${new Date(coverage.observedAtMs).toLocaleString(locale)}${text('. Это наблюдаемый обход API, не неизменяемый снимок сервера.')}` : text('После перезапуска прежние границы остаются непроверенными. Сохранённые оригиналы не меняются.')}}</small>
+          </CollapsibleContent>
+        </Collapsible>
+        <p v-if="fixedReading" class="text-sm text-muted-foreground" role="status">{{ text('Загружаем сохранённые сообщения...') }}</p>
+        <p v-if="!fixedReading && !fixedPreview.length && !fixedError" class="text-sm text-muted-foreground" role="status">{{ text(' В этой переписке ещё нет сохранённых сообщений. ') }}</p>
+        <p v-if="nameLookupError" class="text-xs text-muted-foreground">{{ text(nameLookupError) }}</p>
+        <ArchiveReadingSurface :timeline-visible="timelineVisible">
+        <div ref="readerViewport" :aria-label="text('Сохранённые сообщения')" class="vk-reader-transcript h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto p-2" @scroll.passive="readerFocus.schedule">
+          <ArchiveRecordList :records="fixedPreview" :record-key="messageKey" :message-id="messageId"
+            :target-message-id="activeMessageId"
+            :selectable="selectionEnabled" :selected-ids="selectedRecordIds"
+            :selection-label="selectionLabel" :disabled="fixedBusy || rangeBusy" @select="selectMessage">
+          <template #record="{ record: message }">
           <article
-            v-for="message in fixedPreview"
-            :key="message.id"
             class="flex min-w-0"
             :class="message.out === 1 || message.out === true ? 'justify-end' : 'justify-start'"
           >
-            <div class="min-w-0 max-w-[88%] rounded-lg border border-border p-3"
+            <Card class="min-w-0 max-w-[88%] p-3 shadow-none"
               :class="message.out === 1 || message.out === true ? 'bg-primary/10' : 'bg-muted/45'">
               <ArchiveMessageHeader :author="senderName(message)" :sent-at="message.date"
-                :metadata="message" inspect-label="Все исходные метаданные сообщения" />
+                :metadata="message" :inspect-label="text('Все исходные метаданные сообщения')" />
               <p v-if="message.text" class="mt-2 whitespace-pre-wrap break-words text-sm">{{ message.text }}</p>
-              <p v-else class="mt-2 text-xs text-muted-foreground">Сообщение без текста</p>
+              <p v-else class="mt-2 text-xs text-muted-foreground">{{ text('Сообщение без текста') }}</p>
               <div v-for="asset in messageMedia(message)" :key="asset.key" class="mt-2 flex min-w-0 flex-col gap-1 border-t border-border pt-2">
                 <img v-if="asset.type === 'photo' && attachments[asset.key]"
-                  :src="attachments[asset.key]?.url" :alt="attachments[asset.key]?.name || 'Фото из сообщения'"
+                  :src="attachments[asset.key]?.url" :alt="attachments[asset.key]?.name || text('Фото из сообщения')"
                   class="max-h-64 max-w-full rounded-md object-contain" loading="lazy" referrerpolicy="no-referrer" />
-                <small class="break-words text-muted-foreground">{{ asset.type }} · {{ asset.choices[0]?.name || 'Вложение' }}
-                  · {{ attachments[asset.key] ? 'загружено в текущем сеансе' : 'оригинал не загружен' }}</small>
+                <small class="break-words text-muted-foreground">{{ asset.type }} · {{ asset.choices[0]?.name || text('Вложение') }}
+                  · {{ attachments[asset.key] ? text('загружено в текущем сеансе') : text('оригинал не загружен') }}</small>
                 <Button v-if="!attachments[asset.key]" size="sm" variant="outline"
-                  :disabled="downloading[asset.key] || !hasVerifiedPeer" @click="requestMedia(asset)">
+                  :disabled="downloading[asset.key] || !hasVerifiedPeer" @click="requestMedia(message.id,asset)">
                   <LoaderCircle v-if="downloading[asset.key]" class="size-3.5 animate-spin" aria-hidden="true" />
-                  {{ downloading[asset.key] ? 'Загрузка...' : 'Загрузить оригинал' }}
+                  {{ downloading[asset.key] ? text('Загрузка...') : text('Загрузить оригинал') }}
                 </Button>
-                <a v-else :href="attachments[asset.key]?.url" :download="attachments[asset.key]?.name"
-                  class="text-xs text-primary underline underline-offset-2">Скачать загруженный файл</a>
-                <small v-if="attachmentErrors[asset.key]" class="text-destructive" role="alert">{{ attachmentErrors[asset.key] }}</small>
+                <Button v-else as-child variant="link" size="sm" class="justify-start p-0"><a :href="attachments[asset.key]?.url" :download="attachments[asset.key]?.name">{{ text('Скачать загруженный файл') }}</a></Button>
+                <small v-if="attachmentErrors[asset.key]" class="text-destructive" role="alert">{{ text(attachmentErrors[asset.key] ?? '') }}</small>
               </div>
-            </div>
+            </Card>
           </article>
+          </template>
+          </ArchiveRecordList>
         </div>
-        <p v-if="fixedError" role="alert" class="text-sm text-destructive">{{ fixedError }}</p>
+        <template #timeline><ArchiveTimeline :id="timelineId" :nodes="timelineNodes" :active-id="activeMessageId" :selected-ids="selectedRecordIds" :label="text('Таймлайн всех сохранённых сообщений VK')" :empty-label="text('Сохранённых точек таймлайна пока нет')" :uncertain-label="text('Неподтверждённая связь')" :loading="fixedReading || timelineBusy" :disabled="fixedBusy" @navigate="navigateTimeline" /></template>
+        </ArchiveReadingSurface>
+        <p v-if="fixedError" role="alert" class="text-sm text-destructive">{{ text(fixedError) }}</p>
       </section>
-      <section v-if="exportOpen" class="booster-stack-card" aria-label="Параметры пользовательского экспорта ZIP">
+    </TabsContent>
+    <TabsContent value="settings" class="flex min-w-0 flex-col gap-3">
+      <Card class="grid gap-3 p-4" :aria-label="text('Постоянные параметры VK')">
         <div class="booster-setting-copy">
-          <b>Экспорт сообщений в ZIP</b>
-          <span>Отдельно от резервного бэкапа TAR.GZ. В ZIP войдут все уже сохранённые сообщения с оригинальными метаданными.</span>
-          <small>Полнота удалённой истории не подтверждается автоматически; исходные файлы включаются только после их явной загрузки.</small>
+          <b>{{ text('Параметры сохранения') }}</b>
+          <small>{{ text('Размер пачки, пауза и число сообщений сохраняются при изменении и восстанавливаются при следующем запуске.') }}</small>
         </div>
-        <label class="booster-field">Сообщений в одном JSON-файле
-          <select v-model.number="exportChunkRows" class="booster-input" :disabled="fixedBusy" @change="resetPreparedExport">
-            <option :value="100">100</option>
-            <option :value="500">500</option>
-          </select>
-        </label>
-        <label class="flex items-center gap-2 text-sm">
-          <input v-model="exportIncludeReferences" type="checkbox" :disabled="fixedBusy" @change="resetPreparedExport" />
-          Добавить manifest вложений в папку attachments/
-        </label>
-        <div class="flex flex-wrap gap-2">
-          <Button :disabled="fixedBusy || !hasVerifiedPeer" @click="prepareUserZip">
-            <LoaderCircle v-if="fixedBusy" class="size-4 animate-spin" aria-hidden="true" />
-            {{ fixedBusy ? 'Подготавливаем ZIP...' : 'Подготовить ZIP' }}
-          </Button>
-          <Button v-if="exportPrepared" variant="outline" :disabled="fixedBusy" @click="downloadPreparedZip">
-            Скачать ZIP · {{ Math.ceil(exportPrepared.size / 1024) }} КиБ
-          </Button>
-          <Button size="sm" variant="ghost" @click="exportOpen = false">Закрыть параметры</Button>
-        </div>
-        <ArchiveProgressBar v-if="exportProgress" :label="exportProgress.phase === 'reading' ? 'Читаем Dexie' : 'Упаковываем ZIP'"
-          :percent="exportProgress.total ? Math.round(exportProgress.done / exportProgress.total * 100) : null"
-          :counter="`${exportProgress.done} из ${exportProgress.total}`" />
-        <p v-if="exportPrepared" role="status" class="text-sm">ZIP подготовлен. Файл сохранится только после нажатия «Скачать ZIP».</p>
-      </section>
-    </div>
-    <div
-      :id="tabPrefix + '-panel-settings'"
-      v-show="tab === 'settings'"
-      role="tabpanel"
-      :aria-labelledby="tabPrefix + '-tab-settings'"
-      tabindex="0"
-      class="flex min-w-0 flex-col gap-3"
-    >
-      <section class="booster-stack-card" aria-label="Постоянные параметры VK">
-        <div class="booster-setting-copy">
-          <b>Параметры сохранения</b>
-          <small>Размер пачки, пауза и число сообщений сохраняются при изменении и восстанавливаются при следующем запуске.</small>
-        </div>
-        <label class="booster-field">Последние N сообщений
-          <input v-model.number="fixedLimit" type="number" min="1" max="100000"
-            class="booster-input" :disabled="fixedBusy" @change="saveCaptureOptions" />
-        </label>
-        <label class="booster-field">Размер запроса VK: {{ requestPageSize }}
-          <input v-model.number="requestPageSize" type="range" min="10" max="100" step="10"
-            class="w-full accent-primary" :disabled="fixedBusy" @change="saveCaptureOptions" />
-        </label>
-        <label class="booster-field">Пауза между страницами: {{ requestDelay }} мс
-          <input v-model.number="requestDelay" type="range" min="300" max="3000" step="50"
-            class="w-full accent-primary" :disabled="fixedBusy" @change="saveCaptureOptions" />
-        </label>
+        <Label class="booster-field">{{ text('Последние N сообщений ') }}<Input :model-value="fixedLimit" type="number" min="1" max="100000" :disabled="fixedBusy" @update:model-value="fixedLimit = Number($event)" @change="saveCaptureOptions" />
+        </Label>
+        <Label class="booster-field">{{ text('Размер запроса VK: ') }}{{ requestPageSize }}
+          <Slider :model-value="[requestPageSize]" :min="10" :max="100" :step="10" :disabled="fixedBusy" :aria-label="text('Размер запроса VK')" @update:model-value="requestPageSize = $event?.[0] ?? requestPageSize" @value-commit="saveCaptureOptions" />
+        </Label>
+        <Label class="booster-field">{{ text('Пауза между страницами: ') }}{{ requestDelay }}{{ text(' мс ') }}<Slider :model-value="[requestDelay]" :min="300" :max="3000" :step="50" :disabled="fixedBusy" :aria-label="text('Пауза между страницами')" @update:model-value="requestDelay = $event?.[0] ?? requestDelay" @value-commit="saveCaptureOptions" />
+        </Label>
         <div class="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" :disabled="fixedBusy" @click="saveCaptureOptions">
-            Сохранить параметры
-          </Button>
-          <small class="text-muted-foreground">Сохраняются отдельно от сообщений Dexie и не включают токены.</small>
+          <Button variant="outline" size="sm" :disabled="fixedBusy" @click="saveCaptureOptions">{{ text('Сохранить параметры') }}</Button>
+          <small class="text-muted-foreground">{{ text('Сохраняются отдельно от сообщений Dexie и не включают токены.') }}</small>
         </div>
-        <p v-if="durableSettingsError" role="alert" class="m-0 text-sm text-destructive">{{ durableSettingsError }}</p>
-      </section>
-    </div>
+        <p v-if="durableSettingsError" role="alert" class="m-0 text-sm text-destructive">{{ text(durableSettingsError) }}</p>
+      </Card>
+    </TabsContent>
+    </Tabs>
+    <ModalSurface v-if="exportOpen" :label="text('Экспорт сохранённых сообщений VK')" @close="!fixedBusy && (exportOpen = false)">
+      <div class="grid min-w-0 gap-3 p-4" :aria-label="text('Параметры пользовательского экспорта')">
+        <div class="booster-setting-copy">
+          <b>{{ text('Экспорт сохранённых сообщений') }}</b>
+          <span>{{ exportScope === 'selected' ? `${text('Выбранные сообщения (')}${selectedMessageIds.size})` : text('Все уже сохранённые сообщения') }}{{ text('. Это экспорт переписки, отдельно от резервной копии приложения.') }}</span>
+          <small>{{ text('Ссылки вложений сохраняются в представлении. Файлы включаются в ZIP только при отдельном выборе и после загрузки оригиналов.') }}</small>
+        </div>
+        <ArchiveSelectionScope v-model="exportScope" :selected-count="selectedMessageIds.size" :disabled="fixedBusy || rangeBusy" />
+        <p v-if="exportScope === 'selected' && !selectedMessageIds.size" class="text-xs text-muted-foreground">{{ text('Закрой параметры и включи «Выбор сообщений» в архиве. Можно отметить сообщения на нескольких страницах или выбрать диапазон.') }}</p>
+        <ArchiveExportFormatFields :format="exportFormat" :packaging="exportPackaging" :formats="exportFormats.map(choice => ({ ...choice, label: text(choice.label) }))" :packages="exportPackages.map(choice => ({ ...choice, label: text(choice.label) }))" :format-label="text('Формат экспорта сообщений')" :packaging-label="text('Упаковка экспорта')" :disabled="fixedBusy"
+          @update:format="exportFormat = $event === 'markdown' || $event === 'text' ? $event : 'json'" @update:packaging="exportPackaging = $event === 'none' ? 'none' : 'zip'" />
+        <Label v-if="exportPackaging === 'zip'" class="booster-field">{{ text('Сообщений в одном JSON-файле ') }}<Select :model-value="String(exportChunkRows)" :disabled="fixedBusy" @update:model-value="chooseChunkRows"><SelectTrigger :aria-label="text('Сообщений в одном JSON-файле')"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="100">100</SelectItem><SelectItem value="500">500</SelectItem></SelectContent></Select>
+        </Label>
+        <Label v-if="exportPackaging === 'none' && exportFormat !== 'json'" class="flex items-center justify-between gap-3 text-sm">{{ text('Добавить исходный JSON в читаемый файл ') }}<Switch :model-value="exportIncludeOriginal" :disabled="fixedBusy" :aria-label="text('Добавить исходный JSON')" @update:model-value="exportIncludeOriginal = $event" />
+        </Label>
+        <Label v-if="exportPackaging === 'zip'" class="flex items-center justify-between gap-3 text-sm">{{ text('Включить загруженные оригиналы вложений ') }}<Switch :model-value="exportIncludeMedia" :disabled="fixedBusy" :aria-label="text('Включить файлы вложений в ZIP')" @update:model-value="exportIncludeMedia = $event" />
+        </Label>
+        <Label v-if="exportPackaging === 'zip'" class="flex items-center gap-2 text-sm">
+          <Checkbox :model-value="exportIncludeReferences" :disabled="fixedBusy" @update:model-value="exportIncludeReferences = $event === true; resetPreparedExport()" />{{ text(' Добавить manifest вложений в папку attachments/ ') }}</Label>
+        <div class="flex flex-wrap gap-2">
+          <Button :disabled="fixedBusy || rangeBusy || !hasVerifiedPeer || (exportScope === 'selected' && !selectedMessageIds.size)" @click="prepareUserExport">
+            <LoaderCircle v-if="fixedBusy" class="size-4 animate-spin" aria-hidden="true" />
+            {{ fixedBusy ? text('Подготавливаем файл...') : text('Подготовить экспорт') }}
+          </Button>
+          <Button v-if="exportPrepared" variant="outline" :disabled="fixedBusy" @click="downloadPreparedExport">{{ text(' Скачать ') }}{{ exportPrepared.extension.toUpperCase() }} · {{ Math.ceil(exportPrepared.blob.size / 1024) }}{{ text(' КиБ ') }}</Button>
+          <Button size="sm" variant="ghost" :disabled="fixedBusy" @click="exportOpen = false">{{ text('Закрыть параметры') }}</Button>
+        </div>
+        <ArchiveProgressBar v-if="exportProgress" :label="exportProgress.phase === 'reading' ? text('Читаем архив') : text('Готовим файл')"
+          :percent="exportProgress.total ? Math.round(exportProgress.done / exportProgress.total * 100) : null"
+          :counter="`${exportProgress.done}${text(' из ')}${exportProgress.total}`" />
+        <p v-if="exportPrepared" role="status" class="text-sm">{{ text('Подготовлено сообщений: ') }}{{ exportPrepared.recordCount }}{{ text('. Файлов вложений: ') }}{{ exportPrepared.attachmentFilesIncluded }}{{ text('. Файл сохранится после нажатия «Скачать».') }}</p>
+        <p v-if="fixedError" role="alert" class="text-sm text-destructive">{{ text(fixedError) }}</p>
+      </div>
+    </ModalSurface>
   </section>
 </template>
+
+<style scoped>
+.vk-archive-panel-reader {
+  height: 100%;
+  flex: 1 1 auto;
+  overflow: hidden;
+  padding: 8px;
+}
+.vk-reader-transcript {
+  overscroll-behavior: contain;
+}
+@media (max-width: 620px) {
+  .vk-archive-panel-reader {
+    gap: 6px;
+    padding: 6px;
+  }
+}
+</style>

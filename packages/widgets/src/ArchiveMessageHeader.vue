@@ -1,8 +1,17 @@
 <script setup lang="ts">
 /** Shared reader metadata/header. Source-specific labels and raw records are supplied by adapters. */
-import { FloatingInfoPopover, JsonViewer } from '@kobaproduction/browser-ui'
+import {
+  FloatingInfoPopover,
+  JsonViewer,
+  useApplicationLocale,
+  useLocalizedText,
+} from '@kobaproduction/browser-ui'
 import { Info } from 'lucide-vue-next'
 import { computed } from 'vue'
+import { WIDGET_UI_MESSAGES } from './ui-messages'
+
+const locale = useApplicationLocale()
+const text = useLocalizedText(WIDGET_UI_MESSAGES)
 
 const props = withDefaults(
   defineProps<{
@@ -12,7 +21,7 @@ const props = withDefaults(
     metadata?: unknown
     inspectLabel?: string
   }>(),
-  { sentAt: null, locale: 'ru-RU', inspectLabel: 'Метаданные сообщения' },
+  { sentAt: null, inspectLabel: 'Метаданные сообщения' },
 )
 const timestamp = computed(() => {
   const raw = props.sentAt
@@ -23,7 +32,7 @@ const timestamp = computed(() => {
 })
 const readable = computed(
   () =>
-    timestamp.value?.toLocaleString(props.locale, {
+    timestamp.value?.toLocaleString(props.locale ?? locale.value, {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
@@ -37,7 +46,7 @@ const readable = computed(
   <div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs">
     <strong class="min-w-0 break-words text-foreground">{{ author }}</strong>
     <time v-if="timestamp" :datetime="timestamp.toISOString()" class="text-muted-foreground">{{ readable }}</time>
-    <FloatingInfoPopover v-if="metadata !== undefined" mode="hover-click" :label="inspectLabel">
+    <FloatingInfoPopover v-if="metadata !== undefined" mode="hover-click" :label="text(inspectLabel)">
       <template #trigger><Info class="size-3.5" aria-hidden="true" /></template>
       <div class="max-h-80 max-w-[min(380px,85vw)] overflow-auto p-2 text-xs">
         <JsonViewer :value="metadata" />

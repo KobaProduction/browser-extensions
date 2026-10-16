@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, ref } from 'vue'
+import { onBeforeUnmount, ref } from 'vue'
+import { Button } from '../ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip'
 
 const props = withDefaults(
   defineProps<{
@@ -11,159 +14,104 @@ const props = withDefaults(
   { mode: 'hover', align: 'end' },
 )
 
-const trigger = ref<HTMLElement>()
-const popup = ref<HTMLElement>()
 const open = ref(false)
 const pinned = ref(false)
-let hideTimer = 0
-
-function position() {
-  const button = trigger.value
-  const panel = popup.value
-  if (!button || !panel) return
-  const rect = button.getBoundingClientRect()
-  const width = Math.min(420, Math.max(180, panel.offsetWidth || 260))
-  const maxLeft = Math.max(8, innerWidth - width - 8)
-  const preferred = props.align === 'start' ? rect.left : rect.right - width
-  const left = Math.max(8, Math.min(maxLeft, preferred))
-  const panelHeight = panel.offsetHeight || 80
-  const below = rect.bottom + 8
-  const top = below + panelHeight <= innerHeight - 8 ? below : Math.max(8, rect.top - panelHeight - 8)
-  panel.style.left = `${left}px`
-  panel.style.top = `${top}px`
-}
+let hideTimer: ReturnType<typeof setTimeout> | undefined
+let triggerToggle = false
+let restoringFocus = false
 
 function cancelHide() {
-  if (!hideTimer) return
-  window.clearTimeout(hideTimer)
-  hideTimer = 0
-}
-
-function bindOpenListeners() {
-  window.addEventListener('resize', reposition)
-  window.addEventListener('scroll', reposition, true)
-  if (props.mode !== 'hover') document.addEventListener('pointerdown', onPointerDown, true)
-}
-
-function unbindOpenListeners() {
-  window.removeEventListener('resize', reposition)
-  window.removeEventListener('scroll', reposition, true)
-  document.removeEventListener('pointerdown', onPointerDown, true)
-}
-
-async function show() {
-  cancelHide()
-  if (open.value) {
-    await nextTick()
-    position()
-    return
-  }
-  open.value = true
-  bindOpenListeners()
-  await nextTick()
-  const panel = popup.value
-  if (!panel) return
-  try {
-    panel.showPopover?.()
-  } catch {}
-  position()
-}
-
-function hide(force = false) {
-  cancelHide()
-  if (pinned.value && !force) return
-  if (!open.value) {
-    if (force) pinned.value = false
-    return
-  }
-  open.value = false
-  if (force) pinned.value = false
-  unbindOpenListeners()
-  try {
-    popup.value?.hidePopover?.()
-  } catch {}
-}
-
-function scheduleHide() {
-  if (pinned.value) return
-  cancelHide()
-  hideTimer = window.setTimeout(() => hide(), 100)
-}
-
-function togglePinned() {
-  if (props.mode === 'hover') return
-  if (props.mode === 'click') {
-    if (open.value) hide(true)
-    else {
-      pinned.value = true
-      void show()
-    }
-    return
-  }
-  if (pinned.value) hide(true)
-  else {
-    pinned.value = true
-    void show()
-  }
-}
-
-function onPointerDown(event: PointerEvent) {
-  if (!open.value || !pinned.value) return
-  const path = event.composedPath()
-  if (trigger.value && path.includes(trigger.value)) return
-  if (popup.value && path.includes(popup.value)) return
-  hide(true)
-}
-
-function reposition() {
-  if (open.value) position()
+  if (hideTimer !== undefined) clearTimeout(hideTimer)
+  hideTimer = undefined
 }
 
 function hoverEnter() {
-  if (props.mode === 'click') return
+  if (props.mode !== 'hover-click') return
   cancelHide()
-  void show()
+  open.value = true
 }
 
 function hoverLeave() {
-  if (props.mode === 'click') return
-  if (props.mode === 'hover') hide()
-  else scheduleHide()
+  if (props.mode !== 'hover-click' || pinned.value) return
+  cancelHide()
+  hideTimer = setTimeout(() => {
+    open.value = false
+  }, 120)
 }
 
-onBeforeUnmount(() => {
+function triggerClick() {
+  // A click pins the hover preview; the next click closes it. The registry
+  // still owns trigger semantics, positioning, dismissal and focus handling.
   cancelHide()
-  hide(true)
-})
+  triggerToggle = true
+  pinned.value = props.mode === 'click' ? !open.value : !pinned.value
+  open.value = pinned.value
+  // Browser microtask checkpoints can run between capture and bubble listeners.
+  // Keep the guard for the whole click so the registry toggle cannot immediately
+  // undo pinning/opening performed by the capture handler.
+  setTimeout(() => {
+    triggerToggle = false
+  }, 0)
+}
+
+function updateOpen(value: boolean) {
+  if (triggerToggle) return
+  cancelHide()
+  open.value = value
+  if (!value) pinned.value = false
+}
+
+function focusTrigger() {
+  if (!restoringFocus) hoverEnter()
+}
+
+function restoreTriggerFocus() {
+  // Returning focus after Escape must not reopen the hover preview.
+  restoringFocus = true
+  queueMicrotask(() => {
+    restoringFocus = false
+  })
+}
+
+function openAutoFocus(event: Event) {
+  if (!pinned.value) event.preventDefault()
+}
+
+onBeforeUnmount(cancelHide)
 </script>
 
 <template>
-  <span
-    ref="trigger"
-    class="booster-meta-trigger"
-    :class="[triggerClass, { 'is-clickable': mode !== 'hover' }]"
-    tabindex="0"
-    role="button"
-    :aria-label="label"
-    @mouseenter="hoverEnter"
-    @mouseleave="hoverLeave"
-    @focus="hoverEnter"
-    @blur="mode === 'hover' && hide()"
-    @click.stop="togglePinned"
-    @keydown.enter.prevent="togglePinned"
-    @keydown.space.prevent="togglePinned"
-    @keydown.escape.prevent="hide(true)"
-  >
-    <slot name="trigger" />
-  </span>
-  <div
-    ref="popup"
-    class="booster-floating-popover"
-    :class="{ 'is-interactive': pinned || mode === 'click', 'is-open': open }"
-    popover="manual"
-    @mouseenter="cancelHide"
-    @mouseleave="hoverLeave"
-  >
-    <slot :pinned="pinned" :open="open" />
-  </div>
+  <TooltipProvider v-if="mode === 'hover'" :delay-duration="150">
+    <Tooltip v-model:open="open">
+      <TooltipTrigger as-child>
+        <Button type="button" variant="ghost" size="icon-sm" class="booster-meta-trigger size-7 text-muted-foreground" :class="triggerClass" :aria-label="label" @click.stop>
+          <slot name="trigger" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent :align="align" :side-offset="8" :collision-padding="8" class="booster-floating-tooltip max-w-[min(420px,calc(100vw-16px))]">
+        <slot :pinned="false" :open="open" />
+      </TooltipContent>
+    </Tooltip>
+  </TooltipProvider>
+  <Popover v-else :open="open" @update:open="updateOpen">
+    <PopoverTrigger as-child>
+      <Button
+        type="button" variant="ghost" size="icon-sm"
+        class="booster-meta-trigger size-7 text-muted-foreground" :class="triggerClass" :aria-label="label"
+        @pointerenter="hoverEnter" @pointerleave="hoverLeave" @focus="focusTrigger"
+        @blur="hoverLeave" @click.capture="triggerClick" @click.stop
+      >
+        <slot name="trigger" />
+      </Button>
+    </PopoverTrigger>
+    <PopoverContent
+      :align="align" :side-offset="8" :collision-padding="8"
+      class="booster-floating-popover w-max max-w-[min(420px,calc(100vw-16px))] p-3 text-xs"
+      :class="{ 'is-interactive': pinned, 'is-open': open }"
+      @pointerenter="cancelHide" @pointerleave="hoverLeave"
+      @open-auto-focus="openAutoFocus" @close-auto-focus="restoreTriggerFocus"
+    >
+      <slot :pinned="pinned" :open="open" />
+    </PopoverContent>
+  </Popover>
 </template>

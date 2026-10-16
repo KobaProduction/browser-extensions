@@ -76,5 +76,5 @@ export async function devChannelCandidates(
 if (import.meta.main) {
   const base = process.argv.find((x) => x.startsWith('--base='))?.slice('--base='.length) ?? ''
   const head = process.argv.find((x) => x.startsWith('--head='))?.slice('--head='.length) ?? 'HEAD'
-  for (const p of await devChannelCandidates(base, head)) console.log(p.id + '|' + p.version)
+  for (const p of await devChannelCandidates(base, head)) console.log(`${p.id}|${p.version}`)
 }
