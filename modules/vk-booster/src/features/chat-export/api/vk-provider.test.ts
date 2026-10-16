@@ -61,7 +61,7 @@ test('VK permission errors do not turn into unlimited retries', async () => {
   }
 })
 
-test('selects only a token that can read the current peer AND verify its VK owner', async () => {
+test('selects only an owner-verified token; history permission is checked by the explicit history call', async () => {
   const originalFetch = globalThis.fetch
   const localDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
   const sessionDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage')
@@ -95,7 +95,7 @@ test('selects only a token that can read the current peer AND verify its VK owne
     const method = new URL(String(input)).pathname.split('/').at(-1)
     const params = new URLSearchParams(String(init?.body ?? ''))
     const token = params.get('access_token')
-    requests.push((token === restricted ? 'restricted' : 'verified') + ':' + method)
+    requests.push(`${token === restricted ? 'restricted' : 'verified'}:${method}`)
     return new Response(
       JSON.stringify(
         method === 'messages.getHistory'
@@ -111,12 +111,9 @@ test('selects only a token that can read the current peer AND verify its VK owne
     const provider = createVkProvider(settings, { sleep: async () => {}, refresh: () => {} })
     expect(await provider.auth()).toBe(true)
     expect(provider.hasToken()).toBe(true)
-    expect(requests).toEqual([
-      'restricted:messages.getHistory',
-      'restricted:users.get',
-      'verified:messages.getHistory',
-      'verified:users.get',
-    ])
+    expect(requests).toEqual(['restricted:users.get', 'verified:users.get'])
+    expect(await provider.history(0, 1)).toMatchObject({ count: 1, items: [{ id: 11 }] })
+    expect(requests.at(-1)).toBe('verified:messages.getHistory')
     // A subsequent API call uses the verified token, not the earlier history-only token.
     expect(await provider.api('users.get', {})).toEqual([{ id: 34567 }])
     expect(requests.at(-1)).toBe('verified:users.get')

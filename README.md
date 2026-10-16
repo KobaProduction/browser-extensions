@@ -39,6 +39,14 @@ task, its evidence and acceptance**, never the only copy of a durable rule.
 
 Requirements: Bun 1.4.2, Node.js 22, ZIP tooling.
 
+On Windows, ZIP packaging uses built-in PowerShell/.NET; no separate `zip`
+executable is needed. Use LF line endings (`git config --local core.autocrlf false`)
+to match the formatter. Build a local DEV installation with
+`bun scripts/build.ts --module all --channel=dev --build-number=46`, then load
+`dist/<product>/extension` as an unpacked extension in Chrome/Edge developer mode.
+Keep that directory for subsequent rebuilds and reload the extension after changes.
+For UI changes with live updates, use `bun run ui:lab` (synthetic data only).
+
 ```bash
 bun install --frozen-lockfile
 bun run check

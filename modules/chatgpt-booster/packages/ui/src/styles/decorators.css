@@ -1,0 +1,476 @@
+/* Shared top-layer metadata popovers for archive and live ChatGPT decorators. */
+.booster-meta-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.booster-meta-badges.compact {
+  gap: 0;
+}
+
+.booster-scope-popover {
+  display: grid;
+  min-width: 260px;
+  gap: 10px;
+}
+
+.booster-scope-popover > header {
+  display: grid;
+  gap: 1px;
+}
+
+.booster-scope-title {
+  max-width: 280px;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.booster-scope-kind {
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+
+.booster-scope-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.booster-live-tool-row {
+  display: flex;
+  width: min(100%, 48rem);
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  color: var(--muted-foreground);
+}
+
+.booster-live-tool-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.booster-live-tool-name {
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 11px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.booster-live-tool-action-name {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.booster-live-tool-details {
+  margin-top: 4px;
+  width: min(100%, 48rem);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 10px;
+  color: var(--card-foreground);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+}
+
+/* Sidebar archive status: lightweight chat marker, bordered project control. */
+.booster-chat-save-marker {
+  display: block;
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.booster-chat-save-marker.is-enabled {
+  background: var(--success);
+}
+
+.booster-chat-save-marker.is-work {
+  background: var(--destructive);
+}
+
+/* Live agent activity clock. It remains visible while ChatGPT hides its native action row. */
+.booster-agent-activity {
+  display: inline-flex;
+  max-width: min(100%, 520px);
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 3px 8px;
+  border: 1px solid var(--border, rgb(148 163 184 / 22%));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--background, #202020) 88%, transparent);
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.2;
+  pointer-events: auto;
+}
+
+.booster-agent-activity[data-phase="tool"] {
+  border-style: dashed;
+}
+
+.booster-agent-activity > svg {
+  flex: 0 0 auto;
+}
+
+.booster-agent-activity-phase {
+  flex: 0 0 auto;
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.booster-agent-activity-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.booster-agent-activity-timer {
+  flex: 0 0 auto;
+  min-width: 3.2em;
+  margin-inline-start: auto;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+}
+
+/* One compact metadata control lives inside the native ChatGPT action row. */
+.booster-meta-time-text {
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.booster-message-meta-popover {
+  max-width: min(420px, calc(100vw - 16px));
+}
+
+.booster-message-meta-body {
+  display: grid;
+  min-width: 260px;
+  gap: 12px;
+}
+
+.booster-message-meta-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--border);
+}
+
+.booster-message-meta-header strong {
+  color: var(--popover-foreground);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.booster-message-meta-header span {
+  color: #4ade80;
+  font-size: 10px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.booster-message-meta-raw {
+  max-width: 390px;
+  max-height: 260px;
+  overflow: auto;
+  margin: 0;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgb(0 0 0 / 20%);
+  font:
+    10px / 1.4 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.booster-live-tool-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  border-radius: 999px;
+  object-fit: cover;
+}
+
+.booster-tool-time-chip {
+  width: auto;
+  min-width: 76px;
+  gap: 5px;
+  padding: 0 8px;
+  border: 1px solid rgb(168 85 247 / 46%);
+  background: rgb(126 34 206 / 11%);
+  color: #c084fc;
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.booster-tool-time-chip:hover,
+.booster-tool-time-chip:focus-visible {
+  border-color: rgb(192 132 252 / 76%);
+  background: rgb(126 34 206 / 19%);
+  color: #d8b4fe;
+}
+
+.booster-agent-activity[data-phase="thinking"],
+.booster-agent-activity[data-phase="tool"],
+.booster-agent-activity[data-phase="responding"],
+.booster-agent-activity[data-phase="complete"] {
+  border-color: rgb(74 222 128 / 48%);
+  background: rgb(34 197 94 / 9%);
+  color: #4ade80;
+}
+
+.booster-agent-activity[data-phase="thinking"] .booster-agent-activity-phase,
+.booster-agent-activity[data-phase="tool"] .booster-agent-activity-phase,
+.booster-agent-activity[data-phase="responding"] .booster-agent-activity-phase,
+.booster-agent-activity[data-phase="complete"] .booster-agent-activity-phase,
+.booster-agent-activity[data-phase="thinking"] .booster-agent-activity-timer,
+.booster-agent-activity[data-phase="tool"] .booster-agent-activity-timer,
+.booster-agent-activity[data-phase="responding"] .booster-agent-activity-timer,
+.booster-agent-activity[data-phase="complete"] .booster-agent-activity-timer {
+  color: currentColor;
+}
+
+.booster-tool-inspect-trigger {
+  width: 24px;
+  height: 24px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted-foreground);
+  pointer-events: auto;
+}
+
+.booster-tool-inspect-trigger:hover,
+.booster-tool-inspect-trigger:focus-visible {
+  border-color: var(--border);
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.booster-tool-detail-popover {
+  display: grid;
+  min-width: 0;
+  width: 100%;
+  gap: 10px;
+}
+
+.booster-tool-detail-popover > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.booster-tool-payload {
+  display: grid;
+  gap: 5px;
+}
+
+.booster-tool-payload > strong,
+.booster-tool-evidence > summary {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.booster-tool-evidence > summary {
+  cursor: pointer;
+}
+
+.booster-tool-attributes {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 3px 8px;
+  margin: 8px 0 0;
+  font:
+    9px / 1.35 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    monospace;
+}
+
+.booster-tool-attributes dt {
+  color: var(--muted-foreground);
+}
+
+.booster-tool-attributes dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.booster-tool-evidence pre {
+  max-height: 180px;
+  overflow: auto;
+  margin: 8px 0 0;
+  padding: 7px;
+  border-radius: 7px;
+  background: rgb(0 0 0 / 20%);
+  font:
+    9px / 1.4 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.booster-tool-link {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  overflow-wrap: anywhere;
+  color: var(--foreground);
+  text-decoration: none;
+}
+
+.booster-tool-link:hover {
+  color: var(--foreground);
+  text-decoration: underline;
+}
+
+.booster-work-mode-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 9px;
+  border: 1px solid rgb(239 68 68 / 55%);
+  border-radius: 999px;
+  background: rgb(239 68 68 / 10%);
+  color: #fca5a5;
+  font-family: inherit;
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.booster-work-mode-warning strong {
+  color: #f87171;
+  font-weight: 750;
+}
+
+.booster-work-mode-warning > span::before {
+  content: "·";
+  margin-inline-end: 7px;
+  color: rgb(248 113 113 / 72%);
+}
+
+.booster-request-status {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--background);
+  color: var(--muted-foreground);
+  font-family: inherit;
+  font-size: 10px;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+}
+
+.booster-request-spinner {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 11px;
+  border: 1.5px solid var(--border);
+  border-top-color: var(--foreground);
+  border-radius: 50%;
+  animation: booster-request-spin 0.9s linear infinite;
+}
+
+@keyframes booster-request-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.booster-request-status > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.booster-request-status > [hidden] {
+  display: none;
+}
+
+.booster-request-status > span + span::before {
+  content: "·";
+  color: var(--muted-foreground);
+}
+
+.booster-request-status-label {
+  color: var(--muted-foreground);
+  font-weight: 500;
+}
+
+.booster-request-status strong {
+  color: var(--foreground);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.booster-tool-path {
+  max-width: 280px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+}
+
+.booster-tool-detail-popover > header strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--popover-foreground);
+  font-size: 11px;
+}
+
+.booster-tool-detail-popover > header span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+
+.booster-request-status[data-phase="tool"] strong {
+  color: #c084fc;
+}
+
+.booster-request-status[data-phase="responding"] strong {
+  color: #86efac;
+}

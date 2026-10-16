@@ -20,6 +20,12 @@ const messages = {
     'control.boosterDescription':
       'Master switch for page enhancements. Settings access always remains available.',
     'control.language': 'Language',
+    'archive.error.freshReadRequired':
+      'Some history has already left the page buffer. Reopen the conversation and collect again. Saved data remains in the archive.',
+    'archive.error.nativeHistoryUnavailable':
+      'Loading older history is unavailable: no verified native method is connected. Open the history in ChatGPT and collect again.',
+    'archive.error.incompleteSource':
+      'The source reached the history boundary, but the saved message chain has gaps. Reopen the conversation and collect again. Saved records remain in the archive.',
     'control.languageDescription': 'Automatically follows the browser language unless overridden.',
     'control.modules': 'Modules',
     'control.analytics': 'Analytics',
@@ -36,16 +42,14 @@ const messages = {
     'control.toolInspectorDescription':
       'Adds an Inspect control beside detected MCP/tool activity and exposes client-visible payloads, timestamps and DOM diagnostics.',
     'control.historyScroll': 'History scroll',
-    'control.historyScrollDescription':
-      'Controls the continuous scroll bursts used by History Loader.',
+    'control.historyScrollDescription': 'Controls the continuous scroll bursts used by History Loader.',
     'control.historyScrollSpeed': 'Speed',
     'control.historyScrollPause': 'Pause between bursts',
     'control.requestTimer': 'Request timer',
     'control.requestTimerDescription':
       'Shows request and reasoning elapsed time above the ChatGPT disclaimer.',
     'control.responseCompleteSound': 'Completion sound',
-    'control.responseCompleteSoundDescription':
-      'Play a short sound when the current response finishes.',
+    'control.responseCompleteSoundDescription': 'Play a short sound when the current response finishes.',
     'control.longRunningSound': 'Long-running alert',
     'control.longRunningSoundDescription':
       'Play a different sound when one request exceeds the configured threshold.',
@@ -132,8 +136,7 @@ const messages = {
     'archiveReset.confirmTitle': 'DELETE ALL LOCAL ARCHIVES?',
     'archiveReset.confirmDescription':
       'This removes every Booster archive record stored in this browser. Capture settings are kept, but the archived data itself is deleted.',
-    'archiveReset.irreversible':
-      'This cannot be undone. Export anything you need before continuing.',
+    'archiveReset.irreversible': 'This cannot be undone. Export anything you need before continuing.',
     'archiveReset.cancel': 'Keep archive',
     'archiveReset.confirm': 'Delete everything',
     'archiveReset.clearing': 'Deleting…',
@@ -155,12 +158,18 @@ const messages = {
     'activity.sinceLastChange': 'since last change',
     'requestStatus.request': 'Request',
     'requestStatus.reasoning': 'Reasoning',
+    'requestStatus.action': 'Action',
+    'requestStatus.unchanged': 'Updated',
+    'requestStatus.ago': 'ago',
+    'requestStatus.sinceSummary': 'Since summary',
+    'requestStatus.summaryInterval': 'Summary interval',
     'work.browserOnly': 'Work mode · browser inspection only',
     'work.subagents': 'Subagents',
     'work.active': 'active',
     'messageMeta.title': 'Message details',
 
     'tool.inspect': 'Inspect',
+    'tool.id': 'Call ID',
     'tool.copyDiagnostics': 'Copy diagnostics',
     'tool.confidence': 'Confidence',
     'tool.clientPayload': 'Arguments',
@@ -193,8 +202,13 @@ const messages = {
     'control.boosterDescription':
       'Главный переключатель улучшений страницы. Доступ к настройкам остаётся всегда.',
     'control.language': 'Язык',
-    'control.languageDescription':
-      'Автоматически использует язык браузера, если не выбран вручную.',
+    'archive.error.freshReadRequired':
+      'Часть истории уже выгружена из памяти страницы. Откройте диалог заново и повторите сбор. Сохранённые данные остаются в архиве.',
+    'archive.error.nativeHistoryUnavailable':
+      'Дочитывание недоступно: подтверждённый метод приложения не подключён. Откройте историю в ChatGPT и повторите сбор.',
+    'archive.error.incompleteSource':
+      'Источник дошёл до границы истории, но в сохранённых связях сообщений есть пропуски. Откройте диалог заново и повторите сбор. Сохранённые записи остаются в архиве.',
+    'control.languageDescription': 'Автоматически использует язык браузера, если не выбран вручную.',
     'control.modules': 'Модули',
     'control.analytics': 'Аналитика',
     'control.other': 'Прочее',
@@ -273,8 +287,7 @@ const messages = {
     'quick.messages': 'Сообщений',
     'quick.branch': 'Ветка',
     'quick.noConversation': 'Чат не открыт',
-    'quick.noConversationDescription':
-      'Откройте диалог ChatGPT, чтобы использовать действия архива.',
+    'quick.noConversationDescription': 'Откройте диалог ChatGPT, чтобы использовать действия архива.',
     'quick.notArchived': 'Ещё не архивирован',
     'quick.partial': 'Архив загружен частично',
     'quick.complete': 'Архив загружен полностью',
@@ -329,12 +342,18 @@ const messages = {
     'activity.sinceLastChange': 'с последнего изменения',
     'requestStatus.request': 'Запрос',
     'requestStatus.reasoning': 'Размышление',
+    'requestStatus.action': 'Действие',
+    'requestStatus.unchanged': 'Обновлено',
+    'requestStatus.ago': 'назад',
+    'requestStatus.sinceSummary': 'После сводки',
+    'requestStatus.summaryInterval': 'Между сводками',
     'work.browserOnly': 'Режим Work · браузер только для проверки',
     'work.subagents': 'Субагенты',
     'work.active': 'активно',
     'messageMeta.title': 'Детали сообщения',
 
-    'tool.inspect': 'Inspect',
+    'tool.inspect': 'Просмотреть вызов',
+    'tool.id': 'ID вызова',
     'tool.copyDiagnostics': 'Копировать диагностику',
     'tool.confidence': 'Уверенность',
     'tool.clientPayload': 'Аргументы',

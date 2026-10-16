@@ -5,6 +5,7 @@ import {
   type TelemetryControlAdapter,
 } from '@chatgpt-booster/core'
 import { OtlpTelemetryClient } from '@chatgpt-booster/telemetry'
+import { instanceKey } from '@kobaproduction/browser-core'
 
 declare function GM_getValue<T>(key: string, defaultValue: T): Promise<T> | T
 declare function GM_setValue<T>(key: string, value: T): Promise<void> | void
@@ -27,6 +28,13 @@ export const userscriptSecrets: SecretAdapter = {
   },
   async setTelemetryToken(token) {
     await GM_setValue(TOKEN_KEY, token)
+  },
+  async getRemoteToken() {
+    return await GM_getValue(instanceKey('chatgpt-booster:remote-token'), '')
+  },
+  async setRemoteToken(token) {
+    if (typeof token !== 'string' || token.length > 8192) throw Error('Invalid remote credential')
+    await GM_setValue(instanceKey('chatgpt-booster:remote-token'), token)
   },
 }
 

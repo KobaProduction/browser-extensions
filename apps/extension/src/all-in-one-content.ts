@@ -1,15 +1,16 @@
 import { isChatGptPage } from '@chatgpt-booster/core'
 import {
+  bindBrowserToolsMessages,
+  createApplicationBackup,
   createApplicationTelemetry,
+  createRuntimeTelemetry,
   createSettingsStore,
+  createTelemetryBackupSource,
+  getApplicationIdentity,
+  isDevelopmentContextAllowed,
   onInstallationStateChange,
 } from '@kobaproduction/browser-adapters'
-import {
-  type Capability,
-  FeatureRuntime,
-  FeatureSettings,
-  SHELL_OPEN_FEATURE_EVENT,
-} from '@kobaproduction/browser-core'
+import { type Capability, FeatureRuntime, FeatureSettings } from '@kobaproduction/browser-core'
 import { mountControlCenter } from '@kobaproduction/browser-shell'
 import ChatGptPanel from '@kobaproduction/module-chatgpt-booster/ui'
 import { vkBoosterFeature } from '@kobaproduction/module-vk-booster'
@@ -18,8 +19,9 @@ import { createChatGptChromeFeature } from './chatgpt-content'
 
 const url = new URL(location.href)
 const chatgpt = isChatGptPage()
-if (chatgpt || vkBoosterFeature.match(url)) {
-  const chatFeature = chatgpt ? createChatGptChromeFeature() : null
+if ((chatgpt || vkBoosterFeature.match(url)) && isDevelopmentContextAllowed('chromium')) {
+  const telemetry = createApplicationTelemetry('chromium', createSettingsStore('chromium'))
+  const chatFeature = chatgpt ? createChatGptChromeFeature(telemetry) : null
   const feature = chatFeature?.feature ?? vkBoosterFeature
   if (chatFeature) {
     void new FeatureSettings(createSettingsStore('chromium'))
@@ -36,13 +38,16 @@ if (chatgpt || vkBoosterFeature.match(url)) {
         ),
       )
   }
-  const telemetry = createApplicationTelemetry('chromium', createSettingsStore('chromium'))
-  const runtime = new FeatureRuntime([feature], {
-    target: 'chromium',
-    url,
-    capabilities: new Set<Capability>(['page-dom', 'origin-storage', 'local-files']),
-    settings: new FeatureSettings(createSettingsStore('chromium')),
-  })
+  const runtime = new FeatureRuntime(
+    [feature],
+    {
+      target: 'chromium',
+      url,
+      capabilities: new Set<Capability>(['page-dom', 'origin-storage', 'local-files']),
+      settings: new FeatureSettings(createSettingsStore('chromium')),
+    },
+    createRuntimeTelemetry(telemetry),
+  )
   const unsubscribeState = onInstallationStateChange('chromium', () => {
     void runtime.refreshFromSettings()
   })
@@ -59,40 +64,17 @@ if (chatgpt || vkBoosterFeature.match(url)) {
     const ui = mountControlCenter({
       runtime,
       telemetry,
+      backup: createApplicationBackup(
+        'chromium',
+        runtime,
+        [async () => [await createTelemetryBackupSource(telemetry, 'chromium')]],
+        telemetry,
+      ),
+      application: getApplicationIdentity('chromium'),
       title: 'Koba Browser Tools',
       views: chatgpt ? { 'chatgpt-booster': ChatGptPanel } : { 'vk-booster': ArchivePanel },
     })
-    chrome.runtime.onMessage.addListener(
-      (message: { type?: string; id?: string; enabled?: boolean }, _, respond) => {
-        if (message?.type === 'koba:installation-status') {
-          respond({ enabled: runtime.isRunning(), features: runtime.list() })
-          return
-        }
-        if (message?.type === 'koba:installation-set-running') {
-          if (typeof message.enabled !== 'boolean') {
-            respond({ ok: false })
-            return
-          }
-          void runtime
-            .setRunning(message.enabled)
-            .then(() => respond({ ok: true, enabled: runtime.isRunning() }))
-            .catch(() => respond({ ok: false }))
-          return true
-        }
-        if (message?.type === 'koba:open') {
-          ui.open()
-          respond({ ok: true })
-          return
-        }
-        if (message?.type === 'koba:open-feature' && message.id === feature.id) {
-          ui.open()
-          window.dispatchEvent(new CustomEvent(SHELL_OPEN_FEATURE_EVENT, { detail: { id: feature.id } }))
-          respond({ ok: true })
-          return
-        }
-        if (message?.type === 'koba:list') respond({ features: runtime.list() })
-      },
-    )
+    bindBrowserToolsMessages(runtime, ui)
   }
   if (document.readyState === 'loading')
     document.addEventListener('DOMContentLoaded', () => void launch(), { once: true })

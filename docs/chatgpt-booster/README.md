@@ -1,5 +1,15 @@
 # ChatGPT Booster
 
+## Live corrections in the active owner batch (2026-10-14)
+
+The [live observation/archive contract](LIVE_ARCHIVE_CONTRACT.md) owns the
+current source corrections: protocol-driven lifecycle, non-destructive source
+variants, whole-saved-graph integrity, branch/version inspection, commit-driven
+Reader updates, optional sounds and shared settings/telemetry/recovery ports.
+It supersedes older renderer-state, implicit revision rejection and
+operator-only recovery UI statements below. Validation is deferred at the
+owner's request; this checkpoint does not establish runtime acceptance.
+
 ## Canonical internal recovery (2026-10-12)
 
 The fixed Dexie v1 ChatGPT repository can supply provider-validated rows to
@@ -235,13 +245,14 @@ automatic DEV distribution happen only after exact-head CI and independent
 review of the consolidated changes. See
 `../shared/PROJECT_RULES.md`.
 
-## Edge menu and saved-only counters (Extension 15)
+## Edge menu, RAM workspace and circuit counters
 
 The shared side-docked launcher displays a provider-defined compact menu
 (archive, current-chat collection, export, settings), then a distinct
-responsive settings/Reader panel. The menu shows canonical Dexie saved-message,
-internal-element, tool-call and reasoning counts for the *verified current
-conversation*, not estimates of remote completeness. History Loader stays
+responsive settings/Reader panel. The menu shows received native message IDs
+and committed canonical message IDs for the verified current conversation.
+Ordinary viewing uses RAM first and chunked canonical hydration, as defined by
+the [live contract](LIVE_ARCHIVE_CONTRACT.md). History Loader stays
 ChatGPT-owned behind the shared conversation-collection port. Existing
 telemetry, retention and capture authorization semantics are preserved.
 

@@ -236,3 +236,213 @@ test('a sibling tab can revoke and restore this installation from scoped storage
   expect(starts).toBe(2)
   await runtime.stop()
 })
+
+function lifecycleRuntime(features: Feature[]) {
+  const values = new Map<string, boolean>()
+  const runtime = new FeatureRuntime(features, {
+    target: 'userscript',
+    url: new URL('https://example.invalid'),
+    capabilities: defaultCapabilities('userscript'),
+    settings: new FeatureSettings({
+      async get(key) {
+        return values.get(key)
+      },
+      async set(key, value) {
+        values.set(key, value)
+      },
+    }),
+  })
+  return { runtime, values }
+}
+
+function lifecycleFeature(overrides: Partial<Feature> = {}): Feature {
+  return {
+    id: 'provider',
+    title: 'Provider',
+    description: 'Synthetic lifecycle fixture',
+    targets: ['userscript'],
+    requiredCapabilities: [],
+    match: () => true,
+    start() {},
+    ...overrides,
+  }
+}
+
+test('failed provider teardown stays owned, is reported and blocks duplicate hooks until retry succeeds', async () => {
+  let starts = 0,
+    hooks = 0,
+    failCleanup = true
+  const { runtime } = lifecycleRuntime([
+    lifecycleFeature({
+      start() {
+        starts++
+        hooks++
+      },
+      stop() {
+        if (failCleanup) throw Error('synthetic teardown failure')
+        hooks--
+      },
+    }),
+  ])
+  await runtime.start()
+  const observed: string[] = []
+  runtime.subscribe(() => observed.push(runtime.list()[0]?.state ?? 'missing'))
+  await expect(runtime.setEnabled('provider', false)).rejects.toThrow('Provider cleanup failed')
+  expect(observed.at(-1)).toBe('failed')
+  expect(runtime.list()[0]?.reason).toBe('Provider cleanup failed')
+  await expect(runtime.open('provider')).rejects.toThrow('Module is not active')
+  await expect(runtime.setEnabled('provider', true)).rejects.toThrow('Provider cleanup failed')
+  expect({ starts, hooks }).toEqual({ starts: 1, hooks: 1 })
+  failCleanup = false
+  await runtime.setEnabled('provider', true)
+  expect({ starts, hooks }).toEqual({ starts: 2, hooks: 1 })
+  expect(runtime.list()[0]?.state).toBe('active')
+  await runtime.stop()
+  expect(hooks).toBe(0)
+})
+
+test('failed capability teardown retains its resource and retries before restart', async () => {
+  let starts = 0,
+    hooks = 0,
+    failCleanup = true
+  const { runtime } = lifecycleRuntime([
+    lifecycleFeature({
+      modules: [
+        {
+          id: 'capture',
+          title: 'Capture',
+          description: '',
+          start() {
+            starts++
+            hooks++
+          },
+          stop() {
+            if (failCleanup) throw Error('synthetic teardown failure')
+            hooks--
+          },
+        },
+      ],
+    }),
+  ])
+  await runtime.start()
+  await expect(runtime.setModuleEnabled('provider', 'capture', false)).rejects.toThrow(
+    'Capability cleanup failed',
+  )
+  expect(runtime.moduleList()[0]).toMatchObject({ state: 'failed', enabled: false })
+  await expect(runtime.setModuleEnabled('provider', 'capture', true)).rejects.toThrow(
+    'Capability cleanup failed',
+  )
+  expect({ starts, hooks }).toEqual({ starts: 1, hooks: 1 })
+  failCleanup = false
+  await runtime.setModuleEnabled('provider', 'capture', true)
+  expect({ starts, hooks }).toEqual({ starts: 2, hooks: 1 })
+  await runtime.stop()
+  expect(hooks).toBe(0)
+})
+
+test('partial startup hooks remain owned when initial cleanup fails', async () => {
+  let starts = 0,
+    hooks = 0,
+    failStartup = true,
+    failCleanup = true
+  const { runtime } = lifecycleRuntime([
+    lifecycleFeature({
+      start() {
+        starts++
+        hooks++
+        if (failStartup) throw Error('synthetic startup failure')
+      },
+      stop() {
+        if (failCleanup) throw Error('synthetic teardown failure')
+        hooks--
+      },
+    }),
+  ])
+  await runtime.start()
+  expect(runtime.list()[0]?.reason).toBe('Provider startup and cleanup failed')
+  await expect(runtime.setEnabled('provider', true)).rejects.toThrow('Provider cleanup failed')
+  expect({ starts, hooks }).toEqual({ starts: 1, hooks: 1 })
+  failCleanup = false
+  failStartup = false
+  await runtime.setEnabled('provider', true)
+  expect({ starts, hooks }).toEqual({ starts: 2, hooks: 1 })
+  await runtime.stop()
+  expect(hooks).toBe(0)
+})
+
+test('installation teardown continues independent cleanup and keeps parent alive for failed children', async () => {
+  let parentStops = 0,
+    siblingStops = 0,
+    failCleanup = true
+  const { runtime } = lifecycleRuntime([
+    lifecycleFeature({
+      id: 'sibling',
+      stop() {
+        siblingStops++
+      },
+    }),
+    lifecycleFeature({
+      stop() {
+        parentStops++
+      },
+      modules: [
+        {
+          id: 'capture',
+          title: 'Capture',
+          description: '',
+          start() {},
+          stop() {
+            if (failCleanup) throw Error('synthetic teardown failure')
+          },
+        },
+      ],
+    }),
+  ])
+  await runtime.start()
+  await expect(runtime.setRunning(false)).rejects.toThrow('Installation cleanup failed')
+  expect(runtime.isRunning()).toBe(false)
+  expect({ parentStops, siblingStops }).toEqual({ parentStops: 0, siblingStops: 1 })
+  expect(runtime.list().map((item) => item.state)).toEqual(['disabled', 'failed'])
+  failCleanup = false
+  await runtime.refreshFromSettings()
+  expect({ parentStops, siblingStops }).toEqual({ parentStops: 1, siblingStops: 1 })
+  expect(runtime.list().map((item) => item.state)).toEqual(['disabled', 'disabled'])
+  await runtime.stop()
+})
+
+test('partial capability startup is retried through cleanup, never through a second concurrent hook', async () => {
+  let starts = 0,
+    hooks = 0,
+    failCleanup = true
+  const { runtime } = lifecycleRuntime([
+    lifecycleFeature({
+      modules: [
+        {
+          id: 'capture',
+          title: 'Capture',
+          description: '',
+          start() {
+            starts++
+            hooks++
+            if (starts === 1) throw Error('synthetic startup failure')
+          },
+          stop() {
+            if (failCleanup) throw Error('synthetic teardown failure')
+            hooks--
+          },
+        },
+      ],
+    }),
+  ])
+  await runtime.start()
+  expect(runtime.moduleList()[0]?.reason).toBe('Capability startup and cleanup failed')
+  await expect(runtime.setModuleEnabled('provider', 'capture', true)).rejects.toThrow(
+    'Capability cleanup failed',
+  )
+  expect({ starts, hooks }).toEqual({ starts: 1, hooks: 1 })
+  failCleanup = false
+  await runtime.setModuleEnabled('provider', 'capture', true)
+  expect({ starts, hooks }).toEqual({ starts: 2, hooks: 1 })
+  await runtime.stop()
+  expect(hooks).toBe(0)
+})

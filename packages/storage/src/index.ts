@@ -1,3 +1,17 @@
+export { MAX_BACKUP_ROW_BYTES, serializedBackupRow } from './backup-fragments'
+export type {
+  BackupStage,
+  BackupStageBucket,
+  BackupStageFactory,
+  BackupStageJob,
+  BackupStagePart,
+  BackupStageSection,
+} from './backup-stage'
+export {
+  backupStageDatabaseName,
+  createMemoryBackupStage,
+  dexieBackupStageFactory,
+} from './backup-stage'
 export type {
   IndexedPage,
   IndexedPageOptions,
@@ -35,6 +49,7 @@ export { readPinnedSnapshot, verifyPinnedResult } from './pinned-read'
 export type {
   PortableBackupIndexedPort,
   PortableBackupPorts,
+  PortableBackupReader,
   PortableBackupRow,
 } from './portable-backup'
 export type {
@@ -48,6 +63,29 @@ export { exportBackupTar, inspectBackupTar, restoreBackupTar } from './portable-
 export type { RevocableArchiveConnection, ScopedArchiveReadProvider } from './provider-connection'
 export { connectScopedArchive } from './provider-connection'
 export type {
+  RemoteCommandClaim,
+  RemoteOutbox,
+  RemoteOutboxEvent,
+  RemoteOutboxRecord,
+} from './remote-outbox'
+export {
+  createRemoteOutbox,
+  createVolatileRemoteOutbox,
+  remoteEventRequiresRaw,
+  remoteOutboxDatabaseName,
+} from './remote-outbox'
+export type { SectionedBackupOptions } from './sectioned-backup'
+export {
+  discardSectionedBackupRecovery,
+  exportSectionedBackup,
+  exportSectionedBackupTo,
+  inspectSectionedBackup,
+  listSectionedBackupRecoveries,
+  restoreSectionedBackup,
+  retrySectionedBackupRollback,
+  SectionedBackupRecoveryError,
+} from './sectioned-backup'
+export type {
   FileOutputPort,
   IndexedArchivePort,
   PersistentSettingsPort,
@@ -59,9 +97,11 @@ export type {
 export { assertMatchingScope, assertServiceScope } from './service-contract'
 export type { SettingsBackup } from './settings-backup'
 export { exportSettingsBackup, restoreSettingsBackup, validateSettingsBackup } from './settings-backup'
-export type { TelemetryEntry, TelemetryMetrics } from './telemetry-journal'
+export type { TelemetryEntry, TelemetryJournal, TelemetryMetrics } from './telemetry-journal'
 export {
   DexieTelemetryJournal,
   isTechnicalTelemetryName,
+  TELEMETRY_HARD_LIMIT,
   telemetryDatabaseName,
+  validateTechnicalTelemetryEntry,
 } from './telemetry-journal'

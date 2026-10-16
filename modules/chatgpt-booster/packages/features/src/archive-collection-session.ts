@@ -61,10 +61,7 @@ export class ArchiveCollectionSession {
 
   /** Only the explicit collection command may call begin; observers never resume. */
   begin(
-    context: Pick<
-      ArchiveCollectionRun,
-      'accountId' | 'conversationId' | 'projectId' | 'selectedTipId'
-    > &
+    context: Pick<ArchiveCollectionRun, 'accountId' | 'conversationId' | 'projectId' | 'selectedTipId'> &
       Partial<Pick<ArchiveCollectionRun, 'sourceReadId' | 'sourceReadStartedAt'>>,
   ): ArchiveCollectionRun {
     if (!context.accountId || !context.conversationId) throw new Error('archive.error.auth')
@@ -99,11 +96,7 @@ export class ArchiveCollectionSession {
     return this.#active?.run === run && !run.signal.aborted
   }
 
-  permits(
-    run: ArchiveCollectionRun | undefined,
-    accountId: string,
-    conversationId: string,
-  ): boolean {
+  permits(run: ArchiveCollectionRun | undefined, accountId: string, conversationId: string): boolean {
     return (
       !!run &&
       this.owns(run) &&

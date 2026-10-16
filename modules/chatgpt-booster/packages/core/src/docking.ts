@@ -1,16 +1,8 @@
 export type DockSide = 'left' | 'right'
 export function clampRatio(value: unknown, fallback = 0.65): number {
-  return typeof value === 'number' && Number.isFinite(value)
-    ? Math.max(0, Math.min(1, value))
-    : fallback
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : fallback
 }
-export function dockPosition(
-  side: DockSide,
-  ratio: number,
-  width: number,
-  height: number,
-  size = 44,
-) {
+export function dockPosition(side: DockSide, ratio: number, width: number, height: number, size = 44) {
   return {
     x: side === 'left' ? 0 : Math.max(0, width - size),
     y: Math.max(0, height - size) * clampRatio(ratio),

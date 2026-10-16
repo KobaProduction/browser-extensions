@@ -5,6 +5,7 @@ import {
   type TelemetryControlAdapter,
 } from '@chatgpt-booster/core'
 import { OtlpTelemetryClient } from '@chatgpt-booster/telemetry'
+import { instanceKey } from '@kobaproduction/browser-core'
 
 const TOKEN_KEY = 'telemetryToken'
 
@@ -15,6 +16,17 @@ export const chromeSecrets: SecretAdapter = {
   },
   async setTelemetryToken(token) {
     await chrome.storage.local.set({ [TOKEN_KEY]: token })
+  },
+  async getRemoteToken() {
+    const key = instanceKey('chatgpt-booster:remote-token')
+    const stored = await chrome.storage.local.get(key)
+    return typeof stored[key] === 'string' ? stored[key] : ''
+  },
+  async setRemoteToken(token) {
+    if (typeof token !== 'string' || token.length > 8192) throw Error('Invalid remote credential')
+    const key = instanceKey('chatgpt-booster:remote-token')
+    if (token) await chrome.storage.local.set({ [key]: token })
+    else await chrome.storage.local.remove(key)
   },
 }
 
@@ -57,7 +69,8 @@ export function createChromeTelemetryControl(
           }
         } else {
           const state = (await chrome.runtime.sendMessage({
-            type: 'chatgpt-booster:telemetry-permission-check', origin: parsed.origin,
+            type: 'chatgpt-booster:telemetry-permission-check',
+            origin: parsed.origin,
           })) as { granted?: boolean }
           if (!state?.granted)
             throw new Error('Allow this telemetry endpoint in the ChatGPT Booster extension popup first')

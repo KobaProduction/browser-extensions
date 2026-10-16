@@ -15,9 +15,49 @@ Open `http://127.0.0.1:5173/`. The server binds **localhost only** by default. U
 
 ## Visual acceptance matrix
 
-Use the top controls to vary product (ChatGPT, VK or all-in-one at either supported host), channel-independent delivery label (Tampermonkey/MV3), data state (saved/empty/loading/error/long text/disabled), initial surface (quick menu/settings/archive/collapsed), launcher edge (left/right), and viewport (desktop/tablet/mobile). Each configuration loads in its own iframe to give fixed-position elements an accurate viewport. Click and drag the actual launcher, open sections and press Escape; the faux collection supports start/stop and deterministic progress.
+The landing page is now a map of four directions: interface, archive, modules
+and settings, and automated checks. No product is mounted until a direction
+is selected. Each direction exposes only its relevant controls. All-in-one
+has one product choice and a separate ChatGPT/VK site selector. Archive fixtures
+belong to the archive direction; module sections select the actual provider
+settings section. Installation method and launcher edge live in the expandable
+additional parameters. Breadcrumbs and browser Back/Forward return to the map.
 
-A visual diagnostics strip reports shell mounting, displayed modal/quick menu, overflow beyond the iframe viewport, and preservation of the ChatGPT nested settings layout: **two columns on desktop/tablet and full-width top navigation at 620px and below**. Any diagnostics warning or visible overlap/clipping fails visual acceptance and should be captured as a screenshot and fixed before PR review. The lab's synthetic counters are **not real saved message counts** and green checks are **not** account, transport, IndexedDB migration, media or physical-browser-extension acceptance.
+Preview dimensions remain canonical, while the visible iframe fits the available
+width. Its scale is shown; “Open separately” opens an unscaled preview. Mobile
+provider panels are fullscreen, tablets use compact settings rows, desktops use
+module cards in two columns. The [shared UI contract](../../docs/shared/UI_ACCEPTANCE.md)
+owns these rules.
+
+Changing a product/site preserves the current expanded/collapsed surface and
+provider view instead of replaying the initial screen. The iframe can be rebuilt
+with new synthetic adapters, but only presentation is restored; data and active
+operations are never copied. VK's page selector distinguishes an open dialog
+from the feed/outside-dialog context. The side button expands into one connected
+edge toolkit. The header contains the application name, version and power switch.
+All-in-one shows its own version and a separate component list; installation
+method is shown once for the whole app. The rationale is recorded in
+[owner UI decisions](../../docs/shared/UI_DECISIONS.md).
+
+The common settings catalog exposes display, module lifecycle, telemetry and
+backup categories plus provider contributions. Local telemetry and recovery use
+memory-only synthetic ports in the Lab; external delivery remains unavailable.
+VK synthetic exports use the same selective ZIP serializer as the provider,
+with selected messages kept across bounded Reader pages. Common settings
+category and optional-menu preferences survive presentation replacement.
+
+The owner's latest direction authorizes local synthetic tests, isolated browser
+checks and the loopback WebSocket fixture. Earlier build/test deferral is
+superseded; completed evidence is recorded in
+[the current refactor checkpoint](../../docs/REFACTOR_PROGRESS.md).
+
+Run `node apps/ui-lab/scripts/browser-matrix.mjs --explorer` to check the lab's
+navigation and contextual controls in Chromium, with screenshots and JSON in
+ignored `.local/`. Run the provider matrix below separately.
+
+Within a direction, choose the product, host where applicable, viewport and task-specific scenario. The interface direction opens the quick menu, settings panel or side button; the archive direction selects data fixtures; the modules direction selects real provider sections. Each configuration loads in its own iframe to give fixed-position elements an accurate viewport. Click and drag the launcher, open sections and press Escape; the faux collection supports start/stop and deterministic progress.
+
+An expandable diagnostics section reports shell mounting, displayed modal/quick menu and overflow beyond the iframe viewport. Settings now use one shared hierarchy: group → category → optional subcategory → parameters. Desktop/tablet show only the chosen branch above one content column; at 620px and below an explicit Collapsible button reveals the catalog and the panel fills the viewport. Diagnostics and matrix assertions check this shared catalog and stable viewport geometry. Any visible overlap/clipping fails visual acceptance. Synthetic counters are **not real saved message counts**, and prior green checks do not prove the current interface or installed extension.
 
 ## Safety
 
@@ -35,6 +75,35 @@ node apps/ui-lab/scripts/browser-matrix.mjs             # 288 scenarios, default
 node apps/ui-lab/scripts/browser-matrix.mjs --full      # 1152 scenarios
 ```
 
+Tracked focused modes exercise controls and data selection beyond geometry:
+
+```sh
+node apps/ui-lab/scripts/browser-matrix.mjs --targeted-ui
+node apps/ui-lab/scripts/browser-matrix.mjs --automation-ui
+node apps/ui-lab/scripts/browser-matrix.mjs --archive-ui
+node apps/ui-lab/scripts/browser-matrix.mjs --history-ui
+node apps/ui-lab/scripts/browser-matrix.mjs --correction-ui
+node apps/ui-lab/scripts/browser-matrix.mjs --accessibility-ui
+node apps/ui-lab/scripts/browser-matrix.mjs --ws-ui
+```
+
+Automation checks cover RAM Apply/Save/Discard, direct mobile access to triggers/server, catalog collapse and
+aggregate identity/version. Archive checks use both providers and aggregate
+hosts: timeline Home/End/middle, selected markers, branches/versions,
+cross-page ranges, progressive loading and partial/complete synthetic capture.
+The WebSocket mode separately requires the explicit loopback fixture.
+
+Accessibility checks use trusted Chromium keyboard/pointer input and the browser
+accessibility tree: named module controls, Enter/Tab/Escape focus, outside-menu
+dismissal, and English settings, backups, telemetry and quick-menu captions.
+
+History checks exercise the shared adjacent rail in both products and aggregate
+hosts on phone, tablet and two desktop sizes: hover/focus/touch preview bounds,
+nearest-message navigation, hide/show width recovery, empty history and VK
+Markdown/TXT/ZIP preparation. They never click the final download action or
+request real provider attachments. Correction checks cover provider-first groups,
+common language and all three safe VK workflow routes without losing selection.
+
 Set `CHROME_BIN` if Chrome is not on `PATH`. On Linux, the browser must have its required system libraries; an unlaunchable browser is **BLOCKED**, not a passing test. Generated reports and screenshots are in ignored `apps/ui-lab/.local/`. GitHub Actions [.github/workflows/ui-acceptance.yml](../../.github/workflows/ui-acceptance.yml) runs the 288-case browser gate on an Ubuntu-hosted Chrome after fixture/unit and Vite build checks; `workflow_dispatch` can request full 1152. The acceptance matrix checks geometry and synthetic interaction, not real service transport or storage.
 
 
@@ -43,8 +112,8 @@ Set `CHROME_BIN` if Chrome is not on `PATH`. On Linux, the browser must have its
 Platform navigation checks are anchored to the outer Shell, not the embedded
 provider Control Center. Responsive geometry checks run for every enabled
 ChatGPT settings scene, not only interaction samples. They distinguish the
-mobile top row from the desktop sidebar and fail on missing content, wrong
-column counts, overlap, zero-size regions and horizontal viewport overflow.
+single shared catalog above content at every viewport and fail on missing
+content, competing sidebars, overlap, zero-size regions and horizontal overflow.
 Negative DOM/geometry fixtures protect these failure paths.
 
 Screenshot replay uses the same canonical viewport dimensions as the matrix.
@@ -55,3 +124,18 @@ measured sizes. The runner also captures mobile settings and aggregate
 settings at all three widths. A malformed replay or mismatched screenshot
 cannot turn a failed matrix into a pass. These remain synthetic UI evidence,
 not installed-product or user-data acceptance.
+
+The earlier owner-directed test deferral is superseded by the current local
+validation direction. `--inspect` captures focused phone/tablet/desktop screens
+and verifies Card borders, a visible Checkbox state change, fullscreen painting
+and VK quick-menu → settings bounds. `?wsFixture=1` explicitly connects the Lab's
+memory-only synthetic control to the loopback fixture at `ws://127.0.0.1:8787/ws`;
+default previews create no socket. Fixture token: `ui-lab-synthetic-ws-token`.
+Use a built Lab preview for matrix runs while source files are changing, so HMR
+cannot reset the acceptance process. Reports identify the tested snapshot only.
+
+`--correction-ui` exercises the follow-up composition/language contract across
+both standalone products and aggregate hosts: one common language preference,
+provider inheritance without a second language control, aggregate-only product
+management and direct automation navigation. Archive geometry checks separately
+measure the remaining height at desktop, tablet and phone sizes.

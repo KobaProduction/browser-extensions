@@ -155,16 +155,52 @@ export async function createGzipFromChunks(
   return new Blob(parts, { type: 'application/gzip' })
 }
 
+export type { ArchiveChangeFeed } from './archive-events'
+export { createArchiveChangeFeed } from './archive-events'
 export type {
   ChatCollectionController,
   ChatCollectionPort,
   ChatCollectionSnapshot,
 } from './chat-collection'
 export { createChatCollectionController } from './chat-collection'
+export type {
+  ArchiveExportInput,
+  ArchiveRange,
+  ArchiveReadableRecord,
+  ChunkedArchiveExport,
+  ResolvedArchiveRange,
+  SerializedArchiveExport,
+  SharedArchiveExportFormat,
+} from './conversation-export'
+export {
+  collectArchiveRange,
+  serializeArchiveExport,
+  serializeArchiveExportChunks,
+} from './conversation-export'
+export type {
+  ArchiveConversationIntegrity,
+  ArchiveGraphNode,
+  ArchiveIntegrityEvidence,
+  LinearArchiveEvidence,
+} from './conversation-integrity'
+export { conversationIntegrityFromGraph, linearArchiveIntegrity } from './conversation-integrity'
 export type { ArchivePageScan, ArchivePageSelection, ArchiveScanMode } from './linear-selection'
 export { selectArchivePage } from './linear-selection'
 export type { ArchiveMediaReadOptions, ArchiveMediaResult } from './media'
 export { readArchiveMedia } from './media'
+export type {
+  ArchiveMessageElementV1,
+  ArchiveMessageIdentity,
+  ArchiveMessageSourceContext,
+  ArchiveMessageV1,
+} from './message-model'
+export {
+  ARCHIVE_MESSAGE_MODEL_VERSION,
+  archiveMessageKey,
+  archiveMessageText,
+  resolveArchiveMessage,
+  validateArchiveMessage,
+} from './message-model'
 export type {
   LinearArchiveCommit,
   LinearArchiveSource,
@@ -177,4 +213,9 @@ export type { ZipEntry } from './stored-zip'
 /** One ZIP32 implementation reused by ChatGPT and VK export adapters. */
 export { createStoredZip, createStoredZipFromBlobs } from './stored-zip'
 export type { ArchiveCloneNode } from './structured'
-export { decodeArchiveClone, encodeArchiveClone } from './structured'
+export {
+  ARCHIVE_CLONE_JSON_MAX_DEPTH,
+  ARCHIVE_CLONE_MAX_DEPTH,
+  decodeArchiveClone,
+  encodeArchiveClone,
+} from './structured'

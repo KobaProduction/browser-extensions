@@ -4,7 +4,7 @@ export type ReleaseChannel = 'dev' | 'prod'
 export function releaseChannel(raw: string | undefined): ReleaseChannel {
   if (!raw || raw === 'prod') return 'prod'
   if (raw === 'dev') return 'dev'
-  throw new Error('Unknown release channel: ' + raw)
+  throw new Error(`Unknown release channel: ${raw}`)
 }
 
 /** Machine-readable versions stay numeric in DEV and PROD.
@@ -25,23 +25,23 @@ export function chromeVersion(version: string, channel: ReleaseChannel, run: num
 
 export function devDisplayVersion(version: string, channel: ReleaseChannel, run: number): string {
   const numeric = channelVersion(version, channel, run)
-  return channel === 'dev' ? 'dev-' + numeric : numeric
+  return channel === 'dev' ? `dev-${numeric}` : numeric
 }
 
 export function channelDisplayName(name: string, channel: ReleaseChannel): string {
-  return channel === 'dev' ? 'dev-' + name : name
+  return channel === 'dev' ? `dev-${name}` : name
 }
 
 /** Preserve Tampermonkey's existing @name + @namespace installation identity.
  * Changing these fields during an automatic update can install a duplicate. */
 export function userscriptChannelName(name: string, channel: ReleaseChannel): string {
-  return channel === 'dev' ? name + ' [DEV]' : name
+  return channel === 'dev' ? `${name} [DEV]` : name
 }
 
 export function channelIdentity(id: string, channel: ReleaseChannel): string {
   if (!['vk-booster', 'chatgpt-booster', 'all-in-one'].includes(id))
     throw new Error('Unknown product identity')
-  return id + ':' + channel
+  return `${id}:${channel}`
 }
 
 export function userscriptChannelUrl(id: string, channel: ReleaseChannel): string {

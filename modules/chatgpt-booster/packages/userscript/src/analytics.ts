@@ -1,4 +1,3 @@
-import { instanceKey } from '@kobaproduction/browser-core'
 import {
   applyTransportCounterEvent,
   EMPTY_TRANSPORT_COUNTERS,
@@ -6,6 +5,7 @@ import {
   type TransportCounterEvent,
   type TransportCounters,
 } from '@chatgpt-booster/core'
+import { instanceKey } from '@kobaproduction/browser-core'
 
 const STORAGE_KEY = instanceKey('chatgpt-booster:analytics-transport-lifetime', 'chatgpt-booster:prod')
 const EVENT_NAME = instanceKey('chatgpt-booster:analytics-changed', 'chatgpt-booster:prod')

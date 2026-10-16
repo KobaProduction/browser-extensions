@@ -41,13 +41,13 @@ test('mobile navigation spans a top row rather than a desktop sidebar', () => {
   ).toEqual([])
 })
 
-test('desktop sidebar and content retain distinct columns', () => {
+test('desktop uses one shared catalog above the content', () => {
   expect(
     settingsNavigationWarnings({
       viewportWidth: 1365,
-      columns: 2,
-      navigation: box(220, 160, 150, 400),
-      content: box(370, 160, 720, 400),
+      columns: 1,
+      navigation: box(220, 160, 870, 94),
+      content: box(234, 254, 842, 400),
     }),
   ).toEqual([])
 })
@@ -64,11 +64,11 @@ test('actual width, overlap and responsive-grid regressions remain failures', ()
   expect(settingsNavigationWarnings({ ...mobile, navigation: box(-16, 160, 440, 94) })).not.toEqual([])
   const desktop = {
     viewportWidth: 1365,
-    columns: 2,
-    navigation: box(220, 160, 150, 400),
-    content: box(370, 160, 720, 400),
+    columns: 1,
+    navigation: box(220, 160, 870, 94),
+    content: box(234, 254, 842, 400),
   }
-  expect(settingsNavigationWarnings({ ...desktop, columns: 1 })).not.toEqual([])
+  expect(settingsNavigationWarnings({ ...desktop, columns: 2 })).not.toEqual([])
   expect(settingsNavigationWarnings({ ...desktop, navigation: box(0, 160, 800, 400) })).not.toEqual([])
   expect(settingsNavigationWarnings({ ...desktop, content: box(340, 160, 720, 400) })).not.toEqual([])
 })

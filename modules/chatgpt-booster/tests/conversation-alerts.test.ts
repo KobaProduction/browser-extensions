@@ -10,9 +10,7 @@ describe('conversation terminal alerts', () => {
     expect(conversationTerminalAlert({ state: 'complete', terminalCause: null })).toBe('complete')
     expect(conversationTerminalAlert({ state: 'stopped', terminalCause: null })).toBeNull()
     expect(conversationTerminalAlert({ state: 'cancelled', terminalCause: null })).toBeNull()
-    expect(
-      conversationTerminalAlert({ state: 'failed', terminalCause: 'network_error' }),
-    ).toBeNull()
+    expect(conversationTerminalAlert({ state: 'failed', terminalCause: 'network_error' })).toBeNull()
     expect(conversationTerminalAlert({ state: 'in_progress', terminalCause: null })).toBeNull()
   })
 

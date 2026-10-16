@@ -584,3 +584,11 @@ Native collection completion and persistence completion are separate: stop
   continues to track the previously requested unfinished branch visualization.
   The master export work may only claim a verified selected path; it must not
   silently solve missing parent links by invention.
+# Active correction contract (2026-10-14)
+
+The owner's [live archive contract](../../../docs/chatgpt-booster/LIVE_ARCHIVE_CONTRACT.md)
+supersedes the former refusal of all changed same-ID observations. Original
+source variants survive, preferred projections advance only without evidence
+loss, and source/owner revisions fence reads and recovery. The physical Dexie
+version/indexes and canonical model remain 1. The source changes in this batch
+have not undergone the deferred build/test/browser gates.

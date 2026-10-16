@@ -47,9 +47,29 @@ export function mountRequestStatus(
   const reasoningLabel = document.createElement('span')
   reasoningLabel.className = 'booster-request-status-label'
   const reasoningTimer = document.createElement('strong')
+  const action = document.createElement('span')
+  const actionLabel = document.createElement('span')
+  actionLabel.className = 'booster-request-status-label'
+  const actionTimer = document.createElement('strong')
+  const update = document.createElement('span')
+  const updateLabel = document.createElement('span')
+  updateLabel.className = 'booster-request-status-label'
+  const updateTimer = document.createElement('strong')
+  const summary = document.createElement('span')
+  const summaryLabel = document.createElement('span')
+  summaryLabel.className = 'booster-request-status-label'
+  const summaryTimer = document.createElement('strong')
+  const interval = document.createElement('span')
+  const intervalLabel = document.createElement('span')
+  intervalLabel.className = 'booster-request-status-label'
+  const intervalTimer = document.createElement('strong')
   request.append(requestLabel, requestTimer)
   reasoning.append(reasoningLabel, reasoningTimer)
-  bar.append(spinner, request, reasoning)
+  action.append(actionLabel, actionTimer)
+  update.append(updateLabel, updateTimer)
+  summary.append(summaryLabel, summaryTimer)
+  interval.append(intervalLabel, intervalTimer)
+  bar.append(spinner, request, reasoning, action, update, summary, interval)
   shadow.append(bar)
 
   let snapshot = initial
@@ -57,23 +77,39 @@ export function mountRequestStatus(
   const t = (key: Parameters<typeof translate>[1]) => translate(locale, key)
   requestLabel.textContent = t('requestStatus.request')
   reasoningLabel.textContent = t('requestStatus.reasoning')
+  actionLabel.textContent = t('requestStatus.action')
+  updateLabel.textContent = t('requestStatus.unchanged')
+  summaryLabel.textContent = t('requestStatus.sinceSummary')
+  intervalLabel.textContent = t('requestStatus.summaryInterval')
 
   const render = () => {
     requestTimer.textContent = elapsed(snapshot.startedAt, snapshot.completedAt, currentNow)
     reasoning.hidden = !snapshot.reasoningStartedAt
-    reasoningTimer.textContent = elapsed(
-      snapshot.reasoningStartedAt,
-      snapshot.completedAt,
+    reasoningTimer.textContent = elapsed(snapshot.reasoningStartedAt, snapshot.completedAt, currentNow)
+    spinner.hidden = !snapshot.active
+    action.hidden = !snapshot.phaseStartedAt
+    actionTimer.textContent = elapsed(snapshot.phaseStartedAt, snapshot.completedAt, currentNow)
+    update.hidden = !snapshot.lastActivityAt
+    updateTimer.textContent = snapshot.lastActivityAt
+      ? `${new Date(snapshot.lastActivityAt).toLocaleTimeString(locale)} · ${elapsed(snapshot.lastActivityAt, snapshot.completedAt, currentNow)} ${t('requestStatus.ago')}`
+      : '—'
+    if (snapshot.lastActivityAt)
+      update.title = `${t('activity.lastActivityAt')}: ${new Date(snapshot.lastActivityAt).toLocaleTimeString(locale)}`
+    summary.hidden = !snapshot.lastSummaryAt
+    summaryTimer.textContent = elapsed(snapshot.lastSummaryAt ?? null, snapshot.completedAt, currentNow)
+    interval.hidden = !snapshot.previousSummaryAt || !snapshot.lastSummaryAt
+    intervalTimer.textContent = elapsed(
+      snapshot.previousSummaryAt ?? null,
+      snapshot.lastSummaryAt ?? null,
       currentNow,
     )
     bar.dataset.phase = snapshot.phase
     bar.setAttribute(
       'aria-label',
-      `${t('requestStatus.request')} ${requestTimer.textContent}${
-        snapshot.reasoningStartedAt
-          ? `, ${t('requestStatus.reasoning')} ${reasoningTimer.textContent}`
-          : ''
-      }`,
+      [...bar.children]
+        .filter((element) => !(element as HTMLElement).hidden && element !== spinner)
+        .map((element) => [...element.children].map((child) => child.textContent).join(' '))
+        .join(', '),
     )
   }
   render()

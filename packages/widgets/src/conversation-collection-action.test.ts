@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
-import { compileTemplate, parse } from 'vue/compiler-sfc'
+import { compileScript, compileTemplate, parse } from 'vue/compiler-sfc'
 
 test('common collection control displays progress but delegates actual source capture', () => {
   const source = readFileSync(new URL('./ConversationCollectionAction.vue', import.meta.url), 'utf8')
@@ -16,7 +16,9 @@ test('common collection control displays progress but delegates actual source ca
   expect(source).toContain("emit('start')")
   expect(source).toContain("emit('stop')")
   expect(source).toContain('ArchiveProgressBar')
-  expect(source).toContain("import { Button } from '@kobaproduction/browser-ui'")
+  expect(compileScript(descriptor, { id: 'collection' }).imports?.Button?.source).toBe(
+    '@kobaproduction/browser-ui',
+  )
   expect(source).toContain('variant="outline"')
   expect(source).not.toMatch(/vk\.ru|chatgpt\.com|IndexedDB|Dexie/)
 })

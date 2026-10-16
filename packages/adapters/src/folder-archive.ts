@@ -19,7 +19,7 @@ export function createArchiveFiles(getRoot: () => FileSystemDirectoryHandle) {
           ? new Uint8Array(data)
           : typeof data === 'string' || data instanceof Blob
             ? data
-            : JSON.stringify(data, null, 2) + '\n'
+            : `${JSON.stringify(data, null, 2)}\n`
       await writer.write(payload)
       await writer.close()
     } catch (error) {

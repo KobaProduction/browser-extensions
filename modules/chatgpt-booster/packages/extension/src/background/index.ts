@@ -1,4 +1,3 @@
-import { instanceKey } from '@kobaproduction/browser-core'
 import {
   applyTransportCounterEvent,
   type BoosterSettings,
@@ -9,6 +8,8 @@ import {
   type TransportCounterEvent,
   type TransportCounters,
 } from '@chatgpt-booster/core'
+import { isDevelopmentContextAllowed } from '@kobaproduction/browser-adapters'
+import { instanceKey, instanceScope } from '@kobaproduction/browser-core'
 
 const TOKEN_KEY = 'telemetryToken'
 const SETTINGS_KEY = 'settings'
@@ -153,9 +154,7 @@ async function recordAnalytics(event: TransportCounterEvent): Promise<TransportC
 
 async function postTelemetry(message: TelemetryMessage): Promise<{ ok: true; status: number }> {
   const settings = normalizeSettings(
-    (await chrome.storage.local.get(SETTINGS_KEY))[SETTINGS_KEY] as
-      | Partial<BoosterSettings>
-      | undefined,
+    (await chrome.storage.local.get(SETTINGS_KEY))[SETTINGS_KEY] as Partial<BoosterSettings> | undefined,
   )
   const configuredEndpoint = settings.telemetry.endpoint.trim()
   if (!configuredEndpoint) throw new Error('Telemetry endpoint is not configured')
@@ -186,7 +185,7 @@ async function postTelemetry(message: TelemetryMessage): Promise<{ ok: true; sta
 chrome.runtime.onMessage.addListener(
   (
     message: BoosterMessage,
-    _sender,
+    sender,
     sendResponse: (response: {
       ok: boolean
       status?: number
@@ -197,6 +196,26 @@ chrome.runtime.onMessage.addListener(
     }) => void,
   ) => {
     if (!message?.type?.startsWith('chatgpt-booster:')) return
+    const development = instanceScope().endsWith(':dev')
+    if (
+      !isDevelopmentContextAllowed('chromium') ||
+      (development && sender.tab && sender.tab.incognito !== true)
+    ) {
+      sendResponse({
+        ok: false,
+        granted: false,
+        error: 'DEV Browser Tools is available only in incognito',
+      })
+      return false
+    }
+    if (
+      development &&
+      (message.type === 'chatgpt-booster:telemetry-post' ||
+        message.type === 'chatgpt-booster:telemetry-permission-check')
+    ) {
+      sendResponse({ ok: false, granted: false, error: 'Use application telemetry settings' })
+      return false
+    }
 
     void (async () => {
       try {
@@ -209,7 +228,10 @@ chrome.runtime.onMessage.addListener(
           const origin = new URL(configured).origin
           if (new URL(message.origin).origin !== origin || !origin.startsWith('https://'))
             throw new Error('Telemetry permission origin does not match settings')
-          sendResponse({ ok: true, granted: await chrome.permissions.contains({ origins: [`${origin}/*`] }) })
+          sendResponse({
+            ok: true,
+            granted: await chrome.permissions.contains({ origins: [`${origin}/*`] }),
+          })
           return
         }
         if (message.type === 'chatgpt-booster:settings-set') {
@@ -251,10 +273,14 @@ const CHATGPT_MATCH = 'https://chatgpt.com/*'
 const ownShellRootId = instanceKey('koba-browser-tools-root')
 
 async function bootstrapExistingChatGptTabs(): Promise<void> {
+  if (!isDevelopmentContextAllowed('chromium')) return
   const tabs = await chrome.tabs.query({ url: CHATGPT_MATCH })
   await Promise.all(
     tabs
-      .filter((tab): tab is chrome.tabs.Tab & { id: number } => typeof tab.id === 'number')
+      .filter(
+        (tab): tab is chrome.tabs.Tab & { id: number } =>
+          typeof tab.id === 'number' && (!instanceScope().endsWith(':dev') || tab.incognito === true),
+      )
       .map(async (tab) => {
         try {
           const [presence] = await chrome.scripting.executeScript({

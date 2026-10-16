@@ -1,6 +1,5 @@
 import {
   currentConversationId,
-  currentProjectId,
   isChatGptWorkConversationOrigin,
   mountArchiveScopeControls,
   type ScheduledIdleTask,
@@ -11,6 +10,7 @@ import {
   type ArchiveCaptureContext,
   type BoosterModule,
   type BoosterSettings,
+  OPEN_ARCHIVE_EVENT,
   OPEN_CAPTURE_SETTINGS_EVENT,
   resolveCaptureRule,
   type SettingsAdapter,
@@ -20,10 +20,11 @@ import {
   resolveLocale,
   type ScopeArchiveControlModel,
 } from '@chatgpt-booster/ui'
+import { type SourceScopeConversation, sourceScopeContext } from './archive-scope-context'
 import type { ConversationStateStore } from './conversation-state'
 
 interface ArchiveScopeListing {
-  listConversations(): Promise<{ conversationId: string; projectId: string | null }[]>
+  listConversations(): Promise<SourceScopeConversation[]>
   listProjects(): Promise<{ projectId: string; title: string | null }[]>
 }
 
@@ -69,12 +70,17 @@ export class ArchiveScopeControlsModule implements BoosterModule {
   #controls: ReturnType<typeof mountArchiveScopeControls> | undefined
   #unsubscribe: (() => void) | undefined
   #stateUnsubscribe: (() => void) | undefined
+  #accountUnsubscribe: (() => void) | undefined
+  #catalogUnsubscribe: (() => void) | undefined
   #active = false
   #latestSettings: BoosterSettings | undefined
   #conversationProjects = new Map<string, string | null>()
   #archivedConversationIds = new Set<string>()
   #projectArchivedCounts = new Map<string, number>()
-  #projectIdsByTitle = new Map<string, string>()
+  #sourceProjects = new Map<string, { projectId: string; title: string | null }>()
+  #sourceConversations = new Map<string, SourceScopeConversation>()
+  #archiveOwner: string | null = null
+  #archiveEpoch = -1
   #archiveStateRefresh: Promise<void> | undefined
   #archiveStateRefreshQueued = false
   #initialTask: ScheduledIdleTask | undefined
@@ -117,6 +123,23 @@ export class ArchiveScopeControlsModule implements BoosterModule {
       )
         this.#apply()
     })
+    this.#catalogUnsubscribe = this.stateStore?.subscribeCatalog((detail) => {
+      if (this.#active && this.#latestSettings?.enabled && detail.projects) this.#apply()
+    })
+    this.#accountUnsubscribe = this.stateStore?.subscribeAccount(() => {
+      this.#sourceProjects.clear()
+      this.#sourceConversations.clear()
+      this.#conversationProjects.clear()
+      this.#archivedConversationIds.clear()
+      this.#projectArchivedCounts.clear()
+      this.#archiveOwner = null
+      this.#archiveEpoch = -1
+      this.#apply()
+      if (this.#latestSettings?.enabled)
+        void this.#refreshArchiveState().then(() => {
+          if (this.#active) this.#apply()
+        })
+    })
     if (settings.enabled) {
       this.#initialTask = scheduleIdleTask(() => {
         this.#initialTask = undefined
@@ -135,6 +158,10 @@ export class ArchiveScopeControlsModule implements BoosterModule {
     this.#unsubscribe?.()
     this.#stateUnsubscribe?.()
     this.#stateUnsubscribe = undefined
+    this.#accountUnsubscribe?.()
+    this.#accountUnsubscribe = undefined
+    this.#catalogUnsubscribe?.()
+    this.#catalogUnsubscribe = undefined
     window.removeEventListener(ARCHIVE_UPDATED_EVENT, this.#onArchiveUpdated)
     this.#controls?.stop()
     this.#controls = undefined
@@ -189,12 +216,24 @@ export class ArchiveScopeControlsModule implements BoosterModule {
 
   async #loadArchiveState() {
     if (!this.store) return
+    const owner = this.stateStore?.verifiedAccountId(),
+      epoch = this.stateStore?.accountEpoch()
+    if (!owner) return
     try {
       const [conversations, projects] = await Promise.all([
         this.store.listConversations(),
         this.store.listProjects(),
       ])
-      if (!this.#active) return
+      if (
+        !this.#active ||
+        this.stateStore?.verifiedAccountId() !== owner ||
+        this.stateStore.accountEpoch() !== epoch
+      )
+        return
+      this.#archiveOwner = owner
+      this.#archiveEpoch = epoch ?? -1
+      this.#sourceConversations = new Map(conversations.map((value) => [value.conversationId, value]))
+      this.#sourceProjects = new Map(projects.map((value) => [value.projectId, value]))
       this.#conversationProjects = new Map(
         conversations.map((conversation) => [conversation.conversationId, conversation.projectId]),
       )
@@ -204,18 +243,9 @@ export class ArchiveScopeControlsModule implements BoosterModule {
       const projectCounts = new Map<string, number>()
       for (const conversation of conversations) {
         if (!conversation.projectId) continue
-        projectCounts.set(
-          conversation.projectId,
-          (projectCounts.get(conversation.projectId) ?? 0) + 1,
-        )
+        projectCounts.set(conversation.projectId, (projectCounts.get(conversation.projectId) ?? 0) + 1)
       }
       this.#projectArchivedCounts = projectCounts
-      this.#projectIdsByTitle = new Map(
-        projects.flatMap((project) => {
-          const title = project.title?.trim()
-          return title ? [[title.toLocaleLowerCase(), project.projectId] as const] : []
-        }),
-      )
     } catch {
       // Sidebar controls stay usable if local archive state is temporarily unavailable.
     }
@@ -223,24 +253,51 @@ export class ArchiveScopeControlsModule implements BoosterModule {
 
   #projectId(context: ArchiveCaptureContext) {
     if (context.scope === 'project') return context.id
-    return (
-      context.projectId ??
-      this.#conversationProjects.get(context.id) ??
-      (context.id === currentConversationId() ? (currentProjectId() ?? null) : null)
-    )
+    const source = this.#sourceContext(context)
+    return source?.scope === 'conversation' ? (source.projectId ?? null) : null
+  }
+
+  #sourceContext(context: ArchiveCaptureContext) {
+    const owner = this.stateStore?.verifiedAccountId() ?? null
+    const cached = owner === this.#archiveOwner && this.stateStore?.accountEpoch() === this.#archiveEpoch
+    return sourceScopeContext(context, {
+      ownerId: owner,
+      nativeConversation: (id) => this.stateStore?.header(id),
+      savedConversation: (id) => (cached ? this.#sourceConversations.get(id) : undefined),
+      savedProject: (id) =>
+        (owner ? this.stateStore?.project(id) : undefined) ??
+        (cached ? this.#sourceProjects.get(id) : undefined),
+      currentNativeProjectId: owner
+        ? (this.stateStore?.header(currentConversationId() ?? '')?.projectId ?? null)
+        : null,
+    })
   }
 
   #model(context: ArchiveCaptureContext): ScopeArchiveControlModel {
     const settings = this.#latestSettings
     if (!settings) throw new Error('Archive scope settings unavailable')
+    const confirmed = this.#sourceContext(context)
+    if (!confirmed) throw Error('Verified archive scope unavailable')
+    context = confirmed
+    const owner = this.stateStore?.verifiedAccountId(),
+      epoch = this.stateStore?.accountEpoch()
+    const actionContext = () => {
+      if (
+        !owner ||
+        this.stateStore?.verifiedAccountId() !== owner ||
+        this.stateStore.accountEpoch() !== epoch
+      )
+        throw Error('Archive scope owner changed')
+      const next = this.#sourceContext(context)
+      if (!next) throw Error('Verified archive scope unavailable')
+      return next
+    }
     const projectId = this.#projectId(context)
     const resolved =
       context.scope === 'project'
         ? {
             rule: settings.archive.projects[context.id] ?? settings.archive.defaultRule,
-            source: settings.archive.projects[context.id]
-              ? ('project' as const)
-              : ('default' as const),
+            source: settings.archive.projects[context.id] ? ('project' as const) : ('default' as const),
           }
         : resolveCaptureRule(settings.archive, context.id, projectId)
     const hasOverride =
@@ -263,14 +320,21 @@ export class ArchiveScopeControlsModule implements BoosterModule {
         isChatGptWorkConversationOrigin(this.stateStore?.conversationOrigin(context.id)),
       source: resolved.source,
       hasOverride,
-      onSetEnabled: (enabled) => this.#setEnabled(context, enabled),
-      onInherit: () => this.#inherit(context),
-      onSettings: () => this.#openSettings(context),
+      onSetEnabled: (enabled) => this.#setEnabled(actionContext(), enabled),
+      onInherit: () => this.#inherit(actionContext()),
+      onSettings: () => this.#openSettings(actionContext()),
+      onOpenArchive: () => {
+        const context = actionContext()
+        window.dispatchEvent(new CustomEvent(OPEN_ARCHIVE_EVENT, { detail: context }))
+      },
     }
   }
 
   async #setEnabled(context: ArchiveCaptureContext, enabled: boolean) {
     const settings = this.#latestSettings ?? (await this.settings.get())
+    const confirmed = this.#sourceContext(context)
+    if (!confirmed) throw Error('Verified archive scope unavailable')
+    context = confirmed
     const projectId = this.#projectId(context)
     if (context.scope === 'project') {
       const base = settings.archive.projects[context.id] ?? settings.archive.defaultRule
@@ -312,11 +376,7 @@ export class ArchiveScopeControlsModule implements BoosterModule {
     }
 
     const options: Parameters<typeof mountArchiveScopeControls>[0] = {
-      visible: () => true,
-      resolveProjectContext: (title) => {
-        const id = this.#projectIdsByTitle.get(title.trim().toLocaleLowerCase())
-        return id ? { scope: 'project', id, title } : undefined
-      },
+      visible: (context) => this.#sourceContext(context) !== undefined,
       mount: (host, context) => {
         const mounted = mountScopeArchiveControl(host, this.#model(context))
         return {

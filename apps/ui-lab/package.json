@@ -7,7 +7,10 @@
     "dev": "bun ../../node_modules/vite/bin/vite.js --config vite.config.ts --host 127.0.0.1 --port 5173 --strictPort",
     "build": "bun ../../node_modules/vite/bin/vite.js build --config vite.config.ts",
     "typecheck": "bun ../../node_modules/vue-tsc/bin/vue-tsc.js --noEmit -p tsconfig.json",
-    "test": "bun test src/"
+    "test": "bun test src/",
+    "test:automation-ui": "node scripts/browser-matrix.mjs --automation-ui",
+    "test:archive-ui": "node scripts/browser-matrix.mjs --archive-ui",
+    "test:targeted-ui": "node scripts/browser-matrix.mjs --targeted-ui"
   },
   "dependencies": {
     "@kobaproduction/browser-core": "workspace:*",
@@ -15,9 +18,12 @@
     "@kobaproduction/browser-widgets": "workspace:*",
     "@kobaproduction/browser-ui": "workspace:*",
     "@kobaproduction/browser-archive": "workspace:*",
+    "@kobaproduction/browser-adapters": "workspace:*",
+    "@kobaproduction/browser-storage": "workspace:*",
     "@kobaproduction/module-chatgpt-booster": "workspace:*",
     "@kobaproduction/module-vk-booster": "workspace:*",
     "@chatgpt-booster/core": "workspace:*",
+    "@chatgpt-booster/chatgpt": "workspace:*",
     "@chatgpt-booster/features": "workspace:*",
     "@chatgpt-booster/ui": "workspace:*",
     "vue": "^3.5.22",

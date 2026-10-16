@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { Progress } from '../ui/progress'
 
 /** Source-independent archive/backup/export progress. Neither engine nor
  * provider localization is owned by a shared presentation primitive. */
@@ -36,7 +37,7 @@ const progress = computed(() => {
       <span role="status" aria-live="polite">{{ label }}</span>
       <strong v-if="progress !== null" class="tabular-nums">{{ progress }}%</strong>
     </div>
-    <progress class="w-full" :value="progress ?? undefined" max="100" :aria-label="ariaLabel || label" />
+    <Progress class="w-full" :model-value="progress" :max="100" :aria-label="ariaLabel || label" />
     <p v-if="detail" class="text-xs text-muted-foreground">{{ detail }}</p>
     <p v-if="error" role="alert" class="text-sm text-destructive">{{ error }}</p>
     <slot />

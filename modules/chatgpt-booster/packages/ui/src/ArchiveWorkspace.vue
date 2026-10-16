@@ -1,12 +1,17 @@
 <script setup lang="ts">
-import Archive from 'lucide-vue-next/dist/esm/icons/archive.js'
+import type {
+  ArchiveMessageLocation,
+  ArchiveWindowSettings,
+  SettingsAdapter,
+} from '@chatgpt-booster/core'
 import { OPEN_ARCHIVE_EVENT } from '@chatgpt-booster/core'
+import { Button } from '@kobaproduction/browser-ui'
+import Archive from 'lucide-vue-next/dist/esm/icons/archive.js'
 import Maximize2 from 'lucide-vue-next/dist/esm/icons/maximize-2.js'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type { ArchiveWindowSettings, SettingsAdapter, ArchiveMessageLocation } from '@chatgpt-booster/core'
 import ArchiveBrowser from './ArchiveBrowser.vue'
-import type { ArchiveDataAdapter } from './mount'
 import type { SupportedLocale } from './i18n'
+import type { ArchiveDataAdapter } from './mount'
 
 const props = defineProps<{
   settingsAdapter: SettingsAdapter
@@ -20,20 +25,27 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: []
   returnExport: []
-  export: [conversationId: string, title: string | null]
+  export: [conversationId: string, title: string | null, messageIds?: readonly string[]]
 }>()
 
 const ready = ref(false)
 const minimized = ref(false)
 const openPosition = ref<'first' | 'latest'>('latest')
 const viewport = ref({ width: innerWidth, height: innerHeight })
+const mobile = computed(() => viewport.value.width <= 640)
 const settings = ref<ArchiveWindowSettings>()
 const transient = ref<{ x: number; y: number; width: number; height: number }>()
 let alive = true
 let unsubscribe: (() => void) | undefined
 let iconMoved = false
 let drag:
-  | { kind: 'move' | 'resize' | 'icon'; id: number; x: number; y: number; start: { x: number; y: number; width: number; height: number } }
+  | {
+      kind: 'move' | 'resize' | 'icon'
+      id: number
+      x: number
+      y: number
+      start: { x: number; y: number; width: number; height: number }
+    }
   | undefined
 
 function clamp(value: number, min: number, max: number) {
@@ -42,8 +54,16 @@ function clamp(value: number, min: number, max: number) {
 function geometryFromSettings(value: ArchiveWindowSettings) {
   const minWidth = Math.min(560, Math.max(320, viewport.value.width - 24))
   const minHeight = Math.min(420, Math.max(280, viewport.value.height - 24))
-  const width = clamp(viewport.value.width * value.widthRatio, minWidth, Math.max(minWidth, viewport.value.width - 24))
-  const height = clamp(viewport.value.height * value.heightRatio, minHeight, Math.max(minHeight, viewport.value.height - 24))
+  const width = clamp(
+    viewport.value.width * value.widthRatio,
+    minWidth,
+    Math.max(minWidth, viewport.value.width - 24),
+  )
+  const height = clamp(
+    viewport.value.height * value.heightRatio,
+    minHeight,
+    Math.max(minHeight, viewport.value.height - 24),
+  )
   return {
     x: clamp(viewport.value.width * value.xRatio, 8, Math.max(8, viewport.value.width - width - 8)),
     y: clamp(viewport.value.height * value.yRatio, 8, Math.max(8, viewport.value.height - height - 8)),
@@ -51,22 +71,37 @@ function geometryFromSettings(value: ArchiveWindowSettings) {
     height,
   }
 }
-const geometry = computed(() =>
-  transient.value ?? geometryFromSettings(settings.value ?? {
-    xRatio: 0.08,
-    yRatio: 0.08,
-    widthRatio: 0.72,
-    heightRatio: 0.82,
-    minimizedSide: 'right',
-    minimizedHeightRatio: 0.45,
-  }),
+const geometry = computed(
+  () =>
+    transient.value ??
+    geometryFromSettings(
+      settings.value ?? {
+        xRatio: 0.08,
+        yRatio: 0.08,
+        widthRatio: 0.72,
+        heightRatio: 0.82,
+        minimizedSide: 'right',
+        minimizedHeightRatio: 0.45,
+      },
+    ),
 )
-const windowStyle = computed(() => ({
-  left: `${geometry.value.x}px`,
-  top: `${geometry.value.y}px`,
-  width: `${geometry.value.width}px`,
-  height: `${geometry.value.height}px`,
-}))
+const windowStyle = computed(() =>
+  mobile.value
+    ? {
+        left: '0',
+        top: '0',
+        width: '100dvw',
+        height: '100dvh',
+        borderRadius: '0',
+        border: '0',
+      }
+    : {
+        left: `${geometry.value.x}px`,
+        top: `${geometry.value.y}px`,
+        width: `${geometry.value.width}px`,
+        height: `${geometry.value.height}px`,
+      },
+)
 const iconStyle = computed(() => {
   const value = settings.value
   const side = value?.minimizedSide ?? 'right'
@@ -96,6 +131,7 @@ async function persistMinimized(x: number, y: number) {
   settings.value = { ...updated.ui.archiveWindow }
 }
 function pointerDown(event: PointerEvent) {
+  if (mobile.value) return
   const target = event.target as HTMLElement
   const isResize = Boolean(target.closest('[data-archive-resize]'))
   if (!isResize && target.closest('button,a,input,select,textarea,[role="button"]')) return
@@ -110,7 +146,9 @@ function pointerDown(event: PointerEvent) {
     y: event.clientY,
     start: { ...g },
   }
-  try { (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId) } catch {}
+  try {
+    ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+  } catch {}
 }
 function iconPointerDown(event: PointerEvent) {
   if (event.button !== 0) return
@@ -122,7 +160,9 @@ function iconPointerDown(event: PointerEvent) {
     y: event.clientY,
     start: { x: event.clientX, y: event.clientY, width: 42, height: 42 },
   }
-  try { (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId) } catch {}
+  try {
+    ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+  } catch {}
 }
 function pointerMove(event: PointerEvent) {
   if (!drag || drag.id !== event.pointerId) return
@@ -188,7 +228,12 @@ function resizeViewport() {
   transient.value = undefined
 }
 
-watch(() => props.navigationTarget, (target) => { if (target) minimized.value = false })
+watch(
+  () => props.navigationTarget,
+  (target) => {
+    if (target) minimized.value = false
+  },
+)
 onMounted(async () => {
   const current = await props.settingsAdapter.get()
   if (!alive) return
@@ -214,9 +259,11 @@ onBeforeUnmount(() => {
 
 <template>
   <div v-if="ready" class="booster-archive-workspace-root">
-    <button
+    <Button
       v-if="minimized"
       class="booster-archive-dock-button"
+      variant="outline"
+      size="icon"
       type="button"
       :style="iconStyle"
       :title="locale === 'ru' ? 'Развернуть архив' : 'Restore archive'"
@@ -225,7 +272,7 @@ onBeforeUnmount(() => {
       @pointermove="pointerMove"
       @pointerup="pointerUp"
       @pointercancel="cancelPointer"
-    ><Archive class="size-5" /><Maximize2 class="booster-archive-dock-corner" /></button>
+    ><Archive class="size-5" /><Maximize2 class="booster-archive-dock-corner" /></Button>
 
     <section
       v-show="!minimized"
@@ -248,9 +295,9 @@ onBeforeUnmount(() => {
         windowed
         @minimize="minimize"
         @close="emit('close')"
-        @export="(id, title) => emit('export', id, title)"
+        @export="(id, title, messageIds) => emit('export', id, title, messageIds)"
       />
-      <button data-archive-resize class="booster-archive-resize" type="button" tabindex="-1" aria-hidden="true" />
+      <Button v-if="!mobile" data-archive-resize variant="ghost" class="booster-archive-resize" type="button" tabindex="-1" aria-hidden="true" />
     </section>
   </div>
 </template>

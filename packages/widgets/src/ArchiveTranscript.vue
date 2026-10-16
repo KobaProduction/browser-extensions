@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import type { ArchiveTranscriptCopy, ArchiveTranscriptTurn } from './archive-transcript'
+import ArchiveRecordList from './ArchiveRecordList.vue'
+import type {
+  ArchiveTranscriptCopy,
+  ArchiveTranscriptRecord,
+  ArchiveTranscriptTurn,
+} from './archive-transcript'
 
 defineProps<{
   turns: readonly ArchiveTranscriptTurn[]
@@ -7,6 +12,8 @@ defineProps<{
   targetMessageId: string | null
   copy: ArchiveTranscriptCopy
 }>()
+const recordKey = (record: ArchiveTranscriptRecord) => record.key
+const messageId = (record: ArchiveTranscriptRecord) => record.messageId
 </script>
 <template>
   <div class="booster-reader-exchanges">
@@ -14,21 +21,12 @@ defineProps<{
     <article v-for="turn in turns" :key="turn.id" class="booster-exchange">
       <p v-if="turn.association==='unassigned'" class="booster-note">{{copy.unassigned}}</p>
       <p v-else-if="turn.association==='adjacency'" class="booster-note">{{copy.adjacency}}</p>
-      <div v-for="item in turn.users" :key="item.key" :data-archive-node="item.key" :data-archive-message="item.messageId"
-        :class="{'booster-message-target':targetMessageId===item.messageId}" tabindex="-1">
-        <slot name="record" :record="item"/>
-      </div>
+      <ArchiveRecordList :records="turn.users" :record-key="recordKey" :message-id="messageId" :target-message-id="targetMessageId"><template #record="{ record }"><slot name="record" :record="record" /></template></ArchiveRecordList>
       <div v-if="turn.details.length" class="booster-exchange-details">
         <div class="booster-exchange-details-label">{{copy.details}} · {{turn.details.length}}</div>
-        <div v-for="item in turn.details" :key="item.key" :data-archive-node="item.key" :data-archive-message="item.messageId"
-          :class="{'booster-message-target':targetMessageId===item.messageId}" tabindex="-1">
-          <slot name="record" :record="item"/>
-        </div>
+        <ArchiveRecordList :records="turn.details" :record-key="recordKey" :message-id="messageId" :target-message-id="targetMessageId"><template #record="{ record }"><slot name="record" :record="record" /></template></ArchiveRecordList>
       </div>
-      <div v-for="item in turn.replies" :key="item.key" :data-archive-node="item.key" :data-archive-message="item.messageId"
-        :class="{'booster-message-target':targetMessageId===item.messageId}" tabindex="-1">
-        <slot name="record" :record="item"/>
-      </div>
+      <ArchiveRecordList :records="turn.replies" :record-key="recordKey" :message-id="messageId" :target-message-id="targetMessageId"><template #record="{ record }"><slot name="record" :record="record" /></template></ArchiveRecordList>
     </article>
   </div>
 </template>

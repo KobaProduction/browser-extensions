@@ -1,8 +1,9 @@
+import { instanceKey } from '@kobaproduction/browser-core'
 import type { ConversationLifecycleSnapshot } from './conversation-state'
 
 export type ConversationTerminalAlert = 'complete' | 'conversation_exhausted' | null
 
-const SESSION_ALERTS_KEY = 'chatgpt-booster:terminal-alerts:v1'
+const SESSION_ALERTS_KEY = instanceKey('chatgpt-booster:terminal-alerts:v1')
 const MAX_SESSION_ALERTS = 48
 
 export function conversationTerminalAlert(

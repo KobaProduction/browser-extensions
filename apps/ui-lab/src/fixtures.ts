@@ -1,7 +1,9 @@
 /** Deliberately synthetic UI-only ports. No real provider/network/storage access. */
+
+import { buildArchiveThread } from '@chatgpt-booster/chatgpt'
 import {
   type ArchiveCurrentContext,
-  type ArchiveThreadView,
+  type ArchiveWindowRequest,
   applyTransportCounterEvent,
   EMPTY_TRANSPORT_COUNTERS,
   HISTORY_LOADER_STATE_EVENT,
@@ -12,8 +14,9 @@ import {
   type TransportCounterEvent,
   type TransportCounters,
 } from '@chatgpt-booster/core'
-import type { FixedChatGptView } from '@chatgpt-booster/features'
-import type { ArchiveDataAdapter } from '@chatgpt-booster/ui'
+import { type FixedChatGptView, normalizeConversationMessage } from '@chatgpt-booster/features'
+import type { ArchiveDataAdapter, ArchiveWindowCursor } from '@chatgpt-booster/ui'
+import { conversationIntegrityFromGraph, linearArchiveIntegrity } from '@kobaproduction/browser-archive'
 import { instanceKey } from '@kobaproduction/browser-core'
 import { setVkPreferencesPersistence } from '../../../modules/vk-booster/src/features/chat-export/model/durable-preferences'
 import type {
@@ -22,14 +25,15 @@ import type {
   ArchiveStatus,
   VkMessage,
 } from '../../../modules/vk-booster/src/features/chat-export/model/types'
+import { createVkUserExport } from '../../../modules/vk-booster/src/features/chat-export/model/vk-user-export'
 import type { LabMethod, LabScene } from './scenes'
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 export const fixtureSize = (scene: LabScene) => (scene === 'empty' ? 0 : scene === 'long' ? 3000 : 32)
 export const fixtureTitle = (scene: LabScene) =>
   scene === 'long'
-    ? 'DEMO: исключительно длинное синтетическое название диалога — проверка переноса и выхода элементов за пределы viewport'
-    : 'DEMO: сбор истории ChatGPT и архива VK'
+    ? 'План разработки приложения: этапы, интерфейс, архитектура и обсуждение деталей следующего выпуска'
+    : 'План разработки приложения'
 
 export function createMockSettingsAdapter(): SettingsAdapter {
   let state = normalizeSettings()
@@ -97,13 +101,7 @@ const demoContext = (scene: LabScene): ArchiveCurrentContext => ({
   conversationId: scene === 'empty' ? null : 'demo-dialog',
   conversationTitle: fixtureTitle(scene),
   projectId: 'demo-project',
-  projectTitle: 'DEMO: интерфейс без реального аккаунта',
-})
-const emptyThread = (): ArchiveThreadView => ({
-  turns: [],
-  messageCount: 0,
-  recordCount: 0,
-  detailCount: 0,
+  projectTitle: 'Разработка приложения',
 })
 export function createMockChatGptArchive(scene: LabScene) {
   let count = fixtureSize(scene)
@@ -111,6 +109,79 @@ export function createMockChatGptArchive(scene: LabScene) {
   let stopped = false
   let session = 0
   const context = demoContext(scene)
+  const savedListeners = new Set<() => void>()
+  const idAt = (index: number) => `demo-msg-${index + 1}`
+  // Metadata navigation and rendered canonical records share one opaque identity.
+  const keyAt = (index: number) => JSON.stringify(['demo-verified-account', 'demo-dialog', idAt(index)])
+  const indexOf = (id: string) => {
+    const value = Number(id.replace('demo-msg-', '')) - 1
+    return Number.isInteger(value) && value >= 0 && value < count ? value : -1
+  }
+  const rawAt = (index: number) => ({
+    id: idAt(index),
+    create_time: 1760000000 + index * 90,
+    author: { role: index % 2 ? 'assistant' : 'user' },
+    recipient: 'all',
+    channel: index % 2 ? 'final' : null,
+    status: 'finished_successfully',
+    end_turn: Boolean(index % 2),
+    metadata: {
+      parent_id: index === 0 ? null : idAt(index === 8 ? 5 : index - 1),
+      model_slug: 'synthetic-model',
+    },
+    content: {
+      content_type: 'text',
+      parts: [`Синтетическое сообщение ${index + 1}; здесь нет пользовательских данных`],
+    },
+  })
+  const recordAt = (index: number) => {
+    const record = normalizeConversationMessage(
+      rawAt(index),
+      'demo-dialog',
+      'demo-project',
+      1800000000000,
+    )
+    if (!record) throw Error('Synthetic archive record cannot be normalized')
+    return { ...record, messageKey: keyAt(index) }
+  }
+  const threadBetween = (first: number, last: number) =>
+    buildArchiveThread(
+      Array.from({ length: Math.max(0, last - first) }, (_, offset) => recordAt(first + offset)),
+    )
+  const integrity = () =>
+    conversationIntegrityFromGraph(
+      Array.from({ length: count }, (_, index) => ({
+        id: idAt(index),
+        parentId: rawAt(index).metadata.parent_id,
+        parentKnown: true,
+      })),
+      {
+        startReached: count > 0,
+        endReached: count > 0 && count % 2 === 0,
+        headId: count ? idAt(count - 1) : null,
+      },
+    )
+  const makeWindow = async (first: number, last: number, request?: ArchiveWindowRequest) => {
+    await sleep(scene === 'loading' ? 300 : 15)
+    if (scene === 'error') throw Error('Synthetic Reader unavailable')
+    if (request?.signal?.aborted) throw new DOMException('Cancelled', 'AbortError')
+    if (request?.expectedRevision != null && request.expectedRevision !== count)
+      throw Error('archive.error.sourceChanged')
+    return {
+      thread: threadBetween(first, last),
+      olderCursor: first < last ? { messageId: idAt(first), sourceCreateTime: null } : null,
+      newerCursor: first < last ? { messageId: idAt(last - 1), sourceCreateTime: null } : null,
+      hasOlderStored: first > 0,
+      hasNewerStored: last < count,
+      loadedRecordCount: last - first,
+      totalKnownRecordCount: count,
+      hasUnsequencedRecords: false,
+      source: 'saved' as const,
+      sourceRevision: count,
+      sourceInstanceId: 'synthetic-canonical-v1',
+      accountId: 'demo-verified-account',
+    }
+  }
   const state = (): HistoryLoaderState => ({
     phase,
     sessionId: session,
@@ -126,8 +197,10 @@ export function createMockChatGptArchive(scene: LabScene) {
       text: `Синтетическое сообщение ${i + 1}; здесь нет пользовательских данных`,
       coverage: i % 3 ? 'complete' : 'contains_opaque',
     }))
-  const notify = () =>
+  const notify = () => {
     window.dispatchEvent(new CustomEvent(HISTORY_LOADER_STATE_EVENT, { detail: state() }))
+    for (const listener of savedListeners) listener()
+  }
   const adapter = {
     collectionInsideExportOnly: false,
     currentConversationId: () => context.conversationId,
@@ -147,9 +220,72 @@ export function createMockChatGptArchive(scene: LabScene) {
         completeAtLastRead: false,
         lastFullReadAt: null,
         hasOlderServerHistory: null,
+        integrity: integrity(),
       }
     },
     subscribeContextChange: (_cb: () => void) => () => undefined,
+    liveSavedUpdates: true,
+    subscribeExportChanges: (_id: string, listener: () => void) => {
+      savedListeners.add(listener)
+      return () => {
+        savedListeners.delete(listener)
+      }
+    },
+    async getRangeMessageIds(_id: string, firstId: string, lastId: string) {
+      const first = indexOf(firstId),
+        last = indexOf(lastId)
+      if (first < 0 || last < 0) throw Error('archive.error.messageMissing')
+      return Array.from({ length: Math.abs(last - first) + 1 }, (_, offset) =>
+        idAt(Math.min(first, last) + offset),
+      )
+    },
+    async getBranchPath(_id: string, tip: string) {
+      const path: string[] = []
+      let index = indexOf(tip)
+      if (index < 0) throw Error('archive.error.messageMissing')
+      while (index >= 0) {
+        path.push(idAt(index))
+        const parent = rawAt(index).metadata.parent_id
+        index = parent ? indexOf(parent) : -1
+      }
+      return path.reverse()
+    },
+    async getMessageVersions(_id: string, messageId: string) {
+      const index = indexOf(messageId)
+      if (index < 0) throw Error('archive.error.messageMissing')
+      const older = normalizeConversationMessage(
+        {
+          ...rawAt(index),
+          content: { content_type: 'text', parts: [`Синтетическое сообщение ${index + 1}`] },
+        },
+        'demo-dialog',
+        null,
+        1800000000000,
+      )
+      if (!older) throw Error('Synthetic source version cannot be normalized')
+      return [
+        {
+          observedAtMs: 1800000000000,
+          decision: 'initial',
+          thread: buildArchiveThread([{ ...older, messageKey: keyAt(index) }]),
+        },
+        {
+          observedAtMs: 1800000001000,
+          decision: 'advance',
+          thread: buildArchiveThread([recordAt(index)]),
+        },
+      ]
+    },
+    async getTimeline() {
+      return Array.from({ length: count }, (_, index) => ({
+        id: idAt(index),
+        key: keyAt(index),
+        parentId: rawAt(index).metadata.parent_id,
+        label: index % 2 ? 'Assistant' : 'User',
+        preview: rawAt(index).content.parts[0] ?? '',
+        uncertain: false,
+      }))
+    },
     getCollectionState: () => state(),
     async collectCurrent() {
       if (stopped) stopped = false
@@ -174,12 +310,12 @@ export function createMockChatGptArchive(scene: LabScene) {
     async clearAll() {
       throw Error('Preview prohibits persistence mutations')
     },
-    listExportFormats: () => [{ id: 'json', label: 'DEMO JSON', mimeType: 'application/json' }],
+    listExportFormats: () => [{ id: 'json', label: 'JSON', mimeType: 'application/json' }],
     async exportConversation() {
       throw Error('Only explicit synthetic export is available')
     },
     async listProjects() {
-      return [{ projectId: 'demo-project', title: 'DEMO: проект' }]
+      return [{ projectId: 'demo-project', title: 'Разработка приложения' }]
     },
     async listConversations() {
       return count
@@ -214,26 +350,47 @@ export function createMockChatGptArchive(scene: LabScene) {
       return []
     },
     async getThread() {
-      return emptyThread()
+      return threadBetween(0, count)
     },
-    async getThreadWindow() {
-      return {
-        thread: emptyThread(),
-        olderCursor: null,
-        newerCursor: null,
-        hasOlderStored: false,
-        hasNewerStored: false,
-        loadedRecordCount: 0,
-        totalKnownRecordCount: count,
-        hasUnsequencedRecords: false,
-        source: 'saved' as const,
-        sourceRevision: null,
-        sourceInstanceId: null,
-        accountId: 'demo-verified-account',
-      }
+    async getThreadWindow(
+      _id: string,
+      cursor?: ArchiveWindowCursor | null,
+      direction: 'first' | 'older' | 'newer' = 'older',
+      request?: ArchiveWindowRequest,
+    ) {
+      const index = cursor ? indexOf(cursor.messageId) : -1
+      const end =
+        direction === 'first'
+          ? Math.min(160, count)
+          : direction === 'older'
+            ? cursor
+              ? index
+              : count
+            : Math.min(count, index + 161)
+      const start =
+        direction === 'first' ? 0 : direction === 'older' ? Math.max(0, end - 160) : index + 1
+      return makeWindow(start, end, request)
+    },
+    async getPositionWindow(
+      _id: string,
+      position: 'first' | 'middle' | 'latest',
+      request?: ArchiveWindowRequest,
+    ) {
+      const start =
+        position === 'first'
+          ? 0
+          : position === 'middle'
+            ? Math.max(0, Math.floor((count - 160) / 2))
+            : Math.max(0, count - 160)
+      return makeWindow(start, Math.min(count, start + 160), request)
+    },
+    async getMessageWindow(_id: string, messageId: string, request?: ArchiveWindowRequest) {
+      const index = indexOf(messageId)
+      if (index < 0) throw Error('archive.error.messageMissing')
+      return makeWindow(Math.max(0, index - 80), Math.min(count, index + 81), request)
     },
   } as unknown as ArchiveDataAdapter
-  const fixedArchive = {
+  const fixedArchive: FixedChatGptView = {
     currentConversationId: () => context.conversationId,
     async listCurrent() {
       return saved()
@@ -260,7 +417,7 @@ export function createMockChatGptArchive(scene: LabScene) {
         : []
     },
     async listSavedProjects() {
-      return [{ projectId: 'demo-project', title: 'DEMO: проект' }]
+      return [{ projectId: 'demo-project', title: 'Разработка приложения' }]
     },
     async readConversation() {
       return saved().map((row) => ({
@@ -272,6 +429,17 @@ export function createMockChatGptArchive(scene: LabScene) {
     },
     async exportConversation() {
       return new Blob([JSON.stringify(saved())], { type: 'application/json' })
+    },
+    async exportUserConversation(_id, _options, signal) {
+      if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError')
+      return {
+        blob: new Blob([JSON.stringify(saved())], { type: 'application/json' }),
+        extension: 'json',
+        packaged: false,
+        complete: false,
+        includedAssets: 0,
+        missingAssets: 0,
+      }
     },
     async savedCount() {
       return count
@@ -291,48 +459,99 @@ export function createMockChatGptArchive(scene: LabScene) {
     stopCollection() {
       adapter.stopCollection?.({ reason: 'user' })
     },
-  } as FixedChatGptView
+    subscribeSaved(listener) {
+      const callback = () => listener('demo-dialog')
+      savedListeners.add(callback)
+      return () => {
+        savedListeners.delete(callback)
+      }
+    },
+    async messageVersions() {
+      return []
+    },
+    backupPort() {
+      throw Error('Synthetic backup uses the isolated Lab memory stage')
+    },
+    async sourceRevision() {
+      return 1
+    },
+    async sourceInstanceId() {
+      return 'synthetic-canonical-v1'
+    },
+    async timelineMessages() {
+      return Array.from({ length: count }, (_, index) => ({
+        id: idAt(index),
+        parentId: rawAt(index).metadata.parent_id,
+        parentKnown: true,
+        role: rawAt(index).author.role,
+        channel: rawAt(index).channel,
+        recipient: 'all',
+        preview: rawAt(index).content.parts[0] ?? '',
+        sourceCreateTime: rawAt(index).create_time,
+      }))
+    },
+    async branchPath() {
+      return []
+    },
+    async rangeMessageIds(_id, firstId, lastId) {
+      const rows = Array.from({ length: count }, (_, index) => `demo-msg-${index + 1}`)
+      const first = rows.indexOf(firstId),
+        last = rows.indexOf(lastId)
+      if (first < 0 || last < 0) throw Error('archive.error.messageMissing')
+      return rows.slice(Math.min(first, last), Math.max(first, last) + 1)
+    },
+    async integrity() {
+      return integrity()
+    },
+    async windowAroundMessage() {
+      return []
+    },
+  }
   return { adapter, fixedArchive, getCount: () => count }
 }
 
-export function createMockVkArchive(scene: LabScene, method: LabMethod) {
+export function createMockVkArchive(scene: LabScene, method: LabMethod, inConversation = true) {
   const size = fixtureSize(scene)
-  const peer = scene === 'empty' ? null : 9001
-  const rows: VkMessage[] = Array.from({ length: Math.min(size, 3000) }, (_, i) => ({
-    id: i + 1001,
-    peer_id: 9001,
-    date: 1760000000 + i * 90,
-    from_id: i % 2 ? 33 : 44,
-    out: i % 2,
-    ...(i === 1
-      ? {
-          attachments: [
-            {
-              type: 'photo',
-              photo: {
-                sizes: [{ url: 'https://example.invalid/demo-photo.png', width: 640, height: 480 }],
-              },
-            },
-          ],
-        }
-      : i === 4
+  const peer = inConversation ? 9001 : null
+  const rows: VkMessage[] = Array.from(
+    { length: inConversation ? Math.min(size, 3000) : 0 },
+    (_, i) => ({
+      id: i + 1001,
+      peer_id: 9001,
+      date: 1760000000 + i * 90,
+      from_id: i % 2 ? 33 : 44,
+      out: i % 2,
+      ...(i === 1
         ? {
             attachments: [
               {
-                type: 'doc',
-                doc: {
-                  title: 'Методичка.pdf',
-                  ext: 'pdf',
-                  size: 12800,
-                  url: 'https://example.invalid/demo-doc.pdf',
+                type: 'photo',
+                photo: {
+                  sizes: [{ url: 'https://example.invalid/demo-photo.png', width: 640, height: 480 }],
                 },
               },
             ],
           }
-        : {}),
-    text: `DEMO VK ${i + 1}: только синтетический пример переписки.`,
-  }))
+        : i === 4
+          ? {
+              attachments: [
+                {
+                  type: 'doc',
+                  doc: {
+                    title: 'Методичка.pdf',
+                    ext: 'pdf',
+                    size: 12800,
+                    url: 'https://example.invalid/demo-doc.pdf',
+                  },
+                },
+              ],
+            }
+          : {}),
+      text: `Сообщение ${i + 1}: обсуждаем план следующего выпуска.`,
+    }),
+  )
   let cancelled = false
+  let fullScanAt: number | null = null
   let options: ArchiveOptions = {
     peerId: peer ?? 0,
     mode: 'recent',
@@ -344,10 +563,11 @@ export function createMockVkArchive(scene: LabScene, method: LabMethod) {
     media: false,
   }
   let status: ArchiveStatus = {
+    archiveRevision: 0,
     version: '1.0.0',
     folder: null,
     activePeerId: peer,
-    blockedReason: scene === 'error' ? 'DEMO: доступ к источнику отсутствует' : null,
+    blockedReason: scene === 'error' ? 'Доступ к источнику отсутствует' : null,
     busy: false,
     folderPending: false,
     options,
@@ -388,10 +608,10 @@ export function createMockVkArchive(scene: LabScene, method: LabMethod) {
       return status
     },
     async run() {
-      return { matched: rows.length, newCount: 0, saved: 0, files: 0, folder: 'DEMO' }
+      return { matched: rows.length, newCount: 0, saved: 0, files: 0, folder: 'Тестовый архив' }
     },
     async resume() {
-      return { matched: rows.length, newCount: 0, saved: 0, files: 0, folder: 'DEMO' }
+      return { matched: rows.length, newCount: 0, saved: 0, files: 0, folder: 'Тестовый архив' }
     },
     stop() {
       cancelled = true
@@ -426,8 +646,10 @@ export function createMockVkArchive(scene: LabScene, method: LabMethod) {
         }
       const saved = Math.min(requested, 8)
       const complete = requested >= rows.length
+      fullScanAt = complete ? Date.now() : null
       status = {
         ...status,
+        archiveRevision: (status.archiveRevision ?? 0) + 1,
         busy: false,
         progress: {
           phase: complete ? 'Dexie: сохранено' : 'Dexie: частично',
@@ -464,12 +686,113 @@ export function createMockVkArchive(scene: LabScene, method: LabMethod) {
     async readFixed(limit = 80, after?: number) {
       return rows.filter((m) => after === undefined || m.id > after).slice(0, limit)
     },
-    async exportUserZip() {
-      const { createStoredZip } = await import('@kobaproduction/browser-archive')
-      return createStoredZip([
-        { path: 'messages/000001.json', bytes: new TextEncoder().encode(JSON.stringify(rows)) },
-        { path: 'manifest.json', bytes: new TextEncoder().encode('{"complete":false}') },
-      ])
+    async timelineFixed(signal) {
+      signal?.throwIfAborted()
+      if (!peer || status.blockedReason) throw Error('Synthetic peer unavailable')
+      if (scene === 'loading') await sleep(300)
+      signal?.throwIfAborted()
+      return rows.map((row) => ({
+        id: row.id,
+        date: row.date ?? null,
+        senderId: row.from_id ?? null,
+        outgoing: row.out === true || row.out === 1,
+        text: row.text?.slice(0, 160) ?? null,
+      }))
+    },
+    async coverageFixed() {
+      if (!peer || status.blockedReason) throw Error('Synthetic peer unavailable')
+      const first = rows[0],
+        last = rows.at(-1),
+        verified = fullScanAt !== null
+      return {
+        savedCount: rows.length,
+        reportedCount: verified ? rows.length : null,
+        first: first ? { id: first.id, text: first.text ?? null, date: first.date ?? null } : null,
+        last: last ? { id: last.id, text: last.text ?? null, date: last.date ?? null } : null,
+        observedAtMs: fullScanAt,
+        verification: verified ? 'session-scan' : 'unknown',
+        integrity: linearArchiveIntegrity({
+          savedCount: rows.length,
+          reportedCount: verified ? rows.length : null,
+          firstId: first ? String(first.id) : null,
+          lastId: last ? String(last.id) : null,
+          startReached: verified,
+          endReached: verified,
+          countStable: verified,
+          current: verified,
+        }),
+      }
+    },
+    async rangeFixed(firstId, lastId, signal) {
+      signal?.throwIfAborted()
+      if (!peer || status.blockedReason) throw Error('Synthetic peer unavailable')
+      if (
+        ![firstId, lastId].every((id) => Number.isSafeInteger(id) && id > 0) ||
+        !rows.some((row) => row.id === firstId) ||
+        !rows.some((row) => row.id === lastId)
+      )
+        throw Error('Synthetic range endpoint unavailable')
+      const selected = rows.filter(
+        (row) => row.id >= Math.min(firstId, lastId) && row.id <= Math.max(firstId, lastId),
+      )
+      const first = selected[0],
+        last = selected.at(-1)
+      if (!first || !last) throw Error('Synthetic range is empty')
+      return { messageIds: selected.map((row) => row.id), first, last }
+    },
+    async exportUserConversation(choice, onProgress) {
+      if (!peer || status.blockedReason) throw Error('Synthetic peer unavailable')
+      const ownerId = 'ui-lab-owner'
+      return createVkUserExport(
+        {
+          async countMessages() {
+            return rows.length
+          },
+          async listMessages(_peer, limit, after) {
+            return rows
+              .filter((row) => after === undefined || row.id > after)
+              .slice(0, limit)
+              .map((row) => ({
+                key: JSON.stringify([ownerId, peer, row.id]),
+                ownerId,
+                peerId: peer,
+                messageId: row.id,
+                schemaVersion: 1 as const,
+                date: row.date,
+                senderId: row.from_id ?? null,
+                outgoing: row.out === true || row.out === 1,
+                text: row.text ?? null,
+                attachmentCount: row.attachments?.length ?? null,
+              }))
+          },
+          async getOriginal(_peer, id) {
+            const raw = rows.find((row) => row.id === id)
+            return raw
+              ? {
+                  key: JSON.stringify([ownerId, peer, id]),
+                  ownerId,
+                  sourceVersion: 'ui-lab',
+                  recordedAtMs: 0,
+                  raw: structuredClone(raw),
+                }
+              : undefined
+          },
+        },
+        peer,
+        choice,
+        () => {
+          if (status.blockedReason) throw Error('Synthetic peer unavailable')
+        },
+        onProgress,
+        await api.coverageFixed?.(),
+      )
+    },
+    async exportUserZip(choice, onProgress) {
+      return (await api.exportUserConversation({ ...choice, packaging: 'zip' }, onProgress)).blob
+    },
+    async downloadAttachmentFixed(_messageId, _assetKey, signal) {
+      signal?.throwIfAborted()
+      throw Error('Synthetic attachment bytes unavailable; no provider request was made')
     },
     async exportFixed() {
       return new Blob([JSON.stringify(rows)], { type: 'application/json' })

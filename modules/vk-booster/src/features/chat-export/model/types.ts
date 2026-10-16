@@ -1,4 +1,4 @@
-import { instanceKey } from '@kobaproduction/browser-core'
+import { type ApplicationBackupSource, instanceKey } from '@kobaproduction/browser-core'
 import type {
   BackupTarChoice,
   BackupTarInspection,
@@ -46,6 +46,14 @@ export interface VkAsset {
   context: string
   external: string | null
   transcript: string | null
+}
+export interface VkDownloadedAttachment {
+  key: string
+  name: string
+  blob: Blob
+  size: number
+  sha256: string
+  mime: string
 }
 export interface VkStoredFile {
   type: string
@@ -118,6 +126,7 @@ export interface ArchiveProgress {
   error?: string
 }
 export interface ArchiveStatus {
+  archiveRevision?: number
   version: string
   folder: string | null
   activePeerId: number | null
@@ -128,6 +137,34 @@ export interface ArchiveStatus {
   progress: ArchiveProgress
   messages: number
   checkpoint: VkCheckpoint | null
+}
+export interface VkArchiveCoverage {
+  readonly integrity: import('@kobaproduction/browser-archive').ArchiveConversationIntegrity
+  readonly savedCount: number
+  readonly reportedCount: number | null
+  readonly first: { id: number; text: string | null; date: number | null } | null
+  readonly last: { id: number; text: string | null; date: number | null } | null
+  readonly observedAtMs: number | null
+  readonly verification: 'session-scan' | 'unknown'
+}
+export interface VkCaptureEvidence {
+  readonly peerId: number
+  readonly ownerId: string
+  readonly archiveRevision: number
+  readonly reportedCount: number
+  readonly firstId: number | null
+  readonly lastId: number | null
+  readonly startReached: boolean
+  readonly endReached: boolean
+  readonly countStable: boolean
+  readonly observedAtMs: number
+}
+export interface VkTimelineEntry {
+  readonly id: number
+  readonly date: number | null
+  readonly senderId: number | null
+  readonly outgoing: boolean | null
+  readonly text: string | null
 }
 export type ArchiveRunResult =
   | { paused: true; progress: ArchiveProgress }
@@ -158,13 +195,34 @@ export interface ArchiveApi {
     userIds: readonly number[],
   ): Promise<readonly import('./vk-participants').VkParticipant[]>
   readFixed(limit?: number, afterMessageId?: number): Promise<readonly VkMessage[]>
+  readNormalizedFixed?(
+    limit?: number,
+    afterMessageId?: number,
+  ): Promise<readonly import('@kobaproduction/browser-archive').ArchiveMessageV1[]>
+  coverageFixed?(): Promise<VkArchiveCoverage>
+  rangeFixed?(
+    firstMessageId: number,
+    lastMessageId: number,
+    signal?: AbortSignal,
+  ): Promise<{ messageIds: readonly number[]; first: VkMessage; last: VkMessage }>
+  timelineFixed?(signal?: AbortSignal): Promise<readonly VkTimelineEntry[]>
   exportFixed(): Promise<Blob>
   /** End-user ZIP export; distinct from internal TAR.GZ recovery and legacy JSONL.GZ. */
   exportUserZip(
     options: import('./vk-user-export').VkUserExportOptions,
     onProgress?: (progress: import('./vk-user-export').VkExportProgress) => void,
   ): Promise<Blob>
+  exportUserConversation(
+    options: import('./vk-user-export').VkUserExportOptions,
+    onProgress?: (progress: import('./vk-user-export').VkExportProgress) => void,
+  ): Promise<import('./vk-user-export').VkUserExportResult>
+  downloadAttachmentFixed(
+    messageId: number,
+    assetKey: string,
+    signal?: AbortSignal,
+  ): Promise<VkDownloadedAttachment>
   backupPortable(options: BackupTarChoice, output?: BackupTarOptions): Promise<Blob | null>
+  backupSources?(): Promise<readonly ApplicationBackupSource[]>
   inspectPortable(backup: Blob, progress?: BackupTarReporter): Promise<BackupTarInspection>
   restorePortable(
     backup: Blob,

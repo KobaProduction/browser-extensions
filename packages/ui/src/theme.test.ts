@@ -1,12 +1,16 @@
 import { expect, test } from 'bun:test'
 import { readFile } from 'node:fs/promises'
 
-test('single shell style follows ChatGPT Booster semantic tokens rather than custom blue palette', async () => {
+test('shell imports the shared semantic theme with ShadowRoot utility defaults', async () => {
   const css = await readFile(new URL('../../shell/src/styles.css', import.meta.url), 'utf8')
-  expect(css).toContain('--primary: oklch(')
+  const theme = await readFile(new URL('./theme.css', import.meta.url), 'utf8')
+  expect(css).toContain('ui/src/theme.css')
+  expect(theme).toContain('--primary: oklch(')
+  expect(theme).toContain('--tw-border-style: solid')
+  expect(theme).toContain('--tw-translate-y: 0')
   expect(css).toContain('.booster-launcher')
   expect(css).toContain('.booster-modal-backdrop')
-  expect(css).toContain('.booster-settings-nav')
+  expect(css).toContain('.settings-catalog')
   expect(css).not.toContain('#315aa7')
 })
 
@@ -46,5 +50,6 @@ test('VK and ChatGPT use the same provider-neutral progress presentation', async
   expect(vk).toContain('ArchiveProgress')
   expect(vk).not.toContain('<progress')
   expect(shared).toContain('compact')
-  expect(shared).toContain('<progress')
+  expect(shared).toContain('<Progress')
+  expect(shared).not.toContain('<progress')
 })

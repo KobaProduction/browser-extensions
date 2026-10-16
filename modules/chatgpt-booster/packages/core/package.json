@@ -1,6 +1,6 @@
 {
   "name": "@chatgpt-booster/core",
-  "version": "2.0.19",
+  "version": "2.0.20",
   "private": true,
   "type": "module",
   "exports": {
@@ -13,6 +13,7 @@
     "typescript": "^5.9.2"
   },
   "dependencies": {
+    "@kobaproduction/browser-archive": "workspace:*",
     "@kobaproduction/browser-core": "workspace:*"
   }
 }

@@ -1,10 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { resolveExportPreferences, scopedExportPreferenceKey } from '../packages/core/src/archive'
-import {
-  mergeSettings,
-  normalizeSettings,
-  SETTINGS_SCHEMA_VERSION,
-} from '../packages/core/src/settings'
+import { mergeSettings, normalizeSettings, SETTINGS_SCHEMA_VERSION } from '../packages/core/src/settings'
 
 describe('settings patch persistence', () => {
   test('preserves sibling settings across sequential toggles', () => {
@@ -18,7 +14,7 @@ describe('settings patch persistence', () => {
 
     expect(boosterOff.enabled).toBe(false)
     expect(boosterOff.features.toolInspector).toBe(false)
-    expect(boosterOff.observer.enabled).toBe(false)
+    expect(boosterOff.observer.enabled).toBe(true)
     expect(boosterOff.telemetry.endpoint).toBe('')
   })
 
@@ -58,15 +54,56 @@ describe('settings patch persistence', () => {
   })
 })
 
-test('schema 4 passive transport observer migrates to opt-in', () => {
+test('schema 4 explicit observer preference remains enabled', () => {
   const migrated = normalizeSettings({
     schemaVersion: 4,
     observer: { enabled: true, captureBodies: false, maxBodyChars: 2048 },
     telemetry: { enabled: false, endpoint: '' },
   } as Partial<import('../packages/core/src/settings').BoosterSettings>)
 
-  expect(migrated.observer.enabled).toBe(false)
+  expect(migrated.observer.enabled).toBe(true)
   expect(migrated.schemaVersion).toBe(SETTINGS_SCHEMA_VERSION)
+})
+
+test('fresh and absent observer/sound preferences enable basic lifecycle sounds and observation', () => {
+  for (const input of [undefined, {}, { schemaVersion: 4 }]) {
+    const settings = normalizeSettings(input)
+    expect(settings.observer.enabled).toBe(true)
+    expect(settings.observer.captureBodies).toBe(false)
+    expect(settings.telemetry.enabled).toBe(false)
+    expect(settings.alerts).toMatchObject({
+      enabled: true,
+      userSendSound: true,
+      responseCompleteSound: true,
+      conversationEndSound: true,
+      longRunningSound: false,
+    })
+    expect(settings.automation.enabled).toBe(false)
+    expect(settings.automation.remote.enabled).toBe(false)
+  }
+})
+
+test('explicit saved observer and sound opt-outs survive old/current schemas and unrelated saves', () => {
+  for (const schemaVersion of [4, SETTINGS_SCHEMA_VERSION]) {
+    const saved = mergeSettings(normalizeSettings(), {
+      observer: { enabled: false },
+      alerts: {
+        enabled: false,
+        userSendSound: false,
+        responseCompleteSound: false,
+        conversationEndSound: false,
+      },
+    })
+    const restored = normalizeSettings(JSON.parse(JSON.stringify({ ...saved, schemaVersion })))
+    const patched = mergeSettings(restored, { features: { toolInspector: false } })
+    expect(patched.observer.enabled).toBe(false)
+    expect(patched.alerts).toMatchObject({
+      enabled: false,
+      userSendSound: false,
+      responseCompleteSound: false,
+      conversationEndSound: false,
+    })
+  }
 })
 
 test('schema 4 advanced transport diagnostics stay enabled', () => {
@@ -135,9 +172,7 @@ test('aborted transport events do not increment the error counter', async () => 
 })
 
 test('cached settings adapter coalesces reads and shares one upstream subscription', async () => {
-  const { createCachedSettingsAdapter, snapshotSettings } = await import(
-    '../packages/core/src/settings'
-  )
+  const { createCachedSettingsAdapter, snapshotSettings } = await import('../packages/core/src/settings')
   const base = normalizeSettings()
   let reads = 0
   let subscriptions = 0

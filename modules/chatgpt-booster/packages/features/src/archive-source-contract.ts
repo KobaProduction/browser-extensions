@@ -9,13 +9,18 @@ import {
  * Source contracts are intentionally independent of IndexedDB and export schema versions.
  * The message's original JSON object is never rewritten by this validator.
  *
- * v1 and v2 remain registered as their original strict signatures. v3 only
- * adds field names and structural types observed in native ChatGPT history
- * on 2026-10-09. Database and export versions remain independent.
+ * v1-v6 remain registered as their original strict signatures. v7 adds only
+ * the observed string exclusive-key metadata field. Database and
+ * export versions remain independent.
  */
 export const NATIVE_HISTORY_CONTRACT_V1 = 'chatgpt-history-2026-10-v1'
 export const NATIVE_HISTORY_CONTRACT_V2 = 'chatgpt-history-2026-10-v2'
-export const NATIVE_HISTORY_CONTRACT_VERSION = 'chatgpt-history-2026-10-v3'
+export const NATIVE_HISTORY_CONTRACT_V3 = 'chatgpt-history-2026-10-v3'
+export const NATIVE_HISTORY_CONTRACT_V4 = 'chatgpt-history-2026-10-v4'
+export const NATIVE_HISTORY_CONTRACT_V5 = 'chatgpt-history-2026-10-v5'
+export const NATIVE_HISTORY_CONTRACT_V6 = 'chatgpt-history-2026-10-v6'
+export const NATIVE_HISTORY_CONTRACT_V7 = 'chatgpt-history-2026-10-v7'
+export const NATIVE_HISTORY_CONTRACT_VERSION = NATIVE_HISTORY_CONTRACT_V7
 
 /** Retain ambiguity even if a repeated message ID is submitted before its first capture. */
 export interface ArchiveSubmissionSnapshot {
@@ -76,6 +81,8 @@ type MetadataFieldType =
   | 'object'
   | 'nullable-string'
   | 'nullable-array'
+  | 'nullable-nonempty-string'
+  | 'nonnegative-integer'
 
 const metadataTypes: Readonly<Record<string, MetadataFieldType>> = {
   attachments: 'array',
@@ -194,6 +201,26 @@ const v3MetadataTypes: Readonly<Record<string, MetadataFieldType>> = {
   logical_answer_prefix_activity: 'object',
   genui_components: 'array',
 }
+// Own synthetic native stream shapes, corroborated by public client Prc schema.
+// These fields remain source metadata; streaming placement is not stored ancestry.
+const v4MetadataTypes: Readonly<Record<string, MetadataFieldType>> = {
+  ...v3MetadataTypes,
+  has_versions: 'boolean',
+  streaming_parent_id: 'nullable-nonempty-string',
+  streaming_parent_revision: 'nonnegative-integer',
+}
+const v5MetadataTypes: Readonly<Record<string, MetadataFieldType>> = {
+  ...v4MetadataTypes,
+  notification_trigger_checkpoint: 'object',
+}
+const v6MetadataTypes: Readonly<Record<string, MetadataFieldType>> = {
+  ...v5MetadataTypes,
+  user_signal_metadata: 'object',
+}
+const v7MetadataTypes: Readonly<Record<string, MetadataFieldType>> = {
+  ...v6MetadataTypes,
+  exclusive_key: 'string',
+}
 const v2ContentKeys: Readonly<Record<string, ReadonlySet<string>>> = {
   ...contentKeys,
   code: new Set(['content_type', 'language', 'response_format_name', 'text']),
@@ -216,14 +243,38 @@ const v2Profile: NativeHistoryValidationProfile = {
   content: v2ContentKeys,
 }
 const v3Profile: NativeHistoryValidationProfile = {
-  version: NATIVE_HISTORY_CONTRACT_VERSION,
+  version: NATIVE_HISTORY_CONTRACT_V3,
   metadata: v3MetadataTypes,
+  content: v2ContentKeys,
+}
+const v4Profile: NativeHistoryValidationProfile = {
+  version: NATIVE_HISTORY_CONTRACT_V4,
+  metadata: v4MetadataTypes,
+  content: v2ContentKeys,
+}
+const v5Profile: NativeHistoryValidationProfile = {
+  version: NATIVE_HISTORY_CONTRACT_V5,
+  metadata: v5MetadataTypes,
+  content: v2ContentKeys,
+}
+const v6Profile: NativeHistoryValidationProfile = {
+  version: NATIVE_HISTORY_CONTRACT_V6,
+  metadata: v6MetadataTypes,
+  content: v2ContentKeys,
+}
+const v7Profile: NativeHistoryValidationProfile = {
+  version: NATIVE_HISTORY_CONTRACT_V7,
+  metadata: v7MetadataTypes,
   content: v2ContentKeys,
 }
 function metadataTypeMatches(expected: MetadataFieldType, value: unknown): boolean {
   const actual = value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value
   if (expected === 'nullable-string') return actual === 'null' || actual === 'string'
   if (expected === 'nullable-array') return actual === 'null' || actual === 'array'
+  if (expected === 'nullable-nonempty-string')
+    return value === null || (typeof value === 'string' && value.length > 0)
+  if (expected === 'nonnegative-integer')
+    return typeof value === 'number' && Number.isInteger(value) && value >= 0
   return (
     actual === expected &&
     (expected !== 'number' || (typeof value === 'number' && Number.isFinite(value)))
@@ -245,6 +296,23 @@ function validateSerializationMetadata(
   if (!Array.isArray(entry.custom_symbol_offsets)) fail(`${path}.custom_symbol_offsets`, 'type')
   if (entry.custom_symbol_offsets.length !== 0) fail(`${path}.custom_symbol_offsets`, 'unsupported')
 }
+/** The native Work page observed exactly these fields; no non-null source_id was observed. */
+function validateNotificationCheckpoint(
+  value: unknown,
+  path: string,
+  fail: (path: string, reason: ArchiveContractFailure['reason']) => never,
+) {
+  const entry = asObject(value)
+  if (!entry) fail(path, 'type')
+  const fields = ['notification_id', 'source', 'source_id', 'triggered_at']
+  for (const name of Object.keys(entry))
+    if (!fields.includes(name)) fail(`${path}.${name}`, 'unexpected')
+  for (const name of fields) {
+    if (!Object.hasOwn(entry, name)) fail(`${path}.${name}`, 'missing')
+    if (name === 'source_id' ? entry[name] !== null : typeof entry[name] !== 'string')
+      fail(`${path}.${name}`, 'type')
+  }
+}
 function validateMetadata(
   metadata: Record<string, unknown>,
   path: string,
@@ -258,6 +326,8 @@ function validateMetadata(
     if (!metadataTypeMatches(expected, value)) fail(fieldPath, 'type')
     if (profile !== v1Profile && name === 'serialization_metadata')
       validateSerializationMetadata(value, fieldPath, fail)
+    if (name === 'notification_trigger_checkpoint')
+      validateNotificationCheckpoint(value, fieldPath, fail)
   }
 }
 
@@ -276,8 +346,7 @@ function assertHistoryPage(
   }
   const obj = (value: unknown, path: string) => asObject(value) ?? failure(path, 'type')
   const keys = (value: Record<string, unknown>, allowed: ReadonlySet<string>, path: string) => {
-    for (const key of Object.keys(value))
-      if (!allowed.has(key)) failure(`${path}.${key}`, 'unexpected')
+    for (const key of Object.keys(value)) if (!allowed.has(key)) failure(`${path}.${key}`, 'unexpected')
   }
   const required = (value: Record<string, unknown>, key: string, path: string) => {
     if (!Object.hasOwn(value, key)) failure(`${path}.${key}`, 'missing')
@@ -322,8 +391,7 @@ function assertHistoryPage(
   keys(payload, allowedKeys, 'payload')
   if (initial) {
     string(required(payload, 'conversation_id', 'payload'), 'payload.conversation_id')
-    if (payload.conversation_id !== detail.conversationId)
-      failure('payload.conversation_id', 'identity')
+    if (payload.conversation_id !== detail.conversationId) failure('payload.conversation_id', 'identity')
   } else if (Object.hasOwn(payload, 'conversation_id')) {
     failure('payload.conversation_id', 'unexpected')
   }
@@ -542,8 +610,8 @@ const nativeHistoryAdapters: Readonly<Record<string, NativeHistoryAdapter>> = Ob
     assertStream: (id: string, incoming: Record<string, unknown>) =>
       assertStreamMessage(id, incoming, v2Profile),
   }),
-  [NATIVE_HISTORY_CONTRACT_VERSION]: Object.freeze({
-    version: NATIVE_HISTORY_CONTRACT_VERSION,
+  [NATIVE_HISTORY_CONTRACT_V3]: Object.freeze({
+    version: NATIVE_HISTORY_CONTRACT_V3,
     evidenceDocument: 'docs/CHATGPT_CLIENT_RESEARCH.md',
     fixtureFile: 'tests/archive-source-contract.test.ts',
     // No additional nullable forms were observed in the new metadata keys.
@@ -552,6 +620,46 @@ const nativeHistoryAdapters: Readonly<Record<string, NativeHistoryAdapter>> = Ob
       assertHistoryPage(detail, projected, v3Profile),
     assertStream: (id: string, incoming: Record<string, unknown>) =>
       assertStreamMessage(id, incoming, v3Profile),
+  }),
+  [NATIVE_HISTORY_CONTRACT_V4]: Object.freeze({
+    version: NATIVE_HISTORY_CONTRACT_V4,
+    evidenceDocument: 'docs/chatgpt-booster/LIVE_ARCHIVE_CONTRACT.md',
+    fixtureFile: 'tests/archive-source-v4-pipeline.test.ts',
+    knownNullablePaths: Object.freeze(['message.metadata.streaming_parent_id']),
+    assertPage: (detail: ConversationArchiveEventDetail, projected: boolean) =>
+      assertHistoryPage(detail, projected, v4Profile),
+    assertStream: (id: string, incoming: Record<string, unknown>) =>
+      assertStreamMessage(id, incoming, v4Profile),
+  }),
+  [NATIVE_HISTORY_CONTRACT_V5]: Object.freeze({
+    version: NATIVE_HISTORY_CONTRACT_V5,
+    evidenceDocument: 'docs/chatgpt-booster/LIVE_ARCHIVE_CONTRACT.md',
+    fixtureFile: 'tests/archive-source-contract.test.ts',
+    knownNullablePaths: Object.freeze(['message.metadata.notification_trigger_checkpoint.source_id']),
+    assertPage: (detail: ConversationArchiveEventDetail, projected: boolean) =>
+      assertHistoryPage(detail, projected, v5Profile),
+    assertStream: (id: string, incoming: Record<string, unknown>) =>
+      assertStreamMessage(id, incoming, v5Profile),
+  }),
+  [NATIVE_HISTORY_CONTRACT_V6]: Object.freeze({
+    version: NATIVE_HISTORY_CONTRACT_V6,
+    evidenceDocument: 'docs/chatgpt-booster/LIVE_ARCHIVE_CONTRACT.md',
+    fixtureFile: 'tests/archive-source-contract.test.ts',
+    knownNullablePaths: Object.freeze([]),
+    assertPage: (detail: ConversationArchiveEventDetail, projected: boolean) =>
+      assertHistoryPage(detail, projected, v6Profile),
+    assertStream: (id: string, incoming: Record<string, unknown>) =>
+      assertStreamMessage(id, incoming, v6Profile),
+  }),
+  [NATIVE_HISTORY_CONTRACT_V7]: Object.freeze({
+    version: NATIVE_HISTORY_CONTRACT_V7,
+    evidenceDocument: 'docs/chatgpt-booster/LIVE_ARCHIVE_CONTRACT.md',
+    fixtureFile: 'tests/archive-source-contract.test.ts',
+    knownNullablePaths: Object.freeze([]),
+    assertPage: (detail: ConversationArchiveEventDetail, projected: boolean) =>
+      assertHistoryPage(detail, projected, v7Profile),
+    assertStream: (id: string, incoming: Record<string, unknown>) =>
+      assertStreamMessage(id, incoming, v7Profile),
   }),
 })
 
@@ -591,9 +699,7 @@ export class ArchiveSourceGate {
     if (!selected)
       throw this.reject({
         conversationId,
-        version: /^[a-zA-Z0-9_.-]{1,100}$/.test(this.version)
-          ? this.version
-          : 'unregistered-version',
+        version: /^[a-zA-Z0-9_.-]{1,100}$/.test(this.version) ? this.version : 'unregistered-version',
         path: 'adapter.version',
         reason: 'unsupported',
       })
@@ -665,10 +771,7 @@ export class ArchiveSourceGate {
       'observedAtMs',
       'source',
     ])
-    if (
-      Object.keys(value).some((name) => !keys.has(name)) ||
-      keys.size !== Object.keys(value).length
-    )
+    if (Object.keys(value).some((name) => !keys.has(name)) || keys.size !== Object.keys(value).length)
       fail('submit.selection.keys')
     if (value.schema !== SUBMISSION_SELECTION_SCHEMA || value.source !== 'native-composer-submit')
       fail('submit.selection.schema')
@@ -681,9 +784,7 @@ export class ArchiveSourceGate {
       fail('submit.selection.identity')
     if (
       typeof value.effortPresent !== 'boolean' ||
-      (value.effortPresent
-        ? typeof value.thinkingEffort !== 'string'
-        : value.thinkingEffort !== null)
+      (value.effortPresent ? typeof value.thinkingEffort !== 'string' : value.thinkingEffort !== null)
     )
       fail('submit.selection.thinkingEffort')
     if (typeof value.observedAtMs !== 'number' || !Number.isFinite(value.observedAtMs))

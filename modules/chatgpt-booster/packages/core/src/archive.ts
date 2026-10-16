@@ -1,3 +1,4 @@
+import type { ArchiveMessageV1 } from '@kobaproduction/browser-archive'
 import { instanceKey } from '@kobaproduction/browser-core'
 export type ArchiveRecordKind =
   | 'user'
@@ -26,6 +27,8 @@ export interface ArchiveRecordView {
   resolvedModelSlug?: string | null
   firstSeenAt?: number
   raw: Record<string, unknown>
+  /** Shared authority; remaining fields are presentation compatibility. */
+  normalized?: ArchiveMessageV1
 }
 export interface ArchiveAttachmentView {
   assetId: string
@@ -170,9 +173,7 @@ export interface ArchiveExportReadiness {
 export class ArchiveExportBlockedError extends Error {
   override readonly name = 'ArchiveExportBlockedError'
   constructor(readonly reason: ArchiveExportBlocker) {
-    super(
-      reason === 'source_changed' ? 'archive.error.sourceChanged' : 'archive.error.unverifiedPath',
-    )
+    super(reason === 'source_changed' ? 'archive.error.sourceChanged' : 'archive.error.unverifiedPath')
   }
 }
 
@@ -194,6 +195,8 @@ export interface ArchiveExportOutcome {
   extension: string
 }
 export interface ArchiveExportOptions {
+  /** Ephemeral local selection; omitted means all saved messages. */
+  messageIds?: readonly string[]
   format: string
   /** Packaging is separate from the human-readable/source-native output format. */
   packaging?: 'none' | 'zip' | 'gzip'
@@ -261,9 +264,7 @@ export function normalizeExportOverride(value: unknown): Partial<ArchiveExportOp
 
 export function normalizeExportOverrides(value: unknown): ArchiveExportOverrides {
   const incoming =
-    value && typeof value === 'object' && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : {}
+    value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
   const parse = (source: unknown): Record<string, Partial<ArchiveExportOptions>> => {
     if (!source || typeof source !== 'object' || Array.isArray(source)) return {}
     const accepted: [string, Partial<ArchiveExportOptions>][] = []
@@ -305,7 +306,7 @@ export function resolveExportPreferences(
 }
 
 export const DEFAULT_CAPTURE_RULE: CaptureRule = {
-  enabled: false,
+  enabled: true,
   reasoning: true,
   tools: true,
   internal: true,
@@ -370,13 +371,31 @@ export function serverTimeMs(value: number | null | undefined, observedAt = 0): 
       : value
     : observedAt
 }
-export const ARCHIVE_UPDATED_EVENT = instanceKey('chatgpt-booster:archive-updated', 'chatgpt-booster:prod')
-export const ARCHIVE_SOURCE_INCOMPATIBLE_EVENT = instanceKey('chatgpt-booster:archive-contract-error', 'chatgpt-booster:prod')
+export const ARCHIVE_UPDATED_EVENT = instanceKey(
+  'chatgpt-booster:archive-updated',
+  'chatgpt-booster:prod',
+)
+export const ARCHIVE_SOURCE_INCOMPATIBLE_EVENT = instanceKey(
+  'chatgpt-booster:archive-contract-error',
+  'chatgpt-booster:prod',
+)
 export const OPEN_ARCHIVE_EVENT = instanceKey('chatgpt-booster:open-archive', 'chatgpt-booster:prod')
-export const OPEN_CAPTURE_SETTINGS_EVENT = instanceKey('chatgpt-booster:open-capture-settings', 'chatgpt-booster:prod')
-export const HISTORY_LOADER_STATE_EVENT = instanceKey('chatgpt-booster:history-loader-state', 'chatgpt-booster:prod')
-export const HISTORY_LOADER_START_EVENT = instanceKey('chatgpt-booster:history-loader-start', 'chatgpt-booster:prod')
-export const HISTORY_LOADER_STOP_EVENT = instanceKey('chatgpt-booster:history-loader-stop', 'chatgpt-booster:prod')
+export const OPEN_CAPTURE_SETTINGS_EVENT = instanceKey(
+  'chatgpt-booster:open-capture-settings',
+  'chatgpt-booster:prod',
+)
+export const HISTORY_LOADER_STATE_EVENT = instanceKey(
+  'chatgpt-booster:history-loader-state',
+  'chatgpt-booster:prod',
+)
+export const HISTORY_LOADER_START_EVENT = instanceKey(
+  'chatgpt-booster:history-loader-start',
+  'chatgpt-booster:prod',
+)
+export const HISTORY_LOADER_STOP_EVENT = instanceKey(
+  'chatgpt-booster:history-loader-stop',
+  'chatgpt-booster:prod',
+)
 export type HistoryCollectionStopReason =
   | 'user'
   | 'export_closed'
@@ -434,15 +453,13 @@ export interface ArchiveCurrentContext {
 }
 export function normalizeCaptureRule(value: Partial<CaptureRule> | null | undefined): CaptureRule {
   return {
-    enabled: value?.enabled === true,
+    enabled: value?.enabled === undefined ? DEFAULT_CAPTURE_RULE.enabled : value.enabled === true,
     reasoning: typeof value?.reasoning === 'boolean' ? value.reasoning : true,
     tools: typeof value?.tools === 'boolean' ? value.tools : true,
     internal: typeof value?.internal === 'boolean' ? value.internal : true,
   }
 }
-export function normalizeExportOptions(
-  value?: Partial<ArchiveExportOptions>,
-): ArchiveExportOptions {
+export function normalizeExportOptions(value?: Partial<ArchiveExportOptions>): ArchiveExportOptions {
   return {
     format:
       typeof value?.format === 'string' && /^[a-z0-9][a-z0-9._-]{0,63}$/i.test(value.format.trim())

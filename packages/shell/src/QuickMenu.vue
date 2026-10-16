@@ -1,29 +1,27 @@
 <script setup lang="ts">
-import type { FeatureQuickAction, FeatureQuickMetric } from '@kobaproduction/browser-core'
-import { Archive, ArrowUpToLine, Download, FolderOpen, Settings2, ShieldCheck, X } from 'lucide-vue-next'
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import type {
+  FeatureIndicator,
+  FeatureQuickAction,
+  FeatureQuickMetric,
+} from '@kobaproduction/browser-core'
+import { Button, Switch, useApplicationLocale } from '@kobaproduction/browser-ui'
+import { Archive, ArrowUpToLine, Download, FolderOpen, Settings2, ShieldCheck } from 'lucide-vue-next'
+import LauncherIndicators from './LauncherIndicators.vue'
 
 const props = defineProps<{
   title: string
   version?: string
-  installation?: string
+  contextTitle?: string
   active: boolean
   enabled: boolean
   busy: boolean
   actions: readonly FeatureQuickAction[]
   metrics?: readonly FeatureQuickMetric[]
+  indicators?: readonly FeatureIndicator[]
 }>()
-const emit = defineEmits<{ close: []; select: [id: string]; toggle: []; resize: [height: number] }>()
-const root = ref<HTMLElement | null>(null)
-let observer: ResizeObserver | undefined
-onMounted(() => {
-  if (typeof ResizeObserver !== 'function' || !root.value) return
-  observer = new ResizeObserver(() => {
-    if (root.value) emit('resize', root.value.getBoundingClientRect().height)
-  })
-  observer.observe(root.value)
-})
-onBeforeUnmount(() => observer?.disconnect())
+const emit = defineEmits<{ select: [id: string]; toggle: [] }>()
+const locale = useApplicationLocale()
+const text = (ru: string, en: string) => (locale.value === 'ru' ? ru : en)
 const icons = {
   archive: Archive,
   collect: ArrowUpToLine,
@@ -35,33 +33,29 @@ const icons = {
 </script>
 
 <template>
-  <section ref="root" class="booster-quick-menu" role="dialog" :aria-label="`${title}: быстрое меню`">
+  <section class="booster-quick-menu">
     <header class="booster-quick-header">
       <div class="booster-quick-identity">
         <strong>{{ title }}</strong>
-        <div class="booster-quick-badges">
-          <span v-if="installation">{{ installation }}</span>
-          <span v-if="version">{{ version }}</span>
-        </div>
+        <span v-if="version" class="booster-version">{{ version }}</span>
+        <span v-if="contextTitle && contextTitle !== title" class="booster-quick-context">{{ contextTitle }}</span>
       </div>
-      <button class="booster-quick-close" type="button" aria-label="Закрыть меню" @click="emit('close')"><X class="size-4" /></button>
+      <Switch :model-value="enabled"
+        :aria-label="`${enabled ? text('Выключить', 'Disable') : text('Включить', 'Enable')} ${title}`"
+        :title="active ? text('Работает', 'Running') : enabled ? text('Включено, модуль недоступен на этой странице', 'Enabled; unavailable on this page') : text('Выключено', 'Disabled')"
+        :disabled="busy" @update:model-value="emit('toggle')" />
     </header>
-    <div v-if="metrics?.length" class="booster-quick-metrics" aria-label="Сводка модуля">
-      <div v-for="metric in metrics" :key="metric.label"><span>{{ metric.label }}</span><b>{{ metric.value }}</b></div>
+    <LauncherIndicators v-if="indicators?.length" :indicators="indicators" />
+    <div v-if="metrics?.length" class="booster-quick-metrics" :aria-label="text('Сводка модуля', 'Module summary')">
+      <div v-for="metric in metrics" :key="metric.label"><span>{{ locale === 'en' ? metric.labelEn ?? metric.label : metric.label }}</span><b>{{ metric.value }}</b></div>
     </div>
     <div class="booster-quick-actions">
-      <button v-for="action in actions" :key="action.id" type="button"
+      <Button v-for="action in actions" :key="action.id" type="button" variant="ghost" size="sm" class="h-auto min-h-8 w-full justify-start whitespace-normal rounded-none text-left"
+        :data-quick-action="action.id"
         :disabled="busy || (!active && !action.availableWhenDisabled) || (action.enabled && !action.enabled())" @click="emit('select', action.id)">
         <component :is="icons[action.icon || 'open']" class="size-4" aria-hidden="true" />
-        <span>{{ action.label }}</span>
-      </button>
+        <span>{{ locale === 'en' ? action.labelEn ?? action.label : action.label }}</span>
+      </Button>
     </div>
-    <footer class="booster-quick-footer">
-      <span class="booster-quick-status" :class="{ 'is-active': active }">{{ active ? 'Работает' : 'Выключен' }}</span>
-      <button type="button" class="booster-quick-toggle" role="switch" :aria-checked="enabled"
-        :aria-label="enabled ? 'Выключить Booster' : 'Включить Booster'" :disabled="busy" @click="emit('toggle')">
-        <span />
-      </button>
-    </footer>
   </section>
 </template>

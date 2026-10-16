@@ -19,8 +19,7 @@ export function archiveMessageGraph(thread: ArchiveThreadView): Map<string, Arch
   const all = [...thread.turns].flatMap((turn) => [...turn.messages, ...turn.details])
   const byId = new Map<string, ArchiveItemView>()
   for (const item of all)
-    if (item.record.messageId && !byId.has(item.record.messageId))
-      byId.set(item.record.messageId, item)
+    if (item.record.messageId && !byId.has(item.record.messageId)) byId.set(item.record.messageId, item)
 
   const children = new Map<string, string[]>()
   const messages = all.filter((item) => item.kind === 'user' || item.kind === 'answer')
@@ -33,7 +32,6 @@ export function archiveMessageGraph(thread: ArchiveThreadView): Map<string, Arch
   }
 
   const lanes = new Map<string, number>()
-  const visited = new Set<string>()
   function laneFor(id: string): number {
     const cached = lanes.get(id)
     if (cached !== undefined) return cached
@@ -48,7 +46,8 @@ export function archiveMessageGraph(thread: ArchiveThreadView): Map<string, Arch
     // A malformed cycle is terminated at the first repeated ID; no fake edge is added.
     let lane = current ? (lanes.get(current) ?? 0) : 0
     for (let i = chain.length - 1; i >= 0; i--) {
-      const nodeId = chain[i]!
+      const nodeId = chain[i]
+      if (nodeId === undefined) continue
       const parentId = byId.get(nodeId)?.record.parentId
       if (parentId) {
         const siblings = children.get(parentId) ?? []

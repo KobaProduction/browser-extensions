@@ -9,3 +9,4 @@ coverage/
 .work/
 # Generated acceptance screenshots and matrix results (not source).
 apps/ui-lab/.local/
+**/.local/

@@ -1,12 +1,11 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test'
-import { installVkArchive } from './archive-runtime'
 import { presentVkArchive } from './features/chat-export/model/archive-presentation'
-import type {
-  ArchiveApi,
-  ArchiveRunResult,
-  VkArchiveMeta,
-  VkMessage,
-} from './features/chat-export/model/types'
+import { createVkArchiveService } from './features/chat-export/model/archive-service'
+import {
+  installLegacyVkFileArchiveForTests as installVkArchive,
+  type LegacyVkFileArchiveApi,
+} from './features/chat-export/model/legacy'
+import type { ArchiveRunResult, VkArchiveMeta, VkMessage } from './features/chat-export/model/types'
 
 class MockFile {
   bytes: Uint8Array = new Uint8Array(0)
@@ -100,9 +99,7 @@ const all: VkMessage[] = Array.from({ length: 3100 }, (_, i) => ({
   peer_id: peer,
   out: i % 2,
   text:
-    i === 5
-      ? '</script><img src=x onerror=alert(1)> https://example.com/paper'
-      : 'Message ' + (3100 - i),
+    i === 5 ? '</script><img src=x onerror=alert(1)> https://example.com/paper' : `Message ${3100 - i}`,
   attachments: [],
 }))
 const originalName = 'Исходный_документ.pdf'
@@ -168,7 +165,7 @@ Object.assign(globalThis, {
         String(url).includes('messages.getHistory') &&
         p.get('count') !== '1'
       ) {
-        globalThis.location.pathname = '/im/convo/' + String(switchPeerDuringHistory)
+        globalThis.location.pathname = `/im/convo/${String(switchPeerDuringHistory)}`
         switchPeerDuringHistory = null
       }
       const offset = Number(p.get('offset')),
@@ -185,13 +182,13 @@ Object.assign(globalThis, {
     })
   },
 })
-const reload = (): ArchiveApi => {
+const reload = (): LegacyVkFileArchiveApi => {
   delete globalThis.VKExport
   installVkArchive()
   if (!globalThis.VKExport) throw Error('No VK API')
   return globalThis.VKExport
 }
-let a: ArchiveApi, folder: MockDir
+let a: LegacyVkFileArchiveApi, folder: MockDir
 beforeAll(async () => {
   a = reload()
   folder = new MockDir('VK_Archive_v1')
@@ -589,7 +586,7 @@ test('soft-navigation to another chat blocks export and never binds its folder t
   const before = a.status()
   const saved = await (await folder.getFileHandle('messages.json')).getFile().then((file) => file.text())
   const another = 7654322
-  globalThis.location.pathname = '/im/convo/' + another
+  globalThis.location.pathname = `/im/convo/${another}`
   try {
     const mismatch = a.status()
     expect(mismatch.options.peerId).toBe(peer)
@@ -629,7 +626,7 @@ test('soft-navigation to another chat blocks export and never binds its folder t
     expect(nextMeta.peer_id).toBe(another)
     expect(a.previewMessages({ limit: 80 }).matching).toBe(0)
   } finally {
-    globalThis.location.pathname = '/im/convo/' + peer
+    globalThis.location.pathname = `/im/convo/${peer}`
     await a.useFolder(folderHandle(folder))
   }
 })
@@ -685,7 +682,7 @@ test('switching conversations while VK history is in flight cannot commit anothe
     ).toBe(saved)
   } finally {
     switchPeerDuringHistory = null
-    globalThis.location.pathname = '/im/convo/' + peer
+    globalThis.location.pathname = `/im/convo/${peer}`
   }
 })
 
@@ -751,7 +748,7 @@ test('folder picker reserves the archive before user permission and rejects a ch
     await expect(a.run({ mode: 'recent', limit: 2 })).rejects.toThrow('Выбор папки')
     await expect(a.useFolder(folderHandle(folder))).rejects.toThrow('Другая операция')
     await expect(a.selectFolder()).rejects.toThrow('Другая операция')
-    globalThis.location.pathname = '/im/convo/' + (peer + 1)
+    globalThis.location.pathname = `/im/convo/${peer + 1}`
     select(handle)
     await expect(choosing).rejects.toThrow('Диалог VK изменился при выборе папки')
     expect(nextFolder.files.size).toBe(0)
@@ -761,7 +758,7 @@ test('folder picker reserves the archive before user permission and rejects a ch
     expect(a.status().messages).toBe(before.messages)
   } finally {
     select(handle)
-    globalThis.location.pathname = '/im/convo/' + peer
+    globalThis.location.pathname = `/im/convo/${peer}`
     Object.assign(globalThis, { showDirectoryPicker: save.showDirectoryPicker })
   }
 })
@@ -861,7 +858,7 @@ test('switching VK conversations during media fetch pauses without saving media 
       const response = await originalFetch(input, options)
       if (!String(input).includes('/method/') && !navigated) {
         navigated = true
-        globalThis.location.pathname = '/im/convo/' + (peer + 1)
+        globalThis.location.pathname = `/im/convo/${peer + 1}`
       }
       return response
     },
@@ -881,7 +878,7 @@ test('switching VK conversations during media fetch pauses without saving media 
     expect(Object.keys(saved.files)).toEqual([])
     expect([...scratch.dirs.keys()]).toEqual([])
   } finally {
-    globalThis.location.pathname = '/im/convo/' + peer
+    globalThis.location.pathname = `/im/convo/${peer}`
     Object.assign(globalThis, { fetch: originalFetch })
   }
   const resumed = await completed(a.resume())
@@ -897,6 +894,8 @@ test('fixed Dexie VK capture reads verified owner, persists new history, preview
   const previous = globalThis.fetch
   const oldIndexed = globalThis.indexedDB
   const oldRange = globalThis.IDBKeyRange
+  const oldScope = (globalThis as Record<string, unknown>).__BOOSTER_INSTANCE_SCOPE__
+  let fresh: ReturnType<typeof createVkArchiveService> | undefined
   const { indexedDB: fake, IDBKeyRange: range } = await import('fake-indexeddb')
   const { default: Dexie } = await import('dexie')
   const priorDexie = { ...Dexie.dependencies }
@@ -904,7 +903,7 @@ test('fixed Dexie VK capture reads verified owner, persists new history, preview
   Dexie.dependencies.IDBKeyRange = range
   Object.assign(globalThis, { indexedDB: fake, IDBKeyRange: range })
   const initialPath = globalThis.location.pathname
-  globalThis.location.pathname = '/im/convo/' + String(peer)
+  globalThis.location.pathname = `/im/convo/${String(peer)}`
   globalThis.fetch = Object.assign(
     async (url: RequestInfo | URL, init?: RequestInit) => {
       if (String(url).includes('/method/users.get'))
@@ -914,7 +913,8 @@ test('fixed Dexie VK capture reads verified owner, persists new history, preview
     { preconnect: previous.preconnect },
   )
   try {
-    const fresh = reload()
+    Object.assign(globalThis, { __BOOSTER_INSTANCE_SCOPE__: 'vk-booster:dev' })
+    fresh = createVkArchiveService('userscript', undefined, { sleep: async () => {} })
     const saved = await fresh.captureFixed(10)
     expect(saved).toMatchObject({ saved: 10, alreadySaved: 0, complete: false })
     expect(saved.available).toBeGreaterThanOrEqual(3000)
@@ -953,8 +953,16 @@ test('fixed Dexie VK capture reads verified owner, persists new history, preview
     expect(fresh.status().progress.done).toBe(all.length)
     expect(await fresh.countFixed()).toBe(all.length)
     expect((await fresh.readFixed(1))[0]?.id).toBe(1)
+    expect(await fresh.coverageFixed?.()).toMatchObject({
+      integrity: { start: 'verified', end: 'verified', chain: 'verified' },
+      verification: 'session-scan',
+    })
+    expect((await fresh.timelineFixed?.())?.length).toBe(all.length)
+    expect((await fresh.rangeFixed?.(5, 1))?.messageIds).toEqual([1, 2, 3, 4, 5])
     fresh.destroy()
   } finally {
+    fresh?.destroy()
+    Object.assign(globalThis, { __BOOSTER_INSTANCE_SCOPE__: oldScope })
     globalThis.fetch = previous
     globalThis.location.pathname = initialPath
     Object.assign(globalThis, { indexedDB: oldIndexed, IDBKeyRange: oldRange })

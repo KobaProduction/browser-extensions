@@ -47,12 +47,12 @@ if (import.meta.main) {
     if (!entry) throw new Error(`Unknown manifest ${id}`)
     const oldVersion = versions[id]
     entry.data.version = version
-    await writeFile(entry.file, JSON.stringify(entry.data, null, 2) + '\n')
+    await writeFile(entry.file, `${JSON.stringify(entry.data, null, 2)}\n`)
     if (id !== 'all-in-one') {
       const root = `modules/${id}/package.json`
       const parent = JSON.parse(await readFile(root, 'utf8')) as { version: string }
       parent.version = version
-      await writeFile(root, JSON.stringify(parent, null, 2) + '\n')
+      await writeFile(root, `${JSON.stringify(parent, null, 2)}\n`)
     }
     if (id === 'chatgpt-booster') {
       for (const child of await readdir('modules/chatgpt-booster/packages', { withFileTypes: true })) {
@@ -60,7 +60,7 @@ if (import.meta.main) {
         const file = `modules/chatgpt-booster/packages/${child.name}/package.json`
         const source = JSON.parse(await readFile(file, 'utf8')) as { version: string }
         source.version = version
-        await writeFile(file, JSON.stringify(source, null, 2) + '\n')
+        await writeFile(file, `${JSON.stringify(source, null, 2)}\n`)
       }
       const file = 'modules/chatgpt-booster/packages/core/src/version.ts'
       const original = await readFile(file, 'utf8')

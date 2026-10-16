@@ -19,7 +19,7 @@ import type { ArchiveApi } from './types'
 
 /** VK adapter, no VK DTO/schema knowledge in the common portable backup core. */
 export function vkPortableBackupPorts(
-  api: ArchiveApi,
+  api: Pick<ArchiveApi, 'status' | 'configure'>,
   repository: FixedVkDexieRepository,
   persistence: VkPreferencesPersistence,
 ): PortableBackupPorts<VkCapturePreferences> {

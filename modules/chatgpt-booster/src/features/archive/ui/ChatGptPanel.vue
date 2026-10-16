@@ -2,42 +2,57 @@
 import {
   ARCHIVE_SOURCE_INCOMPATIBLE_EVENT,
   ARCHIVE_UPDATED_EVENT,
-  HISTORY_LOADER_STATE_EVENT,
-  HISTORY_LOADER_STOP_EVENT,
-  OPEN_ARCHIVE_EVENT,
-  OPEN_CAPTURE_SETTINGS_EVENT,
-  OPEN_SETTINGS_EVENT,
   type ArchiveCaptureContext,
   type ArchiveCurrentContext,
   type ArchiveMessageLocation,
+  HISTORY_LOADER_STATE_EVENT,
+  HISTORY_LOADER_STOP_EVENT,
   type HistoryLoaderState,
+  OPEN_ARCHIVE_EVENT,
+  OPEN_CAPTURE_SETTINGS_EVENT,
+  OPEN_SETTINGS_EVENT,
   resolveCaptureRule,
 } from '@chatgpt-booster/core'
-import { SHELL_CLOSE_EVENT, instanceKey } from '@kobaproduction/browser-core'
-import { createChatCollectionController, type ChatCollectionController, type ChatCollectionSnapshot } from '@kobaproduction/browser-archive'
+import {
+  type ChatCollectionController,
+  type ChatCollectionSnapshot,
+  createChatCollectionController,
+} from '@kobaproduction/browser-archive'
+import { SHELL_CLOSE_EVENT, shellInstanceKey } from '@kobaproduction/browser-core'
+import { Button, useApplicationLocale } from '@kobaproduction/browser-ui'
 import { ConversationCollectionAction } from '@kobaproduction/browser-widgets'
 import { ShieldCheck } from 'lucide-vue-next'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ArchiveBrowser from '../../../../packages/ui/src/ArchiveBrowser.vue'
-import { chatGptCollectionPort } from './chat-collection-port'
+import ArchiveExportDialog from '../../../../packages/ui/src/ArchiveExportDialog.vue'
 import CaptureSettingsSurface from '../../../../packages/ui/src/CaptureSettingsSurface.vue'
 import ControlCenter from '../../../../packages/ui/src/ControlCenterPanel.vue'
-import CopyIdentity from '../../../../packages/ui/src/CopyIdentity.vue'
-import { resolveLocale } from '../../../../packages/ui/src/i18n'
+import { translate } from '../../../../packages/ui/src/i18n'
 import { installBoosterShadowStyles } from '../../../../packages/ui/src/shadow-styles'
-import { chatGptRequestedSection, chatGptViewContext } from '../../../index'
+import {
+  chatGptArchiveRequest,
+  chatGptRequestedSection,
+  chatGptSafeView,
+  chatGptViewContext,
+  chatGptViewRevision,
+  setChatGptSafeView,
+} from '../../../index'
+import { chatGptCollectionPort } from './chat-collection-port'
 
 type View = 'archive' | 'export' | 'capture' | 'settings'
-const tab = ref<View>('archive')
+const props = withDefaults(defineProps<{ showCatalog?: boolean; showIdentity?: boolean }>(), {
+  showCatalog: true,
+  showIdentity: true,
+})
+const tab = ref<View>(chatGptSafeView.value)
 const context = computed(() => chatGptViewContext.value)
-const locale = ref<'ru' | 'en'>('ru')
+const locale = useApplicationLocale(() => currentSettings.value?.language ?? 'auto')
 const current = ref<ArchiveCurrentContext>({
   conversationId: null,
   conversationTitle: null,
   projectId: null,
   projectTitle: null,
 })
-const coverage = ref<Awaited<ReturnType<NonNullable<typeof context.value>['archiveAdapter']['getCoverage']>>>()
 const loader = ref<HistoryLoaderState>({
   phase: 'idle',
   conversationId: null,
@@ -47,62 +62,52 @@ const loader = ref<HistoryLoaderState>({
   consecutiveErrors: 0,
 })
 const loading = ref(false)
-const collectionState = ref<ChatCollectionSnapshot>({ phase: 'idle', processed: 0, total: null, saved: null })
+const collectionState = ref<ChatCollectionSnapshot>({
+  phase: 'idle',
+  processed: 0,
+  total: null,
+  saved: null,
+})
 let collector: ChatCollectionController | undefined
 let unsubscribeCollection: (() => void) | undefined
-watch(() => context.value?.archiveAdapter, adapter => {
-  unsubscribeCollection?.()
-  collector?.dispose()
-  collector = adapter ? createChatCollectionController(chatGptCollectionPort(adapter)) : undefined
-  collectionState.value = collector?.snapshot() ?? { phase: 'idle', processed: 0, total: null, saved: null }
-  unsubscribeCollection = collector?.subscribe(value => { collectionState.value = value })
-}, { immediate: true })
+watch(
+  () => context.value?.archiveAdapter,
+  (adapter) => {
+    unsubscribeCollection?.()
+    collector?.dispose()
+    collector = adapter ? createChatCollectionController(chatGptCollectionPort(adapter)) : undefined
+    collectionState.value = collector?.snapshot() ?? {
+      phase: 'idle',
+      processed: 0,
+      total: null,
+      saved: null,
+    }
+    unsubscribeCollection = collector?.subscribe((value) => {
+      collectionState.value = value
+    })
+  },
+  { immediate: true },
+)
 const error = ref('')
-const selectedChat = ref<{ id: string; title: string | null }>()
+const selectedChat = ref<{ id: string; title: string | null; messageIds?: readonly string[] }>()
 const captureContext = ref<ArchiveCaptureContext>()
 const exportCapture = ref(false)
-const fixedBusy = ref(false)
-const fixedError = ref('')
-async function exportSelectedDexie() {
-  const fixed = context.value?.fixedArchive
-  const selected = selectedChat.value
-  if (!fixed || !selected || fixedBusy.value) return
-  fixedBusy.value = true
-  fixedError.value = ''
-  const expectedAccount = context.value?.archiveAdapter.currentAccountId?.()
-  try {
-    if (!expectedAccount) throw Error('Owner unverified')
-    const blob = await fixed.exportConversation(selected.id)
-    if (context.value?.archiveAdapter.currentAccountId?.() !== expectedAccount ||
-        selectedChat.value?.id !== selected.id)
-      throw Error('Account or selected conversation changed during export')
-    const url = URL.createObjectURL(blob)
-    try {
-      const link = document.createElement('a')
-      link.href = url
-      link.download = 'chatgpt-fixed-v1-' + selected.id.replace(/[^a-zA-Z0-9_-]/g, '_') + '.jsonl.gz'
-      link.click()
-    } finally {
-      setTimeout(() => URL.revokeObjectURL(url), 30_000)
-    }
-  } catch {
-    fixedError.value = tr('Сохранённый Dexie-архив не экспортирован.',
-      'The selected Dexie archive could not be exported.')
-  } finally { fixedBusy.value = false }
-}
 const archiveInitial = ref<string | null>(null)
+const archiveProjectInitial = ref<string | null>(null)
 const navigationTarget = ref<ArchiveMessageLocation | null>(null)
 const returnToExport = ref(false)
-const currentSettings = ref<Awaited<ReturnType<NonNullable<typeof context.value>['settingsAdapter']['get']>>>()
+const currentSettings =
+  ref<Awaited<ReturnType<NonNullable<typeof context.value>['settingsAdapter']['get']>>>()
 let alive = true
 let contextRevision = 0
 let activeOwner: string | null = null
 let unsubscribeContext: (() => void) | undefined
 let unsubscribeSettings: (() => void) | undefined
 
-const active = computed(() =>
-  ['preparing', 'scrolling', 'waiting_for_load', 'backoff', 'saving'].includes(loader.value.phase) &&
-  loader.value.conversationId === current.value.conversationId,
+const active = computed(
+  () =>
+    ['preparing', 'scrolling', 'waiting_for_load', 'backoff', 'saving'].includes(loader.value.phase) &&
+    loader.value.conversationId === current.value.conversationId,
 )
 const captureResolution = computed(() =>
   currentSettings.value && current.value.conversationId
@@ -113,8 +118,8 @@ const captureResolution = computed(() =>
       )
     : null,
 )
-const captureActive = computed(() =>
-  !!currentSettings.value?.enabled && !!captureResolution.value?.rule.enabled,
+const captureActive = computed(
+  () => !!currentSettings.value?.enabled && !!captureResolution.value?.rule.enabled,
 )
 const captureTarget = computed<ArchiveCaptureContext | undefined>(() => {
   const chat = current.value
@@ -129,7 +134,15 @@ const captureTarget = computed<ArchiveCaptureContext | undefined>(() => {
     projectId: chat.projectId,
   }
 })
-const tr = (ru: string, en: string) => locale.value === 'ru' ? ru : en
+const tr = (ru: string, en: string) => (locale.value === 'ru' ? ru : en)
+function collectionErrorMessage(code?: string) {
+  if (code === 'archive.error.freshReadRequired' || code === 'archive.error.incompleteSource')
+    return translate(locale.value, code)
+  return tr(
+    'Сбор истории не выполнен. Исходные данные сохранены.',
+    'History collection failed. Existing data was preserved.',
+  )
+}
 
 async function refreshContext() {
   const adapter = context.value?.archiveAdapter
@@ -145,30 +158,33 @@ async function refreshContext() {
       projectId: adapter.currentProjectId(),
       projectTitle: null,
     }
-    coverage.value = undefined
-    fixedError.value = ''
     captureContext.value = undefined
   }
   loading.value = true
   try {
-    const [info, stats] = await Promise.all([
-      adapter.getCurrentContext(),
-      conversationId ? adapter.getCoverage(conversationId) : Promise.resolve(undefined),
-    ])
-    if (!alive || revision !== contextRevision ||
-        adapter !== context.value?.archiveAdapter ||
-        adapter.currentConversationId() !== conversationId ||
-        (adapter.currentAccountId?.() ?? null) !== accountId) return
+    const info = await adapter.getCurrentContext()
+    if (
+      !alive ||
+      revision !== contextRevision ||
+      adapter !== context.value?.archiveAdapter ||
+      adapter.currentConversationId() !== conversationId ||
+      (adapter.currentAccountId?.() ?? null) !== accountId
+    )
+      return
     current.value = info
-    coverage.value = stats
-    error.value = conversationId && adapter.hasIncompatibleSource?.(conversationId)
-      ? tr('Неподдерживаемый источник диалога: сохранённые данные не изменены.',
-        'Unsupported conversation source: saved data was not changed.')
-      : ''
+    error.value =
+      conversationId && adapter.hasIncompatibleSource?.(conversationId)
+        ? tr(
+            'Неподдерживаемый источник диалога: сохранённые данные не изменены.',
+            'Unsupported conversation source: saved data was not changed.',
+          )
+        : ''
   } catch {
     if (alive && revision === contextRevision && accountId && conversationId)
-      error.value = tr('Не удалось прочитать текущий диалог. Сохранённый архив не сбрасывался.',
-        'Unable to inspect the current conversation. The archive was not reset.')
+      error.value = tr(
+        'Не удалось прочитать текущий диалог. Сохранённый архив не сбрасывался.',
+        'Unable to inspect the current conversation. The archive was not reset.',
+      )
   } finally {
     if (alive && revision === contextRevision) loading.value = false
   }
@@ -182,10 +198,8 @@ async function initializeContext() {
     const settings = await adapters.settingsAdapter.get()
     if (!alive || adapters !== context.value) return
     currentSettings.value = settings
-    locale.value = resolveLocale(settings.language) === 'en' ? 'en' : 'ru'
     unsubscribeSettings = adapters.settingsAdapter.subscribe((next) => {
       currentSettings.value = next
-      locale.value = resolveLocale(next.language) === 'en' ? 'en' : 'ru'
     })
     loader.value = adapters.archiveAdapter.getCollectionState?.() ?? loader.value
     unsubscribeContext = adapters.archiveAdapter.subscribeContextChange?.(() => {
@@ -193,30 +207,63 @@ async function initializeContext() {
     })
     await refreshContext()
   } catch {
-    error.value = tr('Настройки недоступны. Архив не изменён.', 'Settings unavailable. Archive untouched.')
+    error.value = tr(
+      'Настройки недоступны. Архив не изменён.',
+      'Settings unavailable. Archive untouched.',
+    )
   }
 }
-function showArchive(id?: string | null, location?: ArchiveMessageLocation) {
-  archiveInitial.value = id ?? current.value.conversationId
+function showArchive(
+  id?: string | null,
+  location?: ArchiveMessageLocation,
+  scope?: ArchiveCaptureContext | null,
+) {
+  archiveProjectInitial.value = scope?.scope === 'project' ? scope.id : null
+  archiveInitial.value =
+    scope?.scope === 'conversation'
+      ? scope.id
+      : scope?.scope === 'project'
+        ? current.value.projectId === scope.id
+          ? current.value.conversationId
+          : null
+        : (id ??
+          context.value?.archiveAdapter.currentConversationId() ??
+          current.value.conversationId ??
+          null)
   navigationTarget.value = location ?? null
   tab.value = 'archive'
 }
 async function currentExport() {
   const adapter = context.value?.archiveAdapter
   if (!adapter) return
+  const revision = chatGptViewRevision.value
+  const owner = adapter.currentAccountId?.() ?? null
   try {
     const next = await adapter.getCurrentContext()
-    if (!alive || !next.conversationId) {
+    if (
+      !alive ||
+      revision !== chatGptViewRevision.value ||
+      adapter !== context.value?.archiveAdapter ||
+      owner !== (adapter.currentAccountId?.() ?? null)
+    )
+      return
+    if (!next.conversationId) {
       error.value = tr('Сначала открой диалог для экспорта.', 'Open a conversation before exporting.')
       return
     }
     openExport(next.conversationId, next.conversationTitle)
   } catch {
+    if (!alive || revision !== chatGptViewRevision.value) return
     error.value = tr('Не удалось получить текущий диалог.', 'Cannot resolve the current conversation.')
   }
 }
-function openExport(id: string, title: string | null, fromArchive = false) {
-  selectedChat.value = { id, title }
+function openExport(
+  id: string,
+  title: string | null,
+  fromArchive = false,
+  messageIds?: readonly string[],
+) {
+  selectedChat.value = { id, title, ...(messageIds ? { messageIds } : {}) }
   returnToExport.value = fromArchive
   archiveInitial.value = id
   error.value = ''
@@ -239,13 +286,15 @@ async function collect() {
     if (!collector) return
     await collector.start()
     await refreshContext()
-  } catch {
-    error.value = tr('Сбор истории не выполнен. Исходные данные сохранены.',
-      'History collection failed. Existing data was preserved.')
+  } catch (cause) {
+    error.value = collectionErrorMessage(cause instanceof Error ? cause.message : undefined)
   }
 }
 function stopCollection() {
-  if (collector) { collector.stop(); return }
+  if (collector) {
+    collector.stop()
+    return
+  }
   const adapter = context.value?.archiveAdapter
   const request = {
     ...(loader.value.conversationId ? { conversationId: loader.value.conversationId } : {}),
@@ -257,34 +306,91 @@ function stopCollection() {
 }
 function onLoaderState(event: Event) {
   const next = (event as CustomEvent<HistoryLoaderState>).detail
-  if (!next || !['idle', 'preparing', 'scrolling', 'waiting_for_load', 'backoff', 'saving', 'complete',
-    'cancelled', 'error'].includes(next.phase)) return
+  if (
+    !next ||
+    ![
+      'idle',
+      'preparing',
+      'scrolling',
+      'waiting_for_load',
+      'backoff',
+      'saving',
+      'complete',
+      'cancelled',
+      'error',
+    ].includes(next.phase)
+  )
+    return
   loader.value = { ...next }
+  if (next.phase === 'error' && next.conversationId === current.value.conversationId)
+    error.value = collectionErrorMessage(next.message)
   if (next.phase === 'complete' && next.conversationId === current.value.conversationId)
     void refreshContext()
 }
 function onIncompatible(event: Event) {
   const id = (event as CustomEvent<{ conversationId?: string }>).detail?.conversationId
   if (id && id === current.value.conversationId)
-    error.value = tr('Исходные данные не изменены: ChatGPT использует другую схему.',
-      'Source data not modified: ChatGPT uses an incompatible schema.')
+    error.value = tr(
+      'Исходные данные не изменены: ChatGPT использует другую схему.',
+      'Source data not modified: ChatGPT uses an incompatible schema.',
+    )
 }
 function onCaptureRequest(event: Event) {
   const detail = (event as CustomEvent<ArchiveCaptureContext>).detail
-  openCapture(detail && (detail.scope === 'project' || detail.scope === 'conversation') ? detail : undefined)
+  openCapture(
+    detail && (detail.scope === 'project' || detail.scope === 'conversation') ? detail : undefined,
+  )
 }
-function closePanel() { window.dispatchEvent(new Event(SHELL_CLOSE_EVENT)) }
+function closePanel() {
+  window.dispatchEvent(new Event(SHELL_CLOSE_EVENT))
+}
 
-watch(context, () => { void initializeContext() }, { immediate: true })
-watch(chatGptRequestedSection, (section) => {
-  if (section === 'archive') showArchive()
-  if (section === 'settings') tab.value = 'settings'
-  if (section === 'capture') openCapture()
-  if (section === 'collect') void collect()
-  if (section === 'export') void currentExport()
-}, { immediate: true })
+watch(
+  context,
+  () => {
+    void initializeContext()
+  },
+  { immediate: true },
+)
+watch(
+  chatGptSafeView,
+  (view) => {
+    if (tab.value === view) return
+    if (view === 'archive') showArchive()
+    else if (view === 'capture') openCapture()
+    else tab.value = 'settings'
+  },
+  { flush: 'sync' },
+)
+watch(
+  tab,
+  (view) => {
+    // Export is a transient workflow with separately selected data, never a
+    // persisted command. Returning to a safe view does not replay an operation.
+    if (view !== 'export' && chatGptSafeView.value !== view) setChatGptSafeView(view)
+  },
+  { flush: 'sync' },
+)
+watch(
+  chatGptRequestedSection,
+  (section) => {
+    if (!section) return
+    // Consume before invoking anything asynchronous or changing a mounted branch.
+    chatGptRequestedSection.value = null
+    if (section === 'archive') {
+      const scope = chatGptArchiveRequest.value
+      chatGptArchiveRequest.value = null
+      showArchive(undefined, undefined, scope)
+    }
+    if (section === 'settings') tab.value = 'settings'
+    if (section === 'capture') openCapture()
+    if (section === 'collect') void collect()
+    if (section === 'export') void currentExport()
+  },
+  { immediate: true },
+)
 onMounted(() => {
-  const root = document.getElementById(instanceKey('koba-browser-tools-root'))?.shadowRoot
+  const root = document.getElementById(shellInstanceKey('koba-browser-tools-root'))?.shadowRoot
   if (root) installBoosterShadowStyles(root)
   window.addEventListener(OPEN_ARCHIVE_EVENT, onShowArchive)
   window.addEventListener(OPEN_SETTINGS_EVENT, onShowSettings)
@@ -294,9 +400,15 @@ onMounted(() => {
   window.addEventListener(ARCHIVE_SOURCE_INCOMPATIBLE_EVENT, onIncompatible)
   window.dispatchEvent(new Event('chatgpt-booster:history-loader-query'))
 })
-function onShowArchive() { showArchive() }
-function onShowSettings() { tab.value = 'settings' }
-function onArchiveUpdated() { void refreshContext() }
+function onShowArchive(event: Event) {
+  showArchive(undefined, undefined, (event as CustomEvent<ArchiveCaptureContext | undefined>).detail)
+}
+function onShowSettings() {
+  tab.value = 'settings'
+}
+function onArchiveUpdated() {
+  void refreshContext()
+}
 onBeforeUnmount(() => {
   unsubscribeCollection?.()
   collector?.dispose()
@@ -314,79 +426,46 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="booster-chatgpt-panel" :lang="locale">
-    <header v-if="tab === 'archive'" class="booster-dock-context" aria-label="ChatGPT Booster">
-      <div class="booster-dock-context-info">
-        <CopyIdentity
-          :label="current.conversationTitle || tr('Текущий диалог', 'Current conversation')"
-          :identifier="current.conversationId"
-          :locale="locale"
-        />
-        <CopyIdentity
-          v-if="current.projectId"
-          :label="current.projectTitle || tr('Проект', 'Project')"
-          :identifier="current.projectId"
-          :locale="locale"
-        />
-      </div>
-      <p v-if="loading" role="status">{{ tr('Чтение состояния…', 'Reading status…') }}</p>
-      <div v-if="coverage" class="booster-dock-counts">
-        <span>{{ tr('Сообщений', 'Messages') }}: <b>{{ coverage.visibleMessageCount }}</b></span>
-        <span>{{ tr('Деталей', 'Details') }}: {{ coverage.internalRecordCount }}</span>
-      </div>
-      <div v-if="current.conversationId" class="booster-dock-history-state">
-        {{ coverage?.hasOlderServerHistory === true
-          ? tr('Есть более ранняя история', 'Older server history available')
-          : coverage?.hasOlderServerHistory === false
-            ? tr('Начало истории достигнуто', 'Start of history reached')
-            : tr('Полнота истории не проверена', 'History completeness unverified') }}
-      </div>
-      <button class="booster-capture-shortcut" type="button"
-        :disabled="!context" @click="openCapture()">
-        <ShieldCheck class="size-4" />{{ captureActive ? tr('Автосохранение включено', 'Capture enabled')
-          : tr('Настроить автосохранение', 'Configure capture') }}
-      </button>
-    </header>
+  <section class="booster-chatgpt-panel" :lang="locale" :data-provider-view="tab">
+    <div v-if="tab === 'archive' && context" class="booster-archive-context-actions">
+      <Button variant="ghost" size="sm" type="button" :aria-pressed="captureActive"
+        :title="captureActive ? tr('Автосохранение включено', 'Capture enabled') : tr('Настроить автосохранение', 'Configure capture')"
+        @click="openCapture()"><ShieldCheck class="size-4" />{{ tr('Автосохранение', 'Auto-save') }}</Button>
+      <ConversationCollectionAction
+        :data-active="active" :label="tr('Собрать историю', 'Collect history')" :busy="active"
+        :saved-label="tr('Сохранено', 'Saved')" :stop-label="tr('Остановить', 'Stop')"
+        :disabled="loading || !current.conversationId || !!context.archiveAdapter.collectionInsideExportOnly"
+        :processed="collectionState.processed" :total="collectionState.total"
+        @start="collect" @stop="stopCollection" />
+    </div>
     <p v-if="error && tab !== 'settings'" class="booster-error" role="alert">{{ error }}</p>
     <div v-if="active && tab === 'archive'" class="booster-dock-progress" role="status">
       <span>{{ tr('Загрузка истории', 'History collection') }}: {{ loader.phase }}
         · {{ tr('Сообщения', 'Messages') }} {{ loader.knownMessageCount }}
         · {{ tr('Страницы', 'Pages') }} {{ loader.pagesLoaded }}</span>
     </div>
-    <ConversationCollectionAction v-if="tab === 'archive' && context"
-      :label="tr('Собрать историю', 'Collect history')" :busy="active"
-      :saved-label="tr('Сохранено', 'Saved')" :stop-label="tr('Остановить', 'Stop')"
-      :disabled="!current.conversationId || !!context.archiveAdapter.collectionInsideExportOnly"
-      :processed="collectionState.processed" :total="collectionState.total"
-      @start="collect" @stop="stopCollection" />
     <div v-if="!context" role="status">{{ tr('Архив запускается…', 'Loading archive…') }}</div>
     <template v-else>
       <ArchiveBrowser
+        :key="archiveProjectInitial ?? 'all-projects'"
         v-if="tab==='archive'"
         :archive-adapter="context.archiveAdapter"
         :initial-conversation-id="archiveInitial"
+        :initial-project-id="archiveProjectInitial"
         :navigation-target="navigationTarget"
         :locale="locale"
         :windowed="false"
         :can-return-to-export="returnToExport && !!selectedChat"
         @return-export="tab='export'"
-        @export="(id, title) => openExport(id, title, true)"
+        @export="(id, title, ids) => openExport(id, title, true, ids)"
         @close="closePanel"
       />
-      <section v-else-if="tab==='export' && selectedChat" class="booster-stack-card"
-        aria-label="Экспорт фиксированного Dexie-архива">
-        <b>{{ selectedChat.title || selectedChat.id }}</b>
-        <p>{{ tr('Экспорт из собственной схемы Dexie v1. Полнота истории не подтверждена.',
-          'Export from fixed Dexie v1. History completeness is unverified.') }}</p>
-        <div class="flex flex-wrap gap-2">
-          <button type="button" class="booster-action-secondary" :disabled="fixedBusy"
-            @click="exportSelectedDexie">{{ tr('Экспорт JSONL.gz', 'Export JSONL.gz') }}</button>
-          <button type="button" class="booster-action-secondary" @click="showArchive()">
-            {{ tr('К архиву', 'Back to archive') }}
-          </button>
-        </div>
-        <p v-if="fixedError" role="alert">{{ fixedError }}</p>
-      </section>
+      <ArchiveExportDialog v-else-if="tab==='export' && selectedChat"
+        :archive-adapter="context.archiveAdapter" :settings-adapter="context.settingsAdapter"
+        :conversation-id="selectedChat.id" :title="selectedChat.title" :locale="locale"
+        :selected-message-ids="selectedChat.messageIds"
+        @close="showArchive(selectedChat.id)" @open-archive="showArchive"
+        @open-capture="value => { captureContext = value; tab = 'capture' }" />
       <CaptureSettingsSurface
         v-else-if="tab==='capture'"
         :settings-adapter="context.settingsAdapter"
@@ -396,14 +475,17 @@ onBeforeUnmount(() => {
         @close="endCapture"
       />
       <ControlCenter v-else-if="tab==='settings'"
+        :embedded="!props.showIdentity"
+        :show-catalog="props.showCatalog"
         :settings-adapter="context.settingsAdapter"
         :archive-adapter="context.archiveAdapter"
         :diagnostics-adapter="context.diagnosticsAdapter"
         :persistent-diagnostics-adapter="context.persistentDiagnosticsAdapter"
         :secret-adapter="context.secretAdapter"
+        :automation-control="context.automationControl"
         :telemetry-control-adapter="context.telemetryControlAdapter"
         :target-label="context.targetLabel"
-        :show-close="false" :embedded="true"
+        :show-close="false"
       />
     </template>
   </section>

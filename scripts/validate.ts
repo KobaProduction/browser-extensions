@@ -30,11 +30,11 @@ const run = Number(
 for (const id of ids) {
   const m = await manifest(id)
   if (m.id !== id || names.has(m.id) || !/^[a-z][a-z0-9-]+$/.test(m.id))
-    throw Error('Invalid module id: ' + id)
-  if (!/^\d+\.\d+\.\d+$/.test(m.version)) throw Error('Invalid semver: ' + id)
-  if (m.capabilities?.some((x) => !capabilities.includes(x))) throw Error('Invalid capabilities: ' + id)
+    throw Error(`Invalid module id: ${id}`)
+  if (!/^\d+\.\d+\.\d+$/.test(m.version)) throw Error(`Invalid semver: ${id}`)
+  if (m.capabilities?.some((x) => !capabilities.includes(x))) throw Error(`Invalid capabilities: ${id}`)
   if (m.targets?.some((x) => !['userscript', 'chromium'].includes(x)))
-    throw Error('Unsupported targets: ' + id)
+    throw Error(`Unsupported targets: ${id}`)
   names.add(m.id)
 }
 const selector = process.argv[process.argv.indexOf('--module') + 1]
@@ -57,12 +57,12 @@ if (process.argv.includes('--built'))
       !user.includes(`// @name         ${userscriptChannelName(m.name, channel)}`) ||
       !user.includes('GM_registerMenuCommand')
     )
-      throw Error('Invalid userscript: ' + id)
+      throw Error(`Invalid userscript: ${id}`)
     if (
       !user.includes(`// @updateURL    ${userscriptChannelUrl(id, channel)}`) ||
       !user.includes(`// @downloadURL  ${userscriptChannelUrl(id, channel)}`)
     )
-      throw Error('Incorrect ' + channel + ' update channel: ' + id)
+      throw Error(`Incorrect ${channel} update channel: ${id}`)
     if (
       id === 'chatgpt-booster' &&
       (!user.includes('// @match        https://chatgpt.com/*') ||
@@ -73,7 +73,7 @@ if (process.argv.includes('--built'))
     // A userscript/isolated content script does not have Node's process global.
     // Bundles can typecheck and build successfully while throwing on first load.
     if (/\bprocess\.env\.NODE_ENV\b/.test(user))
-      throw Error('Unresolved Node environment in userscript: ' + id)
+      throw Error(`Unresolved Node environment in userscript: ${id}`)
     const chrome = await Bun.file(`${root}/extension/manifest.json`).json()
     if (
       chrome.manifest_version !== 3 ||
@@ -84,7 +84,7 @@ if (process.argv.includes('--built'))
       (channel === 'prod' && Boolean(chrome.key)) ||
       chrome.permissions.includes('proxy')
     )
-      throw Error('Invalid extension manifest: ' + id)
+      throw Error(`Invalid extension manifest: ${id}`)
     if (id === 'all-in-one') {
       const dependencies = m.dependencies ?? []
       if (!dependencies.includes('vk-booster') || !dependencies.includes('chatgpt-booster'))
@@ -123,7 +123,7 @@ if (process.argv.includes('--built'))
               entry.js?.includes('content.js') && entry.matches?.includes(host),
           )
         )
-          throw Error('VK site-wide userscript/content script scope missing: ' + host)
+          throw Error(`VK site-wide userscript/content script scope missing: ${host}`)
       }
     }
     if (
@@ -158,7 +158,7 @@ if (process.argv.includes('--built'))
     if (id === 'all-in-one' && (!user.includes('chatgpt-booster') || !user.includes('VKExport')))
       throw Error('Aggregate userscript does not contain both product features')
     if (/\bprocess\.env\.NODE_ENV\b/.test(content))
-      throw Error('Unresolved Node environment in extension content script: ' + id)
+      throw Error(`Unresolved Node environment in extension content script: ${id}`)
     for (const path of [
       'content.js',
       'popup.js',
@@ -167,7 +167,7 @@ if (process.argv.includes('--built'))
       `${id}-extension.zip`,
     ]) {
       const file = path.endsWith('.zip') ? `${root}/${path}` : `${root}/extension/${path}`
-      if (!(await Bun.file(file).exists())) throw Error('Missing artifact: ' + file)
+      if (!(await Bun.file(file).exists())) throw Error(`Missing artifact: ${file}`)
     }
   }
 console.log('Module catalog and outputs valid')

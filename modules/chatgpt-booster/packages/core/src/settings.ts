@@ -1,4 +1,10 @@
-import { instanceKey } from '@kobaproduction/browser-core'
+import {
+  type ApplicationLanguagePreference,
+  type AutomationConfiguration,
+  DEFAULT_AUTOMATION_CONFIGURATION,
+  instanceKey,
+  normalizeAutomationConfiguration,
+} from '@kobaproduction/browser-core'
 import {
   type ArchiveExportOptions,
   type ArchiveExportOverrides,
@@ -19,7 +25,13 @@ export interface FeatureSettings {
 }
 
 export interface AlertSettings {
+  enabled: boolean
+  userSendSound: boolean
   responseCompleteSound: boolean
+  conversationEndSound: boolean
+  sendTone: 'soft' | 'chime' | 'pulse'
+  completeTone: 'soft' | 'chime' | 'pulse'
+  endTone: 'soft' | 'chime' | 'pulse'
   longRunningSound: boolean
   longRunningThresholdMs: number
 }
@@ -41,8 +53,16 @@ export interface LauncherSettings {
   heightRatio: number
 }
 
-export type LanguagePreference = 'auto' | 'en' | 'ru'
-export type SettingsSection = 'modules' | 'analytics' | 'other' | 'archive'
+/** Compatibility field for old provider backups; the shared application preference is authoritative. */
+export type LanguagePreference = ApplicationLanguagePreference
+export type SettingsSection =
+  | 'modules'
+  | 'analytics'
+  | 'other'
+  | 'archive'
+  | 'sounds'
+  | 'triggers'
+  | 'remote'
 
 export interface ObserverSettings {
   enabled: boolean
@@ -82,6 +102,7 @@ export interface BoosterSettings {
   launcher: LauncherSettings
   observer: ObserverSettings
   telemetry: TelemetrySettings
+  automation: AutomationConfiguration
   ui: UiSettings
   archive: ArchiveSettings
   export: ArchiveExportOptions
@@ -99,6 +120,9 @@ export interface BoosterSettingsPatch {
   launcher?: Partial<LauncherSettings>
   observer?: Partial<ObserverSettings>
   telemetry?: Partial<TelemetrySettings>
+  automation?: Partial<Omit<AutomationConfiguration, 'remote'>> & {
+    remote?: Partial<AutomationConfiguration['remote']>
+  }
   ui?: Omit<Partial<UiSettings>, 'archiveWindow'> & {
     archiveWindow?: Partial<ArchiveWindowSettings>
   }
@@ -114,12 +138,15 @@ export interface BoosterSettingsPatch {
   }
 }
 
-export const SETTINGS_SCHEMA_VERSION = 8
+export const SETTINGS_SCHEMA_VERSION = 9
 
 function clampWindowRatio(value: unknown, fallback: number, min: number, max: number) {
   return typeof value === 'number' && Number.isFinite(value)
     ? Math.max(min, Math.min(max, value))
     : fallback
+}
+function normalizeTone(value: unknown, fallback: AlertSettings['sendTone']): AlertSettings['sendTone'] {
+  return value === 'soft' || value === 'chime' || value === 'pulse' ? value : fallback
 }
 
 export const DEFAULT_SETTINGS: BoosterSettings = {
@@ -138,7 +165,13 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     pauseMs: 90,
   },
   alerts: {
-    responseCompleteSound: false,
+    enabled: true,
+    userSendSound: true,
+    responseCompleteSound: true,
+    conversationEndSound: true,
+    sendTone: 'soft',
+    completeTone: 'chime',
+    endTone: 'pulse',
     longRunningSound: false,
     longRunningThresholdMs: 120_000,
   },
@@ -152,13 +185,18 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     heightRatio: 0.65,
   },
   observer: {
-    enabled: false,
+    enabled: true,
     captureBodies: false,
     maxBodyChars: 2048,
   },
   telemetry: {
     enabled: false,
     endpoint: '',
+  },
+  automation: {
+    ...DEFAULT_AUTOMATION_CONFIGURATION,
+    rules: [],
+    remote: { ...DEFAULT_AUTOMATION_CONFIGURATION.remote },
   },
   archive: { defaultRule: { ...DEFAULT_CAPTURE_RULE }, projects: {}, conversations: {} },
   export: { ...DEFAULT_EXPORT_OPTIONS },
@@ -176,6 +214,18 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
       minimizedHeightRatio: 0.45,
     },
   },
+}
+
+/** Historical DOM rules remain inspectable, but can never run for ChatGPT. */
+function normalizeChatGptAutomationConfiguration(value: unknown): AutomationConfiguration {
+  const normalized = normalizeAutomationConfiguration(value)
+  return {
+    ...normalized,
+    domEvents: false,
+    rules: normalized.rules.map((rule) =>
+      rule.trigger.type === 'dom' ? { ...rule, enabled: false } : rule,
+    ),
+  }
 }
 
 export function normalizeSettings(value?: Partial<BoosterSettings>): BoosterSettings {
@@ -210,6 +260,13 @@ export function normalizeSettings(value?: Partial<BoosterSettings>): BoosterSett
       ),
     },
     alerts: {
+      enabled: value?.alerts?.enabled ?? DEFAULT_SETTINGS.alerts.enabled,
+      userSendSound: value?.alerts?.userSendSound ?? DEFAULT_SETTINGS.alerts.userSendSound,
+      conversationEndSound:
+        value?.alerts?.conversationEndSound ?? DEFAULT_SETTINGS.alerts.conversationEndSound,
+      sendTone: normalizeTone(value?.alerts?.sendTone, DEFAULT_SETTINGS.alerts.sendTone),
+      completeTone: normalizeTone(value?.alerts?.completeTone, DEFAULT_SETTINGS.alerts.completeTone),
+      endTone: normalizeTone(value?.alerts?.endTone, DEFAULT_SETTINGS.alerts.endTone),
       responseCompleteSound:
         value?.alerts?.responseCompleteSound ?? DEFAULT_SETTINGS.alerts.responseCompleteSound,
       longRunningSound: value?.alerts?.longRunningSound ?? DEFAULT_SETTINGS.alerts.longRunningSound,
@@ -246,12 +303,7 @@ export function normalizeSettings(value?: Partial<BoosterSettings>): BoosterSett
     observer: {
       ...DEFAULT_SETTINGS.observer,
       ...value?.observer,
-      enabled:
-        incomingSchema >= 5
-          ? (value?.observer?.enabled ?? DEFAULT_SETTINGS.observer.enabled)
-          : value && (value.observer?.captureBodies === true || value.telemetry?.enabled === true)
-            ? (value.observer?.enabled ?? true)
-            : false,
+      enabled: value?.observer?.enabled ?? DEFAULT_SETTINGS.observer.enabled,
     },
     telemetry: {
       ...DEFAULT_SETTINGS.telemetry,
@@ -261,6 +313,7 @@ export function normalizeSettings(value?: Partial<BoosterSettings>): BoosterSett
           ? DEFAULT_SETTINGS.telemetry.endpoint
           : (value?.telemetry?.endpoint ?? DEFAULT_SETTINGS.telemetry.endpoint),
     },
+    automation: normalizeChatGptAutomationConfiguration(value?.automation),
     archive: {
       defaultRule: normalizeCaptureRule(value?.archive?.defaultRule),
       projects: mergeCaptureRules({}, value?.archive?.projects),
@@ -271,6 +324,10 @@ export function normalizeSettings(value?: Partial<BoosterSettings>): BoosterSett
     ui: {
       ...DEFAULT_SETTINGS.ui,
       ...value?.ui,
+      activeSection:
+        (['modules', 'archive', 'sounds', 'analytics', 'other', 'triggers', 'remote'] as const).find(
+          (section) => section === value?.ui?.activeSection,
+        ) ?? DEFAULT_SETTINGS.ui.activeSection,
       archiveStart: value?.ui?.archiveStart === 'first' ? 'first' : 'latest',
       archiveWindow: {
         ...DEFAULT_SETTINGS.ui.archiveWindow,
@@ -306,9 +363,7 @@ export function normalizeSettings(value?: Partial<BoosterSettings>): BoosterSett
   }
 }
 
-export function snapshotSettings(
-  value: Partial<BoosterSettings> | BoosterSettings,
-): BoosterSettings {
+export function snapshotSettings(value: Partial<BoosterSettings> | BoosterSettings): BoosterSettings {
   const normalized = normalizeSettings(value)
   return {
     schemaVersion: SETTINGS_SCHEMA_VERSION,
@@ -338,6 +393,7 @@ export function snapshotSettings(
       enabled: normalized.telemetry.enabled,
       endpoint: normalized.telemetry.endpoint,
     },
+    automation: structuredClone(normalized.automation),
     archive: {
       defaultRule: { ...normalized.archive.defaultRule },
       projects: Object.fromEntries(
@@ -350,10 +406,7 @@ export function snapshotSettings(
     export: { ...normalized.export },
     exportOverrides: {
       projects: Object.fromEntries(
-        Object.entries(normalized.exportOverrides.projects).map(([key, value]) => [
-          key,
-          { ...value },
-        ]),
+        Object.entries(normalized.exportOverrides.projects).map(([key, value]) => [key, { ...value }]),
       ),
       conversations: Object.fromEntries(
         Object.entries(normalized.exportOverrides.conversations).map(([key, value]) => [
@@ -429,13 +482,15 @@ export function mergeSettings(
       ...normalized.telemetry,
       ...patch.telemetry,
     },
+    automation: {
+      ...normalized.automation,
+      ...patch.automation,
+      remote: { ...normalized.automation.remote, ...patch.automation?.remote },
+    },
     archive: {
       defaultRule: { ...normalized.archive.defaultRule, ...patch.archive?.defaultRule },
       projects: mergeCaptureRules(normalized.archive.projects, patch.archive?.projects),
-      conversations: mergeCaptureRules(
-        normalized.archive.conversations,
-        patch.archive?.conversations,
-      ),
+      conversations: mergeCaptureRules(normalized.archive.conversations, patch.archive?.conversations),
     },
     export: { ...normalized.export, ...patch.export },
     exportOverrides: mergeExportOverrides(normalized.exportOverrides, patch.exportOverrides),
@@ -453,6 +508,9 @@ export function mergeSettings(
 export interface SecretAdapter {
   getTelemetryToken(): Promise<string>
   setTelemetryToken(token: string): Promise<void>
+  /** Scoped credential; excluded from preferences, backups and diagnostic events. */
+  getRemoteToken?(): Promise<string>
+  setRemoteToken?(token: string): Promise<void>
 }
 
 export interface SettingsAdapter {

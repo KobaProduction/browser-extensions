@@ -1,4 +1,3 @@
-import { instanceKey } from '@kobaproduction/browser-core'
 import {
   archiveRecordKind,
   asRecord,
@@ -31,6 +30,7 @@ import {
   type ConversationCatalogEventDetail,
   TRANSPORT_CHANNEL,
 } from '@chatgpt-booster/observer'
+import { instanceKey } from '@kobaproduction/browser-core'
 import type { ConversationArchiveStore } from './archive-store'
 import { ConversationStateStore } from './conversation-state'
 
@@ -42,9 +42,7 @@ export interface CollectionTicket {
 }
 export function collectionTicket(): CollectionTicket | undefined {
   try {
-    const ticket = JSON.parse(
-      sessionStorage.getItem(TICKET_KEY) ?? 'null',
-    ) as CollectionTicket | null
+    const ticket = JSON.parse(sessionStorage.getItem(TICKET_KEY) ?? 'null') as CollectionTicket | null
     if (
       ticket &&
       ticket.conversationId === currentConversationId() &&
@@ -157,9 +155,7 @@ export class ConversationArchiveModule implements BoosterModule {
     if (!owner) return false
     // Unattributed pages and old v3 preload records cannot be relabeled as
     // belonging to the newly verified account.
-    const memoryPages = this.stateStore
-      .pages(conversationId)
-      .filter((page) => page.accountId === owner)
+    const memoryPages = this.stateStore.pages(conversationId).filter((page) => page.accountId === owner)
     const latestInitial = memoryPages
       .filter((page) => page.isInitial)
       .sort(
@@ -247,8 +243,7 @@ export class ConversationArchiveModule implements BoosterModule {
           records: memory.records,
         }
       : fallback
-    if (!snapshot || snapshot.conversationId !== conversationId || !snapshot.records.length)
-      return false
+    if (!snapshot || snapshot.conversationId !== conversationId || !snapshot.records.length) return false
 
     const projectId = currentProjectId() ?? snapshot.projectId ?? null
     const rule = captureRuleForOperation(
@@ -309,8 +304,7 @@ export class ConversationArchiveModule implements BoosterModule {
         ) as CollectionTicket | null
         if (
           stored &&
-          (stored.conversationId !== expected.conversationId ||
-            stored.startedAt !== expected.startedAt)
+          (stored.conversationId !== expected.conversationId || stored.startedAt !== expected.startedAt)
         )
           return
       } catch {
@@ -345,10 +339,7 @@ export class ConversationArchiveModule implements BoosterModule {
         Object.entries(this.#settings.archive.projects).map(([id, rule]) => [id, rule.enabled]),
       ),
       conversations: Object.fromEntries(
-        Object.entries(this.#settings.archive.conversations).map(([id, rule]) => [
-          id,
-          rule.enabled,
-        ]),
+        Object.entries(this.#settings.archive.conversations).map(([id, rule]) => [id, rule.enabled]),
       ),
       manualConversationId: collectionTicket()?.conversationId ?? null,
       manualStartedAt: collectionTicket()?.startedAt ?? null,
@@ -396,8 +387,7 @@ export class ConversationArchiveModule implements BoosterModule {
   async #persistPage(detail: ConversationArchiveEventDetail) {
     if (!this.#active) return
     const payload = detail.payload
-    if (!payload || !Array.isArray(payload.messages) || typeof detail.conversationId !== 'string')
-      return
+    if (!payload || !Array.isArray(payload.messages) || typeof detail.conversationId !== 'string') return
     const id = detail.conversationId
     if (payload.conversation_id && payload.conversation_id !== id) return
     if (
@@ -428,8 +418,7 @@ export class ConversationArchiveModule implements BoosterModule {
       const current = operationRule()
       return (
         this.#active &&
-        (detail.accountId === undefined ||
-          detail.accountId === this.stateStore.verifiedAccountId()) &&
+        (detail.accountId === undefined || detail.accountId === this.stateStore.verifiedAccountId()) &&
         current.enabled &&
         (!rule.reasoning || current.reasoning) &&
         (!rule.tools || current.tools) &&
@@ -484,8 +473,7 @@ export class ConversationArchiveModule implements BoosterModule {
     }
     if (data?.channel !== TRANSPORT_CHANNEL || data.type !== ARCHIVE_ASSET_EVENT) return
     const detail = data.detail as ArchiveAssetResolutionEventDetail | undefined
-    if (!detail || typeof detail.assetId !== 'string' || typeof detail.downloadUrl !== 'string')
-      return
+    if (!detail || typeof detail.assetId !== 'string' || typeof detail.downloadUrl !== 'string') return
     const conversationId = currentConversationId()
     if (!conversationId) return
     void this.store

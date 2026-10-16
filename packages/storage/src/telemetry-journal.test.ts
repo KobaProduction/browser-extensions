@@ -44,10 +44,30 @@ test('journal allowlist, bounded rotation, lease owner and acknowledgment surviv
   await expect(
     journal.append({ ...event, name: 'user-private-content', secret: 'NO' } as typeof event),
   ).rejects.toThrow()
+  await expect(
+    journal.append({ ...event, secret: 'synthetic-private' } as typeof event),
+  ).rejects.toThrow('Unsafe technical telemetry')
   await journal.append({ ...event, timestamp: 101 })
   await journal.append({ ...event, timestamp: 102 })
   await journal.append({ ...event, timestamp: 103 })
-  expect(await journal.summary()).toEqual({ pending: 2, sending: 0, discarded: 1 })
+  // Appending never evicts. Explicit scheduled rotation enforces retention.
+  expect(await journal.summary()).toEqual({
+    pending: 3,
+    sending: 0,
+    discarded: 0,
+    delivered: 0,
+    retained: 3,
+    lastRotationAt: null,
+  })
+  expect(await journal.prune(2, 86400000, 200)).toBe(1)
+  expect(await journal.summary()).toEqual({
+    pending: 2,
+    sending: 0,
+    discarded: 1,
+    delivered: 0,
+    retained: 2,
+    lastRotationAt: 200,
+  })
   const claimed = await journal.claim('first_worker_42', 200)
   expect(claimed.map((x) => x.timestamp)).toEqual([102, 103])
   expect(await journal.claim('second_worker_42', 201)).toHaveLength(0)
@@ -59,7 +79,14 @@ test('journal allowlist, bounded rotation, lease owner and acknowledgment surviv
   ).toBe(0)
   journal.close()
   const reopened = new DexieTelemetryJournal(id, drivers, 2)
-  expect(await reopened.summary()).toEqual({ pending: 0, sending: 2, discarded: 1 })
+  expect(await reopened.summary()).toEqual({
+    pending: 0,
+    sending: 2,
+    discarded: 1,
+    delivered: 0,
+    retained: 2,
+    lastRotationAt: 200,
+  })
   const reclaimed = await reopened.claim('second_worker_42', 46_000)
   expect(reclaimed).toHaveLength(2)
   expect(
@@ -72,7 +99,14 @@ test('journal allowlist, bounded rotation, lease owner and acknowledgment surviv
     'second_worker_42',
     reclaimed.map((x) => x.id ?? -1),
   )
-  expect(await reopened.summary()).toEqual({ pending: 2, sending: 0, discarded: 1 })
+  expect(await reopened.summary()).toEqual({
+    pending: 2,
+    sending: 0,
+    discarded: 1,
+    delivered: 0,
+    retained: 2,
+    lastRotationAt: 200,
+  })
   const next = await reopened.claim('second_worker_42', 46_001)
   expect(
     await reopened.acknowledge(
@@ -80,8 +114,49 @@ test('journal allowlist, bounded rotation, lease owner and acknowledgment surviv
       next.map((x) => x.id ?? -1),
     ),
   ).toBe(2)
-  expect(await reopened.summary()).toEqual({ pending: 0, sending: 0, discarded: 1 })
+  expect(await reopened.summary()).toEqual({
+    pending: 0,
+    sending: 0,
+    discarded: 1,
+    delivered: 2,
+    retained: 2,
+    lastRotationAt: 200,
+  })
   await reopened.clear()
-  expect(await reopened.summary()).toEqual({ pending: 0, sending: 0, discarded: 0 })
+  expect(await reopened.summary()).toEqual({
+    pending: 0,
+    sending: 0,
+    discarded: 0,
+    delivered: 0,
+    retained: 0,
+    lastRotationAt: null,
+  })
   reopened.close()
+})
+
+test('periodic rotation preserves active delivery leases and rotates expired leases in one batch', async () => {
+  const journal = new DexieTelemetryJournal(
+    scope('vk-booster', 'dev', 'synthetic-lease-rotation'),
+    drivers,
+  )
+  const event = { serviceId: 'VK Booster Service', name: 'application.notification', timestamp: 1 }
+  await journal.append(event)
+  await journal.append(event)
+  await journal.append(event)
+  const claimed = await journal.claim('synthetic_worker', 86400001, 2)
+  expect(await journal.prune(1, 86400000, 86400002)).toBe(1)
+  expect(await journal.summary()).toMatchObject({ sending: 2, retained: 2, discarded: 1 })
+  expect(await journal.prune(1, 86400000, 86450002)).toBe(2)
+  expect(
+    await journal.acknowledge(
+      'synthetic_worker',
+      claimed.map((row) => {
+        if (row.id === undefined) throw Error('Claimed telemetry row has no identity')
+        return row.id
+      }),
+    ),
+  ).toBe(0)
+  expect(await journal.summary()).toMatchObject({ retained: 0, discarded: 3, lastRotationAt: 86450002 })
+  await journal.clear()
+  journal.close()
 })

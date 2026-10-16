@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { FloatingInfoPopover } from '@kobaproduction/browser-ui'
 import type { ConversationItemMetadataView } from '@chatgpt-booster/core'
+import { FloatingInfoPopover } from '@kobaproduction/browser-ui'
 import BrainCircuit from 'lucide-vue-next/dist/esm/icons/brain-circuit.js'
 import Clock3 from 'lucide-vue-next/dist/esm/icons/clock-3.js'
 import { computed } from 'vue'
 
-import { translate, type SupportedLocale } from './i18n'
+import { type SupportedLocale, translate } from './i18n'
 
 const props = withDefaults(
   defineProps<{
@@ -29,15 +29,14 @@ function fullDate(value: number | null) {
 const sent = computed(() => fullDate(props.metadata.sentAt))
 const edited = computed(() => fullDate(props.metadata.editedAt))
 const timeLabel = computed(() => {
-  const parts = [sent.value && t('reader.sentAt') + ': ' + sent.value]
-  if (props.metadata.edited && edited.value)
-    parts.push(t('reader.editedAt') + ': ' + edited.value)
+  const parts = [sent.value && `${t('reader.sentAt')}: ${sent.value}`]
+  if (props.metadata.edited && edited.value) parts.push(`${t('reader.editedAt')}: ${edited.value}`)
   return parts.filter(Boolean).join('\n') || t('reader.timeUnknown')
 })
 const modelLabel = computed(() =>
   [
-    props.metadata.model && t('reader.model') + ': ' + props.metadata.model,
-    props.metadata.thinking && t('reader.thinking') + ': ' + props.metadata.thinking,
+    props.metadata.model && `${t('reader.model')}: ${props.metadata.model}`,
+    props.metadata.thinking && `${t('reader.thinking')}: ${props.metadata.thinking}`,
   ]
     .filter(Boolean)
     .join('\n'),

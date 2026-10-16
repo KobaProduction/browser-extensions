@@ -12,9 +12,11 @@ test('DEV, PROD and aggregate settings keys are physically isolated', () => {
     scopedIdentity('koba-browser', 'vk-booster:prod'),
   ]
   expect(new Set(ids).size).toBe(6)
-  const settings = readFileSync(new URL('./index.ts', import.meta.url), 'utf8')
-  expect(settings).toContain('instanceKey(namespace)')
-  expect(settings).toContain('scopedNamespace')
+  const settings = readFileSync(new URL('./settings-storage.ts', import.meta.url), 'utf8')
+  expect(settings).toMatch(/const prefix = `\$\{instanceKey\(namespace\)\}:`/)
+  expect(settings).toMatch(/chrome\.storage\.local\.get\(prefix\s*\+\s*key\)/)
+  expect(settings).toMatch(/GM_getValue<unknown>\(prefix\s*\+\s*key\)/)
+  expect(settings).toMatch(/GM_setValue\(prefix\s*\+\s*key,\s*value\)/)
 })
 
 test('MAIN observer is controlled by per-bundle lifecycle, not unconditionally installed', () => {

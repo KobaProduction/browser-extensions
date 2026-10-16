@@ -1,9 +1,20 @@
 <script setup lang="ts">
 /** VK archive preview, based on the source-neutral shared transcript widget. */
-import { Button } from '@kobaproduction/browser-ui'
+import {
+  Button,
+  Card,
+  Input,
+  Label,
+  useApplicationLocale,
+  useLocalizedText,
+} from '@kobaproduction/browser-ui'
 import { ArchiveTranscript, type ArchiveTranscriptTurn } from '@kobaproduction/browser-widgets'
 import { computed, ref, watch } from 'vue'
 import type { ArchiveApi, ArchiveStatus, VkPreviewAttachment } from '../model/types'
+import { VK_UI_MESSAGES } from './ui-messages'
+
+const locale = useApplicationLocale()
+const text = useLocalizedText(VK_UI_MESSAGES)
 
 const props = defineProps<{ api: ArchiveApi; status: ArchiveStatus }>()
 const query = ref('')
@@ -42,7 +53,9 @@ const turns = computed<ArchiveTranscriptTurn[]>(() =>
   }),
 )
 const copy = computed(() => ({
-  empty: query.value ? 'Сообщения с таким текстом не найдены.' : 'В выбранном архиве ещё нет сообщений.',
+  empty: query.value
+    ? text('Сообщения с таким текстом не найдены.')
+    : text('В выбранном архиве ещё нет сообщений.'),
   unassigned: '',
   adjacency: '',
   details: '',
@@ -72,30 +85,28 @@ function showNewer(): void {
   if (hasNewer.value) pageOffset.value = Math.max(0, pageOffset.value - pageSize)
 }
 function dateLabel(date: number): string {
-  return Number.isFinite(date) ? new Date(date * 1000).toLocaleString('ru-RU') : 'Дата неизвестна'
+  return Number.isFinite(date)
+    ? new Date(date * 1000).toLocaleString(locale.value)
+    : text('Дата неизвестна')
 }
 </script>
 
 <template>
-  <section class="booster-stack-card" aria-label="Просмотр сохранённой переписки">
+  <Card class="booster-stack-card" :aria-label="text('Просмотр сохранённой переписки')">
     <div class="booster-setting-copy">
-      <b>Сообщения из архива</b>
-      <span>
-        Папка: {{ status.folder }} · Найдено: {{ result.matching }}
-        · Сообщения: {{ windowStart }}–{{ result.messages.length ? windowEnd : 0 }}
+      <b>{{ text('Сообщения из архива') }}</b>
+      <span>{{ text(' Папка: ') }}{{ status.folder }}{{ text(' · Найдено: ') }}{{ result.matching }}{{ text(' · Сообщения: ') }}{{ windowStart }}–{{ result.messages.length ? windowEnd : 0 }}
       </span>
     </div>
-    <label class="booster-field">
-      Поиск по тексту сохранённых сообщений
-      <input
+    <Label class="booster-field">{{ text(' Поиск по тексту сохранённых сообщений ') }}<Input
         v-model="query"
-        class="booster-input w-full"
+        class="w-full"
         type="search"
-        placeholder="Введите текст сообщения…"
+        :placeholder="text('Введите текст сообщения…')"
         autocomplete="off"
-        aria-label="Поиск в локальном архиве"
+        :aria-label="text('Поиск в локальном архиве')"
       />
-    </label>
+    </Label>
     <div class="max-h-[420px] min-h-[130px] overflow-x-hidden overflow-y-auto rounded-lg border border-border bg-background p-3">
       <ArchiveTranscript
         :turns="turns"
@@ -111,48 +122,42 @@ function dateLabel(date: number): string {
           >
             <div class="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
               <b class="text-foreground">
-                {{ messageMap.get(record.key)?.out ? 'Вы' : 'ID ' + (messageMap.get(record.key)?.from_id ?? '—') }}
+                {{ messageMap.get(record.key)?.out ? text('Вы') : 'ID ' + (messageMap.get(record.key)?.from_id ?? '—') }}
               </b>
               <time>{{ dateLabel(messageMap.get(record.key)?.date ?? 0) }}</time>
             </div>
             <p class="m-0 whitespace-pre-wrap break-words text-sm text-foreground">
-              {{ messageMap.get(record.key)?.text || 'Сообщение без текста' }}
+              {{ messageMap.get(record.key)?.text || text('Сообщение без текста') }}
             </p>
-            <p v-if="messageMap.get(record.key)?.reply_message" class="mt-2 border-l-2 border-border pl-2 text-xs text-muted-foreground">
-              Ответ: {{ messageMap.get(record.key)?.reply_message?.text || 'вложение' }}
+            <p v-if="messageMap.get(record.key)?.reply_message" class="mt-2 border-l-2 border-border pl-2 text-xs text-muted-foreground">{{ text(' Ответ: ') }}{{ messageMap.get(record.key)?.reply_message?.text || text('вложение') }}
             </p>
-            <p v-if="messageMap.get(record.key)?.fwd_messages?.length" class="mt-2 text-xs text-muted-foreground">
-              Пересланных: {{ messageMap.get(record.key)?.fwd_messages?.length }}
+            <p v-if="messageMap.get(record.key)?.fwd_messages?.length" class="mt-2 text-xs text-muted-foreground">{{ text(' Пересланных: ') }}{{ messageMap.get(record.key)?.fwd_messages?.length }}
             </p>
             <div v-if="receiptMap[record.key]?.length" class="mt-2 border-t border-border pt-2">
-              <b class="text-xs text-foreground">Вложения (по записям архива)</b>
-              <ul class="m-0 mt-1 flex flex-col gap-1 p-0" aria-label="Вложения сохранённого сообщения">
+              <b class="text-xs text-foreground">{{ text('Вложения (по записям архива)') }}</b>
+              <ul class="m-0 mt-1 flex flex-col gap-1 p-0" :aria-label="text('Вложения сохранённого сообщения')">
                 <li
                   v-for="(receipt, index) in receiptMap[record.key]"
                   :key="index"
                   class="flex min-w-0 flex-col gap-0.5 text-xs text-muted-foreground"
                 >
                   <span class="break-words text-foreground">{{ receipt.name }}</span>
-                  <span>{{ receiptLabel(receipt) }}</span>
+                  <span>{{ text(receiptLabel(receipt)) }}</span>
                 </li>
               </ul>
-              <p class="m-0 mt-1 text-xs text-muted-foreground">
-                Это статус из metadata.json, а не повторная проверка файла на диске.
-              </p>
+              <p class="m-0 mt-1 text-xs text-muted-foreground">{{ text(' Это статус из metadata.json, а не повторная проверка файла на диске. ') }}</p>
             </div>
           </div>
         </template>
       </ArchiveTranscript>
     </div>
     <div class="flex flex-wrap items-center justify-between gap-2">
-      <span class="text-xs text-muted-foreground">
-        Для всех сообщений и сохранённых медиа открой index.html в папке архива.
-      </span>
-      <div class="flex flex-wrap gap-2" aria-label="Навигация по сохранённым сообщениям">
-        <Button v-if="hasOlder" variant="outline" size="sm" @click="showOlder">Ранее</Button>
-        <Button v-if="hasNewer" variant="outline" size="sm" @click="showNewer">К новым</Button>
-        <Button v-if="hasNewer" variant="outline" size="sm" @click="pageOffset = 0">К последним</Button>
+      <span class="text-xs text-muted-foreground">{{ text(' Для всех сообщений и сохранённых медиа открой index.html в папке архива. ') }}</span>
+      <div class="flex flex-wrap gap-2" :aria-label="text('Навигация по сохранённым сообщениям')">
+        <Button v-if="hasOlder" variant="outline" size="sm" @click="showOlder">{{ text('Ранее') }}</Button>
+        <Button v-if="hasNewer" variant="outline" size="sm" @click="showNewer">{{ text('К новым') }}</Button>
+        <Button v-if="hasNewer" variant="outline" size="sm" @click="pageOffset = 0">{{ text('К последним') }}</Button>
       </div>
     </div>
-  </section>
+  </Card>
 </template>

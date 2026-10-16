@@ -1,0 +1,106 @@
+/* v0.6 archive workspace */
+.booster-archive-workspace-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483645;
+  pointer-events: none;
+}
+.booster-archive-workspace {
+  position: fixed;
+  min-width: 520px;
+  min-height: 360px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--background);
+  box-shadow: 0 22px 70px rgb(0 0 0 / 32%);
+  pointer-events: auto;
+  resize: none;
+}
+.booster-archive-workspace .booster-reader {
+  height: 100%;
+  overflow: hidden;
+  border-radius: inherit;
+  background: var(--background);
+}
+.booster-archive-workspace [data-archive-drag-handle] {
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+}
+.booster-archive-grip {
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+}
+.booster-archive-resize {
+  position: absolute;
+  z-index: 4;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  background: linear-gradient(
+    135deg,
+    transparent 0 48%,
+    var(--muted-foreground) 49% 54%,
+    transparent 55% 64%,
+    var(--muted-foreground) 65% 70%,
+    transparent 71%
+  );
+  opacity: 0.55;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+.booster-archive-dock-button {
+  position: fixed;
+  z-index: 2147483646;
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid color-mix(in oklab, var(--primary) 60%, var(--border));
+  border-radius: 10px 0 0 10px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 28%);
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+}
+.booster-archive-dock-button[style*="left: 0px"] {
+  border-radius: 0 10px 10px 0;
+}
+.booster-archive-dock-button:active {
+  cursor: grabbing;
+}
+.booster-archive-dock-corner {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 9px;
+  height: 9px;
+  opacity: 0.65;
+}
+.booster-reader-chat-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.booster-exchange-details {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 10px 12px;
+  padding: 8px 0 8px 12px;
+  border-left: 2px solid color-mix(in oklab, var(--border) 78%, var(--primary));
+}
+.booster-exchange-details-label {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}

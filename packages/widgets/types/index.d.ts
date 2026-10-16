@@ -1,4 +1,42 @@
 import type { DefineComponent } from 'vue'
+export declare const ApplicationBackupSettings: DefineComponent
+export interface ArchiveExportChoice {
+  id: string
+  label: string
+}
+export declare const ArchiveExportFormatFields: DefineComponent<{
+  format: string
+  packaging: string
+  formats: readonly ArchiveExportChoice[]
+  packages: readonly ArchiveExportChoice[]
+  formatLabel: string
+  packagingLabel: string
+  disabled?: boolean
+  'onUpdate:format'?: (value: string) => void
+  'onUpdate:packaging'?: (value: string) => void
+}>
+export declare const ArchiveReadingSurface: DefineComponent<{ timelineVisible: boolean }> & {
+  new (): { $slots: { default(): unknown; timeline(): unknown; status(): unknown } }
+}
+export interface PortableBackupSelection {
+  settings: boolean
+  indexeddb: boolean
+}
+export interface PortableBackupExportOptions extends PortableBackupSelection {
+  compression: 'gzip' | 'none'
+  chunkRows: number
+}
+export declare const PortableBackupPanel: DefineComponent<{
+  available: PortableBackupSelection
+  pending: boolean
+  inspected?: (PortableBackupSelection & { rows: number; createdAt: string }) | null
+  error?: string
+  success?: string
+  progress?: { phase: string; completed: number; total: number; percent: number; entries: number } | null
+  onExport?: (options: PortableBackupExportOptions) => void
+  onInspect?: (file: File) => void
+  onRestore?: (options: PortableBackupSelection) => void
+}>
 export type ArchiveManagerMode = 'recent' | 'incremental' | 'backfill'
 export interface ArchiveManagerOptions {
   mode: ArchiveManagerMode
@@ -14,6 +52,7 @@ export interface ArchiveManagerState {
   folder: string | null
   messages: number
   busy: boolean
+  folderPending?: boolean
   paused: boolean
   blockedReason?: string | null
   phase: string
@@ -29,6 +68,10 @@ export declare const ArchiveManager: DefineComponent<{
   initial: ArchiveManagerOptions
   error?: string
   title?: string
+  onChooseFolder?: () => void
+  onStart?: (options: ArchiveManagerOptions) => void
+  onStop?: () => void
+  onResume?: () => void
 }>
 
 export interface ArchiveConversationRow {
@@ -124,6 +167,34 @@ export declare const ArchiveTranscript: DefineComponent<{
 }> & {
   new (): { $slots: { record(props: { record: ArchiveTranscriptRecord }): unknown } }
 }
+export interface ArchiveRecordListProps<T> {
+  records: readonly T[]
+  recordKey: (record: T) => string | number
+  messageId: (record: T) => string | number
+  targetMessageId?: string | number | null
+  selectable?: boolean
+  selectedIds?: ReadonlySet<string>
+  selectionLabel?: (record: T) => string
+  disabled?: boolean
+  onSelect?: (messageId: string, checked: boolean) => void
+}
+export declare const ArchiveRecordList: {
+  new <T>(
+    props: ArchiveRecordListProps<T>,
+  ): {
+    $props: ArchiveRecordListProps<T>
+    $slots: { record(props: { record: T; index: number }): unknown }
+  }
+}
+export declare const ArchiveSelectionScope: DefineComponent<{
+  modelValue: 'all' | 'selected'
+  selectedCount: number
+  disabled?: boolean
+  label?: string
+  allLabel?: string
+  selectedLabel?: string
+  emptyLabel?: string
+}>
 
 export interface ArchiveFocusRect {
   top: number
@@ -165,3 +236,35 @@ export declare const ConversationCollectionAction: DefineComponent<{
   stopLabel?: string
   savedLabel?: string
 }>
+export interface ArchiveTimelineNode {
+  id: string
+  parentId: string | null
+  label: string
+  preview?: string
+  uncertain?: boolean
+}
+export interface ArchiveTimelineLayoutOptions {
+  rowHeight?: number
+  maxWidth?: number
+}
+export declare const ARCHIVE_TIMELINE_WINDOW_SIZE: 160
+export declare function archiveTimelineWindowStart(count: number, index: number, size?: number): number
+export declare const ArchiveTimeline: DefineComponent<{
+  nodes: readonly ArchiveTimelineNode[]
+  activeId?: string | null
+  selectedIds?: ReadonlySet<string>
+  label: string
+  emptyLabel: string
+  uncertainLabel?: string
+  disabled?: boolean
+  loading?: boolean
+}>
+export declare function archiveTimelineLayout(
+  nodes: readonly ArchiveTimelineNode[],
+  options?: ArchiveTimelineLayoutOptions,
+): {
+  points: { id: string; index: number; lane: number; x: number; y: number }[]
+  edges: { childId: string; parentId: string; path: string; uncertain: boolean }[]
+  width: number
+  height: number
+}

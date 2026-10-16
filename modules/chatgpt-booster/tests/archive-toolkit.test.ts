@@ -4,10 +4,7 @@ import {
   archiveRecordMetadata,
   buildArchiveThread,
 } from '../packages/chatgpt/src/archive-records'
-import {
-  parseStreamingToolStatus,
-  toolInvocationFromRecord,
-} from '../packages/chatgpt/src/tool-calls'
+import { parseStreamingToolStatus, toolInvocationFromRecord } from '../packages/chatgpt/src/tool-calls'
 import {
   type ArchiveRecordView,
   captureRuleFor,
@@ -21,10 +18,7 @@ import {
   serverTimeMs,
   snapshotSettings,
 } from '../packages/core/src'
-import {
-  type HistoryPageEvidence,
-  historyCoverage,
-} from '../packages/features/src/archive-coverage'
+import { type HistoryPageEvidence, historyCoverage } from '../packages/features/src/archive-coverage'
 import {
   ArchiveExportPipeline,
   createArchiveExportPipeline,
@@ -80,14 +74,20 @@ describe('dock persistence and settings migration', () => {
     expect(dockFromDrop(100, 200, 1000, 444)).toEqual({ side: 'left', heightRatio: 0.5 })
     expect(dockFromDrop(800, 900, 1000, 444)).toEqual({ side: 'right', heightRatio: 1 })
   })
-  test('schema migration preserves configured telemetry and denies unsolicited capture', () => {
+  test('settings preserve telemetry and enable the owner-requested default capture policy', () => {
     const previous = {
       ...normalizeSettings(),
       schemaVersion: 2,
       telemetry: { enabled: true, endpoint: 'https://example.test/otlp' },
     }
     expect(normalizeSettings(previous).telemetry.endpoint).toBe(previous.telemetry.endpoint)
-    expect(normalizeSettings().archive.defaultRule.enabled).toBe(false)
+    expect(normalizeSettings().archive.defaultRule.enabled).toBe(true)
+    expect(
+      normalizeSettings({ archive: { defaultRule: { enabled: false } } }).archive.defaultRule.enabled,
+    ).toBe(false)
+    expect(
+      captureRuleFor(normalizeSettings().archive, 'unconfigured-chat', 'unconfigured-project').enabled,
+    ).toBe(true)
   })
   test('scope patches preserve siblings and roundtrip export preferences', () => {
     let settings = mergeSettings(normalizeSettings(), {
@@ -166,10 +166,7 @@ describe('conversation vs nested records', () => {
       firstSeenAt: undefined,
     })
     const saved = buildArchiveThread([undated, dated], { unknownTimeLast: true })
-    expect(saved.turns.map((turn) => turn.messages[0]?.record.messageId)).toEqual([
-      'dated',
-      'undated',
-    ])
+    expect(saved.turns.map((turn) => turn.messages[0]?.record.messageId)).toEqual(['dated', 'undated'])
     expect(saved.turns[1]?.messages[0]?.record.createTime).toBeNull()
   })
   test('deduplicates scoped record IDs, does not count status strings', () => {
@@ -203,10 +200,7 @@ describe('conversation vs nested records', () => {
     ]
     const thread = buildArchiveThread(records)
     const grouped = thread.turns.find((turn) => turn.id === 'user:user-a')
-    expect(grouped?.messages.map((item) => item.record.messageId).sort()).toEqual([
-      'answer-a',
-      'user-a',
-    ])
+    expect(grouped?.messages.map((item) => item.record.messageId).sort()).toEqual(['answer-a', 'user-a'])
     expect(grouped?.details.map((item) => item.record.messageId)).toEqual(['detail-a'])
     expect(thread.turns.find((turn) => turn.id === 'unassigned')?.association).toBe('unassigned')
   })
@@ -279,6 +273,16 @@ describe('conversation vs nested records', () => {
       model: 'gpt-test',
       thinking: 'high',
     })
+  })
+
+  test('local source observation time never becomes a message send timestamp', () => {
+    const item = record('observed-only', 'assistant', 'text', {
+      createTime: null,
+      firstSeenAt: 1_800_000_000_000,
+    })
+    expect(archiveRecordMetadata(item).sentAt).toBeNull()
+    expect(item.firstSeenAt).toBe(1_800_000_000_000)
+    expect(archiveRecordMetadata({ ...item, createTime: 1_700_000_000 }).sentAt).toBe(1_700_000_000)
   })
 
   test('tool metadata parser resolves nested MCP provider/action once for archive and live UI', () => {
@@ -364,6 +368,16 @@ describe('conversation vs nested records', () => {
     expect(tool?.timestamp).toBeNull()
     expect(tool?.durationMs).toBeNull()
     expect(tool?.finishedAt).toBe(1700000002)
+  })
+
+  test('source tool arguments remain inspectable when supplied as plain text or JSON parts', () => {
+    const call = record('plain-tool', 'assistant', 'text', {
+      recipient: 'functions.exec',
+      raw: { content: { content_type: 'text', parts: ['const total = 1 + 2;'] } },
+    })
+    expect(toolInvocationFromRecord(call)?.payload).toBe('const total = 1 + 2;')
+    const jsonCall = { ...call, raw: { content: { content_type: 'text', parts: ['{"value":3}'] } } }
+    expect(toolInvocationFromRecord(jsonCall)?.payload).toEqual({ value: 3 })
   })
 
   test('server seconds and observed milliseconds sort on the same scale', () => {
@@ -661,8 +675,7 @@ describe('conversation vs nested records', () => {
           width: null,
           height: null,
           kind: 'file',
-          downloadUrl:
-            'https://chatgpt.com/backend-api/estuary/content?id=file_tool_hidden&sig=test',
+          downloadUrl: 'https://chatgpt.com/backend-api/estuary/content?id=file_tool_hidden&sig=test',
           resolverObservedAt: 1,
           firstSeenAt: 1,
           lastSeenAt: 1,
@@ -836,8 +849,7 @@ describe('conversation vs nested records', () => {
 describe('fresh contiguous pagination evidence', () => {
   test('oldest page alone does not prove complete history', () => {
     expect(
-      historyCoverage([page({ isInitial: false, hasPreviousPage: false, hasNextPage: true })])
-        .verified,
+      historyCoverage([page({ isInitial: false, hasPreviousPage: false, hasNextPage: true })]).verified,
     ).toBe(false)
   })
   test('initial complete page proves current history snapshot', () => {
@@ -1033,12 +1045,8 @@ describe('resume regressions: consent, evidence and export boundaries', () => {
       tools: true,
       internal: false,
     })
-    expect(captureRuleForOperation(settings.archive, 'chat', 'project', false, true).enabled).toBe(
-      false,
-    )
-    expect(captureRuleForOperation(settings.archive, 'other', null, false, true).enabled).toBe(
-      false,
-    )
+    expect(captureRuleForOperation(settings.archive, 'chat', 'project', false, true).enabled).toBe(false)
+    expect(captureRuleForOperation(settings.archive, 'other', null, false, true).enabled).toBe(true)
   })
   test('same read and request time uses the latest observed initial evidence', () => {
     const older = page({ readStartedAt: 10, observedAt: 20, hasPreviousPage: false })

@@ -1,13 +1,24 @@
 <script setup lang="ts">
-import { FloatingInfoPopover, JsonViewer } from '@kobaproduction/browser-ui'
+import {
+  Button,
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
+  JsonViewer,
+} from '@kobaproduction/browser-ui'
 import Check from 'lucide-vue-next/dist/esm/icons/check.js'
 import Clipboard from 'lucide-vue-next/dist/esm/icons/clipboard.js'
 import ExternalLink from 'lucide-vue-next/dist/esm/icons/external-link.js'
 import Globe2 from 'lucide-vue-next/dist/esm/icons/globe.js'
 import Wrench from 'lucide-vue-next/dist/esm/icons/wrench.js'
+import X from 'lucide-vue-next/dist/esm/icons/x.js'
 import { computed, ref } from 'vue'
 
-import { Button } from './components/ui/button'
 import { translate } from './i18n'
 import type { ToolCallViewModel } from './tool-inspector'
 
@@ -47,7 +58,9 @@ const durationLabel = computed(() => {
 })
 const isWebTool = computed(() =>
   /(?:^|\b)(web|browser|search)(?:\b|$)/i.test(
-    [props.model.tool.provider, props.model.tool.action, props.model.tool.label].filter(Boolean).join(' '),
+    [props.model.tool.provider, props.model.tool.action, props.model.tool.label]
+      .filter(Boolean)
+      .join(' '),
   ),
 )
 
@@ -61,14 +74,17 @@ async function copyDiagnostics() {
 </script>
 
 <template>
-  <FloatingInfoPopover
-    mode="hover-click"
-    :label="t('tool.inspect')"
-    align="start"
-    trigger-class="booster-tool-inspect-trigger"
-  >
-    <template #trigger><Wrench class="size-3.5" /></template>
-    <template #default="{ pinned }">
+  <Dialog>
+    <DialogTrigger as-child>
+      <Button type="button" variant="ghost" size="icon-sm"
+        class="booster-tool-inspect-trigger"
+        :aria-label="`${t('tool.inspect')}: ${model.tool.label}`"
+        @click.stop>
+        <Wrench class="size-3.5" />
+      </Button>
+    </DialogTrigger>
+    <DialogContent class="booster-tool-detail-dialog max-h-[calc(100dvh-32px)] w-[min(640px,calc(100vw-32px))] max-w-none overflow-y-auto p-5"
+      :hide-close-button="true" :aria-describedby="undefined" @click.stop>
       <div class="booster-tool-detail-popover" :lang="model.locale">
         <header>
           <img
@@ -80,22 +96,28 @@ async function copyDiagnostics() {
           <Globe2 v-else-if="isWebTool" class="size-4 shrink-0" />
           <Wrench v-else class="size-4 shrink-0" />
           <div class="min-w-0 flex-1">
-            <strong>{{ model.tool.provider || model.tool.label }}</strong>
+            <DialogTitle class="text-sm">{{ model.tool.provider || model.tool.label }}</DialogTitle>
             <span v-if="model.tool.action">{{ model.tool.action }}</span>
           </div>
           <Button
-            v-if="pinned"
             variant="ghost"
             size="icon-sm"
-            :title="t('tool.copyDiagnostics')"
+            :aria-label="t('tool.copyDiagnostics')"
             @click.stop="copyDiagnostics"
           >
             <Check v-if="copied" class="size-3.5" />
             <Clipboard v-else class="size-3.5" />
           </Button>
+          <DialogClose as-child>
+            <Button type="button" variant="ghost" size="icon-sm" :aria-label="t('common.close')">
+              <X class="size-4" />
+            </Button>
+          </DialogClose>
         </header>
 
         <div class="booster-meta-lines">
+          <strong class="booster-meta-label">{{ t('tool.id') }}</strong>
+          <span class="booster-meta-value font-mono break-all">{{ model.id }}</span>
           <template v-if="durationLabel">
             <strong class="booster-meta-label">{{ t('tool.duration') }}</strong>
             <span class="booster-meta-value">{{ durationLabel }}</span>
@@ -108,26 +130,25 @@ async function copyDiagnostics() {
             <strong class="booster-meta-label">{{ t('tool.action') }}</strong>
             <span class="booster-meta-value">{{ model.tool.action }}</span>
           </template>
-          <template v-if="pinned && startedAt">
+          <template v-if="startedAt">
             <strong class="booster-meta-label">{{ t('tool.startedAt') }}</strong>
             <span class="booster-meta-value">{{ startedAt }}</span>
           </template>
-          <template v-if="pinned && finishedAt">
+          <template v-if="finishedAt">
             <strong class="booster-meta-label">{{ t('tool.finishedAt') }}</strong>
             <span class="booster-meta-value">{{ finishedAt }}</span>
           </template>
-          <template v-if="pinned && model.tool.recipient">
+          <template v-if="model.tool.recipient">
             <strong class="booster-meta-label">{{ t('tool.recipient') }}</strong>
             <span class="booster-meta-value">{{ model.tool.recipient }}</span>
           </template>
-          <template v-if="pinned && model.tool.path">
+          <template v-if="model.tool.path">
             <strong class="booster-meta-label">{{ t('tool.path') }}</strong>
             <span class="booster-meta-value booster-tool-path">{{ model.tool.path }}</span>
           </template>
         </div>
 
-        <a
-          v-if="pinned && model.tool.link"
+        <Button v-if="model.tool.link" variant="link" size="sm" as-child><a
           class="booster-tool-link"
           :href="model.tool.link"
           target="_blank"
@@ -135,31 +156,33 @@ async function copyDiagnostics() {
           @click.stop
         >
           <ExternalLink class="size-3.5" />{{ t('tool.link') }}
-        </a>
+        </a></Button>
 
-        <div v-if="pinned && model.tool.payload !== null" class="booster-tool-payload">
+        <div v-if="model.tool.payload !== null" class="booster-tool-payload">
           <strong>{{ t('tool.clientPayload') }}</strong>
           <JsonViewer :value="model.tool.payload" />
         </div>
 
-        <div v-if="pinned && model.tool.result !== null" class="booster-tool-payload">
+        <div v-if="model.tool.result !== null" class="booster-tool-payload">
           <strong>{{ t('tool.result') }}</strong>
           <JsonViewer :value="model.tool.result" />
         </div>
 
-        <details
-          v-if="pinned && (Object.keys(model.attributes).length || model.visibleText)"
+        <Collapsible
+          v-if="Object.keys(model.attributes).length || model.visibleText"
           class="booster-tool-evidence"
         >
-          <summary>{{ t('tool.domEvidence') }}</summary>
+          <CollapsibleTrigger as-child><Button type="button" variant="ghost" size="sm">{{ t('tool.domEvidence') }}</Button></CollapsibleTrigger>
+          <CollapsibleContent>
           <dl v-if="Object.keys(model.attributes).length" class="booster-tool-attributes">
             <template v-for="(value, key) in model.attributes" :key="key">
               <dt>{{ key }}</dt><dd>{{ value }}</dd>
             </template>
           </dl>
           <pre>{{ model.visibleText }}</pre>
-        </details>
+          </CollapsibleContent>
+        </Collapsible>
       </div>
-    </template>
-  </FloatingInfoPopover>
+    </DialogContent>
+  </Dialog>
 </template>

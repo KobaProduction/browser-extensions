@@ -6,6 +6,16 @@ import {
   type ArchiveThreadView,
   serverTimeMs,
 } from '@chatgpt-booster/core'
+import {
+  type ArchiveExportInput,
+  type ArchiveMessageV1,
+  type ArchiveReadableRecord,
+  type ChunkedArchiveExport,
+  serializeArchiveExportChunks as serializeSharedChunks,
+  serializeArchiveExport as serializeSharedExport,
+} from '@kobaproduction/browser-archive'
+import { isLosslessJsonSource, type PreparedArchiveOriginal } from './archive-export-source'
+import { type ChatGptSourceContext, projectChatGptSourceContext } from './archive-source-snapshot'
 
 export interface ArchiveExportRecord {
   id: string
@@ -19,7 +29,10 @@ export interface ArchiveExportRecord {
   model?: string | null
   parentId?: string | null
   turnExchangeId?: string | null
-  originalRecord?: Record<string, unknown>
+  originalRecord?: unknown
+  originalRecordEncoding?: 'archive-clone-v1'
+  context?: ChatGptSourceContext
+  normalized?: ArchiveMessageV1
 }
 
 export interface ArchiveExportTurn {
@@ -52,6 +65,8 @@ export interface ArchiveSerializedExport {
 export interface ArchiveExportFormatProvider {
   descriptor: Omit<ArchiveExportFormatDescriptor, 'isDefault'>
   serialize(document: ArchiveExportDocument): ArchiveSerializedExport
+  /** Optional for external formats; built-ins avoid a whole-output string. */
+  serializeChunks?(document: ArchiveExportDocument): ChunkedArchiveExport
 }
 
 export function exportIncludes(item: ArchiveItemView, options: ArchiveExportOptions): boolean {
@@ -63,9 +78,17 @@ export function exportIncludes(item: ArchiveItemView, options: ArchiveExportOpti
   return options.internal
 }
 
-function projectItem(item: ArchiveItemView, options: ArchiveExportOptions): ArchiveExportRecord {
+function projectItem(
+  item: ArchiveItemView,
+  options: ArchiveExportOptions,
+  originals?: ReadonlyMap<string, PreparedArchiveOriginal>,
+): ArchiveExportRecord {
   const record = item.record
+  const original = originals?.get(record.messageId)
+  if (options.level === 'full' && !original && !isLosslessJsonSource(record.raw))
+    throw Error('Lossless source codec preparation required')
   return {
+    ...(record.normalized ? { normalized: record.normalized } : {}),
     id: record.messageId,
     kind: item.kind,
     role: record.role,
@@ -80,7 +103,13 @@ function projectItem(item: ArchiveItemView, options: ArchiveExportOptions): Arch
           model: record.modelSlug,
           parentId: record.parentId,
           turnExchangeId: record.turnExchangeId,
-          ...(options.level === 'full' ? { originalRecord: record.raw } : {}),
+          context: projectChatGptSourceContext(record.raw),
+          ...(options.level === 'full'
+            ? {
+                originalRecord: original ? original.value : record.raw,
+                ...(original?.encoding ? { originalRecordEncoding: original.encoding } : {}),
+              }
+            : {}),
         }
       : {}),
   }
@@ -91,6 +120,7 @@ export function createArchiveExportDocument(
   thread: ArchiveThreadView,
   options: ArchiveExportOptions,
   evidence: unknown,
+  originals?: ReadonlyMap<string, PreparedArchiveOriginal>,
 ): ArchiveExportDocument {
   const turns = thread.turns
     .map((turn) => ({
@@ -98,10 +128,10 @@ export function createArchiveExportDocument(
       association: turn.association,
       messages: turn.messages
         .filter((item) => exportIncludes(item, options))
-        .map((item) => projectItem(item, options)),
+        .map((item) => projectItem(item, options, originals)),
       details: turn.details
         .filter((item) => exportIncludes(item, options))
-        .map((item) => projectItem(item, options)),
+        .map((item) => projectItem(item, options, originals)),
     }))
     .filter((turn) => turn.messages.length || turn.details.length)
 
@@ -128,20 +158,9 @@ const jsonFormat: ArchiveExportFormatProvider = {
     fileExtension: 'json',
   },
   serialize(document) {
-    return {
-      text: JSON.stringify(document, null, 2),
-      mime: this.descriptor.mimeType,
-      extension: this.descriptor.fileExtension,
-    }
+    return serializeSharedExport('json', { document, title: '', records: [] })
   },
-}
-
-function jsonBlock(value: unknown): string[] {
-  const text = JSON.stringify(value, null, 2)
-  const tick = String.fromCharCode(96)
-  const runs = text.match(new RegExp(tick + '+', 'g')) ?? []
-  const fence = tick.repeat(Math.max(3, ...runs.map((run) => run.length + 1)))
-  return [fence + 'json', text, fence, '']
+  serializeChunks: (document) => serializeSharedChunks('json', { document, title: '', records: [] }),
 }
 
 function exportEntries(turn: ArchiveExportTurn): ArchiveExportRecord[] {
@@ -170,18 +189,32 @@ function readableMessageText(message: ArchiveExportRecord): string {
     .trim()
 }
 
-function attachmentLines(message: ArchiveExportRecord): string[] {
-  if (!message.attachments.length) return []
-  return [
-    'Attachments:',
-    ...message.attachments.map(
-      (attachment) =>
-        '- ' +
-        (attachment.fileName || 'File') +
-        (attachment.mimeType ? ' (' + attachment.mimeType + ')' : ''),
-    ),
-    '',
-  ]
+function readableExportInput(document: ArchiveExportDocument): ArchiveExportInput {
+  return {
+    document,
+    title: document.conversation.title ?? 'Untitled',
+    includeOriginal: document.selection.level === 'full',
+    records: (function* (): Generator<ArchiveReadableRecord> {
+      for (const turn of document.turns)
+        for (const message of exportEntries(turn))
+          yield {
+            heading: readableKind(message.kind),
+            headingLevel: message.kind === 'user' || message.kind === 'answer' ? 2 : 3,
+            text: readableMessageText(message),
+            attachments: message.attachments.map((attachment) => ({
+              name: attachment.fileName || 'File',
+              mime: attachment.mimeType,
+            })),
+            ...(message.originalRecord !== undefined
+              ? {
+                  original: message.originalRecordEncoding
+                    ? { encoding: message.originalRecordEncoding, value: message.originalRecord }
+                    : message.originalRecord,
+                }
+              : {}),
+          }
+    })(),
+  }
 }
 
 const markdownFormat: ArchiveExportFormatProvider = {
@@ -192,26 +225,9 @@ const markdownFormat: ArchiveExportFormatProvider = {
     fileExtension: 'md',
   },
   serialize(document) {
-    const lines = ['# ' + (document.conversation.title ?? 'Untitled').replace(/[\r\n]+/g, ' '), '']
-    for (const turn of document.turns) {
-      for (const message of exportEntries(turn)) {
-        const visible = message.kind === 'user' || message.kind === 'answer'
-        lines.push((visible ? '## ' : '### ') + readableKind(message.kind), '')
-        const content = readableMessageText(message)
-        if (content) lines.push(content, '')
-        lines.push(...attachmentLines(message))
-        // The full profile is an explicit technical backup. Ordinary/custom Markdown
-        // must not repeat each record as a JSON block after its visible text.
-        if (document.selection.level === 'full' && message.originalRecord)
-          lines.push('Original record:', '', ...jsonBlock(message.originalRecord))
-      }
-    }
-    return {
-      text: lines.join('\n').trimEnd() + '\n',
-      mime: this.descriptor.mimeType,
-      extension: this.descriptor.fileExtension,
-    }
+    return serializeSharedExport('markdown', readableExportInput(document))
   },
+  serializeChunks: (document) => serializeSharedChunks('markdown', readableExportInput(document)),
 }
 
 const textFormat: ArchiveExportFormatProvider = {
@@ -222,23 +238,9 @@ const textFormat: ArchiveExportFormatProvider = {
     fileExtension: 'txt',
   },
   serialize(document) {
-    const lines = [document.conversation.title ?? 'Untitled', '']
-    for (const turn of document.turns) {
-      for (const message of exportEntries(turn)) {
-        lines.push(readableKind(message.kind) + ':')
-        if (readableMessageText(message)) lines.push(readableMessageText(message))
-        lines.push(...attachmentLines(message))
-        if (document.selection.level === 'full' && message.originalRecord)
-          lines.push(JSON.stringify(message.originalRecord, null, 2))
-        lines.push('')
-      }
-    }
-    return {
-      text: lines.join('\n').trimEnd() + '\n',
-      mime: this.descriptor.mimeType,
-      extension: this.descriptor.fileExtension,
-    }
+    return serializeSharedExport('text', readableExportInput(document))
   },
+  serializeChunks: (document) => serializeSharedChunks('text', readableExportInput(document)),
 }
 
 export const BUILTIN_ARCHIVE_EXPORT_FORMATS: readonly ArchiveExportFormatProvider[] = [
@@ -260,8 +262,8 @@ export class ArchiveExportPipeline {
     for (const provider of providers) {
       const id = provider.descriptor.id.trim()
       if (!/^[a-z0-9][a-z0-9._-]{0,63}$/i.test(id))
-        throw new Error('Invalid archive export format id: ' + id)
-      if (this.#providers.has(id)) throw new Error('Duplicate archive export format id: ' + id)
+        throw new Error(`Invalid archive export format id: ${id}`)
+      if (this.#providers.has(id)) throw new Error(`Duplicate archive export format id: ${id}`)
       this.#providers.set(id, provider)
     }
     this.#defaultFormatId = this.#providers.has(defaultFormatId)
@@ -285,14 +287,37 @@ export class ArchiveExportPipeline {
     thread: ArchiveThreadView,
     options: ArchiveExportOptions,
     evidence: unknown,
+    originals?: ReadonlyMap<string, PreparedArchiveOriginal>,
   ): ArchiveSerializedExport {
     const format = this.resolveFormatId(options.format)
     const provider = this.#providers.get(format)
     if (!provider) throw new Error('Archive export pipeline has no default format')
     const resolvedOptions = format === options.format ? options : { ...options, format }
     return provider.serialize(
-      createArchiveExportDocument(conversation, thread, resolvedOptions, evidence),
+      createArchiveExportDocument(conversation, thread, resolvedOptions, evidence, originals),
     )
+  }
+
+  serializeChunks(
+    conversation: { conversationId: string; title: string | null; projectId: string | null },
+    thread: ArchiveThreadView,
+    options: ArchiveExportOptions,
+    evidence: unknown,
+    originals?: ReadonlyMap<string, PreparedArchiveOriginal>,
+  ): ChunkedArchiveExport {
+    const format = this.resolveFormatId(options.format),
+      provider = this.#providers.get(format)
+    if (!provider) throw Error('Archive export pipeline has no default format')
+    const document = createArchiveExportDocument(
+      conversation,
+      thread,
+      format === options.format ? options : { ...options, format },
+      evidence,
+      originals,
+    )
+    if (provider.serializeChunks) return provider.serializeChunks(document)
+    const serialized = provider.serialize(document)
+    return { mime: serialized.mime, extension: serialized.extension, chunks: [serialized.text] }
   }
 }
 

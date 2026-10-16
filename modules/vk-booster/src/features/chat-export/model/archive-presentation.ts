@@ -50,7 +50,7 @@ export function presentVkArchive(status: ArchiveStatus): {
     summary: { folder: status.folder, messages: status.messages },
     canRead: status.messages > 0,
     manager: {
-      context: 'Диалог ' + status.options.peerId,
+      context: `Диалог ${status.options.peerId}`,
       folder: status.folder,
       messages: status.messages,
       busy: status.busy,

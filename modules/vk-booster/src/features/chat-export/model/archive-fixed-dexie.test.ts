@@ -39,6 +39,8 @@ test('VK Dexie v1 fixes our fields but preserves every original source field', a
   expect(await db.countMessages(100)).toBe(1)
   expect(await db.countMessages(200)).toBe(0)
   expect(await db.listMessages(100, 1, 7)).toHaveLength(0)
+  expect(await db.messageBounds(100)).toMatchObject({ first: { messageId: 7 }, last: { messageId: 7 } })
+  expect(await db.messageBounds(200)).toEqual({ first: undefined, last: undefined })
   db.close()
 })
 test('VK fixed database rejects unverified owner, wrong conversation and cross-channel reads', async () => {

@@ -1,23 +1,10 @@
-import { attachChromeInstallationToggle } from '@kobaproduction/browser-adapters'
-import { mountControlCenter } from '@chatgpt-booster/ui'
-import { chromeAnalytics } from '../analytics'
-import { chromeSettings } from '../settings'
-import { chromeSecrets, createChromeTelemetry, createChromeTelemetryControl } from '../telemetry'
+import {
+  createBrowserToolsPopupCommands,
+  getApplicationIdentity,
+} from '@kobaproduction/browser-adapters'
+import { mountBrowserToolsPopup } from '@kobaproduction/browser-shell'
 
-document.body.style.margin = '0'
-document.body.style.minWidth = '620px'
-
-const host = document.getElementById('app')
-if (!host) throw new Error('Popup mount point is missing')
-
-const telemetry = createChromeTelemetry(chromeSettings)
-
-mountControlCenter(host, {
-  settingsAdapter: chromeSettings,
-  persistentDiagnosticsAdapter: chromeAnalytics,
-  secretAdapter: chromeSecrets,
-  telemetryControlAdapter: createChromeTelemetryControl(telemetry, chromeSettings),
-  targetLabel: 'Extension',
+mountBrowserToolsPopup(document.body, {
+  ...createBrowserToolsPopupCommands(/^https:\/\/chatgpt\.com\//),
+  application: getApplicationIdentity('chromium'),
 })
-
-attachChromeInstallationToggle(document.body, /^https:\/\/chatgpt\.com\//)

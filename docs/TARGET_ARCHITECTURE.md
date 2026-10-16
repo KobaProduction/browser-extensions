@@ -1,5 +1,49 @@
 # Target architecture for Koba Browser Extensions
 
+## ChatGPT two-circuit observation and workspace correction (2026-10-16)
+
+The first circuit retains owner-scoped native observations in RAM independently
+of persistence policy. The second distributes retained evidence through current
+local/remote permissions and supports idempotent policy replay. Ordinary archive
+viewing reads that RAM workspace first, then hydrates canonical DB originals in
+bounded chunks, with visible loading and relationship gaps. UUID/parent indexes
+provide direct identity lookup; source IDs never imply chronology. This replaces
+the prior saved-only ordinary Reader direction; explicit saved-revision and
+export/backup guards remain. Exact semantics and counters belong to the
+[ChatGPT live contract](chatgpt-booster/LIVE_ARCHIVE_CONTRACT.md).
+
+## ChatGPT reaction boundary correction (2026-10-15)
+
+ChatGPT business reactions use observed fetch/XHR/SSE/WebSocket evidence or
+explicitly bound and decorated native application methods only. DOM selectors,
+mutations, button state, renderer text, URL polling and arbitrary internal events
+cannot determine request timing, action confirmation, messages or automation.
+DOM remains a presentation placement/update adapter. Native commands have no
+DOM-click or synthetic-input fallback. Missing verified native methods report
+unsupported. This supersedes earlier optional DOM timing/trigger allowances;
+the owning [live contract](chatgpt-booster/LIVE_ARCHIVE_CONTRACT.md) defines the
+source and confirmation boundary.
+
+## Latest framework and data-preservation direction (2026-10-14)
+
+The owner requests a configurable shared framework rather than product shells
+which assume one conversation-saving feature. Reusable catalog/navigation,
+launcher/dock, injection lifecycle, module activation, telemetry, recovery and
+archive UI belong to `packages/`; providers own site/API/auth, canonical schema,
+source codecs, completeness evidence and capabilities. FSD is applied within
+actual responsibilities, without empty architectural layers.
+
+ChatGPT lifecycle derives from intercepted API/SSE/WebSocket evidence. DOM
+observation may locate rendering targets, but must not manufacture request or
+answer state. New observations must not truncate a richer saved response;
+contradictory versions remain inspectable. Archive changes are commit events,
+and graph completeness/branches are visible with navigation to missing evidence.
+Selectable exports and independently restorable settings/session/data sections
+are required. Sound behavior is an optional ChatGPT module, not a VK dependency.
+
+This target supersedes older operator-only backup UI restrictions. Source and
+remaining gates are tracked in [REFACTOR_PROGRESS.md](REFACTOR_PROGRESS.md).
+
 ## Current clean-storage and live-toggle direction (2026-10-11)
 
 Fixed canonical ChatGPT v4-era source model persists in **Dexie schema v1**.
@@ -225,6 +269,10 @@ The interfaces above do not mean IndexedDB migration, ChatGPT export or
 ZIP streaming are implemented today.
 
 ## Shared Application Shell and UI
+
+Responsive presentation follows [the UI acceptance contract](shared/UI_ACCEPTANCE.md):
+phone panels (620px and below) use a full-screen surface without desktop window
+controls; tablet and desktop retain a floating workspace and adapt their density.
 
 An Application Shell is a reusable composition service, **not** the FSD app
 folder of a single Booster product. Each app registers modules, assigns

@@ -38,8 +38,7 @@ export function currentConversationId(href = location.href): string | undefined 
 }
 
 function isConversationScroller(element: HTMLElement): boolean {
-  if (element.closest('nav, aside, form, #chatgpt-booster-root, [data-chatgpt-booster]'))
-    return false
+  if (element.closest('nav, aside, form, #chatgpt-booster-root, [data-chatgpt-booster]')) return false
   const main = document.querySelector('main')
   if (!main || (!main.contains(element) && !element.contains(main))) return false
   if (element.clientHeight < 80 || element.scrollHeight <= element.clientHeight + 4) return false
@@ -67,9 +66,7 @@ function scrollCandidateScore(
  * Locate the actual conversation viewport. ChatGPT changes wrapper classes often, so the
  * stable contract is "scrollable ancestor of a real turn", not one CSS class.
  */
-export function findConversationScrollContainer(
-  root: ParentNode = document,
-): HTMLElement | undefined {
+export function findConversationScrollContainer(root: ParentNode = document): HTMLElement | undefined {
   const message = chatGptConversationAnchor(root)
   const candidates = new Set<HTMLElement>()
   const preferred = new Set(chatGptScrollHints(root))
@@ -147,8 +144,7 @@ export function scrollConversationTowardStart(
   options: ConversationScrollOptions = {},
 ): ConversationScrollRequest {
   const container = findConversationScrollContainer(root)
-  if (!container)
-    return { requested: false, container: null, distance: 0, durationMs: 0, active: false }
+  if (!container) return { requested: false, container: null, distance: 0, durationMs: 0, active: false }
 
   const current = activeConversationScrolls.get(container)
   if (current) return { requested: true, container, distance: 0, durationMs: 0, active: true }
@@ -217,10 +213,7 @@ export function hasPendingComposerAttachments(root: ParentNode = document): bool
   return false
 }
 
-export function currentProjectTitle(
-  projectId: string,
-  root: ParentNode = document,
-): string | undefined {
+export function currentProjectTitle(projectId: string, root: ParentNode = document): string | undefined {
   for (const link of root.querySelectorAll<HTMLAnchorElement>('a[href*="/g/"]')) {
     if (currentProjectId(link.href) !== projectId) continue
     try {
@@ -251,8 +244,7 @@ export function currentResolvedAssetUrls(root: ParentNode = document) {
   for (const element of root.querySelectorAll<HTMLImageElement | HTMLAnchorElement>(
     'img[src*="/backend-api/estuary/content"], a[href*="/backend-api/estuary/content"]',
   )) {
-    const value =
-      element instanceof HTMLImageElement ? element.currentSrc || element.src : element.href
+    const value = element instanceof HTMLImageElement ? element.currentSrc || element.src : element.href
     try {
       const url = new URL(value, location.href)
       const assetId = url.searchParams.get('id')

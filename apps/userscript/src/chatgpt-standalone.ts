@@ -4,6 +4,6 @@ import { createChatGptUserscriptFeature } from './chatgpt-booster'
 import { bootstrapUserscript } from './runtime'
 
 if (isChatGptPage())
-  bootstrapUserscript([createChatGptUserscriptFeature()], 'ChatGPT Booster', {
+  bootstrapUserscript((telemetry) => [createChatGptUserscriptFeature(telemetry)], 'ChatGPT Booster', {
     'chatgpt-booster': ChatGptPanel,
   })

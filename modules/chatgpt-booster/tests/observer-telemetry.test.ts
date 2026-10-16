@@ -426,9 +426,7 @@ describe('archive attachment resolver sanitization', () => {
         `https://chatgpt.com/backend-api/files/download/${id}?post_id=&inline=false&download_intent=false`,
       ),
     ).toBe(id)
-    expect(
-      archiveFileResolverId(`https://example.com/backend-api/files/download/${id}`),
-    ).toBeUndefined()
+    expect(archiveFileResolverId(`https://example.com/backend-api/files/download/${id}`)).toBeUndefined()
     const resolution = parseArchiveAssetResolution(
       {
         status: 'success',

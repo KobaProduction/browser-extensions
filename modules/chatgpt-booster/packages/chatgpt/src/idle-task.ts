@@ -2,11 +2,7 @@ export interface ScheduledIdleTask {
   cancel(): void
 }
 
-export function scheduleIdleTask(
-  callback: () => void,
-  timeout = 400,
-  delay = 0,
-): ScheduledIdleTask {
+export function scheduleIdleTask(callback: () => void, timeout = 400, delay = 0): ScheduledIdleTask {
   let timer: number | undefined
   let idle: number | undefined
   let cancelled = false

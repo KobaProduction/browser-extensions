@@ -1,0 +1,275 @@
+/* Archive record hierarchy */
+.booster-record {
+  margin-block: 7px;
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 11px;
+  background: var(--card);
+}
+.booster-record-user {
+  margin-left: min(52px, 8%);
+  background: var(--muted);
+}
+.booster-record-reasoning,
+.booster-record-tool_call,
+.booster-record-tool_result,
+.booster-record-internal {
+  margin-block: 4px;
+  padding: 8px 10px;
+  background: color-mix(in oklab, var(--muted) 45%, var(--background));
+}
+.booster-record-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  margin-bottom: 8px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.booster-record-header strong {
+  color: var(--foreground);
+  font-size: 11px;
+}
+.booster-record-internal-header {
+  justify-content: space-between;
+}
+.booster-record-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.booster-reasoning-preview {
+  position: relative;
+  max-height: 76px;
+  overflow: hidden;
+  color: color-mix(in oklab, var(--foreground) 82%, var(--muted-foreground));
+}
+.booster-reasoning-preview:not(.expanded)::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 30px;
+  background: linear-gradient(transparent, color-mix(in oklab, var(--muted) 45%, var(--background)));
+  content: "";
+  pointer-events: none;
+}
+.booster-reasoning-preview.expanded {
+  max-height: none;
+  overflow: visible;
+}
+.booster-reasoning-preview .booster-markdown {
+  font-size: 11px;
+  line-height: 1.55;
+}
+.booster-tool-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+.booster-tool-icon {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  object-fit: cover;
+  background: var(--background);
+}
+.booster-tool-icon-fallback {
+  display: grid;
+  place-items: center;
+  color: var(--muted-foreground);
+}
+.booster-tool-copy {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+.booster-tool-copy strong {
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.booster-tool-copy > span {
+  color: var(--muted-foreground);
+  font-size: 9px;
+}
+.booster-tool-copy p {
+  overflow: hidden;
+  margin: 2px 0 0;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.booster-tool-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.booster-tool-expanded {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.booster-tool-expanded .booster-markdown {
+  font-size: 11px;
+}
+
+.booster-tool-expanded .booster-json-viewer {
+  max-height: 260px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 10px;
+}
+.booster-internal-preview {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.booster-record-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.booster-record-modal-header > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.booster-record-modal-header strong {
+  font-size: 13px;
+}
+.booster-record-modal-header span {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.booster-capture-surface {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--background);
+}
+.booster-capture-surface > .booster-capture-settings {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+@media (max-width: 680px) {
+  .booster-archive-workspace {
+    min-width: 0;
+    min-height: 0;
+    border-radius: 10px;
+  }
+  .booster-tool-row {
+    grid-template-columns: 26px minmax(0, 1fr);
+  }
+  .booster-tool-actions {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+  .booster-reader-chat-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+/* v0.6 dev record polish */
+.booster-record-header {
+  min-width: 0;
+}
+.booster-record-header-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+.booster-record-edited {
+  color: var(--muted-foreground);
+  font-size: 9px;
+  white-space: nowrap;
+}
+.booster-record-raw-corner {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+}
+.booster-tool-row {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.booster-tool-row.is-clickable {
+  cursor: pointer;
+}
+.booster-tool-copy,
+.booster-tool-actions {
+  min-width: 0;
+}
+.booster-tool-actions {
+  flex: 0 0 auto;
+}
+.booster-tool-expanded {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.booster-internal-preview {
+  min-width: 0;
+  max-width: 100%;
+  padding-right: 2px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.booster-json-modal {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--background);
+}
+.booster-json-modal .booster-json-viewer {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  max-height: none;
+  flex: 1 1 auto;
+  box-sizing: border-box;
+  overflow: auto;
+}
+.booster-dialog-wide:has(.booster-json-modal) {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.booster-reader-main,
+.booster-reader-exchanges,
+.booster-exchange,
+.booster-exchange-details {
+  min-width: 0;
+  max-width: 100%;
+}
+.booster-reader-main {
+  overflow-x: hidden;
+}

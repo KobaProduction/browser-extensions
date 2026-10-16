@@ -1,7 +1,8 @@
 import type { ToolInvocationView } from '@chatgpt-booster/core'
+import { UI_PORTAL_TARGET } from '@kobaproduction/browser-ui'
 import { type App, createApp, h, reactive } from 'vue'
 import type { SupportedLocale } from './i18n'
-import { installBoosterShadowStyles } from './shadow-styles'
+import { createBoosterShadowSurface } from './shadow-styles'
 import ToolInspector from './ToolInspector.vue'
 
 export interface ToolCallViewModel {
@@ -23,25 +24,21 @@ export interface MountedToolInspector {
   unmount(): void
 }
 
-export function mountToolInspector(
-  into: HTMLElement,
-  model: ToolCallViewModel,
-): MountedToolInspector {
+export function mountToolInspector(into: HTMLElement, model: ToolCallViewModel): MountedToolInspector {
   const host = document.createElement('span')
   host.dataset.chatgptBooster = 'tool-inspector'
+  host.dataset.sourceMessageId = model.id
   host.style.cssText =
-    'display:inline-flex;flex:0 0 auto;align-items:center;position:relative;z-index:2;pointer-events:auto;margin-inline-start:2px;'
+    'display:inline-flex;flex:0 0 auto;align-items:center;pointer-events:auto;margin-inline-start:2px;'
   into.append(host)
 
-  const shadow = host.attachShadow({ mode: 'open' })
-  installBoosterShadowStyles(shadow)
-  const mountPoint = document.createElement('span')
-  shadow.append(mountPoint)
+  const { mountPoint, portal } = createBoosterShadowSurface(host)
 
   const state = reactive<{ model: ToolCallViewModel; now: number }>({ model, now: 0 })
   const app: App = createApp({
     render: () => h(ToolInspector, { model: state.model, now: state.now }),
   })
+  app.provide(UI_PORTAL_TARGET, portal)
   app.mount(mountPoint)
 
   return {

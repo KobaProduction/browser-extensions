@@ -6,6 +6,8 @@ import {
   ScopedOtlpService,
   scopedOtlpPayload,
   sendOtlpRequest,
+  TelemetryCollectorRejected,
+  validateOtlpAcknowledgement,
 } from './scoped-otlp'
 
 const scope = { productId: 'chatgpt-booster', channel: 'dev' as const, installationId: 'tm-test-otel' }
@@ -127,7 +129,7 @@ test('shared OTLP payload keeps two services separately attributed in one collec
       scope,
       '0.5.9',
     ),
-  ).toThrow('private OTLP')
+  ).toThrow('Unsafe technical telemetry')
 })
 
 test('shared default HTTP sender never attaches cookies or accepts collector rejection', async () => {
@@ -151,4 +153,168 @@ test('shared default HTTP sender never attaches cookies or accepts collector rej
   } finally {
     globalThis.fetch = prior
   }
+})
+
+test('partial OTLP rejection retains the entire batch and persists a manual-recovery block', async () => {
+  const ownScope = { ...scope, installationId: 'synthetic-partial-rejection' }
+  const journal = new DexieTelemetryJournal(ownScope, drivers)
+  let requests = 0
+  const service = new ScopedOtlpService({
+    scope: ownScope,
+    serviceId,
+    version: '1.0.0',
+    journal,
+    changed: (status) => journal.writeDeliveryStatus(status),
+    sender: async () => {
+      requests++
+      validateOtlpAcknowledgement(
+        200,
+        JSON.stringify({
+          partialSuccess: {
+            rejectedLogRecords: '1',
+            errorMessage: 'synthetic-private-collector-detail',
+          },
+        }),
+      )
+    },
+  })
+  service.setLocalEnabled(true)
+  await service.port.emit('application.error', 1)
+  expect(await service.flush({ enabled: true, endpoint: 'https://collector.test' })).toBe(0)
+  expect(service.deliveryStatus()).toMatchObject({
+    state: 'collector-rejected',
+    collectorRejected: true,
+    nextAttemptAt: null,
+  })
+  expect(await journal.summary()).toMatchObject({ pending: 1, sending: 0, delivered: 0 })
+  const checkpoint = await journal.readDeliveryStatus()
+  expect(JSON.stringify(checkpoint)).not.toContain('synthetic-private-collector-detail')
+  expect(await service.flush({ enabled: true, endpoint: 'https://collector.test' })).toBe(0)
+  expect(requests).toBe(1)
+  service.close()
+  const reopened = new DexieTelemetryJournal(ownScope, drivers)
+  const resumed = new ScopedOtlpService({
+    scope: ownScope,
+    serviceId,
+    version: '1.0.0',
+    journal: reopened,
+    sender: async () => {
+      requests++
+    },
+  })
+  resumed.restoreDeliveryStatus(checkpoint)
+  resumed.setLocalEnabled(true)
+  expect(await resumed.flush({ enabled: true, endpoint: 'https://collector.test' })).toBe(0)
+  expect(requests).toBe(1)
+  resumed.resetDeliveryStatus()
+  expect(await resumed.flush({ enabled: true, endpoint: 'https://collector.test' })).toBe(1)
+  expect(requests).toBe(2)
+  await reopened.clear()
+  resumed.close()
+})
+
+test('late success after local opt-out cannot acknowledge or overwrite the delivery checkpoint', async () => {
+  const ownScope = { ...scope, installationId: 'synthetic-revoked-request' }
+  const journal = new DexieTelemetryJournal(ownScope, drivers)
+  let release!: () => void, entered!: () => void
+  const sent = new Promise<void>((resolve) => {
+    entered = resolve
+  })
+  let signal: AbortSignal | undefined
+  const service = new ScopedOtlpService({
+    scope: ownScope,
+    serviceId,
+    version: '1.0.0',
+    journal,
+    sender: (request) => {
+      signal = request.signal
+      entered()
+      return new Promise<void>((resolve) => {
+        release = resolve
+      })
+    },
+  })
+  service.setLocalEnabled(true)
+  await service.port.emit('application.notification', 1)
+  const delivery = service.flush({ enabled: true, endpoint: 'https://collector.test' })
+  await sent
+  service.setLocalEnabled(false)
+  expect(signal?.aborted).toBe(true)
+  release()
+  expect(await delivery).toBe(0)
+  expect(await journal.summary()).toMatchObject({ pending: 1, sending: 0, delivered: 0 })
+  expect(service.deliveryStatus()).toMatchObject({ state: 'off', nextAttemptAt: null, lastSentAt: null })
+  await journal.clear()
+  service.close()
+})
+
+test('a recreated worker preserves the future retry checkpoint instead of sending immediately', async () => {
+  const ownScope = { ...scope, installationId: 'synthetic-retry-checkpoint' }
+  const journal = new DexieTelemetryJournal(ownScope, drivers)
+  const service = new ScopedOtlpService({
+    scope: ownScope,
+    serviceId,
+    version: '1.0.0',
+    journal,
+    changed: (status) => journal.writeDeliveryStatus(status),
+    sender: async () => {
+      throw new TypeError('synthetic-private-network-detail')
+    },
+  })
+  service.setLocalEnabled(true)
+  await service.port.emit('application.notification', 1)
+  await service.flush({ enabled: true, endpoint: 'https://collector.test' })
+  const checkpoint = service.deliveryStatus()
+  expect(checkpoint.state).toBe('retrying')
+  expect(checkpoint.nextAttemptAt).toBeGreaterThan(Date.now())
+  expect(checkpoint.retryDelayMs).toBeGreaterThanOrEqual(30000)
+  expect(await journal.readDeliveryStatus()).toEqual(checkpoint)
+  expect(JSON.stringify(checkpoint)).not.toContain('synthetic-private-network-detail')
+  service.close()
+  const reopened = new DexieTelemetryJournal(ownScope, drivers)
+  let requests = 0
+  const resumed = new ScopedOtlpService({
+    scope: ownScope,
+    serviceId,
+    version: '1.0.0',
+    journal: reopened,
+    sender: async () => {
+      requests++
+    },
+  })
+  resumed.restoreDeliveryStatus(checkpoint)
+  resumed.setLocalEnabled(true)
+  resumed.startDelivery(async () => ({ enabled: true, endpoint: 'https://collector.test' }))
+  expect(resumed.deliveryStatus().nextAttemptAt).toBe(checkpoint.nextAttemptAt)
+  await Bun.sleep(5)
+  expect(requests).toBe(0)
+  resumed.stopDelivery()
+  await reopened.clear()
+  resumed.close()
+})
+
+test('OTLP acknowledgement validates bounded acceptance without exposing collector text', () => {
+  for (const body of [
+    '{}',
+    '{"futureCollectorField":true}',
+    '{"partialSuccess":{"rejectedLogRecords":"0","errorMessage":"ignored"}}',
+  ])
+    expect(() => validateOtlpAcknowledgement(200, body)).not.toThrow()
+  for (const body of [
+    '',
+    '[]',
+    '{"partialSuccess":{"rejectedLogRecords":-1}}',
+    '{"partialSuccess":{"rejectedLogRecords":"1","errorMessage":"synthetic-private"}}',
+    'x'.repeat(65537),
+  ]) {
+    try {
+      validateOtlpAcknowledgement(200, body)
+      throw Error('Expected rejection')
+    } catch (error) {
+      expect(error).toBeInstanceOf(TelemetryCollectorRejected)
+      expect((error as Error).message).not.toContain('synthetic-private')
+    }
+  }
+  expect(() => validateOtlpAcknowledgement(401, 'private')).toThrow(TelemetryCollectorRejected)
+  expect(() => validateOtlpAcknowledgement(503, 'private')).not.toThrow(TelemetryCollectorRejected)
 })

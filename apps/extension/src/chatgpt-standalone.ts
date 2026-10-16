@@ -1,21 +1,23 @@
 import { isChatGptPage } from '@chatgpt-booster/core'
 import {
+  bindBrowserToolsMessages,
+  createApplicationBackup,
   createApplicationTelemetry,
+  createRuntimeTelemetry,
   createSettingsStore,
+  createTelemetryBackupSource,
+  getApplicationIdentity,
+  isDevelopmentContextAllowed,
   onInstallationStateChange,
 } from '@kobaproduction/browser-adapters'
-import {
-  type Capability,
-  FeatureRuntime,
-  FeatureSettings,
-  SHELL_OPEN_FEATURE_EVENT,
-} from '@kobaproduction/browser-core'
+import { type Capability, FeatureRuntime, FeatureSettings } from '@kobaproduction/browser-core'
 import { mountControlCenter } from '@kobaproduction/browser-shell'
 import ChatGptPanel from '@kobaproduction/module-chatgpt-booster/ui'
 import { createChatGptChromeFeature } from './chatgpt-content'
 
-if (isChatGptPage()) {
-  const { feature, startEarly } = createChatGptChromeFeature()
+if (isChatGptPage() && isDevelopmentContextAllowed('chromium')) {
+  const telemetry = createApplicationTelemetry('chromium', createSettingsStore('chromium'))
+  const { feature, startEarly } = createChatGptChromeFeature(telemetry)
   void new FeatureSettings(createSettingsStore('chromium'))
     .enabled('chatgpt-booster')
     .then(async (enabled) =>
@@ -29,13 +31,16 @@ if (isChatGptPage()) {
         error instanceof Error ? error.name : 'unknown',
       ),
     )
-  const telemetry = createApplicationTelemetry('chromium', createSettingsStore('chromium'))
-  const runtime = new FeatureRuntime([feature], {
-    target: 'chromium',
-    url: new URL(location.href),
-    capabilities: new Set<Capability>(['page-dom', 'origin-storage', 'local-files']),
-    settings: new FeatureSettings(createSettingsStore('chromium')),
-  })
+  const runtime = new FeatureRuntime(
+    [feature],
+    {
+      target: 'chromium',
+      url: new URL(location.href),
+      capabilities: new Set<Capability>(['page-dom', 'origin-storage', 'local-files']),
+      settings: new FeatureSettings(createSettingsStore('chromium')),
+    },
+    createRuntimeTelemetry(telemetry),
+  )
   const unsubscribeState = onInstallationStateChange('chromium', () => {
     void runtime.refreshFromSettings()
   })
@@ -52,40 +57,17 @@ if (isChatGptPage()) {
     const ui = mountControlCenter({
       runtime,
       telemetry,
+      backup: createApplicationBackup(
+        'chromium',
+        runtime,
+        [async () => [await createTelemetryBackupSource(telemetry, 'chromium')]],
+        telemetry,
+      ),
+      application: getApplicationIdentity('chromium'),
       title: 'ChatGPT Booster',
       views: { 'chatgpt-booster': ChatGptPanel },
     })
-    chrome.runtime.onMessage.addListener(
-      (message: { type?: string; id?: string; enabled?: boolean }, _, respond) => {
-        if (message?.type === 'koba:installation-status') {
-          respond({ enabled: runtime.isRunning(), features: runtime.list() })
-          return
-        }
-        if (message?.type === 'koba:installation-set-running') {
-          if (typeof message.enabled !== 'boolean') {
-            respond({ ok: false })
-            return
-          }
-          void runtime
-            .setRunning(message.enabled)
-            .then(() => respond({ ok: true, enabled: runtime.isRunning() }))
-            .catch(() => respond({ ok: false }))
-          return true
-        }
-        if (message?.type === 'koba:open') {
-          ui.open()
-          respond({ ok: true })
-          return
-        }
-        if (message?.type === 'koba:open-feature' && message.id === 'chatgpt-booster') {
-          ui.open()
-          window.dispatchEvent(new CustomEvent(SHELL_OPEN_FEATURE_EVENT, { detail: { id: message.id } }))
-          respond({ ok: true })
-          return
-        }
-        if (message?.type === 'koba:list') respond({ features: runtime.list() })
-      },
-    )
+    bindBrowserToolsMessages(runtime, ui)
   }
   if (document.body) void launch()
   else window.addEventListener('DOMContentLoaded', () => void launch(), { once: true })

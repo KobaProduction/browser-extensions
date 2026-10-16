@@ -28,6 +28,8 @@ const iconPlugin = {
 const fromRepo = (file: string) => resolve(root, '../..', file)
 const sourceAliases: [string, string][] = [
   ['@kobaproduction/browser-widgets/styles.css', 'apps/ui-lab/src/widget-styles.css'],
+  ['@kobaproduction/browser-ui/theme.css', 'packages/ui/src/theme.css'],
+  ['@kobaproduction/browser-ui/styles.css', 'packages/ui/src/styles.css'],
   ['@kobaproduction/browser-core', 'packages/core/src/index.ts'],
   ['@kobaproduction/browser-ui', 'packages/ui/src/index.ts'],
   ['@kobaproduction/browser-widgets', 'packages/widgets/src/index.ts'],
@@ -46,7 +48,11 @@ export default defineConfig({
   plugins: [iconPlugin, vue(), tailwindcss()],
   resolve: {
     alias: [
-      ...sourceAliases.map(([find, path]) => ({ find, replacement: fromRepo(path) })),
+      ...sourceAliases.map(([find, path]) => ({
+        // Entry-point aliases must not turn CSS subpaths into index.ts/theme.css.
+        find: new RegExp(`^${find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`),
+        replacement: fromRepo(path),
+      })),
       // Bun's local icon cache lacks the package ESM barrel; use its real CJS barrel.
       {
         find: /^lucide-vue-next$/,
@@ -67,5 +73,8 @@ export default defineConfig({
       input: { index: resolve(root, 'index.html'), preview: resolve(root, 'preview.html') },
     },
   },
-  define: { __BOOSTER_INSTANCE_SCOPE__: JSON.stringify('all-in-one:dev') },
+  define: {
+    __BOOSTER_INSTANCE_SCOPE__: JSON.stringify('all-in-one:dev'),
+    __BOOSTER_DELIVERY_TARGET__: JSON.stringify('chromium'),
+  },
 })

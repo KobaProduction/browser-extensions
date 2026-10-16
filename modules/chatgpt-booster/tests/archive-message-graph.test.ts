@@ -2,11 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import type { ArchiveItemView, ArchiveThreadView } from '../packages/core/src/archive'
 import { archiveMessageGraph } from '../packages/ui/src/archive-message-graph'
 
-function item(
-  id: string,
-  parentId: string | null,
-  kind: 'user' | 'answer' = 'user',
-): ArchiveItemView {
+function item(id: string, parentId: string | null, kind: 'user' | 'answer' = 'user'): ArchiveItemView {
   return {
     kind,
     text: id,

@@ -1,8 +1,12 @@
 {
   "name": "@chatgpt-booster/extension",
-  "version": "2.0.19",
+  "version": "2.0.20",
   "private": true,
   "type": "module",
+  "exports": {
+    "./services": "./src/services.ts",
+    "./background": "./src/background/index.ts"
+  },
   "scripts": {
     "build": "bun ../../../../scripts/build.ts --module chatgpt-booster --target=extension",
     "dev": "bun ../../../../scripts/build.ts --module chatgpt-booster --target=extension --channel=dev --build-number=1",
@@ -16,6 +20,7 @@
     "@chatgpt-booster/observer": "workspace:*",
     "@chatgpt-booster/telemetry": "workspace:*",
     "@kobaproduction/browser-core": "workspace:*",
+    "@kobaproduction/browser-shell": "workspace:*",
     "@kobaproduction/browser-adapters": "workspace:*"
   }
 }

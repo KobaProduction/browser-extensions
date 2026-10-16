@@ -30,8 +30,7 @@ export function archiveGitgraphData(thread: ArchiveThreadView): GitgraphArchiveD
   const all = thread.turns.flatMap((turn) => [...turn.messages, ...turn.details])
   const byId = new Map<string, ArchiveItemView>()
   for (const item of all)
-    if (item.record.messageId && !byId.has(item.record.messageId))
-      byId.set(item.record.messageId, item)
+    if (item.record.messageId && !byId.has(item.record.messageId)) byId.set(item.record.messageId, item)
 
   const display = all.filter(
     (item) => (item.kind === 'user' || item.kind === 'answer') && item.record.messageId,
@@ -70,13 +69,15 @@ export function archiveGitgraphData(thread: ArchiveThreadView): GitgraphArchiveD
   const ordered: ArchiveItemView[] = []
   const emitted = new Set<string>()
   for (let cursor = 0; cursor < pending.length; cursor++) {
-    const item = pending[cursor]!
+    const item = pending[cursor]
+    if (!item) continue
     ordered.push(item)
     emitted.add(item.record.messageId)
     for (const child of descendants.get(item.record.messageId) ?? []) {
       const count = (indegree.get(child) ?? 0) - 1
       indegree.set(child, count)
-      if (count === 0) pending.push(chosen.get(child)!)
+      const childItem = chosen.get(child)
+      if (count === 0 && childItem) pending.push(childItem)
     }
   }
   // A genuine cycle must not hang the graph or masquerade as a valid edge.
@@ -89,13 +90,16 @@ export function archiveGitgraphData(thread: ArchiveThreadView): GitgraphArchiveD
 
   const referenced = new Set([...parents.values()].filter((id): id is string => Boolean(id)))
   return {
-    commits: ordered.reverse().map((item) => ({
-      hash: item.record.messageId,
-      parents: parents.get(item.record.messageId) ? [parents.get(item.record.messageId)!] : [],
-      author: { name: item.kind === 'user' ? 'You' : 'Assistant', email: '' },
-      refs: referenced.has(item.record.messageId) ? [] : [`path-${item.record.messageId}`],
-      subject: item.text.slice(0, 180),
-    })),
+    commits: ordered.reverse().map((item) => {
+      const parent = parents.get(item.record.messageId)
+      return {
+        hash: item.record.messageId,
+        parents: parent ? [parent] : [],
+        author: { name: item.kind === 'user' ? 'You' : 'Assistant', email: '' },
+        refs: referenced.has(item.record.messageId) ? [] : [`path-${item.record.messageId}`],
+        subject: item.text.slice(0, 180),
+      }
+    }),
     byId,
     missingParents,
     cyclicParents,

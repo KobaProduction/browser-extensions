@@ -48,9 +48,7 @@ export const chromeSettings: SettingsAdapter = {
   subscribe(listener) {
     const onChanged = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
       if (areaName !== 'local' || !changes[STORAGE_KEY]) return
-      listener(
-        normalizeSettings(changes[STORAGE_KEY].newValue as Partial<BoosterSettings> | undefined),
-      )
+      listener(normalizeSettings(changes[STORAGE_KEY].newValue as Partial<BoosterSettings> | undefined))
     }
 
     chrome.storage.onChanged.addListener(onChanged)

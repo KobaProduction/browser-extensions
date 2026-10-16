@@ -53,6 +53,9 @@ export const archiveMessages = {
     'identity.unknownProject': 'Project name not yet observed',
     'identity.untitled': 'Untitled conversation',
     'capture.title': 'Selective capture',
+    'capture.contextsUnavailable':
+      'Could not load conversations and projects. You can still change the default capture rule.',
+    'capture.settingsUnavailable': 'Could not load settings. Reopen this section to try again.',
     'capture.subtitle': 'Choose exactly what Booster should save for this scope.',
     'capture.scope': 'Apply to',
     'capture.global': 'Default for other chats',
@@ -62,6 +65,8 @@ export const archiveMessages = {
     'capture.on': 'Save automatically',
     'capture.off': 'Do not save automatically',
     'capture.policy': 'Automatic capture',
+    'capture.savedPolicy': 'Effective automatic capture',
+    'capture.currentProject': 'Current project',
     'capture.explanation':
       'Chat rules override project rules. Manual collection works even when automatic capture is off. Changing a rule never deletes saved data.',
     'capture.reasoning': 'Save reasoning records',
@@ -70,7 +75,7 @@ export const archiveMessages = {
     'capture.saved': 'Rule saved',
     'capture.apply': 'Save rule',
     'capture.scopeHint':
-      'Open a project or chat to configure it here. Existing rules also appear in this selector.',
+      'Verified projects, the current chat and existing rules appear in this selector.',
     'scope.localArchive': 'Local archive',
     'scope.archived': 'Saved locally',
     'scope.notArchived': 'Not saved locally',
@@ -80,11 +85,12 @@ export const archiveMessages = {
     'scope.source.default': 'Default rule',
     'scope.settings': 'Archive settings',
     'tool.provider': 'Provider',
+    'tool.turnCalls': 'Tool calls',
     'tool.calledAt': 'Called',
     'tool.action': 'Action',
     'tool.details': 'Details',
     'reader.title': 'Local archive',
-    'reader.readonly': 'Read-only · saved data only',
+    'reader.readonly': 'Read-only workspace · live and saved data',
     'reader.search': 'Find a project or conversation',
     'reader.searchMessages': 'Find text in this conversation',
     'reader.empty': 'No saved conversations. Collection is manual or enabled per scope.',
@@ -143,8 +149,7 @@ export const archiveMessages = {
     'reader.lastRefreshCheck': 'Last update check',
     'reader.updateUnchecked': 'Updates have not been checked for this saved copy',
     'reader.currentLatestSaved': 'The latest message currently shown in ChatGPT is stored locally',
-    'reader.currentNewer':
-      'The current ChatGPT conversation has a newer message than the local copy',
+    'reader.currentNewer': 'The current ChatGPT conversation has a newer message than the local copy',
     'export.title': 'Export conversation',
     'export.modelEvidenceScope':
       'Requested model and effort are available only for observed native submissions under the verified account. Recollecting old history cannot reconstruct them.',
@@ -153,16 +158,14 @@ export const archiveMessages = {
     'export.sourceAdapter': 'Source adapter',
     'reader.returnExport': 'Back to export',
     'reader.cancelNavigation': 'Cancel loading',
-    'reader.navigationCancelled':
-      'Loading stopped. Select a message or reopen the requested location.',
+    'reader.navigationCancelled': 'Loading stopped. Select a message or reopen the requested location.',
     'reader.moreOlder': 'Previous messages',
     'reader.jumpMessage': 'Open message by ID',
     'reader.messageId': 'Source message ID',
     'reader.openMessage': 'Open message',
     'reader.messageMissing':
       'This message is not present in the selected saved copy. No different record was substituted.',
-    'reader.savedInspection':
-      'Inspecting the saved copy; the current ChatGPT view is not substituted.',
+    'reader.savedInspection': 'Inspecting the saved copy; the current ChatGPT view is not substituted.',
     'reader.targetUnsequenced':
       'This message has no source timestamp. Only the exact record is shown; chronological neighbors cannot be inferred.',
     'reader.reopenCurrentCopy': 'Open in the current saved revision',
@@ -177,8 +180,7 @@ export const archiveMessages = {
     'export.collectionStoppedHidden': 'Collection paused because the tab became hidden.',
     'export.collectionStoppedTakeover':
       'Collection stopped after you took over the conversation scroll.',
-    'export.collectionStoppedNavigation':
-      'Collection stopped because the open conversation changed.',
+    'export.collectionStoppedNavigation': 'Collection stopped because the open conversation changed.',
     'export.collectionStoppedAccount': 'Collection permission was revoked on account change.',
     'export.collectionStoppedSelection':
       'Collection stopped because the selected conversation version changed.',
@@ -196,8 +198,7 @@ export const archiveMessages = {
     'export.inspectLoading': 'Reading saved-copy evidence…',
     'export.inspectFailed': 'Could not inspect the saved copy. Retry without clearing stored data.',
     'export.inspectBlocked': 'Preparation is blocked by the conditions below',
-    'export.inspectPendingPath':
-      'Source is available; the selected chain will be checked at Prepare',
+    'export.inspectPendingPath': 'Source is available; the selected chain will be checked at Prepare',
     'export.inspectFinalGate':
       'This snapshot is not export permission. Prepare rechecks the entire selected chain and source revision.',
     'export.savedRecordCount': 'Saved source records',
@@ -254,6 +255,10 @@ export const archiveMessages = {
     'export.blocker.json': 'Technical copies preserve source JSON and cannot use Markdown or text.',
     'archive.error.disabled': 'Booster is disabled. Enable it in settings before collecting.',
     'export.statusMissing': 'No local copy is available yet',
+    'export.statusUnknown': 'Saved-copy extent and history completeness are unconfirmed',
+    'export.statusExtentUnknown':
+      'Export includes saved records; full-history completeness is unconfirmed',
+    'export.statusGaps': 'The saved copy contains gaps; export includes saved records only',
     'export.statusPartial': 'Local copy exists, but the saved chain has not reached the beginning',
     'export.statusNewer': 'The open ChatGPT conversation has a newer message than the local copy',
     'export.statusCurrent':
@@ -265,8 +270,7 @@ export const archiveMessages = {
     'export.level': 'Contents',
     'export.profileConversation': 'Messages only. Markdown and text omit diagnostic metadata.',
     'export.profileCustom': 'Include selected reasoning or tool details.',
-    'export.profileFull':
-      'Preserve all raw records and diagnostic context. File bytes are optional.',
+    'export.profileFull': 'Preserve all raw records and diagnostic context. File bytes are optional.',
     'export.conversation': '1 · Readable conversation',
     'export.custom': '2 · Selected details',
     'export.full': '3 · Technical backup',
@@ -283,8 +287,7 @@ export const archiveMessages = {
     'export.sourceRevisions': 'Stored source revision history (not confirmed user edits)',
     'export.attachmentMetadata': 'Attachment descriptors only (no file bytes)',
 
-    'export.evidenceWarning':
-      'Unknown model choices, effort settings and user edits are not inferred.',
+    'export.evidenceWarning': 'Unknown model choices, effort settings and user edits are not inferred.',
     'export.images': 'Image files',
     'export.files': 'Other files',
     'export.metadata': 'Attachment metadata is retained. Binary files are not fetched by default.',
@@ -312,15 +315,13 @@ export const archiveMessages = {
     'export.failed': 'Export failed',
     'archive.error.incompatibleSource':
       'ChatGPT history format is not supported by this Booster build. Archive capture and export are disabled for this conversation. Saved data is unchanged.',
-    'reader.staleWindow':
-      'Saved history changed in another tab. Refresh to load a consistent window.',
+    'reader.staleWindow': 'Saved history changed in another tab. Refresh to load a consistent window.',
     'archive.error.sourceChanged':
       'Conversation changed during export. Reload the saved version and prepare again.',
     'archive.error.unverifiedPath':
       'This version has incomplete or unverified ancestry and cannot be exported as a complete conversation.',
     'archive.error.technicalRequiresJson': 'A technical source copy requires JSON output.',
-    'archive.error.assetsUnverified':
-      'Binary attachments are not supported in the new archive export.',
+    'archive.error.assetsUnverified': 'Binary attachments are not supported in the new archive export.',
     'archive.error.noChat': 'No conversation is available.',
     'archive.error.draft': 'Save or clear the draft and its attachments before collecting.',
     'archive.error.attachments': 'Remove or send pending attachments before collecting.',
@@ -390,6 +391,9 @@ export const archiveMessages = {
     'identity.unknownProject': 'Название проекта ещё не получено',
     'identity.untitled': 'Диалог без названия',
     'capture.title': 'Выборочное сохранение',
+    'capture.contextsUnavailable':
+      'Не удалось загрузить список чатов и проектов. Правило по умолчанию можно изменить.',
+    'capture.settingsUnavailable': 'Не удалось загрузить настройки. Повторно откройте раздел.',
     'capture.subtitle': 'Настройте, что именно Booster должен сохранять для этой области.',
     'capture.scope': 'Область действия',
     'capture.global': 'По умолчанию для остальных чатов',
@@ -399,6 +403,8 @@ export const archiveMessages = {
     'capture.on': 'Сохранять автоматически',
     'capture.off': 'Не сохранять автоматически',
     'capture.policy': 'Автосохранение',
+    'capture.savedPolicy': 'Действующее автосохранение',
+    'capture.currentProject': 'Текущий проект',
     'capture.explanation':
       'Правило чата важнее правила проекта. Ручной сбор работает и при выключенном автосохранении. Смена правила не удаляет ранее сохранённые данные.',
     'capture.reasoning': 'Сохранять размышления',
@@ -406,8 +412,7 @@ export const archiveMessages = {
     'capture.internal': 'Сохранять остальные внутренние записи',
     'capture.saved': 'Правило сохранено',
     'capture.apply': 'Сохранить правило',
-    'capture.scopeHint':
-      'Откройте нужный проект или чат, чтобы настроить его здесь. Уже заданные правила также доступны в списке.',
+    'capture.scopeHint': 'В списке доступны подтверждённые проекты, текущий чат и существующие правила.',
     'scope.localArchive': 'Локальный архив',
     'scope.archived': 'Сохранено локально',
     'scope.notArchived': 'Локальной копии нет',
@@ -417,17 +422,17 @@ export const archiveMessages = {
     'scope.source.default': 'Правило по умолчанию',
     'scope.settings': 'Настройки архива',
     'tool.provider': 'Провайдер',
+    'tool.turnCalls': 'Вызовы инструментов',
     'tool.calledAt': 'Вызвано',
     'tool.action': 'Действие',
     'tool.details': 'Подробнее',
     'reader.title': 'Локальный архив',
-    'reader.readonly': 'Только чтение · только сохранённые данные',
+    'reader.readonly': 'Workspace · полученные и сохранённые данные',
     'reader.search': 'Найти проект или диалог',
     'reader.searchMessages': 'Найти текст в этом диалоге',
     'reader.empty':
       'Сохранённых диалогов пока нет. Сбор запускается вручную или включается для выбранной области.',
-    'reader.missing':
-      'Этот диалог ещё не сохранён. Выберите чат из архива или соберите текущий диалог.',
+    'reader.missing': 'Этот диалог ещё не сохранён. Выберите чат из архива или соберите текущий диалог.',
     'reader.loading': 'Чтение локального архива…',
     'reader.error': 'Не удалось прочитать локальный архив.',
     'reader.noProject': 'Вне проектов',
@@ -442,8 +447,7 @@ export const archiveMessages = {
     'reader.details': 'Служебные записи',
     'reader.raw': 'Исходная запись / метаданные',
     'reader.unassigned': 'Записи без подтверждённой связи с обменом репликами',
-    'reader.adjacency':
-      'Часть записей сгруппирована по порядку, без подтверждённой родительской связи.',
+    'reader.adjacency': 'Часть записей сгруппирована по порядку, без подтверждённой родительской связи.',
     'reader.more': 'Показать следующие обмены',
     'reader.loadingEarlier': 'Подгружаем предыдущие сообщения…',
     'reader.loadingNewer': 'Подгружаем следующие сообщения…',
@@ -513,8 +517,7 @@ export const archiveMessages = {
     'export.collectionStoppedClosed': 'Сбор остановлен при закрытии экспорта.',
     'export.collectionStoppedSuspended': 'Сбор приостановлен при переходе в другую панель.',
     'export.collectionStoppedHidden': 'Сбор приостановлен: вкладка скрыта.',
-    'export.collectionStoppedTakeover':
-      'Сбор остановлен после вашего вмешательства в прокрутку чата.',
+    'export.collectionStoppedTakeover': 'Сбор остановлен после вашего вмешательства в прокрутку чата.',
     'export.collectionStoppedNavigation': 'Сбор остановлен из-за перехода в другой диалог.',
     'export.collectionStoppedAccount': 'Разрешение на сбор отозвано при смене аккаунта.',
     'export.collectionStoppedSelection': 'Сбор остановлен: выбранная версия диалога изменилась.',
@@ -533,8 +536,7 @@ export const archiveMessages = {
     'export.inspectFailed':
       'Не удалось прочитать состояние архива. Повторите без удаления сохранённых данных.',
     'export.inspectBlocked': 'Подготовке мешают причины ниже',
-    'export.inspectPendingPath':
-      'Источник доступен; выбранная цепочка будет проверена при подготовке',
+    'export.inspectPendingPath': 'Источник доступен; выбранная цепочка будет проверена при подготовке',
     'export.inspectFinalGate':
       'Эта сводка не разрешает экспорт автоматически. Подготовка заново проверит всю выбранную цепочку и ревизию источника.',
     'export.savedRecordCount': 'Сохранённых исходных записей',
@@ -559,8 +561,7 @@ export const archiveMessages = {
     'export.inspectNoFiles': 'Убрать содержимое файлов',
     'export.inspectUseJson': 'Выбрать JSON для технической копии',
     'export.inspectArchive': 'Открыть сохранённую историю',
-    'export.blocker.account':
-      'Аккаунт не подтверждён. Безопасно выбрать его сохранённые данные нельзя.',
+    'export.blocker.account': 'Аккаунт не подтверждён. Безопасно выбрать его сохранённые данные нельзя.',
     'export.blocker.signature':
       'Сигнатура источника не поддерживается. Требуется обновление адаптера; сохранённые данные не сбрасываются.',
     'export.blocker.storage':
@@ -591,10 +592,12 @@ export const archiveMessages = {
       'Техническая копия сохраняет исходный JSON и не поддерживает Markdown или текст.',
     'archive.error.disabled': 'Booster отключён. Включите его в настройках перед сбором.',
     'export.statusMissing': 'Локальной копии пока нет',
+    'export.statusUnknown': 'Объём сохранённой копии и полнота истории не подтверждены',
+    'export.statusExtentUnknown': 'Экспорт включает сохранённые записи; полнота истории не подтверждена',
+    'export.statusGaps': 'В сохранённой копии есть разрывы; экспорт включает только сохранённые записи',
     'export.statusPartial': 'Локальная копия есть, но сохранённая цепочка ещё не дошла до начала',
     'export.statusNewer': 'В открытом ChatGPT есть сообщение новее локальной копии',
-    'export.statusCurrent':
-      'Локальная копия дошла до начала и содержит текущее последнее сообщение',
+    'export.statusCurrent': 'Локальная копия дошла до начала и содержит текущее последнее сообщение',
     'export.statusSaved': 'Сохранённая цепочка диалога дошла до начала',
     'export.refreshFirst': 'Обновить перед экспортом',
     'export.refreshStarting': 'Запуск обновления…',

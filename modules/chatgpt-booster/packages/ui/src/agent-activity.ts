@@ -123,10 +123,7 @@ export function mountAgentActivity(
             ? Math.max(0, snapshot.lastActivityAt - snapshot.startedAt)
             : null),
       )
-      pill.setAttribute(
-        'aria-label',
-        `${phaseLabel()}, ${t('activity.duration')} ${timer.textContent}`,
-      )
+      pill.setAttribute('aria-label', `${phaseLabel()}, ${t('activity.duration')} ${timer.textContent}`)
       return
     }
     const timerStart =
@@ -134,10 +131,7 @@ export function mountAgentActivity(
         ? (snapshot.reasoningStartedAt ?? snapshot.startedAt)
         : (snapshot.phaseStartedAt ?? snapshot.startedAt)
     timer.textContent = elapsed(timerStart, snapshot.completedAt, currentNow)
-    pill.setAttribute(
-      'aria-label',
-      `${phaseLabel()}, ${t('activity.duration')} ${timer.textContent}`,
-    )
+    pill.setAttribute('aria-label', `${phaseLabel()}, ${t('activity.duration')} ${timer.textContent}`)
   }
 
   renderStatic()

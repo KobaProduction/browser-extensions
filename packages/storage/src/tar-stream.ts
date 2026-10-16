@@ -90,8 +90,16 @@ export class TarStreamWriter {
 class StreamCursor {
   private pending = new Uint8Array(0)
   private readonly reader: ReadableStreamDefaultReader<Uint8Array<ArrayBuffer>>
-  constructor(stream: ReadableStream<Uint8Array<ArrayBuffer>>) {
+  private readonly onAbort = () => {
+    void this.reader.cancel(this.signal?.reason).catch(() => undefined)
+  }
+  constructor(
+    stream: ReadableStream<Uint8Array<ArrayBuffer>>,
+    private readonly signal?: AbortSignal,
+  ) {
+    signal?.throwIfAborted()
     this.reader = stream.getReader()
+    signal?.addEventListener('abort', this.onAbort, { once: true })
   }
   async take(size: number): Promise<Uint8Array<ArrayBuffer>> {
     if (!Number.isSafeInteger(size) || size < 0 || size > MAX_ENTRY_BYTES + BLOCK)
@@ -99,8 +107,10 @@ class StreamCursor {
     const output = new Uint8Array(size)
     let at = 0
     while (at < size) {
+      this.signal?.throwIfAborted()
       if (!this.pending.length) {
         const next = await this.reader.read()
+        this.signal?.throwIfAborted()
         if (next.done) throw Error('Unexpected end of TAR stream')
         this.pending = next.value
       }
@@ -112,22 +122,29 @@ class StreamCursor {
     return output
   }
   async eof(): Promise<boolean> {
+    let trailing = 0
     while (true) {
+      this.signal?.throwIfAborted()
+      trailing += this.pending.byteLength
+      if (trailing > 1024 * 1024) throw Error('Excessive TAR zero padding')
       if (this.pending.some((b) => b !== 0)) return false
       const next = await this.reader.read()
+      this.signal?.throwIfAborted()
       if (next.done) return true
       this.pending = next.value
     }
   }
   async close() {
+    this.signal?.removeEventListener('abort', this.onAbort)
     await this.reader.cancel().catch(() => undefined)
     this.reader.releaseLock()
   }
 }
 export async function* readTarEntries(
   input: ReadableStream<Uint8Array<ArrayBuffer>>,
+  options: { readonly signal?: AbortSignal } = {},
 ): AsyncGenerator<TarEntry> {
-  const cursor = new StreamCursor(input)
+  const cursor = new StreamCursor(input, options.signal)
   const seen = new Set<string>()
   try {
     while (true) {

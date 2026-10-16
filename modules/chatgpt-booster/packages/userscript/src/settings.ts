@@ -1,4 +1,3 @@
-import { instanceKey } from '@kobaproduction/browser-core'
 import {
   type BoosterSettings,
   mergeSettings,
@@ -6,6 +5,7 @@ import {
   type SettingsAdapter,
   snapshotSettings,
 } from '@chatgpt-booster/core'
+import { instanceKey } from '@kobaproduction/browser-core'
 
 const STORAGE_KEY = instanceKey('chatgpt-booster:settings', 'chatgpt-booster:prod')
 const EVENT_NAME = instanceKey('chatgpt-booster:settings-changed', 'chatgpt-booster:prod')

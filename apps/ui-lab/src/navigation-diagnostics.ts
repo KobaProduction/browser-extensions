@@ -27,32 +27,21 @@ export function settingsNavigationWarnings({
   content,
 }: SettingsNavigationGeometry): string[] {
   const warnings: string[] = []
-  const mobile = viewportWidth <= 620
-  if (columns !== (mobile ? 1 : 2))
-    warnings.push('Settings grid has an unexpected responsive column count')
+  if (columns !== 1) warnings.push('Settings grid has an unexpected responsive column count')
   for (const rect of [navigation, content]) {
     if (rect.width <= 0 || rect.bottom <= rect.top)
       warnings.push('Settings navigation or content has no visible area')
     if (rect.left < -2 || rect.right > viewportWidth + 2)
       warnings.push('Settings navigation or content overflows the viewport')
   }
-  if (mobile) {
-    // The product's <=620px media rule places full-width navigation above content.
-    if (
-      navigation.bottom > content.top + 2 ||
-      Math.abs(navigation.left - content.left) > 2 ||
-      Math.abs(navigation.right - content.right) > 2
-    )
-      warnings.push('Mobile settings navigation is not a separate full-width top row')
-  } else {
-    if (navigation.width > Math.max(250, viewportWidth * 0.5))
-      warnings.push('Settings navigation occupies too much width')
-    if (
-      navigation.right > content.left + 2 ||
-      navigation.bottom <= content.top ||
-      content.bottom <= navigation.top
-    )
-      warnings.push('Settings sidebar and content overlap or lost their columns')
-  }
+  // One shared catalog sits above the single content column at every viewport.
+  if (
+    navigation.bottom > content.top + 2 ||
+    content.left < navigation.left - 2 ||
+    content.right > navigation.right + 2 ||
+    Math.abs(navigation.left - content.left) > 24 ||
+    Math.abs(navigation.right - content.right) > 24
+  )
+    warnings.push('Settings catalog is not a separate full-width top row')
   return [...new Set(warnings)]
 }
