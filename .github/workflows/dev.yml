@@ -2,6 +2,11 @@ name: Continuous dev prereleases
 on:
   workflow_dispatch:
     inputs:
+      publish_all_in_one:
+        description: 'Build and update the rolling All-in-one DEV prerelease from current main'
+        type: boolean
+        default: false
+        required: true
       cleanup_only:
         description: 'Remove obsolete DEV releases, retaining one complete prerelease per product and all PROD releases'
         type: boolean
@@ -20,7 +25,7 @@ jobs:
     # Only verified, repository-owned main commits are allowed to advance dev.
     # Never publish unreviewed fork/PR code with a privileged release token.
     if: >-
-      ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.cleanup_only == true) ||
+      ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && (inputs.cleanup_only == true || inputs.publish_all_in_one == true)) ||
           (github.event.workflow_run.conclusion == 'success' &&
           github.event.workflow_run.event == 'push' &&
           github.event.workflow_run.head_branch == 'main' &&
@@ -38,45 +43,62 @@ jobs:
         with: {node-version: '22'}
       - run: bun install --frozen-lockfile
       - name: Publish affected products only to dev (prerelease)
-        if: github.event_name == 'workflow_run'
+        if: github.event_name == 'workflow_run' || inputs.publish_all_in_one == true
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_SHA: ${{ github.event.workflow_run.head_sha }}
+          GITHUB_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          PUBLISH_ALL_IN_ONE: ${{ inputs.publish_all_in_one || false }}
         run: |
           set -euo pipefail
           git fetch --tags --force
           # Command substitution propagates planner errors under set -e;
           # process substitution would silently mask them.
-          candidates="$(bun scripts/channel-plan.ts "--base=${GITHUB_SHA}^" "--head=$GITHUB_SHA")"
+          if [[ "$PUBLISH_ALL_IN_ONE" == "true" ]]; then
+            count="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs" --jq '[.check_runs[] | select(.name == "check" and .conclusion == "success")] | length')"
+            test "$count" -gt 0 || { echo "Source commit has no passing CI check" >&2; exit 1; }
+            candidates="$(bun -e "console.log('all-in-one|' + require('./apps/all-in-one.json').version)")"
+          else
+            candidates="$(bun scripts/channel-plan.ts "--base=${GITHUB_SHA}^" "--head=$GITHUB_SHA")"
+          fi
           while IFS='|' read -r id version; do
             test -n "$id" || continue
+            # Do not let an older queued run downgrade the rolling DEV channel.
+            git fetch origin main --quiet
+            test "$(git rev-parse origin/main)" = "$GITHUB_SHA" || { echo "Validated source is no longer HEAD; skipping stale publication"; exit 0; }
+            git fetch origin dev --quiet || true
             # Use product-owned counters, continuing after legacy suffix tags.
             release="$(bun scripts/dev-release.ts "$id" "$version")"
             IFS='|' read -r build_number tag title reused <<< "$release"
             bun scripts/build.ts --module="$id" --channel=dev --build-number="$build_number"
             bun scripts/validate.ts --built --module "$id" --channel=dev --build-number="$build_number"
-            if gh release view "$tag" >/dev/null 2>&1; then
-              if [[ "$reused" != "1" ]]; then
-                echo "DEV release tag collision: $tag" >&2
-                exit 1
-              fi
-              echo "Reusing previous release from the same source: $tag"
+            # Reject an older validated commit that lost the race during build.
+            git fetch origin main --quiet
+            test "$(git rev-parse origin/main)" = "$GITHUB_SHA" || { echo "Main advanced during build; refusing stale release" >&2; exit 1; }
+            # A rolling prerelease has one fixed tag per product. The numeric
+            # build counter is persisted in the dev update channel, not tags.
+            rolling="rolling-dev/$id"
+            if gh release view "$rolling" >/dev/null 2>&1; then
+              gh release upload "$rolling" "dist/$id/$id.user.js" "dist/$id/$id-extension.zip" --clobber
+              gh release edit "$rolling" --prerelease --target "$GITHUB_SHA" --title "$title" \
+                --notes "Continuous dev build from validated source $GITHUB_SHA"
+              git tag -f "$rolling" "$GITHUB_SHA"
+              git push --force origin "refs/tags/$rolling"
             else
-              gh release create "$tag" "dist/$id/$id.user.js" "dist/$id/$id-extension.zip" \
+              gh release create "$rolling" "dist/$id/$id.user.js" "dist/$id/$id-extension.zip" \
                 --prerelease --target "$GITHUB_SHA" --title "$title" \
                 --notes "Continuous dev build from validated source $GITHUB_SHA"
             fi
             bash scripts/publish-channel.sh "$id" dev
-            # A queued validated commit may predate the retention helper.
+            # Prune legacy release records only after successful channel publication.
             if test -f scripts/prune-dev-releases.ts; then
-              bun scripts/prune-dev-releases.ts --apply "--product=$id" "--keep-tag=$tag"
+              bun scripts/prune-dev-releases.ts --apply "--product=$id" "--keep-tag=$rolling"
             fi
             # Include this tag before allocating another independent counter.
             git fetch --tags --force
           done <<< "$candidates"
       - name: Remove accumulated obsolete DEV publications
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && inputs.cleanup_only == true && inputs.publish_all_in_one != true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bun scripts/prune-dev-releases.ts --apply

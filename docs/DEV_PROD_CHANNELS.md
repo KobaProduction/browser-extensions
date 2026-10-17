@@ -9,9 +9,10 @@ promotion from inventing source history or causing endless build-on-push loops.
 - Every successful, trusted `main` push CI triggers `.github/workflows/dev.yml`.
   The source diff from the first parent determines which products have changed.
   Each changed product is built, validated and published as a GitHub
-  **prerelease** with immutable tag `dev-<product>/v<major>.<minor>.<counter>`.
+  **prerelease** through one rolling prerelease with a fixed tag `rolling-dev/<product>` (one tag per product, not per build).
   Counters advance independently per published product, including across
-  source patch changes. Historical suffix-form DEV tags seed each counter.
+  source patch changes. The published DEV userscript channel records the last
+  counter; historical suffix-form DEV tags seed the first rolling transition.
   Its `dev/userscripts/<product>.user.js` and
   `dev/extensions/<product>-extension.zip` are advanced. Untouched products
   keep their existing channel files and version.
@@ -31,7 +32,7 @@ promotion from inventing source history or causing endless build-on-push loops.
   functionality, and patch means fixes. Schema 1 and PROD approval remain separate.
   The build's DEV metadata
   receives an independent, increasing **third** numeric component:
-  `X.Y.<counter>`. A `dev-` prefix appears in release titles, GitHub tags
+  `X.Y.<counter>`. A `dev-` prefix appears in release titles, the fixed rolling GitHub tag
   and the Chromium display name. No fourth component is used. The source/PROD
   version remains `X.Y.Z`. The historical stable VK `2.3.8` tag exists: a
   v1.1.0 first-release candidate is numerically lower and **must not** be
@@ -52,8 +53,9 @@ their downloadable assets. Recognize both current `dev-<product>/v...` and legac
 `<product>/v...-dev.N` names; stable releases, drafts and unknown tags are excluded.
 Existing accumulated DEV publications can be pruned through `dev.yml`'s
 main-only `cleanup_only` dispatch under the same channel concurrency lock.
-Git source tags remain as lightweight counter/history references; pruning does
-not retain old DEV build downloads or affect installed settings/data.
+The three rolling DEV tags are the only active DEV distribution tags. Legacy
+DEV tags are recovery references until explicit inventory and safe removal;
+new builds do not create numbered tags. Pruning does not affect installed settings/data.
 
 ## Installed identity matrix
 
