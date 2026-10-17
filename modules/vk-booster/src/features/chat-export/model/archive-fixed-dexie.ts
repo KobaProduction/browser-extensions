@@ -12,6 +12,7 @@ import {
 } from '@kobaproduction/browser-storage'
 import Dexie, { type DexieOptions, type Table } from 'dexie'
 import { projectVkArchiveMessage, readVkArchiveMessage } from './archive-message-adapter'
+import { sameVkSourceValue } from './source-value'
 import type { VkMessage } from './types'
 
 /**
@@ -31,7 +32,20 @@ export interface FixedVkMessage {
   text: string | null
   attachmentCount: number | null
 }
-export interface FixedVkSourceSnapshot {
+export interface VkSourceObservation {
+  sourceVersion: string
+  recordedAtMs: number
+  raw: VkMessage
+  normalized?: ArchiveMessageV1
+}
+export interface VkHistoryCoverage {
+  version: 1
+  firstId: number
+  lastId: number
+  count: number
+  observedAtMs: number
+}
+export interface FixedVkSourceSnapshot extends VkSourceObservation {
   key: string
   ownerId: string
   sourceVersion: string
@@ -39,6 +53,10 @@ export interface FixedVkSourceSnapshot {
   raw: VkMessage
   /** Shared authority; existing snapshots without it adapt in memory only. */
   normalized?: ArchiveMessageV1
+  /** Earlier immutable observations; raw/normalized describe the latest observation. */
+  previous?: VkSourceObservation[]
+  /** Invalidated on restore; proves a prior native full scan, never inferred from one old row. */
+  historyCoverage?: VkHistoryCoverage
 }
 class FixedVkDatabase extends Dexie {
   messages!: Table<FixedVkMessage, string>
@@ -130,6 +148,150 @@ export class FixedVkDexieRepository {
     })
     return key
   }
+  /** One atomic observation writer: preserve earlier source values while refreshing the preferred view. */
+  async observeOriginal(
+    peerId: number,
+    source: VkMessage,
+    sourceVersion: string,
+    recordedAtMs: number,
+    beforeCommit?: () => void,
+  ): Promise<'saved' | 'unchanged' | 'revised'> {
+    const ownerId = this.scope.ownerId
+    if (
+      !ownerId ||
+      !sourceVersion ||
+      sourceVersion.length > 128 ||
+      !Number.isSafeInteger(recordedAtMs) ||
+      recordedAtMs < 0
+    )
+      throw Error('Unverified VK record or conversation identity')
+    const data = projectOriginal(ownerId, peerId, source)
+    return this.db.transaction('rw', this.db.messages, this.db.snapshots, async () => {
+      const current = await this.getOriginal(peerId, source.id)
+      if (!current) {
+        await this.addOriginal(peerId, source, sourceVersion, recordedAtMs)
+        beforeCommit?.()
+        return 'saved'
+      }
+      if (sameVkSourceValue(current.raw, source)) return 'unchanged'
+      const incomingEdit = source.update_time
+      const currentEdit = current.raw.update_time
+      if (
+        typeof incomingEdit === 'number' &&
+        typeof currentEdit === 'number' &&
+        Number.isFinite(incomingEdit) &&
+        Number.isFinite(currentEdit) &&
+        incomingEdit < currentEdit
+      ) {
+        if (current.previous?.some((value) => sameVkSourceValue(value.raw, source))) return 'unchanged'
+        await this.db.snapshots.put({
+          ...current,
+          previous: [
+            ...(current.previous ?? []),
+            {
+              sourceVersion,
+              recordedAtMs,
+              raw: structuredClone(source),
+              normalized: projectVkArchiveMessage(source, {
+                ownerId,
+                conversationId: String(peerId),
+                sourceKind: 'vk-history',
+                sourceVersion,
+                observedAtMs: recordedAtMs,
+              }),
+            },
+          ],
+        })
+        beforeCommit?.()
+        return 'revised'
+      }
+      const previous = [
+        ...(current.previous ?? []),
+        {
+          sourceVersion: current.sourceVersion,
+          recordedAtMs: current.recordedAtMs,
+          raw: current.raw,
+          normalized: current.normalized,
+        },
+      ]
+      const snapshot: FixedVkSourceSnapshot = {
+        ...current,
+        sourceVersion,
+        recordedAtMs,
+        raw: structuredClone(source),
+        normalized: projectVkArchiveMessage(source, {
+          ownerId,
+          conversationId: String(peerId),
+          sourceKind: 'vk-history',
+          sourceVersion,
+          observedAtMs: recordedAtMs,
+        }),
+        previous,
+      }
+      await this.db.messages.put(data)
+      await this.db.snapshots.put(snapshot)
+      beforeCommit?.()
+      return 'revised'
+    })
+  }
+  /** The indexed covered range must still exist; a partial archive cannot acquire this proof. */
+  async historyCoverage(peerId: number): Promise<VkHistoryCoverage | undefined> {
+    const bounds = await this.messageBounds(peerId)
+    if (!bounds.first) return undefined
+    const source = await this.getOriginal(peerId, bounds.first.messageId)
+    const proof = source?.historyCoverage
+    if (
+      proof?.version !== 1 ||
+      proof.firstId !== bounds.first.messageId ||
+      !positive(proof.lastId) ||
+      proof.lastId < proof.firstId ||
+      !positive(proof.count) ||
+      !Number.isSafeInteger(proof.observedAtMs) ||
+      proof.observedAtMs < 0
+    )
+      return undefined
+    const count = await this.db.messages
+      .where('[ownerId+peerId+messageId]')
+      .between(
+        [this.scope.ownerId, peerId, proof.firstId],
+        [this.scope.ownerId, peerId, proof.lastId],
+        true,
+        true,
+      )
+      .count()
+    return count === proof.count && (await this.getMessage(peerId, proof.lastId)) ? proof : undefined
+  }
+  async recordHistoryCoverage(
+    peerId: number,
+    proof: VkHistoryCoverage,
+    beforeCommit?: () => void,
+  ): Promise<boolean> {
+    if (
+      proof.version !== 1 ||
+      !positive(proof.firstId) ||
+      !positive(proof.lastId) ||
+      proof.lastId < proof.firstId ||
+      !positive(proof.count) ||
+      !Number.isSafeInteger(proof.observedAtMs) ||
+      proof.observedAtMs < 0
+    )
+      throw Error('Invalid VK history coverage')
+    return this.db.transaction('rw', this.db.messages, this.db.snapshots, async () => {
+      const [bounds, count] = await Promise.all([this.messageBounds(peerId), this.countMessages(peerId)])
+      if (
+        count !== proof.count ||
+        bounds.first?.messageId !== proof.firstId ||
+        bounds.last?.messageId !== proof.lastId
+      )
+        return false
+      const key = JSON.stringify([this.scope.ownerId, peerId, proof.firstId])
+      const snapshot = await this.db.snapshots.get(key)
+      if (!snapshot) throw Error('VK coverage source is missing')
+      await this.db.snapshots.put({ ...snapshot, historyCoverage: structuredClone(proof) })
+      beforeCommit?.()
+      return true
+    })
+  }
   async getMessage(peerId: number, messageId: number): Promise<FixedVkMessage | undefined> {
     if (!positive(peerId) || !positive(messageId) || !this.scope.ownerId)
       throw Error('VK archive owner or record identity unavailable')
@@ -183,6 +345,34 @@ export class FixedVkDexieRepository {
       (snapshot.raw.peer_id !== undefined && snapshot.raw.peer_id !== peerId)
     )
       throw Error('VK source identity mismatch')
+    if (snapshot.previous !== undefined) {
+      if (!Array.isArray(snapshot.previous)) throw Error('Invalid VK source revisions')
+      for (const observation of snapshot.previous) {
+        if (
+          !observation ||
+          typeof observation.sourceVersion !== 'string' ||
+          !observation.sourceVersion ||
+          observation.sourceVersion.length > 128 ||
+          !Number.isSafeInteger(observation.recordedAtMs) ||
+          observation.recordedAtMs < 0 ||
+          !observation.raw ||
+          observation.raw.id !== messageId ||
+          (observation.raw.peer_id !== undefined && observation.raw.peer_id !== peerId)
+        )
+          throw Error('Invalid VK source revision identity')
+        readVkArchiveMessage(
+          observation.raw,
+          {
+            ownerId: snapshot.ownerId,
+            conversationId: String(peerId),
+            sourceKind: 'vk-history',
+            sourceVersion: observation.sourceVersion,
+            observedAtMs: observation.recordedAtMs,
+          },
+          observation.normalized,
+        )
+      }
+    }
     return {
       ...snapshot,
       normalized: readVkArchiveMessage(
@@ -247,6 +437,37 @@ export class FixedVkDexieRepository {
         (original.peer_id !== undefined && original.peer_id !== parts[1])
       )
         throw Error('Invalid VK backup snapshot identity')
+      // Imported data proves saved source values, not a native full-history scan in this installation.
+      delete record.historyCoverage
+      if (record.previous !== undefined) {
+        if (!Array.isArray(record.previous)) throw Error('Invalid VK source revisions')
+        for (const observation of record.previous as VkSourceObservation[]) {
+          if (
+            !observation ||
+            typeof observation.sourceVersion !== 'string' ||
+            !observation.sourceVersion ||
+            observation.sourceVersion.length > 128 ||
+            !Number.isSafeInteger(observation.recordedAtMs) ||
+            observation.recordedAtMs < 0 ||
+            !observation.raw ||
+            observation.raw.id !== parts[2] ||
+            (observation.raw.peer_id !== undefined && observation.raw.peer_id !== parts[1])
+          )
+            throw Error('Invalid VK backup revision identity')
+          projectOriginal(owner, parts[1] as number, observation.raw)
+          readVkArchiveMessage(
+            observation.raw,
+            {
+              ownerId: owner,
+              conversationId: String(parts[1]),
+              sourceKind: 'vk-history',
+              sourceVersion: observation.sourceVersion,
+              observedAtMs: observation.recordedAtMs,
+            },
+            observation.normalized,
+          )
+        }
+      }
       if (record.normalized !== undefined)
         readVkArchiveMessage(
           record.raw as VkMessage,

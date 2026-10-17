@@ -47,7 +47,38 @@ VK ordinary export exposes JSON/Markdown/TXT and file/ZIP packaging with clear
 scope and attachment-reference/media distinctions. Technical Reader refresh
 and a redundant conversation-saving category are absent from ordinary flows.
 
+Both Reader variants use the shared boundary navigation, scroll anchor/edge
+driver and adjacent-record merger. First/latest actions reach the stored archive
+boundaries. Trusted user scrolling loads adjacent stored records in either
+direction without an explicit page button or a jump in the visible record.
+Programmatic target/anchor movement must not recursively load the archive.
+The shared archive module owns page/retention bounds; source identity, revisions
+and database access remain provider capabilities. A bounded visible window must
+allow traversal of every saved record and preserve off-window export selections.
+Run `--reader-scroll-ui` for responsive wheel/anchor/boundary checks and a complete
+synthetic 3000-record traversal. Private live data is never a fixture.
+
+Full-width separator lines belong to an unpadded outer section. Put content
+insets on its inner toolbar/text/transcript; padding the shared outer Reader
+must not shorten its separators. Measure both separator edges and control insets.
+
 ## Acceptance environment
+
+### Lab-first interface workflow
+
+The owner's 2026-10-17 direction requires Laboratory UI as the first environment
+for interface implementation, debugging and interaction testing. Start the local
+server with `bun run ui:lab`, open its localhost page in a real browser and
+select the relevant product, surface and synthetic scenario. Inspect the rendered
+layout and exercise the controls directly, or use an authorized local/remote
+CDP or Playwright connection to that browser. Keep the same browser session when
+it already provides the needed access. Automated DOM assertions supplement
+visual inspection and trusted pointer/keyboard interaction.
+
+Iterate on the actual shared/provider components mounted by the Lab, then run
+the relevant responsive checks against a stable server build. Use the real
+provider site separately to verify source integration and the installed extension;
+private conversations and credentials must never become Lab fixtures.
 
 The executable local harness is [UI Acceptance Lab](../../apps/ui-lab/README.md) (`bun run ui:lab`). It mounts the **real** Shell, ChatGPT and VK Vue components with deterministic synthetic ports. No user accounts, tokens, real IndexedDB, media or external telemetry endpoints are accessed. Live data assertions are forbidden in this layer.
 

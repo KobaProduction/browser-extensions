@@ -43,6 +43,12 @@ promotion from inventing source history or causing endless build-on-push loops.
 
 ## Installed identity matrix
 
+Both channels run in normal and incognito windows on their supported hosts.
+DEV is not restricted to private browsing. MV3's split incognito mode remains
+supported, subject to the browser's user-controlled incognito permission;
+userscripts do not carry an incognito-only `@run-in` directive. Channel isolation
+is defined by installation identities and storage scopes below.
+
 | Installed product | PROD | DEV |
 | --- | --- | --- |
 | VK Booster | Legacy standalone VK archive identity, isolated from others | Separate VK DEV scope |

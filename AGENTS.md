@@ -61,6 +61,12 @@ For UI work, apply the existing AI Agent Workflow
 and [interface review skill](https://github.com/ArthurKoba/ai-agent-workflow/blob/main/skills/interface-design-review.md).
 Use the project's existing components and semantic theme tokens; the local
 UI acceptance contract owns this project's responsive and testing decisions.
+Start interface implementation/debugging in the local **Laboratory UI**
+(`bun run ui:lab`), open its localhost page in a real browser, and exercise
+the relevant fixtures and interactions. Inspect the actual rendering there
+directly or through authorized CDP/Playwright browser access. Follow the
+[Lab-first workflow](docs/shared/UI_ACCEPTANCE.md#lab-first-interface-workflow);
+authenticated installed-product checks remain a separate gate.
 The owner's latest directive requires real **shadcn-vue registry primitives only**
 for interactive UI, exported from the shared UI package. Do not create native
 or handwritten lookalikes, duplicate provider registries or competing sidebars.

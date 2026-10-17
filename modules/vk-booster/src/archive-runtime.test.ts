@@ -927,6 +927,18 @@ test('fixed Dexie VK capture reads verified owner, persists new history, preview
     expect(firstWindow).toHaveLength(5)
     expect(nextWindow).toHaveLength(5)
     expect(new Set([...firstWindow, ...nextWindow].map((row) => row.id)).size).toBe(10)
+    const pinnedWindow = await fresh.readWindowFixed?.(5)
+    expect(pinnedWindow?.messages).toEqual(firstWindow)
+    if (!pinnedWindow || !fresh.readWindowFixed) throw Error('Reader window port unavailable')
+    await expect(
+      fresh.readWindowFixed(5, undefined, { ownerId: 'other-synthetic-owner' }),
+    ).rejects.toThrow('owner changed')
+    await expect(
+      fresh.readWindowFixed(5, undefined, {
+        ownerId: pinnedWindow.ownerId,
+        revision: pinnedWindow.revision + 1,
+      }),
+    ).rejects.toThrow('changed while reading window')
     const archive = await fresh.exportFixed()
     const text = await new Response(archive.stream().pipeThrough(new DecompressionStream('gzip'))).text()
     const lines = text

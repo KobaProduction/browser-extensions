@@ -16,6 +16,7 @@
     "./styles.css": "./dist/styles.css"
   },
   "dependencies": {
+    "@kobaproduction/browser-archive": "workspace:*",
     "@kobaproduction/browser-core": "workspace:*",
     "vue": "^3.5.22",
     "lucide-vue-next": "^0.545.0"

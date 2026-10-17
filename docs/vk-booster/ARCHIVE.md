@@ -1,5 +1,50 @@
 # VK Booster — fixed Archive v1 and pre-PROD acceptance
 
+## Incremental capture correction (2026-10-17)
+
+The owner requests resumable full-history capture and an early stop on an already
+saved message older than 24 hours. The age is a synchronization policy, not a
+claim that all VK metadata becomes immutable. A single old saved row cannot
+prove that an interrupted first capture reached older messages.
+
+The collector now records a provider-validated complete-scan marker on the oldest
+existing snapshot, without adding tables or changing Dexie schema 1. Reuse needs
+the owner/peer-scoped indexed covered range to remain present, matching source
+counts, an unchanged observed old message inside that range, and a fresh native
+head check. Without that prior proof, capture continues to the missing older
+messages. Import/restore discards the marker; ordinary Reader completeness still
+needs fresh current-session native evidence. External archive notifications,
+owner/peer changes and cancellation invalidate the active operation.
+
+Native history pages use `start_message_id` plus bounded offsets. This parameter
+is documented in the official [VK API schema](https://github.com/VKCOM/vk-api-schema/blob/master/messages/methods.json).
+Overlapping records are deduplicated; a stalled cursor gets bounded retries.
+Changes to source counts/head prevent a complete-history claim. Transient network
+failures have bounded backoff; permission denials are not retried as network errors.
+
+Changed native observations no longer abort the whole capture. One atomic writer
+keeps prior source observations under `previous`, updates the preferred projection
+and raw observation together, and prevents an explicitly older `update_time` from
+rolling the preferred observation backward. Source values are never discarded.
+JSON/ZIP and internal JSONL exports preserve these earlier observations with the
+same source codec; backup restore validates their identities before writing.
+
+UI reports new rows, preserved source revisions and the reused verified tail
+separately. Storage, network, timeout, source-page and empty-export failures have
+bounded, safe explanations without source payloads, tokens or private URLs.
+This supersedes the earlier blanket source-conflict rejection and RAM-only
+capture-baseline statements below. Validation uses generated records and fake
+IndexedDB; live VK and the installed Tampermonkey build are not established by it.
+
+Overall collection progress includes both records read in this run and the verified
+saved tail reused by the early stop. The summary keeps actual VK reads separate:
+26 reads plus 4613 reused records means 4639/4639 covered, never 4639 network reads.
+
+Wall attachments are post references, not downloadable binary files. Their
+source-provided nested attachments use the same bounded traversal and original
+download guards as direct message attachments; post identity supplies a VK link.
+Reader highlighting belongs to the message card, independently of export selection.
+
 **Owner decision (2026-10-11):** VK's first source release is **1.0.0**;
 its provider-owned canonical IndexedDB schema is **v1** and stays fixed
 until independently approved first PROD. Dexie is the only active message
@@ -21,7 +66,10 @@ adapter, not automatic archive migration services.
   a conflicting upstream original is rejected until an explicit revision
   policy is accepted.
 - Capture reads bounded VK API pages (at most 100 messages per request); the product no longer applies an arbitrary 3,000-message ceiling to the full-history mode. The Reader
-  reads 80 records per bounded page, using a stable source-message ID cursor.
+  reads bounded portions using the common archive page-size policy and a stable
+  source-message ID cursor. User scrolling loads adjacent stored portions in
+  either direction; common retention/anchor logic bounds memory without exposing
+  a manual page button. First/latest actions reach the stored boundaries.
   User Stop halts scanning at message/page boundaries; a subsequent manual
   capture can resume without duplicating previously saved originals. This is
   **not** a durable capture checkpoint or accepted full-history coverage.
@@ -281,9 +329,31 @@ endpoints reject the selection; original snapshots remain untouched. VK's
 Reader previews both boundaries, disables export during range resolution,
 and preserves selected IDs between pages. Its complete lightweight timeline
 reads every saved projection in batches of 128, rather than silently treating
-the current 80-message Reader window as the whole archive. Navigating a point
+the current bounded Reader window as the whole archive. Navigating a point
 loads that message's bounded Reader window. Leaving the Reader, changing peer
 or unmounting cancels pending timeline/range production.
+
+`readWindowFixed` supplies an owner/peer/revision-stamped stored window and checks
+the expected owner/revision before adjacent reads. Changed sources are never
+merged. `readFixed` remains the compatible plain-message port. The common archive
+merger deduplicates by native identity and retains at most its configured bound;
+the common UI scroll driver restores the same visible record when adding or
+trimming either end. Off-window selections are retained independently.
+
+The timeline preview shows the verified participant display name, saved message
+text and source message date/time, with its archive position separately. Numeric
+message IDs remain navigation identities, not visible preview headings. The
+current point's date is also visible above the rail. Missing names/dates are
+reported honestly; observation time and inferred patronymics are not substitutes.
+
+Shared `export-selection` resolves all/date/latest-N/explicit selections from
+the full saved message summary source. Calendar dates use the user's local
+timezone; the final date includes the whole day. Unknown source dates are
+excluded from time-based filters. VK and ChatGPT use the same fields, including
+inline searched selection, and keep provider serialization/identity checks.
+Filtered VK preparation pins the timeline revision and rejects stale sources.
+Format (JSON/Markdown/TXT) and packaging are separate; technical dump settings
+do not replace the ordinary message export workflow.
 
 `packages/archive/src/conversation-integrity.ts` owns reusable independent
 start/end/chain states and computed first/last anchors. Its graph adapter

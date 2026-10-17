@@ -1,6 +1,8 @@
 import { expect, test } from 'bun:test'
 import { createVkArchiveCapture } from './archive-capture'
+import type { VkHistoryCoverage } from './archive-fixed-dexie'
 import type { VkArchiveSession } from './archive-session'
+import { sameVkSourceValue } from './source-value'
 import type { VkCaptureEvidence, VkMessage } from './types'
 
 function fixture(overlap = false) {
@@ -11,6 +13,7 @@ function fixture(overlap = false) {
     text: `synthetic${index}`,
   }))
   const saved = new Map<number, VkMessage>()
+  let proof: VkHistoryCoverage | undefined
   let evidence: VkCaptureEvidence | undefined,
     revision = 0
   const state = { busy: false, backupRunning: false, stopRequested: false, disposed: false }
@@ -20,6 +23,17 @@ function fixture(overlap = false) {
       saved.has(id) ? { raw: saved.get(id) } : undefined,
     addOriginal: async (_peer: number, message: VkMessage) => {
       saved.set(message.id, message)
+    },
+    observeOriginal: async (_peer: number, message: VkMessage) => {
+      const old = saved.get(message.id)
+      if (old && sameVkSourceValue(old, message)) return 'unchanged'
+      saved.set(message.id, message)
+      return old ? 'revised' : 'saved'
+    },
+    historyCoverage: async () => proof,
+    recordHistoryCoverage: async (_peer: number, value: VkHistoryCoverage) => {
+      proof = value
+      return true
     },
     close() {},
   }
@@ -70,14 +84,14 @@ test('full VK scan proves observed boundaries without assuming consecutive messa
   })
   expect(run.state.busy).toBe(false)
 })
-test('overlapping VK history pages retain saved originals and cannot claim complete', async () => {
+test('overlapping VK history pages are deduplicated and the missing tail is fetched', async () => {
   const run = fixture(true)
-  await expect(run.capture.captureFixed('all')).rejects.toThrow('order changed')
-  expect(run.saved.size).toBe(10)
-  expect(run.evidence()).toBeUndefined()
+  expect(await run.capture.captureFixed('all')).toMatchObject({ complete: true, saved: 20 })
+  expect(run.saved.size).toBe(20)
+  expect(run.evidence()?.startReached).toBe(true)
   expect(run.state.busy).toBe(false)
 })
-test('field-order differences do not block backfill, while changed source evidence still rejects', async () => {
+test('field-order differences do not block backfill and changed sources use explicit observation revisions', async () => {
   const run = fixture()
   await run.capture.captureFixed(10)
   for (const [id, value] of run.saved)
@@ -90,6 +104,6 @@ test('field-order differences do not block backfill, while changed source eviden
   const original = run.saved.get(1000)
   if (!original) throw Error('Missing synthetic source')
   run.saved.set(1000, { ...original, text: 'different source' })
-  await expect(run.capture.captureFixed('all')).rejects.toThrow('explicit source revision')
+  expect(await run.capture.captureFixed('all')).toMatchObject({ updated: 1, complete: true })
   expect(run.saved.size).toBe(20)
 })

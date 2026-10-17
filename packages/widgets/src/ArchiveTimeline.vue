@@ -7,6 +7,8 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  useApplicationLocale,
+  useLocalizedText,
 } from '@kobaproduction/browser-ui'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import {
@@ -14,8 +16,10 @@ import {
   type ArchiveTimelineNode,
   archiveTimelineLayout,
   archiveTimelineSameIds,
+  archiveTimelineTimestamp,
   archiveTimelineWindowStart,
 } from './archive-timeline'
+import { WIDGET_UI_MESSAGES } from './ui-messages'
 
 const props = defineProps<{
   nodes: readonly ArchiveTimelineNode[]
@@ -28,6 +32,24 @@ const props = defineProps<{
   loading?: boolean
 }>()
 const emit = defineEmits<{ navigate: [id: string] }>()
+const locale = useApplicationLocale()
+const text = useLocalizedText(WIDGET_UI_MESSAGES)
+const dateFormatter = computed(
+  () => new Intl.DateTimeFormat(locale.value, { dateStyle: 'medium', timeStyle: 'short' }),
+)
+const compactDateFormatter = computed(
+  () => new Intl.DateTimeFormat(locale.value, { day: '2-digit', month: '2-digit', year: 'numeric' }),
+)
+function nodeDate(node: ArchiveTimelineNode | undefined) {
+  return archiveTimelineTimestamp(node?.timestampMs)
+}
+function dateLabel(node: ArchiveTimelineNode | undefined, compact = false) {
+  const date = nodeDate(node)
+  return date ? (compact ? compactDateFormatter.value : dateFormatter.value).format(date) : ''
+}
+function previewLabel(node: ArchiveTimelineNode | undefined) {
+  return [node?.label, dateLabel(node), node?.preview].filter(Boolean).join(' · ')
+}
 const root = ref<HTMLElement | null>(null)
 const PAGE_SIZE = ARCHIVE_TIMELINE_WINDOW_SIZE
 const ROW_HEIGHT = 24
@@ -239,18 +261,26 @@ onBeforeUnmount(() => {
 <template>
   <TooltipProvider :delay-duration="150" :skip-delay-duration="80">
     <div v-if="nodes.length" ref="root" role="complementary" data-archive-timeline-rail class="flex h-full w-20 min-h-0 min-w-0 shrink-0 flex-col border-s border-border bg-background" :aria-label="label" :aria-busy="loading || undefined">
-      <span class="shrink-0 px-1 py-1 text-center text-[10px] tabular-nums text-muted-foreground" aria-hidden="true">{{ nodes.length ? position + 1 : 0 }} / {{ nodes.length }}</span>
+      <div class="shrink-0 space-y-1 px-1 py-2 text-center text-[10px] tabular-nums text-muted-foreground">
+        <time v-if="nodeDate(nodes[position])" :datetime="nodeDate(nodes[position])?.toISOString()" class="block font-medium text-foreground" data-archive-timeline-date>{{ dateLabel(nodes[position], true) }}</time>
+        <span aria-hidden="true">{{ nodes.length ? position + 1 : 0 }} / {{ nodes.length }}</span>
+      </div>
       <div class="flex min-h-0 flex-1 gap-1 px-1 pb-8">
         <Tooltip v-if="nodes.length > 1" :open="!disabled && Boolean(sliderPreview)">
           <TooltipTrigger as-child>
             <div class="relative my-2 w-5 shrink-0" @pointerdown="beginPointer" @pointermove="previewSlider" @pointerleave="sliderHoverIndex = null" @pointerup="endPointer" @pointercancel="cancelPointer" @keydown="beginKeyboard" @focusin="sliderFocused = true" @focusout="sliderFocused = false">
-              <Slider orientation="vertical" :inverted="true" class="mx-auto h-full shrink-0" :model-value="[position]" :min="0" :max="nodes.length - 1" :step="1" :disabled="disabled" :aria-label="label" :aria-valuetext="`${position + 1} / ${nodes.length}: ${nodes[position]?.label ?? ''} ${nodes[position]?.preview ?? ''}`" @update:model-value="scrub" @value-commit="selectIndex" />
+              <Slider orientation="vertical" :inverted="true" class="mx-auto h-full shrink-0" :model-value="[position]" :min="0" :max="nodes.length - 1" :step="1" :disabled="disabled" :aria-label="label" :aria-valuetext="`${position + 1} / ${nodes.length}: ${previewLabel(nodes[position])}`" @update:model-value="scrub" @value-commit="selectIndex" />
             </div>
           </TooltipTrigger>
-          <TooltipContent v-if="sliderPreview" side="left" :collision-padding="12" :avoid-collisions="true" :style="previewStyle" class="whitespace-normal [overflow-wrap:anywhere]" data-archive-timeline-preview :data-archive-timeline-preview-id="sliderPreview.id">
-            <strong class="block">{{ sliderPreview.label }} · {{ (sliderPreviewIndex ?? 0) + 1 }} / {{ nodes.length }}</strong>
-            <p v-if="sliderPreview.preview" class="mt-1">{{ sliderPreview.preview }}</p>
-            <p v-if="sliderPreview.uncertain" class="mt-1">{{ uncertainLabel || '···' }}</p>
+          <TooltipContent v-if="sliderPreview" side="left" :collision-padding="12" :avoid-collisions="true" :style="previewStyle" class="w-72 space-y-2 border border-border bg-popover p-3 text-popover-foreground shadow-md whitespace-normal [overflow-wrap:anywhere]" data-archive-timeline-preview :data-archive-timeline-preview-id="sliderPreview.id">
+            <strong class="block text-sm leading-snug" data-archive-timeline-author>{{ sliderPreview.label }}</strong>
+            <p v-if="sliderPreview.preview" class="whitespace-pre-wrap text-sm leading-relaxed" data-archive-timeline-text>{{ sliderPreview.preview }}</p>
+            <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-t border-border pt-2 text-xs text-muted-foreground">
+              <time v-if="nodeDate(sliderPreview)" :datetime="nodeDate(sliderPreview)?.toISOString()" data-archive-timeline-sent-at>{{ dateLabel(sliderPreview) }}</time>
+              <span v-else>{{ text('Дата неизвестна') }}</span>
+              <span class="tabular-nums">{{ (sliderPreviewIndex ?? 0) + 1 }} / {{ nodes.length }}</span>
+            </div>
+            <p v-if="sliderPreview.uncertain" class="text-xs text-muted-foreground">{{ uncertainLabel || '···' }}</p>
           </TooltipContent>
         </Tooltip>
         <ScrollArea class="h-full min-h-0 min-w-0 flex-1">
@@ -261,12 +291,17 @@ onBeforeUnmount(() => {
             </svg>
             <Tooltip v-for="(node, index) in visibleNodes" :key="node.id">
               <TooltipTrigger as-child>
-                <Button :data-archive-timeline-id="node.id" type="button" :variant="node.id === activeId ? 'secondary' : selectedIds?.has(node.id) ? 'outline' : 'ghost'" class="flex w-full min-w-0 rounded-sm p-0" :style="{ height: `${ROW_HEIGHT}px` }" :data-selected="selectedIds?.has(node.id) || undefined" :aria-current="node.id === activeId ? 'true' : undefined" :aria-label="`${node.label}: ${node.preview || ''}${node.uncertain && uncertainLabel ? ` · ${uncertainLabel}` : ''}`" :disabled="disabled" @click="selectPoint(windowStart + index)" />
+                <Button :data-archive-timeline-id="node.id" type="button" :variant="node.id === activeId ? 'secondary' : selectedIds?.has(node.id) ? 'outline' : 'ghost'" class="flex w-full min-w-0 rounded-sm p-0" :style="{ height: `${ROW_HEIGHT}px` }" :data-selected="selectedIds?.has(node.id) || undefined" :aria-current="node.id === activeId ? 'true' : undefined" :aria-label="`${previewLabel(node)}${node.uncertain && uncertainLabel ? ` · ${uncertainLabel}` : ''}`" :disabled="disabled" @click="selectPoint(windowStart + index)" />
               </TooltipTrigger>
-              <TooltipContent side="left" :collision-padding="12" :avoid-collisions="true" :style="previewStyle" class="whitespace-normal [overflow-wrap:anywhere]" data-archive-timeline-preview :data-archive-timeline-preview-id="node.id">
-                <strong class="block">{{ node.label }} · {{ windowStart + index + 1 }} / {{ nodes.length }}</strong>
-                <p v-if="node.preview" class="mt-1">{{ node.preview }}</p>
-                <p v-if="node.uncertain" class="mt-1">{{ uncertainLabel || '···' }}</p>
+              <TooltipContent side="left" :collision-padding="12" :avoid-collisions="true" :style="previewStyle" class="w-72 space-y-2 border border-border bg-popover p-3 text-popover-foreground shadow-md whitespace-normal [overflow-wrap:anywhere]" data-archive-timeline-preview :data-archive-timeline-preview-id="node.id">
+                <strong class="block text-sm leading-snug" data-archive-timeline-author>{{ node.label }}</strong>
+                <p v-if="node.preview" class="whitespace-pre-wrap text-sm leading-relaxed" data-archive-timeline-text>{{ node.preview }}</p>
+                <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-t border-border pt-2 text-xs text-muted-foreground">
+                  <time v-if="nodeDate(node)" :datetime="nodeDate(node)?.toISOString()" data-archive-timeline-sent-at>{{ dateLabel(node) }}</time>
+                  <span v-else>{{ text('Дата неизвестна') }}</span>
+                  <span class="tabular-nums">{{ windowStart + index + 1 }} / {{ nodes.length }}</span>
+                </div>
+                <p v-if="node.uncertain" class="text-xs text-muted-foreground">{{ uncertainLabel || '···' }}</p>
               </TooltipContent>
             </Tooltip>
           </div>

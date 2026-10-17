@@ -185,7 +185,7 @@ async function postTelemetry(message: TelemetryMessage): Promise<{ ok: true; sta
 chrome.runtime.onMessage.addListener(
   (
     message: BoosterMessage,
-    sender,
+    _sender,
     sendResponse: (response: {
       ok: boolean
       status?: number
@@ -197,14 +197,11 @@ chrome.runtime.onMessage.addListener(
   ) => {
     if (!message?.type?.startsWith('chatgpt-booster:')) return
     const development = instanceScope().endsWith(':dev')
-    if (
-      !isDevelopmentContextAllowed('chromium') ||
-      (development && sender.tab && sender.tab.incognito !== true)
-    ) {
+    if (!isDevelopmentContextAllowed('chromium')) {
       sendResponse({
         ok: false,
         granted: false,
-        error: 'DEV Browser Tools is available only in incognito',
+        error: 'Unsupported Browser Tools installation scope',
       })
       return false
     }
@@ -277,10 +274,7 @@ async function bootstrapExistingChatGptTabs(): Promise<void> {
   const tabs = await chrome.tabs.query({ url: CHATGPT_MATCH })
   await Promise.all(
     tabs
-      .filter(
-        (tab): tab is chrome.tabs.Tab & { id: number } =>
-          typeof tab.id === 'number' && (!instanceScope().endsWith(':dev') || tab.incognito === true),
-      )
+      .filter((tab): tab is chrome.tabs.Tab & { id: number } => typeof tab.id === 'number')
       .map(async (tab) => {
         try {
           const [presence] = await chrome.scripting.executeScript({

@@ -13,6 +13,41 @@ const settings: ArchiveOptions = {
   media: false,
 }
 
+test('transient network failures retry read requests with bounded waits and an exhausted failure is actionable', async () => {
+  const original = globalThis.fetch
+  const waits: number[] = []
+  let calls = 0
+  globalThis.fetch = (async () => {
+    if (++calls < 3) throw new TypeError('synthetic connection reset')
+    return new Response(JSON.stringify({ response: { count: 0, items: [] } }))
+  }) as unknown as typeof fetch
+  const provider = createVkProvider(settings, {
+    sleep: async (ms) => {
+      waits.push(ms)
+    },
+    refresh() {},
+  })
+  try {
+    expect(await provider.api('messages.getHistory', { peer_id: 12345, count: 1 })).toEqual({
+      count: 0,
+      items: [],
+    })
+    expect(waits).toEqual([1000, 2000])
+    calls = 0
+    globalThis.fetch = (async () => {
+      calls++
+      throw new TypeError('synthetic private URL')
+    }) as unknown as typeof fetch
+    await expect(provider.api('messages.getHistory', { peer_id: 12345, count: 1 })).rejects.toThrow(
+      'VK network unavailable',
+    )
+    expect(calls).toBe(3)
+  } finally {
+    provider.destroy()
+    globalThis.fetch = original
+  }
+})
+
 test('VK API quota code 6 is retried with bounded exponential delay', async () => {
   const original = globalThis.fetch
   const waits: number[] = []
@@ -91,10 +126,12 @@ test('selects only an owner-verified token; history permission is checked by the
     value: { length: 0, key: () => null, getItem: () => null },
   })
   const requests: string[] = []
+  let historyParams: URLSearchParams | undefined
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const method = new URL(String(input)).pathname.split('/').at(-1)
     const params = new URLSearchParams(String(init?.body ?? ''))
     const token = params.get('access_token')
+    if (method === 'messages.getHistory') historyParams = params
     requests.push(`${token === restricted ? 'restricted' : 'verified'}:${method}`)
     return new Response(
       JSON.stringify(
@@ -114,6 +151,10 @@ test('selects only an owner-verified token; history permission is checked by the
     expect(requests).toEqual(['restricted:users.get', 'verified:users.get'])
     expect(await provider.history(0, 1)).toMatchObject({ count: 1, items: [{ id: 11 }] })
     expect(requests.at(-1)).toBe('verified:messages.getHistory')
+    await provider.history(10, 5, 11)
+    expect(historyParams?.get('start_message_id')).toBe('11')
+    expect(historyParams?.get('offset')).toBe('10')
+    expect(historyParams?.get('count')).toBe('5')
     // A subsequent API call uses the verified token, not the earlier history-only token.
     expect(await provider.api('users.get', {})).toEqual([{ id: 34567 }])
     expect(requests.at(-1)).toBe('verified:users.get')

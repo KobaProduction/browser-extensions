@@ -17,8 +17,11 @@ export async function checkHistoryUi(context) {
     await navigate({ product, width, height, scene, view: 'archive' })
     if (!product.endsWith('vk') && width <= 640 && scene !== 'empty') {
       const conversation = `(${root}).querySelector('.booster-reader-sidebar button[aria-current=true]')`
-      await waitFor(`Boolean(${conversation})`, 'Saved phone conversation is absent')
-      await clickAt(conversation)
+      const alreadyReading = await evaluate(`Boolean((${surface})?.getBoundingClientRect().height>0)`)
+      if (!alreadyReading) {
+        await waitFor(`Boolean(${conversation})`, 'Saved phone conversation is absent')
+        await clickAt(conversation)
+      }
     }
     if (scene !== 'empty')
       await waitFor(
@@ -26,14 +29,14 @@ export async function checkHistoryUi(context) {
         `${product}: shared rail/records did not mount`,
       )
   }
-  async function visiblePreview(label) {
+  async function visiblePreview(label, requireDate = false) {
     await waitFor(`Boolean(${preview})&&(${preview}).getBoundingClientRect().width>0`, label)
     await waitFor(
       `(${preview})?.getAnimations().every(animation=>animation.playState!=='running')`,
       'Preview did not finish entering',
     )
     const detail = await evaluate(
-      `(() => {const el=${preview},b=el.getBoundingClientRect();return {id:el.dataset.archiveTimelinePreviewId,text:el.textContent.trim(),x:b.x,right:b.right,y:b.y,bottom:b.bottom}})()`,
+      `(() => {const el=${preview},b=el.getBoundingClientRect(),date=el.querySelector('[data-archive-timeline-sent-at]');return {id:el.dataset.archiveTimelinePreviewId,text:el.textContent.trim(),dateTime:date?.getAttribute('datetime'),date:date?.textContent.trim(),x:b.x,right:b.right,y:b.y,bottom:b.bottom}})()`,
     )
     if (
       !detail.id ||
@@ -44,6 +47,8 @@ export async function checkHistoryUi(context) {
       detail.bottom > (await evaluate('innerHeight+1'))
     )
       throw Error(`Preview outside viewport: ${JSON.stringify(detail)}`)
+    if (requireDate && (!detail.date || !detail.dateTime || Number.isNaN(Date.parse(detail.dateTime))))
+      throw Error(`VK source date absent from timeline preview: ${JSON.stringify(detail)}`)
     return detail
   }
   async function key(key, code) {
@@ -90,7 +95,10 @@ export async function checkHistoryUi(context) {
         `(() => {const p=(${rail}).querySelector('[data-archive-timeline-id][aria-current=true]')||(${rail}).querySelector('[data-archive-timeline-id]'),b=p.getBoundingClientRect();return {x:b.x+b.width/2,y:b.y+b.height/2,id:p.dataset.archiveTimelineId}})()`,
       )
       await command('Input.dispatchMouseEvent', { type: 'mouseMoved', x: hover.x, y: hover.y })
-      const hovered = await visiblePreview(`${product}/${name}: hover preview absent`)
+      const hovered = await visiblePreview(
+        `${product}/${name}: hover preview absent`,
+        product.endsWith('vk'),
+      )
       if (hovered.id !== hover.id) throw Error('Point preview shows a different saved message')
       await command('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 })
       await key('Home', 36)
@@ -98,7 +106,10 @@ export async function checkHistoryUi(context) {
         `(${rail}).getAttribute('aria-busy')!=='true'&&(${rail}).querySelector('[data-archive-timeline-id][aria-current=true]')?.dataset.archiveTimelineId===(${rail}).querySelector('[data-archive-timeline-id]')?.dataset.archiveTimelineId`,
         `${product}: Home read did not finish`,
       )
-      const focused = await visiblePreview(`${product}/${name}: focus preview absent`)
+      const focused = await visiblePreview(
+        `${product}/${name}: focus preview absent`,
+        product.endsWith('vk'),
+      )
       const min = await evaluate(`Number((${slider}).getAttribute('aria-valuenow'))`)
       if (min !== 0) throw Error(`${product}: keyboard Home did not reach first record`)
       await key('End', 35)
@@ -146,7 +157,10 @@ export async function checkHistoryUi(context) {
         )
         throw error
       }
-      const dragged = await visiblePreview(`${product}/${name}: touch preview absent`)
+      const dragged = await visiblePreview(
+        `${product}/${name}: touch preview absent`,
+        product.endsWith('vk'),
+      )
       const dragIndex = await evaluate(`Number((${slider}).getAttribute('aria-valuenow'))`)
       if (dragIndex <= 0 || dragIndex >= 31)
         throw Error(`${product}: touch gesture did not scrub to an interior record: ${dragIndex}`)
@@ -193,7 +207,7 @@ export async function checkHistoryUi(context) {
   )
   for (const [format, packaging, extension] of [
     ['Markdown', 'Один файл', 'MD'],
-    ['Текст', 'Один файл', 'TXT'],
+    ['TXT', 'Один файл', 'TXT'],
     ['Markdown', 'ZIP', 'ZIP'],
   ]) {
     for (const [label, choice] of [

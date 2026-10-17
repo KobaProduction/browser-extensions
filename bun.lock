@@ -285,6 +285,7 @@
       "name": "@kobaproduction/browser-widgets",
       "version": "0.1.2",
       "dependencies": {
+        "@kobaproduction/browser-archive": "workspace:*",
         "@kobaproduction/browser-core": "workspace:*",
         "lucide-vue-next": "^0.545.0",
         "vue": "^3.5.22",

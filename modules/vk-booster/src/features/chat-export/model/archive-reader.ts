@@ -11,7 +11,13 @@ import { assets } from '../api/vk-assets'
 import { downloadVkAttachment } from '../api/vk-attachment-download'
 import type { FixedVkDexieRepository } from './archive-fixed-dexie'
 import type { VkArchiveSession } from './archive-session'
-import type { VkArchiveCoverage, VkDownloadedAttachment, VkMessage, VkTimelineEntry } from './types'
+import type {
+  VkArchiveCoverage,
+  VkDownloadedAttachment,
+  VkMessage,
+  VkReaderWindow,
+  VkTimelineEntry,
+} from './types'
 import { verifiedVkParticipants } from './vk-participants'
 import { createVkUserExport, type VkExportProgress, type VkUserExportOptions } from './vk-user-export'
 /** Bounded saved reads, participant labels and user exports. */
@@ -250,10 +256,23 @@ export function createVkArchiveReader(session: VkArchiveSession) {
     return withFixed(async (repo, peerId) => repo.countMessages(peerId), false, true)
   }
   async function readFixed(limit = 80, afterMessageId?: number): Promise<readonly VkMessage[]> {
+    return (await readWindowFixed(limit, afterMessageId)).messages
+  }
+  async function readWindowFixed(
+    limit: number,
+    afterMessageId?: number,
+    expected?: { ownerId: string; revision?: number },
+  ): Promise<VkReaderWindow> {
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500)
       throw Error('Invalid fixed archive page size')
     return withFixed(
       async (repo, peerId) => {
+        const revision = archiveChanges.revision()
+        const ownerId = repo.scope.ownerId
+        if (!ownerId || (expected && expected.ownerId !== ownerId))
+          throw Error('VK archive reader owner changed')
+        if (expected?.revision !== undefined && expected.revision !== revision)
+          throw Error('VK archive changed while reading window')
         const rows = await repo.listMessages(peerId, limit, afterMessageId)
         const messages: VkMessage[] = []
         for (const row of rows) {
@@ -268,7 +287,9 @@ export function createVkArchiveReader(session: VkArchiveSession) {
           if (!original.normalized) throw Error('Normalized VK message unavailable')
           messages.push({ ...original.raw, text: archiveMessageText(original.normalized) })
         }
-        return messages
+        if (archiveChanges.revision() !== revision)
+          throw Error('VK archive changed while reading window')
+        return { messages, ownerId, peerId, revision }
       },
       false,
       true,
@@ -332,7 +353,20 @@ export function createVkArchiveReader(session: VkArchiveSession) {
             yield await encode({
               kind: 'message',
               fixed: message,
-              snapshot: { ...original, raw: await encodeArchiveClone(original.raw) },
+              snapshot: {
+                ...original,
+                raw: await encodeArchiveClone(original.raw),
+                ...(original.previous
+                  ? {
+                      previous: await Promise.all(
+                        original.previous.map(async (value) => ({
+                          ...value,
+                          raw: await encodeArchiveClone(value.raw),
+                        })),
+                      ),
+                    }
+                  : {}),
+              },
             })
             count++
           }
@@ -362,6 +396,8 @@ export function createVkArchiveReader(session: VkArchiveSession) {
     }
     const result = await withFixed(async (repo, peerId) => {
       const revision = archiveChanges.revision()
+      if (options.expectedRevision !== undefined && options.expectedRevision !== revision)
+        throw Error('VK archive changed before export selection was prepared')
       release = () => {
         options.signal?.throwIfAborted()
         if (state.disposed || currentPeer() !== peerId || archiveChanges.revision() !== revision)
@@ -405,6 +441,7 @@ export function createVkArchiveReader(session: VkArchiveSession) {
     resolveParticipants,
     countFixed,
     readFixed,
+    readWindowFixed,
     readNormalizedFixed,
     exportFixed,
     exportUserZip,

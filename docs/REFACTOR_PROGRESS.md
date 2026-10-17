@@ -412,7 +412,72 @@ archive codec: 150 логических уровней дают до 451 уро�
 sync-row — 452. Прежний предел 200 отвергал допустимые архивные значения. Предел
 кодека и формат не изменены; вынесены общие константы. Предельный round-trip
 защищён focused tests; итоговый combined gate после последних изменений ещё нужен.
-При обычном профиле будущие DEV entrypoints прекращают запуск до
-подключения runtime/telemetry; это не выключает уже установленный старый артефакт.
-Фактическое отключение в обычном Chrome и отдельный профиль с incognito пока
-не подтверждены; Computer Use остановился при определении URL до изменений.
+Прежний запрет запуска DEV в обычных окнах отменён владельцем 2026-10-17:
+entrypoints и фоновые обработчики принимают обычные и private contexts по
+валидному installation scope. Текущая политика и границы сохранения данных
+принадлежат [environment contract](shared/ENVIRONMENTS_AND_STORAGE.md).
+
+## 2026-10-17 — VK collection, startup and Reader correction checkpoint
+
+Owning decisions are [UI-55–UI-59](shared/UI_DECISIONS.md), the
+[VK archive contract](vk-booster/ARCHIVE.md) and the
+[Lab-first UI workflow](shared/UI_ACCEPTANCE.md#lab-first-interface-workflow).
+DEV startup accepts normal/private supported contexts while preserving channel
+identity. Repeat capture retains the covered baseline and separates actual
+source reads from reused history. Reader handles nested post files, targets the
+message card, aligns selection checkboxes, separates message cards and actions,
+and previews verified names, message text and source dates without message IDs.
+Fixed Dexie schema 1 and source product versions remain unchanged.
+
+Current local evidence after these corrections:
+
+- Root strict typecheck/Biome/tests/source validation passed: 720 tests across
+  132 files, 4360 assertions. Final strict typecheck also passed after public
+  widget declaration alignment; both channel output validation gates passed.
+- Frozen Laboratory UI build passed extended 288/288 with no failed cases.
+  Four VK standalone/aggregate desktop/phone Reader cases measure 12px card
+  separation, checkbox alignment, panel insets, consistent action heights,
+  themed dated previews, nested attachment controls and reused progress.
+  History checks passed 19 hover/keyboard/touch/layout/export scenarios.
+  Synthetic evidence is in ignored `.local/vk-spacing-final-20261017/` and
+  `.local/vk-history-final-20261017/` under `apps/ui-lab/`.
+- All products built for userscript/MV3 in PROD and DEV build 51; source versions
+  remain unchanged. PROD candidates are retained under `dist/local-candidates/`.
+- The authorized authenticated VK session previously completed capture and a
+  repeated run stopped after 26 source reads, reusing 4613 covered records.
+  A nested post photo downloaded and decoded in the Reader. These observations
+  are live integration evidence, not synthetic fixtures or archive guarantees.
+- The new authorized browser MCP session exposes page, console and network
+  diagnostics. Browser-target CDP attachment is refused by that server; full
+  debugger privileges have not been established.
+
+The local browser preview is open for owner review. The authenticated page used
+a temporary DEV bundle injection; persistent Tampermonkey/MV3 installation and
+automatic startup after updating it remain separate acceptance. Local candidate
+artifacts are not a published release, protected-branch merge or independent
+review approval.
+
+## 2026-10-17 — shared Reader and export correction
+
+[UI-60–UI-62](shared/UI_DECISIONS.md) correct full-width borders, replace manual
+VK pagination with bounded bidirectional loading, and reuse shared reading
+anchors/navigation and export selection in both products. Export now offers
+calendar dates, latest N and searched inline message selection alongside the
+format. Provider owner/revision guards remain in place; storage schema and
+product source versions are unchanged.
+
+Synthetic Laboratory evidence: 8 scrolling cases passed, including traversal
+of all 3000 saved VK records and reverse loading; 4 VK layout cases and 19
+history cases passed. The final export build passed 8 desktop/phone cases for
+both standalone/aggregate providers, including prepared latest-50 JSON content,
+inclusive calendar filtering and inline selection. Reports are ignored under
+`apps/ui-lab/.local/reader-scroll-20261017/` and `export-scope-20261017/`.
+Strict typecheck and Biome passed. Root tests reported 725 passing and two
+obsolete source-string assertions requiring the removed 80-record pagination;
+those assertions were updated for the shared Reader ports. At the owner's
+request, no further test runs were started. This checkpoint does not claim a
+fresh all-green combined gate, installed-browser acceptance or publication.
+All three products subsequently built successfully for userscript and MV3 in
+DEV build 52. The shared widgets package now declares its archive dependency;
+local build artifacts are available under `dist/`. No installed extension was
+updated and no release was published.

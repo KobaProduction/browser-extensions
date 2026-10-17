@@ -99,6 +99,8 @@ test('VK fixture has deterministic records and its capture never touches a live 
       attachmentReferences: 0,
     })
     expect(api.status().progress.phase).toBe('Dexie: сохранено')
+    expect(await api.captureFixed('all')).toMatchObject({ saved: 0, reused: 29, complete: true })
+    expect(api.status().progress).toMatchObject({ done: 3, total: 32, reused: 29 })
     expect(await api.coverageFixed?.()).toMatchObject({
       verification: 'session-scan',
       reportedCount: 32,

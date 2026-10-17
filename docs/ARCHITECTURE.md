@@ -1,5 +1,24 @@
 # Current architecture and host permission model
 
+## Normal/private window startup correction (2026-10-17)
+
+The validated installation-scope gate now accepts DEV and PROD in either window
+mode. Userscript builders no longer emit an incognito-only execution directive;
+ChatGPT background commands and existing-tab bootstrap no longer reject normal
+DEV tabs. MV3 split incognito mode, channel identities and storage ownership are
+preserved. Browser installation and live collection remain separate checks.
+
+## VK incremental collection and source revisions (2026-10-17)
+
+VK capture anchors native history requests, deduplicates overlaps and atomically
+retains changed observations with prior source values in the existing snapshot
+row. A provider-owned complete-scan marker allows reuse of a verified saved tail
+after an unchanged message older than 24 hours; partial first scans cannot create
+that shortcut. The indexed covered range, owner/peer, native count/head and archive
+notifications guard it. Restore discards this capture optimization proof. Exports
+preserve source revisions; the physical Dexie v1 schema and historical stores stay
+unchanged. See the [VK contract](vk-booster/ARCHIVE.md) for validation boundaries.
+
 ## ChatGPT RAM gateway and archive workspace (2026-10-16)
 
 `ConversationStateStore` composes the exported `ConversationObservationGateway`
@@ -79,7 +98,14 @@ neutral transcript layout to `ArchiveTranscript` with ChatGPT record slots,
 docked-window positioning to portable widget geometry, and export progress to
 `ArchiveProgressBar`, which VK Archive Manager also consumes. The reusable
 useArchiveFocusTracker owns scroll focus/highlight selection;
-ChatGPT archive-window-session.ts owns account/revision-pinned reader state.
+`packages/widgets/archive-reading-scroll` owns user-driven adjacent loading and
+visible-record anchoring for both products; `ArchiveReaderNavigation` owns their
+first/latest actions. `packages/archive/reader-window` owns the shared page and
+retention policy and identity-based adjacent-record merge. ChatGPT's
+archive-reader-window adapter retains account/revision guards and thread
+projection; VK's readWindowFixed supplies owner/peer/revision-stamped stored
+records. Database/source reads remain provider-owned. This replaces the former
+manual VK page action without loading an unbounded transcript into the DOM.
 The ChatGPT-specific export format/level/evidence form is a separate
 `ArchiveExportOptions.vue` feature view; source-specific options are not
 projected into VK. V4 archive entity/metadata types, physical database

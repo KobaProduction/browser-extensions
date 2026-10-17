@@ -1,5 +1,24 @@
 # Target architecture for Koba Browser Extensions
 
+## Window-independent startup correction (2026-10-17)
+
+The owner withdraws incognito-only DEV startup. Supported normal and private
+windows share the same startup/collection eligibility, with product/channel/
+installation isolation still mandatory. Userscript metadata and MV3 provider,
+worker and existing-tab gates must agree. The [environment contract](shared/ENVIRONMENTS_AND_STORAGE.md)
+owns the corrected policy; this target does not establish installed-browser acceptance.
+
+## VK incremental capture correction (2026-10-17)
+
+The owner requests full-history capture that adds missing messages, rechecks recent
+messages and can stop at an unchanged saved message older than a day only when a
+prior complete native scan covers the retained tail. Changed observations must
+preserve earlier source values rather than abort all collection or destroy originals.
+Source evidence belongs to VK capture/repository, with network paging and explicit
+owner/peer guards; UI only reports actual reads, revisions and reused saved coverage.
+The [VK contract](vk-booster/ARCHIVE.md) owns the exact policy. This source direction
+does not establish installed Tampermonkey or real VK acceptance.
+
 ## ChatGPT two-circuit observation and workspace correction (2026-10-16)
 
 The first circuit retains owner-scoped native observations in RAM independently
@@ -287,6 +306,12 @@ theme, extra blue styling, duplicate launcher or nested settings window.
 Widgets are portable through props or DI ports: shared Archive Manager must
 work with both VK and ChatGPT sources without importing either provider.
 Product texts and provider schemas stay with their own feature/entity slice.
+
+Reader boundary navigation, visible-record anchoring and user-driven edge
+loading have one shared UI owner. Adjacent-window deduplication and retention
+policy belong to the neutral archive application layer. Both providers consume
+these public contracts, supplying source reads and owner/revision fences; do not
+copy the ChatGPT scrolling implementation into a separate VK widget.
 
 UI packages own presentation; archive/application/storage packages own the
 behavior. Do not merge them into one giant mixed UI kit.

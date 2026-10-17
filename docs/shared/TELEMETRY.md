@@ -126,9 +126,10 @@ be recalled; at-least-once delivery still allows duplicates.
   every request. The external-consent action requests only that configured
   HTTPS origin from the declared optional permission. The explicit empty
   endpoint probe requests the same narrowly scoped capability. An alarm wakes the
-  worker for queued delivery/overdue rotation after suspension. The DEV
-  background returns before creating a controller or alarms outside the
-  permitted incognito context, including when old local consent is saved.
+  worker for queued delivery/overdue rotation after suspension. Both DEV and PROD
+  workers may run in normal and incognito contexts under their validated
+  installation scope. Local collection and external delivery remain governed by
+  their own explicit settings and consent; the window mode grants neither.
 - **Tampermonkey:** scoped GM persistence is shared by the installed script
   across its matched sites. Separate per-event keys avoid lost updates from
   replacing one shared JSON queue. GM leases cannot provide cross-origin

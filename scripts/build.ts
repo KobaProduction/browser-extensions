@@ -230,7 +230,6 @@ for (const id of ids) {
       '// @match        https://vk.com/*',
       ...(id === 'all-in-one' ? ['// @match        https://chatgpt.com/*'] : []),
       `// @run-at       ${id === 'all-in-one' ? 'document-start' : 'document-idle'}`,
-      ...(channel === 'dev' ? ['// @run-in       incognito-tabs'] : []),
       '// @grant        GM_info',
       '// @grant        GM_registerMenuCommand',
       '// @grant        GM_getValue',

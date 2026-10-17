@@ -3,6 +3,7 @@
 import { buildArchiveThread } from '@chatgpt-booster/chatgpt'
 import {
   type ArchiveCurrentContext,
+  type ArchiveExportOptions,
   type ArchiveWindowRequest,
   applyTransportCounterEvent,
   EMPTY_TRANSPORT_COUNTERS,
@@ -16,7 +17,12 @@ import {
 } from '@chatgpt-booster/core'
 import { type FixedChatGptView, normalizeConversationMessage } from '@chatgpt-booster/features'
 import type { ArchiveDataAdapter, ArchiveWindowCursor } from '@chatgpt-booster/ui'
-import { conversationIntegrityFromGraph, linearArchiveIntegrity } from '@kobaproduction/browser-archive'
+import {
+  conversationIntegrityFromGraph,
+  createStoredZipFromBlobs,
+  linearArchiveIntegrity,
+  serializeArchiveExport,
+} from '@kobaproduction/browser-archive'
 import { instanceKey } from '@kobaproduction/browser-core'
 import { setVkPreferencesPersistence } from '../../../modules/vk-booster/src/features/chat-export/model/durable-preferences'
 import type {
@@ -276,6 +282,16 @@ export function createMockChatGptArchive(scene: LabScene) {
         },
       ]
     },
+    async getExportMessages(_id: string, signal?: AbortSignal) {
+      signal?.throwIfAborted()
+      return Array.from({ length: count }, (_, index) => ({
+        id: idAt(index),
+        timestampMs: (1760000000 + index * 90) * 1000,
+        author: '',
+        role: index % 2 ? 'assistant' : 'user',
+        text: `Синтетическое сообщение ${index + 1}; здесь нет пользовательских данных`,
+      }))
+    },
     async getTimeline() {
       return Array.from({ length: count }, (_, index) => ({
         id: idAt(index),
@@ -310,9 +326,42 @@ export function createMockChatGptArchive(scene: LabScene) {
     async clearAll() {
       throw Error('Preview prohibits persistence mutations')
     },
-    listExportFormats: () => [{ id: 'json', label: 'JSON', mimeType: 'application/json' }],
-    async exportConversation() {
-      throw Error('Only explicit synthetic export is available')
+    listExportFormats: () => [
+      { id: 'json', label: 'JSON', mimeType: 'application/json' },
+      { id: 'markdown', label: 'Markdown', mimeType: 'text/markdown' },
+      { id: 'text', label: 'TXT', mimeType: 'text/plain' },
+    ],
+    async exportConversation(_id: string, options: ArchiveExportOptions, signal?: AbortSignal) {
+      signal?.throwIfAborted()
+      const selected = options.messageIds ? new Set(options.messageIds) : null
+      const records = Array.from({ length: count }, (_, index) => rawAt(index)).filter(
+        (record) => !selected || selected.has(record.id),
+      )
+      const format =
+        options.format === 'markdown' ? 'markdown' : options.format === 'text' ? 'text' : 'json'
+      const rendered = serializeArchiveExport(format, {
+        document: records,
+        title: 'Synthetic conversation',
+        records: records.map((record) => ({ heading: record.id, text: record.content.parts.join('') })),
+      })
+      let blob = new Blob([rendered.text], { type: rendered.mime }),
+        extension = rendered.extension
+      if (options.packaging === 'zip') {
+        blob = await createStoredZipFromBlobs([{ path: `conversation.${extension}`, blob }])
+        extension = 'zip'
+      }
+      if (options.packaging === 'gzip') {
+        blob = await new Response(blob.stream().pipeThrough(new CompressionStream('gzip'))).blob()
+        extension = `${extension}.gz`
+      }
+      return {
+        blob,
+        extension,
+        packaged: options.packaging === 'zip' || options.packaging === 'gzip',
+        complete: true,
+        includedAssets: 0,
+        missingAssets: 0,
+      }
     },
     async listProjects() {
       return [{ projectId: 'demo-project', title: 'Разработка приложения' }]
@@ -532,21 +581,44 @@ export function createMockVkArchive(scene: LabScene, method: LabMethod, inConver
               },
             ],
           }
-        : i === 4
+        : i === 2
           ? {
               attachments: [
                 {
-                  type: 'doc',
-                  doc: {
-                    title: 'Методичка.pdf',
-                    ext: 'pdf',
-                    size: 12800,
-                    url: 'https://example.invalid/demo-doc.pdf',
+                  type: 'wall',
+                  wall: {
+                    id: 23,
+                    owner_id: -42,
+                    date: 1760000000,
+                    attachments: [
+                      {
+                        type: 'photo',
+                        photo: {
+                          sizes: [
+                            { url: 'https://example.invalid/wall-photo.jpg', width: 800, height: 600 },
+                          ],
+                        },
+                      },
+                    ],
                   },
                 },
               ],
             }
-          : {}),
+          : i === 4
+            ? {
+                attachments: [
+                  {
+                    type: 'doc',
+                    doc: {
+                      title: 'Методичка.pdf',
+                      ext: 'pdf',
+                      size: 12800,
+                      url: 'https://example.invalid/demo-doc.pdf',
+                    },
+                  },
+                ],
+              }
+            : {}),
       text: `Сообщение ${i + 1}: обсуждаем план следующего выпуска.`,
     }),
   )
@@ -644,7 +716,9 @@ export function createMockVkArchive(scene: LabScene, method: LabMethod, inConver
           complete: false,
           attachmentReferences: 0,
         }
-      const saved = Math.min(requested, 8)
+      const reused = limit === 'all' && fullScanAt !== null ? Math.max(0, requested - 3) : 0
+      const scanned = requested - reused
+      const saved = reused ? 0 : Math.min(requested, 8)
       const complete = requested >= rows.length
       fullScanAt = complete ? Date.now() : null
       status = {
@@ -653,10 +727,11 @@ export function createMockVkArchive(scene: LabScene, method: LabMethod, inConver
         busy: false,
         progress: {
           phase: complete ? 'Dexie: сохранено' : 'Dexie: частично',
-          done: requested,
+          done: scanned,
           total: requested,
           newCount: saved,
-          scanned: requested,
+          scanned,
+          reused,
           attachmentReferences: 0,
         },
         messages: rows.length,
@@ -664,6 +739,7 @@ export function createMockVkArchive(scene: LabScene, method: LabMethod, inConver
       announce()
       return {
         saved,
+        reused,
         alreadySaved: Math.max(0, requested - saved),
         available: rows.length,
         complete,
@@ -685,6 +761,14 @@ export function createMockVkArchive(scene: LabScene, method: LabMethod, inConver
     },
     async readFixed(limit = 80, after?: number) {
       return rows.filter((m) => after === undefined || m.id > after).slice(0, limit)
+    },
+    async readWindowFixed(limit, after, expected) {
+      const ownerId = 'synthetic-vk-owner',
+        revision = status.archiveRevision ?? 0
+      if (expected && expected.ownerId !== ownerId) throw Error('VK archive reader owner changed')
+      if (expected?.revision !== undefined && expected.revision !== revision)
+        throw Error('VK archive changed while reading window')
+      return { messages: await api.readFixed(limit, after), ownerId, peerId: peer ?? 0, revision }
     },
     async timelineFixed(signal) {
       signal?.throwIfAborted()

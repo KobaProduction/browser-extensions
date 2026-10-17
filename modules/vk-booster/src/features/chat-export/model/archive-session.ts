@@ -78,7 +78,8 @@ export function createVkArchiveSession(
     state.disposed
       ? Promise.reject(Error('VK archive service is stopped'))
       : provider.api(method, params)
-  const history = (offset: number, count: number) => provider.history(offset, count)
+  const history = (offset: number, count: number, startMessageId?: number) =>
+    provider.history(offset, count, startMessageId)
   function applyPreferences(value: Partial<ArchiveOptions>, duringBackup: boolean): ArchiveStatus {
     if (state.busy || (!duringBackup && state.backupRunning) || state.disposed)
       throw Error('Заверши текущую операцию с архивом')

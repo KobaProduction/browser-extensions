@@ -1,5 +1,17 @@
 # Environments, identity and state/persistence contract
 
+## Normal and private browser windows (owner correction 2026-10-17)
+
+DEV and PROD may both start on supported hosts in normal and incognito windows.
+The former incognito-only DEV startup restriction is withdrawn: it silently
+prevented the launcher, provider and collection from starting in normal tabs.
+Userscript metadata must not restrict execution to incognito; MV3 entrypoints,
+background commands and existing-tab bootstrap must accept either window mode.
+Browser permission to run an extension in incognito is still required by Chrome.
+Isolation remains mandatory through validated product/channel/installation
+identities, separate settings, database names and events. This correction does
+not authorize data migration, PROD promotion or telemetry consent changes.
+
 ## Clean Dexie-v1 baseline and live DEV/PROD lifecycle (owner decision 2026-10-11)
 
 **Current target is one provider-owned canonical Dexie database schema v1**

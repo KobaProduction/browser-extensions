@@ -16,6 +16,7 @@ import type {
   SettingsAdapter,
   TelemetryControlAdapter,
 } from '@chatgpt-booster/core'
+import type { ArchiveExportMessageSummary } from '@kobaproduction/browser-archive'
 import { UI_PORTAL_TARGET } from '@kobaproduction/browser-ui'
 import { type App, createApp } from 'vue'
 import BoosterOverlay from './BoosterOverlay.vue'
@@ -279,6 +280,10 @@ export interface ArchiveDataAdapter {
       uncertain: boolean
     }[]
   >
+  getExportMessages?(
+    conversationId: string,
+    signal?: AbortSignal,
+  ): Promise<readonly ArchiveExportMessageSummary[]>
   /** v4 only: progressively materialize bounded IndexedDB windows. */
   getThreadWindow?(
     conversationId: string,

@@ -1,4 +1,36 @@
+import type {
+  ArchiveExportMessageSummary,
+  ArchiveExportSelection,
+} from '@kobaproduction/browser-archive'
 import type { DefineComponent } from 'vue'
+export declare const ArchiveExportScopeFields: DefineComponent<{
+  modelValue: ArchiveExportSelection
+  messages: readonly ArchiveExportMessageSummary[]
+  selectedIds: readonly string[]
+  disabled?: boolean
+  loading?: boolean
+  'onUpdate:modelValue'?: (value: ArchiveExportSelection) => void
+  'onUpdate:selectedIds'?: (value: readonly string[]) => void
+}>
+export interface ArchiveReadingAnchor {
+  id: string
+  attribute: 'data-archive-node' | 'data-archive-message'
+  offset: number
+}
+export interface ArchiveReadingScrollOptions {
+  viewport: () => HTMLElement | null
+  enabled: () => boolean
+  order?: () => 'chronological' | 'reverse'
+  canLoad: (direction: 'older' | 'newer') => boolean
+  load: (direction: 'older' | 'newer') => Promise<void>
+}
+export declare function createArchiveReadingScroll(options: ArchiveReadingScrollOptions): {
+  capture(attribute?: ArchiveReadingAnchor['attribute']): ArchiveReadingAnchor | null
+  restore(anchor: ArchiveReadingAnchor | null): boolean
+  onUserInput(event: Event): void
+  onScroll(): Promise<void>
+  reset(): void
+}
 export declare const ApplicationBackupSettings: DefineComponent
 export interface ArchiveExportChoice {
   id: string
@@ -18,6 +50,14 @@ export declare const ArchiveExportFormatFields: DefineComponent<{
 export declare const ArchiveReadingSurface: DefineComponent<{ timelineVisible: boolean }> & {
   new (): { $slots: { default(): unknown; timeline(): unknown; status(): unknown } }
 }
+export declare const ArchiveReaderNavigation: DefineComponent<{
+  firstLabel: string
+  lastLabel: string
+  disabled?: boolean
+  compact?: boolean
+  onFirst?: () => void
+  onLast?: () => void
+}>
 export interface PortableBackupSelection {
   settings: boolean
   indexeddb: boolean
@@ -172,7 +212,9 @@ export interface ArchiveRecordListProps<T> {
   recordKey: (record: T) => string | number
   messageId: (record: T) => string | number
   targetMessageId?: string | number | null
+  highlightTarget?: boolean
   selectable?: boolean
+  spaced?: boolean
   selectedIds?: ReadonlySet<string>
   selectionLabel?: (record: T) => string
   disabled?: boolean
@@ -240,6 +282,7 @@ export interface ArchiveTimelineNode {
   id: string
   parentId: string | null
   label: string
+  timestampMs?: number | null
   preview?: string
   uncertain?: boolean
 }
