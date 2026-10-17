@@ -132,6 +132,7 @@ export async function createVkUserExport(
   let owner: string | undefined
   type ExportRow = {
     normalized: ArchiveMessageV1
+    raw: VkMessage
     id: number
     sentAt: number | null
     senderId: number | null
@@ -159,7 +160,13 @@ export async function createVkUserExport(
       chunkManifest.push({ path, records: rawRows.length, sha256 })
       if (packaging === 'zip')
         entries.push({ path, blob: new Blob([body], { type: 'application/json' }) })
-      else jsonParts.push(new Blob([jsonParts.length ? ',\n' : '', body.slice(1, -1)]))
+      else
+        jsonParts.push(
+          new Blob([
+            jsonParts.length ? ',\n' : '',
+            rawRows.map((row) => JSON.stringify(row.raw)).join(',\n'),
+          ]),
+        )
     }
     if (format !== 'json') {
       const readable = serializeArchiveExportChunks(format, {
@@ -224,6 +231,7 @@ export async function createVkUserExport(
       const exportedAttachments: VkExportAttachmentReference[] = []
       const exportRow: ExportRow = {
         normalized,
+        raw,
         id: row.messageId,
         sentAt: normalized.time.createdAtMs === null ? null : normalized.time.createdAtMs / 1000,
         senderId: normalized.author.id === null ? null : Number(normalized.author.id),
@@ -235,11 +243,8 @@ export async function createVkUserExport(
           sourceVersion: original.sourceVersion,
           encoding: 'archive-clone-v1',
           original:
-            packaging === 'zip' || format === 'json' || options.includeOriginal
-              ? await encodeArchiveClone(raw)
-              : null,
-          ...(original.previous?.length &&
-          (packaging === 'zip' || format === 'json' || options.includeOriginal)
+            packaging === 'zip' || options.includeOriginal ? await encodeArchiveClone(raw) : null,
+          ...(original.previous?.length && (packaging === 'zip' || options.includeOriginal)
             ? {
                 previous: await Promise.all(
                   original.previous.map(async (observation) => ({
@@ -353,7 +358,7 @@ export async function createVkUserExport(
     attachmentManifest:
       packaging === 'zip' && options.includeReferences ? 'attachments/status.json' : null,
     note:
-      packaging === 'zip' || format === 'json' || options.includeOriginal
+      packaging === 'zip' || options.includeOriginal
         ? 'This user export contains saved original message snapshots, not a full IndexedDB backup.'
         : 'This readable user export contains saved message text and requested attachment references, not a full IndexedDB backup.',
   }
@@ -382,17 +387,7 @@ export async function createVkUserExport(
   const blob =
     packaging === 'zip'
       ? await createStoredZipFromBlobs(entries, options.signal)
-      : (readableBlob ??
-        new Blob(
-          [
-            '{\n"format":"koba-vk-conversation-v1",\n"manifest":',
-            JSON.stringify(manifest),
-            ',\n"messages":[',
-            ...jsonParts,
-            '\n]}\n',
-          ],
-          { type: 'application/json' },
-        ))
+      : (readableBlob ?? new Blob(['[\n', ...jsonParts, '\n]\n'], { type: 'application/json' }))
   check()
   return {
     blob,

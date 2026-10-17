@@ -44,6 +44,7 @@ Wall attachments are post references, not downloadable binary files. Their
 source-provided nested attachments use the same bounded traversal and original
 download guards as direct message attachments; post identity supplies a VK link.
 Reader highlighting belongs to the message card, independently of export selection.
+For end-user export, standalone JSON is a plain array of saved original VK message objects, without a recovery manifest or canonical wrappers; the ZIP retains its verified source chunks/manifest and revisions. Period/last-N/explicit selections are applied to saved message IDs before export and must not silently broaden to all messages. The Reader opens at the latest saved message when first entered, retaining explicit navigation to the beginning. Installed-browser acceptance remains separate.
 
 **Owner decision (2026-10-17), superseding the earlier source freeze:** VK is
 **1.1.0**. Source versions advance without waiting for PROD: major for fundamental
