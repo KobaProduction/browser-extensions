@@ -1,4 +1,5 @@
 import { type DeliveryTarget, SHELL_OPEN_FEATURE_EVENT } from '@kobaproduction/browser-core'
+import { VK_BASE_VERSION } from '../../../version'
 import { createVkArchiveBackup } from './archive-backup'
 import { createVkArchiveCapture } from './archive-capture'
 import { createVkArchiveReader } from './archive-reader'
@@ -19,7 +20,7 @@ export function createVkArchiveService(
     throw Error('Историческая файловая выгрузка недоступна в основном режиме Dexie.')
   }
   const service: ArchiveApi = {
-    version: '1.0.0',
+    version: VK_BASE_VERSION,
     configure: session.configure,
     status: session.status,
     subscribe: session.subscribe,

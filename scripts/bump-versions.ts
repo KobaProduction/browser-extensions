@@ -1,6 +1,5 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { impactedProductVersions } from './catalog'
-import { FROZEN_VK_VERSION } from './vk-version-freeze'
 
 export function bumpPatch(version: string): string {
   const parts = version.match(/^(\d+)\.(\d+)\.(\d+)$/)
@@ -19,11 +18,6 @@ export function planVersionBumps(
     impactedProductVersions(paths).flatMap((id) => {
       const current = versions[id]
       if (!current) throw new Error(`Missing version for ${id}`)
-      if (id === 'vk-booster') {
-        if (current !== FROZEN_VK_VERSION)
-          throw new Error(`VK v1 pre-PROD base must remain ${FROZEN_VK_VERSION}`)
-        return []
-      }
       return [[id, bumpPatch(current)]]
     }),
   )
@@ -72,15 +66,11 @@ if (import.meta.main) {
       )
     }
     if (id === 'vk-booster') {
-      for (const file of [
-        'modules/vk-booster/src/features/chat-export/model/archive-engine.ts',
-        'modules/vk-booster/src/index.test.ts',
-      ]) {
-        const source = await readFile(file, 'utf8')
-        if (!oldVersion || !source.includes(oldVersion))
-          throw Error(`Unexpected VK runtime/test version source in ${file}`)
-        await writeFile(file, source.replace(oldVersion, version))
-      }
+      const file = 'modules/vk-booster/src/version.ts'
+      const source = await readFile(file, 'utf8')
+      const previous = `export const VK_BASE_VERSION = '${oldVersion}'`
+      if (!source.includes(previous)) throw Error('Unexpected VK runtime version source')
+      await writeFile(file, source.replace(previous, `export const VK_BASE_VERSION = '${version}'`))
     }
   }
   if (Object.keys(next).length) {

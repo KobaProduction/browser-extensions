@@ -379,6 +379,10 @@ Shared Dexie telemetry and OTLP (PR #32) remain in a separate, unmerged
 source branch. They are neither VK's canonical IndexedDB archive nor a
 working runtime collector until provider opt-in/transport wiring is accepted.
 
+The source-version freeze in that historical checkpoint was superseded on
+2026-10-17: VK now advances major/minor/patch independently of PROD approval
+and is at 1.1.0. This does not change archive schema 1 or migrate historic data.
+
 ## New Dexie runtime adapters (source checkpoint 2026-10-11)
 
 ChatGPT's single Control Center composes a fixed canonical v1 capture

@@ -39,9 +39,10 @@ GitHub Issues track only current tasks/evidence, never the sole rule authority.
 - DEV and PROD **never** share writable data, settings, IndexedDB or events.
   The aggregate may request access only to same-channel services, through
   an explicit capability, valid owner identity and user consent.
-- VK Booster now targets the first **1.0.0** source base and fixed Dexie Archive
-  **schema 1**, frozen until separately approved first PROD. DEV build IDs
-  may advance. Historic schema-2 and state/pages archives are not migrated,
+- VK Booster now targets **1.1.0**; source versions advance independently of
+  PROD approval: major for fundamental changes, minor for features, patch for
+  fixes. Dexie Archive **schema 1** remains fixed; schema changes need separate
+  approval. Historic schema-2 and state/pages archives are not migrated,
   overwritten or deleted; release-update downgrade requires validation.
 - Protect ChatGPT v3/v4 existing PROD archives and existing VK v2 folders.
 - Never store credentials or personal conversations in Git, telemetry,

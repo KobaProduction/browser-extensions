@@ -35,25 +35,28 @@ test('future ChatGPT-only source changes require ChatGPT and aggregate version b
       ...after,
       'vk-booster': '2.3.11',
     }),
-  ).toThrow('VK v1 pre-PROD base must remain')
+  ).toThrow('Unrelated vk-booster')
 })
-test('VK v1 source change retains frozen VK base and advances aggregate', () => {
+test('VK functionality advances its minor version and its aggregate independently of PROD', () => {
   const before = { ...chatRelease },
-    after = { ...before, 'all-in-one': '0.5.1' }
+    after = { ...before, 'vk-booster': '1.1.0', 'all-in-one': '0.5.1' }
   expect(() => validateVersionPolicy(['modules/vk-booster/src/index.ts'], before, after)).not.toThrow()
   expect(() =>
     validateVersionPolicy(['modules/vk-booster/src/index.ts'], before, {
       ...after,
-      'vk-booster': '2.3.11',
+      'vk-booster': before['vk-booster'],
     }),
-  ).toThrow('VK v1 pre-PROD base must remain')
-  expect(() => validateVersionPolicy(['modules/vk-booster/src/index.ts'], before, before)).toThrow(
-    'all-in-one',
-  )
+  ).toThrow('vk-booster must bump')
+  expect(() =>
+    validateVersionPolicy(['modules/vk-booster/src/index.ts'], before, {
+      ...after,
+      'all-in-one': before['all-in-one'],
+    }),
+  ).toThrow('all-in-one')
 })
-test('shared domain change advances ChatGPT and aggregate but not frozen VK', () => {
+test('shared domain change advances every affected product', () => {
   const before = { ...chatRelease },
-    after = { ...before, 'chatgpt-booster': '2.0.2', 'all-in-one': '0.5.1' }
+    after = { ...before, 'vk-booster': '1.0.1', 'chatgpt-booster': '2.0.2', 'all-in-one': '0.5.1' }
   expect(() => validateVersionPolicy(['packages/archive/src/index.ts'], before, after)).not.toThrow()
 })
 test('non-runtime only changes do not demand a bump', () => {
@@ -69,22 +72,24 @@ test('VK v3 is rejected even if no VK source file changed', () => {
       ...chatRelease,
       'vk-booster': '3.0.0',
     }),
-  ).toThrow('VK v1 pre-PROD base must remain')
+  ).toThrow('Unrelated vk-booster')
 })
 
-test('explicit fresh VK v1 baseline transition requires actual VK source changes', () => {
+test('VK versions cannot silently downgrade historical products or skip source increments', () => {
   const previous = { ...chatRelease, 'vk-booster': '2.3.10' }
   const next = { ...previous, 'vk-booster': '1.0.0', 'all-in-one': '0.5.1' }
-  expect(() => validateVersionPolicy(['modules/vk-booster/src/index.ts'], previous, next)).not.toThrow()
+  expect(() => validateVersionPolicy(['modules/vk-booster/src/index.ts'], previous, next)).toThrow(
+    'vk-booster must bump',
+  )
   expect(() => validateVersionPolicy(['docs/vk-booster/README.md'], previous, next)).toThrow(
-    'VK v1 pre-PROD base must remain',
+    'Unrelated vk-booster',
   )
   expect(() =>
     validateVersionPolicy(['modules/vk-booster/src/index.ts'], previous, {
       ...next,
       'vk-booster': '2.3.10',
     }),
-  ).toThrow('VK v1 pre-PROD base must remain')
+  ).toThrow('vk-booster must bump')
 })
 
 test('source-only quality assertions do not force unrelated product versions', () => {

@@ -13,10 +13,10 @@ test('ChatGPT-only change bumps ChatGPT and aggregate, not VK', () => {
   })
   expect(affectedModules(paths)).toEqual(['chatgpt-booster', 'all-in-one'])
 })
-test('VK-only change preserves VK base and bumps aggregate, not ChatGPT', () => {
+test('VK-only fixes bump VK and aggregate, not ChatGPT', () => {
   const paths = ['modules/vk-booster/src/features/chat-export/model/archive-engine.ts']
   expect(impactedProductVersions(paths)).toEqual(['vk-booster', 'all-in-one'])
-  expect(planVersionBumps(paths, versions)).toEqual({ 'all-in-one': '0.5.1' })
+  expect(planVersionBumps(paths, versions)).toEqual({ 'vk-booster': '1.0.1', 'all-in-one': '0.5.1' })
   expect(affectedModules(paths)).toEqual(['vk-booster', 'all-in-one'])
 })
 test('shared domain change bumps every consumer, not disabled proxy', () => {
@@ -26,6 +26,7 @@ test('shared domain change bumps every consumer, not disabled proxy', () => {
     'all-in-one',
   ])
   expect(planVersionBumps(['packages/archive/src/page-fold.ts'], versions)).toEqual({
+    'vk-booster': '1.0.1',
     'chatgpt-booster': '2.0.2',
     'all-in-one': '0.5.1',
   })
@@ -67,8 +68,8 @@ test('all internal ChatGPT private package versions match its release manifest',
   expect(source).toContain(`BOOSTER_BASE_VERSION = '${current}'`)
 })
 
-test('VK v1 pre-PROD base cannot be auto-incremented from a non-frozen manifest', () => {
-  expect(() =>
-    planVersionBumps(['modules/vk-booster/src/index.ts'], { ...versions, 'vk-booster': '3.0.0' }),
-  ).toThrow('VK v1 pre-PROD base must remain')
+test('VK fixes advance the final component of the current feature release', () => {
+  expect(
+    planVersionBumps(['modules/vk-booster/src/index.ts'], { ...versions, 'vk-booster': '1.1.0' }),
+  ).toEqual({ 'vk-booster': '1.1.1', 'all-in-one': '0.5.1' })
 })

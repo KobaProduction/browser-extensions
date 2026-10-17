@@ -8,7 +8,7 @@ cutover and publication remain separately gated acceptance levels.
 
 | Product | Version | Entry point | Tampermonkey | MV3 | Publication |
 | --- | --- | --- | --- | --- | --- |
-| VK Booster | 1.0.0 (first-PROD candidate) | `modules/vk-booster` | Separate VK only | Separate VK only | Independently tagged |
+| VK Booster | 1.1.0 | `modules/vk-booster` | Separate VK only | Separate VK only | Independently tagged |
 | ChatGPT Booster | 2.0.21 | `modules/chatgpt-booster` | Separate ChatGPT only | Separate ChatGPT observer, worker, popup | Independently tagged, manual approval |
 | All-in-one | 0.5.23 | `apps/userscript/src/all-in-one.ts`, `apps/extension/src/all-in-one-content.ts` | VK and ChatGPT by site | VK plus ChatGPT observer and worker | Own tag/channel, manual approval |
 
@@ -25,13 +25,15 @@ compiled for different distribution targets.
 | Changed implementation | Required version change | Must remain unchanged |
 | --- | --- | --- |
 | `modules/chatgpt-booster/**` | ChatGPT and all-in-one | VK |
-| `modules/vk-booster/**` | All-in-one; VK 1.0.0 remains frozen; DEV build ID updates | ChatGPT |
+| `modules/vk-booster/**` | VK and all-in-one | ChatGPT |
 | `apps/all-in-one*` | All-in-one | Both standalone products |
-| Shared `packages/**` | Actual dependents; VK stays 1.0.0, other affected products bump | Disabled proxy target |
+| Shared `packages/**` | Actual dependents, including VK | Disabled proxy target |
 | Documentation-only or CI-only | None | All product versions |
 
 Run `bun scripts/bump-versions.ts <changed implementation path>...` to plan
-and write product manifest **patch** bumps for affected products **except frozen VK 1.0.0**. VK's
+and write product manifest **patch** bumps for affected products. Minor updates
+add functionality; major updates represent fundamental changes. Source versions
+advance independently of PROD publication. VK's
 DEV artifacts use an independent third numeric component (`dev-1.0.1`,
 then `dev-1.0.2`) while their manifest source semver remains unchanged.
 New DEV tags/titles begin with `dev-`; each product derives its counter

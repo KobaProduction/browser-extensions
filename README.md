@@ -66,9 +66,12 @@ runs independently and does not depend on a local Git hook.
 
 The [release/channel contract](docs/DEV_PROD_CHANNELS.md) defines continuous DEV
 prereleases and explicitly approved PROD publication. Different products can
-advance independently. **VK Booster's first-release source base is 1.0.0,
-with archive schema 1, frozen until an explicitly authorized first PROD**.
-DEV identifiers still use three numeric components, e.g. `dev-vk-booster v1.0.1`;
+advance independently. **VK Booster's current source version is 1.1.0,
+with archive schema 1**. The owner's 2026-10-17 correction removes source-version
+freezing. Minor versions add functionality, patches fix bugs,
+and major versions represent fundamental changes; schema changes and PROD
+publication require separate approval.
+DEV identifiers still use three numeric components, e.g. `dev-vk-booster v1.1.1`;
 there is no automatic stable promotion. Historical 2.3.x tags and old
 schema-2 archives remain untouched; update/downgrade compatibility needs
 installed-browser acceptance before PROD.

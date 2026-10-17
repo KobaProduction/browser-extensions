@@ -487,3 +487,8 @@ ChatGPT to 2.0.21 and All-in-one to 0.5.23, including private workspace/runtime
 metadata and the lockfile; VK's pre-first-PROD source remains frozen at 1.0.0.
 The owner also permits direct delivery to unprotected `main`, with live branch
 protection/ruleset verification and the existing validation gates retained.
+The subsequent owner directive removes the VK source freeze tied to first PROD:
+VK advances to 1.1.0 for this functional update; minor versions add functionality,
+patches fix bugs, and major versions represent fundamental changes. The common
+version planner and CI now treat VK like other affected products. Canonical
+schema stays 1; historical archives and separate publication approval are intact.

@@ -67,11 +67,12 @@ Binding security/storage rules:
 - A provider-only change affects its consumer and the aggregate, not an
   unrelated standalone provider. Shared runtime changes affect actual
   dependents. Build-only changes do not imply a product version increase.
-- **VK Booster's new pre-first-PROD source base is 1.0.0 and the initial
-  Dexie canonical archive schema is 1**, by the owner's 2026-10-11 revised decision.
-  Both remain frozen until a separately approved first PROD. DEV build
-  identifiers advance independently (`dev-vk-booster/v1.0.N`) without source
-  version bumps. Historical 2.3.x tags/schema-2 folder archives are preserved
+- **The owner's 2026-10-17 decision removes VK source-version freezing and
+  advances VK to 1.1.0.** Versions use major.minor.patch: major for fundamental
+  changes, minor for new functionality, patch for fixes. Source versions may
+  advance before PROD approval; DEV counters and PROD publication are separate.
+  Dexie canonical archive schema remains 1 and requires separate approval to
+  change. Historical 2.3.x tags/schema-2 folder archives are preserved
   but never silently migrated or overwritten by v1. Any installer/version
   downgrade requires explicit installed-profile and update-channel review.
   See [VK product rules](../vk-booster/ARCHIVE.md).

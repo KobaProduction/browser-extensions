@@ -338,12 +338,14 @@ impact graph rebuilds only affected consumers. A VK-only provider change
 does not rebuild unrelated products; a shared archive/widget change rebuilds
 dependents.
 
-VK Booster's first-release source base is **1.0.0** with Archive schema 1
-and remains fixed during DEV until separately approved first PROD. Compatible
-changes must not bump product semver; independent DEV releases use three
-numeric components (`dev-vk-booster v1.0.N`). The old VK 2.3.x development
+VK Booster's current source version is **1.1.0** with Archive schema 1.
+The owner's 2026-10-17 decision removes the earlier pre-PROD version freeze:
+major versions represent fundamental changes, minor versions add functionality,
+and patch versions contain fixes. DEV counters remain independent and numeric
+(`dev-vk-booster v1.1.N`); product version changes do not change database schema
+or grant PROD publication. The old VK 2.3.x development
 and stable tags remain archived as recovery evidence. A first PROD cutover
-must address the fact that v1.0.0 is a semver downgrade from a historical
+must address the fact that v1.1.0 is a semver downgrade from a historical
 2.3.8 stable tag and may not update an already installed extension.
 Docs-only changes never bump versions or publish bundles.
 

@@ -45,9 +45,11 @@ source-provided nested attachments use the same bounded traversal and original
 download guards as direct message attachments; post identity supplies a VK link.
 Reader highlighting belongs to the message card, independently of export selection.
 
-**Owner decision (2026-10-11):** VK's first source release is **1.0.0**;
-its provider-owned canonical IndexedDB schema is **v1** and stays fixed
-until independently approved first PROD. Dexie is the only active message
+**Owner decision (2026-10-17), superseding the earlier source freeze:** VK is
+**1.1.0**. Source versions advance without waiting for PROD: major for fundamental
+changes, minor for functionality, patch for fixes. Its provider-owned canonical
+IndexedDB schema remains **v1**; changing schema requires separate approval.
+Dexie is the only active message
 writer/Reader. Changes to the upstream VK API are handled by its provider
 adapter, not automatic archive migration services.
 
@@ -103,7 +105,7 @@ read-only backup is a separate source-extraction feature, not VK restore.
 
 ## Release and acceptance boundaries
 
-- Source `1.0.0` is below historical published VK `2.3.x` versions. This
+- Source `1.1.0` is below historical published VK `2.3.x` versions. This
   does **not** establish an in-place updater path. Preserve old tags and
   data without forced downgrade or migration; test installation identity
   and explicit cutover before any PROD promotion.
