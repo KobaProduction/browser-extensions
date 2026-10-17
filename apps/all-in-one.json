@@ -3,8 +3,5 @@
   "name": "Koba Browser Tools",
   "version": "0.5.24",
   "release": true,
-  "dependencies": [
-    "vk-booster",
-    "chatgpt-booster"
-  ]
+  "dependencies": ["vk-booster", "chatgpt-booster"]
 }
