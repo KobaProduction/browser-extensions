@@ -46,9 +46,11 @@ GitHub Issues track only current tasks/evidence, never the sole rule authority.
 - Protect ChatGPT v3/v4 existing PROD archives and existing VK v2 folders.
 - Never store credentials or personal conversations in Git, telemetry,
   synthetic fixtures or CI logs.
-- Work on a non-protected branch. Run strict typecheck, Biome, tests and
-  relevant output/build gates. Independent reviewer owns merge to protected
-  branches. Distinguish source/build from browser/data/prod acceptance.
+- Direct push to `main` is allowed when it is not protected. Verify current
+  GitHub branch protection and applicable rulesets before pushing; never bypass
+  protection. Run strict typecheck, Biome, tests and relevant output/build gates.
+  Protected branches retain their review/merge requirements. Distinguish
+  source/build from browser/data/prod acceptance.
 - Any new Issue names exactly one `Target extension` and contains **current
   implementation scope and acceptance**, with links to documentation rules.
   Do not paste persistent rules into Issues.

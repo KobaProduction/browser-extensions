@@ -481,3 +481,9 @@ All three products subsequently built successfully for userscript and MV3 in
 DEV build 52. The shared widgets package now declares its archive dependency;
 local build artifacts are available under `dist/`. No installed extension was
 updated and no release was published.
+PR #45's first CI run passed all 727 tests and the browser UI matrix, then
+rejected missing product source-version increments. The follow-up advances
+ChatGPT to 2.0.21 and All-in-one to 0.5.23, including private workspace/runtime
+metadata and the lockfile; VK's pre-first-PROD source remains frozen at 1.0.0.
+The owner also permits direct delivery to unprotected `main`, with live branch
+protection/ruleset verification and the existing validation gates retained.
