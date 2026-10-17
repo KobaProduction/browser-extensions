@@ -26,8 +26,9 @@ Changed native observations no longer abort the whole capture. One atomic writer
 keeps prior source observations under `previous`, updates the preferred projection
 and raw observation together, and prevents an explicitly older `update_time` from
 rolling the preferred observation backward. Source values are never discarded.
-JSON/ZIP and internal JSONL exports preserve these earlier observations with the
-same source codec; backup restore validates their identities before writing.
+ZIP and internal JSONL recovery exports preserve these earlier observations with the
+same source codec; standalone user JSON exposes only preferred raw VK messages.
+Backup restore validates revision identities before writing.
 
 UI reports new rows, preserved source revisions and the reused verified tail
 separately. Storage, network, timeout, source-page and empty-export failures have
@@ -44,6 +45,7 @@ Wall attachments are post references, not downloadable binary files. Their
 source-provided nested attachments use the same bounded traversal and original
 download guards as direct message attachments; post identity supplies a VK link.
 Reader highlighting belongs to the message card, independently of export selection.
+For end-user export, standalone JSON is a plain array of saved original VK message objects, without a recovery manifest or canonical wrappers; the ZIP retains its verified source chunks/manifest and revisions. Period/last-N/explicit selections are applied to saved message IDs before export and must not silently broaden to all messages. The Reader opens at the latest saved message when first entered, retaining explicit navigation to the beginning. Installed-browser acceptance remains separate.
 
 **Owner decision (2026-10-17), superseding the earlier source freeze:** VK is
 **1.1.0**. Source versions advance without waiting for PROD: major for fundamental

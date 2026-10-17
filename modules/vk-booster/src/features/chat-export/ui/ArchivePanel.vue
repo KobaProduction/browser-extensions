@@ -800,14 +800,15 @@ function enterTab(view: View) {
     return
   }
   tab.value = view
-  if (view === 'reader') void refreshTimeline(api?.status().activePeerId, scopeGeneration)
-  if (
-    view === 'reader' &&
-    (!fixedPreview.value.length || readerRevision !== savedRevision) &&
-    !fixedReading.value &&
-    hasVerifiedPeer.value
-  )
-    void readDexie(fixedCursor.value, Math.max(ARCHIVE_READER_PAGE_SIZE, fixedPreview.value.length))
+  if (view === 'reader') {
+    const initial = !fixedPreview.value.length
+    void refreshTimeline(api?.status().activePeerId, scopeGeneration).then(() => {
+      if (initial && tab.value === 'reader' && timelineEntries.value.length)
+        void navigateTimeline(String(timelineEntries.value.at(-1)?.id))
+      else if (!fixedReading.value && (!fixedPreview.value.length || readerRevision !== savedRevision))
+        void readDexie(fixedCursor.value, Math.max(ARCHIVE_READER_PAGE_SIZE, fixedPreview.value.length))
+    })
+  }
 }
 const tabs: { id: View; label: string; icon: typeof Archive }[] = [
   { id: 'capture', label: 'Выгрузка', icon: Download },

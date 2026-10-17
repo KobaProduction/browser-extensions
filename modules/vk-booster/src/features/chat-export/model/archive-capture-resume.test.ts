@@ -1,5 +1,4 @@
 import { expect, test } from 'bun:test'
-import { decodeArchiveClone } from '@kobaproduction/browser-archive'
 import type { PortableBackupRow } from '@kobaproduction/browser-storage'
 import { IDBKeyRange, indexedDB } from 'fake-indexeddb'
 import { createVkArchiveCapture } from './archive-capture'
@@ -184,11 +183,10 @@ test('JSON and ZIP exports preserve both preferred and prior source observations
       () => {},
     )
     const exported = JSON.parse(await result.blob.text())
-    const rows = exported.messages ?? exported.records
-    const row = rows.find((item: { id: number }) => item.id === original.id)
+    expect(Array.isArray(exported)).toBe(true)
+    const row = exported.find((item: { id: number }) => item.id === original.id)
     expect(row.text).toBe('synthetic changed')
-    expect(decodeArchiveClone(row.snapshot.original)).toMatchObject({ text: 'synthetic changed' })
-    expect(decodeArchiveClone(row.snapshot.previous[0].original)).toMatchObject({ text: original.text })
+    expect(row.snapshot).toBeUndefined()
     const zip = await createVkUserExport(
       repo,
       42,
