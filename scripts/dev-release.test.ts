@@ -66,3 +66,8 @@ test('retry uses release already associated with exact source commit', () => {
     'inconsistent',
   )
 })
+
+test('published DEV channel counter survives deletion of historical DEV tags', () => {
+  expect(nextDevRelease('all-in-one', '0.5.22', [], [], 47).counter).toBe(48)
+  expect(() => nextDevRelease('all-in-one', '0.5.22', [], [], 65536)).toThrow()
+})

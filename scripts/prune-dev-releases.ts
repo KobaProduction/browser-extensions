@@ -11,7 +11,7 @@ export interface ReleaseRecord {
 function productOf(tag: string): Product | undefined {
   return products.find((product) =>
     new RegExp(
-      `^(?:dev-${product}/v[0-9]+\\.[0-9]+\\.[0-9]+|${product}/v[0-9]+\\.[0-9]+\\.[0-9]+-dev\\.[0-9]+)$`,
+      `^(?:dev-${product}|dev-${product}/v[0-9]+\\.[0-9]+\\.[0-9]+|${product}/v[0-9]+\\.[0-9]+\\.[0-9]+-dev\\.[0-9]+)$`,
     ).test(tag),
   )
 }
@@ -32,7 +32,8 @@ export function planDevReleasePruning(
     const retained = keepTag ? rows.find((row) => row.tag_name === keepTag) : rows[0]
     if (keepTag && !retained) throw Error('Published DEV release to retain is missing')
     if (!retained) continue
-    if (rows[0]?.id !== retained.id) throw Error('Cannot prune against an obsolete release')
+    if (rows[0]?.id !== retained.id && retained.tag_name !== `dev-${owner}`)
+      throw Error('Cannot prune against an obsolete release')
     if (
       !retained.assets.some((asset) => asset.name.endsWith('.user.js')) ||
       !retained.assets.some((asset) => asset.name.endsWith('-extension.zip'))

@@ -36,8 +36,9 @@ add functionality; major updates represent fundamental changes. Source versions
 advance independently of PROD publication. VK's
 DEV artifacts use an independent third numeric component (`dev-1.0.1`,
 then `dev-1.0.2`) while their manifest source semver remains unchanged.
-New DEV tags/titles begin with `dev-`; each product derives its counter
-from historical and new prerelease tags.
+DEV titles begin with `dev-`, but only one fixed GitHub prerelease tag exists
+per product. Its monotonic counter derives from the installed DEV channel
+version, seeded by historical prerelease tags. See `DEV_PROD_CHANNELS.md`.
 Other affected private package metadata and Bun lockfile follow their owning
 product's version. Larger semver updates should be
 chosen deliberately; the first ChatGPT version-2 release is `2.0.1` and the

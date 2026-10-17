@@ -19,6 +19,7 @@ export function nextDevRelease(
   baseVersion: string,
   tags: readonly string[],
   tagsAtCommit: readonly string[] = [],
+  channelCounter = 0,
 ): DevRelease {
   if (!isProduct(id)) throw Error('Unknown DEV product')
   channelVersion(baseVersion, 'prod', 1)
@@ -55,7 +56,9 @@ export function nextDevRelease(
       reused: true,
     }
   }
-  const counter = Math.max(latest, patch) + 1
+  if (!Number.isSafeInteger(channelCounter) || channelCounter < 0 || channelCounter > 65535)
+    throw Error('Invalid DEV channel counter')
+  const counter = Math.max(latest, patch, channelCounter) + 1
   const numeric = channelVersion(baseVersion, 'dev', counter)
   return {
     counter,
@@ -72,12 +75,11 @@ if (import.meta.main) {
   const result = Bun.spawnSync(['git', 'tag', '--list'])
   if (!result.success) throw Error('Cannot inspect DEV tag history')
   const tags = new TextDecoder().decode(result.stdout).split('\n').filter(Boolean)
-  const sha = process.env.GITHUB_SHA
-  const atCommit = sha ? Bun.spawnSync(['git', 'tag', '--points-at', sha, '--list']) : null
-  if (atCommit && !atCommit.success) throw Error('Cannot inspect source DEV tags')
-  const sourceTags = atCommit
-    ? new TextDecoder().decode(atCommit.stdout).split('\n').filter(Boolean)
-    : []
-  const release = nextDevRelease(id, version, tags, sourceTags)
+  const channel = Bun.spawnSync(['git', 'show', `origin/dev:userscripts/${id}.user.js`])
+  if (!channel.success) throw Error('Cannot read published DEV channel version')
+  const installed = /\/\/ @version\s+(\d+)\.(\d+)\.(\d+)/.exec(new TextDecoder().decode(channel.stdout))
+  if (!installed) throw Error('Published DEV channel has no valid numeric version')
+  const channelCounter = Number(installed[3])
+  const release = nextDevRelease(id, version, tags, [], channelCounter)
   console.log([release.counter, release.tag, release.title, release.reused ? '1' : '0'].join('|'))
 }
