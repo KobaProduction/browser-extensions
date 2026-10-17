@@ -1,5 +1,4 @@
 import { expect, test } from 'bun:test'
-import { decodeArchiveClone } from '@kobaproduction/browser-archive'
 import type { PortableBackupRow } from '@kobaproduction/browser-storage'
 import { IDBKeyRange, indexedDB } from 'fake-indexeddb'
 import { createVkArchiveCapture } from './archive-capture'
