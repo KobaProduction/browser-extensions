@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import { archiveApi } from './features/chat-export/model/types'
 import { vkBoosterFeature } from './index'
+import { VK_BASE_VERSION } from './version'
 
 test('VK feature is site scoped and can cleanly restart', async () => {
   expect(vkBoosterFeature.match(new URL('https://vk.ru/im/convo/123'))).toBe(true)
@@ -29,7 +30,7 @@ test('VK feature is site scoped and can cleanly restart', async () => {
     expect(archive).toBeDefined()
     if (!archive) throw Error('VK archive module is missing')
     await archive.start({ target: 'userscript' } as never)
-    expect(archiveApi()?.version).toBe('1.0.0')
+    expect(archiveApi()?.version).toBe(VK_BASE_VERSION)
     await archive.stop?.()
     expect(archiveApi()).toBeUndefined()
     // Parent preferences remain independent while the archive child restarts.

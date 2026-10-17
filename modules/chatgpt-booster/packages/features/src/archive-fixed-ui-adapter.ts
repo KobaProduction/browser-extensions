@@ -1,6 +1,10 @@
 import { buildArchiveThread, currentConversationId, currentProjectId } from '@chatgpt-booster/chatgpt'
 import type { ArchiveDataAdapter, ArchiveMessageView, ArchiveThreadWindow } from '@chatgpt-booster/ui'
-import type { ArchiveMessageV1 } from '@kobaproduction/browser-archive'
+import {
+  type ArchiveExportMessageSummary,
+  type ArchiveMessageV1,
+  archiveMessageText,
+} from '@kobaproduction/browser-archive'
 import { DEFAULT_ARCHIVE_EXPORT_PIPELINE } from './archive-export'
 import type { FixedChatGptCapture } from './archive-fixed-runtime'
 import { chatGptArchiveRecord } from './archive-message-adapter'
@@ -217,6 +221,48 @@ export function createFixedArchiveUiAdapter(
             uncertain,
           }
         })
+    },
+    getExportMessages: async (id, signal) => {
+      const owner = account(),
+        epoch = memory.accountEpoch(),
+        revision = await capture.sourceRevision(id),
+        instanceId = await capture.sourceInstanceId(id)
+      const messages: ArchiveExportMessageSummary[] = []
+      let cursor: string | undefined
+      while (true) {
+        signal?.throwIfAborted()
+        const rows = await capture.windowConversation(id, cursor ? 'newer' : 'first', cursor)
+        guard(owner, epoch)
+        for (const source of rows) {
+          const record = presentationRecord(source, id)
+          if (!record) throw Error('Cannot decode saved export source')
+          messages.push({
+            id: record.messageId,
+            timestampMs: record.createTime === null ? null : record.createTime * 1000,
+            author: record.authorName ?? '',
+            role: record.role,
+            text: source.normalized
+              ? archiveMessageText(source.normalized).slice(0, 160)
+              : String(
+                  (record.raw.content as { parts?: unknown[] })?.parts
+                    ?.filter((part) => typeof part === 'string')
+                    .join('') ?? '',
+                ).slice(0, 160),
+          })
+        }
+        const last = rows.at(-1)?.id
+        if (!last || !(await capture.hasMessagesAfter(id, last))) break
+        if (last === cursor) throw Error('archive.error.sourceChanged')
+        cursor = last
+      }
+      signal?.throwIfAborted()
+      if (
+        (await capture.sourceRevision(id)) !== revision ||
+        (await capture.sourceInstanceId(id)) !== instanceId
+      )
+        throw Error('archive.error.sourceChanged')
+      guard(owner, epoch)
+      return messages
     },
     liveSavedUpdates: true,
     subscribeExportChanges: (id, listener) => {

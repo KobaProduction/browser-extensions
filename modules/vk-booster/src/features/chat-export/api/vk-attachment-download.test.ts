@@ -110,3 +110,42 @@ test('attachment descriptors tolerate unknown source shapes and disclose bounded
   for (let index = 0; index < 10; index++) nested = { id: index + 1, date: 1, reply_message: nested }
   expect(inspectVkAssets(nested).truncated).toBe(true)
 })
+
+test('a shared wall post is a source reference and exposes its nested original files', () => {
+  const source: VkMessage = {
+    id: 17,
+    date: 1700000000,
+    attachments: [
+      {
+        type: 'wall',
+        wall: {
+          id: 23,
+          owner_id: -42,
+          date: 1690000000,
+          attachments: [
+            {
+              type: 'photo',
+              photo: { sizes: [{ url: 'https://example.invalid/photo.jpg', width: 800, height: 600 }] },
+            },
+            {
+              type: 'doc',
+              doc: { title: 'source', ext: 'pdf', url: 'https://example.invalid/source.pdf' },
+            },
+          ],
+        },
+      },
+    ],
+  }
+  const result = assets(source)
+  expect(result).toHaveLength(3)
+  expect(result[0]).toMatchObject({ type: 'wall', choices: [], external: 'https://vk.ru/wall-42_23' })
+  expect(result[1]).toMatchObject({ key: '17:root.wall0:0:photo', rootId: 17, sourceId: 23 })
+  expect(result[1]?.choices[0]?.url).toBe('https://example.invalid/photo.jpg')
+  expect(result[2]?.choices[0]?.url).toBe('https://example.invalid/source.pdf')
+  const malformed: VkMessage = {
+    id: 18,
+    date: 1,
+    attachments: [{ type: 'wall', wall: { id: 'unsafe', owner_id: 0 } }],
+  }
+  expect(assets(malformed)[0]?.external).toBeNull()
+})

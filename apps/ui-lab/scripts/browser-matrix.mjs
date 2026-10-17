@@ -12,8 +12,11 @@ import { checkArchiveUi } from './archive-ui-checks.mjs'
 import { checkAutomationUi } from './automation-ui-checks.mjs'
 import { checkCorrectionUi } from './correction-ui-checks.mjs'
 import { checkExplorer } from './explorer-checks.mjs'
+import { checkExportScopeUi } from './export-scope-ui-checks.mjs'
 import { checkHistoryUi } from './history-ui-checks.mjs'
+import { checkReaderScrollUi } from './reader-scroll-ui-checks.mjs'
 import { inspectUi } from './ui-inspect.mjs'
+import { checkVkReaderUi } from './vk-reader-ui-checks.mjs'
 import { checkWsUi } from './ws-ui-checks.mjs'
 
 const mode = process.argv.includes('--full')
@@ -31,6 +34,9 @@ const focusedMode = [
   'explorer',
   'correction-ui',
   'history-ui',
+  'vk-reader-ui',
+  'reader-scroll-ui',
+  'export-scope-ui',
 ].find((name) => process.argv.includes(`--${name}`))
 const reportMode = focusedMode ?? mode
 const baseUrl = process.env.UI_LAB_URL || 'http://127.0.0.1:5173'
@@ -196,7 +202,16 @@ try {
     deviceScaleFactor: 1,
     mobile: false,
   })
-  if (process.argv.includes('--accessibility-ui')) {
+  if (process.argv.includes('--export-scope-ui')) {
+    await checkExportScopeUi({ command, evaluate, baseUrl, output })
+    exitCode = 0
+  } else if (process.argv.includes('--reader-scroll-ui')) {
+    await checkReaderScrollUi({ command, evaluate, baseUrl, output })
+    exitCode = 0
+  } else if (process.argv.includes('--vk-reader-ui')) {
+    await checkVkReaderUi({ command, evaluate, baseUrl, output })
+    exitCode = 0
+  } else if (process.argv.includes('--accessibility-ui')) {
     await checkAccessibilityUi({ command, evaluate, baseUrl, output })
     exitCode = 0
   } else if (process.argv.includes('--history-ui')) {

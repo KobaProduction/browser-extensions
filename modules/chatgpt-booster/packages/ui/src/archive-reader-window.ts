@@ -1,4 +1,5 @@
 import { buildArchiveThread } from '@chatgpt-booster/chatgpt'
+import { ARCHIVE_READER_MAX_RECORDS, mergeArchiveReaderRecords } from '@kobaproduction/browser-archive'
 import type { ArchiveThreadWindow } from './mount'
 
 /** Retain adjacent reading context, bounded by records rather than turn size. */
@@ -6,7 +7,7 @@ export function mergeArchiveReaderWindows(
   current: ArchiveThreadWindow,
   incoming: ArchiveThreadWindow,
   direction: 'older' | 'newer',
-  maximum = 320,
+  maximum = ARCHIVE_READER_MAX_RECORDS,
 ): ArchiveThreadWindow {
   if (
     current.accountId !== incoming.accountId ||
@@ -14,18 +15,20 @@ export function mergeArchiveReaderWindows(
     current.sourceRevision !== incoming.sourceRevision
   )
     throw Error('archive.error.sourceChanged')
-  const byId = new Map(
-    [...current.thread.turns, ...incoming.thread.turns]
-      .flatMap((turn) => [...turn.messages, ...turn.details])
-      .map((item) => [item.record.messageId, item.record]),
+  const recordsOf = (window: ArchiveThreadWindow) =>
+    window.thread.turns.flatMap((turn) => [...turn.messages, ...turn.details]).map((item) => item.record)
+  const { records, trimmed } = mergeArchiveReaderRecords(
+    recordsOf(current),
+    recordsOf(incoming),
+    direction,
+    {
+      key: (record) => record.messageId,
+      compare: (a, b) =>
+        (a.createTime ?? Number.POSITIVE_INFINITY) - (b.createTime ?? Number.POSITIVE_INFINITY) ||
+        a.messageId.localeCompare(b.messageId),
+      maximum,
+    },
   )
-  const all = [...byId.values()].sort(
-    (a, b) =>
-      (a.createTime ?? Number.POSITIVE_INFINITY) - (b.createTime ?? Number.POSITIVE_INFINITY) ||
-      a.messageId.localeCompare(b.messageId),
-  )
-  const trimmed = all.length > maximum
-  const records = direction === 'older' ? all.slice(0, maximum) : all.slice(-maximum)
   const first = records[0],
     last = records.at(-1)
   return {

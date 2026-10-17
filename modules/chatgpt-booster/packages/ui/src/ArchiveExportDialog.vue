@@ -20,6 +20,11 @@ import {
   type SettingsAdapter,
 } from '@chatgpt-booster/core'
 import {
+  type ArchiveExportMessageSummary,
+  archiveExportSelectionIds,
+  defaultArchiveExportSelection,
+} from '@kobaproduction/browser-archive'
+import {
   ArchiveProgress,
   Button,
   Checkbox,
@@ -36,7 +41,7 @@ import {
 } from '@kobaproduction/browser-ui'
 import {
   ArchiveExportFormatFields,
-  ArchiveSelectionScope,
+  ArchiveExportScopeFields,
   useApplicationTelemetry,
 } from '@kobaproduction/browser-widgets'
 import ArrowUpToLine from 'lucide-vue-next/dist/esm/icons/arrow-up-to-line.js'
@@ -66,7 +71,57 @@ const emit = defineEmits<{
   'open-backups': []
 }>()
 const options = ref<ArchiveExportOptions>({ ...DEFAULT_EXPORT_OPTIONS })
-const selectionScope = ref<'all' | 'selected'>(props.selectedMessageIds?.length ? 'selected' : 'all')
+const exportSelection = ref({
+  ...defaultArchiveExportSelection(),
+  mode: props.selectedMessageIds?.length ? ('selected' as const) : ('all' as const),
+})
+const selectedIds = ref<readonly string[]>(props.selectedMessageIds ? [...props.selectedMessageIds] : [])
+const selectionMessages = ref<readonly ArchiveExportMessageSummary[]>([])
+const selectionLoading = ref(false)
+let selectionController: AbortController | undefined
+let selectionGeneration = 0
+const selectionIds = computed(() => {
+  try {
+    return archiveExportSelectionIds(selectionMessages.value, exportSelection.value, selectedIds.value)
+  } catch {
+    return []
+  }
+})
+async function loadSelectionMessages() {
+  selectionController?.abort()
+  const controller = new AbortController(),
+    generation = ++selectionGeneration
+  selectionController = controller
+  selectionLoading.value = true
+  const owner = props.archiveAdapter.currentAccountId?.()
+  try {
+    const messages = await props.archiveAdapter.getExportMessages?.(
+      props.conversationId,
+      controller.signal,
+    )
+    if (
+      !controller.signal.aborted &&
+      generation === selectionGeneration &&
+      props.archiveAdapter.currentAccountId?.() === owner
+    )
+      selectionMessages.value = messages ?? []
+  } catch {
+    if (!controller.signal.aborted && generation === selectionGeneration) {
+      selectionMessages.value = []
+      error.value = 'archive.error.sourceChanged'
+    }
+  } finally {
+    if (generation === selectionGeneration) selectionLoading.value = false
+  }
+}
+onMounted(loadSelectionMessages)
+onBeforeUnmount(() => selectionController?.abort())
+watch(
+  () => props.selectedMessageIds,
+  (ids) => {
+    selectedIds.value = ids ? [...ids] : []
+  },
+)
 type ExportPreferenceScope = 'global' | 'project' | 'conversation'
 const preferenceScope = ref<ExportPreferenceScope>('global')
 const preferenceSource = ref<ExportPreferenceScope>('global')
@@ -253,11 +308,11 @@ const effectiveOptions = computed<ArchiveExportOptions>(() =>
         ...options.value,
         images: false,
         files: false,
-        ...(selectionScope.value === 'selected' ? { messageIds: props.selectedMessageIds ?? [] } : {}),
+        messageIds: selectionIds.value,
       }
     : {
         ...options.value,
-        ...(selectionScope.value === 'selected' ? { messageIds: props.selectedMessageIds ?? [] } : {}),
+        messageIds: selectionIds.value,
       },
 )
 
@@ -299,7 +354,7 @@ const activeBlockers = computed(() => [
 ])
 const prepareBlocked = computed(
   () =>
-    (selectionScope.value === 'selected' && !props.selectedMessageIds?.length) ||
+    (exportSelection.value.mode !== 'all' && (selectionLoading.value || !selectionIds.value?.length)) ||
     (!!props.archiveAdapter.getExportReadiness &&
       (readinessLoading.value ||
         readinessDirty.value ||
@@ -469,6 +524,7 @@ function scheduleReadiness() {
   }, 180)
 }
 function invalidateExportSource() {
+  void loadSelectionMessages()
   cancelExport()
   clearPrepared()
   failedBlocker.value = null
@@ -1103,6 +1159,10 @@ function cancelExport() {
           </template>
         </div>
       </section>
+      <ArchiveExportScopeFields v-model="exportSelection" v-model:selected-ids="selectedIds" :messages="selectionMessages" :loading="selectionLoading" :disabled="busy" :locale="locale" />
+      <ArchiveExportFormatFields v-model:format="options.format" :packaging="options.packaging ?? 'none'" :formats="formats" :packages="exportPackages"
+        :format-label="t('export.format')" :packaging-label="locale === 'ru' ? 'Упаковка результата' : 'Output packaging'" :disabled="busy || preferenceLoading"
+        @update:format="remember" @update:packaging="chooseOutputPackaging" />
       <Collapsible class="booster-export-disclosure">
         <CollapsibleTrigger as-child><Button variant="ghost">{{ locale === 'ru' ? 'Дополнительные настройки' : 'Advanced settings' }}
           <small v-if="options.packaging === 'zip'">ZIP</small>
@@ -1127,11 +1187,6 @@ function cancelExport() {
         </Button>
       </section>
       <section class="booster-export-presets" aria-label="Export format shortcuts">
-        <ArchiveSelectionScope v-model="selectionScope" :selected-count="selectedMessageIds?.length ?? 0" :disabled="busy"
-          :label="locale === 'ru' ? 'Что экспортировать' : 'Export scope'"
-          :all-label="locale === 'ru' ? 'Все сохранённые сообщения' : 'All saved messages'"
-          :selected-label="locale === 'ru' ? 'Выбранные сообщения' : 'Selected messages'"
-          :empty-label="locale === 'ru' ? 'Выбери сообщения в архиве.' : 'Select messages in the archive.'" />
         <strong>{{ locale === 'ru' ? 'Быстрые профили экспорта' : 'Quick export profiles' }}</strong>
         <p class="booster-note">{{ locale === 'ru'
           ? 'Выберите формат, затем проверьте параметры и подготовьте файл. Проверка полноты и владельца обязательна.'
@@ -1163,9 +1218,6 @@ function cancelExport() {
           type="button" class="booster-action-secondary" :disabled="busy || collecting || suspended"
           @click="emit('open-backups')">{{ locale === 'ru' ? 'Резервные копии источника и канонического архива' : 'Native and canonical archive backups' }}</Button>
       </section>
-      <ArchiveExportFormatFields v-model:format="options.format" :packaging="options.packaging ?? 'none'" :formats="formats" :packages="exportPackages"
-        :format-label="t('export.format')" :packaging-label="locale === 'ru' ? 'Упаковка результата' : 'Output packaging'" :disabled="busy || preferenceLoading"
-        @update:format="remember" @update:packaging="chooseOutputPackaging" />
       <p v-if="options.packaging === 'zip'" class="booster-note">
         {{ locale === 'ru' ? 'ZIP включает файл экспорта и archive-manifest.json, но не бинарные вложения. Сжатие не применяется.' : 'ZIP contains the export and archive-manifest.json, not binary attachments. No compression is applied.' }}
       </p>

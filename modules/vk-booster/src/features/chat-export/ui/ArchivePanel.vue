@@ -4,7 +4,14 @@ import { VK_UI_MESSAGES } from './ui-messages'
 /** VK tool adapter. Shared archive widgets own record and selection presentation. */
 
 import type { ChatCollectionSnapshot } from '@kobaproduction/browser-archive'
-import { createChatCollectionController } from '@kobaproduction/browser-archive'
+import {
+  ARCHIVE_READER_PAGE_SIZE,
+  type ArchiveReadingDirection,
+  archiveExportSelectionIds,
+  createChatCollectionController,
+  defaultArchiveExportSelection,
+  mergeArchiveReaderRecords,
+} from '@kobaproduction/browser-archive'
 import { SHELL_RESTORE_UI_EVENT } from '@kobaproduction/browser-core'
 import {
   Button,
@@ -30,13 +37,15 @@ import {
 } from '@kobaproduction/browser-ui'
 import {
   ArchiveExportFormatFields,
+  ArchiveExportScopeFields,
   ArchiveMessageHeader,
   ArchiveProgressBar,
+  ArchiveReaderNavigation,
   ArchiveReadingSurface,
   ArchiveRecordList,
-  ArchiveSelectionScope,
   ArchiveTimeline,
   ConversationCollectionAction,
+  createArchiveReadingScroll,
   useApplicationTelemetry,
   useArchiveFocusTracker,
 } from '@kobaproduction/browser-widgets'
@@ -155,7 +164,6 @@ const fixedSaved = ref<number | null>(null)
 const fixedError = ref('')
 const fixedPreview = ref<readonly VkMessage[]>([])
 const fixedCursor = ref<number | undefined>()
-const fixedNextCursor = ref<number | undefined>()
 const fixedReading = ref(false)
 const readerViewport = ref<HTMLElement | null>(null)
 let readerGeneration = 0
@@ -166,6 +174,7 @@ const readerFocus = useArchiveFocusTracker(
   () => !disposed && tab.value === 'reader' && !fixedReading.value,
 )
 let readerRevision = -1
+let readerOwnerId: string | null = null
 let readerWork: Promise<void> = Promise.resolve()
 let latestTimelineTarget: string | null = null
 let timelineNavigating = false
@@ -180,7 +189,7 @@ function scheduleSavedRefresh() {
       scheduleSavedRefresh()
       return
     }
-    void readDexie(fixedCursor.value)
+    void readDexie(fixedCursor.value, Math.max(ARCHIVE_READER_PAGE_SIZE, fixedPreview.value.length))
   }, 350)
 }
 const participantNames = ref<Record<number, string>>({})
@@ -195,21 +204,22 @@ function stopMediaRequests() {
 }
 const exportOpen = ref(false)
 const exportChunkRows = ref<100 | 500>(500)
-const exportFormat = ref<'json' | 'markdown' | 'text'>('json')
+const exportFormat = ref<'json' | 'markdown' | 'text'>('markdown')
 const exportFormats = [
-  { id: 'json', label: 'JSON · оригиналы и метаданные' },
+  { id: 'json', label: 'JSON' },
   { id: 'markdown', label: 'Markdown' },
-  { id: 'text', label: 'Текст' },
+  { id: 'text', label: 'TXT' },
 ]
 const exportPackages = [
   { id: 'none', label: 'Один файл' },
   { id: 'zip', label: 'ZIP' },
 ]
 const exportIncludeReferences = ref(true)
-const exportPackaging = ref<'zip' | 'none'>('zip')
+const exportPackaging = ref<'zip' | 'none'>('none')
 const exportIncludeMedia = ref(false)
 const exportIncludeOriginal = ref(false)
-const exportScope = ref<'all' | 'selected'>('all')
+const exportSelection = ref(defaultArchiveExportSelection())
+const exportAdvanced = ref(false)
 const selectionEnabled = ref(false)
 const selectedMessageIds = ref<ReadonlySet<number>>(new Set())
 const selectedRecordIds = computed(() => new Set([...selectedMessageIds.value].map(String)))
@@ -218,6 +228,74 @@ const exportProgress = ref<VkExportProgress | null>(null)
 const speedOpen = ref(false)
 const coverage = ref<VkArchiveCoverage | null>(null)
 const timelineEntries = ref<readonly VkTimelineEntry[]>([])
+const exportMessages = computed(() =>
+  timelineEntries.value.map((entry) => ({
+    id: String(entry.id),
+    timestampMs: entry.date === null ? null : entry.date * 1000,
+    author:
+      (entry.senderId && participantNames.value[entry.senderId]) ||
+      (entry.outgoing ? text('Вы') : text('Неизвестный отправитель')),
+    text: entry.text ?? '',
+  })),
+)
+const exportSelectedIds = computed({
+  get: () => [...selectedMessageIds.value].map(String),
+  set: (ids: readonly string[]) => {
+    selectedMessageIds.value = new Set(
+      ids.map(Number).filter((id) => Number.isSafeInteger(id) && id > 0),
+    )
+    resetPreparedExport()
+  },
+})
+const exportMessageIds = computed(() => {
+  try {
+    return archiveExportSelectionIds(
+      exportMessages.value,
+      exportSelection.value,
+      exportSelectedIds.value,
+    )
+  } catch {
+    return []
+  }
+})
+const exportScopeEmpty = computed(
+  () => exportMessageIds.value !== undefined && !exportMessageIds.value.length,
+)
+const exportScopeStale = computed(
+  () =>
+    exportSelection.value.mode !== 'all' && (timelineBusy.value || timelineRevision !== savedRevision),
+)
+const readerEdges = computed(() => {
+  const first = timelineEntries.value.findIndex((entry) => entry.id === fixedPreview.value[0]?.id)
+  const last = timelineEntries.value.findIndex((entry) => entry.id === fixedPreview.value.at(-1)?.id)
+  return { first, older: first > 0, newer: last >= 0 && last < timelineEntries.value.length - 1 }
+})
+const readerScroll = createArchiveReadingScroll({
+  viewport: () => readerViewport.value,
+  enabled: () =>
+    !disposed &&
+    tab.value === 'reader' &&
+    !fixedReading.value &&
+    !fixedBusy.value &&
+    !timelineNavigating &&
+    readerRevision === savedRevision,
+  canLoad: (direction) => readerEdges.value[direction],
+  load: async (direction) => {
+    if (direction === 'newer') {
+      const last = fixedPreview.value.at(-1)?.id
+      if (last !== undefined) await readDexie(last, ARCHIVE_READER_PAGE_SIZE, direction)
+    } else {
+      const end = readerEdges.value.first
+      if (end <= 0) return
+      const start = Math.max(0, end - ARCHIVE_READER_PAGE_SIZE)
+      await readDexie(timelineEntries.value[start - 1]?.id, end - start, direction)
+    }
+  },
+})
+function onReadingScroll() {
+  readerFocus.schedule()
+  void readerScroll.onScroll()
+}
 const activeMessageId = ref<string | null>(null)
 watch(readerFocus.activeMessageKey, (key) => {
   if (key?.startsWith('vk:')) activeMessageId.value = key.slice(3)
@@ -229,6 +307,7 @@ let timelineRevision = -1
 let timelineGeneration = 0
 let timelineRequest: AbortController | undefined, rangeRequest: AbortController | undefined
 function cancelReaderTasks() {
+  readerScroll.reset()
   timelineRequest?.abort()
   rangeRequest?.abort()
   latestTimelineTarget = null
@@ -246,7 +325,10 @@ const timelineNodes = computed(() =>
     return {
       id: String(entry.id),
       parentId: previous ? String(previous.id) : null,
-      label: `${entry.outgoing ? text('Вы') : entry.senderId ? `${text('Участник')} ${entry.senderId}` : text('Сообщение')} · #${entry.id}`,
+      label:
+        (entry.senderId && participantNames.value[entry.senderId]) ||
+        (entry.outgoing ? text('Вы') : text('Неизвестный отправитель')),
+      timestampMs: entry.date === null ? null : entry.date * 1000,
       preview: entry.text ?? '',
       uncertain: coverage.value?.integrity.chain !== 'verified',
     }
@@ -299,8 +381,17 @@ async function navigateTimeline(id: string) {
       const target = latestTimelineTarget
       latestTimelineTarget = null
       const targetId = Number(target)
-      if (!fixedPreview.value.some((message) => message.id === targetId))
-        await readDexie(targetId === 1 ? undefined : targetId - 1)
+      if (!fixedPreview.value.some((message) => message.id === targetId)) {
+        const index = timelineEntries.value.findIndex((entry) => entry.id === targetId)
+        const start = Math.max(
+          0,
+          Math.min(
+            index - ARCHIVE_READER_PAGE_SIZE / 2,
+            timelineEntries.value.length - ARCHIVE_READER_PAGE_SIZE,
+          ),
+        )
+        await readDexie(index < 0 ? targetId - 1 : timelineEntries.value[start - 1]?.id)
+      }
       if (
         !disposed &&
         tab.value === 'reader' &&
@@ -410,11 +501,14 @@ async function requestMedia(messageId: number, asset: VkAsset) {
         name: result.name,
       },
     }
-  } catch {
+  } catch (error) {
     if (disposed || request.signal.aborted || scopeTicket !== scopeGeneration) return
     attachmentErrors.value = {
       ...attachmentErrors.value,
-      [asset.key]: 'Не удалось загрузить оригинал. Ссылка может быть недоступна или истекла.',
+      [asset.key]:
+        error instanceof Error && error.message === 'VK attachment unavailable or unsafe'
+          ? 'Не удалось загрузить оригинал. Ссылка может быть недоступна или истекла.'
+          : vkArchiveErrorMessage(error),
     }
   } finally {
     clearTimeout(timeout)
@@ -459,7 +553,7 @@ function clearSelection() {
   rangeEnd.value = null
   resetPreparedExport()
 }
-watch(exportScope, resetPreparedExport)
+watch(exportSelection, resetPreparedExport, { deep: true })
 watch(exportFormat, resetPreparedExport)
 watch([exportPackaging, exportIncludeMedia, exportIncludeOriginal], resetPreparedExport)
 const messageKey = (message: VkMessage) => `vk:${message.id}`
@@ -531,16 +625,24 @@ async function captureDexie() {
     fixedBusy.value = false
   }
 }
-function readDexie(cursor?: number): Promise<void> {
+function readDexie(
+  cursor?: number,
+  limit = ARCHIVE_READER_PAGE_SIZE,
+  direction?: ArchiveReadingDirection,
+): Promise<void> {
   const scope = scopeGeneration
   const work = readerWork.then(async () => {
     if (disposed || tab.value !== 'reader' || scope !== scopeGeneration) return
-    await readDexiePage(cursor)
+    await readDexiePage(cursor, limit, direction)
   })
   readerWork = work.catch(() => undefined)
   return work
 }
-async function readDexiePage(cursor?: number) {
+async function readDexiePage(
+  cursor?: number,
+  limit = ARCHIVE_READER_PAGE_SIZE,
+  direction?: ArchiveReadingDirection,
+) {
   if (!api || tab.value !== 'reader' || fixedBusy.value || fixedReading.value || !hasVerifiedPeer.value)
     return
   fixedReading.value = true
@@ -549,23 +651,35 @@ async function readDexiePage(cursor?: number) {
   const peer = api.status().activePeerId
   const revision = savedRevision
   try {
-    const rows = await api.readFixed(80, cursor)
+    const window = await api.readWindowFixed?.(
+      limit,
+      cursor,
+      readerOwnerId
+        ? {
+            ownerId: readerOwnerId,
+            ...(direction ? { revision: readerRevision } : {}),
+          }
+        : undefined,
+    )
+    const incoming = window?.messages ?? (await api.readFixed(limit, cursor))
     if (ticket !== readerGeneration || api.status().activePeerId !== peer) return
+    if (revision !== savedRevision || (window && window.revision !== revision)) {
+      scheduleSavedRefresh()
+      return
+    }
+    if (window) readerOwnerId = window.ownerId
     const viewport = readerViewport.value
-    const preserveScroll = cursor === fixedCursor.value
+    const preserveScroll = direction !== undefined || cursor === fixedCursor.value
     const scrollTop = viewport?.scrollTop ?? 0
-    const bounds = viewport?.getBoundingClientRect()
-    const anchor =
-      preserveScroll && viewport && bounds
-        ? [...viewport.querySelectorAll<HTMLElement>('[data-archive-node]')].find(
-            (node) => node.getBoundingClientRect().bottom >= bounds.top,
-          )
-        : undefined
-    const anchorKey = anchor?.getAttribute('data-archive-node')
-    const anchorOffset = anchor && bounds ? anchor.getBoundingClientRect().top - bounds.top : null
+    const anchor = preserveScroll ? readerScroll.capture() : null
+    const rows = direction
+      ? mergeArchiveReaderRecords(fixedPreview.value, incoming, direction, {
+          key: (message) => message.id,
+          compare: (left, right) => left.id - right.id,
+        }).records
+      : incoming
     fixedPreview.value = rows
-    fixedCursor.value = cursor
-    fixedNextCursor.value = rows.length === 80 ? rows.at(-1)?.id : undefined
+    fixedCursor.value = rows[0] ? rows[0].id - 1 : cursor
     if (!activeMessageId.value || !rows.some((message) => String(message.id) === activeMessageId.value))
       activeMessageId.value = rows[0] ? String(rows[0].id) : null
     void refreshTimeline(peer, scopeGeneration)
@@ -574,14 +688,7 @@ async function readDexiePage(cursor?: number) {
     if (ticket !== readerGeneration || api.status().activePeerId !== peer) return
     if (viewport && viewport === readerViewport.value) {
       viewport.scrollTop = preserveScroll ? scrollTop : 0
-      if (preserveScroll && anchorKey && anchorOffset !== null) {
-        const current = [...viewport.querySelectorAll<HTMLElement>('[data-archive-node]')].find(
-          (node) => node.getAttribute('data-archive-node') === anchorKey,
-        )
-        if (current)
-          viewport.scrollTop +=
-            current.getBoundingClientRect().top - viewport.getBoundingClientRect().top - anchorOffset
-      }
+      if (preserveScroll) readerScroll.restore(anchor)
     }
     fixedReading.value = false
     readerFocus.schedule()
@@ -598,7 +705,10 @@ async function readDexiePage(cursor?: number) {
       .resolveParticipants(ids)
       .then((people) => {
         if (ticket !== readerGeneration || api.status().activePeerId !== peer) return
-        participantNames.value = Object.fromEntries(people.map((person) => [person.id, person.name]))
+        participantNames.value = {
+          ...participantNames.value,
+          ...Object.fromEntries(people.map((person) => [person.id, person.name])),
+        }
         nameLookupError.value =
           ids.length > people.length
             ? 'Часть имён VK не предоставил. Идентификаторы показаны без подмены.'
@@ -610,6 +720,10 @@ async function readDexiePage(cursor?: number) {
       })
   } catch (error) {
     if (ticket === readerGeneration) {
+      if (error instanceof Error && error.message === 'VK archive reader owner changed') {
+        resetReaderScope()
+        scheduleSavedRefresh()
+      }
       fixedError.value = `${text('Чтение:')} ${text(vkArchiveErrorMessage(error))}`
     }
   } finally {
@@ -618,7 +732,7 @@ async function readDexiePage(cursor?: number) {
 }
 async function prepareUserExport() {
   if (!api || fixedBusy.value || rangeBusy.value || !hasVerifiedPeer.value || !exportOpen.value) return
-  if (exportScope.value === 'selected' && !selectedMessageIds.value.size) return
+  if (exportScopeEmpty.value || exportScopeStale.value) return
   const peer = api.status().activePeerId
   const scopeTicket = scopeGeneration
   fixedBusy.value = true
@@ -639,7 +753,8 @@ async function prepareUserExport() {
         packaging: exportPackaging.value,
         includeMedia: exportPackaging.value === 'zip' && exportIncludeMedia.value,
         includeOriginal: exportIncludeOriginal.value,
-        messageIds: exportScope.value === 'selected' ? [...selectedMessageIds.value] : undefined,
+        messageIds: exportMessageIds.value?.map(Number),
+        expectedRevision: exportSelection.value.mode === 'all' ? undefined : timelineRevision,
         downloadedMedia: loaded,
       },
       (progress) => {
@@ -692,7 +807,7 @@ function enterTab(view: View) {
     !fixedReading.value &&
     hasVerifiedPeer.value
   )
-    void readDexie(fixedCursor.value)
+    void readDexie(fixedCursor.value, Math.max(ARCHIVE_READER_PAGE_SIZE, fixedPreview.value.length))
 }
 const tabs: { id: View; label: string; icon: typeof Archive }[] = [
   { id: 'capture', label: 'Выгрузка', icon: Download },
@@ -734,46 +849,47 @@ watch(
 )
 let unsubscribe: (() => void) | undefined
 let peerTimer: ReturnType<typeof setInterval> | undefined
+function resetReaderScope() {
+  cancelReaderTasks()
+  readerGeneration++
+  scopeGeneration++
+  latestTimelineTarget = null
+  stopMediaRequests()
+  readerRevision = -1
+  readerOwnerId = null
+  fixedReading.value = false
+  fixedPreview.value = []
+  timelineEntries.value = []
+  coverage.value = null
+  timelineRevision = -1
+  timelineGeneration++
+  timelineBusy.value = false
+  activeMessageId.value = null
+  readerFocus.reset()
+  rangeStart.value = null
+  rangeEnd.value = null
+  fixedSaved.value = null
+  captureComplete.value = null
+  reportedTotal.value = null
+  attachmentReferences.value = null
+  fixedCursor.value = undefined
+  fixedError.value = ''
+  nameLookupError.value = ''
+  participantNames.value = {}
+  for (const file of Object.values(attachments.value)) URL.revokeObjectURL(file.url)
+  attachments.value = {}
+  downloading.value = {}
+  attachmentErrors.value = {}
+  clearSelection()
+  selectionEnabled.value = false
+  exportSelection.value = defaultArchiveExportSelection()
+  exportOpen.value = false
+  resetPreparedExport()
+}
 function refreshActiveConversation(next = api?.status()) {
   if (!next) return
   const previous = status.value
-  if (previous?.activePeerId !== next.activePeerId) {
-    cancelReaderTasks()
-    readerGeneration++
-    scopeGeneration++
-    latestTimelineTarget = null
-    stopMediaRequests()
-    readerRevision = -1
-    fixedReading.value = false
-    fixedPreview.value = []
-    timelineEntries.value = []
-    coverage.value = null
-    timelineRevision = -1
-    timelineGeneration++
-    timelineBusy.value = false
-    activeMessageId.value = null
-    readerFocus.reset()
-    rangeStart.value = null
-    rangeEnd.value = null
-    fixedSaved.value = null
-    captureComplete.value = null
-    reportedTotal.value = null
-    attachmentReferences.value = null
-    fixedCursor.value = undefined
-    fixedNextCursor.value = undefined
-    fixedError.value = ''
-    nameLookupError.value = ''
-    participantNames.value = {}
-    for (const file of Object.values(attachments.value)) URL.revokeObjectURL(file.url)
-    attachments.value = {}
-    downloading.value = {}
-    attachmentErrors.value = {}
-    clearSelection()
-    selectionEnabled.value = false
-    exportScope.value = 'all'
-    exportOpen.value = false
-    resetPreparedExport()
-  }
+  if (previous?.activePeerId !== next.activePeerId) resetReaderScope()
   if (
     !previous ||
     next.activePeerId !== previous.activePeerId ||
@@ -814,7 +930,7 @@ onUnmounted(() => {
 })
 </script>
 <template>
-  <section class="vk-archive-panel flex min-h-0 min-w-0 flex-col gap-3" :class="{ 'vk-archive-panel-reader': tab === 'reader' }" :aria-label="text('VK Booster — инструменты')" :data-provider-view="tab" :data-panel-content-focus="tab === 'reader' ? 'false' : undefined">
+  <section class="vk-archive-panel flex min-h-0 min-w-0 flex-col" :class="tab === 'reader' ? 'vk-archive-panel-reader h-full flex-1 overflow-hidden gap-2' : 'gap-3'" :aria-label="text('VK Booster — инструменты')" :data-provider-view="tab" :data-panel-content-focus="tab === 'reader' ? 'false' : undefined">
     <p v-if="status?.blockedReason" class="m-0 flex items-start gap-2 text-sm text-destructive" role="alert">
       <ShieldAlert class="size-4 shrink-0" aria-hidden="true" />
       {{ status.blockedReason }}{{ text('. Вернись в выбранный диалог перед работой с архивом. ') }}</p>
@@ -856,10 +972,13 @@ onUnmounted(() => {
         <ConversationCollectionAction :label="captureRange === 'all' ? text('Собрать всю историю') : text('Собрать последние сообщения')"
           :busy="fixedBusy" :disabled="!hasVerifiedPeer"
           :processed="collectionState.processed" :total="collectionState.total"
+          :reused="status?.progress.reused ?? 0"
           :saved="collectionState.saved" @start="captureDexie" @stop="collector?.stop()" />
         <p v-if="!hasVerifiedPeer" class="text-sm text-muted-foreground">{{ text('Открой конкретную VK-переписку — на остальных страницах сайта доступны настройки и меню.') }}</p>
-        <p v-if="fixedSaved !== null" role="status" class="text-sm">{{ text(' Сохранено новых: ') }}{{ fixedSaved }}{{ text('. Обработано: ') }}{{ collectionState.processed }}{{ reportedTotal !== null ? `${text(' из ')}${reportedTotal}` : '' }}.
-          {{ captureComplete ? text('Обход доступной истории завершён.') : text('Обход частичный: можно продолжить повторным сбором.') }}
+        <p v-if="fixedSaved !== null" role="status" class="text-sm">{{ text(' Сохранено новых: ') }}{{ fixedSaved }}{{ text('. Прочитано из VK: ') }}{{ collectionState.processed }}{{ reportedTotal !== null ? `${text('. Всего в истории: ')}${reportedTotal}` : '' }}.
+          {{ captureComplete ? text('Вся доступная история сохранена.') : text('Обход частичный: можно продолжить повторным сбором.') }}
+          <span v-if="status?.progress.reused">{{ text('Уже проверенный хвост: ') }}{{ status.progress.reused }}{{ text(' сообщений; повторно не загружался.') }}</span>
+          <span v-if="status?.progress.updated">{{ text('Новых версий сохранено: ') }}{{ status.progress.updated }}.</span>
         </p>
         <p v-if="fixedError" role="alert" class="text-sm text-destructive">{{ text(fixedError) }}</p>
         <p v-if="durableSettingsError" role="alert" class="text-sm text-destructive">{{ text(durableSettingsError) }}</p>
@@ -874,26 +993,25 @@ onUnmounted(() => {
     </TabsContent>
     <TabsContent value="reader" class="vk-reader flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden">
       <section class="vk-reader-body flex min-h-0 min-w-0 flex-1 flex-col gap-2" :aria-label="text('Сохранённая переписка')">
-        <div class="flex shrink-0 flex-wrap items-center gap-2" role="toolbar" :aria-label="text('Действия с архивом VK')">
+        <div class="flex shrink-0 flex-wrap items-center gap-2 px-2 pt-2 max-[620px]:px-1.5" role="toolbar" :aria-label="text('Действия с архивом VK')">
           <Button v-if="timelineNodes.length" variant="outline" size="sm" :aria-pressed="timelineOpen" :aria-expanded="timelineVisible" :aria-controls="timelineId" :aria-label="timelineOpen ? text('Скрыть историю') : text('Показать историю')" @click="timelineOpen = !timelineOpen"><History class="size-4" /><span class="hidden sm:inline">{{ timelineOpen ? text('Скрыть историю') : text('Показать историю') }}</span></Button>
-          <Button variant="outline" :disabled="fixedBusy || !hasVerifiedPeer" @click="showUserExportOptions">
+          <Button variant="outline" size="sm" :disabled="fixedBusy || !hasVerifiedPeer" @click="showUserExportOptions">
             <Download class="size-4" />{{ text('Экспорт ') }}</Button>
           <Button variant="outline" size="sm" :aria-pressed="selectionEnabled" :disabled="fixedBusy || rangeBusy" @click="selectionEnabled = !selectionEnabled">{{ text('Выбор сообщений') }}<span v-if="selectedMessageIds.size"> · {{ selectedMessageIds.size }}</span></Button>
-          <Button variant="outline" :disabled="fixedBusy || fixedReading || !fixedNextCursor" @click="readDexie(fixedNextCursor)">{{ text('Следующие 80') }}</Button>
-          <Button variant="outline" :disabled="fixedBusy || fixedReading || !fixedCursor" @click="readDexie()">{{ text('К началу') }}</Button>
+          <ArchiveReaderNavigation :first-label="text('К началу')" :last-label="text('К концу')" :compact="false" :disabled="fixedBusy || fixedReading || !timelineEntries.length" @first="navigateTimeline(String(timelineEntries[0]?.id))" @last="navigateTimeline(String(timelineEntries.at(-1)?.id))" />
         </div>
-        <div v-if="selectionEnabled" class="flex shrink-0 flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" :disabled="fixedBusy || !fixedPreview.length" @click="selectPage">{{ text('Выбрать эту страницу') }}</Button>
+        <div v-if="selectionEnabled" class="flex shrink-0 flex-wrap items-center gap-2 px-2 max-[620px]:px-1.5">
+          <Button variant="outline" size="sm" :disabled="fixedBusy || !fixedPreview.length" @click="selectPage">{{ text('Выбрать загруженные') }}</Button>
           <Button variant="ghost" size="sm" :disabled="fixedBusy || !selectedMessageIds.size" @click="clearSelection">{{ text('Очистить выбор') }}</Button>
-          <span class="text-xs text-muted-foreground">{{ text('Выбрано сообщений: ') }}{{ selectedMessageIds.size }}{{ text(' · выбор сохранится при переходе к следующим 80') }}</span>
+          <span class="text-xs text-muted-foreground">{{ text('Выбрано сообщений: ') }}{{ selectedMessageIds.size }}{{ text(' · выбор сохраняется при прокрутке архива') }}</span>
           <Button variant="outline" size="sm" :disabled="fixedBusy || rangeBusy || !activeMessageId" @click="markRange('first')">{{ text('Начало диапазона') }}</Button>
           <Button variant="outline" size="sm" :disabled="fixedBusy || rangeBusy || !activeMessageId" @click="markRange('last')">{{ text('Конец диапазона') }}</Button>
           <p v-if="rangeBusy" role="status" class="w-full text-xs"><LoaderCircle class="mr-1 inline size-3 animate-spin" aria-hidden="true" />{{ text('Проверяем все сохранённые сообщения между границами...') }}</p>
           <p v-if="rangeStart || rangeEnd" class="w-full break-words text-xs text-muted-foreground">{{ text('От ') }}{{rangeStart ? `#${rangeStart.id}: ${(rangeStart.text || text('Без текста')).slice(0,100)}` : text('не выбрано')}}{{ text(' до ') }}{{rangeEnd ? `#${rangeEnd.id}: ${(rangeEnd.text || text('Без текста')).slice(0,100)}` : text('не выбрано')}}{{ text('. Границы можно выбирать на разных страницах таймлайна.') }}</p>
         </div>
-        <Collapsible v-if="coverage" v-model:open="coverageOpen" class="shrink-0 min-w-0 border-y py-1">
+        <Collapsible v-if="coverage" v-model:open="coverageOpen" class="shrink-0 min-w-0 border-y py-1" data-vk-reader-summary>
           <CollapsibleTrigger as-child><Button variant="ghost" size="sm" class="w-full justify-between gap-2 whitespace-normal text-left">{{ text('Сохранено ') }}{{coverage.savedCount}} · {{coverage.integrity.chain === 'verified' ? text('Обход подтверждён') : text('Полнота не подтверждена')}}<ChevronDown class="size-4 shrink-0" :class="{'rotate-180':coverageOpen}" /></Button></CollapsibleTrigger>
-          <CollapsibleContent class="grid max-h-48 gap-2 overflow-y-auto py-2" :aria-label="text('Проверка полноты истории')">
+          <CollapsibleContent class="grid max-h-48 gap-2 overflow-y-auto px-3 py-2" :aria-label="text('Проверка полноты истории')">
           <p class="text-sm font-medium">{{coverage.integrity.chain === 'verified' ? text('Наблюдаемый обход VK подтверждён') : text('Полнота удалённой истории не подтверждена')}}</p>
           <p class="text-xs text-muted-foreground">{{ text('Сохранено ') }}{{coverage.savedCount}}{{coverage.reportedCount !== null ? `${text('; VK сообщил ')}${coverage.reportedCount}` : ''}}{{ text('. Начало: ') }}{{coverage.integrity.start === 'verified' ? text('подтверждено') : text('не проверено')}}{{ text('; конец: ') }}{{coverage.integrity.end === 'verified' ? text('подтверждён') : text('не проверен')}}{{ text('. Промежутки между числовыми ID сами по себе не доказывают пропуски.') }}</p>
           <div class="flex flex-wrap gap-2">
@@ -904,13 +1022,14 @@ onUnmounted(() => {
           <small class="text-muted-foreground">{{coverage.observedAtMs ? `${text('Проверка текущего сеанса: ')}${new Date(coverage.observedAtMs).toLocaleString(locale)}${text('. Это наблюдаемый обход API, не неизменяемый снимок сервера.')}` : text('После перезапуска прежние границы остаются непроверенными. Сохранённые оригиналы не меняются.')}}</small>
           </CollapsibleContent>
         </Collapsible>
-        <p v-if="fixedReading" class="text-sm text-muted-foreground" role="status">{{ text('Загружаем сохранённые сообщения...') }}</p>
         <p v-if="!fixedReading && !fixedPreview.length && !fixedError" class="text-sm text-muted-foreground" role="status">{{ text(' В этой переписке ещё нет сохранённых сообщений. ') }}</p>
         <p v-if="nameLookupError" class="text-xs text-muted-foreground">{{ text(nameLookupError) }}</p>
         <ArchiveReadingSurface :timeline-visible="timelineVisible">
-        <div ref="readerViewport" :aria-label="text('Сохранённые сообщения')" class="vk-reader-transcript h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto p-2" @scroll.passive="readerFocus.schedule">
+        <div ref="readerViewport" :aria-label="text('Сохранённые сообщения')" class="vk-reader-transcript h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain p-2" @scroll.passive="onReadingScroll" @wheel.passive="readerScroll.onUserInput" @touchmove.passive="readerScroll.onUserInput" @pointerdown="readerScroll.onUserInput" @pointermove.passive="readerScroll.onUserInput" @keydown="readerScroll.onUserInput">
           <ArchiveRecordList :records="fixedPreview" :record-key="messageKey" :message-id="messageId"
             :target-message-id="activeMessageId"
+            :highlight-target="false"
+            spaced
             :selectable="selectionEnabled" :selected-ids="selectedRecordIds"
             :selection-label="selectionLabel" :disabled="fixedBusy || rangeBusy" @select="selectMessage">
           <template #record="{ record: message }">
@@ -919,23 +1038,24 @@ onUnmounted(() => {
             :class="message.out === 1 || message.out === true ? 'justify-end' : 'justify-start'"
           >
             <Card class="min-w-0 max-w-[88%] p-3 shadow-none"
-              :class="message.out === 1 || message.out === true ? 'bg-primary/10' : 'bg-muted/45'">
+              :class="[message.out === 1 || message.out === true ? 'bg-primary/10' : 'bg-muted/45', { 'booster-message-target': String(message.id) === activeMessageId }]">
               <ArchiveMessageHeader :author="senderName(message)" :sent-at="message.date"
                 :metadata="message" :inspect-label="text('Все исходные метаданные сообщения')" />
               <p v-if="message.text" class="mt-2 whitespace-pre-wrap break-words text-sm">{{ message.text }}</p>
               <p v-else class="mt-2 text-xs text-muted-foreground">{{ text('Сообщение без текста') }}</p>
-              <div v-for="asset in messageMedia(message)" :key="asset.key" class="mt-2 flex min-w-0 flex-col gap-1 border-t border-border pt-2">
+              <div v-for="asset in messageMedia(message)" :key="asset.key" :data-asset-type="asset.type" class="mt-2 flex min-w-0 flex-col gap-1 border-t border-border pt-2">
                 <img v-if="asset.type === 'photo' && attachments[asset.key]"
                   :src="attachments[asset.key]?.url" :alt="attachments[asset.key]?.name || text('Фото из сообщения')"
                   class="max-h-64 max-w-full rounded-md object-contain" loading="lazy" referrerpolicy="no-referrer" />
                 <small class="break-words text-muted-foreground">{{ asset.type }} · {{ asset.choices[0]?.name || text('Вложение') }}
-                  · {{ attachments[asset.key] ? text('загружено в текущем сеансе') : text('оригинал не загружен') }}</small>
-                <Button v-if="!attachments[asset.key]" size="sm" variant="outline"
+                  · {{ attachments[asset.key] ? text('загружено в текущем сеансе') : asset.choices.length ? text('оригинал не загружен') : text('Нет отдельного файла в сохранённых данных') }}</small>
+                <Button v-if="asset.external" as-child size="sm" variant="link" class="justify-start p-0"><a :href="asset.external" target="_blank" rel="noopener noreferrer">{{ text('Открыть публикацию VK') }}</a></Button>
+                <Button v-if="asset.choices.length && !attachments[asset.key]" size="sm" variant="outline"
                   :disabled="downloading[asset.key] || !hasVerifiedPeer" @click="requestMedia(message.id,asset)">
                   <LoaderCircle v-if="downloading[asset.key]" class="size-3.5 animate-spin" aria-hidden="true" />
                   {{ downloading[asset.key] ? text('Загрузка...') : text('Загрузить оригинал') }}
                 </Button>
-                <Button v-else as-child variant="link" size="sm" class="justify-start p-0"><a :href="attachments[asset.key]?.url" :download="attachments[asset.key]?.name">{{ text('Скачать загруженный файл') }}</a></Button>
+                <Button v-else-if="attachments[asset.key]" as-child variant="link" size="sm" class="justify-start p-0"><a :href="attachments[asset.key]?.url" :download="attachments[asset.key]?.name">{{ text('Скачать загруженный файл') }}</a></Button>
                 <small v-if="attachmentErrors[asset.key]" class="text-destructive" role="alert">{{ text(attachmentErrors[asset.key] ?? '') }}</small>
               </div>
             </Card>
@@ -944,6 +1064,7 @@ onUnmounted(() => {
           </ArchiveRecordList>
         </div>
         <template #timeline><ArchiveTimeline :id="timelineId" :nodes="timelineNodes" :active-id="activeMessageId" :selected-ids="selectedRecordIds" :label="text('Таймлайн всех сохранённых сообщений VK')" :empty-label="text('Сохранённых точек таймлайна пока нет')" :uncertain-label="text('Неподтверждённая связь')" :loading="fixedReading || timelineBusy" :disabled="fixedBusy" @navigate="navigateTimeline" /></template>
+        <template #status><div v-if="fixedReading" class="pointer-events-none absolute inset-x-2 top-1 flex justify-center" role="status"><span class="flex items-center gap-2 rounded-md border border-border bg-popover px-3 py-1 text-xs text-popover-foreground"><LoaderCircle class="size-3 animate-spin" />{{ text('Загружаем сохранённые сообщения...') }}</span></div></template>
         </ArchiveReadingSurface>
         <p v-if="fixedError" role="alert" class="text-sm text-destructive">{{ text(fixedError) }}</p>
       </section>
@@ -973,13 +1094,14 @@ onUnmounted(() => {
       <div class="grid min-w-0 gap-3 p-4" :aria-label="text('Параметры пользовательского экспорта')">
         <div class="booster-setting-copy">
           <b>{{ text('Экспорт сохранённых сообщений') }}</b>
-          <span>{{ exportScope === 'selected' ? `${text('Выбранные сообщения (')}${selectedMessageIds.size})` : text('Все уже сохранённые сообщения') }}{{ text('. Это экспорт переписки, отдельно от резервной копии приложения.') }}</span>
-          <small>{{ text('Ссылки вложений сохраняются в представлении. Файлы включаются в ZIP только при отдельном выборе и после загрузки оригиналов.') }}</small>
+          <span>{{ text('Выберите сообщения и формат файла.') }}</span>
         </div>
-        <ArchiveSelectionScope v-model="exportScope" :selected-count="selectedMessageIds.size" :disabled="fixedBusy || rangeBusy" />
-        <p v-if="exportScope === 'selected' && !selectedMessageIds.size" class="text-xs text-muted-foreground">{{ text('Закрой параметры и включи «Выбор сообщений» в архиве. Можно отметить сообщения на нескольких страницах или выбрать диапазон.') }}</p>
+        <ArchiveExportScopeFields v-model="exportSelection" v-model:selected-ids="exportSelectedIds" :messages="exportMessages" :loading="timelineBusy || exportScopeStale" :disabled="fixedBusy || rangeBusy" />
         <ArchiveExportFormatFields :format="exportFormat" :packaging="exportPackaging" :formats="exportFormats.map(choice => ({ ...choice, label: text(choice.label) }))" :packages="exportPackages.map(choice => ({ ...choice, label: text(choice.label) }))" :format-label="text('Формат экспорта сообщений')" :packaging-label="text('Упаковка экспорта')" :disabled="fixedBusy"
           @update:format="exportFormat = $event === 'markdown' || $event === 'text' ? $event : 'json'" @update:packaging="exportPackaging = $event === 'none' ? 'none' : 'zip'" />
+        <Collapsible v-model:open="exportAdvanced" class="grid gap-3">
+        <CollapsibleTrigger as-child><Button variant="ghost" size="sm" class="justify-between">{{ text('Дополнительно') }}<ChevronDown class="size-4" :class="{'rotate-180':exportAdvanced}" /></Button></CollapsibleTrigger>
+        <CollapsibleContent class="grid gap-3">
         <Label v-if="exportPackaging === 'zip'" class="booster-field">{{ text('Сообщений в одном JSON-файле ') }}<Select :model-value="String(exportChunkRows)" :disabled="fixedBusy" @update:model-value="chooseChunkRows"><SelectTrigger :aria-label="text('Сообщений в одном JSON-файле')"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="100">100</SelectItem><SelectItem value="500">500</SelectItem></SelectContent></Select>
         </Label>
         <Label v-if="exportPackaging === 'none' && exportFormat !== 'json'" class="flex items-center justify-between gap-3 text-sm">{{ text('Добавить исходный JSON в читаемый файл ') }}<Switch :model-value="exportIncludeOriginal" :disabled="fixedBusy" :aria-label="text('Добавить исходный JSON')" @update:model-value="exportIncludeOriginal = $event" />
@@ -988,8 +1110,9 @@ onUnmounted(() => {
         </Label>
         <Label v-if="exportPackaging === 'zip'" class="flex items-center gap-2 text-sm">
           <Checkbox :model-value="exportIncludeReferences" :disabled="fixedBusy" @update:model-value="exportIncludeReferences = $event === true; resetPreparedExport()" />{{ text(' Добавить manifest вложений в папку attachments/ ') }}</Label>
+        </CollapsibleContent></Collapsible>
         <div class="flex flex-wrap gap-2">
-          <Button :disabled="fixedBusy || rangeBusy || !hasVerifiedPeer || (exportScope === 'selected' && !selectedMessageIds.size)" @click="prepareUserExport">
+          <Button :disabled="fixedBusy || rangeBusy || !hasVerifiedPeer || exportScopeEmpty || exportScopeStale" @click="prepareUserExport">
             <LoaderCircle v-if="fixedBusy" class="size-4 animate-spin" aria-hidden="true" />
             {{ fixedBusy ? text('Подготавливаем файл...') : text('Подготовить экспорт') }}
           </Button>
@@ -1005,21 +1128,3 @@ onUnmounted(() => {
     </ModalSurface>
   </section>
 </template>
-
-<style scoped>
-.vk-archive-panel-reader {
-  height: 100%;
-  flex: 1 1 auto;
-  overflow: hidden;
-  padding: 8px;
-}
-.vk-reader-transcript {
-  overscroll-behavior: contain;
-}
-@media (max-width: 620px) {
-  .vk-archive-panel-reader {
-    gap: 6px;
-    padding: 6px;
-  }
-}
-</style>

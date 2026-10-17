@@ -120,6 +120,8 @@ export interface ArchiveProgress {
   total: number
   newCount?: number
   scanned?: number
+  updated?: number
+  reused?: number
   downloaded?: number
   attachmentReferences?: number
   failed?: number
@@ -166,6 +168,12 @@ export interface VkTimelineEntry {
   readonly outgoing: boolean | null
   readonly text: string | null
 }
+export interface VkReaderWindow {
+  readonly messages: readonly VkMessage[]
+  readonly ownerId: string
+  readonly peerId: number
+  readonly revision: number
+}
 export type ArchiveRunResult =
   | { paused: true; progress: ArchiveProgress }
   | { matched: number; newCount: number; saved: number; files: number; folder: string }
@@ -206,6 +214,11 @@ export interface ArchiveApi {
     signal?: AbortSignal,
   ): Promise<{ messageIds: readonly number[]; first: VkMessage; last: VkMessage }>
   timelineFixed?(signal?: AbortSignal): Promise<readonly VkTimelineEntry[]>
+  readWindowFixed?(
+    limit: number,
+    afterMessageId?: number,
+    expected?: { ownerId: string; revision?: number },
+  ): Promise<VkReaderWindow>
   exportFixed(): Promise<Blob>
   /** End-user ZIP export; distinct from internal TAR.GZ recovery and legacy JSONL.GZ. */
   exportUserZip(

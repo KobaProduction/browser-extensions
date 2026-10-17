@@ -82,6 +82,9 @@ node apps/ui-lab/scripts/browser-matrix.mjs --targeted-ui
 node apps/ui-lab/scripts/browser-matrix.mjs --automation-ui
 node apps/ui-lab/scripts/browser-matrix.mjs --archive-ui
 node apps/ui-lab/scripts/browser-matrix.mjs --history-ui
+node apps/ui-lab/scripts/browser-matrix.mjs --vk-reader-ui
+node apps/ui-lab/scripts/browser-matrix.mjs --reader-scroll-ui
+node apps/ui-lab/scripts/browser-matrix.mjs --export-scope-ui
 node apps/ui-lab/scripts/browser-matrix.mjs --correction-ui
 node apps/ui-lab/scripts/browser-matrix.mjs --accessibility-ui
 node apps/ui-lab/scripts/browser-matrix.mjs --ws-ui

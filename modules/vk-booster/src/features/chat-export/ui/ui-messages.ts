@@ -1,5 +1,38 @@
 /** VK presentation captions. Source messages, filenames and participant names remain intact. */
 export const VK_UI_MESSAGES: Readonly<Record<string, string>> = {
+  'Выберите сообщения и формат файла.': 'Choose messages and an output format.',
+  Дополнительно: 'Advanced',
+  'К концу': 'Latest',
+  'Выбрать загруженные': 'Select loaded messages',
+  ' · выбор сохраняется при прокрутке архива': ' · selection is retained while scrolling the archive',
+  'Нет отдельного файла в сохранённых данных': 'No separate file in the saved source',
+  'Открыть публикацию VK': 'Open VK post',
+  '. Прочитано из VK: ': '. Read from VK: ',
+  '. Всего в истории: ': '. Total history: ',
+  'Вся доступная история сохранена.': 'All available history is saved.',
+  'Уже проверенный хвост: ': 'Previously verified history: ',
+  ' сообщений; повторно не загружался.': ' messages; not downloaded again.',
+  'Новых версий сохранено: ': 'New source versions saved: ',
+  'Не удалось записать сообщение в IndexedDB. Уже сохранённые записи остаются в архиве; повтори сбор.':
+    'Could not write the message to IndexedDB. Saved records remain in the archive; retry capture.',
+  'Не хватает места в хранилище браузера. Освободи место и повтори сбор; сохранённые записи остаются в архиве.':
+    'Browser storage is full. Free space and retry; saved records remain in the archive.',
+  'Браузер не разрешил открыть архив IndexedDB. Проверь доступ к хранилищу и повтори операцию.':
+    'The browser could not open the IndexedDB archive. Check storage access and retry.',
+  'VK не ответил вовремя. Повтори сбор — уже сохранённые сообщения будут учтены.':
+    'VK did not respond in time. Retry capture; saved messages will be reused.',
+  'Не удалось связаться с VK. Проверь соединение и повтори сбор.':
+    'Could not connect to VK. Check the connection and retry capture.',
+  'VK повторяет или меняет страницы истории. Сохранённые сообщения оставлены; повтори сбор.':
+    'VK repeated or reordered history pages. Saved messages remain; retry capture.',
+  'VK вернул неполную или неподдерживаемую страницу истории. Сохранённые сообщения оставлены; повтори сбор.':
+    'VK returned an incomplete or unsupported history page. Saved messages remain; retry capture.',
+  'В этом диалоге ещё нет сохранённых сообщений. Сначала запусти сбор.':
+    'No saved messages in this conversation yet. Start capture first.',
+  'Архив изменился во время подготовки файла. Заверши сбор и подготовь экспорт повторно.':
+    'The archive changed while preparing the file. Finish capture and prepare the export again.',
+  'Не удалось проверить исходную запись VK. Прежние версии сохранены; выгрузка не объявлена полной.':
+    'Could not verify the VK source record. Earlier versions remain; the archive is not marked complete.',
   'имя не получено': 'name unavailable',
   'Выбрать сообщение:': 'Select message:',
   'Сбор прерван.': 'Capture interrupted.',

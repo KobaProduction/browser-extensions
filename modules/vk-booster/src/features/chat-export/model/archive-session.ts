@@ -1,5 +1,6 @@
 import { createArchiveChangeFeed } from '@kobaproduction/browser-archive'
 import { type DeliveryTarget, instanceScope } from '@kobaproduction/browser-core'
+import { VK_BASE_VERSION } from '../../../version'
 import { createVkProvider } from '../api/vk-provider'
 import { FixedVkDexieRepository } from './archive-fixed-dexie'
 import { conversationPeerFromLocation } from './conversation-context'
@@ -43,7 +44,7 @@ export function createVkArchiveSession(
     const peer = currentPeer()
     if (!state.busy && peer !== null) cfg.peerId = peer
     return {
-      version: '1.0.0',
+      version: VK_BASE_VERSION,
       archiveRevision: archiveChanges.revision(),
       folder: null,
       activePeerId: peer,
@@ -78,7 +79,8 @@ export function createVkArchiveSession(
     state.disposed
       ? Promise.reject(Error('VK archive service is stopped'))
       : provider.api(method, params)
-  const history = (offset: number, count: number) => provider.history(offset, count)
+  const history = (offset: number, count: number, startMessageId?: number) =>
+    provider.history(offset, count, startMessageId)
   function applyPreferences(value: Partial<ArchiveOptions>, duringBackup: boolean): ArchiveStatus {
     if (state.busy || (!duringBackup && state.backupRunning) || state.disposed)
       throw Error('Заверши текущую операцию с архивом')

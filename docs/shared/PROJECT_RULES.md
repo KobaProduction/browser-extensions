@@ -67,11 +67,12 @@ Binding security/storage rules:
 - A provider-only change affects its consumer and the aggregate, not an
   unrelated standalone provider. Shared runtime changes affect actual
   dependents. Build-only changes do not imply a product version increase.
-- **VK Booster's new pre-first-PROD source base is 1.0.0 and the initial
-  Dexie canonical archive schema is 1**, by the owner's 2026-10-11 revised decision.
-  Both remain frozen until a separately approved first PROD. DEV build
-  identifiers advance independently (`dev-vk-booster/v1.0.N`) without source
-  version bumps. Historical 2.3.x tags/schema-2 folder archives are preserved
+- **The owner's 2026-10-17 decision removes VK source-version freezing and
+  advances VK to 1.1.0.** Versions use major.minor.patch: major for fundamental
+  changes, minor for new functionality, patch for fixes. Source versions may
+  advance before PROD approval; DEV counters and PROD publication are separate.
+  Dexie canonical archive schema remains 1 and requires separate approval to
+  change. Historical 2.3.x tags/schema-2 folder archives are preserved
   but never silently migrated or overwritten by v1. Any installer/version
   downgrade requires explicit installed-profile and update-channel review.
   See [VK product rules](../vk-booster/ARCHIVE.md).
@@ -107,25 +108,29 @@ provider ownership, schema, storage and UI conflicts before requesting
 independent review. Major architectural disagreements are explicit
 integration blockers, not permission to silently prefer a branch.
 
-The writer owns implementation, tests and pushing to its own branch;
-the independent reviewer owns exact-head acceptance and merges. Check
-source+types+lint+tests+affected builds, then **exact final-head CI/review**.
-Main merges trigger continuous DEV prerelease publication after a passing
+The writer owns implementation, tests and delivery. Direct push to `main` is
+allowed when the branch is not protected; verify live GitHub branch protection
+and applicable rulesets before pushing. A PR or independent reviewer is not
+mandatory for an unprotected `main`. Protected branches retain their configured
+PR/review requirements and independent merge ownership; never bypass protection.
+Check source+types+lint+tests+affected builds, then **exact final-head CI** and
+review where required. Main pushes trigger continuous DEV prerelease publication after a passing
 push CI. Never use an apparently successful earlier PR CI as proof of a
 changed combined head. PROD still requires installed-browser/data and
 explicit promotion acceptance. Do not disable automatic DEV to work
 around conflicts; resolve the integration before merging.
 
 For changes to shared or provider UI, run the [browser UI acceptance matrix](UI_ACCEPTANCE.md)
-before independent review. Source/type/build success cannot substitute for actual Chromium layout and interaction evidence.
+before delivery. Source/type/build success cannot substitute for actual Chromium layout and interaction evidence.
 
 ## Engineering workflow
 
 Use `AGENTS.md` as a **router**, not a second copy of these rules. Load only
 the relevant product and shared contracts for the task. Development is on
-non-protected branches; CI, strict TypeScript/Vue, Biome, unit and artifact
-checks are required before independent review. The implementer must not merge
-its own PR. All changes require a clear `Target extension` and affected
+any branch permitted by the verified GitHub protection/rulesets, including an
+unprotected `main`; CI, strict TypeScript/Vue, Biome, unit and artifact checks
+remain required. Independent review/merge ownership applies to protected
+branches, not as a blanket ban on direct delivery. All changes require a clear `Target extension` and affected
 consumers, as described in [issue routing](../ISSUE_ROUTING.md).
 
 Validation levels must be distinct: source review, local tests, built artifacts,

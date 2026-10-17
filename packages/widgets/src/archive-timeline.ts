@@ -2,8 +2,15 @@ export interface ArchiveTimelineNode {
   id: string
   parentId: string | null
   label: string
+  /** Source message time in milliseconds; never the archive observation time. */
+  timestampMs?: number | null
   preview?: string
   uncertain?: boolean
+}
+export function archiveTimelineTimestamp(timestampMs: number | null | undefined): Date | null {
+  if (typeof timestampMs !== 'number' || !Number.isFinite(timestampMs) || timestampMs <= 0) return null
+  const date = new Date(timestampMs)
+  return Number.isNaN(date.getTime()) ? null : date
 }
 export interface ArchiveTimelinePoint {
   id: string

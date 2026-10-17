@@ -184,6 +184,8 @@ export type {
   LinearArchiveEvidence,
 } from './conversation-integrity'
 export { conversationIntegrityFromGraph, linearArchiveIntegrity } from './conversation-integrity'
+export type { ArchiveExportMessageSummary, ArchiveExportSelection } from './export-selection'
+export { archiveExportSelectionIds, defaultArchiveExportSelection } from './export-selection'
 export type { ArchivePageScan, ArchivePageSelection, ArchiveScanMode } from './linear-selection'
 export { selectArchivePage } from './linear-selection'
 export type { ArchiveMediaReadOptions, ArchiveMediaResult } from './media'
@@ -201,6 +203,12 @@ export {
   resolveArchiveMessage,
   validateArchiveMessage,
 } from './message-model'
+export type { ArchiveReadingDirection } from './reader-window'
+export {
+  ARCHIVE_READER_MAX_RECORDS,
+  ARCHIVE_READER_PAGE_SIZE,
+  mergeArchiveReaderRecords,
+} from './reader-window'
 export type {
   LinearArchiveCommit,
   LinearArchiveSource,

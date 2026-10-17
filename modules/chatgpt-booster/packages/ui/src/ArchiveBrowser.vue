@@ -25,15 +25,15 @@ import {
 } from '@kobaproduction/browser-ui'
 import {
   ArchiveConversationList,
+  ArchiveReaderNavigation,
   ArchiveReadingSurface,
   ArchiveRecordList,
+  createArchiveReadingScroll,
 } from '@kobaproduction/browser-widgets'
 import ArrowLeft from 'lucide-vue-next/dist/esm/icons/arrow-left.js'
 import Brain from 'lucide-vue-next/dist/esm/icons/brain.js'
 import ChevronLeft from 'lucide-vue-next/dist/esm/icons/chevron-left.js'
 import ChevronRight from 'lucide-vue-next/dist/esm/icons/chevron-right.js'
-import ChevronsLeft from 'lucide-vue-next/dist/esm/icons/chevrons-left.js'
-import ChevronsRight from 'lucide-vue-next/dist/esm/icons/chevrons-right.js'
 import Database from 'lucide-vue-next/dist/esm/icons/database.js'
 import Download from 'lucide-vue-next/dist/esm/icons/download.js'
 import MoreHorizontal from 'lucide-vue-next/dist/esm/icons/ellipsis.js'
@@ -534,27 +534,44 @@ function currentWindow(): ArchiveThreadWindow {
     accountId: readAccountId.value ?? undefined,
   }
 }
+const readerScroll = createArchiveReadingScroll({
+  viewport: () => readingScroll.value,
+  enabled: () =>
+    alive &&
+    !resettingPosition &&
+    !props.suspended &&
+    !staleSavedWindow.value &&
+    !loadingOlder.value &&
+    !threadLoading.value,
+  order: () => (readingOrder.value === 'chronological' ? 'chronological' : 'reverse'),
+  canLoad: (direction) => {
+    const older = direction === 'older'
+    if (windowCenter.value !== null)
+      return older
+        ? windowCenter.value > 20 || hasOlderStored.value
+        : windowCenter.value + 20 < filteredTurns.value.length || hasNewerStored.value
+    return older
+      ? filteredTurns.value.length > visibleCount.value || hasOlderStored.value
+      : hasNewerStored.value
+  },
+  load: async (direction) => {
+    const older = direction === 'older'
+    if (windowCenter.value !== null) {
+      if (older && windowCenter.value > 20) await shiftWindow(-20)
+      else if (!older && windowCenter.value + 20 < filteredTurns.value.length) await shiftWindow(20)
+      else await loadAdjacent(direction)
+    } else if (older && filteredTurns.value.length > visibleCount.value) await revealRetainedTurns()
+    else await loadAdjacent(direction)
+  },
+})
 function readingAnchor() {
-  const viewport = readingScroll.value
-  if (!viewport) return null
-  const top = viewport.getBoundingClientRect().top
-  const node = [...viewport.querySelectorAll<HTMLElement>('[data-archive-message]')].find(
-    (element) => element.getBoundingClientRect().bottom > top,
-  )
-  const id = node?.dataset.archiveMessage
-  return node && id ? { id, offset: node.getBoundingClientRect().top - top } : null
+  return readerScroll.capture('data-archive-message')
 }
 function restoreReadingAnchor(anchor: ReturnType<typeof readingAnchor>) {
-  const viewport = readingScroll.value
-  if (!viewport || !anchor) return
-  const node = [...viewport.querySelectorAll<HTMLElement>('[data-archive-message]')].find(
-    (element) => element.dataset.archiveMessage === anchor.id,
-  )
-  if (node)
-    viewport.scrollTop +=
-      node.getBoundingClientRect().top - viewport.getBoundingClientRect().top - anchor.offset
+  readerScroll.restore(anchor)
 }
 function cancelWindowWork() {
+  readerScroll.reset()
   windowController?.abort()
   windowController = undefined
   threadRevision++
@@ -757,6 +774,7 @@ function date(value?: number | null) {
 
 /** Reset each new view to its latest exchange, without moving the pinned controls. */
 async function resetReadingPosition(edge: 'first' | 'middle' | 'latest' = loadedEdge.value) {
+  readerScroll.reset()
   const ticket = ++scrollRevision
   resettingPosition = true
   visibleCount.value = edge !== 'latest' ? thread.value.turns.length : ARCHIVE_INITIAL_TURNS
@@ -802,15 +820,7 @@ async function loadAdjacent(direction: 'older' | 'newer') {
   const conversation = selectedId.value
   const beforeHeight = viewport.scrollHeight
   const beforeTop = viewport.scrollTop
-  const bounds = viewport.getBoundingClientRect()
-  const firstVisible = [...viewport.querySelectorAll<HTMLElement>('[data-archive-node]')].find(
-    (element) => {
-      const rect = element.getBoundingClientRect()
-      return rect.bottom > bounds.top && rect.top < bounds.bottom
-    },
-  )
-  const anchorKey = firstVisible?.dataset.archiveNode
-  const anchorOffset = firstVisible ? firstVisible.getBoundingClientRect().top - bounds.top : null
+  const anchor = readerScroll.capture()
   loadingDirection.value = direction
   loadingOlder.value = true
   try {
@@ -834,22 +844,15 @@ async function loadAdjacent(direction: 'older' | 'newer') {
     }
     await nextTick()
     if (!alive || ticket !== scrollRevision || selectedId.value !== conversation) return
-    const retainedAnchor = anchorKey
-      ? [...viewport.querySelectorAll<HTMLElement>('[data-archive-node]')].find(
-          (element) => element.dataset.archiveNode === anchorKey,
-        )
-      : undefined
-    if (retainedAnchor && anchorOffset !== null) {
-      const nextOffset =
-        retainedAnchor.getBoundingClientRect().top - viewport.getBoundingClientRect().top
-      viewport.scrollTop += nextOffset - anchorOffset
-    } else if (hasNewerStored.value) {
-      // When newest records are discarded, whole-scroll-height changes also
-      // include the trimmed bottom. They cannot be used to anchor the top.
-      viewport.scrollTop = beforeTop
-    } else if (readingOrder.value === 'chronological')
-      viewport.scrollTop = beforeTop + viewport.scrollHeight - beforeHeight
-    else viewport.scrollTop = beforeTop
+    if (!readerScroll.restore(anchor)) {
+      if (hasNewerStored.value) {
+        // When newest records are discarded, whole-scroll-height changes also
+        // include the trimmed bottom. They cannot be used to anchor the top.
+        viewport.scrollTop = beforeTop
+      } else if (readingOrder.value === 'chronological')
+        viewport.scrollTop = beforeTop + viewport.scrollHeight - beforeHeight
+      else viewport.scrollTop = beforeTop
+    }
   } catch (cause) {
     if (alive && ticket === scrollRevision) {
       describeReadFailure(cause)
@@ -905,22 +908,7 @@ function onReadingScroll() {
   const viewport = readingScroll.value
   if (!viewport || resettingPosition || props.suspended || staleSavedWindow.value) return
   scheduleReadFocus()
-  const atTop = viewport.scrollTop < 100
-  const atBottom = viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop < 100
-  const olderEdge = readingOrder.value === 'chronological' ? atTop : atBottom
-  const newerEdge = readingOrder.value === 'chronological' ? atBottom : atTop
-  if (windowCenter.value !== null) {
-    if (loadingOlder.value) return
-    if (olderEdge && windowCenter.value > 20) void shiftWindow(-20)
-    else if (newerEdge && windowCenter.value + 20 < filteredTurns.value.length) void shiftWindow(20)
-    else if (olderEdge && hasOlderStored.value) void loadAdjacent('older')
-    else if (newerEdge && hasNewerStored.value) void loadAdjacent('newer')
-    return
-  }
-  if (loadingOlder.value) return
-  if (olderEdge && filteredTurns.value.length > visibleCount.value) void revealRetainedTurns()
-  else if (olderEdge && hasOlderStored.value) void loadAdjacent('older')
-  else if (newerEdge && hasNewerStored.value) void loadAdjacent('newer')
+  void readerScroll.onScroll().catch(describeReadFailure)
 }
 async function revealRetainedTurns() {
   const anchor = readingAnchor(),
@@ -1371,11 +1359,11 @@ onBeforeUnmount(() => {
               </Popover>
             </div>
             <div class="booster-reader-navigation" role="toolbar" :aria-label="locale === 'ru' ? 'Навигация по сохранённому архиву' : 'Saved archive navigation'">
-              <Button variant="ghost" size="icon-sm" v-if="usingIndexedWindows" type="button" :aria-label="t('reader.firstKnown')" :title="t('reader.firstKnown')" :disabled="threadLoading || loadingOlder" @click="returnToFirstKnown"><ChevronsLeft class="size-4" /><span class="sr-only">{{ t('reader.firstKnown') }}</span></Button>
+              <ArchiveReaderNavigation v-if="usingIndexedWindows" :first-label="t('reader.firstKnown')" :last-label="t('reader.returnLatest')" :disabled="threadLoading || loadingOlder" @first="returnToFirstKnown" @last="returnToLatest">
               <Button variant="ghost" size="icon-sm" v-if="hasOlderStored" type="button" :aria-label="t('reader.moreOlder')" :title="t('reader.moreOlder')" :disabled="threadLoading || loadingOlder || staleSavedWindow" @click="loadAdjacent('older')"><ChevronLeft class="size-4" /><span class="sr-only">{{ t('reader.moreOlder') }}</span></Button>
               <Button variant="ghost" size="icon-sm" v-if="archiveAdapter.getPositionWindow" type="button" :aria-label="locale === 'ru' ? 'Середина' : 'Middle'" :title="locale === 'ru' ? 'Середина' : 'Middle'" :disabled="threadLoading || loadingOlder" @click="returnToMiddle"><LocateFixed class="size-4" /><span class="sr-only">{{ locale === 'ru' ? 'Середина' : 'Middle' }}</span></Button>
               <Button variant="ghost" size="icon-sm" v-if="hasNewerStored" type="button" :aria-label="t('reader.moreNewer')" :title="t('reader.moreNewer')" :disabled="threadLoading || loadingOlder || staleSavedWindow" @click="loadAdjacent('newer')"><ChevronRight class="size-4" /><span class="sr-only">{{ t('reader.moreNewer') }}</span></Button>
-              <Button variant="ghost" size="icon-sm" v-if="usingIndexedWindows" type="button" :aria-label="t('reader.returnLatest')" :title="t('reader.returnLatest')" :disabled="threadLoading || loadingOlder" @click="returnToLatest"><ChevronsRight class="size-4" /><span class="sr-only">{{ t('reader.returnLatest') }}</span></Button>
+              </ArchiveReaderNavigation>
               <span v-if="usingIndexedWindows" class="booster-reader-page-count">{{ thread.recordCount }}/{{ knownStoredCount }}</span>
             </div>
             <div v-if="coverage?.integrity && archiveAdapter.getBranchPath" class="booster-reader-branch-navigation">
@@ -1435,7 +1423,7 @@ onBeforeUnmount(() => {
             :key="selectedId ?? ''" :thread="thread" :locale="locale" :active-key="activeMessageKey"
             :timeline="timelineNodes" :selected-message-ids="selectedMessages" :loading="threadLoading"
             @navigate="navigateToMessageKey" @close="closeHistory" /></template>
-          <div ref="readingScroll" class="booster-reader-scroll" @scroll.passive="onReadingScroll">
+          <div ref="readingScroll" class="booster-reader-scroll" @scroll.passive="onReadingScroll" @wheel.passive="readerScroll.onUserInput" @touchmove.passive="readerScroll.onUserInput" @pointerdown="readerScroll.onUserInput" @pointermove.passive="readerScroll.onUserInput" @keydown="readerScroll.onUserInput">
             <p v-if="historyOpen && !timelineNodes.length && usingIndexedWindows && (hasOlderStored || hasNewerStored || knownStoredCount > thread.recordCount)" class="booster-note">{{ t('reader.windowGraphOnly') }}</p>
             <Collapsible v-if="coverage?.integrity" v-model:open="integrityOpen" class="booster-reader-integrity" :class="{ 'is-complete': coverage.integrity.chain === 'verified' }">
               <CollapsibleTrigger as-child><Button variant="ghost" class="h-auto min-h-9 w-full whitespace-normal justify-start text-left">{{ locale === 'ru' ? 'Целостность цепочки' : 'Chain integrity' }} ·

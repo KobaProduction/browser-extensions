@@ -14,10 +14,11 @@ import {
 } from './features/chat-export/model/settings-backup'
 import { archiveApi } from './features/chat-export/model/types'
 import { vkActiveView, vkRequestedView } from './features/chat-export/model/ui-navigation'
+import { VK_BASE_VERSION } from './version'
 
 const presentation = {
   panel: 'standard' as const,
-  version: '1.0.0',
+  version: VK_BASE_VERSION,
   installation: 'Browser extension',
   viewModuleId: 'archive',
 }

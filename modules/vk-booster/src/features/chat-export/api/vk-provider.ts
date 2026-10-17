@@ -31,7 +31,7 @@ export function createVkProvider(
   { sleep, refresh }: { sleep(ms: number): Promise<void>; refresh(): void },
 ): {
   auth(): Promise<boolean>
-  history(offset: number, count: number): Promise<VkHistoryResponse>
+  history(offset: number, count: number, startMessageId?: number): Promise<VkHistoryResponse>
   api(method: string, params: Record<string, string | number>): Promise<unknown>
   hasToken(): boolean
   destroy(): void
@@ -86,7 +86,11 @@ export function createVkProvider(
       Object.entries({ ...params, access_token: token }).map(([key, value]) => [key, String(value)]),
     )
     const request = new AbortController()
-    const timeout = setTimeout(() => request.abort(), 25000)
+    let timedOut = false
+    const timeout = setTimeout(() => {
+      timedOut = true
+      request.abort()
+    }, 25000)
     pending.add(request)
     try {
       const resp = await fetch(`https://web.api.vk.ru/method/${method}?v=5.289&client_id=6287487`, {
@@ -119,6 +123,16 @@ export function createVkProvider(
         throw Error(`VK API ${String(error?.error_code ?? 'unknown')}`)
       }
       return obj?.response
+    } catch (error) {
+      if (disposed) throw Error('VK provider is stopped')
+      if (timedOut || error instanceof TypeError) {
+        if (attempt < 2) {
+          await sleep(Math.min(12000, 1000 * 2 ** attempt))
+          return api(method, params, attempt + 1)
+        }
+        throw Error(timedOut ? 'VK request timed out' : 'VK network unavailable')
+      }
+      throw error
     } finally {
       clearTimeout(timeout)
       pending.delete(request)
@@ -145,9 +159,19 @@ export function createVkProvider(
     refresh()
     return false
   }
-  async function history(offset: number, count: number): Promise<VkHistoryResponse> {
+  async function history(
+    offset: number,
+    count: number,
+    startMessageId?: number,
+  ): Promise<VkHistoryResponse> {
     if (token) {
-      const value = await api('messages.getHistory', { peer_id: cfg.peerId, count, offset, rev: 0 })
+      const value = await api('messages.getHistory', {
+        peer_id: cfg.peerId,
+        count,
+        offset,
+        rev: 0,
+        ...(startMessageId === undefined ? {} : { start_message_id: startMessageId }),
+      })
       if (!isHistory(value)) throw Error('Неверный ответ истории')
       return value
     }

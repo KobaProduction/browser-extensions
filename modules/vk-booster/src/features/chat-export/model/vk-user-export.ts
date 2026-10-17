@@ -16,6 +16,8 @@ import { readVkArchiveMessage } from './archive-message-adapter'
 import type { VkArchiveCoverage, VkMessage } from './types'
 
 export interface VkUserExportOptions {
+  /** UI-derived filters are pinned to the metadata revision that resolved them. */
+  expectedRevision?: number
   chunkRows: 100 | 500
   includeReferences: boolean
   /** ZIP always retains original JSON chunks; standalone readable output is an optional view. */
@@ -136,7 +138,12 @@ export async function createVkUserExport(
     outgoing: boolean | null
     text: string | null
     attachments: VkExportAttachmentReference[]
-    snapshot: { sourceVersion: string; encoding: 'archive-clone-v1'; original: unknown }
+    snapshot: {
+      sourceVersion: string
+      encoding: 'archive-clone-v1'
+      original: unknown
+      previous?: { sourceVersion: string; recordedAtMs: number; original: unknown }[]
+    }
   }
   let rawRows: ExportRow[] = []
   const readableParts: Blob[] = []
@@ -169,7 +176,11 @@ export async function createVkUserExport(
             url: attachment.localPath ?? attachment.sourceUrl,
             status: attachment.status,
           })),
-          original: { encoding: row.snapshot.encoding, value: row.snapshot.original },
+          original: {
+            encoding: row.snapshot.encoding,
+            value: row.snapshot.original,
+            ...(row.snapshot.previous?.length ? { previous: row.snapshot.previous } : {}),
+          },
         })),
       })
       readableParts.push(new Blob([...readable.chunks, '\n'], { type: readable.mime }))
@@ -227,6 +238,18 @@ export async function createVkUserExport(
             packaging === 'zip' || format === 'json' || options.includeOriginal
               ? await encodeArchiveClone(raw)
               : null,
+          ...(original.previous?.length &&
+          (packaging === 'zip' || format === 'json' || options.includeOriginal)
+            ? {
+                previous: await Promise.all(
+                  original.previous.map(async (observation) => ({
+                    sourceVersion: observation.sourceVersion,
+                    recordedAtMs: observation.recordedAtMs,
+                    original: await encodeArchiveClone(observation.raw),
+                  })),
+                ),
+              }
+            : {}),
         },
       }
       check()

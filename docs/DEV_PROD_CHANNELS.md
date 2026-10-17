@@ -26,13 +26,15 @@ promotion from inventing source history or causing endless build-on-push loops.
   builds/versions VK and aggregate, but not ChatGPT; ChatGPT-only changes
   affect ChatGPT and aggregate; common runtime, packaging and storage
   changes affect all real consumers. Docs-only changes release nothing.
-- Base product semver remains independent, except that initial VK v1 is explicitly
-  frozen at 1.0.0 until the first authorized PROD. Only the build's DEV metadata
+- Base product semver remains independent. VK source is now 1.1.0; its earlier
+  pre-PROD freeze is removed. Major means fundamental changes, minor means new
+  functionality, and patch means fixes. Schema 1 and PROD approval remain separate.
+  The build's DEV metadata
   receives an independent, increasing **third** numeric component:
   `X.Y.<counter>`. A `dev-` prefix appears in release titles, GitHub tags
   and the Chromium display name. No fourth component is used. The source/PROD
   version remains `X.Y.Z`. The historical stable VK `2.3.8` tag exists: a
-  v1.0.0 first-release candidate is numerically lower and **must not** be
+  v1.1.0 first-release candidate is numerically lower and **must not** be
   promoted over those installations without separate update/identity acceptance.
   Tampermonkey `@version` and MV3 `version` stay
   numeric so update comparison works; MV3 `version_name` shows
@@ -42,6 +44,12 @@ promotion from inventing source history or causing endless build-on-push loops.
   commit to the reserved source branch.
 
 ## Installed identity matrix
+
+Both channels run in normal and incognito windows on their supported hosts.
+DEV is not restricted to private browsing. MV3's split incognito mode remains
+supported, subject to the browser's user-controlled incognito permission;
+userscripts do not carry an incognito-only `@run-in` directive. Channel isolation
+is defined by installation identities and storage scopes below.
 
 | Installed product | PROD | DEV |
 | --- | --- | --- |

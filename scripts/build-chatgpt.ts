@@ -54,7 +54,6 @@ export async function buildChatGptModule(
       `// @downloadURL  ${userscriptChannelUrl(id, channel)}`,
       '// @match        https://chatgpt.com/*',
       '// @run-at       document-start',
-      ...(channel === 'dev' ? ['// @run-in       incognito-tabs'] : []),
       '// @grant        GM_info',
       '// @grant        GM_registerMenuCommand',
       '// @grant        GM_getValue',

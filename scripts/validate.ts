@@ -58,6 +58,8 @@ if (process.argv.includes('--built'))
       !user.includes('GM_registerMenuCommand')
     )
       throw Error(`Invalid userscript: ${id}`)
+    if (/^\/\/\s*@run-in\b/m.test(user))
+      throw Error(`Userscript must allow normal and incognito tabs: ${id}`)
     if (
       !user.includes(`// @updateURL    ${userscriptChannelUrl(id, channel)}`) ||
       !user.includes(`// @downloadURL  ${userscriptChannelUrl(id, channel)}`)

@@ -47,7 +47,7 @@ test('VK user export shares format/scope widgets and downloads attachments only 
   expect(source).toContain('link.remove()')
   expect(source).toContain('vkArchiveErrorMessage(error)')
   expect(source).toContain('<ArchiveExportFormatFields')
-  expect(source).toContain('<ArchiveSelectionScope')
+  expect(source).toContain('<ArchiveExportScopeFields')
   expect(source).toContain('<ArchiveProgressBar')
   expect(source).toContain('async function prepareUserExport()')
   expect(source).toContain('function downloadPreparedExport()')

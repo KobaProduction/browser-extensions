@@ -84,6 +84,18 @@ export function inspectVkAssets(message: VkMessage): { assets: VkAsset[]; trunca
           .sort(([a], [b]) => parseInt(b.slice(4), 10) - parseInt(a.slice(4), 10))
         add(files[0]?.[1], 'Видео.mp4')
       }
+      const wallOwner = number(v.owner_id) ?? number(v.to_id)
+      const wallId = number(v.id)
+      const wallUrl =
+        type === 'wall' &&
+        wallOwner !== null &&
+        Number.isSafeInteger(wallOwner) &&
+        wallOwner !== 0 &&
+        wallId !== null &&
+        Number.isSafeInteger(wallId) &&
+        wallId > 0
+          ? `https://vk.ru/wall${wallOwner}_${wallId}`
+          : null
       out.push({
         key,
         rootId: message.id,
@@ -91,7 +103,7 @@ export function inspectVkAssets(message: VkMessage): { assets: VkAsset[]; trunca
         choices,
         sourceId: n.id ?? null,
         context: ctx,
-        external: type === 'link' && /^https?:\/\//i.test(text(v.url)) ? text(v.url) : null,
+        external: type === 'link' && /^https?:\/\//i.test(text(v.url)) ? text(v.url) : wallUrl,
         transcript:
           type === 'audio_message'
             ? text(v.transcript) || null
@@ -99,6 +111,7 @@ export function inspectVkAssets(message: VkMessage): { assets: VkAsset[]; trunca
               ? text(record(record(v.preview).audio_msg).transcript) || null
               : null,
       })
+      if (type === 'wall') descend(v as unknown as VkMessage, `${ctx}.wall${i}`, depth + 1)
     }
     if (n.reply_message) descend(n.reply_message, `${ctx}.reply`, depth + 1)
     for (const [i, f] of items(n.fwd_messages).entries())

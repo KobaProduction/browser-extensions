@@ -1,5 +1,8 @@
 import type { BoosterModule } from '@chatgpt-booster/core'
-import { conversationIntegrityFromGraph } from '@kobaproduction/browser-archive'
+import {
+  ARCHIVE_READER_PAGE_SIZE,
+  conversationIntegrityFromGraph,
+} from '@kobaproduction/browser-archive'
 import { checkpointHistoryCoverage } from './archive-coverage'
 import type { FixedConversation } from './archive-fixed-dexie'
 import type { FixedChatGptCapture } from './archive-fixed-runtime'
@@ -375,20 +378,20 @@ export class ConversationArchiveWorkspace implements BoosterModule {
     const position = cursorId ? conversation.positions.get(cursorId) : undefined
     if (cursorId && position === undefined) throw Error('archive.error.messageMissing')
     const start = around
-      ? Math.max(0, (position ?? 0) - 80)
+      ? Math.max(0, (position ?? 0) - ARCHIVE_READER_PAGE_SIZE / 2)
       : direction === 'first'
         ? 0
         : direction === 'middle'
-          ? Math.max(0, Math.floor(ids.length / 2) - 80)
+          ? Math.max(0, Math.floor(ids.length / 2) - ARCHIVE_READER_PAGE_SIZE / 2)
           : direction === 'newer'
             ? position === undefined
               ? 0
               : position + 1
-            : Math.max(0, (position ?? ids.length) - 160)
+            : Math.max(0, (position ?? ids.length) - ARCHIVE_READER_PAGE_SIZE)
     const end =
       direction === 'older' && position !== undefined && !around
         ? position
-        : Math.min(ids.length, start + 160)
+        : Math.min(ids.length, start + ARCHIVE_READER_PAGE_SIZE)
     return {
       records: ids.slice(start, end).flatMap((key) => {
         const record = conversation.records.get(key)

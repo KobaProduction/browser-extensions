@@ -2,9 +2,11 @@ export { default as ApplicationBackupSettings } from './ApplicationBackupSetting
 export { default as ApplicationTelemetrySettings } from './ApplicationTelemetrySettings.vue'
 export { default as ArchiveConversationList } from './ArchiveConversationList.vue'
 export { default as ArchiveExportFormatFields } from './ArchiveExportFormatFields.vue'
+export { default as ArchiveExportScopeFields } from './ArchiveExportScopeFields.vue'
 export { default as ArchiveManager } from './ArchiveManager.vue'
 export { default as ArchiveMessageHeader } from './ArchiveMessageHeader.vue'
 export { default as ArchiveProgressBar } from './ArchiveProgressBar.vue'
+export { default as ArchiveReaderNavigation } from './ArchiveReaderNavigation.vue'
 export { default as ArchiveReadingSurface } from './ArchiveReadingSurface.vue'
 export { default as ArchiveRecordList } from './ArchiveRecordList.vue'
 export { default as ArchiveSelectionScope } from './ArchiveSelectionScope.vue'
@@ -18,6 +20,8 @@ export type {
   ArchiveConversationListCopy,
   ArchiveConversationRow,
 } from './archive-list'
+export type { ArchiveReadingAnchor, ArchiveReadingScrollOptions } from './archive-reading-scroll'
+export { createArchiveReadingScroll } from './archive-reading-scroll'
 export type { ArchiveRecordListProps } from './archive-record-list'
 export type {
   ArchiveTimelineEdge,

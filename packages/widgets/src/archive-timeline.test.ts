@@ -4,10 +4,17 @@ import {
   type ArchiveTimelineNode,
   archiveTimelineLayout,
   archiveTimelineSameIds,
+  archiveTimelineTimestamp,
   archiveTimelineWindowStart,
 } from './archive-timeline'
 
 const node = (id: string, parentId: string | null): ArchiveTimelineNode => ({ id, parentId, label: id })
+
+test('timeline dates accept only valid source milliseconds and never substitute the current date', () => {
+  expect(archiveTimelineTimestamp(1604386860000)?.toISOString()).toBe('2020-11-03T07:01:00.000Z')
+  for (const value of [undefined, null, 0, -1, Number.NaN, Number.POSITIVE_INFINITY, 9e18])
+    expect(archiveTimelineTimestamp(value)).toBeNull()
+})
 
 test('metadata replacement preserves logical timeline identity while equal-length switches cancel it', () => {
   const before = [node('a', null), node('b', 'a')]
