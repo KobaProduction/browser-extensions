@@ -1,5 +1,12 @@
 name: Continuous dev prereleases
 on:
+  workflow_dispatch:
+    inputs:
+      cleanup_only:
+        description: 'Remove obsolete DEV releases, retaining one complete prerelease per product and all PROD releases'
+        type: boolean
+        default: true
+        required: true
   workflow_run:
     workflows: ['Validate modules (Zoomies)']
     types: [completed]
@@ -13,16 +20,17 @@ jobs:
     # Only verified, repository-owned main commits are allowed to advance dev.
     # Never publish unreviewed fork/PR code with a privileged release token.
     if: >-
-      ${{ github.event.workflow_run.conclusion == 'success' &&
+      ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.cleanup_only == true) ||
+          (github.event.workflow_run.conclusion == 'success' &&
           github.event.workflow_run.event == 'push' &&
           github.event.workflow_run.head_branch == 'main' &&
-          github.event.workflow_run.head_repository.full_name == github.repository }}
+          github.event.workflow_run.head_repository.full_name == github.repository) }}
     runs-on: zoomies-linux-x64
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
         with: {bun-version: '1.4.2'}
@@ -30,6 +38,7 @@ jobs:
         with: {node-version: '22'}
       - run: bun install --frozen-lockfile
       - name: Publish affected products only to dev (prerelease)
+        if: github.event_name == 'workflow_run'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -59,6 +68,15 @@ jobs:
                 --notes "Continuous dev build from validated source $GITHUB_SHA"
             fi
             bash scripts/publish-channel.sh "$id" dev
+            # A queued validated commit may predate the retention helper.
+            if test -f scripts/prune-dev-releases.ts; then
+              bun scripts/prune-dev-releases.ts --apply "--product=$id" "--keep-tag=$tag"
+            fi
             # Include this tag before allocating another independent counter.
             git fetch --tags --force
           done <<< "$candidates"
+      - name: Remove accumulated obsolete DEV publications
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bun scripts/prune-dev-releases.ts --apply

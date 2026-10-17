@@ -43,6 +43,18 @@ promotion from inventing source history or causing endless build-on-push loops.
 - Channel publication is serialized; neither workflow is authorized to
   commit to the reserved source branch.
 
+## Release retention
+
+PROD releases retain their versioned publication history. DEV is temporary:
+keep only one current complete prerelease per product. After successful artifact
+and channel publication, delete that product's obsolete DEV release records and
+their downloadable assets. Recognize both current `dev-<product>/v...` and legacy
+`<product>/v...-dev.N` names; stable releases, drafts and unknown tags are excluded.
+Existing accumulated DEV publications can be pruned through `dev.yml`'s
+main-only `cleanup_only` dispatch under the same channel concurrency lock.
+Git source tags remain as lightweight counter/history references; pruning does
+not retain old DEV build downloads or affect installed settings/data.
+
 ## Installed identity matrix
 
 Both channels run in normal and incognito windows on their supported hosts.
