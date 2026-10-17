@@ -26,8 +26,9 @@ Changed native observations no longer abort the whole capture. One atomic writer
 keeps prior source observations under `previous`, updates the preferred projection
 and raw observation together, and prevents an explicitly older `update_time` from
 rolling the preferred observation backward. Source values are never discarded.
-JSON/ZIP and internal JSONL exports preserve these earlier observations with the
-same source codec; backup restore validates their identities before writing.
+ZIP and internal JSONL recovery exports preserve these earlier observations with the
+same source codec; standalone user JSON exposes only preferred raw VK messages.
+Backup restore validates revision identities before writing.
 
 UI reports new rows, preserved source revisions and the reused verified tail
 separately. Storage, network, timeout, source-page and empty-export failures have
