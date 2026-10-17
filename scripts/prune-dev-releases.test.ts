@@ -52,9 +52,9 @@ test('incomplete or stable artifacts cannot authorize deletion of existing DEV d
 
 test('rolling prerelease replaces historical versioned DEV records', () => {
   const plan = planDevReleasePruning(
-    [release(8, 'dev-all-in-one/v0.5.47'), release(9, 'dev-all-in-one')],
+    [release(8, 'dev-all-in-one/v0.5.47'), release(9, 'rolling-dev/all-in-one')],
     'all-in-one',
-    'dev-all-in-one',
+    'rolling-dev/all-in-one',
   )
   expect(plan.remove.map((row) => row.id)).toEqual([8])
 })

@@ -9,7 +9,7 @@ promotion from inventing source history or causing endless build-on-push loops.
 - Every successful, trusted `main` push CI triggers `.github/workflows/dev.yml`.
   The source diff from the first parent determines which products have changed.
   Each changed product is built, validated and published as a GitHub
-  **prerelease** through one rolling prerelease with a fixed tag `dev-<product>` (one tag per product, not per build).
+  **prerelease** through one rolling prerelease with a fixed tag `rolling-dev/<product>` (one tag per product, not per build).
   Counters advance independently per published product, including across
   source patch changes. The published DEV userscript channel records the last
   counter; historical suffix-form DEV tags seed the first rolling transition.
