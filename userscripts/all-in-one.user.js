@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Koba Browser Tools [DEV]
 // @namespace    https://github.com/KobaProduction/browser-extensions/dev/all-in-one
-// @version      0.5.48
+// @version      0.5.49
 // @description  Koba Browser Tools / Koba Browser Tools
 // @homepageURL   https://github.com/KobaProduction/browser-extensions
 // @updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/all-in-one.user.js
@@ -61500,7 +61500,7 @@ ${JSON.stringify(counts)}`);
     }
   }
   instanceKey("chatgpt-booster:manual-collection", "chatgpt-booster:prod");
-  var define_BOOSTER_APPLICATION_default = { id: "all-in-one", title: "Koba Browser Tools", version: "dev-0.5.48", components: [{ id: "vk-booster", title: "VK Booster", version: "1.1.0" }, { id: "chatgpt-booster", title: "ChatGPT Booster", version: "2.0.21" }] };
+  var define_BOOSTER_APPLICATION_default = { id: "all-in-one", title: "Koba Browser Tools", version: "dev-0.5.49", components: [{ id: "vk-booster", title: "VK Booster", version: "1.1.1" }, { id: "chatgpt-booster", title: "ChatGPT Booster", version: "2.0.21" }] };
   function isDevelopmentContextAllowed(_target, scope = instanceScope()) {
     return /^(vk-booster|chatgpt-booster|all-in-one):(dev|prod)$/.test(scope);
   }
@@ -64451,7 +64451,7 @@ ${JSON.stringify(counts)}`);
     if (!gm)
       return unavailableTelemetry();
     const settings = gm?.settings ?? store;
-    const suppliedVersion = "0.5.23";
+    const suppliedVersion = "0.5.24";
     const version2 = /^\d+\.\d+\.\d+$/.test(suppliedVersion) ? suppliedVersion : "0.0.0";
     const listeners = /* @__PURE__ */ new Set();
     let enabled = false;
@@ -69731,7 +69731,7 @@ ${JSON.stringify(counts)}`);
       };
     }
   });
-  const VK_BASE_VERSION = "1.1.0";
+  const VK_BASE_VERSION = "1.1.1";
   function defaultVkCapturePreferences() {
     return { mode: "recent", limit: 10, from: "", through: "", pageSize: 50, delay: 450, media: true };
   }
@@ -70770,7 +70770,13 @@ ${JSON.stringify(counts)}`);
         chunkManifest.push({ path, records: rawRows.length, sha256: sha2562 });
         if (packaging === "zip")
           entries.push({ path, blob: new Blob([body], { type: "application/json" }) });
-        else jsonParts2.push(new Blob([jsonParts2.length ? ",\n" : "", body.slice(1, -1)]));
+        else
+          jsonParts2.push(
+            new Blob([
+              jsonParts2.length ? ",\n" : "",
+              rawRows.map((row) => JSON.stringify(row.raw)).join(",\n")
+            ])
+          );
       }
       if (format !== "json") {
         const readable = serializeArchiveExportChunks(format, {
@@ -70835,6 +70841,7 @@ ${JSON.stringify(counts)}`);
         const exportedAttachments = [];
         const exportRow = {
           normalized,
+          raw,
           id: row.messageId,
           sentAt: normalized.time.createdAtMs === null ? null : normalized.time.createdAtMs / 1e3,
           senderId: normalized.author.id === null ? null : Number(normalized.author.id),
@@ -70844,8 +70851,8 @@ ${JSON.stringify(counts)}`);
           snapshot: {
             sourceVersion: original.sourceVersion,
             encoding: "archive-clone-v1",
-            original: packaging === "zip" || format === "json" || options.includeOriginal ? await encodeArchiveClone(raw) : null,
-            ...original.previous?.length && (packaging === "zip" || format === "json" || options.includeOriginal) ? {
+            original: packaging === "zip" || options.includeOriginal ? await encodeArchiveClone(raw) : null,
+            ...original.previous?.length && (packaging === "zip" || options.includeOriginal) ? {
               previous: await Promise.all(
                 original.previous.map(async (observation) => ({
                   sourceVersion: observation.sourceVersion,
@@ -70931,7 +70938,7 @@ ${JSON.stringify(counts)}`);
       ).length,
       chunks: packaging === "zip" ? chunkManifest : chunkManifest.map(({ records, sha256: sha2562 }) => ({ records, sha256: sha2562 })),
       attachmentManifest: packaging === "zip" && options.includeReferences ? "attachments/status.json" : null,
-      note: packaging === "zip" || format === "json" || options.includeOriginal ? "This user export contains saved original message snapshots, not a full IndexedDB backup." : "This readable user export contains saved message text and requested attachment references, not a full IndexedDB backup."
+      note: packaging === "zip" || options.includeOriginal ? "This user export contains saved original message snapshots, not a full IndexedDB backup." : "This readable user export contains saved message text and requested attachment references, not a full IndexedDB backup."
     };
     const title = `VK · ${peerId}`;
     const summary = `Saved messages: ${exported}/${total}. History: ${manifest.completeness}. Attachment files included: ${includedCount}. Missing attachment files: ${manifest.missingAttachmentCount}. Attachment reference coverage: ${attachmentReferencesComplete ? "known saved slots" : "partial"}. Source links are references and may expire.
@@ -70956,16 +70963,7 @@ ${summary}`, ...readableParts], {
       entries.push({ path: "manifest.json", blob: new Blob([JSON.stringify(manifest, null, 2)]) });
     onProgress?.({ phase: "packaging", done: exported, total: exported });
     check2();
-    const blob = packaging === "zip" ? await createStoredZipFromBlobs(entries, options.signal) : readableBlob ?? new Blob(
-      [
-        '{\n"format":"koba-vk-conversation-v1",\n"manifest":',
-        JSON.stringify(manifest),
-        ',\n"messages":[',
-        ...jsonParts2,
-        "\n]}\n"
-      ],
-      { type: "application/json" }
-    );
+    const blob = packaging === "zip" ? await createStoredZipFromBlobs(entries, options.signal) : readableBlob ?? new Blob(["[\n", ...jsonParts2, "\n]\n"], { type: "application/json" });
     check2();
     return {
       blob,
@@ -73431,9 +73429,15 @@ ${line}`);
           return;
         }
         tab.value = view2;
-        if (view2 === "reader") void refreshTimeline(api?.status().activePeerId, scopeGeneration);
-        if (view2 === "reader" && (!fixedPreview.value.length || readerRevision !== savedRevision) && !fixedReading.value && hasVerifiedPeer.value)
-          void readDexie(fixedCursor.value, Math.max(ARCHIVE_READER_PAGE_SIZE$1, fixedPreview.value.length));
+        if (view2 === "reader") {
+          const initial = !fixedPreview.value.length;
+          void refreshTimeline(api?.status().activePeerId, scopeGeneration).then(() => {
+            if (initial && tab.value === "reader" && timelineEntries.value.length)
+              void navigateTimeline(String(timelineEntries.value.at(-1)?.id));
+            else if (!fixedReading.value && (!fixedPreview.value.length || readerRevision !== savedRevision))
+              void readDexie(fixedCursor.value, Math.max(ARCHIVE_READER_PAGE_SIZE$1, fixedPreview.value.length));
+          });
+        }
       }
       const tabs = [
         { id: "capture", label: "Выгрузка", icon: Download },
