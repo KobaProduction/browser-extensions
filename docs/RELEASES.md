@@ -4,7 +4,11 @@ See [DEV/PROD channels and simultaneous installation contract](DEV_PROD_CHANNELS
 
 # Zoomies CI and selective releases
 
-`main` and trusted same-repository PRs run `zoomies-linux-x64` (matching ChatGPT Booster). Fork and Dependabot PRs run on GitHub's `ubuntu-latest` runner. `bun run check` verifies types/tests/contracts. The build impact graph builds only affected distributables:
+Source validation on `main` and PRs runs on GitHub's `ubuntu-latest` runner.
+The 2026-10-21 correction replaces self-hosted validation after a lost runner
+connection and repeated multi-minute stalls in otherwise passing IndexedDB tests.
+Release publication runners are unchanged. `bun run check` verifies
+types/tests/contracts. The build impact graph builds only affected distributables:
 
 | Changed path | Impact |
 | --- | --- |

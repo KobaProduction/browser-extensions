@@ -8,8 +8,9 @@ permissions:
   contents: read
 jobs:
   check:
-    # Never execute fork PRs or Dependabot code on a privileged self-hosted runner.
-    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) && 'zoomies-linux-x64' || 'ubuntu-latest' }}
+    # The self-hosted runner lost connectivity and stalled IndexedDB tests.
+    # Validate all source changes on a fresh GitHub-hosted runner.
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4

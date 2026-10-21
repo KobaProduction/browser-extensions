@@ -294,7 +294,7 @@ function attachmentReader() {
   }
 }
 test('plain Markdown/TXT and standalone JSON share the normalized source and honest remote file references', async () => {
-  const { reader, sourceUrl, raw } = attachmentReader()
+  const { reader, raw } = attachmentReader()
   for (const format of ['markdown', 'text'] as const) {
     const output = await createVkUserExport(
       reader,
@@ -321,13 +321,7 @@ test('plain Markdown/TXT and standalone JSON share the normalized source and hon
     () => {},
   )
   const document = JSON.parse(await output.blob.text())
-  expect(document.manifest).toMatchObject({
-    packaging: 'none',
-    attachmentFilesIncluded: 0,
-    missingAttachmentCount: 1,
-  })
-  expect(document.messages[0].attachments[0].sourceUrl).toBe(sourceUrl)
-  expect(decodeArchiveClone(document.messages[0].snapshot.original)).toEqual(raw)
+  expect(document).toEqual([raw])
 })
 test('ZIP readable attachment links target included files and binaries require a separate explicit opt-in', async () => {
   const { reader, sourceUrl } = attachmentReader()
@@ -393,4 +387,40 @@ test('ZIP filenames preserve codepoint and UTF-8 boundaries across entries, mani
       `](<attachments/9/${encodeURIComponent(fileName)}>)`,
     )
   }
+})
+
+test('standalone JSON exports only requested source messages without wrappers', async () => {
+  const raws = [1, 2, 3].map((id) => ({ id, peer_id: 42, date: 1700000000 + id, text: `message ${id}` }))
+  const rows: FixedVkMessage[] = raws.map((raw) => ({
+    key: String(raw.id),
+    ownerId: 'owner',
+    peerId: 42,
+    messageId: raw.id,
+    schemaVersion: 1,
+    date: raw.date,
+    senderId: null,
+    outgoing: false,
+    text: raw.text,
+    attachmentCount: 0,
+  }))
+  const reader = {
+    countMessages: async () => rows.length,
+    listMessages: async (_peer: number, limit: number, after?: number) =>
+      rows.filter((row) => after === undefined || row.messageId > after).slice(0, limit),
+    getOriginal: async (_peer: number, id: number) => ({
+      key: String(id),
+      ownerId: 'owner',
+      sourceVersion: 'synthetic',
+      recordedAtMs: 1,
+      raw: raws[id - 1] ?? { id, peer_id: 42, date: 0, text: '' },
+    }),
+  }
+  const result = await createVkUserExport(
+    reader,
+    42,
+    { chunkRows: 100, includeReferences: false, format: 'json', packaging: 'none', messageIds: [2] },
+    () => {},
+  )
+  expect(result.recordCount).toBe(1)
+  expect(JSON.parse(await result.blob.text())).toEqual([raws[1]])
 })
