@@ -427,17 +427,6 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="booster-chatgpt-panel" :lang="locale" :data-provider-view="tab">
-    <div v-if="tab === 'archive' && context" class="booster-archive-context-actions">
-      <Button variant="ghost" size="sm" type="button" :aria-pressed="captureActive"
-        :title="captureActive ? tr('Автосохранение включено', 'Capture enabled') : tr('Настроить автосохранение', 'Configure capture')"
-        @click="openCapture()"><ShieldCheck class="size-4" />{{ tr('Автосохранение', 'Auto-save') }}</Button>
-      <ConversationCollectionAction
-        :data-active="active" :label="tr('Собрать историю', 'Collect history')" :busy="active"
-        :saved-label="tr('Сохранено', 'Saved')" :stop-label="tr('Остановить', 'Stop')"
-        :disabled="loading || !current.conversationId || !!context.archiveAdapter.collectionInsideExportOnly"
-        :processed="collectionState.processed" :total="collectionState.total"
-        @start="collect" @stop="stopCollection" />
-    </div>
     <p v-if="error && tab !== 'settings'" class="booster-error" role="alert">{{ error }}</p>
     <div v-if="active && tab === 'archive'" class="booster-dock-progress" role="status">
       <span>{{ tr('Загрузка истории', 'History collection') }}: {{ loader.phase }}
@@ -459,7 +448,19 @@ onBeforeUnmount(() => {
         @return-export="tab='export'"
         @export="(id, title, ids) => openExport(id, title, true, ids)"
         @close="closePanel"
-      />
+      >    <template #collection-actions>
+      <Button variant="ghost" size="sm" type="button"
+        :title="captureActive ? tr('Автосохранение включено', 'Capture enabled') : tr('Настроить автосохранение', 'Configure capture')"
+        @click="openCapture()"><ShieldCheck class="size-4" />{{ tr('Настройки автосохранения', 'Auto-save settings') }}</Button>
+      <ConversationCollectionAction
+        variant="ghost"
+        :data-active="active" :label="tr('Собрать историю', 'Collect history')" :busy="active"
+        :saved-label="tr('Сохранено', 'Saved')" :stop-label="tr('Остановить', 'Stop')"
+        :disabled="loading || !current.conversationId || !!context.archiveAdapter.collectionInsideExportOnly"
+        :processed="collectionState.processed" :total="collectionState.total"
+        @start="collect" @stop="stopCollection" />
+    </template>
+      </ArchiveBrowser>
       <ArchiveExportDialog v-else-if="tab==='export' && selectedChat"
         :archive-adapter="context.archiveAdapter" :settings-adapter="context.settingsAdapter"
         :conversation-id="selectedChat.id" :title="selectedChat.title" :locale="locale"

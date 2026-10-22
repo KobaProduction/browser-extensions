@@ -1,5 +1,5 @@
 import type { AgentActivitySnapshot, ConversationItemMetadataView } from '@chatgpt-booster/core'
-import { UI_PORTAL_TARGET } from '@kobaproduction/browser-ui'
+import { ensureSiteDecoration, UI_PORTAL_TARGET } from '@kobaproduction/browser-ui'
 import { createApp, h, shallowReactive } from 'vue'
 import type { SupportedLocale } from './i18n'
 import MessageMetadata from './MessageMetadata.vue'
@@ -24,32 +24,41 @@ export function mountMessageMetadata(
   initial: LiveMessageMetadataView,
   locale: SupportedLocale,
 ): MountedMessageMetadata {
-  const host = document.createElement('span')
-  host.dataset.chatgptBooster = 'message-metadata'
-  host.style.cssText =
-    'display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;width:auto;min-width:0;height:28px;margin:0;'
-  into.append(host)
-  const { mountPoint, portal } = createBoosterShadowSurface(host)
-  const state = shallowReactive({ metadata: initial, now: Date.now() })
-  const app = createApp({
-    render: () => h(MessageMetadata, { metadata: state.metadata, now: state.now, locale }),
+  return ensureSiteDecoration({
+    anchor: into,
+    kind: 'chatgpt-booster:message-metadata',
+    identity: locale,
+    legacySelector: '[data-chatgpt-booster="message-metadata"]',
+    update: (current) => current.update(initial),
+    create: () => {
+      const host = document.createElement('span')
+      host.dataset.chatgptBooster = 'message-metadata'
+      host.style.cssText =
+        'display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;width:auto;min-width:0;height:28px;margin:0;'
+      into.append(host)
+      const { mountPoint, portal } = createBoosterShadowSurface(host)
+      const state = shallowReactive({ metadata: initial, now: Date.now() })
+      const app = createApp({
+        render: () => h(MessageMetadata, { metadata: state.metadata, now: state.now, locale }),
+      })
+      app.provide(UI_PORTAL_TARGET, portal)
+      app.mount(mountPoint)
+      return {
+        element: host,
+        update(next) {
+          state.metadata = { ...next, activity: next.activity ?? state.metadata.activity ?? null }
+        },
+        updateActivity(activity) {
+          state.metadata = { ...state.metadata, activity }
+        },
+        tick(now) {
+          state.now = now
+        },
+        unmount() {
+          app.unmount()
+          host.remove()
+        },
+      }
+    },
   })
-  app.provide(UI_PORTAL_TARGET, portal)
-  app.mount(mountPoint)
-  return {
-    element: host,
-    update(next) {
-      state.metadata = { ...next, activity: next.activity ?? state.metadata.activity ?? null }
-    },
-    updateActivity(activity) {
-      state.metadata = { ...state.metadata, activity }
-    },
-    tick(now) {
-      state.now = now
-    },
-    unmount() {
-      app.unmount()
-      host.remove()
-    },
-  }
 }

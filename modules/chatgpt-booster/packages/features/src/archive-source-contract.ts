@@ -11,7 +11,7 @@ import {
  *
  * v1-v6 remain registered as their original strict signatures. v7 adds only
  * the observed string exclusive-key metadata field. Database and
- * export versions remain independent.
+ * export versions remain independent. v8 adds the observed user context shape.
  */
 export const NATIVE_HISTORY_CONTRACT_V1 = 'chatgpt-history-2026-10-v1'
 export const NATIVE_HISTORY_CONTRACT_V2 = 'chatgpt-history-2026-10-v2'
@@ -20,7 +20,9 @@ export const NATIVE_HISTORY_CONTRACT_V4 = 'chatgpt-history-2026-10-v4'
 export const NATIVE_HISTORY_CONTRACT_V5 = 'chatgpt-history-2026-10-v5'
 export const NATIVE_HISTORY_CONTRACT_V6 = 'chatgpt-history-2026-10-v6'
 export const NATIVE_HISTORY_CONTRACT_V7 = 'chatgpt-history-2026-10-v7'
-export const NATIVE_HISTORY_CONTRACT_VERSION = NATIVE_HISTORY_CONTRACT_V7
+export const NATIVE_HISTORY_CONTRACT_V8 = 'chatgpt-history-2026-10-v8'
+export const NATIVE_HISTORY_CONTRACT_V9 = 'chatgpt-history-2026-10-v9'
+export const NATIVE_HISTORY_CONTRACT_VERSION = NATIVE_HISTORY_CONTRACT_V9
 
 /** Retain ambiguity even if a repeated message ID is submitted before its first capture. */
 export interface ArchiveSubmissionSnapshot {
@@ -267,6 +269,45 @@ const v7Profile: NativeHistoryValidationProfile = {
   metadata: v7MetadataTypes,
   content: v2ContentKeys,
 }
+// Observed in the owner's new-chat stream on 2026-10-21; retain the source
+// verbatim and validate only this exact structural contract, never its text.
+const v8Profile: NativeHistoryValidationProfile = {
+  version: NATIVE_HISTORY_CONTRACT_V8,
+  metadata: { ...v7MetadataTypes, is_user_system_message: 'boolean' },
+  content: {
+    ...v2ContentKeys,
+    user_editable_context: new Set(['content_type', 'user_profile', 'user_instructions']),
+  },
+}
+// Native completed long-running responses observed on 2026-10-21.
+const v9Profile: NativeHistoryValidationProfile = {
+  ...v8Profile,
+  version: NATIVE_HISTORY_CONTRACT_V9,
+  metadata: {
+    ...v8Profile.metadata,
+    targeted_feedback: 'object',
+    preamble_version: 'number',
+    async_source: 'string',
+    permissions: 'array',
+    poll_freshness_max_mins: 'number',
+    poll_interval_ms: 'number',
+    poll_on_websocket_inactivity_ms: 'number',
+    poll_suppress_reconnect_banner: 'boolean',
+    pro_skipped: 'boolean',
+    finished_text: 'string',
+    initial_text: 'string',
+    summarization_headline: 'string',
+  },
+}
+function validateUserContext(
+  content: Record<string, unknown>,
+  path: string,
+  fail: (path: string, reason: ArchiveContractFailure['reason']) => never,
+) {
+  if (content.content_type !== 'user_editable_context') return
+  for (const field of ['user_profile', 'user_instructions'])
+    if (typeof content[field] !== 'string') fail(`${path}.${field}`, 'type')
+}
 function metadataTypeMatches(expected: MetadataFieldType, value: unknown): boolean {
   const actual = value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value
   if (expected === 'nullable-string') return actual === 'null' || actual === 'string'
@@ -429,6 +470,7 @@ function assertHistoryPage(
     const schema = profile.content[type as string]
     if (!schema) failure(`${path}.content.content_type`, 'unsupported')
     keys(content, schema as ReadonlySet<string>, `${path}.content`)
+    validateUserContext(content, `${path}.content`, failure)
     if (type === 'text' || type === 'multimodal_text') {
       if (!Array.isArray(required(content, 'parts', `${path}.content`)))
         failure(`${path}.content.parts`, 'type')
@@ -491,6 +533,7 @@ function assertStreamMessage(
   const contentShape = profile.content[content.content_type as string]
   if (!contentShape) fail('stream.message.content.content_type', 'unsupported')
   allowed(content, contentShape as ReadonlySet<string>, 'stream.message.content')
+  validateUserContext(content, 'stream.message.content', fail)
   if (
     (content.content_type === 'text' || content.content_type === 'multimodal_text') &&
     !Array.isArray(content.parts)
@@ -660,6 +703,26 @@ const nativeHistoryAdapters: Readonly<Record<string, NativeHistoryAdapter>> = Ob
       assertHistoryPage(detail, projected, v7Profile),
     assertStream: (id: string, incoming: Record<string, unknown>) =>
       assertStreamMessage(id, incoming, v7Profile),
+  }),
+  [NATIVE_HISTORY_CONTRACT_V8]: Object.freeze({
+    version: NATIVE_HISTORY_CONTRACT_V8,
+    evidenceDocument: 'docs/chatgpt-booster/LIVE_ARCHIVE_CONTRACT.md',
+    fixtureFile: 'tests/archive-source-contract.test.ts',
+    knownNullablePaths: Object.freeze([]),
+    assertPage: (detail: ConversationArchiveEventDetail, projected: boolean) =>
+      assertHistoryPage(detail, projected, v8Profile),
+    assertStream: (id: string, incoming: Record<string, unknown>) =>
+      assertStreamMessage(id, incoming, v8Profile),
+  }),
+  [NATIVE_HISTORY_CONTRACT_V9]: Object.freeze({
+    version: NATIVE_HISTORY_CONTRACT_V9,
+    evidenceDocument: 'docs/chatgpt-booster/LIVE_ARCHIVE_CONTRACT.md',
+    fixtureFile: 'tests/archive-source-contract.test.ts',
+    knownNullablePaths: Object.freeze([]),
+    assertPage: (detail: ConversationArchiveEventDetail, projected: boolean) =>
+      assertHistoryPage(detail, projected, v9Profile),
+    assertStream: (id: string, incoming: Record<string, unknown>) =>
+      assertStreamMessage(id, incoming, v9Profile),
   }),
 })
 

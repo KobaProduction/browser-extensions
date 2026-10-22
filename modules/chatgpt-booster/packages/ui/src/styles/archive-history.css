@@ -34,8 +34,66 @@
 }
 
 .booster-reader-chat-actions {
-  margin-top: 4px;
+  margin-top: 0;
   justify-content: flex-start;
+  flex: 0 0 auto;
+  gap: 4px;
+  flex-wrap: nowrap;
+}
+.booster-reader-chat-actions > button {
+  height: 32px;
+  padding-inline: 10px;
+  font-size: 12px;
+}
+.booster-reader-chat-header {
+  align-items: center;
+  gap: 8px;
+}
+.booster-reader-chat-identity {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.booster-reader-chat-identity h2 {
+  min-width: 0;
+  margin: 0;
+  font-size: 15px;
+}
+.booster-reader-chat-identity .booster-identity {
+  min-width: 0;
+  max-width: 100%;
+}
+.booster-reader-chat-identity .booster-identity-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.booster-reader .booster-exchange-details {
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+@media (max-width: 640px) {
+  .booster-reader-chat-header {
+    flex-wrap: nowrap;
+  }
+  .booster-reader-project-label {
+    display: none;
+  }
+  .booster-reader-chat-identity h2 {
+    flex: 1;
+    overflow: hidden;
+    white-space: nowrap;
+    font-size: 14px;
+  }
+  .booster-reader-chat-actions > button {
+    padding-inline: 6px;
+  }
+  .booster-reader-chat-identity .booster-identity {
+    display: flex;
+  }
 }
 .booster-reader-navigation {
   display: flex;
@@ -75,18 +133,32 @@
 }
 .booster-reader-action-menu {
   display: grid;
-  gap: 4px;
-  width: min(320px, calc(100dvw - 24px));
-  max-height: min(70dvh, 26rem);
-  overflow: auto;
+  gap: 2px;
+  width: min(280px, calc(100dvw - 24px));
+  max-height: var(--reka-popover-content-available-height, 70dvh);
+  overflow-y: auto;
   overscroll-behavior: contain;
 }
-.booster-reader-action-menu > button {
+.booster-reader-action-menu button {
   justify-content: flex-start;
   height: auto;
   min-height: 32px;
+  padding: 6px 8px;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 400;
   white-space: normal;
   text-align: start;
+}
+.booster-reader-menu-group {
+  display: grid;
+  gap: 2px;
+  margin-top: 2px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+.booster-reader-menu-group .booster-conversation-collection {
+  justify-items: stretch;
 }
 
 .booster-reader-find {

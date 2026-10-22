@@ -299,6 +299,7 @@ export function createMockChatGptArchive(scene: LabScene) {
         parentId: rawAt(index).metadata.parent_id,
         label: index % 2 ? 'Assistant' : 'User',
         preview: rawAt(index).content.parts[0] ?? '',
+        timestampMs: rawAt(index).create_time * 1000,
         uncertain: false,
       }))
     },

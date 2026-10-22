@@ -1,4 +1,5 @@
 import type { AgentActivitySnapshot } from '@chatgpt-booster/core'
+import { ensureSiteDecoration } from '@kobaproduction/browser-ui'
 import { type SupportedLocale, translate } from './i18n'
 import { installBoosterShadowStyles } from './shadow-styles'
 
@@ -26,106 +27,125 @@ export function mountRequestStatus(
   initial: AgentActivitySnapshot,
   locale: SupportedLocale,
 ): MountedRequestStatus {
-  const host = document.createElement('div')
-  host.dataset.chatgptBooster = 'request-status'
-  host.style.cssText =
-    'display:flex;justify-content:center;width:100%;padding:0 8px 4px;box-sizing:border-box;'
-  before.insertAdjacentElement('beforebegin', host)
+  return ensureSiteDecoration({
+    anchor: before,
+    kind: 'chatgpt-booster:request-status',
+    identity: locale,
+    placement: 'before',
+    legacyBoundarySelector: '[data-chatgpt-booster]',
+    legacySelector: '[data-chatgpt-booster="request-status"]',
+    update: (current) => current.update(initial),
+    create: () => {
+      const host = document.createElement('div')
+      host.dataset.chatgptBooster = 'request-status'
+      host.style.cssText =
+        'display:flex;justify-content:center;width:100%;padding:0 8px 4px;box-sizing:border-box;'
+      before.insertAdjacentElement('beforebegin', host)
 
-  const shadow = host.attachShadow({ mode: 'open' })
-  installBoosterShadowStyles(shadow)
-  const bar = document.createElement('div')
-  bar.className = 'booster-request-status'
-  const spinner = document.createElement('span')
-  spinner.className = 'booster-request-spinner'
-  spinner.setAttribute('aria-hidden', 'true')
-  const request = document.createElement('span')
-  const requestLabel = document.createElement('span')
-  requestLabel.className = 'booster-request-status-label'
-  const requestTimer = document.createElement('strong')
-  const reasoning = document.createElement('span')
-  const reasoningLabel = document.createElement('span')
-  reasoningLabel.className = 'booster-request-status-label'
-  const reasoningTimer = document.createElement('strong')
-  const action = document.createElement('span')
-  const actionLabel = document.createElement('span')
-  actionLabel.className = 'booster-request-status-label'
-  const actionTimer = document.createElement('strong')
-  const update = document.createElement('span')
-  const updateLabel = document.createElement('span')
-  updateLabel.className = 'booster-request-status-label'
-  const updateTimer = document.createElement('strong')
-  const summary = document.createElement('span')
-  const summaryLabel = document.createElement('span')
-  summaryLabel.className = 'booster-request-status-label'
-  const summaryTimer = document.createElement('strong')
-  const interval = document.createElement('span')
-  const intervalLabel = document.createElement('span')
-  intervalLabel.className = 'booster-request-status-label'
-  const intervalTimer = document.createElement('strong')
-  request.append(requestLabel, requestTimer)
-  reasoning.append(reasoningLabel, reasoningTimer)
-  action.append(actionLabel, actionTimer)
-  update.append(updateLabel, updateTimer)
-  summary.append(summaryLabel, summaryTimer)
-  interval.append(intervalLabel, intervalTimer)
-  bar.append(spinner, request, reasoning, action, update, summary, interval)
-  shadow.append(bar)
+      const shadow = host.attachShadow({ mode: 'open' })
+      installBoosterShadowStyles(shadow)
+      const bar = document.createElement('div')
+      bar.className = 'booster-request-status'
+      const spinner = document.createElement('span')
+      spinner.className = 'booster-request-spinner'
+      spinner.setAttribute('aria-hidden', 'true')
+      const request = document.createElement('span')
+      const requestLabel = document.createElement('span')
+      requestLabel.className = 'booster-request-status-label'
+      const requestTimer = document.createElement('strong')
+      const reasoning = document.createElement('span')
+      const reasoningLabel = document.createElement('span')
+      reasoningLabel.className = 'booster-request-status-label'
+      const reasoningTimer = document.createElement('strong')
+      const action = document.createElement('span')
+      const actionLabel = document.createElement('span')
+      actionLabel.className = 'booster-request-status-label'
+      const actionTimer = document.createElement('strong')
+      const update = document.createElement('span')
+      const updateLabel = document.createElement('span')
+      updateLabel.className = 'booster-request-status-label'
+      const updateTimer = document.createElement('strong')
+      const summary = document.createElement('span')
+      const summaryLabel = document.createElement('span')
+      summaryLabel.className = 'booster-request-status-label'
+      const summaryTimer = document.createElement('strong')
+      const interval = document.createElement('span')
+      const intervalLabel = document.createElement('span')
+      intervalLabel.className = 'booster-request-status-label'
+      const intervalTimer = document.createElement('strong')
+      request.append(requestLabel, requestTimer)
+      reasoning.append(reasoningLabel, reasoningTimer)
+      action.append(actionLabel, actionTimer)
+      update.append(updateLabel, updateTimer)
+      summary.append(summaryLabel, summaryTimer)
+      interval.append(intervalLabel, intervalTimer)
+      bar.append(spinner, request, reasoning, action, update, summary, interval)
+      shadow.append(bar)
 
-  let snapshot = initial
-  let currentNow = Date.now()
-  const t = (key: Parameters<typeof translate>[1]) => translate(locale, key)
-  requestLabel.textContent = t('requestStatus.request')
-  reasoningLabel.textContent = t('requestStatus.reasoning')
-  actionLabel.textContent = t('requestStatus.action')
-  updateLabel.textContent = t('requestStatus.unchanged')
-  summaryLabel.textContent = t('requestStatus.sinceSummary')
-  intervalLabel.textContent = t('requestStatus.summaryInterval')
+      let snapshot = initial
+      let currentNow = Date.now()
+      const t = (key: Parameters<typeof translate>[1]) => translate(locale, key)
+      requestLabel.textContent = t('requestStatus.request')
+      reasoningLabel.textContent = t('requestStatus.reasoning')
+      actionLabel.textContent = t('requestStatus.action')
+      updateLabel.textContent = t('requestStatus.unchanged')
+      summaryLabel.textContent = t('requestStatus.sinceSummary')
+      intervalLabel.textContent = t('requestStatus.summaryInterval')
 
-  const render = () => {
-    requestTimer.textContent = elapsed(snapshot.startedAt, snapshot.completedAt, currentNow)
-    reasoning.hidden = !snapshot.reasoningStartedAt
-    reasoningTimer.textContent = elapsed(snapshot.reasoningStartedAt, snapshot.completedAt, currentNow)
-    spinner.hidden = !snapshot.active
-    action.hidden = !snapshot.phaseStartedAt
-    actionTimer.textContent = elapsed(snapshot.phaseStartedAt, snapshot.completedAt, currentNow)
-    update.hidden = !snapshot.lastActivityAt
-    updateTimer.textContent = snapshot.lastActivityAt
-      ? `${new Date(snapshot.lastActivityAt).toLocaleTimeString(locale)} · ${elapsed(snapshot.lastActivityAt, snapshot.completedAt, currentNow)} ${t('requestStatus.ago')}`
-      : '—'
-    if (snapshot.lastActivityAt)
-      update.title = `${t('activity.lastActivityAt')}: ${new Date(snapshot.lastActivityAt).toLocaleTimeString(locale)}`
-    summary.hidden = !snapshot.lastSummaryAt
-    summaryTimer.textContent = elapsed(snapshot.lastSummaryAt ?? null, snapshot.completedAt, currentNow)
-    interval.hidden = !snapshot.previousSummaryAt || !snapshot.lastSummaryAt
-    intervalTimer.textContent = elapsed(
-      snapshot.previousSummaryAt ?? null,
-      snapshot.lastSummaryAt ?? null,
-      currentNow,
-    )
-    bar.dataset.phase = snapshot.phase
-    bar.setAttribute(
-      'aria-label',
-      [...bar.children]
-        .filter((element) => !(element as HTMLElement).hidden && element !== spinner)
-        .map((element) => [...element.children].map((child) => child.textContent).join(' '))
-        .join(', '),
-    )
-  }
-  render()
-
-  return {
-    element: host,
-    update(next) {
-      snapshot = next
+      const render = () => {
+        requestTimer.textContent = elapsed(snapshot.startedAt, snapshot.completedAt, currentNow)
+        reasoning.hidden = !snapshot.reasoningStartedAt
+        reasoningTimer.textContent = elapsed(
+          snapshot.reasoningStartedAt,
+          snapshot.completedAt,
+          currentNow,
+        )
+        spinner.hidden = !snapshot.active
+        action.hidden = !snapshot.phaseStartedAt
+        actionTimer.textContent = elapsed(snapshot.phaseStartedAt, snapshot.completedAt, currentNow)
+        update.hidden = !snapshot.lastActivityAt
+        updateTimer.textContent = snapshot.lastActivityAt
+          ? `${new Date(snapshot.lastActivityAt).toLocaleTimeString(locale)} · ${elapsed(snapshot.lastActivityAt, snapshot.completedAt, currentNow)} ${t('requestStatus.ago')}`
+          : '—'
+        if (snapshot.lastActivityAt)
+          update.title = `${t('activity.lastActivityAt')}: ${new Date(snapshot.lastActivityAt).toLocaleTimeString(locale)}`
+        summary.hidden = !snapshot.lastSummaryAt
+        summaryTimer.textContent = elapsed(
+          snapshot.lastSummaryAt ?? null,
+          snapshot.completedAt,
+          currentNow,
+        )
+        interval.hidden = !snapshot.previousSummaryAt || !snapshot.lastSummaryAt
+        intervalTimer.textContent = elapsed(
+          snapshot.previousSummaryAt ?? null,
+          snapshot.lastSummaryAt ?? null,
+          currentNow,
+        )
+        bar.dataset.phase = snapshot.phase
+        bar.setAttribute(
+          'aria-label',
+          [...bar.children]
+            .filter((element) => !(element as HTMLElement).hidden && element !== spinner)
+            .map((element) => [...element.children].map((child) => child.textContent).join(' '))
+            .join(', '),
+        )
+      }
       render()
+
+      return {
+        element: host,
+        update(next) {
+          snapshot = next
+          render()
+        },
+        tick(now) {
+          currentNow = now
+          render()
+        },
+        unmount() {
+          host.remove()
+        },
+      }
     },
-    tick(now) {
-      currentNow = now
-      render()
-    },
-    unmount() {
-      host.remove()
-    },
-  }
+  })
 }

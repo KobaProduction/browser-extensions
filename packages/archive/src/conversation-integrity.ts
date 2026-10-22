@@ -5,6 +5,10 @@ export interface ArchiveGraphNode {
   readonly parentKnown: boolean
 }
 export interface ArchiveIntegrityEvidence {
+  /** Explicit chronological boundary supplied by the provider, not an inferred parent. */
+  readonly firstId?: string | null | undefined
+  /** Exact oldest cursor from a provider-confirmed history-start boundary. */
+  readonly rootId?: string | null | undefined
   readonly startReached: boolean
   readonly endReached: boolean
   readonly headId: string | null
@@ -51,9 +55,20 @@ export function conversationIntegrityFromGraph(
       issues.push({ messageId: node.id, parentId: node.parentId, reason: 'duplicate-id' })
     else byId.set(node.id, node)
   }
+  const first = evidence.firstId && byId.has(evidence.firstId) ? evidence.firstId : null
+  const boundaryRoot =
+    evidence.startReached && evidence.rootId && byId.has(evidence.rootId) ? evidence.rootId : null
   for (const node of byId.values()) {
-    if (!node.parentKnown) issues.push({ messageId: node.id, parentId: null, reason: 'unverified-root' })
-    else if (node.parentId === null) roots.push(node.id)
+    if (!node.parentKnown) {
+      if (node.id === boundaryRoot) {
+        roots.push(node.id)
+        continue
+      }
+      // A verified chronological boundary ends traversal without fabricating
+      // a native null parent. Other unknown/missing relationships still fail.
+      if (node.id !== first)
+        issues.push({ messageId: node.id, parentId: null, reason: 'unverified-root' })
+    } else if (node.parentId === null) roots.push(node.id)
     else {
       const list = children.get(node.parentId) ?? []
       list.push(node.id)
@@ -83,10 +98,13 @@ export function conversationIntegrityFromGraph(
     issues.push({ messageId: id, parentId: byId.get(id)?.parentId ?? null, reason: 'cycle' })
   // Multiple explicit roots are separate observed chains, not one verified
   // conversation. Unknown relationships alone stay unknown, never invented gaps.
-  for (const id of roots.slice(1)) issues.push({ messageId: id, parentId: null, reason: 'disconnected' })
+  const starts =
+    first && first !== boundaryRoot && !byId.get(first)?.parentKnown ? [first, ...roots] : roots
+  for (const id of starts.slice(1))
+    if (id !== boundaryRoot) issues.push({ messageId: id, parentId: null, reason: 'disconnected' })
   if (evidence.headId && !byId.has(evidence.headId))
     issues.push({ messageId: evidence.headId, parentId: null, reason: 'missing-head' })
-  const start = roots.length || evidence.startReached ? 'verified' : 'unknown'
+  const start = roots.length || evidence.startReached || first ? 'verified' : 'unknown'
   const end = evidence.headId
     ? byId.has(evidence.headId)
       ? evidence.endReached
@@ -103,7 +121,7 @@ export function conversationIntegrityFromGraph(
       : byId.size && start === 'verified' && end === 'verified' && !issues.length
         ? 'verified'
         : 'unknown',
-    firstMessageId: roots.length === 1 ? (roots[0] ?? null) : null,
+    firstMessageId: first ?? (roots.length === 1 ? (roots[0] ?? null) : null),
     lastMessageId: evidence.headId && byId.has(evidence.headId) ? evidence.headId : null,
     roots,
     tips: [...byId.keys()].filter((id) => !children.has(id)),

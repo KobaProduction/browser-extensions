@@ -18,6 +18,8 @@ const props = defineProps<{
   /** The displayed workspace can belong to a group without being a settings leaf. */
   activeGroup?: string
   label?: string
+  /** Dense inline navigation for an embedded workspace toolbar. */
+  compact?: boolean
 }>()
 const emit = defineEmits<{ select: [id: string] }>()
 const locale = useApplicationLocale()
@@ -96,7 +98,7 @@ function back(depth: number) {
 </script>
 <template>
   <nav class="settings-catalog min-w-0" :aria-label="label || text('Разделы и настройки','Sections and settings')">
-    <Collapsible v-model:open="expanded" class="flex max-h-[calc(50dvh-1.5rem)] min-h-0 min-w-0 flex-col min-[621px]:hidden">
+    <Collapsible v-if="!compact" v-model:open="expanded" class="flex max-h-[calc(50dvh-1.5rem)] min-h-0 min-w-0 flex-col min-[621px]:hidden">
       <CollapsibleTrigger as-child>
           <Button data-settings-catalog-toggle type="button" variant="outline" class="h-auto min-h-11 w-full min-w-0 shrink-0 justify-between gap-3 whitespace-normal text-left">
           <span class="grid min-w-0 gap-0.5"><span>{{ expanded ? text('Свернуть разделы','Collapse sections') : text('Разделы и настройки','Sections and settings') }}</span><small class="break-words font-normal text-muted-foreground">{{ selectedTitle }}</small></span>
@@ -107,6 +109,6 @@ function back(depth: number) {
         <SettingsCatalogLevels :groups="groups" :group-id="groupId" :parents="branch.parents" :entries="branch.entries" :selected="selected" @group="changeGroup" @enter="enter" @back="back" />
       </CollapsibleContent>
     </Collapsible>
-    <SettingsCatalogLevels class="hidden min-[621px]:block" :groups="groups" :group-id="groupId" :parents="branch.parents" :entries="branch.entries" :selected="selected" @group="changeGroup" @enter="enter" @back="back" />
+    <SettingsCatalogLevels :class="compact ? 'block' : 'hidden min-[621px]:block'" :compact="compact" :groups="groups" :group-id="groupId" :parents="branch.parents" :entries="branch.entries" :selected="selected" @group="changeGroup" @enter="enter" @back="back" />
   </nav>
 </template>

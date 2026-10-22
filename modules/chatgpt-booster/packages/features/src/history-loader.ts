@@ -72,7 +72,8 @@ export class HistoryLoaderModule implements BoosterModule {
 
   constructor(
     private readonly stateStore: ConversationStateStore,
-    private readonly capture: Pick<FixedChatGptCapture, 'collectionSession' | 'completeCollection'>,
+    private readonly capture: Pick<FixedChatGptCapture, 'collectionSession' | 'completeCollection'> &
+      Partial<Pick<FixedChatGptCapture, 'completeSavedCollection'>>,
     private readonly messageSource: Window = window,
     _settingsAdapter?: SettingsAdapter,
     private readonly openArchiveOnComplete = true,
@@ -175,6 +176,7 @@ export class HistoryLoaderModule implements BoosterModule {
       this.sessions.requireCurrent(run)
     }
     try {
+      if (await this.capture.completeSavedCollection?.(run)) return
       while (true) {
         requireCurrentCollection()
 

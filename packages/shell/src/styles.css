@@ -674,7 +674,7 @@
   width: 100%;
 }
 @media (max-width: 620px) {
-  /* Keep header identity and installation controls on separate usable rows. */
+  /* Identity and channel share one compact row with fixed-size controls. */
   .booster-control-standalone > .booster-control-header {
     flex-direction: row;
     align-items: center;
@@ -682,16 +682,19 @@
     padding: 12px;
   }
   .booster-control-standalone > .booster-control-header > .booster-header-copy > div {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 6px;
   }
   .booster-control-standalone > .booster-control-header .booster-header-copy strong {
-    flex-basis: 100%;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .booster-control-standalone > .booster-control-header > .booster-header-actions {
     display: flex;
     justify-content: space-between;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 8px;
   }
   .booster-control-standalone > .booster-control-header > .booster-header-actions > button:last-child {
@@ -890,6 +893,19 @@
   font-size: 11px;
   font-weight: 400;
   white-space: nowrap;
+}
+.booster-control-identity {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.booster-control-header > .booster-header-copy {
+  min-width: 0;
+  flex: 1;
+}
+.booster-control-header > .booster-header-actions {
+  flex: 0 0 auto;
 }
 .booster-floating-identity {
   display: flex;

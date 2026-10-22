@@ -11,6 +11,7 @@ const text = useLocalizedText(WIDGET_UI_MESSAGES)
 const props = withDefaults(
   defineProps<{
     label: string
+    variant?: 'outline' | 'ghost'
     busy: boolean
     disabled?: boolean
     processed?: number | null
@@ -20,17 +21,17 @@ const props = withDefaults(
     stopLabel?: string
     savedLabel?: string
   }>(),
-  { disabled: false, reused: 0, stopLabel: 'Остановить', savedLabel: 'Сохранено' },
+  { disabled: false, variant: 'outline', reused: 0, stopLabel: 'Остановить', savedLabel: 'Сохранено' },
 )
 const covered = computed(() => Math.max(0, props.processed ?? 0) + Math.max(0, props.reused))
 const emit = defineEmits<{ start: []; stop: [] }>()
 </script>
 <template>
   <div class="booster-conversation-collection grid justify-items-start gap-2">
-    <Button v-if="!busy" type="button" variant="outline" size="sm" :disabled="disabled" @click="emit('start')">
+    <Button v-if="!busy" type="button" :variant="variant" size="sm" :disabled="disabled" @click="emit('start')">
       <ArrowUpToLine class="size-4" aria-hidden="true" />{{ label }}
     </Button>
-    <Button v-else type="button" variant="outline" size="sm" @click="emit('stop')">
+    <Button v-else type="button" :variant="variant" size="sm" @click="emit('stop')">
       <Square class="size-4" aria-hidden="true" />{{ text(stopLabel) }}
     </Button>
     <ArchiveProgressBar v-if="total !== null && total !== undefined && total > 0"

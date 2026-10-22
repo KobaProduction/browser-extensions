@@ -53,6 +53,13 @@ bun run check
 bun run build
 ```
 
+Run these gates for acceptance of a finished change. `bun run test` selects
+changed files and their linked tests; `bun run test:plan` previews the selection.
+Use `bun run test -- --files <source-or-test-paths>` for one atomic batch and
+`bun run test:all` only when full-suite acceptance is intended. The
+[testing contract](docs/shared/PROJECT_RULES.md#engineering-workflow) also applies
+to CI and the pre-push hook.
+
 After a fresh Git checkout, enable the tracked pre-push hook **locally**:
 
 ```bash

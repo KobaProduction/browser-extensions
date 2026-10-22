@@ -54,6 +54,7 @@ import {
   sourceProjectBelongsToConversation,
   validateProjectAssociations,
 } from './archive-project-association'
+import { validateConversationStartEvidence } from './archive-start-evidence'
 
 /**
  * Provider-owned, immutable canonical archive v1. No legacy database is opened,
@@ -66,6 +67,7 @@ export interface FixedProject {
   title: string | null
 }
 export interface FixedConversation {
+  startEvidence?: import('./archive-start-evidence').ConversationStartEvidence
   key: string
   accountId: string
   conversationId: string
@@ -147,6 +149,7 @@ async function observationDigest(raw: SourceCloneDigest, events: unknown) {
   return JSON.stringify([raw.hash, await sourceCloneDigest(events ?? null)])
 }
 export interface SourceObservation {
+  startEvidence?: import('./archive-start-evidence').ConversationStartEvidence
   /** Identity must have been independently verified by the source adapter. */
   accountId: string
   conversationId: string
@@ -248,6 +251,15 @@ export class FixedCanonicalDexieRepository {
   ): Promise<{ key: string; normalized?: ArchiveMessageV1 }> {
     if (!stillAuthorized()) throw Error('Fixed archive capture authorization expired')
     const projection = checkedObservation(observation, this.scope)
+    if (observation.startEvidence) {
+      validateConversationStartEvidence(observation.startEvidence)
+      if (
+        observation.startEvidence.kind !== 'native-create' ||
+        observation.startEvidence.firstMessageId !== observation.raw.id ||
+        (observation.raw.author as { role?: unknown } | undefined)?.role !== 'user'
+      )
+        throw Error('Conversation creation must accompany its first original message')
+    }
     const accountId = observation.accountId
     const conversationId = observation.conversationId
     const messageKey = projection.messageKey
@@ -307,7 +319,19 @@ export class FixedCanonicalDexieRepository {
         if (!stillAuthorized()) throw Error('Fixed archive capture authorization expired')
         const prior = await snapshots.get(messageKey)
         const priorMessage = await messages.get(messageKey)
-        const existingConversation = await conversations.get(conversationKey)
+        let existingConversation = await conversations.get(conversationKey)
+        if (observation.startEvidence && existingConversation && !existingConversation.startEvidence) {
+          existingConversation = {
+            ...existingConversation,
+            startEvidence: structuredClone(observation.startEvidence),
+            revision: (existingConversation.revision ?? 0) + 1,
+          }
+          await Dexie.waitFor(
+            assertFixedBackupAdmission('conversations', conversationKey, existingConversation),
+          )
+          await conversations.put(existingConversation)
+          if (!stillAuthorized()) throw Error('Fixed archive capture authorization expired')
+        }
         const instanceId = existingConversation?.instanceId ?? crypto.randomUUID()
         if (existingConversation && existingConversation.projectId !== projectId)
           throw Error('Conversation project changed; a verified explicit action is required')
@@ -465,6 +489,9 @@ export class FixedCanonicalDexieRepository {
             title,
             revision: 0,
             instanceId,
+            ...(observation.startEvidence
+              ? { startEvidence: structuredClone(observation.startEvidence) }
+              : {}),
           })
         }
         await messages.add(record)
@@ -662,8 +689,23 @@ export class FixedCanonicalDexieRepository {
         if (page.isInitial)
           for (const retained of next)
             if (!retained.isInitial) pageCoverage = advanceHistoryCoverage(pageCoverage, retained)
+        const startMessage =
+          page.hasPreviousPage === false && page.startCursor && nonEmpty(page.startCursor)
+            ? await this.getMessage(conversationId, page.startCursor)
+            : undefined
+        const startEvidence =
+          current.startEvidence ??
+          (startMessage && page.readId
+            ? {
+                kind: 'native-page' as const,
+                firstMessageId: startMessage.messageId,
+                sourceId: page.readId,
+                observedAt: page.observedAt,
+              }
+            : undefined)
         const nextHeader = {
           ...current,
+          ...(startEvidence ? { startEvidence } : {}),
           pageEvidence: next.slice(-96),
           pageCoverage: structuredClone(pageCoverage),
           revision: (current.revision ?? 0) + 1,
@@ -759,6 +801,7 @@ export class FixedCanonicalDexieRepository {
       header?.terminalHeadId ?? null,
       header?.pageHeadId ?? null,
       header?.pageCoverage,
+      header?.startEvidence?.firstMessageId,
     )
   }
   async branchPath(conversationId: string, tipId: string): Promise<readonly string[]> {
@@ -1530,6 +1573,7 @@ export class FixedCanonicalDexieRepository {
           if (value.projectId !== parts[1] || (value.title !== null && typeof value.title !== 'string'))
             throw Error('Invalid project recovery record')
         } else if (store === 'conversations') {
+          if (value.startEvidence !== undefined) validateConversationStartEvidence(value.startEvidence)
           if (value.pageCoverage !== undefined) validateHistoryCoverageCheckpoint(value.pageCoverage)
           const parts = tuple(row.key, 2)
           if (
@@ -1676,6 +1720,15 @@ export class FixedCanonicalDexieRepository {
           if (!elements.has(element.elementId) || element.messageKey !== m.key)
             throw Error('Missing canonical content element')
         }
+      }
+      for (const header of conversationHeaders.values()) {
+        if (
+          header.startEvidence &&
+          !messages.has(
+            JSON.stringify([owner, header.conversationId, header.startEvidence.firstMessageId]),
+          )
+        )
+          throw Error('Conversation start original is missing')
       }
       for (const snap of buckets.snapshots as FixedSnapshot[]) {
         const message = messages.get(snap.messageKey)

@@ -29,6 +29,7 @@ import X from 'lucide-vue-next/dist/esm/icons/x.js'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import ArchiveExportDialog from './ArchiveExportDialog.vue'
 import ArchiveWorkspace from './ArchiveWorkspace.vue'
+import { createArchiveRefreshQueue } from './archive-refresh-queue'
 import CaptureSettingsSurface from './CaptureSettingsSurface.vue'
 import ControlCenterPanel from './ControlCenterPanel.vue'
 import CopyIdentity from './CopyIdentity.vue'
@@ -72,7 +73,7 @@ const loader = ref<HistoryLoaderState>({
 const toggleButton = ref<HTMLButtonElement>()
 let unsubscribe: (() => void) | undefined, contextUnsubscribe: (() => void) | undefined
 let contextFallbackTimer: ReturnType<typeof setInterval> | undefined
-let archiveRefreshTimer: ReturnType<typeof setTimeout> | undefined
+const archiveRefresh = createArchiveRefreshQueue(() => refreshContext())
 let alive = true,
   revision = 0,
   ignoreClick = false,
@@ -373,12 +374,7 @@ function onArchiveIncompatible(event: Event) {
 }
 function onArchive() {
   if (!opened.value && !archiveOpen.value) return
-  clearTimeout(archiveRefreshTimer)
-  const wait = Math.max(0, 180 - (Date.now() - refreshAt))
-  archiveRefreshTimer = setTimeout(() => {
-    archiveRefreshTimer = undefined
-    void refreshContext()
-  }, wait)
+  archiveRefresh.request()
 }
 function onOpenArchive(event: Event) {
   const id = (event as CustomEvent<{ conversationId?: string }>).detail?.conversationId
@@ -445,7 +441,7 @@ onBeforeUnmount(() => {
   unsubscribe?.()
   contextUnsubscribe?.()
   clearInterval(contextFallbackTimer)
-  clearTimeout(archiveRefreshTimer)
+  archiveRefresh.stop()
   window.removeEventListener('resize', resize)
   window.removeEventListener('keydown', key)
   window.removeEventListener(OPEN_SETTINGS_EVENT, openSettings)

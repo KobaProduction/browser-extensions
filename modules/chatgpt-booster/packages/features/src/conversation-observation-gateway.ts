@@ -5,6 +5,7 @@ import type {
   ConversationStreamEventDetail,
   ConversationStreamStatusEventDetail,
 } from '@chatgpt-booster/observer'
+import type { ConversationStartEvidence } from './archive-start-evidence'
 
 export type ConversationObservation =
   | { kind: 'page'; detail: ConversationArchiveEventDetail }
@@ -25,6 +26,7 @@ export type BufferedConversationSource =
         activeRun: boolean
         requestId?: string | null
         evidence?: readonly Record<string, unknown>[]
+        startEvidence?: ConversationStartEvidence
       }
     }
 
@@ -88,7 +90,9 @@ export class ConversationObservationGateway {
         ? detached.detail.payload.messages
         : detached.kind === 'stream' && detached.detail.kind === 'message'
           ? [detached.detail.record]
-          : []
+          : detached.kind === 'request' && (detached.detail.submission || detached.detail.creation)
+            ? [(detached.detail.submission ?? detached.detail.creation)?.message]
+            : []
     const ids = this.messageIds.get(conversationId) ?? new Set<string>()
     const previousCount = ids.size
     const messages = this.messages.get(conversationId) ?? new Map<string, Set<number>>()

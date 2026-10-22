@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useUiPortalTarget } from '../../portal-target'
 import { Dialog, DialogContent, DialogTitle } from '../ui/dialog'
 
 const props = defineProps<{
@@ -10,8 +11,12 @@ const props = defineProps<{
   surfaceStyle?: Record<string, string>
 }>()
 const emit = defineEmits<{ close: [] }>()
+const portal = useUiPortalTarget()
 function interactOutside(event: Event) {
-  if (props.floating) event.preventDefault()
+  // Nested registry dialogs share the installation's shadow-owned portal.
+  // Their focus transition must not dismiss the underlying workspace.
+  const nestedDialog = (portal?.querySelectorAll('[role="dialog"][data-state="open"]').length ?? 0) > 1
+  if (props.floating || nestedDialog) event.preventDefault()
 }
 </script>
 <template>

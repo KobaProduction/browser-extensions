@@ -28,6 +28,46 @@ const source = (accountId: string, conversationId: string, id: string) => ({
   },
 })
 
+test('first-message evidence survives reopening and recovery with its original, rejecting detached anchors', async () => {
+  const identity = scope('dev', 'synthetic-start-recovery', 'synthetic-start-owner')
+  let db = new FixedCanonicalDexieRepository(identity, driver)
+  const input = source('synthetic-start-owner', 'start-chat', 'first-user')
+  input.raw.author.role = 'user'
+  const startEvidence = {
+    kind: 'native-create' as const,
+    firstMessageId: 'first-user',
+    sourceId: 'native-create-run',
+    observedAt: 1234,
+  }
+  try {
+    await db.addObservation({
+      ...input,
+      startEvidence,
+      sourceEvents: [
+        { kind: 'native-create', requestId: 'native-create-run', userMessageId: 'first-user' },
+      ],
+    })
+    db.close()
+    db = new FixedCanonicalDexieRepository(identity, driver)
+    expect((await db.getConversation('start-chat'))?.startEvidence).toEqual(startEvidence)
+    const rows = []
+    for await (const row of db.backupPort().readRows(10)) rows.push(row)
+    await db.backupPort().restoreAtomically(rows)
+    expect((await db.getConversation('start-chat'))?.startEvidence).toEqual(startEvidence)
+    expect((await db.getSourceSnapshot('start-chat', 'first-user'))?.raw).toEqual(input.raw)
+    expect(await db.integrity('start-chat')).toMatchObject({
+      start: 'verified',
+      firstMessageId: 'first-user',
+    })
+    await expect(
+      db.addObservation({ ...input, startEvidence: { ...startEvidence, firstMessageId: 'other' } }),
+    ).rejects.toThrow('first original')
+    expect((await db.getConversation('start-chat'))?.startEvidence).toEqual(startEvidence)
+  } finally {
+    db.close()
+  }
+})
+
 test('Dexie canonical v1 is fixed, keeps opaque unknown input and never changes native databases', async () => {
   const db = new FixedCanonicalDexieRepository(scope('dev', 'tm-fixed-1', 'account-a'), driver)
   expect(db.databaseName).toContain('canonical-v1')

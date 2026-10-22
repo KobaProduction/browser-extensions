@@ -1,4 +1,5 @@
 import type { AgentActivitySnapshot } from '@chatgpt-booster/core'
+import { ensureSiteDecoration } from '@kobaproduction/browser-ui'
 import { type SupportedLocale, translate } from './i18n'
 import { installBoosterShadowStyles } from './shadow-styles'
 
@@ -66,90 +67,105 @@ export function mountAgentActivity(
   initial: AgentActivitySnapshot,
   locale: SupportedLocale,
 ): MountedAgentActivity {
-  const host = document.createElement('div')
-  host.dataset.chatgptBooster = 'agent-activity'
-  host.style.display = 'flex'
-  host.style.width = '100%'
-  host.style.justifyContent = 'flex-start'
-  host.style.marginTop = '2px'
-  into.append(host)
+  return ensureSiteDecoration({
+    anchor: into,
+    kind: 'chatgpt-booster:agent-activity',
+    identity: locale,
+    legacySelector: '[data-chatgpt-booster="agent-activity"]',
+    update: (current) => current.update(initial),
+    create: () => {
+      const host = document.createElement('div')
+      host.dataset.chatgptBooster = 'agent-activity'
+      host.style.display = 'flex'
+      host.style.width = '100%'
+      host.style.justifyContent = 'flex-start'
+      host.style.marginTop = '2px'
+      into.append(host)
 
-  const shadow = host.attachShadow({ mode: 'open' })
-  installBoosterShadowStyles(shadow)
-  const pill = document.createElement('div')
-  pill.className = 'booster-agent-activity'
-  const icon = clockIcon()
-  const phase = document.createElement('span')
-  phase.className = 'booster-agent-activity-phase'
-  const label = document.createElement('span')
-  label.className = 'booster-agent-activity-label'
-  const timer = document.createElement('strong')
-  timer.className = 'booster-agent-activity-timer'
-  pill.append(icon, phase, label, timer)
-  shadow.append(pill)
+      const shadow = host.attachShadow({ mode: 'open' })
+      installBoosterShadowStyles(shadow)
+      const pill = document.createElement('div')
+      pill.className = 'booster-agent-activity'
+      const icon = clockIcon()
+      const phase = document.createElement('span')
+      phase.className = 'booster-agent-activity-phase'
+      const label = document.createElement('span')
+      label.className = 'booster-agent-activity-label'
+      const timer = document.createElement('strong')
+      timer.className = 'booster-agent-activity-timer'
+      pill.append(icon, phase, label, timer)
+      shadow.append(pill)
 
-  let snapshot = initial
-  let currentNow = Date.now()
-  const t = (key: Parameters<typeof translate>[1]) => translate(locale, key)
+      let snapshot = initial
+      let currentNow = Date.now()
+      const t = (key: Parameters<typeof translate>[1]) => translate(locale, key)
 
-  const phaseLabel = () => {
-    if (snapshot.phase === 'tool') return t('activity.tool')
-    if (snapshot.phase === 'responding') return t('activity.responding')
-    if (snapshot.phase === 'thinking') return t('activity.thinking')
-    if (snapshot.phase === 'complete') return t('activity.complete')
-    return t('activity.idle')
-  }
+      const phaseLabel = () => {
+        if (snapshot.phase === 'tool') return t('activity.tool')
+        if (snapshot.phase === 'responding') return t('activity.responding')
+        if (snapshot.phase === 'thinking') return t('activity.thinking')
+        if (snapshot.phase === 'complete') return t('activity.complete')
+        return t('activity.idle')
+      }
 
-  const renderStatic = () => {
-    pill.dataset.phase = snapshot.phase
-    phase.textContent = phaseLabel()
-    const rawLabel =
-      snapshot.label && snapshot.label !== snapshot.tool?.label
-        ? snapshot.label
-        : (snapshot.tool?.label ?? '')
-    label.textContent = snapshot.phase === 'tool' ? normalizedLabel(rawLabel) : ''
-    label.hidden = !label.textContent
-    pill.removeAttribute('title')
-    pill.setAttribute(
-      'aria-label',
-      `${phaseLabel()}, ${t('activity.duration')} ${elapsed(snapshot.phaseStartedAt, snapshot.completedAt, currentNow)}`,
-    )
-  }
-  const renderTimer = () => {
-    if (snapshot.phase === 'complete') {
-      timer.textContent = duration(
-        snapshot.durationMs ??
-          (snapshot.startedAt && snapshot.lastActivityAt
-            ? Math.max(0, snapshot.lastActivityAt - snapshot.startedAt)
-            : null),
-      )
-      pill.setAttribute('aria-label', `${phaseLabel()}, ${t('activity.duration')} ${timer.textContent}`)
-      return
-    }
-    const timerStart =
-      snapshot.phase === 'thinking'
-        ? (snapshot.reasoningStartedAt ?? snapshot.startedAt)
-        : (snapshot.phaseStartedAt ?? snapshot.startedAt)
-    timer.textContent = elapsed(timerStart, snapshot.completedAt, currentNow)
-    pill.setAttribute('aria-label', `${phaseLabel()}, ${t('activity.duration')} ${timer.textContent}`)
-  }
+      const renderStatic = () => {
+        pill.dataset.phase = snapshot.phase
+        phase.textContent = phaseLabel()
+        const rawLabel =
+          snapshot.label && snapshot.label !== snapshot.tool?.label
+            ? snapshot.label
+            : (snapshot.tool?.label ?? '')
+        label.textContent = snapshot.phase === 'tool' ? normalizedLabel(rawLabel) : ''
+        label.hidden = !label.textContent
+        pill.removeAttribute('title')
+        pill.setAttribute(
+          'aria-label',
+          `${phaseLabel()}, ${t('activity.duration')} ${elapsed(snapshot.phaseStartedAt, snapshot.completedAt, currentNow)}`,
+        )
+      }
+      const renderTimer = () => {
+        if (snapshot.phase === 'complete') {
+          timer.textContent = duration(
+            snapshot.durationMs ??
+              (snapshot.startedAt && snapshot.lastActivityAt
+                ? Math.max(0, snapshot.lastActivityAt - snapshot.startedAt)
+                : null),
+          )
+          pill.setAttribute(
+            'aria-label',
+            `${phaseLabel()}, ${t('activity.duration')} ${timer.textContent}`,
+          )
+          return
+        }
+        const timerStart =
+          snapshot.phase === 'thinking'
+            ? (snapshot.reasoningStartedAt ?? snapshot.startedAt)
+            : (snapshot.phaseStartedAt ?? snapshot.startedAt)
+        timer.textContent = elapsed(timerStart, snapshot.completedAt, currentNow)
+        pill.setAttribute(
+          'aria-label',
+          `${phaseLabel()}, ${t('activity.duration')} ${timer.textContent}`,
+        )
+      }
 
-  renderStatic()
-  renderTimer()
-
-  return {
-    element: host,
-    update(next) {
-      snapshot = next
       renderStatic()
       renderTimer()
+
+      return {
+        element: host,
+        update(next) {
+          snapshot = next
+          renderStatic()
+          renderTimer()
+        },
+        tick(now) {
+          currentNow = now
+          renderTimer()
+        },
+        unmount() {
+          host.remove()
+        },
+      }
     },
-    tick(now) {
-      currentNow = now
-      renderTimer()
-    },
-    unmount() {
-      host.remove()
-    },
-  }
+  })
 }

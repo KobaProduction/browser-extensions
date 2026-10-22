@@ -277,6 +277,7 @@ export interface ArchiveDataAdapter {
       parentId: string | null
       label: string
       preview: string
+      timestampMs?: number | null
       uncertain: boolean
     }[]
   >

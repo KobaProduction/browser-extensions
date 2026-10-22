@@ -9,6 +9,8 @@ import {
   NATIVE_HISTORY_CONTRACT_V5,
   NATIVE_HISTORY_CONTRACT_V6,
   NATIVE_HISTORY_CONTRACT_V7,
+  NATIVE_HISTORY_CONTRACT_V8,
+  NATIVE_HISTORY_CONTRACT_V9,
   NATIVE_HISTORY_CONTRACT_VERSION,
   registeredNativeHistoryAdapters,
 } from '../packages/features/src/archive-source-contract'
@@ -57,6 +59,42 @@ function page(messages: unknown[] = [message('m1')], initial = true): Conversati
 }
 
 describe('ChatGPT native page source contract', () => {
+  test('v8 retains native user context in page and stream while old adapters reject it', () => {
+    const incoming = message('synthetic-context', {
+      author: { role: 'user' },
+      metadata: { is_user_system_message: true },
+      content: {
+        content_type: 'user_editable_context',
+        user_profile: 'Synthetic profile',
+        user_instructions: 'Synthetic instruction',
+      },
+    })
+    const original = structuredClone(incoming)
+    new ArchiveSourceGate().inspect(page([incoming]))
+    new ArchiveSourceGate().inspectStreamMessage('conversation', incoming)
+    expect(incoming).toEqual(original)
+    expect(() =>
+      new ArchiveSourceGate().inspectStreamMessage('conversation', {
+        ...incoming,
+        metadata: { is_user_system_message: 'true' },
+      }),
+    ).toThrow(ArchiveContractError)
+    expect(() =>
+      new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V7).inspectStreamMessage(
+        'conversation',
+        incoming,
+      ),
+    ).toThrow(ArchiveContractError)
+    for (const content of [
+      { ...incoming.content, user_profile: null },
+      { ...incoming.content, user_instructions: 1 },
+      { content_type: 'user_editable_context', user_profile: '' },
+      { ...incoming.content, unsupported: '' },
+    ])
+      expect(() =>
+        new ArchiveSourceGate().inspectStreamMessage('conversation', { ...incoming, content }),
+      ).toThrow(ArchiveContractError)
+  })
   test('v7 admits the observed exclusive key string in page and stream, without changing v1-v6', () => {
     const incoming = message('synthetic-exclusive', {
       metadata: { exclusive_key: 'synthetic-exclusive-key', rebase_developer_message: true },
@@ -113,7 +151,7 @@ describe('ChatGPT native page source contract', () => {
     gate.inspect(earlier)
     expect(JSON.stringify(first.payload)).toBe(raw)
     expect(gate.get('conversation')).toBeUndefined()
-    expect(NATIVE_HISTORY_CONTRACT_VERSION).toBe(NATIVE_HISTORY_CONTRACT_V7)
+    expect(NATIVE_HISTORY_CONTRACT_VERSION).toBe(NATIVE_HISTORY_CONTRACT_V9)
   })
 
   test('accepts observed nullable native creation timestamps unchanged', () => {
@@ -250,6 +288,8 @@ describe('ChatGPT native page source contract', () => {
       NATIVE_HISTORY_CONTRACT_V5,
       NATIVE_HISTORY_CONTRACT_V6,
       NATIVE_HISTORY_CONTRACT_V7,
+      NATIVE_HISTORY_CONTRACT_V8,
+      NATIVE_HISTORY_CONTRACT_V9,
     ])
   })
 
@@ -598,4 +638,70 @@ describe('ChatGPT native page source contract', () => {
     expect(gate.get('another')).toBeUndefined()
     expect(gate.get('conversation')).toBeDefined()
   })
+})
+
+test('v9 retains observed finished_text strings without widening v1-v8 or accepting other types', () => {
+  const incoming = message('synthetic-finished', {
+    metadata: {
+      finished_text: 'Synthetic completion summary',
+      initial_text: 'Synthetic initial summary',
+      summarization_headline: 'Synthetic headline',
+    },
+  })
+  const original = structuredClone(incoming)
+  new ArchiveSourceGate().inspect(page([incoming]))
+  new ArchiveSourceGate().inspectStreamMessage('conversation', incoming)
+  expect(incoming).toEqual(original)
+  expect(() =>
+    new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V8).inspect(page([incoming])),
+  ).toThrow(ArchiveContractError)
+  for (const finished_text of [null, 1, true, [], {}]) {
+    expect(() =>
+      new ArchiveSourceGate().inspectStreamMessage('conversation', {
+        ...incoming,
+        metadata: { finished_text },
+      }),
+    ).toThrow(ArchiveContractError)
+    expect(() =>
+      new ArchiveSourceGate().inspectStreamMessage('conversation', {
+        ...incoming,
+        metadata: { initial_text: finished_text },
+      }),
+    ).toThrow(ArchiveContractError)
+    expect(() =>
+      new ArchiveSourceGate().inspectStreamMessage('conversation', {
+        ...incoming,
+        metadata: { summarization_headline: finished_text },
+      }),
+    ).toThrow(ArchiveContractError)
+  }
+})
+
+test('v9 validates the observed asynchronous response metadata independently of database schema', () => {
+  const metadata = {
+    async_source: 'synthetic',
+    permissions: [],
+    poll_freshness_max_mins: 1,
+    poll_interval_ms: 10,
+    poll_on_websocket_inactivity_ms: 20,
+    poll_suppress_reconnect_banner: true,
+    pro_skipped: false,
+    targeted_feedback: { synthetic: true },
+    preamble_version: 1,
+  }
+  const incoming = message('synthetic-async', { metadata })
+  new ArchiveSourceGate().inspect(page([incoming]))
+  new ArchiveSourceGate().inspectStreamMessage('conversation', incoming)
+  for (const [key, value] of Object.entries(metadata)) {
+    const invalid = typeof value === 'string' ? false : 'wrong-type'
+    expect(() =>
+      new ArchiveSourceGate().inspectStreamMessage('conversation', {
+        ...incoming,
+        metadata: { ...metadata, [key]: invalid },
+      }),
+    ).toThrow(ArchiveContractError)
+  }
+  expect(() =>
+    new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V8).inspect(page([incoming])),
+  ).toThrow(ArchiveContractError)
 })

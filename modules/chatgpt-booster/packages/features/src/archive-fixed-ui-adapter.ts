@@ -169,11 +169,14 @@ export function createFixedArchiveUiAdapter(
       const owner = account(),
         epoch = memory.accountEpoch()
       await workspace.open(id)
+      const confirmedStarts = workspace.confirmedStartIds(id)
       const metadata = workspace.records(id).map((record) => ({
         id: record.messageId,
         parentId: record.parentId,
         parentKnown: Object.hasOwn((record.raw.metadata ?? {}) as object, 'parent_id'),
+        timestampMs: record.createTime === null ? null : record.createTime * 1000,
         role: record.role,
+        contentType: record.contentType,
         channel: record.channel,
         recipient: record.recipient,
         preview: String(
@@ -188,8 +191,10 @@ export function createFixedArchiveUiAdapter(
         metadata
           .filter(
             (message) =>
-              message.role === 'user' ||
+              (['text', 'multimodal_text'].includes(message.contentType ?? '') &&
+                message.role === 'user') ||
               (message.role === 'assistant' &&
+                ['text', 'multimodal_text'].includes(message.contentType ?? '') &&
                 (!message.channel || message.channel === 'final') &&
                 (!message.recipient || message.recipient === 'all')),
           )
@@ -199,7 +204,7 @@ export function createFixedArchiveUiAdapter(
         .filter((message) => visible.has(message.id))
         .map((message) => {
           let parentId = message.parentId
-          let uncertain = !message.parentKnown
+          let uncertain = !message.parentKnown && !confirmedStarts.has(message.id)
           const seen = new Set([message.id])
           while (parentId && byId.has(parentId) && !visible.has(parentId) && !seen.has(parentId)) {
             seen.add(parentId)
@@ -208,7 +213,7 @@ export function createFixedArchiveUiAdapter(
               uncertain = true
               break
             }
-            if (!intermediate.parentKnown) uncertain = true
+            if (!intermediate.parentKnown && !confirmedStarts.has(intermediate.id)) uncertain = true
             parentId = intermediate.parentId
           }
           uncertain ||= Boolean(parentId && (!visible.has(parentId) || seen.has(parentId)))
@@ -218,6 +223,7 @@ export function createFixedArchiveUiAdapter(
             parentId: uncertain ? null : parentId,
             label: message.role === 'user' ? 'User' : 'Assistant',
             preview: message.preview,
+            timestampMs: message.timestampMs,
             uncertain,
           }
         })

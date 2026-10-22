@@ -22,7 +22,7 @@ afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close()
 })
 const tick = () => new Promise((resolve) => setTimeout(resolve, 5))
-async function setup(source: string, pathname = '/c/network-chat') {
+async function setup(source: string, pathname = '/c/network-chat', status = 200) {
   const dom = new Window({ url: `https://chatgpt.com${pathname}` })
   const previous = { window: globalThis.window, location: globalThis.location }
   Object.assign(globalThis, { window: dom, location: dom.location })
@@ -50,7 +50,10 @@ async function setup(source: string, pathname = '/c/network-chat') {
       if (url.includes('/accounts/check'))
         return Response.json({ accounts: { 'owner-A': { account: { account_id: 'owner-A' } } } })
       if (url.includes('/conversations')) return Response.json({ items: [] })
-      return new Response(source, { headers: { 'content-type': 'text/event-stream' } })
+      return new Response(source, {
+        status,
+        headers: { 'content-type': status >= 400 ? 'application/json' : 'text/event-stream' },
+      })
     },
     postMessage(value: { type: string; detail: unknown }) {
       packets.push(value)
@@ -73,6 +76,34 @@ async function setup(source: string, pathname = '/c/network-chat') {
   expect(state.verifiedAccountId()).toBe('owner-A')
   return { target, state, packets }
 }
+
+test('native handoff acknowledges new chat identity without treating HTTP DONE as assistant completion', async () => {
+  const source = `data: ${JSON.stringify({ type: 'stream_handoff', conversation_id: 'new-network-chat', options: { token: 'synthetic-secret' } })}\n\ndata: [DONE]\n\n`
+  const { target, state, packets } = await setup(source, '/')
+  await target.fetch('https://chatgpt.com/backend-api/f/conversation', {
+    method: 'POST',
+    body: JSON.stringify({
+      action: 'next',
+      turn_attribution: { turn_trigger: 'composer' },
+      parent_message_id: 'synthetic-parent',
+      messages: [
+        {
+          id: 'synthetic-first',
+          author: { role: 'user' },
+          content: { content_type: 'text', parts: ['Synthetic'] },
+        },
+      ],
+    }),
+  })
+  await tick()
+  const events = packets.filter((packet) => packet.type === CONVERSATION_STREAM_EVENT)
+  expect(events.map((packet) => (packet.detail as ConversationStreamEventDetail).kind)).toEqual([
+    'handoff',
+  ])
+  expect(JSON.stringify(events)).not.toContain('synthetic-secret')
+  expect(state.header('new-network-chat')?.startEvidence?.firstMessageId).toBe('synthetic-first')
+  expect(state.lifecycle('new-network-chat').state).toBe('in_progress')
+})
 
 test('actual fetch/SSE observation correlates approval, segment completion and DONE without renderer evidence', async () => {
   const source = `${[
@@ -218,6 +249,51 @@ test('new-conversation fetch waits for explicit response identity instead of ass
   expect(state.lifecycle('unrelated-visible-chat')).toBeUndefined()
 })
 
+test('socket final messages inherit only the exact native request identity from SSE', async () => {
+  const source = `data: ${JSON.stringify({
+    conversation_id: 'network-chat',
+    message: {
+      id: 'socket-user',
+      author: { role: 'user' },
+      content: { content_type: 'text', parts: ['Synthetic'] },
+      metadata: { request_id: 'native-run-A' },
+    },
+  })}\n\ndata: ${JSON.stringify({ type: 'stream_handoff', conversation_id: 'network-chat' })}\n\ndata: [DONE]\n\n`
+  const { target, state } = await setup(source)
+  await target.fetch('https://chatgpt.com/backend-api/conversations', {
+    headers: { 'chatgpt-account-id': 'owner-A' },
+  })
+  await tick()
+  await target.fetch('https://chatgpt.com/backend-api/conversation', {
+    method: 'POST',
+    body: JSON.stringify({
+      conversation_id: 'network-chat',
+      messages: [{ id: 'socket-user', author: { role: 'user' } }],
+    }),
+  })
+  await tick()
+  const socket = new target.WebSocket('wss://chatgpt.com/synthetic-stream')
+  const final = (requestId: string) =>
+    new MessageEvent('message', {
+      data: JSON.stringify({
+        conversation_id: 'network-chat',
+        message: {
+          id: `final-${requestId}`,
+          recipient: 'all',
+          author: { role: 'assistant' },
+          content: { content_type: 'text', parts: ['Synthetic'] },
+          metadata: { request_id: requestId, parent_id: 'socket-user' },
+          status: 'finished_successfully',
+          end_turn: true,
+        },
+      }),
+    })
+  socket.dispatchEvent(final('different-run'))
+  expect(state.lifecycle('network-chat').state).toBe('in_progress')
+  socket.dispatchEvent(final('native-run-A'))
+  expect(state.lifecycle('network-chat').state).toBe('complete')
+})
+
 test('uncorrelated WebSocket terminal packets and socket close cannot complete a fetch run', async () => {
   const { target, state } = await setup('')
   await target.fetch('https://chatgpt.com/backend-api/conversations', {
@@ -243,5 +319,50 @@ test('uncorrelated WebSocket terminal packets and socket close cannot complete a
   expect(state.lifecycle('network-chat')).toMatchObject({
     state: 'in_progress',
     transportHealth: 'interrupted',
+  })
+})
+
+test('native HTTP 413 detail.code ends the exact submit as context-exhausted instead of ordinary rejection', async () => {
+  const { target, state, packets } = await setup(
+    JSON.stringify({
+      detail: {
+        code: 'conversation_length_exceeds_limit',
+        message: 'Synthetic context-limit message',
+      },
+    }),
+    '/c/network-chat',
+    413,
+  )
+  await target.fetch('https://chatgpt.com/backend-api/f/conversation', {
+    method: 'POST',
+    body: JSON.stringify({
+      action: 'next',
+      conversation_id: 'network-chat',
+      turn_attribution: { turn_trigger: 'composer' },
+      parent_message_id: 'synthetic-parent',
+      messages: [
+        {
+          id: 'synthetic-exhausted-submit',
+          author: { role: 'user' },
+          content: { content_type: 'text', parts: ['Synthetic report request'] },
+        },
+      ],
+    }),
+  })
+  await tick()
+  const error = packets
+    .filter((p) => p.type === CONVERSATION_STREAM_EVENT)
+    .map((p) => p.detail as ConversationStreamEventDetail)
+    .find((d) => d.kind === 'error')
+  expect(error).toMatchObject({
+    kind: 'error',
+    errorCode: 'conversation_too_large',
+    canRetry: false,
+    userMessageId: 'synthetic-exhausted-submit',
+  })
+  expect(state.lifecycle('network-chat')).toMatchObject({
+    state: 'complete',
+    terminalCause: 'conversation_too_large',
+    userMessageId: 'synthetic-exhausted-submit',
   })
 })

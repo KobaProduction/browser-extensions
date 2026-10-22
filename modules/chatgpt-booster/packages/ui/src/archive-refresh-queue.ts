@@ -1,16 +1,18 @@
-/** Coalesce commit bursts without postponing the first refresh indefinitely.
- * Changes during an async read schedule exactly one subsequent refresh. */
-export function createArchiveRefreshQueue(refresh: () => void | Promise<void>, delay: number) {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  let running = false,
+/** Refresh on the next microtask after commit, never after a debounce timer.
+ * Async reads are serialized; changes during a read trigger one subsequent read. */
+export function createArchiveRefreshQueue(refresh: () => void | Promise<void>) {
+  let scheduled = false,
+    running = false,
     dirty = false,
     stopped = false
   const request = () => {
     if (stopped) return
     dirty = true
-    if (timer || running) return
-    timer = setTimeout(() => {
-      timer = undefined
+    if (scheduled || running) return
+    scheduled = true
+    queueMicrotask(() => {
+      scheduled = false
+      if (stopped) return
       dirty = false
       running = true
       void Promise.resolve()
@@ -20,14 +22,13 @@ export function createArchiveRefreshQueue(refresh: () => void | Promise<void>, d
           running = false
           if (dirty) request()
         })
-    }, delay)
+    })
   }
   return {
     request,
     stop() {
       stopped = true
       dirty = false
-      if (timer) clearTimeout(timer)
     },
   }
 }

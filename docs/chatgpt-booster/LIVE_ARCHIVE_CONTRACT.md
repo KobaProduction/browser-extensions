@@ -46,6 +46,41 @@ counter proves that all remote history has been observed.
 
 ## Source and lifecycle
 
+### Durable conversation start (owner correction, 2026-10-21)
+
+The first native composer `next` submission without an existing conversation ID
+retains its original user message in the pending request. A correlated native
+message response or `stream_handoff` acknowledgement must supply the server conversation ID before admission; local
+route IDs, rejected requests and the first message merely observed in an existing
+chat do not prove creation. With local capture enabled, the submitted original and
+its `native-create` start evidence commit in the same owner-fenced transaction.
+Explicit project IDs in that request participate in capture policy.
+
+A native history page with `has_previous_page: false` records its saved
+`start_cursor` as `native-page` start evidence. This durable header evidence
+survives subsequent latest-window reads with older pages, bounded page eviction,
+reload and validated backup/restore. It adds no table, index or schema version.
+Existing `page_info` checkpoints and exact terminal-head evidence retain their
+independent end semantics. Scrolling itself never supplies a boundary fact.
+
+The first-message anchor identifies the chronological start without rewriting
+the original `metadata.parent_id`. Traversal may stop at that exact anchor when
+its parent is unknown; it does not invent a null native parent. Manual collection
+can reuse that durable start only when every saved graph relationship is intact
+and the independently confirmed end matches the current native head and saved
+revision. A different head, owner, unresolved gap or remote-only mode cannot reuse
+it to skip history. Missing native service parents remain visible
+graph gaps; a known first message is not a claim that every branch is complete.
+An independently confirmed native history-start cursor also anchors that exact
+saved service root when its parent is absent. It never excuses a named missing
+parent, another unknown root or an unrelated branch. The first user marker remains
+separate from this native service-root boundary.
+If both the service prefix and first user record omit their parents, these two
+independently proven boundaries remain separate roots; no edge is manufactured
+between them. Any additional root still prevents complete-chain confirmation.
+Previously, only native page reads supplied a start and the submitted original
+was discarded before the new chat had a server ID, requiring another history read.
+
 ChatGPT owns its passive fetch/XHR/SSE/WebSocket adapters. Normal client
 requests and protocol responses drive canonical state. DOM adapters discover injection
 slots and scrolling containers; they neither fabricate archive records
@@ -511,3 +546,68 @@ fail closed, and a poisoned channel needs an explicit full-root rebase. Once an
 authoritative terminal packet has been decoded, cancellation of the native
 reader cannot replace completion with an interrupted result. Generated synthetic
 protocol regressions and live browser acceptance remain distinct evidence.
+
+A native `stream_handoff` packet acknowledges the conversation ID for the exact
+observed submit request. It can persist that request's first original and start
+marker before socket delivery. Only the safe identity fact is forwarded; resume
+tokens/options are not archived. HTTP `[DONE]` after handoff closes that transport
+segment, not the assistant turn; completion still needs native terminal evidence.
+Socket messages inherit fetch-run identity only when their native
+`metadata.request_id` matches the identity observed on that conversation's SSE
+response. Conversation ID alone never correlates a retry. This bounded transient
+map is cleared on owner/runtime reset and does not persist transport credentials.
+
+Source adapter v8 additionally accepts the observed `user_editable_context`
+content with required string `user_profile` and `user_instructions`, plus the
+observed boolean `metadata.is_user_system_message`. Unknown
+fields/types still fail closed, and v1-v7 signatures remain unchanged. Such
+context remains private original archive data and is never a diagnostic fixture.
+
+Source adapter v9 adds the observed asynchronous-response metadata:
+`initial_text`, `finished_text`, `summarization_headline`, `async_source` are
+strings; `permissions` is an array; `targeted_feedback` is an opaque object;
+`preamble_version`, `poll_freshness_max_mins`, `poll_interval_ms` and
+`poll_on_websocket_inactivity_ms` are numbers; `poll_suppress_reconnect_banner`
+and `pro_skipped` are booleans. These exact outer types were observed in the
+owner's long-running chat on 2026-10-21. Unknown fields and other types still
+fail closed. Adapters v1-v8 and Dexie schema 1 remain unchanged. Regression
+fixtures contain generated summaries only, never the owner's source text.
+
+### Immediate submit and commit notifications
+
+For an existing conversation, an exact native composer `next` request carries
+its original user message into the owner-scoped observation gateway immediately.
+Enabled local capture commits it without waiting for an assistant packet. The
+native parent reference is retained as request evidence; the original message is
+not rewritten. This is proof of submission, not server acceptance or completion,
+and does not create a conversation-start marker. A new conversation still needs
+the server-assigned conversation ID before its first original is persisted.
+
+Received counters react to a newly observed message ID; saved counters react only
+after durable commit. Repeated packets and streamed revisions do not increment
+unique-message counters again. Reader, timeline and overlay subscribers schedule
+their first refresh on the next microtask, with no debounce delay. Async reads
+remain serialized and changes during a read request one subsequent refresh.
+An initial/pagination read defers refresh until it releases the Reader, avoiding
+both concurrent reads and a busy microtask retry loop. Owner and revision guards
+continue to fence every result. No message text or identity is broadcast between
+tabs; the shared feed transmits commit invalidation only.
+
+
+### Native conversation-length rejection
+
+The native composer can reject a request with HTTP 413 and JSON
+`detail.code = conversation_length_exceeds_limit`, with a string
+`detail.message`. Fetch and XHR normalize this exact response to
+`conversation_too_large`, a non-retryable terminal cause used by the existing
+conversation-end alert. A generic HTTP 413, translated page text, or an unknown
+error shape is not evidence of conversation exhaustion. Failed submission does
+not revoke previously committed originals or replace the stored chronology.
+
+Local authenticated DEV acceptance on 2026-10-22: the native HTTP 413 rejection
+emitted the 12-note ending signal in a running AudioContext. Reload followed
+signal observation. All 666 pre-check records remained, with 668 afterward;
+zero original hashes, source chronology hashes or projection hashes changed
+or disappeared. The rejected submission original was retained. Private source
+and hash checkpoints remain outside the repository. This does not establish
+production acceptance or physical speaker audibility.

@@ -185,10 +185,6 @@
     grid-column: 2;
     justify-content: flex-start;
   }
-  .booster-reader-chat-actions {
-    width: 100%;
-    justify-content: flex-start;
-  }
 }
 
 /* v0.6 dev record polish */

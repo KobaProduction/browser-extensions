@@ -19,6 +19,7 @@ test('common collection control displays progress but delegates actual source ca
   expect(compileScript(descriptor, { id: 'collection' }).imports?.Button?.source).toBe(
     '@kobaproduction/browser-ui',
   )
-  expect(source).toContain('variant="outline"')
+  expect(source).toContain("variant: 'outline'")
+  expect(source).toContain(':variant="variant"')
   expect(source).not.toMatch(/vk\.ru|chatgpt\.com|IndexedDB|Dexie/)
 })

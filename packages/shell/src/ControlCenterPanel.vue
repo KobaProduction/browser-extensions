@@ -226,7 +226,7 @@ function openProviderSettings(featureId: string, categoryId?: string): Promise<v
   <section class="booster-control-center" :class="{ 'booster-control-standalone': standalone }" :lang="locale" :data-settings-category="catalogSelected">
     <header v-if="!floating" class="booster-control-header">
       <div v-if="!floating" class="booster-header-copy">
-        <div class="flex items-center gap-2">
+        <div class="booster-control-identity">
           <strong>{{ title }}</strong>
           <span v-if="application.version" class="booster-version">{{ application.version }}</span>
           <Badge v-if="!standalone" variant="outline">Browser Tools</Badge>
@@ -241,7 +241,7 @@ function openProviderSettings(featureId: string, categoryId?: string): Promise<v
         <Button v-if="!floating" variant="ghost" size="icon" class="size-8" :title="text('Закрыть')" @click="emit('close')"><X class="size-4"/></Button>
       </div>
     </header>
-    <SettingsCatalog class="border-b px-3 py-3" :groups="catalogGroups" :selected="catalogSelected" :active-group="catalogActiveGroup" @select="selectCategory" />
+    <SettingsCatalog compact class="border-b px-2 py-1.5" :groups="catalogGroups" :selected="catalogSelected" :active-group="catalogActiveGroup" @select="selectCategory" />
     <div class="booster-settings-layout booster-settings-layout-catalog">
       <main class="booster-settings-content">
         <p v-if="changeError" role="alert">{{ text(changeError) }}</p>

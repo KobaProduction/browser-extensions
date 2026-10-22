@@ -41,6 +41,10 @@ range markers and keyboard first/middle/last navigation remain available.
 
 Both products have an explicit hide/show action. An empty message timeline is
 omitted; pending metadata is loading rather than a fabricated empty history.
+Timeline acceptance must follow dates and boundary evidence through the provider
+adapter and UI composition into the shared preview. An absent parent at an
+explicitly confirmed start is not an uncertain link; named missing parents remain
+uncertain. Never substitute the local observation time for an unknown send date.
 The rail, preview and transcript fit phone/tablet/desktop bounds; previews stay
 within their portal viewport. Opening history does not fetch attachment bytes.
 VK ordinary export exposes JSON/Markdown/TXT and file/ZIP packaging with clear
@@ -63,6 +67,17 @@ insets on its inner toolbar/text/transcript; padding the shared outer Reader
 must not shorten its separators. Measure both separator edges and control insets.
 
 ## Acceptance environment
+
+### Compact archive reading
+
+Archive reading reserves the main surface for messages. Shared identity keeps
+name/version inline; secondary collection, branch selection, integrity and raw
+version inspection use explicit menus/dialogs. Never reserve a permanent row for
+an empty branch state. Internal context is opt-in, and empty reasoning has no
+ordinary transcript card. Useful assistant activity uses a compact disclosure.
+These are presentation rules, never permission to omit captured originals.
+Verify nested dialogs on both fullscreen and floating Shadow DOM surfaces,
+including parent preservation, Escape, focus return and select/dropdown portals.
 
 ### Lab-first interface workflow
 

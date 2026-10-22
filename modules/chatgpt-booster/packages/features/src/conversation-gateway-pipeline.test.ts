@@ -6,6 +6,7 @@ import {
   type SettingsAdapter,
 } from '@chatgpt-booster/core'
 import type { ConversationArchiveEventDetail } from '@chatgpt-booster/observer'
+import { conversationRequestTimingFromBody } from '@chatgpt-booster/observer'
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb'
 import { Window } from 'happy-dom'
 import { ArchiveCollectionSession } from './archive-collection-session'
@@ -111,6 +112,259 @@ function fixture(id: string) {
     adapter: createFixedArchiveUiAdapter(capture, state, workspace),
   }
 }
+
+test('native creation saves its first submitted original and start marker only after server ID acknowledgement', async () => {
+  const f = fixture('gateway-birth')
+  await f.settings.update({ archive: { defaultRule: { enabled: true } } })
+  const original = {
+    id: 'first-user',
+    author: { role: 'user' },
+    create_time: 1800000000,
+    content: { content_type: 'text', parts: ['Synthetic first submission'] },
+    metadata: {},
+  }
+  const request = conversationRequestTimingFromBody(
+    'https://chatgpt.com/backend-api/f/conversation',
+    'POST',
+    {
+      action: 'next',
+      turn_attribution: { turn_trigger: 'composer' },
+      parent_message_id: 'native-hidden-parent',
+      messages: [original],
+    },
+    1800000000000,
+  )
+  expect(request?.creation?.message).toEqual(original)
+  if (!request) throw Error('Synthetic creation request unavailable')
+  f.state.ingestRequest({ ...request, accountId: 'synthetic-owner', requestId: 'birth-run' })
+  await f.capture.waitForDistribution()
+  expect(await f.capture.savedCurrent()).toBe(0)
+  f.state.ingestStreamEvent({
+    kind: 'handoff',
+    accountId: 'synthetic-owner',
+    conversationId: 'gateway-birth',
+    requestId: 'birth-run',
+    observedAt: 1800000000001,
+  })
+  await f.capture.waitForDistribution()
+  expect(await f.capture.savedCurrent()).toBe(1)
+  expect((await f.capture.workspaceChunk('gateway-birth')).header?.startEvidence?.firstMessageId).toBe(
+    'first-user',
+  )
+  expect(f.state.lifecycle('gateway-birth').state).toBe('in_progress')
+  f.state.ingestStreamEvent({
+    kind: 'message',
+    accountId: 'synthetic-owner',
+    conversationId: 'gateway-birth',
+    requestId: 'birth-run',
+    observedAt: 1800000000001,
+    record: record('reply', 'first-user'),
+  })
+  await f.capture.waitForDistribution()
+  expect(await f.capture.savedCurrent()).toBe(2)
+  expect(f.state.observations.receivedCount('gateway-birth')).toBe(2)
+  const rows = await f.capture.readConversation('gateway-birth')
+  expect(rows.find((row) => row.id === 'first-user')?.raw).toEqual(original)
+  expect((await f.capture.workspaceChunk('gateway-birth')).header?.startEvidence).toEqual({
+    kind: 'native-create',
+    firstMessageId: 'first-user',
+    sourceId: 'birth-run',
+    observedAt: 1800000000000,
+  })
+  const integrity = await f.capture.integrity('gateway-birth')
+  expect(integrity.start).toBe('verified')
+  expect(integrity.firstMessageId).toBe('first-user')
+  // The marker is chronological evidence; it must not forge native parent_id.
+  expect(integrity.chain).toBe('verified')
+  expect(rows.find((row) => row.id === 'first-user')?.raw.metadata).toEqual({})
+  const timeline = await f.adapter.getTimeline?.('gateway-birth')
+  expect(timeline?.find((node) => node.id === 'first-user')).toMatchObject({
+    timestampMs: 1800000000000,
+    parentId: null,
+    uncertain: false,
+  })
+  const run = f.capture.collectionSession.begin({
+    accountId: 'synthetic-owner',
+    conversationId: 'gateway-birth',
+    selectedTipId: 'reply',
+  })
+  expect(await f.capture.completeSavedCollection(run)).toBe(true)
+  expect(f.capture.collectionSession.snapshot().phase).toBe('complete')
+  const stale = f.capture.collectionSession.begin({
+    accountId: 'synthetic-owner',
+    conversationId: 'gateway-birth',
+    selectedTipId: 'first-user',
+  })
+  expect(await f.capture.completeSavedCollection(stale)).toBe(false)
+  f.capture.collectionSession.pause('user')
+  // Reopening observes a native service prefix first; it cannot replace the
+  // durable first-user boundary used by the Reader's integrity projection.
+  f.state.ingestAccount({ accountId: null, observedAt: 1800000000010 })
+  f.state.ingestAccount({ accountId: 'synthetic-owner', observedAt: 1800000000011 })
+  const prefix = { ...record('service-prefix'), author: { role: 'system' }, metadata: {} }
+  const reopened = f.page([prefix, original, record('reply', 'first-user')])
+  reopened.payload.page_info = {
+    start_cursor: 'service-prefix',
+    end_cursor: 'reply',
+    has_previous_page: false,
+    has_next_page: false,
+  }
+  f.state.ingestPage(reopened)
+  await f.capture.waitForDistribution()
+  await f.workspace.open('gateway-birth')
+  for (let attempt = 0; attempt < 100 && f.workspace.status('gateway-birth').loading; attempt++)
+    await new Promise((resolve) => setTimeout(resolve, 1))
+  expect(f.state.header('gateway-birth')?.startEvidence?.firstMessageId).toBe('service-prefix')
+  expect(f.workspace.integrity('gateway-birth')).toMatchObject({
+    firstMessageId: 'first-user',
+    chain: 'verified',
+  })
+})
+
+test('timeline represents readable messages, excluding hidden user/model context and reasoning records', async () => {
+  const f = fixture('gateway-visible-timeline')
+  const first = { ...record('user'), author: { role: 'user' } }
+  const userContext = {
+    ...record('user-context', 'user'),
+    author: { role: 'user' },
+    content: { content_type: 'user_editable_context', user_profile: '', user_instructions: 'Synthetic' },
+  }
+  const modelContext = {
+    ...record('model-context', 'user-context'),
+    content: {
+      content_type: 'model_editable_context',
+      model_set_context: 'Synthetic',
+      repository: null,
+      repo_summary: null,
+      structured_context: null,
+    },
+  }
+  const recap = {
+    ...record('recap', 'model-context'),
+    content: { content_type: 'reasoning_recap', content: 'Synthetic recap' },
+  }
+  f.state.ingestPage(f.page([first, userContext, modelContext, recap, record('answer', 'recap')]))
+  expect(
+    (await f.adapter.getTimeline?.('gateway-visible-timeline'))?.map((node) => node.id).sort(),
+  ).toEqual(['answer', 'user'])
+  expect(f.state.observations.receivedCount('gateway-visible-timeline')).toBe(5)
+})
+
+test('an existing conversation submit or an unacknowledged create cannot invent a start marker', async () => {
+  const f = fixture('gateway-existing')
+  const original = {
+    id: 'later-user',
+    author: { role: 'user' },
+    content: { content_type: 'text', parts: ['Synthetic'] },
+  }
+  const body = {
+    action: 'next',
+    turn_attribution: { turn_trigger: 'composer' },
+    parent_message_id: 'prior',
+    messages: [original],
+  }
+  const existing = conversationRequestTimingFromBody(
+    'https://chatgpt.com/backend-api/f/conversation',
+    'POST',
+    { ...body, conversation_id: 'gateway-existing' },
+    1800000000000,
+  )
+  expect(existing?.creation).toBeUndefined()
+  const pending = conversationRequestTimingFromBody(
+    'https://chatgpt.com/backend-api/f/conversation',
+    'POST',
+    body,
+    1800000000000,
+  )
+  if (!pending) throw Error('Synthetic creation request unavailable')
+  f.state.ingestRequest({ ...pending, accountId: 'synthetic-owner', requestId: 'rejected-run' })
+  f.state.ingestStreamEvent({
+    kind: 'error',
+    accountId: 'synthetic-owner',
+    conversationId: 'gateway-existing',
+    requestId: 'rejected-run',
+    observedAt: 1800000000001,
+    errorCode: 'request_rejected',
+    errorReason: null,
+    canRetry: false,
+  })
+  expect(f.state.header('gateway-existing')?.startEvidence).toBeUndefined()
+  await f.capture.waitForDistribution()
+  expect(await f.capture.savedCurrent()).toBe(0)
+})
+
+test('a native project create respects its disabled capture policy for the first message', async () => {
+  const f = fixture('gateway-birth-project')
+  await f.settings.update({
+    archive: {
+      defaultRule: { enabled: true },
+      projects: { 'g-p-disabled': { enabled: false, reasoning: true, tools: true, internal: true } },
+    },
+  })
+  const request = conversationRequestTimingFromBody(
+    'https://chatgpt.com/backend-api/f/conversation',
+    'POST',
+    {
+      action: 'next',
+      turn_attribution: { turn_trigger: 'composer' },
+      gizmo_id: 'g-p-disabled',
+      parent_message_id: 'native-parent',
+      messages: [
+        {
+          id: 'project-first',
+          author: { role: 'user' },
+          content: { content_type: 'text', parts: ['Synthetic private project'] },
+        },
+      ],
+    },
+    1800000000000,
+  )
+  if (!request) throw Error('Synthetic project creation request unavailable')
+  f.state.ingestRequest({ ...request, accountId: 'synthetic-owner', requestId: 'project-create' })
+  f.state.ingestStreamEvent({
+    kind: 'message',
+    accountId: 'synthetic-owner',
+    conversationId: 'gateway-birth-project',
+    requestId: 'project-create',
+    observedAt: 1800000000001,
+    record: record('project-reply', 'project-first'),
+  })
+  await f.capture.waitForDistribution()
+  expect(f.state.header('gateway-birth-project')?.startEvidence?.firstMessageId).toBe('project-first')
+  expect(await f.capture.savedCurrent()).toBe(0)
+})
+
+test('a confirmed history start remains durable when a later latest-window read has older pages', async () => {
+  const f = fixture('gateway-boundary')
+  await f.settings.update({ archive: { defaultRule: { enabled: true } } })
+  const first = f.page([record('oldest'), record('head', 'oldest')])
+  first.payload.page_info = {
+    start_cursor: 'oldest',
+    end_cursor: 'head',
+    has_previous_page: false,
+    has_next_page: false,
+  }
+  f.state.ingestPage(first)
+  await f.capture.waitForDistribution()
+  const later = f.page([record('new-head', 'head')])
+  later.readId = 'later-read'
+  later.readStartedAt = later.timestamp = first.timestamp + 1000
+  later.payload.page_info = {
+    start_cursor: 'new-head',
+    end_cursor: 'new-head',
+    has_previous_page: true,
+    has_next_page: false,
+  }
+  f.state.ingestPage(later)
+  await f.capture.waitForDistribution()
+  expect(
+    (await f.capture.workspaceChunk('gateway-boundary')).header?.startEvidence?.firstMessageId,
+  ).toBe('oldest')
+  expect(await f.capture.integrity('gateway-boundary')).toMatchObject({
+    start: 'verified',
+    firstMessageId: 'oldest',
+  })
+})
 
 test('archive off retains pages, stream variants and terminal events; enable replays to DB without replaying lifecycle', async () => {
   const f = fixture('gateway-replay')
@@ -458,4 +712,57 @@ test('workspace indexes 3000 UUID records, fills 19 bounded chunks and follows a
   )
   expect(f.state.observations.receivedCount('gateway-large-workspace')).toBe(0)
   expect(await f.capture.savedCurrent()).toBe(0)
+})
+
+test('existing-chat composer submit commits and notifies counters before any assistant stream', async () => {
+  const f = fixture('gateway-immediate-submit')
+  await f.settings.update({ archive: { defaultRule: { enabled: true } } })
+  const original = {
+    id: 'second-user',
+    author: { role: 'user' },
+    create_time: 1800000000,
+    content: { content_type: 'text', parts: ['Synthetic subsequent submission'] },
+    metadata: {},
+  }
+  const request = conversationRequestTimingFromBody(
+    'https://chatgpt.com/backend-api/f/conversation',
+    'POST',
+    {
+      action: 'next',
+      conversation_id: 'gateway-immediate-submit',
+      turn_attribution: { turn_trigger: 'composer' },
+      parent_message_id: 'previous-assistant',
+      messages: [original],
+    },
+    1800000000000,
+  )
+  if (!request) throw Error('Synthetic request missing')
+  expect(request.creation).toBeUndefined()
+  let received = 0,
+    saved = 0
+  const stopReceived = f.state.observations.subscribeCounts(() => {
+    received++
+  })
+  const stopSaved = f.capture.subscribeCounts(() => {
+    saved++
+  })
+  try {
+    f.state.ingestRequest({ ...request, accountId: 'synthetic-owner', requestId: 'second-submit' })
+    expect(f.state.observations.receivedCount('gateway-immediate-submit')).toBe(1)
+    expect(received).toBe(1)
+    await f.capture.waitForDistribution()
+    expect(await f.capture.savedCount('gateway-immediate-submit')).toBe(1)
+    expect(saved).toBe(1)
+    expect((await f.capture.readConversation('gateway-immediate-submit'))[0]?.raw).toEqual(original)
+    expect(
+      (await f.capture.workspaceChunk('gateway-immediate-submit')).header?.startEvidence,
+    ).toBeUndefined()
+    f.state.ingestRequest({ ...request, accountId: 'synthetic-owner', requestId: 'second-submit' })
+    await f.capture.waitForDistribution()
+    expect(received).toBe(1)
+    expect(saved).toBe(1)
+  } finally {
+    stopReceived()
+    stopSaved()
+  }
 })

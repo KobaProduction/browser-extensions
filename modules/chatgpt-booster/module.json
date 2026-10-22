@@ -1,7 +1,7 @@
 {
   "id": "chatgpt-booster",
   "name": "ChatGPT Booster",
-  "version": "2.0.21",
+  "version": "2.0.22",
   "hosts": ["chatgpt.com"],
   "targets": ["userscript", "chromium"],
   "capabilities": ["page-dom", "origin-storage", "local-files"],

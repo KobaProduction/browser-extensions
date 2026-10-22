@@ -110,6 +110,7 @@ export interface ConversationProjectCatalogEntry {
 }
 
 interface MutableConversationState {
+  startEvidence?: import('./archive-start-evidence').ConversationStartEvidence
   safetyReview?: { active: boolean; message: string | null; protectionType: 'bio' | 'cyber' | null }
   conversationId: string
   projectId: string | null
@@ -539,6 +540,7 @@ export class ConversationStateStore implements BoosterModule {
           lastObservedAt: state.lastObservedAt,
           headReadId: state.headReadId,
           headReadStartedAt: state.headReadStartedAt,
+          startEvidence: state.startEvidence,
         }
       : undefined
   }
@@ -687,6 +689,20 @@ export class ConversationStateStore implements BoosterModule {
       state.recordReads.set(raw.id, { readId: detail.readId ?? '', startedAt: readStartedAt })
     }
     const id = pageKey(detail)
+    const pageInfo = asRecord(payload.page_info)
+    if (
+      !state.startEvidence &&
+      pageInfo?.has_previous_page === false &&
+      typeof pageInfo.start_cursor === 'string' &&
+      typeof detail.readId === 'string' &&
+      state.records.has(pageInfo.start_cursor)
+    )
+      state.startEvidence = {
+        kind: 'native-page',
+        firstMessageId: pageInfo.start_cursor,
+        sourceId: detail.readId,
+        observedAt: detail.timestamp,
+      }
     state.pageCoverage = advanceHistoryCoverage(state.pageCoverage, nativePageEvidence(detail))
     if (detail.isInitial)
       for (const retained of state.pages.values())
@@ -843,7 +859,7 @@ export class ConversationStateStore implements BoosterModule {
     )
       return
     if (detail.requestId) this.#rememberRun(detail.requestId, conversationId)
-    this.observations.receive(conversationId, { kind: 'request', detail })
+    const requestObservation = this.observations.receive(conversationId, { kind: 'request', detail })
     const state = this.#ensure(conversationId)
     // Delayed/duplicate observations cannot replace a newer request or reopen its terminal state.
     if (
@@ -882,6 +898,51 @@ export class ConversationStateStore implements BoosterModule {
     if (Object.hasOwn(detail, 'conversationOrigin'))
       state.conversationOrigin =
         typeof detail.conversationOrigin === 'string' ? detail.conversationOrigin : null
+    // A local/renderer chat ID is never authority. This path is reached after the
+    // pending native create request has been correlated with a server stream ID.
+    const submitted = detail.submission ?? detail.creation
+    if (
+      submitted &&
+      detail.requestId &&
+      detail.accountId === this.#verifiedAccountId &&
+      this.#verifiedAccountId &&
+      submitted.message.id === detail.userMessageId &&
+      asRecord(submitted.message.author)?.role === 'user'
+    ) {
+      if (detail.creation?.projectId) state.projectId = detail.creation.projectId
+      const raw = submitted.message
+      const first = normalizeConversationMessage(raw, conversationId, state.projectId, detail.observedAt)
+      if (first) {
+        if (detail.creation && !state.startEvidence)
+          state.startEvidence = {
+            kind: 'native-create',
+            firstMessageId: first.messageId,
+            sourceId: detail.requestId,
+            observedAt: detail.observedAt,
+          }
+        this.#mergeRecord(state, first)
+        this.observations.admit(requestObservation, {
+          kind: 'message',
+          detail: {
+            conversationId,
+            accountId: this.#verifiedAccountId,
+            raw,
+            observedAt: detail.observedAt,
+            activeRun: false,
+            requestId: detail.requestId,
+            ...(detail.creation && state.startEvidence ? { startEvidence: state.startEvidence } : {}),
+            evidence: [
+              {
+                kind: detail.creation ? 'native-create' : 'native-submission',
+                requestId: detail.requestId,
+                userMessageId: raw.id,
+                parentMessageId: submitted.parentMessageId,
+              },
+            ],
+          },
+        })
+      }
+    }
     state.lifecycle = {
       state: 'in_progress',
       userMessageId: detail.userMessageId,
@@ -987,6 +1048,20 @@ export class ConversationStateStore implements BoosterModule {
     )
       return
     const observation = this.observations.receive(conversationId, { kind: 'stream', detail })
+    if (detail.requestId && this.#pendingRequests.has(detail.requestId)) {
+      const pending = this.#pendingRequests.get(detail.requestId)
+      if (
+        pending &&
+        (!pending.creation ||
+          detail.kind === 'handoff' ||
+          (detail.kind === 'message' && typeof detail.record.id === 'string')) &&
+        detail.observedAt - pending.observedAt >= 0 &&
+        detail.observedAt - pending.observedAt <= 120_000
+      ) {
+        this.#pendingRequests.delete(detail.requestId)
+        this.ingestRequest({ ...pending, conversationId })
+      }
+    }
     if (detail.kind === 'message') {
       try {
         this.sourceGate.inspectStreamMessage(conversationId, detail.record)
@@ -1000,16 +1075,6 @@ export class ConversationStateStore implements BoosterModule {
         })
         throw error
       }
-    }
-    if (detail.requestId && this.#pendingRequests.has(detail.requestId)) {
-      const pending = this.#pendingRequests.get(detail.requestId)
-      this.#pendingRequests.delete(detail.requestId)
-      if (
-        pending &&
-        detail.observedAt - pending.observedAt >= 0 &&
-        detail.observedAt - pending.observedAt <= 120_000
-      )
-        this.ingestRequest({ ...pending, conversationId })
     }
     const state = this.#ensure(conversationId)
     const historyUser = state.lifecycle.userMessageId

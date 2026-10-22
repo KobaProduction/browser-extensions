@@ -5,6 +5,74 @@ import {
   linearArchiveIntegrity,
 } from './conversation-integrity'
 
+test('an explicit first-message boundary closes only its unknown parent and preserves actual gaps and disconnected chains', () => {
+  const first: ArchiveGraphNode = { id: 'first', parentId: null, parentKnown: false }
+  const evidence = { firstId: 'first', startReached: false, endReached: true, headId: 'answer' }
+  const answer: ArchiveGraphNode = { id: 'answer', parentId: 'first', parentKnown: true }
+  expect(conversationIntegrityFromGraph([first, answer], evidence)).toMatchObject({
+    start: 'verified',
+    end: 'verified',
+    chain: 'verified',
+    firstMessageId: 'first',
+    roots: [],
+  })
+  expect(
+    conversationIntegrityFromGraph([first, { ...answer, parentId: 'absent' }], evidence).chain,
+  ).toBe('gaps')
+  expect(
+    conversationIntegrityFromGraph(
+      [first, answer, { id: 'unrelated', parentId: null, parentKnown: true }],
+      evidence,
+    ).chain,
+  ).toBe('gaps')
+  expect(conversationIntegrityFromGraph([answer], evidence).firstMessageId).toBeNull()
+  expect(first.parentKnown).toBe(false)
+})
+
+test('native history boundary confirms only its exact service root without forging a parent', () => {
+  const nodes = [
+    { id: 'service-root', parentId: null, parentKnown: false },
+    { id: 'first-user', parentId: 'service-root', parentKnown: true },
+    { id: 'answer', parentId: 'first-user', parentKnown: true },
+  ]
+  const evidence = {
+    firstId: 'first-user',
+    rootId: 'service-root',
+    startReached: true,
+    endReached: true,
+    headId: 'answer',
+  }
+  expect(conversationIntegrityFromGraph(nodes, evidence)).toMatchObject({
+    chain: 'verified',
+    firstMessageId: 'first-user',
+  })
+  expect(conversationIntegrityFromGraph(nodes, { ...evidence, startReached: false }).chain).toBe(
+    'unknown',
+  )
+  expect(conversationIntegrityFromGraph(nodes, { ...evidence, rootId: 'different' }).chain).toBe(
+    'unknown',
+  )
+  expect(
+    conversationIntegrityFromGraph(
+      [{ id: 'service-root', parentId: 'missing', parentKnown: true }, ...nodes.slice(1)],
+      evidence,
+    ).chain,
+  ).toBe('gaps')
+  expect(nodes[0]?.parentKnown).toBe(false)
+  // The native service prefix and first submitted user message have separate,
+  // explicit start proofs. Their missing parents must not be invented.
+  expect(
+    conversationIntegrityFromGraph(
+      [
+        nodes[0] as ArchiveGraphNode,
+        { id: 'first-user', parentId: null, parentKnown: false },
+        nodes[2] as ArchiveGraphNode,
+      ],
+      evidence,
+    ).chain,
+  ).toBe('verified')
+})
+
 test('one observed graph with branches has independent start/end proof', () => {
   const nodes: ArchiveGraphNode[] = [
     { id: 'root', parentId: null, parentKnown: true },

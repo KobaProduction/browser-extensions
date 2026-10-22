@@ -344,6 +344,20 @@ export class ConversationArchiveWorkspace implements BoosterModule {
     this.syncOwner()
     return this.conversations.get(id)?.context
   }
+  /** Boundary evidence closes an absent parent, never a named missing parent. */
+  confirmedStartIds(id: string): ReadonlySet<string> {
+    const conversation = this.conversation(id)
+    const savedPage = checkpointHistoryCoverage(conversation.header?.pageCoverage)
+    const livePage = this.memory.nativeHistoryCoverage(id)
+    return new Set(
+      [
+        conversation.header?.startEvidence?.firstMessageId,
+        this.memory.header(id)?.startEvidence?.firstMessageId,
+        savedPage.startReached ? savedPage.oldestCursor : null,
+        livePage.startReached ? livePage.oldestCursor : null,
+      ].filter((value): value is string => typeof value === 'string' && conversation.records.has(value)),
+    )
+  }
   range(id: string, firstId: string, lastId: string) {
     const conversation = this.conversation(id),
       result: string[] = [],
@@ -439,6 +453,7 @@ export class ConversationArchiveWorkspace implements BoosterModule {
       currentStream.raw.status === 'finished_successfully' &&
       currentStream.raw.id === head
     const page = checkpointHistoryCoverage(saved?.pageCoverage)
+    const livePage = this.memory.nativeHistoryCoverage(id)
     return conversationIntegrityFromGraph(
       [...conversation.records.values()].map((record) => ({
         id: record.messageId,
@@ -446,7 +461,13 @@ export class ConversationArchiveWorkspace implements BoosterModule {
         parentKnown: Object.hasOwn((record.raw.metadata ?? {}) as object, 'parent_id'),
       })),
       {
-        startReached: page.startReached || this.memory.nativeHistoryCoverage(id).startReached,
+        firstId: saved?.startEvidence?.firstMessageId ?? header?.startEvidence?.firstMessageId,
+        rootId: page.startReached
+          ? page.oldestCursor
+          : livePage.startReached
+            ? livePage.oldestCursor
+            : null,
+        startReached: page.startReached || livePage.startReached,
         endReached:
           !!head &&
           (streamTerminal ||

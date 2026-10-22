@@ -107,6 +107,10 @@ test('fixed saved Reader facade reads, windows, counts and exports without acces
       branchSourceConversationId: 'stored-parent-not-loaded',
     })
     expect((await adapter.getCoverage('fixed-reader'))?.knownMessageCount).toBe(1)
+    expect((await adapter.getTimeline?.('fixed-reader'))?.[0]).toMatchObject({
+      timestampMs: null,
+      uncertain: true,
+    })
     const window = await adapter.getThreadWindow?.('fixed-reader', null, 'older', { source: 'saved' })
     expect(window?.totalKnownRecordCount).toBe(1)
     expect(window?.accountId).toBe('owner-fixed')

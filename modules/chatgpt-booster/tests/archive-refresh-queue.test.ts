@@ -11,7 +11,7 @@ test('continuous commits refresh before the burst ends and async reads never ove
     await new Promise((resolve) => setTimeout(resolve, 4))
     refreshed++
     running--
-  }, 5)
+  })
   try {
     for (let event = 0; event < 24; event++) {
       queue.request()
@@ -28,9 +28,35 @@ test('unmount cancels a scheduled refresh', async () => {
   let refreshed = 0
   const queue = createArchiveRefreshQueue(() => {
     refreshed++
-  }, 5)
+  })
   queue.request()
   queue.stop()
   await new Promise((resolve) => setTimeout(resolve, 10))
   expect(refreshed).toBe(0)
+})
+
+test('first commit refreshes before any timer; a commit during a read gets an immediate trailing refresh', async () => {
+  let release: (() => void) | undefined
+  let calls = 0
+  const queue = createArchiveRefreshQueue(async () => {
+    calls++
+    if (calls === 1)
+      await new Promise<void>((resolve) => {
+        release = resolve
+      })
+  })
+  try {
+    queue.request()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(calls).toBe(1)
+    queue.request()
+    queue.request()
+    expect(calls).toBe(1)
+    release?.()
+    for (let tick = 0; tick < 10; tick++) await Promise.resolve()
+    expect(calls).toBe(2)
+  } finally {
+    queue.stop()
+  }
 })

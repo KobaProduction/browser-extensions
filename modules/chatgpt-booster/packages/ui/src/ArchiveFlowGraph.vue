@@ -32,6 +32,7 @@ const nodes = computed<ArchiveTimelineNode[]>(() => {
             ? 'Ассистент'
             : 'Assistant',
       preview: archiveHistoryPreview(message.preview, props.locale),
+      timestampMs: message.timestampMs ?? null,
       uncertain: message.uncertain,
     }))
   }
@@ -58,6 +59,7 @@ const nodes = computed<ArchiveTimelineNode[]>(() => {
               ? 'Ассистент'
               : 'Assistant',
         preview: archiveHistoryPreview(item.text, props.locale),
+        timestampMs: item.record.createTime === null ? null : item.record.createTime * 1000,
         uncertain: Boolean(item.record.parentId && !parents.get(item.record.messageId)),
       }
     })

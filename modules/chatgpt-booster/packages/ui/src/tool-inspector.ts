@@ -1,5 +1,5 @@
 import type { ToolInvocationView } from '@chatgpt-booster/core'
-import { UI_PORTAL_TARGET } from '@kobaproduction/browser-ui'
+import { ensureSiteDecoration, UI_PORTAL_TARGET } from '@kobaproduction/browser-ui'
 import { type App, createApp, h, reactive } from 'vue'
 import type { SupportedLocale } from './i18n'
 import { createBoosterShadowSurface } from './shadow-styles'
@@ -25,33 +25,42 @@ export interface MountedToolInspector {
 }
 
 export function mountToolInspector(into: HTMLElement, model: ToolCallViewModel): MountedToolInspector {
-  const host = document.createElement('span')
-  host.dataset.chatgptBooster = 'tool-inspector'
-  host.dataset.sourceMessageId = model.id
-  host.style.cssText =
-    'display:inline-flex;flex:0 0 auto;align-items:center;pointer-events:auto;margin-inline-start:2px;'
-  into.append(host)
+  return ensureSiteDecoration({
+    anchor: into,
+    kind: 'chatgpt-booster:tool-inspector',
+    identity: `${model.locale}:${model.id}`,
+    legacySelector: '[data-chatgpt-booster="tool-inspector"]',
+    update: (current) => current.update(model),
+    create: () => {
+      const host = document.createElement('span')
+      host.dataset.chatgptBooster = 'tool-inspector'
+      host.dataset.sourceMessageId = model.id
+      host.style.cssText =
+        'display:inline-flex;flex:0 0 auto;align-items:center;pointer-events:auto;margin-inline-start:2px;'
+      into.append(host)
 
-  const { mountPoint, portal } = createBoosterShadowSurface(host)
+      const { mountPoint, portal } = createBoosterShadowSurface(host)
 
-  const state = reactive<{ model: ToolCallViewModel; now: number }>({ model, now: 0 })
-  const app: App = createApp({
-    render: () => h(ToolInspector, { model: state.model, now: state.now }),
+      const state = reactive<{ model: ToolCallViewModel; now: number }>({ model, now: 0 })
+      const app: App = createApp({
+        render: () => h(ToolInspector, { model: state.model, now: state.now }),
+      })
+      app.provide(UI_PORTAL_TARGET, portal)
+      app.mount(mountPoint)
+
+      return {
+        element: host,
+        update(next) {
+          state.model = next
+        },
+        tick(now) {
+          state.now = now
+        },
+        unmount() {
+          app.unmount()
+          host.remove()
+        },
+      }
+    },
   })
-  app.provide(UI_PORTAL_TARGET, portal)
-  app.mount(mountPoint)
-
-  return {
-    element: host,
-    update(next) {
-      state.model = next
-    },
-    tick(now) {
-      state.now = now
-    },
-    unmount() {
-      app.unmount()
-      host.remove()
-    },
-  }
 }

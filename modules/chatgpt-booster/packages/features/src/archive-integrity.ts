@@ -21,6 +21,7 @@ export function conversationIntegrity(
   terminalHeadId: string | null = null,
   pageHeadId: string | null = null,
   checkpoint?: HistoryCoverageCheckpoint,
+  firstMessageId?: string,
 ): ConversationIntegrity {
   const evidence = checkpoint ? checkpointHistoryCoverage(checkpoint) : historyCoverage([...pages])
   return conversationIntegrityFromGraph(
@@ -31,6 +32,8 @@ export function conversationIntegrity(
     })),
     {
       startReached: evidence.startReached,
+      firstId: firstMessageId,
+      rootId: evidence.startReached ? evidence.oldestCursor : null,
       headId,
       endReached: Boolean(
         headId && ((evidence.endReached && headId === pageHeadId) || terminalHeadId === headId),

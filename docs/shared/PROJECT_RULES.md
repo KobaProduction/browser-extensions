@@ -135,3 +135,14 @@ consumers, as described in [issue routing](../ISSUE_ROUTING.md).
 
 Validation levels must be distinct: source review, local tests, built artifacts,
 installed-browser runtime, data recovery and production acceptance.
+
+Run unit tests once at acceptance of a finished, coherent change, rather than
+before/after every edit. `bun run test` selects changed tests and reverse import
+dependencies (including shared consumers and literal fixture/source reads).
+Provider-private changes must not run another provider's unrelated suite.
+`bun run test:plan` prints the selection; `bun run test -- --files <paths>`
+limits an atomic acceptance batch explicitly. CI supplies the PR/push base and
+head; local selection includes unpushed commits, staged, unstaged and untracked
+files. Unlinked sources are reported for browser/build acceptance, never silently
+replaced with a full suite. `bun run test:all` is an explicit broad acceptance
+command. Repeat checks only after a relevant change, failure or unresolved concern.

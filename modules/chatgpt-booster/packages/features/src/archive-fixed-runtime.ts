@@ -325,11 +325,12 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
             conversationId: detail.conversationId,
             projectId: header?.projectId ?? null,
             conversationTitle: header?.title ?? null,
-            sourceKind: 'native-stream',
+            sourceKind: detail.startEvidence ? 'native-submission' : 'native-stream',
             sourceVersion: this.state.sourceGate.version,
             observedAtMs: detail.observedAt,
             raw: detail.raw,
             ...(detail.evidence ? { sourceEvents: detail.evidence } : {}),
+            ...(detail.startEvidence ? { startEvidence: detail.startEvidence } : {}),
           }
           if (remoteOnly) {
             this.queueRemote(
@@ -790,6 +791,71 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
     }
   }
   private enqueuePage?: (page: ConversationArchiveEventDetail) => void
+  /** Reuse a durable first-message proof only for an intact graph at the exact live head. */
+  async completeSavedCollection(run: ArchiveCollectionRun): Promise<boolean> {
+    this.collectionSession.requireCurrent(run)
+    await this.collectionSession.waitFor(run, this.pending)
+    const owner = this.state.verifiedAccountId(),
+      epoch = this.state.accountEpoch(),
+      policy = this.policyEpoch
+    const nativeRevision = this.state.header(run.conversationId)?.revision
+    if (
+      !owner ||
+      owner !== run.accountId ||
+      this.stopped ||
+      this.currentConversationId() !== run.conversationId
+    )
+      return false
+    this.state.sourceGate.assertCompatible(run.conversationId)
+    const settings = await this.settings.get()
+    if (
+      !settings.enabled ||
+      (settings.automation.remote.enabled && settings.automation.remote.mode === 'remote-only')
+    )
+      return false
+    const repo = this.repo(owner),
+      saved = await repo.getConversation(run.conversationId)
+    if (!saved?.startEvidence) return false
+    const stream = this.state.observations.head(run.conversationId)
+    const lifecycle = this.state.lifecycle(run.conversationId)
+    const head =
+      stream?.requestId && stream.requestId === lifecycle?.requestId
+        ? stream.raw.id
+        : this.state.header(run.conversationId)?.currentNodeId
+    if (
+      typeof head !== 'string' ||
+      saved.currentHeadId !== head ||
+      (run.selectedTipId && run.selectedTipId !== head)
+    )
+      return false
+    const stamp = fixedConversationStamp(saved),
+      integrity = await repo.integrity(run.conversationId)
+    const count = await repo.countConversation(run.conversationId)
+    const currentStamp = fixedConversationStamp(await repo.getConversation(run.conversationId))
+    this.collectionSession.requireCurrent(run)
+    if (
+      this.stopped ||
+      this.policyEpoch !== policy ||
+      this.state.header(run.conversationId)?.revision !== nativeRevision ||
+      this.currentConversationId() !== run.conversationId ||
+      this.state.verifiedAccountId() !== owner ||
+      this.state.accountEpoch() !== epoch ||
+      currentStamp !== stamp
+    )
+      return false
+    if (
+      integrity.chain !== 'verified' ||
+      integrity.end !== 'verified' ||
+      integrity.firstMessageId !== saved.startEvidence.firstMessageId
+    )
+      return false
+    this.collectionSession.update(run, {
+      phase: 'saving',
+      knownMessageCount: count,
+      hasOlderServerHistory: false,
+    })
+    return this.collectionSession.complete(run)
+  }
   stopCollection() {
     this.collectionSession.pause('user')
   }
