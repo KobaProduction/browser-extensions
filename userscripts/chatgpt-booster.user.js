@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT Booster [DEV]
 // @namespace    https://github.com/KobaProduction/browser-extensions/dev/chatgpt-booster
-// @version      2.0.49
+// @version      2.0.50
 // @description  ChatGPT Booster — archive and browser tools
 // @updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/chatgpt-booster.user.js
 // @downloadURL  https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/chatgpt-booster.user.js
@@ -2031,8 +2031,8 @@
     }
     return Object.fromEntries(entries);
   }
-  const BOOSTER_BASE_VERSION = "2.0.24";
-  const injectedVersion = "2.0.24".trim();
+  const BOOSTER_BASE_VERSION = "0.0.0-local";
+  const injectedVersion = "2.0.50".trim();
   const BOOSTER_BUILD_VERSION = injectedVersion || BOOSTER_BASE_VERSION;
   const BOOSTER_VERSION = BOOSTER_BUILD_VERSION;
   // @__NO_SIDE_EFFECTS__
@@ -62316,7 +62316,7 @@ ${JSON.stringify(counts)}`);
     }
   }
   instanceKey("chatgpt-booster:manual-collection", "chatgpt-booster:prod");
-  var define_BOOSTER_APPLICATION_default = { id: "chatgpt-booster", title: "ChatGPT Booster", version: "dev-2.0.49", components: [] };
+  var define_BOOSTER_APPLICATION_default = { id: "chatgpt-booster", title: "ChatGPT Booster", version: "dev-2.0.50", components: [] };
   function isDevelopmentContextAllowed(_target, scope = instanceScope()) {
     return /^(vk-booster|chatgpt-booster|all-in-one):(dev|prod)$/.test(scope);
   }
@@ -65267,7 +65267,7 @@ ${JSON.stringify(counts)}`);
     if (!gm)
       return unavailableTelemetry();
     const settings = gm?.settings ?? store;
-    const suppliedVersion = "2.0.24";
+    const suppliedVersion = "2.0.50";
     const version2 = /^\d+\.\d+\.\d+$/.test(suppliedVersion) ? suppliedVersion : "0.0.0";
     const listeners = /* @__PURE__ */ new Set();
     let enabled = false;
