@@ -50,13 +50,20 @@ For UI changes with live updates, use `bun run ui:lab` (synthetic data only).
 ```bash
 bun install --frozen-lockfile
 bun run check
-bun run build
 ```
 
-Run these gates for acceptance of a finished change. `bun run test` selects
+`bun run check` checks unpushed commits plus local working changes. Strict
+types include changed sources and reverse consumers; lint checks changed files;
+tests follow imports/fixture dependencies; builds and output validation run only
+for impacted products. Shared dependencies can legitimately select both providers.
+Use `bun run check:plan` to inspect the selection without running checks.
+`bun run check:all` is the explicit full-repository gate (also available through
+the CI manual dispatch's `full` option). Full acceptance is never a hidden fallback.
+
+`bun run test` selects
 changed files and their linked tests; `bun run test:plan` previews the selection.
 Use `bun run test -- --files <source-or-test-paths>` for one atomic batch and
-`bun run test:all` only when full-suite acceptance is intended. CI supplies the push/PR base and
+`bun run test:all` only when full-suite acceptance is explicitly requested. CI supplies the push/PR base and
 head; local selection includes unpushed and
 uncommitted changes. Unlinked sources require relevant browser/build acceptance,
 not an automatic full-suite run. Repeat checks after relevant changes or failures.
@@ -68,8 +75,12 @@ After a fresh Git checkout, enable the tracked pre-push hook **locally**:
 git config --local core.hooksPath .githooks
 ```
 
-The executable `.githooks/pre-push` requires the same strict checks,
-full builds and built-artifact validation before Git push. Confirm the
+The executable `.githooks/pre-push` reads Git's exact local/remote ref updates,
+checks the entire unpushed commit range, and runs this same affected gate before
+Git push. It rejects a different checked-out revision or tracked working changes
+instead of validating different source from the pushed snapshot. New branches
+use the remote default branch as their comparison; deletions require no code gate.
+Confirm the
 configured hook path when moving to another checkout; server-side PR CI
 runs independently and does not depend on a local Git hook.
 

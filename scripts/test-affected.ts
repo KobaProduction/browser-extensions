@@ -13,6 +13,13 @@ export function relatedTests(
   changed: readonly string[],
   dependencies: ReadonlyMap<string, readonly string[]>,
 ) {
+  return relatedFiles(changed, dependencies).filter((file) => isTest(file) && dependencies.has(file))
+}
+
+export function relatedFiles(
+  changed: readonly string[],
+  dependencies: ReadonlyMap<string, readonly string[]>,
+) {
   const consumers = new Map<string, Set<string>>()
   for (const [file, imports] of dependencies)
     for (const dependency of imports) {
@@ -28,7 +35,7 @@ export function relatedTests(
         visited.add(consumer)
         queue.push(consumer)
       }
-  return [...visited].filter((file) => isTest(file) && dependencies.has(file)).sort()
+  return [...visited].sort()
 }
 
 async function git(...args: string[]) {
@@ -37,7 +44,7 @@ async function git(...args: string[]) {
   return result.stdout.toString()
 }
 
-export async function changedTestInputs() {
+export async function changedTestInputs(options: { workingTree?: boolean } = {}) {
   const files = new Set<string>()
   const add = (output: string) => {
     for (const file of output.split('\0').filter(Boolean)) files.add(slash(file))
@@ -52,17 +59,21 @@ export async function changedTestInputs() {
       add(await git('diff', '--name-only', '-z', `${upstream.stdout.toString().trim()}...HEAD`))
     else throw Error('Set BASE_SHA or pass --files when no upstream comparison is available')
   }
-  add(await git('diff', '--name-only', '-z', 'HEAD'))
-  add(await git('ls-files', '--others', '--exclude-standard', '-z'))
+  if (options.workingTree ?? !base) {
+    add(await git('diff', '--name-only', '-z', 'HEAD'))
+    add(await git('ls-files', '--others', '--exclude-standard', '-z'))
+  }
   return [...files].sort()
 }
 
 export async function dependencyGraph() {
   const root = process.cwd()
-  const files = (await git('ls-files', '--cached', '--others', '--exclude-standard', '-z'))
-    .split('\0')
-    .filter(eligible)
-  const inventory = new Set(files)
+  const inventory = new Set(
+    (await git('ls-files', '--cached', '--others', '--exclude-standard', '-z'))
+      .split('\0')
+      .filter(Boolean),
+  )
+  const files = [...inventory].filter(eligible)
   const config = ts.readConfigFile('tsconfig.json', ts.sys.readFile)
   const options = ts.parseJsonConfigFileContent(config.config, ts.sys, root).options
   const cache = ts.createModuleResolutionCache(root, slash, options)
@@ -112,6 +123,8 @@ export async function dependencyGraph() {
     if (/\.(vue|[cm]?[jt]sx?)$/.test(file)) {
       dependencies.add('tsconfig.json')
       dependencies.add('bunfig.toml')
+      dependencies.add('package.json')
+      dependencies.add('bun.lock')
     }
     graph.set(file, [...dependencies])
   }

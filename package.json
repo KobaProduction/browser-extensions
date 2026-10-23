@@ -11,7 +11,9 @@
     "modules/chatgpt-booster/packages/*"
   ],
   "scripts": {
-    "check": "bun run typecheck && bun run lint && bun run test && bun run validate",
+    "check": "bun scripts/check-affected.ts",
+    "check:plan": "bun scripts/check-affected.ts --plan",
+    "check:all": "bun scripts/check-affected.ts --all",
     "typecheck": "tsc --noEmit -p tsconfig.json && vue-tsc --noEmit -p packages/shell/tsconfig.json && vue-tsc --noEmit -p modules/vk-booster/tsconfig.json && vue-tsc --noEmit -p packages/widgets/tsconfig.json && tsc --noEmit -p tsconfig.vk-tests.json && vue-tsc --noEmit -p modules/chatgpt-booster/packages/ui/tsconfig.json",
     "test": "bun scripts/test-affected.ts",
     "test:plan": "bun scripts/test-affected.ts --plan",

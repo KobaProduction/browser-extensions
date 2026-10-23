@@ -1,5 +1,6 @@
 import { $ } from 'bun'
 import { impactedProductVersions, manifest } from './catalog'
+import { onlyPackageScriptsChanged } from './package-impact'
 
 /** A lockfile-only dependency update affects every consumer. But `bun install`
  * also rewrites workspace version labels when a single private Booster bumps.
@@ -51,6 +52,16 @@ export async function devChannelCandidates(
     const diff = await $`git diff --name-only ${base} ${head}`.quiet().nothrow()
     if (diff.exitCode !== 0) throw new Error('Cannot establish changed source set for dev')
     const paths = diff.stdout.toString().split('\n').filter(Boolean)
+    if (paths.includes('package.json')) {
+      const before = await $`git show ${base}:package.json`.quiet().nothrow()
+      const after = await $`git show ${head}:package.json`.quiet().nothrow()
+      if (
+        before.exitCode === 0 &&
+        after.exitCode === 0 &&
+        onlyPackageScriptsChanged(before.stdout.toString(), after.stdout.toString())
+      )
+        paths.splice(paths.indexOf('package.json'), 1)
+    }
     if (paths.includes('bun.lock')) {
       const oldLock = await $`git show ${base}:bun.lock`.quiet().nothrow()
       const newLock = await $`git show ${head}:bun.lock`.quiet().nothrow()

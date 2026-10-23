@@ -4,6 +4,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      full:
+        description: 'Explicit full-repository acceptance (default: affected changes only)'
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -14,7 +19,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-        with: {fetch-depth: 0}
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: oven-sh/setup-bun@v2
         with: {bun-version: '1.4.2'}
       - uses: actions/setup-node@v4
@@ -23,10 +30,11 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Read published version authority
         run: git fetch origin dev --tags --force
-      - name: Typecheck, test, validate
+      - name: Check and build affected sources and consumers
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD^' }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          CHECK_ALL: ${{ github.event_name == 'workflow_dispatch' && inputs.full == true }}
         run: bun run check
       - name: Enforce independent product version contracts
         if: github.event_name == 'pull_request'
@@ -34,14 +42,6 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: bun scripts/version-policy.ts
-      - name: Build only impacted distribution modules
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: bun run build:changed
-      - name: Check generated outputs when modules changed
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: bun run validate --built --module changed
       - name: Upload requested build artifacts
         if: always()
         uses: actions/upload-artifact@v4
