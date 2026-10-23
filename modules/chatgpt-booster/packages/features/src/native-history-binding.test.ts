@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { ConversationStateStore } from './conversation-state'
-import { createNativeHistoryReader } from './native-history-reader'
+import { createNativeHistoryReader, nativePaginationPending } from './native-history-reader'
 
 function fixture() {
   const accountToken = {},
@@ -52,6 +52,22 @@ function fixture() {
     calls: () => calls,
   }
 }
+test('native pagination distinguishes exhaustion from an unavailable or still-pending cursor', () => {
+  const f = fixture(),
+    token = {}
+  let page: { complete?: boolean; cursor?: string | null } | undefined
+  const scope = { ...f.scope, get: (key: unknown) => (key === token ? page : f.scope.get(key)) }
+  const pagination = { token, flush: (callback: () => void) => callback(), readPage: async () => {} }
+  expect(nativePaginationPending(scope, undefined, 'synthetic-chat')).toBeNull()
+  expect(nativePaginationPending(scope, pagination, 'synthetic-chat')).toBeNull()
+  page = { complete: false, cursor: 'older-variants' }
+  expect(nativePaginationPending(scope, pagination, 'synthetic-chat')).toBe(true)
+  page = { complete: false, cursor: null }
+  expect(nativePaginationPending(scope, pagination, 'synthetic-chat')).toBe(false)
+  page = { complete: true }
+  expect(nativePaginationPending(scope, pagination, 'synthetic-chat')).toBe(false)
+})
+
 test('full collection calls the real bound native use case with exact scope, target and cancellation', async () => {
   const f = fixture()
   await createNativeHistoryReader(f.state, f.scope, f.modules, f.current).readOlder(f.input)

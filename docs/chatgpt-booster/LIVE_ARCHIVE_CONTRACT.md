@@ -878,3 +878,34 @@ change. This is one local window-read comparison, not a whole-application
 speed guarantee. CPU profiles remain outside Git. The native client later
 returned HTTP 429 for conversation loading; follow-up uses a one-minute wait
 and its ordinary retry control rather than bypassing the limit.
+
+## Exhaust native pagination before reusing coverage (2026-10-23)
+
+The native paginated history can return original messages absent from the full
+mapping. Reusing a valid saved graph or an already-loaded full mapping must not
+skip that separate source. The native history port reports pending pagination
+from its verified native scope. A manual collection drains pending or unknown
+pagination before checking reusable coverage; only explicit native exhaustion
+can retain the fast path. Owner, abort and current-session guards remain active.
+All observed historical rows remain saved even when the current mapping cannot
+confirm their relationships. No historical parents or graph membership are
+fabricated to remove a warning.
+
+Older pages without conversation metadata must retain the canonical project
+association until a native head supplies it. An uninitialized RAM header is not
+an explicit move out of a project. Verified head reassociation still requires
+the existing source and owner fences; capture never weakens that requirement.
+
+Manual recollection persists all owner-verified pages retained by the current
+runtime, including historical pages from earlier native reads. Their coverage
+evidence remains separated by read identity. Completion waits until the capture
+queue stops changing, including pages enqueued during session startup; any
+capture failure prevents the saved-proof fast path from reporting completion.
+HTTP 429 retries wait at least one minute.
+
+A verified native method's full-history return value is itself source evidence.
+Decode its original mapping and admit it through the ordinary source/owner gate
+when the transport observer has not observed that read. A native client can keep
+a fetch reference from before observer installation, so successful full reading
+must not depend solely on a later network interception. The binding retains
+owner, user, epoch, current-session and abort checks around the actual method.

@@ -52,6 +52,15 @@ export function createArchiveReadingScroll(options: ArchiveReadingScrollOptions)
       return
     if (event.type === 'pointermove' && !(event as PointerEvent).buttons) return
     inputPending = true
+    const viewport = options.viewport()
+    // Collapsed service-only windows cannot emit scroll: their content fits.
+    // A real scroll gesture must still reach the next saved window, once only.
+    if (
+      ['wheel', 'touchmove', 'keydown'].includes(event.type) &&
+      viewport &&
+      viewport.scrollHeight <= viewport.clientHeight + 1
+    )
+      return onScroll()
   }
   async function onScroll(): Promise<void> {
     const requested = inputPending

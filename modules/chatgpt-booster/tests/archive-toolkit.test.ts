@@ -1018,7 +1018,7 @@ describe('regressions: policy and read identity', () => {
 
 describe('history loader retry policy', () => {
   test('429 has a bounded longer delay while ordinary errors use capped exponential backoff', () => {
-    expect(historyBackoffMs(429, 1)).toBe(12_000)
+    expect(historyBackoffMs(429, 1)).toBe(60_000)
     expect(historyBackoffMs(0, 1)).toBe(2_000)
     expect(historyBackoffMs(500, 3)).toBe(8_000)
     expect(historyBackoffMs(500, 8)).toBe(8_000)

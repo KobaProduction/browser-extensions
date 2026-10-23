@@ -2,6 +2,32 @@ import { expect, test } from 'bun:test'
 import { createArchiveReadingScroll } from './archive-reading-scroll'
 
 const input = (isTrusted = true) => ({ isTrusted, type: 'wheel' }) as Event
+test('a real scroll gesture crosses a collapsed window with no scrollbar without queuing loads', async () => {
+  const calls: string[] = []
+  let finish = () => {}
+  const driver = createArchiveReadingScroll({
+    viewport: () => ({ scrollTop: 0, scrollHeight: 120, clientHeight: 600 }) as HTMLElement,
+    enabled: () => true,
+    canLoad: (direction) => direction === 'older',
+    load: (direction) => {
+      calls.push(direction)
+      return new Promise<void>((resolve) => {
+        finish = resolve
+      })
+    },
+  })
+  await driver.onUserInput(input(false))
+  await driver.onUserInput({ isTrusted: true, type: 'pointerdown' } as Event)
+  expect(calls).toEqual([])
+  const pending = driver.onUserInput(input())
+  await driver.onUserInput(input())
+  await driver.onScroll()
+  expect(calls).toEqual(['older'])
+  finish()
+  await pending
+  await driver.onScroll()
+  expect(calls).toEqual(['older'])
+})
 test('only user scrolling starts edge loads and concurrent/anchor scroll events cannot create a backlog', async () => {
   const viewport = { scrollTop: 750, scrollHeight: 1000, clientHeight: 200 } as HTMLElement
   const calls: string[] = []

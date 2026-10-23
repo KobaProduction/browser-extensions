@@ -663,6 +663,62 @@ test('collection completes from source coverage and commit ACK with no rendered 
   expect(sessions.snapshot().phase).toBe('complete')
 })
 
+test('saved coverage cannot skip pending or unknown native pagination', async () => {
+  for (const pending of [true, null, false]) {
+    const { state, dom } = setup()
+    const sessions = new ArchiveCollectionSession()
+    let reads = 0,
+      savedChecks = 0,
+      finish = () => {}
+    const driver = new HistoryLoaderModule(
+      state,
+      {
+        collectionSession: sessions,
+        completeCollection: async () => {
+          throw Error('Unexpected coverage path')
+        },
+        completeSavedCollection: async (run) => {
+          savedChecks++
+          sessions.update(run, { phase: 'saving' })
+          sessions.complete(run)
+          return true
+        },
+      },
+      dom as unknown as globalThis.Window,
+      undefined,
+      false,
+      {
+        hasPendingPages: () => pending,
+        readOlder: async () => {
+          reads++
+          await new Promise<void>((resolve) => {
+            finish = resolve
+          })
+        },
+      },
+    )
+    cleanups.push(() => driver.stop())
+    driver.start()
+    sessions.begin({
+      accountId: 'owner-A',
+      conversationId: 'synthetic-paged-history',
+      projectId: null,
+      selectedTipId: null,
+    })
+    await settled()
+    if (pending !== false) {
+      expect(reads).toBe(1)
+      expect(savedChecks).toBe(0)
+      expect(sessions.snapshot().phase).toBe('waiting_for_load')
+      finish()
+      await settled()
+    } else expect(reads).toBe(0)
+    expect(savedChecks).toBe(1)
+    expect(sessions.snapshot().phase).toBe('complete')
+    driver.stop()
+  }
+})
+
 test('incomplete collection without a verified native history method fails closed without scrolling', async () => {
   const { state, dom } = setup()
   const sessions = new ArchiveCollectionSession()

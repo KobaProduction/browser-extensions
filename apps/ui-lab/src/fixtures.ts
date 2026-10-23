@@ -111,6 +111,9 @@ const demoContext = (scene: LabScene): ArchiveCurrentContext => ({
 })
 export function createMockChatGptArchive(scene: LabScene) {
   let count = fixtureSize(scene)
+  const serviceTail =
+    typeof location !== 'undefined' && new URLSearchParams(location.search).get('serviceTail') === '1'
+  const serviceRecord = (index: number) => serviceTail && index >= count - 160
   let phase: HistoryLoaderState['phase'] = scene === 'loading' ? 'scrolling' : 'idle'
   let stopped = false
   let session = 0
@@ -126,9 +129,9 @@ export function createMockChatGptArchive(scene: LabScene) {
   const rawAt = (index: number) => ({
     id: idAt(index),
     create_time: 1760000000 + index * 90,
-    author: { role: index % 2 ? 'assistant' : 'user' },
+    author: { role: serviceRecord(index) || index % 2 ? 'assistant' : 'user' },
     recipient: 'all',
-    channel: index % 2 ? 'final' : null,
+    channel: serviceRecord(index) ? 'analysis' : index % 2 ? 'final' : null,
     status: 'finished_successfully',
     end_turn: Boolean(index % 2),
     metadata: {

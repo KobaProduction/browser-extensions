@@ -339,6 +339,9 @@ const hasOlderStored = ref(false)
 const hasNewerStored = ref(false)
 const usingIndexedWindows = ref(false)
 const knownStoredCount = ref(0)
+const knownRecordCount = computed(() =>
+  Math.max(knownStoredCount.value, coverage.value?.knownMessageCount ?? 0, thread.value.recordCount),
+)
 const hasUnsequencedRecords = ref(false)
 const readingScroll = ref<HTMLElement | null>(null)
 const activeMessageKey = ref<string | null>(null)
@@ -1346,8 +1349,8 @@ onBeforeUnmount(() => {
     </header>
     <p v-if="workspaceState.loading || workspaceState.failed" role="status" class="flex items-center gap-2 px-3 py-1 text-xs text-muted-foreground">
       <LoaderCircle v-if="workspaceState.loading" class="size-3 animate-spin" />
-      {{ workspaceState.failed ? (locale === 'ru' ? 'Не удалось догрузить сохранённые данные. Повторите открытие архива.' : 'Saved data could not be loaded. Reopen the archive to retry.') : (locale === 'ru' ? 'Загрузка в workspace' : 'Loading workspace') }}
-      <span v-if="workspaceState.loading">· {{ workspaceState.loaded }} · {{ locale === 'ru' ? 'Не найдено родителей' : 'Missing parents' }}: {{ workspaceState.missingParents }}</span>
+      {{ workspaceState.failed ? (locale === 'ru' ? 'Не удалось догрузить сохранённые данные. Повторите открытие архива.' : 'Saved data could not be loaded. Reopen the archive to retry.') : (locale === 'ru' ? 'Читаем сохранённый архив' : 'Reading saved archive') }}
+      <span v-if="workspaceState.loading">· {{ workspaceState.loaded }} · {{ locale === 'ru' ? 'Уточняем связи' : 'Checking relationships' }}</span>
     </p>
 
     <p v-if="accountPending" role="status" class="booster-note">{{ locale === 'ru'
@@ -1423,8 +1426,9 @@ onBeforeUnmount(() => {
               <p v-if="usingIndexedWindows && (hasOlderStored || hasNewerStored || knownStoredCount > thread.recordCount)" class="booster-note">{{ t('reader.windowSearchOnly') }}</p>
             </div>
             <div class="booster-reader-summary">
-              <span>{{ t('dock.messages') }}: {{ thread.messageCount }}</span>
-              <ArchiveIntegrityIndicator :integrity="coverage?.integrity" :complete="coverage?.completeAtLastRead" :has-older-history="coverage?.hasOlderServerHistory" :loading="coverageLoading" :error="coverageError" :locale="locale" @details="integrityOpen = true" />
+              <span>{{ locale === 'ru' ? 'Всего записей' : 'Total records' }}: {{ knownRecordCount }}</span>
+              <span v-if="usingIndexedWindows && thread.recordCount < knownRecordCount">{{ locale === 'ru' ? 'В окне' : 'In window' }}: {{ thread.recordCount }}</span>
+              <ArchiveIntegrityIndicator :integrity="coverage?.integrity" :complete="coverage?.completeAtLastRead" :has-older-history="coverage?.hasOlderServerHistory" :loading="coverageLoading || workspaceState.loading" :error="coverageError" :locale="locale" @details="integrityOpen = true" />
               <Button v-if="selectedBranchTip" variant="ghost" size="sm" class="h-7 px-1 text-xs" @click="releaseBranchFilter()">{{ locale === 'ru' ? 'Выбрана ветка · показать все' : 'Branch selected · show all' }}</Button>
             </div>
           </template>

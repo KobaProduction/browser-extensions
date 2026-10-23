@@ -27,7 +27,7 @@ export interface ArchiveReadingScrollOptions {
 export declare function createArchiveReadingScroll(options: ArchiveReadingScrollOptions): {
   capture(attribute?: ArchiveReadingAnchor['attribute']): ArchiveReadingAnchor | null
   restore(anchor: ArchiveReadingAnchor | null): boolean
-  onUserInput(event: Event): void
+  onUserInput(event: Event): void | Promise<void>
   onScroll(): Promise<void>
   reset(): void
 }

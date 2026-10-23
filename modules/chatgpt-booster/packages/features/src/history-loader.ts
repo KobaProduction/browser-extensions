@@ -18,7 +18,7 @@ export {
 } from '@chatgpt-booster/core'
 
 export function historyBackoffMs(status: number, errors: number): number {
-  return status === 429 ? 12_000 : Math.min(8_000, 1_000 * 2 ** errors)
+  return status === 429 ? 60_000 : Math.min(8_000, 1_000 * 2 ** errors)
 }
 
 export function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
@@ -42,6 +42,8 @@ export function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
   })
 }
 export interface ChatGptNativeHistoryPort {
+  /** Native pagination can retain historical variants absent from a full mapping. */
+  hasPendingPages?(conversationId: string): boolean | null
   /** Explicitly bound native application read; only subsequently observed network pages prove progress. */
   readOlder(context: {
     conversationId: string
@@ -188,6 +190,21 @@ export class HistoryLoaderModule implements BoosterModule {
       this.stateStore.sourceGate.assertCompatible(id)
     }
     try {
+      // A verified mapping is not proof that the independent paginated source
+      // was exhausted. Drain it before reusing either RAM or saved coverage.
+      if (this.nativeHistory?.hasPendingPages && this.nativeHistory.hasPendingPages(id) !== false) {
+        requireCurrentCollection()
+        this.sessions.update(run, { phase: 'waiting_for_load' })
+        await this.sessions.waitFor(
+          run,
+          this.nativeHistory.readOlder({
+            conversationId: id,
+            sourceReadId: run.sourceReadId ?? null,
+            signal,
+          }),
+        )
+        requireCurrentCollection()
+      }
       if (await this.capture.completeSavedCollection?.(run)) return
       while (true) {
         requireCurrentCollection()

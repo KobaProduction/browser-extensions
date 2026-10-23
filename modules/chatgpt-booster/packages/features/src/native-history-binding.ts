@@ -7,6 +7,7 @@ import {
   createNativeHistoryReader,
   type NativeHistoryScope,
   type NativeModules,
+  nativePaginationPending,
 } from './native-history-reader'
 import { probeNativeScope } from './native-scope-probe'
 
@@ -95,6 +96,12 @@ export class NativeHistoryBinding implements BoosterModule, ChatGptNativeHistory
     this.disposeProbe = undefined
     this.scope = undefined
     this.modules = undefined
+  }
+  hasPendingPages(conversationId: string): boolean | null {
+    const owner = this.state.verifiedAccountId()
+    if (!this.active || !this.scope || !this.modules || !owner) return null
+    if (this.scope.get(this.modules.accountToken) !== owner) return null
+    return nativePaginationPending(this.scope, this.modules.pagination, conversationId)
   }
   async readOlder(context: Parameters<ChatGptNativeHistoryPort['readOlder']>[0]) {
     const owner = this.state.verifiedAccountId(),

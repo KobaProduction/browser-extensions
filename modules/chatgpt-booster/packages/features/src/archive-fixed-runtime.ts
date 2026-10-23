@@ -526,12 +526,22 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
     const remoteOnly =
       settings.automation.remote.enabled && settings.automation.remote.mode === 'remote-only'
     const header = this.state.header(page.conversationId)
+    const store = remoteOnly ? null : this.repo(owner)
+    // Older pages do not identify the conversation's project. Until a native
+    // head has supplied that metadata, retain the canonical association rather
+    // than interpreting an uninitialized RAM header as an explicit move.
+    const savedHeader = !header?.headReadId
+      ? await store?.getConversation(page.conversationId)
+      : undefined
+    const projectId = header?.headReadId
+      ? header.projectId
+      : (savedHeader?.projectId ?? header?.projectId ?? null)
     const session = this.collectionSession?.current()
     const manual = Boolean(this.collectionSession?.permits(session, owner, page.conversationId))
     const rule = captureRuleForOperation(
       settings.archive,
       page.conversationId,
-      header?.projectId ?? null,
+      projectId,
       manual || remoteOnly,
       settings.enabled,
     )
@@ -542,7 +552,6 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
       this.state.verifiedAccountId() === owner &&
       this.policyEpoch === policyEpoch &&
       (!manual || Boolean(this.collectionSession?.permits(session, owner, page.conversationId)))
-    const store = remoteOnly ? null : this.repo(owner)
     if (
       store &&
       header &&
@@ -593,8 +602,8 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
       const observation: SourceObservation = {
         accountId: owner,
         conversationId: page.conversationId,
-        projectId: header?.projectId ?? null,
-        conversationTitle: header?.title ?? null,
+        projectId,
+        conversationTitle: header?.title ?? savedHeader?.title ?? null,
         sourceKind: 'native',
         sourceVersion: this.state.sourceGate.version,
         observedAtMs: page.timestamp,
@@ -860,15 +869,26 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
     })
     this.failure = undefined
     this.collectionSession.requireCurrent(run)
-    for (const page of pages.filter((page) => page.readId === evidence.readId)) {
+    // Recollect every owner-verified source page retained in this runtime.
+    // A newer head read must not strand historical pages from an earlier read.
+    // Coverage proof still keeps its own exact read identity.
+    for (const page of pages) {
       if (this.collectionSession.permits(run, account, id)) this.enqueuePage?.(page)
     }
   }
   private enqueuePage?: (page: ConversationArchiveEventDetail) => void
+  private async drainCollection(run: ArchiveCollectionRun) {
+    let pending: Promise<void>
+    do {
+      pending = this.pending
+      await this.collectionSession.waitFor(run, pending)
+    } while (pending !== this.pending)
+  }
   /** Reuse a durable first-message proof only for an intact graph at the exact live head. */
   async completeSavedCollection(run: ArchiveCollectionRun): Promise<boolean> {
     this.collectionSession.requireCurrent(run)
-    await this.collectionSession.waitFor(run, this.pending)
+    await this.drainCollection(run)
+    if (this.failure) throw this.failure
     const owner = this.state.verifiedAccountId(),
       epoch = this.state.accountEpoch(),
       policy = this.policyEpoch
@@ -940,7 +960,7 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
     this.collectionSession.requireCurrent(run)
     this.state.sourceGate.assertCompatible(run.conversationId)
     this.collectionSession.update(run, { phase: 'saving', hasOlderServerHistory: false })
-    await this.collectionSession.waitFor(run, this.pending)
+    await this.drainCollection(run)
     this.collectionSession.requireCurrent(run)
     this.state.sourceGate.assertCompatible(run.conversationId)
     if (this.failure) {

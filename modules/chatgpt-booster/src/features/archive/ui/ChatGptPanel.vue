@@ -281,6 +281,7 @@ function endCapture() {
 async function collect() {
   const adapter = context.value?.archiveAdapter
   if (!adapter || adapter.collectionInsideExportOnly || !adapter.currentConversationId()) return
+  showArchive(adapter.currentConversationId())
   error.value = ''
   try {
     if (!collector) return

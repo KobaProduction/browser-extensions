@@ -463,3 +463,24 @@ ancestor text colour. Available-height bounds and scrolling keep pinned previews
 inside the viewport. Finished metadata/tool timers no longer schedule reactive
 updates; tool results use an explicit-parent index instead of repeatedly scanning
 every conversation record. These changes do not infer lifecycle from the DOM.
+
+## UI-72 — archive totals and collapsed-window traversal (2026-10-23)
+
+A bounded window's ordinary-message count was presented as the whole archive
+count. A service-only window could therefore display zero beside a complete
+archive. Show the known total record count and label the bounded window count
+separately. Collapsed details do not change either stored data or archive scope.
+
+Shared edge loading must accept a trusted scroll gesture even when collapsed
+content is too short to emit a scroll event. Load one adjacent window per
+gesture, without a backlog or programmatic recursive loading. The Lab's
+`scene=long&serviceTail=1` fixture provides a synthetic collapsed tail.
+
+Hydration checks relationships provisionally. Do not present its temporary
+missing-parent index as final archive loss; keep the integrity indicator loading
+until workspace hydration completes. The final audit retains its explicit graph
+scope and historical records outside that graph remain inspectable.
+
+The quick-menu collection command opens the current archive before starting,
+so progress and failures remain visible even when Settings was the previous view.
+Previously the collection ran behind Settings with its error hidden.
