@@ -1,13 +1,12 @@
 // ==UserScript==
 // @name         ChatGPT Booster [DEV]
 // @namespace    https://github.com/KobaProduction/browser-extensions/dev/chatgpt-booster
-// @version      2.0.46
+// @version      2.0.47
 // @description  ChatGPT Booster — archive and browser tools
 // @updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/chatgpt-booster.user.js
 // @downloadURL  https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/chatgpt-booster.user.js
 // @match        https://chatgpt.com/*
 // @run-at       document-start
-// @run-in       incognito-tabs
 // @grant        GM_info
 // @grant        GM_registerMenuCommand
 // @grant        GM_getValue
@@ -71,7 +70,7 @@
     rules: Object.freeze([]),
     remote: DEFAULT_REMOTE_SESSION_CONFIG
   });
-  var object$7 = (value) => !!value && typeof value === "object" && !Array.isArray(value);
+  var object$8 = (value) => !!value && typeof value === "object" && !Array.isArray(value);
   var copy = (value) => structuredClone(value);
   var REMOTE_COMMAND_KINDS = Object.freeze([
     "send-message",
@@ -108,7 +107,7 @@
     "context-exhausted"
   ];
   function shape(value, keys2) {
-    if (!object$7(value) || Object.keys(value).some((key) => !keys2.includes(key)))
+    if (!object$8(value) || Object.keys(value).some((key) => !keys2.includes(key)))
       throw Error("Invalid automation configuration");
     return value;
   }
@@ -211,7 +210,7 @@
     return result;
   }
   function actionOf(input) {
-    if (!object$7(input) || typeof input.type !== "string")
+    if (!object$8(input) || typeof input.type !== "string")
       throw Error("Invalid automation action");
     if (input.type === "send-message") {
       const value = shape(input, ["type", "text"]);
@@ -311,7 +310,7 @@
       conflict: ["name"],
       completion: ["outcome"]
     };
-    if (!object$7(input) || !eventTypes.includes(input.type))
+    if (!object$8(input) || !eventTypes.includes(input.type))
       throw Error("Invalid automation event");
     shape(input, [...base, ...fields2[input.type]]);
     id$1(input.eventId);
@@ -2032,8 +2031,8 @@
     }
     return Object.fromEntries(entries);
   }
-  const BOOSTER_BASE_VERSION = "2.0.20";
-  const injectedVersion = "2.0.20".trim();
+  const BOOSTER_BASE_VERSION = "2.0.22";
+  const injectedVersion = "2.0.22".trim();
   const BOOSTER_BUILD_VERSION = injectedVersion || BOOSTER_BASE_VERSION;
   const BOOSTER_VERSION = BOOSTER_BUILD_VERSION;
   // @__NO_SIDE_EFFECTS__
@@ -5296,7 +5295,7 @@
         slot._d = true;
       }
     }
-    if (!noSlotted && rendered.scopeId) {
+    if (rendered.scopeId) {
       rendered.slotScopeIds = [rendered.scopeId + "-s"];
     }
     return rendered;
@@ -9646,10 +9645,17 @@ ${"  ".repeat(depth)}`;
       else
         byId.set(node.id, node);
     }
+    const first = evidence.firstId && byId.has(evidence.firstId) ? evidence.firstId : null;
+    const boundaryRoot = evidence.startReached && evidence.rootId && byId.has(evidence.rootId) ? evidence.rootId : null;
     for (const node of byId.values()) {
-      if (!node.parentKnown)
-        issues.push({ messageId: node.id, parentId: null, reason: "unverified-root" });
-      else if (node.parentId === null)
+      if (!node.parentKnown) {
+        if (node.id === boundaryRoot) {
+          roots.push(node.id);
+          continue;
+        }
+        if (node.id !== first)
+          issues.push({ messageId: node.id, parentId: null, reason: "unverified-root" });
+      } else if (node.parentId === null)
         roots.push(node.id);
       else {
         const list = children.get(node.parentId) ?? [];
@@ -9679,18 +9685,20 @@ ${"  ".repeat(depth)}`;
     }
     for (const id2 of cycles)
       issues.push({ messageId: id2, parentId: byId.get(id2)?.parentId ?? null, reason: "cycle" });
-    for (const id2 of roots.slice(1))
-      issues.push({ messageId: id2, parentId: null, reason: "disconnected" });
+    const starts = first && first !== boundaryRoot && !byId.get(first)?.parentKnown ? [first, ...roots] : roots;
+    for (const id2 of starts.slice(1))
+      if (id2 !== boundaryRoot)
+        issues.push({ messageId: id2, parentId: null, reason: "disconnected" });
     if (evidence.headId && !byId.has(evidence.headId))
       issues.push({ messageId: evidence.headId, parentId: null, reason: "missing-head" });
-    const start = roots.length || evidence.startReached ? "verified" : "unknown";
+    const start = roots.length || evidence.startReached || first ? "verified" : "unknown";
     const end = evidence.headId ? byId.has(evidence.headId) ? evidence.endReached ? "verified" : "unknown" : "missing" : "unknown";
     const knownGaps = issues.some((issue) => issue.reason !== "unverified-root");
     return {
       start,
       end,
       chain: knownGaps ? "gaps" : byId.size && start === "verified" && end === "verified" && !issues.length ? "verified" : "unknown",
-      firstMessageId: roots.length === 1 ? roots[0] ?? null : null,
+      firstMessageId: first ?? (roots.length === 1 ? roots[0] ?? null : null),
       lastMessageId: evidence.headId && byId.has(evidence.headId) ? evidence.headId : null,
       roots,
       tips: [...byId.keys()].filter((id2) => !children.has(id2)),
@@ -9698,13 +9706,49 @@ ${"  ".repeat(depth)}`;
       issues
     };
   }
+  var defaultArchiveExportSelection = () => ({
+    mode: "all",
+    fromDate: "",
+    throughDate: "",
+    lastCount: 100
+  });
+  function calendarBoundary$1(value, nextDay) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value))
+      throw Error("Некорректная дата");
+    const [year, month, day] = value.split("-").map(Number);
+    const date = new Date(year ?? 0, (month ?? 0) - 1, day ?? 0);
+    if (date.getFullYear() !== year || date.getMonth() + 1 !== month || date.getDate() !== day)
+      throw Error("Некорректная дата");
+    if (nextDay)
+      date.setDate(date.getDate() + 1);
+    return date.getTime();
+  }
+  function archiveExportSelectionIds$1(messages2, selection, selectedIds = []) {
+    if (selection.mode === "all")
+      return;
+    if (selection.mode === "selected")
+      return [...new Set(selectedIds)];
+    const dated = messages2.filter((message) => message.timestampMs !== null && Number.isFinite(message.timestampMs) && message.timestampMs > 0);
+    if (selection.mode === "last") {
+      if (!Number.isSafeInteger(selection.lastCount) || selection.lastCount < 1)
+        throw Error("Укажите число сообщений больше нуля");
+      return [...dated].sort((a, b) => (a.timestampMs ?? 0) - (b.timestampMs ?? 0)).slice(-selection.lastCount).map((message) => message.id);
+    }
+    if (!selection.fromDate && !selection.throughDate)
+      throw Error("Укажите начало или конец периода");
+    const from = selection.fromDate ? calendarBoundary$1(selection.fromDate, false) : Number.NEGATIVE_INFINITY;
+    const through = selection.throughDate ? calendarBoundary$1(selection.throughDate, true) : Number.POSITIVE_INFINITY;
+    if (from >= through)
+      throw Error("Начало периода должно быть не позже конца");
+    return dated.filter((message) => (message.timestampMs ?? 0) >= from && (message.timestampMs ?? 0) < through).map((message) => message.id);
+  }
   var ARCHIVE_MESSAGE_MODEL_VERSION = 1;
-  var object$6 = (value) => !!value && typeof value === "object" && !Array.isArray(value);
+  var object$7 = (value) => !!value && typeof value === "object" && !Array.isArray(value);
   var identityText = (value) => typeof value === "string" && value.length > 0;
   var nullableText$1 = (value) => value === null || typeof value === "string";
   var nullableTime = (value) => value === null || typeof value === "number" && Number.isFinite(value);
   function fields$2(value, names) {
-    if (!object$6(value) || Object.keys(value).length !== names.length || names.some((name) => !Object.hasOwn(value, name)))
+    if (!object$7(value) || Object.keys(value).length !== names.length || names.some((name) => !Object.hasOwn(value, name)))
       throw Error("Invalid normalized message shape");
     return value;
   }
@@ -9842,7 +9886,7 @@ ${"  ".repeat(depth)}`;
         return true;
       if (Array.isArray(left) && Array.isArray(right))
         return left.length === right.length && left.every((value, index) => equal(value, right[index]));
-      if (!object$6(left) || !object$6(right))
+      if (!object$7(left) || !object$7(right))
         return false;
       const keys2 = Object.keys(left);
       return keys2.length === Object.keys(right).length && keys2.every((key) => Object.hasOwn(right, key) && equal(left[key], right[key]));
@@ -9850,6 +9894,19 @@ ${"  ".repeat(depth)}`;
     if (!equal(message, derived))
       throw Error("Normalized message disagrees with source evidence");
     return message;
+  }
+  var ARCHIVE_READER_MAX_RECORDS$1 = 320;
+  var ARCHIVE_READER_PAGE_SIZE$1 = 160;
+  function mergeArchiveReaderRecords(current, incoming, direction, options) {
+    const maximum = options.maximum ?? ARCHIVE_READER_MAX_RECORDS$1;
+    if (!Number.isSafeInteger(maximum) || maximum < 1)
+      throw Error("Invalid archive reader window size");
+    const byId = new Map([...current, ...incoming].map((record2) => [options.key(record2), record2]));
+    const ordered = [...byId.values()].sort(options.compare);
+    return {
+      records: direction === "older" ? ordered.slice(0, maximum) : ordered.slice(-maximum),
+      trimmed: ordered.length > maximum
+    };
   }
   function entryName(path) {
     if (!path || path.startsWith("/") || path.includes("\\") || path.split("/").some((segment) => !segment || segment === "." || segment === "..") || [...path].some((character) => character.charCodeAt(0) < 32))
@@ -13654,22 +13711,11 @@ ${"  ".repeat(depth)}`;
   const ChevronDown = createLucideIcon("chevron-down", [
     ["path", { d: "m6 9 6 6 6-6", key: "qrunsl" }]
   ]);
-  const ChevronLeft = createLucideIcon("chevron-left", [
-    ["path", { d: "m15 18-6-6 6-6", key: "1wnfg3" }]
-  ]);
   const ChevronRight = createLucideIcon("chevron-right", [
     ["path", { d: "m9 18 6-6-6-6", key: "mthhwq" }]
   ]);
   const ChevronUp = createLucideIcon("chevron-up", [
     ["path", { d: "m18 15-6-6-6 6", key: "153udz" }]
-  ]);
-  const ChevronsLeft = createLucideIcon("chevrons-left", [
-    ["path", { d: "m11 17-5-5 5-5", key: "13zhaf" }],
-    ["path", { d: "m18 17-5-5 5-5", key: "h8a8et" }]
-  ]);
-  const ChevronsRight = createLucideIcon("chevrons-right", [
-    ["path", { d: "m6 17 5-5-5-5", key: "xnjwq" }],
-    ["path", { d: "m13 17 5-5-5-5", key: "17xmmf" }]
   ]);
   const CircleCheck = createLucideIcon("circle-check", [
     ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
@@ -13834,14 +13880,6 @@ ${"  ".repeat(depth)}`;
   ]);
   const LoaderCircle = createLucideIcon("loader-circle", [
     ["path", { d: "M21 12a9 9 0 1 1-6.219-8.56", key: "13zald" }]
-  ]);
-  const LocateFixed = createLucideIcon("locate-fixed", [
-    ["line", { x1: "2", x2: "5", y1: "12", y2: "12", key: "bvdh0s" }],
-    ["line", { x1: "19", x2: "22", y1: "12", y2: "12", key: "1tbv5k" }],
-    ["line", { x1: "12", x2: "12", y1: "2", y2: "5", key: "11lu5j" }],
-    ["line", { x1: "12", x2: "12", y1: "19", y2: "22", key: "x3vr5v" }],
-    ["circle", { cx: "12", cy: "12", r: "7", key: "fim9np" }],
-    ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
   ]);
   const Minus = createLucideIcon("minus", [["path", { d: "M5 12h14", key: "1ays0h" }]]);
   const RefreshCcw = createLucideIcon("refresh-ccw", [
@@ -16725,6 +16763,32 @@ ${"  ".repeat(depth)}`;
     }
   });
   var DialogContent_default = DialogContent_vue_vue_type_script_setup_true_lang_default;
+  var DialogDescription_vue_vue_type_script_setup_true_lang_default = /* @__PURE__ */ defineComponent({
+    __name: "DialogDescription",
+    props: {
+      asChild: {
+        type: Boolean,
+        required: false
+      },
+      as: {
+        type: null,
+        required: false,
+        default: "p"
+      }
+    },
+    setup(__props) {
+      const props2 = __props;
+      useForwardExpose();
+      const rootContext = injectDialogRootContext();
+      return (_ctx, _cache) => {
+        return openBlock(), createBlock(unref(Primitive), mergeProps(props2, { id: unref(rootContext).descriptionId }), {
+          default: withCtx(() => [renderSlot(_ctx.$slots, "default")]),
+          _: 3
+        }, 16, ["id"]);
+      };
+    }
+  });
+  var DialogDescription_default = DialogDescription_vue_vue_type_script_setup_true_lang_default;
   var DialogOverlayImpl_vue_vue_type_script_setup_true_lang_default = /* @__PURE__ */ defineComponent({
     __name: "DialogOverlayImpl",
     props: {
@@ -19108,7 +19172,7 @@ ${"  ".repeat(depth)}`;
       update
     };
   }
-  const _hoisted_1$b$1 = ["dir"];
+  const _hoisted_1$b$2 = ["dir"];
   const PopperContentPropsDefaultValue = {
     side: "bottom",
     sideOffset: 0,
@@ -19401,7 +19465,7 @@ ${"  ".repeat(depth)}`;
           "data-align",
           "dir",
           "style"
-        ]))], 12, _hoisted_1$b$1);
+        ]))], 12, _hoisted_1$b$2);
       };
     }
   });
@@ -23769,7 +23833,7 @@ Defaulting to \`null\`.`);
     }
   });
   var SelectProvider_default = SelectProvider_vue_vue_type_script_setup_true_lang_default;
-  const _hoisted_1$9$2 = { key: 1 };
+  const _hoisted_1$9$1 = { key: 1 };
   var SelectContent_vue_vue_type_script_setup_true_lang_default = /* @__PURE__ */ defineComponent({
     inheritAttrs: false,
     __name: "SelectContent",
@@ -23931,7 +23995,7 @@ Defaulting to \`null\`.`);
             _: 3
           }, 16)]),
           _: 3
-        }, 8, ["present"])) : fragment.value ? (openBlock(), createElementBlock("div", _hoisted_1$9$2, [(openBlock(), createBlock(Teleport, { to: fragment.value }, [createVNode(SelectProvider_default, { context: unref(rootContext) }, {
+        }, 8, ["present"])) : fragment.value ? (openBlock(), createElementBlock("div", _hoisted_1$9$1, [(openBlock(), createBlock(Teleport, { to: fragment.value }, [createVNode(SelectProvider_default, { context: unref(rootContext) }, {
           default: withCtx(() => [renderSlot(_ctx.$slots, "default")]),
           _: 3
         }, 8, ["context"])], 8, ["to"]))])) : createCommentVNode("v-if", true);
@@ -25903,7 +25967,7 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _hoisted_1$8$1 = ["aria-busy"];
+  const _hoisted_1$8$2 = ["aria-busy"];
   const _hoisted_2$3$2 = {
     key: 0,
     class: "flex items-center justify-between gap-2"
@@ -25916,7 +25980,7 @@ Defaulting to \`null\`.`);
     key: 0,
     class: "tabular-nums"
   };
-  const _hoisted_5$1$1 = {
+  const _hoisted_5$m = {
     key: 1,
     class: "text-xs text-muted-foreground"
   };
@@ -25973,7 +26037,7 @@ Defaulting to \`null\`.`);
           }, null, 8, ["model-value", "aria-label"]),
           __props.detail ? (openBlock(), createElementBlock(
             "p",
-            _hoisted_5$1$1,
+            _hoisted_5$m,
             toDisplayString(__props.detail),
             1
             /* TEXT */
@@ -25986,7 +26050,7 @@ Defaulting to \`null\`.`);
             /* TEXT */
           )) : createCommentVNode("v-if", true),
           renderSlot(_ctx.$slots, "default")
-        ], 10, _hoisted_1$8$1);
+        ], 10, _hoisted_1$8$2);
       };
     }
   });
@@ -26513,7 +26577,7 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _hoisted_1$7$2 = ["innerHTML"];
+  const _hoisted_1$7$1 = ["innerHTML"];
   const _sfc_main$_ = /* @__PURE__ */ defineComponent({
     __name: "JsonViewer",
     props: {
@@ -26547,7 +26611,7 @@ Defaulting to \`null\`.`);
         return openBlock(), createElementBlock("pre", {
           class: "booster-json-viewer",
           innerHTML: html.value
-        }, null, 8, _hoisted_1$7$2);
+        }, null, 8, _hoisted_1$7$1);
       };
     }
   });
@@ -26681,6 +26745,52 @@ Defaulting to \`null\`.`);
       };
     }
   });
+  const _sfc_main$W = /* @__PURE__ */ defineComponent({
+    __name: "DialogDescription",
+    props: {
+      asChild: { type: Boolean },
+      as: {},
+      class: { type: [Boolean, null, String, Object, Array] }
+    },
+    setup(__props) {
+      const props2 = __props;
+      const delegatedProps = reactiveOmit$1(props2, "class");
+      const forwardedProps = useForwardProps(delegatedProps);
+      return (_ctx, _cache) => {
+        return openBlock(), createBlock(unref(DialogDescription_default), mergeProps(unref(forwardedProps), {
+          class: unref(cn)("text-sm text-muted-foreground", props2.class)
+        }), {
+          default: withCtx(() => [
+            renderSlot(_ctx.$slots, "default")
+          ]),
+          _: 3
+          /* FORWARDED */
+        }, 16, ["class"]);
+      };
+    }
+  });
+  const _sfc_main$U = /* @__PURE__ */ defineComponent({
+    __name: "DialogHeader",
+    props: {
+      class: { type: [Boolean, null, String, Object, Array] }
+    },
+    setup(__props) {
+      const props2 = __props;
+      return (_ctx, _cache) => {
+        return openBlock(), createElementBlock(
+          "div",
+          {
+            class: normalizeClass(unref(cn)("flex flex-col gap-y-1.5 text-center sm:text-left", props2.class))
+          },
+          [
+            renderSlot(_ctx.$slots, "default")
+          ],
+          2
+          /* CLASS */
+        );
+      };
+    }
+  });
   const _sfc_main$S = /* @__PURE__ */ defineComponent({
     __name: "DialogTitle",
     props: {
@@ -26747,8 +26857,10 @@ Defaulting to \`null\`.`);
     setup(__props, { emit: __emit }) {
       const props2 = __props;
       const emit2 = __emit;
+      const portal = useUiPortalTarget();
       function interactOutside(event) {
-        if (props2.floating) event.preventDefault();
+        const nestedDialog = (portal?.querySelectorAll('[role="dialog"][data-state="open"]').length ?? 0) > 1;
+        if (props2.floating || nestedDialog) event.preventDefault();
       }
       return (_ctx, _cache) => {
         return openBlock(), createBlock(unref(_sfc_main$Z), {
@@ -27264,14 +27376,10 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _hoisted_1$4$2 = ["aria-label"];
-  const _hoisted_2$1$2 = {
-    key: 1,
-    class: "grid min-w-0 gap-1 min-[621px]:flex min-[621px]:flex-wrap"
-  };
-  const _hoisted_3$1$1 = { class: "grid min-w-0 gap-0.5" };
-  const _hoisted_4$p = { class: "break-words" };
-  const _hoisted_5$n = {
+  const _hoisted_1$4$1 = ["aria-label"];
+  const _hoisted_2$1$2 = { class: "grid min-w-0 gap-0.5" };
+  const _hoisted_3$1$1 = { class: "break-words" };
+  const _hoisted_4$p = {
     key: 0,
     class: "font-normal text-muted-foreground"
   };
@@ -27282,7 +27390,8 @@ Defaulting to \`null\`.`);
       groupId: {},
       parents: {},
       entries: {},
-      selected: {}
+      selected: {},
+      compact: { type: Boolean }
     },
     emits: ["group", "back", "enter"],
     setup(__props, { emit: __emit }) {
@@ -27303,7 +27412,7 @@ Defaulting to \`null\`.`);
         }, {
           default: withCtx(() => [
             createVNode(unref(_sfc_main$B), {
-              class: "flex h-auto w-full flex-wrap justify-start gap-1",
+              class: normalizeClass(["flex h-auto w-full flex-wrap justify-start gap-1", __props.compact ? "bg-transparent p-0" : ""]),
               "aria-label": text2("Группа настроек", "Settings group")
             }, {
               default: withCtx(() => [
@@ -27314,7 +27423,7 @@ Defaulting to \`null\`.`);
                     return openBlock(), createBlock(unref(_sfc_main$A), {
                       key: group.id,
                       value: group.id,
-                      class: "h-auto min-h-9 min-w-0 flex-1 whitespace-normal px-3 py-2 text-center text-xs min-[900px]:flex-none [&>span]:min-w-0 [&>span]:whitespace-normal [&>span]:break-words"
+                      class: normalizeClass(["h-auto min-w-0 whitespace-normal text-center text-xs [&>span]:min-w-0 [&>span]:whitespace-normal [&>span]:break-words", __props.compact ? "min-h-7 flex-none px-2 py-1" : "min-h-9 flex-1 px-3 py-2 min-[900px]:flex-none"])
                     }, {
                       default: withCtx(() => [
                         createTextVNode(
@@ -27325,7 +27434,7 @@ Defaulting to \`null\`.`);
                       ]),
                       _: 2
                       /* DYNAMIC */
-                    }, 1032, ["value"]);
+                    }, 1032, ["value", "class"]);
                   }),
                   128
                   /* KEYED_FRAGMENT */
@@ -27333,7 +27442,7 @@ Defaulting to \`null\`.`);
               ]),
               _: 1
               /* STABLE */
-            }, 8, ["aria-label"]),
+            }, 8, ["class", "aria-label"]),
             activeGroup.value ? (openBlock(), createBlock(unref(_sfc_main$C), {
               key: activeGroup.value.id,
               value: activeGroup.value.id,
@@ -27417,52 +27526,61 @@ Defaulting to \`null\`.`);
                     128
                     /* KEYED_FRAGMENT */
                   ))
-                ], 8, _hoisted_1$4$2)) : createCommentVNode("v-if", true),
-                __props.entries.length ? (openBlock(), createElementBlock("div", _hoisted_2$1$2, [
-                  (openBlock(true), createElementBlock(
-                    Fragment,
-                    null,
-                    renderList(__props.entries, (entry) => {
-                      return openBlock(), createBlock(unref(_sfc_main$17), {
-                        key: entry.id,
-                        type: "button",
-                        variant: entry.id === __props.selected ? "secondary" : "ghost",
-                        "aria-current": entry.id === __props.selected ? "page" : void 0,
-                        class: "h-auto min-h-10 min-w-0 justify-start gap-2 whitespace-normal px-3 py-2 text-left text-xs min-[621px]:min-h-9",
-                        title: entry.description,
-                        onClick: ($event) => emit2("enter", entry.id)
-                      }, {
-                        default: withCtx(() => [
-                          createBaseVNode("span", _hoisted_3$1$1, [
-                            createBaseVNode(
-                              "span",
-                              _hoisted_4$p,
-                              toDisplayString(entry.title),
-                              1
-                              /* TEXT */
-                            ),
-                            entry.children?.length && entry.description ? (openBlock(), createElementBlock(
-                              "small",
-                              _hoisted_5$n,
-                              toDisplayString(entry.description),
-                              1
-                              /* TEXT */
-                            )) : createCommentVNode("v-if", true)
+                ], 8, _hoisted_1$4$1)) : createCommentVNode("v-if", true),
+                __props.entries.length ? (openBlock(), createElementBlock(
+                  "div",
+                  {
+                    key: 1,
+                    class: normalizeClass(["min-w-0 gap-1", __props.compact ? "flex flex-wrap" : "grid min-[621px]:flex min-[621px]:flex-wrap"])
+                  },
+                  [
+                    (openBlock(true), createElementBlock(
+                      Fragment,
+                      null,
+                      renderList(__props.entries, (entry) => {
+                        return openBlock(), createBlock(unref(_sfc_main$17), {
+                          key: entry.id,
+                          type: "button",
+                          variant: entry.id === __props.selected ? "secondary" : "ghost",
+                          "aria-current": entry.id === __props.selected ? "page" : void 0,
+                          class: normalizeClass(["h-auto min-w-0 justify-start gap-2 whitespace-normal text-left text-xs", __props.compact ? "min-h-8 px-2 py-1" : "min-h-10 px-3 py-2 min-[621px]:min-h-9"]),
+                          title: entry.description,
+                          onClick: ($event) => emit2("enter", entry.id)
+                        }, {
+                          default: withCtx(() => [
+                            createBaseVNode("span", _hoisted_2$1$2, [
+                              createBaseVNode(
+                                "span",
+                                _hoisted_3$1$1,
+                                toDisplayString(entry.title),
+                                1
+                                /* TEXT */
+                              ),
+                              entry.children?.length && entry.description ? (openBlock(), createElementBlock(
+                                "small",
+                                _hoisted_4$p,
+                                toDisplayString(entry.description),
+                                1
+                                /* TEXT */
+                              )) : createCommentVNode("v-if", true)
+                            ]),
+                            entry.children?.length ? (openBlock(), createBlock(unref(ChevronRight), {
+                              key: 0,
+                              class: "ms-auto size-3.5 shrink-0 text-muted-foreground",
+                              "aria-hidden": "true"
+                            })) : createCommentVNode("v-if", true)
                           ]),
-                          entry.children?.length ? (openBlock(), createBlock(unref(ChevronRight), {
-                            key: 0,
-                            class: "ms-auto size-3.5 shrink-0 text-muted-foreground",
-                            "aria-hidden": "true"
-                          })) : createCommentVNode("v-if", true)
-                        ]),
-                        _: 2
-                        /* DYNAMIC */
-                      }, 1032, ["variant", "aria-current", "title", "onClick"]);
-                    }),
-                    128
-                    /* KEYED_FRAGMENT */
-                  ))
-                ])) : createCommentVNode("v-if", true)
+                          _: 2
+                          /* DYNAMIC */
+                        }, 1032, ["variant", "aria-current", "class", "title", "onClick"]);
+                      }),
+                      128
+                      /* KEYED_FRAGMENT */
+                    ))
+                  ],
+                  2
+                  /* CLASS */
+                )) : createCommentVNode("v-if", true)
               ]),
               _: 1
               /* STABLE */
@@ -27483,7 +27601,8 @@ Defaulting to \`null\`.`);
       groups: {},
       selected: {},
       activeGroup: {},
-      label: {}
+      label: {},
+      compact: { type: Boolean }
     },
     emits: ["select"],
     setup(__props, { emit: __emit }) {
@@ -27560,7 +27679,8 @@ Defaulting to \`null\`.`);
           class: "settings-catalog min-w-0",
           "aria-label": __props.label || text2("Разделы и настройки", "Sections and settings")
         }, [
-          createVNode(unref(_sfc_main$G), {
+          !__props.compact ? (openBlock(), createBlock(unref(_sfc_main$G), {
+            key: 0,
             open: expanded.value,
             "onUpdate:open": _cache[0] || (_cache[0] = ($event) => expanded.value = $event),
             class: "flex max-h-[calc(50dvh-1.5rem)] min-h-0 min-w-0 flex-col min-[621px]:hidden"
@@ -27621,9 +27741,10 @@ Defaulting to \`null\`.`);
             ]),
             _: 1
             /* STABLE */
-          }, 8, ["open"]),
+          }, 8, ["open"])) : createCommentVNode("v-if", true),
           createVNode(_sfc_main$z, {
-            class: "hidden min-[621px]:block",
+            class: normalizeClass(__props.compact ? "block" : "hidden min-[621px]:block"),
+            compact: __props.compact,
             groups: __props.groups,
             "group-id": groupId.value,
             parents: branch.value.parents,
@@ -27632,7 +27753,7 @@ Defaulting to \`null\`.`);
             onGroup: changeGroup,
             onEnter: enter,
             onBack: back
-          }, null, 8, ["groups", "group-id", "parents", "entries", "selected"])
+          }, null, 8, ["class", "compact", "groups", "group-id", "parents", "entries", "selected"])
         ], 8, _hoisted_1$3$2);
       };
     }
@@ -28219,7 +28340,7 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _sfc_main$d$1 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$d$2 = /* @__PURE__ */ defineComponent({
     __name: "SelectValue",
     props: {
       placeholder: {},
@@ -28243,7 +28364,7 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _sfc_main$c$1 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$c$2 = /* @__PURE__ */ defineComponent({
     __name: "Separator",
     props: {
       orientation: { default: "horizontal" },
@@ -28351,7 +28472,7 @@ Defaulting to \`null\`.`);
     }
   });
   const _hoisted_1$1$2 = { class: "relative w-full overflow-auto" };
-  const _sfc_main$9$2 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$9$1 = /* @__PURE__ */ defineComponent({
     __name: "Table",
     props: {
       class: { type: [Boolean, null, String, Object, Array] }
@@ -28375,7 +28496,7 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _sfc_main$8$1 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$8$2 = /* @__PURE__ */ defineComponent({
     __name: "TableBody",
     props: {
       class: { type: [Boolean, null, String, Object, Array] }
@@ -28530,6 +28651,63 @@ Defaulting to \`null\`.`);
       return translated === void 0 ? caption : caption.replace(trimmed, translated);
     };
   }
+  const registryKey = /* @__PURE__ */ Symbol.for("koba.browser-ui.site-decorations.v1");
+  function ensureSiteDecoration(options) {
+    const { anchor, kind, identity, legacySelector } = options;
+    const placement = options.placement ?? "append";
+    const scope = options.scope ?? shellInstanceKey("site-decoration");
+    const key = `${scope}:${kind}`;
+    const owner = anchor;
+    owner[registryKey] ??= /* @__PURE__ */ new Map();
+    const registry = owner[registryKey];
+    let entry = registry.get(key);
+    const injected = (node) => node.hasAttribute("data-site-decoration") || Boolean(options.legacyBoundarySelector && node.matches(options.legacyBoundarySelector));
+    const placed = (host) => {
+      if (placement === "append") return host.parentElement === anchor;
+      let next = host.nextElementSibling;
+      while (next && next !== anchor && injected(next)) next = next.nextElementSibling;
+      return host.parentElement !== null && next === anchor;
+    };
+    if (entry && (entry.identity !== identity || !placed(entry.controller.element))) {
+      entry.controller.unmount();
+      registry.delete(key);
+      entry = void 0;
+    }
+    const candidates = [];
+    if (placement === "append") candidates.push(...anchor.children);
+    else {
+      let sibling = anchor.previousElementSibling;
+      while (sibling && injected(sibling)) {
+        candidates.push(sibling);
+        sibling = sibling.previousElementSibling;
+      }
+    }
+    for (const candidate of candidates) {
+      if (candidate === entry?.controller.element) continue;
+      const candidateScope = candidate.getAttribute("data-site-decoration-scope");
+      if (candidateScope !== null && candidateScope !== scope) continue;
+      if (candidate.getAttribute("data-site-decoration") === kind || legacySelector && candidate.matches(legacySelector))
+        candidate.remove();
+    }
+    if (entry) {
+      const current2 = entry.controller;
+      options.update(current2);
+      return current2;
+    }
+    const current = options.create();
+    current.element.setAttribute("data-site-decoration", kind);
+    current.element.setAttribute("data-site-decoration-scope", scope);
+    const dispose = current.unmount.bind(current);
+    let disposed = false;
+    current.unmount = () => {
+      if (disposed) return;
+      disposed = true;
+      if (registry.get(key)?.controller === current) registry.delete(key);
+      dispose();
+    };
+    registry.set(key, { identity, controller: current });
+    return current;
+  }
   function createSiteInjector(schema) {
     const root = schema.root ?? document;
     const mounted = /* @__PURE__ */ new Map();
@@ -28594,6 +28772,37 @@ Defaulting to \`null\`.`);
     };
   }
   const WIDGET_UI_MESSAGES$1 = {
+    "Сообщений в экспорте:": "Messages to export:",
+    Вы: "You",
+    Ассистент: "Assistant",
+    Сообщение: "Message",
+    "Все сообщения": "All messages",
+    "За период": "Date range",
+    "Последние N": "Latest N",
+    Выбранные: "Selected",
+    "С даты": "From date",
+    "По дату включительно": "Through date (inclusive)",
+    "Количество последних сообщений": "Number of latest messages",
+    "Поиск сообщений": "Search messages",
+    "Выбрать показанные": "Select visible messages",
+    "Очистить выбор": "Clear selection",
+    "Выбрано:": "Selected:",
+    "Выбрать сообщение:": "Select message:",
+    "Сообщение без текста": "Message without text",
+    "Сообщения не найдены": "No messages found",
+    "Загружаем список сообщений…": "Loading messages…",
+    "В экспорт:": "Exporting:",
+    сообщений: "messages",
+    "Некорректная дата": "Invalid date",
+    "Укажите число сообщений больше нуля": "Enter a message count greater than zero",
+    "Укажите начало или конец периода": "Enter the start or end date",
+    "Начало периода должно быть не позже конца": "Start date must not follow the end date",
+    "Некорректный диапазон": "Invalid range",
+    "Без даты, исключены из фильтра:": "Undated, excluded from the time filter:",
+    User: "You",
+    Assistant: "Assistant",
+    Message: "Message",
+    "Дата неизвестна": "Date unknown",
     "Что экспортировать": "What to export",
     "Все сохранённые сообщения": "All saved messages",
     "Выбранные сообщения": "Selected messages",
@@ -28746,26 +28955,26 @@ Defaulting to \`null\`.`);
     Отмена: "Cancel",
     "Очистить журнал": "Clear journal"
   };
-  const _hoisted_1$a$1 = ["aria-label"];
+  const _hoisted_1$c$1 = ["aria-label"];
   const _hoisted_2$9$1 = { class: "grid min-w-0 gap-3 pt-3 pe-3" };
-  const _hoisted_3$6$1 = {
+  const _hoisted_3$7$1 = {
     key: 0,
     role: "status",
     class: "text-sm text-muted-foreground"
   };
-  const _hoisted_4$6$1 = {
+  const _hoisted_4$7$1 = {
     key: 1,
     class: "text-sm text-muted-foreground"
   };
-  const _hoisted_5$5$1 = {
+  const _hoisted_5$6$1 = {
     key: 2,
     class: "text-sm text-muted-foreground"
   };
-  const _hoisted_6$4$1 = { class: "flex min-w-0 items-center gap-1" };
-  const _hoisted_7$3$1 = { class: "min-w-0 flex-1 truncate text-start" };
-  const _hoisted_8$3$1 = { class: "grid min-w-0 gap-1 pt-1" };
-  const _hoisted_9$3$1 = { class: "min-w-0 truncate" };
-  const _sfc_main$b$1 = /* @__PURE__ */ defineComponent({
+  const _hoisted_6$5$1 = { class: "flex min-w-0 items-center gap-1" };
+  const _hoisted_7$4$1 = { class: "min-w-0 flex-1 truncate text-start" };
+  const _hoisted_8$4$1 = { class: "grid min-w-0 gap-1 pt-1" };
+  const _hoisted_9$4$1 = { class: "min-w-0 truncate" };
+  const _sfc_main$d$1 = /* @__PURE__ */ defineComponent({
     __name: "ArchiveConversationList",
     props: {
       groups: {},
@@ -28806,19 +29015,19 @@ Defaulting to \`null\`.`);
               createBaseVNode("div", _hoisted_2$9$1, [
                 __props.loading && !__props.conversationCount ? (openBlock(), createElementBlock(
                   "p",
-                  _hoisted_3$6$1,
+                  _hoisted_3$7$1,
                   toDisplayString(__props.copy.loading),
                   1
                   /* TEXT */
                 )) : !__props.conversationCount ? (openBlock(), createElementBlock(
                   "p",
-                  _hoisted_4$6$1,
+                  _hoisted_4$7$1,
                   toDisplayString(__props.copy.empty),
                   1
                   /* TEXT */
                 )) : !__props.groups.length ? (openBlock(), createElementBlock(
                   "p",
-                  _hoisted_5$5$1,
+                  _hoisted_5$6$1,
                   toDisplayString(__props.copy.noResults),
                   1
                   /* TEXT */
@@ -28834,7 +29043,7 @@ Defaulting to \`null\`.`);
                       "onUpdate:open": ($event) => toggleGroup(group.id, $event)
                     }, {
                       default: withCtx(() => [
-                        createBaseVNode("div", _hoisted_6$4$1, [
+                        createBaseVNode("div", _hoisted_6$5$1, [
                           createVNode(
                             unref(_sfc_main$E),
                             { "as-child": "" },
@@ -28861,7 +29070,7 @@ Defaulting to \`null\`.`);
                                       })),
                                       createBaseVNode(
                                         "span",
-                                        _hoisted_7$3$1,
+                                        _hoisted_7$4$1,
                                         toDisplayString(group.label),
                                         1
                                         /* TEXT */
@@ -28907,7 +29116,7 @@ Defaulting to \`null\`.`);
                           null,
                           {
                             default: withCtx(() => [
-                              createBaseVNode("div", _hoisted_8$3$1, [
+                              createBaseVNode("div", _hoisted_8$4$1, [
                                 (openBlock(true), createElementBlock(
                                   Fragment,
                                   null,
@@ -28931,7 +29140,7 @@ Defaulting to \`null\`.`);
                                         })) : createCommentVNode("v-if", true),
                                         createBaseVNode(
                                           "span",
-                                          _hoisted_9$3$1,
+                                          _hoisted_9$4$1,
                                           toDisplayString(entry.title || __props.copy.untitled),
                                           1
                                           /* TEXT */
@@ -28965,15 +29174,15 @@ Defaulting to \`null\`.`);
             _: 3
             /* FORWARDED */
           })
-        ], 8, _hoisted_1$a$1);
+        ], 8, _hoisted_1$c$1);
       };
     }
   });
-  const _hoisted_1$9$1 = {
+  const _hoisted_1$b$1 = {
     class: "grid min-w-0 gap-3",
     "data-archive-export-format-fields": ""
   };
-  const _sfc_main$a$1 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$c$1 = /* @__PURE__ */ defineComponent({
     __name: "ArchiveExportFormatFields",
     props: {
       format: {},
@@ -28997,7 +29206,7 @@ Defaulting to \`null\`.`);
           emit2("update:packaging", value);
       }
       return (_ctx, _cache) => {
-        return openBlock(), createElementBlock("div", _hoisted_1$9$1, [
+        return openBlock(), createElementBlock("div", _hoisted_1$b$1, [
           createVNode(unref(_sfc_main$J), { class: "grid min-w-0 gap-2" }, {
             default: withCtx(() => [
               createTextVNode(
@@ -29016,7 +29225,7 @@ Defaulting to \`null\`.`);
                     "aria-label": __props.formatLabel
                   }, {
                     default: withCtx(() => [
-                      createVNode(unref(_sfc_main$d$1))
+                      createVNode(unref(_sfc_main$d$2))
                     ]),
                     _: 1
                     /* STABLE */
@@ -29075,7 +29284,7 @@ Defaulting to \`null\`.`);
                     "aria-label": __props.packagingLabel
                   }, {
                     default: withCtx(() => [
-                      createVNode(unref(_sfc_main$d$1))
+                      createVNode(unref(_sfc_main$d$2))
                     ]),
                     _: 1
                     /* STABLE */
@@ -29120,7 +29329,535 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _sfc_main$9$1 = /* @__PURE__ */ defineComponent({
+  function calendarBoundary(value, nextDay) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value))
+      throw Error("Некорректная дата");
+    const [year, month, day] = value.split("-").map(Number);
+    const date = new Date(year ?? 0, (month ?? 0) - 1, day ?? 0);
+    if (date.getFullYear() !== year || date.getMonth() + 1 !== month || date.getDate() !== day)
+      throw Error("Некорректная дата");
+    if (nextDay)
+      date.setDate(date.getDate() + 1);
+    return date.getTime();
+  }
+  function archiveExportSelectionIds(messages2, selection, selectedIds = []) {
+    if (selection.mode === "all")
+      return;
+    if (selection.mode === "selected")
+      return [...new Set(selectedIds)];
+    const dated = messages2.filter((message) => message.timestampMs !== null && Number.isFinite(message.timestampMs) && message.timestampMs > 0);
+    if (selection.mode === "last") {
+      if (!Number.isSafeInteger(selection.lastCount) || selection.lastCount < 1)
+        throw Error("Укажите число сообщений больше нуля");
+      return [...dated].sort((a, b) => (a.timestampMs ?? 0) - (b.timestampMs ?? 0)).slice(-selection.lastCount).map((message) => message.id);
+    }
+    if (!selection.fromDate && !selection.throughDate)
+      throw Error("Укажите начало или конец периода");
+    const from = selection.fromDate ? calendarBoundary(selection.fromDate, false) : Number.NEGATIVE_INFINITY;
+    const through = selection.throughDate ? calendarBoundary(selection.throughDate, true) : Number.POSITIVE_INFINITY;
+    if (from >= through)
+      throw Error("Начало периода должно быть не позже конца");
+    return dated.filter((message) => (message.timestampMs ?? 0) >= from && (message.timestampMs ?? 0) < through).map((message) => message.id);
+  }
+  var ARCHIVE_READER_MAX_RECORDS = 320;
+  var ARCHIVE_READER_PAGE_SIZE = 160;
+  new TextEncoder();
+  function createArchiveReadingScroll(options) {
+    let inputPending = false;
+    let running = false;
+    let generation = 0;
+    function capture(attribute = "data-archive-node") {
+      const viewport = options.viewport();
+      if (!viewport) return null;
+      const bounds = viewport.getBoundingClientRect();
+      const node = [...viewport.querySelectorAll(`[${attribute}]`)].find((element) => {
+        const rect = element.getBoundingClientRect();
+        return rect.bottom > bounds.top && rect.top < bounds.bottom;
+      });
+      const id2 = node?.getAttribute(attribute);
+      return node && id2 ? { id: id2, attribute, offset: node.getBoundingClientRect().top - bounds.top } : null;
+    }
+    function restore(anchor) {
+      const viewport = options.viewport();
+      if (!viewport || !anchor) return false;
+      const node = [...viewport.querySelectorAll(`[${anchor.attribute}]`)].find(
+        (element) => element.getAttribute(anchor.attribute) === anchor.id
+      );
+      if (!node) return false;
+      viewport.scrollTop += node.getBoundingClientRect().top - viewport.getBoundingClientRect().top - anchor.offset;
+      return true;
+    }
+    function onUserInput(event) {
+      if (!event.isTrusted) return;
+      if (event.type === "keydown" && !["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(
+        event.key
+      ))
+        return;
+      if (event.type === "pointermove" && !event.buttons) return;
+      inputPending = true;
+    }
+    async function onScroll() {
+      const requested = inputPending;
+      inputPending = false;
+      const viewport = options.viewport();
+      if (!requested || running || !options.enabled() || !viewport) return;
+      const atTop = viewport.scrollTop < 100;
+      const atBottom = viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop < 100;
+      const chronological = options.order?.() !== "reverse";
+      const olderEdge = chronological ? atTop : atBottom;
+      const newerEdge = chronological ? atBottom : atTop;
+      const direction = olderEdge && options.canLoad("older") ? "older" : newerEdge && options.canLoad("newer") ? "newer" : null;
+      if (!direction) return;
+      const ticket = generation;
+      running = true;
+      try {
+        await options.load(direction);
+      } finally {
+        if (ticket === generation) running = false;
+      }
+    }
+    function reset() {
+      generation++;
+      inputPending = false;
+      running = false;
+    }
+    return { capture, restore, onUserInput, onScroll, reset };
+  }
+  const _hoisted_1$a$1 = {
+    class: "grid min-w-0 gap-3",
+    "data-archive-export-scope": ""
+  };
+  const _hoisted_2$8$1 = { class: "m-0 text-sm font-medium" };
+  const _hoisted_3$6$1 = {
+    key: 0,
+    class: "grid grid-cols-1 gap-3 sm:grid-cols-2"
+  };
+  const _hoisted_4$6$1 = {
+    key: 1,
+    class: "grid gap-2"
+  };
+  const _hoisted_5$5$1 = { class: "flex flex-wrap gap-2" };
+  const _hoisted_6$4$1 = { class: "flex flex-wrap items-center gap-2" };
+  const _hoisted_7$3$1 = { class: "text-xs text-muted-foreground" };
+  const _hoisted_8$3$1 = { class: "grid gap-1 p-2" };
+  const _hoisted_9$3$1 = ["data-archive-node"];
+  const _hoisted_10$3$1 = { class: "min-w-0 text-sm" };
+  const _hoisted_11$3$1 = { class: "flex flex-wrap gap-x-2 gap-y-1" };
+  const _hoisted_12$2$1 = ["datetime"];
+  const _hoisted_13$2$1 = { class: "m-0 whitespace-pre-wrap break-words" };
+  const _hoisted_14$1$1 = {
+    key: 0,
+    class: "p-2 text-sm text-muted-foreground"
+  };
+  const _hoisted_15$1$1 = {
+    key: 3,
+    role: "status",
+    class: "text-xs text-muted-foreground"
+  };
+  const _hoisted_16$1$1 = {
+    key: 4,
+    role: "alert",
+    class: "text-xs text-destructive"
+  };
+  const _hoisted_17$1$1 = {
+    key: 5,
+    role: "status",
+    class: "text-xs text-muted-foreground"
+  };
+  const _hoisted_18$1$1 = {
+    key: 6,
+    class: "text-xs text-muted-foreground"
+  };
+  const _sfc_main$b$1 = /* @__PURE__ */ defineComponent({
+    __name: "ArchiveExportScopeFields",
+    props: {
+      modelValue: {},
+      messages: {},
+      selectedIds: {},
+      disabled: { type: Boolean },
+      loading: { type: Boolean }
+    },
+    emits: ["update:modelValue", "update:selectedIds"],
+    setup(__props, { emit: __emit }) {
+      const props2 = __props;
+      const emit2 = __emit;
+      const text2 = useLocalizedText(WIDGET_UI_MESSAGES$1), locale = useApplicationLocale(), groupId = useId$1();
+      const search = /* @__PURE__ */ ref(""), selectionRoot = /* @__PURE__ */ ref(null), start = /* @__PURE__ */ ref(0), end = /* @__PURE__ */ ref(ARCHIVE_READER_PAGE_SIZE);
+      const modes = [
+        { id: "all", label: "Все сообщения" },
+        { id: "dates", label: "За период" },
+        { id: "last", label: "Последние N" },
+        { id: "selected", label: "Выбранные" }
+      ];
+      function change(patch) {
+        emit2("update:modelValue", { ...props2.modelValue, ...patch });
+      }
+      function choose(mode) {
+        if (modes.some((item) => item.id === mode)) change({ mode });
+      }
+      const result = computed(() => {
+        try {
+          const ids = archiveExportSelectionIds(props2.messages, props2.modelValue, props2.selectedIds);
+          return { count: ids?.length ?? props2.messages.length, error: "" };
+        } catch (error) {
+          return { count: 0, error: error instanceof Error ? error.message : "Некорректный диапазон" };
+        }
+      });
+      const selected = computed(() => new Set(props2.selectedIds));
+      const filtered = computed(() => {
+        const term = search.value.trim().toLocaleLowerCase();
+        return props2.messages.filter(
+          (message) => !term || `${message.author} ${message.text}`.toLocaleLowerCase().includes(term)
+        );
+      });
+      const visible = computed(() => filtered.value.slice(start.value, end.value));
+      const viewport = () => selectionRoot.value?.querySelector("[data-reka-scroll-area-viewport]") ?? null;
+      const scroll = createArchiveReadingScroll({
+        viewport,
+        enabled: () => !props2.disabled,
+        canLoad: (direction) => direction === "older" ? start.value > 0 : end.value < filtered.value.length,
+        load: async (direction) => {
+          const anchor = scroll.capture();
+          if (direction === "older") {
+            start.value = Math.max(0, start.value - ARCHIVE_READER_PAGE_SIZE);
+            end.value = Math.min(end.value, start.value + ARCHIVE_READER_MAX_RECORDS);
+          } else {
+            end.value = Math.min(filtered.value.length, end.value + ARCHIVE_READER_PAGE_SIZE);
+            start.value = Math.max(0, end.value - ARCHIVE_READER_MAX_RECORDS);
+          }
+          await nextTick();
+          scroll.restore(anchor);
+        }
+      });
+      watch([search, () => props2.messages], () => {
+        scroll.reset();
+        start.value = 0;
+        end.value = ARCHIVE_READER_PAGE_SIZE;
+        void nextTick(() => {
+          const v = viewport();
+          if (v) v.scrollTop = 0;
+        });
+      });
+      onBeforeUnmount(scroll.reset);
+      function toggle(id2, checked) {
+        const next = new Set(props2.selectedIds);
+        if (checked === true) next.add(id2);
+        else next.delete(id2);
+        emit2("update:selectedIds", [...next]);
+      }
+      function selectVisible() {
+        emit2("update:selectedIds", [
+          .../* @__PURE__ */ new Set([...props2.selectedIds, ...visible.value.map((message) => message.id)])
+        ]);
+      }
+      function date(value) {
+        return value === null || !Number.isFinite(value) || value <= 0 || Number.isNaN(new Date(value).getTime()) ? "" : new Date(value).toLocaleString(locale.value, { dateStyle: "medium", timeStyle: "short" });
+      }
+      function author(message) {
+        return message.author || text2(message.role === "user" ? "Вы" : message.role === "assistant" ? "Ассистент" : "Сообщение");
+      }
+      return (_ctx, _cache) => {
+        return openBlock(), createElementBlock("section", _hoisted_1$a$1, [
+          createBaseVNode(
+            "p",
+            _hoisted_2$8$1,
+            toDisplayString(unref(text2)("Что экспортировать")),
+            1
+            /* TEXT */
+          ),
+          createVNode(unref(_sfc_main$r$1), {
+            "model-value": __props.modelValue.mode,
+            disabled: __props.disabled,
+            "aria-label": unref(text2)("Что экспортировать"),
+            class: "grid grid-cols-2 gap-2",
+            "onUpdate:modelValue": choose
+          }, {
+            default: withCtx(() => [
+              (openBlock(), createElementBlock(
+                Fragment,
+                null,
+                renderList(modes, (mode) => {
+                  return createBaseVNode("div", {
+                    key: mode.id,
+                    class: "flex items-center gap-2"
+                  }, [
+                    createVNode(unref(_sfc_main$q$1), {
+                      id: `${unref(groupId)}-${mode.id}`,
+                      value: mode.id
+                    }, null, 8, ["id", "value"]),
+                    createVNode(unref(_sfc_main$J), {
+                      for: `${unref(groupId)}-${mode.id}`
+                    }, {
+                      default: withCtx(() => [
+                        createTextVNode(
+                          toDisplayString(unref(text2)(mode.label)),
+                          1
+                          /* TEXT */
+                        )
+                      ]),
+                      _: 2
+                      /* DYNAMIC */
+                    }, 1032, ["for"])
+                  ]);
+                }),
+                64
+                /* STABLE_FRAGMENT */
+              ))
+            ]),
+            _: 1
+            /* STABLE */
+          }, 8, ["model-value", "disabled", "aria-label"]),
+          __props.modelValue.mode === "dates" ? (openBlock(), createElementBlock("div", _hoisted_3$6$1, [
+            createVNode(unref(_sfc_main$J), { class: "grid gap-2" }, {
+              default: withCtx(() => [
+                createTextVNode(
+                  toDisplayString(unref(text2)("С даты")),
+                  1
+                  /* TEXT */
+                ),
+                createVNode(unref(_sfc_main$s$1), {
+                  type: "date",
+                  "aria-label": unref(text2)("С даты"),
+                  "model-value": __props.modelValue.fromDate,
+                  disabled: __props.disabled,
+                  "onUpdate:modelValue": _cache[0] || (_cache[0] = ($event) => change({ fromDate: String($event) }))
+                }, null, 8, ["aria-label", "model-value", "disabled"])
+              ]),
+              _: 1
+              /* STABLE */
+            }),
+            createVNode(unref(_sfc_main$J), { class: "grid gap-2" }, {
+              default: withCtx(() => [
+                createTextVNode(
+                  toDisplayString(unref(text2)("По дату включительно")),
+                  1
+                  /* TEXT */
+                ),
+                createVNode(unref(_sfc_main$s$1), {
+                  type: "date",
+                  "aria-label": unref(text2)("По дату включительно"),
+                  "model-value": __props.modelValue.throughDate,
+                  disabled: __props.disabled,
+                  "onUpdate:modelValue": _cache[1] || (_cache[1] = ($event) => change({ throughDate: String($event) }))
+                }, null, 8, ["aria-label", "model-value", "disabled"])
+              ]),
+              _: 1
+              /* STABLE */
+            })
+          ])) : createCommentVNode("v-if", true),
+          __props.modelValue.mode === "last" ? (openBlock(), createElementBlock("div", _hoisted_4$6$1, [
+            createVNode(unref(_sfc_main$J), { class: "grid gap-2" }, {
+              default: withCtx(() => [
+                createTextVNode(
+                  toDisplayString(unref(text2)("Количество последних сообщений")),
+                  1
+                  /* TEXT */
+                ),
+                createVNode(unref(_sfc_main$s$1), {
+                  type: "number",
+                  min: "1",
+                  step: "1",
+                  "aria-label": unref(text2)("Количество последних сообщений"),
+                  "model-value": __props.modelValue.lastCount,
+                  disabled: __props.disabled,
+                  "onUpdate:modelValue": _cache[2] || (_cache[2] = ($event) => change({ lastCount: Number($event) }))
+                }, null, 8, ["aria-label", "model-value", "disabled"])
+              ]),
+              _: 1
+              /* STABLE */
+            }),
+            createBaseVNode("div", _hoisted_5$5$1, [
+              (openBlock(), createElementBlock(
+                Fragment,
+                null,
+                renderList([50, 100, 1e3], (count) => {
+                  return createVNode(unref(_sfc_main$17), {
+                    key: count,
+                    size: "sm",
+                    variant: __props.modelValue.lastCount === count ? "secondary" : "outline",
+                    "aria-pressed": __props.modelValue.lastCount === count,
+                    disabled: __props.disabled,
+                    onClick: ($event) => change({ lastCount: count })
+                  }, {
+                    default: withCtx(() => [
+                      createTextVNode(
+                        toDisplayString(count),
+                        1
+                        /* TEXT */
+                      )
+                    ]),
+                    _: 2
+                    /* DYNAMIC */
+                  }, 1032, ["variant", "aria-pressed", "disabled", "onClick"]);
+                }),
+                64
+                /* STABLE_FRAGMENT */
+              ))
+            ])
+          ])) : createCommentVNode("v-if", true),
+          __props.modelValue.mode === "selected" ? (openBlock(), createElementBlock(
+            "div",
+            {
+              key: 2,
+              ref_key: "selectionRoot",
+              ref: selectionRoot,
+              class: "grid min-w-0 gap-2",
+              onScrollCapture: _cache[5] || (_cache[5] = //@ts-ignore
+              (...args) => unref(scroll).onScroll && unref(scroll).onScroll(...args)),
+              onWheelPassive: _cache[6] || (_cache[6] = //@ts-ignore
+              (...args) => unref(scroll).onUserInput && unref(scroll).onUserInput(...args)),
+              onTouchmovePassive: _cache[7] || (_cache[7] = //@ts-ignore
+              (...args) => unref(scroll).onUserInput && unref(scroll).onUserInput(...args)),
+              onPointerdown: _cache[8] || (_cache[8] = //@ts-ignore
+              (...args) => unref(scroll).onUserInput && unref(scroll).onUserInput(...args)),
+              onPointermovePassive: _cache[9] || (_cache[9] = //@ts-ignore
+              (...args) => unref(scroll).onUserInput && unref(scroll).onUserInput(...args)),
+              onKeydown: _cache[10] || (_cache[10] = //@ts-ignore
+              (...args) => unref(scroll).onUserInput && unref(scroll).onUserInput(...args))
+            },
+            [
+              createVNode(unref(_sfc_main$s$1), {
+                modelValue: search.value,
+                "onUpdate:modelValue": _cache[3] || (_cache[3] = ($event) => search.value = $event),
+                placeholder: unref(text2)("Поиск сообщений"),
+                "aria-label": unref(text2)("Поиск сообщений"),
+                disabled: __props.disabled
+              }, null, 8, ["modelValue", "placeholder", "aria-label", "disabled"]),
+              createBaseVNode("div", _hoisted_6$4$1, [
+                createVNode(unref(_sfc_main$17), {
+                  size: "sm",
+                  variant: "outline",
+                  disabled: __props.disabled || !visible.value.length,
+                  onClick: selectVisible
+                }, {
+                  default: withCtx(() => [
+                    createTextVNode(
+                      toDisplayString(unref(text2)("Выбрать показанные")),
+                      1
+                      /* TEXT */
+                    )
+                  ]),
+                  _: 1
+                  /* STABLE */
+                }, 8, ["disabled"]),
+                createVNode(unref(_sfc_main$17), {
+                  size: "sm",
+                  variant: "ghost",
+                  disabled: __props.disabled || !__props.selectedIds.length,
+                  onClick: _cache[4] || (_cache[4] = ($event) => emit2("update:selectedIds", []))
+                }, {
+                  default: withCtx(() => [
+                    createTextVNode(
+                      toDisplayString(unref(text2)("Очистить выбор")),
+                      1
+                      /* TEXT */
+                    )
+                  ]),
+                  _: 1
+                  /* STABLE */
+                }, 8, ["disabled"]),
+                createBaseVNode(
+                  "span",
+                  _hoisted_7$3$1,
+                  toDisplayString(unref(text2)("Выбрано:")) + " " + toDisplayString(__props.selectedIds.length),
+                  1
+                  /* TEXT */
+                )
+              ]),
+              createVNode(unref(_sfc_main$o$1), { class: "h-64 min-w-0 rounded-md border border-border" }, {
+                default: withCtx(() => [
+                  createBaseVNode("div", _hoisted_8$3$1, [
+                    (openBlock(true), createElementBlock(
+                      Fragment,
+                      null,
+                      renderList(visible.value, (message) => {
+                        return openBlock(), createElementBlock("div", {
+                          key: message.id,
+                          "data-archive-node": message.id,
+                          class: normalizeClass(["flex min-w-0 items-start gap-3 rounded-md p-2", selected.value.has(message.id) ? "bg-muted" : ""])
+                        }, [
+                          createVNode(unref(_sfc_main$t$1), {
+                            class: "mt-1 shrink-0",
+                            "model-value": selected.value.has(message.id),
+                            "aria-label": `${unref(text2)("Выбрать сообщение:")} ${author(message)} · ${message.text}`,
+                            disabled: __props.disabled,
+                            "onUpdate:modelValue": ($event) => toggle(message.id, $event)
+                          }, null, 8, ["model-value", "aria-label", "disabled", "onUpdate:modelValue"]),
+                          createBaseVNode("div", _hoisted_10$3$1, [
+                            createBaseVNode("div", _hoisted_11$3$1, [
+                              createBaseVNode(
+                                "strong",
+                                null,
+                                toDisplayString(author(message)),
+                                1
+                                /* TEXT */
+                              ),
+                              date(message.timestampMs) ? (openBlock(), createElementBlock("time", {
+                                key: 0,
+                                datetime: new Date(message.timestampMs ?? 0).toISOString(),
+                                class: "text-xs text-muted-foreground"
+                              }, toDisplayString(date(message.timestampMs)), 9, _hoisted_12$2$1)) : createCommentVNode("v-if", true)
+                            ]),
+                            createBaseVNode(
+                              "p",
+                              _hoisted_13$2$1,
+                              toDisplayString(message.text || unref(text2)("Сообщение без текста")),
+                              1
+                              /* TEXT */
+                            )
+                          ])
+                        ], 10, _hoisted_9$3$1);
+                      }),
+                      128
+                      /* KEYED_FRAGMENT */
+                    )),
+                    !visible.value.length && !__props.loading ? (openBlock(), createElementBlock(
+                      "p",
+                      _hoisted_14$1$1,
+                      toDisplayString(unref(text2)("Сообщения не найдены")),
+                      1
+                      /* TEXT */
+                    )) : createCommentVNode("v-if", true)
+                  ])
+                ]),
+                _: 1
+                /* STABLE */
+              })
+            ],
+            544
+            /* NEED_HYDRATION, NEED_PATCH */
+          )) : createCommentVNode("v-if", true),
+          __props.loading ? (openBlock(), createElementBlock(
+            "p",
+            _hoisted_15$1$1,
+            toDisplayString(unref(text2)("Загружаем список сообщений…")),
+            1
+            /* TEXT */
+          )) : result.value.error ? (openBlock(), createElementBlock(
+            "p",
+            _hoisted_16$1$1,
+            toDisplayString(unref(text2)(result.value.error)),
+            1
+            /* TEXT */
+          )) : (openBlock(), createElementBlock(
+            "p",
+            _hoisted_17$1$1,
+            toDisplayString(unref(text2)("Сообщений в экспорте:")) + " " + toDisplayString(result.value.count),
+            1
+            /* TEXT */
+          )),
+          (__props.modelValue.mode === "dates" || __props.modelValue.mode === "last") && __props.messages.some((message) => message.timestampMs === null) ? (openBlock(), createElementBlock(
+            "p",
+            _hoisted_18$1$1,
+            toDisplayString(unref(text2)("Без даты, исключены из фильтра:")) + " " + toDisplayString(__props.messages.filter((message) => message.timestampMs === null).length),
+            1
+            /* TEXT */
+          )) : createCommentVNode("v-if", true)
+        ]);
+      };
+    }
+  });
+  const _sfc_main$a$1 = /* @__PURE__ */ defineComponent({
     __name: "ArchiveProgressBar",
     props: {
       label: {},
@@ -29141,11 +29878,11 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _hoisted_1$7$1 = { class: "flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs" };
-  const _hoisted_2$7$1 = { class: "min-w-0 break-words text-foreground" };
+  const _hoisted_1$8$1 = { class: "flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs" };
+  const _hoisted_2$6$1 = { class: "min-w-0 break-words text-foreground" };
   const _hoisted_3$4$1 = ["datetime"];
   const _hoisted_4$4$1 = { class: "max-h-80 max-w-[min(380px,85vw)] overflow-auto p-2 text-xs" };
-  const _sfc_main$7$1 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$8$1 = /* @__PURE__ */ defineComponent({
     __name: "ArchiveMessageHeader",
     props: {
       author: {},
@@ -29175,10 +29912,10 @@ Defaulting to \`null\`.`);
         }) ?? ""
       );
       return (_ctx, _cache) => {
-        return openBlock(), createElementBlock("div", _hoisted_1$7$1, [
+        return openBlock(), createElementBlock("div", _hoisted_1$8$1, [
           createBaseVNode(
             "strong",
-            _hoisted_2$7$1,
+            _hoisted_2$6$1,
             toDisplayString(__props.author),
             1
             /* TEXT */
@@ -29215,7 +29952,7 @@ Defaulting to \`null\`.`);
     class: "archive-reading-transcript h-full min-h-0 min-w-0 overflow-hidden",
     "data-archive-reading-transcript": ""
   };
-  const _hoisted_2$6$1 = {
+  const _hoisted_2$5$1 = {
     key: 0,
     class: "archive-reading-timeline min-h-0 min-w-0 overflow-hidden",
     "data-archive-reading-timeline": ""
@@ -29237,7 +29974,7 @@ Defaulting to \`null\`.`);
             createBaseVNode("div", _hoisted_1$6$1, [
               renderSlot(_ctx.$slots, "default")
             ]),
-            __props.timelineVisible ? (openBlock(), createElementBlock("div", _hoisted_2$6$1, [
+            __props.timelineVisible ? (openBlock(), createElementBlock("div", _hoisted_2$5$1, [
               renderSlot(_ctx.$slots, "timeline")
             ])) : createCommentVNode("v-if", true),
             renderSlot(_ctx.$slots, "status")
@@ -29248,8 +29985,7 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _hoisted_1$5$1 = { class: "booster-archive-record-list" };
-  const _hoisted_2$5$1 = ["data-archive-node", "data-archive-message"];
+  const _hoisted_1$5$1 = ["data-archive-node", "data-archive-message"];
   const _sfc_main$5$1 = /* @__PURE__ */ defineComponent({
     __name: "ArchiveRecordList",
     props: {
@@ -29257,7 +29993,9 @@ Defaulting to \`null\`.`);
       recordKey: { type: Function },
       messageId: { type: Function },
       targetMessageId: {},
+      highlightTarget: { type: Boolean },
       selectable: { type: Boolean },
+      spaced: { type: Boolean },
       selectedIds: {},
       selectionLabel: { type: Function },
       disabled: { type: Boolean }
@@ -29274,148 +30012,52 @@ Defaulting to \`null\`.`);
         emit2("select", String(props2.messageId(record2)), checked === true);
       }
       return (_ctx, _cache) => {
-        return openBlock(), createElementBlock("div", _hoisted_1$5$1, [
-          (openBlock(true), createElementBlock(
-            Fragment,
-            null,
-            renderList(__props.records, (record2, index) => {
-              return openBlock(), createElementBlock("div", {
-                key: __props.recordKey(record2),
-                "data-archive-node": __props.recordKey(record2),
-                "data-archive-message": __props.messageId(record2),
-                tabindex: "-1",
-                class: normalizeClass(["booster-archive-record-row", { "booster-message-target": __props.targetMessageId != null && String(__props.targetMessageId) === String(__props.messageId(record2)), "booster-archive-record-selectable": __props.selectable }])
-              }, [
-                __props.selectable ? (openBlock(), createBlock(unref(_sfc_main$t$1), {
-                  key: 0,
-                  class: "mt-3",
-                  "aria-label": __props.selectionLabel?.(record2) || `${unref(text2)("Выбрать сообщение")} ${__props.messageId(record2)}`,
-                  "model-value": selected(record2),
-                  disabled: __props.disabled,
-                  "onUpdate:modelValue": ($event) => toggle(record2, $event)
-                }, null, 8, ["aria-label", "model-value", "disabled", "onUpdate:modelValue"])) : createCommentVNode("v-if", true),
-                renderSlot(_ctx.$slots, "record", {
-                  record: record2,
-                  index
-                }, void 0, true)
-              ], 10, _hoisted_2$5$1);
-            }),
-            128
-            /* KEYED_FRAGMENT */
-          ))
-        ]);
+        return openBlock(), createElementBlock(
+          "div",
+          {
+            class: normalizeClass(["booster-archive-record-list", __props.spaced ? "grid gap-3" : "contents"])
+          },
+          [
+            (openBlock(true), createElementBlock(
+              Fragment,
+              null,
+              renderList(__props.records, (record2, index) => {
+                return openBlock(), createElementBlock("div", {
+                  key: __props.recordKey(record2),
+                  "data-archive-node": __props.recordKey(record2),
+                  "data-archive-message": __props.messageId(record2),
+                  tabindex: "-1",
+                  class: normalizeClass(["booster-archive-record-row min-w-0", { "booster-message-target": __props.highlightTarget !== false && __props.targetMessageId != null && String(__props.targetMessageId) === String(__props.messageId(record2)), "outline-none": __props.highlightTarget === false, "booster-archive-record-selectable grid grid-cols-[18px_minmax(0,1fr)] items-start gap-2.5": __props.selectable }])
+                }, [
+                  __props.selectable ? (openBlock(), createBlock(unref(_sfc_main$t$1), {
+                    key: 0,
+                    class: "mt-3",
+                    "aria-label": __props.selectionLabel?.(record2) || `${unref(text2)("Выбрать сообщение")} ${__props.messageId(record2)}`,
+                    "model-value": selected(record2),
+                    disabled: __props.disabled,
+                    "onUpdate:modelValue": ($event) => toggle(record2, $event)
+                  }, null, 8, ["aria-label", "model-value", "disabled", "onUpdate:modelValue"])) : createCommentVNode("v-if", true),
+                  renderSlot(_ctx.$slots, "record", {
+                    record: record2,
+                    index
+                  })
+                ], 10, _hoisted_1$5$1);
+              }),
+              128
+              /* KEYED_FRAGMENT */
+            ))
+          ],
+          2
+          /* CLASS */
+        );
       };
     }
   });
-  const _export_sfc = (sfc, props2) => {
-    const target = sfc.__vccOpts || sfc;
-    for (const [key, val] of props2) {
-      target[key] = val;
-    }
-    return target;
-  };
-  const ArchiveRecordList = /* @__PURE__ */ _export_sfc(_sfc_main$5$1, [["__scopeId", "data-v-04a9c349"]]);
-  const _hoisted_1$4$1 = ["aria-label"];
-  const _hoisted_2$4$1 = { class: "m-0 text-xs font-medium" };
-  const _hoisted_3$3$1 = { class: "flex items-center gap-2" };
-  const _hoisted_4$3$1 = { class: "flex items-center gap-2" };
-  const _hoisted_5$3$1 = {
-    key: 0,
-    role: "status",
-    class: "m-0 text-xs text-muted-foreground"
-  };
-  const _sfc_main$4$1 = /* @__PURE__ */ defineComponent({
-    __name: "ArchiveSelectionScope",
-    props: {
-      modelValue: {},
-      selectedCount: {},
-      disabled: { type: Boolean },
-      label: { default: "Что экспортировать" },
-      allLabel: { default: "Все сохранённые сообщения" },
-      selectedLabel: { default: "Выбранные сообщения" },
-      emptyLabel: { default: "Выбери сообщения в архиве. Выбор сохраняется между страницами." }
-    },
-    emits: ["update:modelValue"],
-    setup(__props, { emit: __emit }) {
-      const text2 = useLocalizedText(WIDGET_UI_MESSAGES$1);
-      const emit2 = __emit;
-      const groupId = useId$1();
-      function choose(value) {
-        if (value === "all" || value === "selected") emit2("update:modelValue", value);
-      }
-      return (_ctx, _cache) => {
-        return openBlock(), createElementBlock("section", {
-          class: "grid min-w-0 gap-2",
-          "aria-label": unref(text2)(__props.label)
-        }, [
-          createBaseVNode(
-            "p",
-            _hoisted_2$4$1,
-            toDisplayString(unref(text2)(__props.label)),
-            1
-            /* TEXT */
-          ),
-          createVNode(unref(_sfc_main$r$1), {
-            "model-value": __props.modelValue,
-            disabled: __props.disabled,
-            "aria-label": unref(text2)(__props.label),
-            class: "flex flex-wrap gap-x-4 gap-y-2",
-            "onUpdate:modelValue": choose
-          }, {
-            default: withCtx(() => [
-              createBaseVNode("div", _hoisted_3$3$1, [
-                createVNode(unref(_sfc_main$q$1), {
-                  id: `${unref(groupId)}-all`,
-                  value: "all"
-                }, null, 8, ["id"]),
-                createVNode(unref(_sfc_main$J), {
-                  for: `${unref(groupId)}-all`
-                }, {
-                  default: withCtx(() => [
-                    createTextVNode(
-                      toDisplayString(unref(text2)(__props.allLabel)),
-                      1
-                      /* TEXT */
-                    )
-                  ]),
-                  _: 1
-                  /* STABLE */
-                }, 8, ["for"])
-              ]),
-              createBaseVNode("div", _hoisted_4$3$1, [
-                createVNode(unref(_sfc_main$q$1), {
-                  id: `${unref(groupId)}-selected`,
-                  value: "selected"
-                }, null, 8, ["id"]),
-                createVNode(unref(_sfc_main$J), {
-                  for: `${unref(groupId)}-selected`
-                }, {
-                  default: withCtx(() => [
-                    createTextVNode(
-                      toDisplayString(unref(text2)(__props.selectedLabel)) + " · " + toDisplayString(__props.selectedCount),
-                      1
-                      /* TEXT */
-                    )
-                  ]),
-                  _: 1
-                  /* STABLE */
-                }, 8, ["for"])
-              ])
-            ]),
-            _: 1
-            /* STABLE */
-          }, 8, ["model-value", "disabled", "aria-label"]),
-          __props.modelValue === "selected" && __props.selectedCount === 0 ? (openBlock(), createElementBlock(
-            "p",
-            _hoisted_5$3$1,
-            toDisplayString(unref(text2)(__props.emptyLabel)),
-            1
-            /* TEXT */
-          )) : createCommentVNode("v-if", true)
-        ], 8, _hoisted_1$4$1);
-      };
-    }
-  });
+  function archiveTimelineTimestamp(timestampMs) {
+    if (typeof timestampMs !== "number" || !Number.isFinite(timestampMs) || timestampMs <= 0) return null;
+    const date = new Date(timestampMs);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
   const ARCHIVE_TIMELINE_WINDOW_SIZE = 160;
   function archiveTimelineSameIds(previous, current) {
     return previous.length === current.length && previous.every((id2, index) => id2 === current[index]);
@@ -29456,33 +30098,48 @@ Defaulting to \`null\`.`);
     return { points, edges, width, height: Math.max(rowHeight, nodes.length * rowHeight) };
   }
   const _hoisted_1$3$1 = ["aria-label", "aria-busy"];
-  const _hoisted_2$3$1 = {
-    class: "shrink-0 px-1 py-1 text-center text-[10px] tabular-nums text-muted-foreground",
-    "aria-hidden": "true"
-  };
-  const _hoisted_3$2$1 = { class: "flex min-h-0 flex-1 gap-1 px-1 pb-8" };
-  const _hoisted_4$2$1 = { class: "block" };
-  const _hoisted_5$2$1 = {
-    key: 0,
-    class: "mt-1"
-  };
+  const _hoisted_2$3$1 = { class: "shrink-0 space-y-1 px-1 py-2 text-center text-[10px] tabular-nums text-muted-foreground" };
+  const _hoisted_3$2$1 = ["datetime"];
+  const _hoisted_4$2$1 = { "aria-hidden": "true" };
+  const _hoisted_5$2$1 = { class: "flex min-h-0 flex-1 gap-1 px-1 pb-8" };
   const _hoisted_6$2$1 = {
-    key: 1,
-    class: "mt-1"
+    class: "block text-sm leading-snug",
+    "data-archive-timeline-author": ""
   };
-  const _hoisted_7$1$1 = ["width", "height"];
-  const _hoisted_8$1$1 = ["d", "stroke-dasharray"];
-  const _hoisted_9$1$1 = ["cx", "cy", "r", "fill", "stroke-dasharray"];
-  const _hoisted_10$1$1 = { class: "block" };
-  const _hoisted_11$1$1 = {
+  const _hoisted_7$1$1 = {
     key: 0,
-    class: "mt-1"
+    class: "whitespace-pre-wrap text-sm leading-relaxed",
+    "data-archive-timeline-text": ""
   };
+  const _hoisted_8$1$1 = { class: "flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-t border-border pt-2 text-xs text-muted-foreground" };
+  const _hoisted_9$1$1 = ["datetime"];
+  const _hoisted_10$1$1 = { key: 1 };
+  const _hoisted_11$1$1 = { class: "tabular-nums" };
   const _hoisted_12$c = {
     key: 1,
-    class: "mt-1"
+    class: "text-xs text-muted-foreground"
   };
-  const _hoisted_13$b = {
+  const _hoisted_13$b = ["width", "height"];
+  const _hoisted_14$b = ["d", "stroke-dasharray"];
+  const _hoisted_15$b = ["cx", "cy", "r", "fill", "stroke-dasharray"];
+  const _hoisted_16$a = {
+    class: "block text-sm leading-snug",
+    "data-archive-timeline-author": ""
+  };
+  const _hoisted_17$8 = {
+    key: 0,
+    class: "whitespace-pre-wrap text-sm leading-relaxed",
+    "data-archive-timeline-text": ""
+  };
+  const _hoisted_18$8 = { class: "flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-t border-border pt-2 text-xs text-muted-foreground" };
+  const _hoisted_19$8 = ["datetime"];
+  const _hoisted_20$8 = { key: 1 };
+  const _hoisted_21$8 = { class: "tabular-nums" };
+  const _hoisted_22$7 = {
+    key: 1,
+    class: "text-xs text-muted-foreground"
+  };
+  const _hoisted_23$7 = {
     key: 0,
     class: "flex shrink-0 justify-center gap-1 border-t border-border p-1"
   };
@@ -29503,6 +30160,24 @@ Defaulting to \`null\`.`);
     setup(__props, { emit: __emit }) {
       const props2 = __props;
       const emit2 = __emit;
+      const locale = useApplicationLocale();
+      const text2 = useLocalizedText(WIDGET_UI_MESSAGES$1);
+      const dateFormatter = computed(
+        () => new Intl.DateTimeFormat(locale.value, { dateStyle: "medium", timeStyle: "short" })
+      );
+      const compactDateFormatter = computed(
+        () => new Intl.DateTimeFormat(locale.value, { day: "2-digit", month: "2-digit", year: "numeric" })
+      );
+      function nodeDate(node) {
+        return archiveTimelineTimestamp(node?.timestampMs);
+      }
+      function dateLabel(node, compact = false) {
+        const date = nodeDate(node);
+        return date ? (compact ? compactDateFormatter.value : dateFormatter.value).format(date) : "";
+      }
+      function previewLabel(node) {
+        return [node?.label, dateLabel(node), node?.preview].filter(Boolean).join(" · ");
+      }
       const root = /* @__PURE__ */ ref(null);
       const PAGE_SIZE = ARCHIVE_TIMELINE_WINDOW_SIZE;
       const previewStyle = {
@@ -29704,14 +30379,22 @@ Defaulting to \`null\`.`);
               "aria-label": __props.label,
               "aria-busy": __props.loading || void 0
             }, [
-              createBaseVNode(
-                "span",
-                _hoisted_2$3$1,
-                toDisplayString(__props.nodes.length ? position.value + 1 : 0) + " / " + toDisplayString(__props.nodes.length),
-                1
-                /* TEXT */
-              ),
-              createBaseVNode("div", _hoisted_3$2$1, [
+              createBaseVNode("div", _hoisted_2$3$1, [
+                nodeDate(__props.nodes[position.value]) ? (openBlock(), createElementBlock("time", {
+                  key: 0,
+                  datetime: nodeDate(__props.nodes[position.value])?.toISOString(),
+                  class: "block font-medium text-foreground",
+                  "data-archive-timeline-date": ""
+                }, toDisplayString(dateLabel(__props.nodes[position.value], true)), 9, _hoisted_3$2$1)) : createCommentVNode("v-if", true),
+                createBaseVNode(
+                  "span",
+                  _hoisted_4$2$1,
+                  toDisplayString(__props.nodes.length ? position.value + 1 : 0) + " / " + toDisplayString(__props.nodes.length),
+                  1
+                  /* TEXT */
+                )
+              ]),
+              createBaseVNode("div", _hoisted_5$2$1, [
                 __props.nodes.length > 1 ? (openBlock(), createBlock(unref(_sfc_main$13), {
                   key: 0,
                   open: !__props.disabled && Boolean(sliderPreview.value)
@@ -29743,7 +30426,7 @@ Defaulting to \`null\`.`);
                               step: 1,
                               disabled: __props.disabled,
                               "aria-label": __props.label,
-                              "aria-valuetext": `${position.value + 1} / ${__props.nodes.length}: ${__props.nodes[position.value]?.label ?? ""} ${__props.nodes[position.value]?.preview ?? ""}`,
+                              "aria-valuetext": `${position.value + 1} / ${__props.nodes.length}: ${previewLabel(__props.nodes[position.value])}`,
                               "onUpdate:modelValue": scrub,
                               onValueCommit: selectIndex
                             }, null, 8, ["model-value", "max", "disabled", "aria-label", "aria-valuetext"])
@@ -29761,28 +30444,48 @@ Defaulting to \`null\`.`);
                       "collision-padding": 12,
                       "avoid-collisions": true,
                       style: previewStyle,
-                      class: "whitespace-normal [overflow-wrap:anywhere]",
+                      class: "w-72 space-y-2 border border-border bg-popover p-3 text-popover-foreground shadow-md whitespace-normal [overflow-wrap:anywhere]",
                       "data-archive-timeline-preview": "",
                       "data-archive-timeline-preview-id": sliderPreview.value.id
                     }, {
                       default: withCtx(() => [
                         createBaseVNode(
                           "strong",
-                          _hoisted_4$2$1,
-                          toDisplayString(sliderPreview.value.label) + " · " + toDisplayString((sliderPreviewIndex.value ?? 0) + 1) + " / " + toDisplayString(__props.nodes.length),
+                          _hoisted_6$2$1,
+                          toDisplayString(sliderPreview.value.label),
                           1
                           /* TEXT */
                         ),
                         sliderPreview.value.preview ? (openBlock(), createElementBlock(
                           "p",
-                          _hoisted_5$2$1,
+                          _hoisted_7$1$1,
                           toDisplayString(sliderPreview.value.preview),
                           1
                           /* TEXT */
                         )) : createCommentVNode("v-if", true),
+                        createBaseVNode("div", _hoisted_8$1$1, [
+                          nodeDate(sliderPreview.value) ? (openBlock(), createElementBlock("time", {
+                            key: 0,
+                            datetime: nodeDate(sliderPreview.value)?.toISOString(),
+                            "data-archive-timeline-sent-at": ""
+                          }, toDisplayString(dateLabel(sliderPreview.value)), 9, _hoisted_9$1$1)) : (openBlock(), createElementBlock(
+                            "span",
+                            _hoisted_10$1$1,
+                            toDisplayString(unref(text2)("Дата неизвестна")),
+                            1
+                            /* TEXT */
+                          )),
+                          createBaseVNode(
+                            "span",
+                            _hoisted_11$1$1,
+                            toDisplayString((sliderPreviewIndex.value ?? 0) + 1) + " / " + toDisplayString(__props.nodes.length),
+                            1
+                            /* TEXT */
+                          )
+                        ]),
                         sliderPreview.value.uncertain ? (openBlock(), createElementBlock(
                           "p",
-                          _hoisted_6$2$1,
+                          _hoisted_12$c,
                           toDisplayString(__props.uncertainLabel || "···"),
                           1
                           /* TEXT */
@@ -29822,7 +30525,7 @@ Defaulting to \`null\`.`);
                                 "stroke-width": "1.5",
                                 "stroke-dasharray": edge.uncertain ? "3 3" : void 0,
                                 class: normalizeClass({ "text-primary": edge.childId === __props.activeId || edge.parentId === __props.activeId })
-                              }, null, 10, _hoisted_8$1$1);
+                              }, null, 10, _hoisted_14$b);
                             }),
                             128
                             /* KEYED_FRAGMENT */
@@ -29840,12 +30543,12 @@ Defaulting to \`null\`.`);
                                 stroke: "currentColor",
                                 "stroke-dasharray": uncertainIds.value.has(point.id) ? "2 2" : void 0,
                                 class: normalizeClass(point.id === __props.activeId || __props.selectedIds?.has(point.id) ? "text-primary" : "text-muted-foreground")
-                              }, null, 10, _hoisted_9$1$1);
+                              }, null, 10, _hoisted_15$b);
                             }),
                             128
                             /* KEYED_FRAGMENT */
                           ))
-                        ], 8, _hoisted_7$1$1)),
+                        ], 8, _hoisted_13$b)),
                         (openBlock(true), createElementBlock(
                           Fragment,
                           null,
@@ -29870,7 +30573,7 @@ Defaulting to \`null\`.`);
                                           style: normalizeStyle({ height: `${ROW_HEIGHT}px` }),
                                           "data-selected": __props.selectedIds?.has(node.id) || void 0,
                                           "aria-current": node.id === __props.activeId ? "true" : void 0,
-                                          "aria-label": `${node.label}: ${node.preview || ""}${node.uncertain && __props.uncertainLabel ? ` · ${__props.uncertainLabel}` : ""}`,
+                                          "aria-label": `${previewLabel(node)}${node.uncertain && __props.uncertainLabel ? ` · ${__props.uncertainLabel}` : ""}`,
                                           disabled: __props.disabled,
                                           onClick: ($event) => selectPoint(windowStart.value + index)
                                         }, null, 8, ["data-archive-timeline-id", "variant", "style", "data-selected", "aria-current", "aria-label", "disabled", "onClick"])
@@ -29886,28 +30589,48 @@ Defaulting to \`null\`.`);
                                     "collision-padding": 12,
                                     "avoid-collisions": true,
                                     style: previewStyle,
-                                    class: "whitespace-normal [overflow-wrap:anywhere]",
+                                    class: "w-72 space-y-2 border border-border bg-popover p-3 text-popover-foreground shadow-md whitespace-normal [overflow-wrap:anywhere]",
                                     "data-archive-timeline-preview": "",
                                     "data-archive-timeline-preview-id": node.id
                                   }, {
                                     default: withCtx(() => [
                                       createBaseVNode(
                                         "strong",
-                                        _hoisted_10$1$1,
-                                        toDisplayString(node.label) + " · " + toDisplayString(windowStart.value + index + 1) + " / " + toDisplayString(__props.nodes.length),
+                                        _hoisted_16$a,
+                                        toDisplayString(node.label),
                                         1
                                         /* TEXT */
                                       ),
                                       node.preview ? (openBlock(), createElementBlock(
                                         "p",
-                                        _hoisted_11$1$1,
+                                        _hoisted_17$8,
                                         toDisplayString(node.preview),
                                         1
                                         /* TEXT */
                                       )) : createCommentVNode("v-if", true),
+                                      createBaseVNode("div", _hoisted_18$8, [
+                                        nodeDate(node) ? (openBlock(), createElementBlock("time", {
+                                          key: 0,
+                                          datetime: nodeDate(node)?.toISOString(),
+                                          "data-archive-timeline-sent-at": ""
+                                        }, toDisplayString(dateLabel(node)), 9, _hoisted_19$8)) : (openBlock(), createElementBlock(
+                                          "span",
+                                          _hoisted_20$8,
+                                          toDisplayString(unref(text2)("Дата неизвестна")),
+                                          1
+                                          /* TEXT */
+                                        )),
+                                        createBaseVNode(
+                                          "span",
+                                          _hoisted_21$8,
+                                          toDisplayString(windowStart.value + index + 1) + " / " + toDisplayString(__props.nodes.length),
+                                          1
+                                          /* TEXT */
+                                        )
+                                      ]),
                                       node.uncertain ? (openBlock(), createElementBlock(
                                         "p",
-                                        _hoisted_12$c,
+                                        _hoisted_22$7,
                                         toDisplayString(__props.uncertainLabel || "···"),
                                         1
                                         /* TEXT */
@@ -29936,7 +30659,7 @@ Defaulting to \`null\`.`);
                   /* STABLE */
                 })
               ]),
-              __props.nodes.length > unref(PAGE_SIZE) ? (openBlock(), createElementBlock("div", _hoisted_13$b, [
+              __props.nodes.length > unref(PAGE_SIZE) ? (openBlock(), createElementBlock("div", _hoisted_23$7, [
                 createVNode(unref(_sfc_main$17), {
                   variant: "ghost",
                   size: "icon-sm",
@@ -29980,7 +30703,7 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _hoisted_1$1$1 = { class: "booster-conversation-collection" };
+  const _hoisted_1$1$1 = { class: "booster-conversation-collection grid justify-items-start gap-2" };
   const _hoisted_2$1$1 = {
     key: 3,
     class: "text-xs text-muted-foreground",
@@ -29990,9 +30713,11 @@ Defaulting to \`null\`.`);
     __name: "ConversationCollectionAction",
     props: {
       label: {},
+      variant: { default: "outline" },
       busy: { type: Boolean },
       disabled: { type: Boolean, default: false },
       processed: {},
+      reused: { default: 0 },
       total: {},
       saved: {},
       stopLabel: { default: "Остановить" },
@@ -30001,13 +30726,15 @@ Defaulting to \`null\`.`);
     emits: ["start", "stop"],
     setup(__props, { emit: __emit }) {
       const text2 = useLocalizedText(WIDGET_UI_MESSAGES$1);
+      const props2 = __props;
+      const covered = computed(() => Math.max(0, props2.processed ?? 0) + Math.max(0, props2.reused));
       const emit2 = __emit;
       return (_ctx, _cache) => {
         return openBlock(), createElementBlock("div", _hoisted_1$1$1, [
           !__props.busy ? (openBlock(), createBlock(unref(_sfc_main$17), {
             key: 0,
             type: "button",
-            variant: "outline",
+            variant: __props.variant,
             size: "sm",
             disabled: __props.disabled,
             onClick: _cache[0] || (_cache[0] = ($event) => emit2("start"))
@@ -30025,10 +30752,10 @@ Defaulting to \`null\`.`);
             ]),
             _: 1
             /* STABLE */
-          }, 8, ["disabled"])) : (openBlock(), createBlock(unref(_sfc_main$17), {
+          }, 8, ["variant", "disabled"])) : (openBlock(), createBlock(unref(_sfc_main$17), {
             key: 1,
             type: "button",
-            variant: "outline",
+            variant: __props.variant,
             size: "sm",
             onClick: _cache[1] || (_cache[1] = ($event) => emit2("stop"))
           }, {
@@ -30045,12 +30772,12 @@ Defaulting to \`null\`.`);
             ]),
             _: 1
             /* STABLE */
-          })),
-          __props.total !== null && __props.total !== void 0 && __props.total > 0 ? (openBlock(), createBlock(_sfc_main$9$1, {
+          }, 8, ["variant"])),
+          __props.total !== null && __props.total !== void 0 && __props.total > 0 ? (openBlock(), createBlock(_sfc_main$a$1, {
             key: 2,
             label: __props.label,
-            percent: Math.max(0, Math.min(100, Math.round(100 * (__props.processed ?? 0) / __props.total))),
-            counter: `${__props.processed ?? 0} / ${__props.total}`,
+            percent: Math.max(0, Math.min(100, Math.round(100 * covered.value / __props.total))),
+            counter: `${covered.value} / ${__props.total}`,
             compact: ""
           }, null, 8, ["label", "percent", "counter"])) : createCommentVNode("v-if", true),
           __props.saved !== void 0 && __props.saved !== null ? (openBlock(), createElementBlock(
@@ -30176,6 +30903,7 @@ Defaulting to \`null\`.`);
             parentId: message.parentId ? keys2.get(message.parentId) ?? null : null,
             label: message.label === "User" ? props2.locale === "ru" ? "Вы" : "You" : props2.locale === "ru" ? "Ассистент" : "Assistant",
             preview: archiveHistoryPreview(message.preview, props2.locale),
+            timestampMs: message.timestampMs ?? null,
             uncertain: message.uncertain
           }));
         }
@@ -30192,6 +30920,7 @@ Defaulting to \`null\`.`);
             parentId: parentId ? data.value.byId.get(parentId)?.record.messageKey ?? null : null,
             label: item.kind === "user" ? props2.locale === "ru" ? "Вы" : "You" : props2.locale === "ru" ? "Ассистент" : "Assistant",
             preview: archiveHistoryPreview(item.text, props2.locale),
+            timestampMs: item.record.createTime === null ? null : item.record.createTime * 1e3,
             uncertain: Boolean(item.record.parentId && !parents.get(item.record.messageId))
           };
         });
@@ -31329,7 +32058,7 @@ Defaulting to \`null\`.`);
   const _hoisted_2$q = { class: "booster-meta-label" };
   const _hoisted_3$q = { class: "booster-meta-value" };
   const _hoisted_4$o = { class: "booster-meta-label" };
-  const _hoisted_5$m = { class: "booster-meta-value" };
+  const _hoisted_5$l = { class: "booster-meta-value" };
   const _hoisted_6$l = { class: "booster-meta-lines" };
   const _hoisted_7$i = { class: "booster-meta-label" };
   const _hoisted_8$g = { class: "booster-meta-value" };
@@ -31407,7 +32136,7 @@ Defaulting to \`null\`.`);
                       ),
                       createBaseVNode(
                         "span",
-                        _hoisted_5$m,
+                        _hoisted_5$l,
                         toDisplayString(edited.value),
                         1
                         /* TEXT */
@@ -31493,7 +32222,7 @@ Defaulting to \`null\`.`);
   };
   const _hoisted_3$p = { class: "booster-record-header-tools" };
   const _hoisted_4$n = { class: "booster-record-header booster-record-internal-header" };
-  const _hoisted_5$l = { class: "booster-record-kind" };
+  const _hoisted_5$k = { class: "booster-record-kind" };
   const _hoisted_6$k = { class: "booster-meta-lines" };
   const _hoisted_7$h = { class: "booster-meta-label" };
   const _hoisted_8$f = { class: "booster-meta-value" };
@@ -31592,7 +32321,7 @@ Defaulting to \`null\`.`);
               { key: 0 },
               [
                 createBaseVNode("header", _hoisted_1$r, [
-                  createVNode(unref(_sfc_main$7$1), {
+                  createVNode(unref(_sfc_main$8$1), {
                     author: t("reader." + __props.item.kind),
                     "sent-at": __props.item.metadata.sentAt,
                     locale: __props.locale
@@ -31638,7 +32367,7 @@ Defaulting to \`null\`.`);
               { key: 1 },
               [
                 createBaseVNode("header", _hoisted_4$n, [
-                  createBaseVNode("span", _hoisted_5$l, [
+                  createBaseVNode("span", _hoisted_5$k, [
                     reasoningInfo.value ? (openBlock(), createBlock(unref(_sfc_main$$), {
                       key: 0,
                       label: reasoningInfo.value,
@@ -32083,6 +32812,11 @@ Defaulting to \`null\`.`);
   function archiveTurnWindow(turns, visibleCount, order) {
     const latest = turns.slice(Math.max(0, turns.length - Math.max(1, visibleCount)));
     return order === "newest-first" ? latest.reverse() : latest;
+  }
+  function archiveReaderDetails(items, includeInternal) {
+    return includeInternal ? items : items.filter(
+      (item) => item.kind === "tool_call" || item.kind === "tool_result" || item.kind === "reasoning" && item.text.trim().length > 0
+    );
   }
   const LEGACY_TURN_SELECTOR = 'main section[data-testid^="conversation-turn-"]';
   const LEGACY_MESSAGE_SELECTOR = "[data-message-id][data-message-author-role]";
@@ -33217,17 +33951,20 @@ Defaulting to \`null\`.`);
   function isChatGptWorkConversationOrigin(value) {
     return value === "tpp" || value === "flora";
   }
-  function mergeArchiveReaderWindows(current, incoming, direction, maximum = 320) {
+  function mergeArchiveReaderWindows(current, incoming, direction, maximum = ARCHIVE_READER_MAX_RECORDS$1) {
     if (current.accountId !== incoming.accountId || current.sourceInstanceId !== incoming.sourceInstanceId || current.sourceRevision !== incoming.sourceRevision)
       throw Error("archive.error.sourceChanged");
-    const byId = new Map(
-      [...current.thread.turns, ...incoming.thread.turns].flatMap((turn) => [...turn.messages, ...turn.details]).map((item) => [item.record.messageId, item.record])
+    const recordsOf = (window2) => window2.thread.turns.flatMap((turn) => [...turn.messages, ...turn.details]).map((item) => item.record);
+    const { records, trimmed } = mergeArchiveReaderRecords(
+      recordsOf(current),
+      recordsOf(incoming),
+      direction,
+      {
+        key: (record2) => record2.messageId,
+        compare: (a, b) => (a.createTime ?? Number.POSITIVE_INFINITY) - (b.createTime ?? Number.POSITIVE_INFINITY) || a.messageId.localeCompare(b.messageId),
+        maximum
+      }
     );
-    const all = [...byId.values()].sort(
-      (a, b) => (a.createTime ?? Number.POSITIVE_INFINITY) - (b.createTime ?? Number.POSITIVE_INFINITY) || a.messageId.localeCompare(b.messageId)
-    );
-    const trimmed = all.length > maximum;
-    const records = direction === "older" ? all.slice(0, maximum) : all.slice(-maximum);
     const first = records[0], last = records.at(-1);
     return {
       ...incoming,
@@ -33240,29 +33977,29 @@ Defaulting to \`null\`.`);
       hasUnsequencedRecords: records.some((record2) => record2.createTime === null)
     };
   }
-  function createArchiveRefreshQueue(refresh, delay) {
-    let timer;
-    let running = false, dirty2 = false, stopped = false;
+  function createArchiveRefreshQueue(refresh) {
+    let scheduled = false, running = false, dirty2 = false, stopped = false;
     const request = () => {
       if (stopped) return;
       dirty2 = true;
-      if (timer || running) return;
-      timer = setTimeout(() => {
-        timer = void 0;
+      if (scheduled || running) return;
+      scheduled = true;
+      queueMicrotask(() => {
+        scheduled = false;
+        if (stopped) return;
         dirty2 = false;
         running = true;
         void Promise.resolve().then(refresh).catch(() => void 0).finally(() => {
           running = false;
           if (dirty2) request();
         });
-      }, delay);
+      });
     };
     return {
       request,
       stop() {
         stopped = true;
         dirty2 = false;
-        if (timer) clearTimeout(timer);
       }
     };
   }
@@ -33356,14 +34093,14 @@ Defaulting to \`null\`.`);
   const _hoisted_2$n = ["data-archive-drag-handle"];
   const _hoisted_3$n = { class: "booster-reader-heading" };
   const _hoisted_4$m = { class: "booster-header-actions" };
-  const _hoisted_5$k = {
-    key: 0,
+  const _hoisted_5$j = {
+    key: 1,
     role: "status",
     class: "flex items-center gap-2 px-3 py-1 text-xs text-muted-foreground"
   };
   const _hoisted_6$j = { key: 1 };
   const _hoisted_7$g = {
-    key: 1,
+    key: 2,
     role: "status",
     class: "booster-note"
   };
@@ -33371,148 +34108,138 @@ Defaulting to \`null\`.`);
   const _hoisted_9$d = { class: "booster-reader-main" };
   const _hoisted_10$d = { class: "booster-reader-pinned" };
   const _hoisted_11$c = { class: "booster-reader-chat-header" };
-  const _hoisted_12$a = {
+  const _hoisted_12$a = { class: "booster-reader-chat-identity" };
+  const _hoisted_13$9 = {
     key: 0,
     class: "booster-reader-project-label"
   };
-  const _hoisted_13$9 = {
-    key: 0,
+  const _hoisted_14$9 = {
+    key: 1,
     class: "booster-note"
   };
-  const _hoisted_14$9 = { class: "booster-reader-chat-actions" };
-  const _hoisted_15$9 = ["aria-label"];
-  const _hoisted_16$8 = { class: "sr-only" };
-  const _hoisted_17$6 = { class: "sr-only" };
-  const _hoisted_18$6 = { class: "sr-only" };
-  const _hoisted_19$6 = { class: "sr-only" };
-  const _hoisted_20$6 = { class: "sr-only" };
+  const _hoisted_15$9 = { class: "booster-reader-chat-actions" };
+  const _hoisted_16$8 = {
+    key: 1,
+    class: "booster-reader-menu-group"
+  };
+  const _hoisted_17$6 = { class: "booster-reader-menu-group" };
+  const _hoisted_18$6 = { class: "px-2 py-1 text-xs text-muted-foreground" };
+  const _hoisted_19$6 = {
+    key: 0,
+    class: "text-xs text-muted-foreground"
+  };
+  const _hoisted_20$6 = { key: 0 };
   const _hoisted_21$6 = {
-    key: 5,
-    class: "booster-reader-page-count"
+    key: 1,
+    class: "booster-reader-message-jump"
   };
   const _hoisted_22$5 = {
-    key: 0,
-    class: "booster-reader-branch-navigation"
+    key: 2,
+    class: "booster-reader-find"
   };
   const _hoisted_23$5 = {
     key: 0,
     class: "booster-note"
   };
-  const _hoisted_24$4 = { class: "booster-reader-fork-label" };
-  const _hoisted_25$4 = { class: "text-xs text-muted-foreground" };
-  const _hoisted_26$3 = ["data-branch-parent"];
-  const _hoisted_27$3 = {
-    key: 2,
-    class: "booster-reader-path-status"
-  };
-  const _hoisted_28$3 = {
-    key: 1,
-    class: "text-xs text-muted-foreground"
-  };
-  const _hoisted_29$3 = { key: 0 };
-  const _hoisted_30$3 = {
-    key: 2,
-    class: "booster-reader-message-jump"
-  };
-  const _hoisted_31$3 = {
+  const _hoisted_24$4 = {
     key: 3,
-    class: "booster-reader-find"
-  };
-  const _hoisted_32$3 = {
-    key: 0,
-    class: "booster-note"
-  };
-  const _hoisted_33$3 = {
-    key: 4,
     role: "status",
     class: "flex items-center gap-2 text-xs text-muted-foreground"
   };
-  const _hoisted_34$3 = {
-    key: 5,
+  const _hoisted_25$4 = {
+    key: 4,
     role: "alert",
     class: "text-xs text-destructive"
   };
-  const _hoisted_35$3 = { class: "booster-reader-summary" };
-  const _hoisted_36$3 = {
-    key: 0,
-    class: "booster-reader-coverage"
-  };
-  const _hoisted_37$3 = {
-    key: 1,
-    class: "booster-reader-coverage"
-  };
-  const _hoisted_38$3 = ["title", "aria-label"];
-  const _hoisted_39$3 = { key: 2 };
-  const _hoisted_40$3 = {
+  const _hoisted_26$3 = { class: "booster-reader-summary" };
+  const _hoisted_27$3 = {
     key: 0,
     role: "alert",
     class: "booster-error"
   };
-  const _hoisted_41$3 = {
+  const _hoisted_28$3 = {
     key: 1,
     role: "alert",
     class: "booster-error"
   };
-  const _hoisted_42$3 = {
+  const _hoisted_29$3 = {
     key: 2,
     role: "alert",
     class: "booster-error"
   };
-  const _hoisted_43$3 = {
+  const _hoisted_30$3 = {
     key: 0,
     class: "booster-reader-older-loading",
     role: "status",
     "aria-live": "polite"
   };
-  const _hoisted_44$3 = {
+  const _hoisted_31$3 = {
     key: 0,
     class: "booster-note"
   };
-  const _hoisted_45$3 = {
+  const _hoisted_32$3 = ["aria-label"];
+  const _hoisted_33$3 = { class: "flex items-center justify-between gap-2" };
+  const _hoisted_34$3 = { class: "text-sm text-muted-foreground" };
+  const _hoisted_35$3 = {
+    key: 2,
+    class: "booster-reader-exchanges"
+  };
+  const _hoisted_36$3 = {
     key: 0,
     class: "booster-note"
+  };
+  const _hoisted_37$3 = {
+    key: 0,
+    class: "booster-note"
+  };
+  const _hoisted_38$3 = {
+    key: 1,
+    class: "booster-note"
+  };
+  const _hoisted_39$3 = {
+    key: 3,
+    class: "booster-note"
+  };
+  const _hoisted_40$3 = ["aria-label"];
+  const _hoisted_41$3 = {
+    key: 0,
+    class: "booster-reader-branch-navigation"
+  };
+  const _hoisted_42$3 = {
+    key: 0,
+    class: "booster-note"
+  };
+  const _hoisted_43$3 = {
+    key: 1,
+    class: "text-sm text-muted-foreground"
+  };
+  const _hoisted_44$3 = { class: "booster-reader-summary" };
+  const _hoisted_45$3 = {
+    key: 0,
+    class: "booster-reader-coverage"
   };
   const _hoisted_46$3 = {
     key: 1,
-    class: "booster-note"
+    class: "booster-reader-coverage"
   };
-  const _hoisted_47$3 = { class: "booster-note" };
-  const _hoisted_48$3 = { class: "flex flex-wrap gap-2" };
-  const _hoisted_49$1 = { key: 0 };
-  const _hoisted_50$1 = ["data-version-message"];
-  const _hoisted_51$1 = { class: "booster-note" };
-  const _hoisted_52$1 = {
-    key: 0,
-    role: "alert",
-    class: "booster-error"
-  };
-  const _hoisted_53$1 = ["aria-label"];
-  const _hoisted_54$1 = { class: "flex items-center justify-between gap-2" };
-  const _hoisted_55$1 = { class: "text-sm text-muted-foreground" };
-  const _hoisted_56$1 = {
-    key: 4,
-    class: "booster-reader-exchanges"
-  };
-  const _hoisted_57$1 = {
+  const _hoisted_47$3 = ["title", "aria-label"];
+  const _hoisted_48$3 = { key: 2 };
+  const _hoisted_49$1 = {
     key: 0,
     class: "booster-note"
   };
-  const _hoisted_58$1 = {
-    key: 0,
-    class: "booster-note"
-  };
-  const _hoisted_59$1 = {
+  const _hoisted_50$1 = {
     key: 1,
     class: "booster-note"
   };
-  const _hoisted_60$1 = {
-    key: 2,
-    class: "booster-exchange-details"
-  };
-  const _hoisted_61$1 = { class: "booster-exchange-details-label" };
-  const _hoisted_62$1 = {
-    key: 5,
-    class: "booster-note"
+  const _hoisted_51$1 = { class: "booster-note" };
+  const _hoisted_52$1 = { class: "flex flex-wrap gap-2" };
+  const _hoisted_53$1 = { key: 0 };
+  const _hoisted_54$1 = { class: "booster-note" };
+  const _hoisted_55$1 = {
+    key: 0,
+    role: "alert",
+    class: "booster-error"
   };
   const NONE = "__outside_projects__";
   const _sfc_main$p = /* @__PURE__ */ defineComponent({
@@ -33564,9 +34291,17 @@ Defaulting to \`null\`.`);
       const visibleCount = /* @__PURE__ */ ref(ARCHIVE_INITIAL_TURNS);
       const readingOrder = /* @__PURE__ */ ref("chronological");
       const searchOpen = /* @__PURE__ */ ref(false);
-      const forksOpen = /* @__PURE__ */ ref(false);
       const toolsOpen = /* @__PURE__ */ ref(false);
-      const historyOpen = /* @__PURE__ */ ref(true);
+      const toolsPage = /* @__PURE__ */ ref("main");
+      watch(toolsOpen, (open) => {
+        if (open) toolsPage.value = "main";
+      });
+      function openToolsPage(page, event) {
+        const panel = event.currentTarget.closest(".booster-reader-action-menu");
+        toolsPage.value = page;
+        void nextTick(() => panel?.querySelector("button")?.focus());
+      }
+      const historyOpen = /* @__PURE__ */ ref(false);
       const historyToggle = /* @__PURE__ */ ref(null);
       function closeHistory() {
         historyOpen.value = false;
@@ -33682,21 +34417,30 @@ Defaulting to \`null\`.`);
         selectedBranchIds.value = null;
         branchLoading.value = false;
       }
-      async function navigateBranchMessage(messageId) {
-        releaseBranchFilter();
-        forksOpen.value = false;
-        await openMessage(messageId);
-      }
       const versionsOpen = /* @__PURE__ */ ref(false);
       const inspectedVersionMessageId = /* @__PURE__ */ ref(null);
       const integrityOpen = /* @__PURE__ */ ref(false);
+      const navigationOpen = /* @__PURE__ */ ref(false);
+      const showServiceRecords = /* @__PURE__ */ ref(false);
       function revealReaderDetails(kind) {
         toolsOpen.value = false;
         integrityOpen.value = kind === "integrity";
         const openingVersions = kind === "versions" && !versionsOpen.value;
         inspectedVersionMessageId.value = openingVersions ? focusedMessageId.value : null;
         versionsOpen.value = openingVersions;
-        void nextTick(() => readingScroll.value?.scrollTo({ top: 0, behavior: "instant" }));
+      }
+      function inspectMessage(id2) {
+        showServiceRecords.value = true;
+        integrityOpen.value = false;
+        navigationOpen.value = false;
+        void openMessage(id2);
+      }
+      function restoreToolsFocus(event) {
+        event.preventDefault();
+        void nextTick(() => {
+          const element = historyToggle.value?.$el;
+          if (element instanceof HTMLElement) element.focus({ preventScroll: true });
+        });
       }
       const sourceVersions = /* @__PURE__ */ ref(
         []
@@ -33709,11 +34453,11 @@ Defaulting to \`null\`.`);
       const liveRefresh = createArchiveRefreshQueue(async () => {
         const id2 = selectedId.value;
         if (id2) await refreshLiveSaved(id2);
-      }, 100);
+      });
       const timelineRefresh = createArchiveRefreshQueue(async () => {
         const id2 = selectedId.value;
         if (id2) await loadTimeline(id2);
-      }, 1e3);
+      });
       function updateWorkspaceState(id2) {
         workspaceState.value = props2.archiveAdapter.workspaceStatus?.(id2) ?? {
           loading: false,
@@ -33725,6 +34469,13 @@ Defaulting to \`null\`.`);
       let versionRevision = 0;
       const windowCenter = /* @__PURE__ */ ref(null);
       const loadingOlder = /* @__PURE__ */ ref(false);
+      let deferredLiveRefresh = false;
+      watch([threadLoading, loadingOlder], ([loading, older]) => {
+        if (!loading && !older && deferredLiveRefresh) {
+          deferredLiveRefresh = false;
+          liveRefresh.request();
+        }
+      });
       const loadingDirection = /* @__PURE__ */ ref("older");
       const loadedEdge = /* @__PURE__ */ ref("latest");
       const olderStoredCursor = /* @__PURE__ */ ref(null);
@@ -33794,9 +34545,10 @@ Defaulting to \`null\`.`);
           messages: turn.messages.filter((item) => selected2.has(item.record.messageId)),
           details: turn.details.filter((item) => selected2.has(item.record.messageId))
         })).filter((turn) => turn.messages.length || turn.details.length) : thread.value.turns;
+        const readable = turns.map((turn) => ({ ...turn, details: archiveReaderDetails(turn.details, showServiceRecords.value) })).filter((turn) => turn.messages.length || turn.details.length);
         const term = textSearch.value.trim().toLocaleLowerCase();
-        if (!term) return turns;
-        return turns.filter(
+        if (!term) return readable;
+        return readable.filter(
           (turn) => [...turn.messages, ...turn.details].some(
             (item) => (item.text + " " + (item.record.recipient ?? "")).toLocaleLowerCase().includes(term)
           )
@@ -33924,26 +34676,34 @@ Defaulting to \`null\`.`);
           accountId: readAccountId.value ?? void 0
         };
       }
+      const readerScroll = createArchiveReadingScroll({
+        viewport: () => readingScroll.value,
+        enabled: () => alive && !resettingPosition && !props2.suspended && !staleSavedWindow.value && !loadingOlder.value && !threadLoading.value,
+        order: () => readingOrder.value === "chronological" ? "chronological" : "reverse",
+        canLoad: (direction) => {
+          const older = direction === "older";
+          if (windowCenter.value !== null)
+            return older ? windowCenter.value > 20 || hasOlderStored.value : windowCenter.value + 20 < filteredTurns.value.length || hasNewerStored.value;
+          return older ? filteredTurns.value.length > visibleCount.value || hasOlderStored.value : hasNewerStored.value;
+        },
+        load: async (direction) => {
+          const older = direction === "older";
+          if (windowCenter.value !== null) {
+            if (older && windowCenter.value > 20) await shiftWindow(-20);
+            else if (!older && windowCenter.value + 20 < filteredTurns.value.length) await shiftWindow(20);
+            else await loadAdjacent(direction);
+          } else if (older && filteredTurns.value.length > visibleCount.value) await revealRetainedTurns();
+          else await loadAdjacent(direction);
+        }
+      });
       function readingAnchor() {
-        const viewport = readingScroll.value;
-        if (!viewport) return null;
-        const top = viewport.getBoundingClientRect().top;
-        const node = [...viewport.querySelectorAll("[data-archive-message]")].find(
-          (element) => element.getBoundingClientRect().bottom > top
-        );
-        const id2 = node?.dataset.archiveMessage;
-        return node && id2 ? { id: id2, offset: node.getBoundingClientRect().top - top } : null;
+        return readerScroll.capture("data-archive-message");
       }
       function restoreReadingAnchor(anchor) {
-        const viewport = readingScroll.value;
-        if (!viewport || !anchor) return;
-        const node = [...viewport.querySelectorAll("[data-archive-message]")].find(
-          (element) => element.dataset.archiveMessage === anchor.id
-        );
-        if (node)
-          viewport.scrollTop += node.getBoundingClientRect().top - viewport.getBoundingClientRect().top - anchor.offset;
+        readerScroll.restore(anchor);
       }
       function cancelWindowWork() {
+        readerScroll.reset();
         windowController?.abort();
         windowController = void 0;
         threadRevision++;
@@ -33979,7 +34739,7 @@ Defaulting to \`null\`.`);
       async function refreshLiveSaved(id2) {
         if (!alive || selectedId.value !== id2 || props2.suspended) return;
         if (threadLoading.value || loadingOlder.value) {
-          liveRefresh.request();
+          deferredLiveRefresh = true;
           return;
         }
         const revision = threadRevision, owner = props2.archiveAdapter.currentAccountId?.();
@@ -34046,7 +34806,6 @@ Defaulting to \`null\`.`);
         if (!id2 || !messageId.trim()) return;
         selectedId.value = id2;
         mobileList.value = false;
-        forksOpen.value = false;
         requestedMessageId.value = messageId.trim();
         messageLookup.value = messageId.trim();
         if (location2) {
@@ -34112,6 +34871,7 @@ Defaulting to \`null\`.`);
         expanded.value = next;
       }
       async function resetReadingPosition(edge = loadedEdge.value) {
+        readerScroll.reset();
         const ticket = ++scrollRevision;
         resettingPosition = true;
         visibleCount.value = edge !== "latest" ? thread.value.turns.length : ARCHIVE_INITIAL_TURNS;
@@ -34146,15 +34906,7 @@ Defaulting to \`null\`.`);
         const conversation = selectedId.value;
         const beforeHeight = viewport.scrollHeight;
         const beforeTop = viewport.scrollTop;
-        const bounds = viewport.getBoundingClientRect();
-        const firstVisible = [...viewport.querySelectorAll("[data-archive-node]")].find(
-          (element) => {
-            const rect = element.getBoundingClientRect();
-            return rect.bottom > bounds.top && rect.top < bounds.bottom;
-          }
-        );
-        const anchorKey = firstVisible?.dataset.archiveNode;
-        const anchorOffset = firstVisible ? firstVisible.getBoundingClientRect().top - bounds.top : null;
+        const anchor = readerScroll.capture();
         loadingDirection.value = direction;
         loadingOlder.value = true;
         try {
@@ -34177,17 +34929,13 @@ Defaulting to \`null\`.`);
           }
           await nextTick();
           if (!alive || ticket !== scrollRevision || selectedId.value !== conversation) return;
-          const retainedAnchor = anchorKey ? [...viewport.querySelectorAll("[data-archive-node]")].find(
-            (element) => element.dataset.archiveNode === anchorKey
-          ) : void 0;
-          if (retainedAnchor && anchorOffset !== null) {
-            const nextOffset = retainedAnchor.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
-            viewport.scrollTop += nextOffset - anchorOffset;
-          } else if (hasNewerStored.value) {
-            viewport.scrollTop = beforeTop;
-          } else if (readingOrder.value === "chronological")
-            viewport.scrollTop = beforeTop + viewport.scrollHeight - beforeHeight;
-          else viewport.scrollTop = beforeTop;
+          if (!readerScroll.restore(anchor)) {
+            if (hasNewerStored.value) {
+              viewport.scrollTop = beforeTop;
+            } else if (readingOrder.value === "chronological")
+              viewport.scrollTop = beforeTop + viewport.scrollHeight - beforeHeight;
+            else viewport.scrollTop = beforeTop;
+          }
         } catch (cause) {
           if (alive && ticket === scrollRevision) {
             describeReadFailure(cause);
@@ -34237,22 +34985,7 @@ Defaulting to \`null\`.`);
         const viewport = readingScroll.value;
         if (!viewport || resettingPosition || props2.suspended || staleSavedWindow.value) return;
         scheduleReadFocus();
-        const atTop = viewport.scrollTop < 100;
-        const atBottom = viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop < 100;
-        const olderEdge = readingOrder.value === "chronological" ? atTop : atBottom;
-        const newerEdge = readingOrder.value === "chronological" ? atBottom : atTop;
-        if (windowCenter.value !== null) {
-          if (loadingOlder.value) return;
-          if (olderEdge && windowCenter.value > 20) void shiftWindow(-20);
-          else if (newerEdge && windowCenter.value + 20 < filteredTurns.value.length) void shiftWindow(20);
-          else if (olderEdge && hasOlderStored.value) void loadAdjacent("older");
-          else if (newerEdge && hasNewerStored.value) void loadAdjacent("newer");
-          return;
-        }
-        if (loadingOlder.value) return;
-        if (olderEdge && filteredTurns.value.length > visibleCount.value) void revealRetainedTurns();
-        else if (olderEdge && hasOlderStored.value) void loadAdjacent("older");
-        else if (newerEdge && hasNewerStored.value) void loadAdjacent("newer");
+        void readerScroll.onScroll().catch(describeReadFailure);
       }
       async function revealRetainedTurns() {
         const anchor = readingAnchor(), revision = threadRevision;
@@ -34296,7 +35029,6 @@ Defaulting to \`null\`.`);
           return;
         }
         await navigateToNode(index);
-        forksOpen.value = false;
       }
       async function navigateToNode(index) {
         const total = navigationNodes.value.length;
@@ -34455,7 +35187,6 @@ Defaulting to \`null\`.`);
         selectedId.value = id2;
         mobileList.value = false;
         textSearch.value = "";
-        forksOpen.value = false;
         void loadThread(id2);
       }
       async function refresh() {
@@ -34591,7 +35322,8 @@ Defaulting to \`null\`.`);
           "data-panel-content-focus": !mobileList.value,
           "aria-busy": threadLoading.value || branchLoading.value
         }, [
-          createBaseVNode("header", {
+          __props.windowed || mobileList.value || !selected.value ? (openBlock(), createElementBlock("header", {
+            key: 0,
             class: "booster-section-header",
             "data-archive-drag-handle": __props.windowed ? "" : void 0
           }, [
@@ -34637,8 +35369,38 @@ Defaulting to \`null\`.`);
               /* STABLE */
             })) : createCommentVNode("v-if", true),
             createBaseVNode("div", _hoisted_4$m, [
+              !selected.value && _ctx.$slots["collection-actions"] ? (openBlock(), createBlock(unref(_sfc_main$16), { key: 0 }, {
+                default: withCtx(() => [
+                  createVNode(unref(_sfc_main$14), { "as-child": "" }, {
+                    default: withCtx(() => [
+                      createVNode(unref(_sfc_main$17), {
+                        variant: "ghost",
+                        size: "icon-sm",
+                        "aria-label": __props.locale === "ru" ? "Сбор и сохранение" : "Collection and saving"
+                      }, {
+                        default: withCtx(() => [
+                          createVNode(unref(Ellipsis), { class: "size-4" })
+                        ]),
+                        _: 1
+                        /* STABLE */
+                      }, 8, ["aria-label"])
+                    ]),
+                    _: 1
+                    /* STABLE */
+                  }),
+                  createVNode(unref(_sfc_main$15), { class: "booster-reader-action-menu" }, {
+                    default: withCtx(() => [
+                      renderSlot(_ctx.$slots, "collection-actions")
+                    ]),
+                    _: 3
+                    /* FORWARDED */
+                  })
+                ]),
+                _: 3
+                /* FORWARDED */
+              })) : createCommentVNode("v-if", true),
               __props.canReturnToExport ? (openBlock(), createBlock(unref(_sfc_main$17), {
-                key: 0,
+                key: 1,
                 variant: "outline",
                 type: "button",
                 class: "booster-action-secondary",
@@ -34672,7 +35434,7 @@ Defaulting to \`null\`.`);
                 /* STABLE */
               }, 8, ["disabled", "title", "aria-label"]),
               __props.windowed ? (openBlock(), createBlock(unref(_sfc_main$17), {
-                key: 1,
+                key: 2,
                 variant: "ghost",
                 size: "icon-sm",
                 type: "button",
@@ -34702,8 +35464,8 @@ Defaulting to \`null\`.`);
                 /* STABLE */
               }, 8, ["aria-label"])
             ])
-          ], 8, _hoisted_2$n),
-          workspaceState.value.loading || workspaceState.value.failed ? (openBlock(), createElementBlock("p", _hoisted_5$k, [
+          ], 8, _hoisted_2$n)) : createCommentVNode("v-if", true),
+          workspaceState.value.loading || workspaceState.value.failed ? (openBlock(), createElementBlock("p", _hoisted_5$j, [
             workspaceState.value.loading ? (openBlock(), createBlock(unref(LoaderCircle), {
               key: 0,
               class: "size-3 animate-spin"
@@ -34729,7 +35491,7 @@ Defaulting to \`null\`.`);
             /* TEXT */
           )) : createCommentVNode("v-if", true),
           createBaseVNode("div", _hoisted_8$e, [
-            createVNode(unref(_sfc_main$b$1), {
+            createVNode(unref(_sfc_main$d$1), {
               search: search.value,
               "onUpdate:search": _cache[4] || (_cache[4] = ($event) => search.value = $event),
               groups: groups.value,
@@ -34766,11 +35528,25 @@ Defaulting to \`null\`.`);
                   { key: 0 },
                   [
                     createBaseVNode("header", _hoisted_11$c, [
-                      createBaseVNode("div", null, [
+                      createBaseVNode("div", _hoisted_12$a, [
+                        !mobileList.value ? (openBlock(), createBlock(unref(_sfc_main$17), {
+                          key: 0,
+                          variant: "ghost",
+                          size: "icon-sm",
+                          class: "booster-mobile-back",
+                          "aria-label": t("reader.back"),
+                          onClick: _cache[5] || (_cache[5] = ($event) => mobileList.value = true)
+                        }, {
+                          default: withCtx(() => [
+                            createVNode(unref(ArrowLeft), { class: "size-4" })
+                          ]),
+                          _: 1
+                          /* STABLE */
+                        }, 8, ["aria-label"])) : createCommentVNode("v-if", true),
                         createBaseVNode("h2", null, [
                           selected.value.projectId ? (openBlock(), createElementBlock(
                             "span",
-                            _hoisted_12$a,
+                            _hoisted_13$9,
                             toDisplayString(projectLabel(selected.value.projectId)) + " / ",
                             1
                             /* TEXT */
@@ -34781,583 +35557,401 @@ Defaulting to \`null\`.`);
                             locale: __props.locale
                           }, null, 8, ["label", "identifier", "locale"])
                         ]),
-                        selected.value.branchSourceConversationId ? (openBlock(), createElementBlock("p", _hoisted_13$9, [
+                        selected.value.branchSourceConversationId ? (openBlock(), createElementBlock("p", _hoisted_14$9, [
                           createVNode(_sfc_main$q, {
                             label: t("reader.branch") + ": " + (selected.value.branchSourceTitle || t("identity.untitled")),
                             identifier: selected.value.branchSourceConversationId,
                             locale: __props.locale
                           }, null, 8, ["label", "identifier", "locale"])
                         ])) : createCommentVNode("v-if", true)
-                      ])
-                    ]),
-                    createBaseVNode("div", _hoisted_14$9, [
-                      createVNode(unref(_sfc_main$17), {
-                        variant: "outline",
-                        class: "booster-action-secondary booster-reader-export",
-                        type: "button",
-                        onClick: _cache[5] || (_cache[5] = ($event) => emit2("export", selected.value.conversationId, selected.value.title, selectedBranchIds.value ? [...selectedBranchIds.value] : void 0))
-                      }, {
-                        default: withCtx(() => [
-                          createVNode(unref(Download), { class: "size-4" }),
-                          createTextVNode(
-                            toDisplayString(selectedBranchTip.value ? __props.locale === "ru" ? "Экспорт ветки" : "Export branch" : t("reader.export")),
-                            1
-                            /* TEXT */
-                          )
-                        ]),
-                        _: 1
-                        /* STABLE */
-                      }),
-                      selectedMessages.value.size ? (openBlock(), createBlock(unref(_sfc_main$17), {
-                        key: 0,
-                        variant: "outline",
-                        type: "button",
-                        class: "booster-action-secondary",
-                        onClick: _cache[6] || (_cache[6] = ($event) => emit2("export", selected.value.conversationId, selected.value.title, [...selectedMessages.value]))
-                      }, {
-                        default: withCtx(() => [
-                          createTextVNode(
-                            toDisplayString(__props.locale === "ru" ? "Экспорт выбранных" : "Export selected") + " · " + toDisplayString(selectedMessages.value.size),
-                            1
-                            /* TEXT */
-                          )
-                        ]),
-                        _: 1
-                        /* STABLE */
-                      })) : createCommentVNode("v-if", true),
-                      timelineNodes.value.length || navigationNodes.value.length ? (openBlock(), createBlock(unref(_sfc_main$17), {
-                        key: 1,
-                        ref_key: "historyToggle",
-                        ref: historyToggle,
-                        variant: "outline",
-                        class: normalizeClass(["booster-action-secondary booster-reader-history-toggle", { active: historyOpen.value }]),
-                        type: "button",
-                        "aria-expanded": historyOpen.value,
-                        "aria-label": historyOpen.value ? __props.locale === "ru" ? "Скрыть историю сообщений" : "Hide message history" : __props.locale === "ru" ? "Показать историю сообщений" : "Show message history",
-                        onClick: _cache[7] || (_cache[7] = ($event) => historyOpen.value = !historyOpen.value)
-                      }, {
-                        default: withCtx(() => [
-                          createVNode(unref(GitBranch), { class: "size-4" }),
-                          createTextVNode(
-                            toDisplayString(__props.locale === "ru" ? "История" : "History"),
-                            1
-                            /* TEXT */
-                          )
-                        ]),
-                        _: 1
-                        /* STABLE */
-                      }, 8, ["aria-expanded", "aria-label", "class"])) : createCommentVNode("v-if", true),
-                      createVNode(unref(_sfc_main$16), {
-                        open: toolsOpen.value,
-                        "onUpdate:open": _cache[16] || (_cache[16] = ($event) => toolsOpen.value = $event)
-                      }, {
-                        default: withCtx(() => [
-                          createVNode(unref(_sfc_main$14), { "as-child": "" }, {
-                            default: withCtx(() => [
-                              createVNode(unref(_sfc_main$17), {
-                                variant: "outline",
-                                type: "button",
-                                class: "booster-reader-tools-toggle"
-                              }, {
-                                default: withCtx(() => [
-                                  createVNode(unref(Ellipsis), { class: "size-4" }),
-                                  createTextVNode(
-                                    toDisplayString(__props.locale === "ru" ? "Действия" : "Actions"),
-                                    1
-                                    /* TEXT */
-                                  )
-                                ]),
-                                _: 1
-                                /* STABLE */
-                              })
-                            ]),
-                            _: 1
-                            /* STABLE */
-                          }),
-                          createVNode(unref(_sfc_main$15), {
-                            align: "start",
-                            class: "booster-reader-action-menu",
-                            "aria-label": __props.locale === "ru" ? "Действия с архивом" : "Archive actions"
-                          }, {
-                            default: withCtx(() => [
-                              createVNode(unref(_sfc_main$17), {
-                                variant: "ghost",
-                                type: "button",
-                                onClick: _cache[8] || (_cache[8] = ($event) => {
-                                  reasoningExpanded.value = !reasoningExpanded.value;
-                                  toolsOpen.value = false;
-                                })
-                              }, {
-                                default: withCtx(() => [
-                                  createVNode(unref(Brain), { class: "size-4" }),
-                                  createTextVNode(
-                                    toDisplayString(t(reasoningExpanded.value ? "reader.collapseReasoning" : "reader.expandReasoning")),
-                                    1
-                                    /* TEXT */
-                                  )
-                                ]),
-                                _: 1
-                                /* STABLE */
-                              }),
-                              createVNode(unref(_sfc_main$17), {
-                                variant: "ghost",
-                                type: "button",
-                                "aria-pressed": selectionEnabled.value,
-                                onClick: _cache[9] || (_cache[9] = ($event) => {
-                                  selectionEnabled.value = !selectionEnabled.value;
-                                  toolsOpen.value = false;
-                                })
-                              }, {
-                                default: withCtx(() => [
-                                  createTextVNode(
-                                    toDisplayString(__props.locale === "ru" ? "Выбор сообщений" : "Select messages"),
-                                    1
-                                    /* TEXT */
-                                  )
-                                ]),
-                                _: 1
-                                /* STABLE */
-                              }, 8, ["aria-pressed"]),
-                              __props.archiveAdapter.getRangeMessageIds && focusedMessageId.value ? (openBlock(), createBlock(unref(_sfc_main$17), {
-                                key: 0,
-                                variant: "ghost",
-                                type: "button",
-                                disabled: rangeLoading.value,
-                                onClick: _cache[10] || (_cache[10] = ($event) => {
-                                  rangeStart.value = focusedMessageId.value;
-                                  rangeEnd.value = null;
-                                  toolsOpen.value = false;
-                                })
-                              }, {
-                                default: withCtx(() => [
-                                  createTextVNode(
-                                    toDisplayString(__props.locale === "ru" ? "Начало диапазона" : "Range start"),
-                                    1
-                                    /* TEXT */
-                                  )
-                                ]),
-                                _: 1
-                                /* STABLE */
-                              }, 8, ["disabled"])) : createCommentVNode("v-if", true),
-                              rangeStart.value ? (openBlock(), createBlock(unref(_sfc_main$17), {
-                                key: 1,
-                                variant: "ghost",
-                                type: "button",
-                                disabled: rangeLoading.value || !focusedMessageId.value,
-                                onClick: _cache[11] || (_cache[11] = ($event) => {
-                                  endRange();
-                                  toolsOpen.value = false;
-                                })
-                              }, {
-                                default: withCtx(() => [
-                                  createTextVNode(
-                                    toDisplayString(rangeLoading.value ? __props.locale === "ru" ? "Выбор…" : "Selecting…" : __props.locale === "ru" ? "Конец диапазона" : "Range end"),
-                                    1
-                                    /* TEXT */
-                                  )
-                                ]),
-                                _: 1
-                                /* STABLE */
-                              }, 8, ["disabled"])) : createCommentVNode("v-if", true),
-                              __props.archiveAdapter.getMessageVersions && versionMessageId.value ? (openBlock(), createBlock(unref(_sfc_main$17), {
-                                key: 2,
-                                variant: "ghost",
-                                type: "button",
-                                "aria-expanded": versionsOpen.value,
-                                onClick: _cache[12] || (_cache[12] = ($event) => revealReaderDetails("versions"))
-                              }, {
-                                default: withCtx(() => [
-                                  createTextVNode(
-                                    toDisplayString(__props.locale === "ru" ? "Версии сообщения" : "Message versions") + " · " + toDisplayString(sourceVersions.value.length),
-                                    1
-                                    /* TEXT */
-                                  )
-                                ]),
-                                _: 1
-                                /* STABLE */
-                              }, 8, ["aria-expanded"])) : createCommentVNode("v-if", true),
-                              coverage.value?.integrity ? (openBlock(), createBlock(unref(_sfc_main$17), {
-                                key: 3,
-                                variant: "ghost",
-                                type: "button",
-                                onClick: _cache[13] || (_cache[13] = ($event) => revealReaderDetails("integrity"))
-                              }, {
-                                default: withCtx(() => [
-                                  createTextVNode(
-                                    toDisplayString(__props.locale === "ru" ? "Целостность цепочки" : "Chain integrity"),
-                                    1
-                                    /* TEXT */
-                                  )
-                                ]),
-                                _: 1
-                                /* STABLE */
-                              })) : createCommentVNode("v-if", true),
-                              createVNode(unref(_sfc_main$17), {
-                                variant: "ghost",
-                                type: "button",
-                                "aria-expanded": searchOpen.value,
-                                onClick: _cache[14] || (_cache[14] = ($event) => {
-                                  searchOpen.value = !searchOpen.value;
-                                  toolsOpen.value = false;
-                                })
-                              }, {
-                                default: withCtx(() => [
-                                  createVNode(unref(Search), { class: "size-4" }),
-                                  createTextVNode(
-                                    toDisplayString(t("reader.searchMessages")),
-                                    1
-                                    /* TEXT */
-                                  )
-                                ]),
-                                _: 1
-                                /* STABLE */
-                              }, 8, ["aria-expanded"]),
-                              __props.archiveAdapter.getMessageWindow ? (openBlock(), createBlock(unref(_sfc_main$17), {
-                                key: 4,
-                                variant: "ghost",
-                                type: "button",
-                                "aria-expanded": messageLookupOpen.value,
-                                onClick: _cache[15] || (_cache[15] = ($event) => {
-                                  messageLookupOpen.value = !messageLookupOpen.value;
-                                  toolsOpen.value = false;
-                                })
-                              }, {
-                                default: withCtx(() => [
-                                  createTextVNode(
-                                    toDisplayString(t("reader.jumpMessage")),
-                                    1
-                                    /* TEXT */
-                                  )
-                                ]),
-                                _: 1
-                                /* STABLE */
-                              }, 8, ["aria-expanded"])) : createCommentVNode("v-if", true)
-                            ]),
-                            _: 1
-                            /* STABLE */
-                          }, 8, ["aria-label"])
-                        ]),
-                        _: 1
-                        /* STABLE */
-                      }, 8, ["open"])
-                    ]),
-                    createBaseVNode("div", {
-                      class: "booster-reader-navigation",
-                      role: "toolbar",
-                      "aria-label": __props.locale === "ru" ? "Навигация по сохранённому архиву" : "Saved archive navigation"
-                    }, [
-                      usingIndexedWindows.value ? (openBlock(), createBlock(unref(_sfc_main$17), {
-                        key: 0,
-                        variant: "ghost",
-                        size: "icon-sm",
-                        type: "button",
-                        "aria-label": t("reader.firstKnown"),
-                        title: t("reader.firstKnown"),
-                        disabled: threadLoading.value || loadingOlder.value,
-                        onClick: returnToFirstKnown
-                      }, {
-                        default: withCtx(() => [
-                          createVNode(unref(ChevronsLeft), { class: "size-4" }),
-                          createBaseVNode(
-                            "span",
-                            _hoisted_16$8,
-                            toDisplayString(t("reader.firstKnown")),
-                            1
-                            /* TEXT */
-                          )
-                        ]),
-                        _: 1
-                        /* STABLE */
-                      }, 8, ["aria-label", "title", "disabled"])) : createCommentVNode("v-if", true),
-                      hasOlderStored.value ? (openBlock(), createBlock(unref(_sfc_main$17), {
-                        key: 1,
-                        variant: "ghost",
-                        size: "icon-sm",
-                        type: "button",
-                        "aria-label": t("reader.moreOlder"),
-                        title: t("reader.moreOlder"),
-                        disabled: threadLoading.value || loadingOlder.value || staleSavedWindow.value,
-                        onClick: _cache[17] || (_cache[17] = ($event) => loadAdjacent("older"))
-                      }, {
-                        default: withCtx(() => [
-                          createVNode(unref(ChevronLeft), { class: "size-4" }),
-                          createBaseVNode(
-                            "span",
-                            _hoisted_17$6,
-                            toDisplayString(t("reader.moreOlder")),
-                            1
-                            /* TEXT */
-                          )
-                        ]),
-                        _: 1
-                        /* STABLE */
-                      }, 8, ["aria-label", "title", "disabled"])) : createCommentVNode("v-if", true),
-                      __props.archiveAdapter.getPositionWindow ? (openBlock(), createBlock(unref(_sfc_main$17), {
-                        key: 2,
-                        variant: "ghost",
-                        size: "icon-sm",
-                        type: "button",
-                        "aria-label": __props.locale === "ru" ? "Середина" : "Middle",
-                        title: __props.locale === "ru" ? "Середина" : "Middle",
-                        disabled: threadLoading.value || loadingOlder.value,
-                        onClick: returnToMiddle
-                      }, {
-                        default: withCtx(() => [
-                          createVNode(unref(LocateFixed), { class: "size-4" }),
-                          createBaseVNode(
-                            "span",
-                            _hoisted_18$6,
-                            toDisplayString(__props.locale === "ru" ? "Середина" : "Middle"),
-                            1
-                            /* TEXT */
-                          )
-                        ]),
-                        _: 1
-                        /* STABLE */
-                      }, 8, ["aria-label", "title", "disabled"])) : createCommentVNode("v-if", true),
-                      hasNewerStored.value ? (openBlock(), createBlock(unref(_sfc_main$17), {
-                        key: 3,
-                        variant: "ghost",
-                        size: "icon-sm",
-                        type: "button",
-                        "aria-label": t("reader.moreNewer"),
-                        title: t("reader.moreNewer"),
-                        disabled: threadLoading.value || loadingOlder.value || staleSavedWindow.value,
-                        onClick: _cache[18] || (_cache[18] = ($event) => loadAdjacent("newer"))
-                      }, {
-                        default: withCtx(() => [
-                          createVNode(unref(ChevronRight), { class: "size-4" }),
-                          createBaseVNode(
-                            "span",
-                            _hoisted_19$6,
-                            toDisplayString(t("reader.moreNewer")),
-                            1
-                            /* TEXT */
-                          )
-                        ]),
-                        _: 1
-                        /* STABLE */
-                      }, 8, ["aria-label", "title", "disabled"])) : createCommentVNode("v-if", true),
-                      usingIndexedWindows.value ? (openBlock(), createBlock(unref(_sfc_main$17), {
-                        key: 4,
-                        variant: "ghost",
-                        size: "icon-sm",
-                        type: "button",
-                        "aria-label": t("reader.returnLatest"),
-                        title: t("reader.returnLatest"),
-                        disabled: threadLoading.value || loadingOlder.value,
-                        onClick: returnToLatest
-                      }, {
-                        default: withCtx(() => [
-                          createVNode(unref(ChevronsRight), { class: "size-4" }),
-                          createBaseVNode(
-                            "span",
-                            _hoisted_20$6,
-                            toDisplayString(t("reader.returnLatest")),
-                            1
-                            /* TEXT */
-                          )
-                        ]),
-                        _: 1
-                        /* STABLE */
-                      }, 8, ["aria-label", "title", "disabled"])) : createCommentVNode("v-if", true),
-                      usingIndexedWindows.value ? (openBlock(), createElementBlock(
-                        "span",
-                        _hoisted_21$6,
-                        toDisplayString(thread.value.recordCount) + "/" + toDisplayString(knownStoredCount.value),
-                        1
-                        /* TEXT */
-                      )) : createCommentVNode("v-if", true)
-                    ], 8, _hoisted_15$9),
-                    coverage.value?.integrity && __props.archiveAdapter.getBranchPath ? (openBlock(), createElementBlock("div", _hoisted_22$5, [
-                      createVNode(unref(_sfc_main$J), { class: "booster-reader-path-select" }, {
-                        default: withCtx(() => [
-                          createTextVNode(
-                            toDisplayString(__props.locale === "ru" ? "Путь чтения" : "Reading path") + " ",
-                            1
-                            /* TEXT */
-                          ),
-                          createVNode(unref(_sfc_main$n$1), {
-                            "model-value": selectedBranchTip.value ?? "__all__",
-                            disabled: branchLoading.value || threadLoading.value,
-                            "onUpdate:modelValue": _cache[19] || (_cache[19] = ($event) => chooseBranch(String($event) === "__all__" ? "" : String($event)))
-                          }, {
-                            default: withCtx(() => [
-                              createVNode(unref(_sfc_main$e$1), { class: "w-full min-w-0" }, {
-                                default: withCtx(() => [
-                                  createVNode(unref(_sfc_main$d$1))
-                                ]),
-                                _: 1
-                                /* STABLE */
-                              }),
-                              createVNode(unref(_sfc_main$m$1), null, {
-                                default: withCtx(() => [
-                                  createVNode(unref(_sfc_main$k$1), { value: "__all__" }, {
-                                    default: withCtx(() => [
-                                      createTextVNode(
-                                        toDisplayString(__props.locale === "ru" ? "Все сохранённые сообщения" : "All saved messages"),
-                                        1
-                                        /* TEXT */
-                                      )
-                                    ]),
-                                    _: 1
-                                    /* STABLE */
-                                  }),
-                                  (openBlock(true), createElementBlock(
-                                    Fragment,
-                                    null,
-                                    renderList(coverage.value.integrity.tips, (tipId, index) => {
-                                      return openBlock(), createBlock(unref(_sfc_main$k$1), {
-                                        key: tipId,
-                                        value: tipId
-                                      }, {
-                                        default: withCtx(() => [
-                                          createTextVNode(
-                                            toDisplayString(storedBranches.value.length ? __props.locale === "ru" ? "Ветка" : "Branch" : coverage.value.integrity.chain === "gaps" ? __props.locale === "ru" ? "Фрагмент" : "Fragment" : __props.locale === "ru" ? "Путь" : "Path") + " " + toDisplayString(index + 1) + " " + toDisplayString(__props.locale === "ru" ? "из" : "of") + " " + toDisplayString(coverage.value.integrity.tips.length) + " · " + toDisplayString(branchPreview(tipId)),
-                                            1
-                                            /* TEXT */
-                                          )
-                                        ]),
-                                        _: 2
-                                        /* DYNAMIC */
-                                      }, 1032, ["value"]);
+                      ]),
+                      createBaseVNode("div", _hoisted_15$9, [
+                        createVNode(unref(_sfc_main$17), {
+                          variant: "ghost",
+                          size: "icon-sm",
+                          "aria-label": t("reader.searchMessages"),
+                          title: t("reader.searchMessages"),
+                          "aria-pressed": searchOpen.value,
+                          onClick: _cache[6] || (_cache[6] = ($event) => searchOpen.value = !searchOpen.value)
+                        }, {
+                          default: withCtx(() => [
+                            createVNode(unref(Search), { class: "size-4" })
+                          ]),
+                          _: 1
+                          /* STABLE */
+                        }, 8, ["aria-label", "title", "aria-pressed"]),
+                        createVNode(unref(_sfc_main$17), {
+                          variant: "outline",
+                          class: "booster-action-secondary booster-reader-export",
+                          type: "button",
+                          onClick: _cache[7] || (_cache[7] = ($event) => emit2("export", selected.value.conversationId, selected.value.title, selectedMessages.value.size ? [...selectedMessages.value] : selectedBranchIds.value ? [...selectedBranchIds.value] : void 0))
+                        }, {
+                          default: withCtx(() => [
+                            createVNode(unref(Download), { class: "size-4" }),
+                            createTextVNode(
+                              toDisplayString(selectedMessages.value.size ? t("reader.export") + " · " + selectedMessages.value.size : selectedBranchTip.value ? __props.locale === "ru" ? "Экспорт ветки" : "Export branch" : t("reader.export")),
+                              1
+                              /* TEXT */
+                            )
+                          ]),
+                          _: 1
+                          /* STABLE */
+                        }),
+                        createVNode(unref(_sfc_main$16), {
+                          open: toolsOpen.value,
+                          "onUpdate:open": _cache[21] || (_cache[21] = ($event) => toolsOpen.value = $event)
+                        }, {
+                          default: withCtx(() => [
+                            createVNode(unref(_sfc_main$14), { "as-child": "" }, {
+                              default: withCtx(() => [
+                                createVNode(unref(_sfc_main$17), {
+                                  ref_key: "historyToggle",
+                                  ref: historyToggle,
+                                  variant: "ghost",
+                                  size: "icon-sm",
+                                  type: "button",
+                                  class: "booster-reader-tools-toggle",
+                                  "aria-label": __props.locale === "ru" ? "Действия с архивом" : "Archive actions"
+                                }, {
+                                  default: withCtx(() => [
+                                    createVNode(unref(Ellipsis), { class: "size-4" })
+                                  ]),
+                                  _: 1
+                                  /* STABLE */
+                                }, 8, ["aria-label"])
+                              ]),
+                              _: 1
+                              /* STABLE */
+                            }),
+                            createVNode(unref(_sfc_main$15), {
+                              align: "end",
+                              class: "booster-reader-action-menu p-1",
+                              "aria-label": __props.locale === "ru" ? "Действия с архивом" : "Archive actions"
+                            }, {
+                              default: withCtx(() => [
+                                toolsPage.value === "main" ? (openBlock(), createElementBlock(
+                                  Fragment,
+                                  { key: 0 },
+                                  [
+                                    createVNode(unref(_sfc_main$17), {
+                                      variant: "ghost",
+                                      size: "sm",
+                                      onClick: _cache[8] || (_cache[8] = ($event) => {
+                                        navigationOpen.value = true;
+                                        toolsOpen.value = false;
+                                      })
+                                    }, {
+                                      default: withCtx(() => [
+                                        createVNode(unref(GitBranch), { class: "size-4" }),
+                                        createTextVNode(
+                                          toDisplayString(__props.locale === "ru" ? "Ветки и переходы" : "Branches and navigation"),
+                                          1
+                                          /* TEXT */
+                                        )
+                                      ]),
+                                      _: 1
+                                      /* STABLE */
                                     }),
-                                    128
-                                    /* KEYED_FRAGMENT */
-                                  ))
-                                ]),
-                                _: 1
-                                /* STABLE */
-                              })
-                            ]),
-                            _: 1
-                            /* STABLE */
-                          }, 8, ["model-value", "disabled"])
-                        ]),
-                        _: 1
-                        /* STABLE */
-                      }),
-                      !storedBranches.value.length && coverage.value.integrity.chain === "gaps" ? (openBlock(), createElementBlock(
-                        "span",
-                        _hoisted_23$5,
-                        toDisplayString(__props.locale === "ru" ? "Связи неполны: фрагменты не означают ветвление диалога." : "Incomplete links: fragments do not imply conversation branches."),
-                        1
-                        /* TEXT */
-                      )) : createCommentVNode("v-if", true),
-                      storedBranches.value.length ? (openBlock(), createBlock(unref(_sfc_main$16), {
-                        key: 1,
-                        open: forksOpen.value,
-                        "onUpdate:open": _cache[20] || (_cache[20] = ($event) => forksOpen.value = $event)
-                      }, {
-                        default: withCtx(() => [
-                          createVNode(unref(_sfc_main$14), { "as-child": "" }, {
-                            default: withCtx(() => [
-                              createVNode(unref(_sfc_main$17), {
-                                variant: "ghost",
-                                type: "button",
-                                class: "booster-reader-fork-toggle",
-                                "aria-label": (__props.locale === "ru" ? "Сохранённые ветвления: " : "Saved branch points: ") + storedBranches.value.length
-                              }, {
-                                default: withCtx(() => [
-                                  createVNode(unref(GitBranch), { class: "size-4" }),
-                                  createBaseVNode(
-                                    "span",
-                                    _hoisted_24$4,
-                                    toDisplayString(__props.locale === "ru" ? "Ветвления" : "Branch points"),
-                                    1
-                                    /* TEXT */
-                                  ),
-                                  createTextVNode(
-                                    " · " + toDisplayString(storedBranches.value.length),
-                                    1
-                                    /* TEXT */
-                                  )
-                                ]),
-                                _: 1
-                                /* STABLE */
-                              }, 8, ["aria-label"])
-                            ]),
-                            _: 1
-                            /* STABLE */
-                          }),
-                          createVNode(unref(_sfc_main$15), {
-                            align: "end",
-                            class: "booster-reader-fork-choices",
-                            "aria-label": __props.locale === "ru" ? "Сохранённые ветвления диалога" : "Saved conversation branch points"
-                          }, {
-                            default: withCtx(() => [
-                              createBaseVNode(
-                                "p",
-                                _hoisted_25$4,
-                                toDisplayString(__props.locale === "ru" ? "Сообщения с общим сохранённым родителем. Это разные ветки диалога, а не версии одной записи." : "Messages with the same stored parent. These are conversation branches, not versions of one record."),
-                                1
-                                /* TEXT */
-                              ),
-                              (openBlock(true), createElementBlock(
-                                Fragment,
-                                null,
-                                renderList(storedBranches.value, (fork, forkIndex) => {
-                                  return openBlock(), createElementBlock("div", {
-                                    key: fork.parentId,
-                                    class: "booster-reader-fork-group",
-                                    "data-branch-parent": fork.parentId
-                                  }, [
-                                    createBaseVNode(
-                                      "span",
-                                      null,
-                                      toDisplayString(__props.locale === "ru" ? "Ветвление" : "Branch point") + " " + toDisplayString(forkIndex + 1),
-                                      1
-                                      /* TEXT */
-                                    ),
-                                    (openBlock(true), createElementBlock(
+                                    createVNode(unref(_sfc_main$17), {
+                                      variant: "ghost",
+                                      size: "sm",
+                                      "aria-pressed": selectionEnabled.value,
+                                      onClick: _cache[9] || (_cache[9] = ($event) => {
+                                        selectionEnabled.value = !selectionEnabled.value;
+                                        toolsOpen.value = false;
+                                      })
+                                    }, {
+                                      default: withCtx(() => [
+                                        createVNode(unref(GripHorizontal), { class: "size-4" }),
+                                        createTextVNode(
+                                          toDisplayString(selectionEnabled.value ? __props.locale === "ru" ? "Завершить выбор" : "Finish selecting" : __props.locale === "ru" ? "Выбрать сообщения" : "Select messages"),
+                                          1
+                                          /* TEXT */
+                                        )
+                                      ]),
+                                      _: 1
+                                      /* STABLE */
+                                    }, 8, ["aria-pressed"]),
+                                    selectionEnabled.value ? (openBlock(), createElementBlock(
                                       Fragment,
-                                      null,
-                                      renderList(fork.messageIds, (messageId) => {
-                                        return openBlock(), createBlock(unref(_sfc_main$17), {
-                                          variant: "outline",
-                                          key: messageId,
-                                          type: "button",
-                                          class: "booster-reader-fork-choice",
-                                          title: branchPreview(messageId),
-                                          disabled: threadLoading.value,
-                                          "data-branch-message": messageId,
-                                          onClick: ($event) => navigateBranchMessage(messageId)
+                                      { key: 0 },
+                                      [
+                                        __props.archiveAdapter.getRangeMessageIds && focusedMessageId.value ? (openBlock(), createBlock(unref(_sfc_main$17), {
+                                          key: 0,
+                                          variant: "ghost",
+                                          size: "sm",
+                                          disabled: rangeLoading.value,
+                                          onClick: _cache[10] || (_cache[10] = ($event) => {
+                                            rangeStart.value = focusedMessageId.value;
+                                            rangeEnd.value = null;
+                                            toolsOpen.value = false;
+                                          })
                                         }, {
                                           default: withCtx(() => [
                                             createTextVNode(
-                                              toDisplayString(branchPreview(messageId)),
+                                              toDisplayString(__props.locale === "ru" ? "Начать диапазон здесь" : "Start range here"),
                                               1
                                               /* TEXT */
                                             )
                                           ]),
-                                          _: 2
-                                          /* DYNAMIC */
-                                        }, 1032, ["title", "disabled", "data-branch-message", "onClick"]);
+                                          _: 1
+                                          /* STABLE */
+                                        }, 8, ["disabled"])) : createCommentVNode("v-if", true),
+                                        rangeStart.value ? (openBlock(), createBlock(unref(_sfc_main$17), {
+                                          key: 1,
+                                          variant: "ghost",
+                                          size: "sm",
+                                          disabled: rangeLoading.value || !focusedMessageId.value,
+                                          onClick: _cache[11] || (_cache[11] = ($event) => {
+                                            endRange();
+                                            toolsOpen.value = false;
+                                          })
+                                        }, {
+                                          default: withCtx(() => [
+                                            createTextVNode(
+                                              toDisplayString(__props.locale === "ru" ? "Закончить диапазон здесь" : "End range here"),
+                                              1
+                                              /* TEXT */
+                                            )
+                                          ]),
+                                          _: 1
+                                          /* STABLE */
+                                        }, 8, ["disabled"])) : createCommentVNode("v-if", true)
+                                      ],
+                                      64
+                                      /* STABLE_FRAGMENT */
+                                    )) : createCommentVNode("v-if", true),
+                                    _ctx.$slots["collection-actions"] ? (openBlock(), createElementBlock("div", _hoisted_16$8, [
+                                      renderSlot(_ctx.$slots, "collection-actions")
+                                    ])) : createCommentVNode("v-if", true),
+                                    createBaseVNode("div", _hoisted_17$6, [
+                                      createVNode(unref(_sfc_main$17), {
+                                        variant: "ghost",
+                                        size: "sm",
+                                        onClick: _cache[12] || (_cache[12] = ($event) => openToolsPage("display", $event))
+                                      }, {
+                                        default: withCtx(() => [
+                                          createVNode(unref(Brain), { class: "size-4" }),
+                                          createTextVNode(
+                                            toDisplayString(__props.locale === "ru" ? "Отображение" : "Display"),
+                                            1
+                                            /* TEXT */
+                                          ),
+                                          _cache[42] || (_cache[42] = createBaseVNode(
+                                            "span",
+                                            {
+                                              class: "ms-auto",
+                                              "aria-hidden": "true"
+                                            },
+                                            "›",
+                                            -1
+                                            /* CACHED */
+                                          ))
+                                        ]),
+                                        _: 1
+                                        /* STABLE */
                                       }),
-                                      128
-                                      /* KEYED_FRAGMENT */
+                                      createVNode(unref(_sfc_main$17), {
+                                        variant: "ghost",
+                                        size: "sm",
+                                        onClick: _cache[13] || (_cache[13] = ($event) => openToolsPage("advanced", $event))
+                                      }, {
+                                        default: withCtx(() => [
+                                          createVNode(unref(Info), { class: "size-4" }),
+                                          createTextVNode(
+                                            toDisplayString(__props.locale === "ru" ? "Диагностика" : "Diagnostics"),
+                                            1
+                                            /* TEXT */
+                                          ),
+                                          _cache[43] || (_cache[43] = createBaseVNode(
+                                            "span",
+                                            {
+                                              class: "ms-auto",
+                                              "aria-hidden": "true"
+                                            },
+                                            "›",
+                                            -1
+                                            /* CACHED */
+                                          ))
+                                        ]),
+                                        _: 1
+                                        /* STABLE */
+                                      })
+                                    ])
+                                  ],
+                                  64
+                                  /* STABLE_FRAGMENT */
+                                )) : (openBlock(), createElementBlock(
+                                  Fragment,
+                                  { key: 1 },
+                                  [
+                                    createVNode(unref(_sfc_main$17), {
+                                      variant: "ghost",
+                                      size: "sm",
+                                      onClick: _cache[14] || (_cache[14] = ($event) => openToolsPage("main", $event))
+                                    }, {
+                                      default: withCtx(() => [
+                                        createVNode(unref(ArrowLeft), { class: "size-4" }),
+                                        createTextVNode(
+                                          toDisplayString(__props.locale === "ru" ? "Назад" : "Back"),
+                                          1
+                                          /* TEXT */
+                                        )
+                                      ]),
+                                      _: 1
+                                      /* STABLE */
+                                    }),
+                                    createBaseVNode(
+                                      "p",
+                                      _hoisted_18$6,
+                                      toDisplayString(toolsPage.value === "display" ? __props.locale === "ru" ? "Отображение" : "Display" : __props.locale === "ru" ? "Диагностика" : "Diagnostics"),
+                                      1
+                                      /* TEXT */
+                                    ),
+                                    toolsPage.value === "display" ? (openBlock(), createElementBlock(
+                                      Fragment,
+                                      { key: 0 },
+                                      [
+                                        timelineNodes.value.length || navigationNodes.value.length ? (openBlock(), createBlock(unref(_sfc_main$17), {
+                                          key: 0,
+                                          variant: "ghost",
+                                          size: "sm",
+                                          "aria-pressed": historyOpen.value,
+                                          onClick: _cache[15] || (_cache[15] = ($event) => {
+                                            historyOpen.value = !historyOpen.value;
+                                            toolsOpen.value = false;
+                                          })
+                                        }, {
+                                          default: withCtx(() => [
+                                            createVNode(unref(GitBranch), { class: "size-4" }),
+                                            createTextVNode(
+                                              toDisplayString(historyOpen.value ? __props.locale === "ru" ? "Скрыть таймлайн" : "Hide timeline" : __props.locale === "ru" ? "Показать таймлайн" : "Show timeline"),
+                                              1
+                                              /* TEXT */
+                                            )
+                                          ]),
+                                          _: 1
+                                          /* STABLE */
+                                        }, 8, ["aria-pressed"])) : createCommentVNode("v-if", true),
+                                        createVNode(unref(_sfc_main$17), {
+                                          variant: "ghost",
+                                          size: "sm",
+                                          onClick: _cache[16] || (_cache[16] = ($event) => {
+                                            reasoningExpanded.value = !reasoningExpanded.value;
+                                            toolsOpen.value = false;
+                                          })
+                                        }, {
+                                          default: withCtx(() => [
+                                            createVNode(unref(Brain), { class: "size-4" }),
+                                            createTextVNode(
+                                              toDisplayString(t(reasoningExpanded.value ? "reader.collapseReasoning" : "reader.expandReasoning")),
+                                              1
+                                              /* TEXT */
+                                            )
+                                          ]),
+                                          _: 1
+                                          /* STABLE */
+                                        }),
+                                        createVNode(unref(_sfc_main$17), {
+                                          variant: "ghost",
+                                          size: "sm",
+                                          "aria-pressed": showServiceRecords.value,
+                                          onClick: _cache[17] || (_cache[17] = ($event) => {
+                                            showServiceRecords.value = !showServiceRecords.value;
+                                            toolsOpen.value = false;
+                                          })
+                                        }, {
+                                          default: withCtx(() => [
+                                            createVNode(unref(Database), { class: "size-4" }),
+                                            createTextVNode(
+                                              toDisplayString(showServiceRecords.value ? __props.locale === "ru" ? "Скрыть служебные записи" : "Hide service records" : __props.locale === "ru" ? "Показать служебные записи" : "Show service records"),
+                                              1
+                                              /* TEXT */
+                                            )
+                                          ]),
+                                          _: 1
+                                          /* STABLE */
+                                        }, 8, ["aria-pressed"])
+                                      ],
+                                      64
+                                      /* STABLE_FRAGMENT */
+                                    )) : (openBlock(), createElementBlock(
+                                      Fragment,
+                                      { key: 1 },
+                                      [
+                                        coverage.value?.integrity ? (openBlock(), createBlock(unref(_sfc_main$17), {
+                                          key: 0,
+                                          variant: "ghost",
+                                          size: "sm",
+                                          onClick: _cache[18] || (_cache[18] = ($event) => revealReaderDetails("integrity"))
+                                        }, {
+                                          default: withCtx(() => [
+                                            createVNode(unref(Info), { class: "size-4" }),
+                                            createTextVNode(
+                                              toDisplayString(__props.locale === "ru" ? "Проверить целостность" : "Check integrity"),
+                                              1
+                                              /* TEXT */
+                                            )
+                                          ]),
+                                          _: 1
+                                          /* STABLE */
+                                        })) : createCommentVNode("v-if", true),
+                                        __props.archiveAdapter.getMessageVersions && versionMessageId.value ? (openBlock(), createBlock(unref(_sfc_main$17), {
+                                          key: 1,
+                                          variant: "ghost",
+                                          size: "sm",
+                                          onClick: _cache[19] || (_cache[19] = ($event) => revealReaderDetails("versions"))
+                                        }, {
+                                          default: withCtx(() => [
+                                            createVNode(unref(GitBranch), { class: "size-4" }),
+                                            createTextVNode(
+                                              toDisplayString(__props.locale === "ru" ? "Версии сообщения" : "Message versions") + " · " + toDisplayString(sourceVersions.value.length),
+                                              1
+                                              /* TEXT */
+                                            )
+                                          ]),
+                                          _: 1
+                                          /* STABLE */
+                                        })) : createCommentVNode("v-if", true),
+                                        __props.archiveAdapter.getMessageWindow ? (openBlock(), createBlock(unref(_sfc_main$17), {
+                                          key: 2,
+                                          variant: "ghost",
+                                          size: "sm",
+                                          onClick: _cache[20] || (_cache[20] = ($event) => {
+                                            messageLookupOpen.value = !messageLookupOpen.value;
+                                            toolsOpen.value = false;
+                                          })
+                                        }, {
+                                          default: withCtx(() => [
+                                            createVNode(unref(Search), { class: "size-4" }),
+                                            createTextVNode(
+                                              toDisplayString(t("reader.jumpMessage")),
+                                              1
+                                              /* TEXT */
+                                            )
+                                          ]),
+                                          _: 1
+                                          /* STABLE */
+                                        })) : createCommentVNode("v-if", true)
+                                      ],
+                                      64
+                                      /* STABLE_FRAGMENT */
                                     ))
-                                  ], 8, _hoisted_26$3);
-                                }),
-                                128
-                                /* KEYED_FRAGMENT */
-                              ))
-                            ]),
-                            _: 1
-                            /* STABLE */
-                          }, 8, ["aria-label"])
-                        ]),
-                        _: 1
-                        /* STABLE */
-                      }, 8, ["open"])) : (openBlock(), createElementBlock(
-                        "span",
-                        _hoisted_27$3,
-                        toDisplayString(__props.locale === "ru" ? "Ветвлений не сохранено" : "No saved branch points"),
-                        1
-                        /* TEXT */
-                      ))
-                    ])) : createCommentVNode("v-if", true),
-                    rangeStart.value ? (openBlock(), createElementBlock("p", _hoisted_28$3, [
+                                  ],
+                                  64
+                                  /* STABLE_FRAGMENT */
+                                ))
+                              ]),
+                              _: 3
+                              /* FORWARDED */
+                            }, 8, ["aria-label"])
+                          ]),
+                          _: 3
+                          /* FORWARDED */
+                        }, 8, ["open"])
+                      ])
+                    ]),
+                    rangeStart.value ? (openBlock(), createElementBlock("p", _hoisted_19$6, [
                       createTextVNode(
                         toDisplayString(__props.locale === "ru" ? "Диапазон сохранённых записей" : "Saved record range") + ": " + toDisplayString(rangeStart.value.slice(0, 12)) + " → " + toDisplayString(rangeEnd.value?.slice(0, 12) || "…"),
                         1
@@ -35365,22 +35959,25 @@ Defaulting to \`null\`.`);
                       ),
                       rangeEnd.value ? (openBlock(), createElementBlock(
                         "span",
-                        _hoisted_29$3,
+                        _hoisted_20$6,
                         " · " + toDisplayString(selectedMessages.value.size),
                         1
                         /* TEXT */
                       )) : createCommentVNode("v-if", true)
                     ])) : createCommentVNode("v-if", true),
-                    __props.archiveAdapter.getMessageWindow && messageLookupOpen.value ? (openBlock(), createElementBlock("div", _hoisted_30$3, [
+                    __props.archiveAdapter.getMessageWindow && messageLookupOpen.value ? (openBlock(), createElementBlock("div", _hoisted_21$6, [
                       createBaseVNode(
                         "form",
                         {
-                          onSubmit: withModifiers(lookupMessage, ["prevent"])
+                          onSubmit: _cache[23] || (_cache[23] = withModifiers(($event) => {
+                            showServiceRecords.value = true;
+                            lookupMessage();
+                          }, ["prevent"]))
                         },
                         [
                           createVNode(unref(_sfc_main$s$1), {
                             modelValue: messageLookup.value,
-                            "onUpdate:modelValue": _cache[21] || (_cache[21] = ($event) => messageLookup.value = $event),
+                            "onUpdate:modelValue": _cache[22] || (_cache[22] = ($event) => messageLookup.value = $event),
                             type: "text",
                             maxlength: "1024",
                             "aria-label": t("reader.messageId"),
@@ -35407,23 +36004,23 @@ Defaulting to \`null\`.`);
                         /* NEED_HYDRATION */
                       )
                     ])) : createCommentVNode("v-if", true),
-                    searchOpen.value ? (openBlock(), createElementBlock("div", _hoisted_31$3, [
+                    searchOpen.value ? (openBlock(), createElementBlock("div", _hoisted_22$5, [
                       createVNode(unref(_sfc_main$s$1), {
                         modelValue: textSearch.value,
-                        "onUpdate:modelValue": _cache[22] || (_cache[22] = ($event) => textSearch.value = $event),
+                        "onUpdate:modelValue": _cache[24] || (_cache[24] = ($event) => textSearch.value = $event),
                         type: "search",
                         placeholder: t("reader.searchMessages"),
                         "aria-label": t("reader.searchMessages")
                       }, null, 8, ["modelValue", "placeholder", "aria-label"]),
                       usingIndexedWindows.value && (hasOlderStored.value || hasNewerStored.value || knownStoredCount.value > thread.value.recordCount) ? (openBlock(), createElementBlock(
                         "p",
-                        _hoisted_32$3,
+                        _hoisted_23$5,
                         toDisplayString(t("reader.windowSearchOnly")),
                         1
                         /* TEXT */
                       )) : createCommentVNode("v-if", true)
                     ])) : createCommentVNode("v-if", true),
-                    coverageLoading.value ? (openBlock(), createElementBlock("div", _hoisted_33$3, [
+                    coverageLoading.value ? (openBlock(), createElementBlock("div", _hoisted_24$4, [
                       createVNode(unref(_sfc_main$b$2), { class: "h-4 w-24" }),
                       createTextVNode(
                         toDisplayString(__props.locale === "ru" ? "Проверка начала, конца и разрывов…" : "Checking first, last and gaps…"),
@@ -35433,84 +36030,61 @@ Defaulting to \`null\`.`);
                     ])) : createCommentVNode("v-if", true),
                     coverageError.value ? (openBlock(), createElementBlock(
                       "p",
-                      _hoisted_34$3,
+                      _hoisted_25$4,
                       toDisplayString(__props.locale === "ru" ? "Целостность не удалось проверить. Экспорт не будет отмечен полным." : "Integrity check failed. Export cannot be marked complete."),
                       1
                       /* TEXT */
                     )) : createCommentVNode("v-if", true),
-                    createBaseVNode("div", _hoisted_35$3, [
-                      createBaseVNode("span", null, [
-                        createTextVNode(
-                          toDisplayString(t("dock.messages")) + ": ",
-                          1
-                          /* TEXT */
-                        ),
-                        createBaseVNode(
-                          "b",
-                          null,
-                          toDisplayString(thread.value.messageCount),
-                          1
-                          /* TEXT */
-                        ),
-                        createTextVNode(
-                          " · " + toDisplayString(t("dock.details")) + ": " + toDisplayString(thread.value.detailCount),
-                          1
-                          /* TEXT */
-                        ),
-                        usingIndexedWindows.value ? (openBlock(), createElementBlock(
-                          Fragment,
-                          { key: 0 },
-                          [
-                            createTextVNode(
-                              " · " + toDisplayString(__props.locale === "ru" ? "Загружено" : "Loaded") + " " + toDisplayString(thread.value.recordCount) + "/" + toDisplayString(knownStoredCount.value),
-                              1
-                              /* TEXT */
-                            )
-                          ],
-                          64
-                          /* STABLE_FRAGMENT */
-                        )) : createCommentVNode("v-if", true)
-                      ]),
-                      usingIndexedWindows.value && hasUnsequencedRecords.value ? (openBlock(), createElementBlock(
+                    createBaseVNode("div", _hoisted_26$3, [
+                      createBaseVNode(
                         "span",
-                        _hoisted_36$3,
-                        toDisplayString(__props.locale === "ru" ? "Есть сообщения без подтверждённого времени" : "Some messages have no confirmed chronology"),
+                        null,
+                        toDisplayString(t("dock.messages")) + ": " + toDisplayString(thread.value.messageCount),
                         1
                         /* TEXT */
-                      )) : createCommentVNode("v-if", true),
-                      coverage.value?.integrity ? (openBlock(), createElementBlock(
-                        "span",
-                        _hoisted_37$3,
-                        toDisplayString(__props.locale === "ru" ? "Начало" : "Start") + ": " + toDisplayString(evidenceLabel(coverage.value.integrity.start)) + " · " + toDisplayString(__props.locale === "ru" ? "Конец" : "End") + ": " + toDisplayString(evidenceLabel(coverage.value.integrity.end)),
-                        1
-                        /* TEXT */
-                      )) : createCommentVNode("v-if", true),
-                      createBaseVNode("span", {
-                        class: "booster-reader-coverage",
-                        title: t(archiveStatusKey.value),
-                        "aria-label": t(archiveStatusKey.value)
-                      }, [
-                        createVNode(unref(Info), { class: "size-4" }),
-                        createTextVNode(
-                          toDisplayString(coverage.value?.completeAtLastRead ? __props.locale === "ru" ? "Цепочка подтверждена" : "Path verified" : __props.locale === "ru" ? "Цепочка не подтверждена" : "Path unverified"),
-                          1
-                          /* TEXT */
-                        )
-                      ], 8, _hoisted_38$3),
-                      selectedBranchIds.value ? (openBlock(), createElementBlock(
-                        "span",
-                        _hoisted_39$3,
-                        toDisplayString(__props.locale === "ru" ? "В выбранном пути" : "Selected path") + ": " + toDisplayString(selectedBranchIds.value.size),
-                        1
-                        /* TEXT */
-                      )) : createCommentVNode("v-if", true)
+                      ),
+                      coverage.value?.integrity ? (openBlock(), createBlock(unref(_sfc_main$17), {
+                        key: 0,
+                        variant: "ghost",
+                        size: "sm",
+                        class: "h-7 px-1 text-xs text-muted-foreground",
+                        onClick: _cache[25] || (_cache[25] = ($event) => integrityOpen.value = true)
+                      }, {
+                        default: withCtx(() => [
+                          createVNode(unref(Info), { class: "size-3" }),
+                          createTextVNode(
+                            toDisplayString(coverage.value.completeAtLastRead ? __props.locale === "ru" ? "Архив подтверждён" : "Archive verified" : __props.locale === "ru" ? "Проверка архива" : "Archive details"),
+                            1
+                            /* TEXT */
+                          )
+                        ]),
+                        _: 1
+                        /* STABLE */
+                      })) : createCommentVNode("v-if", true),
+                      selectedBranchTip.value ? (openBlock(), createBlock(unref(_sfc_main$17), {
+                        key: 1,
+                        variant: "ghost",
+                        size: "sm",
+                        class: "h-7 px-1 text-xs",
+                        onClick: _cache[26] || (_cache[26] = ($event) => releaseBranchFilter())
+                      }, {
+                        default: withCtx(() => [
+                          createTextVNode(
+                            toDisplayString(__props.locale === "ru" ? "Выбрана ветка · показать все" : "Branch selected · show all"),
+                            1
+                            /* TEXT */
+                          )
+                        ]),
+                        _: 1
+                        /* STABLE */
+                      })) : createCommentVNode("v-if", true)
                     ])
                   ],
                   64
                   /* STABLE_FRAGMENT */
                 )) : createCommentVNode("v-if", true)
               ]),
-              staleSavedWindow.value ? (openBlock(), createElementBlock("p", _hoisted_40$3, [
+              staleSavedWindow.value ? (openBlock(), createElementBlock("p", _hoisted_27$3, [
                 createTextVNode(
                   toDisplayString(t("reader.staleWindow")) + " ",
                   1
@@ -35535,14 +36109,14 @@ Defaulting to \`null\`.`);
               ])) : createCommentVNode("v-if", true),
               navigationError.value ? (openBlock(), createElementBlock(
                 "p",
-                _hoisted_41$3,
+                _hoisted_28$3,
                 toDisplayString(t(navigationError.value)),
                 1
                 /* TEXT */
               )) : createCommentVNode("v-if", true),
               error.value ? (openBlock(), createElementBlock(
                 "p",
-                _hoisted_42$3,
+                _hoisted_29$3,
                 toDisplayString(t("reader.error")),
                 1
                 /* TEXT */
@@ -35552,7 +36126,7 @@ Defaulting to \`null\`.`);
                 "timeline-visible": Boolean(historyOpen.value && selected.value && (timelineNodes.value.length || navigationNodes.value.length))
               }, {
                 status: withCtx(() => [
-                  loadingOlder.value ? (openBlock(), createElementBlock("div", _hoisted_43$3, [
+                  loadingOlder.value ? (openBlock(), createElementBlock("div", _hoisted_30$3, [
                     createVNode(unref(LoaderCircle), { class: "size-4 booster-reader-spinner" }),
                     createTextVNode(
                       toDisplayString(t(loadingDirection.value === "newer" ? "reader.loadingNewer" : "reader.loadingEarlier")) + " · " + toDisplayString(displayedTurns.value.length) + "/" + toDisplayString(filteredTurns.value.length),
@@ -35581,248 +36155,36 @@ Defaulting to \`null\`.`);
                       ref_key: "readingScroll",
                       ref: readingScroll,
                       class: "booster-reader-scroll",
-                      onScrollPassive: onReadingScroll
+                      onScrollPassive: onReadingScroll,
+                      onWheelPassive: _cache[27] || (_cache[27] = //@ts-ignore
+                      (...args) => unref(readerScroll).onUserInput && unref(readerScroll).onUserInput(...args)),
+                      onTouchmovePassive: _cache[28] || (_cache[28] = //@ts-ignore
+                      (...args) => unref(readerScroll).onUserInput && unref(readerScroll).onUserInput(...args)),
+                      onPointerdown: _cache[29] || (_cache[29] = //@ts-ignore
+                      (...args) => unref(readerScroll).onUserInput && unref(readerScroll).onUserInput(...args)),
+                      onPointermovePassive: _cache[30] || (_cache[30] = //@ts-ignore
+                      (...args) => unref(readerScroll).onUserInput && unref(readerScroll).onUserInput(...args)),
+                      onKeydown: _cache[31] || (_cache[31] = //@ts-ignore
+                      (...args) => unref(readerScroll).onUserInput && unref(readerScroll).onUserInput(...args))
                     },
                     [
                       historyOpen.value && !timelineNodes.value.length && usingIndexedWindows.value && (hasOlderStored.value || hasNewerStored.value || knownStoredCount.value > thread.value.recordCount) ? (openBlock(), createElementBlock(
                         "p",
-                        _hoisted_44$3,
+                        _hoisted_31$3,
                         toDisplayString(t("reader.windowGraphOnly")),
                         1
                         /* TEXT */
                       )) : createCommentVNode("v-if", true),
-                      coverage.value?.integrity ? (openBlock(), createBlock(unref(_sfc_main$G), {
-                        key: 1,
-                        open: integrityOpen.value,
-                        "onUpdate:open": _cache[25] || (_cache[25] = ($event) => integrityOpen.value = $event),
-                        class: normalizeClass(["booster-reader-integrity", { "is-complete": coverage.value.integrity.chain === "verified" }])
-                      }, {
-                        default: withCtx(() => [
-                          createVNode(unref(_sfc_main$E), { "as-child": "" }, {
-                            default: withCtx(() => [
-                              createVNode(unref(_sfc_main$17), {
-                                variant: "ghost",
-                                class: "h-auto min-h-9 w-full whitespace-normal justify-start text-left"
-                              }, {
-                                default: withCtx(() => [
-                                  createTextVNode(
-                                    toDisplayString(__props.locale === "ru" ? "Целостность цепочки" : "Chain integrity") + " · " + toDisplayString(__props.locale === "ru" ? "Начало" : "Start") + ": " + toDisplayString(evidenceLabel(coverage.value.integrity.start)) + " · " + toDisplayString(__props.locale === "ru" ? "Конец" : "End") + ": " + toDisplayString(evidenceLabel(coverage.value.integrity.end)) + " · " + toDisplayString(__props.locale === "ru" ? "Разрывы" : "Gaps") + ": " + toDisplayString(coverage.value.integrity.issues.filter((issue) => issue.reason !== "unverified-root").length),
-                                    1
-                                    /* TEXT */
-                                  )
-                                ]),
-                                _: 1
-                                /* STABLE */
-                              })
-                            ]),
-                            _: 1
-                            /* STABLE */
-                          }),
-                          createVNode(unref(_sfc_main$F), null, {
-                            default: withCtx(() => [
-                              readSource.value === "saved" ? (openBlock(), createElementBlock(
-                                "p",
-                                _hoisted_45$3,
-                                toDisplayString(t("reader.savedInspection")),
-                                1
-                                /* TEXT */
-                              )) : createCommentVNode("v-if", true),
-                              unsequencedTarget.value ? (openBlock(), createElementBlock(
-                                "p",
-                                _hoisted_46$3,
-                                toDisplayString(t("reader.targetUnsequenced")),
-                                1
-                                /* TEXT */
-                              )) : createCommentVNode("v-if", true),
-                              createBaseVNode(
-                                "p",
-                                _hoisted_47$3,
-                                toDisplayString(__props.locale === "ru" ? "Неизвестная связь отличается от подтверждённого разрыва. Проверка охватывает все сохранённые сообщения. Содержимое загружается постепенно, таймлайн использует лёгкие метаданные." : "Unknown ancestry differs from a confirmed gap. Integrity covers all saved messages. Content loads progressively; the timeline uses lightweight metadata."),
-                                1
-                                /* TEXT */
-                              ),
-                              createBaseVNode("div", _hoisted_48$3, [
-                                coverage.value.integrity.firstMessageId ? (openBlock(), createBlock(unref(_sfc_main$17), {
-                                  key: 0,
-                                  variant: "outline",
-                                  size: "sm",
-                                  onClick: _cache[23] || (_cache[23] = ($event) => openMessage(coverage.value.integrity.firstMessageId))
-                                }, {
-                                  default: withCtx(() => [
-                                    createTextVNode(
-                                      toDisplayString(__props.locale === "ru" ? "Первое сообщение" : "First message") + " · " + toDisplayString(coverage.value.integrity.firstMessageId.slice(0, 12)),
-                                      1
-                                      /* TEXT */
-                                    )
-                                  ]),
-                                  _: 1
-                                  /* STABLE */
-                                })) : createCommentVNode("v-if", true),
-                                coverage.value.integrity.lastMessageId ? (openBlock(), createBlock(unref(_sfc_main$17), {
-                                  key: 1,
-                                  variant: "outline",
-                                  size: "sm",
-                                  onClick: _cache[24] || (_cache[24] = ($event) => openMessage(coverage.value.integrity.lastMessageId))
-                                }, {
-                                  default: withCtx(() => [
-                                    createTextVNode(
-                                      toDisplayString(__props.locale === "ru" ? "Последнее сообщение" : "Last message") + " · " + toDisplayString(coverage.value.integrity.lastMessageId.slice(0, 12)),
-                                      1
-                                      /* TEXT */
-                                    )
-                                  ]),
-                                  _: 1
-                                  /* STABLE */
-                                })) : createCommentVNode("v-if", true)
-                              ]),
-                              (openBlock(true), createElementBlock(
-                                Fragment,
-                                null,
-                                renderList(coverage.value.integrity.issues, (issue) => {
-                                  return openBlock(), createElementBlock("div", {
-                                    key: issue.reason + issue.messageId,
-                                    "data-integrity-issue": ""
-                                  }, [
-                                    createVNode(unref(_sfc_main$17), {
-                                      variant: "outline",
-                                      type: "button",
-                                      class: "h-auto whitespace-normal",
-                                      onClick: ($event) => openMessage(issue.reason === "missing-head" ? coverage.value.integrity?.tips.at(-1) ?? issue.messageId : issue.messageId)
-                                    }, {
-                                      default: withCtx(() => [
-                                        createTextVNode(
-                                          toDisplayString(evidenceLabel(issue.reason)) + " · " + toDisplayString(issue.reason === "missing-head" ? __props.locale === "ru" ? "Открыть последнее сохранённое" : "Open last saved message" : issue.messageId.slice(0, 12)),
-                                          1
-                                          /* TEXT */
-                                        )
-                                      ]),
-                                      _: 2
-                                      /* DYNAMIC */
-                                    }, 1032, ["onClick"]),
-                                    issue.parentId ? (openBlock(), createElementBlock(
-                                      "small",
-                                      _hoisted_49$1,
-                                      toDisplayString(__props.locale === "ru" ? "Не найден родитель" : "Missing parent") + ": " + toDisplayString(issue.parentId),
-                                      1
-                                      /* TEXT */
-                                    )) : createCommentVNode("v-if", true)
-                                  ]);
-                                }),
-                                128
-                                /* KEYED_FRAGMENT */
-                              ))
-                            ]),
-                            _: 1
-                            /* STABLE */
-                          })
-                        ]),
-                        _: 1
-                        /* STABLE */
-                      }, 8, ["open", "class"])) : createCommentVNode("v-if", true),
-                      versionsOpen.value && versionMessageId.value ? (openBlock(), createElementBlock("section", {
-                        key: 2,
-                        class: "booster-reader-versions",
-                        "data-version-message": versionMessageId.value
-                      }, [
-                        createVNode(unref(_sfc_main$J), null, {
-                          default: withCtx(() => [
-                            createTextVNode(
-                              toDisplayString(__props.locale === "ru" ? "Сохранённая версия сообщения" : "Saved message version") + " ",
-                              1
-                              /* TEXT */
-                            ),
-                            createVNode(unref(_sfc_main$n$1), {
-                              "model-value": String(selectedVersion.value),
-                              "onUpdate:modelValue": _cache[26] || (_cache[26] = ($event) => selectedVersion.value = Number($event))
-                            }, {
-                              default: withCtx(() => [
-                                createVNode(unref(_sfc_main$e$1), { class: "w-full" }, {
-                                  default: withCtx(() => [
-                                    createVNode(unref(_sfc_main$d$1))
-                                  ]),
-                                  _: 1
-                                  /* STABLE */
-                                }),
-                                createVNode(unref(_sfc_main$m$1), null, {
-                                  default: withCtx(() => [
-                                    (openBlock(true), createElementBlock(
-                                      Fragment,
-                                      null,
-                                      renderList(sourceVersions.value, (version2, index) => {
-                                        return openBlock(), createBlock(unref(_sfc_main$k$1), {
-                                          key: index,
-                                          value: String(index)
-                                        }, {
-                                          default: withCtx(() => [
-                                            createTextVNode(
-                                              toDisplayString(index + 1) + " · " + toDisplayString(new Date(version2.observedAtMs).toLocaleString(__props.locale)) + " · " + toDisplayString(evidenceLabel(version2.decision)),
-                                              1
-                                              /* TEXT */
-                                            )
-                                          ]),
-                                          _: 2
-                                          /* DYNAMIC */
-                                        }, 1032, ["value"]);
-                                      }),
-                                      128
-                                      /* KEYED_FRAGMENT */
-                                    ))
-                                  ]),
-                                  _: 1
-                                  /* STABLE */
-                                })
-                              ]),
-                              _: 1
-                              /* STABLE */
-                            }, 8, ["model-value"])
-                          ]),
-                          _: 1
-                          /* STABLE */
-                        }),
-                        createBaseVNode(
-                          "p",
-                          _hoisted_51$1,
-                          toDisplayString(__props.locale === "ru" ? "Переключение меняет только локальный просмотр. Исходные варианты и данные ChatGPT сохраняются." : "Selection changes local inspection only. All source variants and native ChatGPT data remain preserved."),
-                          1
-                          /* TEXT */
-                        ),
-                        versionError.value ? (openBlock(), createElementBlock(
-                          "p",
-                          _hoisted_52$1,
-                          toDisplayString(__props.locale === "ru" ? "Не удалось открыть версии" : "Could not open versions"),
-                          1
-                          /* TEXT */
-                        )) : createCommentVNode("v-if", true),
-                        versionsLoading.value ? (openBlock(), createBlock(unref(_sfc_main$b$2), {
-                          key: 1,
-                          class: "h-20 w-full"
-                        })) : createCommentVNode("v-if", true),
-                        (openBlock(true), createElementBlock(
-                          Fragment,
-                          null,
-                          renderList(versionItems.value, (item) => {
-                            return openBlock(), createBlock(_sfc_main$r, {
-                              key: item.record.messageKey + ":" + selectedVersion.value,
-                              item,
-                              locale: __props.locale,
-                              "expand-reasoning": true,
-                              focused: true
-                            }, null, 8, ["item", "locale"]);
-                          }),
-                          128
-                          /* KEYED_FRAGMENT */
-                        ))
-                      ], 8, _hoisted_50$1)) : createCommentVNode("v-if", true),
                       threadLoading.value ? (openBlock(), createElementBlock("div", {
-                        key: 3,
+                        key: 1,
                         role: "status",
                         class: "space-y-4 p-4",
                         "aria-label": t("reader.loading")
                       }, [
-                        createBaseVNode("div", _hoisted_54$1, [
+                        createBaseVNode("div", _hoisted_33$3, [
                           createBaseVNode(
                             "span",
-                            _hoisted_55$1,
+                            _hoisted_34$3,
                             toDisplayString(t("reader.loading")),
                             1
                             /* TEXT */
@@ -35859,10 +36221,10 @@ Defaulting to \`null\`.`);
                           64
                           /* STABLE_FRAGMENT */
                         ))
-                      ], 8, _hoisted_53$1)) : selected.value ? (openBlock(), createElementBlock("div", _hoisted_56$1, [
+                      ], 8, _hoisted_32$3)) : selected.value ? (openBlock(), createElementBlock("div", _hoisted_35$3, [
                         !filteredTurns.value.length ? (openBlock(), createElementBlock(
                           "p",
-                          _hoisted_57$1,
+                          _hoisted_36$3,
                           toDisplayString(t("reader.noResults")),
                           1
                           /* TEXT */
@@ -35877,18 +36239,18 @@ Defaulting to \`null\`.`);
                             }, [
                               turn.association === "unassigned" ? (openBlock(), createElementBlock(
                                 "p",
-                                _hoisted_58$1,
+                                _hoisted_37$3,
                                 toDisplayString(t("reader.unassigned")),
                                 1
                                 /* TEXT */
                               )) : turn.association === "adjacency" ? (openBlock(), createElementBlock(
                                 "p",
-                                _hoisted_59$1,
+                                _hoisted_38$3,
                                 toDisplayString(t("reader.adjacency")),
                                 1
                                 /* TEXT */
                               )) : createCommentVNode("v-if", true),
-                              createVNode(unref(ArchiveRecordList), {
+                              createVNode(unref(_sfc_main$5$1), {
                                 records: turn.messages.filter((i) => i.kind === "user"),
                                 "record-key": itemKey,
                                 "message-id": itemMessageId,
@@ -35909,37 +36271,88 @@ Defaulting to \`null\`.`);
                                 _: 1
                                 /* STABLE */
                               }, 8, ["records", "target-message-id", "selectable", "selected-ids"]),
-                              turn.details.length ? (openBlock(), createElementBlock("div", _hoisted_60$1, [
-                                createBaseVNode(
-                                  "div",
-                                  _hoisted_61$1,
-                                  toDisplayString(t("reader.details")) + " · " + toDisplayString(turn.details.length),
-                                  1
-                                  /* TEXT */
-                                ),
-                                createVNode(unref(ArchiveRecordList), {
-                                  records: turn.details,
-                                  "record-key": itemKey,
-                                  "message-id": itemMessageId,
-                                  "target-message-id": requestedMessageId.value,
-                                  selectable: selectionEnabled.value,
-                                  "selected-ids": selectedMessages.value,
-                                  "selection-label": itemSelectionLabel,
-                                  onSelect: selectMessage
-                                }, {
-                                  record: withCtx(({ record: record2 }) => [
-                                    createVNode(_sfc_main$r, {
-                                      item: record2,
-                                      locale: __props.locale,
-                                      "expand-reasoning": reasoningExpanded.value,
-                                      focused: requestedMessageId.value === record2.record.messageId
-                                    }, null, 8, ["item", "locale", "expand-reasoning", "focused"])
+                              turn.details.length ? (openBlock(), createBlock(
+                                unref(_sfc_main$G),
+                                {
+                                  key: 2,
+                                  class: "booster-exchange-details"
+                                },
+                                {
+                                  default: withCtx(() => [
+                                    createVNode(
+                                      unref(_sfc_main$E),
+                                      { "as-child": "" },
+                                      {
+                                        default: withCtx(() => [
+                                          createVNode(
+                                            unref(_sfc_main$17),
+                                            {
+                                              variant: "ghost",
+                                              size: "sm",
+                                              class: "text-xs text-muted-foreground"
+                                            },
+                                            {
+                                              default: withCtx(() => [
+                                                createTextVNode(
+                                                  toDisplayString(showServiceRecords.value ? t("reader.details") : __props.locale === "ru" ? "Действия ассистента" : "Assistant activity") + " · " + toDisplayString(turn.details.length),
+                                                  1
+                                                  /* TEXT */
+                                                )
+                                              ]),
+                                              _: 2
+                                              /* DYNAMIC */
+                                            },
+                                            1024
+                                            /* DYNAMIC_SLOTS */
+                                          )
+                                        ]),
+                                        _: 2
+                                        /* DYNAMIC */
+                                      },
+                                      1024
+                                      /* DYNAMIC_SLOTS */
+                                    ),
+                                    createVNode(
+                                      unref(_sfc_main$F),
+                                      null,
+                                      {
+                                        default: withCtx(() => [
+                                          createVNode(unref(_sfc_main$5$1), {
+                                            records: turn.details,
+                                            "record-key": itemKey,
+                                            "message-id": itemMessageId,
+                                            "target-message-id": requestedMessageId.value,
+                                            selectable: selectionEnabled.value,
+                                            "selected-ids": selectedMessages.value,
+                                            "selection-label": itemSelectionLabel,
+                                            onSelect: selectMessage
+                                          }, {
+                                            record: withCtx(({ record: record2 }) => [
+                                              createVNode(_sfc_main$r, {
+                                                item: record2,
+                                                locale: __props.locale,
+                                                "expand-reasoning": reasoningExpanded.value,
+                                                focused: requestedMessageId.value === record2.record.messageId
+                                              }, null, 8, ["item", "locale", "expand-reasoning", "focused"])
+                                            ]),
+                                            _: 1
+                                            /* STABLE */
+                                          }, 8, ["records", "target-message-id", "selectable", "selected-ids"])
+                                        ]),
+                                        _: 2
+                                        /* DYNAMIC */
+                                      },
+                                      1024
+                                      /* DYNAMIC_SLOTS */
+                                    )
                                   ]),
-                                  _: 1
-                                  /* STABLE */
-                                }, 8, ["records", "target-message-id", "selectable", "selected-ids"])
-                              ])) : createCommentVNode("v-if", true),
-                              createVNode(unref(ArchiveRecordList), {
+                                  _: 2
+                                  /* DYNAMIC */
+                                },
+                                1024
+                                /* DYNAMIC_SLOTS */
+                              )) : createCommentVNode("v-if", true),
+                              createVNode(unref(_sfc_main$5$1), {
                                 records: turn.messages.filter((i) => i.kind !== "user"),
                                 "record-key": itemKey,
                                 "message-id": itemMessageId,
@@ -35967,7 +36380,7 @@ Defaulting to \`null\`.`);
                         ))
                       ])) : !listLoading.value ? (openBlock(), createElementBlock(
                         "p",
-                        _hoisted_62$1,
+                        _hoisted_39$3,
                         toDisplayString(t("reader.missing")),
                         1
                         /* TEXT */
@@ -35981,7 +36394,544 @@ Defaulting to \`null\`.`);
                 /* STABLE */
               }, 8, ["class", "timeline-visible"])
             ])
-          ])
+          ]),
+          createVNode(unref(_sfc_main$Z), {
+            open: navigationOpen.value,
+            "onUpdate:open": _cache[36] || (_cache[36] = ($event) => navigationOpen.value = $event)
+          }, {
+            default: withCtx(() => [
+              createVNode(unref(_sfc_main$X), {
+                onCloseAutoFocus: restoreToolsFocus,
+                class: "w-[calc(100vw-24px)] max-h-[85dvh] overflow-y-auto"
+              }, {
+                default: withCtx(() => [
+                  createVNode(unref(_sfc_main$U), null, {
+                    default: withCtx(() => [
+                      createVNode(unref(_sfc_main$S), null, {
+                        default: withCtx(() => [
+                          createTextVNode(
+                            toDisplayString(__props.locale === "ru" ? "Ветки и переходы" : "Branches and navigation"),
+                            1
+                            /* TEXT */
+                          )
+                        ]),
+                        _: 1
+                        /* STABLE */
+                      }),
+                      createVNode(unref(_sfc_main$W), null, {
+                        default: withCtx(() => [
+                          createTextVNode(
+                            toDisplayString(__props.locale === "ru" ? "Переходите по сохранённой переписке или выберите другую ветку." : "Navigate saved messages or choose another branch."),
+                            1
+                            /* TEXT */
+                          )
+                        ]),
+                        _: 1
+                        /* STABLE */
+                      })
+                    ]),
+                    _: 1
+                    /* STABLE */
+                  }),
+                  createBaseVNode("div", {
+                    class: "flex flex-wrap gap-2",
+                    role: "toolbar",
+                    "aria-label": __props.locale === "ru" ? "Навигация по сохранённому архиву" : "Saved archive navigation"
+                  }, [
+                    createVNode(unref(_sfc_main$17), {
+                      variant: "outline",
+                      size: "sm",
+                      disabled: threadLoading.value || loadingOlder.value,
+                      onClick: _cache[32] || (_cache[32] = ($event) => {
+                        returnToFirstKnown();
+                        navigationOpen.value = false;
+                      })
+                    }, {
+                      default: withCtx(() => [
+                        createTextVNode(
+                          toDisplayString(__props.locale === "ru" ? "К началу" : "First"),
+                          1
+                          /* TEXT */
+                        )
+                      ]),
+                      _: 1
+                      /* STABLE */
+                    }, 8, ["disabled"]),
+                    __props.archiveAdapter.getPositionWindow ? (openBlock(), createBlock(unref(_sfc_main$17), {
+                      key: 0,
+                      variant: "outline",
+                      size: "sm",
+                      disabled: threadLoading.value || loadingOlder.value,
+                      onClick: _cache[33] || (_cache[33] = ($event) => {
+                        returnToMiddle();
+                        navigationOpen.value = false;
+                      })
+                    }, {
+                      default: withCtx(() => [
+                        createTextVNode(
+                          toDisplayString(__props.locale === "ru" ? "К середине" : "Middle"),
+                          1
+                          /* TEXT */
+                        )
+                      ]),
+                      _: 1
+                      /* STABLE */
+                    }, 8, ["disabled"])) : createCommentVNode("v-if", true),
+                    createVNode(unref(_sfc_main$17), {
+                      variant: "outline",
+                      size: "sm",
+                      disabled: threadLoading.value || loadingOlder.value,
+                      onClick: _cache[34] || (_cache[34] = ($event) => {
+                        returnToLatest();
+                        navigationOpen.value = false;
+                      })
+                    }, {
+                      default: withCtx(() => [
+                        createTextVNode(
+                          toDisplayString(__props.locale === "ru" ? "К концу" : "Latest"),
+                          1
+                          /* TEXT */
+                        )
+                      ]),
+                      _: 1
+                      /* STABLE */
+                    }, 8, ["disabled"])
+                  ], 8, _hoisted_40$3),
+                  coverage.value?.integrity && __props.archiveAdapter.getBranchPath && storedBranches.value.length ? (openBlock(), createElementBlock("div", _hoisted_41$3, [
+                    createVNode(unref(_sfc_main$J), { class: "booster-reader-path-select" }, {
+                      default: withCtx(() => [
+                        createTextVNode(
+                          toDisplayString(__props.locale === "ru" ? "Ветка диалога" : "Conversation branch") + " ",
+                          1
+                          /* TEXT */
+                        ),
+                        createVNode(unref(_sfc_main$n$1), {
+                          "model-value": selectedBranchTip.value ?? "__all__",
+                          disabled: branchLoading.value || threadLoading.value,
+                          "onUpdate:modelValue": _cache[35] || (_cache[35] = ($event) => {
+                            chooseBranch(String($event) === "__all__" ? "" : String($event));
+                            navigationOpen.value = false;
+                          })
+                        }, {
+                          default: withCtx(() => [
+                            createVNode(unref(_sfc_main$e$1), { class: "w-full min-w-0" }, {
+                              default: withCtx(() => [
+                                createVNode(unref(_sfc_main$d$2))
+                              ]),
+                              _: 1
+                              /* STABLE */
+                            }),
+                            createVNode(unref(_sfc_main$m$1), null, {
+                              default: withCtx(() => [
+                                createVNode(unref(_sfc_main$k$1), { value: "__all__" }, {
+                                  default: withCtx(() => [
+                                    createTextVNode(
+                                      toDisplayString(__props.locale === "ru" ? "Весь диалог" : "Entire conversation"),
+                                      1
+                                      /* TEXT */
+                                    )
+                                  ]),
+                                  _: 1
+                                  /* STABLE */
+                                }),
+                                (openBlock(true), createElementBlock(
+                                  Fragment,
+                                  null,
+                                  renderList(coverage.value.integrity.tips, (tipId, index) => {
+                                    return openBlock(), createBlock(unref(_sfc_main$k$1), {
+                                      key: tipId,
+                                      value: tipId
+                                    }, {
+                                      default: withCtx(() => [
+                                        createTextVNode(
+                                          toDisplayString(storedBranches.value.length ? __props.locale === "ru" ? "Ветка" : "Branch" : coverage.value.integrity.chain === "gaps" ? __props.locale === "ru" ? "Фрагмент" : "Fragment" : __props.locale === "ru" ? "Путь" : "Path") + " " + toDisplayString(index + 1) + " " + toDisplayString(__props.locale === "ru" ? "из" : "of") + " " + toDisplayString(coverage.value.integrity.tips.length) + " · " + toDisplayString(branchPreview(tipId)),
+                                          1
+                                          /* TEXT */
+                                        )
+                                      ]),
+                                      _: 2
+                                      /* DYNAMIC */
+                                    }, 1032, ["value"]);
+                                  }),
+                                  128
+                                  /* KEYED_FRAGMENT */
+                                ))
+                              ]),
+                              _: 1
+                              /* STABLE */
+                            })
+                          ]),
+                          _: 1
+                          /* STABLE */
+                        }, 8, ["model-value", "disabled"])
+                      ]),
+                      _: 1
+                      /* STABLE */
+                    }),
+                    !storedBranches.value.length && coverage.value.integrity.chain === "gaps" ? (openBlock(), createElementBlock(
+                      "span",
+                      _hoisted_42$3,
+                      toDisplayString(__props.locale === "ru" ? "Связи неполны: фрагменты не означают ветвление диалога." : "Incomplete links: fragments do not imply conversation branches."),
+                      1
+                      /* TEXT */
+                    )) : createCommentVNode("v-if", true)
+                  ])) : createCommentVNode("v-if", true),
+                  !storedBranches.value.length ? (openBlock(), createElementBlock(
+                    "p",
+                    _hoisted_43$3,
+                    toDisplayString(__props.locale === "ru" ? "В этом диалоге нет сохранённых веток." : "This conversation has no saved branches."),
+                    1
+                    /* TEXT */
+                  )) : createCommentVNode("v-if", true)
+                ]),
+                _: 1
+                /* STABLE */
+              })
+            ]),
+            _: 1
+            /* STABLE */
+          }, 8, ["open"]),
+          createVNode(unref(_sfc_main$Z), {
+            open: integrityOpen.value,
+            "onUpdate:open": _cache[39] || (_cache[39] = ($event) => integrityOpen.value = $event)
+          }, {
+            default: withCtx(() => [
+              coverage.value?.integrity ? (openBlock(), createBlock(unref(_sfc_main$X), {
+                key: 0,
+                onCloseAutoFocus: restoreToolsFocus,
+                class: "w-[calc(100vw-24px)] max-h-[85dvh] overflow-y-auto"
+              }, {
+                default: withCtx(() => [
+                  createVNode(unref(_sfc_main$U), null, {
+                    default: withCtx(() => [
+                      createVNode(unref(_sfc_main$S), null, {
+                        default: withCtx(() => [
+                          createTextVNode(
+                            toDisplayString(__props.locale === "ru" ? "Проверка архива" : "Archive details"),
+                            1
+                            /* TEXT */
+                          )
+                        ]),
+                        _: 1
+                        /* STABLE */
+                      }),
+                      createVNode(unref(_sfc_main$W), null, {
+                        default: withCtx(() => [
+                          createTextVNode(
+                            toDisplayString(__props.locale === "ru" ? "Полнота сохранения, границы и связи сообщений." : "Saved coverage, boundaries and message relationships."),
+                            1
+                            /* TEXT */
+                          )
+                        ]),
+                        _: 1
+                        /* STABLE */
+                      })
+                    ]),
+                    _: 1
+                    /* STABLE */
+                  }),
+                  createBaseVNode("div", _hoisted_44$3, [
+                    createBaseVNode("span", null, [
+                      createTextVNode(
+                        toDisplayString(t("dock.messages")) + ": ",
+                        1
+                        /* TEXT */
+                      ),
+                      createBaseVNode(
+                        "b",
+                        null,
+                        toDisplayString(thread.value.messageCount),
+                        1
+                        /* TEXT */
+                      ),
+                      createTextVNode(
+                        " · " + toDisplayString(t("dock.details")) + ": " + toDisplayString(thread.value.detailCount),
+                        1
+                        /* TEXT */
+                      ),
+                      usingIndexedWindows.value ? (openBlock(), createElementBlock(
+                        Fragment,
+                        { key: 0 },
+                        [
+                          createTextVNode(
+                            " · " + toDisplayString(__props.locale === "ru" ? "Загружено" : "Loaded") + " " + toDisplayString(thread.value.recordCount) + "/" + toDisplayString(knownStoredCount.value),
+                            1
+                            /* TEXT */
+                          )
+                        ],
+                        64
+                        /* STABLE_FRAGMENT */
+                      )) : createCommentVNode("v-if", true)
+                    ]),
+                    usingIndexedWindows.value && hasUnsequencedRecords.value ? (openBlock(), createElementBlock(
+                      "span",
+                      _hoisted_45$3,
+                      toDisplayString(__props.locale === "ru" ? "Есть сообщения без подтверждённого времени" : "Some messages have no confirmed chronology"),
+                      1
+                      /* TEXT */
+                    )) : createCommentVNode("v-if", true),
+                    coverage.value?.integrity ? (openBlock(), createElementBlock(
+                      "span",
+                      _hoisted_46$3,
+                      toDisplayString(__props.locale === "ru" ? "Начало" : "Start") + ": " + toDisplayString(evidenceLabel(coverage.value.integrity.start)) + " · " + toDisplayString(__props.locale === "ru" ? "Конец" : "End") + ": " + toDisplayString(evidenceLabel(coverage.value.integrity.end)),
+                      1
+                      /* TEXT */
+                    )) : createCommentVNode("v-if", true),
+                    createBaseVNode("span", {
+                      class: "booster-reader-coverage",
+                      title: t(archiveStatusKey.value),
+                      "aria-label": t(archiveStatusKey.value)
+                    }, [
+                      createVNode(unref(Info), { class: "size-4" }),
+                      createTextVNode(
+                        toDisplayString(coverage.value?.completeAtLastRead ? __props.locale === "ru" ? "Цепочка подтверждена" : "Path verified" : __props.locale === "ru" ? "Цепочка не подтверждена" : "Path unverified"),
+                        1
+                        /* TEXT */
+                      )
+                    ], 8, _hoisted_47$3),
+                    selectedBranchIds.value ? (openBlock(), createElementBlock(
+                      "span",
+                      _hoisted_48$3,
+                      toDisplayString(__props.locale === "ru" ? "В выбранном пути" : "Selected path") + ": " + toDisplayString(selectedBranchIds.value.size),
+                      1
+                      /* TEXT */
+                    )) : createCommentVNode("v-if", true)
+                  ]),
+                  readSource.value === "saved" ? (openBlock(), createElementBlock(
+                    "p",
+                    _hoisted_49$1,
+                    toDisplayString(t("reader.savedInspection")),
+                    1
+                    /* TEXT */
+                  )) : createCommentVNode("v-if", true),
+                  unsequencedTarget.value ? (openBlock(), createElementBlock(
+                    "p",
+                    _hoisted_50$1,
+                    toDisplayString(t("reader.targetUnsequenced")),
+                    1
+                    /* TEXT */
+                  )) : createCommentVNode("v-if", true),
+                  createBaseVNode(
+                    "p",
+                    _hoisted_51$1,
+                    toDisplayString(__props.locale === "ru" ? "Неизвестная связь отличается от подтверждённого разрыва. Проверка охватывает все сохранённые сообщения. Содержимое загружается постепенно, таймлайн использует лёгкие метаданные." : "Unknown ancestry differs from a confirmed gap. Integrity covers all saved messages. Content loads progressively; the timeline uses lightweight metadata."),
+                    1
+                    /* TEXT */
+                  ),
+                  createBaseVNode("div", _hoisted_52$1, [
+                    coverage.value.integrity.firstMessageId ? (openBlock(), createBlock(unref(_sfc_main$17), {
+                      key: 0,
+                      variant: "outline",
+                      size: "sm",
+                      onClick: _cache[37] || (_cache[37] = ($event) => inspectMessage(coverage.value.integrity.firstMessageId))
+                    }, {
+                      default: withCtx(() => [
+                        createTextVNode(
+                          toDisplayString(__props.locale === "ru" ? "Первое сообщение" : "First message") + " · " + toDisplayString(coverage.value.integrity.firstMessageId.slice(0, 12)),
+                          1
+                          /* TEXT */
+                        )
+                      ]),
+                      _: 1
+                      /* STABLE */
+                    })) : createCommentVNode("v-if", true),
+                    coverage.value.integrity.lastMessageId ? (openBlock(), createBlock(unref(_sfc_main$17), {
+                      key: 1,
+                      variant: "outline",
+                      size: "sm",
+                      onClick: _cache[38] || (_cache[38] = ($event) => inspectMessage(coverage.value.integrity.lastMessageId))
+                    }, {
+                      default: withCtx(() => [
+                        createTextVNode(
+                          toDisplayString(__props.locale === "ru" ? "Последнее сообщение" : "Last message") + " · " + toDisplayString(coverage.value.integrity.lastMessageId.slice(0, 12)),
+                          1
+                          /* TEXT */
+                        )
+                      ]),
+                      _: 1
+                      /* STABLE */
+                    })) : createCommentVNode("v-if", true)
+                  ]),
+                  (openBlock(true), createElementBlock(
+                    Fragment,
+                    null,
+                    renderList(coverage.value.integrity.issues, (issue) => {
+                      return openBlock(), createElementBlock("div", {
+                        key: issue.reason + issue.messageId,
+                        "data-integrity-issue": ""
+                      }, [
+                        createVNode(unref(_sfc_main$17), {
+                          variant: "outline",
+                          type: "button",
+                          class: "h-auto whitespace-normal",
+                          onClick: ($event) => inspectMessage(issue.reason === "missing-head" ? coverage.value.integrity?.tips.at(-1) ?? issue.messageId : issue.messageId)
+                        }, {
+                          default: withCtx(() => [
+                            createTextVNode(
+                              toDisplayString(evidenceLabel(issue.reason)) + " · " + toDisplayString(issue.reason === "missing-head" ? __props.locale === "ru" ? "Открыть последнее сохранённое" : "Open last saved message" : issue.messageId.slice(0, 12)),
+                              1
+                              /* TEXT */
+                            )
+                          ]),
+                          _: 2
+                          /* DYNAMIC */
+                        }, 1032, ["onClick"]),
+                        issue.parentId ? (openBlock(), createElementBlock(
+                          "small",
+                          _hoisted_53$1,
+                          toDisplayString(__props.locale === "ru" ? "Не найден родитель" : "Missing parent") + ": " + toDisplayString(issue.parentId),
+                          1
+                          /* TEXT */
+                        )) : createCommentVNode("v-if", true)
+                      ]);
+                    }),
+                    128
+                    /* KEYED_FRAGMENT */
+                  ))
+                ]),
+                _: 1
+                /* STABLE */
+              })) : createCommentVNode("v-if", true)
+            ]),
+            _: 1
+            /* STABLE */
+          }, 8, ["open"]),
+          createVNode(unref(_sfc_main$Z), {
+            open: versionsOpen.value,
+            "onUpdate:open": _cache[41] || (_cache[41] = ($event) => versionsOpen.value = $event)
+          }, {
+            default: withCtx(() => [
+              versionMessageId.value ? (openBlock(), createBlock(unref(_sfc_main$X), {
+                key: 0,
+                onCloseAutoFocus: restoreToolsFocus,
+                class: "w-[calc(100vw-24px)] max-w-2xl max-h-[85dvh] overflow-y-auto",
+                "data-version-message": versionMessageId.value
+              }, {
+                default: withCtx(() => [
+                  createVNode(unref(_sfc_main$U), null, {
+                    default: withCtx(() => [
+                      createVNode(unref(_sfc_main$S), null, {
+                        default: withCtx(() => [
+                          createTextVNode(
+                            toDisplayString(__props.locale === "ru" ? "Версии сообщения" : "Message versions"),
+                            1
+                            /* TEXT */
+                          )
+                        ]),
+                        _: 1
+                        /* STABLE */
+                      }),
+                      createVNode(unref(_sfc_main$W), null, {
+                        default: withCtx(() => [
+                          createTextVNode(
+                            toDisplayString(__props.locale === "ru" ? "Сохранённые варианты исходной записи." : "Saved variants of the original record."),
+                            1
+                            /* TEXT */
+                          )
+                        ]),
+                        _: 1
+                        /* STABLE */
+                      })
+                    ]),
+                    _: 1
+                    /* STABLE */
+                  }),
+                  createVNode(unref(_sfc_main$J), null, {
+                    default: withCtx(() => [
+                      createTextVNode(
+                        toDisplayString(__props.locale === "ru" ? "Сохранённая версия сообщения" : "Saved message version") + " ",
+                        1
+                        /* TEXT */
+                      ),
+                      createVNode(unref(_sfc_main$n$1), {
+                        "model-value": String(selectedVersion.value),
+                        "onUpdate:modelValue": _cache[40] || (_cache[40] = ($event) => selectedVersion.value = Number($event))
+                      }, {
+                        default: withCtx(() => [
+                          createVNode(unref(_sfc_main$e$1), { class: "w-full" }, {
+                            default: withCtx(() => [
+                              createVNode(unref(_sfc_main$d$2))
+                            ]),
+                            _: 1
+                            /* STABLE */
+                          }),
+                          createVNode(unref(_sfc_main$m$1), null, {
+                            default: withCtx(() => [
+                              (openBlock(true), createElementBlock(
+                                Fragment,
+                                null,
+                                renderList(sourceVersions.value, (version2, index) => {
+                                  return openBlock(), createBlock(unref(_sfc_main$k$1), {
+                                    key: index,
+                                    value: String(index)
+                                  }, {
+                                    default: withCtx(() => [
+                                      createTextVNode(
+                                        toDisplayString(index + 1) + " · " + toDisplayString(new Date(version2.observedAtMs).toLocaleString(__props.locale)) + " · " + toDisplayString(evidenceLabel(version2.decision)),
+                                        1
+                                        /* TEXT */
+                                      )
+                                    ]),
+                                    _: 2
+                                    /* DYNAMIC */
+                                  }, 1032, ["value"]);
+                                }),
+                                128
+                                /* KEYED_FRAGMENT */
+                              ))
+                            ]),
+                            _: 1
+                            /* STABLE */
+                          })
+                        ]),
+                        _: 1
+                        /* STABLE */
+                      }, 8, ["model-value"])
+                    ]),
+                    _: 1
+                    /* STABLE */
+                  }),
+                  createBaseVNode(
+                    "p",
+                    _hoisted_54$1,
+                    toDisplayString(__props.locale === "ru" ? "Переключение меняет только локальный просмотр. Исходные варианты и данные ChatGPT сохраняются." : "Selection changes local inspection only. All source variants and native ChatGPT data remain preserved."),
+                    1
+                    /* TEXT */
+                  ),
+                  versionError.value ? (openBlock(), createElementBlock(
+                    "p",
+                    _hoisted_55$1,
+                    toDisplayString(__props.locale === "ru" ? "Не удалось открыть версии" : "Could not open versions"),
+                    1
+                    /* TEXT */
+                  )) : createCommentVNode("v-if", true),
+                  versionsLoading.value ? (openBlock(), createBlock(unref(_sfc_main$b$2), {
+                    key: 1,
+                    class: "h-20 w-full"
+                  })) : createCommentVNode("v-if", true),
+                  (openBlock(true), createElementBlock(
+                    Fragment,
+                    null,
+                    renderList(versionItems.value, (item) => {
+                      return openBlock(), createBlock(_sfc_main$r, {
+                        key: item.record.messageKey + ":" + selectedVersion.value,
+                        item,
+                        locale: __props.locale,
+                        "expand-reasoning": true,
+                        focused: true
+                      }, null, 8, ["item", "locale"]);
+                    }),
+                    128
+                    /* KEYED_FRAGMENT */
+                  ))
+                ]),
+                _: 1
+                /* STABLE */
+              }, 8, ["data-version-message"])) : createCommentVNode("v-if", true)
+            ]),
+            _: 1
+            /* STABLE */
+          }, 8, ["open"])
         ], 10, _hoisted_1$p);
       };
     }
@@ -36007,7 +36957,7 @@ Defaulting to \`null\`.`);
     class: "booster-export-readiness"
   };
   const _hoisted_4$l = { class: "booster-note" };
-  const _hoisted_5$j = { class: "booster-export-recovery-actions" };
+  const _hoisted_5$i = { class: "booster-export-recovery-actions" };
   const _hoisted_6$i = {
     key: 0,
     role: "alert",
@@ -36200,7 +37150,52 @@ Defaulting to \`null\`.`);
       const props2 = __props;
       const emit2 = __emit;
       const options = /* @__PURE__ */ ref({ ...DEFAULT_EXPORT_OPTIONS });
-      const selectionScope = /* @__PURE__ */ ref(props2.selectedMessageIds?.length ? "selected" : "all");
+      const exportSelection = /* @__PURE__ */ ref({
+        ...defaultArchiveExportSelection(),
+        mode: props2.selectedMessageIds?.length ? "selected" : "all"
+      });
+      const selectedIds = /* @__PURE__ */ ref(props2.selectedMessageIds ? [...props2.selectedMessageIds] : []);
+      const selectionMessages = /* @__PURE__ */ ref([]);
+      const selectionLoading = /* @__PURE__ */ ref(false);
+      let selectionController;
+      let selectionGeneration = 0;
+      const selectionIds = computed(() => {
+        try {
+          return archiveExportSelectionIds$1(selectionMessages.value, exportSelection.value, selectedIds.value);
+        } catch {
+          return [];
+        }
+      });
+      async function loadSelectionMessages() {
+        selectionController?.abort();
+        const controller = new AbortController(), generation = ++selectionGeneration;
+        selectionController = controller;
+        selectionLoading.value = true;
+        const owner = props2.archiveAdapter.currentAccountId?.();
+        try {
+          const messages2 = await props2.archiveAdapter.getExportMessages?.(
+            props2.conversationId,
+            controller.signal
+          );
+          if (!controller.signal.aborted && generation === selectionGeneration && props2.archiveAdapter.currentAccountId?.() === owner)
+            selectionMessages.value = messages2 ?? [];
+        } catch {
+          if (!controller.signal.aborted && generation === selectionGeneration) {
+            selectionMessages.value = [];
+            error.value = "archive.error.sourceChanged";
+          }
+        } finally {
+          if (generation === selectionGeneration) selectionLoading.value = false;
+        }
+      }
+      onMounted(loadSelectionMessages);
+      onBeforeUnmount(() => selectionController?.abort());
+      watch(
+        () => props2.selectedMessageIds,
+        (ids) => {
+          selectedIds.value = ids ? [...ids] : [];
+        }
+      );
       const preferenceScope = /* @__PURE__ */ ref("global");
       const preferenceSource = /* @__PURE__ */ ref("global");
       const preferenceHasProject = /* @__PURE__ */ ref(false);
@@ -36356,10 +37351,10 @@ Defaulting to \`null\`.`);
           ...options.value,
           images: false,
           files: false,
-          ...selectionScope.value === "selected" ? { messageIds: props2.selectedMessageIds ?? [] } : {}
+          messageIds: selectionIds.value
         } : {
           ...options.value,
-          ...selectionScope.value === "selected" ? { messageIds: props2.selectedMessageIds ?? [] } : {}
+          messageIds: selectionIds.value
         }
       );
       const blockerKeys = {
@@ -36399,7 +37394,7 @@ Defaulting to \`null\`.`);
         ])
       ]);
       const prepareBlocked = computed(
-        () => selectionScope.value === "selected" && !props2.selectedMessageIds?.length || !!props2.archiveAdapter.getExportReadiness && (readinessLoading.value || readinessDirty.value || readinessFailed.value || !readiness.value || activeBlockers.value.length > 0 || !!props2.archiveAdapter.saveExportPreferences && !preferenceContext.value)
+        () => exportSelection.value.mode !== "all" && (selectionLoading.value || !selectionIds.value?.length) || !!props2.archiveAdapter.getExportReadiness && (readinessLoading.value || readinessDirty.value || readinessFailed.value || !readiness.value || activeBlockers.value.length > 0 || !!props2.archiveAdapter.saveExportPreferences && !preferenceContext.value)
       );
       const collectionDisabled = computed(
         () => !!props2.archiveAdapter.getExportReadiness && (readinessLoading.value || readinessDirty.value || !readiness.value || readiness.value.collectionBlocker !== null)
@@ -36518,6 +37513,7 @@ Defaulting to \`null\`.`);
         }, 180);
       }
       function invalidateExportSource() {
+        void loadSelectionMessages();
         cancelExport();
         clearPrepared();
         failedBlocker.value = null;
@@ -37015,7 +38011,7 @@ Defaulting to \`null\`.`);
               1
               /* TEXT */
             ),
-            createBaseVNode("div", _hoisted_5$j, [
+            createBaseVNode("div", _hoisted_5$i, [
               createVNode(unref(_sfc_main$17), {
                 variant: "default",
                 type: "button",
@@ -37472,13 +38468,6 @@ Defaulting to \`null\`.`);
                     1
                     /* TEXT */
                   ),
-                  _cache[31] || (_cache[31] = createBaseVNode(
-                    "span",
-                    { "aria-hidden": "true" },
-                    null,
-                    -1
-                    /* CACHED */
-                  )),
                   _cache[32] || (_cache[32] = createBaseVNode(
                     "span",
                     { "aria-hidden": "true" },
@@ -37487,6 +38476,13 @@ Defaulting to \`null\`.`);
                     /* CACHED */
                   )),
                   _cache[33] || (_cache[33] = createBaseVNode(
+                    "span",
+                    { "aria-hidden": "true" },
+                    null,
+                    -1
+                    /* CACHED */
+                  )),
+                  _cache[34] || (_cache[34] = createBaseVNode(
                     "span",
                     { "aria-hidden": "true" },
                     null,
@@ -37671,6 +38667,30 @@ Defaulting to \`null\`.`);
                 )) : createCommentVNode("v-if", true)
               ])) : createCommentVNode("v-if", true)
             ])) : createCommentVNode("v-if", true),
+            createVNode(unref(_sfc_main$b$1), {
+              modelValue: exportSelection.value,
+              "onUpdate:modelValue": _cache[3] || (_cache[3] = ($event) => exportSelection.value = $event),
+              "selected-ids": selectedIds.value,
+              "onUpdate:selectedIds": _cache[4] || (_cache[4] = ($event) => selectedIds.value = $event),
+              messages: selectionMessages.value,
+              loading: selectionLoading.value,
+              disabled: busy.value,
+              locale: __props.locale
+            }, null, 8, ["modelValue", "selected-ids", "messages", "loading", "disabled", "locale"]),
+            createVNode(unref(_sfc_main$c$1), {
+              format: options.value.format,
+              "onUpdate:format": [
+                _cache[5] || (_cache[5] = ($event) => options.value.format = $event),
+                remember2
+              ],
+              packaging: options.value.packaging ?? "none",
+              formats: formats.value,
+              packages: exportPackages.value,
+              "format-label": t("export.format"),
+              "packaging-label": __props.locale === "ru" ? "Упаковка результата" : "Output packaging",
+              disabled: busy.value || preferenceLoading.value,
+              "onUpdate:packaging": chooseOutputPackaging
+            }, null, 8, ["format", "packaging", "formats", "packages", "format-label", "packaging-label", "disabled"]),
             createVNode(unref(_sfc_main$G), { class: "booster-export-disclosure" }, {
               default: withCtx(() => [
                 createVNode(unref(_sfc_main$E), { "as-child": "" }, {
@@ -37704,7 +38724,7 @@ Defaulting to \`null\`.`);
                           createVNode(unref(_sfc_main$n$1), {
                             modelValue: preferenceScope.value,
                             "onUpdate:modelValue": [
-                              _cache[3] || (_cache[3] = ($event) => preferenceScope.value = $event),
+                              _cache[6] || (_cache[6] = ($event) => preferenceScope.value = $event),
                               changePreferenceScope
                             ],
                             disabled: busy.value || preferenceSaving.value || preferenceLoading.value
@@ -37712,7 +38732,7 @@ Defaulting to \`null\`.`);
                             default: withCtx(() => [
                               createVNode(unref(_sfc_main$e$1), { class: "w-full" }, {
                                 default: withCtx(() => [
-                                  createVNode(unref(_sfc_main$d$1))
+                                  createVNode(unref(_sfc_main$d$2))
                                 ]),
                                 _: 1
                                 /* STABLE */
@@ -37794,16 +38814,6 @@ Defaulting to \`null\`.`);
                       }, 8, ["disabled"])) : createCommentVNode("v-if", true)
                     ])) : createCommentVNode("v-if", true),
                     createBaseVNode("section", _hoisted_37$2, [
-                      createVNode(unref(_sfc_main$4$1), {
-                        modelValue: selectionScope.value,
-                        "onUpdate:modelValue": _cache[4] || (_cache[4] = ($event) => selectionScope.value = $event),
-                        "selected-count": __props.selectedMessageIds?.length ?? 0,
-                        disabled: busy.value,
-                        label: __props.locale === "ru" ? "Что экспортировать" : "Export scope",
-                        "all-label": __props.locale === "ru" ? "Все сохранённые сообщения" : "All saved messages",
-                        "selected-label": __props.locale === "ru" ? "Выбранные сообщения" : "Selected messages",
-                        "empty-label": __props.locale === "ru" ? "Выбери сообщения в архиве." : "Select messages in the archive."
-                      }, null, 8, ["modelValue", "selected-count", "disabled", "label", "all-label", "selected-label", "empty-label"]),
                       createBaseVNode(
                         "strong",
                         null,
@@ -37826,9 +38836,9 @@ Defaulting to \`null\`.`);
                           type: "button",
                           "aria-pressed": options.value.format === "markdown" && options.value.level === "conversation" && options.value.packaging === "none",
                           disabled: busy.value || collecting.value || refreshing.value || preferenceSaving.value || preferenceLoading.value || __props.suspended,
-                          onClick: _cache[5] || (_cache[5] = ($event) => chooseExportPreset("markdown"))
+                          onClick: _cache[7] || (_cache[7] = ($event) => chooseExportPreset("markdown"))
                         }, {
-                          default: withCtx(() => [..._cache[34] || (_cache[34] = [
+                          default: withCtx(() => [..._cache[35] || (_cache[35] = [
                             createTextVNode(
                               "Markdown",
                               -1
@@ -37845,7 +38855,7 @@ Defaulting to \`null\`.`);
                           type: "button",
                           "aria-pressed": options.value.format === "json" && options.value.level === "full" && options.value.packaging === "none",
                           disabled: busy.value || collecting.value || refreshing.value || preferenceSaving.value || preferenceLoading.value || __props.suspended,
-                          onClick: _cache[6] || (_cache[6] = ($event) => chooseExportPreset("json"))
+                          onClick: _cache[8] || (_cache[8] = ($event) => chooseExportPreset("json"))
                         }, {
                           default: withCtx(() => [
                             createTextVNode(
@@ -37867,9 +38877,9 @@ Defaulting to \`null\`.`);
                               type: "button",
                               "aria-pressed": options.value.format === "json" && options.value.level === "full" && options.value.packaging === "gzip",
                               disabled: busy.value || collecting.value || refreshing.value || preferenceSaving.value || preferenceLoading.value || __props.suspended,
-                              onClick: _cache[7] || (_cache[7] = ($event) => chooseExportPreset("json-gzip"))
+                              onClick: _cache[9] || (_cache[9] = ($event) => chooseExportPreset("json-gzip"))
                             }, {
-                              default: withCtx(() => [..._cache[35] || (_cache[35] = [
+                              default: withCtx(() => [..._cache[36] || (_cache[36] = [
                                 createTextVNode(
                                   "JSON.gz",
                                   -1
@@ -37885,9 +38895,9 @@ Defaulting to \`null\`.`);
                               type: "button",
                               "aria-pressed": options.value.format === "json" && options.value.level === "full" && options.value.packaging === "zip",
                               disabled: busy.value || collecting.value || refreshing.value || preferenceSaving.value || preferenceLoading.value || __props.suspended,
-                              onClick: _cache[8] || (_cache[8] = ($event) => chooseExportPreset("json-zip"))
+                              onClick: _cache[10] || (_cache[10] = ($event) => chooseExportPreset("json-zip"))
                             }, {
-                              default: withCtx(() => [..._cache[36] || (_cache[36] = [
+                              default: withCtx(() => [..._cache[37] || (_cache[37] = [
                                 createTextVNode(
                                   "ZIP + manifest",
                                   -1
@@ -37915,7 +38925,7 @@ Defaulting to \`null\`.`);
                         type: "button",
                         class: "booster-action-secondary",
                         disabled: busy.value || collecting.value || __props.suspended,
-                        onClick: _cache[9] || (_cache[9] = ($event) => emit2("open-backups"))
+                        onClick: _cache[11] || (_cache[11] = ($event) => emit2("open-backups"))
                       }, {
                         default: withCtx(() => [
                           createTextVNode(
@@ -37928,20 +38938,6 @@ Defaulting to \`null\`.`);
                         /* STABLE */
                       }, 8, ["disabled"])) : createCommentVNode("v-if", true)
                     ]),
-                    createVNode(unref(_sfc_main$a$1), {
-                      format: options.value.format,
-                      "onUpdate:format": [
-                        _cache[10] || (_cache[10] = ($event) => options.value.format = $event),
-                        remember2
-                      ],
-                      packaging: options.value.packaging ?? "none",
-                      formats: formats.value,
-                      packages: exportPackages.value,
-                      "format-label": t("export.format"),
-                      "packaging-label": __props.locale === "ru" ? "Упаковка результата" : "Output packaging",
-                      disabled: busy.value || preferenceLoading.value,
-                      "onUpdate:packaging": chooseOutputPackaging
-                    }, null, 8, ["format", "packaging", "formats", "packages", "format-label", "packaging-label", "disabled"]),
                     options.value.packaging === "zip" ? (openBlock(), createElementBlock(
                       "p",
                       _hoisted_41$2,
@@ -37974,7 +38970,7 @@ Defaulting to \`null\`.`);
                 createVNode(unref(_sfc_main$n$1), {
                   modelValue: options.value.level,
                   "onUpdate:modelValue": [
-                    _cache[11] || (_cache[11] = ($event) => options.value.level = $event),
+                    _cache[12] || (_cache[12] = ($event) => options.value.level = $event),
                     remember2
                   ],
                   disabled: busy.value || preferenceLoading.value
@@ -37982,7 +38978,7 @@ Defaulting to \`null\`.`);
                   default: withCtx(() => [
                     createVNode(unref(_sfc_main$e$1), { class: "w-full" }, {
                       default: withCtx(() => [
-                        createVNode(unref(_sfc_main$d$1))
+                        createVNode(unref(_sfc_main$d$2))
                       ]),
                       _: 1
                       /* STABLE */
@@ -38058,7 +39054,7 @@ Defaulting to \`null\`.`);
                   createVNode(unref(_sfc_main$t$1), {
                     modelValue: options.value.reasoning,
                     "onUpdate:modelValue": [
-                      _cache[12] || (_cache[12] = ($event) => options.value.reasoning = $event),
+                      _cache[13] || (_cache[13] = ($event) => options.value.reasoning = $event),
                       remember2
                     ]
                   }, null, 8, ["modelValue"]),
@@ -38077,7 +39073,7 @@ Defaulting to \`null\`.`);
                     createVNode(unref(_sfc_main$t$1), {
                       modelValue: options.value.reasoningRecap,
                       "onUpdate:modelValue": [
-                        _cache[13] || (_cache[13] = ($event) => options.value.reasoningRecap = $event),
+                        _cache[14] || (_cache[14] = ($event) => options.value.reasoningRecap = $event),
                         remember2
                       ]
                     }, null, 8, ["modelValue"]),
@@ -38095,7 +39091,7 @@ Defaulting to \`null\`.`);
                     createVNode(unref(_sfc_main$t$1), {
                       modelValue: options.value.reasoningFull,
                       "onUpdate:modelValue": [
-                        _cache[14] || (_cache[14] = ($event) => options.value.reasoningFull = $event),
+                        _cache[15] || (_cache[15] = ($event) => options.value.reasoningFull = $event),
                         remember2
                       ]
                     }, null, 8, ["modelValue"]),
@@ -38114,7 +39110,7 @@ Defaulting to \`null\`.`);
                   createVNode(unref(_sfc_main$t$1), {
                     modelValue: options.value.tools,
                     "onUpdate:modelValue": [
-                      _cache[15] || (_cache[15] = ($event) => options.value.tools = $event),
+                      _cache[16] || (_cache[16] = ($event) => options.value.tools = $event),
                       remember2
                     ]
                   }, null, 8, ["modelValue"]),
@@ -38133,7 +39129,7 @@ Defaulting to \`null\`.`);
                     createVNode(unref(_sfc_main$t$1), {
                       modelValue: options.value.toolCalls,
                       "onUpdate:modelValue": [
-                        _cache[16] || (_cache[16] = ($event) => options.value.toolCalls = $event),
+                        _cache[17] || (_cache[17] = ($event) => options.value.toolCalls = $event),
                         remember2
                       ]
                     }, null, 8, ["modelValue"]),
@@ -38151,7 +39147,7 @@ Defaulting to \`null\`.`);
                     createVNode(unref(_sfc_main$t$1), {
                       modelValue: options.value.toolResults,
                       "onUpdate:modelValue": [
-                        _cache[17] || (_cache[17] = ($event) => options.value.toolResults = $event),
+                        _cache[18] || (_cache[18] = ($event) => options.value.toolResults = $event),
                         remember2
                       ]
                     }, null, 8, ["modelValue"]),
@@ -38169,7 +39165,7 @@ Defaulting to \`null\`.`);
                     createVNode(unref(_sfc_main$t$1), {
                       modelValue: options.value.toolSourceContent,
                       "onUpdate:modelValue": [
-                        _cache[18] || (_cache[18] = ($event) => options.value.toolSourceContent = $event),
+                        _cache[19] || (_cache[19] = ($event) => options.value.toolSourceContent = $event),
                         remember2
                       ]
                     }, null, 8, ["modelValue"]),
@@ -38188,7 +39184,7 @@ Defaulting to \`null\`.`);
                   createVNode(unref(_sfc_main$t$1), {
                     modelValue: options.value.internal,
                     "onUpdate:modelValue": [
-                      _cache[19] || (_cache[19] = ($event) => options.value.internal = $event),
+                      _cache[20] || (_cache[20] = ($event) => options.value.internal = $event),
                       remember2
                     ]
                   }, null, 8, ["modelValue"]),
@@ -38210,7 +39206,7 @@ Defaulting to \`null\`.`);
                       createVNode(unref(_sfc_main$t$1), {
                         modelValue: options.value.modelEvidence,
                         "onUpdate:modelValue": [
-                          _cache[20] || (_cache[20] = ($event) => options.value.modelEvidence = $event),
+                          _cache[21] || (_cache[21] = ($event) => options.value.modelEvidence = $event),
                           remember2
                         ]
                       }, null, 8, ["modelValue"]),
@@ -38235,7 +39231,7 @@ Defaulting to \`null\`.`);
                       createVNode(unref(_sfc_main$t$1), {
                         modelValue: options.value.dictationEditEvidence,
                         "onUpdate:modelValue": [
-                          _cache[21] || (_cache[21] = ($event) => options.value.dictationEditEvidence = $event),
+                          _cache[22] || (_cache[22] = ($event) => options.value.dictationEditEvidence = $event),
                           remember2
                         ]
                       }, null, 8, ["modelValue"]),
@@ -38253,7 +39249,7 @@ Defaulting to \`null\`.`);
                       createVNode(unref(_sfc_main$t$1), {
                         modelValue: options.value.sourceRevisions,
                         "onUpdate:modelValue": [
-                          _cache[22] || (_cache[22] = ($event) => options.value.sourceRevisions = $event),
+                          _cache[23] || (_cache[23] = ($event) => options.value.sourceRevisions = $event),
                           remember2
                         ]
                       }, null, 8, ["modelValue"]),
@@ -38271,7 +39267,7 @@ Defaulting to \`null\`.`);
                       createVNode(unref(_sfc_main$t$1), {
                         modelValue: options.value.attachmentMetadata,
                         "onUpdate:modelValue": [
-                          _cache[23] || (_cache[23] = ($event) => options.value.attachmentMetadata = $event),
+                          _cache[24] || (_cache[24] = ($event) => options.value.attachmentMetadata = $event),
                           remember2
                         ]
                       }, null, 8, ["modelValue"]),
@@ -38300,7 +39296,7 @@ Defaulting to \`null\`.`);
                   createVNode(unref(_sfc_main$t$1), {
                     modelValue: options.value.images,
                     "onUpdate:modelValue": [
-                      _cache[24] || (_cache[24] = ($event) => options.value.images = $event),
+                      _cache[25] || (_cache[25] = ($event) => options.value.images = $event),
                       remember2
                     ]
                   }, null, 8, ["modelValue"]),
@@ -38318,7 +39314,7 @@ Defaulting to \`null\`.`);
                   createVNode(unref(_sfc_main$t$1), {
                     modelValue: options.value.files,
                     "onUpdate:modelValue": [
-                      _cache[25] || (_cache[25] = ($event) => options.value.files = $event),
+                      _cache[26] || (_cache[26] = ($event) => options.value.files = $event),
                       remember2
                     ]
                   }, null, 8, ["modelValue"]),
@@ -38342,7 +39338,7 @@ Defaulting to \`null\`.`);
                   createVNode(unref(_sfc_main$t$1), {
                     modelValue: options.value.images,
                     "onUpdate:modelValue": [
-                      _cache[26] || (_cache[26] = ($event) => options.value.images = $event),
+                      _cache[27] || (_cache[27] = ($event) => options.value.images = $event),
                       remember2
                     ]
                   }, null, 8, ["modelValue"]),
@@ -38360,7 +39356,7 @@ Defaulting to \`null\`.`);
                   createVNode(unref(_sfc_main$t$1), {
                     modelValue: options.value.files,
                     "onUpdate:modelValue": [
-                      _cache[27] || (_cache[27] = ($event) => options.value.files = $event),
+                      _cache[28] || (_cache[28] = ($event) => options.value.files = $event),
                       remember2
                     ]
                   }, null, 8, ["modelValue"]),
@@ -38384,7 +39380,7 @@ Defaulting to \`null\`.`);
                 variant: "outline",
                 type: "button",
                 class: "booster-action-secondary",
-                onClick: _cache[28] || (_cache[28] = ($event) => stopCollection("user"))
+                onClick: _cache[29] || (_cache[29] = ($event) => stopCollection("user"))
               }, {
                 default: withCtx(() => [
                   createTextVNode(
@@ -38455,7 +39451,7 @@ Defaulting to \`null\`.`);
                 ),
                 createVNode(unref(_sfc_main$s$1), {
                   modelValue: filename.value,
-                  "onUpdate:modelValue": _cache[29] || (_cache[29] = ($event) => filename.value = $event),
+                  "onUpdate:modelValue": _cache[30] || (_cache[30] = ($event) => filename.value = $event),
                   type: "text",
                   disabled: busy.value,
                   maxlength: "100"
@@ -38499,7 +39495,7 @@ Defaulting to \`null\`.`);
                   "aria-disabled": prepareBlocked.value,
                   tabindex: prepareBlocked.value ? -1 : void 0,
                   download: preparedName.value,
-                  onClick: _cache[30] || (_cache[30] = ($event) => prepareBlocked.value && $event.preventDefault())
+                  onClick: _cache[31] || (_cache[31] = ($event) => prepareBlocked.value && $event.preventDefault())
                 }, [
                   createVNode(unref(Download), { class: "size-4" }),
                   createTextVNode(
@@ -38569,7 +39565,7 @@ Defaulting to \`null\`.`);
     "data-capture-project-status": ""
   };
   const _hoisted_4$k = { class: "grid min-w-0 gap-2" };
-  const _hoisted_5$i = ["disabled"];
+  const _hoisted_5$h = ["disabled"];
   const _hoisted_6$h = { class: "m-0 text-xs leading-5 text-muted-foreground" };
   const _hoisted_7$e = {
     key: 4,
@@ -38817,7 +39813,7 @@ Defaulting to \`null\`.`);
                         class: "w-full"
                       }, {
                         default: withCtx(() => [
-                          createVNode(unref(_sfc_main$d$1), null, {
+                          createVNode(unref(_sfc_main$d$2), null, {
                             default: withCtx(() => [
                               createTextVNode(
                                 toDisplayString(selectedScopeLabel.value),
@@ -38939,7 +39935,7 @@ Defaulting to \`null\`.`);
                         class: "w-full"
                       }, {
                         default: withCtx(() => [
-                          createVNode(unref(_sfc_main$d$1))
+                          createVNode(unref(_sfc_main$d$2))
                         ]),
                         _: 1
                         /* STABLE */
@@ -39064,7 +40060,7 @@ Defaulting to \`null\`.`);
                     _: 1
                     /* STABLE */
                   }, 8, ["for"])
-                ], 8, _hoisted_5$i),
+                ], 8, _hoisted_5$h),
                 createBaseVNode(
                   "p",
                   _hoisted_6$h,
@@ -39436,7 +40432,7 @@ Defaulting to \`null\`.`);
     class: "grid min-w-0 gap-2"
   };
   const _hoisted_4$j = { class: "text-xs text-muted-foreground" };
-  const _hoisted_5$h = {
+  const _hoisted_5$g = {
     key: 1,
     class: "grid min-w-0 gap-2"
   };
@@ -39545,7 +40541,7 @@ Defaulting to \`null\`.`);
                 class: "w-full"
               }, {
                 default: withCtx(() => [
-                  createVNode(unref(_sfc_main$d$1))
+                  createVNode(unref(_sfc_main$d$2))
                 ]),
                 _: 1
                 /* STABLE */
@@ -39607,7 +40603,7 @@ Defaulting to \`null\`.`);
                   class: "w-full"
                 }, {
                   default: withCtx(() => [
-                    createVNode(unref(_sfc_main$d$1))
+                    createVNode(unref(_sfc_main$d$2))
                   ]),
                   _: 1
                   /* STABLE */
@@ -39662,7 +40658,7 @@ Defaulting to \`null\`.`);
               1
               /* TEXT */
             )
-          ])) : __props.action.type !== "stop" ? (openBlock(), createElementBlock("div", _hoisted_5$h, [
+          ])) : __props.action.type !== "stop" ? (openBlock(), createElementBlock("div", _hoisted_5$g, [
             createVNode(unref(_sfc_main$J), {
               for: `${unref(id2)}-text`
             }, {
@@ -39724,7 +40720,7 @@ Defaulting to \`null\`.`);
   const _hoisted_2$i = { class: "grid min-w-0 gap-3 min-[1024px]:grid-cols-2" };
   const _hoisted_3$i = { class: "grid gap-2" };
   const _hoisted_4$i = { class: "grid gap-2" };
-  const _hoisted_5$g = { class: "grid min-w-0 gap-3 min-[1024px]:grid-cols-2" };
+  const _hoisted_5$f = { class: "grid min-w-0 gap-3 min-[1024px]:grid-cols-2" };
   const _hoisted_6$f = { class: "grid gap-2" };
   const _hoisted_7$d = { class: "grid gap-2" };
   const _hoisted_8$b = { class: "grid gap-2" };
@@ -39865,7 +40861,7 @@ Defaulting to \`null\`.`);
                     id: `${unref(id2)}-type`
                   }, {
                     default: withCtx(() => [
-                      createVNode(unref(_sfc_main$d$1))
+                      createVNode(unref(_sfc_main$d$2))
                     ]),
                     _: 1
                     /* STABLE */
@@ -39917,7 +40913,7 @@ Defaulting to \`null\`.`);
             Fragment,
             { key: 0 },
             [
-              createBaseVNode("div", _hoisted_5$g, [
+              createBaseVNode("div", _hoisted_5$f, [
                 createBaseVNode("div", _hoisted_6$f, [
                   createVNode(unref(_sfc_main$J), {
                     for: `${unref(id2)}-role`
@@ -39942,7 +40938,7 @@ Defaulting to \`null\`.`);
                         id: `${unref(id2)}-role`
                       }, {
                         default: withCtx(() => [
-                          createVNode(unref(_sfc_main$d$1))
+                          createVNode(unref(_sfc_main$d$2))
                         ]),
                         _: 1
                         /* STABLE */
@@ -40026,7 +41022,7 @@ Defaulting to \`null\`.`);
                         id: `${unref(id2)}-pattern-kind`
                       }, {
                         default: withCtx(() => [
-                          createVNode(unref(_sfc_main$d$1))
+                          createVNode(unref(_sfc_main$d$2))
                         ]),
                         _: 1
                         /* STABLE */
@@ -40141,7 +41137,7 @@ Defaulting to \`null\`.`);
                   id: `${unref(id2)}-outcome`
                 }, {
                   default: withCtx(() => [
-                    createVNode(unref(_sfc_main$d$1))
+                    createVNode(unref(_sfc_main$d$2))
                   ]),
                   _: 1
                   /* STABLE */
@@ -40364,7 +41360,7 @@ Defaulting to \`null\`.`);
   const _hoisted_2$h = { class: "grid min-w-0 gap-3 min-[1024px]:grid-cols-2" };
   const _hoisted_3$h = { class: "flex min-w-0 flex-wrap items-center justify-between gap-2" };
   const _hoisted_4$h = { class: "font-normal text-muted-foreground" };
-  const _hoisted_5$f = {
+  const _hoisted_5$e = {
     key: 0,
     class: "flex flex-wrap items-center gap-2"
   };
@@ -40563,7 +41559,7 @@ Defaulting to \`null\`.`);
                 "aria-busy": busy.value
               }, {
                 default: withCtx(() => [
-                  unsaved.value ? (openBlock(), createElementBlock("div", _hoisted_5$f, [
+                  unsaved.value ? (openBlock(), createElementBlock("div", _hoisted_5$e, [
                     createVNode(unref(_sfc_main$17), {
                       size: "sm",
                       disabled: busy.value || editorOpen.value,
@@ -40748,7 +41744,7 @@ Defaulting to \`null\`.`);
     class: "text-sm tabular-nums"
   };
   const _hoisted_4$g = { key: 0 };
-  const _hoisted_5$e = { class: "text-xs leading-5 text-muted-foreground" };
+  const _hoisted_5$d = { class: "text-xs leading-5 text-muted-foreground" };
   const _hoisted_6$d = { class: "flex flex-wrap gap-2" };
   const _sfc_main$i = /* @__PURE__ */ defineComponent({
     __name: "RemoteArchiveSyncSettings",
@@ -40899,7 +41895,7 @@ Defaulting to \`null\`.`);
                 }, null, 8, ["model-value", "aria-label"])) : createCommentVNode("v-if", true),
                 createBaseVNode(
                   "p",
-                  _hoisted_5$e,
+                  _hoisted_5$d,
                   toDisplayString(unref(text2)("Это ещё не подтверждение доставки. Отмена останавливает добавление новых записей; уже добавленные пакеты остаются в очереди. Локальный архив не меняется.")),
                   1
                   /* TEXT */
@@ -41164,7 +42160,7 @@ Defaulting to \`null\`.`);
     class: "flex min-w-0 flex-wrap items-center justify-between gap-2"
   };
   const _hoisted_4$e = { class: "grid min-w-0 content-start gap-2" };
-  const _hoisted_5$d = {
+  const _hoisted_5$c = {
     key: 2,
     class: "flex min-w-0 flex-wrap items-center justify-between gap-2"
   };
@@ -41485,7 +42481,7 @@ Defaulting to \`null\`.`);
                       maxlength: "8192",
                       placeholder: hasToken.value ? unref(text2)("Сохранённый токен скрыт") : unref(text2)("Токен сервера")
                     }, null, 8, ["id", "modelValue", "disabled", "placeholder"])),
-                    hasToken.value ? (openBlock(), createElementBlock("div", _hoisted_5$d, [
+                    hasToken.value ? (openBlock(), createElementBlock("div", _hoisted_5$c, [
                       createBaseVNode(
                         "span",
                         _hoisted_6$c,
@@ -41612,7 +42608,7 @@ Defaulting to \`null\`.`);
                         id: `${unref(id2)}-mode`
                       }, {
                         default: withCtx(() => [
-                          createVNode(unref(_sfc_main$d$1))
+                          createVNode(unref(_sfc_main$d$2))
                         ]),
                         _: 1
                         /* STABLE */
@@ -41713,7 +42709,7 @@ Defaulting to \`null\`.`);
     class: "flex min-w-0 flex-wrap items-center gap-2",
     role: "status"
   };
-  const _hoisted_5$c = { class: "text-xs text-muted-foreground" };
+  const _hoisted_5$b = { class: "text-xs text-muted-foreground" };
   const _hoisted_6$b = {
     key: 0,
     class: "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-2 text-sm"
@@ -41740,7 +42736,7 @@ Defaulting to \`null\`.`);
     role: "status",
     class: "text-sm"
   };
-  const _sfc_main$f = /* @__PURE__ */ defineComponent({
+  const _sfc_main$d = /* @__PURE__ */ defineComponent({
     __name: "RemoteDeliverySettings",
     props: {
       configuration: {},
@@ -41926,7 +42922,7 @@ Defaulting to \`null\`.`);
                       }, 8, ["variant"]),
                       createBaseVNode(
                         "span",
-                        _hoisted_5$c,
+                        _hoisted_5$b,
                         toDisplayString(__props.status?.verifiedOwner ? unref(text2)("Аккаунт подтверждён") : unref(text2)("Ожидаем подтверждение аккаунта")),
                         1
                         /* TEXT */
@@ -42201,8 +43197,8 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _hoisted_1$e = ["aria-label"];
-  const _sfc_main$e = /* @__PURE__ */ defineComponent({
+  const _hoisted_1$c = ["aria-label"];
+  const _sfc_main$c = /* @__PURE__ */ defineComponent({
     __name: "AutomationSettings",
     props: {
       settings: {},
@@ -42333,7 +43329,7 @@ Defaulting to \`null\`.`);
                   class: normalizeClass(["grid min-w-0 items-start gap-3", __props.control ? "min-[1024px]:grid-cols-2" : void 0])
                 },
                 [
-                  createVNode(_sfc_main$f, {
+                  createVNode(_sfc_main$d, {
                     configuration: __props.settings.automation.remote,
                     status: status.value,
                     control: __props.control,
@@ -42404,11 +43400,11 @@ Defaulting to \`null\`.`);
             64
             /* STABLE_FRAGMENT */
           ))
-        ], 8, _hoisted_1$e);
+        ], 8, _hoisted_1$c);
       };
     }
   });
-  const _hoisted_1$d = ["aria-label"];
+  const _hoisted_1$b = ["aria-label"];
   const _hoisted_2$c = { class: "grid min-w-0 gap-3 min-[1024px]:grid-cols-2" };
   const _hoisted_3$c = { class: "grid min-w-0 gap-2 pt-2" };
   const _hoisted_4$c = { class: "grid min-w-0 gap-2 pt-2" };
@@ -42513,7 +43509,7 @@ Defaulting to \`null\`.`);
                             class: "w-full"
                           }, {
                             default: withCtx(() => [
-                              createVNode(unref(_sfc_main$d$1))
+                              createVNode(unref(_sfc_main$d$2))
                             ]),
                             _: 1
                             /* STABLE */
@@ -42634,7 +43630,7 @@ Defaulting to \`null\`.`);
             _: 1
             /* STABLE */
           })) : createCommentVNode("v-if", true)
-        ], 8, _hoisted_1$d);
+        ], 8, _hoisted_1$b);
       };
     }
   });
@@ -42734,7 +43730,7 @@ Defaulting to \`null\`.`);
   };
   const _hoisted_3$b = { class: "booster-header-copy" };
   const _hoisted_4$b = { class: "flex items-center gap-2" };
-  const _hoisted_5$b = {
+  const _hoisted_5$a = {
     key: 0,
     class: "booster-header-actions"
   };
@@ -42759,8 +43755,8 @@ Defaulting to \`null\`.`);
   const _hoisted_14$5 = { class: "booster-setting-copy" };
   const _hoisted_15$5 = { class: "flex items-center gap-2" };
   const _hoisted_16$5 = { class: "booster-setting-copy" };
-  const _hoisted_17$3 = { class: "flex items-center gap-2" };
-  const _hoisted_18$3 = { class: "booster-setting-copy" };
+  const _hoisted_17$1 = { class: "flex items-center gap-2" };
+  const _hoisted_18$1 = { class: "booster-setting-copy" };
   const _hoisted_19$3 = { class: "flex items-center gap-2" };
   const _hoisted_20$3 = { class: "booster-alert-setting-actions" };
   const _hoisted_21$3 = { class: "booster-setting-copy" };
@@ -42964,7 +43960,7 @@ Defaulting to \`null\`.`);
                 /* TEXT */
               )
             ]),
-            unref(settings) ? (openBlock(), createElementBlock("div", _hoisted_5$b, [
+            unref(settings) ? (openBlock(), createElementBlock("div", _hoisted_5$a, [
               createBaseVNode(
                 "span",
                 _hoisted_6$a,
@@ -43129,7 +44125,7 @@ Defaulting to \`null\`.`);
                         default: withCtx(() => [
                           createVNode(unref(_sfc_main$e$1), { class: "w-full" }, {
                             default: withCtx(() => [
-                              createVNode(unref(_sfc_main$d$1))
+                              createVNode(unref(_sfc_main$d$2))
                             ]),
                             _: 1
                             /* STABLE */
@@ -43271,7 +44267,7 @@ Defaulting to \`null\`.`);
                   }, {
                     default: withCtx(() => [
                       createBaseVNode("div", _hoisted_16$5, [
-                        createBaseVNode("div", _hoisted_17$3, [
+                        createBaseVNode("div", _hoisted_17$1, [
                           createVNode(unref(Activity), { class: "size-4" }),
                           createBaseVNode(
                             "b",
@@ -43316,7 +44312,7 @@ Defaulting to \`null\`.`);
                     class: normalizeClass(["booster-setting-card booster-setting-card-stack", { "booster-setting-disabled": !unref(settings).enabled }])
                   }, {
                     default: withCtx(() => [
-                      createBaseVNode("div", _hoisted_18$3, [
+                      createBaseVNode("div", _hoisted_18$1, [
                         createBaseVNode("div", _hoisted_19$3, [
                           createVNode(unref(Clock3), { class: "size-4" }),
                           createBaseVNode(
@@ -43585,7 +44581,7 @@ Defaulting to \`null\`.`);
                 settings: unref(settings),
                 locale: unref(locale),
                 onPatch: unref(applyPatch)
-              }, null, 8, ["settings", "locale", "onPatch"])) : activeSection.value === "triggers" || activeSection.value === "remote" ? (openBlock(), createBlock(_sfc_main$e, {
+              }, null, 8, ["settings", "locale", "onPatch"])) : activeSection.value === "triggers" || activeSection.value === "remote" ? (openBlock(), createBlock(_sfc_main$c, {
                 key: 5,
                 settings: unref(settings),
                 section: activeSection.value,
@@ -44001,7 +44997,7 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const styles = '/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */\n@layer properties {\n  @supports (((-webkit-hyphens: none)) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color: rgb(from red r g b)))) {\n    *, :before, :after, ::backdrop {\n      --tw-translate-x: 0;\n      --tw-translate-y: 0;\n      --tw-translate-z: 0;\n      --tw-rotate-x: initial;\n      --tw-rotate-y: initial;\n      --tw-rotate-z: initial;\n      --tw-skew-x: initial;\n      --tw-skew-y: initial;\n      --tw-space-y-reverse: 0;\n      --tw-divide-y-reverse: 0;\n      --tw-border-style: solid;\n      --tw-leading: initial;\n      --tw-font-weight: initial;\n      --tw-tracking: initial;\n      --tw-ordinal: initial;\n      --tw-slashed-zero: initial;\n      --tw-numeric-figure: initial;\n      --tw-numeric-spacing: initial;\n      --tw-numeric-fraction: initial;\n      --tw-shadow: 0 0 #0000;\n      --tw-shadow-color: initial;\n      --tw-shadow-alpha: 100%;\n      --tw-inset-shadow: 0 0 #0000;\n      --tw-inset-shadow-color: initial;\n      --tw-inset-shadow-alpha: 100%;\n      --tw-ring-color: initial;\n      --tw-ring-shadow: 0 0 #0000;\n      --tw-inset-ring-color: initial;\n      --tw-inset-ring-shadow: 0 0 #0000;\n      --tw-ring-inset: initial;\n      --tw-ring-offset-width: 0px;\n      --tw-ring-offset-color: #fff;\n      --tw-ring-offset-shadow: 0 0 #0000;\n      --tw-outline-style: solid;\n      --tw-blur: initial;\n      --tw-brightness: initial;\n      --tw-contrast: initial;\n      --tw-grayscale: initial;\n      --tw-hue-rotate: initial;\n      --tw-invert: initial;\n      --tw-opacity: initial;\n      --tw-saturate: initial;\n      --tw-sepia: initial;\n      --tw-drop-shadow: initial;\n      --tw-drop-shadow-color: initial;\n      --tw-drop-shadow-alpha: 100%;\n      --tw-drop-shadow-size: initial;\n      --tw-duration: initial;\n      --tw-content: "";\n    }\n  }\n}\n\n.booster-archive-nav {\n  border-right: 1px solid var(--border);\n  background: var(--card);\n  overscroll-behavior: contain;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  padding: 12px;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-archive-nav-branch {\n  border-inline-start: 2px solid var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-nav-branch {\n    border-inline-start: 2px solid color-mix(in oklab, var(--primary) 35%, transparent);\n  }\n}\n\n.booster-exchange {\n  border-bottom: 1px solid var(--border);\n  min-width: 0;\n  max-width: 100%;\n  padding-bottom: 16px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-exchange-details {\n    border-left: 2px solid color-mix(in oklab, var(--border) 78%, var(--primary));\n  }\n}\n\n.booster-reader-exchanges, .booster-exchange-details {\n  min-width: 0;\n  max-width: 100%;\n}\n\n.booster-meta-trigger {\n  flex-shrink: 0;\n}\n\n.booster-meta-lines {\n  grid-template-columns: max-content minmax(0, 1fr);\n  gap: 3px 10px;\n  display: grid;\n}\n\n.booster-meta-label {\n  color: var(--muted-foreground);\n  font-size: 10px;\n  font-weight: 600;\n}\n\n.booster-floating-tooltip .booster-meta-label {\n  color: inherit;\n  opacity: .75;\n}\n\n.booster-meta-value {\n  overflow-wrap: anywhere;\n  min-width: 0;\n  color: inherit;\n  font-variant-numeric: tabular-nums;\n}\n\n.booster-json-viewer {\n  background: var(--background);\n  max-height: min(70vh, 620px);\n  margin: 0;\n  padding: 14px 16px 22px;\n  overflow: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-json-viewer {\n    background: color-mix(in oklab, var(--background) 86%, #0f172a);\n  }\n}\n\n.booster-json-viewer {\n  color: var(--foreground);\n  tab-size: 2;\n  white-space: pre;\n  font: 11px / 1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n}\n\n.booster-json-key {\n  color: #60a5fa;\n}\n\n.booster-json-string {\n  color: #86efac;\n}\n\n.booster-json-number {\n  color: #fbbf24;\n}\n\n.booster-json-boolean {\n  color: #c084fc;\n}\n\n.booster-json-null {\n  color: #94a3b8;\n}\n\n@layer theme {\n  :root, :host {\n    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",\n      "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",\n      "Segoe UI Symbol", "Noto Color Emoji";\n    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",\n      "Courier New", monospace;\n    --color-black: #000;\n    --spacing: .25rem;\n    --container-lg: 32rem;\n    --text-xs: .75rem;\n    --text-xs--line-height: calc(1 / .75);\n    --text-sm: .875rem;\n    --text-sm--line-height: calc(1.25 / .875);\n    --text-base: 1rem;\n    --text-base--line-height: calc(1.5 / 1);\n    --text-lg: 1.125rem;\n    --text-lg--line-height: calc(1.75 / 1.125);\n    --text-xl: 1.25rem;\n    --text-xl--line-height: calc(1.75 / 1.25);\n    --font-weight-normal: 400;\n    --font-weight-medium: 500;\n    --font-weight-semibold: 600;\n    --tracking-tight: -.025em;\n    --leading-relaxed: 1.625;\n    --animate-spin: spin 1s linear infinite;\n    --animate-pulse: pulse 2s cubic-bezier(.4, 0, .6, 1) infinite;\n    --default-transition-duration: .15s;\n    --default-transition-timing-function: cubic-bezier(.4, 0, .2, 1);\n    --default-font-family: var(--font-sans);\n    --default-mono-font-family: var(--font-mono);\n  }\n}\n\n@layer base {\n  *, :after, :before, ::backdrop {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  ::file-selector-button {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  html, :host {\n    -webkit-text-size-adjust: 100%;\n    tab-size: 4;\n    line-height: 1.5;\n    font-family: var(--default-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");\n    font-feature-settings: var(--default-font-feature-settings, normal);\n    font-variation-settings: var(--default-font-variation-settings, normal);\n    -webkit-tap-highlight-color: transparent;\n  }\n\n  hr {\n    height: 0;\n    color: inherit;\n    border-top-width: 1px;\n  }\n\n  abbr:where([title]) {\n    -webkit-text-decoration: underline dotted;\n    text-decoration: underline dotted;\n  }\n\n  h1, h2, h3, h4, h5, h6 {\n    font-size: inherit;\n    font-weight: inherit;\n  }\n\n  a {\n    color: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    text-decoration: inherit;\n  }\n\n  b, strong {\n    font-weight: bolder;\n  }\n\n  code, kbd, samp, pre {\n    font-family: var(--default-mono-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);\n    font-feature-settings: var(--default-mono-font-feature-settings, normal);\n    font-variation-settings: var(--default-mono-font-variation-settings, normal);\n    font-size: 1em;\n  }\n\n  small {\n    font-size: 80%;\n  }\n\n  sub, sup {\n    vertical-align: baseline;\n    font-size: 75%;\n    line-height: 0;\n    position: relative;\n  }\n\n  sub {\n    bottom: -.25em;\n  }\n\n  sup {\n    top: -.5em;\n  }\n\n  table {\n    text-indent: 0;\n    border-color: inherit;\n    border-collapse: collapse;\n  }\n\n  :-moz-focusring:where(:not(iframe)) {\n    outline: auto;\n  }\n\n  progress {\n    vertical-align: baseline;\n  }\n\n  summary {\n    display: list-item;\n  }\n\n  ol, ul, menu {\n    list-style: none;\n  }\n\n  img, svg, video, canvas, audio, iframe, embed, object {\n    vertical-align: middle;\n    display: block;\n  }\n\n  img, video {\n    max-width: 100%;\n    height: auto;\n  }\n\n  button, input, select, optgroup, textarea {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  ::file-selector-button {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  :where(select:is([multiple], [size])) optgroup {\n    font-weight: bolder;\n  }\n\n  :where(select:is([multiple], [size])) optgroup option {\n    padding-inline-start: 20px;\n  }\n\n  ::file-selector-button {\n    margin-inline-end: 4px;\n  }\n\n  ::placeholder {\n    opacity: 1;\n  }\n\n  @supports (not ((-webkit-appearance: -apple-pay-button))) or (contain-intrinsic-size: 1px) {\n    ::placeholder {\n      color: currentColor;\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      ::placeholder {\n        color: color-mix(in oklab, currentcolor 50%, transparent);\n      }\n    }\n  }\n\n  textarea {\n    resize: vertical;\n  }\n\n  ::-webkit-search-decoration {\n    -webkit-appearance: none;\n  }\n\n  ::-webkit-date-and-time-value {\n    min-height: 1lh;\n    text-align: inherit;\n  }\n\n  ::-webkit-datetime-edit {\n    display: inline-flex;\n  }\n\n  ::-webkit-datetime-edit-fields-wrapper {\n    padding: 0;\n  }\n\n  ::-webkit-datetime-edit {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-year-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-month-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-day-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-hour-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-minute-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-second-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-millisecond-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-meridiem-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-calendar-picker-indicator {\n    line-height: 1;\n  }\n\n  :-moz-ui-invalid {\n    box-shadow: none;\n  }\n\n  button, input:where([type="button"], [type="reset"], [type="submit"]) {\n    appearance: button;\n  }\n\n  ::file-selector-button {\n    appearance: button;\n  }\n\n  ::-webkit-inner-spin-button {\n    height: auto;\n  }\n\n  ::-webkit-outer-spin-button {\n    height: auto;\n  }\n\n  [hidden]:where(:not([hidden="until-found"])) {\n    display: none !important;\n  }\n\n  *, :before, :after {\n    --tw-border-style: solid;\n    --tw-translate-x: 0;\n    --tw-translate-y: 0;\n    --tw-translate-z: 0;\n    --tw-space-y-reverse: 0;\n    --tw-space-x-reverse: 0;\n    --tw-shadow: 0 0 #0000;\n    --tw-inset-shadow: 0 0 #0000;\n    --tw-ring-shadow: 0 0 #0000;\n    --tw-inset-ring-shadow: 0 0 #0000;\n    --tw-ring-offset-shadow: 0 0 #0000;\n    --tw-ring-offset-width: 0px;\n    --tw-ring-offset-color: #fff;\n    --tw-ring-inset: initial;\n    border-color: var(--border);\n    outline-color: var(--ring);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    *, :before, :after {\n      outline-color: color-mix(in oklab, var(--ring) 50%, transparent);\n    }\n  }\n\n  body {\n    background-color: var(--background);\n    color: var(--foreground);\n  }\n}\n\n@layer components;\n\n@layer utilities {\n  .pointer-events-none {\n    pointer-events: none;\n  }\n\n  .collapse {\n    visibility: collapse;\n  }\n\n  .invisible {\n    visibility: hidden;\n  }\n\n  .visible {\n    visibility: visible;\n  }\n\n  .sr-only {\n    clip-path: inset(50%);\n    white-space: nowrap;\n    border-width: 0;\n    width: 1px;\n    height: 1px;\n    margin: -1px;\n    padding: 0;\n    position: absolute;\n    overflow: hidden;\n  }\n\n  .absolute {\n    position: absolute;\n  }\n\n  .fixed {\n    position: fixed;\n  }\n\n  .relative {\n    position: relative;\n  }\n\n  .static {\n    position: static;\n  }\n\n  .sticky {\n    position: sticky;\n  }\n\n  .inset-0 {\n    inset: 0;\n  }\n\n  .start-0 {\n    inset-inline-start: calc(var(--spacing) * 0);\n  }\n\n  .top-0 {\n    top: 0;\n  }\n\n  .top-1\\/2 {\n    top: 50%;\n  }\n\n  .top-4 {\n    top: calc(var(--spacing) * 4);\n  }\n\n  .right-2 {\n    right: calc(var(--spacing) * 2);\n  }\n\n  .right-4 {\n    right: calc(var(--spacing) * 4);\n  }\n\n  .left-1\\/2 {\n    left: 50%;\n  }\n\n  .isolate {\n    isolation: isolate;\n  }\n\n  .z-10 {\n    z-index: 10;\n  }\n\n  .z-50 {\n    z-index: 50;\n  }\n\n  .z-auto {\n    z-index: auto;\n  }\n\n  .container {\n    width: 100%;\n  }\n\n  @media (min-width: 40rem) {\n    .container {\n      max-width: 40rem;\n    }\n  }\n\n  @media (min-width: 48rem) {\n    .container {\n      max-width: 48rem;\n    }\n  }\n\n  @media (min-width: 64rem) {\n    .container {\n      max-width: 64rem;\n    }\n  }\n\n  @media (min-width: 80rem) {\n    .container {\n      max-width: 80rem;\n    }\n  }\n\n  @media (min-width: 96rem) {\n    .container {\n      max-width: 96rem;\n    }\n  }\n\n  .m-0 {\n    margin: 0;\n  }\n\n  .m-1 {\n    margin: var(--spacing);\n  }\n\n  .m-9 {\n    margin: calc(var(--spacing) * 9);\n  }\n\n  .m-39 {\n    margin: calc(var(--spacing) * 39);\n  }\n\n  .m-80 {\n    margin: calc(var(--spacing) * 80);\n  }\n\n  .m-319 {\n    margin: calc(var(--spacing) * 319);\n  }\n\n  .m-399 {\n    margin: calc(var(--spacing) * 399);\n  }\n\n  .-mx-1 {\n    margin-inline: calc(var(--spacing) * -1);\n  }\n\n  .mx-auto {\n    margin-inline: auto;\n  }\n\n  .my-1 {\n    margin-block: var(--spacing);\n  }\n\n  .my-2 {\n    margin-block: calc(var(--spacing) * 2);\n  }\n\n  .my-8 {\n    margin-block: calc(var(--spacing) * 8);\n  }\n\n  .ms-auto {\n    margin-inline-start: auto;\n  }\n\n  .mt-0 {\n    margin-top: 0;\n  }\n\n  .mt-0\\.5 {\n    margin-top: calc(var(--spacing) * .5);\n  }\n\n  .mt-1 {\n    margin-top: var(--spacing);\n  }\n\n  .mt-2 {\n    margin-top: calc(var(--spacing) * 2);\n  }\n\n  .mt-3 {\n    margin-top: calc(var(--spacing) * 3);\n  }\n\n  .mt-4 {\n    margin-top: calc(var(--spacing) * 4);\n  }\n\n  .mr-1 {\n    margin-right: var(--spacing);\n  }\n\n  .mb-1 {\n    margin-bottom: var(--spacing);\n  }\n\n  .mb-2 {\n    margin-bottom: calc(var(--spacing) * 2);\n  }\n\n  .ml-auto {\n    margin-left: auto;\n  }\n\n  .block {\n    display: block;\n  }\n\n  .contents {\n    display: contents;\n  }\n\n  .flex {\n    display: flex;\n  }\n\n  .grid {\n    display: grid;\n  }\n\n  .hidden {\n    display: none;\n  }\n\n  .inline {\n    display: inline;\n  }\n\n  .inline-flex {\n    display: inline-flex;\n  }\n\n  .table {\n    display: table;\n  }\n\n  .aspect-square {\n    aspect-ratio: 1;\n  }\n\n  .size-3 {\n    width: calc(var(--spacing) * 3);\n    height: calc(var(--spacing) * 3);\n  }\n\n  .size-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n    height: calc(var(--spacing) * 3.5);\n  }\n\n  .size-4 {\n    width: calc(var(--spacing) * 4);\n    height: calc(var(--spacing) * 4);\n  }\n\n  .size-5 {\n    width: calc(var(--spacing) * 5);\n    height: calc(var(--spacing) * 5);\n  }\n\n  .size-6 {\n    width: calc(var(--spacing) * 6);\n    height: calc(var(--spacing) * 6);\n  }\n\n  .size-7 {\n    width: calc(var(--spacing) * 7);\n    height: calc(var(--spacing) * 7);\n  }\n\n  .size-8 {\n    width: calc(var(--spacing) * 8);\n    height: calc(var(--spacing) * 8);\n  }\n\n  .size-10 {\n    width: calc(var(--spacing) * 10);\n    height: calc(var(--spacing) * 10);\n  }\n\n  .h-1\\.5 {\n    height: calc(var(--spacing) * 1.5);\n  }\n\n  .h-2 {\n    height: calc(var(--spacing) * 2);\n  }\n\n  .h-2\\.5 {\n    height: calc(var(--spacing) * 2.5);\n  }\n\n  .h-3\\.5 {\n    height: calc(var(--spacing) * 3.5);\n  }\n\n  .h-4 {\n    height: calc(var(--spacing) * 4);\n  }\n\n  .h-5 {\n    height: calc(var(--spacing) * 5);\n  }\n\n  .h-7 {\n    height: calc(var(--spacing) * 7);\n  }\n\n  .h-8 {\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-9 {\n    height: calc(var(--spacing) * 9);\n  }\n\n  .h-10 {\n    height: calc(var(--spacing) * 10);\n  }\n\n  .h-20 {\n    height: calc(var(--spacing) * 20);\n  }\n\n  .h-24 {\n    height: calc(var(--spacing) * 24);\n  }\n\n  .h-32 {\n    height: calc(var(--spacing) * 32);\n  }\n\n  .h-auto {\n    height: auto;\n  }\n\n  .h-dvh {\n    height: 100dvh;\n  }\n\n  .h-full {\n    height: 100%;\n  }\n\n  .h-px {\n    height: 1px;\n  }\n\n  .max-h-48 {\n    max-height: calc(var(--spacing) * 48);\n  }\n\n  .max-h-64 {\n    max-height: calc(var(--spacing) * 64);\n  }\n\n  .max-h-80 {\n    max-height: calc(var(--spacing) * 80);\n  }\n\n  .max-h-\\[420px\\] {\n    max-height: 420px;\n  }\n\n  .max-h-\\[calc\\(50dvh-1\\.5rem\\)\\] {\n    max-height: calc(50dvh - 1.5rem);\n  }\n\n  .max-h-\\[calc\\(100dvh-32px\\)\\] {\n    max-height: calc(100dvh - 32px);\n  }\n\n  .max-h-\\[min\\(24rem\\,calc\\(100dvh_-_20px\\)\\)\\] {\n    max-height: min(24rem, 100dvh - 20px);\n  }\n\n  .max-h-\\[min\\(24rem\\,max\\(0px\\,var\\(--reka-select-content-available-height\\)\\)\\)\\] {\n    max-height: min(24rem, max(0px, var(--reka-select-content-available-height)));\n  }\n\n  .min-h-0 {\n    min-height: 0;\n  }\n\n  .min-h-6 {\n    min-height: calc(var(--spacing) * 6);\n  }\n\n  .min-h-8 {\n    min-height: calc(var(--spacing) * 8);\n  }\n\n  .min-h-9 {\n    min-height: calc(var(--spacing) * 9);\n  }\n\n  .min-h-10 {\n    min-height: calc(var(--spacing) * 10);\n  }\n\n  .min-h-11 {\n    min-height: calc(var(--spacing) * 11);\n  }\n\n  .min-h-24 {\n    min-height: calc(var(--spacing) * 24);\n  }\n\n  .min-h-\\[60px\\] {\n    min-height: 60px;\n  }\n\n  .min-h-\\[130px\\] {\n    min-height: 130px;\n  }\n\n  .w-1\\/3 {\n    width: 33.3333%;\n  }\n\n  .w-2\\.5 {\n    width: calc(var(--spacing) * 2.5);\n  }\n\n  .w-2\\/3 {\n    width: 66.6667%;\n  }\n\n  .w-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n  }\n\n  .w-3\\/5 {\n    width: 60%;\n  }\n\n  .w-4 {\n    width: calc(var(--spacing) * 4);\n  }\n\n  .w-5 {\n    width: calc(var(--spacing) * 5);\n  }\n\n  .w-9 {\n    width: calc(var(--spacing) * 9);\n  }\n\n  .w-20 {\n    width: calc(var(--spacing) * 20);\n  }\n\n  .w-24 {\n    width: calc(var(--spacing) * 24);\n  }\n\n  .w-72 {\n    width: calc(var(--spacing) * 72);\n  }\n\n  .w-80 {\n    width: calc(var(--spacing) * 80);\n  }\n\n  .w-\\[min\\(640px\\,calc\\(100vw-32px\\)\\)\\] {\n    width: min(640px, 100vw - 32px);\n  }\n\n  .w-auto {\n    width: auto;\n  }\n\n  .w-dvw {\n    width: 100dvw;\n  }\n\n  .w-full {\n    width: 100%;\n  }\n\n  .w-max {\n    width: max-content;\n  }\n\n  .w-px {\n    width: 1px;\n  }\n\n  .max-w-36 {\n    max-width: calc(var(--spacing) * 36);\n  }\n\n  .max-w-\\[88\\%\\] {\n    max-width: 88%;\n  }\n\n  .max-w-\\[calc\\(100vw_-_20px\\)\\] {\n    max-width: calc(100vw - 20px);\n  }\n\n  .max-w-\\[max\\(0px\\,var\\(--reka-select-content-available-width\\)\\)\\] {\n    max-width: max(0px, var(--reka-select-content-available-width));\n  }\n\n  .max-w-\\[min\\(380px\\,85vw\\)\\] {\n    max-width: min(380px, 85vw);\n  }\n\n  .max-w-\\[min\\(420px\\,calc\\(100vw-16px\\)\\)\\] {\n    max-width: min(420px, 100vw - 16px);\n  }\n\n  .max-w-full {\n    max-width: 100%;\n  }\n\n  .max-w-lg {\n    max-width: var(--container-lg);\n  }\n\n  .max-w-none {\n    max-width: none;\n  }\n\n  .min-w-0 {\n    min-width: 0;\n  }\n\n  .min-w-\\[min\\(8rem\\,calc\\(100vw_-_20px\\)\\)\\] {\n    min-width: min(8rem, 100vw - 20px);\n  }\n\n  .min-w-\\[min\\(8rem\\,max\\(0px\\,var\\(--reka-select-content-available-width\\)\\)\\)\\] {\n    min-width: min(8rem, max(0px, var(--reka-select-content-available-width)));\n  }\n\n  .min-w-\\[min\\(var\\(--reka-select-trigger-width\\)\\,max\\(0px\\,var\\(--reka-select-content-available-width\\)\\)\\)\\] {\n    min-width: min(var(--reka-select-trigger-width), max(0px, var(--reka-select-content-available-width)));\n  }\n\n  .flex-1 {\n    flex: 1;\n  }\n\n  .shrink-0 {\n    flex-shrink: 0;\n  }\n\n  .grow {\n    flex-grow: 1;\n  }\n\n  .basis-32 {\n    flex-basis: calc(var(--spacing) * 32);\n  }\n\n  .basis-48 {\n    flex-basis: calc(var(--spacing) * 48);\n  }\n\n  .table-fixed {\n    table-layout: fixed;\n  }\n\n  .caption-bottom {\n    caption-side: bottom;\n  }\n\n  .-translate-x-1\\/2 {\n    --tw-translate-x: calc(calc(1 / 2 * 100%) * -1);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .translate-x-0 {\n    --tw-translate-x: 0px;\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .-translate-y-1\\/2 {\n    --tw-translate-y: calc(calc(1 / 2 * 100%) * -1);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .translate-y-0 {\n    --tw-translate-y: 0px;\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .rotate-90 {\n    rotate: 90deg;\n  }\n\n  .rotate-180 {\n    rotate: 180deg;\n  }\n\n  .transform {\n    transform: var(--tw-rotate-x, ) var(--tw-rotate-y, ) var(--tw-rotate-z, ) var(--tw-skew-x, ) var(--tw-skew-y, );\n  }\n\n  .animate-pulse {\n    animation: var(--animate-pulse);\n  }\n\n  .animate-spin {\n    animation: var(--animate-spin);\n  }\n\n  .cursor-default {\n    cursor: default;\n  }\n\n  .cursor-pointer {\n    cursor: pointer;\n  }\n\n  .touch-none {\n    touch-action: none;\n  }\n\n  .resize {\n    resize: both;\n  }\n\n  .resize-y {\n    resize: vertical;\n  }\n\n  .grid-cols-1 {\n    grid-template-columns: repeat(1, minmax(0, 1fr));\n  }\n\n  .grid-cols-2 {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }\n\n  .grid-cols-3 {\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n\n  .grid-cols-\\[minmax\\(0\\,1fr\\)_80px\\] {\n    grid-template-columns: minmax(0, 1fr) 80px;\n  }\n\n  .grid-cols-\\[minmax\\(0\\,1fr\\)_auto\\] {\n    grid-template-columns: minmax(0, 1fr) auto;\n  }\n\n  .grid-rows-\\[minmax\\(0\\,1fr\\)\\] {\n    grid-template-rows: minmax(0, 1fr);\n  }\n\n  .flex-col {\n    flex-direction: column;\n  }\n\n  .flex-col-reverse {\n    flex-direction: column-reverse;\n  }\n\n  .flex-row {\n    flex-direction: row;\n  }\n\n  .flex-wrap {\n    flex-wrap: wrap;\n  }\n\n  .place-content-center {\n    place-content: center;\n  }\n\n  .place-items-center {\n    place-items: center;\n  }\n\n  .content-start {\n    align-content: flex-start;\n  }\n\n  .items-baseline {\n    align-items: baseline;\n  }\n\n  .items-center {\n    align-items: center;\n  }\n\n  .items-end {\n    align-items: flex-end;\n  }\n\n  .items-start {\n    align-items: flex-start;\n  }\n\n  .justify-between {\n    justify-content: space-between;\n  }\n\n  .justify-center {\n    justify-content: center;\n  }\n\n  .justify-end {\n    justify-content: flex-end;\n  }\n\n  .justify-start {\n    justify-content: flex-start;\n  }\n\n  .gap-0 {\n    gap: 0;\n  }\n\n  .gap-0\\.5 {\n    gap: calc(var(--spacing) * .5);\n  }\n\n  .gap-1 {\n    gap: var(--spacing);\n  }\n\n  .gap-1\\.5 {\n    gap: calc(var(--spacing) * 1.5);\n  }\n\n  .gap-2 {\n    gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-3 {\n    gap: calc(var(--spacing) * 3);\n  }\n\n  .gap-4 {\n    gap: calc(var(--spacing) * 4);\n  }\n\n  :where(.space-y-1 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(var(--spacing) * var(--tw-space-y-reverse));\n    margin-block-end: calc(var(--spacing) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-1\\.5 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 1.5) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 1.5) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-2 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 2) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 2) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-3 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 3) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 3) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-4 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 4) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 4) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-5 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 5) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 5) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  .gap-x-2 {\n    column-gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-x-3 {\n    column-gap: calc(var(--spacing) * 3);\n  }\n\n  .gap-x-4 {\n    column-gap: calc(var(--spacing) * 4);\n  }\n\n  .gap-y-1 {\n    row-gap: var(--spacing);\n  }\n\n  .gap-y-1\\.5 {\n    row-gap: calc(var(--spacing) * 1.5);\n  }\n\n  .gap-y-2 {\n    row-gap: calc(var(--spacing) * 2);\n  }\n\n  :where(.divide-y > :not(:last-child)) {\n    --tw-divide-y-reverse: 0;\n    border-bottom-style: var(--tw-border-style);\n    border-top-style: var(--tw-border-style);\n    border-top-width: calc(1px * var(--tw-divide-y-reverse));\n    border-bottom-width: calc(1px * calc(1 - var(--tw-divide-y-reverse)));\n  }\n\n  .self-start {\n    align-self: flex-start;\n  }\n\n  .justify-self-start {\n    justify-self: flex-start;\n  }\n\n  .truncate {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    overflow: hidden;\n  }\n\n  .overflow-auto {\n    overflow: auto;\n  }\n\n  .overflow-hidden {\n    overflow: hidden;\n  }\n\n  .overflow-x-hidden {\n    overflow-x: hidden;\n  }\n\n  .overflow-y-auto {\n    overflow-y: auto;\n  }\n\n  .rounded {\n    border-radius: .25rem;\n  }\n\n  .rounded-\\[inherit\\] {\n    border-radius: inherit;\n  }\n\n  .rounded-full {\n    border-radius: 3.40282e38px;\n  }\n\n  .rounded-lg {\n    border-radius: var(--radius);\n  }\n\n  .rounded-md {\n    border-radius: calc(var(--radius) - 2px);\n  }\n\n  .rounded-none {\n    border-radius: 0;\n  }\n\n  .rounded-sm {\n    border-radius: calc(var(--radius) - 4px);\n  }\n\n  .rounded-xl {\n    border-radius: calc(var(--radius) + 4px);\n  }\n\n  .border {\n    border-style: var(--tw-border-style);\n    border-width: 1px;\n  }\n\n  .border-0 {\n    border-style: var(--tw-border-style);\n    border-width: 0;\n  }\n\n  .border-2 {\n    border-style: var(--tw-border-style);\n    border-width: 2px;\n  }\n\n  .border-y {\n    border-block-style: var(--tw-border-style);\n    border-block-width: 1px;\n  }\n\n  .border-s {\n    border-inline-start-style: var(--tw-border-style);\n    border-inline-start-width: 1px;\n  }\n\n  .border-t {\n    border-top-style: var(--tw-border-style);\n    border-top-width: 1px;\n  }\n\n  .border-b {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 1px;\n  }\n\n  .border-l {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 1px;\n  }\n\n  .border-l-2 {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 2px;\n  }\n\n  .border-border {\n    border-color: var(--border);\n  }\n\n  .border-destructive\\/50 {\n    border-color: var(--destructive);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .border-destructive\\/50 {\n      border-color: color-mix(in oklab, var(--destructive) 50%, transparent);\n    }\n  }\n\n  .border-input {\n    border-color: var(--input);\n  }\n\n  .border-primary {\n    border-color: var(--primary);\n  }\n\n  .border-transparent {\n    border-color: #0000;\n  }\n\n  .border-t-transparent {\n    border-top-color: #0000;\n  }\n\n  .border-l-transparent {\n    border-left-color: #0000;\n  }\n\n  .bg-background {\n    background-color: var(--background);\n  }\n\n  .bg-black\\/80 {\n    background-color: #000c;\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-black\\/80 {\n      background-color: color-mix(in oklab, var(--color-black) 80%, transparent);\n    }\n  }\n\n  .bg-border {\n    background-color: var(--border);\n  }\n\n  .bg-card {\n    background-color: var(--card);\n  }\n\n  .bg-destructive {\n    background-color: var(--destructive);\n  }\n\n  .bg-muted, .bg-muted\\/40 {\n    background-color: var(--muted);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-muted\\/40 {\n      background-color: color-mix(in oklab, var(--muted) 40%, transparent);\n    }\n  }\n\n  .bg-muted\\/45 {\n    background-color: var(--muted);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-muted\\/45 {\n      background-color: color-mix(in oklab, var(--muted) 45%, transparent);\n    }\n  }\n\n  .bg-muted\\/50 {\n    background-color: var(--muted);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-muted\\/50 {\n      background-color: color-mix(in oklab, var(--muted) 50%, transparent);\n    }\n  }\n\n  .bg-popover {\n    background-color: var(--popover);\n  }\n\n  .bg-primary, .bg-primary\\/10 {\n    background-color: var(--primary);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-primary\\/10 {\n      background-color: color-mix(in oklab, var(--primary) 10%, transparent);\n    }\n  }\n\n  .bg-primary\\/20 {\n    background-color: var(--primary);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-primary\\/20 {\n      background-color: color-mix(in oklab, var(--primary) 20%, transparent);\n    }\n  }\n\n  .bg-secondary {\n    background-color: var(--secondary);\n  }\n\n  .bg-transparent {\n    background-color: #0000;\n  }\n\n  .object-contain {\n    object-fit: contain;\n  }\n\n  .p-0 {\n    padding: 0;\n  }\n\n  .p-0\\.5 {\n    padding: calc(var(--spacing) * .5);\n  }\n\n  .p-1 {\n    padding: var(--spacing);\n  }\n\n  .p-2 {\n    padding: calc(var(--spacing) * 2);\n  }\n\n  .p-3 {\n    padding: calc(var(--spacing) * 3);\n  }\n\n  .p-4 {\n    padding: calc(var(--spacing) * 4);\n  }\n\n  .p-5 {\n    padding: calc(var(--spacing) * 5);\n  }\n\n  .p-6 {\n    padding: calc(var(--spacing) * 6);\n  }\n\n  .p-px {\n    padding: 1px;\n  }\n\n  .px-0 {\n    padding-inline: 0;\n  }\n\n  .px-1 {\n    padding-inline: var(--spacing);\n  }\n\n  .px-1\\.5 {\n    padding-inline: calc(var(--spacing) * 1.5);\n  }\n\n  .px-2 {\n    padding-inline: calc(var(--spacing) * 2);\n  }\n\n  .px-2\\.5 {\n    padding-inline: calc(var(--spacing) * 2.5);\n  }\n\n  .px-3 {\n    padding-inline: calc(var(--spacing) * 3);\n  }\n\n  .px-4 {\n    padding-inline: calc(var(--spacing) * 4);\n  }\n\n  .px-8 {\n    padding-inline: calc(var(--spacing) * 8);\n  }\n\n  .py-0 {\n    padding-block: 0;\n  }\n\n  .py-0\\.5 {\n    padding-block: calc(var(--spacing) * .5);\n  }\n\n  .py-1 {\n    padding-block: var(--spacing);\n  }\n\n  .py-1\\.5 {\n    padding-block: calc(var(--spacing) * 1.5);\n  }\n\n  .py-2 {\n    padding-block: calc(var(--spacing) * 2);\n  }\n\n  .py-3 {\n    padding-block: calc(var(--spacing) * 3);\n  }\n\n  .py-4 {\n    padding-block: calc(var(--spacing) * 4);\n  }\n\n  .py-10 {\n    padding-block: calc(var(--spacing) * 10);\n  }\n\n  .pe-3 {\n    padding-inline-end: calc(var(--spacing) * 3);\n  }\n\n  .pt-0 {\n    padding-top: 0;\n  }\n\n  .pt-1 {\n    padding-top: var(--spacing);\n  }\n\n  .pt-2 {\n    padding-top: calc(var(--spacing) * 2);\n  }\n\n  .pt-3 {\n    padding-top: calc(var(--spacing) * 3);\n  }\n\n  .pt-4 {\n    padding-top: calc(var(--spacing) * 4);\n  }\n\n  .pr-8 {\n    padding-right: calc(var(--spacing) * 8);\n  }\n\n  .pb-3 {\n    padding-bottom: calc(var(--spacing) * 3);\n  }\n\n  .pb-4 {\n    padding-bottom: calc(var(--spacing) * 4);\n  }\n\n  .pb-8 {\n    padding-bottom: calc(var(--spacing) * 8);\n  }\n\n  .pl-2 {\n    padding-left: calc(var(--spacing) * 2);\n  }\n\n  .text-center {\n    text-align: center;\n  }\n\n  .text-left {\n    text-align: left;\n  }\n\n  .text-right {\n    text-align: right;\n  }\n\n  .text-start {\n    text-align: start;\n  }\n\n  .align-middle {\n    vertical-align: middle;\n  }\n\n  .align-top {\n    vertical-align: top;\n  }\n\n  .font-mono {\n    font-family: var(--font-mono);\n  }\n\n  .text-base {\n    font-size: var(--text-base);\n    line-height: var(--tw-leading, var(--text-base--line-height));\n  }\n\n  .text-lg {\n    font-size: var(--text-lg);\n    line-height: var(--tw-leading, var(--text-lg--line-height));\n  }\n\n  .text-sm {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n\n  .text-xl {\n    font-size: var(--text-xl);\n    line-height: var(--tw-leading, var(--text-xl--line-height));\n  }\n\n  .text-xs {\n    font-size: var(--text-xs);\n    line-height: var(--tw-leading, var(--text-xs--line-height));\n  }\n\n  .text-\\[10px\\] {\n    font-size: 10px;\n  }\n\n  .text-\\[11px\\] {\n    font-size: 11px;\n  }\n\n  .leading-4 {\n    --tw-leading: calc(var(--spacing) * 4);\n    line-height: calc(var(--spacing) * 4);\n  }\n\n  .leading-5 {\n    --tw-leading: calc(var(--spacing) * 5);\n    line-height: calc(var(--spacing) * 5);\n  }\n\n  .leading-none {\n    --tw-leading: 1;\n    line-height: 1;\n  }\n\n  .font-medium {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n\n  .font-normal {\n    --tw-font-weight: var(--font-weight-normal);\n    font-weight: var(--font-weight-normal);\n  }\n\n  .font-semibold {\n    --tw-font-weight: var(--font-weight-semibold);\n    font-weight: var(--font-weight-semibold);\n  }\n\n  .tracking-tight {\n    --tw-tracking: var(--tracking-tight);\n    letter-spacing: var(--tracking-tight);\n  }\n\n  .\\[overflow-wrap\\:anywhere\\] {\n    overflow-wrap: anywhere;\n  }\n\n  .break-words {\n    overflow-wrap: break-word;\n  }\n\n  .break-all {\n    word-break: break-all;\n  }\n\n  .whitespace-normal {\n    white-space: normal;\n  }\n\n  .whitespace-nowrap {\n    white-space: nowrap;\n  }\n\n  .whitespace-pre-wrap {\n    white-space: pre-wrap;\n  }\n\n  .text-card-foreground {\n    color: var(--card-foreground);\n  }\n\n  .text-current {\n    color: currentColor;\n  }\n\n  .text-destructive {\n    color: var(--destructive);\n  }\n\n  .text-destructive-foreground {\n    color: var(--destructive-foreground);\n  }\n\n  .text-foreground {\n    color: var(--foreground);\n  }\n\n  .text-muted-foreground {\n    color: var(--muted-foreground);\n  }\n\n  .text-popover-foreground {\n    color: var(--popover-foreground);\n  }\n\n  .text-primary {\n    color: var(--primary);\n  }\n\n  .text-primary-foreground {\n    color: var(--primary-foreground);\n  }\n\n  .text-secondary-foreground {\n    color: var(--secondary-foreground);\n  }\n\n  .text-success {\n    color: var(--success);\n  }\n\n  .lowercase {\n    text-transform: lowercase;\n  }\n\n  .ordinal {\n    --tw-ordinal: ordinal;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .tabular-nums {\n    --tw-numeric-spacing: tabular-nums;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .underline-offset-4 {\n    text-underline-offset: 4px;\n  }\n\n  .opacity-0 {\n    opacity: 0;\n  }\n\n  .opacity-50 {\n    opacity: .5;\n  }\n\n  .opacity-70 {\n    opacity: .7;\n  }\n\n  .shadow {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .shadow-lg {\n    --tw-shadow: 0 10px 15px -3px var(--tw-shadow-color, #0000001a), 0 4px 6px -4px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .shadow-md {\n    --tw-shadow: 0 4px 6px -1px var(--tw-shadow-color, #0000001a), 0 2px 4px -2px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .shadow-none {\n    --tw-shadow: 0 0 #0000;\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .shadow-sm {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .ring-0 {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(0px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .ring-offset-background {\n    --tw-ring-offset-color: var(--background);\n  }\n\n  .outline {\n    outline-style: var(--tw-outline-style);\n    outline-width: 1px;\n  }\n\n  .blur {\n    --tw-blur: blur(8px);\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .filter {\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .transition {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-all {\n    transition-property: all;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-colors {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-opacity {\n    transition-property: opacity;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-transform {\n    transition-property: transform, translate, scale, rotate;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .duration-200 {\n    --tw-duration: .2s;\n    transition-duration: .2s;\n  }\n\n  .animate-in {\n    --tw-enter-opacity: initial;\n    --tw-enter-scale: initial;\n    --tw-enter-rotate: initial;\n    --tw-enter-translate-x: initial;\n    --tw-enter-translate-y: initial;\n    animation-name: enter;\n    animation-duration: .15s;\n  }\n\n  .outline-none {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  .select-none {\n    -webkit-user-select: none;\n    user-select: none;\n  }\n\n  .\\!running {\n    animation-play-state: running !important;\n  }\n\n  .duration-200 {\n    animation-duration: .2s;\n  }\n\n  .fade-in-0 {\n    --tw-enter-opacity: 0;\n  }\n\n  .paused {\n    animation-play-state: paused;\n  }\n\n  .running {\n    animation-play-state: running;\n  }\n\n  .zoom-in-95 {\n    --tw-enter-scale: .95;\n  }\n\n  .group-data-\\[state\\=open\\]\\:rotate-180:is(:where(.group)[data-state="open"] *) {\n    rotate: 180deg;\n  }\n\n  .peer-disabled\\:cursor-not-allowed:is(:where(.peer):disabled ~ *) {\n    cursor: not-allowed;\n  }\n\n  .peer-disabled\\:opacity-70:is(:where(.peer):disabled ~ *) {\n    opacity: .7;\n  }\n\n  .file\\:border-0::file-selector-button {\n    border-style: var(--tw-border-style);\n    border-width: 0;\n  }\n\n  .file\\:bg-transparent::file-selector-button {\n    background-color: #0000;\n  }\n\n  .file\\:text-sm::file-selector-button {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n\n  .file\\:font-medium::file-selector-button {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n\n  .placeholder\\:text-muted-foreground::placeholder {\n    color: var(--muted-foreground);\n  }\n\n  .after\\:absolute:after {\n    content: var(--tw-content);\n    position: absolute;\n  }\n\n  .after\\:inset-0:after {\n    content: var(--tw-content);\n    inset: 0;\n  }\n\n  .after\\:rounded-xl:after {\n    content: var(--tw-content);\n    border-radius: calc(var(--radius) + 4px);\n  }\n\n  .first\\:border-t-0:first-child {\n    border-top-style: var(--tw-border-style);\n    border-top-width: 0;\n  }\n\n  .first\\:pt-0:first-child {\n    padding-top: 0;\n  }\n\n  @media (hover: hover) {\n    .hover\\:bg-accent:hover {\n      background-color: var(--accent);\n    }\n\n    .hover\\:bg-destructive\\/80:hover {\n      background-color: var(--destructive);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-destructive\\/80:hover {\n        background-color: color-mix(in oklab, var(--destructive) 80%, transparent);\n      }\n    }\n\n    .hover\\:bg-destructive\\/90:hover {\n      background-color: var(--destructive);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-destructive\\/90:hover {\n        background-color: color-mix(in oklab, var(--destructive) 90%, transparent);\n      }\n    }\n\n    .hover\\:bg-muted\\/50:hover {\n      background-color: var(--muted);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-muted\\/50:hover {\n        background-color: color-mix(in oklab, var(--muted) 50%, transparent);\n      }\n    }\n\n    .hover\\:bg-primary\\/80:hover {\n      background-color: var(--primary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-primary\\/80:hover {\n        background-color: color-mix(in oklab, var(--primary) 80%, transparent);\n      }\n    }\n\n    .hover\\:bg-primary\\/90:hover {\n      background-color: var(--primary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-primary\\/90:hover {\n        background-color: color-mix(in oklab, var(--primary) 90%, transparent);\n      }\n    }\n\n    .hover\\:bg-secondary:hover, .hover\\:bg-secondary\\/80:hover {\n      background-color: var(--secondary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-secondary\\/80:hover {\n        background-color: color-mix(in oklab, var(--secondary) 80%, transparent);\n      }\n    }\n\n    .hover\\:text-accent-foreground:hover {\n      color: var(--accent-foreground);\n    }\n\n    .hover\\:underline:hover {\n      text-decoration-line: underline;\n    }\n\n    .hover\\:opacity-100:hover {\n      opacity: 1;\n    }\n  }\n\n  .focus\\:bg-accent:focus {\n    background-color: var(--accent);\n  }\n\n  .focus\\:text-accent-foreground:focus {\n    color: var(--accent-foreground);\n  }\n\n  .focus\\:ring-1:focus {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus\\:ring-2:focus {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus\\:ring-ring:focus {\n    --tw-ring-color: var(--ring);\n  }\n\n  .focus\\:ring-offset-2:focus {\n    --tw-ring-offset-width: 2px;\n    --tw-ring-offset-shadow: var(--tw-ring-inset, ) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);\n  }\n\n  .focus\\:outline-none:focus {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  .focus-visible\\:ring-1:focus-visible {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus-visible\\:ring-2:focus-visible {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus-visible\\:ring-ring:focus-visible {\n    --tw-ring-color: var(--ring);\n  }\n\n  .focus-visible\\:ring-offset-2:focus-visible {\n    --tw-ring-offset-width: 2px;\n    --tw-ring-offset-shadow: var(--tw-ring-inset, ) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);\n  }\n\n  .focus-visible\\:ring-offset-background:focus-visible {\n    --tw-ring-offset-color: var(--background);\n  }\n\n  .focus-visible\\:outline-none:focus-visible {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  .disabled\\:pointer-events-none:disabled {\n    pointer-events: none;\n  }\n\n  .disabled\\:cursor-not-allowed:disabled {\n    cursor: not-allowed;\n  }\n\n  .disabled\\:opacity-50:disabled {\n    opacity: .5;\n  }\n\n  .data-\\[disabled\\]\\:pointer-events-none[data-disabled] {\n    pointer-events: none;\n  }\n\n  .data-\\[disabled\\]\\:opacity-50[data-disabled] {\n    opacity: .5;\n  }\n\n  .data-\\[orientation\\=vertical\\]\\:h-full[data-orientation="vertical"] {\n    height: 100%;\n  }\n\n  .data-\\[orientation\\=vertical\\]\\:w-1\\.5[data-orientation="vertical"] {\n    width: calc(var(--spacing) * 1.5);\n  }\n\n  .data-\\[orientation\\=vertical\\]\\:w-full[data-orientation="vertical"] {\n    width: 100%;\n  }\n\n  .data-\\[orientation\\=vertical\\]\\:flex-col[data-orientation="vertical"] {\n    flex-direction: column;\n  }\n\n  .data-\\[placeholder\\]\\:text-muted-foreground[data-placeholder] {\n    color: var(--muted-foreground);\n  }\n\n  .data-\\[side\\=bottom\\]\\:translate-y-1[data-side="bottom"] {\n    --tw-translate-y: var(--spacing);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[side\\=bottom\\]\\:slide-in-from-top-2[data-side="bottom"] {\n    --tw-enter-translate-y: -.5rem;\n  }\n\n  .data-\\[side\\=left\\]\\:-translate-x-1[data-side="left"] {\n    --tw-translate-x: calc(var(--spacing) * -1);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[side\\=left\\]\\:slide-in-from-right-2[data-side="left"] {\n    --tw-enter-translate-x: .5rem;\n  }\n\n  .data-\\[side\\=right\\]\\:translate-x-1[data-side="right"] {\n    --tw-translate-x: var(--spacing);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[side\\=right\\]\\:slide-in-from-left-2[data-side="right"] {\n    --tw-enter-translate-x: -.5rem;\n  }\n\n  .data-\\[side\\=top\\]\\:-translate-y-1[data-side="top"] {\n    --tw-translate-y: calc(var(--spacing) * -1);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[side\\=top\\]\\:slide-in-from-bottom-2[data-side="top"] {\n    --tw-enter-translate-y: .5rem;\n  }\n\n  .data-\\[state\\=active\\]\\:bg-background[data-state="active"] {\n    background-color: var(--background);\n  }\n\n  .data-\\[state\\=active\\]\\:text-foreground[data-state="active"] {\n    color: var(--foreground);\n  }\n\n  .data-\\[state\\=active\\]\\:shadow[data-state="active"] {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .data-\\[state\\=checked\\]\\:translate-x-4[data-state="checked"] {\n    --tw-translate-x: calc(var(--spacing) * 4);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[state\\=checked\\]\\:bg-primary[data-state="checked"] {\n    background-color: var(--primary);\n  }\n\n  .data-\\[state\\=checked\\]\\:text-primary-foreground[data-state="checked"] {\n    color: var(--primary-foreground);\n  }\n\n  .data-\\[state\\=closed\\]\\:animate-none[data-state="closed"] {\n    animation: none;\n  }\n\n  .data-\\[state\\=closed\\]\\:animate-out[data-state="closed"] {\n    --tw-exit-opacity: initial;\n    --tw-exit-scale: initial;\n    --tw-exit-rotate: initial;\n    --tw-exit-translate-x: initial;\n    --tw-exit-translate-y: initial;\n    animation-name: exit;\n    animation-duration: .15s;\n  }\n\n  .data-\\[state\\=closed\\]\\:fade-out-0[data-state="closed"] {\n    --tw-exit-opacity: 0;\n  }\n\n  .data-\\[state\\=closed\\]\\:slide-out-to-left-1\\/2[data-state="closed"] {\n    --tw-exit-translate-x: -50%;\n  }\n\n  .data-\\[state\\=closed\\]\\:slide-out-to-top-\\[48\\%\\][data-state="closed"] {\n    --tw-exit-translate-y: -48%;\n  }\n\n  .data-\\[state\\=closed\\]\\:zoom-out-95[data-state="closed"] {\n    --tw-exit-scale: .95;\n  }\n\n  .data-\\[state\\=open\\]\\:animate-none[data-state="open"] {\n    animation: none;\n  }\n\n  .data-\\[state\\=open\\]\\:bg-accent[data-state="open"] {\n    background-color: var(--accent);\n  }\n\n  .data-\\[state\\=open\\]\\:text-muted-foreground[data-state="open"] {\n    color: var(--muted-foreground);\n  }\n\n  .data-\\[state\\=open\\]\\:animate-in[data-state="open"] {\n    --tw-enter-opacity: initial;\n    --tw-enter-scale: initial;\n    --tw-enter-rotate: initial;\n    --tw-enter-translate-x: initial;\n    --tw-enter-translate-y: initial;\n    animation-name: enter;\n    animation-duration: .15s;\n  }\n\n  .data-\\[state\\=open\\]\\:fade-in-0[data-state="open"] {\n    --tw-enter-opacity: 0;\n  }\n\n  .data-\\[state\\=open\\]\\:slide-in-from-left-1\\/2[data-state="open"] {\n    --tw-enter-translate-x: -50%;\n  }\n\n  .data-\\[state\\=open\\]\\:slide-in-from-top-\\[48\\%\\][data-state="open"] {\n    --tw-enter-translate-y: -48%;\n  }\n\n  .data-\\[state\\=open\\]\\:zoom-in-95[data-state="open"] {\n    --tw-enter-scale: .95;\n  }\n\n  .data-\\[state\\=selected\\]\\:bg-muted[data-state="selected"] {\n    background-color: var(--muted);\n  }\n\n  .data-\\[state\\=unchecked\\]\\:translate-x-0[data-state="unchecked"] {\n    --tw-translate-x: 0px;\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[state\\=unchecked\\]\\:bg-input[data-state="unchecked"] {\n    background-color: var(--input);\n  }\n\n  @media (prefers-reduced-motion: reduce) {\n    .motion-reduce\\:animate-none {\n      animation: none;\n    }\n\n    .motion-reduce\\:transition-none {\n      transition-property: none;\n    }\n  }\n\n  @media (min-width: 621px) {\n    .min-\\[621px\\]\\:col-span-2 {\n      grid-column: span 2 / span 2;\n    }\n\n    .min-\\[621px\\]\\:block {\n      display: block;\n    }\n\n    .min-\\[621px\\]\\:flex {\n      display: flex;\n    }\n\n    .min-\\[621px\\]\\:hidden {\n      display: none;\n    }\n\n    .min-\\[621px\\]\\:min-h-9 {\n      min-height: calc(var(--spacing) * 9);\n    }\n\n    .min-\\[621px\\]\\:grid-cols-2 {\n      grid-template-columns: repeat(2, minmax(0, 1fr));\n    }\n\n    .min-\\[621px\\]\\:grid-cols-\\[minmax\\(0\\,1fr\\)_minmax\\(180px\\,280px\\)\\] {\n      grid-template-columns: minmax(0, 1fr) minmax(180px, 280px);\n    }\n\n    .min-\\[621px\\]\\:flex-wrap {\n      flex-wrap: wrap;\n    }\n\n    .min-\\[621px\\]\\:items-center {\n      align-items: center;\n    }\n  }\n\n  @media (min-width: 900px) {\n    .min-\\[900px\\]\\:flex-none {\n      flex: none;\n    }\n\n    .min-\\[900px\\]\\:grid-cols-4 {\n      grid-template-columns: repeat(4, minmax(0, 1fr));\n    }\n  }\n\n  @media (min-width: 1024px) {\n    .min-\\[1024px\\]\\:grid-cols-2 {\n      grid-template-columns: repeat(2, minmax(0, 1fr));\n    }\n  }\n\n  @media (min-width: 40rem) {\n    .sm\\:inline {\n      display: inline;\n    }\n\n    .sm\\:grid-cols-3 {\n      grid-template-columns: repeat(3, minmax(0, 1fr));\n    }\n\n    .sm\\:flex-row {\n      flex-direction: row;\n    }\n\n    .sm\\:justify-end {\n      justify-content: flex-end;\n    }\n\n    .sm\\:gap-x-2 {\n      column-gap: calc(var(--spacing) * 2);\n    }\n\n    .sm\\:rounded-lg {\n      border-radius: var(--radius);\n    }\n\n    .sm\\:text-left {\n      text-align: left;\n    }\n  }\n\n  @media (min-width: 48rem) {\n    .md\\:w-full {\n      width: 100%;\n    }\n  }\n\n  .dark\\:border-destructive:is(.dark *, :host(.dark) *) {\n    border-color: var(--destructive);\n  }\n\n  .\\[\\&_p\\]\\:leading-relaxed p {\n    --tw-leading: var(--leading-relaxed);\n    line-height: var(--leading-relaxed);\n  }\n\n  .\\[\\&_svg\\]\\:pointer-events-none svg {\n    pointer-events: none;\n  }\n\n  .\\[\\&_svg\\]\\:size-4 svg {\n    width: calc(var(--spacing) * 4);\n    height: calc(var(--spacing) * 4);\n  }\n\n  .\\[\\&_svg\\]\\:shrink-0 svg {\n    flex-shrink: 0;\n  }\n\n  .\\[\\&_tr\\]\\:border-b tr {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 1px;\n  }\n\n  .\\[\\&_tr\\:last-child\\]\\:border-0 tr:last-child {\n    border-style: var(--tw-border-style);\n    border-width: 0;\n  }\n\n  .\\[\\&\\:has\\(\\[role\\=checkbox\\]\\)\\]\\:pr-0:has([role="checkbox"]) {\n    padding-right: 0;\n  }\n\n  .\\[\\&\\>\\[role\\=checkbox\\]\\]\\:translate-y-0\\.5 > [role="checkbox"] {\n    --tw-translate-y: calc(var(--spacing) * .5);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .\\[\\&\\>span\\]\\:min-w-0 > span {\n    min-width: 0;\n  }\n\n  .\\[\\&\\>span\\]\\:truncate > span {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    overflow: hidden;\n  }\n\n  .\\[\\&\\>span\\]\\:break-words > span {\n    overflow-wrap: break-word;\n  }\n\n  .\\[\\&\\>span\\]\\:whitespace-normal > span {\n    white-space: normal;\n  }\n\n  .\\[\\&\\>svg\\]\\:absolute > svg {\n    position: absolute;\n  }\n\n  .\\[\\&\\>svg\\]\\:top-4 > svg {\n    top: calc(var(--spacing) * 4);\n  }\n\n  .\\[\\&\\>svg\\]\\:left-4 > svg {\n    left: calc(var(--spacing) * 4);\n  }\n\n  .\\[\\&\\>svg\\]\\:text-destructive > svg {\n    color: var(--destructive);\n  }\n\n  .\\[\\&\\>svg\\]\\:text-foreground > svg {\n    color: var(--foreground);\n  }\n\n  .\\[\\&\\>svg\\+div\\]\\:translate-y-\\[-3px\\] > svg + div {\n    --tw-translate-y: -3px;\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .\\[\\&\\>svg\\~\\*\\]\\:pl-7 > svg ~ * {\n    padding-left: calc(var(--spacing) * 7);\n  }\n\n  .\\[\\&\\>tr\\]\\:last\\:border-b-0 > tr:last-child {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 0;\n  }\n}\n\n:root, :host {\n  --radius: .625rem;\n  --destructive-foreground: #fafafa;\n  --success: oklch(59.6% .145 163.225);\n  --warning: oklch(66.6% .179 58.318);\n  --background: oklch(100% 0 0);\n  --foreground: oklch(14.5% 0 0);\n  --card: oklch(100% 0 0);\n  --card-foreground: oklch(14.5% 0 0);\n  --popover: oklch(100% 0 0);\n  --popover-foreground: oklch(14.5% 0 0);\n  --primary: oklch(20.5% 0 0);\n  --primary-foreground: oklch(98.5% 0 0);\n  --secondary: oklch(97% 0 0);\n  --secondary-foreground: oklch(20.5% 0 0);\n  --muted: oklch(97% 0 0);\n  --muted-foreground: oklch(55.6% 0 0);\n  --accent: oklch(97% 0 0);\n  --accent-foreground: oklch(20.5% 0 0);\n  --destructive: oklch(57.7% .245 27.325);\n  --border: oklch(92.2% 0 0);\n  --input: oklch(92.2% 0 0);\n  --ring: oklch(70.8% 0 0);\n  --chart-1: oklch(64.6% .222 41.116);\n  --chart-2: oklch(60% .118 184.704);\n  --chart-3: oklch(39.8% .07 227.392);\n  --chart-4: oklch(82.8% .189 84.429);\n  --chart-5: oklch(76.9% .188 70.08);\n  --sidebar: oklch(98.5% 0 0);\n  --sidebar-foreground: oklch(14.5% 0 0);\n  --sidebar-primary: oklch(20.5% 0 0);\n  --sidebar-primary-foreground: oklch(98.5% 0 0);\n  --sidebar-accent: oklch(97% 0 0);\n  --sidebar-accent-foreground: oklch(20.5% 0 0);\n  --sidebar-border: oklch(92.2% 0 0);\n  --sidebar-ring: oklch(70.8% 0 0);\n}\n\n.dark, :host(.dark) {\n  --success: oklch(76.5% .177 163.223);\n  --warning: oklch(82.8% .189 84.429);\n  --background: oklch(14.5% 0 0);\n  --foreground: oklch(98.5% 0 0);\n  --card: oklch(20.5% 0 0);\n  --card-foreground: oklch(98.5% 0 0);\n  --popover: oklch(20.5% 0 0);\n  --popover-foreground: oklch(98.5% 0 0);\n  --primary: oklch(92.2% 0 0);\n  --primary-foreground: oklch(20.5% 0 0);\n  --secondary: oklch(26.9% 0 0);\n  --secondary-foreground: oklch(98.5% 0 0);\n  --muted: oklch(26.9% 0 0);\n  --muted-foreground: oklch(70.8% 0 0);\n  --accent: oklch(26.9% 0 0);\n  --accent-foreground: oklch(98.5% 0 0);\n  --destructive: oklch(70.4% .191 22.216);\n  --border: oklch(100% 0 0 / .2);\n  --input: oklch(100% 0 0 / .28);\n  --ring: oklch(55.6% 0 0);\n  --chart-1: oklch(48.8% .243 264.376);\n  --chart-2: oklch(69.6% .17 162.48);\n  --chart-3: oklch(76.9% .188 70.08);\n  --chart-4: oklch(62.7% .265 303.9);\n  --chart-5: oklch(64.5% .246 16.439);\n  --sidebar: oklch(20.5% 0 0);\n  --sidebar-foreground: oklch(98.5% 0 0);\n  --sidebar-primary: oklch(48.8% .243 264.376);\n  --sidebar-primary-foreground: oklch(98.5% 0 0);\n  --sidebar-accent: oklch(26.9% 0 0);\n  --sidebar-accent-foreground: oklch(98.5% 0 0);\n  --sidebar-border: oklch(100% 0 0 / .1);\n  --sidebar-ring: oklch(55.6% 0 0);\n}\n\n@media (prefers-color-scheme: dark) {\n  :host(:not(.light)) {\n    --success: oklch(76.5% .177 163.223);\n    --warning: oklch(82.8% .189 84.429);\n    --background: oklch(14.5% 0 0);\n    --foreground: oklch(98.5% 0 0);\n    --card: oklch(20.5% 0 0);\n    --card-foreground: oklch(98.5% 0 0);\n    --popover: oklch(20.5% 0 0);\n    --popover-foreground: oklch(98.5% 0 0);\n    --primary: oklch(92.2% 0 0);\n    --primary-foreground: oklch(20.5% 0 0);\n    --secondary: oklch(26.9% 0 0);\n    --secondary-foreground: oklch(98.5% 0 0);\n    --muted: oklch(26.9% 0 0);\n    --muted-foreground: oklch(70.8% 0 0);\n    --accent: oklch(26.9% 0 0);\n    --accent-foreground: oklch(98.5% 0 0);\n    --destructive: oklch(70.4% .191 22.216);\n    --border: oklch(100% 0 0 / .2);\n    --input: oklch(100% 0 0 / .28);\n    --ring: oklch(55.6% 0 0);\n    --chart-1: oklch(48.8% .243 264.376);\n    --chart-2: oklch(69.6% .17 162.48);\n    --chart-3: oklch(76.9% .188 70.08);\n    --chart-4: oklch(62.7% .265 303.9);\n    --chart-5: oklch(64.5% .246 16.439);\n    --sidebar: oklch(20.5% 0 0);\n    --sidebar-foreground: oklch(98.5% 0 0);\n    --sidebar-primary: oklch(48.8% .243 264.376);\n    --sidebar-primary-foreground: oklch(98.5% 0 0);\n    --sidebar-accent: oklch(26.9% 0 0);\n    --sidebar-accent-foreground: oklch(98.5% 0 0);\n    --sidebar-border: oklch(100% 0 0 / .1);\n    --sidebar-ring: oklch(55.6% 0 0);\n  }\n}\n\n:host {\n  all: initial;\n  color: var(--foreground);\n  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;\n}\n\n* {\n  box-sizing: border-box;\n  border-color: var(--border);\n}\n\n.booster-shell {\n  z-index: 2147483647;\n  position: fixed;\n  bottom: 20px;\n  right: 20px;\n}\n\n.booster-button {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 42px;\n  height: 42px;\n  color: var(--card-foreground);\n  cursor: pointer;\n  border-radius: 14px;\n  font: 700 15px / 1 inherit;\n  box-shadow: 0 10px 30px #0003;\n}\n\n.booster-panel {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 300px;\n  color: var(--card-foreground);\n  border-radius: 16px;\n  margin-bottom: 10px;\n  padding: 14px;\n  box-shadow: 0 18px 45px #0000003d;\n}\n\n.booster-panel h2 {\n  margin: 0 0 6px;\n  font-size: 15px;\n  font-weight: 700;\n}\n\n.booster-panel p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.45;\n}\n\n.booster-control-center {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(760px, 100vw - 32px);\n  color: var(--card-foreground);\n  border-radius: 18px;\n  margin-bottom: 10px;\n  overflow: hidden;\n  box-shadow: 0 22px 60px #00000047;\n}\n\n.booster-control-header, .booster-control-footer {\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  display: flex;\n}\n\n.booster-control-header {\n  border-bottom: 1px solid var(--border);\n  padding: 14px 14px 12px;\n}\n\n.booster-control-header strong {\n  font-size: 14px;\n}\n\n.booster-control-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-control-body {\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-loading {\n  color: var(--muted-foreground);\n  padding: 18px;\n  font-size: 12px;\n}\n\n.booster-section-label {\n  color: var(--muted-foreground);\n  letter-spacing: .08em;\n  text-transform: uppercase;\n  padding: 2px 2px 0;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-setting-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 12px;\n  display: flex;\n}\n\n.booster-setting-card-stack {\n  align-items: stretch;\n  display: grid;\n}\n\n.booster-setting-disabled {\n  opacity: .55;\n}\n\n.booster-setting-copy {\n  gap: 5px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-setting-copy b {\n  font-size: 12px;\n}\n\n.booster-setting-copy > span {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.4;\n}\n\n.booster-info-card {\n  background: var(--muted);\n  color: var(--foreground);\n  border-radius: 12px;\n  padding: 11px 12px;\n  font-size: 11px;\n}\n\n.booster-info-card ul {\n  color: var(--muted-foreground);\n  gap: 4px;\n  margin: 8px 0 0 18px;\n  padding: 0;\n  line-height: 1.35;\n  display: grid;\n}\n\n.booster-control-footer {\n  padding-top: 2px;\n}\n\n.booster-save-state {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 5px;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-overlay-root {\n  pointer-events: none;\n}\n\n.booster-modal-backdrop {\n  -webkit-backdrop-filter: none;\n  backdrop-filter: none;\n  pointer-events: auto;\n  background: #00000061;\n  place-items: center;\n  padding: 16px;\n  display: grid;\n  position: fixed;\n  inset: 0;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n  max-height: calc(100vh - 32px);\n  overflow: auto;\n}\n\n.booster-modal-surface .booster-control-center {\n  width: 100%;\n  margin: 0;\n}\n\n.booster-popup-host {\n  background: var(--background);\n  min-width: 360px;\n}\n\n.booster-stack-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-stack-card label {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-counter-grid {\n  color: var(--muted-foreground);\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 6px 12px;\n  margin-top: 8px;\n  display: grid;\n}\n\n.booster-counter-grid span {\n  justify-content: space-between;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-counter-grid b {\n  color: var(--foreground);\n}\n\n.booster-header-copy {\n  min-width: 0;\n}\n\n.booster-header-actions {\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-header-toggle-label {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  font-weight: 600;\n}\n\n.booster-settings-layout {\n  grid-template-columns: minmax(0, 1fr);\n  min-height: 360px;\n  display: grid;\n}\n\n.booster-settings-nav {\n  border-bottom: 1px solid var(--border);\n  align-content: start;\n  gap: 4px;\n  padding: 12px 8px;\n  display: grid;\n}\n\n.booster-settings-content {\n  align-content: start;\n  gap: 10px;\n  min-width: 0;\n  padding: 14px;\n  display: grid;\n}\n\n.booster-setting-card-flat {\n  border: 0;\n  border-bottom: 1px solid var(--border);\n  border-radius: 0;\n  padding: 0 0 10px;\n}\n\n.booster-analytics-grid {\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 12px;\n  display: grid;\n}\n\n.booster-counter-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  padding: 12px;\n}\n\n.booster-counter-title {\n  margin-bottom: 8px;\n  font-size: 12px;\n  font-weight: 700;\n}\n\n.booster-disclosure {\n  width: 100%;\n  color: var(--foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 0;\n  display: flex;\n}\n\n.booster-disclosure > span {\n  gap: 3px;\n  display: grid;\n}\n\n.booster-disclosure b {\n  font-size: 12px;\n}\n\n.booster-disclosure small {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.rotate-180 {\n  transform: rotate(180deg);\n}\n\n.booster-telemetry-body {\n  gap: 10px;\n  padding-top: 10px;\n  display: grid;\n}\n\n.booster-field {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-telemetry-test-row {\n  align-items: center;\n  gap: 10px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-test-success {\n  color: oklch(62% .17 145);\n  font-size: 11px;\n}\n\n.booster-test-error {\n  color: oklch(63% .2 25);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n@media (max-width: 620px) {\n  .booster-control-center, .booster-modal-surface {\n    width: calc(100vw - 20px);\n  }\n\n  .booster-settings-layout {\n    grid-template-columns: 1fr;\n  }\n\n  .booster-settings-nav {\n    border-right: 0;\n    border-bottom: 1px solid var(--border);\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n\n  .booster-settings-nav button {\n    justify-content: center;\n  }\n\n  .booster-analytics-grid {\n    grid-template-columns: 1fr;\n  }\n}\n\n.booster-alert-setting-actions {\n  grid-template-columns: auto minmax(180px, 1fr);\n  align-items: center;\n  gap: 14px;\n  display: grid;\n}\n\n.booster-alert-threshold {\n  gap: 5px;\n  display: grid;\n}\n\n.booster-alert-threshold > span {\n  color: var(--muted-foreground);\n  justify-content: space-between;\n  gap: 10px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-alert-threshold b {\n  color: var(--foreground);\n  font-variant-numeric: tabular-nums;\n}\n\n.booster-range-grid {\n  gap: 10px;\n  min-width: 220px;\n  display: grid;\n}\n\n.booster-range-grid label {\n  gap: 5px;\n  display: grid;\n}\n\n.booster-range-grid label > span {\n  color: var(--muted-foreground);\n  justify-content: space-between;\n  gap: 12px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-range-grid label > span b {\n  color: var(--foreground);\n  font-variant-numeric: tabular-nums;\n}\n\n.booster-control-center > .booster-settings-layout {\n  grid-template-columns: minmax(0, 1fr);\n}\n\n.booster-control-center .booster-settings-nav {\n  background: none;\n  border-right: 0;\n}\n\n.booster-danger-zone {\n  background: #7f1d1d14;\n  border: 1px solid #ef444473;\n  border-radius: 12px;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 12px;\n  display: flex;\n}\n\n.booster-danger-zone .booster-setting-copy > div, .booster-danger-zone .booster-setting-copy b {\n  color: #f87171;\n}\n\n.booster-destructive-dialog {\n  grid-template-columns: auto minmax(0, 1fr);\n  gap: 14px;\n  padding: 22px;\n  display: grid;\n}\n\n.booster-destructive-dialog strong {\n  color: #f87171;\n  letter-spacing: .025em;\n  font-size: 17px;\n}\n\n.booster-destructive-dialog p {\n  color: var(--muted-foreground);\n  margin: 8px 0 0;\n  font-size: 12px;\n  line-height: 1.55;\n}\n\n.booster-destructive-icon {\n  color: #f87171;\n  background: #7f1d1d33;\n  border-radius: 50%;\n  justify-content: center;\n  align-items: center;\n  width: 42px;\n  height: 42px;\n  display: flex;\n}\n\n.booster-destructive-warning {\n  color: #f87171;\n  font-weight: 700;\n}\n\n.booster-destructive-actions {\n  grid-column: 1 / -1;\n  justify-content: flex-end;\n  gap: 8px;\n  padding-top: 4px;\n  display: flex;\n}\n\n.booster-archive-backdrop {\n  padding: 10px;\n}\n\n.booster-archive-surface {\n  pointer-events: auto;\n  width: min(1180px, 100vw - 20px);\n  height: min(820px, 100vh - 20px);\n}\n\n.booster-archive-browser {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 100%;\n  height: 100%;\n  color: var(--card-foreground);\n  border-radius: 20px;\n  grid-template-rows: auto minmax(0, 1fr);\n  display: grid;\n  overflow: hidden;\n  box-shadow: 0 28px 80px #00000061;\n}\n\n.booster-archive-header {\n  border-bottom: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  min-height: 58px;\n  padding: 10px 14px;\n  display: flex;\n}\n\n.booster-archive-title, .booster-archive-header-actions {\n  align-items: center;\n  gap: 9px;\n  display: flex;\n}\n\n.booster-archive-title > div {\n  gap: 1px;\n  display: grid;\n}\n\n.booster-archive-title strong {\n  font-size: 14px;\n}\n\n.booster-archive-title span {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-archive-layout {\n  grid-template-columns: 300px minmax(0, 1fr);\n  min-height: 0;\n  display: grid;\n}\n\n.booster-archive-sidebar {\n  border-right: 1px solid var(--border);\n  background: var(--secondary);\n  padding: 10px;\n  overflow: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-sidebar {\n    background: color-mix(in oklab, var(--secondary) 38%, var(--card));\n  }\n}\n\n.booster-archive-group {\n  margin-bottom: 12px;\n}\n\n.booster-archive-project {\n  color: var(--muted-foreground);\n  text-transform: uppercase;\n  align-items: center;\n  gap: 6px;\n  padding: 6px 7px;\n  font-size: 10px;\n  font-weight: 700;\n  display: flex;\n}\n\n.booster-archive-project span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-archive-conversation {\n  width: 100%;\n  color: inherit;\n  text-align: left;\n  cursor: pointer;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 11px;\n  gap: 3px;\n  margin: 2px 0;\n  padding: 9px 10px;\n  display: grid;\n}\n\n.booster-archive-conversation:hover, .booster-archive-conversation.active {\n  border-color: var(--border);\n  background: var(--card);\n}\n\n.booster-archive-conversation strong, .booster-archive-conversation span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  overflow: hidden;\n}\n\n.booster-archive-conversation strong {\n  font-size: 12px;\n}\n\n.booster-archive-conversation span {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-archive-content {\n  background: var(--background);\n  min-width: 0;\n  overflow: auto;\n}\n\n.booster-archive-conversation-head {\n  z-index: 2;\n  border-bottom: 1px solid var(--border);\n  background: var(--card);\n  justify-content: space-between;\n  align-items: flex-start;\n  gap: 14px;\n  padding: 12px 16px;\n  display: flex;\n  position: sticky;\n  top: 0;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-conversation-head {\n    background: color-mix(in oklab, var(--card) 94%, transparent);\n  }\n}\n\n.booster-archive-conversation-head {\n  -webkit-backdrop-filter: blur(10px);\n  backdrop-filter: blur(10px);\n}\n\n.booster-archive-conversation-head > div:first-child {\n  grid-template-columns: auto minmax(0, 1fr);\n  align-items: center;\n  gap: 2px 8px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-archive-conversation-head strong {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 13px;\n  overflow: hidden;\n}\n\n.booster-archive-conversation-head span {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  grid-column: 2;\n  font-size: 9px;\n  overflow: hidden;\n}\n\n.booster-archive-back {\n  background: var(--secondary);\n  width: 28px;\n  height: 28px;\n  color: var(--secondary-foreground);\n  cursor: pointer;\n  border: 0;\n  border-radius: 8px;\n  grid-row: 1 / span 2;\n  justify-content: center;\n  align-items: center;\n  display: inline-flex;\n}\n\n.booster-archive-messages {\n  gap: 10px;\n  padding: 14px 16px 40px;\n  display: grid;\n}\n\n.booster-archive-message {\n  border: 1px solid var(--border);\n  background: var(--card);\n  border-radius: 14px;\n  max-width: 920px;\n  padding: 11px 13px;\n}\n\n.booster-archive-message.role-user {\n  background: var(--secondary);\n  margin-left: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-message.role-user {\n    background: color-mix(in oklab, var(--secondary) 82%, var(--card));\n  }\n}\n\n.booster-archive-message.role-tool {\n  border-style: dashed;\n}\n\n.booster-archive-message-head {\n  color: var(--muted-foreground);\n  text-transform: uppercase;\n  flex-wrap: wrap;\n  gap: 5px 10px;\n  margin-bottom: 8px;\n  font-size: 9px;\n  display: flex;\n}\n\n.booster-archive-message-head strong {\n  color: var(--foreground);\n}\n\n.booster-archive-message-text {\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  font-size: 12px;\n  line-height: 1.55;\n}\n\n.booster-archive-raw {\n  background: var(--muted);\n  max-height: 360px;\n  color: var(--foreground);\n  white-space: pre-wrap;\n  border-radius: 10px;\n  margin: 9px 0 0;\n  padding: 10px;\n  font: 10px / 1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;\n  overflow: auto;\n}\n\n.booster-archive-empty, .booster-archive-error {\n  color: var(--muted-foreground);\n  padding: 24px;\n  font-size: 12px;\n}\n\n.booster-archive-error {\n  color: #dc2626;\n}\n\n@media (max-width: 760px) {\n  .booster-archive-layout {\n    grid-template-columns: 220px minmax(0, 1fr);\n  }\n}\n\n.booster-identity {\n  vertical-align: middle;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  max-width: 100%;\n  display: inline-flex;\n}\n\n.booster-dock {\n  z-index: 2147483647;\n  pointer-events: auto;\n  width: 44px;\n  height: 44px;\n  position: fixed;\n}\n\n.booster-dock-toggle {\n  z-index: 2;\n  border: 1px solid var(--border);\n  background: var(--primary);\n  width: 44px;\n  height: 44px;\n  color: var(--primary-foreground);\n  cursor: grab;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  justify-content: center;\n  align-items: center;\n  padding: 0;\n  display: flex;\n  position: relative;\n}\n\n.booster-dock.right .booster-dock-toggle {\n  border-radius: 12px 0 0 12px;\n}\n\n.booster-dock.left .booster-dock-toggle {\n  border-radius: 0 12px 12px 0;\n}\n\n.booster-dock.dragging .booster-dock-toggle {\n  cursor: grabbing;\n}\n\n.booster-dock-shell {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(284px, 100vw);\n  color: var(--card-foreground);\n  position: absolute;\n  overflow: hidden;\n  box-shadow: 0 12px 32px #00000038;\n}\n\n.booster-dock.right .booster-dock-shell {\n  border-radius: 16px 0 0 16px;\n  right: 0;\n}\n\n.booster-dock.left .booster-dock-shell {\n  border-radius: 0 16px 16px 0;\n  left: 0;\n}\n\n.booster-dock.grow-up .booster-dock-shell {\n  padding-bottom: 44px;\n  bottom: 0;\n}\n\n.booster-dock.grow-down .booster-dock-shell {\n  padding-top: 44px;\n  top: 0;\n}\n\n.booster-dock-content {\n  overscroll-behavior: contain;\n  overflow-y: auto;\n}\n\n.booster-dock-close-bar {\n  box-sizing: border-box;\n  background: var(--primary);\n  height: 44px;\n  color: var(--primary-foreground);\n  letter-spacing: .01em;\n  cursor: grab;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  border: 0;\n  align-items: center;\n  gap: 8px;\n  padding: 0 12px;\n  font: 650 11px / 1 inherit;\n  display: flex;\n  position: absolute;\n  left: -1px;\n  right: -1px;\n}\n\n.booster-dock.grow-up .booster-dock-close-bar {\n  border-top: 1px solid var(--primary-foreground);\n  bottom: -1px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-dock.grow-up .booster-dock-close-bar {\n    border-top: 1px solid color-mix(in oklab, var(--primary-foreground) 18%, transparent);\n  }\n}\n\n.booster-dock.grow-down .booster-dock-close-bar {\n  border-bottom: 1px solid var(--primary-foreground);\n  top: -1px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-dock.grow-down .booster-dock-close-bar {\n    border-bottom: 1px solid color-mix(in oklab, var(--primary-foreground) 18%, transparent);\n  }\n}\n\n.booster-dock.right .booster-dock-close-bar, .booster-dock.left .booster-dock-close-bar {\n  justify-content: flex-start;\n  padding-inline: 12px;\n}\n\n.booster-dock-close-bar:hover {\n  filter: brightness(1.04);\n}\n\n.booster-dock-close-bar:active {\n  cursor: grabbing;\n}\n\n.booster-dock-close-bar svg {\n  flex: none;\n}\n\n.booster-dock-context {\n  gap: 5px;\n  padding: 11px 12px 7px;\n  display: grid;\n}\n\n.booster-dock-context > .booster-identity:first-child {\n  font-size: 13px;\n  font-weight: 650;\n}\n\n.booster-dock-context > .booster-identity {\n  font-size: 12px;\n}\n\n.booster-dock-context p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 11px;\n  line-height: 1.5;\n}\n\n.booster-dock-context time {\n  font-size: 10px;\n  display: block;\n}\n\n.booster-dock-counts {\n  color: var(--muted-foreground);\n  flex-wrap: wrap;\n  gap: 6px 10px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-dock-counts b {\n  color: var(--foreground);\n  font-weight: 650;\n}\n\n.booster-capture-shortcut {\n  color: var(--muted-foreground);\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n  background: none;\n  border: 0;\n  align-items: center;\n  gap: 6px;\n  padding: 3px 0;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-dock-actions {\n  flex-direction: column;\n  gap: 1px;\n  padding: 4px 5px 6px;\n  display: flex;\n}\n\n.booster-dock .booster-dock-actions > button {\n  width: 100%;\n  min-height: 34px;\n  color: inherit;\n  text-align: left;\n  font: inherit;\n  cursor: pointer;\n  background: none;\n  border: 0;\n  border-radius: 8px;\n  align-items: center;\n  gap: 10px;\n  padding: 6px 9px;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-dock .booster-dock-actions > button:hover:not(:disabled) {\n  background: var(--muted);\n}\n\n.booster-dock .booster-dock-actions > button:disabled {\n  opacity: .4;\n  cursor: not-allowed;\n}\n\n.booster-dock.grow-down .booster-dock-content {\n  flex-direction: column-reverse;\n  display: flex;\n}\n\n.booster-dock.grow-down .booster-dock-actions {\n  flex-direction: column-reverse;\n}\n\n.booster-dock-progress {\n  border-block: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: center;\n  gap: 8px;\n  padding: 8px 12px;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-identity-label {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-identity-copy {\n  width: 24px;\n  height: 24px;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  opacity: 0;\n  background: none;\n  border: 0;\n  border-radius: 5px;\n  flex: none;\n  justify-content: center;\n  align-items: center;\n  padding: 4px;\n  display: inline-flex;\n}\n\n.booster-identity:hover .booster-identity-copy, .booster-identity:focus-within .booster-identity-copy, .booster-identity-copy:hover {\n  background: var(--muted);\n}\n\n.booster-sr-only {\n  clip-path: inset(50%);\n  white-space: nowrap;\n  width: 1px;\n  height: 1px;\n  position: absolute;\n  overflow: hidden;\n}\n\n.booster-dialog {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(760px, 100vw - 32px);\n  max-height: calc(100dvh - 32px);\n  color: var(--card-foreground);\n  pointer-events: auto;\n  border-radius: 16px;\n  outline: none;\n  font-size: 14px;\n  overflow: auto;\n  box-shadow: 0 20px 60px #0000004d;\n}\n\n.booster-dialog .booster-control-center {\n  width: 100%;\n  box-shadow: none;\n  border: 0;\n  border-radius: 0;\n  margin: 0;\n}\n\n.booster-dialog-wide {\n  width: min(1220px, 100vw - 32px);\n  height: min(860px, 100dvh - 32px);\n  overflow: hidden;\n}\n\n.booster-section-header {\n  border-bottom: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  min-height: 64px;\n  padding: 12px 18px;\n  display: flex;\n}\n\n.booster-section-header strong {\n  font-size: 15px;\n}\n\n.booster-section-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-form-body {\n  gap: 16px;\n  padding: 20px;\n  line-height: 1.5;\n  display: grid;\n}\n\n.booster-form-body h2, .booster-capture-settings h3 {\n  margin: 0;\n  font-size: 16px;\n  font-weight: 650;\n}\n\n.booster-form-body > label {\n  gap: 6px;\n  font-size: 12px;\n  font-weight: 600;\n  display: grid;\n}\n\n.booster-checkboxes {\n  border: 0;\n  gap: 10px;\n  margin: 0;\n  padding: 0;\n  display: grid;\n}\n\n.booster-checkboxes label {\n  align-items: center;\n  gap: 8px;\n  font-size: 13px;\n  display: flex;\n}\n\n.booster-export-suboptions {\n  border-inline-start: 1px solid var(--border);\n  gap: 8px;\n  margin-inline-start: 22px;\n  padding-inline-start: 12px;\n  display: grid;\n}\n\n.booster-note {\n  color: var(--muted-foreground);\n  overflow-wrap: anywhere;\n  margin: 8px 0;\n  font-size: 12px;\n  line-height: 1.6;\n}\n\n.booster-notice {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  border-radius: 8px;\n  margin: 0;\n  padding: 12px;\n  font-size: 12px;\n  line-height: 1.6;\n}\n\n.booster-error {\n  color: var(--foreground);\n  border: 1px solid #c2410c;\n  border-radius: 8px;\n  margin: 8px 12px;\n  padding: 8px 10px;\n  font-size: 12px;\n  line-height: 1.5;\n}\n\n.booster-reader {\n  grid-template-rows: auto auto minmax(0, 1fr);\n  min-width: 0;\n  height: 100%;\n  min-height: 0;\n  display: grid;\n}\n\n.booster-reader-heading {\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-reader-layout {\n  grid-row: 3;\n  grid-template-columns: minmax(210px, 27%) minmax(0, 1fr);\n  min-width: 0;\n  min-height: 0;\n  display: grid;\n}\n\n.booster-reader-sidebar {\n  border-right: 1px solid var(--border);\n  background: var(--card);\n  overscroll-behavior: contain;\n  min-width: 0;\n  min-height: 0;\n  padding: 12px;\n  overflow: hidden;\n}\n\n.booster-reader-main {\n  background: var(--background);\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-reader-chat-header {\n  justify-content: space-between;\n  align-items: flex-start;\n  gap: 12px;\n  display: flex;\n}\n\n.booster-reader-chat-header > div {\n  min-width: 0;\n  max-width: 100%;\n}\n\n.booster-reader-chat-header h2 {\n  margin: 0 0 4px;\n  font-size: 18px;\n  line-height: 1.4;\n}\n\n.booster-reader-chat-header > div > .booster-identity {\n  color: var(--muted-foreground);\n  font-size: 12px;\n}\n\n.booster-reader-summary {\n  color: var(--muted-foreground);\n  flex-wrap: wrap;\n  gap: 6px 14px;\n  margin-block: 10px 0;\n  font-size: 11px;\n  display: flex;\n}\n\n.booster-reader-summary b {\n  color: var(--foreground);\n}\n\n.booster-reader-summary p {\n  flex-basis: 100%;\n  margin: 2px 0 0;\n  line-height: 1.5;\n}\n\n.booster-reader-exchanges {\n  gap: 20px;\n  margin-top: 0;\n  display: grid;\n}\n\n.booster-exchange {\n  border-bottom: 1px solid var(--border);\n  padding-bottom: 16px;\n}\n\n.booster-graph-rail {\n  background: linear-gradient(var(--border), var(--border)) center / 2px 100% no-repeat;\n  justify-content: center;\n  min-height: 40px;\n  display: flex;\n  position: relative;\n}\n\n.booster-graph-dot {\n  border: 2px solid var(--background);\n  outline: 2px solid var(--primary);\n  background: var(--primary);\n  z-index: 1;\n  border-radius: 50%;\n  align-self: flex-start;\n  width: 12px;\n  height: 12px;\n  margin-top: 14px;\n  position: sticky;\n  top: 12px;\n}\n\n.booster-graph-dot.is-assistant {\n  background: var(--secondary);\n  outline-color: var(--muted-foreground);\n  border-radius: 4px;\n}\n\n.booster-graph-content {\n  min-width: 0;\n  padding-bottom: 10px;\n}\n\n.booster-graph-branch-label {\n  border: 1px solid var(--border);\n  color: var(--muted-foreground);\n  border-radius: 999px;\n  align-items: center;\n  gap: 5px;\n  margin: 2px 0 8px 4px;\n  padding: 3px 8px;\n  font-size: 11px;\n  display: inline-flex;\n}\n\n.booster-mobile-back {\n  display: none;\n}\n\n@media (hover: none) {\n  .booster-identity-copy {\n    opacity: 1;\n  }\n}\n\n@media (max-width: 640px) {\n  .booster-reader-layout {\n    display: block;\n  }\n\n  .booster-reader-sidebar, .booster-reader-main {\n    height: 100%;\n  }\n\n  .booster-reader-sidebar {\n    display: none;\n  }\n\n  .booster-reader-list-mode .booster-reader-sidebar {\n    display: flex;\n  }\n\n  .booster-reader-main {\n    padding: 0;\n  }\n\n  .booster-reader-list-mode .booster-reader-main {\n    display: none;\n  }\n\n  .booster-mobile-back {\n    color: inherit;\n    font: inherit;\n    cursor: pointer;\n    background: none;\n    border: 0;\n    align-items: center;\n    gap: 6px;\n    margin: 0;\n    padding: 6px 0;\n    font-size: 12px;\n    display: inline-flex;\n  }\n\n  .booster-reader:not(.booster-reader-list-mode) > .booster-section-header > .booster-reader-heading {\n    display: none;\n  }\n\n  .booster-reader-chat-header {\n    flex-wrap: wrap;\n  }\n\n  .booster-dialog, .booster-dialog-wide {\n    width: calc(100vw - 16px);\n    max-height: calc(100dvh - 16px);\n  }\n\n  .booster-modal-backdrop {\n    padding: 8px;\n  }\n}\n\n.booster-archive-workspace-root {\n  z-index: 2147483645;\n  pointer-events: none;\n  position: fixed;\n  inset: 0;\n}\n\n.booster-archive-workspace {\n  border: 1px solid var(--border);\n  background: var(--background);\n  pointer-events: auto;\n  resize: none;\n  border-radius: 14px;\n  min-width: 520px;\n  min-height: 360px;\n  position: fixed;\n  overflow: hidden;\n  box-shadow: 0 22px 70px #00000052;\n}\n\n.booster-archive-workspace .booster-reader {\n  border-radius: inherit;\n  background: var(--background);\n  height: 100%;\n  overflow: hidden;\n}\n\n.booster-archive-workspace [data-archive-drag-handle] {\n  cursor: move;\n  -webkit-user-select: none;\n  user-select: none;\n  touch-action: none;\n}\n\n.booster-archive-grip {\n  color: var(--muted-foreground);\n  flex: none;\n}\n\n.booster-archive-resize {\n  z-index: 4;\n  background: linear-gradient(135deg, transparent 0 48%, var(--muted-foreground) 49% 54%, transparent 55% 64%, var(--muted-foreground) 65% 70%, transparent 71%);\n  opacity: .55;\n  cursor: nwse-resize;\n  touch-action: none;\n  border: 0;\n  width: 18px;\n  height: 18px;\n  padding: 0;\n  position: absolute;\n  bottom: 0;\n  right: 0;\n}\n\n.booster-archive-dock-button {\n  z-index: 2147483646;\n  border: 1px solid var(--primary);\n  place-items: center;\n  width: 42px;\n  height: 42px;\n  padding: 0;\n  display: grid;\n  position: fixed;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-dock-button {\n    border: 1px solid color-mix(in oklab, var(--primary) 60%, var(--border));\n  }\n}\n\n.booster-archive-dock-button {\n  background: var(--primary);\n  color: var(--primary-foreground);\n  cursor: grab;\n  pointer-events: auto;\n  touch-action: none;\n  border-radius: 10px 0 0 10px;\n  box-shadow: 0 10px 30px #00000047;\n}\n\n.booster-archive-dock-button[style*="left: 0px"] {\n  border-radius: 0 10px 10px 0;\n}\n\n.booster-archive-dock-button:active {\n  cursor: grabbing;\n}\n\n.booster-archive-dock-corner {\n  opacity: .65;\n  width: 9px;\n  height: 9px;\n  position: absolute;\n  bottom: 3px;\n  right: 3px;\n}\n\n.booster-reader-chat-actions {\n  flex-wrap: wrap;\n  justify-content: flex-end;\n  gap: 6px;\n  display: flex;\n}\n\n.booster-exchange-details {\n  border-left: 2px solid var(--border);\n  gap: 6px;\n  margin: 10px 0 10px 12px;\n  padding: 8px 0 8px 12px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-exchange-details {\n    border-left: 2px solid color-mix(in oklab, var(--border) 78%, var(--primary));\n  }\n}\n\n.booster-exchange-details-label {\n  color: var(--muted-foreground);\n  letter-spacing: .04em;\n  text-transform: uppercase;\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-markdown {\n  overflow-wrap: anywhere;\n  font-size: 13px;\n  line-height: 1.65;\n}\n\n.booster-markdown > :first-child {\n  margin-top: 0;\n}\n\n.booster-markdown > :last-child {\n  margin-bottom: 0;\n}\n\n.booster-markdown p {\n  margin: .55em 0;\n}\n\n.booster-markdown h1, .booster-markdown h2, .booster-markdown h3, .booster-markdown h4, .booster-markdown h5, .booster-markdown h6 {\n  color: var(--foreground);\n  margin: 1em 0 .45em;\n  font-weight: 700;\n  line-height: 1.3;\n}\n\n.booster-markdown h1 {\n  font-size: 1.45em;\n}\n\n.booster-markdown h2 {\n  font-size: 1.28em;\n}\n\n.booster-markdown h3 {\n  font-size: 1.14em;\n}\n\n.booster-markdown :is(ul, ol) {\n  margin: .6em 0;\n  padding-left: 1.45em;\n}\n\n.booster-markdown li {\n  margin: .22em 0;\n}\n\n.booster-markdown blockquote {\n  border-left: 3px solid var(--border);\n  color: var(--muted-foreground);\n  margin: .7em 0;\n  padding: .2em 0 .2em .9em;\n}\n\n.booster-markdown code {\n  background: var(--muted);\n  border-radius: 5px;\n  padding: .15em .35em;\n  font: .92em / 1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n}\n\n.booster-markdown pre {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  border-radius: 9px;\n  min-width: 0;\n  max-width: 100%;\n  margin: .75em 0;\n  padding: 11px 12px;\n  overflow: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-markdown pre {\n    background: color-mix(in oklab, var(--muted) 72%, var(--background));\n  }\n}\n\n.booster-markdown pre {\n  overscroll-behavior-x: contain;\n  scrollbar-width: thin;\n  scrollbar-color: var(--muted-foreground) transparent;\n}\n\n.booster-markdown pre code {\n  white-space: pre;\n  background: none;\n  padding: 0;\n}\n\n.booster-markdown a {\n  color: var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-markdown a {\n    color: color-mix(in oklab, var(--primary) 78%, #3b82f6);\n  }\n}\n\n.booster-markdown a {\n  text-underline-offset: 2px;\n  text-decoration: underline;\n}\n\n.booster-markdown hr {\n  background: var(--border);\n  border: 0;\n  height: 1px;\n  margin: 1em 0;\n}\n\n.booster-markdown-table-wrap {\n  max-width: 100%;\n  margin: .8em 0;\n  overflow-x: auto;\n}\n\n.booster-markdown table {\n  border-collapse: collapse;\n  width: max-content;\n  min-width: 100%;\n  font-size: 12px;\n}\n\n.booster-markdown :is(th, td) {\n  border: 1px solid var(--border);\n  text-align: left;\n  vertical-align: top;\n  padding: 6px 9px;\n}\n\n.booster-markdown th {\n  background: var(--muted);\n}\n\n.booster-record {\n  border: 1px solid var(--border);\n  background: var(--card);\n  border-radius: 11px;\n  min-width: 0;\n  max-width: 100%;\n  margin-block: 7px;\n  padding: 11px 13px;\n  position: relative;\n  overflow: hidden;\n}\n\n.booster-record-user {\n  background: var(--muted);\n  margin-left: min(52px, 8%);\n}\n\n.booster-record-reasoning, .booster-record-tool_call, .booster-record-tool_result, .booster-record-internal {\n  background: var(--muted);\n  margin-block: 4px;\n  padding: 8px 10px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-record-reasoning, .booster-record-tool_call, .booster-record-tool_result, .booster-record-internal {\n    background: color-mix(in oklab, var(--muted) 45%, var(--background));\n  }\n}\n\n.booster-record-header {\n  color: var(--muted-foreground);\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 5px 10px;\n  margin-bottom: 8px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-record-header strong {\n  color: var(--foreground);\n  font-size: 11px;\n}\n\n.booster-record-internal-header {\n  justify-content: space-between;\n}\n\n.booster-record-kind {\n  align-items: center;\n  gap: 6px;\n  display: inline-flex;\n}\n\n.booster-reasoning-preview {\n  max-height: 76px;\n  color: var(--foreground);\n  position: relative;\n  overflow: hidden;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reasoning-preview {\n    color: color-mix(in oklab, var(--foreground) 82%, var(--muted-foreground));\n  }\n}\n\n.booster-reasoning-preview:not(.expanded):after {\n  background: linear-gradient(transparent, var(--muted));\n  height: 30px;\n  position: absolute;\n  bottom: 0;\n  left: 0;\n  right: 0;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reasoning-preview:not(.expanded):after {\n    background: linear-gradient(transparent, color-mix(in oklab, var(--muted) 45%, var(--background)));\n  }\n}\n\n.booster-reasoning-preview:not(.expanded):after {\n  content: "";\n  pointer-events: none;\n}\n\n.booster-reasoning-preview.expanded {\n  max-height: none;\n  overflow: visible;\n}\n\n.booster-reasoning-preview .booster-markdown {\n  font-size: 11px;\n  line-height: 1.55;\n}\n\n.booster-tool-row {\n  grid-template-columns: 28px minmax(0, 1fr) auto;\n  align-items: center;\n  gap: 8px;\n  display: grid;\n}\n\n.booster-tool-icon {\n  border: 1px solid var(--border);\n  object-fit: cover;\n  background: var(--background);\n  border-radius: 7px;\n  width: 28px;\n  height: 28px;\n}\n\n.booster-tool-icon-fallback {\n  color: var(--muted-foreground);\n  place-items: center;\n  display: grid;\n}\n\n.booster-tool-copy {\n  gap: 1px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-tool-copy strong {\n  color: var(--foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n.booster-tool-copy > span {\n  color: var(--muted-foreground);\n  font-size: 9px;\n}\n\n.booster-tool-copy p {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  margin: 2px 0 0;\n  font-size: 10px;\n  overflow: hidden;\n}\n\n.booster-tool-actions {\n  align-items: center;\n  gap: 2px;\n  display: flex;\n}\n\n.booster-tool-expanded {\n  border-top: 1px solid var(--border);\n  margin-top: 8px;\n  padding-top: 8px;\n}\n\n.booster-tool-expanded .booster-markdown {\n  font-size: 11px;\n}\n\n.booster-tool-expanded .booster-json-viewer {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  max-height: 260px;\n  font-size: 10px;\n}\n\n.booster-internal-preview {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 10px;\n  overflow: hidden;\n}\n\n.booster-record-modal-header {\n  border-bottom: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: flex-start;\n  gap: 14px;\n  padding: 12px 14px;\n  display: flex;\n}\n\n.booster-record-modal-header > div {\n  gap: 2px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-record-modal-header strong {\n  font-size: 13px;\n}\n\n.booster-record-modal-header span {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 10px;\n  overflow: hidden;\n}\n\n.booster-capture-surface {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 14px;\n  overflow: hidden;\n}\n\n.booster-capture-surface > .booster-capture-settings {\n  box-shadow: none;\n  border: 0;\n  border-radius: 0;\n}\n\n@media (max-width: 680px) {\n  .booster-archive-workspace {\n    border-radius: 10px;\n    min-width: 0;\n    min-height: 0;\n  }\n\n  .booster-tool-row {\n    grid-template-columns: 26px minmax(0, 1fr);\n  }\n\n  .booster-tool-actions {\n    grid-column: 2;\n    justify-content: flex-start;\n  }\n\n  .booster-reader-chat-actions {\n    justify-content: flex-start;\n    width: 100%;\n  }\n}\n\n.booster-record-header {\n  min-width: 0;\n}\n\n.booster-record-header-tools {\n  align-items: center;\n  gap: 2px;\n  margin-left: auto;\n  display: inline-flex;\n}\n\n.booster-record-edited {\n  color: var(--muted-foreground);\n  white-space: nowrap;\n  font-size: 9px;\n}\n\n.booster-record-raw-corner {\n  position: absolute;\n  top: 5px;\n  right: 5px;\n}\n\n.booster-tool-row {\n  min-width: 0;\n  max-width: 100%;\n  overflow: hidden;\n}\n\n.booster-tool-row.is-clickable {\n  cursor: pointer;\n}\n\n.booster-tool-copy, .booster-tool-actions {\n  min-width: 0;\n}\n\n.booster-tool-actions {\n  flex: none;\n}\n\n.booster-tool-expanded {\n  min-width: 0;\n  max-width: 100%;\n  overflow: auto hidden;\n}\n\n.booster-internal-preview {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  max-width: 100%;\n  padding-right: 2px;\n}\n\n.booster-json-modal {\n  background: var(--background);\n  flex-direction: column;\n  width: 100%;\n  min-width: 0;\n  height: 100%;\n  min-height: 0;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-json-modal .booster-json-viewer {\n  box-sizing: border-box;\n  flex: auto;\n  width: 100%;\n  min-width: 0;\n  max-width: 100%;\n  max-height: none;\n  overflow: auto;\n}\n\n.booster-dialog-wide:has(.booster-json-modal) {\n  min-width: 0;\n  min-height: 0;\n  display: flex;\n}\n\n.booster-reader-main, .booster-reader-exchanges, .booster-exchange, .booster-exchange-details {\n  min-width: 0;\n  max-width: 100%;\n}\n\n.booster-reader-main {\n  overflow-x: hidden;\n}\n\n.booster-analytics-dashboard {\n  gap: 12px;\n  display: grid;\n}\n\n.booster-analytics-header {\n  justify-content: space-between;\n  align-items: flex-start;\n  gap: 14px;\n  display: flex;\n}\n\n.booster-analytics-header > div {\n  gap: 3px;\n  display: grid;\n}\n\n.booster-analytics-header strong {\n  font-size: 14px;\n}\n\n.booster-analytics-header span {\n  max-width: 520px;\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.45;\n}\n\n.booster-analytics-reset {\n  white-space: nowrap;\n  min-height: 30px;\n  padding: 5px 8px;\n}\n\n.booster-analytics-metrics {\n  grid-template-columns: repeat(3, minmax(0, 1fr));\n  gap: 8px;\n  display: grid;\n}\n\n.booster-analytics-metrics article {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 11px;\n  gap: 2px;\n  min-width: 0;\n  padding: 10px 11px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-analytics-metrics article {\n    background: color-mix(in oklab, var(--background) 82%, var(--muted));\n  }\n}\n\n.booster-analytics-metrics :where(article > span), .booster-analytics-metrics :where(small) {\n  color: var(--muted-foreground);\n  font-size: 9px;\n  line-height: 1.35;\n}\n\n.booster-analytics-metrics strong {\n  font-variant-numeric: tabular-nums;\n  margin-top: 2px;\n  font-size: 24px;\n  line-height: 1;\n}\n\n.booster-analytics-metrics article.warning {\n  border-color: #ef4444;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-analytics-metrics article.warning {\n    border-color: color-mix(in oklab, #ef4444 45%, var(--border));\n  }\n}\n\n.booster-analytics-metrics article.warning {\n  background: #ef4444;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-analytics-metrics article.warning {\n    background: color-mix(in oklab, #ef4444 8%, var(--background));\n  }\n}\n\n.booster-analytics-flow-grid {\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 8px;\n  display: grid;\n}\n\n.booster-analytics-flow-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 11px;\n  gap: 9px;\n  padding: 11px;\n  display: grid;\n}\n\n.booster-analytics-flow-card > header {\n  justify-content: space-between;\n  align-items: center;\n  gap: 8px;\n  font-size: 11px;\n  display: flex;\n}\n\n.booster-analytics-flow-card :where(header > span) {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 5px;\n  display: inline-flex;\n}\n\n.booster-analytics-flow-card :where(header b) {\n  font-variant-numeric: tabular-nums;\n  font-size: 12px;\n}\n\n.booster-analytics-flow-row {\n  color: var(--muted-foreground);\n  grid-template-columns: minmax(88px, .9fr) minmax(80px, 1.3fr) auto;\n  align-items: center;\n  gap: 7px;\n  font-size: 9px;\n  display: grid;\n}\n\n.booster-analytics-flow-row > div {\n  background: var(--muted);\n  border-radius: 999px;\n  height: 5px;\n  overflow: hidden;\n}\n\n.booster-analytics-flow-row i {\n  border-radius: inherit;\n  background: var(--primary);\n  height: 100%;\n  display: block;\n}\n\n.booster-analytics-flow-row b {\n  min-width: 24px;\n  color: var(--foreground);\n  text-align: right;\n  font-variant-numeric: tabular-nums;\n  font-size: 10px;\n}\n\n.booster-analytics-footer {\n  background: var(--muted);\n  color: var(--muted-foreground);\n  border-radius: 9px;\n  flex-wrap: wrap;\n  justify-content: space-between;\n  gap: 8px 16px;\n  padding: 8px 10px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-analytics-footer span {\n  align-items: center;\n  gap: 5px;\n  display: inline-flex;\n}\n\n.booster-analytics-footer b {\n  color: var(--foreground);\n  font-weight: 650;\n}\n\n.booster-analytics-footer .warning {\n  color: #ef4444;\n}\n\n@media (max-width: 720px) {\n  .booster-analytics-metrics, .booster-analytics-flow-grid {\n    grid-template-columns: 1fr;\n  }\n\n  .booster-analytics-header {\n    flex-direction: column;\n  }\n}\n\n.booster-export-status {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  border-radius: 10px;\n  grid-template-columns: auto minmax(0, 1fr) auto;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 10px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-export-status {\n    background: color-mix(in oklab, var(--muted) 52%, var(--background));\n  }\n}\n\n.booster-export-status.warning {\n  border-color: #f59e0b;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-export-status.warning {\n    border-color: color-mix(in oklab, #f59e0b 44%, var(--border));\n  }\n}\n\n.booster-export-status.warning {\n  background: #f59e0b;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-export-status.warning {\n    background: color-mix(in oklab, #f59e0b 7%, var(--background));\n  }\n}\n\n.booster-export-status > div {\n  gap: 2px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-export-status strong {\n  font-size: 10px;\n  line-height: 1.4;\n}\n\n.booster-export-status span {\n  color: var(--muted-foreground);\n  font-size: 9px;\n}\n\n.booster-export-status .booster-action-secondary {\n  white-space: nowrap;\n  min-height: 30px;\n  padding: 5px 8px;\n}\n\n.booster-dock-context > .booster-dock-history-state {\n  color: var(--muted-foreground);\n  font-size: 9px;\n  line-height: 1.35;\n}\n\n.booster-export-preferences {\n  gap: 8px;\n  display: grid;\n}\n\n.booster-export-preferences > label {\n  gap: 6px;\n  font-size: 12px;\n  font-weight: 600;\n  display: grid;\n}\n\n.booster-export-preferences > .booster-note {\n  margin: 0;\n}\n\n.booster-reader-message-jump, .booster-reader-message-jump form, .booster-export-preview-record {\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-export-preview-record > span {\n  overflow-wrap: anywhere;\n  flex: 220px;\n}\n\n.booster-message-target {\n  outline: 2px solid var(--primary);\n  outline-offset: 2px;\n  border-radius: 6px;\n}\n\n[data-archive-message] {\n  scroll-margin-block: 20px;\n}\n\n.booster-export-readiness {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  gap: 10px;\n  padding: 12px;\n  font-size: 12px;\n  display: grid;\n}\n\n.booster-export-readiness > header, .booster-export-recovery-actions {\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-export-readiness > header {\n  justify-content: space-between;\n}\n\n.booster-export-readiness dl {\n  gap: 6px;\n  margin: 0;\n  display: grid;\n}\n\n.booster-export-readiness dl > div {\n  flex-wrap: wrap;\n  justify-content: space-between;\n  gap: 6px 12px;\n  display: flex;\n}\n\n.booster-export-readiness dd {\n  text-align: end;\n  margin: 0;\n}\n\n.booster-export-readiness p {\n  margin: 0;\n}\n\n.booster-export-blockers {\n  gap: 6px;\n  margin: 0;\n  padding-inline-start: 18px;\n  display: grid;\n}\n\n.booster-export-blockers li {\n  overflow-wrap: anywhere;\n}\n\n.booster-export-progress {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  gap: 8px;\n  padding: 10px;\n  display: grid;\n}\n\n.booster-export-progress > p {\n  overflow-wrap: anywhere;\n  margin: 0;\n  font-size: 12px;\n}\n\n.booster-export-progress progress {\n  width: 100%;\n  height: 8px;\n  accent-color: var(--primary);\n  display: block;\n}\n\n.booster-export-preview-content {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  gap: 8px;\n  max-height: min(360px, 48vh);\n  padding: 10px;\n  display: grid;\n  overflow: auto;\n}\n\n.booster-export-preview-content .booster-note {\n  white-space: pre-wrap;\n  margin: 0;\n}\n\n.booster-export-preview-skeleton {\n  gap: 8px;\n  display: grid;\n}\n\n.booster-export-preview-skeleton > span {\n  background: var(--muted);\n  border-radius: 6px;\n  height: 30px;\n  display: block;\n}\n\n.booster-export-disclosure {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  padding: 10px 12px;\n  font-size: 12px;\n}\n\n.booster-export-disclosure > summary {\n  cursor: pointer;\n  font-weight: 600;\n}\n\n.booster-export-disclosure > summary small {\n  color: var(--muted-foreground);\n  margin-inline-start: 8px;\n  font-weight: 400;\n}\n\n.booster-export-disclosure[open] > section, .booster-export-disclosure[open] > label, .booster-export-disclosure[open] > p {\n  margin-block-start: 12px;\n}\n\n.booster-export-presets {\n  border: 1px solid var(--border);\n  border-radius: 10px;\n  gap: 8px;\n  min-width: 0;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-export-presets > strong {\n  font-size: 13px;\n}\n\n.booster-export-presets .booster-export-recovery-actions {\n  flex-wrap: wrap;\n}\n\n.booster-export-presets .booster-export-recovery-actions > button {\n  white-space: normal;\n  overflow-wrap: anywhere;\n  max-width: 100%;\n  min-height: 34px;\n}\n\n@media (max-width: 560px) {\n  .booster-export-presets {\n    padding: 8px;\n  }\n\n  .booster-export-presets .booster-export-recovery-actions > button {\n    flex: 130px;\n  }\n}\n\n.booster-meta-badges {\n  align-items: center;\n  gap: 2px;\n  display: inline-flex;\n}\n\n.booster-meta-badges.compact {\n  gap: 0;\n}\n\n.booster-scope-popover {\n  gap: 10px;\n  min-width: 260px;\n  display: grid;\n}\n\n.booster-scope-popover > header {\n  gap: 1px;\n  display: grid;\n}\n\n.booster-scope-title {\n  max-width: 280px;\n  color: var(--foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 12px;\n  overflow: hidden;\n}\n\n.booster-scope-kind {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-scope-actions {\n  flex-wrap: wrap;\n  gap: 5px;\n  display: flex;\n}\n\n.booster-live-tool-row {\n  width: min(100%, 48rem);\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 6px;\n  padding: 4px 0;\n  display: flex;\n}\n\n.booster-live-tool-copy {\n  flex: auto;\n  align-items: baseline;\n  gap: 6px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-live-tool-name {\n  color: var(--foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 11px;\n  font-weight: 650;\n  overflow: hidden;\n}\n\n.booster-live-tool-action-name {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 10px;\n  overflow: hidden;\n}\n\n.booster-live-tool-details {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(100%, 48rem);\n  color: var(--card-foreground);\n  border-radius: 12px;\n  margin-top: 4px;\n  padding: 10px;\n  box-shadow: 0 8px 24px #0000001f;\n}\n\n.booster-chat-save-marker {\n  background: none;\n  border-radius: 999px;\n  flex: 0 0 6px;\n  width: 6px;\n  height: 6px;\n  display: block;\n}\n\n.booster-chat-save-marker.is-enabled {\n  background: var(--success);\n}\n\n.booster-chat-save-marker.is-work {\n  background: var(--destructive);\n}\n\n.booster-agent-activity {\n  border: 1px solid var(--border, #94a3b838);\n  background: var(--background, #202020);\n  border-radius: 999px;\n  align-items: center;\n  gap: 6px;\n  max-width: min(100%, 520px);\n  min-height: 28px;\n  padding: 3px 8px;\n  display: inline-flex;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-agent-activity {\n    background: color-mix(in srgb, var(--background, #202020) 88%, transparent);\n  }\n}\n\n.booster-agent-activity {\n  color: var(--muted-foreground);\n  pointer-events: auto;\n  font-size: 11px;\n  line-height: 1.2;\n}\n\n.booster-agent-activity[data-phase="tool"] {\n  border-style: dashed;\n}\n\n.booster-agent-activity > svg {\n  flex: none;\n}\n\n.booster-agent-activity-phase {\n  color: var(--foreground);\n  flex: none;\n  font-weight: 600;\n}\n\n.booster-agent-activity-label {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-agent-activity-timer {\n  min-width: 3.2em;\n  color: var(--foreground);\n  font-variant-numeric: tabular-nums;\n  text-align: end;\n  flex: none;\n  margin-inline-start: auto;\n}\n\n.booster-meta-time-text {\n  letter-spacing: .01em;\n  font-size: 9px;\n  font-weight: 650;\n}\n\n.booster-message-meta-popover {\n  max-width: min(420px, 100vw - 16px);\n}\n\n.booster-message-meta-body {\n  gap: 12px;\n  min-width: 260px;\n  display: grid;\n}\n\n.booster-message-meta-header {\n  border-bottom: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: baseline;\n  gap: 12px;\n  padding-bottom: 7px;\n  display: flex;\n}\n\n.booster-message-meta-header strong {\n  color: var(--popover-foreground);\n  font-size: 12px;\n  font-weight: 650;\n}\n\n.booster-message-meta-header span {\n  color: #4ade80;\n  font-variant-numeric: tabular-nums;\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-message-meta-raw {\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  background: #0003;\n  border-radius: 8px;\n  max-width: 390px;\n  max-height: 260px;\n  margin: 0;\n  padding: 8px;\n  font: 10px / 1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n  overflow: auto;\n}\n\n.booster-live-tool-icon {\n  object-fit: cover;\n  border-radius: 999px;\n  flex: 0 0 16px;\n  width: 16px;\n  height: 16px;\n}\n\n.booster-tool-time-chip {\n  color: #c084fc;\n  font-variant-numeric: tabular-nums;\n  background: #7e22ce1c;\n  border: 1px solid #a855f775;\n  gap: 5px;\n  width: auto;\n  min-width: 76px;\n  padding: 0 8px;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-tool-time-chip:hover, .booster-tool-time-chip:focus-visible {\n  color: #d8b4fe;\n  background: #7e22ce30;\n  border-color: #c084fcc2;\n}\n\n.booster-agent-activity[data-phase="thinking"], .booster-agent-activity[data-phase="tool"], .booster-agent-activity[data-phase="responding"], .booster-agent-activity[data-phase="complete"] {\n  color: #4ade80;\n  background: #22c55e17;\n  border-color: #4ade807a;\n}\n\n.booster-agent-activity[data-phase="thinking"] .booster-agent-activity-phase, .booster-agent-activity[data-phase="tool"] .booster-agent-activity-phase, .booster-agent-activity[data-phase="responding"] .booster-agent-activity-phase, .booster-agent-activity[data-phase="complete"] .booster-agent-activity-phase, .booster-agent-activity[data-phase="thinking"] .booster-agent-activity-timer, .booster-agent-activity[data-phase="tool"] .booster-agent-activity-timer, .booster-agent-activity[data-phase="responding"] .booster-agent-activity-timer, .booster-agent-activity[data-phase="complete"] .booster-agent-activity-timer {\n  color: currentColor;\n}\n\n.booster-tool-inspect-trigger {\n  width: 24px;\n  height: 24px;\n  color: var(--muted-foreground);\n  pointer-events: auto;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 7px;\n}\n\n.booster-tool-inspect-trigger:hover, .booster-tool-inspect-trigger:focus-visible {\n  border-color: var(--border);\n  background: var(--accent);\n  color: var(--accent-foreground);\n}\n\n.booster-tool-detail-popover {\n  gap: 10px;\n  width: 100%;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-tool-detail-popover > header {\n  align-items: center;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-tool-payload {\n  gap: 5px;\n  display: grid;\n}\n\n.booster-tool-payload > strong, .booster-tool-evidence > summary {\n  color: var(--muted-foreground);\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-tool-evidence > summary {\n  cursor: pointer;\n}\n\n.booster-tool-attributes {\n  grid-template-columns: max-content minmax(0, 1fr);\n  gap: 3px 8px;\n  margin: 8px 0 0;\n  font: 9px / 1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n  display: grid;\n}\n\n.booster-tool-attributes dt {\n  color: var(--muted-foreground);\n}\n\n.booster-tool-attributes dd {\n  overflow-wrap: anywhere;\n  min-width: 0;\n  margin: 0;\n}\n\n.booster-tool-evidence pre {\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  background: #0003;\n  border-radius: 7px;\n  max-height: 180px;\n  margin: 8px 0 0;\n  padding: 7px;\n  font: 9px / 1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n  overflow: auto;\n}\n\n.booster-tool-link {\n  overflow-wrap: anywhere;\n  min-width: 0;\n  color: var(--foreground);\n  align-items: center;\n  gap: 4px;\n  text-decoration: none;\n  display: inline-flex;\n}\n\n.booster-tool-link:hover {\n  color: var(--foreground);\n  text-decoration: underline;\n}\n\n.booster-work-mode-warning {\n  color: #fca5a5;\n  background: #ef44441a;\n  border: 1px solid #ef44448c;\n  border-radius: 999px;\n  align-items: center;\n  gap: 7px;\n  padding: 4px 9px;\n  font-family: inherit;\n  font-size: 10px;\n  line-height: 1.25;\n  display: inline-flex;\n}\n\n.booster-work-mode-warning strong {\n  color: #f87171;\n  font-weight: 750;\n}\n\n.booster-work-mode-warning > span:before {\n  content: "·";\n  color: #f87171b8;\n  margin-inline-end: 7px;\n}\n\n.booster-request-status {\n  border: 1px solid var(--border);\n  background: var(--background);\n  color: var(--muted-foreground);\n  font-variant-numeric: tabular-nums;\n  border-radius: 999px;\n  flex-wrap: wrap;\n  justify-content: center;\n  align-items: center;\n  gap: 6px;\n  padding: 3px 8px;\n  font-family: inherit;\n  font-size: 10px;\n  line-height: 1.25;\n  display: inline-flex;\n}\n\n.booster-request-spinner {\n  border: 1.5px solid var(--border);\n  border-top-color: var(--foreground);\n  border-radius: 50%;\n  flex: 0 0 11px;\n  width: 11px;\n  height: 11px;\n  animation: .9s linear infinite booster-request-spin;\n}\n\n@keyframes booster-request-spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n.booster-request-status > span {\n  align-items: center;\n  gap: 4px;\n  display: inline-flex;\n}\n\n.booster-request-status > [hidden] {\n  display: none;\n}\n\n.booster-request-status > span + span:before {\n  content: "·";\n  color: var(--muted-foreground);\n}\n\n.booster-request-status-label {\n  color: var(--muted-foreground);\n  font-weight: 500;\n}\n\n.booster-request-status strong {\n  color: var(--foreground);\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-tool-path {\n  max-width: 280px;\n  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n  font-size: 9px;\n}\n\n.booster-tool-detail-popover > header strong {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  color: var(--popover-foreground);\n  font-size: 11px;\n  display: block;\n  overflow: hidden;\n}\n\n.booster-tool-detail-popover > header span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  color: var(--muted-foreground);\n  font-size: 10px;\n  display: block;\n  overflow: hidden;\n}\n\n.booster-request-status[data-phase="tool"] strong {\n  color: #c084fc;\n}\n\n.booster-request-status[data-phase="responding"] strong {\n  color: #86efac;\n}\n\n.booster-archive-flow-graph {\n  width: 80px;\n  min-width: 0;\n  height: 100%;\n  min-height: 0;\n}\n\n.booster-reader-pinned {\n  border-bottom: 1px solid var(--border);\n  background: var(--background);\n  flex: none;\n  min-width: 0;\n  padding: 6px 12px;\n}\n\n.booster-reader-scroll {\n  scrollbar-gutter: stable;\n  overscroll-behavior: contain;\n  min-width: 0;\n  height: 100%;\n  min-height: 0;\n  padding: 18px 20px 30px;\n  overflow: hidden auto;\n}\n\n.booster-reader-chat-header h2 {\n  overflow-wrap: anywhere;\n  font-size: 16px;\n}\n\n.booster-reader-chat-actions {\n  justify-content: flex-start;\n  margin-top: 4px;\n}\n\n.booster-reader-navigation {\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 4px;\n  min-width: 0;\n  margin-top: 6px;\n  display: flex;\n}\n\n.booster-reader-page-count {\n  color: var(--muted-foreground);\n  font-variant-numeric: tabular-nums;\n  margin-inline-start: auto;\n  font-size: 11px;\n}\n\n.booster-reader-branch-navigation {\n  flex-wrap: wrap;\n  align-items: end;\n  gap: 6px 8px;\n  min-width: 0;\n  margin-top: 6px;\n  display: flex;\n}\n\n.booster-reader-path-select {\n  min-width: 0;\n  max-width: 100%;\n  color: var(--muted-foreground);\n  flex: 160px;\n  gap: 4px;\n  font-size: 10px;\n  display: grid;\n}\n\n.booster-reader-path-status {\n  color: var(--muted-foreground);\n  padding-block: 8px;\n  font-size: 11px;\n}\n\n.booster-reader-action-menu {\n  overscroll-behavior: contain;\n  gap: 4px;\n  width: min(320px, 100dvw - 24px);\n  max-height: min(70dvh, 26rem);\n  display: grid;\n  overflow: auto;\n}\n\n.booster-reader-action-menu > button {\n  white-space: normal;\n  text-align: start;\n  justify-content: flex-start;\n  height: auto;\n  min-height: 32px;\n}\n\n.booster-reader-find {\n  margin-top: 8px;\n}\n\n.booster-reader-loading {\n  min-height: 130px;\n  color: var(--muted-foreground);\n  justify-content: center;\n  align-items: center;\n  gap: 8px;\n  font-size: 13px;\n  display: flex;\n}\n\n.booster-reader-older-loading {\n  z-index: 2;\n  border: 1px solid var(--border);\n  background: var(--card);\n  color: var(--foreground);\n  white-space: nowrap;\n  pointer-events: none;\n  border-radius: 10px;\n  align-items: center;\n  gap: 7px;\n  padding: 8px 12px;\n  font-size: 12px;\n  display: flex;\n  position: absolute;\n  inset: 50% auto auto 50%;\n  transform: translateX(-50%);\n  box-shadow: 0 3px 12px #0000001f;\n}\n\n.booster-reader-spinner {\n  flex: none;\n  animation: .9s linear infinite booster-archive-spin;\n}\n\n@keyframes booster-archive-spin {\n  to {\n    rotate: 360deg;\n  }\n}\n\n@media (prefers-reduced-motion: reduce) {\n  .booster-reader-spinner {\n    animation: none;\n  }\n}\n\n@media (max-width: 640px) {\n  .booster-reader-scroll {\n    padding: 12px 12px 24px;\n  }\n}\n\n.booster-reader-summary {\n  align-items: center;\n  margin-top: 4px;\n}\n\n.booster-reader-coverage {\n  align-items: center;\n  gap: 5px;\n  display: inline-flex;\n}\n\n.booster-reader-project-label {\n  color: var(--muted-foreground);\n  font-weight: 400;\n}\n\n.booster-reader-heading {\n  justify-content: center;\n  gap: 7px;\n}\n\n.booster-reader-exchanges {\n  gap: 12px;\n}\n\n.booster-reader .booster-section-header {\n  min-height: 42px;\n  padding-block: 6px;\n}\n\n.booster-reader-heading strong {\n  font-size: 12px;\n}\n\n.booster-reader-heading p {\n  opacity: .7;\n  margin: 0;\n  font-size: 10px;\n}\n\n.booster-reader-fork-choices {\n  overscroll-behavior: contain;\n  flex-direction: column;\n  gap: 8px;\n  width: min(420px, 100dvw - 24px);\n  max-height: min(60dvh, 24rem);\n  display: flex;\n  overflow: auto;\n}\n\n.booster-reader-fork-group {\n  border: 1px solid var(--border);\n  border-radius: 7px;\n  flex-flow: column wrap;\n  align-items: stretch;\n  gap: 5px;\n  padding: 5px 8px;\n  font-size: 11px;\n  display: flex;\n}\n\n.booster-reader-fork-choice {\n  white-space: normal;\n  text-align: start;\n  overflow-wrap: anywhere;\n  justify-content: flex-start;\n  max-width: 100%;\n  height: auto;\n  min-height: 32px;\n}\n\n@media (max-width: 420px) {\n  .booster-reader-fork-label {\n    display: none;\n  }\n}\n\n.booster-reader-fork-group > span {\n  color: var(--muted-foreground);\n  font-weight: 600;\n}\n\n.booster-reader-history-toggle.active {\n  background: var(--muted);\n  border-color: var(--ring);\n}\n\n.booster-reader-integrity, .booster-reader-versions {\n  border: 1px solid var(--border);\n  overflow-wrap: anywhere;\n  border-radius: 10px;\n  min-width: 0;\n  margin: 8px 0;\n  padding: 10px;\n}\n\n.booster-reader-integrity.is-complete {\n  border-color: var(--success, var(--border));\n}\n\n.booster-reader-integrity [data-integrity-issue] {\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 6px;\n  margin-top: 6px;\n  display: flex;\n}\n\n.booster-reader-versions {\n  max-height: min(48dvh, 420px);\n  overflow: auto;\n}\n\n.booster-reader {\n  position: relative;\n}\n\n.booster-reader-heading {\n  justify-content: flex-start;\n  min-width: 0;\n}\n\n.booster-reader-heading > div {\n  min-width: 0;\n}\n\n.booster-reader-heading strong {\n  line-height: 1.25;\n  display: block;\n}\n\n.booster-reader > .booster-section-header > .booster-header-actions {\n  flex: none;\n  gap: 6px;\n}\n\n.booster-reader-tools {\n  position: relative;\n}\n\n.booster-maintenance-backdrop {\n  z-index: 18;\n  background: #000000b3;\n  justify-content: center;\n  align-items: center;\n  min-width: 0;\n  padding: clamp(12px, 3vw, 28px);\n  display: flex;\n  position: absolute;\n  inset: 0;\n}\n\n.booster-maintenance-widget {\n  border: 1px solid var(--border);\n  background: var(--background);\n  width: min(100%, 570px);\n  min-height: 0;\n  max-height: min(700px, 100%);\n  color: var(--foreground);\n  font: inherit;\n  border-radius: 14px;\n  flex-direction: column;\n  display: flex;\n  overflow: hidden;\n  box-shadow: 0 24px 70px #00000059;\n}\n\n.booster-maintenance-heading {\n  border-bottom: 1px solid var(--border);\n  flex: none;\n  justify-content: space-between;\n  align-items: center;\n  gap: 14px;\n  padding: 15px 18px;\n  display: flex;\n}\n\n.booster-maintenance-title {\n  align-items: center;\n  gap: 11px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-maintenance-title > div {\n  min-width: 0;\n}\n\n.booster-maintenance-title h2 {\n  margin: 0;\n  font-size: 16px;\n  font-weight: 650;\n  line-height: 1.35;\n}\n\n.booster-maintenance-title p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-maintenance-content {\n  overscroll-behavior: contain;\n  scrollbar-gutter: stable;\n  align-content: start;\n  gap: 14px;\n  min-height: 0;\n  padding: 16px 18px;\n  display: grid;\n  overflow: hidden auto;\n}\n\n.booster-maintenance-stats {\n  grid-template-columns: repeat(3, minmax(0, 1fr));\n  gap: 8px;\n  display: grid;\n}\n\n.booster-maintenance-stats > div {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  border-radius: 9px;\n  gap: 5px;\n  min-width: 0;\n  padding: 11px;\n  display: grid;\n}\n\n.booster-maintenance-stats span {\n  color: var(--muted-foreground);\n  font-size: 10px;\n  line-height: 1.4;\n}\n\n.booster-maintenance-stats strong {\n  font-variant-numeric: tabular-nums;\n  font-size: 20px;\n  font-weight: 650;\n}\n\n.booster-maintenance-section {\n  border: 1px solid var(--border);\n  border-radius: 10px;\n  gap: 11px;\n  min-width: 0;\n  padding: 15px;\n  display: grid;\n}\n\n.booster-maintenance-section-title {\n  align-items: center;\n  gap: 9px;\n  display: flex;\n}\n\n.booster-maintenance-section h3 {\n  margin: 0;\n  font-size: 13px;\n  font-weight: 650;\n}\n\n.booster-maintenance-section p, .booster-maintenance-result p, .booster-maintenance-progress p {\n  color: var(--muted-foreground);\n  overflow-wrap: anywhere;\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.5;\n}\n\n.booster-maintenance-section .booster-maintenance-warning {\n  color: var(--foreground);\n  border-left: 2px solid #d97706;\n  padding-left: 10px;\n}\n\n.booster-maintenance-widget .booster-maintenance-check {\n  min-width: 0;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  align-items: flex-start;\n  gap: 10px;\n  font-size: 11px;\n  line-height: 1.5;\n  display: flex;\n}\n\n.booster-maintenance-widget .booster-maintenance-check input {\n  width: 16px;\n  height: 16px;\n  min-height: 16px;\n  accent-color: var(--primary);\n  flex: 0 0 16px;\n  margin: 1px 0 0;\n  padding: 0;\n}\n\n.booster-maintenance-actions {\n  flex-wrap: wrap;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-maintenance-actions button {\n  flex: 170px;\n  min-width: 0;\n}\n\n.booster-maintenance-section > button {\n  justify-self: start;\n  max-width: 100%;\n}\n\n.booster-maintenance-loading, .booster-maintenance-progress, .booster-maintenance-result {\n  border: 1px solid var(--border);\n  border-radius: 9px;\n  align-items: flex-start;\n  gap: 10px;\n  min-width: 0;\n  padding: 12px;\n  font-size: 12px;\n  line-height: 1.5;\n  display: flex;\n}\n\n.booster-maintenance-result svg, .booster-maintenance-progress svg {\n  flex: none;\n}\n\n.booster-maintenance-result strong, .booster-maintenance-progress strong {\n  margin-bottom: 3px;\n  font-size: 12px;\n  display: block;\n}\n\n.booster-maintenance-error {\n  color: var(--foreground);\n  overflow-wrap: anywhere;\n  border: 1px solid #c2410c;\n  border-radius: 8px;\n  margin: 0;\n  padding: 10px;\n  font-size: 12px;\n}\n\n.booster-maintenance-footer {\n  border-top: 1px solid var(--border);\n  flex: none;\n  justify-content: flex-end;\n  gap: 8px;\n  padding: 12px 18px;\n  display: flex;\n}\n\n@media (max-width: 620px) {\n  .booster-maintenance-backdrop {\n    padding: 8px;\n  }\n\n  .booster-maintenance-heading, .booster-maintenance-content {\n    padding: 12px;\n  }\n\n  .booster-maintenance-stats strong {\n    font-size: 17px;\n  }\n\n  .booster-maintenance-stats > div {\n    padding: 8px;\n  }\n\n  .booster-reader > .booster-section-header {\n    padding: 8px 10px;\n  }\n}\n\n.booster-maintenance-owner-list {\n  gap: 8px;\n  max-height: 290px;\n  display: grid;\n  overflow-y: auto;\n}\n\n.booster-maintenance-owner-row {\n  border: 1px solid var(--border);\n  cursor: pointer;\n  border-radius: 8px;\n  align-items: flex-start;\n  gap: 10px;\n  padding: 10px;\n  display: flex;\n}\n\n.booster-maintenance-owner-row > input[type="checkbox"] {\n  width: 16px;\n  height: 16px;\n  accent-color: var(--primary);\n  flex: 0 0 16px;\n  margin: 2px 0 0;\n  padding: 0;\n}\n\n.booster-maintenance-owner-description {\n  gap: 4px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-maintenance-owner-description > strong {\n  overflow-wrap: anywhere;\n  font-size: 12px;\n}\n\n.booster-maintenance-owner-description > span, .booster-maintenance-owner-caution {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.45;\n}\n\n.booster-maintenance-owner-description details {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.booster-maintenance-owner-description summary {\n  cursor: pointer;\n}\n\n.booster-maintenance-owner-description code {\n  overflow-wrap: anywhere;\n  margin-top: 5px;\n  font: 10px / 1.4 ui-monospace, monospace;\n  display: block;\n}\n\n.booster-maintenance-owner-description small {\n  margin-top: 6px;\n  display: block;\n}\n\n.booster-maintenance-link {\n  color: var(--foreground);\n  font: inherit;\n  cursor: pointer;\n  background: none;\n  border: 0;\n  justify-self: start;\n  padding: 0;\n  font-size: 11px;\n  text-decoration: underline;\n}\n\n.booster-maintenance-link:disabled {\n  opacity: .5;\n  cursor: not-allowed;\n}\n\n.booster-maintenance-backup-tools > summary {\n  cursor: pointer;\n  font-weight: 600;\n}\n\n.booster-maintenance-backup-tools > p {\n  margin-block: 10px;\n}\n\n.booster-maintenance-backup-restore {\n  gap: 12px;\n  margin-block-start: 14px;\n  display: grid;\n}\n\n.booster-maintenance-backup-restore > label {\n  gap: 8px;\n  display: grid;\n}\n\n.booster-maintenance-backup-restore input[type="file"] {\n  max-width: 100%;\n}\n\n.booster-maintenance-actions button small {\n  opacity: .8;\n  font-size: 10px;\n  display: block;\n}\n\n.booster-control-embedded {\n  box-shadow: none;\n  background: none;\n  border: 0;\n  width: 100%;\n  max-width: none;\n}\n\n.booster-control-embedded > .booster-settings-layout {\n  min-height: 0;\n  max-height: none;\n}\n\n.booster-chatgpt-panel {\n  flex-direction: column;\n  gap: 10px;\n  width: 100%;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-chatgpt-panel[data-provider-view="archive"] {\n  flex: 1 1 0;\n  gap: 0;\n  height: 100%;\n  min-height: 0;\n}\n\n.booster-chatgpt-panel > .booster-reader, .booster-chatgpt-panel > .booster-capture-surface {\n  min-width: 0;\n}\n\n.booster-chatgpt-panel[data-provider-view="archive"] > .booster-reader {\n  flex: 1 1 0;\n  width: 100%;\n  height: auto;\n  min-height: 0;\n}\n\n.booster-archive-context-actions {\n  border-bottom: 1px solid var(--border);\n  flex-wrap: wrap;\n  flex: none;\n  justify-content: flex-end;\n  align-items: center;\n  gap: 6px 8px;\n  min-width: 0;\n  padding: 6px 12px;\n  display: flex;\n}\n\n.booster-archive-context-actions > .booster-conversation-collection {\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 6px 8px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-chatgpt-panel > .booster-export-recovery-actions {\n  border-bottom: 1px solid var(--border);\n  min-width: 0;\n  padding-block: 5px;\n}\n\n.booster-chatgpt-panel > .booster-export-recovery-actions > button, .booster-chatgpt-panel > .booster-export-recovery-actions > .booster-reader-tools > button {\n  justify-content: center;\n  align-items: center;\n  gap: 6px;\n  min-height: 34px;\n  display: inline-flex;\n}\n\n@media (max-width: 600px) {\n  .booster-chatgpt-panel > .booster-export-recovery-actions {\n    flex-wrap: wrap;\n  }\n\n  .booster-chatgpt-panel > .booster-export-recovery-actions > button {\n    flex: auto;\n  }\n\n  .booster-chatgpt-panel .booster-reader-tools-menu {\n    min-width: min(260px, 85vw);\n    right: 0;\n  }\n}\n\n@keyframes enter {\n  from {\n    opacity: var(--tw-enter-opacity, 1);\n    transform: translate3d(var(--tw-enter-translate-x, 0), var(--tw-enter-translate-y, 0), 0) scale3d(var(--tw-enter-scale, 1), var(--tw-enter-scale, 1), var(--tw-enter-scale, 1)) rotate(var(--tw-enter-rotate, 0));\n  }\n}\n\n@keyframes exit {\n  to {\n    opacity: var(--tw-exit-opacity, 1);\n    transform: translate3d(var(--tw-exit-translate-x, 0), var(--tw-exit-translate-y, 0), 0) scale3d(var(--tw-exit-scale, 1), var(--tw-exit-scale, 1), var(--tw-exit-scale, 1)) rotate(var(--tw-exit-rotate, 0));\n  }\n}\n\n@property --tw-translate-x {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-translate-y {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-translate-z {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-rotate-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-z {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-space-y-reverse {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-divide-y-reverse {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-border-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-leading {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-font-weight {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-tracking {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ordinal {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-slashed-zero {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-figure {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-spacing {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-fraction {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-inset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-ring-inset {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-offset-width {\n  syntax: "<length>";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-ring-offset-color {\n  syntax: "*";\n  inherits: false;\n  initial-value: #fff;\n}\n\n@property --tw-ring-offset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-outline-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-blur {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-brightness {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-contrast {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-grayscale {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-hue-rotate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-invert {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-opacity {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-saturate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-sepia {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-drop-shadow-size {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-duration {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-content {\n  syntax: "*";\n  inherits: false;\n  initial-value: "";\n}\n\n@keyframes spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n@keyframes pulse {\n  50% {\n    opacity: .5;\n  }\n}\n';
+  const styles = '/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */\n@layer properties {\n  @supports (((-webkit-hyphens: none)) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color: rgb(from red r g b)))) {\n    *, :before, :after, ::backdrop {\n      --tw-translate-x: 0;\n      --tw-translate-y: 0;\n      --tw-translate-z: 0;\n      --tw-rotate-x: initial;\n      --tw-rotate-y: initial;\n      --tw-rotate-z: initial;\n      --tw-skew-x: initial;\n      --tw-skew-y: initial;\n      --tw-space-y-reverse: 0;\n      --tw-divide-y-reverse: 0;\n      --tw-border-style: solid;\n      --tw-leading: initial;\n      --tw-font-weight: initial;\n      --tw-tracking: initial;\n      --tw-ordinal: initial;\n      --tw-slashed-zero: initial;\n      --tw-numeric-figure: initial;\n      --tw-numeric-spacing: initial;\n      --tw-numeric-fraction: initial;\n      --tw-shadow: 0 0 #0000;\n      --tw-shadow-color: initial;\n      --tw-shadow-alpha: 100%;\n      --tw-inset-shadow: 0 0 #0000;\n      --tw-inset-shadow-color: initial;\n      --tw-inset-shadow-alpha: 100%;\n      --tw-ring-color: initial;\n      --tw-ring-shadow: 0 0 #0000;\n      --tw-inset-ring-color: initial;\n      --tw-inset-ring-shadow: 0 0 #0000;\n      --tw-ring-inset: initial;\n      --tw-ring-offset-width: 0px;\n      --tw-ring-offset-color: #fff;\n      --tw-ring-offset-shadow: 0 0 #0000;\n      --tw-outline-style: solid;\n      --tw-blur: initial;\n      --tw-brightness: initial;\n      --tw-contrast: initial;\n      --tw-grayscale: initial;\n      --tw-hue-rotate: initial;\n      --tw-invert: initial;\n      --tw-opacity: initial;\n      --tw-saturate: initial;\n      --tw-sepia: initial;\n      --tw-drop-shadow: initial;\n      --tw-drop-shadow-color: initial;\n      --tw-drop-shadow-alpha: 100%;\n      --tw-drop-shadow-size: initial;\n      --tw-duration: initial;\n      --tw-content: "";\n    }\n  }\n}\n\n.booster-archive-nav {\n  border-right: 1px solid var(--border);\n  background: var(--card);\n  overscroll-behavior: contain;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  padding: 12px;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-archive-nav-branch {\n  border-inline-start: 2px solid var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-nav-branch {\n    border-inline-start: 2px solid color-mix(in oklab, var(--primary) 35%, transparent);\n  }\n}\n\n.booster-exchange {\n  border-bottom: 1px solid var(--border);\n  min-width: 0;\n  max-width: 100%;\n  padding-bottom: 16px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-exchange-details {\n    border-left: 2px solid color-mix(in oklab, var(--border) 78%, var(--primary));\n  }\n}\n\n.booster-reader-exchanges, .booster-exchange-details {\n  min-width: 0;\n  max-width: 100%;\n}\n\n.booster-meta-trigger {\n  flex-shrink: 0;\n}\n\n.booster-meta-lines {\n  grid-template-columns: max-content minmax(0, 1fr);\n  gap: 3px 10px;\n  display: grid;\n}\n\n.booster-meta-label {\n  color: var(--muted-foreground);\n  font-size: 10px;\n  font-weight: 600;\n}\n\n.booster-floating-tooltip .booster-meta-label {\n  color: inherit;\n  opacity: .75;\n}\n\n.booster-meta-value {\n  overflow-wrap: anywhere;\n  min-width: 0;\n  color: inherit;\n  font-variant-numeric: tabular-nums;\n}\n\n.booster-json-viewer {\n  background: var(--background);\n  max-height: min(70vh, 620px);\n  margin: 0;\n  padding: 14px 16px 22px;\n  overflow: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-json-viewer {\n    background: color-mix(in oklab, var(--background) 86%, #0f172a);\n  }\n}\n\n.booster-json-viewer {\n  color: var(--foreground);\n  tab-size: 2;\n  white-space: pre;\n  font: 11px / 1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n}\n\n.booster-json-key {\n  color: #60a5fa;\n}\n\n.booster-json-string {\n  color: #86efac;\n}\n\n.booster-json-number {\n  color: #fbbf24;\n}\n\n.booster-json-boolean {\n  color: #c084fc;\n}\n\n.booster-json-null {\n  color: #94a3b8;\n}\n\n@layer theme {\n  :root, :host {\n    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",\n      "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",\n      "Segoe UI Symbol", "Noto Color Emoji";\n    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",\n      "Courier New", monospace;\n    --color-black: #000;\n    --spacing: .25rem;\n    --container-lg: 32rem;\n    --container-2xl: 42rem;\n    --text-xs: .75rem;\n    --text-xs--line-height: calc(1 / .75);\n    --text-sm: .875rem;\n    --text-sm--line-height: calc(1.25 / .875);\n    --text-base: 1rem;\n    --text-base--line-height: calc(1.5 / 1);\n    --text-lg: 1.125rem;\n    --text-lg--line-height: calc(1.75 / 1.125);\n    --text-xl: 1.25rem;\n    --text-xl--line-height: calc(1.75 / 1.25);\n    --font-weight-normal: 400;\n    --font-weight-medium: 500;\n    --font-weight-semibold: 600;\n    --tracking-tight: -.025em;\n    --leading-snug: 1.375;\n    --leading-relaxed: 1.625;\n    --animate-spin: spin 1s linear infinite;\n    --animate-pulse: pulse 2s cubic-bezier(.4, 0, .6, 1) infinite;\n    --default-transition-duration: .15s;\n    --default-transition-timing-function: cubic-bezier(.4, 0, .2, 1);\n    --default-font-family: var(--font-sans);\n    --default-mono-font-family: var(--font-mono);\n  }\n}\n\n@layer base {\n  *, :after, :before, ::backdrop {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  ::file-selector-button {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  html, :host {\n    -webkit-text-size-adjust: 100%;\n    tab-size: 4;\n    line-height: 1.5;\n    font-family: var(--default-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");\n    font-feature-settings: var(--default-font-feature-settings, normal);\n    font-variation-settings: var(--default-font-variation-settings, normal);\n    -webkit-tap-highlight-color: transparent;\n  }\n\n  hr {\n    height: 0;\n    color: inherit;\n    border-top-width: 1px;\n  }\n\n  abbr:where([title]) {\n    -webkit-text-decoration: underline dotted;\n    text-decoration: underline dotted;\n  }\n\n  h1, h2, h3, h4, h5, h6 {\n    font-size: inherit;\n    font-weight: inherit;\n  }\n\n  a {\n    color: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    text-decoration: inherit;\n  }\n\n  b, strong {\n    font-weight: bolder;\n  }\n\n  code, kbd, samp, pre {\n    font-family: var(--default-mono-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);\n    font-feature-settings: var(--default-mono-font-feature-settings, normal);\n    font-variation-settings: var(--default-mono-font-variation-settings, normal);\n    font-size: 1em;\n  }\n\n  small {\n    font-size: 80%;\n  }\n\n  sub, sup {\n    vertical-align: baseline;\n    font-size: 75%;\n    line-height: 0;\n    position: relative;\n  }\n\n  sub {\n    bottom: -.25em;\n  }\n\n  sup {\n    top: -.5em;\n  }\n\n  table {\n    text-indent: 0;\n    border-color: inherit;\n    border-collapse: collapse;\n  }\n\n  :-moz-focusring:where(:not(iframe)) {\n    outline: auto;\n  }\n\n  progress {\n    vertical-align: baseline;\n  }\n\n  summary {\n    display: list-item;\n  }\n\n  ol, ul, menu {\n    list-style: none;\n  }\n\n  img, svg, video, canvas, audio, iframe, embed, object {\n    vertical-align: middle;\n    display: block;\n  }\n\n  img, video {\n    max-width: 100%;\n    height: auto;\n  }\n\n  button, input, select, optgroup, textarea {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  ::file-selector-button {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  :where(select:is([multiple], [size])) optgroup {\n    font-weight: bolder;\n  }\n\n  :where(select:is([multiple], [size])) optgroup option {\n    padding-inline-start: 20px;\n  }\n\n  ::file-selector-button {\n    margin-inline-end: 4px;\n  }\n\n  ::placeholder {\n    opacity: 1;\n  }\n\n  @supports (not ((-webkit-appearance: -apple-pay-button))) or (contain-intrinsic-size: 1px) {\n    ::placeholder {\n      color: currentColor;\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      ::placeholder {\n        color: color-mix(in oklab, currentcolor 50%, transparent);\n      }\n    }\n  }\n\n  textarea {\n    resize: vertical;\n  }\n\n  ::-webkit-search-decoration {\n    -webkit-appearance: none;\n  }\n\n  ::-webkit-date-and-time-value {\n    min-height: 1lh;\n    text-align: inherit;\n  }\n\n  ::-webkit-datetime-edit {\n    display: inline-flex;\n  }\n\n  ::-webkit-datetime-edit-fields-wrapper {\n    padding: 0;\n  }\n\n  ::-webkit-datetime-edit {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-year-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-month-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-day-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-hour-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-minute-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-second-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-millisecond-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-meridiem-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-calendar-picker-indicator {\n    line-height: 1;\n  }\n\n  :-moz-ui-invalid {\n    box-shadow: none;\n  }\n\n  button, input:where([type="button"], [type="reset"], [type="submit"]) {\n    appearance: button;\n  }\n\n  ::file-selector-button {\n    appearance: button;\n  }\n\n  ::-webkit-inner-spin-button {\n    height: auto;\n  }\n\n  ::-webkit-outer-spin-button {\n    height: auto;\n  }\n\n  [hidden]:where(:not([hidden="until-found"])) {\n    display: none !important;\n  }\n\n  *, :before, :after {\n    --tw-border-style: solid;\n    --tw-translate-x: 0;\n    --tw-translate-y: 0;\n    --tw-translate-z: 0;\n    --tw-space-y-reverse: 0;\n    --tw-space-x-reverse: 0;\n    --tw-shadow: 0 0 #0000;\n    --tw-inset-shadow: 0 0 #0000;\n    --tw-ring-shadow: 0 0 #0000;\n    --tw-inset-ring-shadow: 0 0 #0000;\n    --tw-ring-offset-shadow: 0 0 #0000;\n    --tw-ring-offset-width: 0px;\n    --tw-ring-offset-color: #fff;\n    --tw-ring-inset: initial;\n    border-color: var(--border);\n    outline-color: var(--ring);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    *, :before, :after {\n      outline-color: color-mix(in oklab, var(--ring) 50%, transparent);\n    }\n  }\n\n  body {\n    background-color: var(--background);\n    color: var(--foreground);\n  }\n}\n\n@layer components;\n\n@layer utilities {\n  .pointer-events-none {\n    pointer-events: none;\n  }\n\n  .collapse {\n    visibility: collapse;\n  }\n\n  .invisible {\n    visibility: hidden;\n  }\n\n  .visible {\n    visibility: visible;\n  }\n\n  .sr-only {\n    clip-path: inset(50%);\n    white-space: nowrap;\n    border-width: 0;\n    width: 1px;\n    height: 1px;\n    margin: -1px;\n    padding: 0;\n    position: absolute;\n    overflow: hidden;\n  }\n\n  .absolute {\n    position: absolute;\n  }\n\n  .fixed {\n    position: fixed;\n  }\n\n  .relative {\n    position: relative;\n  }\n\n  .static {\n    position: static;\n  }\n\n  .sticky {\n    position: sticky;\n  }\n\n  .inset-0 {\n    inset: 0;\n  }\n\n  .inset-x-2 {\n    inset-inline: calc(var(--spacing) * 2);\n  }\n\n  .start-0 {\n    inset-inline-start: calc(var(--spacing) * 0);\n  }\n\n  .top-0 {\n    top: 0;\n  }\n\n  .top-1 {\n    top: var(--spacing);\n  }\n\n  .top-1\\/2 {\n    top: 50%;\n  }\n\n  .top-4 {\n    top: calc(var(--spacing) * 4);\n  }\n\n  .right-2 {\n    right: calc(var(--spacing) * 2);\n  }\n\n  .right-4 {\n    right: calc(var(--spacing) * 4);\n  }\n\n  .left-1\\/2 {\n    left: 50%;\n  }\n\n  .isolate {\n    isolation: isolate;\n  }\n\n  .z-10 {\n    z-index: 10;\n  }\n\n  .z-50 {\n    z-index: 50;\n  }\n\n  .z-auto {\n    z-index: auto;\n  }\n\n  .container {\n    width: 100%;\n  }\n\n  @media (min-width: 40rem) {\n    .container {\n      max-width: 40rem;\n    }\n  }\n\n  @media (min-width: 48rem) {\n    .container {\n      max-width: 48rem;\n    }\n  }\n\n  @media (min-width: 64rem) {\n    .container {\n      max-width: 64rem;\n    }\n  }\n\n  @media (min-width: 80rem) {\n    .container {\n      max-width: 80rem;\n    }\n  }\n\n  @media (min-width: 96rem) {\n    .container {\n      max-width: 96rem;\n    }\n  }\n\n  .m-0 {\n    margin: 0;\n  }\n\n  .m-1 {\n    margin: var(--spacing);\n  }\n\n  .m-9 {\n    margin: calc(var(--spacing) * 9);\n  }\n\n  .m-39 {\n    margin: calc(var(--spacing) * 39);\n  }\n\n  .m-80 {\n    margin: calc(var(--spacing) * 80);\n  }\n\n  .m-319 {\n    margin: calc(var(--spacing) * 319);\n  }\n\n  .m-399 {\n    margin: calc(var(--spacing) * 399);\n  }\n\n  .-mx-1 {\n    margin-inline: calc(var(--spacing) * -1);\n  }\n\n  .mx-auto {\n    margin-inline: auto;\n  }\n\n  .my-1 {\n    margin-block: var(--spacing);\n  }\n\n  .my-2 {\n    margin-block: calc(var(--spacing) * 2);\n  }\n\n  .my-8 {\n    margin-block: calc(var(--spacing) * 8);\n  }\n\n  .ms-auto {\n    margin-inline-start: auto;\n  }\n\n  .mt-0 {\n    margin-top: 0;\n  }\n\n  .mt-0\\.5 {\n    margin-top: calc(var(--spacing) * .5);\n  }\n\n  .mt-1 {\n    margin-top: var(--spacing);\n  }\n\n  .mt-2 {\n    margin-top: calc(var(--spacing) * 2);\n  }\n\n  .mt-3 {\n    margin-top: calc(var(--spacing) * 3);\n  }\n\n  .mt-4 {\n    margin-top: calc(var(--spacing) * 4);\n  }\n\n  .mr-1 {\n    margin-right: var(--spacing);\n  }\n\n  .mb-1 {\n    margin-bottom: var(--spacing);\n  }\n\n  .mb-2 {\n    margin-bottom: calc(var(--spacing) * 2);\n  }\n\n  .ml-auto {\n    margin-left: auto;\n  }\n\n  .block {\n    display: block;\n  }\n\n  .contents {\n    display: contents;\n  }\n\n  .flex {\n    display: flex;\n  }\n\n  .grid {\n    display: grid;\n  }\n\n  .hidden {\n    display: none;\n  }\n\n  .inline {\n    display: inline;\n  }\n\n  .inline-flex {\n    display: inline-flex;\n  }\n\n  .table {\n    display: table;\n  }\n\n  .aspect-square {\n    aspect-ratio: 1;\n  }\n\n  .size-3 {\n    width: calc(var(--spacing) * 3);\n    height: calc(var(--spacing) * 3);\n  }\n\n  .size-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n    height: calc(var(--spacing) * 3.5);\n  }\n\n  .size-4 {\n    width: calc(var(--spacing) * 4);\n    height: calc(var(--spacing) * 4);\n  }\n\n  .size-5 {\n    width: calc(var(--spacing) * 5);\n    height: calc(var(--spacing) * 5);\n  }\n\n  .size-6 {\n    width: calc(var(--spacing) * 6);\n    height: calc(var(--spacing) * 6);\n  }\n\n  .size-7 {\n    width: calc(var(--spacing) * 7);\n    height: calc(var(--spacing) * 7);\n  }\n\n  .size-8 {\n    width: calc(var(--spacing) * 8);\n    height: calc(var(--spacing) * 8);\n  }\n\n  .size-10 {\n    width: calc(var(--spacing) * 10);\n    height: calc(var(--spacing) * 10);\n  }\n\n  .h-1\\.5 {\n    height: calc(var(--spacing) * 1.5);\n  }\n\n  .h-2 {\n    height: calc(var(--spacing) * 2);\n  }\n\n  .h-2\\.5 {\n    height: calc(var(--spacing) * 2.5);\n  }\n\n  .h-3\\.5 {\n    height: calc(var(--spacing) * 3.5);\n  }\n\n  .h-4 {\n    height: calc(var(--spacing) * 4);\n  }\n\n  .h-5 {\n    height: calc(var(--spacing) * 5);\n  }\n\n  .h-7 {\n    height: calc(var(--spacing) * 7);\n  }\n\n  .h-8 {\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-9 {\n    height: calc(var(--spacing) * 9);\n  }\n\n  .h-10 {\n    height: calc(var(--spacing) * 10);\n  }\n\n  .h-20 {\n    height: calc(var(--spacing) * 20);\n  }\n\n  .h-24 {\n    height: calc(var(--spacing) * 24);\n  }\n\n  .h-32 {\n    height: calc(var(--spacing) * 32);\n  }\n\n  .h-64 {\n    height: calc(var(--spacing) * 64);\n  }\n\n  .h-auto {\n    height: auto;\n  }\n\n  .h-dvh {\n    height: 100dvh;\n  }\n\n  .h-full {\n    height: 100%;\n  }\n\n  .h-px {\n    height: 1px;\n  }\n\n  .max-h-48 {\n    max-height: calc(var(--spacing) * 48);\n  }\n\n  .max-h-64 {\n    max-height: calc(var(--spacing) * 64);\n  }\n\n  .max-h-80 {\n    max-height: calc(var(--spacing) * 80);\n  }\n\n  .max-h-\\[85dvh\\] {\n    max-height: 85dvh;\n  }\n\n  .max-h-\\[420px\\] {\n    max-height: 420px;\n  }\n\n  .max-h-\\[calc\\(50dvh-1\\.5rem\\)\\] {\n    max-height: calc(50dvh - 1.5rem);\n  }\n\n  .max-h-\\[calc\\(100dvh-32px\\)\\] {\n    max-height: calc(100dvh - 32px);\n  }\n\n  .max-h-\\[min\\(24rem\\,calc\\(100dvh_-_20px\\)\\)\\] {\n    max-height: min(24rem, 100dvh - 20px);\n  }\n\n  .max-h-\\[min\\(24rem\\,max\\(0px\\,var\\(--reka-select-content-available-height\\)\\)\\)\\] {\n    max-height: min(24rem, max(0px, var(--reka-select-content-available-height)));\n  }\n\n  .min-h-0 {\n    min-height: 0;\n  }\n\n  .min-h-6 {\n    min-height: calc(var(--spacing) * 6);\n  }\n\n  .min-h-7 {\n    min-height: calc(var(--spacing) * 7);\n  }\n\n  .min-h-8 {\n    min-height: calc(var(--spacing) * 8);\n  }\n\n  .min-h-9 {\n    min-height: calc(var(--spacing) * 9);\n  }\n\n  .min-h-10 {\n    min-height: calc(var(--spacing) * 10);\n  }\n\n  .min-h-11 {\n    min-height: calc(var(--spacing) * 11);\n  }\n\n  .min-h-24 {\n    min-height: calc(var(--spacing) * 24);\n  }\n\n  .min-h-\\[60px\\] {\n    min-height: 60px;\n  }\n\n  .min-h-\\[130px\\] {\n    min-height: 130px;\n  }\n\n  .w-1\\/3 {\n    width: 33.3333%;\n  }\n\n  .w-2\\.5 {\n    width: calc(var(--spacing) * 2.5);\n  }\n\n  .w-2\\/3 {\n    width: 66.6667%;\n  }\n\n  .w-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n  }\n\n  .w-3\\/5 {\n    width: 60%;\n  }\n\n  .w-4 {\n    width: calc(var(--spacing) * 4);\n  }\n\n  .w-5 {\n    width: calc(var(--spacing) * 5);\n  }\n\n  .w-9 {\n    width: calc(var(--spacing) * 9);\n  }\n\n  .w-20 {\n    width: calc(var(--spacing) * 20);\n  }\n\n  .w-24 {\n    width: calc(var(--spacing) * 24);\n  }\n\n  .w-72 {\n    width: calc(var(--spacing) * 72);\n  }\n\n  .w-80 {\n    width: calc(var(--spacing) * 80);\n  }\n\n  .w-\\[calc\\(100vw-24px\\)\\] {\n    width: calc(100vw - 24px);\n  }\n\n  .w-\\[min\\(640px\\,calc\\(100vw-32px\\)\\)\\] {\n    width: min(640px, 100vw - 32px);\n  }\n\n  .w-auto {\n    width: auto;\n  }\n\n  .w-dvw {\n    width: 100dvw;\n  }\n\n  .w-full {\n    width: 100%;\n  }\n\n  .w-max {\n    width: max-content;\n  }\n\n  .w-px {\n    width: 1px;\n  }\n\n  .max-w-2xl {\n    max-width: var(--container-2xl);\n  }\n\n  .max-w-36 {\n    max-width: calc(var(--spacing) * 36);\n  }\n\n  .max-w-\\[88\\%\\] {\n    max-width: 88%;\n  }\n\n  .max-w-\\[calc\\(100vw_-_20px\\)\\] {\n    max-width: calc(100vw - 20px);\n  }\n\n  .max-w-\\[max\\(0px\\,var\\(--reka-select-content-available-width\\)\\)\\] {\n    max-width: max(0px, var(--reka-select-content-available-width));\n  }\n\n  .max-w-\\[min\\(380px\\,85vw\\)\\] {\n    max-width: min(380px, 85vw);\n  }\n\n  .max-w-\\[min\\(420px\\,calc\\(100vw-16px\\)\\)\\] {\n    max-width: min(420px, 100vw - 16px);\n  }\n\n  .max-w-full {\n    max-width: 100%;\n  }\n\n  .max-w-lg {\n    max-width: var(--container-lg);\n  }\n\n  .max-w-none {\n    max-width: none;\n  }\n\n  .min-w-0 {\n    min-width: 0;\n  }\n\n  .min-w-\\[min\\(8rem\\,calc\\(100vw_-_20px\\)\\)\\] {\n    min-width: min(8rem, 100vw - 20px);\n  }\n\n  .min-w-\\[min\\(8rem\\,max\\(0px\\,var\\(--reka-select-content-available-width\\)\\)\\)\\] {\n    min-width: min(8rem, max(0px, var(--reka-select-content-available-width)));\n  }\n\n  .min-w-\\[min\\(var\\(--reka-select-trigger-width\\)\\,max\\(0px\\,var\\(--reka-select-content-available-width\\)\\)\\)\\] {\n    min-width: min(var(--reka-select-trigger-width), max(0px, var(--reka-select-content-available-width)));\n  }\n\n  .flex-1 {\n    flex: 1;\n  }\n\n  .flex-none {\n    flex: none;\n  }\n\n  .shrink-0 {\n    flex-shrink: 0;\n  }\n\n  .grow {\n    flex-grow: 1;\n  }\n\n  .basis-32 {\n    flex-basis: calc(var(--spacing) * 32);\n  }\n\n  .basis-48 {\n    flex-basis: calc(var(--spacing) * 48);\n  }\n\n  .table-fixed {\n    table-layout: fixed;\n  }\n\n  .caption-bottom {\n    caption-side: bottom;\n  }\n\n  .-translate-x-1\\/2 {\n    --tw-translate-x: calc(calc(1 / 2 * 100%) * -1);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .translate-x-0 {\n    --tw-translate-x: 0px;\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .-translate-y-1\\/2 {\n    --tw-translate-y: calc(calc(1 / 2 * 100%) * -1);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .translate-y-0 {\n    --tw-translate-y: 0px;\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .rotate-90 {\n    rotate: 90deg;\n  }\n\n  .rotate-180 {\n    rotate: 180deg;\n  }\n\n  .transform {\n    transform: var(--tw-rotate-x, ) var(--tw-rotate-y, ) var(--tw-rotate-z, ) var(--tw-skew-x, ) var(--tw-skew-y, );\n  }\n\n  .animate-pulse {\n    animation: var(--animate-pulse);\n  }\n\n  .animate-spin {\n    animation: var(--animate-spin);\n  }\n\n  .cursor-default {\n    cursor: default;\n  }\n\n  .cursor-pointer {\n    cursor: pointer;\n  }\n\n  .touch-none {\n    touch-action: none;\n  }\n\n  .resize {\n    resize: both;\n  }\n\n  .resize-y {\n    resize: vertical;\n  }\n\n  .grid-cols-1 {\n    grid-template-columns: repeat(1, minmax(0, 1fr));\n  }\n\n  .grid-cols-2 {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }\n\n  .grid-cols-3 {\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n\n  .grid-cols-\\[18px_minmax\\(0\\,1fr\\)\\] {\n    grid-template-columns: 18px minmax(0, 1fr);\n  }\n\n  .grid-cols-\\[minmax\\(0\\,1fr\\)_80px\\] {\n    grid-template-columns: minmax(0, 1fr) 80px;\n  }\n\n  .grid-cols-\\[minmax\\(0\\,1fr\\)_auto\\] {\n    grid-template-columns: minmax(0, 1fr) auto;\n  }\n\n  .grid-rows-\\[minmax\\(0\\,1fr\\)\\] {\n    grid-template-rows: minmax(0, 1fr);\n  }\n\n  .flex-col {\n    flex-direction: column;\n  }\n\n  .flex-col-reverse {\n    flex-direction: column-reverse;\n  }\n\n  .flex-row {\n    flex-direction: row;\n  }\n\n  .flex-wrap {\n    flex-wrap: wrap;\n  }\n\n  .place-content-center {\n    place-content: center;\n  }\n\n  .place-items-center {\n    place-items: center;\n  }\n\n  .content-start {\n    align-content: flex-start;\n  }\n\n  .items-baseline {\n    align-items: baseline;\n  }\n\n  .items-center {\n    align-items: center;\n  }\n\n  .items-end {\n    align-items: flex-end;\n  }\n\n  .items-start {\n    align-items: flex-start;\n  }\n\n  .justify-between {\n    justify-content: space-between;\n  }\n\n  .justify-center {\n    justify-content: center;\n  }\n\n  .justify-end {\n    justify-content: flex-end;\n  }\n\n  .justify-start {\n    justify-content: flex-start;\n  }\n\n  .justify-items-start {\n    justify-items: start;\n  }\n\n  .gap-0 {\n    gap: 0;\n  }\n\n  .gap-0\\.5 {\n    gap: calc(var(--spacing) * .5);\n  }\n\n  .gap-1 {\n    gap: var(--spacing);\n  }\n\n  .gap-1\\.5 {\n    gap: calc(var(--spacing) * 1.5);\n  }\n\n  .gap-2 {\n    gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-2\\.5 {\n    gap: calc(var(--spacing) * 2.5);\n  }\n\n  .gap-3 {\n    gap: calc(var(--spacing) * 3);\n  }\n\n  .gap-4 {\n    gap: calc(var(--spacing) * 4);\n  }\n\n  :where(.space-y-1 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(var(--spacing) * var(--tw-space-y-reverse));\n    margin-block-end: calc(var(--spacing) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-1\\.5 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 1.5) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 1.5) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-2 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 2) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 2) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-3 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 3) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 3) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-4 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 4) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 4) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-5 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 5) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 5) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  .gap-x-2 {\n    column-gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-x-3 {\n    column-gap: calc(var(--spacing) * 3);\n  }\n\n  .gap-x-4 {\n    column-gap: calc(var(--spacing) * 4);\n  }\n\n  .gap-y-1 {\n    row-gap: var(--spacing);\n  }\n\n  .gap-y-1\\.5 {\n    row-gap: calc(var(--spacing) * 1.5);\n  }\n\n  .gap-y-2 {\n    row-gap: calc(var(--spacing) * 2);\n  }\n\n  :where(.divide-y > :not(:last-child)) {\n    --tw-divide-y-reverse: 0;\n    border-bottom-style: var(--tw-border-style);\n    border-top-style: var(--tw-border-style);\n    border-top-width: calc(1px * var(--tw-divide-y-reverse));\n    border-bottom-width: calc(1px * calc(1 - var(--tw-divide-y-reverse)));\n  }\n\n  .self-start {\n    align-self: flex-start;\n  }\n\n  .justify-self-start {\n    justify-self: flex-start;\n  }\n\n  .truncate {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    overflow: hidden;\n  }\n\n  .overflow-auto {\n    overflow: auto;\n  }\n\n  .overflow-hidden {\n    overflow: hidden;\n  }\n\n  .overflow-x-hidden {\n    overflow-x: hidden;\n  }\n\n  .overflow-y-auto {\n    overflow-y: auto;\n  }\n\n  .overscroll-contain {\n    overscroll-behavior: contain;\n  }\n\n  .rounded {\n    border-radius: .25rem;\n  }\n\n  .rounded-\\[inherit\\] {\n    border-radius: inherit;\n  }\n\n  .rounded-full {\n    border-radius: 3.40282e38px;\n  }\n\n  .rounded-lg {\n    border-radius: var(--radius);\n  }\n\n  .rounded-md {\n    border-radius: calc(var(--radius) - 2px);\n  }\n\n  .rounded-none {\n    border-radius: 0;\n  }\n\n  .rounded-sm {\n    border-radius: calc(var(--radius) - 4px);\n  }\n\n  .rounded-xl {\n    border-radius: calc(var(--radius) + 4px);\n  }\n\n  .border {\n    border-style: var(--tw-border-style);\n    border-width: 1px;\n  }\n\n  .border-0 {\n    border-style: var(--tw-border-style);\n    border-width: 0;\n  }\n\n  .border-2 {\n    border-style: var(--tw-border-style);\n    border-width: 2px;\n  }\n\n  .border-y {\n    border-block-style: var(--tw-border-style);\n    border-block-width: 1px;\n  }\n\n  .border-s {\n    border-inline-start-style: var(--tw-border-style);\n    border-inline-start-width: 1px;\n  }\n\n  .border-t {\n    border-top-style: var(--tw-border-style);\n    border-top-width: 1px;\n  }\n\n  .border-b {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 1px;\n  }\n\n  .border-l {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 1px;\n  }\n\n  .border-l-2 {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 2px;\n  }\n\n  .border-border {\n    border-color: var(--border);\n  }\n\n  .border-destructive\\/50 {\n    border-color: var(--destructive);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .border-destructive\\/50 {\n      border-color: color-mix(in oklab, var(--destructive) 50%, transparent);\n    }\n  }\n\n  .border-input {\n    border-color: var(--input);\n  }\n\n  .border-primary {\n    border-color: var(--primary);\n  }\n\n  .border-transparent {\n    border-color: #0000;\n  }\n\n  .border-t-transparent {\n    border-top-color: #0000;\n  }\n\n  .border-l-transparent {\n    border-left-color: #0000;\n  }\n\n  .bg-background {\n    background-color: var(--background);\n  }\n\n  .bg-black\\/80 {\n    background-color: #000c;\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-black\\/80 {\n      background-color: color-mix(in oklab, var(--color-black) 80%, transparent);\n    }\n  }\n\n  .bg-border {\n    background-color: var(--border);\n  }\n\n  .bg-card {\n    background-color: var(--card);\n  }\n\n  .bg-destructive {\n    background-color: var(--destructive);\n  }\n\n  .bg-muted, .bg-muted\\/40 {\n    background-color: var(--muted);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-muted\\/40 {\n      background-color: color-mix(in oklab, var(--muted) 40%, transparent);\n    }\n  }\n\n  .bg-muted\\/45 {\n    background-color: var(--muted);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-muted\\/45 {\n      background-color: color-mix(in oklab, var(--muted) 45%, transparent);\n    }\n  }\n\n  .bg-muted\\/50 {\n    background-color: var(--muted);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-muted\\/50 {\n      background-color: color-mix(in oklab, var(--muted) 50%, transparent);\n    }\n  }\n\n  .bg-popover {\n    background-color: var(--popover);\n  }\n\n  .bg-primary, .bg-primary\\/10 {\n    background-color: var(--primary);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-primary\\/10 {\n      background-color: color-mix(in oklab, var(--primary) 10%, transparent);\n    }\n  }\n\n  .bg-primary\\/20 {\n    background-color: var(--primary);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-primary\\/20 {\n      background-color: color-mix(in oklab, var(--primary) 20%, transparent);\n    }\n  }\n\n  .bg-secondary {\n    background-color: var(--secondary);\n  }\n\n  .bg-transparent {\n    background-color: #0000;\n  }\n\n  .object-contain {\n    object-fit: contain;\n  }\n\n  .p-0 {\n    padding: 0;\n  }\n\n  .p-0\\.5 {\n    padding: calc(var(--spacing) * .5);\n  }\n\n  .p-1 {\n    padding: var(--spacing);\n  }\n\n  .p-2 {\n    padding: calc(var(--spacing) * 2);\n  }\n\n  .p-3 {\n    padding: calc(var(--spacing) * 3);\n  }\n\n  .p-4 {\n    padding: calc(var(--spacing) * 4);\n  }\n\n  .p-5 {\n    padding: calc(var(--spacing) * 5);\n  }\n\n  .p-6 {\n    padding: calc(var(--spacing) * 6);\n  }\n\n  .p-px {\n    padding: 1px;\n  }\n\n  .px-0 {\n    padding-inline: 0;\n  }\n\n  .px-1 {\n    padding-inline: var(--spacing);\n  }\n\n  .px-1\\.5 {\n    padding-inline: calc(var(--spacing) * 1.5);\n  }\n\n  .px-2 {\n    padding-inline: calc(var(--spacing) * 2);\n  }\n\n  .px-2\\.5 {\n    padding-inline: calc(var(--spacing) * 2.5);\n  }\n\n  .px-3 {\n    padding-inline: calc(var(--spacing) * 3);\n  }\n\n  .px-4 {\n    padding-inline: calc(var(--spacing) * 4);\n  }\n\n  .px-8 {\n    padding-inline: calc(var(--spacing) * 8);\n  }\n\n  .py-0 {\n    padding-block: 0;\n  }\n\n  .py-0\\.5 {\n    padding-block: calc(var(--spacing) * .5);\n  }\n\n  .py-1 {\n    padding-block: var(--spacing);\n  }\n\n  .py-1\\.5 {\n    padding-block: calc(var(--spacing) * 1.5);\n  }\n\n  .py-2 {\n    padding-block: calc(var(--spacing) * 2);\n  }\n\n  .py-3 {\n    padding-block: calc(var(--spacing) * 3);\n  }\n\n  .py-4 {\n    padding-block: calc(var(--spacing) * 4);\n  }\n\n  .py-10 {\n    padding-block: calc(var(--spacing) * 10);\n  }\n\n  .pe-3 {\n    padding-inline-end: calc(var(--spacing) * 3);\n  }\n\n  .pt-0 {\n    padding-top: 0;\n  }\n\n  .pt-1 {\n    padding-top: var(--spacing);\n  }\n\n  .pt-2 {\n    padding-top: calc(var(--spacing) * 2);\n  }\n\n  .pt-3 {\n    padding-top: calc(var(--spacing) * 3);\n  }\n\n  .pt-4 {\n    padding-top: calc(var(--spacing) * 4);\n  }\n\n  .pr-8 {\n    padding-right: calc(var(--spacing) * 8);\n  }\n\n  .pb-3 {\n    padding-bottom: calc(var(--spacing) * 3);\n  }\n\n  .pb-4 {\n    padding-bottom: calc(var(--spacing) * 4);\n  }\n\n  .pb-8 {\n    padding-bottom: calc(var(--spacing) * 8);\n  }\n\n  .pl-2 {\n    padding-left: calc(var(--spacing) * 2);\n  }\n\n  .text-center {\n    text-align: center;\n  }\n\n  .text-left {\n    text-align: left;\n  }\n\n  .text-right {\n    text-align: right;\n  }\n\n  .text-start {\n    text-align: start;\n  }\n\n  .align-middle {\n    vertical-align: middle;\n  }\n\n  .align-top {\n    vertical-align: top;\n  }\n\n  .font-mono {\n    font-family: var(--font-mono);\n  }\n\n  .text-base {\n    font-size: var(--text-base);\n    line-height: var(--tw-leading, var(--text-base--line-height));\n  }\n\n  .text-lg {\n    font-size: var(--text-lg);\n    line-height: var(--tw-leading, var(--text-lg--line-height));\n  }\n\n  .text-sm {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n\n  .text-xl {\n    font-size: var(--text-xl);\n    line-height: var(--tw-leading, var(--text-xl--line-height));\n  }\n\n  .text-xs {\n    font-size: var(--text-xs);\n    line-height: var(--tw-leading, var(--text-xs--line-height));\n  }\n\n  .text-\\[10px\\] {\n    font-size: 10px;\n  }\n\n  .text-\\[11px\\] {\n    font-size: 11px;\n  }\n\n  .leading-4 {\n    --tw-leading: calc(var(--spacing) * 4);\n    line-height: calc(var(--spacing) * 4);\n  }\n\n  .leading-5 {\n    --tw-leading: calc(var(--spacing) * 5);\n    line-height: calc(var(--spacing) * 5);\n  }\n\n  .leading-none {\n    --tw-leading: 1;\n    line-height: 1;\n  }\n\n  .leading-relaxed {\n    --tw-leading: var(--leading-relaxed);\n    line-height: var(--leading-relaxed);\n  }\n\n  .leading-snug {\n    --tw-leading: var(--leading-snug);\n    line-height: var(--leading-snug);\n  }\n\n  .font-medium {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n\n  .font-normal {\n    --tw-font-weight: var(--font-weight-normal);\n    font-weight: var(--font-weight-normal);\n  }\n\n  .font-semibold {\n    --tw-font-weight: var(--font-weight-semibold);\n    font-weight: var(--font-weight-semibold);\n  }\n\n  .tracking-tight {\n    --tw-tracking: var(--tracking-tight);\n    letter-spacing: var(--tracking-tight);\n  }\n\n  .\\[overflow-wrap\\:anywhere\\] {\n    overflow-wrap: anywhere;\n  }\n\n  .break-words {\n    overflow-wrap: break-word;\n  }\n\n  .break-all {\n    word-break: break-all;\n  }\n\n  .whitespace-normal {\n    white-space: normal;\n  }\n\n  .whitespace-nowrap {\n    white-space: nowrap;\n  }\n\n  .whitespace-pre-wrap {\n    white-space: pre-wrap;\n  }\n\n  .text-card-foreground {\n    color: var(--card-foreground);\n  }\n\n  .text-current {\n    color: currentColor;\n  }\n\n  .text-destructive {\n    color: var(--destructive);\n  }\n\n  .text-destructive-foreground {\n    color: var(--destructive-foreground);\n  }\n\n  .text-foreground {\n    color: var(--foreground);\n  }\n\n  .text-muted-foreground {\n    color: var(--muted-foreground);\n  }\n\n  .text-popover-foreground {\n    color: var(--popover-foreground);\n  }\n\n  .text-primary {\n    color: var(--primary);\n  }\n\n  .text-primary-foreground {\n    color: var(--primary-foreground);\n  }\n\n  .text-secondary-foreground {\n    color: var(--secondary-foreground);\n  }\n\n  .text-success {\n    color: var(--success);\n  }\n\n  .lowercase {\n    text-transform: lowercase;\n  }\n\n  .ordinal {\n    --tw-ordinal: ordinal;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .tabular-nums {\n    --tw-numeric-spacing: tabular-nums;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .underline-offset-4 {\n    text-underline-offset: 4px;\n  }\n\n  .opacity-0 {\n    opacity: 0;\n  }\n\n  .opacity-50 {\n    opacity: .5;\n  }\n\n  .opacity-70 {\n    opacity: .7;\n  }\n\n  .shadow {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .shadow-lg {\n    --tw-shadow: 0 10px 15px -3px var(--tw-shadow-color, #0000001a), 0 4px 6px -4px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .shadow-md {\n    --tw-shadow: 0 4px 6px -1px var(--tw-shadow-color, #0000001a), 0 2px 4px -2px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .shadow-none {\n    --tw-shadow: 0 0 #0000;\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .shadow-sm {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .ring-0 {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(0px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .ring-offset-background {\n    --tw-ring-offset-color: var(--background);\n  }\n\n  .outline {\n    outline-style: var(--tw-outline-style);\n    outline-width: 1px;\n  }\n\n  .blur {\n    --tw-blur: blur(8px);\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .filter {\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .transition {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-all {\n    transition-property: all;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-colors {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-opacity {\n    transition-property: opacity;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-transform {\n    transition-property: transform, translate, scale, rotate;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .duration-200 {\n    --tw-duration: .2s;\n    transition-duration: .2s;\n  }\n\n  .animate-in {\n    --tw-enter-opacity: initial;\n    --tw-enter-scale: initial;\n    --tw-enter-rotate: initial;\n    --tw-enter-translate-x: initial;\n    --tw-enter-translate-y: initial;\n    animation-name: enter;\n    animation-duration: .15s;\n  }\n\n  .outline-none {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  .select-none {\n    -webkit-user-select: none;\n    user-select: none;\n  }\n\n  .\\!running {\n    animation-play-state: running !important;\n  }\n\n  .duration-200 {\n    animation-duration: .2s;\n  }\n\n  .fade-in-0 {\n    --tw-enter-opacity: 0;\n  }\n\n  .paused {\n    animation-play-state: paused;\n  }\n\n  .running {\n    animation-play-state: running;\n  }\n\n  .zoom-in-95 {\n    --tw-enter-scale: .95;\n  }\n\n  .group-data-\\[state\\=open\\]\\:rotate-180:is(:where(.group)[data-state="open"] *) {\n    rotate: 180deg;\n  }\n\n  .peer-disabled\\:cursor-not-allowed:is(:where(.peer):disabled ~ *) {\n    cursor: not-allowed;\n  }\n\n  .peer-disabled\\:opacity-70:is(:where(.peer):disabled ~ *) {\n    opacity: .7;\n  }\n\n  .file\\:border-0::file-selector-button {\n    border-style: var(--tw-border-style);\n    border-width: 0;\n  }\n\n  .file\\:bg-transparent::file-selector-button {\n    background-color: #0000;\n  }\n\n  .file\\:text-sm::file-selector-button {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n\n  .file\\:font-medium::file-selector-button {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n\n  .placeholder\\:text-muted-foreground::placeholder {\n    color: var(--muted-foreground);\n  }\n\n  .after\\:absolute:after {\n    content: var(--tw-content);\n    position: absolute;\n  }\n\n  .after\\:inset-0:after {\n    content: var(--tw-content);\n    inset: 0;\n  }\n\n  .after\\:rounded-xl:after {\n    content: var(--tw-content);\n    border-radius: calc(var(--radius) + 4px);\n  }\n\n  .first\\:border-t-0:first-child {\n    border-top-style: var(--tw-border-style);\n    border-top-width: 0;\n  }\n\n  .first\\:pt-0:first-child {\n    padding-top: 0;\n  }\n\n  @media (hover: hover) {\n    .hover\\:bg-accent:hover {\n      background-color: var(--accent);\n    }\n\n    .hover\\:bg-destructive\\/80:hover {\n      background-color: var(--destructive);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-destructive\\/80:hover {\n        background-color: color-mix(in oklab, var(--destructive) 80%, transparent);\n      }\n    }\n\n    .hover\\:bg-destructive\\/90:hover {\n      background-color: var(--destructive);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-destructive\\/90:hover {\n        background-color: color-mix(in oklab, var(--destructive) 90%, transparent);\n      }\n    }\n\n    .hover\\:bg-muted\\/50:hover {\n      background-color: var(--muted);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-muted\\/50:hover {\n        background-color: color-mix(in oklab, var(--muted) 50%, transparent);\n      }\n    }\n\n    .hover\\:bg-primary\\/80:hover {\n      background-color: var(--primary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-primary\\/80:hover {\n        background-color: color-mix(in oklab, var(--primary) 80%, transparent);\n      }\n    }\n\n    .hover\\:bg-primary\\/90:hover {\n      background-color: var(--primary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-primary\\/90:hover {\n        background-color: color-mix(in oklab, var(--primary) 90%, transparent);\n      }\n    }\n\n    .hover\\:bg-secondary:hover, .hover\\:bg-secondary\\/80:hover {\n      background-color: var(--secondary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-secondary\\/80:hover {\n        background-color: color-mix(in oklab, var(--secondary) 80%, transparent);\n      }\n    }\n\n    .hover\\:text-accent-foreground:hover {\n      color: var(--accent-foreground);\n    }\n\n    .hover\\:underline:hover {\n      text-decoration-line: underline;\n    }\n\n    .hover\\:opacity-100:hover {\n      opacity: 1;\n    }\n  }\n\n  .focus\\:bg-accent:focus {\n    background-color: var(--accent);\n  }\n\n  .focus\\:text-accent-foreground:focus {\n    color: var(--accent-foreground);\n  }\n\n  .focus\\:ring-1:focus {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus\\:ring-2:focus {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus\\:ring-ring:focus {\n    --tw-ring-color: var(--ring);\n  }\n\n  .focus\\:ring-offset-2:focus {\n    --tw-ring-offset-width: 2px;\n    --tw-ring-offset-shadow: var(--tw-ring-inset, ) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);\n  }\n\n  .focus\\:outline-none:focus {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  .focus-visible\\:ring-1:focus-visible {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus-visible\\:ring-2:focus-visible {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus-visible\\:ring-ring:focus-visible {\n    --tw-ring-color: var(--ring);\n  }\n\n  .focus-visible\\:ring-offset-2:focus-visible {\n    --tw-ring-offset-width: 2px;\n    --tw-ring-offset-shadow: var(--tw-ring-inset, ) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);\n  }\n\n  .focus-visible\\:ring-offset-background:focus-visible {\n    --tw-ring-offset-color: var(--background);\n  }\n\n  .focus-visible\\:outline-none:focus-visible {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  .disabled\\:pointer-events-none:disabled {\n    pointer-events: none;\n  }\n\n  .disabled\\:cursor-not-allowed:disabled {\n    cursor: not-allowed;\n  }\n\n  .disabled\\:opacity-50:disabled {\n    opacity: .5;\n  }\n\n  .data-\\[disabled\\]\\:pointer-events-none[data-disabled] {\n    pointer-events: none;\n  }\n\n  .data-\\[disabled\\]\\:opacity-50[data-disabled] {\n    opacity: .5;\n  }\n\n  .data-\\[orientation\\=vertical\\]\\:h-full[data-orientation="vertical"] {\n    height: 100%;\n  }\n\n  .data-\\[orientation\\=vertical\\]\\:w-1\\.5[data-orientation="vertical"] {\n    width: calc(var(--spacing) * 1.5);\n  }\n\n  .data-\\[orientation\\=vertical\\]\\:w-full[data-orientation="vertical"] {\n    width: 100%;\n  }\n\n  .data-\\[orientation\\=vertical\\]\\:flex-col[data-orientation="vertical"] {\n    flex-direction: column;\n  }\n\n  .data-\\[placeholder\\]\\:text-muted-foreground[data-placeholder] {\n    color: var(--muted-foreground);\n  }\n\n  .data-\\[side\\=bottom\\]\\:translate-y-1[data-side="bottom"] {\n    --tw-translate-y: var(--spacing);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[side\\=bottom\\]\\:slide-in-from-top-2[data-side="bottom"] {\n    --tw-enter-translate-y: -.5rem;\n  }\n\n  .data-\\[side\\=left\\]\\:-translate-x-1[data-side="left"] {\n    --tw-translate-x: calc(var(--spacing) * -1);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[side\\=left\\]\\:slide-in-from-right-2[data-side="left"] {\n    --tw-enter-translate-x: .5rem;\n  }\n\n  .data-\\[side\\=right\\]\\:translate-x-1[data-side="right"] {\n    --tw-translate-x: var(--spacing);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[side\\=right\\]\\:slide-in-from-left-2[data-side="right"] {\n    --tw-enter-translate-x: -.5rem;\n  }\n\n  .data-\\[side\\=top\\]\\:-translate-y-1[data-side="top"] {\n    --tw-translate-y: calc(var(--spacing) * -1);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[side\\=top\\]\\:slide-in-from-bottom-2[data-side="top"] {\n    --tw-enter-translate-y: .5rem;\n  }\n\n  .data-\\[state\\=active\\]\\:bg-background[data-state="active"] {\n    background-color: var(--background);\n  }\n\n  .data-\\[state\\=active\\]\\:text-foreground[data-state="active"] {\n    color: var(--foreground);\n  }\n\n  .data-\\[state\\=active\\]\\:shadow[data-state="active"] {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .data-\\[state\\=checked\\]\\:translate-x-4[data-state="checked"] {\n    --tw-translate-x: calc(var(--spacing) * 4);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[state\\=checked\\]\\:bg-primary[data-state="checked"] {\n    background-color: var(--primary);\n  }\n\n  .data-\\[state\\=checked\\]\\:text-primary-foreground[data-state="checked"] {\n    color: var(--primary-foreground);\n  }\n\n  .data-\\[state\\=closed\\]\\:animate-none[data-state="closed"] {\n    animation: none;\n  }\n\n  .data-\\[state\\=closed\\]\\:animate-out[data-state="closed"] {\n    --tw-exit-opacity: initial;\n    --tw-exit-scale: initial;\n    --tw-exit-rotate: initial;\n    --tw-exit-translate-x: initial;\n    --tw-exit-translate-y: initial;\n    animation-name: exit;\n    animation-duration: .15s;\n  }\n\n  .data-\\[state\\=closed\\]\\:fade-out-0[data-state="closed"] {\n    --tw-exit-opacity: 0;\n  }\n\n  .data-\\[state\\=closed\\]\\:slide-out-to-left-1\\/2[data-state="closed"] {\n    --tw-exit-translate-x: -50%;\n  }\n\n  .data-\\[state\\=closed\\]\\:slide-out-to-top-\\[48\\%\\][data-state="closed"] {\n    --tw-exit-translate-y: -48%;\n  }\n\n  .data-\\[state\\=closed\\]\\:zoom-out-95[data-state="closed"] {\n    --tw-exit-scale: .95;\n  }\n\n  .data-\\[state\\=open\\]\\:animate-none[data-state="open"] {\n    animation: none;\n  }\n\n  .data-\\[state\\=open\\]\\:bg-accent[data-state="open"] {\n    background-color: var(--accent);\n  }\n\n  .data-\\[state\\=open\\]\\:text-muted-foreground[data-state="open"] {\n    color: var(--muted-foreground);\n  }\n\n  .data-\\[state\\=open\\]\\:animate-in[data-state="open"] {\n    --tw-enter-opacity: initial;\n    --tw-enter-scale: initial;\n    --tw-enter-rotate: initial;\n    --tw-enter-translate-x: initial;\n    --tw-enter-translate-y: initial;\n    animation-name: enter;\n    animation-duration: .15s;\n  }\n\n  .data-\\[state\\=open\\]\\:fade-in-0[data-state="open"] {\n    --tw-enter-opacity: 0;\n  }\n\n  .data-\\[state\\=open\\]\\:slide-in-from-left-1\\/2[data-state="open"] {\n    --tw-enter-translate-x: -50%;\n  }\n\n  .data-\\[state\\=open\\]\\:slide-in-from-top-\\[48\\%\\][data-state="open"] {\n    --tw-enter-translate-y: -48%;\n  }\n\n  .data-\\[state\\=open\\]\\:zoom-in-95[data-state="open"] {\n    --tw-enter-scale: .95;\n  }\n\n  .data-\\[state\\=selected\\]\\:bg-muted[data-state="selected"] {\n    background-color: var(--muted);\n  }\n\n  .data-\\[state\\=unchecked\\]\\:translate-x-0[data-state="unchecked"] {\n    --tw-translate-x: 0px;\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[state\\=unchecked\\]\\:bg-input[data-state="unchecked"] {\n    background-color: var(--input);\n  }\n\n  @media (prefers-reduced-motion: reduce) {\n    .motion-reduce\\:animate-none {\n      animation: none;\n    }\n\n    .motion-reduce\\:transition-none {\n      transition-property: none;\n    }\n  }\n\n  @media not all and (min-width: 620px) {\n    .max-\\[620px\\]\\:px-1\\.5 {\n      padding-inline: calc(var(--spacing) * 1.5);\n    }\n  }\n\n  @media (min-width: 621px) {\n    .min-\\[621px\\]\\:col-span-2 {\n      grid-column: span 2 / span 2;\n    }\n\n    .min-\\[621px\\]\\:block {\n      display: block;\n    }\n\n    .min-\\[621px\\]\\:flex {\n      display: flex;\n    }\n\n    .min-\\[621px\\]\\:hidden {\n      display: none;\n    }\n\n    .min-\\[621px\\]\\:min-h-9 {\n      min-height: calc(var(--spacing) * 9);\n    }\n\n    .min-\\[621px\\]\\:grid-cols-2 {\n      grid-template-columns: repeat(2, minmax(0, 1fr));\n    }\n\n    .min-\\[621px\\]\\:grid-cols-\\[minmax\\(0\\,1fr\\)_minmax\\(180px\\,280px\\)\\] {\n      grid-template-columns: minmax(0, 1fr) minmax(180px, 280px);\n    }\n\n    .min-\\[621px\\]\\:flex-wrap {\n      flex-wrap: wrap;\n    }\n\n    .min-\\[621px\\]\\:items-center {\n      align-items: center;\n    }\n  }\n\n  @media (min-width: 900px) {\n    .min-\\[900px\\]\\:flex-none {\n      flex: none;\n    }\n\n    .min-\\[900px\\]\\:grid-cols-4 {\n      grid-template-columns: repeat(4, minmax(0, 1fr));\n    }\n  }\n\n  @media (min-width: 1024px) {\n    .min-\\[1024px\\]\\:grid-cols-2 {\n      grid-template-columns: repeat(2, minmax(0, 1fr));\n    }\n  }\n\n  @media (min-width: 40rem) {\n    .sm\\:inline {\n      display: inline;\n    }\n\n    .sm\\:grid-cols-2 {\n      grid-template-columns: repeat(2, minmax(0, 1fr));\n    }\n\n    .sm\\:grid-cols-3 {\n      grid-template-columns: repeat(3, minmax(0, 1fr));\n    }\n\n    .sm\\:flex-row {\n      flex-direction: row;\n    }\n\n    .sm\\:justify-end {\n      justify-content: flex-end;\n    }\n\n    .sm\\:gap-x-2 {\n      column-gap: calc(var(--spacing) * 2);\n    }\n\n    .sm\\:rounded-lg {\n      border-radius: var(--radius);\n    }\n\n    .sm\\:text-left {\n      text-align: left;\n    }\n  }\n\n  @media (min-width: 48rem) {\n    .md\\:w-full {\n      width: 100%;\n    }\n  }\n\n  .dark\\:border-destructive:is(.dark *, :host(.dark) *) {\n    border-color: var(--destructive);\n  }\n\n  .\\[\\&_p\\]\\:leading-relaxed p {\n    --tw-leading: var(--leading-relaxed);\n    line-height: var(--leading-relaxed);\n  }\n\n  .\\[\\&_svg\\]\\:pointer-events-none svg {\n    pointer-events: none;\n  }\n\n  .\\[\\&_svg\\]\\:size-4 svg {\n    width: calc(var(--spacing) * 4);\n    height: calc(var(--spacing) * 4);\n  }\n\n  .\\[\\&_svg\\]\\:shrink-0 svg {\n    flex-shrink: 0;\n  }\n\n  .\\[\\&_tr\\]\\:border-b tr {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 1px;\n  }\n\n  .\\[\\&_tr\\:last-child\\]\\:border-0 tr:last-child {\n    border-style: var(--tw-border-style);\n    border-width: 0;\n  }\n\n  .\\[\\&\\:has\\(\\[role\\=checkbox\\]\\)\\]\\:pr-0:has([role="checkbox"]) {\n    padding-right: 0;\n  }\n\n  .\\[\\&\\>\\[role\\=checkbox\\]\\]\\:translate-y-0\\.5 > [role="checkbox"] {\n    --tw-translate-y: calc(var(--spacing) * .5);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .\\[\\&\\>span\\]\\:min-w-0 > span {\n    min-width: 0;\n  }\n\n  .\\[\\&\\>span\\]\\:truncate > span {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    overflow: hidden;\n  }\n\n  .\\[\\&\\>span\\]\\:break-words > span {\n    overflow-wrap: break-word;\n  }\n\n  .\\[\\&\\>span\\]\\:whitespace-normal > span {\n    white-space: normal;\n  }\n\n  .\\[\\&\\>svg\\]\\:absolute > svg {\n    position: absolute;\n  }\n\n  .\\[\\&\\>svg\\]\\:top-4 > svg {\n    top: calc(var(--spacing) * 4);\n  }\n\n  .\\[\\&\\>svg\\]\\:left-4 > svg {\n    left: calc(var(--spacing) * 4);\n  }\n\n  .\\[\\&\\>svg\\]\\:text-destructive > svg {\n    color: var(--destructive);\n  }\n\n  .\\[\\&\\>svg\\]\\:text-foreground > svg {\n    color: var(--foreground);\n  }\n\n  .\\[\\&\\>svg\\+div\\]\\:translate-y-\\[-3px\\] > svg + div {\n    --tw-translate-y: -3px;\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .\\[\\&\\>svg\\~\\*\\]\\:pl-7 > svg ~ * {\n    padding-left: calc(var(--spacing) * 7);\n  }\n\n  .\\[\\&\\>tr\\]\\:last\\:border-b-0 > tr:last-child {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 0;\n  }\n}\n\n:root, :host {\n  --radius: .625rem;\n  --destructive-foreground: #fafafa;\n  --success: oklch(59.6% .145 163.225);\n  --warning: oklch(66.6% .179 58.318);\n  --background: oklch(100% 0 0);\n  --foreground: oklch(14.5% 0 0);\n  --card: oklch(100% 0 0);\n  --card-foreground: oklch(14.5% 0 0);\n  --popover: oklch(100% 0 0);\n  --popover-foreground: oklch(14.5% 0 0);\n  --primary: oklch(20.5% 0 0);\n  --primary-foreground: oklch(98.5% 0 0);\n  --secondary: oklch(97% 0 0);\n  --secondary-foreground: oklch(20.5% 0 0);\n  --muted: oklch(97% 0 0);\n  --muted-foreground: oklch(55.6% 0 0);\n  --accent: oklch(97% 0 0);\n  --accent-foreground: oklch(20.5% 0 0);\n  --destructive: oklch(57.7% .245 27.325);\n  --border: oklch(92.2% 0 0);\n  --input: oklch(92.2% 0 0);\n  --ring: oklch(70.8% 0 0);\n  --chart-1: oklch(64.6% .222 41.116);\n  --chart-2: oklch(60% .118 184.704);\n  --chart-3: oklch(39.8% .07 227.392);\n  --chart-4: oklch(82.8% .189 84.429);\n  --chart-5: oklch(76.9% .188 70.08);\n  --sidebar: oklch(98.5% 0 0);\n  --sidebar-foreground: oklch(14.5% 0 0);\n  --sidebar-primary: oklch(20.5% 0 0);\n  --sidebar-primary-foreground: oklch(98.5% 0 0);\n  --sidebar-accent: oklch(97% 0 0);\n  --sidebar-accent-foreground: oklch(20.5% 0 0);\n  --sidebar-border: oklch(92.2% 0 0);\n  --sidebar-ring: oklch(70.8% 0 0);\n}\n\n.dark, :host(.dark) {\n  --success: oklch(76.5% .177 163.223);\n  --warning: oklch(82.8% .189 84.429);\n  --background: oklch(14.5% 0 0);\n  --foreground: oklch(98.5% 0 0);\n  --card: oklch(20.5% 0 0);\n  --card-foreground: oklch(98.5% 0 0);\n  --popover: oklch(20.5% 0 0);\n  --popover-foreground: oklch(98.5% 0 0);\n  --primary: oklch(92.2% 0 0);\n  --primary-foreground: oklch(20.5% 0 0);\n  --secondary: oklch(26.9% 0 0);\n  --secondary-foreground: oklch(98.5% 0 0);\n  --muted: oklch(26.9% 0 0);\n  --muted-foreground: oklch(70.8% 0 0);\n  --accent: oklch(26.9% 0 0);\n  --accent-foreground: oklch(98.5% 0 0);\n  --destructive: oklch(70.4% .191 22.216);\n  --border: oklch(100% 0 0 / .2);\n  --input: oklch(100% 0 0 / .28);\n  --ring: oklch(55.6% 0 0);\n  --chart-1: oklch(48.8% .243 264.376);\n  --chart-2: oklch(69.6% .17 162.48);\n  --chart-3: oklch(76.9% .188 70.08);\n  --chart-4: oklch(62.7% .265 303.9);\n  --chart-5: oklch(64.5% .246 16.439);\n  --sidebar: oklch(20.5% 0 0);\n  --sidebar-foreground: oklch(98.5% 0 0);\n  --sidebar-primary: oklch(48.8% .243 264.376);\n  --sidebar-primary-foreground: oklch(98.5% 0 0);\n  --sidebar-accent: oklch(26.9% 0 0);\n  --sidebar-accent-foreground: oklch(98.5% 0 0);\n  --sidebar-border: oklch(100% 0 0 / .1);\n  --sidebar-ring: oklch(55.6% 0 0);\n}\n\n@media (prefers-color-scheme: dark) {\n  :host(:not(.light)) {\n    --success: oklch(76.5% .177 163.223);\n    --warning: oklch(82.8% .189 84.429);\n    --background: oklch(14.5% 0 0);\n    --foreground: oklch(98.5% 0 0);\n    --card: oklch(20.5% 0 0);\n    --card-foreground: oklch(98.5% 0 0);\n    --popover: oklch(20.5% 0 0);\n    --popover-foreground: oklch(98.5% 0 0);\n    --primary: oklch(92.2% 0 0);\n    --primary-foreground: oklch(20.5% 0 0);\n    --secondary: oklch(26.9% 0 0);\n    --secondary-foreground: oklch(98.5% 0 0);\n    --muted: oklch(26.9% 0 0);\n    --muted-foreground: oklch(70.8% 0 0);\n    --accent: oklch(26.9% 0 0);\n    --accent-foreground: oklch(98.5% 0 0);\n    --destructive: oklch(70.4% .191 22.216);\n    --border: oklch(100% 0 0 / .2);\n    --input: oklch(100% 0 0 / .28);\n    --ring: oklch(55.6% 0 0);\n    --chart-1: oklch(48.8% .243 264.376);\n    --chart-2: oklch(69.6% .17 162.48);\n    --chart-3: oklch(76.9% .188 70.08);\n    --chart-4: oklch(62.7% .265 303.9);\n    --chart-5: oklch(64.5% .246 16.439);\n    --sidebar: oklch(20.5% 0 0);\n    --sidebar-foreground: oklch(98.5% 0 0);\n    --sidebar-primary: oklch(48.8% .243 264.376);\n    --sidebar-primary-foreground: oklch(98.5% 0 0);\n    --sidebar-accent: oklch(26.9% 0 0);\n    --sidebar-accent-foreground: oklch(98.5% 0 0);\n    --sidebar-border: oklch(100% 0 0 / .1);\n    --sidebar-ring: oklch(55.6% 0 0);\n  }\n}\n\n:host {\n  all: initial;\n  color: var(--foreground);\n  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;\n}\n\n* {\n  box-sizing: border-box;\n  border-color: var(--border);\n}\n\n.booster-shell {\n  z-index: 2147483647;\n  position: fixed;\n  bottom: 20px;\n  right: 20px;\n}\n\n.booster-button {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 42px;\n  height: 42px;\n  color: var(--card-foreground);\n  cursor: pointer;\n  border-radius: 14px;\n  font: 700 15px / 1 inherit;\n  box-shadow: 0 10px 30px #0003;\n}\n\n.booster-panel {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 300px;\n  color: var(--card-foreground);\n  border-radius: 16px;\n  margin-bottom: 10px;\n  padding: 14px;\n  box-shadow: 0 18px 45px #0000003d;\n}\n\n.booster-panel h2 {\n  margin: 0 0 6px;\n  font-size: 15px;\n  font-weight: 700;\n}\n\n.booster-panel p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.45;\n}\n\n.booster-control-center {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(760px, 100vw - 32px);\n  color: var(--card-foreground);\n  border-radius: 18px;\n  margin-bottom: 10px;\n  overflow: hidden;\n  box-shadow: 0 22px 60px #00000047;\n}\n\n.booster-control-header, .booster-control-footer {\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  display: flex;\n}\n\n.booster-control-header {\n  border-bottom: 1px solid var(--border);\n  padding: 14px 14px 12px;\n}\n\n.booster-control-header strong {\n  font-size: 14px;\n}\n\n.booster-control-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-control-body {\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-loading {\n  color: var(--muted-foreground);\n  padding: 18px;\n  font-size: 12px;\n}\n\n.booster-section-label {\n  color: var(--muted-foreground);\n  letter-spacing: .08em;\n  text-transform: uppercase;\n  padding: 2px 2px 0;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-setting-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 12px;\n  display: flex;\n}\n\n.booster-setting-card-stack {\n  align-items: stretch;\n  display: grid;\n}\n\n.booster-setting-disabled {\n  opacity: .55;\n}\n\n.booster-setting-copy {\n  gap: 5px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-setting-copy b {\n  font-size: 12px;\n}\n\n.booster-setting-copy > span {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.4;\n}\n\n.booster-info-card {\n  background: var(--muted);\n  color: var(--foreground);\n  border-radius: 12px;\n  padding: 11px 12px;\n  font-size: 11px;\n}\n\n.booster-info-card ul {\n  color: var(--muted-foreground);\n  gap: 4px;\n  margin: 8px 0 0 18px;\n  padding: 0;\n  line-height: 1.35;\n  display: grid;\n}\n\n.booster-control-footer {\n  padding-top: 2px;\n}\n\n.booster-save-state {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 5px;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-overlay-root {\n  pointer-events: none;\n}\n\n.booster-modal-backdrop {\n  -webkit-backdrop-filter: none;\n  backdrop-filter: none;\n  pointer-events: auto;\n  background: #00000061;\n  place-items: center;\n  padding: 16px;\n  display: grid;\n  position: fixed;\n  inset: 0;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n  max-height: calc(100vh - 32px);\n  overflow: auto;\n}\n\n.booster-modal-surface .booster-control-center {\n  width: 100%;\n  margin: 0;\n}\n\n.booster-popup-host {\n  background: var(--background);\n  min-width: 360px;\n}\n\n.booster-stack-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-stack-card label {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-counter-grid {\n  color: var(--muted-foreground);\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 6px 12px;\n  margin-top: 8px;\n  display: grid;\n}\n\n.booster-counter-grid span {\n  justify-content: space-between;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-counter-grid b {\n  color: var(--foreground);\n}\n\n.booster-header-copy {\n  min-width: 0;\n}\n\n.booster-header-actions {\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-header-toggle-label {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  font-weight: 600;\n}\n\n.booster-settings-layout {\n  grid-template-columns: minmax(0, 1fr);\n  min-height: 360px;\n  display: grid;\n}\n\n.booster-settings-nav {\n  border-bottom: 1px solid var(--border);\n  align-content: start;\n  gap: 4px;\n  padding: 12px 8px;\n  display: grid;\n}\n\n.booster-settings-content {\n  align-content: start;\n  gap: 10px;\n  min-width: 0;\n  padding: 14px;\n  display: grid;\n}\n\n.booster-setting-card-flat {\n  border: 0;\n  border-bottom: 1px solid var(--border);\n  border-radius: 0;\n  padding: 0 0 10px;\n}\n\n.booster-analytics-grid {\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 12px;\n  display: grid;\n}\n\n.booster-counter-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  padding: 12px;\n}\n\n.booster-counter-title {\n  margin-bottom: 8px;\n  font-size: 12px;\n  font-weight: 700;\n}\n\n.booster-disclosure {\n  width: 100%;\n  color: var(--foreground);\n  cursor: pointer;\n  text-align: left;\n  background: none;\n  border: 0;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 0;\n  display: flex;\n}\n\n.booster-disclosure > span {\n  gap: 3px;\n  display: grid;\n}\n\n.booster-disclosure b {\n  font-size: 12px;\n}\n\n.booster-disclosure small {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.rotate-180 {\n  transform: rotate(180deg);\n}\n\n.booster-telemetry-body {\n  gap: 10px;\n  padding-top: 10px;\n  display: grid;\n}\n\n.booster-field {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-telemetry-test-row {\n  align-items: center;\n  gap: 10px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-test-success {\n  color: oklch(62% .17 145);\n  font-size: 11px;\n}\n\n.booster-test-error {\n  color: oklch(63% .2 25);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n@media (max-width: 620px) {\n  .booster-control-center, .booster-modal-surface {\n    width: calc(100vw - 20px);\n  }\n\n  .booster-settings-layout {\n    grid-template-columns: 1fr;\n  }\n\n  .booster-settings-nav {\n    border-right: 0;\n    border-bottom: 1px solid var(--border);\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n\n  .booster-settings-nav button {\n    justify-content: center;\n  }\n\n  .booster-analytics-grid {\n    grid-template-columns: 1fr;\n  }\n}\n\n.booster-alert-setting-actions {\n  grid-template-columns: auto minmax(180px, 1fr);\n  align-items: center;\n  gap: 14px;\n  display: grid;\n}\n\n.booster-alert-threshold {\n  gap: 5px;\n  display: grid;\n}\n\n.booster-alert-threshold > span {\n  color: var(--muted-foreground);\n  justify-content: space-between;\n  gap: 10px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-alert-threshold b {\n  color: var(--foreground);\n  font-variant-numeric: tabular-nums;\n}\n\n.booster-range-grid {\n  gap: 10px;\n  min-width: 220px;\n  display: grid;\n}\n\n.booster-range-grid label {\n  gap: 5px;\n  display: grid;\n}\n\n.booster-range-grid label > span {\n  color: var(--muted-foreground);\n  justify-content: space-between;\n  gap: 12px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-range-grid label > span b {\n  color: var(--foreground);\n  font-variant-numeric: tabular-nums;\n}\n\n.booster-control-center > .booster-settings-layout {\n  grid-template-columns: minmax(0, 1fr);\n}\n\n.booster-control-center .booster-settings-nav {\n  background: none;\n  border-right: 0;\n}\n\n.booster-danger-zone {\n  background: #7f1d1d14;\n  border: 1px solid #ef444473;\n  border-radius: 12px;\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 12px;\n  display: flex;\n}\n\n.booster-danger-zone .booster-setting-copy > div, .booster-danger-zone .booster-setting-copy b {\n  color: #f87171;\n}\n\n.booster-destructive-dialog {\n  grid-template-columns: auto minmax(0, 1fr);\n  gap: 14px;\n  padding: 22px;\n  display: grid;\n}\n\n.booster-destructive-dialog strong {\n  color: #f87171;\n  letter-spacing: .025em;\n  font-size: 17px;\n}\n\n.booster-destructive-dialog p {\n  color: var(--muted-foreground);\n  margin: 8px 0 0;\n  font-size: 12px;\n  line-height: 1.55;\n}\n\n.booster-destructive-icon {\n  color: #f87171;\n  background: #7f1d1d33;\n  border-radius: 50%;\n  justify-content: center;\n  align-items: center;\n  width: 42px;\n  height: 42px;\n  display: flex;\n}\n\n.booster-destructive-warning {\n  color: #f87171;\n  font-weight: 700;\n}\n\n.booster-destructive-actions {\n  grid-column: 1 / -1;\n  justify-content: flex-end;\n  gap: 8px;\n  padding-top: 4px;\n  display: flex;\n}\n\n.booster-archive-backdrop {\n  padding: 10px;\n}\n\n.booster-archive-surface {\n  pointer-events: auto;\n  width: min(1180px, 100vw - 20px);\n  height: min(820px, 100vh - 20px);\n}\n\n.booster-archive-browser {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 100%;\n  height: 100%;\n  color: var(--card-foreground);\n  border-radius: 20px;\n  grid-template-rows: auto minmax(0, 1fr);\n  display: grid;\n  overflow: hidden;\n  box-shadow: 0 28px 80px #00000061;\n}\n\n.booster-archive-header {\n  border-bottom: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  min-height: 58px;\n  padding: 10px 14px;\n  display: flex;\n}\n\n.booster-archive-title, .booster-archive-header-actions {\n  align-items: center;\n  gap: 9px;\n  display: flex;\n}\n\n.booster-archive-title > div {\n  gap: 1px;\n  display: grid;\n}\n\n.booster-archive-title strong {\n  font-size: 14px;\n}\n\n.booster-archive-title span {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-archive-layout {\n  grid-template-columns: 300px minmax(0, 1fr);\n  min-height: 0;\n  display: grid;\n}\n\n.booster-archive-sidebar {\n  border-right: 1px solid var(--border);\n  background: var(--secondary);\n  padding: 10px;\n  overflow: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-sidebar {\n    background: color-mix(in oklab, var(--secondary) 38%, var(--card));\n  }\n}\n\n.booster-archive-group {\n  margin-bottom: 12px;\n}\n\n.booster-archive-project {\n  color: var(--muted-foreground);\n  text-transform: uppercase;\n  align-items: center;\n  gap: 6px;\n  padding: 6px 7px;\n  font-size: 10px;\n  font-weight: 700;\n  display: flex;\n}\n\n.booster-archive-project span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-archive-conversation {\n  width: 100%;\n  color: inherit;\n  text-align: left;\n  cursor: pointer;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 11px;\n  gap: 3px;\n  margin: 2px 0;\n  padding: 9px 10px;\n  display: grid;\n}\n\n.booster-archive-conversation:hover, .booster-archive-conversation.active {\n  border-color: var(--border);\n  background: var(--card);\n}\n\n.booster-archive-conversation strong, .booster-archive-conversation span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  overflow: hidden;\n}\n\n.booster-archive-conversation strong {\n  font-size: 12px;\n}\n\n.booster-archive-conversation span {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-archive-content {\n  background: var(--background);\n  min-width: 0;\n  overflow: auto;\n}\n\n.booster-archive-conversation-head {\n  z-index: 2;\n  border-bottom: 1px solid var(--border);\n  background: var(--card);\n  justify-content: space-between;\n  align-items: flex-start;\n  gap: 14px;\n  padding: 12px 16px;\n  display: flex;\n  position: sticky;\n  top: 0;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-conversation-head {\n    background: color-mix(in oklab, var(--card) 94%, transparent);\n  }\n}\n\n.booster-archive-conversation-head {\n  -webkit-backdrop-filter: blur(10px);\n  backdrop-filter: blur(10px);\n}\n\n.booster-archive-conversation-head > div:first-child {\n  grid-template-columns: auto minmax(0, 1fr);\n  align-items: center;\n  gap: 2px 8px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-archive-conversation-head strong {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 13px;\n  overflow: hidden;\n}\n\n.booster-archive-conversation-head span {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  grid-column: 2;\n  font-size: 9px;\n  overflow: hidden;\n}\n\n.booster-archive-back {\n  background: var(--secondary);\n  width: 28px;\n  height: 28px;\n  color: var(--secondary-foreground);\n  cursor: pointer;\n  border: 0;\n  border-radius: 8px;\n  grid-row: 1 / span 2;\n  justify-content: center;\n  align-items: center;\n  display: inline-flex;\n}\n\n.booster-archive-messages {\n  gap: 10px;\n  padding: 14px 16px 40px;\n  display: grid;\n}\n\n.booster-archive-message {\n  border: 1px solid var(--border);\n  background: var(--card);\n  border-radius: 14px;\n  max-width: 920px;\n  padding: 11px 13px;\n}\n\n.booster-archive-message.role-user {\n  background: var(--secondary);\n  margin-left: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-message.role-user {\n    background: color-mix(in oklab, var(--secondary) 82%, var(--card));\n  }\n}\n\n.booster-archive-message.role-tool {\n  border-style: dashed;\n}\n\n.booster-archive-message-head {\n  color: var(--muted-foreground);\n  text-transform: uppercase;\n  flex-wrap: wrap;\n  gap: 5px 10px;\n  margin-bottom: 8px;\n  font-size: 9px;\n  display: flex;\n}\n\n.booster-archive-message-head strong {\n  color: var(--foreground);\n}\n\n.booster-archive-message-text {\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  font-size: 12px;\n  line-height: 1.55;\n}\n\n.booster-archive-raw {\n  background: var(--muted);\n  max-height: 360px;\n  color: var(--foreground);\n  white-space: pre-wrap;\n  border-radius: 10px;\n  margin: 9px 0 0;\n  padding: 10px;\n  font: 10px / 1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;\n  overflow: auto;\n}\n\n.booster-archive-empty, .booster-archive-error {\n  color: var(--muted-foreground);\n  padding: 24px;\n  font-size: 12px;\n}\n\n.booster-archive-error {\n  color: #dc2626;\n}\n\n@media (max-width: 760px) {\n  .booster-archive-layout {\n    grid-template-columns: 220px minmax(0, 1fr);\n  }\n}\n\n.booster-identity {\n  vertical-align: middle;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  max-width: 100%;\n  display: inline-flex;\n}\n\n.booster-dock {\n  z-index: 2147483647;\n  pointer-events: auto;\n  width: 44px;\n  height: 44px;\n  position: fixed;\n}\n\n.booster-dock-toggle {\n  z-index: 2;\n  border: 1px solid var(--border);\n  background: var(--primary);\n  width: 44px;\n  height: 44px;\n  color: var(--primary-foreground);\n  cursor: grab;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  justify-content: center;\n  align-items: center;\n  padding: 0;\n  display: flex;\n  position: relative;\n}\n\n.booster-dock.right .booster-dock-toggle {\n  border-radius: 12px 0 0 12px;\n}\n\n.booster-dock.left .booster-dock-toggle {\n  border-radius: 0 12px 12px 0;\n}\n\n.booster-dock.dragging .booster-dock-toggle {\n  cursor: grabbing;\n}\n\n.booster-dock-shell {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(284px, 100vw);\n  color: var(--card-foreground);\n  position: absolute;\n  overflow: hidden;\n  box-shadow: 0 12px 32px #00000038;\n}\n\n.booster-dock.right .booster-dock-shell {\n  border-radius: 16px 0 0 16px;\n  right: 0;\n}\n\n.booster-dock.left .booster-dock-shell {\n  border-radius: 0 16px 16px 0;\n  left: 0;\n}\n\n.booster-dock.grow-up .booster-dock-shell {\n  padding-bottom: 44px;\n  bottom: 0;\n}\n\n.booster-dock.grow-down .booster-dock-shell {\n  padding-top: 44px;\n  top: 0;\n}\n\n.booster-dock-content {\n  overscroll-behavior: contain;\n  overflow-y: auto;\n}\n\n.booster-dock-close-bar {\n  box-sizing: border-box;\n  background: var(--primary);\n  height: 44px;\n  color: var(--primary-foreground);\n  letter-spacing: .01em;\n  cursor: grab;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  border: 0;\n  align-items: center;\n  gap: 8px;\n  padding: 0 12px;\n  font: 650 11px / 1 inherit;\n  display: flex;\n  position: absolute;\n  left: -1px;\n  right: -1px;\n}\n\n.booster-dock.grow-up .booster-dock-close-bar {\n  border-top: 1px solid var(--primary-foreground);\n  bottom: -1px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-dock.grow-up .booster-dock-close-bar {\n    border-top: 1px solid color-mix(in oklab, var(--primary-foreground) 18%, transparent);\n  }\n}\n\n.booster-dock.grow-down .booster-dock-close-bar {\n  border-bottom: 1px solid var(--primary-foreground);\n  top: -1px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-dock.grow-down .booster-dock-close-bar {\n    border-bottom: 1px solid color-mix(in oklab, var(--primary-foreground) 18%, transparent);\n  }\n}\n\n.booster-dock.right .booster-dock-close-bar, .booster-dock.left .booster-dock-close-bar {\n  justify-content: flex-start;\n  padding-inline: 12px;\n}\n\n.booster-dock-close-bar:hover {\n  filter: brightness(1.04);\n}\n\n.booster-dock-close-bar:active {\n  cursor: grabbing;\n}\n\n.booster-dock-close-bar svg {\n  flex: none;\n}\n\n.booster-dock-context {\n  gap: 5px;\n  padding: 11px 12px 7px;\n  display: grid;\n}\n\n.booster-dock-context > .booster-identity:first-child {\n  font-size: 13px;\n  font-weight: 650;\n}\n\n.booster-dock-context > .booster-identity {\n  font-size: 12px;\n}\n\n.booster-dock-context p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 11px;\n  line-height: 1.5;\n}\n\n.booster-dock-context time {\n  font-size: 10px;\n  display: block;\n}\n\n.booster-dock-counts {\n  color: var(--muted-foreground);\n  flex-wrap: wrap;\n  gap: 6px 10px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-dock-counts b {\n  color: var(--foreground);\n  font-weight: 650;\n}\n\n.booster-capture-shortcut {\n  color: var(--muted-foreground);\n  font: inherit;\n  text-align: left;\n  cursor: pointer;\n  background: none;\n  border: 0;\n  align-items: center;\n  gap: 6px;\n  padding: 3px 0;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-dock-actions {\n  flex-direction: column;\n  gap: 1px;\n  padding: 4px 5px 6px;\n  display: flex;\n}\n\n.booster-dock .booster-dock-actions > button {\n  width: 100%;\n  min-height: 34px;\n  color: inherit;\n  text-align: left;\n  font: inherit;\n  cursor: pointer;\n  background: none;\n  border: 0;\n  border-radius: 8px;\n  align-items: center;\n  gap: 10px;\n  padding: 6px 9px;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-dock .booster-dock-actions > button:hover:not(:disabled) {\n  background: var(--muted);\n}\n\n.booster-dock .booster-dock-actions > button:disabled {\n  opacity: .4;\n  cursor: not-allowed;\n}\n\n.booster-dock.grow-down .booster-dock-content {\n  flex-direction: column-reverse;\n  display: flex;\n}\n\n.booster-dock.grow-down .booster-dock-actions {\n  flex-direction: column-reverse;\n}\n\n.booster-dock-progress {\n  border-block: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: center;\n  gap: 8px;\n  padding: 8px 12px;\n  font-size: 12px;\n  display: flex;\n}\n\n.booster-identity-label {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-identity-copy {\n  width: 24px;\n  height: 24px;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  opacity: 0;\n  background: none;\n  border: 0;\n  border-radius: 5px;\n  flex: none;\n  justify-content: center;\n  align-items: center;\n  padding: 4px;\n  display: inline-flex;\n}\n\n.booster-identity:hover .booster-identity-copy, .booster-identity:focus-within .booster-identity-copy, .booster-identity-copy:hover {\n  background: var(--muted);\n}\n\n.booster-sr-only {\n  clip-path: inset(50%);\n  white-space: nowrap;\n  width: 1px;\n  height: 1px;\n  position: absolute;\n  overflow: hidden;\n}\n\n.booster-dialog {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(760px, 100vw - 32px);\n  max-height: calc(100dvh - 32px);\n  color: var(--card-foreground);\n  pointer-events: auto;\n  border-radius: 16px;\n  outline: none;\n  font-size: 14px;\n  overflow: auto;\n  box-shadow: 0 20px 60px #0000004d;\n}\n\n.booster-dialog .booster-control-center {\n  width: 100%;\n  box-shadow: none;\n  border: 0;\n  border-radius: 0;\n  margin: 0;\n}\n\n.booster-dialog-wide {\n  width: min(1220px, 100vw - 32px);\n  height: min(860px, 100dvh - 32px);\n  overflow: hidden;\n}\n\n.booster-section-header {\n  border-bottom: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  min-height: 64px;\n  padding: 12px 18px;\n  display: flex;\n}\n\n.booster-section-header strong {\n  font-size: 15px;\n}\n\n.booster-section-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-form-body {\n  gap: 16px;\n  padding: 20px;\n  line-height: 1.5;\n  display: grid;\n}\n\n.booster-form-body h2, .booster-capture-settings h3 {\n  margin: 0;\n  font-size: 16px;\n  font-weight: 650;\n}\n\n.booster-form-body > label {\n  gap: 6px;\n  font-size: 12px;\n  font-weight: 600;\n  display: grid;\n}\n\n.booster-checkboxes {\n  border: 0;\n  gap: 10px;\n  margin: 0;\n  padding: 0;\n  display: grid;\n}\n\n.booster-checkboxes label {\n  align-items: center;\n  gap: 8px;\n  font-size: 13px;\n  display: flex;\n}\n\n.booster-export-suboptions {\n  border-inline-start: 1px solid var(--border);\n  gap: 8px;\n  margin-inline-start: 22px;\n  padding-inline-start: 12px;\n  display: grid;\n}\n\n.booster-note {\n  color: var(--muted-foreground);\n  overflow-wrap: anywhere;\n  margin: 8px 0;\n  font-size: 12px;\n  line-height: 1.6;\n}\n\n.booster-notice {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  border-radius: 8px;\n  margin: 0;\n  padding: 12px;\n  font-size: 12px;\n  line-height: 1.6;\n}\n\n.booster-error {\n  color: var(--foreground);\n  border: 1px solid #c2410c;\n  border-radius: 8px;\n  margin: 8px 12px;\n  padding: 8px 10px;\n  font-size: 12px;\n  line-height: 1.5;\n}\n\n.booster-reader {\n  grid-template-rows: auto auto minmax(0, 1fr);\n  min-width: 0;\n  height: 100%;\n  min-height: 0;\n  display: grid;\n}\n\n.booster-reader-heading {\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-reader-layout {\n  grid-row: 3;\n  grid-template-columns: minmax(210px, 27%) minmax(0, 1fr);\n  min-width: 0;\n  min-height: 0;\n  display: grid;\n}\n\n.booster-reader-sidebar {\n  border-right: 1px solid var(--border);\n  background: var(--card);\n  overscroll-behavior: contain;\n  min-width: 0;\n  min-height: 0;\n  padding: 12px;\n  overflow: hidden;\n}\n\n.booster-reader-main {\n  background: var(--background);\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-reader-chat-header {\n  justify-content: space-between;\n  align-items: flex-start;\n  gap: 12px;\n  display: flex;\n}\n\n.booster-reader-chat-header > div {\n  min-width: 0;\n  max-width: 100%;\n}\n\n.booster-reader-chat-header h2 {\n  margin: 0 0 4px;\n  font-size: 18px;\n  line-height: 1.4;\n}\n\n.booster-reader-chat-header > div > .booster-identity {\n  color: var(--muted-foreground);\n  font-size: 12px;\n}\n\n.booster-reader-summary {\n  color: var(--muted-foreground);\n  flex-wrap: wrap;\n  gap: 6px 14px;\n  margin-block: 10px 0;\n  font-size: 11px;\n  display: flex;\n}\n\n.booster-reader-summary b {\n  color: var(--foreground);\n}\n\n.booster-reader-summary p {\n  flex-basis: 100%;\n  margin: 2px 0 0;\n  line-height: 1.5;\n}\n\n.booster-reader-exchanges {\n  gap: 20px;\n  margin-top: 0;\n  display: grid;\n}\n\n.booster-exchange {\n  border-bottom: 1px solid var(--border);\n  padding-bottom: 16px;\n}\n\n.booster-graph-rail {\n  background: linear-gradient(var(--border), var(--border)) center / 2px 100% no-repeat;\n  justify-content: center;\n  min-height: 40px;\n  display: flex;\n  position: relative;\n}\n\n.booster-graph-dot {\n  border: 2px solid var(--background);\n  outline: 2px solid var(--primary);\n  background: var(--primary);\n  z-index: 1;\n  border-radius: 50%;\n  align-self: flex-start;\n  width: 12px;\n  height: 12px;\n  margin-top: 14px;\n  position: sticky;\n  top: 12px;\n}\n\n.booster-graph-dot.is-assistant {\n  background: var(--secondary);\n  outline-color: var(--muted-foreground);\n  border-radius: 4px;\n}\n\n.booster-graph-content {\n  min-width: 0;\n  padding-bottom: 10px;\n}\n\n.booster-graph-branch-label {\n  border: 1px solid var(--border);\n  color: var(--muted-foreground);\n  border-radius: 999px;\n  align-items: center;\n  gap: 5px;\n  margin: 2px 0 8px 4px;\n  padding: 3px 8px;\n  font-size: 11px;\n  display: inline-flex;\n}\n\n.booster-mobile-back {\n  display: none;\n}\n\n@media (hover: none) {\n  .booster-identity-copy {\n    opacity: 1;\n  }\n}\n\n@media (max-width: 640px) {\n  .booster-reader-layout {\n    display: block;\n  }\n\n  .booster-reader-sidebar, .booster-reader-main {\n    height: 100%;\n  }\n\n  .booster-reader-sidebar {\n    display: none;\n  }\n\n  .booster-reader-list-mode .booster-reader-sidebar {\n    display: flex;\n  }\n\n  .booster-reader-main {\n    padding: 0;\n  }\n\n  .booster-reader-list-mode .booster-reader-main {\n    display: none;\n  }\n\n  .booster-mobile-back {\n    color: inherit;\n    font: inherit;\n    cursor: pointer;\n    background: none;\n    border: 0;\n    align-items: center;\n    gap: 6px;\n    margin: 0;\n    padding: 6px 0;\n    font-size: 12px;\n    display: inline-flex;\n  }\n\n  .booster-reader:not(.booster-reader-list-mode) > .booster-section-header > .booster-reader-heading {\n    display: none;\n  }\n\n  .booster-reader-chat-header {\n    flex-wrap: wrap;\n  }\n\n  .booster-dialog, .booster-dialog-wide {\n    width: calc(100vw - 16px);\n    max-height: calc(100dvh - 16px);\n  }\n\n  .booster-modal-backdrop {\n    padding: 8px;\n  }\n}\n\n.booster-archive-workspace-root {\n  z-index: 2147483645;\n  pointer-events: none;\n  position: fixed;\n  inset: 0;\n}\n\n.booster-archive-workspace {\n  border: 1px solid var(--border);\n  background: var(--background);\n  pointer-events: auto;\n  resize: none;\n  border-radius: 14px;\n  min-width: 520px;\n  min-height: 360px;\n  position: fixed;\n  overflow: hidden;\n  box-shadow: 0 22px 70px #00000052;\n}\n\n.booster-archive-workspace .booster-reader {\n  border-radius: inherit;\n  background: var(--background);\n  height: 100%;\n  overflow: hidden;\n}\n\n.booster-archive-workspace [data-archive-drag-handle] {\n  cursor: move;\n  -webkit-user-select: none;\n  user-select: none;\n  touch-action: none;\n}\n\n.booster-archive-grip {\n  color: var(--muted-foreground);\n  flex: none;\n}\n\n.booster-archive-resize {\n  z-index: 4;\n  background: linear-gradient(135deg, transparent 0 48%, var(--muted-foreground) 49% 54%, transparent 55% 64%, var(--muted-foreground) 65% 70%, transparent 71%);\n  opacity: .55;\n  cursor: nwse-resize;\n  touch-action: none;\n  border: 0;\n  width: 18px;\n  height: 18px;\n  padding: 0;\n  position: absolute;\n  bottom: 0;\n  right: 0;\n}\n\n.booster-archive-dock-button {\n  z-index: 2147483646;\n  border: 1px solid var(--primary);\n  place-items: center;\n  width: 42px;\n  height: 42px;\n  padding: 0;\n  display: grid;\n  position: fixed;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-dock-button {\n    border: 1px solid color-mix(in oklab, var(--primary) 60%, var(--border));\n  }\n}\n\n.booster-archive-dock-button {\n  background: var(--primary);\n  color: var(--primary-foreground);\n  cursor: grab;\n  pointer-events: auto;\n  touch-action: none;\n  border-radius: 10px 0 0 10px;\n  box-shadow: 0 10px 30px #00000047;\n}\n\n.booster-archive-dock-button[style*="left: 0px"] {\n  border-radius: 0 10px 10px 0;\n}\n\n.booster-archive-dock-button:active {\n  cursor: grabbing;\n}\n\n.booster-archive-dock-corner {\n  opacity: .65;\n  width: 9px;\n  height: 9px;\n  position: absolute;\n  bottom: 3px;\n  right: 3px;\n}\n\n.booster-reader-chat-actions {\n  flex-wrap: wrap;\n  justify-content: flex-end;\n  gap: 6px;\n  display: flex;\n}\n\n.booster-exchange-details {\n  border-left: 2px solid var(--border);\n  gap: 6px;\n  margin: 10px 0 10px 12px;\n  padding: 8px 0 8px 12px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-exchange-details {\n    border-left: 2px solid color-mix(in oklab, var(--border) 78%, var(--primary));\n  }\n}\n\n.booster-exchange-details-label {\n  color: var(--muted-foreground);\n  letter-spacing: .04em;\n  text-transform: uppercase;\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-markdown {\n  overflow-wrap: anywhere;\n  font-size: 13px;\n  line-height: 1.65;\n}\n\n.booster-markdown > :first-child {\n  margin-top: 0;\n}\n\n.booster-markdown > :last-child {\n  margin-bottom: 0;\n}\n\n.booster-markdown p {\n  margin: .55em 0;\n}\n\n.booster-markdown h1, .booster-markdown h2, .booster-markdown h3, .booster-markdown h4, .booster-markdown h5, .booster-markdown h6 {\n  color: var(--foreground);\n  margin: 1em 0 .45em;\n  font-weight: 700;\n  line-height: 1.3;\n}\n\n.booster-markdown h1 {\n  font-size: 1.45em;\n}\n\n.booster-markdown h2 {\n  font-size: 1.28em;\n}\n\n.booster-markdown h3 {\n  font-size: 1.14em;\n}\n\n.booster-markdown :is(ul, ol) {\n  margin: .6em 0;\n  padding-left: 1.45em;\n}\n\n.booster-markdown li {\n  margin: .22em 0;\n}\n\n.booster-markdown blockquote {\n  border-left: 3px solid var(--border);\n  color: var(--muted-foreground);\n  margin: .7em 0;\n  padding: .2em 0 .2em .9em;\n}\n\n.booster-markdown code {\n  background: var(--muted);\n  border-radius: 5px;\n  padding: .15em .35em;\n  font: .92em / 1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n}\n\n.booster-markdown pre {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  border-radius: 9px;\n  min-width: 0;\n  max-width: 100%;\n  margin: .75em 0;\n  padding: 11px 12px;\n  overflow: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-markdown pre {\n    background: color-mix(in oklab, var(--muted) 72%, var(--background));\n  }\n}\n\n.booster-markdown pre {\n  overscroll-behavior-x: contain;\n  scrollbar-width: thin;\n  scrollbar-color: var(--muted-foreground) transparent;\n}\n\n.booster-markdown pre code {\n  white-space: pre;\n  background: none;\n  padding: 0;\n}\n\n.booster-markdown a {\n  color: var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-markdown a {\n    color: color-mix(in oklab, var(--primary) 78%, #3b82f6);\n  }\n}\n\n.booster-markdown a {\n  text-underline-offset: 2px;\n  text-decoration: underline;\n}\n\n.booster-markdown hr {\n  background: var(--border);\n  border: 0;\n  height: 1px;\n  margin: 1em 0;\n}\n\n.booster-markdown-table-wrap {\n  max-width: 100%;\n  margin: .8em 0;\n  overflow-x: auto;\n}\n\n.booster-markdown table {\n  border-collapse: collapse;\n  width: max-content;\n  min-width: 100%;\n  font-size: 12px;\n}\n\n.booster-markdown :is(th, td) {\n  border: 1px solid var(--border);\n  text-align: left;\n  vertical-align: top;\n  padding: 6px 9px;\n}\n\n.booster-markdown th {\n  background: var(--muted);\n}\n\n.booster-record {\n  border: 1px solid var(--border);\n  background: var(--card);\n  border-radius: 11px;\n  min-width: 0;\n  max-width: 100%;\n  margin-block: 7px;\n  padding: 11px 13px;\n  position: relative;\n  overflow: hidden;\n}\n\n.booster-record-user {\n  background: var(--muted);\n  margin-left: min(52px, 8%);\n}\n\n.booster-record-reasoning, .booster-record-tool_call, .booster-record-tool_result, .booster-record-internal {\n  background: var(--muted);\n  margin-block: 4px;\n  padding: 8px 10px;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-record-reasoning, .booster-record-tool_call, .booster-record-tool_result, .booster-record-internal {\n    background: color-mix(in oklab, var(--muted) 45%, var(--background));\n  }\n}\n\n.booster-record-header {\n  color: var(--muted-foreground);\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 5px 10px;\n  margin-bottom: 8px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-record-header strong {\n  color: var(--foreground);\n  font-size: 11px;\n}\n\n.booster-record-internal-header {\n  justify-content: space-between;\n}\n\n.booster-record-kind {\n  align-items: center;\n  gap: 6px;\n  display: inline-flex;\n}\n\n.booster-reasoning-preview {\n  max-height: 76px;\n  color: var(--foreground);\n  position: relative;\n  overflow: hidden;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reasoning-preview {\n    color: color-mix(in oklab, var(--foreground) 82%, var(--muted-foreground));\n  }\n}\n\n.booster-reasoning-preview:not(.expanded):after {\n  background: linear-gradient(transparent, var(--muted));\n  height: 30px;\n  position: absolute;\n  bottom: 0;\n  left: 0;\n  right: 0;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-reasoning-preview:not(.expanded):after {\n    background: linear-gradient(transparent, color-mix(in oklab, var(--muted) 45%, var(--background)));\n  }\n}\n\n.booster-reasoning-preview:not(.expanded):after {\n  content: "";\n  pointer-events: none;\n}\n\n.booster-reasoning-preview.expanded {\n  max-height: none;\n  overflow: visible;\n}\n\n.booster-reasoning-preview .booster-markdown {\n  font-size: 11px;\n  line-height: 1.55;\n}\n\n.booster-tool-row {\n  grid-template-columns: 28px minmax(0, 1fr) auto;\n  align-items: center;\n  gap: 8px;\n  display: grid;\n}\n\n.booster-tool-icon {\n  border: 1px solid var(--border);\n  object-fit: cover;\n  background: var(--background);\n  border-radius: 7px;\n  width: 28px;\n  height: 28px;\n}\n\n.booster-tool-icon-fallback {\n  color: var(--muted-foreground);\n  place-items: center;\n  display: grid;\n}\n\n.booster-tool-copy {\n  gap: 1px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-tool-copy strong {\n  color: var(--foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n.booster-tool-copy > span {\n  color: var(--muted-foreground);\n  font-size: 9px;\n}\n\n.booster-tool-copy p {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  margin: 2px 0 0;\n  font-size: 10px;\n  overflow: hidden;\n}\n\n.booster-tool-actions {\n  align-items: center;\n  gap: 2px;\n  display: flex;\n}\n\n.booster-tool-expanded {\n  border-top: 1px solid var(--border);\n  margin-top: 8px;\n  padding-top: 8px;\n}\n\n.booster-tool-expanded .booster-markdown {\n  font-size: 11px;\n}\n\n.booster-tool-expanded .booster-json-viewer {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  max-height: 260px;\n  font-size: 10px;\n}\n\n.booster-internal-preview {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 10px;\n  overflow: hidden;\n}\n\n.booster-record-modal-header {\n  border-bottom: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: flex-start;\n  gap: 14px;\n  padding: 12px 14px;\n  display: flex;\n}\n\n.booster-record-modal-header > div {\n  gap: 2px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-record-modal-header strong {\n  font-size: 13px;\n}\n\n.booster-record-modal-header span {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 10px;\n  overflow: hidden;\n}\n\n.booster-capture-surface {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 14px;\n  overflow: hidden;\n}\n\n.booster-capture-surface > .booster-capture-settings {\n  box-shadow: none;\n  border: 0;\n  border-radius: 0;\n}\n\n@media (max-width: 680px) {\n  .booster-archive-workspace {\n    border-radius: 10px;\n    min-width: 0;\n    min-height: 0;\n  }\n\n  .booster-tool-row {\n    grid-template-columns: 26px minmax(0, 1fr);\n  }\n\n  .booster-tool-actions {\n    grid-column: 2;\n    justify-content: flex-start;\n  }\n}\n\n.booster-record-header {\n  min-width: 0;\n}\n\n.booster-record-header-tools {\n  align-items: center;\n  gap: 2px;\n  margin-left: auto;\n  display: inline-flex;\n}\n\n.booster-record-edited {\n  color: var(--muted-foreground);\n  white-space: nowrap;\n  font-size: 9px;\n}\n\n.booster-record-raw-corner {\n  position: absolute;\n  top: 5px;\n  right: 5px;\n}\n\n.booster-tool-row {\n  min-width: 0;\n  max-width: 100%;\n  overflow: hidden;\n}\n\n.booster-tool-row.is-clickable {\n  cursor: pointer;\n}\n\n.booster-tool-copy, .booster-tool-actions {\n  min-width: 0;\n}\n\n.booster-tool-actions {\n  flex: none;\n}\n\n.booster-tool-expanded {\n  min-width: 0;\n  max-width: 100%;\n  overflow: auto hidden;\n}\n\n.booster-internal-preview {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  max-width: 100%;\n  padding-right: 2px;\n}\n\n.booster-json-modal {\n  background: var(--background);\n  flex-direction: column;\n  width: 100%;\n  min-width: 0;\n  height: 100%;\n  min-height: 0;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-json-modal .booster-json-viewer {\n  box-sizing: border-box;\n  flex: auto;\n  width: 100%;\n  min-width: 0;\n  max-width: 100%;\n  max-height: none;\n  overflow: auto;\n}\n\n.booster-dialog-wide:has(.booster-json-modal) {\n  min-width: 0;\n  min-height: 0;\n  display: flex;\n}\n\n.booster-reader-main, .booster-reader-exchanges, .booster-exchange, .booster-exchange-details {\n  min-width: 0;\n  max-width: 100%;\n}\n\n.booster-reader-main {\n  overflow-x: hidden;\n}\n\n.booster-analytics-dashboard {\n  gap: 12px;\n  display: grid;\n}\n\n.booster-analytics-header {\n  justify-content: space-between;\n  align-items: flex-start;\n  gap: 14px;\n  display: flex;\n}\n\n.booster-analytics-header > div {\n  gap: 3px;\n  display: grid;\n}\n\n.booster-analytics-header strong {\n  font-size: 14px;\n}\n\n.booster-analytics-header span {\n  max-width: 520px;\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.45;\n}\n\n.booster-analytics-reset {\n  white-space: nowrap;\n  min-height: 30px;\n  padding: 5px 8px;\n}\n\n.booster-analytics-metrics {\n  grid-template-columns: repeat(3, minmax(0, 1fr));\n  gap: 8px;\n  display: grid;\n}\n\n.booster-analytics-metrics article {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 11px;\n  gap: 2px;\n  min-width: 0;\n  padding: 10px 11px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-analytics-metrics article {\n    background: color-mix(in oklab, var(--background) 82%, var(--muted));\n  }\n}\n\n.booster-analytics-metrics :where(article > span), .booster-analytics-metrics :where(small) {\n  color: var(--muted-foreground);\n  font-size: 9px;\n  line-height: 1.35;\n}\n\n.booster-analytics-metrics strong {\n  font-variant-numeric: tabular-nums;\n  margin-top: 2px;\n  font-size: 24px;\n  line-height: 1;\n}\n\n.booster-analytics-metrics article.warning {\n  border-color: #ef4444;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-analytics-metrics article.warning {\n    border-color: color-mix(in oklab, #ef4444 45%, var(--border));\n  }\n}\n\n.booster-analytics-metrics article.warning {\n  background: #ef4444;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-analytics-metrics article.warning {\n    background: color-mix(in oklab, #ef4444 8%, var(--background));\n  }\n}\n\n.booster-analytics-flow-grid {\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 8px;\n  display: grid;\n}\n\n.booster-analytics-flow-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 11px;\n  gap: 9px;\n  padding: 11px;\n  display: grid;\n}\n\n.booster-analytics-flow-card > header {\n  justify-content: space-between;\n  align-items: center;\n  gap: 8px;\n  font-size: 11px;\n  display: flex;\n}\n\n.booster-analytics-flow-card :where(header > span) {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 5px;\n  display: inline-flex;\n}\n\n.booster-analytics-flow-card :where(header b) {\n  font-variant-numeric: tabular-nums;\n  font-size: 12px;\n}\n\n.booster-analytics-flow-row {\n  color: var(--muted-foreground);\n  grid-template-columns: minmax(88px, .9fr) minmax(80px, 1.3fr) auto;\n  align-items: center;\n  gap: 7px;\n  font-size: 9px;\n  display: grid;\n}\n\n.booster-analytics-flow-row > div {\n  background: var(--muted);\n  border-radius: 999px;\n  height: 5px;\n  overflow: hidden;\n}\n\n.booster-analytics-flow-row i {\n  border-radius: inherit;\n  background: var(--primary);\n  height: 100%;\n  display: block;\n}\n\n.booster-analytics-flow-row b {\n  min-width: 24px;\n  color: var(--foreground);\n  text-align: right;\n  font-variant-numeric: tabular-nums;\n  font-size: 10px;\n}\n\n.booster-analytics-footer {\n  background: var(--muted);\n  color: var(--muted-foreground);\n  border-radius: 9px;\n  flex-wrap: wrap;\n  justify-content: space-between;\n  gap: 8px 16px;\n  padding: 8px 10px;\n  font-size: 10px;\n  display: flex;\n}\n\n.booster-analytics-footer span {\n  align-items: center;\n  gap: 5px;\n  display: inline-flex;\n}\n\n.booster-analytics-footer b {\n  color: var(--foreground);\n  font-weight: 650;\n}\n\n.booster-analytics-footer .warning {\n  color: #ef4444;\n}\n\n@media (max-width: 720px) {\n  .booster-analytics-metrics, .booster-analytics-flow-grid {\n    grid-template-columns: 1fr;\n  }\n\n  .booster-analytics-header {\n    flex-direction: column;\n  }\n}\n\n.booster-export-status {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  border-radius: 10px;\n  grid-template-columns: auto minmax(0, 1fr) auto;\n  align-items: center;\n  gap: 8px;\n  padding: 9px 10px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-export-status {\n    background: color-mix(in oklab, var(--muted) 52%, var(--background));\n  }\n}\n\n.booster-export-status.warning {\n  border-color: #f59e0b;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-export-status.warning {\n    border-color: color-mix(in oklab, #f59e0b 44%, var(--border));\n  }\n}\n\n.booster-export-status.warning {\n  background: #f59e0b;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-export-status.warning {\n    background: color-mix(in oklab, #f59e0b 7%, var(--background));\n  }\n}\n\n.booster-export-status > div {\n  gap: 2px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-export-status strong {\n  font-size: 10px;\n  line-height: 1.4;\n}\n\n.booster-export-status span {\n  color: var(--muted-foreground);\n  font-size: 9px;\n}\n\n.booster-export-status .booster-action-secondary {\n  white-space: nowrap;\n  min-height: 30px;\n  padding: 5px 8px;\n}\n\n.booster-dock-context > .booster-dock-history-state {\n  color: var(--muted-foreground);\n  font-size: 9px;\n  line-height: 1.35;\n}\n\n.booster-export-preferences {\n  gap: 8px;\n  display: grid;\n}\n\n.booster-export-preferences > label {\n  gap: 6px;\n  font-size: 12px;\n  font-weight: 600;\n  display: grid;\n}\n\n.booster-export-preferences > .booster-note {\n  margin: 0;\n}\n\n.booster-reader-message-jump, .booster-reader-message-jump form, .booster-export-preview-record {\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-export-preview-record > span {\n  overflow-wrap: anywhere;\n  flex: 220px;\n}\n\n.booster-message-target {\n  outline: 2px solid var(--primary);\n  outline-offset: 2px;\n  border-radius: 6px;\n}\n\n[data-archive-message] {\n  scroll-margin-block: 20px;\n}\n\n.booster-export-readiness {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  gap: 10px;\n  padding: 12px;\n  font-size: 12px;\n  display: grid;\n}\n\n.booster-export-readiness > header, .booster-export-recovery-actions {\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-export-readiness > header {\n  justify-content: space-between;\n}\n\n.booster-export-readiness dl {\n  gap: 6px;\n  margin: 0;\n  display: grid;\n}\n\n.booster-export-readiness dl > div {\n  flex-wrap: wrap;\n  justify-content: space-between;\n  gap: 6px 12px;\n  display: flex;\n}\n\n.booster-export-readiness dd {\n  text-align: end;\n  margin: 0;\n}\n\n.booster-export-readiness p {\n  margin: 0;\n}\n\n.booster-export-blockers {\n  gap: 6px;\n  margin: 0;\n  padding-inline-start: 18px;\n  display: grid;\n}\n\n.booster-export-blockers li {\n  overflow-wrap: anywhere;\n}\n\n.booster-export-progress {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  gap: 8px;\n  padding: 10px;\n  display: grid;\n}\n\n.booster-export-progress > p {\n  overflow-wrap: anywhere;\n  margin: 0;\n  font-size: 12px;\n}\n\n.booster-export-progress progress {\n  width: 100%;\n  height: 8px;\n  accent-color: var(--primary);\n  display: block;\n}\n\n.booster-export-preview-content {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  gap: 8px;\n  max-height: min(360px, 48vh);\n  padding: 10px;\n  display: grid;\n  overflow: auto;\n}\n\n.booster-export-preview-content .booster-note {\n  white-space: pre-wrap;\n  margin: 0;\n}\n\n.booster-export-preview-skeleton {\n  gap: 8px;\n  display: grid;\n}\n\n.booster-export-preview-skeleton > span {\n  background: var(--muted);\n  border-radius: 6px;\n  height: 30px;\n  display: block;\n}\n\n.booster-export-disclosure {\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  padding: 10px 12px;\n  font-size: 12px;\n}\n\n.booster-export-disclosure > summary {\n  cursor: pointer;\n  font-weight: 600;\n}\n\n.booster-export-disclosure > summary small {\n  color: var(--muted-foreground);\n  margin-inline-start: 8px;\n  font-weight: 400;\n}\n\n.booster-export-disclosure[open] > section, .booster-export-disclosure[open] > label, .booster-export-disclosure[open] > p {\n  margin-block-start: 12px;\n}\n\n.booster-export-presets {\n  border: 1px solid var(--border);\n  border-radius: 10px;\n  gap: 8px;\n  min-width: 0;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-export-presets > strong {\n  font-size: 13px;\n}\n\n.booster-export-presets .booster-export-recovery-actions {\n  flex-wrap: wrap;\n}\n\n.booster-export-presets .booster-export-recovery-actions > button {\n  white-space: normal;\n  overflow-wrap: anywhere;\n  max-width: 100%;\n  min-height: 34px;\n}\n\n@media (max-width: 560px) {\n  .booster-export-presets {\n    padding: 8px;\n  }\n\n  .booster-export-presets .booster-export-recovery-actions > button {\n    flex: 130px;\n  }\n}\n\n.booster-meta-badges {\n  align-items: center;\n  gap: 2px;\n  display: inline-flex;\n}\n\n.booster-meta-badges.compact {\n  gap: 0;\n}\n\n.booster-scope-popover {\n  gap: 10px;\n  min-width: 260px;\n  display: grid;\n}\n\n.booster-scope-popover > header {\n  gap: 1px;\n  display: grid;\n}\n\n.booster-scope-title {\n  max-width: 280px;\n  color: var(--foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 12px;\n  overflow: hidden;\n}\n\n.booster-scope-kind {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-scope-actions {\n  flex-wrap: wrap;\n  gap: 5px;\n  display: flex;\n}\n\n.booster-live-tool-row {\n  width: min(100%, 48rem);\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 6px;\n  padding: 4px 0;\n  display: flex;\n}\n\n.booster-live-tool-copy {\n  flex: auto;\n  align-items: baseline;\n  gap: 6px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-live-tool-name {\n  color: var(--foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 11px;\n  font-weight: 650;\n  overflow: hidden;\n}\n\n.booster-live-tool-action-name {\n  color: var(--muted-foreground);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 10px;\n  overflow: hidden;\n}\n\n.booster-live-tool-details {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(100%, 48rem);\n  color: var(--card-foreground);\n  border-radius: 12px;\n  margin-top: 4px;\n  padding: 10px;\n  box-shadow: 0 8px 24px #0000001f;\n}\n\n.booster-chat-save-marker {\n  background: none;\n  border-radius: 999px;\n  flex: 0 0 6px;\n  width: 6px;\n  height: 6px;\n  display: block;\n}\n\n.booster-chat-save-marker.is-enabled {\n  background: var(--success);\n}\n\n.booster-chat-save-marker.is-work {\n  background: var(--destructive);\n}\n\n.booster-agent-activity {\n  border: 1px solid var(--border, #94a3b838);\n  background: var(--background, #202020);\n  border-radius: 999px;\n  align-items: center;\n  gap: 6px;\n  max-width: min(100%, 520px);\n  min-height: 28px;\n  padding: 3px 8px;\n  display: inline-flex;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-agent-activity {\n    background: color-mix(in srgb, var(--background, #202020) 88%, transparent);\n  }\n}\n\n.booster-agent-activity {\n  color: var(--muted-foreground);\n  pointer-events: auto;\n  font-size: 11px;\n  line-height: 1.2;\n}\n\n.booster-agent-activity[data-phase="tool"] {\n  border-style: dashed;\n}\n\n.booster-agent-activity > svg {\n  flex: none;\n}\n\n.booster-agent-activity-phase {\n  color: var(--foreground);\n  flex: none;\n  font-weight: 600;\n}\n\n.booster-agent-activity-label {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  min-width: 0;\n  overflow: hidden;\n}\n\n.booster-agent-activity-timer {\n  min-width: 3.2em;\n  color: var(--foreground);\n  font-variant-numeric: tabular-nums;\n  text-align: end;\n  flex: none;\n  margin-inline-start: auto;\n}\n\n.booster-meta-time-text {\n  letter-spacing: .01em;\n  font-size: 9px;\n  font-weight: 650;\n}\n\n.booster-message-meta-popover {\n  max-width: min(420px, 100vw - 16px);\n}\n\n.booster-message-meta-body {\n  gap: 12px;\n  min-width: 260px;\n  display: grid;\n}\n\n.booster-message-meta-header {\n  border-bottom: 1px solid var(--border);\n  justify-content: space-between;\n  align-items: baseline;\n  gap: 12px;\n  padding-bottom: 7px;\n  display: flex;\n}\n\n.booster-message-meta-header strong {\n  color: var(--popover-foreground);\n  font-size: 12px;\n  font-weight: 650;\n}\n\n.booster-message-meta-header span {\n  color: #4ade80;\n  font-variant-numeric: tabular-nums;\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-message-meta-raw {\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  background: #0003;\n  border-radius: 8px;\n  max-width: 390px;\n  max-height: 260px;\n  margin: 0;\n  padding: 8px;\n  font: 10px / 1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n  overflow: auto;\n}\n\n.booster-live-tool-icon {\n  object-fit: cover;\n  border-radius: 999px;\n  flex: 0 0 16px;\n  width: 16px;\n  height: 16px;\n}\n\n.booster-tool-time-chip {\n  color: #c084fc;\n  font-variant-numeric: tabular-nums;\n  background: #7e22ce1c;\n  border: 1px solid #a855f775;\n  gap: 5px;\n  width: auto;\n  min-width: 76px;\n  padding: 0 8px;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-tool-time-chip:hover, .booster-tool-time-chip:focus-visible {\n  color: #d8b4fe;\n  background: #7e22ce30;\n  border-color: #c084fcc2;\n}\n\n.booster-agent-activity[data-phase="thinking"], .booster-agent-activity[data-phase="tool"], .booster-agent-activity[data-phase="responding"], .booster-agent-activity[data-phase="complete"] {\n  color: #4ade80;\n  background: #22c55e17;\n  border-color: #4ade807a;\n}\n\n.booster-agent-activity[data-phase="thinking"] .booster-agent-activity-phase, .booster-agent-activity[data-phase="tool"] .booster-agent-activity-phase, .booster-agent-activity[data-phase="responding"] .booster-agent-activity-phase, .booster-agent-activity[data-phase="complete"] .booster-agent-activity-phase, .booster-agent-activity[data-phase="thinking"] .booster-agent-activity-timer, .booster-agent-activity[data-phase="tool"] .booster-agent-activity-timer, .booster-agent-activity[data-phase="responding"] .booster-agent-activity-timer, .booster-agent-activity[data-phase="complete"] .booster-agent-activity-timer {\n  color: currentColor;\n}\n\n.booster-tool-inspect-trigger {\n  width: 24px;\n  height: 24px;\n  color: var(--muted-foreground);\n  pointer-events: auto;\n  background: none;\n  border: 1px solid #0000;\n  border-radius: 7px;\n}\n\n.booster-tool-inspect-trigger:hover, .booster-tool-inspect-trigger:focus-visible {\n  border-color: var(--border);\n  background: var(--accent);\n  color: var(--accent-foreground);\n}\n\n.booster-tool-detail-popover {\n  gap: 10px;\n  width: 100%;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-tool-detail-popover > header {\n  align-items: center;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-tool-payload {\n  gap: 5px;\n  display: grid;\n}\n\n.booster-tool-payload > strong, .booster-tool-evidence > summary {\n  color: var(--muted-foreground);\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-tool-evidence > summary {\n  cursor: pointer;\n}\n\n.booster-tool-attributes {\n  grid-template-columns: max-content minmax(0, 1fr);\n  gap: 3px 8px;\n  margin: 8px 0 0;\n  font: 9px / 1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n  display: grid;\n}\n\n.booster-tool-attributes dt {\n  color: var(--muted-foreground);\n}\n\n.booster-tool-attributes dd {\n  overflow-wrap: anywhere;\n  min-width: 0;\n  margin: 0;\n}\n\n.booster-tool-evidence pre {\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  background: #0003;\n  border-radius: 7px;\n  max-height: 180px;\n  margin: 8px 0 0;\n  padding: 7px;\n  font: 9px / 1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n  overflow: auto;\n}\n\n.booster-tool-link {\n  overflow-wrap: anywhere;\n  min-width: 0;\n  color: var(--foreground);\n  align-items: center;\n  gap: 4px;\n  text-decoration: none;\n  display: inline-flex;\n}\n\n.booster-tool-link:hover {\n  color: var(--foreground);\n  text-decoration: underline;\n}\n\n.booster-work-mode-warning {\n  color: #fca5a5;\n  background: #ef44441a;\n  border: 1px solid #ef44448c;\n  border-radius: 999px;\n  align-items: center;\n  gap: 7px;\n  padding: 4px 9px;\n  font-family: inherit;\n  font-size: 10px;\n  line-height: 1.25;\n  display: inline-flex;\n}\n\n.booster-work-mode-warning strong {\n  color: #f87171;\n  font-weight: 750;\n}\n\n.booster-work-mode-warning > span:before {\n  content: "·";\n  color: #f87171b8;\n  margin-inline-end: 7px;\n}\n\n.booster-request-status {\n  border: 1px solid var(--border);\n  background: var(--background);\n  color: var(--muted-foreground);\n  font-variant-numeric: tabular-nums;\n  border-radius: 999px;\n  flex-wrap: wrap;\n  justify-content: center;\n  align-items: center;\n  gap: 6px;\n  padding: 3px 8px;\n  font-family: inherit;\n  font-size: 10px;\n  line-height: 1.25;\n  display: inline-flex;\n}\n\n.booster-request-spinner {\n  border: 1.5px solid var(--border);\n  border-top-color: var(--foreground);\n  border-radius: 50%;\n  flex: 0 0 11px;\n  width: 11px;\n  height: 11px;\n  animation: .9s linear infinite booster-request-spin;\n}\n\n@keyframes booster-request-spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n.booster-request-status > span {\n  align-items: center;\n  gap: 4px;\n  display: inline-flex;\n}\n\n.booster-request-status > [hidden] {\n  display: none;\n}\n\n.booster-request-status > span + span:before {\n  content: "·";\n  color: var(--muted-foreground);\n}\n\n.booster-request-status-label {\n  color: var(--muted-foreground);\n  font-weight: 500;\n}\n\n.booster-request-status strong {\n  color: var(--foreground);\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-tool-path {\n  max-width: 280px;\n  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n  font-size: 9px;\n}\n\n.booster-tool-detail-popover > header strong {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  color: var(--popover-foreground);\n  font-size: 11px;\n  display: block;\n  overflow: hidden;\n}\n\n.booster-tool-detail-popover > header span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  color: var(--muted-foreground);\n  font-size: 10px;\n  display: block;\n  overflow: hidden;\n}\n\n.booster-request-status[data-phase="tool"] strong {\n  color: #c084fc;\n}\n\n.booster-request-status[data-phase="responding"] strong {\n  color: #86efac;\n}\n\n.booster-archive-flow-graph {\n  width: 80px;\n  min-width: 0;\n  height: 100%;\n  min-height: 0;\n}\n\n.booster-reader-pinned {\n  border-bottom: 1px solid var(--border);\n  background: var(--background);\n  flex: none;\n  min-width: 0;\n  padding: 6px 12px;\n}\n\n.booster-reader-scroll {\n  scrollbar-gutter: stable;\n  overscroll-behavior: contain;\n  min-width: 0;\n  height: 100%;\n  min-height: 0;\n  padding: 18px 20px 30px;\n  overflow: hidden auto;\n}\n\n.booster-reader-chat-header h2 {\n  overflow-wrap: anywhere;\n  font-size: 16px;\n}\n\n.booster-reader-chat-actions {\n  flex-wrap: nowrap;\n  flex: none;\n  justify-content: flex-start;\n  gap: 4px;\n  margin-top: 0;\n}\n\n.booster-reader-chat-actions > button {\n  height: 32px;\n  padding-inline: 10px;\n  font-size: 12px;\n}\n\n.booster-reader-chat-header {\n  align-items: center;\n  gap: 8px;\n}\n\n.booster-reader-chat-identity {\n  flex: 1;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-reader-chat-identity h2 {\n  min-width: 0;\n  margin: 0;\n  font-size: 15px;\n}\n\n.booster-reader-chat-identity .booster-identity {\n  min-width: 0;\n  max-width: 100%;\n}\n\n.booster-reader-chat-identity .booster-identity-label {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  overflow: hidden;\n}\n\n.booster-reader .booster-exchange-details {\n  background: none;\n  border: 0;\n  padding: 0;\n}\n\n@media (max-width: 640px) {\n  .booster-reader-chat-header {\n    flex-wrap: nowrap;\n  }\n\n  .booster-reader-project-label {\n    display: none;\n  }\n\n  .booster-reader-chat-identity h2 {\n    white-space: nowrap;\n    flex: 1;\n    font-size: 14px;\n    overflow: hidden;\n  }\n\n  .booster-reader-chat-actions > button {\n    padding-inline: 6px;\n  }\n\n  .booster-reader-chat-identity .booster-identity {\n    display: flex;\n  }\n}\n\n.booster-reader-navigation {\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 4px;\n  min-width: 0;\n  margin-top: 6px;\n  display: flex;\n}\n\n.booster-reader-page-count {\n  color: var(--muted-foreground);\n  font-variant-numeric: tabular-nums;\n  margin-inline-start: auto;\n  font-size: 11px;\n}\n\n.booster-reader-branch-navigation {\n  flex-wrap: wrap;\n  align-items: end;\n  gap: 6px 8px;\n  min-width: 0;\n  margin-top: 6px;\n  display: flex;\n}\n\n.booster-reader-path-select {\n  min-width: 0;\n  max-width: 100%;\n  color: var(--muted-foreground);\n  flex: 160px;\n  gap: 4px;\n  font-size: 10px;\n  display: grid;\n}\n\n.booster-reader-path-status {\n  color: var(--muted-foreground);\n  padding-block: 8px;\n  font-size: 11px;\n}\n\n.booster-reader-action-menu {\n  width: min(280px, 100dvw - 24px);\n  max-height: var(--reka-popover-content-available-height, 70dvh);\n  overscroll-behavior: contain;\n  gap: 2px;\n  display: grid;\n  overflow-y: auto;\n}\n\n.booster-reader-action-menu button {\n  white-space: normal;\n  text-align: start;\n  justify-content: flex-start;\n  height: auto;\n  min-height: 32px;\n  padding: 6px 8px;\n  font-size: 12px;\n  font-weight: 400;\n  line-height: 18px;\n}\n\n.booster-reader-menu-group {\n  border-top: 1px solid var(--border);\n  gap: 2px;\n  margin-top: 2px;\n  padding-top: 4px;\n  display: grid;\n}\n\n.booster-reader-menu-group .booster-conversation-collection {\n  justify-items: stretch;\n}\n\n.booster-reader-find {\n  margin-top: 8px;\n}\n\n.booster-reader-loading {\n  min-height: 130px;\n  color: var(--muted-foreground);\n  justify-content: center;\n  align-items: center;\n  gap: 8px;\n  font-size: 13px;\n  display: flex;\n}\n\n.booster-reader-older-loading {\n  z-index: 2;\n  border: 1px solid var(--border);\n  background: var(--card);\n  color: var(--foreground);\n  white-space: nowrap;\n  pointer-events: none;\n  border-radius: 10px;\n  align-items: center;\n  gap: 7px;\n  padding: 8px 12px;\n  font-size: 12px;\n  display: flex;\n  position: absolute;\n  inset: 50% auto auto 50%;\n  transform: translateX(-50%);\n  box-shadow: 0 3px 12px #0000001f;\n}\n\n.booster-reader-spinner {\n  flex: none;\n  animation: .9s linear infinite booster-archive-spin;\n}\n\n@keyframes booster-archive-spin {\n  to {\n    rotate: 360deg;\n  }\n}\n\n@media (prefers-reduced-motion: reduce) {\n  .booster-reader-spinner {\n    animation: none;\n  }\n}\n\n@media (max-width: 640px) {\n  .booster-reader-scroll {\n    padding: 12px 12px 24px;\n  }\n}\n\n.booster-reader-summary {\n  align-items: center;\n  margin-top: 4px;\n}\n\n.booster-reader-coverage {\n  align-items: center;\n  gap: 5px;\n  display: inline-flex;\n}\n\n.booster-reader-project-label {\n  color: var(--muted-foreground);\n  font-weight: 400;\n}\n\n.booster-reader-heading {\n  justify-content: center;\n  gap: 7px;\n}\n\n.booster-reader-exchanges {\n  gap: 12px;\n}\n\n.booster-reader .booster-section-header {\n  min-height: 42px;\n  padding-block: 6px;\n}\n\n.booster-reader-heading strong {\n  font-size: 12px;\n}\n\n.booster-reader-heading p {\n  opacity: .7;\n  margin: 0;\n  font-size: 10px;\n}\n\n.booster-reader-fork-choices {\n  overscroll-behavior: contain;\n  flex-direction: column;\n  gap: 8px;\n  width: min(420px, 100dvw - 24px);\n  max-height: min(60dvh, 24rem);\n  display: flex;\n  overflow: auto;\n}\n\n.booster-reader-fork-group {\n  border: 1px solid var(--border);\n  border-radius: 7px;\n  flex-flow: column wrap;\n  align-items: stretch;\n  gap: 5px;\n  padding: 5px 8px;\n  font-size: 11px;\n  display: flex;\n}\n\n.booster-reader-fork-choice {\n  white-space: normal;\n  text-align: start;\n  overflow-wrap: anywhere;\n  justify-content: flex-start;\n  max-width: 100%;\n  height: auto;\n  min-height: 32px;\n}\n\n@media (max-width: 420px) {\n  .booster-reader-fork-label {\n    display: none;\n  }\n}\n\n.booster-reader-fork-group > span {\n  color: var(--muted-foreground);\n  font-weight: 600;\n}\n\n.booster-reader-history-toggle.active {\n  background: var(--muted);\n  border-color: var(--ring);\n}\n\n.booster-reader-integrity, .booster-reader-versions {\n  border: 1px solid var(--border);\n  overflow-wrap: anywhere;\n  border-radius: 10px;\n  min-width: 0;\n  margin: 8px 0;\n  padding: 10px;\n}\n\n.booster-reader-integrity.is-complete {\n  border-color: var(--success, var(--border));\n}\n\n.booster-reader-integrity [data-integrity-issue] {\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 6px;\n  margin-top: 6px;\n  display: flex;\n}\n\n.booster-reader-versions {\n  max-height: min(48dvh, 420px);\n  overflow: auto;\n}\n\n.booster-reader {\n  position: relative;\n}\n\n.booster-reader-heading {\n  justify-content: flex-start;\n  min-width: 0;\n}\n\n.booster-reader-heading > div {\n  min-width: 0;\n}\n\n.booster-reader-heading strong {\n  line-height: 1.25;\n  display: block;\n}\n\n.booster-reader > .booster-section-header > .booster-header-actions {\n  flex: none;\n  gap: 6px;\n}\n\n.booster-reader-tools {\n  position: relative;\n}\n\n.booster-maintenance-backdrop {\n  z-index: 18;\n  background: #000000b3;\n  justify-content: center;\n  align-items: center;\n  min-width: 0;\n  padding: clamp(12px, 3vw, 28px);\n  display: flex;\n  position: absolute;\n  inset: 0;\n}\n\n.booster-maintenance-widget {\n  border: 1px solid var(--border);\n  background: var(--background);\n  width: min(100%, 570px);\n  min-height: 0;\n  max-height: min(700px, 100%);\n  color: var(--foreground);\n  font: inherit;\n  border-radius: 14px;\n  flex-direction: column;\n  display: flex;\n  overflow: hidden;\n  box-shadow: 0 24px 70px #00000059;\n}\n\n.booster-maintenance-heading {\n  border-bottom: 1px solid var(--border);\n  flex: none;\n  justify-content: space-between;\n  align-items: center;\n  gap: 14px;\n  padding: 15px 18px;\n  display: flex;\n}\n\n.booster-maintenance-title {\n  align-items: center;\n  gap: 11px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-maintenance-title > div {\n  min-width: 0;\n}\n\n.booster-maintenance-title h2 {\n  margin: 0;\n  font-size: 16px;\n  font-weight: 650;\n  line-height: 1.35;\n}\n\n.booster-maintenance-title p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-maintenance-content {\n  overscroll-behavior: contain;\n  scrollbar-gutter: stable;\n  align-content: start;\n  gap: 14px;\n  min-height: 0;\n  padding: 16px 18px;\n  display: grid;\n  overflow: hidden auto;\n}\n\n.booster-maintenance-stats {\n  grid-template-columns: repeat(3, minmax(0, 1fr));\n  gap: 8px;\n  display: grid;\n}\n\n.booster-maintenance-stats > div {\n  border: 1px solid var(--border);\n  background: var(--muted);\n  border-radius: 9px;\n  gap: 5px;\n  min-width: 0;\n  padding: 11px;\n  display: grid;\n}\n\n.booster-maintenance-stats span {\n  color: var(--muted-foreground);\n  font-size: 10px;\n  line-height: 1.4;\n}\n\n.booster-maintenance-stats strong {\n  font-variant-numeric: tabular-nums;\n  font-size: 20px;\n  font-weight: 650;\n}\n\n.booster-maintenance-section {\n  border: 1px solid var(--border);\n  border-radius: 10px;\n  gap: 11px;\n  min-width: 0;\n  padding: 15px;\n  display: grid;\n}\n\n.booster-maintenance-section-title {\n  align-items: center;\n  gap: 9px;\n  display: flex;\n}\n\n.booster-maintenance-section h3 {\n  margin: 0;\n  font-size: 13px;\n  font-weight: 650;\n}\n\n.booster-maintenance-section p, .booster-maintenance-result p, .booster-maintenance-progress p {\n  color: var(--muted-foreground);\n  overflow-wrap: anywhere;\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.5;\n}\n\n.booster-maintenance-section .booster-maintenance-warning {\n  color: var(--foreground);\n  border-left: 2px solid #d97706;\n  padding-left: 10px;\n}\n\n.booster-maintenance-widget .booster-maintenance-check {\n  min-width: 0;\n  color: var(--muted-foreground);\n  cursor: pointer;\n  align-items: flex-start;\n  gap: 10px;\n  font-size: 11px;\n  line-height: 1.5;\n  display: flex;\n}\n\n.booster-maintenance-widget .booster-maintenance-check input {\n  width: 16px;\n  height: 16px;\n  min-height: 16px;\n  accent-color: var(--primary);\n  flex: 0 0 16px;\n  margin: 1px 0 0;\n  padding: 0;\n}\n\n.booster-maintenance-actions {\n  flex-wrap: wrap;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-maintenance-actions button {\n  flex: 170px;\n  min-width: 0;\n}\n\n.booster-maintenance-section > button {\n  justify-self: start;\n  max-width: 100%;\n}\n\n.booster-maintenance-loading, .booster-maintenance-progress, .booster-maintenance-result {\n  border: 1px solid var(--border);\n  border-radius: 9px;\n  align-items: flex-start;\n  gap: 10px;\n  min-width: 0;\n  padding: 12px;\n  font-size: 12px;\n  line-height: 1.5;\n  display: flex;\n}\n\n.booster-maintenance-result svg, .booster-maintenance-progress svg {\n  flex: none;\n}\n\n.booster-maintenance-result strong, .booster-maintenance-progress strong {\n  margin-bottom: 3px;\n  font-size: 12px;\n  display: block;\n}\n\n.booster-maintenance-error {\n  color: var(--foreground);\n  overflow-wrap: anywhere;\n  border: 1px solid #c2410c;\n  border-radius: 8px;\n  margin: 0;\n  padding: 10px;\n  font-size: 12px;\n}\n\n.booster-maintenance-footer {\n  border-top: 1px solid var(--border);\n  flex: none;\n  justify-content: flex-end;\n  gap: 8px;\n  padding: 12px 18px;\n  display: flex;\n}\n\n@media (max-width: 620px) {\n  .booster-maintenance-backdrop {\n    padding: 8px;\n  }\n\n  .booster-maintenance-heading, .booster-maintenance-content {\n    padding: 12px;\n  }\n\n  .booster-maintenance-stats strong {\n    font-size: 17px;\n  }\n\n  .booster-maintenance-stats > div {\n    padding: 8px;\n  }\n\n  .booster-reader > .booster-section-header {\n    padding: 8px 10px;\n  }\n}\n\n.booster-maintenance-owner-list {\n  gap: 8px;\n  max-height: 290px;\n  display: grid;\n  overflow-y: auto;\n}\n\n.booster-maintenance-owner-row {\n  border: 1px solid var(--border);\n  cursor: pointer;\n  border-radius: 8px;\n  align-items: flex-start;\n  gap: 10px;\n  padding: 10px;\n  display: flex;\n}\n\n.booster-maintenance-owner-row > input[type="checkbox"] {\n  width: 16px;\n  height: 16px;\n  accent-color: var(--primary);\n  flex: 0 0 16px;\n  margin: 2px 0 0;\n  padding: 0;\n}\n\n.booster-maintenance-owner-description {\n  gap: 4px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-maintenance-owner-description > strong {\n  overflow-wrap: anywhere;\n  font-size: 12px;\n}\n\n.booster-maintenance-owner-description > span, .booster-maintenance-owner-caution {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.45;\n}\n\n.booster-maintenance-owner-description details {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.booster-maintenance-owner-description summary {\n  cursor: pointer;\n}\n\n.booster-maintenance-owner-description code {\n  overflow-wrap: anywhere;\n  margin-top: 5px;\n  font: 10px / 1.4 ui-monospace, monospace;\n  display: block;\n}\n\n.booster-maintenance-owner-description small {\n  margin-top: 6px;\n  display: block;\n}\n\n.booster-maintenance-link {\n  color: var(--foreground);\n  font: inherit;\n  cursor: pointer;\n  background: none;\n  border: 0;\n  justify-self: start;\n  padding: 0;\n  font-size: 11px;\n  text-decoration: underline;\n}\n\n.booster-maintenance-link:disabled {\n  opacity: .5;\n  cursor: not-allowed;\n}\n\n.booster-maintenance-backup-tools > summary {\n  cursor: pointer;\n  font-weight: 600;\n}\n\n.booster-maintenance-backup-tools > p {\n  margin-block: 10px;\n}\n\n.booster-maintenance-backup-restore {\n  gap: 12px;\n  margin-block-start: 14px;\n  display: grid;\n}\n\n.booster-maintenance-backup-restore > label {\n  gap: 8px;\n  display: grid;\n}\n\n.booster-maintenance-backup-restore input[type="file"] {\n  max-width: 100%;\n}\n\n.booster-maintenance-actions button small {\n  opacity: .8;\n  font-size: 10px;\n  display: block;\n}\n\n.booster-control-embedded {\n  box-shadow: none;\n  background: none;\n  border: 0;\n  width: 100%;\n  max-width: none;\n}\n\n.booster-control-embedded > .booster-settings-layout {\n  min-height: 0;\n  max-height: none;\n}\n\n.booster-chatgpt-panel {\n  flex-direction: column;\n  gap: 10px;\n  width: 100%;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-chatgpt-panel[data-provider-view="archive"] {\n  flex: 1 1 0;\n  gap: 0;\n  height: 100%;\n  min-height: 0;\n}\n\n.booster-chatgpt-panel > .booster-reader, .booster-chatgpt-panel > .booster-capture-surface {\n  min-width: 0;\n}\n\n.booster-chatgpt-panel[data-provider-view="archive"] > .booster-reader {\n  flex: 1 1 0;\n  width: 100%;\n  height: auto;\n  min-height: 0;\n}\n\n.booster-archive-context-actions {\n  border-bottom: 1px solid var(--border);\n  flex-wrap: wrap;\n  flex: none;\n  justify-content: flex-end;\n  align-items: center;\n  gap: 6px 8px;\n  min-width: 0;\n  padding: 6px 12px;\n  display: flex;\n}\n\n.booster-archive-context-actions > .booster-conversation-collection {\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 6px 8px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-chatgpt-panel > .booster-export-recovery-actions {\n  border-bottom: 1px solid var(--border);\n  min-width: 0;\n  padding-block: 5px;\n}\n\n.booster-chatgpt-panel > .booster-export-recovery-actions > button, .booster-chatgpt-panel > .booster-export-recovery-actions > .booster-reader-tools > button {\n  justify-content: center;\n  align-items: center;\n  gap: 6px;\n  min-height: 34px;\n  display: inline-flex;\n}\n\n@media (max-width: 600px) {\n  .booster-chatgpt-panel > .booster-export-recovery-actions {\n    flex-wrap: wrap;\n  }\n\n  .booster-chatgpt-panel > .booster-export-recovery-actions > button {\n    flex: auto;\n  }\n\n  .booster-chatgpt-panel .booster-reader-tools-menu {\n    min-width: min(260px, 85vw);\n    right: 0;\n  }\n}\n\n@keyframes enter {\n  from {\n    opacity: var(--tw-enter-opacity, 1);\n    transform: translate3d(var(--tw-enter-translate-x, 0), var(--tw-enter-translate-y, 0), 0) scale3d(var(--tw-enter-scale, 1), var(--tw-enter-scale, 1), var(--tw-enter-scale, 1)) rotate(var(--tw-enter-rotate, 0));\n  }\n}\n\n@keyframes exit {\n  to {\n    opacity: var(--tw-exit-opacity, 1);\n    transform: translate3d(var(--tw-exit-translate-x, 0), var(--tw-exit-translate-y, 0), 0) scale3d(var(--tw-exit-scale, 1), var(--tw-exit-scale, 1), var(--tw-exit-scale, 1)) rotate(var(--tw-exit-rotate, 0));\n  }\n}\n\n@property --tw-translate-x {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-translate-y {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-translate-z {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-rotate-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-z {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-space-y-reverse {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-divide-y-reverse {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-border-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-leading {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-font-weight {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-tracking {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ordinal {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-slashed-zero {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-figure {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-spacing {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-fraction {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-inset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-ring-inset {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-offset-width {\n  syntax: "<length>";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-ring-offset-color {\n  syntax: "*";\n  inherits: false;\n  initial-value: #fff;\n}\n\n@property --tw-ring-offset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-outline-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-blur {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-brightness {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-contrast {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-grayscale {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-hue-rotate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-invert {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-opacity {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-saturate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-sepia {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-drop-shadow-size {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-duration {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-content {\n  syntax: "*";\n  inherits: false;\n  initial-value: "";\n}\n\n@keyframes spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n@keyframes pulse {\n  50% {\n    opacity: .5;\n  }\n}\n';
   let sharedSheet;
   let constructedSheetsUnavailable = false;
   function boosterStyleSheet() {
@@ -50208,10 +51204,10 @@ Defaulting to \`null\`.`);
   var MAX_BACKUP_ROW_BYTES$1 = 64 * 1024 * 1024;
   var FRAGMENT_CHARACTERS$1 = 256 * 1024;
   var encoder$1 = new TextEncoder();
-  var object$5 = (value) => !!value && typeof value === "object" && !Array.isArray(value);
+  var object$6 = (value) => !!value && typeof value === "object" && !Array.isArray(value);
   var fields$1 = (value, names) => Object.keys(value).sort().join(",") === names;
   function assertBackupRow$1(value) {
-    if (!object$5(value) || !fields$1(value, "key,value") || typeof value.key !== "string" || !value.key || value.key.length > 2048)
+    if (!object$6(value) || !fields$1(value, "key,value") || typeof value.key !== "string" || !value.key || value.key.length > 2048)
       throw Error("Invalid backup row");
   }
   function serializedBackupRow$1(row) {
@@ -50416,7 +51412,7 @@ Defaulting to \`null\`.`);
       oldestCursor: page.startCursor
     };
   }
-  const object$4 = (value) => value !== null && typeof value === "object" && !Array.isArray(value) ? value : void 0;
+  const object$5 = (value) => value !== null && typeof value === "object" && !Array.isArray(value) ? value : void 0;
   const text$1 = (value) => typeof value === "string" ? value : null;
   function projectChatGptArchiveMessage(raw, source) {
     const projection = projectNativeMessage(raw, {
@@ -50429,7 +51425,7 @@ Defaulting to \`null\`.`);
       conversationId: source.conversationId,
       messageId: projection.messageId
     };
-    const key = archiveMessageKey(identity), metadata = object$4(raw.metadata), author = object$4(raw.author);
+    const key = archiveMessageKey(identity), metadata = object$5(raw.metadata), author = object$5(raw.author);
     const ids = new Map(
       projection.elements.map((element, index) => [element.elementId, JSON.stringify([key, index])])
     );
@@ -50510,8 +51506,8 @@ Defaulting to \`null\`.`);
       createTime: normalized.time.createdAtMs === null ? null : normalized.time.createdAtMs / 1e3,
       updateTime: normalized.time.updatedAtMs === null ? null : normalized.time.updatedAtMs / 1e3,
       firstSeenAt: normalized.time.observedAtMs,
-      contentType: text$1(object$4(raw.content)?.content_type),
-      messageType: text$1(object$4(raw.metadata)?.message_type),
+      contentType: text$1(object$5(raw.content)?.content_type),
+      messageType: text$1(object$5(raw.metadata)?.message_type),
       raw,
       normalized
     };
@@ -50542,7 +51538,7 @@ Defaulting to \`null\`.`);
           version2.normalized
         );
   }
-  function object$3(value) {
+  function object$4(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value) ? value : void 0;
   }
   class AsynchronousSourceValue extends Error {
@@ -50598,7 +51594,7 @@ Defaulting to \`null\`.`);
     return { hash: await archiveSha256Hex(fingerprint), length: fingerprint.length };
   }
   function text(value) {
-    const content = object$3(value.content);
+    const content = object$4(value.content);
     return typeof content?.text === "string" ? content.text : Array.isArray(content?.parts) ? content.parts.filter((part) => typeof part === "string").join("\n") : "";
   }
   function time(value) {
@@ -50624,7 +51620,7 @@ Defaulting to \`null\`.`);
     if (typeof current === "string") return typeof incoming !== "string" || !incoming.startsWith(current);
     if (Array.isArray(current))
       return !Array.isArray(incoming) || current.length > incoming.length || current.some((value, index) => losesEvidence(value, incoming[index]));
-    const before = object$3(current), after = object$3(incoming);
+    const before = object$4(current), after = object$4(incoming);
     if (before) return !after || Object.keys(before).some((key) => losesEvidence(before[key], after[key]));
     return false;
   }
@@ -50641,11 +51637,11 @@ Defaulting to \`null\`.`);
     for (const key of ["id", "channel", "recipient"])
       if (Object.hasOwn(current, key) && Object.hasOwn(incoming, key) && !sameSynchronousSourceValue(current[key], incoming[key]))
         return "conflict";
-    const oldAuthor = object$3(current.author), newAuthor = object$3(incoming.author);
+    const oldAuthor = object$4(current.author), newAuthor = object$4(incoming.author);
     for (const key of ["role", "name"])
       if (oldAuthor && newAuthor && Object.hasOwn(oldAuthor, key) && Object.hasOwn(newAuthor, key) && oldAuthor[key] !== newAuthor[key])
         return "conflict";
-    const oldMetadata = object$3(current.metadata), newMetadata = object$3(incoming.metadata);
+    const oldMetadata = object$4(current.metadata), newMetadata = object$4(incoming.metadata);
     for (const key of ["parent_id", "turn_exchange_id", "working_turn_id", "request_id"])
       if (oldMetadata && newMetadata && Object.hasOwn(oldMetadata, key) && Object.hasOwn(newMetadata, key) && oldMetadata[key] !== newMetadata[key])
         return "conflict";
@@ -50790,7 +51786,7 @@ Defaulting to \`null\`.`);
     "elements",
     "snapshots"
   ];
-  const object$2 = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+  const object$3 = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
   const nonEmpty$1 = (value) => typeof value === "string" && value.length > 0 && value.length <= 256;
   const MAX_FIXED_BACKUP_ROW_ALLOCATION = 64 * 1024 * 1024;
   function assertFixedBackupCodecBudget(encoded) {
@@ -50857,7 +51853,7 @@ Defaulting to \`null\`.`);
     serializedBackupRow$1({ key: JSON.stringify([row.store, row.key]), value: row.value });
     assertFixedBackupCodecBudget(row.value);
     const value = decodeArchiveClone(row.value);
-    if (!object$2(value) || value.accountId !== owner) throw Error("Wrong-owner canonical recovery row");
+    if (!object$3(value) || value.accountId !== owner) throw Error("Wrong-owner canonical recovery row");
     const keyField = row.store === "elements" ? "elementId" : row.store === "snapshots" ? "messageKey" : "key";
     if (value[keyField] !== row.key) throw Error("Canonical primary key mismatch");
     const tuple = (size2) => {
@@ -50886,32 +51882,32 @@ Defaulting to \`null\`.`);
       if (value.pageEvidence !== void 0) {
         if (!Array.isArray(value.pageEvidence)) throw Error("Invalid page evidence");
         for (const page of value.pageEvidence) {
-          if (!object$2(page) || !Number.isFinite(page.observedAt) || page.observedAt < 0 || ![true, false, null].includes(page.hasPreviousPage) || ![true, false, null].includes(page.hasNextPage) || page.startCursor !== null && typeof page.startCursor !== "string" || page.endCursor !== null && typeof page.endCursor !== "string" || page.readId !== void 0 && !nonEmpty$1(page.readId) || page.readStartedAt !== void 0 && (!Number.isFinite(page.readStartedAt) || page.readStartedAt < 0) || page.isInitial !== void 0 && typeof page.isInitial !== "boolean" || page.requestedBefore !== void 0 && page.requestedBefore !== null && typeof page.requestedBefore !== "string")
+          if (!object$3(page) || !Number.isFinite(page.observedAt) || page.observedAt < 0 || ![true, false, null].includes(page.hasPreviousPage) || ![true, false, null].includes(page.hasNextPage) || page.startCursor !== null && typeof page.startCursor !== "string" || page.endCursor !== null && typeof page.endCursor !== "string" || page.readId !== void 0 && !nonEmpty$1(page.readId) || page.readStartedAt !== void 0 && (!Number.isFinite(page.readStartedAt) || page.readStartedAt < 0) || page.isInitial !== void 0 && typeof page.isInitial !== "boolean" || page.requestedBefore !== void 0 && page.requestedBefore !== null && typeof page.requestedBefore !== "string")
             throw Error("Invalid page evidence record");
         }
       }
     } else if (row.store === "messages") {
       const parts = tuple(3), projection = value.projection;
-      if (value.conversationId !== parts[1] || value.messageId !== parts[2] || value.modelVersion !== ARCHIVE_CANONICAL_MODEL_VERSION || !object$2(projection) || projection.accountId !== owner || projection.conversationId !== parts[1] || projection.messageId !== parts[2] || projection.messageKey !== row.key || projection.modelVersion !== ARCHIVE_CANONICAL_MODEL_VERSION || !Array.isArray(projection.elements))
+      if (value.conversationId !== parts[1] || value.messageId !== parts[2] || value.modelVersion !== ARCHIVE_CANONICAL_MODEL_VERSION || !object$3(projection) || projection.accountId !== owner || projection.conversationId !== parts[1] || projection.messageId !== parts[2] || projection.messageKey !== row.key || projection.modelVersion !== ARCHIVE_CANONICAL_MODEL_VERSION || !Array.isArray(projection.elements))
         throw Error("Invalid message recovery projection");
     } else if (row.store === "elements") {
       if (typeof value.messageKey !== "string" || !Number.isSafeInteger(value.siblingOrder) || value.siblingOrder < 0 || !nonEmpty$1(value.kind) || !nonEmpty$1(value.visibility) || typeof value.sourcePath !== "string")
         throw Error("Invalid canonical element");
     } else {
       const parts = tuple(3);
-      if (!object$2(value.raw) || value.raw.id !== parts[2] || !nonEmpty$1(value.sourceKind) || !nonEmpty$1(value.sourceVersion) || !Number.isSafeInteger(value.observedAtMs) || value.observedAtMs < 0)
+      if (!object$3(value.raw) || value.raw.id !== parts[2] || !nonEmpty$1(value.sourceKind) || !nonEmpty$1(value.sourceVersion) || !Number.isSafeInteger(value.observedAtMs) || value.observedAtMs < 0)
         throw Error("Invalid source snapshot recovery record");
-      if (value.sourceEvents !== void 0 && (!Array.isArray(value.sourceEvents) || !value.sourceEvents.every(object$2)))
+      if (value.sourceEvents !== void 0 && (!Array.isArray(value.sourceEvents) || !value.sourceEvents.every(object$3)))
         throw Error("Invalid source event evidence");
       if (value.versions !== void 0) {
         if (!Array.isArray(value.versions) || !value.versions.length)
           throw Error("Invalid source versions");
         for (const version2 of value.versions) {
-          if (!object$2(version2) || !object$2(version2.raw) || version2.raw.id !== parts[2] || !nonEmpty$1(version2.sourceKind) || !nonEmpty$1(version2.sourceVersion) || !Number.isSafeInteger(version2.observedAtMs) || version2.observedAtMs < 0 || !["initial", "advance", "identical", "stale", "conflict"].includes(String(version2.decision)))
+          if (!object$3(version2) || !object$3(version2.raw) || version2.raw.id !== parts[2] || !nonEmpty$1(version2.sourceKind) || !nonEmpty$1(version2.sourceVersion) || !Number.isSafeInteger(version2.observedAtMs) || version2.observedAtMs < 0 || !["initial", "advance", "identical", "stale", "conflict"].includes(String(version2.decision)))
             throw Error("Invalid source version evidence");
           if (version2.projectId !== void 0 && version2.projectId !== null && !nonEmpty$1(version2.projectId))
             throw Error("Invalid source version project context");
-          if (version2.sourceEvents !== void 0 && (!Array.isArray(version2.sourceEvents) || !version2.sourceEvents.every(object$2)))
+          if (version2.sourceEvents !== void 0 && (!Array.isArray(version2.sourceEvents) || !version2.sourceEvents.every(object$3)))
             throw Error("Invalid source version event evidence");
         }
       }
@@ -50961,7 +51957,7 @@ Defaulting to \`null\`.`);
             "snapshots",
             JSON.stringify([owner, conversation.conversationId, conversation.terminalHeadId])
           )).raw;
-          const author = object$2(source.author) ? source.author : null;
+          const author = object$3(source.author) ? source.author : null;
           if (author?.role !== "assistant" || source.end_turn !== true || source.status !== "finished_successfully" || source.recipient !== void 0 && source.recipient !== null && source.recipient !== "all" || source.channel !== void 0 && source.channel !== null && source.channel !== "final")
             throw Error("Saved terminal head disagrees with assistant source evidence");
         }
@@ -51006,7 +52002,7 @@ Defaulting to \`null\`.`);
       throw Error("Canonical staged graph count mismatch");
     return counts;
   }
-  function conversationIntegrity(messages2, pages, headId, terminalHeadId = null, pageHeadId = null, checkpoint) {
+  function conversationIntegrity(messages2, pages, headId, terminalHeadId = null, pageHeadId = null, checkpoint, firstMessageId) {
     const evidence = checkpoint ? checkpointHistoryCoverage(checkpoint) : historyCoverage([...pages]);
     return conversationIntegrityFromGraph(
       messages2.map((message) => ({
@@ -51016,12 +52012,19 @@ Defaulting to \`null\`.`);
       })),
       {
         startReached: evidence.startReached,
+        firstId: firstMessageId,
+        rootId: evidence.startReached ? evidence.oldestCursor : null,
         headId,
         endReached: Boolean(
           headId && (evidence.endReached && headId === pageHeadId || terminalHeadId === headId)
         )
       }
     );
+  }
+  function validateConversationStartEvidence(value) {
+    const item = value;
+    if (!item || !["native-create", "native-page"].includes(String(item.kind)) || typeof item.firstMessageId !== "string" || !item.firstMessageId || item.firstMessageId.length > 1024 || typeof item.sourceId !== "string" || !item.sourceId || item.sourceId.length > 1024 || typeof item.observedAt !== "number" || !Number.isFinite(item.observedAt) || item.observedAt < 0)
+      throw Error("Invalid conversation start evidence");
   }
   function fixedConversationStamp(header2) {
     return JSON.stringify([header2?.instanceId ?? null, header2?.revision ?? 0]);
@@ -51092,6 +52095,11 @@ Defaulting to \`null\`.`);
     async addObservationResult(observation, stillAuthorized = () => true) {
       if (!stillAuthorized()) throw Error("Fixed archive capture authorization expired");
       const projection = checkedObservation(observation, this.scope);
+      if (observation.startEvidence) {
+        validateConversationStartEvidence(observation.startEvidence);
+        if (observation.startEvidence.kind !== "native-create" || observation.startEvidence.firstMessageId !== observation.raw.id || observation.raw.author?.role !== "user")
+          throw Error("Conversation creation must accompany its first original message");
+      }
       const accountId = observation.accountId;
       const conversationId = observation.conversationId;
       const messageKey = projection.messageKey;
@@ -51151,7 +52159,19 @@ Defaulting to \`null\`.`);
           if (!stillAuthorized()) throw Error("Fixed archive capture authorization expired");
           const prior = await snapshots.get(messageKey);
           const priorMessage = await messages2.get(messageKey);
-          const existingConversation = await conversations.get(conversationKey);
+          let existingConversation = await conversations.get(conversationKey);
+          if (observation.startEvidence && existingConversation && !existingConversation.startEvidence) {
+            existingConversation = {
+              ...existingConversation,
+              startEvidence: structuredClone(observation.startEvidence),
+              revision: (existingConversation.revision ?? 0) + 1
+            };
+            await Dexie$1.waitFor(
+              assertFixedBackupAdmission("conversations", conversationKey, existingConversation)
+            );
+            await conversations.put(existingConversation);
+            if (!stillAuthorized()) throw Error("Fixed archive capture authorization expired");
+          }
           const instanceId = existingConversation?.instanceId ?? crypto.randomUUID();
           if (existingConversation && existingConversation.projectId !== projectId)
             throw Error("Conversation project changed; a verified explicit action is required");
@@ -51278,7 +52298,8 @@ Defaulting to \`null\`.`);
               projectId,
               title,
               revision: 0,
-              instanceId
+              instanceId,
+              ...observation.startEvidence ? { startEvidence: structuredClone(observation.startEvidence) } : {}
             });
           }
           await messages2.add(record2);
@@ -51440,8 +52461,16 @@ Defaulting to \`null\`.`);
             for (const retained of next)
               if (!retained.isInitial) pageCoverage = advanceHistoryCoverage(pageCoverage, retained);
           }
+          const startMessage = page.hasPreviousPage === false && page.startCursor && nonEmpty(page.startCursor) ? await this.getMessage(conversationId, page.startCursor) : void 0;
+          const startEvidence = current.startEvidence ?? (startMessage && page.readId ? {
+            kind: "native-page",
+            firstMessageId: startMessage.messageId,
+            sourceId: page.readId,
+            observedAt: page.observedAt
+          } : void 0);
           const nextHeader = {
             ...current,
+            ...startEvidence ? { startEvidence } : {},
             pageEvidence: next.slice(-96),
             pageCoverage: structuredClone(pageCoverage),
             revision: (current.revision ?? 0) + 1,
@@ -51513,7 +52542,8 @@ Defaulting to \`null\`.`);
         header2?.currentHeadId ?? null,
         header2?.terminalHeadId ?? null,
         header2?.pageHeadId ?? null,
-        header2?.pageCoverage
+        header2?.pageCoverage,
+        header2?.startEvidence?.firstMessageId
       );
     }
     async branchPath(conversationId, tipId) {
@@ -52122,6 +53152,7 @@ ${JSON.stringify(counts)}`);
             if (value.projectId !== parts[1] || value.title !== null && typeof value.title !== "string")
               throw Error("Invalid project recovery record");
           } else if (store === "conversations") {
+            if (value.startEvidence !== void 0) validateConversationStartEvidence(value.startEvidence);
             if (value.pageCoverage !== void 0) validateHistoryCoverageCheckpoint(value.pageCoverage);
             const parts = tuple(row.key, 2);
             if (value.conversationId !== parts[1] || value.projectId !== null && !nonEmpty(value.projectId) || value.title !== null && typeof value.title !== "string")
@@ -52199,6 +53230,12 @@ ${JSON.stringify(counts)}`);
             if (!elements.has(element.elementId) || element.messageKey !== m.key)
               throw Error("Missing canonical content element");
           }
+        }
+        for (const header2 of conversationHeaders.values()) {
+          if (header2.startEvidence && !messages2.has(
+            JSON.stringify([owner, header2.conversationId, header2.startEvidence.firstMessageId])
+          ))
+            throw Error("Conversation start original is missing");
         }
         for (const snap of buckets.snapshots) {
           const message = messages2.get(snap.messageKey);
@@ -52917,11 +53954,12 @@ ${JSON.stringify(counts)}`);
             conversationId: detail.conversationId,
             projectId: header2?.projectId ?? null,
             conversationTitle: header2?.title ?? null,
-            sourceKind: "native-stream",
+            sourceKind: detail.startEvidence ? "native-submission" : "native-stream",
             sourceVersion: this.state.sourceGate.version,
             observedAtMs: detail.observedAt,
             raw: detail.raw,
-            ...detail.evidence ? { sourceEvents: detail.evidence } : {}
+            ...detail.evidence ? { sourceEvents: detail.evidence } : {},
+            ...detail.startEvidence ? { startEvidence: detail.startEvidence } : {}
           };
           if (remoteOnly) {
             this.queueRemote(
@@ -53268,6 +54306,40 @@ ${JSON.stringify(counts)}`);
       }
     }
     enqueuePage;
+    /** Reuse a durable first-message proof only for an intact graph at the exact live head. */
+    async completeSavedCollection(run) {
+      this.collectionSession.requireCurrent(run);
+      await this.collectionSession.waitFor(run, this.pending);
+      const owner = this.state.verifiedAccountId(), epoch = this.state.accountEpoch(), policy2 = this.policyEpoch;
+      const nativeRevision = this.state.header(run.conversationId)?.revision;
+      if (!owner || owner !== run.accountId || this.stopped || this.currentConversationId() !== run.conversationId)
+        return false;
+      this.state.sourceGate.assertCompatible(run.conversationId);
+      const settings = await this.settings.get();
+      if (!settings.enabled || settings.automation.remote.enabled && settings.automation.remote.mode === "remote-only")
+        return false;
+      const repo = this.repo(owner), saved = await repo.getConversation(run.conversationId);
+      if (!saved?.startEvidence) return false;
+      const stream = this.state.observations.head(run.conversationId);
+      const lifecycle = this.state.lifecycle(run.conversationId);
+      const head = stream?.requestId && stream.requestId === lifecycle?.requestId ? stream.raw.id : this.state.header(run.conversationId)?.currentNodeId;
+      if (typeof head !== "string" || saved.currentHeadId !== head || run.selectedTipId && run.selectedTipId !== head)
+        return false;
+      const stamp = fixedConversationStamp(saved), integrity = await repo.integrity(run.conversationId);
+      const count = await repo.countConversation(run.conversationId);
+      const currentStamp = fixedConversationStamp(await repo.getConversation(run.conversationId));
+      this.collectionSession.requireCurrent(run);
+      if (this.stopped || this.policyEpoch !== policy2 || this.state.header(run.conversationId)?.revision !== nativeRevision || this.currentConversationId() !== run.conversationId || this.state.verifiedAccountId() !== owner || this.state.accountEpoch() !== epoch || currentStamp !== stamp)
+        return false;
+      if (integrity.chain !== "verified" || integrity.end !== "verified" || integrity.firstMessageId !== saved.startEvidence.firstMessageId)
+        return false;
+      this.collectionSession.update(run, {
+        phase: "saving",
+        knownMessageCount: count,
+        hasOlderServerHistory: false
+      });
+      return this.collectionSession.complete(run);
+    }
     stopCollection() {
       this.collectionSession.pause("user");
     }
@@ -54111,6 +55183,20 @@ ${JSON.stringify(counts)}`);
       this.syncOwner();
       return this.conversations.get(id2)?.context;
     }
+    /** Boundary evidence closes an absent parent, never a named missing parent. */
+    confirmedStartIds(id2) {
+      const conversation = this.conversation(id2);
+      const savedPage = checkpointHistoryCoverage(conversation.header?.pageCoverage);
+      const livePage = this.memory.nativeHistoryCoverage(id2);
+      return new Set(
+        [
+          conversation.header?.startEvidence?.firstMessageId,
+          this.memory.header(id2)?.startEvidence?.firstMessageId,
+          savedPage.startReached ? savedPage.oldestCursor : null,
+          livePage.startReached ? livePage.oldestCursor : null
+        ].filter((value) => typeof value === "string" && conversation.records.has(value))
+      );
+    }
     range(id2, firstId, lastId) {
       const conversation = this.conversation(id2), result = [], seen = /* @__PURE__ */ new Set();
       let cursor = lastId;
@@ -54136,8 +55222,8 @@ ${JSON.stringify(counts)}`);
       const conversation = this.conversation(id2), ids = this.ordered(conversation);
       const position = cursorId ? conversation.positions.get(cursorId) : void 0;
       if (cursorId && position === void 0) throw Error("archive.error.messageMissing");
-      const start = around ? Math.max(0, (position ?? 0) - 80) : direction === "first" ? 0 : direction === "middle" ? Math.max(0, Math.floor(ids.length / 2) - 80) : direction === "newer" ? position === void 0 ? 0 : position + 1 : Math.max(0, (position ?? ids.length) - 160);
-      const end = direction === "older" && position !== void 0 && !around ? position : Math.min(ids.length, start + 160);
+      const start = around ? Math.max(0, (position ?? 0) - ARCHIVE_READER_PAGE_SIZE$1 / 2) : direction === "first" ? 0 : direction === "middle" ? Math.max(0, Math.floor(ids.length / 2) - ARCHIVE_READER_PAGE_SIZE$1 / 2) : direction === "newer" ? position === void 0 ? 0 : position + 1 : Math.max(0, (position ?? ids.length) - ARCHIVE_READER_PAGE_SIZE$1);
+      const end = direction === "older" && position !== void 0 && !around ? position : Math.min(ids.length, start + ARCHIVE_READER_PAGE_SIZE$1);
       return {
         records: ids.slice(start, end).flatMap((key) => {
           const record2 = conversation.records.get(key);
@@ -54170,6 +55256,7 @@ ${JSON.stringify(counts)}`);
       const head = pageIsNewer ? header2.currentNodeId : typeof currentStream?.raw.id === "string" ? currentStream.raw.id : conversation.liveHead ?? header2?.currentNodeId ?? saved?.currentHeadId ?? null;
       const streamTerminal = currentStream?.raw.end_turn === true && currentStream.raw.status === "finished_successfully" && currentStream.raw.id === head;
       const page = checkpointHistoryCoverage(saved?.pageCoverage);
+      const livePage = this.memory.nativeHistoryCoverage(id2);
       return conversationIntegrityFromGraph(
         [...conversation.records.values()].map((record2) => ({
           id: record2.messageId,
@@ -54177,7 +55264,9 @@ ${JSON.stringify(counts)}`);
           parentKnown: Object.hasOwn(record2.raw.metadata ?? {}, "parent_id")
         })),
         {
-          startReached: page.startReached || this.memory.nativeHistoryCoverage(id2).startReached,
+          firstId: saved?.startEvidence?.firstMessageId ?? header2?.startEvidence?.firstMessageId,
+          rootId: page.startReached ? page.oldestCursor : livePage.startReached ? livePage.oldestCursor : null,
+          startReached: page.startReached || livePage.startReached,
           endReached: !!head && (streamTerminal || conversation.liveTerminal === head || saved?.terminalHeadId === head || page.endReached && saved?.pageHeadId === head),
           headId: head
         }
@@ -54316,11 +55405,14 @@ ${JSON.stringify(counts)}`);
       getTimeline: async (id2) => {
         const owner = account(), epoch = memory.accountEpoch();
         await workspace.open(id2);
+        const confirmedStarts = workspace.confirmedStartIds(id2);
         const metadata = workspace.records(id2).map((record2) => ({
           id: record2.messageId,
           parentId: record2.parentId,
           parentKnown: Object.hasOwn(record2.raw.metadata ?? {}, "parent_id"),
+          timestampMs: record2.createTime === null ? null : record2.createTime * 1e3,
           role: record2.role,
+          contentType: record2.contentType,
           channel: record2.channel,
           recipient: record2.recipient,
           preview: String(
@@ -54331,12 +55423,12 @@ ${JSON.stringify(counts)}`);
         const byId = new Map(metadata.map((message) => [message.id, message]));
         const visible = new Set(
           metadata.filter(
-            (message) => message.role === "user" || message.role === "assistant" && (!message.channel || message.channel === "final") && (!message.recipient || message.recipient === "all")
+            (message) => ["text", "multimodal_text"].includes(message.contentType ?? "") && message.role === "user" || message.role === "assistant" && ["text", "multimodal_text"].includes(message.contentType ?? "") && (!message.channel || message.channel === "final") && (!message.recipient || message.recipient === "all")
           ).map((message) => message.id)
         );
         return metadata.filter((message) => visible.has(message.id)).map((message) => {
           let parentId = message.parentId;
-          let uncertain = !message.parentKnown;
+          let uncertain = !message.parentKnown && !confirmedStarts.has(message.id);
           const seen = /* @__PURE__ */ new Set([message.id]);
           while (parentId && byId.has(parentId) && !visible.has(parentId) && !seen.has(parentId)) {
             seen.add(parentId);
@@ -54345,7 +55437,7 @@ ${JSON.stringify(counts)}`);
               uncertain = true;
               break;
             }
-            if (!intermediate.parentKnown) uncertain = true;
+            if (!intermediate.parentKnown && !confirmedStarts.has(intermediate.id)) uncertain = true;
             parentId = intermediate.parentId;
           }
           uncertain ||= Boolean(parentId && (!visible.has(parentId) || seen.has(parentId)));
@@ -54355,9 +55447,42 @@ ${JSON.stringify(counts)}`);
             parentId: uncertain ? null : parentId,
             label: message.role === "user" ? "User" : "Assistant",
             preview: message.preview,
+            timestampMs: message.timestampMs,
             uncertain
           };
         });
+      },
+      getExportMessages: async (id2, signal) => {
+        const owner = account(), epoch = memory.accountEpoch(), revision = await capture.sourceRevision(id2), instanceId = await capture.sourceInstanceId(id2);
+        const messages2 = [];
+        let cursor;
+        while (true) {
+          signal?.throwIfAborted();
+          const rows = await capture.windowConversation(id2, cursor ? "newer" : "first", cursor);
+          guard(owner, epoch);
+          for (const source of rows) {
+            const record2 = presentationRecord(source, id2);
+            if (!record2) throw Error("Cannot decode saved export source");
+            messages2.push({
+              id: record2.messageId,
+              timestampMs: record2.createTime === null ? null : record2.createTime * 1e3,
+              author: record2.authorName ?? "",
+              role: record2.role,
+              text: source.normalized ? archiveMessageText(source.normalized).slice(0, 160) : String(
+                record2.raw.content?.parts?.filter((part) => typeof part === "string").join("") ?? ""
+              ).slice(0, 160)
+            });
+          }
+          const last = rows.at(-1)?.id;
+          if (!last || !await capture.hasMessagesAfter(id2, last)) break;
+          if (last === cursor) throw Error("archive.error.sourceChanged");
+          cursor = last;
+        }
+        signal?.throwIfAborted();
+        if (await capture.sourceRevision(id2) !== revision || await capture.sourceInstanceId(id2) !== instanceId)
+          throw Error("archive.error.sourceChanged");
+        guard(owner, epoch);
+        return messages2;
       },
       liveSavedUpdates: true,
       subscribeExportChanges: (id2, listener) => {
@@ -54632,77 +55757,92 @@ ${JSON.stringify(counts)}`);
     return match?.[1]?.trim() || text2;
   }
   function mountAgentActivity(into, initial, locale) {
-    const host = document.createElement("div");
-    host.dataset.chatgptBooster = "agent-activity";
-    host.style.display = "flex";
-    host.style.width = "100%";
-    host.style.justifyContent = "flex-start";
-    host.style.marginTop = "2px";
-    into.append(host);
-    const shadow = host.attachShadow({ mode: "open" });
-    installBoosterShadowStyles(shadow);
-    const pill = document.createElement("div");
-    pill.className = "booster-agent-activity";
-    const icon = clockIcon();
-    const phase = document.createElement("span");
-    phase.className = "booster-agent-activity-phase";
-    const label = document.createElement("span");
-    label.className = "booster-agent-activity-label";
-    const timer = document.createElement("strong");
-    timer.className = "booster-agent-activity-timer";
-    pill.append(icon, phase, label, timer);
-    shadow.append(pill);
-    let snapshot = initial;
-    let currentNow = Date.now();
-    const t = (key) => translate(locale, key);
-    const phaseLabel = () => {
-      if (snapshot.phase === "tool") return t("activity.tool");
-      if (snapshot.phase === "responding") return t("activity.responding");
-      if (snapshot.phase === "thinking") return t("activity.thinking");
-      if (snapshot.phase === "complete") return t("activity.complete");
-      return t("activity.idle");
-    };
-    const renderStatic = () => {
-      pill.dataset.phase = snapshot.phase;
-      phase.textContent = phaseLabel();
-      const rawLabel = snapshot.label && snapshot.label !== snapshot.tool?.label ? snapshot.label : snapshot.tool?.label ?? "";
-      label.textContent = snapshot.phase === "tool" ? normalizedLabel(rawLabel) : "";
-      label.hidden = !label.textContent;
-      pill.removeAttribute("title");
-      pill.setAttribute(
-        "aria-label",
-        `${phaseLabel()}, ${t("activity.duration")} ${elapsed$1(snapshot.phaseStartedAt, snapshot.completedAt, currentNow)}`
-      );
-    };
-    const renderTimer = () => {
-      if (snapshot.phase === "complete") {
-        timer.textContent = duration(
-          snapshot.durationMs ?? (snapshot.startedAt && snapshot.lastActivityAt ? Math.max(0, snapshot.lastActivityAt - snapshot.startedAt) : null)
-        );
-        pill.setAttribute("aria-label", `${phaseLabel()}, ${t("activity.duration")} ${timer.textContent}`);
-        return;
-      }
-      const timerStart = snapshot.phase === "thinking" ? snapshot.reasoningStartedAt ?? snapshot.startedAt : snapshot.phaseStartedAt ?? snapshot.startedAt;
-      timer.textContent = elapsed$1(timerStart, snapshot.completedAt, currentNow);
-      pill.setAttribute("aria-label", `${phaseLabel()}, ${t("activity.duration")} ${timer.textContent}`);
-    };
-    renderStatic();
-    renderTimer();
-    return {
-      element: host,
-      update(next) {
-        snapshot = next;
+    return ensureSiteDecoration({
+      anchor: into,
+      kind: "chatgpt-booster:agent-activity",
+      identity: locale,
+      legacySelector: '[data-chatgpt-booster="agent-activity"]',
+      update: (current) => current.update(initial),
+      create: () => {
+        const host = document.createElement("div");
+        host.dataset.chatgptBooster = "agent-activity";
+        host.style.display = "flex";
+        host.style.width = "100%";
+        host.style.justifyContent = "flex-start";
+        host.style.marginTop = "2px";
+        into.append(host);
+        const shadow = host.attachShadow({ mode: "open" });
+        installBoosterShadowStyles(shadow);
+        const pill = document.createElement("div");
+        pill.className = "booster-agent-activity";
+        const icon = clockIcon();
+        const phase = document.createElement("span");
+        phase.className = "booster-agent-activity-phase";
+        const label = document.createElement("span");
+        label.className = "booster-agent-activity-label";
+        const timer = document.createElement("strong");
+        timer.className = "booster-agent-activity-timer";
+        pill.append(icon, phase, label, timer);
+        shadow.append(pill);
+        let snapshot = initial;
+        let currentNow = Date.now();
+        const t = (key) => translate(locale, key);
+        const phaseLabel = () => {
+          if (snapshot.phase === "tool") return t("activity.tool");
+          if (snapshot.phase === "responding") return t("activity.responding");
+          if (snapshot.phase === "thinking") return t("activity.thinking");
+          if (snapshot.phase === "complete") return t("activity.complete");
+          return t("activity.idle");
+        };
+        const renderStatic = () => {
+          pill.dataset.phase = snapshot.phase;
+          phase.textContent = phaseLabel();
+          const rawLabel = snapshot.label && snapshot.label !== snapshot.tool?.label ? snapshot.label : snapshot.tool?.label ?? "";
+          label.textContent = snapshot.phase === "tool" ? normalizedLabel(rawLabel) : "";
+          label.hidden = !label.textContent;
+          pill.removeAttribute("title");
+          pill.setAttribute(
+            "aria-label",
+            `${phaseLabel()}, ${t("activity.duration")} ${elapsed$1(snapshot.phaseStartedAt, snapshot.completedAt, currentNow)}`
+          );
+        };
+        const renderTimer = () => {
+          if (snapshot.phase === "complete") {
+            timer.textContent = duration(
+              snapshot.durationMs ?? (snapshot.startedAt && snapshot.lastActivityAt ? Math.max(0, snapshot.lastActivityAt - snapshot.startedAt) : null)
+            );
+            pill.setAttribute(
+              "aria-label",
+              `${phaseLabel()}, ${t("activity.duration")} ${timer.textContent}`
+            );
+            return;
+          }
+          const timerStart = snapshot.phase === "thinking" ? snapshot.reasoningStartedAt ?? snapshot.startedAt : snapshot.phaseStartedAt ?? snapshot.startedAt;
+          timer.textContent = elapsed$1(timerStart, snapshot.completedAt, currentNow);
+          pill.setAttribute(
+            "aria-label",
+            `${phaseLabel()}, ${t("activity.duration")} ${timer.textContent}`
+          );
+        };
         renderStatic();
         renderTimer();
-      },
-      tick(now) {
-        currentNow = now;
-        renderTimer();
-      },
-      unmount() {
-        host.remove();
+        return {
+          element: host,
+          update(next) {
+            snapshot = next;
+            renderStatic();
+            renderTimer();
+          },
+          tick(now) {
+            currentNow = now;
+            renderTimer();
+          },
+          unmount() {
+            host.remove();
+          }
+        };
       }
-    };
+    });
   }
   const _hoisted_1$9 = {
     key: 0,
@@ -54711,15 +55851,15 @@ ${JSON.stringify(counts)}`);
   const _hoisted_2$8 = { class: "booster-message-meta-body" };
   const _hoisted_3$a = { class: "booster-message-meta-header" };
   const _hoisted_4$a = { class: "booster-meta-lines" };
-  const _hoisted_5$a = { class: "booster-meta-label" };
+  const _hoisted_5$9 = { class: "booster-meta-label" };
   const _hoisted_6$9 = { class: "booster-meta-value" };
   const _hoisted_7$8 = { class: "booster-meta-label" };
-  const _hoisted_8$6 = { class: "booster-meta-value" };
-  const _hoisted_9$6 = { class: "booster-meta-label" };
+  const _hoisted_8$4 = { class: "booster-meta-value" };
+  const _hoisted_9$4 = { class: "booster-meta-label" };
   const _hoisted_10$6 = { class: "booster-meta-value" };
-  const _hoisted_11$5 = { class: "booster-meta-label" };
-  const _hoisted_12$4 = { class: "booster-meta-value" };
-  const _hoisted_13$4 = { class: "booster-meta-label" };
+  const _hoisted_11$3 = { class: "booster-meta-label" };
+  const _hoisted_12$2 = { class: "booster-meta-value" };
+  const _hoisted_13$2 = { class: "booster-meta-label" };
   const _hoisted_14$4 = { class: "booster-meta-value" };
   const _hoisted_15$4 = { class: "booster-meta-label" };
   const _hoisted_16$4 = { class: "booster-meta-value" };
@@ -54837,7 +55977,7 @@ ${JSON.stringify(counts)}`);
               createBaseVNode("div", _hoisted_4$a, [
                 createBaseVNode(
                   "strong",
-                  _hoisted_5$a,
+                  _hoisted_5$9,
                   toDisplayString(t("reader.sentAt")),
                   1
                   /* TEXT */
@@ -54862,7 +56002,7 @@ ${JSON.stringify(counts)}`);
                     ),
                     createBaseVNode(
                       "span",
-                      _hoisted_8$6,
+                      _hoisted_8$4,
                       toDisplayString(duration2(__props.metadata.summaryIntervalMs)),
                       1
                       /* TEXT */
@@ -54877,7 +56017,7 @@ ${JSON.stringify(counts)}`);
                   [
                     createBaseVNode(
                       "strong",
-                      _hoisted_9$6,
+                      _hoisted_9$4,
                       toDisplayString(t("reader.editedAt")),
                       1
                       /* TEXT */
@@ -54899,14 +56039,14 @@ ${JSON.stringify(counts)}`);
                   [
                     createBaseVNode(
                       "strong",
-                      _hoisted_11$5,
+                      _hoisted_11$3,
                       toDisplayString(t("reader.model")),
                       1
                       /* TEXT */
                     ),
                     createBaseVNode(
                       "span",
-                      _hoisted_12$4,
+                      _hoisted_12$2,
                       toDisplayString(__props.metadata.model),
                       1
                       /* TEXT */
@@ -54921,7 +56061,7 @@ ${JSON.stringify(counts)}`);
                   [
                     createBaseVNode(
                       "strong",
-                      _hoisted_13$4,
+                      _hoisted_13$2,
                       toDisplayString(t("reader.thinking")),
                       1
                       /* TEXT */
@@ -55027,33 +56167,42 @@ ${JSON.stringify(counts)}`);
     }
   });
   function mountMessageMetadata(into, initial, locale) {
-    const host = document.createElement("span");
-    host.dataset.chatgptBooster = "message-metadata";
-    host.style.cssText = "display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;width:auto;min-width:0;height:28px;margin:0;";
-    into.append(host);
-    const { mountPoint, portal } = createBoosterShadowSurface(host);
-    const state = /* @__PURE__ */ shallowReactive({ metadata: initial, now: Date.now() });
-    const app = createApp({
-      render: () => h(_sfc_main$9, { metadata: state.metadata, now: state.now, locale })
-    });
-    app.provide(UI_PORTAL_TARGET, portal);
-    app.mount(mountPoint);
-    return {
-      element: host,
-      update(next) {
-        state.metadata = { ...next, activity: next.activity ?? state.metadata.activity ?? null };
-      },
-      updateActivity(activity) {
-        state.metadata = { ...state.metadata, activity };
-      },
-      tick(now) {
-        state.now = now;
-      },
-      unmount() {
-        app.unmount();
-        host.remove();
+    return ensureSiteDecoration({
+      anchor: into,
+      kind: "chatgpt-booster:message-metadata",
+      identity: locale,
+      legacySelector: '[data-chatgpt-booster="message-metadata"]',
+      update: (current) => current.update(initial),
+      create: () => {
+        const host = document.createElement("span");
+        host.dataset.chatgptBooster = "message-metadata";
+        host.style.cssText = "display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;width:auto;min-width:0;height:28px;margin:0;";
+        into.append(host);
+        const { mountPoint, portal } = createBoosterShadowSurface(host);
+        const state = /* @__PURE__ */ shallowReactive({ metadata: initial, now: Date.now() });
+        const app = createApp({
+          render: () => h(_sfc_main$9, { metadata: state.metadata, now: state.now, locale })
+        });
+        app.provide(UI_PORTAL_TARGET, portal);
+        app.mount(mountPoint);
+        return {
+          element: host,
+          update(next) {
+            state.metadata = { ...next, activity: next.activity ?? state.metadata.activity ?? null };
+          },
+          updateActivity(activity) {
+            state.metadata = { ...state.metadata, activity };
+          },
+          tick(now) {
+            state.now = now;
+          },
+          unmount() {
+            app.unmount();
+            host.remove();
+          }
+        };
       }
-    };
+    });
   }
   function elapsed(since, until, now) {
     if (!since) return "—";
@@ -55067,109 +56216,128 @@ ${JSON.stringify(counts)}`);
     return `${hours}:${String(minutes % 60).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
   }
   function mountRequestStatus(before, initial, locale) {
-    const host = document.createElement("div");
-    host.dataset.chatgptBooster = "request-status";
-    host.style.cssText = "display:flex;justify-content:center;width:100%;padding:0 8px 4px;box-sizing:border-box;";
-    before.insertAdjacentElement("beforebegin", host);
-    const shadow = host.attachShadow({ mode: "open" });
-    installBoosterShadowStyles(shadow);
-    const bar = document.createElement("div");
-    bar.className = "booster-request-status";
-    const spinner = document.createElement("span");
-    spinner.className = "booster-request-spinner";
-    spinner.setAttribute("aria-hidden", "true");
-    const request = document.createElement("span");
-    const requestLabel = document.createElement("span");
-    requestLabel.className = "booster-request-status-label";
-    const requestTimer = document.createElement("strong");
-    const reasoning = document.createElement("span");
-    const reasoningLabel = document.createElement("span");
-    reasoningLabel.className = "booster-request-status-label";
-    const reasoningTimer = document.createElement("strong");
-    const action = document.createElement("span");
-    const actionLabel = document.createElement("span");
-    actionLabel.className = "booster-request-status-label";
-    const actionTimer = document.createElement("strong");
-    const update = document.createElement("span");
-    const updateLabel = document.createElement("span");
-    updateLabel.className = "booster-request-status-label";
-    const updateTimer = document.createElement("strong");
-    const summary = document.createElement("span");
-    const summaryLabel = document.createElement("span");
-    summaryLabel.className = "booster-request-status-label";
-    const summaryTimer = document.createElement("strong");
-    const interval = document.createElement("span");
-    const intervalLabel = document.createElement("span");
-    intervalLabel.className = "booster-request-status-label";
-    const intervalTimer = document.createElement("strong");
-    request.append(requestLabel, requestTimer);
-    reasoning.append(reasoningLabel, reasoningTimer);
-    action.append(actionLabel, actionTimer);
-    update.append(updateLabel, updateTimer);
-    summary.append(summaryLabel, summaryTimer);
-    interval.append(intervalLabel, intervalTimer);
-    bar.append(spinner, request, reasoning, action, update, summary, interval);
-    shadow.append(bar);
-    let snapshot = initial;
-    let currentNow = Date.now();
-    const t = (key) => translate(locale, key);
-    requestLabel.textContent = t("requestStatus.request");
-    reasoningLabel.textContent = t("requestStatus.reasoning");
-    actionLabel.textContent = t("requestStatus.action");
-    updateLabel.textContent = t("requestStatus.unchanged");
-    summaryLabel.textContent = t("requestStatus.sinceSummary");
-    intervalLabel.textContent = t("requestStatus.summaryInterval");
-    const render = () => {
-      requestTimer.textContent = elapsed(snapshot.startedAt, snapshot.completedAt, currentNow);
-      reasoning.hidden = !snapshot.reasoningStartedAt;
-      reasoningTimer.textContent = elapsed(snapshot.reasoningStartedAt, snapshot.completedAt, currentNow);
-      spinner.hidden = !snapshot.active;
-      action.hidden = !snapshot.phaseStartedAt;
-      actionTimer.textContent = elapsed(snapshot.phaseStartedAt, snapshot.completedAt, currentNow);
-      update.hidden = !snapshot.lastActivityAt;
-      updateTimer.textContent = snapshot.lastActivityAt ? `${new Date(snapshot.lastActivityAt).toLocaleTimeString(locale)} · ${elapsed(snapshot.lastActivityAt, snapshot.completedAt, currentNow)} ${t("requestStatus.ago")}` : "—";
-      if (snapshot.lastActivityAt)
-        update.title = `${t("activity.lastActivityAt")}: ${new Date(snapshot.lastActivityAt).toLocaleTimeString(locale)}`;
-      summary.hidden = !snapshot.lastSummaryAt;
-      summaryTimer.textContent = elapsed(snapshot.lastSummaryAt ?? null, snapshot.completedAt, currentNow);
-      interval.hidden = !snapshot.previousSummaryAt || !snapshot.lastSummaryAt;
-      intervalTimer.textContent = elapsed(
-        snapshot.previousSummaryAt ?? null,
-        snapshot.lastSummaryAt ?? null,
-        currentNow
-      );
-      bar.dataset.phase = snapshot.phase;
-      bar.setAttribute(
-        "aria-label",
-        [...bar.children].filter((element) => !element.hidden && element !== spinner).map((element) => [...element.children].map((child) => child.textContent).join(" ")).join(", ")
-      );
-    };
-    render();
-    return {
-      element: host,
-      update(next) {
-        snapshot = next;
+    return ensureSiteDecoration({
+      anchor: before,
+      kind: "chatgpt-booster:request-status",
+      identity: locale,
+      placement: "before",
+      legacyBoundarySelector: "[data-chatgpt-booster]",
+      legacySelector: '[data-chatgpt-booster="request-status"]',
+      update: (current) => current.update(initial),
+      create: () => {
+        const host = document.createElement("div");
+        host.dataset.chatgptBooster = "request-status";
+        host.style.cssText = "display:flex;justify-content:center;width:100%;padding:0 8px 4px;box-sizing:border-box;";
+        before.insertAdjacentElement("beforebegin", host);
+        const shadow = host.attachShadow({ mode: "open" });
+        installBoosterShadowStyles(shadow);
+        const bar = document.createElement("div");
+        bar.className = "booster-request-status";
+        const spinner = document.createElement("span");
+        spinner.className = "booster-request-spinner";
+        spinner.setAttribute("aria-hidden", "true");
+        const request = document.createElement("span");
+        const requestLabel = document.createElement("span");
+        requestLabel.className = "booster-request-status-label";
+        const requestTimer = document.createElement("strong");
+        const reasoning = document.createElement("span");
+        const reasoningLabel = document.createElement("span");
+        reasoningLabel.className = "booster-request-status-label";
+        const reasoningTimer = document.createElement("strong");
+        const action = document.createElement("span");
+        const actionLabel = document.createElement("span");
+        actionLabel.className = "booster-request-status-label";
+        const actionTimer = document.createElement("strong");
+        const update = document.createElement("span");
+        const updateLabel = document.createElement("span");
+        updateLabel.className = "booster-request-status-label";
+        const updateTimer = document.createElement("strong");
+        const summary = document.createElement("span");
+        const summaryLabel = document.createElement("span");
+        summaryLabel.className = "booster-request-status-label";
+        const summaryTimer = document.createElement("strong");
+        const interval = document.createElement("span");
+        const intervalLabel = document.createElement("span");
+        intervalLabel.className = "booster-request-status-label";
+        const intervalTimer = document.createElement("strong");
+        request.append(requestLabel, requestTimer);
+        reasoning.append(reasoningLabel, reasoningTimer);
+        action.append(actionLabel, actionTimer);
+        update.append(updateLabel, updateTimer);
+        summary.append(summaryLabel, summaryTimer);
+        interval.append(intervalLabel, intervalTimer);
+        bar.append(spinner, request, reasoning, action, update, summary, interval);
+        shadow.append(bar);
+        let snapshot = initial;
+        let currentNow = Date.now();
+        const t = (key) => translate(locale, key);
+        requestLabel.textContent = t("requestStatus.request");
+        reasoningLabel.textContent = t("requestStatus.reasoning");
+        actionLabel.textContent = t("requestStatus.action");
+        updateLabel.textContent = t("requestStatus.unchanged");
+        summaryLabel.textContent = t("requestStatus.sinceSummary");
+        intervalLabel.textContent = t("requestStatus.summaryInterval");
+        const render = () => {
+          requestTimer.textContent = elapsed(snapshot.startedAt, snapshot.completedAt, currentNow);
+          reasoning.hidden = !snapshot.reasoningStartedAt;
+          reasoningTimer.textContent = elapsed(
+            snapshot.reasoningStartedAt,
+            snapshot.completedAt,
+            currentNow
+          );
+          spinner.hidden = !snapshot.active;
+          action.hidden = !snapshot.phaseStartedAt;
+          actionTimer.textContent = elapsed(snapshot.phaseStartedAt, snapshot.completedAt, currentNow);
+          update.hidden = !snapshot.lastActivityAt;
+          updateTimer.textContent = snapshot.lastActivityAt ? `${new Date(snapshot.lastActivityAt).toLocaleTimeString(locale)} · ${elapsed(snapshot.lastActivityAt, snapshot.completedAt, currentNow)} ${t("requestStatus.ago")}` : "—";
+          if (snapshot.lastActivityAt)
+            update.title = `${t("activity.lastActivityAt")}: ${new Date(snapshot.lastActivityAt).toLocaleTimeString(locale)}`;
+          summary.hidden = !snapshot.lastSummaryAt;
+          summaryTimer.textContent = elapsed(
+            snapshot.lastSummaryAt ?? null,
+            snapshot.completedAt,
+            currentNow
+          );
+          interval.hidden = !snapshot.previousSummaryAt || !snapshot.lastSummaryAt;
+          intervalTimer.textContent = elapsed(
+            snapshot.previousSummaryAt ?? null,
+            snapshot.lastSummaryAt ?? null,
+            currentNow
+          );
+          bar.dataset.phase = snapshot.phase;
+          bar.setAttribute(
+            "aria-label",
+            [...bar.children].filter((element) => !element.hidden && element !== spinner).map((element) => [...element.children].map((child) => child.textContent).join(" ")).join(", ")
+          );
+        };
         render();
-      },
-      tick(now) {
-        currentNow = now;
-        render();
-      },
-      unmount() {
-        host.remove();
+        return {
+          element: host,
+          update(next) {
+            snapshot = next;
+            render();
+          },
+          tick(now) {
+            currentNow = now;
+            render();
+          },
+          unmount() {
+            host.remove();
+          }
+        };
       }
-    };
+    });
   }
   const _hoisted_1$8 = ["title"];
   const _hoisted_2$7 = { class: "booster-scope-title" };
-  const _hoisted_3$9 = { class: "booster-scope-kind" };
-  const _hoisted_4$9 = { class: "booster-meta-lines" };
-  const _hoisted_5$9 = { class: "booster-meta-label" };
+  const _hoisted_3$7 = { class: "booster-scope-kind" };
+  const _hoisted_4$7 = { class: "booster-meta-lines" };
+  const _hoisted_5$6 = { class: "booster-meta-label" };
   const _hoisted_6$8 = { class: "booster-meta-value" };
   const _hoisted_7$7 = { class: "booster-meta-label" };
   const _hoisted_8$3 = { class: "booster-meta-value" };
   const _hoisted_9$3 = { class: "booster-meta-label" };
-  const _hoisted_10$5 = { class: "booster-meta-value" };
+  const _hoisted_10$3 = { class: "booster-meta-value" };
   const _hoisted_11$2 = { class: "booster-scope-actions" };
   const _sfc_main$8 = /* @__PURE__ */ defineComponent({
     __name: "ScopeArchiveControl",
@@ -55220,16 +56388,16 @@ ${JSON.stringify(counts)}`);
                 ),
                 createBaseVNode(
                   "span",
-                  _hoisted_3$9,
+                  _hoisted_3$7,
                   toDisplayString(t("capture.project")),
                   1
                   /* TEXT */
                 )
               ]),
-              createBaseVNode("div", _hoisted_4$9, [
+              createBaseVNode("div", _hoisted_4$7, [
                 createBaseVNode(
                   "strong",
-                  _hoisted_5$9,
+                  _hoisted_5$6,
                   toDisplayString(t("scope.localArchive")),
                   1
                   /* TEXT */
@@ -55264,7 +56432,7 @@ ${JSON.stringify(counts)}`);
                 ),
                 createBaseVNode(
                   "span",
-                  _hoisted_10$5,
+                  _hoisted_10$3,
                   toDisplayString(t("scope.source." + __props.model.source)),
                   1
                   /* TEXT */
@@ -55367,25 +56535,25 @@ ${JSON.stringify(counts)}`);
   const _hoisted_2$6 = ["src"];
   const _hoisted_3$6 = { class: "min-w-0 flex-1" };
   const _hoisted_4$6 = { key: 0 };
-  const _hoisted_5$8 = { class: "booster-meta-lines" };
-  const _hoisted_6$7 = { class: "booster-meta-label" };
-  const _hoisted_7$6 = { class: "booster-meta-value font-mono break-all" };
+  const _hoisted_5$5 = { class: "booster-meta-lines" };
+  const _hoisted_6$5 = { class: "booster-meta-label" };
+  const _hoisted_7$4 = { class: "booster-meta-value font-mono break-all" };
   const _hoisted_8$2 = { class: "booster-meta-label" };
   const _hoisted_9$2 = { class: "booster-meta-value" };
   const _hoisted_10$2 = { class: "booster-meta-label" };
   const _hoisted_11$1 = { class: "booster-meta-value" };
   const _hoisted_12$1 = { class: "booster-meta-label" };
   const _hoisted_13$1 = { class: "booster-meta-value" };
-  const _hoisted_14$3 = { class: "booster-meta-label" };
-  const _hoisted_15$3 = { class: "booster-meta-value" };
-  const _hoisted_16$3 = { class: "booster-meta-label" };
-  const _hoisted_17$2 = { class: "booster-meta-value" };
-  const _hoisted_18$2 = { class: "booster-meta-label" };
-  const _hoisted_19$2 = { class: "booster-meta-value" };
-  const _hoisted_20$2 = { class: "booster-meta-label" };
-  const _hoisted_21$2 = { class: "booster-meta-value booster-tool-path" };
-  const _hoisted_22$2 = ["href"];
-  const _hoisted_23$2 = {
+  const _hoisted_14$1 = { class: "booster-meta-label" };
+  const _hoisted_15$1 = { class: "booster-meta-value" };
+  const _hoisted_16$1 = { class: "booster-meta-label" };
+  const _hoisted_17 = { class: "booster-meta-value" };
+  const _hoisted_18 = { class: "booster-meta-label" };
+  const _hoisted_19 = { class: "booster-meta-value" };
+  const _hoisted_20 = { class: "booster-meta-label" };
+  const _hoisted_21 = { class: "booster-meta-value booster-tool-path" };
+  const _hoisted_22 = ["href"];
+  const _hoisted_23 = {
     key: 1,
     class: "booster-tool-payload"
   };
@@ -55552,17 +56720,17 @@ ${JSON.stringify(counts)}`);
                       /* STABLE */
                     })
                   ]),
-                  createBaseVNode("div", _hoisted_5$8, [
+                  createBaseVNode("div", _hoisted_5$5, [
                     createBaseVNode(
                       "strong",
-                      _hoisted_6$7,
+                      _hoisted_6$5,
                       toDisplayString(t("tool.id")),
                       1
                       /* TEXT */
                     ),
                     createBaseVNode(
                       "span",
-                      _hoisted_7$6,
+                      _hoisted_7$4,
                       toDisplayString(__props.model.id),
                       1
                       /* TEXT */
@@ -55639,14 +56807,14 @@ ${JSON.stringify(counts)}`);
                       [
                         createBaseVNode(
                           "strong",
-                          _hoisted_14$3,
+                          _hoisted_14$1,
                           toDisplayString(t("tool.startedAt")),
                           1
                           /* TEXT */
                         ),
                         createBaseVNode(
                           "span",
-                          _hoisted_15$3,
+                          _hoisted_15$1,
                           toDisplayString(startedAt.value),
                           1
                           /* TEXT */
@@ -55661,14 +56829,14 @@ ${JSON.stringify(counts)}`);
                       [
                         createBaseVNode(
                           "strong",
-                          _hoisted_16$3,
+                          _hoisted_16$1,
                           toDisplayString(t("tool.finishedAt")),
                           1
                           /* TEXT */
                         ),
                         createBaseVNode(
                           "span",
-                          _hoisted_17$2,
+                          _hoisted_17,
                           toDisplayString(finishedAt.value),
                           1
                           /* TEXT */
@@ -55683,14 +56851,14 @@ ${JSON.stringify(counts)}`);
                       [
                         createBaseVNode(
                           "strong",
-                          _hoisted_18$2,
+                          _hoisted_18,
                           toDisplayString(t("tool.recipient")),
                           1
                           /* TEXT */
                         ),
                         createBaseVNode(
                           "span",
-                          _hoisted_19$2,
+                          _hoisted_19,
                           toDisplayString(__props.model.tool.recipient),
                           1
                           /* TEXT */
@@ -55705,14 +56873,14 @@ ${JSON.stringify(counts)}`);
                       [
                         createBaseVNode(
                           "strong",
-                          _hoisted_20$2,
+                          _hoisted_20,
                           toDisplayString(t("tool.path")),
                           1
                           /* TEXT */
                         ),
                         createBaseVNode(
                           "span",
-                          _hoisted_21$2,
+                          _hoisted_21,
                           toDisplayString(__props.model.tool.path),
                           1
                           /* TEXT */
@@ -55743,12 +56911,12 @@ ${JSON.stringify(counts)}`);
                           1
                           /* TEXT */
                         )
-                      ], 8, _hoisted_22$2)
+                      ], 8, _hoisted_22)
                     ]),
                     _: 1
                     /* STABLE */
                   })) : createCommentVNode("v-if", true),
-                  __props.model.tool.payload !== null ? (openBlock(), createElementBlock("div", _hoisted_23$2, [
+                  __props.model.tool.payload !== null ? (openBlock(), createElementBlock("div", _hoisted_23, [
                     createBaseVNode(
                       "strong",
                       null,
@@ -55860,68 +57028,88 @@ ${JSON.stringify(counts)}`);
     }
   });
   function mountToolInspector(into, model) {
-    const host = document.createElement("span");
-    host.dataset.chatgptBooster = "tool-inspector";
-    host.dataset.sourceMessageId = model.id;
-    host.style.cssText = "display:inline-flex;flex:0 0 auto;align-items:center;pointer-events:auto;margin-inline-start:2px;";
-    into.append(host);
-    const { mountPoint, portal } = createBoosterShadowSurface(host);
-    const state = /* @__PURE__ */ reactive({ model, now: 0 });
-    const app = createApp({
-      render: () => h(_sfc_main$7, { model: state.model, now: state.now })
-    });
-    app.provide(UI_PORTAL_TARGET, portal);
-    app.mount(mountPoint);
-    return {
-      element: host,
-      update(next) {
-        state.model = next;
-      },
-      tick(now) {
-        state.now = now;
-      },
-      unmount() {
-        app.unmount();
-        host.remove();
+    return ensureSiteDecoration({
+      anchor: into,
+      kind: "chatgpt-booster:tool-inspector",
+      identity: `${model.locale}:${model.id}`,
+      legacySelector: '[data-chatgpt-booster="tool-inspector"]',
+      update: (current) => current.update(model),
+      create: () => {
+        const host = document.createElement("span");
+        host.dataset.chatgptBooster = "tool-inspector";
+        host.dataset.sourceMessageId = model.id;
+        host.style.cssText = "display:inline-flex;flex:0 0 auto;align-items:center;pointer-events:auto;margin-inline-start:2px;";
+        into.append(host);
+        const { mountPoint, portal } = createBoosterShadowSurface(host);
+        const state = /* @__PURE__ */ reactive({ model, now: 0 });
+        const app = createApp({
+          render: () => h(_sfc_main$7, { model: state.model, now: state.now })
+        });
+        app.provide(UI_PORTAL_TARGET, portal);
+        app.mount(mountPoint);
+        return {
+          element: host,
+          update(next) {
+            state.model = next;
+          },
+          tick(now) {
+            state.now = now;
+          },
+          unmount() {
+            app.unmount();
+            host.remove();
+          }
+        };
       }
-    };
+    });
   }
   function mountWorkModeWarning(before, initial, locale) {
-    const host = document.createElement("div");
-    host.dataset.chatgptBooster = "work-mode-warning";
-    host.style.cssText = "display:flex;justify-content:center;width:100%;padding:0 8px 4px;box-sizing:border-box;";
-    before.insertAdjacentElement("beforebegin", host);
-    const shadow = host.attachShadow({ mode: "open" });
-    installBoosterShadowStyles(shadow);
-    const warning = document.createElement("div");
-    warning.className = "booster-work-mode-warning";
-    warning.setAttribute("role", "status");
-    const label = document.createElement("strong");
-    const details = document.createElement("span");
-    warning.append(label, details);
-    shadow.append(warning);
-    const t = (key) => translate(locale, key);
-    let subagents = initial;
-    const render = () => {
-      label.textContent = t("work.browserOnly");
-      const active = subagents.filter(
-        (agent) => agent.status === "waiting" || agent.status === "working"
-      ).length;
-      details.textContent = subagents.length ? `${t("work.subagents")} ${subagents.length} · ${t("work.active")} ${active}` : "";
-      details.hidden = !details.textContent;
-      warning.title = subagents.map((agent) => `${agent.displayName ?? agent.status}: ${agent.status}`).join("\n");
-    };
-    render();
-    return {
-      element: host,
-      update(next) {
-        subagents = next;
+    return ensureSiteDecoration({
+      anchor: before,
+      kind: "chatgpt-booster:work-mode-warning",
+      identity: locale,
+      placement: "before",
+      legacyBoundarySelector: "[data-chatgpt-booster]",
+      legacySelector: '[data-chatgpt-booster="work-mode-warning"]',
+      update: (current) => current.update(initial),
+      create: () => {
+        const host = document.createElement("div");
+        host.dataset.chatgptBooster = "work-mode-warning";
+        host.style.cssText = "display:flex;justify-content:center;width:100%;padding:0 8px 4px;box-sizing:border-box;";
+        before.insertAdjacentElement("beforebegin", host);
+        const shadow = host.attachShadow({ mode: "open" });
+        installBoosterShadowStyles(shadow);
+        const warning = document.createElement("div");
+        warning.className = "booster-work-mode-warning";
+        warning.setAttribute("role", "status");
+        const label = document.createElement("strong");
+        const details = document.createElement("span");
+        warning.append(label, details);
+        shadow.append(warning);
+        const t = (key) => translate(locale, key);
+        let subagents = initial;
+        const render = () => {
+          label.textContent = t("work.browserOnly");
+          const active = subagents.filter(
+            (agent) => agent.status === "waiting" || agent.status === "working"
+          ).length;
+          details.textContent = subagents.length ? `${t("work.subagents")} ${subagents.length} · ${t("work.active")} ${active}` : "";
+          details.hidden = !details.textContent;
+          warning.title = subagents.map((agent) => `${agent.displayName ?? agent.status}: ${agent.status}`).join("\n");
+        };
         render();
-      },
-      unmount() {
-        host.remove();
+        return {
+          element: host,
+          update(next) {
+            subagents = next;
+            render();
+          },
+          unmount() {
+            host.remove();
+          }
+        };
       }
-    };
+    });
   }
   function sameCaptureRule(a, b) {
     return a.enabled === b.enabled && a.reasoning === b.reasoning && a.tools === b.tools && a.internal === b.internal;
@@ -56203,6 +57391,18 @@ ${JSON.stringify(counts)}`);
       if (this.#controls) this.#controls.update(options);
       else this.#controls = mountArchiveScopeControls(options);
     }
+  }
+  function object$2(value) {
+    return value !== null && typeof value === "object" && !Array.isArray(value) ? value : void 0;
+  }
+  function conversationRequestErrorCode(payload, status, fallback = "request_rejected") {
+    const error = object$2(payload), nested = object$2(error?.error), detail = object$2(error?.detail);
+    const code = error?.code ?? error?.error_code ?? nested?.code;
+    if (code === "conversation_too_large" || code === "tokenless_resume_unavailable" || code === "persisted_final_available")
+      return code;
+    if (status === 413 && detail?.code === "conversation_length_exceeds_limit" && typeof detail.message === "string")
+      return "conversation_too_large";
+    return fallback;
   }
   const object$1 = (value) => value !== null && typeof value === "object" && !Array.isArray(value) ? value : null;
   function fullSourceEnvelope(value) {
@@ -56688,6 +57888,8 @@ ${JSON.stringify(counts)}`);
     const value = requestPayload(payload);
     if (!value) return null;
     const conversationId = typeof value.conversation_id === "string" ? value.conversation_id : fallbackConversationId;
+    if (value.type === "stream_handoff" && typeof value.conversation_id === "string" && value.conversation_id.trim())
+      return { conversationId: value.conversation_id, kind: "handoff", observedAt };
     if (typeof value.error === "string" && value.error.trim()) {
       const errorCode = typeof value.error_code === "string" && value.error_code.trim() ? value.error_code : null;
       const errorReason = typeof value.error_reason === "string" && value.error_reason.trim() ? value.error_reason : null;
@@ -56742,6 +57944,7 @@ ${JSON.stringify(counts)}`);
     let nativeConversationId = conversationId;
     const sourceDecoder = new ConversationStreamDecoder();
     let terminalSeen = false;
+    let handedOff = false;
     const publishRetainedGapEvidence = () => {
       const baseline = sourceDecoder.retainedBaseline();
       const normalized = baseline ? conversationStreamEventFromPayload(baseline, nativeConversationId, Date.now()) : null;
@@ -56761,7 +57964,7 @@ ${JSON.stringify(counts)}`);
           const { done, value } = await reader.read();
           if (requestEpoch !== currentEpoch()) break;
           if (done) {
-            if (!terminalSeen)
+            if (!terminalSeen && !handedOff)
               publishConversationStream({
                 conversationId: nativeConversationId,
                 kind: "error",
@@ -56785,27 +57988,28 @@ ${JSON.stringify(counts)}`);
             const eventType = block.split("\n").filter((line) => line.startsWith("event:")).at(-1)?.slice(6).trim() ?? null;
             if (data === "[DONE]" && requestEpoch === currentEpoch()) {
               terminalSeen = true;
-              publishConversationStream(
-                sourceDecoder.hasGap() ? {
-                  conversationId: nativeConversationId,
-                  kind: "error",
-                  errorCode: "source_patch_gap",
-                  errorReason: null,
-                  canRetry: true,
-                  observedAt: Date.now(),
-                  accountId,
-                  requestId,
-                  userMessageId
-                } : {
-                  conversationId: nativeConversationId,
-                  kind: "complete",
-                  phase: "main",
-                  observedAt: Date.now(),
-                  accountId,
-                  requestId,
-                  userMessageId
-                }
-              );
+              if (!handedOff)
+                publishConversationStream(
+                  sourceDecoder.hasGap() ? {
+                    conversationId: nativeConversationId,
+                    kind: "error",
+                    errorCode: "source_patch_gap",
+                    errorReason: null,
+                    canRetry: true,
+                    observedAt: Date.now(),
+                    accountId,
+                    requestId,
+                    userMessageId
+                  } : {
+                    conversationId: nativeConversationId,
+                    kind: "complete",
+                    phase: "main",
+                    observedAt: Date.now(),
+                    accountId,
+                    requestId,
+                    userMessageId
+                  }
+                );
             }
             if (data && data !== "[DONE]") {
               try {
@@ -56832,8 +58036,12 @@ ${JSON.stringify(counts)}`);
                 );
                 if (normalized?.conversationId) {
                   nativeConversationId = normalized.conversationId;
-                  onConversationKnown(nativeConversationId);
+                  onConversationKnown(
+                    nativeConversationId,
+                    normalized.kind === "message" ? normalized.record : void 0
+                  );
                 }
+                if (normalized?.kind === "handoff") handedOff = true;
                 if (normalized?.kind === "complete" && normalized.phase === "main" || normalized?.kind === "error" || normalized?.kind === "message" && requestPayload(normalized.record.author)?.role === "assistant" && (normalized.record.recipient === void 0 || normalized.record.recipient === null || normalized.record.recipient === "all") && (normalized.record.channel === void 0 || normalized.record.channel === null || normalized.record.channel === "final") && normalized.record.end_turn === true && normalized.record.status === "finished_successfully")
                   terminalSeen = true;
                 if (!normalized) {
@@ -56881,7 +58089,7 @@ ${JSON.stringify(counts)}`);
           }
         }
       } catch {
-        if (!terminalSeen && requestEpoch === currentEpoch())
+        if (!terminalSeen && !handedOff && requestEpoch === currentEpoch())
           publishConversationStream({
             conversationId: nativeConversationId,
             kind: "error",
@@ -56984,8 +58192,17 @@ ${JSON.stringify(counts)}`);
       observedAtMs: observedAt,
       source: "native-composer-submit"
     } : void 0;
+    const submission = payload?.action === "next" && composer && messages2.length === 1 && typeof user?.id === "string" && user.id && typeof payload.parent_message_id === "string" && payload.parent_message_id && user.content && typeof user.content === "object" && !Array.isArray(user.content) ? { message: structuredClone(user), parentMessageId: payload.parent_message_id } : void 0;
     return {
       ...selection ? { submissionSelection: selection } : {},
+      ...submission ? { submission } : {},
+      ...payload?.action === "next" && composer && (!Object.hasOwn(payload, "conversation_id") || payload.conversation_id === null) && messages2.length === 1 && typeof user?.id === "string" && user.id && typeof payload.parent_message_id === "string" && payload.parent_message_id && user.content && typeof user.content === "object" && !Array.isArray(user.content) ? {
+        creation: {
+          message: structuredClone(user),
+          parentMessageId: payload.parent_message_id,
+          ...typeof payload.gizmo_id === "string" && /^g-p-[A-Za-z0-9_-]+$/.test(payload.gizmo_id) && payload.gizmo_id.length <= 256 ? { projectId: payload.gizmo_id } : {}
+        }
+      } : {},
       conversationId: typeof payload?.conversation_id === "string" ? payload.conversation_id : null,
       userMessageId: typeof user?.id === "string" ? user.id : null,
       ...payload && Object.hasOwn(payload, "conversation_origin") ? {
@@ -57396,8 +58613,8 @@ ${JSON.stringify(counts)}`);
     const tagged = target;
     if (tagged[marker]) return () => void 0;
     tagged[marker] = true;
-    const registryKey = "__kobaBrowserNativeHookLayers__";
-    let shared = tagged[registryKey];
+    const registryKey2 = "__kobaBrowserNativeHookLayers__";
+    let shared = tagged[registryKey2];
     if (!shared) {
       shared = {
         active: /* @__PURE__ */ new Set(),
@@ -57411,7 +58628,7 @@ ${JSON.stringify(counts)}`);
         xhrOpens: /* @__PURE__ */ new Set(),
         xhrSends: /* @__PURE__ */ new Set()
       };
-      tagged[registryKey] = shared;
+      tagged[registryKey2] = shared;
     }
     shared.active.add(marker);
     let observerActive = true;
@@ -57424,6 +58641,7 @@ ${JSON.stringify(counts)}`);
     let emittedAccountId = null;
     let accountEpoch = 0;
     const activeRuns = /* @__PURE__ */ new Map();
+    const nativeStreamRuns = /* @__PURE__ */ new Map();
     let accountSelectionSerial = 0;
     const publishAccount = (accountId, observedAt) => {
       if (emittedAccountId === accountId) return;
@@ -57431,6 +58649,7 @@ ${JSON.stringify(counts)}`);
       accountEpoch += 1;
       archiveReads.clear();
       activeRuns.clear();
+      nativeStreamRuns.clear();
       archiveProjects.clear();
       bufferedInitialPages.clear();
       target.postMessage(
@@ -57676,12 +58895,14 @@ ${JSON.stringify(counts)}`);
             if (!response.ok && (conversationRequest || resumeConversationId)) {
               void response.clone().json().catch(() => null).then((payload) => {
                 if (accountCheckEpoch !== accountEpoch || !observerActive) return;
-                const error = requestPayload(payload), nested = requestPayload(error?.error);
-                const code = error?.code ?? error?.error_code ?? nested?.code;
                 publishConversationStream({
                   conversationId: conversationRequest?.conversationId ?? resumeConversationId,
                   kind: "error",
-                  errorCode: code === "conversation_too_large" || code === "tokenless_resume_unavailable" || code === "persisted_final_available" ? code : resumeConversationId ? "network_error" : "request_rejected",
+                  errorCode: conversationRequestErrorCode(
+                    payload,
+                    response.status,
+                    resumeConversationId ? "network_error" : "request_rejected"
+                  ),
                   errorReason: null,
                   canRetry: response.status === 429 || response.status >= 500,
                   observedAt: Date.now(),
@@ -57731,9 +58952,20 @@ ${JSON.stringify(counts)}`);
                 () => accountEpoch,
                 id2,
                 conversationRequest?.userMessageId ?? null,
-                (nativeId) => {
+                (nativeId, message) => {
                   if ((activeRuns.get(nativeId)?.at ?? 0) <= requestBoundaryAt)
                     activeRuns.set(nativeId, { id: id2, at: requestBoundaryAt });
+                  const nativeRequestId = requestPayload(message?.metadata)?.request_id;
+                  if (typeof nativeRequestId === "string" && nativeRequestId.length > 0 && nativeRequestId.length <= 1024) {
+                    nativeStreamRuns.set(JSON.stringify([nativeId, nativeRequestId]), {
+                      id: id2,
+                      at: requestBoundaryAt
+                    });
+                    if (nativeStreamRuns.size > 128) {
+                      const oldest = nativeStreamRuns.keys().next().value;
+                      if (oldest !== void 0) nativeStreamRuns.delete(oldest);
+                    }
+                  }
                 }
               );
             if (method.toUpperCase() === "POST" && resumeConversationId)
@@ -57925,18 +59157,28 @@ ${JSON.stringify(counts)}`);
                 );
             }
           }
-          if (requestTiming && (this.status < 200 || this.status >= 300))
+          if (requestTiming && (this.status < 200 || this.status >= 300)) {
+            let payload = null;
+            try {
+              payload = this.responseType === "json" ? this.response : JSON.parse(this.responseText);
+            } catch {
+            }
             publishConversationStream({
               conversationId: requestTiming.conversationId,
               requestId: id2,
               userMessageId: requestTiming.userMessageId,
               kind: "error",
-              errorCode: this.status ? "request_rejected" : "network_error",
+              errorCode: conversationRequestErrorCode(
+                payload,
+                this.status,
+                this.status ? "request_rejected" : "network_error"
+              ),
               errorReason: null,
-              canRetry: true,
+              canRetry: this.status === 0 || this.status === 429 || this.status >= 500,
               observedAt: Date.now(),
               accountId: emittedAccountId
             });
+          }
           if (resolverObserved && this.status >= 200 && this.status < 300) {
             try {
               const value = this.responseType === "json" ? this.response : JSON.parse(this.responseText);
@@ -58066,10 +59308,13 @@ ${JSON.stringify(counts)}`);
               }
             }
             const detail = !source && sourceDecoder?.hasGap() ? null : conversationStreamEventFromPayload(source?.payload ?? payload, null, Date.now());
+            const nativeRequestId = detail?.kind === "message" ? requestPayload(detail.record.metadata)?.request_id : null;
+            const correlatedRun = detail?.conversationId && typeof nativeRequestId === "string" ? nativeStreamRuns.get(JSON.stringify([detail.conversationId, nativeRequestId])) : void 0;
             if (detail?.conversationId && shouldObserveArchiveConversation(detail.conversationId) && !(sourceDecoder?.hasGap() && (detail.kind === "complete" || detail.kind === "async-status")))
               publishConversationStream({
                 ...detail,
                 accountId: confirmedCatalogAccountId,
+                ...correlatedRun ? { requestId: correlatedRun.id } : {},
                 ...detail.kind === "message" && source ? { evidence: [...sourceDecoder?.takeGapEvidence() ?? [], source.evidence] } : {}
               });
           } catch {
@@ -58237,7 +59482,7 @@ ${JSON.stringify(counts)}`);
           setRealtimeTransportHooksEnabled(false);
         if (target.EventSource && target.EventSource !== shared.originalEventSource)
           setRealtimeTransportHooksEnabled(false);
-        delete tagged[registryKey];
+        delete tagged[registryKey2];
       } else {
         if (currentDescriptor?.get === ownFetchGetter) {
           if (originalFetchDescriptor) Object.defineProperty(target, "fetch", originalFetchDescriptor);
@@ -58269,7 +59514,9 @@ ${JSON.stringify(counts)}`);
   const NATIVE_HISTORY_CONTRACT_V5 = "chatgpt-history-2026-10-v5";
   const NATIVE_HISTORY_CONTRACT_V6 = "chatgpt-history-2026-10-v6";
   const NATIVE_HISTORY_CONTRACT_V7 = "chatgpt-history-2026-10-v7";
-  const NATIVE_HISTORY_CONTRACT_VERSION = NATIVE_HISTORY_CONTRACT_V7;
+  const NATIVE_HISTORY_CONTRACT_V8 = "chatgpt-history-2026-10-v8";
+  const NATIVE_HISTORY_CONTRACT_V9 = "chatgpt-history-2026-10-v9";
+  const NATIVE_HISTORY_CONTRACT_VERSION = NATIVE_HISTORY_CONTRACT_V9;
   function sameSubmissionSelection(left, right) {
     return left.messageId === right.messageId && left.requestedModel === right.requestedModel && left.effortPresent === right.effortPresent && left.thinkingEffort === right.thinkingEffort;
   }
@@ -58469,6 +59716,38 @@ ${JSON.stringify(counts)}`);
     metadata: v7MetadataTypes,
     content: v2ContentKeys
   };
+  const v8Profile = {
+    version: NATIVE_HISTORY_CONTRACT_V8,
+    metadata: { ...v7MetadataTypes, is_user_system_message: "boolean" },
+    content: {
+      ...v2ContentKeys,
+      user_editable_context: /* @__PURE__ */ new Set(["content_type", "user_profile", "user_instructions"])
+    }
+  };
+  const v9Profile = {
+    ...v8Profile,
+    version: NATIVE_HISTORY_CONTRACT_V9,
+    metadata: {
+      ...v8Profile.metadata,
+      targeted_feedback: "object",
+      preamble_version: "number",
+      async_source: "string",
+      permissions: "array",
+      poll_freshness_max_mins: "number",
+      poll_interval_ms: "number",
+      poll_on_websocket_inactivity_ms: "number",
+      poll_suppress_reconnect_banner: "boolean",
+      pro_skipped: "boolean",
+      finished_text: "string",
+      initial_text: "string",
+      summarization_headline: "string"
+    }
+  };
+  function validateUserContext(content, path, fail2) {
+    if (content.content_type !== "user_editable_context") return;
+    for (const field2 of ["user_profile", "user_instructions"])
+      if (typeof content[field2] !== "string") fail2(`${path}.${field2}`, "type");
+  }
   function metadataTypeMatches(expected, value) {
     const actual = value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
     if (expected === "nullable-string") return actual === "null" || actual === "string";
@@ -58593,6 +59872,7 @@ ${JSON.stringify(counts)}`);
       const schema = profile.content[type2];
       if (!schema) failure(`${path}.content.content_type`, "unsupported");
       keys2(content, schema, `${path}.content`);
+      validateUserContext(content, `${path}.content`, failure);
       if (type2 === "text" || type2 === "multimodal_text") {
         if (!Array.isArray(required(content, "parts", `${path}.content`)))
           failure(`${path}.content.parts`, "type");
@@ -58650,6 +59930,7 @@ ${JSON.stringify(counts)}`);
     const contentShape = profile.content[content.content_type];
     if (!contentShape) fail2("stream.message.content.content_type", "unsupported");
     allowed(content, contentShape, "stream.message.content");
+    validateUserContext(content, "stream.message.content", fail2);
     if ((content.content_type === "text" || content.content_type === "multimodal_text") && !Array.isArray(content.parts))
       fail2("stream.message.content.parts", "type");
     if (profile !== v1Profile && content.content_type === "code") {
@@ -58775,6 +60056,22 @@ ${JSON.stringify(counts)}`);
       knownNullablePaths: Object.freeze([]),
       assertPage: (detail, projected) => assertHistoryPage(detail, projected, v7Profile),
       assertStream: (id2, incoming) => assertStreamMessage(id2, incoming, v7Profile)
+    }),
+    [NATIVE_HISTORY_CONTRACT_V8]: Object.freeze({
+      version: NATIVE_HISTORY_CONTRACT_V8,
+      evidenceDocument: "docs/chatgpt-booster/LIVE_ARCHIVE_CONTRACT.md",
+      fixtureFile: "tests/archive-source-contract.test.ts",
+      knownNullablePaths: Object.freeze([]),
+      assertPage: (detail, projected) => assertHistoryPage(detail, projected, v8Profile),
+      assertStream: (id2, incoming) => assertStreamMessage(id2, incoming, v8Profile)
+    }),
+    [NATIVE_HISTORY_CONTRACT_V9]: Object.freeze({
+      version: NATIVE_HISTORY_CONTRACT_V9,
+      evidenceDocument: "docs/chatgpt-booster/LIVE_ARCHIVE_CONTRACT.md",
+      fixtureFile: "tests/archive-source-contract.test.ts",
+      knownNullablePaths: Object.freeze([]),
+      assertPage: (detail, projected) => assertHistoryPage(detail, projected, v9Profile),
+      assertStream: (id2, incoming) => assertStreamMessage(id2, incoming, v9Profile)
     })
   });
   class ArchiveSourceGate {
@@ -58939,7 +60236,7 @@ ${JSON.stringify(counts)}`);
       const conversation = this.conversations.get(conversationId) ?? /* @__PURE__ */ new Map();
       conversation.set(sequence2, entry);
       this.conversations.set(conversationId, conversation);
-      const records = detached.kind === "page" ? detached.detail.payload.messages : detached.kind === "stream" && detached.detail.kind === "message" ? [detached.detail.record] : [];
+      const records = detached.kind === "page" ? detached.detail.payload.messages : detached.kind === "stream" && detached.detail.kind === "message" ? [detached.detail.record] : detached.kind === "request" && (detached.detail.submission || detached.detail.creation) ? [(detached.detail.submission ?? detached.detail.creation)?.message] : [];
       const ids = this.messageIds.get(conversationId) ?? /* @__PURE__ */ new Set();
       const previousCount = ids.size;
       const messages2 = this.messages.get(conversationId) ?? /* @__PURE__ */ new Map();
@@ -59346,7 +60643,8 @@ ${JSON.stringify(counts)}`);
         revision: state.revision,
         lastObservedAt: state.lastObservedAt,
         headReadId: state.headReadId,
-        headReadStartedAt: state.headReadStartedAt
+        headReadStartedAt: state.headReadStartedAt,
+        startEvidence: state.startEvidence
       } : void 0;
     }
     snapshot(conversationId) {
@@ -59467,6 +60765,14 @@ ${JSON.stringify(counts)}`);
         state.recordReads.set(raw.id, { readId: detail.readId ?? "", startedAt: readStartedAt });
       }
       const id2 = pageKey(detail);
+      const pageInfo = asRecord(payload.page_info);
+      if (!state.startEvidence && pageInfo?.has_previous_page === false && typeof pageInfo.start_cursor === "string" && typeof detail.readId === "string" && state.records.has(pageInfo.start_cursor))
+        state.startEvidence = {
+          kind: "native-page",
+          firstMessageId: pageInfo.start_cursor,
+          sourceId: detail.readId,
+          observedAt: detail.timestamp
+        };
       state.pageCoverage = advanceHistoryCoverage(state.pageCoverage, nativePageEvidence(detail));
       if (detail.isInitial) {
         for (const retained of state.pages.values())
@@ -59593,7 +60899,7 @@ ${JSON.stringify(counts)}`);
       if (detail.requestId && this.#runConversations.has(detail.requestId) && this.#runConversations.get(detail.requestId) !== conversationId)
         return;
       if (detail.requestId) this.#rememberRun(detail.requestId, conversationId);
-      this.observations.receive(conversationId, { kind: "request", detail });
+      const requestObservation = this.observations.receive(conversationId, { kind: "request", detail });
       const state = this.#ensure(conversationId);
       if (state.lifecycle.requestObservedAt !== null && state.lifecycle.requestObservedAt !== void 0 && (detail.observedAt < state.lifecycle.requestObservedAt || !!detail.requestId && detail.requestId === state.lifecycle.requestId))
         return;
@@ -59616,6 +60922,42 @@ ${JSON.stringify(counts)}`);
       }
       if (Object.hasOwn(detail, "conversationOrigin"))
         state.conversationOrigin = typeof detail.conversationOrigin === "string" ? detail.conversationOrigin : null;
+      const submitted = detail.submission ?? detail.creation;
+      if (submitted && detail.requestId && detail.accountId === this.#verifiedAccountId && this.#verifiedAccountId && submitted.message.id === detail.userMessageId && asRecord(submitted.message.author)?.role === "user") {
+        if (detail.creation?.projectId) state.projectId = detail.creation.projectId;
+        const raw = submitted.message;
+        const first = normalizeConversationMessage(raw, conversationId, state.projectId, detail.observedAt);
+        if (first) {
+          if (detail.creation && !state.startEvidence)
+            state.startEvidence = {
+              kind: "native-create",
+              firstMessageId: first.messageId,
+              sourceId: detail.requestId,
+              observedAt: detail.observedAt
+            };
+          this.#mergeRecord(state, first);
+          this.observations.admit(requestObservation, {
+            kind: "message",
+            detail: {
+              conversationId,
+              accountId: this.#verifiedAccountId,
+              raw,
+              observedAt: detail.observedAt,
+              activeRun: false,
+              requestId: detail.requestId,
+              ...detail.creation && state.startEvidence ? { startEvidence: state.startEvidence } : {},
+              evidence: [
+                {
+                  kind: detail.creation ? "native-create" : "native-submission",
+                  requestId: detail.requestId,
+                  userMessageId: raw.id,
+                  parentMessageId: submitted.parentMessageId
+                }
+              ]
+            }
+          });
+        }
+      }
       state.lifecycle = {
         state: "in_progress",
         userMessageId: detail.userMessageId,
@@ -59703,6 +61045,13 @@ ${JSON.stringify(counts)}`);
       if (detail.requestId && this.#runConversations.has(detail.requestId) && this.#runConversations.get(detail.requestId) !== conversationId)
         return;
       const observation = this.observations.receive(conversationId, { kind: "stream", detail });
+      if (detail.requestId && this.#pendingRequests.has(detail.requestId)) {
+        const pending = this.#pendingRequests.get(detail.requestId);
+        if (pending && (!pending.creation || detail.kind === "handoff" || detail.kind === "message" && typeof detail.record.id === "string") && detail.observedAt - pending.observedAt >= 0 && detail.observedAt - pending.observedAt <= 12e4) {
+          this.#pendingRequests.delete(detail.requestId);
+          this.ingestRequest({ ...pending, conversationId });
+        }
+      }
       if (detail.kind === "message") {
         try {
           this.sourceGate.inspectStreamMessage(conversationId, detail.record);
@@ -59716,12 +61065,6 @@ ${JSON.stringify(counts)}`);
           });
           throw error;
         }
-      }
-      if (detail.requestId && this.#pendingRequests.has(detail.requestId)) {
-        const pending = this.#pendingRequests.get(detail.requestId);
-        this.#pendingRequests.delete(detail.requestId);
-        if (pending && detail.observedAt - pending.observedAt >= 0 && detail.observedAt - pending.observedAt <= 12e4)
-          this.ingestRequest({ ...pending, conversationId });
       }
       const state = this.#ensure(conversationId);
       const historyUser = state.lifecycle.userMessageId ? state.records.get(state.lifecycle.userMessageId) : void 0;
@@ -60169,13 +61512,9 @@ ${JSON.stringify(counts)}`);
     }
   }
   instanceKey("chatgpt-booster:manual-collection", "chatgpt-booster:prod");
-  var define_BOOSTER_APPLICATION_default = { id: "chatgpt-booster", title: "ChatGPT Booster", version: "dev-2.0.46", components: [] };
-  function isDevelopmentContextAllowed(target, scope = instanceScope()) {
-    if (!/^(vk-booster|chatgpt-booster|all-in-one):(dev|prod)$/.test(scope))
-      return false;
-    if (scope.endsWith(":prod"))
-      return true;
-    return typeof GM_info === "object" && GM_info?.isIncognito === true;
+  var define_BOOSTER_APPLICATION_default = { id: "chatgpt-booster", title: "ChatGPT Booster", version: "dev-2.0.47", components: [] };
+  function isDevelopmentContextAllowed(_target, scope = instanceScope()) {
+    return /^(vk-booster|chatgpt-booster|all-in-one):(dev|prod)$/.test(scope);
   }
   var hasManagerStorage = () => typeof GM_getValue === "function" && typeof GM_setValue === "function";
   var revisionKey = () => `${instanceKey("koba-browser")}:settings-revision`;
@@ -63124,7 +64463,7 @@ ${JSON.stringify(counts)}`);
     if (!gm)
       return unavailableTelemetry();
     const settings = gm?.settings ?? store;
-    const suppliedVersion = "2.0.20";
+    const suppliedVersion = "2.0.22";
     const version2 = /^\d+\.\d+\.\d+$/.test(suppliedVersion) ? suppliedVersion : "0.0.0";
     const listeners = /* @__PURE__ */ new Set();
     let enabled = false;
@@ -66651,6 +67990,7 @@ ${JSON.stringify(counts)}`);
         this.sessions.requireCurrent(run);
       };
       try {
+        if (await this.capture.completeSavedCollection?.(run)) return;
         while (true) {
           requireCurrentCollection();
           const { evidence, visibleMessageCount, revision } = this.#memoryEvidence(id2, run.accountId);
@@ -67928,20 +69268,16 @@ ${JSON.stringify(counts)}`);
   const _hoisted_1 = ["lang", "data-provider-view"];
   const _hoisted_2$5 = {
     key: 0,
-    class: "booster-archive-context-actions"
-  };
-  const _hoisted_3$5 = {
-    key: 1,
     class: "booster-error",
     role: "alert"
   };
-  const _hoisted_4$5 = {
-    key: 2,
+  const _hoisted_3$5 = {
+    key: 1,
     class: "booster-dock-progress",
     role: "status"
   };
-  const _hoisted_5$5 = {
-    key: 3,
+  const _hoisted_4$5 = {
+    key: 2,
     role: "status"
   };
   const _sfc_main = /* @__PURE__ */ defineComponent({
@@ -68290,47 +69626,14 @@ ${JSON.stringify(counts)}`);
           lang: unref(locale),
           "data-provider-view": tab.value
         }, [
-          tab.value === "archive" && context2.value ? (openBlock(), createElementBlock("div", _hoisted_2$5, [
-            createVNode(unref(_sfc_main$17), {
-              variant: "ghost",
-              size: "sm",
-              type: "button",
-              "aria-pressed": captureActive.value,
-              title: captureActive.value ? tr("Автосохранение включено", "Capture enabled") : tr("Настроить автосохранение", "Configure capture"),
-              onClick: _cache[0] || (_cache[0] = ($event) => openCapture())
-            }, {
-              default: withCtx(() => [
-                createVNode(unref(ShieldCheck), { class: "size-4" }),
-                createTextVNode(
-                  toDisplayString(tr("Автосохранение", "Auto-save")),
-                  1
-                  /* TEXT */
-                )
-              ]),
-              _: 1
-              /* STABLE */
-            }, 8, ["aria-pressed", "title"]),
-            createVNode(unref(_sfc_main$1$1), {
-              "data-active": active.value,
-              label: tr("Собрать историю", "Collect history"),
-              busy: active.value,
-              "saved-label": tr("Сохранено", "Saved"),
-              "stop-label": tr("Остановить", "Stop"),
-              disabled: loading.value || !current.value.conversationId || !!context2.value.archiveAdapter.collectionInsideExportOnly,
-              processed: collectionState.value.processed,
-              total: collectionState.value.total,
-              onStart: collect,
-              onStop: stopCollection
-            }, null, 8, ["data-active", "label", "busy", "saved-label", "stop-label", "disabled", "processed", "total"])
-          ])) : createCommentVNode("v-if", true),
           error.value && tab.value !== "settings" ? (openBlock(), createElementBlock(
             "p",
-            _hoisted_3$5,
+            _hoisted_2$5,
             toDisplayString(error.value),
             1
             /* TEXT */
           )) : createCommentVNode("v-if", true),
-          active.value && tab.value === "archive" ? (openBlock(), createElementBlock("div", _hoisted_4$5, [
+          active.value && tab.value === "archive" ? (openBlock(), createElementBlock("div", _hoisted_3$5, [
             createBaseVNode(
               "span",
               null,
@@ -68341,13 +69644,13 @@ ${JSON.stringify(counts)}`);
           ])) : createCommentVNode("v-if", true),
           !context2.value ? (openBlock(), createElementBlock(
             "div",
-            _hoisted_5$5,
+            _hoisted_4$5,
             toDisplayString(tr("Архив запускается…", "Loading archive…")),
             1
             /* TEXT */
           )) : (openBlock(), createElementBlock(
             Fragment,
-            { key: 4 },
+            { key: 3 },
             [
               tab.value === "archive" ? (openBlock(), createBlock(_sfc_main$p, {
                 key: archiveProjectInitial.value ?? "all-projects",
@@ -68361,7 +69664,43 @@ ${JSON.stringify(counts)}`);
                 onReturnExport: _cache[1] || (_cache[1] = ($event) => tab.value = "export"),
                 onExport: _cache[2] || (_cache[2] = (id2, title, ids) => openExport(id2, title, true, ids)),
                 onClose: closePanel
-              }, null, 8, ["archive-adapter", "initial-conversation-id", "initial-project-id", "navigation-target", "locale", "can-return-to-export"])) : tab.value === "export" && selectedChat.value ? (openBlock(), createBlock(_sfc_main$o, {
+              }, {
+                "collection-actions": withCtx(() => [
+                  createVNode(unref(_sfc_main$17), {
+                    variant: "ghost",
+                    size: "sm",
+                    type: "button",
+                    title: captureActive.value ? tr("Автосохранение включено", "Capture enabled") : tr("Настроить автосохранение", "Configure capture"),
+                    onClick: _cache[0] || (_cache[0] = ($event) => openCapture())
+                  }, {
+                    default: withCtx(() => [
+                      createVNode(unref(ShieldCheck), { class: "size-4" }),
+                      createTextVNode(
+                        toDisplayString(tr("Настройки автосохранения", "Auto-save settings")),
+                        1
+                        /* TEXT */
+                      )
+                    ]),
+                    _: 1
+                    /* STABLE */
+                  }, 8, ["title"]),
+                  createVNode(unref(_sfc_main$1$1), {
+                    variant: "ghost",
+                    "data-active": active.value,
+                    label: tr("Собрать историю", "Collect history"),
+                    busy: active.value,
+                    "saved-label": tr("Сохранено", "Saved"),
+                    "stop-label": tr("Остановить", "Stop"),
+                    disabled: loading.value || !current.value.conversationId || !!context2.value.archiveAdapter.collectionInsideExportOnly,
+                    processed: collectionState.value.processed,
+                    total: collectionState.value.total,
+                    onStart: collect,
+                    onStop: stopCollection
+                  }, null, 8, ["data-active", "label", "busy", "saved-label", "stop-label", "disabled", "processed", "total"])
+                ]),
+                _: 1
+                /* STABLE */
+              }, 8, ["archive-adapter", "initial-conversation-id", "initial-project-id", "navigation-target", "locale", "can-return-to-export"])) : tab.value === "export" && selectedChat.value ? (openBlock(), createBlock(_sfc_main$o, {
                 key: 1,
                 "archive-adapter": context2.value.archiveAdapter,
                 "settings-adapter": context2.value.settingsAdapter,
@@ -68550,6 +69889,37 @@ ${JSON.stringify(counts)}`);
     return feature;
   }
   const WIDGET_UI_MESSAGES = {
+    "Сообщений в экспорте:": "Messages to export:",
+    Вы: "You",
+    Ассистент: "Assistant",
+    Сообщение: "Message",
+    "Все сообщения": "All messages",
+    "За период": "Date range",
+    "Последние N": "Latest N",
+    Выбранные: "Selected",
+    "С даты": "From date",
+    "По дату включительно": "Through date (inclusive)",
+    "Количество последних сообщений": "Number of latest messages",
+    "Поиск сообщений": "Search messages",
+    "Выбрать показанные": "Select visible messages",
+    "Очистить выбор": "Clear selection",
+    "Выбрано:": "Selected:",
+    "Выбрать сообщение:": "Select message:",
+    "Сообщение без текста": "Message without text",
+    "Сообщения не найдены": "No messages found",
+    "Загружаем список сообщений…": "Loading messages…",
+    "В экспорт:": "Exporting:",
+    сообщений: "messages",
+    "Некорректная дата": "Invalid date",
+    "Укажите число сообщений больше нуля": "Enter a message count greater than zero",
+    "Укажите начало или конец периода": "Enter the start or end date",
+    "Начало периода должно быть не позже конца": "Start date must not follow the end date",
+    "Некорректный диапазон": "Invalid range",
+    "Без даты, исключены из фильтра:": "Undated, excluded from the time filter:",
+    User: "You",
+    Assistant: "Assistant",
+    Message: "Message",
+    "Дата неизвестна": "Date unknown",
     "Что экспортировать": "What to export",
     "Все сохранённые сообщения": "All saved messages",
     "Выбранные сообщения": "Selected messages",
@@ -68702,48 +70072,48 @@ ${JSON.stringify(counts)}`);
     Отмена: "Cancel",
     "Очистить журнал": "Clear journal"
   };
-  const _hoisted_1$c = ["aria-label"];
+  const _hoisted_1$e = ["aria-label"];
   const _hoisted_2$b = { class: "space-y-1" };
-  const _hoisted_3$8 = { class: "text-lg font-semibold" };
-  const _hoisted_4$8 = { class: "text-sm text-muted-foreground" };
-  const _hoisted_5$7 = { class: "text-sm font-medium" };
-  const _hoisted_6$6 = {
+  const _hoisted_3$9 = { class: "text-lg font-semibold" };
+  const _hoisted_4$9 = { class: "text-sm text-muted-foreground" };
+  const _hoisted_5$8 = { class: "text-sm font-medium" };
+  const _hoisted_6$7 = {
     key: 1,
     class: "text-sm text-muted-foreground"
   };
-  const _hoisted_7$5 = { class: "text-sm" };
-  const _hoisted_8$5 = { class: "flex items-start gap-3" };
-  const _hoisted_9$5 = {
+  const _hoisted_7$6 = { class: "text-sm" };
+  const _hoisted_8$6 = { class: "flex items-start gap-3" };
+  const _hoisted_9$6 = {
     key: 0,
     class: "text-xs text-muted-foreground"
   };
-  const _hoisted_10$4 = { class: "flex flex-wrap gap-2" };
-  const _hoisted_11$4 = { class: "grid gap-3" };
-  const _hoisted_12$3 = { class: "grid gap-1" };
-  const _hoisted_13$3 = {
+  const _hoisted_10$5 = { class: "flex flex-wrap gap-2" };
+  const _hoisted_11$5 = { class: "grid gap-3" };
+  const _hoisted_12$4 = { class: "grid gap-1" };
+  const _hoisted_13$4 = {
     key: 0,
     class: "text-xs text-muted-foreground"
   };
-  const _hoisted_14$1 = { class: "grid gap-2" };
-  const _hoisted_15$1 = { class: "text-sm text-muted-foreground" };
-  const _hoisted_16$1 = { class: "grid gap-3" };
-  const _hoisted_17$1 = { class: "grid gap-1" };
-  const _hoisted_18$1 = { class: "text-muted-foreground" };
-  const _hoisted_19$1 = {
+  const _hoisted_14$3 = { class: "grid gap-2" };
+  const _hoisted_15$3 = { class: "text-sm text-muted-foreground" };
+  const _hoisted_16$3 = { class: "grid gap-3" };
+  const _hoisted_17$3 = { class: "grid gap-1" };
+  const _hoisted_18$3 = { class: "text-muted-foreground" };
+  const _hoisted_19$2 = {
     key: 0,
     class: "text-xs text-muted-foreground"
   };
-  const _hoisted_20$1 = { class: "flex items-start gap-3" };
-  const _hoisted_21$1 = {
+  const _hoisted_20$2 = { class: "flex items-start gap-3" };
+  const _hoisted_21$2 = {
     key: 1,
     class: "flex flex-wrap items-center gap-3"
   };
-  const _hoisted_22$1 = {
+  const _hoisted_22$2 = {
     role: "status",
     class: "text-sm text-muted-foreground"
   };
-  const _hoisted_23$1 = { class: "text-xs text-muted-foreground" };
-  const _sfc_main$d = /* @__PURE__ */ defineComponent({
+  const _hoisted_23$2 = { class: "text-xs text-muted-foreground" };
+  const _sfc_main$f = /* @__PURE__ */ defineComponent({
     __name: "ApplicationBackupSettings",
     setup(__props) {
       const locale = useApplicationLocale();
@@ -68885,14 +70255,14 @@ ${JSON.stringify(counts)}`);
           createBaseVNode("div", _hoisted_2$b, [
             createBaseVNode(
               "h2",
-              _hoisted_3$8,
+              _hoisted_3$9,
               toDisplayString(unref(text2)("Резервные копии")),
               1
               /* TEXT */
             ),
             createBaseVNode(
               "p",
-              _hoisted_4$8,
+              _hoisted_4$9,
               toDisplayString(unref(text2)("Настройки, состояние интерфейса и база данных сохраняются отдельными разделами одного файла.")),
               1
               /* TEXT */
@@ -68958,24 +70328,24 @@ ${JSON.stringify(counts)}`);
                             key: job.id,
                             class: "space-y-3"
                           }, [
-                            index ? (openBlock(), createBlock(unref(_sfc_main$c$1), { key: 0 })) : createCommentVNode("v-if", true),
+                            index ? (openBlock(), createBlock(unref(_sfc_main$c$2), { key: 0 })) : createCommentVNode("v-if", true),
                             createBaseVNode(
                               "p",
-                              _hoisted_5$7,
+                              _hoisted_5$8,
                               toDisplayString(new Date(job.createdAt).toLocaleString(unref(locale))),
                               1
                               /* TEXT */
                             ),
                             job.reason ? (openBlock(), createElementBlock(
                               "p",
-                              _hoisted_6$6,
+                              _hoisted_6$7,
                               toDisplayString(unref(text2)(job.reason)),
                               1
                               /* TEXT */
                             )) : createCommentVNode("v-if", true),
                             createBaseVNode(
                               "p",
-                              _hoisted_7$5,
+                              _hoisted_7$6,
                               toDisplayString(job.sections.map((section) => unref(text2)(section.label)).join(" · ")),
                               1
                               /* TEXT */
@@ -68984,7 +70354,7 @@ ${JSON.stringify(counts)}`);
                               Fragment,
                               { key: 2 },
                               [
-                                createBaseVNode("div", _hoisted_8$5, [
+                                createBaseVNode("div", _hoisted_8$6, [
                                   createVNode(unref(_sfc_main$t$1), {
                                     id: `${unref(fieldId)}-rollback-${index}`,
                                     class: "mt-0.5",
@@ -69008,7 +70378,7 @@ ${JSON.stringify(counts)}`);
                                 ]),
                                 job.sections.some((section) => !section.available) ? (openBlock(), createElementBlock(
                                   "p",
-                                  _hoisted_9$5,
+                                  _hoisted_9$6,
                                   toDisplayString(unref(text2)("Для отката нужны тот же аккаунт и все исходные разделы.")),
                                   1
                                   /* TEXT */
@@ -69055,7 +70425,7 @@ ${JSON.stringify(counts)}`);
                                               1
                                               /* TEXT */
                                             ),
-                                            createBaseVNode("div", _hoisted_10$4, [
+                                            createBaseVNode("div", _hoisted_10$5, [
                                               createVNode(unref(_sfc_main$17), {
                                                 variant: "destructive",
                                                 disabled: busy.value,
@@ -69165,7 +70535,7 @@ ${JSON.stringify(counts)}`);
                   }),
                   createVNode(unref(_sfc_main$O), { class: "space-y-4" }, {
                     default: withCtx(() => [
-                      createBaseVNode("div", _hoisted_11$4, [
+                      createBaseVNode("div", _hoisted_11$5, [
                         (openBlock(true), createElementBlock(
                           Fragment,
                           null,
@@ -69181,7 +70551,7 @@ ${JSON.stringify(counts)}`);
                                 disabled: busy.value || !source.available,
                                 "onUpdate:modelValue": ($event) => selectSection("save", source.id, $event)
                               }, null, 8, ["id", "model-value", "disabled", "onUpdate:modelValue"]),
-                              createBaseVNode("div", _hoisted_12$3, [
+                              createBaseVNode("div", _hoisted_12$4, [
                                 createVNode(unref(_sfc_main$J), {
                                   for: `${unref(fieldId)}-save-${source.id}`
                                 }, {
@@ -69197,7 +70567,7 @@ ${JSON.stringify(counts)}`);
                                 }, 1032, ["for"]),
                                 source.reason ? (openBlock(), createElementBlock(
                                   "p",
-                                  _hoisted_13$3,
+                                  _hoisted_13$4,
                                   toDisplayString(unref(text2)(source.reason)),
                                   1
                                   /* TEXT */
@@ -69263,7 +70633,7 @@ ${JSON.stringify(counts)}`);
                   }),
                   createVNode(unref(_sfc_main$O), { class: "space-y-4" }, {
                     default: withCtx(() => [
-                      createBaseVNode("div", _hoisted_14$1, [
+                      createBaseVNode("div", _hoisted_14$3, [
                         createVNode(unref(_sfc_main$J), {
                           for: `${unref(fieldId)}-file`
                         }, {
@@ -69290,15 +70660,15 @@ ${JSON.stringify(counts)}`);
                         Fragment,
                         { key: 0 },
                         [
-                          createVNode(unref(_sfc_main$c$1)),
+                          createVNode(unref(_sfc_main$c$2)),
                           createBaseVNode(
                             "p",
-                            _hoisted_15$1,
+                            _hoisted_15$3,
                             toDisplayString(unref(text2)("Создано ")) + toDisplayString(new Date(inspected.value.createdAt).toLocaleString(unref(locale))),
                             1
                             /* TEXT */
                           ),
-                          createBaseVNode("div", _hoisted_16$1, [
+                          createBaseVNode("div", _hoisted_16$3, [
                             (openBlock(true), createElementBlock(
                               Fragment,
                               null,
@@ -69314,7 +70684,7 @@ ${JSON.stringify(counts)}`);
                                     disabled: busy.value || !section.available,
                                     "onUpdate:modelValue": ($event) => selectSection("restore", section.id, $event)
                                   }, null, 8, ["id", "model-value", "disabled", "onUpdate:modelValue"]),
-                                  createBaseVNode("div", _hoisted_17$1, [
+                                  createBaseVNode("div", _hoisted_17$3, [
                                     createVNode(unref(_sfc_main$J), {
                                       for: `${unref(fieldId)}-restore-${section.id}`
                                     }, {
@@ -69326,7 +70696,7 @@ ${JSON.stringify(counts)}`);
                                         ),
                                         createBaseVNode(
                                           "span",
-                                          _hoisted_18$1,
+                                          _hoisted_18$3,
                                           "· " + toDisplayString(section.rows) + toDisplayString(unref(text2)(" записей")),
                                           1
                                           /* TEXT */
@@ -69337,7 +70707,7 @@ ${JSON.stringify(counts)}`);
                                     }, 1032, ["for"]),
                                     section.reason ? (openBlock(), createElementBlock(
                                       "p",
-                                      _hoisted_19$1,
+                                      _hoisted_19$2,
                                       toDisplayString(unref(text2)(section.reason)),
                                       1
                                       /* TEXT */
@@ -69349,8 +70719,8 @@ ${JSON.stringify(counts)}`);
                               /* KEYED_FRAGMENT */
                             ))
                           ]),
-                          createVNode(unref(_sfc_main$c$1)),
-                          createBaseVNode("div", _hoisted_20$1, [
+                          createVNode(unref(_sfc_main$c$2)),
+                          createBaseVNode("div", _hoisted_20$2, [
                             createVNode(unref(_sfc_main$t$1), {
                               id: `${unref(fieldId)}-confirm`,
                               class: "mt-0.5",
@@ -69398,10 +70768,10 @@ ${JSON.stringify(counts)}`);
                 _: 1
                 /* STABLE */
               }),
-              busy.value ? (openBlock(), createElementBlock("div", _hoisted_21$1, [
+              busy.value ? (openBlock(), createElementBlock("div", _hoisted_21$2, [
                 createBaseVNode(
                   "p",
-                  _hoisted_22$1,
+                  _hoisted_22$2,
                   toDisplayString(unref(text2)("Обрабатываем выбранные разделы…")),
                   1
                   /* TEXT */
@@ -69461,7 +70831,7 @@ ${JSON.stringify(counts)}`);
               })) : createCommentVNode("v-if", true),
               createBaseVNode(
                 "p",
-                _hoisted_23$1,
+                _hoisted_23$2,
                 toDisplayString(unref(text2)("Пароли и токены не включаются. Доступна база проверенного аккаунта текущего сайта. Внешние вложения сохраняются отдельно. Большие копии сохраняются прямо в выбранный файл, если браузер поддерживает этот способ; скачивание через память ограничено 128 МиБ сжатых данных. Для проверки и восстановления нужно свободное место под временные данные и копию для отката.")),
                 1
                 /* TEXT */
@@ -69470,36 +70840,36 @@ ${JSON.stringify(counts)}`);
             64
             /* STABLE_FRAGMENT */
           ))
-        ], 8, _hoisted_1$c);
+        ], 8, _hoisted_1$e);
       };
     }
   });
-  const _hoisted_1$b = ["aria-label", "aria-busy"];
+  const _hoisted_1$d = ["aria-label", "aria-busy"];
   const _hoisted_2$a = { class: "space-y-1" };
-  const _hoisted_3$7 = { class: "text-base font-semibold" };
-  const _hoisted_4$7 = { class: "text-sm text-muted-foreground" };
-  const _hoisted_5$6 = {
+  const _hoisted_3$8 = { class: "text-base font-semibold" };
+  const _hoisted_4$8 = { class: "text-sm text-muted-foreground" };
+  const _hoisted_5$7 = {
     key: 0,
     class: "text-sm text-muted-foreground"
   };
-  const _hoisted_6$5 = ["aria-label"];
-  const _hoisted_7$4 = { class: "flex items-start justify-between gap-4" };
-  const _hoisted_8$4 = { class: "min-w-0 space-y-1.5" };
-  const _hoisted_9$4 = { class: "grid grid-cols-2 gap-4 text-sm" };
-  const _hoisted_10$3 = { class: "text-muted-foreground" };
-  const _hoisted_11$3 = { class: "text-xl font-semibold tabular-nums" };
-  const _hoisted_12$2 = { class: "text-muted-foreground" };
-  const _hoisted_13$2 = { class: "text-xl font-semibold tabular-nums" };
+  const _hoisted_6$6 = ["aria-label"];
+  const _hoisted_7$5 = { class: "flex items-start justify-between gap-4" };
+  const _hoisted_8$5 = { class: "min-w-0 space-y-1.5" };
+  const _hoisted_9$5 = { class: "grid grid-cols-2 gap-4 text-sm" };
+  const _hoisted_10$4 = { class: "text-muted-foreground" };
+  const _hoisted_11$4 = { class: "text-xl font-semibold tabular-nums" };
+  const _hoisted_12$3 = { class: "text-muted-foreground" };
+  const _hoisted_13$3 = { class: "text-xl font-semibold tabular-nums" };
   const _hoisted_14$2 = { class: "text-muted-foreground" };
   const _hoisted_15$2 = { class: "text-xl font-semibold tabular-nums" };
   const _hoisted_16$2 = { class: "text-muted-foreground" };
-  const _hoisted_17 = { class: "text-xl font-semibold tabular-nums" };
-  const _hoisted_18 = { class: "grid min-w-0 gap-4 sm:grid-cols-3" };
-  const _hoisted_19 = { class: "grid content-start gap-2" };
-  const _hoisted_20 = { class: "grid content-start gap-2" };
-  const _hoisted_21 = { class: "grid content-start gap-2" };
-  const _hoisted_22 = { class: "text-xs text-muted-foreground" };
-  const _hoisted_23 = { class: "grid min-w-0 gap-2" };
+  const _hoisted_17$2 = { class: "text-xl font-semibold tabular-nums" };
+  const _hoisted_18$2 = { class: "grid min-w-0 gap-4 sm:grid-cols-3" };
+  const _hoisted_19$1 = { class: "grid content-start gap-2" };
+  const _hoisted_20$1 = { class: "grid content-start gap-2" };
+  const _hoisted_21$1 = { class: "grid content-start gap-2" };
+  const _hoisted_22$1 = { class: "text-xs text-muted-foreground" };
+  const _hoisted_23$1 = { class: "grid min-w-0 gap-2" };
   const _hoisted_24 = ["id"];
   const _hoisted_25 = { class: "flex flex-wrap gap-2" };
   const _hoisted_26 = { class: "flex items-start justify-between gap-4 border-t pt-4" };
@@ -69548,7 +70918,7 @@ ${JSON.stringify(counts)}`);
     role: "alert",
     class: "text-sm text-destructive"
   };
-  const _sfc_main$c = /* @__PURE__ */ defineComponent({
+  const _sfc_main$e = /* @__PURE__ */ defineComponent({
     __name: "ApplicationTelemetrySettings",
     setup(__props) {
       const locale = useApplicationLocale();
@@ -69798,14 +71168,14 @@ ${JSON.stringify(counts)}`);
           createBaseVNode("div", _hoisted_2$a, [
             createBaseVNode(
               "h3",
-              _hoisted_3$7,
+              _hoisted_3$8,
               toDisplayString(unref(text2)("Телеметрия")),
               1
               /* TEXT */
             ),
             createBaseVNode(
               "p",
-              _hoisted_4$7,
+              _hoisted_4$8,
               toDisplayString(unref(text2)("Общий журнал технических событий VK, ChatGPT и приложения. Текст сообщений, аккаунты, адреса страниц и токены в него не попадают.")),
               1
               /* TEXT */
@@ -69813,7 +71183,7 @@ ${JSON.stringify(counts)}`);
           ]),
           !unref(controller) || state.value?.available === false ? (openBlock(), createElementBlock(
             "p",
-            _hoisted_5$6,
+            _hoisted_5$7,
             toDisplayString(unref(text2)("Сервис недоступен в этой установке.")),
             1
             /* TEXT */
@@ -69825,7 +71195,7 @@ ${JSON.stringify(counts)}`);
           }, [
             createVNode(unref(_sfc_main$b$2), { class: "h-9 w-full" }),
             createVNode(unref(_sfc_main$b$2), { class: "h-32 w-full" })
-          ], 8, _hoisted_6$5)) : (openBlock(), createBlock(unref(_sfc_main$D), {
+          ], 8, _hoisted_6$6)) : (openBlock(), createBlock(unref(_sfc_main$D), {
             key: 2,
             "model-value": view2.value,
             class: "min-w-0",
@@ -69895,8 +71265,8 @@ ${JSON.stringify(counts)}`);
                     default: withCtx(() => [
                       createVNode(unref(_sfc_main$L), { class: "p-4" }, {
                         default: withCtx(() => [
-                          createBaseVNode("div", _hoisted_7$4, [
-                            createBaseVNode("div", _hoisted_8$4, [
+                          createBaseVNode("div", _hoisted_7$5, [
+                            createBaseVNode("div", _hoisted_8$5, [
                               createVNode(unref(_sfc_main$J), {
                                 for: `${unref(fieldId)}-local`,
                                 class: "text-base font-semibold"
@@ -69936,18 +71306,18 @@ ${JSON.stringify(counts)}`);
                       }),
                       createVNode(unref(_sfc_main$O), { class: "p-4 pt-0" }, {
                         default: withCtx(() => [
-                          createBaseVNode("dl", _hoisted_9$4, [
+                          createBaseVNode("dl", _hoisted_9$5, [
                             createBaseVNode("div", null, [
                               createBaseVNode(
                                 "dt",
-                                _hoisted_10$3,
+                                _hoisted_10$4,
                                 toDisplayString(unref(text2)("В журнале")),
                                 1
                                 /* TEXT */
                               ),
                               createBaseVNode(
                                 "dd",
-                                _hoisted_11$3,
+                                _hoisted_11$4,
                                 toDisplayString(state.value?.retained ?? "—"),
                                 1
                                 /* TEXT */
@@ -69956,14 +71326,14 @@ ${JSON.stringify(counts)}`);
                             createBaseVNode("div", null, [
                               createBaseVNode(
                                 "dt",
-                                _hoisted_12$2,
+                                _hoisted_12$3,
                                 toDisplayString(unref(text2)("Ожидают отправки")),
                                 1
                                 /* TEXT */
                               ),
                               createBaseVNode(
                                 "dd",
-                                _hoisted_13$2,
+                                _hoisted_13$3,
                                 toDisplayString(state.value?.pending ?? "—"),
                                 1
                                 /* TEXT */
@@ -69995,7 +71365,7 @@ ${JSON.stringify(counts)}`);
                               ),
                               createBaseVNode(
                                 "dd",
-                                _hoisted_17,
+                                _hoisted_17$2,
                                 toDisplayString(state.value?.discarded ?? "—"),
                                 1
                                 /* TEXT */
@@ -70049,8 +71419,8 @@ ${JSON.stringify(counts)}`);
                               onSubmit: withModifiers(save, ["prevent"])
                             },
                             [
-                              createBaseVNode("div", _hoisted_18, [
-                                createBaseVNode("div", _hoisted_19, [
+                              createBaseVNode("div", _hoisted_18$2, [
+                                createBaseVNode("div", _hoisted_19$1, [
                                   createVNode(unref(_sfc_main$J), {
                                     for: `${unref(fieldId)}-limit`
                                   }, {
@@ -70076,7 +71446,7 @@ ${JSON.stringify(counts)}`);
                                     "onUpdate:modelValue": _cache[0] || (_cache[0] = ($event) => updateRetention("maxEvents", $event))
                                   }, null, 8, ["id", "model-value", "disabled"])
                                 ]),
-                                createBaseVNode("div", _hoisted_20, [
+                                createBaseVNode("div", _hoisted_20$1, [
                                   createVNode(unref(_sfc_main$J), {
                                     for: `${unref(fieldId)}-age`
                                   }, {
@@ -70102,7 +71472,7 @@ ${JSON.stringify(counts)}`);
                                     "onUpdate:modelValue": _cache[1] || (_cache[1] = ($event) => updateRetention("maxAgeDays", $event))
                                   }, null, 8, ["id", "model-value", "disabled"])
                                 ]),
-                                createBaseVNode("div", _hoisted_21, [
+                                createBaseVNode("div", _hoisted_21$1, [
                                   createVNode(unref(_sfc_main$J), {
                                     for: `${unref(fieldId)}-rotation`
                                   }, {
@@ -70131,7 +71501,7 @@ ${JSON.stringify(counts)}`);
                               ]),
                               createBaseVNode(
                                 "p",
-                                _hoisted_22,
+                                _hoisted_22$1,
                                 toDisplayString(unref(text2)("Между ротациями журнал может временно превышать выбранный лимит; при 10 000 записей новые события не принимаются до ротации. Последняя ротация: ")) + toDisplayString(date(state.value?.lastRotationAt)) + ".",
                                 1
                                 /* TEXT */
@@ -70214,7 +71584,7 @@ ${JSON.stringify(counts)}`);
                               onSubmit: withModifiers(save, ["prevent"])
                             },
                             [
-                              createBaseVNode("div", _hoisted_23, [
+                              createBaseVNode("div", _hoisted_23$1, [
                                 createVNode(unref(_sfc_main$J), {
                                   for: `${unref(fieldId)}-endpoint`
                                 }, {
@@ -70420,7 +71790,7 @@ ${JSON.stringify(counts)}`);
                             class: "w-full min-w-0"
                           }, {
                             default: withCtx(() => [
-                              createVNode(unref(_sfc_main$d$1))
+                              createVNode(unref(_sfc_main$d$2))
                             ]),
                             _: 1
                             /* STABLE */
@@ -70510,7 +71880,7 @@ ${JSON.stringify(counts)}`);
                     toDisplayString(state.value?.localEnabled ? unref(text2)("Для выбранного источника пока нет событий.") : unref(text2)("Журнал пуст. Включите локальный сбор, чтобы записывать новые события.")),
                     1
                     /* TEXT */
-                  )) : (openBlock(), createBlock(unref(_sfc_main$9$2), {
+                  )) : (openBlock(), createBlock(unref(_sfc_main$9$1), {
                     key: 1,
                     class: "table-fixed",
                     "aria-label": unref(text2)("Локальные технические события")
@@ -70550,7 +71920,7 @@ ${JSON.stringify(counts)}`);
                         _: 1
                         /* STABLE */
                       }),
-                      createVNode(unref(_sfc_main$8$1), null, {
+                      createVNode(unref(_sfc_main$8$2), null, {
                         default: withCtx(() => [
                           (openBlock(true), createElementBlock(
                             Fragment,
@@ -70809,10 +72179,11 @@ ${JSON.stringify(counts)}`);
             1
             /* TEXT */
           )) : createCommentVNode("v-if", true)
-        ], 8, _hoisted_1$b);
+        ], 8, _hoisted_1$d);
       };
     }
   });
+  new TextEncoder();
   function clamp(value, min2, max2) {
     return Math.max(min2, Math.min(max2, value));
   }
@@ -71073,7 +72444,7 @@ ${JSON.stringify(counts)}`);
                           "aria-describedby": `${unref(id2)}-language-description`
                         }, {
                           default: withCtx(() => [
-                            createVNode(unref(_sfc_main$d$1))
+                            createVNode(unref(_sfc_main$d$2))
                           ]),
                           _: 1
                           /* STABLE */
@@ -71351,7 +72722,7 @@ ${JSON.stringify(counts)}`);
               ],
               64
               /* STABLE_FRAGMENT */
-            )) : category.value === "telemetry" ? (openBlock(), createBlock(unref(_sfc_main$c), { key: 3 })) : category.value === "backup" ? (openBlock(), createBlock(unref(_sfc_main$d), { key: 4 })) : category.value === "about" && hasComponents.value ? (openBlock(), createElementBlock(
+            )) : category.value === "telemetry" ? (openBlock(), createBlock(unref(_sfc_main$e), { key: 3 })) : category.value === "backup" ? (openBlock(), createBlock(unref(_sfc_main$f), { key: 4 })) : category.value === "about" && hasComponents.value ? (openBlock(), createElementBlock(
               Fragment,
               { key: 5 },
               [
@@ -71443,7 +72814,7 @@ ${JSON.stringify(counts)}`);
     key: 0,
     class: "booster-header-copy"
   };
-  const _hoisted_4$3 = { class: "flex items-center gap-2" };
+  const _hoisted_4$3 = { class: "booster-control-identity" };
   const _hoisted_5$3 = {
     key: 0,
     class: "booster-version"
@@ -71730,7 +73101,8 @@ ${JSON.stringify(counts)}`);
             ])
           ])) : createCommentVNode("v-if", true),
           createVNode(unref(_sfc_main$y), {
-            class: "border-b px-3 py-3",
+            compact: "",
+            class: "border-b px-2 py-1.5",
             groups: catalogGroups.value,
             selected: catalogSelected.value,
             "active-group": catalogActiveGroup.value,
@@ -73053,7 +74425,7 @@ ${JSON.stringify(counts)}`);
       };
     }
   });
-  const styles$1 = '/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */\n@layer properties {\n  @supports (((-webkit-hyphens: none)) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color: rgb(from red r g b)))) {\n    *, :before, :after, ::backdrop {\n      --tw-translate-x: 0;\n      --tw-translate-y: 0;\n      --tw-translate-z: 0;\n      --tw-rotate-x: initial;\n      --tw-rotate-y: initial;\n      --tw-rotate-z: initial;\n      --tw-skew-x: initial;\n      --tw-skew-y: initial;\n      --tw-space-y-reverse: 0;\n      --tw-divide-y-reverse: 0;\n      --tw-border-style: solid;\n      --tw-leading: initial;\n      --tw-font-weight: initial;\n      --tw-tracking: initial;\n      --tw-ordinal: initial;\n      --tw-slashed-zero: initial;\n      --tw-numeric-figure: initial;\n      --tw-numeric-spacing: initial;\n      --tw-numeric-fraction: initial;\n      --tw-shadow: 0 0 #0000;\n      --tw-shadow-color: initial;\n      --tw-shadow-alpha: 100%;\n      --tw-inset-shadow: 0 0 #0000;\n      --tw-inset-shadow-color: initial;\n      --tw-inset-shadow-alpha: 100%;\n      --tw-ring-color: initial;\n      --tw-ring-shadow: 0 0 #0000;\n      --tw-inset-ring-color: initial;\n      --tw-inset-ring-shadow: 0 0 #0000;\n      --tw-ring-inset: initial;\n      --tw-ring-offset-width: 0px;\n      --tw-ring-offset-color: #fff;\n      --tw-ring-offset-shadow: 0 0 #0000;\n      --tw-outline-style: solid;\n      --tw-blur: initial;\n      --tw-brightness: initial;\n      --tw-contrast: initial;\n      --tw-grayscale: initial;\n      --tw-hue-rotate: initial;\n      --tw-invert: initial;\n      --tw-opacity: initial;\n      --tw-saturate: initial;\n      --tw-sepia: initial;\n      --tw-drop-shadow: initial;\n      --tw-drop-shadow-color: initial;\n      --tw-drop-shadow-alpha: 100%;\n      --tw-drop-shadow-size: initial;\n      --tw-duration: initial;\n      --tw-content: "";\n    }\n  }\n}\n\n@layer theme {\n  :root, :host {\n    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",\n      "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",\n      "Segoe UI Symbol", "Noto Color Emoji";\n    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",\n      "Courier New", monospace;\n    --color-black: #000;\n    --spacing: .25rem;\n    --container-lg: 32rem;\n    --text-xs: .75rem;\n    --text-xs--line-height: calc(1 / .75);\n    --text-sm: .875rem;\n    --text-sm--line-height: calc(1.25 / .875);\n    --text-base: 1rem;\n    --text-base--line-height: calc(1.5 / 1);\n    --text-lg: 1.125rem;\n    --text-lg--line-height: calc(1.75 / 1.125);\n    --text-xl: 1.25rem;\n    --text-xl--line-height: calc(1.75 / 1.25);\n    --font-weight-normal: 400;\n    --font-weight-medium: 500;\n    --font-weight-semibold: 600;\n    --tracking-tight: -.025em;\n    --leading-relaxed: 1.625;\n    --animate-spin: spin 1s linear infinite;\n    --animate-pulse: pulse 2s cubic-bezier(.4, 0, .6, 1) infinite;\n    --default-transition-duration: .15s;\n    --default-transition-timing-function: cubic-bezier(.4, 0, .2, 1);\n    --default-font-family: var(--font-sans);\n    --default-mono-font-family: var(--font-mono);\n  }\n}\n\n@layer base {\n  *, :after, :before, ::backdrop {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  ::file-selector-button {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  html, :host {\n    -webkit-text-size-adjust: 100%;\n    tab-size: 4;\n    line-height: 1.5;\n    font-family: var(--default-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");\n    font-feature-settings: var(--default-font-feature-settings, normal);\n    font-variation-settings: var(--default-font-variation-settings, normal);\n    -webkit-tap-highlight-color: transparent;\n  }\n\n  hr {\n    height: 0;\n    color: inherit;\n    border-top-width: 1px;\n  }\n\n  abbr:where([title]) {\n    -webkit-text-decoration: underline dotted;\n    text-decoration: underline dotted;\n  }\n\n  h1, h2, h3, h4, h5, h6 {\n    font-size: inherit;\n    font-weight: inherit;\n  }\n\n  a {\n    color: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    text-decoration: inherit;\n  }\n\n  b, strong {\n    font-weight: bolder;\n  }\n\n  code, kbd, samp, pre {\n    font-family: var(--default-mono-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);\n    font-feature-settings: var(--default-mono-font-feature-settings, normal);\n    font-variation-settings: var(--default-mono-font-variation-settings, normal);\n    font-size: 1em;\n  }\n\n  small {\n    font-size: 80%;\n  }\n\n  sub, sup {\n    vertical-align: baseline;\n    font-size: 75%;\n    line-height: 0;\n    position: relative;\n  }\n\n  sub {\n    bottom: -.25em;\n  }\n\n  sup {\n    top: -.5em;\n  }\n\n  table {\n    text-indent: 0;\n    border-color: inherit;\n    border-collapse: collapse;\n  }\n\n  :-moz-focusring:where(:not(iframe)) {\n    outline: auto;\n  }\n\n  progress {\n    vertical-align: baseline;\n  }\n\n  summary {\n    display: list-item;\n  }\n\n  ol, ul, menu {\n    list-style: none;\n  }\n\n  img, svg, video, canvas, audio, iframe, embed, object {\n    vertical-align: middle;\n    display: block;\n  }\n\n  img, video {\n    max-width: 100%;\n    height: auto;\n  }\n\n  button, input, select, optgroup, textarea {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  ::file-selector-button {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  :where(select:is([multiple], [size])) optgroup {\n    font-weight: bolder;\n  }\n\n  :where(select:is([multiple], [size])) optgroup option {\n    padding-inline-start: 20px;\n  }\n\n  ::file-selector-button {\n    margin-inline-end: 4px;\n  }\n\n  ::placeholder {\n    opacity: 1;\n  }\n\n  @supports (not ((-webkit-appearance: -apple-pay-button))) or (contain-intrinsic-size: 1px) {\n    ::placeholder {\n      color: currentColor;\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      ::placeholder {\n        color: color-mix(in oklab, currentcolor 50%, transparent);\n      }\n    }\n  }\n\n  textarea {\n    resize: vertical;\n  }\n\n  ::-webkit-search-decoration {\n    -webkit-appearance: none;\n  }\n\n  ::-webkit-date-and-time-value {\n    min-height: 1lh;\n    text-align: inherit;\n  }\n\n  ::-webkit-datetime-edit {\n    display: inline-flex;\n  }\n\n  ::-webkit-datetime-edit-fields-wrapper {\n    padding: 0;\n  }\n\n  ::-webkit-datetime-edit {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-year-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-month-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-day-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-hour-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-minute-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-second-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-millisecond-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-meridiem-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-calendar-picker-indicator {\n    line-height: 1;\n  }\n\n  :-moz-ui-invalid {\n    box-shadow: none;\n  }\n\n  button, input:where([type="button"], [type="reset"], [type="submit"]) {\n    appearance: button;\n  }\n\n  ::file-selector-button {\n    appearance: button;\n  }\n\n  ::-webkit-inner-spin-button {\n    height: auto;\n  }\n\n  ::-webkit-outer-spin-button {\n    height: auto;\n  }\n\n  [hidden]:where(:not([hidden="until-found"])) {\n    display: none !important;\n  }\n\n  *, :before, :after {\n    --tw-border-style: solid;\n    --tw-translate-x: 0;\n    --tw-translate-y: 0;\n    --tw-translate-z: 0;\n    --tw-space-y-reverse: 0;\n    --tw-space-x-reverse: 0;\n    --tw-shadow: 0 0 #0000;\n    --tw-inset-shadow: 0 0 #0000;\n    --tw-ring-shadow: 0 0 #0000;\n    --tw-inset-ring-shadow: 0 0 #0000;\n    --tw-ring-offset-shadow: 0 0 #0000;\n    --tw-ring-offset-width: 0px;\n    --tw-ring-offset-color: #fff;\n    --tw-ring-inset: initial;\n    border-color: var(--border);\n    outline-color: var(--ring);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    *, :before, :after {\n      outline-color: color-mix(in oklab, var(--ring) 50%, transparent);\n    }\n  }\n\n  body {\n    background-color: var(--background);\n    color: var(--foreground);\n  }\n}\n\n@layer components;\n\n@layer utilities {\n  .pointer-events-none {\n    pointer-events: none;\n  }\n\n  .collapse {\n    visibility: collapse;\n  }\n\n  .invisible {\n    visibility: hidden;\n  }\n\n  .visible {\n    visibility: visible;\n  }\n\n  .sr-only {\n    clip-path: inset(50%);\n    white-space: nowrap;\n    border-width: 0;\n    width: 1px;\n    height: 1px;\n    margin: -1px;\n    padding: 0;\n    position: absolute;\n    overflow: hidden;\n  }\n\n  .absolute {\n    position: absolute;\n  }\n\n  .fixed {\n    position: fixed;\n  }\n\n  .relative {\n    position: relative;\n  }\n\n  .static {\n    position: static;\n  }\n\n  .sticky {\n    position: sticky;\n  }\n\n  .inset-0 {\n    inset: 0;\n  }\n\n  .start-0 {\n    inset-inline-start: calc(var(--spacing) * 0);\n  }\n\n  .top-0 {\n    top: 0;\n  }\n\n  .top-1\\/2 {\n    top: 50%;\n  }\n\n  .top-4 {\n    top: calc(var(--spacing) * 4);\n  }\n\n  .right-2 {\n    right: calc(var(--spacing) * 2);\n  }\n\n  .right-4 {\n    right: calc(var(--spacing) * 4);\n  }\n\n  .left-1\\/2 {\n    left: 50%;\n  }\n\n  .isolate {\n    isolation: isolate;\n  }\n\n  .z-10 {\n    z-index: 10;\n  }\n\n  .z-50 {\n    z-index: 50;\n  }\n\n  .z-auto {\n    z-index: auto;\n  }\n\n  .container {\n    width: 100%;\n  }\n\n  @media (min-width: 40rem) {\n    .container {\n      max-width: 40rem;\n    }\n  }\n\n  @media (min-width: 48rem) {\n    .container {\n      max-width: 48rem;\n    }\n  }\n\n  @media (min-width: 64rem) {\n    .container {\n      max-width: 64rem;\n    }\n  }\n\n  @media (min-width: 80rem) {\n    .container {\n      max-width: 80rem;\n    }\n  }\n\n  @media (min-width: 96rem) {\n    .container {\n      max-width: 96rem;\n    }\n  }\n\n  .m-0 {\n    margin: 0;\n  }\n\n  .m-1 {\n    margin: var(--spacing);\n  }\n\n  .m-9 {\n    margin: calc(var(--spacing) * 9);\n  }\n\n  .m-39 {\n    margin: calc(var(--spacing) * 39);\n  }\n\n  .m-80 {\n    margin: calc(var(--spacing) * 80);\n  }\n\n  .m-319 {\n    margin: calc(var(--spacing) * 319);\n  }\n\n  .m-399 {\n    margin: calc(var(--spacing) * 399);\n  }\n\n  .-mx-1 {\n    margin-inline: calc(var(--spacing) * -1);\n  }\n\n  .mx-auto {\n    margin-inline: auto;\n  }\n\n  .my-1 {\n    margin-block: var(--spacing);\n  }\n\n  .my-2 {\n    margin-block: calc(var(--spacing) * 2);\n  }\n\n  .my-8 {\n    margin-block: calc(var(--spacing) * 8);\n  }\n\n  .ms-auto {\n    margin-inline-start: auto;\n  }\n\n  .mt-0 {\n    margin-top: 0;\n  }\n\n  .mt-0\\.5 {\n    margin-top: calc(var(--spacing) * .5);\n  }\n\n  .mt-1 {\n    margin-top: var(--spacing);\n  }\n\n  .mt-2 {\n    margin-top: calc(var(--spacing) * 2);\n  }\n\n  .mt-3 {\n    margin-top: calc(var(--spacing) * 3);\n  }\n\n  .mt-4 {\n    margin-top: calc(var(--spacing) * 4);\n  }\n\n  .mr-1 {\n    margin-right: var(--spacing);\n  }\n\n  .mb-1 {\n    margin-bottom: var(--spacing);\n  }\n\n  .mb-2 {\n    margin-bottom: calc(var(--spacing) * 2);\n  }\n\n  .ml-auto {\n    margin-left: auto;\n  }\n\n  .block {\n    display: block;\n  }\n\n  .contents {\n    display: contents;\n  }\n\n  .flex {\n    display: flex;\n  }\n\n  .grid {\n    display: grid;\n  }\n\n  .hidden {\n    display: none;\n  }\n\n  .inline {\n    display: inline;\n  }\n\n  .inline-flex {\n    display: inline-flex;\n  }\n\n  .table {\n    display: table;\n  }\n\n  .aspect-square {\n    aspect-ratio: 1;\n  }\n\n  .size-3 {\n    width: calc(var(--spacing) * 3);\n    height: calc(var(--spacing) * 3);\n  }\n\n  .size-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n    height: calc(var(--spacing) * 3.5);\n  }\n\n  .size-4 {\n    width: calc(var(--spacing) * 4);\n    height: calc(var(--spacing) * 4);\n  }\n\n  .size-5 {\n    width: calc(var(--spacing) * 5);\n    height: calc(var(--spacing) * 5);\n  }\n\n  .size-6 {\n    width: calc(var(--spacing) * 6);\n    height: calc(var(--spacing) * 6);\n  }\n\n  .size-7 {\n    width: calc(var(--spacing) * 7);\n    height: calc(var(--spacing) * 7);\n  }\n\n  .size-8 {\n    width: calc(var(--spacing) * 8);\n    height: calc(var(--spacing) * 8);\n  }\n\n  .size-10 {\n    width: calc(var(--spacing) * 10);\n    height: calc(var(--spacing) * 10);\n  }\n\n  .h-1\\.5 {\n    height: calc(var(--spacing) * 1.5);\n  }\n\n  .h-2 {\n    height: calc(var(--spacing) * 2);\n  }\n\n  .h-2\\.5 {\n    height: calc(var(--spacing) * 2.5);\n  }\n\n  .h-3\\.5 {\n    height: calc(var(--spacing) * 3.5);\n  }\n\n  .h-4 {\n    height: calc(var(--spacing) * 4);\n  }\n\n  .h-5 {\n    height: calc(var(--spacing) * 5);\n  }\n\n  .h-7 {\n    height: calc(var(--spacing) * 7);\n  }\n\n  .h-8 {\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-9 {\n    height: calc(var(--spacing) * 9);\n  }\n\n  .h-10 {\n    height: calc(var(--spacing) * 10);\n  }\n\n  .h-20 {\n    height: calc(var(--spacing) * 20);\n  }\n\n  .h-24 {\n    height: calc(var(--spacing) * 24);\n  }\n\n  .h-32 {\n    height: calc(var(--spacing) * 32);\n  }\n\n  .h-auto {\n    height: auto;\n  }\n\n  .h-dvh {\n    height: 100dvh;\n  }\n\n  .h-full {\n    height: 100%;\n  }\n\n  .h-px {\n    height: 1px;\n  }\n\n  .max-h-48 {\n    max-height: calc(var(--spacing) * 48);\n  }\n\n  .max-h-64 {\n    max-height: calc(var(--spacing) * 64);\n  }\n\n  .max-h-80 {\n    max-height: calc(var(--spacing) * 80);\n  }\n\n  .max-h-\\[420px\\] {\n    max-height: 420px;\n  }\n\n  .max-h-\\[calc\\(50dvh-1\\.5rem\\)\\] {\n    max-height: calc(50dvh - 1.5rem);\n  }\n\n  .max-h-\\[calc\\(100dvh-32px\\)\\] {\n    max-height: calc(100dvh - 32px);\n  }\n\n  .max-h-\\[min\\(24rem\\,calc\\(100dvh_-_20px\\)\\)\\] {\n    max-height: min(24rem, 100dvh - 20px);\n  }\n\n  .max-h-\\[min\\(24rem\\,max\\(0px\\,var\\(--reka-select-content-available-height\\)\\)\\)\\] {\n    max-height: min(24rem, max(0px, var(--reka-select-content-available-height)));\n  }\n\n  .min-h-0 {\n    min-height: 0;\n  }\n\n  .min-h-6 {\n    min-height: calc(var(--spacing) * 6);\n  }\n\n  .min-h-8 {\n    min-height: calc(var(--spacing) * 8);\n  }\n\n  .min-h-9 {\n    min-height: calc(var(--spacing) * 9);\n  }\n\n  .min-h-10 {\n    min-height: calc(var(--spacing) * 10);\n  }\n\n  .min-h-11 {\n    min-height: calc(var(--spacing) * 11);\n  }\n\n  .min-h-24 {\n    min-height: calc(var(--spacing) * 24);\n  }\n\n  .min-h-\\[60px\\] {\n    min-height: 60px;\n  }\n\n  .min-h-\\[130px\\] {\n    min-height: 130px;\n  }\n\n  .w-1\\/3 {\n    width: 33.3333%;\n  }\n\n  .w-2\\.5 {\n    width: calc(var(--spacing) * 2.5);\n  }\n\n  .w-2\\/3 {\n    width: 66.6667%;\n  }\n\n  .w-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n  }\n\n  .w-3\\/5 {\n    width: 60%;\n  }\n\n  .w-4 {\n    width: calc(var(--spacing) * 4);\n  }\n\n  .w-5 {\n    width: calc(var(--spacing) * 5);\n  }\n\n  .w-9 {\n    width: calc(var(--spacing) * 9);\n  }\n\n  .w-20 {\n    width: calc(var(--spacing) * 20);\n  }\n\n  .w-24 {\n    width: calc(var(--spacing) * 24);\n  }\n\n  .w-72 {\n    width: calc(var(--spacing) * 72);\n  }\n\n  .w-80 {\n    width: calc(var(--spacing) * 80);\n  }\n\n  .w-\\[min\\(640px\\,calc\\(100vw-32px\\)\\)\\] {\n    width: min(640px, 100vw - 32px);\n  }\n\n  .w-auto {\n    width: auto;\n  }\n\n  .w-dvw {\n    width: 100dvw;\n  }\n\n  .w-full {\n    width: 100%;\n  }\n\n  .w-max {\n    width: max-content;\n  }\n\n  .w-px {\n    width: 1px;\n  }\n\n  .max-w-36 {\n    max-width: calc(var(--spacing) * 36);\n  }\n\n  .max-w-\\[88\\%\\] {\n    max-width: 88%;\n  }\n\n  .max-w-\\[calc\\(100vw_-_20px\\)\\] {\n    max-width: calc(100vw - 20px);\n  }\n\n  .max-w-\\[max\\(0px\\,var\\(--reka-select-content-available-width\\)\\)\\] {\n    max-width: max(0px, var(--reka-select-content-available-width));\n  }\n\n  .max-w-\\[min\\(380px\\,85vw\\)\\] {\n    max-width: min(380px, 85vw);\n  }\n\n  .max-w-\\[min\\(420px\\,calc\\(100vw-16px\\)\\)\\] {\n    max-width: min(420px, 100vw - 16px);\n  }\n\n  .max-w-full {\n    max-width: 100%;\n  }\n\n  .max-w-lg {\n    max-width: var(--container-lg);\n  }\n\n  .max-w-none {\n    max-width: none;\n  }\n\n  .min-w-0 {\n    min-width: 0;\n  }\n\n  .min-w-\\[min\\(8rem\\,calc\\(100vw_-_20px\\)\\)\\] {\n    min-width: min(8rem, 100vw - 20px);\n  }\n\n  .min-w-\\[min\\(8rem\\,max\\(0px\\,var\\(--reka-select-content-available-width\\)\\)\\)\\] {\n    min-width: min(8rem, max(0px, var(--reka-select-content-available-width)));\n  }\n\n  .min-w-\\[min\\(var\\(--reka-select-trigger-width\\)\\,max\\(0px\\,var\\(--reka-select-content-available-width\\)\\)\\)\\] {\n    min-width: min(var(--reka-select-trigger-width), max(0px, var(--reka-select-content-available-width)));\n  }\n\n  .flex-1 {\n    flex: 1;\n  }\n\n  .shrink-0 {\n    flex-shrink: 0;\n  }\n\n  .grow {\n    flex-grow: 1;\n  }\n\n  .basis-32 {\n    flex-basis: calc(var(--spacing) * 32);\n  }\n\n  .basis-48 {\n    flex-basis: calc(var(--spacing) * 48);\n  }\n\n  .table-fixed {\n    table-layout: fixed;\n  }\n\n  .caption-bottom {\n    caption-side: bottom;\n  }\n\n  .-translate-x-1\\/2 {\n    --tw-translate-x: calc(calc(1 / 2 * 100%) * -1);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .translate-x-0 {\n    --tw-translate-x: 0px;\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .-translate-y-1\\/2 {\n    --tw-translate-y: calc(calc(1 / 2 * 100%) * -1);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .translate-y-0 {\n    --tw-translate-y: 0px;\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .rotate-90 {\n    rotate: 90deg;\n  }\n\n  .rotate-180 {\n    rotate: 180deg;\n  }\n\n  .transform {\n    transform: var(--tw-rotate-x, ) var(--tw-rotate-y, ) var(--tw-rotate-z, ) var(--tw-skew-x, ) var(--tw-skew-y, );\n  }\n\n  .animate-pulse {\n    animation: var(--animate-pulse);\n  }\n\n  .animate-spin {\n    animation: var(--animate-spin);\n  }\n\n  .cursor-default {\n    cursor: default;\n  }\n\n  .cursor-pointer {\n    cursor: pointer;\n  }\n\n  .touch-none {\n    touch-action: none;\n  }\n\n  .resize {\n    resize: both;\n  }\n\n  .resize-y {\n    resize: vertical;\n  }\n\n  .grid-cols-1 {\n    grid-template-columns: repeat(1, minmax(0, 1fr));\n  }\n\n  .grid-cols-2 {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }\n\n  .grid-cols-3 {\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n\n  .grid-cols-\\[minmax\\(0\\,1fr\\)_80px\\] {\n    grid-template-columns: minmax(0, 1fr) 80px;\n  }\n\n  .grid-cols-\\[minmax\\(0\\,1fr\\)_auto\\] {\n    grid-template-columns: minmax(0, 1fr) auto;\n  }\n\n  .grid-rows-\\[minmax\\(0\\,1fr\\)\\] {\n    grid-template-rows: minmax(0, 1fr);\n  }\n\n  .flex-col {\n    flex-direction: column;\n  }\n\n  .flex-col-reverse {\n    flex-direction: column-reverse;\n  }\n\n  .flex-row {\n    flex-direction: row;\n  }\n\n  .flex-wrap {\n    flex-wrap: wrap;\n  }\n\n  .place-content-center {\n    place-content: center;\n  }\n\n  .place-items-center {\n    place-items: center;\n  }\n\n  .content-start {\n    align-content: flex-start;\n  }\n\n  .items-baseline {\n    align-items: baseline;\n  }\n\n  .items-center {\n    align-items: center;\n  }\n\n  .items-end {\n    align-items: flex-end;\n  }\n\n  .items-start {\n    align-items: flex-start;\n  }\n\n  .justify-between {\n    justify-content: space-between;\n  }\n\n  .justify-center {\n    justify-content: center;\n  }\n\n  .justify-end {\n    justify-content: flex-end;\n  }\n\n  .justify-start {\n    justify-content: flex-start;\n  }\n\n  .gap-0 {\n    gap: 0;\n  }\n\n  .gap-0\\.5 {\n    gap: calc(var(--spacing) * .5);\n  }\n\n  .gap-1 {\n    gap: var(--spacing);\n  }\n\n  .gap-1\\.5 {\n    gap: calc(var(--spacing) * 1.5);\n  }\n\n  .gap-2 {\n    gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-3 {\n    gap: calc(var(--spacing) * 3);\n  }\n\n  .gap-4 {\n    gap: calc(var(--spacing) * 4);\n  }\n\n  :where(.space-y-1 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(var(--spacing) * var(--tw-space-y-reverse));\n    margin-block-end: calc(var(--spacing) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-1\\.5 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 1.5) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 1.5) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-2 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 2) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 2) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-3 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 3) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 3) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-4 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 4) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 4) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-5 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 5) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 5) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  .gap-x-2 {\n    column-gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-x-3 {\n    column-gap: calc(var(--spacing) * 3);\n  }\n\n  .gap-x-4 {\n    column-gap: calc(var(--spacing) * 4);\n  }\n\n  .gap-y-1 {\n    row-gap: var(--spacing);\n  }\n\n  .gap-y-1\\.5 {\n    row-gap: calc(var(--spacing) * 1.5);\n  }\n\n  .gap-y-2 {\n    row-gap: calc(var(--spacing) * 2);\n  }\n\n  :where(.divide-y > :not(:last-child)) {\n    --tw-divide-y-reverse: 0;\n    border-bottom-style: var(--tw-border-style);\n    border-top-style: var(--tw-border-style);\n    border-top-width: calc(1px * var(--tw-divide-y-reverse));\n    border-bottom-width: calc(1px * calc(1 - var(--tw-divide-y-reverse)));\n  }\n\n  .self-start {\n    align-self: flex-start;\n  }\n\n  .justify-self-start {\n    justify-self: flex-start;\n  }\n\n  .truncate {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    overflow: hidden;\n  }\n\n  .overflow-auto {\n    overflow: auto;\n  }\n\n  .overflow-hidden {\n    overflow: hidden;\n  }\n\n  .overflow-x-hidden {\n    overflow-x: hidden;\n  }\n\n  .overflow-y-auto {\n    overflow-y: auto;\n  }\n\n  .rounded {\n    border-radius: .25rem;\n  }\n\n  .rounded-\\[inherit\\] {\n    border-radius: inherit;\n  }\n\n  .rounded-full {\n    border-radius: 3.40282e38px;\n  }\n\n  .rounded-lg {\n    border-radius: var(--radius);\n  }\n\n  .rounded-md {\n    border-radius: calc(var(--radius) - 2px);\n  }\n\n  .rounded-none {\n    border-radius: 0;\n  }\n\n  .rounded-sm {\n    border-radius: calc(var(--radius) - 4px);\n  }\n\n  .rounded-xl {\n    border-radius: calc(var(--radius) + 4px);\n  }\n\n  .border {\n    border-style: var(--tw-border-style);\n    border-width: 1px;\n  }\n\n  .border-0 {\n    border-style: var(--tw-border-style);\n    border-width: 0;\n  }\n\n  .border-2 {\n    border-style: var(--tw-border-style);\n    border-width: 2px;\n  }\n\n  .border-y {\n    border-block-style: var(--tw-border-style);\n    border-block-width: 1px;\n  }\n\n  .border-s {\n    border-inline-start-style: var(--tw-border-style);\n    border-inline-start-width: 1px;\n  }\n\n  .border-t {\n    border-top-style: var(--tw-border-style);\n    border-top-width: 1px;\n  }\n\n  .border-b {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 1px;\n  }\n\n  .border-l {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 1px;\n  }\n\n  .border-l-2 {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 2px;\n  }\n\n  .border-border {\n    border-color: var(--border);\n  }\n\n  .border-destructive\\/50 {\n    border-color: var(--destructive);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .border-destructive\\/50 {\n      border-color: color-mix(in oklab, var(--destructive) 50%, transparent);\n    }\n  }\n\n  .border-input {\n    border-color: var(--input);\n  }\n\n  .border-primary {\n    border-color: var(--primary);\n  }\n\n  .border-transparent {\n    border-color: #0000;\n  }\n\n  .border-t-transparent {\n    border-top-color: #0000;\n  }\n\n  .border-l-transparent {\n    border-left-color: #0000;\n  }\n\n  .bg-background {\n    background-color: var(--background);\n  }\n\n  .bg-black\\/80 {\n    background-color: #000c;\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-black\\/80 {\n      background-color: color-mix(in oklab, var(--color-black) 80%, transparent);\n    }\n  }\n\n  .bg-border {\n    background-color: var(--border);\n  }\n\n  .bg-card {\n    background-color: var(--card);\n  }\n\n  .bg-destructive {\n    background-color: var(--destructive);\n  }\n\n  .bg-muted, .bg-muted\\/40 {\n    background-color: var(--muted);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-muted\\/40 {\n      background-color: color-mix(in oklab, var(--muted) 40%, transparent);\n    }\n  }\n\n  .bg-muted\\/45 {\n    background-color: var(--muted);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-muted\\/45 {\n      background-color: color-mix(in oklab, var(--muted) 45%, transparent);\n    }\n  }\n\n  .bg-muted\\/50 {\n    background-color: var(--muted);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-muted\\/50 {\n      background-color: color-mix(in oklab, var(--muted) 50%, transparent);\n    }\n  }\n\n  .bg-popover {\n    background-color: var(--popover);\n  }\n\n  .bg-primary, .bg-primary\\/10 {\n    background-color: var(--primary);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-primary\\/10 {\n      background-color: color-mix(in oklab, var(--primary) 10%, transparent);\n    }\n  }\n\n  .bg-primary\\/20 {\n    background-color: var(--primary);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-primary\\/20 {\n      background-color: color-mix(in oklab, var(--primary) 20%, transparent);\n    }\n  }\n\n  .bg-secondary {\n    background-color: var(--secondary);\n  }\n\n  .bg-transparent {\n    background-color: #0000;\n  }\n\n  .object-contain {\n    object-fit: contain;\n  }\n\n  .p-0 {\n    padding: 0;\n  }\n\n  .p-0\\.5 {\n    padding: calc(var(--spacing) * .5);\n  }\n\n  .p-1 {\n    padding: var(--spacing);\n  }\n\n  .p-2 {\n    padding: calc(var(--spacing) * 2);\n  }\n\n  .p-3 {\n    padding: calc(var(--spacing) * 3);\n  }\n\n  .p-4 {\n    padding: calc(var(--spacing) * 4);\n  }\n\n  .p-5 {\n    padding: calc(var(--spacing) * 5);\n  }\n\n  .p-6 {\n    padding: calc(var(--spacing) * 6);\n  }\n\n  .p-px {\n    padding: 1px;\n  }\n\n  .px-0 {\n    padding-inline: 0;\n  }\n\n  .px-1 {\n    padding-inline: var(--spacing);\n  }\n\n  .px-1\\.5 {\n    padding-inline: calc(var(--spacing) * 1.5);\n  }\n\n  .px-2 {\n    padding-inline: calc(var(--spacing) * 2);\n  }\n\n  .px-2\\.5 {\n    padding-inline: calc(var(--spacing) * 2.5);\n  }\n\n  .px-3 {\n    padding-inline: calc(var(--spacing) * 3);\n  }\n\n  .px-4 {\n    padding-inline: calc(var(--spacing) * 4);\n  }\n\n  .px-8 {\n    padding-inline: calc(var(--spacing) * 8);\n  }\n\n  .py-0 {\n    padding-block: 0;\n  }\n\n  .py-0\\.5 {\n    padding-block: calc(var(--spacing) * .5);\n  }\n\n  .py-1 {\n    padding-block: var(--spacing);\n  }\n\n  .py-1\\.5 {\n    padding-block: calc(var(--spacing) * 1.5);\n  }\n\n  .py-2 {\n    padding-block: calc(var(--spacing) * 2);\n  }\n\n  .py-3 {\n    padding-block: calc(var(--spacing) * 3);\n  }\n\n  .py-4 {\n    padding-block: calc(var(--spacing) * 4);\n  }\n\n  .py-10 {\n    padding-block: calc(var(--spacing) * 10);\n  }\n\n  .pe-3 {\n    padding-inline-end: calc(var(--spacing) * 3);\n  }\n\n  .pt-0 {\n    padding-top: 0;\n  }\n\n  .pt-1 {\n    padding-top: var(--spacing);\n  }\n\n  .pt-2 {\n    padding-top: calc(var(--spacing) * 2);\n  }\n\n  .pt-3 {\n    padding-top: calc(var(--spacing) * 3);\n  }\n\n  .pt-4 {\n    padding-top: calc(var(--spacing) * 4);\n  }\n\n  .pr-8 {\n    padding-right: calc(var(--spacing) * 8);\n  }\n\n  .pb-3 {\n    padding-bottom: calc(var(--spacing) * 3);\n  }\n\n  .pb-4 {\n    padding-bottom: calc(var(--spacing) * 4);\n  }\n\n  .pb-8 {\n    padding-bottom: calc(var(--spacing) * 8);\n  }\n\n  .pl-2 {\n    padding-left: calc(var(--spacing) * 2);\n  }\n\n  .text-center {\n    text-align: center;\n  }\n\n  .text-left {\n    text-align: left;\n  }\n\n  .text-right {\n    text-align: right;\n  }\n\n  .text-start {\n    text-align: start;\n  }\n\n  .align-middle {\n    vertical-align: middle;\n  }\n\n  .align-top {\n    vertical-align: top;\n  }\n\n  .font-mono {\n    font-family: var(--font-mono);\n  }\n\n  .text-base {\n    font-size: var(--text-base);\n    line-height: var(--tw-leading, var(--text-base--line-height));\n  }\n\n  .text-lg {\n    font-size: var(--text-lg);\n    line-height: var(--tw-leading, var(--text-lg--line-height));\n  }\n\n  .text-sm {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n\n  .text-xl {\n    font-size: var(--text-xl);\n    line-height: var(--tw-leading, var(--text-xl--line-height));\n  }\n\n  .text-xs {\n    font-size: var(--text-xs);\n    line-height: var(--tw-leading, var(--text-xs--line-height));\n  }\n\n  .text-\\[10px\\] {\n    font-size: 10px;\n  }\n\n  .text-\\[11px\\] {\n    font-size: 11px;\n  }\n\n  .leading-4 {\n    --tw-leading: calc(var(--spacing) * 4);\n    line-height: calc(var(--spacing) * 4);\n  }\n\n  .leading-5 {\n    --tw-leading: calc(var(--spacing) * 5);\n    line-height: calc(var(--spacing) * 5);\n  }\n\n  .leading-none {\n    --tw-leading: 1;\n    line-height: 1;\n  }\n\n  .font-medium {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n\n  .font-normal {\n    --tw-font-weight: var(--font-weight-normal);\n    font-weight: var(--font-weight-normal);\n  }\n\n  .font-semibold {\n    --tw-font-weight: var(--font-weight-semibold);\n    font-weight: var(--font-weight-semibold);\n  }\n\n  .tracking-tight {\n    --tw-tracking: var(--tracking-tight);\n    letter-spacing: var(--tracking-tight);\n  }\n\n  .\\[overflow-wrap\\:anywhere\\] {\n    overflow-wrap: anywhere;\n  }\n\n  .break-words {\n    overflow-wrap: break-word;\n  }\n\n  .break-all {\n    word-break: break-all;\n  }\n\n  .whitespace-normal {\n    white-space: normal;\n  }\n\n  .whitespace-nowrap {\n    white-space: nowrap;\n  }\n\n  .whitespace-pre-wrap {\n    white-space: pre-wrap;\n  }\n\n  .text-card-foreground {\n    color: var(--card-foreground);\n  }\n\n  .text-current {\n    color: currentColor;\n  }\n\n  .text-destructive {\n    color: var(--destructive);\n  }\n\n  .text-destructive-foreground {\n    color: var(--destructive-foreground);\n  }\n\n  .text-foreground {\n    color: var(--foreground);\n  }\n\n  .text-muted-foreground {\n    color: var(--muted-foreground);\n  }\n\n  .text-popover-foreground {\n    color: var(--popover-foreground);\n  }\n\n  .text-primary {\n    color: var(--primary);\n  }\n\n  .text-primary-foreground {\n    color: var(--primary-foreground);\n  }\n\n  .text-secondary-foreground {\n    color: var(--secondary-foreground);\n  }\n\n  .text-success {\n    color: var(--success);\n  }\n\n  .lowercase {\n    text-transform: lowercase;\n  }\n\n  .ordinal {\n    --tw-ordinal: ordinal;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .tabular-nums {\n    --tw-numeric-spacing: tabular-nums;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .underline-offset-4 {\n    text-underline-offset: 4px;\n  }\n\n  .opacity-0 {\n    opacity: 0;\n  }\n\n  .opacity-50 {\n    opacity: .5;\n  }\n\n  .opacity-70 {\n    opacity: .7;\n  }\n\n  .shadow {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .shadow-lg {\n    --tw-shadow: 0 10px 15px -3px var(--tw-shadow-color, #0000001a), 0 4px 6px -4px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .shadow-md {\n    --tw-shadow: 0 4px 6px -1px var(--tw-shadow-color, #0000001a), 0 2px 4px -2px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .shadow-none {\n    --tw-shadow: 0 0 #0000;\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .shadow-sm {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .ring-0 {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(0px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .ring-offset-background {\n    --tw-ring-offset-color: var(--background);\n  }\n\n  .outline {\n    outline-style: var(--tw-outline-style);\n    outline-width: 1px;\n  }\n\n  .blur {\n    --tw-blur: blur(8px);\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .filter {\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .transition {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-all {\n    transition-property: all;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-colors {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-opacity {\n    transition-property: opacity;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-transform {\n    transition-property: transform, translate, scale, rotate;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .duration-200 {\n    --tw-duration: .2s;\n    transition-duration: .2s;\n  }\n\n  .animate-in {\n    --tw-enter-opacity: initial;\n    --tw-enter-scale: initial;\n    --tw-enter-rotate: initial;\n    --tw-enter-translate-x: initial;\n    --tw-enter-translate-y: initial;\n    animation-name: enter;\n    animation-duration: .15s;\n  }\n\n  .outline-none {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  .select-none {\n    -webkit-user-select: none;\n    user-select: none;\n  }\n\n  .\\!running {\n    animation-play-state: running !important;\n  }\n\n  .duration-200 {\n    animation-duration: .2s;\n  }\n\n  .fade-in-0 {\n    --tw-enter-opacity: 0;\n  }\n\n  .paused {\n    animation-play-state: paused;\n  }\n\n  .running {\n    animation-play-state: running;\n  }\n\n  .zoom-in-95 {\n    --tw-enter-scale: .95;\n  }\n\n  .group-data-\\[state\\=open\\]\\:rotate-180:is(:where(.group)[data-state="open"] *) {\n    rotate: 180deg;\n  }\n\n  .peer-disabled\\:cursor-not-allowed:is(:where(.peer):disabled ~ *) {\n    cursor: not-allowed;\n  }\n\n  .peer-disabled\\:opacity-70:is(:where(.peer):disabled ~ *) {\n    opacity: .7;\n  }\n\n  .file\\:border-0::file-selector-button {\n    border-style: var(--tw-border-style);\n    border-width: 0;\n  }\n\n  .file\\:bg-transparent::file-selector-button {\n    background-color: #0000;\n  }\n\n  .file\\:text-sm::file-selector-button {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n\n  .file\\:font-medium::file-selector-button {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n\n  .placeholder\\:text-muted-foreground::placeholder {\n    color: var(--muted-foreground);\n  }\n\n  .after\\:absolute:after {\n    content: var(--tw-content);\n    position: absolute;\n  }\n\n  .after\\:inset-0:after {\n    content: var(--tw-content);\n    inset: 0;\n  }\n\n  .after\\:rounded-xl:after {\n    content: var(--tw-content);\n    border-radius: calc(var(--radius) + 4px);\n  }\n\n  .first\\:border-t-0:first-child {\n    border-top-style: var(--tw-border-style);\n    border-top-width: 0;\n  }\n\n  .first\\:pt-0:first-child {\n    padding-top: 0;\n  }\n\n  @media (hover: hover) {\n    .hover\\:bg-accent:hover {\n      background-color: var(--accent);\n    }\n\n    .hover\\:bg-destructive\\/80:hover {\n      background-color: var(--destructive);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-destructive\\/80:hover {\n        background-color: color-mix(in oklab, var(--destructive) 80%, transparent);\n      }\n    }\n\n    .hover\\:bg-destructive\\/90:hover {\n      background-color: var(--destructive);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-destructive\\/90:hover {\n        background-color: color-mix(in oklab, var(--destructive) 90%, transparent);\n      }\n    }\n\n    .hover\\:bg-muted\\/50:hover {\n      background-color: var(--muted);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-muted\\/50:hover {\n        background-color: color-mix(in oklab, var(--muted) 50%, transparent);\n      }\n    }\n\n    .hover\\:bg-primary\\/80:hover {\n      background-color: var(--primary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-primary\\/80:hover {\n        background-color: color-mix(in oklab, var(--primary) 80%, transparent);\n      }\n    }\n\n    .hover\\:bg-primary\\/90:hover {\n      background-color: var(--primary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-primary\\/90:hover {\n        background-color: color-mix(in oklab, var(--primary) 90%, transparent);\n      }\n    }\n\n    .hover\\:bg-secondary:hover, .hover\\:bg-secondary\\/80:hover {\n      background-color: var(--secondary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-secondary\\/80:hover {\n        background-color: color-mix(in oklab, var(--secondary) 80%, transparent);\n      }\n    }\n\n    .hover\\:text-accent-foreground:hover {\n      color: var(--accent-foreground);\n    }\n\n    .hover\\:underline:hover {\n      text-decoration-line: underline;\n    }\n\n    .hover\\:opacity-100:hover {\n      opacity: 1;\n    }\n  }\n\n  .focus\\:bg-accent:focus {\n    background-color: var(--accent);\n  }\n\n  .focus\\:text-accent-foreground:focus {\n    color: var(--accent-foreground);\n  }\n\n  .focus\\:ring-1:focus {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus\\:ring-2:focus {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus\\:ring-ring:focus {\n    --tw-ring-color: var(--ring);\n  }\n\n  .focus\\:ring-offset-2:focus {\n    --tw-ring-offset-width: 2px;\n    --tw-ring-offset-shadow: var(--tw-ring-inset, ) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);\n  }\n\n  .focus\\:outline-none:focus {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  .focus-visible\\:ring-1:focus-visible {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus-visible\\:ring-2:focus-visible {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus-visible\\:ring-ring:focus-visible {\n    --tw-ring-color: var(--ring);\n  }\n\n  .focus-visible\\:ring-offset-2:focus-visible {\n    --tw-ring-offset-width: 2px;\n    --tw-ring-offset-shadow: var(--tw-ring-inset, ) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);\n  }\n\n  .focus-visible\\:ring-offset-background:focus-visible {\n    --tw-ring-offset-color: var(--background);\n  }\n\n  .focus-visible\\:outline-none:focus-visible {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  .disabled\\:pointer-events-none:disabled {\n    pointer-events: none;\n  }\n\n  .disabled\\:cursor-not-allowed:disabled {\n    cursor: not-allowed;\n  }\n\n  .disabled\\:opacity-50:disabled {\n    opacity: .5;\n  }\n\n  .data-\\[disabled\\]\\:pointer-events-none[data-disabled] {\n    pointer-events: none;\n  }\n\n  .data-\\[disabled\\]\\:opacity-50[data-disabled] {\n    opacity: .5;\n  }\n\n  .data-\\[orientation\\=vertical\\]\\:h-full[data-orientation="vertical"] {\n    height: 100%;\n  }\n\n  .data-\\[orientation\\=vertical\\]\\:w-1\\.5[data-orientation="vertical"] {\n    width: calc(var(--spacing) * 1.5);\n  }\n\n  .data-\\[orientation\\=vertical\\]\\:w-full[data-orientation="vertical"] {\n    width: 100%;\n  }\n\n  .data-\\[orientation\\=vertical\\]\\:flex-col[data-orientation="vertical"] {\n    flex-direction: column;\n  }\n\n  .data-\\[placeholder\\]\\:text-muted-foreground[data-placeholder] {\n    color: var(--muted-foreground);\n  }\n\n  .data-\\[side\\=bottom\\]\\:translate-y-1[data-side="bottom"] {\n    --tw-translate-y: var(--spacing);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[side\\=bottom\\]\\:slide-in-from-top-2[data-side="bottom"] {\n    --tw-enter-translate-y: -.5rem;\n  }\n\n  .data-\\[side\\=left\\]\\:-translate-x-1[data-side="left"] {\n    --tw-translate-x: calc(var(--spacing) * -1);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[side\\=left\\]\\:slide-in-from-right-2[data-side="left"] {\n    --tw-enter-translate-x: .5rem;\n  }\n\n  .data-\\[side\\=right\\]\\:translate-x-1[data-side="right"] {\n    --tw-translate-x: var(--spacing);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[side\\=right\\]\\:slide-in-from-left-2[data-side="right"] {\n    --tw-enter-translate-x: -.5rem;\n  }\n\n  .data-\\[side\\=top\\]\\:-translate-y-1[data-side="top"] {\n    --tw-translate-y: calc(var(--spacing) * -1);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[side\\=top\\]\\:slide-in-from-bottom-2[data-side="top"] {\n    --tw-enter-translate-y: .5rem;\n  }\n\n  .data-\\[state\\=active\\]\\:bg-background[data-state="active"] {\n    background-color: var(--background);\n  }\n\n  .data-\\[state\\=active\\]\\:text-foreground[data-state="active"] {\n    color: var(--foreground);\n  }\n\n  .data-\\[state\\=active\\]\\:shadow[data-state="active"] {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .data-\\[state\\=checked\\]\\:translate-x-4[data-state="checked"] {\n    --tw-translate-x: calc(var(--spacing) * 4);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[state\\=checked\\]\\:bg-primary[data-state="checked"] {\n    background-color: var(--primary);\n  }\n\n  .data-\\[state\\=checked\\]\\:text-primary-foreground[data-state="checked"] {\n    color: var(--primary-foreground);\n  }\n\n  .data-\\[state\\=closed\\]\\:animate-none[data-state="closed"] {\n    animation: none;\n  }\n\n  .data-\\[state\\=closed\\]\\:animate-out[data-state="closed"] {\n    --tw-exit-opacity: initial;\n    --tw-exit-scale: initial;\n    --tw-exit-rotate: initial;\n    --tw-exit-translate-x: initial;\n    --tw-exit-translate-y: initial;\n    animation-name: exit;\n    animation-duration: .15s;\n  }\n\n  .data-\\[state\\=closed\\]\\:fade-out-0[data-state="closed"] {\n    --tw-exit-opacity: 0;\n  }\n\n  .data-\\[state\\=closed\\]\\:slide-out-to-left-1\\/2[data-state="closed"] {\n    --tw-exit-translate-x: -50%;\n  }\n\n  .data-\\[state\\=closed\\]\\:slide-out-to-top-\\[48\\%\\][data-state="closed"] {\n    --tw-exit-translate-y: -48%;\n  }\n\n  .data-\\[state\\=closed\\]\\:zoom-out-95[data-state="closed"] {\n    --tw-exit-scale: .95;\n  }\n\n  .data-\\[state\\=open\\]\\:animate-none[data-state="open"] {\n    animation: none;\n  }\n\n  .data-\\[state\\=open\\]\\:bg-accent[data-state="open"] {\n    background-color: var(--accent);\n  }\n\n  .data-\\[state\\=open\\]\\:text-muted-foreground[data-state="open"] {\n    color: var(--muted-foreground);\n  }\n\n  .data-\\[state\\=open\\]\\:animate-in[data-state="open"] {\n    --tw-enter-opacity: initial;\n    --tw-enter-scale: initial;\n    --tw-enter-rotate: initial;\n    --tw-enter-translate-x: initial;\n    --tw-enter-translate-y: initial;\n    animation-name: enter;\n    animation-duration: .15s;\n  }\n\n  .data-\\[state\\=open\\]\\:fade-in-0[data-state="open"] {\n    --tw-enter-opacity: 0;\n  }\n\n  .data-\\[state\\=open\\]\\:slide-in-from-left-1\\/2[data-state="open"] {\n    --tw-enter-translate-x: -50%;\n  }\n\n  .data-\\[state\\=open\\]\\:slide-in-from-top-\\[48\\%\\][data-state="open"] {\n    --tw-enter-translate-y: -48%;\n  }\n\n  .data-\\[state\\=open\\]\\:zoom-in-95[data-state="open"] {\n    --tw-enter-scale: .95;\n  }\n\n  .data-\\[state\\=selected\\]\\:bg-muted[data-state="selected"] {\n    background-color: var(--muted);\n  }\n\n  .data-\\[state\\=unchecked\\]\\:translate-x-0[data-state="unchecked"] {\n    --tw-translate-x: 0px;\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[state\\=unchecked\\]\\:bg-input[data-state="unchecked"] {\n    background-color: var(--input);\n  }\n\n  @media (prefers-reduced-motion: reduce) {\n    .motion-reduce\\:animate-none {\n      animation: none;\n    }\n\n    .motion-reduce\\:transition-none {\n      transition-property: none;\n    }\n  }\n\n  @media (min-width: 621px) {\n    .min-\\[621px\\]\\:col-span-2 {\n      grid-column: span 2 / span 2;\n    }\n\n    .min-\\[621px\\]\\:block {\n      display: block;\n    }\n\n    .min-\\[621px\\]\\:flex {\n      display: flex;\n    }\n\n    .min-\\[621px\\]\\:hidden {\n      display: none;\n    }\n\n    .min-\\[621px\\]\\:min-h-9 {\n      min-height: calc(var(--spacing) * 9);\n    }\n\n    .min-\\[621px\\]\\:grid-cols-2 {\n      grid-template-columns: repeat(2, minmax(0, 1fr));\n    }\n\n    .min-\\[621px\\]\\:grid-cols-\\[minmax\\(0\\,1fr\\)_minmax\\(180px\\,280px\\)\\] {\n      grid-template-columns: minmax(0, 1fr) minmax(180px, 280px);\n    }\n\n    .min-\\[621px\\]\\:flex-wrap {\n      flex-wrap: wrap;\n    }\n\n    .min-\\[621px\\]\\:items-center {\n      align-items: center;\n    }\n  }\n\n  @media (min-width: 900px) {\n    .min-\\[900px\\]\\:flex-none {\n      flex: none;\n    }\n\n    .min-\\[900px\\]\\:grid-cols-4 {\n      grid-template-columns: repeat(4, minmax(0, 1fr));\n    }\n  }\n\n  @media (min-width: 1024px) {\n    .min-\\[1024px\\]\\:grid-cols-2 {\n      grid-template-columns: repeat(2, minmax(0, 1fr));\n    }\n  }\n\n  @media (min-width: 40rem) {\n    .sm\\:inline {\n      display: inline;\n    }\n\n    .sm\\:grid-cols-3 {\n      grid-template-columns: repeat(3, minmax(0, 1fr));\n    }\n\n    .sm\\:flex-row {\n      flex-direction: row;\n    }\n\n    .sm\\:justify-end {\n      justify-content: flex-end;\n    }\n\n    .sm\\:gap-x-2 {\n      column-gap: calc(var(--spacing) * 2);\n    }\n\n    .sm\\:rounded-lg {\n      border-radius: var(--radius);\n    }\n\n    .sm\\:text-left {\n      text-align: left;\n    }\n  }\n\n  @media (min-width: 48rem) {\n    .md\\:w-full {\n      width: 100%;\n    }\n  }\n\n  .dark\\:border-destructive:is(.dark *, :host(.dark) *) {\n    border-color: var(--destructive);\n  }\n\n  .\\[\\&_p\\]\\:leading-relaxed p {\n    --tw-leading: var(--leading-relaxed);\n    line-height: var(--leading-relaxed);\n  }\n\n  .\\[\\&_svg\\]\\:pointer-events-none svg {\n    pointer-events: none;\n  }\n\n  .\\[\\&_svg\\]\\:size-4 svg {\n    width: calc(var(--spacing) * 4);\n    height: calc(var(--spacing) * 4);\n  }\n\n  .\\[\\&_svg\\]\\:shrink-0 svg {\n    flex-shrink: 0;\n  }\n\n  .\\[\\&_tr\\]\\:border-b tr {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 1px;\n  }\n\n  .\\[\\&_tr\\:last-child\\]\\:border-0 tr:last-child {\n    border-style: var(--tw-border-style);\n    border-width: 0;\n  }\n\n  .\\[\\&\\:has\\(\\[role\\=checkbox\\]\\)\\]\\:pr-0:has([role="checkbox"]) {\n    padding-right: 0;\n  }\n\n  .\\[\\&\\>\\[role\\=checkbox\\]\\]\\:translate-y-0\\.5 > [role="checkbox"] {\n    --tw-translate-y: calc(var(--spacing) * .5);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .\\[\\&\\>span\\]\\:min-w-0 > span {\n    min-width: 0;\n  }\n\n  .\\[\\&\\>span\\]\\:truncate > span {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    overflow: hidden;\n  }\n\n  .\\[\\&\\>span\\]\\:break-words > span {\n    overflow-wrap: break-word;\n  }\n\n  .\\[\\&\\>span\\]\\:whitespace-normal > span {\n    white-space: normal;\n  }\n\n  .\\[\\&\\>svg\\]\\:absolute > svg {\n    position: absolute;\n  }\n\n  .\\[\\&\\>svg\\]\\:top-4 > svg {\n    top: calc(var(--spacing) * 4);\n  }\n\n  .\\[\\&\\>svg\\]\\:left-4 > svg {\n    left: calc(var(--spacing) * 4);\n  }\n\n  .\\[\\&\\>svg\\]\\:text-destructive > svg {\n    color: var(--destructive);\n  }\n\n  .\\[\\&\\>svg\\]\\:text-foreground > svg {\n    color: var(--foreground);\n  }\n\n  .\\[\\&\\>svg\\+div\\]\\:translate-y-\\[-3px\\] > svg + div {\n    --tw-translate-y: -3px;\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .\\[\\&\\>svg\\~\\*\\]\\:pl-7 > svg ~ * {\n    padding-left: calc(var(--spacing) * 7);\n  }\n\n  .\\[\\&\\>tr\\]\\:last\\:border-b-0 > tr:last-child {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 0;\n  }\n}\n\n:root, :host {\n  --radius: .625rem;\n  --destructive-foreground: #fafafa;\n  --success: oklch(59.6% .145 163.225);\n  --warning: oklch(66.6% .179 58.318);\n  --background: oklch(100% 0 0);\n  --foreground: oklch(14.5% 0 0);\n  --card: oklch(100% 0 0);\n  --card-foreground: oklch(14.5% 0 0);\n  --popover: oklch(100% 0 0);\n  --popover-foreground: oklch(14.5% 0 0);\n  --primary: oklch(20.5% 0 0);\n  --primary-foreground: oklch(98.5% 0 0);\n  --secondary: oklch(97% 0 0);\n  --secondary-foreground: oklch(20.5% 0 0);\n  --muted: oklch(97% 0 0);\n  --muted-foreground: oklch(55.6% 0 0);\n  --accent: oklch(97% 0 0);\n  --accent-foreground: oklch(20.5% 0 0);\n  --destructive: oklch(57.7% .245 27.325);\n  --border: oklch(92.2% 0 0);\n  --input: oklch(92.2% 0 0);\n  --ring: oklch(70.8% 0 0);\n  --chart-1: oklch(64.6% .222 41.116);\n  --chart-2: oklch(60% .118 184.704);\n  --chart-3: oklch(39.8% .07 227.392);\n  --chart-4: oklch(82.8% .189 84.429);\n  --chart-5: oklch(76.9% .188 70.08);\n  --sidebar: oklch(98.5% 0 0);\n  --sidebar-foreground: oklch(14.5% 0 0);\n  --sidebar-primary: oklch(20.5% 0 0);\n  --sidebar-primary-foreground: oklch(98.5% 0 0);\n  --sidebar-accent: oklch(97% 0 0);\n  --sidebar-accent-foreground: oklch(20.5% 0 0);\n  --sidebar-border: oklch(92.2% 0 0);\n  --sidebar-ring: oklch(70.8% 0 0);\n}\n\n.dark, :host(.dark) {\n  --success: oklch(76.5% .177 163.223);\n  --warning: oklch(82.8% .189 84.429);\n  --background: oklch(14.5% 0 0);\n  --foreground: oklch(98.5% 0 0);\n  --card: oklch(20.5% 0 0);\n  --card-foreground: oklch(98.5% 0 0);\n  --popover: oklch(20.5% 0 0);\n  --popover-foreground: oklch(98.5% 0 0);\n  --primary: oklch(92.2% 0 0);\n  --primary-foreground: oklch(20.5% 0 0);\n  --secondary: oklch(26.9% 0 0);\n  --secondary-foreground: oklch(98.5% 0 0);\n  --muted: oklch(26.9% 0 0);\n  --muted-foreground: oklch(70.8% 0 0);\n  --accent: oklch(26.9% 0 0);\n  --accent-foreground: oklch(98.5% 0 0);\n  --destructive: oklch(70.4% .191 22.216);\n  --border: oklch(100% 0 0 / .2);\n  --input: oklch(100% 0 0 / .28);\n  --ring: oklch(55.6% 0 0);\n  --chart-1: oklch(48.8% .243 264.376);\n  --chart-2: oklch(69.6% .17 162.48);\n  --chart-3: oklch(76.9% .188 70.08);\n  --chart-4: oklch(62.7% .265 303.9);\n  --chart-5: oklch(64.5% .246 16.439);\n  --sidebar: oklch(20.5% 0 0);\n  --sidebar-foreground: oklch(98.5% 0 0);\n  --sidebar-primary: oklch(48.8% .243 264.376);\n  --sidebar-primary-foreground: oklch(98.5% 0 0);\n  --sidebar-accent: oklch(26.9% 0 0);\n  --sidebar-accent-foreground: oklch(98.5% 0 0);\n  --sidebar-border: oklch(100% 0 0 / .1);\n  --sidebar-ring: oklch(55.6% 0 0);\n}\n\n@media (prefers-color-scheme: dark) {\n  :host(:not(.light)) {\n    --success: oklch(76.5% .177 163.223);\n    --warning: oklch(82.8% .189 84.429);\n    --background: oklch(14.5% 0 0);\n    --foreground: oklch(98.5% 0 0);\n    --card: oklch(20.5% 0 0);\n    --card-foreground: oklch(98.5% 0 0);\n    --popover: oklch(20.5% 0 0);\n    --popover-foreground: oklch(98.5% 0 0);\n    --primary: oklch(92.2% 0 0);\n    --primary-foreground: oklch(20.5% 0 0);\n    --secondary: oklch(26.9% 0 0);\n    --secondary-foreground: oklch(98.5% 0 0);\n    --muted: oklch(26.9% 0 0);\n    --muted-foreground: oklch(70.8% 0 0);\n    --accent: oklch(26.9% 0 0);\n    --accent-foreground: oklch(98.5% 0 0);\n    --destructive: oklch(70.4% .191 22.216);\n    --border: oklch(100% 0 0 / .2);\n    --input: oklch(100% 0 0 / .28);\n    --ring: oklch(55.6% 0 0);\n    --chart-1: oklch(48.8% .243 264.376);\n    --chart-2: oklch(69.6% .17 162.48);\n    --chart-3: oklch(76.9% .188 70.08);\n    --chart-4: oklch(62.7% .265 303.9);\n    --chart-5: oklch(64.5% .246 16.439);\n    --sidebar: oklch(20.5% 0 0);\n    --sidebar-foreground: oklch(98.5% 0 0);\n    --sidebar-primary: oklch(48.8% .243 264.376);\n    --sidebar-primary-foreground: oklch(98.5% 0 0);\n    --sidebar-accent: oklch(26.9% 0 0);\n    --sidebar-accent-foreground: oklch(98.5% 0 0);\n    --sidebar-border: oklch(100% 0 0 / .1);\n    --sidebar-ring: oklch(55.6% 0 0);\n  }\n}\n\n.booster-archive-nav {\n  border-right: 1px solid var(--border);\n  background: var(--card);\n  overscroll-behavior: contain;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  padding: 12px;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-archive-nav-branch {\n  border-inline-start: 2px solid var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-nav-branch {\n    border-inline-start: 2px solid color-mix(in oklab, var(--primary) 35%, transparent);\n  }\n}\n\n.booster-reader-exchanges {\n  gap: 12px;\n  margin-top: 0;\n  display: grid;\n}\n\n.booster-exchange {\n  border-bottom: 1px solid var(--border);\n  min-width: 0;\n  max-width: 100%;\n  padding-bottom: 16px;\n}\n\n.booster-exchange-details {\n  border-left: 2px solid var(--border);\n  gap: 6px;\n  margin: 10px 0 10px 12px;\n  padding: 8px 0 8px 12px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-exchange-details {\n    border-left: 2px solid color-mix(in oklab, var(--border) 78%, var(--primary));\n  }\n}\n\n.booster-exchange-details-label {\n  color: var(--muted-foreground);\n  letter-spacing: .04em;\n  text-transform: uppercase;\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-message-target {\n  outline: 2px solid var(--primary);\n  outline-offset: 2px;\n  border-radius: 6px;\n}\n\n[data-archive-message] {\n  scroll-margin-block: 20px;\n}\n\n.booster-reader-exchanges, .booster-exchange-details {\n  min-width: 0;\n  max-width: 100%;\n}\n\n.booster-meta-trigger {\n  flex-shrink: 0;\n}\n\n.booster-meta-lines {\n  grid-template-columns: max-content minmax(0, 1fr);\n  gap: 3px 10px;\n  display: grid;\n}\n\n.booster-meta-label {\n  color: var(--muted-foreground);\n  font-size: 10px;\n  font-weight: 600;\n}\n\n.booster-floating-tooltip .booster-meta-label {\n  color: inherit;\n  opacity: .75;\n}\n\n.booster-meta-value {\n  overflow-wrap: anywhere;\n  min-width: 0;\n  color: inherit;\n  font-variant-numeric: tabular-nums;\n}\n\n.booster-json-viewer {\n  background: var(--background);\n  max-height: min(70vh, 620px);\n  margin: 0;\n  padding: 14px 16px 22px;\n  overflow: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-json-viewer {\n    background: color-mix(in oklab, var(--background) 86%, #0f172a);\n  }\n}\n\n.booster-json-viewer {\n  color: var(--foreground);\n  tab-size: 2;\n  white-space: pre;\n  font: 11px / 1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n}\n\n.booster-json-key {\n  color: #60a5fa;\n}\n\n.booster-json-string {\n  color: #86efac;\n}\n\n.booster-json-number {\n  color: #fbbf24;\n}\n\n.booster-json-boolean {\n  color: #c084fc;\n}\n\n.booster-json-null {\n  color: #94a3b8;\n}\n\n:host {\n  all: initial;\n  color: var(--foreground);\n  font-family: Inter, ui-sans-serif, system-ui, sans-serif;\n}\n\n* {\n  box-sizing: border-box;\n}\n\n.booster-shell {\n  z-index: 2147483647;\n  position: fixed;\n  bottom: 20px;\n  right: 20px;\n}\n\n.booster-panel {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 300px;\n  color: var(--card-foreground);\n  border-radius: 16px;\n  margin-bottom: 10px;\n  padding: 14px;\n  box-shadow: 0 18px 45px #0000003d;\n}\n\n.booster-panel h2 {\n  margin: 0 0 6px;\n  font-size: 15px;\n  font-weight: 700;\n}\n\n.booster-panel p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.45;\n}\n\n.booster-control-center {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(760px, 100vw - 32px);\n  min-width: 0;\n  color: var(--card-foreground);\n  border-radius: 18px;\n  margin-bottom: 10px;\n  overflow: hidden;\n  box-shadow: 0 22px 60px #00000047;\n}\n\n.booster-control-header, .booster-control-footer {\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  display: flex;\n}\n\n.booster-control-header {\n  border-bottom: 1px solid var(--border);\n  flex-wrap: wrap;\n  padding: 14px 14px 12px;\n}\n\n.booster-control-header strong {\n  overflow-wrap: anywhere;\n  font-size: 14px;\n}\n\n.booster-control-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-control-body {\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-loading {\n  color: var(--muted-foreground);\n  padding: 18px;\n  font-size: 12px;\n}\n\n.booster-section-label {\n  color: var(--muted-foreground);\n  letter-spacing: .08em;\n  text-transform: uppercase;\n  padding: 2px 2px 0;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-setting-card {\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 12px;\n  display: flex;\n}\n\n.booster-setting-disabled {\n  opacity: .55;\n}\n\n.booster-setting-copy {\n  gap: 5px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-setting-copy b {\n  font-size: 12px;\n}\n\n.booster-setting-copy > span {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.4;\n}\n\n.booster-info-card {\n  background: var(--muted);\n  color: var(--foreground);\n  border-radius: 12px;\n  padding: 11px 12px;\n  font-size: 11px;\n}\n\n.booster-info-card ul {\n  color: var(--muted-foreground);\n  gap: 4px;\n  margin: 8px 0 0 18px;\n  padding: 0;\n  line-height: 1.35;\n  display: grid;\n}\n\n.booster-control-footer {\n  padding-top: 2px;\n}\n\n.booster-save-state {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 5px;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-overlay-root {\n  pointer-events: none;\n}\n\n.booster-launcher {\n  z-index: 2147483647;\n  cursor: grab;\n  pointer-events: auto;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  border-radius: 15px;\n  justify-content: center;\n  align-items: center;\n  gap: 1px;\n  width: 44px;\n  height: 44px;\n  display: inline-flex;\n  position: fixed;\n}\n\n.booster-launcher-dragging {\n  cursor: grabbing;\n}\n\n.booster-launcher-icon {\n  flex-shrink: 0;\n  width: 20px;\n  height: 20px;\n}\n\n.booster-modal-backdrop {\n  z-index: 40;\n  pointer-events: auto;\n  place-items: center;\n  padding: 16px;\n  display: grid;\n  position: fixed;\n  inset: 0;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n  max-height: calc(100vh - 32px);\n  overflow: auto;\n}\n\n.booster-modal-surface .booster-control-center {\n  width: 100%;\n  box-shadow: none;\n  border: 0;\n  border-radius: 0;\n  margin: 0;\n}\n\n.booster-popup-host {\n  background: var(--background);\n  min-width: 360px;\n}\n\n.booster-stack-card {\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-stack-card label {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-counter-grid {\n  color: var(--muted-foreground);\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 6px 12px;\n  margin-top: 8px;\n  display: grid;\n}\n\n.booster-counter-grid span {\n  justify-content: space-between;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-counter-grid b {\n  color: var(--foreground);\n}\n\n.booster-header-copy {\n  min-width: 0;\n}\n\n.booster-header-actions {\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-header-toggle-label {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  font-weight: 600;\n}\n\n.booster-settings-layout {\n  grid-template-columns: minmax(0, 1fr);\n  min-height: 360px;\n  display: grid;\n}\n\n.booster-settings-content {\n  align-content: start;\n  gap: 10px;\n  min-width: 0;\n  min-height: 0;\n  padding: 14px;\n  display: grid;\n}\n\n.booster-setting-card-flat {\n  border: 0;\n  border-bottom: 1px solid var(--border);\n  border-radius: 0;\n  padding: 0 0 10px;\n}\n\n.booster-analytics-grid {\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 12px;\n  display: grid;\n}\n\n.booster-counter-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  padding: 12px;\n}\n\n.booster-counter-title {\n  margin-bottom: 8px;\n  font-size: 12px;\n  font-weight: 700;\n}\n\n.rotate-180 {\n  transform: rotate(180deg);\n}\n\n.booster-telemetry-body {\n  gap: 10px;\n  padding-top: 10px;\n  display: grid;\n}\n\n.booster-field {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-telemetry-test-row {\n  align-items: center;\n  gap: 10px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-test-success {\n  color: var(--success);\n  font-size: 11px;\n}\n\n.booster-test-error {\n  min-width: 0;\n  color: var(--destructive);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n}\n\n@media (max-width: 620px) {\n  .booster-control-center, .booster-modal-surface {\n    width: calc(100vw - 20px);\n  }\n\n  .booster-settings-layout, .booster-analytics-grid {\n    grid-template-columns: 1fr;\n  }\n}\n\n.booster-modal-surface.booster-modal-surface-wide {\n  width: min(1320px, 100vw - 32px);\n}\n\n.booster-modal-surface-wide > .booster-control-center {\n  width: 100%;\n}\n\n@media (max-width: 620px) {\n  .booster-modal-surface.booster-modal-surface-wide {\n    width: calc(100vw - 20px);\n  }\n}\n\n.booster-modal-backdrop.booster-modal-backdrop-floating {\n  -webkit-backdrop-filter: none;\n  backdrop-filter: none;\n  pointer-events: none;\n  background: none;\n  padding: 0;\n  display: block;\n}\n\n.booster-modal-surface.booster-modal-surface-wide.booster-dialog-floating {\n  pointer-events: auto;\n  flex-direction: column;\n  gap: 0;\n  min-width: 0;\n  max-width: calc(100dvw - 16px);\n  min-height: 0;\n  max-height: calc(100dvh - 16px);\n  padding: 0;\n  display: flex;\n  position: fixed;\n  overflow: hidden;\n  transform: translate3d(0, 0, 0);\n}\n\n.booster-dialog-floating > .booster-control-center {\n  min-width: 0;\n  min-height: 0;\n  box-shadow: none;\n  border: 0;\n  border-radius: 0;\n  flex-direction: column;\n  flex: auto;\n  margin: 0;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-floating-chrome {\n  border-bottom: 1px solid var(--border);\n  background: var(--muted);\n  cursor: move;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  flex: none;\n  align-items: center;\n  gap: 8px;\n  min-height: 38px;\n  padding: 4px 8px 4px 12px;\n  display: flex;\n}\n\n.booster-floating-chrome > span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  flex: auto;\n  min-width: 0;\n  font-size: 12px;\n  font-weight: 600;\n  overflow: hidden;\n}\n\n.booster-floating-chrome > button:not([role="switch"]) {\n  flex: none;\n  width: 30px;\n  height: 30px;\n}\n\n.booster-workspace-error {\n  color: var(--destructive);\n  flex: none;\n  margin: 0;\n  padding: 6px 12px;\n  font-size: 12px;\n}\n\n.booster-floating-resize {\n  cursor: nwse-resize;\n  touch-action: none;\n  width: 28px;\n  height: 28px;\n  position: absolute;\n  bottom: 0;\n  right: 0;\n}\n\n.booster-launcher-docked {\n  width: 44px;\n  height: 44px;\n}\n\n.booster-edge-toolkit {\n  z-index: 2147483647;\n  pointer-events: auto;\n  width: 44px;\n  height: 44px;\n  position: fixed;\n}\n\n.booster-edge-toolkit > .booster-launcher {\n  position: relative;\n  transform: none;\n}\n\n.booster-edge-toolkit.attached.right > .booster-launcher {\n  border-radius: 12px 0 0 12px;\n}\n\n.booster-edge-toolkit.attached.left > .booster-launcher {\n  border-radius: 0 12px 12px 0;\n}\n\n.booster-edge-shell {\n  width: var(--booster-dock-width, min(294px, 100vw));\n  position: absolute;\n  top: auto;\n  overflow: hidden;\n}\n\n.booster-edge-toolkit > .booster-edge-shell {\n  left: var(--booster-dock-offset-x, 0px);\n}\n\n.booster-edge-toolkit.free > .booster-edge-shell {\n  border-radius: 14px;\n}\n\n.booster-edge-toolkit.grow-up > .booster-edge-shell {\n  padding-bottom: 44px;\n  bottom: 0;\n}\n\n.booster-edge-toolkit.grow-down > .booster-edge-shell {\n  padding-top: 44px;\n  top: 0;\n}\n\n.booster-edge-toolkit.attached.right > .booster-edge-shell {\n  border-radius: 14px 0 0 14px;\n}\n\n.booster-edge-toolkit.attached.left > .booster-edge-shell {\n  border-radius: 0 14px 14px 0;\n}\n\n.booster-edge-toolkit > .booster-launcher.booster-edge-close-bar {\n  width: var(--booster-dock-width, min(294px, 100vw));\n  border: 1px solid var(--border);\n  background: var(--card);\n  height: 44px;\n  color: var(--card-foreground);\n  box-shadow: none;\n  justify-content: flex-start;\n  gap: 8px;\n  padding: 0 12px;\n  font-size: 12px;\n  font-weight: 600;\n  position: absolute;\n  top: 0;\n}\n\n.booster-edge-toolkit > .booster-launcher.booster-edge-close-bar:hover {\n  background: var(--accent);\n  color: var(--accent-foreground);\n}\n\n.booster-edge-toolkit > .booster-edge-close-bar {\n  left: var(--booster-dock-offset-x, 0px);\n}\n\n.booster-edge-toolkit.free.grow-up > .booster-edge-close-bar {\n  border-radius: 0 0 14px 14px;\n}\n\n.booster-edge-toolkit.free.grow-down > .booster-edge-close-bar {\n  border-radius: 14px 14px 0 0;\n}\n\n.booster-edge-toolkit.attached.right.grow-up > .booster-edge-close-bar {\n  border-radius: 0 0 0 14px;\n}\n\n.booster-edge-toolkit.attached.right.grow-down > .booster-edge-close-bar {\n  border-radius: 14px 0 0;\n}\n\n.booster-edge-toolkit.attached.left.grow-up > .booster-edge-close-bar {\n  border-radius: 0 0 14px;\n}\n\n.booster-edge-toolkit.attached.left.grow-down > .booster-edge-close-bar {\n  border-radius: 0 14px 0 0;\n}\n\n.booster-quick-menu {\n  background: var(--card);\n  width: 100%;\n  color: var(--card-foreground);\n  pointer-events: auto;\n  font: inherit;\n  border: 0;\n  border-radius: 0;\n  position: relative;\n  overflow: auto;\n}\n\n.booster-quick-header, .booster-quick-footer {\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  padding: 11px 12px;\n  display: flex;\n}\n\n.booster-quick-header {\n  border-bottom: 1px solid var(--border);\n}\n\n.booster-quick-header > [role="switch"] {\n  flex: none;\n}\n\n.booster-quick-identity {\n  gap: 5px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-quick-identity > strong {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 13px;\n  overflow: hidden;\n}\n\n.booster-quick-badges {\n  flex-wrap: wrap;\n  gap: 5px;\n  display: flex;\n}\n\n.booster-quick-actions {\n  padding: 4px 0;\n}\n\n.booster-quick-footer {\n  border-top: 1px solid var(--border);\n}\n\n.booster-quick-status {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.booster-quick-status.is-active {\n  color: var(--foreground);\n}\n\n.booster-quick-metrics {\n  border-bottom: 1px solid var(--border);\n  flex-wrap: wrap;\n  gap: 4px 12px;\n  padding: 6px 12px;\n  display: flex;\n}\n\n.booster-quick-metrics > div {\n  align-items: baseline;\n  gap: 6px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-quick-metrics span {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-quick-metrics b {\n  color: var(--foreground);\n  font-variant-numeric: tabular-nums;\n  font-size: 11px;\n  font-weight: 500;\n}\n\n.booster-quick-error {\n  background: var(--card);\n  color: var(--foreground);\n  pointer-events: none;\n  padding: 7px;\n  position: fixed;\n  bottom: 10px;\n  left: 10px;\n}\n\n* {\n  scrollbar-width: thin;\n  scrollbar-color: var(--border) transparent;\n}\n\n::-webkit-scrollbar {\n  width: 6px;\n  height: 6px;\n}\n\n::-webkit-scrollbar-track {\n  background: none;\n}\n\n::-webkit-scrollbar-thumb {\n  background: var(--border);\n  border-radius: 99px;\n}\n\n::-webkit-scrollbar-thumb:hover {\n  background: var(--muted-foreground);\n}\n\n.booster-modal-surface.booster-modal-surface-single {\n  width: min(820px, 100vw - 24px);\n  max-height: min(86dvh, 760px);\n  overflow: auto;\n}\n\n.booster-control-standalone {\n  width: 100%;\n  margin: 0;\n}\n\n.booster-control-standalone > .booster-settings-layout {\n  min-height: 0;\n  display: block;\n}\n\n.booster-control-standalone > .booster-settings-layout > .booster-settings-content {\n  width: 100%;\n  min-width: 0;\n}\n\n@media (max-width: 620px) {\n  .booster-control-standalone > .booster-control-header {\n    flex-direction: row;\n    align-items: center;\n    gap: 8px;\n    padding: 12px;\n  }\n\n  .booster-control-standalone > .booster-control-header > .booster-header-copy > div {\n    flex-wrap: wrap;\n    gap: 6px;\n  }\n\n  .booster-control-standalone > .booster-control-header .booster-header-copy strong {\n    flex-basis: 100%;\n  }\n\n  .booster-control-standalone > .booster-control-header > .booster-header-actions {\n    flex-wrap: wrap;\n    justify-content: space-between;\n    gap: 8px;\n    display: flex;\n  }\n\n  .booster-control-standalone > .booster-control-header > .booster-header-actions > button:last-child {\n    margin-left: auto;\n  }\n\n  .booster-modal-surface.booster-modal-surface-single {\n    width: calc(100vw - 16px);\n    max-height: calc(100dvh - 16px);\n  }\n}\n\n@media (min-width: 1024px) {\n  .booster-control-embedded > .booster-settings-layout > .booster-settings-content[data-settings-section="modules"] {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n    align-items: start;\n  }\n}\n\n@media (min-width: 621px) and (max-width: 1023px) {\n  .booster-control-embedded > .booster-settings-layout > .booster-settings-content[data-settings-section="modules"] {\n    gap: 6px;\n    padding: 10px;\n  }\n\n  .booster-settings-content[data-settings-section="modules"] > .booster-setting-card {\n    border-radius: 8px;\n    gap: 10px;\n    padding: 9px 10px;\n  }\n}\n\n.booster-modal-backdrop.booster-modal-backdrop-fullscreen {\n  background: var(--background);\n  -webkit-backdrop-filter: none;\n  backdrop-filter: none;\n  padding: 0;\n}\n\n.booster-modal-surface.booster-modal-fullscreen {\n  width: 100dvw;\n  min-width: 0;\n  max-width: none;\n  height: 100dvh;\n  min-height: 0;\n  max-height: none;\n  box-shadow: none;\n  border: 0;\n  border-radius: 0;\n  flex-direction: column;\n  display: flex;\n  position: fixed;\n  inset: 0;\n  overflow: hidden;\n  transform: none;\n}\n\n.booster-modal-fullscreen > .booster-control-center {\n  width: 100%;\n  min-width: 0;\n  min-height: 0;\n  box-shadow: none;\n  border: 0;\n  border-radius: 0;\n  flex-direction: column;\n  flex: 1;\n  margin: 0;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-dialog-floating .booster-control-header {\n  justify-content: flex-end;\n  padding: 6px 12px;\n}\n\n.booster-modal-fullscreen > .booster-control-center > .booster-control-header {\n  padding-top: max(12px, env(safe-area-inset-top));\n  flex: none;\n}\n\n.booster-dialog-floating > .booster-control-center > .booster-control-header {\n  flex: none;\n}\n\n.booster-modal-fullscreen > .booster-control-center > .settings-catalog, .booster-dialog-floating > .booster-control-center > .settings-catalog {\n  overscroll-behavior: contain;\n  flex: 0 auto;\n  min-width: 0;\n  min-height: 0;\n  max-height: 50dvh;\n  overflow: hidden auto;\n}\n\n.booster-modal-fullscreen > .booster-control-center > .booster-settings-layout, .booster-dialog-floating > .booster-control-center > .booster-settings-layout {\n  flex: 1;\n  min-width: 0;\n  min-height: 0;\n  overflow: hidden;\n}\n\n.booster-modal-fullscreen > .booster-control-center > .booster-settings-layout > .booster-settings-content, .booster-dialog-floating > .booster-control-center > .booster-settings-layout > .booster-settings-content {\n  overscroll-behavior: contain;\n  width: 100%;\n  min-width: 0;\n  height: 100%;\n  min-height: 0;\n  padding-bottom: max(12px, env(safe-area-inset-bottom));\n  overflow: auto;\n}\n\n.booster-settings-content > * {\n  min-width: 0;\n  max-width: 100%;\n}\n\n.booster-control-center:has([data-panel-content-focus]) > .booster-settings-layout > .booster-settings-content {\n  flex-direction: column;\n  min-height: 0;\n  padding: 0;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-control-center:has([data-panel-content-focus]) > .booster-settings-layout > .booster-settings-content > :has([data-panel-content-focus]), .booster-control-center:has([data-panel-content-focus]) > .booster-settings-layout > .booster-settings-content > [data-panel-content-focus] {\n  flex: auto;\n  min-width: 0;\n  min-height: 0;\n}\n\n.booster-edge-toolkit > .booster-launcher.booster-launcher-floating:not(.booster-edge-close-bar) {\n  border-radius: 50% 50% 50% 18%;\n}\n\n.booster-shell-settings {\n  grid-template-columns: minmax(0, 1fr);\n  align-items: start;\n  gap: 16px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-settings-layout-catalog {\n  grid-template-columns: minmax(0, 1fr);\n}\n\n.booster-shell-settings-body {\n  gap: 12px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-shell-settings h2 {\n  margin: 0;\n  font-size: 15px;\n}\n\n.booster-shell-settings p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.5;\n}\n\n.booster-capability-group {\n  gap: 8px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-capability-row {\n  margin-left: 12px;\n}\n\n.booster-component-versions {\n  grid-template-columns: minmax(0, 1fr) auto;\n  gap: 10px 16px;\n  margin: 0;\n  font-size: 12px;\n  display: grid;\n}\n\n.booster-component-versions dt {\n  overflow-wrap: anywhere;\n}\n\n.booster-component-versions dd {\n  color: var(--muted-foreground);\n  margin: 0;\n}\n\n.booster-version {\n  color: var(--muted-foreground);\n  white-space: nowrap;\n  font-size: 11px;\n  font-weight: 400;\n}\n\n.booster-floating-identity {\n  flex: 1;\n  align-items: baseline;\n  gap: 8px;\n  min-width: 0;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-floating-identity .booster-version {\n  flex: none;\n}\n\n.booster-indicator-legend {\n  border-bottom: 1px solid var(--border);\n  gap: 4px;\n  margin: 0;\n  padding: 8px 12px;\n  list-style: none;\n  display: grid;\n}\n\n.booster-indicator-legend li {\n  align-items: flex-start;\n  gap: 6px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-indicator-copy {\n  overflow-wrap: anywhere;\n  flex: 1;\n  justify-content: space-between;\n  align-items: baseline;\n  gap: 8px;\n  min-width: 0;\n  font-size: 11px;\n  display: flex;\n}\n\n.booster-indicator-copy strong {\n  flex: none;\n  font-weight: 500;\n}\n\n.booster-indicator-copy > span {\n  color: var(--muted-foreground);\n  text-align: right;\n  font-size: 10px;\n}\n\n.booster-signal-dot {\n  background: var(--muted-foreground);\n  border-radius: 50%;\n  flex: none;\n  width: 6px;\n  height: 6px;\n  margin-top: 4px;\n}\n\n.booster-signal-dot[data-status="active"], .booster-signal-dot[data-status="connecting"] {\n  background: var(--chart-2);\n}\n\n.booster-signal-dot[data-status="success"] {\n  background: var(--success);\n}\n\n.booster-signal-dot[data-status="error"] {\n  background: var(--destructive);\n}\n\n.booster-signal-dot[data-status="warning"], .booster-signal-dot[data-status="offline"] {\n  background: var(--warning, var(--chart-5));\n}\n\n.booster-launcher-signals {\n  pointer-events: none;\n  justify-content: center;\n  gap: 3px;\n  display: flex;\n  position: absolute;\n  bottom: 4px;\n  left: 0;\n  right: 0;\n}\n\n.booster-launcher-signals .booster-signal-dot {\n  width: 4px;\n  height: 4px;\n  margin: 0;\n}\n\n.booster-launcher[data-indicator-tone]:not([data-indicator-tone="idle"]):after {\n  content: "";\n  border-radius: inherit;\n  pointer-events: none;\n  background: linear-gradient(135deg, var(--booster-signal-color), var(--booster-signal-end, var(--booster-signal-color)));\n  -webkit-mask-composite: xor;\n  -webkit-mask-source-type: auto, auto;\n  padding: 2px;\n  position: absolute;\n  inset: 1px;\n  -webkit-mask-image: linear-gradient(#fff 0 0), linear-gradient(#fff 0 0);\n  mask-image: linear-gradient(#fff 0 0), linear-gradient(#fff 0 0);\n  -webkit-mask-position: 0 0, 0 0;\n  mask-position: 0 0, 0 0;\n  -webkit-mask-size: auto, auto;\n  mask-size: auto, auto;\n  -webkit-mask-repeat: repeat, repeat;\n  mask-repeat: repeat, repeat;\n  -webkit-mask-clip: content-box, border-box;\n  mask-clip: content-box, border-box;\n  -webkit-mask-origin: content-box, border-box;\n  mask-origin: content-box, border-box;\n  -webkit-mask-composite: xor;\n  mask-composite: exclude;\n  -webkit-mask-source-type: auto, auto;\n  mask-mode: match-source, match-source;\n}\n\n.booster-launcher[data-indicator-tone="active"] {\n  --booster-signal-color: var(--chart-2);\n  --booster-signal-end: var(--chart-4);\n}\n\n.booster-launcher[data-indicator-tone="success"] {\n  --booster-signal-color: var(--success);\n}\n\n.booster-launcher[data-indicator-tone="warning"] {\n  --booster-signal-color: var(--warning, var(--chart-5));\n}\n\n.booster-launcher[data-indicator-tone="error"] {\n  --booster-signal-color: var(--destructive);\n}\n\n.booster-quick-identity {\n  flex-wrap: wrap;\n  align-items: baseline;\n  gap: 5px 8px;\n  display: flex;\n}\n\n.booster-quick-context {\n  width: 100%;\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n@media (max-width: 620px) {\n  .booster-shell-settings {\n    grid-template-columns: minmax(0, 1fr);\n    gap: 14px;\n  }\n\n  .booster-modal-fullscreen > .booster-control-center > .settings-catalog {\n    overflow: hidden;\n  }\n\n  .booster-header-copy > div {\n    flex-wrap: wrap;\n  }\n\n  .booster-header-actions {\n    gap: 6px;\n  }\n\n  .booster-capability-row {\n    margin-left: 0;\n  }\n\n  .booster-control-center:has([data-panel-content-focus="true"]) > .settings-catalog {\n    display: none;\n  }\n}\n\n@keyframes enter {\n  from {\n    opacity: var(--tw-enter-opacity, 1);\n    transform: translate3d(var(--tw-enter-translate-x, 0), var(--tw-enter-translate-y, 0), 0) scale3d(var(--tw-enter-scale, 1), var(--tw-enter-scale, 1), var(--tw-enter-scale, 1)) rotate(var(--tw-enter-rotate, 0));\n  }\n}\n\n@keyframes exit {\n  to {\n    opacity: var(--tw-exit-opacity, 1);\n    transform: translate3d(var(--tw-exit-translate-x, 0), var(--tw-exit-translate-y, 0), 0) scale3d(var(--tw-exit-scale, 1), var(--tw-exit-scale, 1), var(--tw-exit-scale, 1)) rotate(var(--tw-exit-rotate, 0));\n  }\n}\n\n@property --tw-translate-x {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-translate-y {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-translate-z {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-rotate-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-z {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-space-y-reverse {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-divide-y-reverse {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-border-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-leading {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-font-weight {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-tracking {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ordinal {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-slashed-zero {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-figure {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-spacing {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-fraction {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-inset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-ring-inset {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-offset-width {\n  syntax: "<length>";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-ring-offset-color {\n  syntax: "*";\n  inherits: false;\n  initial-value: #fff;\n}\n\n@property --tw-ring-offset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-outline-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-blur {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-brightness {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-contrast {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-grayscale {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-hue-rotate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-invert {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-opacity {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-saturate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-sepia {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-drop-shadow-size {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-duration {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-content {\n  syntax: "*";\n  inherits: false;\n  initial-value: "";\n}\n\n@keyframes spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n@keyframes pulse {\n  50% {\n    opacity: .5;\n  }\n}\n';
+  const styles$1 = '/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */\n@layer properties {\n  @supports (((-webkit-hyphens: none)) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color: rgb(from red r g b)))) {\n    *, :before, :after, ::backdrop {\n      --tw-translate-x: 0;\n      --tw-translate-y: 0;\n      --tw-translate-z: 0;\n      --tw-rotate-x: initial;\n      --tw-rotate-y: initial;\n      --tw-rotate-z: initial;\n      --tw-skew-x: initial;\n      --tw-skew-y: initial;\n      --tw-space-y-reverse: 0;\n      --tw-divide-y-reverse: 0;\n      --tw-border-style: solid;\n      --tw-leading: initial;\n      --tw-font-weight: initial;\n      --tw-tracking: initial;\n      --tw-ordinal: initial;\n      --tw-slashed-zero: initial;\n      --tw-numeric-figure: initial;\n      --tw-numeric-spacing: initial;\n      --tw-numeric-fraction: initial;\n      --tw-shadow: 0 0 #0000;\n      --tw-shadow-color: initial;\n      --tw-shadow-alpha: 100%;\n      --tw-inset-shadow: 0 0 #0000;\n      --tw-inset-shadow-color: initial;\n      --tw-inset-shadow-alpha: 100%;\n      --tw-ring-color: initial;\n      --tw-ring-shadow: 0 0 #0000;\n      --tw-inset-ring-color: initial;\n      --tw-inset-ring-shadow: 0 0 #0000;\n      --tw-ring-inset: initial;\n      --tw-ring-offset-width: 0px;\n      --tw-ring-offset-color: #fff;\n      --tw-ring-offset-shadow: 0 0 #0000;\n      --tw-outline-style: solid;\n      --tw-blur: initial;\n      --tw-brightness: initial;\n      --tw-contrast: initial;\n      --tw-grayscale: initial;\n      --tw-hue-rotate: initial;\n      --tw-invert: initial;\n      --tw-opacity: initial;\n      --tw-saturate: initial;\n      --tw-sepia: initial;\n      --tw-drop-shadow: initial;\n      --tw-drop-shadow-color: initial;\n      --tw-drop-shadow-alpha: 100%;\n      --tw-drop-shadow-size: initial;\n      --tw-duration: initial;\n      --tw-content: "";\n    }\n  }\n}\n\n@layer theme {\n  :root, :host {\n    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",\n      "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",\n      "Segoe UI Symbol", "Noto Color Emoji";\n    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",\n      "Courier New", monospace;\n    --color-black: #000;\n    --spacing: .25rem;\n    --container-lg: 32rem;\n    --container-2xl: 42rem;\n    --text-xs: .75rem;\n    --text-xs--line-height: calc(1 / .75);\n    --text-sm: .875rem;\n    --text-sm--line-height: calc(1.25 / .875);\n    --text-base: 1rem;\n    --text-base--line-height: calc(1.5 / 1);\n    --text-lg: 1.125rem;\n    --text-lg--line-height: calc(1.75 / 1.125);\n    --text-xl: 1.25rem;\n    --text-xl--line-height: calc(1.75 / 1.25);\n    --font-weight-normal: 400;\n    --font-weight-medium: 500;\n    --font-weight-semibold: 600;\n    --tracking-tight: -.025em;\n    --leading-snug: 1.375;\n    --leading-relaxed: 1.625;\n    --animate-spin: spin 1s linear infinite;\n    --animate-pulse: pulse 2s cubic-bezier(.4, 0, .6, 1) infinite;\n    --default-transition-duration: .15s;\n    --default-transition-timing-function: cubic-bezier(.4, 0, .2, 1);\n    --default-font-family: var(--font-sans);\n    --default-mono-font-family: var(--font-mono);\n  }\n}\n\n@layer base {\n  *, :after, :before, ::backdrop {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  ::file-selector-button {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  html, :host {\n    -webkit-text-size-adjust: 100%;\n    tab-size: 4;\n    line-height: 1.5;\n    font-family: var(--default-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");\n    font-feature-settings: var(--default-font-feature-settings, normal);\n    font-variation-settings: var(--default-font-variation-settings, normal);\n    -webkit-tap-highlight-color: transparent;\n  }\n\n  hr {\n    height: 0;\n    color: inherit;\n    border-top-width: 1px;\n  }\n\n  abbr:where([title]) {\n    -webkit-text-decoration: underline dotted;\n    text-decoration: underline dotted;\n  }\n\n  h1, h2, h3, h4, h5, h6 {\n    font-size: inherit;\n    font-weight: inherit;\n  }\n\n  a {\n    color: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    text-decoration: inherit;\n  }\n\n  b, strong {\n    font-weight: bolder;\n  }\n\n  code, kbd, samp, pre {\n    font-family: var(--default-mono-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);\n    font-feature-settings: var(--default-mono-font-feature-settings, normal);\n    font-variation-settings: var(--default-mono-font-variation-settings, normal);\n    font-size: 1em;\n  }\n\n  small {\n    font-size: 80%;\n  }\n\n  sub, sup {\n    vertical-align: baseline;\n    font-size: 75%;\n    line-height: 0;\n    position: relative;\n  }\n\n  sub {\n    bottom: -.25em;\n  }\n\n  sup {\n    top: -.5em;\n  }\n\n  table {\n    text-indent: 0;\n    border-color: inherit;\n    border-collapse: collapse;\n  }\n\n  :-moz-focusring:where(:not(iframe)) {\n    outline: auto;\n  }\n\n  progress {\n    vertical-align: baseline;\n  }\n\n  summary {\n    display: list-item;\n  }\n\n  ol, ul, menu {\n    list-style: none;\n  }\n\n  img, svg, video, canvas, audio, iframe, embed, object {\n    vertical-align: middle;\n    display: block;\n  }\n\n  img, video {\n    max-width: 100%;\n    height: auto;\n  }\n\n  button, input, select, optgroup, textarea {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  ::file-selector-button {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  :where(select:is([multiple], [size])) optgroup {\n    font-weight: bolder;\n  }\n\n  :where(select:is([multiple], [size])) optgroup option {\n    padding-inline-start: 20px;\n  }\n\n  ::file-selector-button {\n    margin-inline-end: 4px;\n  }\n\n  ::placeholder {\n    opacity: 1;\n  }\n\n  @supports (not ((-webkit-appearance: -apple-pay-button))) or (contain-intrinsic-size: 1px) {\n    ::placeholder {\n      color: currentColor;\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      ::placeholder {\n        color: color-mix(in oklab, currentcolor 50%, transparent);\n      }\n    }\n  }\n\n  textarea {\n    resize: vertical;\n  }\n\n  ::-webkit-search-decoration {\n    -webkit-appearance: none;\n  }\n\n  ::-webkit-date-and-time-value {\n    min-height: 1lh;\n    text-align: inherit;\n  }\n\n  ::-webkit-datetime-edit {\n    display: inline-flex;\n  }\n\n  ::-webkit-datetime-edit-fields-wrapper {\n    padding: 0;\n  }\n\n  ::-webkit-datetime-edit {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-year-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-month-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-day-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-hour-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-minute-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-second-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-millisecond-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-meridiem-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-calendar-picker-indicator {\n    line-height: 1;\n  }\n\n  :-moz-ui-invalid {\n    box-shadow: none;\n  }\n\n  button, input:where([type="button"], [type="reset"], [type="submit"]) {\n    appearance: button;\n  }\n\n  ::file-selector-button {\n    appearance: button;\n  }\n\n  ::-webkit-inner-spin-button {\n    height: auto;\n  }\n\n  ::-webkit-outer-spin-button {\n    height: auto;\n  }\n\n  [hidden]:where(:not([hidden="until-found"])) {\n    display: none !important;\n  }\n\n  *, :before, :after {\n    --tw-border-style: solid;\n    --tw-translate-x: 0;\n    --tw-translate-y: 0;\n    --tw-translate-z: 0;\n    --tw-space-y-reverse: 0;\n    --tw-space-x-reverse: 0;\n    --tw-shadow: 0 0 #0000;\n    --tw-inset-shadow: 0 0 #0000;\n    --tw-ring-shadow: 0 0 #0000;\n    --tw-inset-ring-shadow: 0 0 #0000;\n    --tw-ring-offset-shadow: 0 0 #0000;\n    --tw-ring-offset-width: 0px;\n    --tw-ring-offset-color: #fff;\n    --tw-ring-inset: initial;\n    border-color: var(--border);\n    outline-color: var(--ring);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    *, :before, :after {\n      outline-color: color-mix(in oklab, var(--ring) 50%, transparent);\n    }\n  }\n\n  body {\n    background-color: var(--background);\n    color: var(--foreground);\n  }\n}\n\n@layer components;\n\n@layer utilities {\n  .pointer-events-none {\n    pointer-events: none;\n  }\n\n  .collapse {\n    visibility: collapse;\n  }\n\n  .invisible {\n    visibility: hidden;\n  }\n\n  .visible {\n    visibility: visible;\n  }\n\n  .sr-only {\n    clip-path: inset(50%);\n    white-space: nowrap;\n    border-width: 0;\n    width: 1px;\n    height: 1px;\n    margin: -1px;\n    padding: 0;\n    position: absolute;\n    overflow: hidden;\n  }\n\n  .absolute {\n    position: absolute;\n  }\n\n  .fixed {\n    position: fixed;\n  }\n\n  .relative {\n    position: relative;\n  }\n\n  .static {\n    position: static;\n  }\n\n  .sticky {\n    position: sticky;\n  }\n\n  .inset-0 {\n    inset: 0;\n  }\n\n  .inset-x-2 {\n    inset-inline: calc(var(--spacing) * 2);\n  }\n\n  .start-0 {\n    inset-inline-start: calc(var(--spacing) * 0);\n  }\n\n  .top-0 {\n    top: 0;\n  }\n\n  .top-1 {\n    top: var(--spacing);\n  }\n\n  .top-1\\/2 {\n    top: 50%;\n  }\n\n  .top-4 {\n    top: calc(var(--spacing) * 4);\n  }\n\n  .right-2 {\n    right: calc(var(--spacing) * 2);\n  }\n\n  .right-4 {\n    right: calc(var(--spacing) * 4);\n  }\n\n  .left-1\\/2 {\n    left: 50%;\n  }\n\n  .isolate {\n    isolation: isolate;\n  }\n\n  .z-10 {\n    z-index: 10;\n  }\n\n  .z-50 {\n    z-index: 50;\n  }\n\n  .z-auto {\n    z-index: auto;\n  }\n\n  .container {\n    width: 100%;\n  }\n\n  @media (min-width: 40rem) {\n    .container {\n      max-width: 40rem;\n    }\n  }\n\n  @media (min-width: 48rem) {\n    .container {\n      max-width: 48rem;\n    }\n  }\n\n  @media (min-width: 64rem) {\n    .container {\n      max-width: 64rem;\n    }\n  }\n\n  @media (min-width: 80rem) {\n    .container {\n      max-width: 80rem;\n    }\n  }\n\n  @media (min-width: 96rem) {\n    .container {\n      max-width: 96rem;\n    }\n  }\n\n  .m-0 {\n    margin: 0;\n  }\n\n  .m-1 {\n    margin: var(--spacing);\n  }\n\n  .m-9 {\n    margin: calc(var(--spacing) * 9);\n  }\n\n  .m-39 {\n    margin: calc(var(--spacing) * 39);\n  }\n\n  .m-80 {\n    margin: calc(var(--spacing) * 80);\n  }\n\n  .m-319 {\n    margin: calc(var(--spacing) * 319);\n  }\n\n  .m-399 {\n    margin: calc(var(--spacing) * 399);\n  }\n\n  .-mx-1 {\n    margin-inline: calc(var(--spacing) * -1);\n  }\n\n  .mx-auto {\n    margin-inline: auto;\n  }\n\n  .my-1 {\n    margin-block: var(--spacing);\n  }\n\n  .my-2 {\n    margin-block: calc(var(--spacing) * 2);\n  }\n\n  .my-8 {\n    margin-block: calc(var(--spacing) * 8);\n  }\n\n  .ms-auto {\n    margin-inline-start: auto;\n  }\n\n  .mt-0 {\n    margin-top: 0;\n  }\n\n  .mt-0\\.5 {\n    margin-top: calc(var(--spacing) * .5);\n  }\n\n  .mt-1 {\n    margin-top: var(--spacing);\n  }\n\n  .mt-2 {\n    margin-top: calc(var(--spacing) * 2);\n  }\n\n  .mt-3 {\n    margin-top: calc(var(--spacing) * 3);\n  }\n\n  .mt-4 {\n    margin-top: calc(var(--spacing) * 4);\n  }\n\n  .mr-1 {\n    margin-right: var(--spacing);\n  }\n\n  .mb-1 {\n    margin-bottom: var(--spacing);\n  }\n\n  .mb-2 {\n    margin-bottom: calc(var(--spacing) * 2);\n  }\n\n  .ml-auto {\n    margin-left: auto;\n  }\n\n  .block {\n    display: block;\n  }\n\n  .contents {\n    display: contents;\n  }\n\n  .flex {\n    display: flex;\n  }\n\n  .grid {\n    display: grid;\n  }\n\n  .hidden {\n    display: none;\n  }\n\n  .inline {\n    display: inline;\n  }\n\n  .inline-flex {\n    display: inline-flex;\n  }\n\n  .table {\n    display: table;\n  }\n\n  .aspect-square {\n    aspect-ratio: 1;\n  }\n\n  .size-3 {\n    width: calc(var(--spacing) * 3);\n    height: calc(var(--spacing) * 3);\n  }\n\n  .size-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n    height: calc(var(--spacing) * 3.5);\n  }\n\n  .size-4 {\n    width: calc(var(--spacing) * 4);\n    height: calc(var(--spacing) * 4);\n  }\n\n  .size-5 {\n    width: calc(var(--spacing) * 5);\n    height: calc(var(--spacing) * 5);\n  }\n\n  .size-6 {\n    width: calc(var(--spacing) * 6);\n    height: calc(var(--spacing) * 6);\n  }\n\n  .size-7 {\n    width: calc(var(--spacing) * 7);\n    height: calc(var(--spacing) * 7);\n  }\n\n  .size-8 {\n    width: calc(var(--spacing) * 8);\n    height: calc(var(--spacing) * 8);\n  }\n\n  .size-10 {\n    width: calc(var(--spacing) * 10);\n    height: calc(var(--spacing) * 10);\n  }\n\n  .h-1\\.5 {\n    height: calc(var(--spacing) * 1.5);\n  }\n\n  .h-2 {\n    height: calc(var(--spacing) * 2);\n  }\n\n  .h-2\\.5 {\n    height: calc(var(--spacing) * 2.5);\n  }\n\n  .h-3\\.5 {\n    height: calc(var(--spacing) * 3.5);\n  }\n\n  .h-4 {\n    height: calc(var(--spacing) * 4);\n  }\n\n  .h-5 {\n    height: calc(var(--spacing) * 5);\n  }\n\n  .h-7 {\n    height: calc(var(--spacing) * 7);\n  }\n\n  .h-8 {\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-9 {\n    height: calc(var(--spacing) * 9);\n  }\n\n  .h-10 {\n    height: calc(var(--spacing) * 10);\n  }\n\n  .h-20 {\n    height: calc(var(--spacing) * 20);\n  }\n\n  .h-24 {\n    height: calc(var(--spacing) * 24);\n  }\n\n  .h-32 {\n    height: calc(var(--spacing) * 32);\n  }\n\n  .h-64 {\n    height: calc(var(--spacing) * 64);\n  }\n\n  .h-auto {\n    height: auto;\n  }\n\n  .h-dvh {\n    height: 100dvh;\n  }\n\n  .h-full {\n    height: 100%;\n  }\n\n  .h-px {\n    height: 1px;\n  }\n\n  .max-h-48 {\n    max-height: calc(var(--spacing) * 48);\n  }\n\n  .max-h-64 {\n    max-height: calc(var(--spacing) * 64);\n  }\n\n  .max-h-80 {\n    max-height: calc(var(--spacing) * 80);\n  }\n\n  .max-h-\\[85dvh\\] {\n    max-height: 85dvh;\n  }\n\n  .max-h-\\[420px\\] {\n    max-height: 420px;\n  }\n\n  .max-h-\\[calc\\(50dvh-1\\.5rem\\)\\] {\n    max-height: calc(50dvh - 1.5rem);\n  }\n\n  .max-h-\\[calc\\(100dvh-32px\\)\\] {\n    max-height: calc(100dvh - 32px);\n  }\n\n  .max-h-\\[min\\(24rem\\,calc\\(100dvh_-_20px\\)\\)\\] {\n    max-height: min(24rem, 100dvh - 20px);\n  }\n\n  .max-h-\\[min\\(24rem\\,max\\(0px\\,var\\(--reka-select-content-available-height\\)\\)\\)\\] {\n    max-height: min(24rem, max(0px, var(--reka-select-content-available-height)));\n  }\n\n  .min-h-0 {\n    min-height: 0;\n  }\n\n  .min-h-6 {\n    min-height: calc(var(--spacing) * 6);\n  }\n\n  .min-h-7 {\n    min-height: calc(var(--spacing) * 7);\n  }\n\n  .min-h-8 {\n    min-height: calc(var(--spacing) * 8);\n  }\n\n  .min-h-9 {\n    min-height: calc(var(--spacing) * 9);\n  }\n\n  .min-h-10 {\n    min-height: calc(var(--spacing) * 10);\n  }\n\n  .min-h-11 {\n    min-height: calc(var(--spacing) * 11);\n  }\n\n  .min-h-24 {\n    min-height: calc(var(--spacing) * 24);\n  }\n\n  .min-h-\\[60px\\] {\n    min-height: 60px;\n  }\n\n  .min-h-\\[130px\\] {\n    min-height: 130px;\n  }\n\n  .w-1\\/3 {\n    width: 33.3333%;\n  }\n\n  .w-2\\.5 {\n    width: calc(var(--spacing) * 2.5);\n  }\n\n  .w-2\\/3 {\n    width: 66.6667%;\n  }\n\n  .w-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n  }\n\n  .w-3\\/5 {\n    width: 60%;\n  }\n\n  .w-4 {\n    width: calc(var(--spacing) * 4);\n  }\n\n  .w-5 {\n    width: calc(var(--spacing) * 5);\n  }\n\n  .w-9 {\n    width: calc(var(--spacing) * 9);\n  }\n\n  .w-20 {\n    width: calc(var(--spacing) * 20);\n  }\n\n  .w-24 {\n    width: calc(var(--spacing) * 24);\n  }\n\n  .w-72 {\n    width: calc(var(--spacing) * 72);\n  }\n\n  .w-80 {\n    width: calc(var(--spacing) * 80);\n  }\n\n  .w-\\[calc\\(100vw-24px\\)\\] {\n    width: calc(100vw - 24px);\n  }\n\n  .w-\\[min\\(640px\\,calc\\(100vw-32px\\)\\)\\] {\n    width: min(640px, 100vw - 32px);\n  }\n\n  .w-auto {\n    width: auto;\n  }\n\n  .w-dvw {\n    width: 100dvw;\n  }\n\n  .w-full {\n    width: 100%;\n  }\n\n  .w-max {\n    width: max-content;\n  }\n\n  .w-px {\n    width: 1px;\n  }\n\n  .max-w-2xl {\n    max-width: var(--container-2xl);\n  }\n\n  .max-w-36 {\n    max-width: calc(var(--spacing) * 36);\n  }\n\n  .max-w-\\[88\\%\\] {\n    max-width: 88%;\n  }\n\n  .max-w-\\[calc\\(100vw_-_20px\\)\\] {\n    max-width: calc(100vw - 20px);\n  }\n\n  .max-w-\\[max\\(0px\\,var\\(--reka-select-content-available-width\\)\\)\\] {\n    max-width: max(0px, var(--reka-select-content-available-width));\n  }\n\n  .max-w-\\[min\\(380px\\,85vw\\)\\] {\n    max-width: min(380px, 85vw);\n  }\n\n  .max-w-\\[min\\(420px\\,calc\\(100vw-16px\\)\\)\\] {\n    max-width: min(420px, 100vw - 16px);\n  }\n\n  .max-w-full {\n    max-width: 100%;\n  }\n\n  .max-w-lg {\n    max-width: var(--container-lg);\n  }\n\n  .max-w-none {\n    max-width: none;\n  }\n\n  .min-w-0 {\n    min-width: 0;\n  }\n\n  .min-w-\\[min\\(8rem\\,calc\\(100vw_-_20px\\)\\)\\] {\n    min-width: min(8rem, 100vw - 20px);\n  }\n\n  .min-w-\\[min\\(8rem\\,max\\(0px\\,var\\(--reka-select-content-available-width\\)\\)\\)\\] {\n    min-width: min(8rem, max(0px, var(--reka-select-content-available-width)));\n  }\n\n  .min-w-\\[min\\(var\\(--reka-select-trigger-width\\)\\,max\\(0px\\,var\\(--reka-select-content-available-width\\)\\)\\)\\] {\n    min-width: min(var(--reka-select-trigger-width), max(0px, var(--reka-select-content-available-width)));\n  }\n\n  .flex-1 {\n    flex: 1;\n  }\n\n  .flex-none {\n    flex: none;\n  }\n\n  .shrink-0 {\n    flex-shrink: 0;\n  }\n\n  .grow {\n    flex-grow: 1;\n  }\n\n  .basis-32 {\n    flex-basis: calc(var(--spacing) * 32);\n  }\n\n  .basis-48 {\n    flex-basis: calc(var(--spacing) * 48);\n  }\n\n  .table-fixed {\n    table-layout: fixed;\n  }\n\n  .caption-bottom {\n    caption-side: bottom;\n  }\n\n  .-translate-x-1\\/2 {\n    --tw-translate-x: calc(calc(1 / 2 * 100%) * -1);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .translate-x-0 {\n    --tw-translate-x: 0px;\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .-translate-y-1\\/2 {\n    --tw-translate-y: calc(calc(1 / 2 * 100%) * -1);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .translate-y-0 {\n    --tw-translate-y: 0px;\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .rotate-90 {\n    rotate: 90deg;\n  }\n\n  .rotate-180 {\n    rotate: 180deg;\n  }\n\n  .transform {\n    transform: var(--tw-rotate-x, ) var(--tw-rotate-y, ) var(--tw-rotate-z, ) var(--tw-skew-x, ) var(--tw-skew-y, );\n  }\n\n  .animate-pulse {\n    animation: var(--animate-pulse);\n  }\n\n  .animate-spin {\n    animation: var(--animate-spin);\n  }\n\n  .cursor-default {\n    cursor: default;\n  }\n\n  .cursor-pointer {\n    cursor: pointer;\n  }\n\n  .touch-none {\n    touch-action: none;\n  }\n\n  .resize {\n    resize: both;\n  }\n\n  .resize-y {\n    resize: vertical;\n  }\n\n  .grid-cols-1 {\n    grid-template-columns: repeat(1, minmax(0, 1fr));\n  }\n\n  .grid-cols-2 {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }\n\n  .grid-cols-3 {\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n\n  .grid-cols-\\[18px_minmax\\(0\\,1fr\\)\\] {\n    grid-template-columns: 18px minmax(0, 1fr);\n  }\n\n  .grid-cols-\\[minmax\\(0\\,1fr\\)_80px\\] {\n    grid-template-columns: minmax(0, 1fr) 80px;\n  }\n\n  .grid-cols-\\[minmax\\(0\\,1fr\\)_auto\\] {\n    grid-template-columns: minmax(0, 1fr) auto;\n  }\n\n  .grid-rows-\\[minmax\\(0\\,1fr\\)\\] {\n    grid-template-rows: minmax(0, 1fr);\n  }\n\n  .flex-col {\n    flex-direction: column;\n  }\n\n  .flex-col-reverse {\n    flex-direction: column-reverse;\n  }\n\n  .flex-row {\n    flex-direction: row;\n  }\n\n  .flex-wrap {\n    flex-wrap: wrap;\n  }\n\n  .place-content-center {\n    place-content: center;\n  }\n\n  .place-items-center {\n    place-items: center;\n  }\n\n  .content-start {\n    align-content: flex-start;\n  }\n\n  .items-baseline {\n    align-items: baseline;\n  }\n\n  .items-center {\n    align-items: center;\n  }\n\n  .items-end {\n    align-items: flex-end;\n  }\n\n  .items-start {\n    align-items: flex-start;\n  }\n\n  .justify-between {\n    justify-content: space-between;\n  }\n\n  .justify-center {\n    justify-content: center;\n  }\n\n  .justify-end {\n    justify-content: flex-end;\n  }\n\n  .justify-start {\n    justify-content: flex-start;\n  }\n\n  .justify-items-start {\n    justify-items: start;\n  }\n\n  .gap-0 {\n    gap: 0;\n  }\n\n  .gap-0\\.5 {\n    gap: calc(var(--spacing) * .5);\n  }\n\n  .gap-1 {\n    gap: var(--spacing);\n  }\n\n  .gap-1\\.5 {\n    gap: calc(var(--spacing) * 1.5);\n  }\n\n  .gap-2 {\n    gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-2\\.5 {\n    gap: calc(var(--spacing) * 2.5);\n  }\n\n  .gap-3 {\n    gap: calc(var(--spacing) * 3);\n  }\n\n  .gap-4 {\n    gap: calc(var(--spacing) * 4);\n  }\n\n  :where(.space-y-1 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(var(--spacing) * var(--tw-space-y-reverse));\n    margin-block-end: calc(var(--spacing) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-1\\.5 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 1.5) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 1.5) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-2 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 2) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 2) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-3 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 3) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 3) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-4 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 4) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 4) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-5 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 5) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 5) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  .gap-x-2 {\n    column-gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-x-3 {\n    column-gap: calc(var(--spacing) * 3);\n  }\n\n  .gap-x-4 {\n    column-gap: calc(var(--spacing) * 4);\n  }\n\n  .gap-y-1 {\n    row-gap: var(--spacing);\n  }\n\n  .gap-y-1\\.5 {\n    row-gap: calc(var(--spacing) * 1.5);\n  }\n\n  .gap-y-2 {\n    row-gap: calc(var(--spacing) * 2);\n  }\n\n  :where(.divide-y > :not(:last-child)) {\n    --tw-divide-y-reverse: 0;\n    border-bottom-style: var(--tw-border-style);\n    border-top-style: var(--tw-border-style);\n    border-top-width: calc(1px * var(--tw-divide-y-reverse));\n    border-bottom-width: calc(1px * calc(1 - var(--tw-divide-y-reverse)));\n  }\n\n  .self-start {\n    align-self: flex-start;\n  }\n\n  .justify-self-start {\n    justify-self: flex-start;\n  }\n\n  .truncate {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    overflow: hidden;\n  }\n\n  .overflow-auto {\n    overflow: auto;\n  }\n\n  .overflow-hidden {\n    overflow: hidden;\n  }\n\n  .overflow-x-hidden {\n    overflow-x: hidden;\n  }\n\n  .overflow-y-auto {\n    overflow-y: auto;\n  }\n\n  .overscroll-contain {\n    overscroll-behavior: contain;\n  }\n\n  .rounded {\n    border-radius: .25rem;\n  }\n\n  .rounded-\\[inherit\\] {\n    border-radius: inherit;\n  }\n\n  .rounded-full {\n    border-radius: 3.40282e38px;\n  }\n\n  .rounded-lg {\n    border-radius: var(--radius);\n  }\n\n  .rounded-md {\n    border-radius: calc(var(--radius) - 2px);\n  }\n\n  .rounded-none {\n    border-radius: 0;\n  }\n\n  .rounded-sm {\n    border-radius: calc(var(--radius) - 4px);\n  }\n\n  .rounded-xl {\n    border-radius: calc(var(--radius) + 4px);\n  }\n\n  .border {\n    border-style: var(--tw-border-style);\n    border-width: 1px;\n  }\n\n  .border-0 {\n    border-style: var(--tw-border-style);\n    border-width: 0;\n  }\n\n  .border-2 {\n    border-style: var(--tw-border-style);\n    border-width: 2px;\n  }\n\n  .border-y {\n    border-block-style: var(--tw-border-style);\n    border-block-width: 1px;\n  }\n\n  .border-s {\n    border-inline-start-style: var(--tw-border-style);\n    border-inline-start-width: 1px;\n  }\n\n  .border-t {\n    border-top-style: var(--tw-border-style);\n    border-top-width: 1px;\n  }\n\n  .border-b {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 1px;\n  }\n\n  .border-l {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 1px;\n  }\n\n  .border-l-2 {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 2px;\n  }\n\n  .border-border {\n    border-color: var(--border);\n  }\n\n  .border-destructive\\/50 {\n    border-color: var(--destructive);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .border-destructive\\/50 {\n      border-color: color-mix(in oklab, var(--destructive) 50%, transparent);\n    }\n  }\n\n  .border-input {\n    border-color: var(--input);\n  }\n\n  .border-primary {\n    border-color: var(--primary);\n  }\n\n  .border-transparent {\n    border-color: #0000;\n  }\n\n  .border-t-transparent {\n    border-top-color: #0000;\n  }\n\n  .border-l-transparent {\n    border-left-color: #0000;\n  }\n\n  .bg-background {\n    background-color: var(--background);\n  }\n\n  .bg-black\\/80 {\n    background-color: #000c;\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-black\\/80 {\n      background-color: color-mix(in oklab, var(--color-black) 80%, transparent);\n    }\n  }\n\n  .bg-border {\n    background-color: var(--border);\n  }\n\n  .bg-card {\n    background-color: var(--card);\n  }\n\n  .bg-destructive {\n    background-color: var(--destructive);\n  }\n\n  .bg-muted, .bg-muted\\/40 {\n    background-color: var(--muted);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-muted\\/40 {\n      background-color: color-mix(in oklab, var(--muted) 40%, transparent);\n    }\n  }\n\n  .bg-muted\\/45 {\n    background-color: var(--muted);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-muted\\/45 {\n      background-color: color-mix(in oklab, var(--muted) 45%, transparent);\n    }\n  }\n\n  .bg-muted\\/50 {\n    background-color: var(--muted);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-muted\\/50 {\n      background-color: color-mix(in oklab, var(--muted) 50%, transparent);\n    }\n  }\n\n  .bg-popover {\n    background-color: var(--popover);\n  }\n\n  .bg-primary, .bg-primary\\/10 {\n    background-color: var(--primary);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-primary\\/10 {\n      background-color: color-mix(in oklab, var(--primary) 10%, transparent);\n    }\n  }\n\n  .bg-primary\\/20 {\n    background-color: var(--primary);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-primary\\/20 {\n      background-color: color-mix(in oklab, var(--primary) 20%, transparent);\n    }\n  }\n\n  .bg-secondary {\n    background-color: var(--secondary);\n  }\n\n  .bg-transparent {\n    background-color: #0000;\n  }\n\n  .object-contain {\n    object-fit: contain;\n  }\n\n  .p-0 {\n    padding: 0;\n  }\n\n  .p-0\\.5 {\n    padding: calc(var(--spacing) * .5);\n  }\n\n  .p-1 {\n    padding: var(--spacing);\n  }\n\n  .p-2 {\n    padding: calc(var(--spacing) * 2);\n  }\n\n  .p-3 {\n    padding: calc(var(--spacing) * 3);\n  }\n\n  .p-4 {\n    padding: calc(var(--spacing) * 4);\n  }\n\n  .p-5 {\n    padding: calc(var(--spacing) * 5);\n  }\n\n  .p-6 {\n    padding: calc(var(--spacing) * 6);\n  }\n\n  .p-px {\n    padding: 1px;\n  }\n\n  .px-0 {\n    padding-inline: 0;\n  }\n\n  .px-1 {\n    padding-inline: var(--spacing);\n  }\n\n  .px-1\\.5 {\n    padding-inline: calc(var(--spacing) * 1.5);\n  }\n\n  .px-2 {\n    padding-inline: calc(var(--spacing) * 2);\n  }\n\n  .px-2\\.5 {\n    padding-inline: calc(var(--spacing) * 2.5);\n  }\n\n  .px-3 {\n    padding-inline: calc(var(--spacing) * 3);\n  }\n\n  .px-4 {\n    padding-inline: calc(var(--spacing) * 4);\n  }\n\n  .px-8 {\n    padding-inline: calc(var(--spacing) * 8);\n  }\n\n  .py-0 {\n    padding-block: 0;\n  }\n\n  .py-0\\.5 {\n    padding-block: calc(var(--spacing) * .5);\n  }\n\n  .py-1 {\n    padding-block: var(--spacing);\n  }\n\n  .py-1\\.5 {\n    padding-block: calc(var(--spacing) * 1.5);\n  }\n\n  .py-2 {\n    padding-block: calc(var(--spacing) * 2);\n  }\n\n  .py-3 {\n    padding-block: calc(var(--spacing) * 3);\n  }\n\n  .py-4 {\n    padding-block: calc(var(--spacing) * 4);\n  }\n\n  .py-10 {\n    padding-block: calc(var(--spacing) * 10);\n  }\n\n  .pe-3 {\n    padding-inline-end: calc(var(--spacing) * 3);\n  }\n\n  .pt-0 {\n    padding-top: 0;\n  }\n\n  .pt-1 {\n    padding-top: var(--spacing);\n  }\n\n  .pt-2 {\n    padding-top: calc(var(--spacing) * 2);\n  }\n\n  .pt-3 {\n    padding-top: calc(var(--spacing) * 3);\n  }\n\n  .pt-4 {\n    padding-top: calc(var(--spacing) * 4);\n  }\n\n  .pr-8 {\n    padding-right: calc(var(--spacing) * 8);\n  }\n\n  .pb-3 {\n    padding-bottom: calc(var(--spacing) * 3);\n  }\n\n  .pb-4 {\n    padding-bottom: calc(var(--spacing) * 4);\n  }\n\n  .pb-8 {\n    padding-bottom: calc(var(--spacing) * 8);\n  }\n\n  .pl-2 {\n    padding-left: calc(var(--spacing) * 2);\n  }\n\n  .text-center {\n    text-align: center;\n  }\n\n  .text-left {\n    text-align: left;\n  }\n\n  .text-right {\n    text-align: right;\n  }\n\n  .text-start {\n    text-align: start;\n  }\n\n  .align-middle {\n    vertical-align: middle;\n  }\n\n  .align-top {\n    vertical-align: top;\n  }\n\n  .font-mono {\n    font-family: var(--font-mono);\n  }\n\n  .text-base {\n    font-size: var(--text-base);\n    line-height: var(--tw-leading, var(--text-base--line-height));\n  }\n\n  .text-lg {\n    font-size: var(--text-lg);\n    line-height: var(--tw-leading, var(--text-lg--line-height));\n  }\n\n  .text-sm {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n\n  .text-xl {\n    font-size: var(--text-xl);\n    line-height: var(--tw-leading, var(--text-xl--line-height));\n  }\n\n  .text-xs {\n    font-size: var(--text-xs);\n    line-height: var(--tw-leading, var(--text-xs--line-height));\n  }\n\n  .text-\\[10px\\] {\n    font-size: 10px;\n  }\n\n  .text-\\[11px\\] {\n    font-size: 11px;\n  }\n\n  .leading-4 {\n    --tw-leading: calc(var(--spacing) * 4);\n    line-height: calc(var(--spacing) * 4);\n  }\n\n  .leading-5 {\n    --tw-leading: calc(var(--spacing) * 5);\n    line-height: calc(var(--spacing) * 5);\n  }\n\n  .leading-none {\n    --tw-leading: 1;\n    line-height: 1;\n  }\n\n  .leading-relaxed {\n    --tw-leading: var(--leading-relaxed);\n    line-height: var(--leading-relaxed);\n  }\n\n  .leading-snug {\n    --tw-leading: var(--leading-snug);\n    line-height: var(--leading-snug);\n  }\n\n  .font-medium {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n\n  .font-normal {\n    --tw-font-weight: var(--font-weight-normal);\n    font-weight: var(--font-weight-normal);\n  }\n\n  .font-semibold {\n    --tw-font-weight: var(--font-weight-semibold);\n    font-weight: var(--font-weight-semibold);\n  }\n\n  .tracking-tight {\n    --tw-tracking: var(--tracking-tight);\n    letter-spacing: var(--tracking-tight);\n  }\n\n  .\\[overflow-wrap\\:anywhere\\] {\n    overflow-wrap: anywhere;\n  }\n\n  .break-words {\n    overflow-wrap: break-word;\n  }\n\n  .break-all {\n    word-break: break-all;\n  }\n\n  .whitespace-normal {\n    white-space: normal;\n  }\n\n  .whitespace-nowrap {\n    white-space: nowrap;\n  }\n\n  .whitespace-pre-wrap {\n    white-space: pre-wrap;\n  }\n\n  .text-card-foreground {\n    color: var(--card-foreground);\n  }\n\n  .text-current {\n    color: currentColor;\n  }\n\n  .text-destructive {\n    color: var(--destructive);\n  }\n\n  .text-destructive-foreground {\n    color: var(--destructive-foreground);\n  }\n\n  .text-foreground {\n    color: var(--foreground);\n  }\n\n  .text-muted-foreground {\n    color: var(--muted-foreground);\n  }\n\n  .text-popover-foreground {\n    color: var(--popover-foreground);\n  }\n\n  .text-primary {\n    color: var(--primary);\n  }\n\n  .text-primary-foreground {\n    color: var(--primary-foreground);\n  }\n\n  .text-secondary-foreground {\n    color: var(--secondary-foreground);\n  }\n\n  .text-success {\n    color: var(--success);\n  }\n\n  .lowercase {\n    text-transform: lowercase;\n  }\n\n  .ordinal {\n    --tw-ordinal: ordinal;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .tabular-nums {\n    --tw-numeric-spacing: tabular-nums;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .underline-offset-4 {\n    text-underline-offset: 4px;\n  }\n\n  .opacity-0 {\n    opacity: 0;\n  }\n\n  .opacity-50 {\n    opacity: .5;\n  }\n\n  .opacity-70 {\n    opacity: .7;\n  }\n\n  .shadow {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .shadow-lg {\n    --tw-shadow: 0 10px 15px -3px var(--tw-shadow-color, #0000001a), 0 4px 6px -4px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .shadow-md {\n    --tw-shadow: 0 4px 6px -1px var(--tw-shadow-color, #0000001a), 0 2px 4px -2px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .shadow-none {\n    --tw-shadow: 0 0 #0000;\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .shadow-sm {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .ring-0 {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(0px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .ring-offset-background {\n    --tw-ring-offset-color: var(--background);\n  }\n\n  .outline {\n    outline-style: var(--tw-outline-style);\n    outline-width: 1px;\n  }\n\n  .blur {\n    --tw-blur: blur(8px);\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .filter {\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .transition {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-all {\n    transition-property: all;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-colors {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-opacity {\n    transition-property: opacity;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-transform {\n    transition-property: transform, translate, scale, rotate;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .duration-200 {\n    --tw-duration: .2s;\n    transition-duration: .2s;\n  }\n\n  .animate-in {\n    --tw-enter-opacity: initial;\n    --tw-enter-scale: initial;\n    --tw-enter-rotate: initial;\n    --tw-enter-translate-x: initial;\n    --tw-enter-translate-y: initial;\n    animation-name: enter;\n    animation-duration: .15s;\n  }\n\n  .outline-none {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  .select-none {\n    -webkit-user-select: none;\n    user-select: none;\n  }\n\n  .\\!running {\n    animation-play-state: running !important;\n  }\n\n  .duration-200 {\n    animation-duration: .2s;\n  }\n\n  .fade-in-0 {\n    --tw-enter-opacity: 0;\n  }\n\n  .paused {\n    animation-play-state: paused;\n  }\n\n  .running {\n    animation-play-state: running;\n  }\n\n  .zoom-in-95 {\n    --tw-enter-scale: .95;\n  }\n\n  .group-data-\\[state\\=open\\]\\:rotate-180:is(:where(.group)[data-state="open"] *) {\n    rotate: 180deg;\n  }\n\n  .peer-disabled\\:cursor-not-allowed:is(:where(.peer):disabled ~ *) {\n    cursor: not-allowed;\n  }\n\n  .peer-disabled\\:opacity-70:is(:where(.peer):disabled ~ *) {\n    opacity: .7;\n  }\n\n  .file\\:border-0::file-selector-button {\n    border-style: var(--tw-border-style);\n    border-width: 0;\n  }\n\n  .file\\:bg-transparent::file-selector-button {\n    background-color: #0000;\n  }\n\n  .file\\:text-sm::file-selector-button {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n\n  .file\\:font-medium::file-selector-button {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n\n  .placeholder\\:text-muted-foreground::placeholder {\n    color: var(--muted-foreground);\n  }\n\n  .after\\:absolute:after {\n    content: var(--tw-content);\n    position: absolute;\n  }\n\n  .after\\:inset-0:after {\n    content: var(--tw-content);\n    inset: 0;\n  }\n\n  .after\\:rounded-xl:after {\n    content: var(--tw-content);\n    border-radius: calc(var(--radius) + 4px);\n  }\n\n  .first\\:border-t-0:first-child {\n    border-top-style: var(--tw-border-style);\n    border-top-width: 0;\n  }\n\n  .first\\:pt-0:first-child {\n    padding-top: 0;\n  }\n\n  @media (hover: hover) {\n    .hover\\:bg-accent:hover {\n      background-color: var(--accent);\n    }\n\n    .hover\\:bg-destructive\\/80:hover {\n      background-color: var(--destructive);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-destructive\\/80:hover {\n        background-color: color-mix(in oklab, var(--destructive) 80%, transparent);\n      }\n    }\n\n    .hover\\:bg-destructive\\/90:hover {\n      background-color: var(--destructive);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-destructive\\/90:hover {\n        background-color: color-mix(in oklab, var(--destructive) 90%, transparent);\n      }\n    }\n\n    .hover\\:bg-muted\\/50:hover {\n      background-color: var(--muted);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-muted\\/50:hover {\n        background-color: color-mix(in oklab, var(--muted) 50%, transparent);\n      }\n    }\n\n    .hover\\:bg-primary\\/80:hover {\n      background-color: var(--primary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-primary\\/80:hover {\n        background-color: color-mix(in oklab, var(--primary) 80%, transparent);\n      }\n    }\n\n    .hover\\:bg-primary\\/90:hover {\n      background-color: var(--primary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-primary\\/90:hover {\n        background-color: color-mix(in oklab, var(--primary) 90%, transparent);\n      }\n    }\n\n    .hover\\:bg-secondary:hover, .hover\\:bg-secondary\\/80:hover {\n      background-color: var(--secondary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-secondary\\/80:hover {\n        background-color: color-mix(in oklab, var(--secondary) 80%, transparent);\n      }\n    }\n\n    .hover\\:text-accent-foreground:hover {\n      color: var(--accent-foreground);\n    }\n\n    .hover\\:underline:hover {\n      text-decoration-line: underline;\n    }\n\n    .hover\\:opacity-100:hover {\n      opacity: 1;\n    }\n  }\n\n  .focus\\:bg-accent:focus {\n    background-color: var(--accent);\n  }\n\n  .focus\\:text-accent-foreground:focus {\n    color: var(--accent-foreground);\n  }\n\n  .focus\\:ring-1:focus {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus\\:ring-2:focus {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus\\:ring-ring:focus {\n    --tw-ring-color: var(--ring);\n  }\n\n  .focus\\:ring-offset-2:focus {\n    --tw-ring-offset-width: 2px;\n    --tw-ring-offset-shadow: var(--tw-ring-inset, ) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);\n  }\n\n  .focus\\:outline-none:focus {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  .focus-visible\\:ring-1:focus-visible {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus-visible\\:ring-2:focus-visible {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus-visible\\:ring-ring:focus-visible {\n    --tw-ring-color: var(--ring);\n  }\n\n  .focus-visible\\:ring-offset-2:focus-visible {\n    --tw-ring-offset-width: 2px;\n    --tw-ring-offset-shadow: var(--tw-ring-inset, ) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);\n  }\n\n  .focus-visible\\:ring-offset-background:focus-visible {\n    --tw-ring-offset-color: var(--background);\n  }\n\n  .focus-visible\\:outline-none:focus-visible {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  .disabled\\:pointer-events-none:disabled {\n    pointer-events: none;\n  }\n\n  .disabled\\:cursor-not-allowed:disabled {\n    cursor: not-allowed;\n  }\n\n  .disabled\\:opacity-50:disabled {\n    opacity: .5;\n  }\n\n  .data-\\[disabled\\]\\:pointer-events-none[data-disabled] {\n    pointer-events: none;\n  }\n\n  .data-\\[disabled\\]\\:opacity-50[data-disabled] {\n    opacity: .5;\n  }\n\n  .data-\\[orientation\\=vertical\\]\\:h-full[data-orientation="vertical"] {\n    height: 100%;\n  }\n\n  .data-\\[orientation\\=vertical\\]\\:w-1\\.5[data-orientation="vertical"] {\n    width: calc(var(--spacing) * 1.5);\n  }\n\n  .data-\\[orientation\\=vertical\\]\\:w-full[data-orientation="vertical"] {\n    width: 100%;\n  }\n\n  .data-\\[orientation\\=vertical\\]\\:flex-col[data-orientation="vertical"] {\n    flex-direction: column;\n  }\n\n  .data-\\[placeholder\\]\\:text-muted-foreground[data-placeholder] {\n    color: var(--muted-foreground);\n  }\n\n  .data-\\[side\\=bottom\\]\\:translate-y-1[data-side="bottom"] {\n    --tw-translate-y: var(--spacing);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[side\\=bottom\\]\\:slide-in-from-top-2[data-side="bottom"] {\n    --tw-enter-translate-y: -.5rem;\n  }\n\n  .data-\\[side\\=left\\]\\:-translate-x-1[data-side="left"] {\n    --tw-translate-x: calc(var(--spacing) * -1);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[side\\=left\\]\\:slide-in-from-right-2[data-side="left"] {\n    --tw-enter-translate-x: .5rem;\n  }\n\n  .data-\\[side\\=right\\]\\:translate-x-1[data-side="right"] {\n    --tw-translate-x: var(--spacing);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[side\\=right\\]\\:slide-in-from-left-2[data-side="right"] {\n    --tw-enter-translate-x: -.5rem;\n  }\n\n  .data-\\[side\\=top\\]\\:-translate-y-1[data-side="top"] {\n    --tw-translate-y: calc(var(--spacing) * -1);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[side\\=top\\]\\:slide-in-from-bottom-2[data-side="top"] {\n    --tw-enter-translate-y: .5rem;\n  }\n\n  .data-\\[state\\=active\\]\\:bg-background[data-state="active"] {\n    background-color: var(--background);\n  }\n\n  .data-\\[state\\=active\\]\\:text-foreground[data-state="active"] {\n    color: var(--foreground);\n  }\n\n  .data-\\[state\\=active\\]\\:shadow[data-state="active"] {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .data-\\[state\\=checked\\]\\:translate-x-4[data-state="checked"] {\n    --tw-translate-x: calc(var(--spacing) * 4);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[state\\=checked\\]\\:bg-primary[data-state="checked"] {\n    background-color: var(--primary);\n  }\n\n  .data-\\[state\\=checked\\]\\:text-primary-foreground[data-state="checked"] {\n    color: var(--primary-foreground);\n  }\n\n  .data-\\[state\\=closed\\]\\:animate-none[data-state="closed"] {\n    animation: none;\n  }\n\n  .data-\\[state\\=closed\\]\\:animate-out[data-state="closed"] {\n    --tw-exit-opacity: initial;\n    --tw-exit-scale: initial;\n    --tw-exit-rotate: initial;\n    --tw-exit-translate-x: initial;\n    --tw-exit-translate-y: initial;\n    animation-name: exit;\n    animation-duration: .15s;\n  }\n\n  .data-\\[state\\=closed\\]\\:fade-out-0[data-state="closed"] {\n    --tw-exit-opacity: 0;\n  }\n\n  .data-\\[state\\=closed\\]\\:slide-out-to-left-1\\/2[data-state="closed"] {\n    --tw-exit-translate-x: -50%;\n  }\n\n  .data-\\[state\\=closed\\]\\:slide-out-to-top-\\[48\\%\\][data-state="closed"] {\n    --tw-exit-translate-y: -48%;\n  }\n\n  .data-\\[state\\=closed\\]\\:zoom-out-95[data-state="closed"] {\n    --tw-exit-scale: .95;\n  }\n\n  .data-\\[state\\=open\\]\\:animate-none[data-state="open"] {\n    animation: none;\n  }\n\n  .data-\\[state\\=open\\]\\:bg-accent[data-state="open"] {\n    background-color: var(--accent);\n  }\n\n  .data-\\[state\\=open\\]\\:text-muted-foreground[data-state="open"] {\n    color: var(--muted-foreground);\n  }\n\n  .data-\\[state\\=open\\]\\:animate-in[data-state="open"] {\n    --tw-enter-opacity: initial;\n    --tw-enter-scale: initial;\n    --tw-enter-rotate: initial;\n    --tw-enter-translate-x: initial;\n    --tw-enter-translate-y: initial;\n    animation-name: enter;\n    animation-duration: .15s;\n  }\n\n  .data-\\[state\\=open\\]\\:fade-in-0[data-state="open"] {\n    --tw-enter-opacity: 0;\n  }\n\n  .data-\\[state\\=open\\]\\:slide-in-from-left-1\\/2[data-state="open"] {\n    --tw-enter-translate-x: -50%;\n  }\n\n  .data-\\[state\\=open\\]\\:slide-in-from-top-\\[48\\%\\][data-state="open"] {\n    --tw-enter-translate-y: -48%;\n  }\n\n  .data-\\[state\\=open\\]\\:zoom-in-95[data-state="open"] {\n    --tw-enter-scale: .95;\n  }\n\n  .data-\\[state\\=selected\\]\\:bg-muted[data-state="selected"] {\n    background-color: var(--muted);\n  }\n\n  .data-\\[state\\=unchecked\\]\\:translate-x-0[data-state="unchecked"] {\n    --tw-translate-x: 0px;\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[state\\=unchecked\\]\\:bg-input[data-state="unchecked"] {\n    background-color: var(--input);\n  }\n\n  @media (prefers-reduced-motion: reduce) {\n    .motion-reduce\\:animate-none {\n      animation: none;\n    }\n\n    .motion-reduce\\:transition-none {\n      transition-property: none;\n    }\n  }\n\n  @media not all and (min-width: 620px) {\n    .max-\\[620px\\]\\:px-1\\.5 {\n      padding-inline: calc(var(--spacing) * 1.5);\n    }\n  }\n\n  @media (min-width: 621px) {\n    .min-\\[621px\\]\\:col-span-2 {\n      grid-column: span 2 / span 2;\n    }\n\n    .min-\\[621px\\]\\:block {\n      display: block;\n    }\n\n    .min-\\[621px\\]\\:flex {\n      display: flex;\n    }\n\n    .min-\\[621px\\]\\:hidden {\n      display: none;\n    }\n\n    .min-\\[621px\\]\\:min-h-9 {\n      min-height: calc(var(--spacing) * 9);\n    }\n\n    .min-\\[621px\\]\\:grid-cols-2 {\n      grid-template-columns: repeat(2, minmax(0, 1fr));\n    }\n\n    .min-\\[621px\\]\\:grid-cols-\\[minmax\\(0\\,1fr\\)_minmax\\(180px\\,280px\\)\\] {\n      grid-template-columns: minmax(0, 1fr) minmax(180px, 280px);\n    }\n\n    .min-\\[621px\\]\\:flex-wrap {\n      flex-wrap: wrap;\n    }\n\n    .min-\\[621px\\]\\:items-center {\n      align-items: center;\n    }\n  }\n\n  @media (min-width: 900px) {\n    .min-\\[900px\\]\\:flex-none {\n      flex: none;\n    }\n\n    .min-\\[900px\\]\\:grid-cols-4 {\n      grid-template-columns: repeat(4, minmax(0, 1fr));\n    }\n  }\n\n  @media (min-width: 1024px) {\n    .min-\\[1024px\\]\\:grid-cols-2 {\n      grid-template-columns: repeat(2, minmax(0, 1fr));\n    }\n  }\n\n  @media (min-width: 40rem) {\n    .sm\\:inline {\n      display: inline;\n    }\n\n    .sm\\:grid-cols-2 {\n      grid-template-columns: repeat(2, minmax(0, 1fr));\n    }\n\n    .sm\\:grid-cols-3 {\n      grid-template-columns: repeat(3, minmax(0, 1fr));\n    }\n\n    .sm\\:flex-row {\n      flex-direction: row;\n    }\n\n    .sm\\:justify-end {\n      justify-content: flex-end;\n    }\n\n    .sm\\:gap-x-2 {\n      column-gap: calc(var(--spacing) * 2);\n    }\n\n    .sm\\:rounded-lg {\n      border-radius: var(--radius);\n    }\n\n    .sm\\:text-left {\n      text-align: left;\n    }\n  }\n\n  @media (min-width: 48rem) {\n    .md\\:w-full {\n      width: 100%;\n    }\n  }\n\n  .dark\\:border-destructive:is(.dark *, :host(.dark) *) {\n    border-color: var(--destructive);\n  }\n\n  .\\[\\&_p\\]\\:leading-relaxed p {\n    --tw-leading: var(--leading-relaxed);\n    line-height: var(--leading-relaxed);\n  }\n\n  .\\[\\&_svg\\]\\:pointer-events-none svg {\n    pointer-events: none;\n  }\n\n  .\\[\\&_svg\\]\\:size-4 svg {\n    width: calc(var(--spacing) * 4);\n    height: calc(var(--spacing) * 4);\n  }\n\n  .\\[\\&_svg\\]\\:shrink-0 svg {\n    flex-shrink: 0;\n  }\n\n  .\\[\\&_tr\\]\\:border-b tr {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 1px;\n  }\n\n  .\\[\\&_tr\\:last-child\\]\\:border-0 tr:last-child {\n    border-style: var(--tw-border-style);\n    border-width: 0;\n  }\n\n  .\\[\\&\\:has\\(\\[role\\=checkbox\\]\\)\\]\\:pr-0:has([role="checkbox"]) {\n    padding-right: 0;\n  }\n\n  .\\[\\&\\>\\[role\\=checkbox\\]\\]\\:translate-y-0\\.5 > [role="checkbox"] {\n    --tw-translate-y: calc(var(--spacing) * .5);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .\\[\\&\\>span\\]\\:min-w-0 > span {\n    min-width: 0;\n  }\n\n  .\\[\\&\\>span\\]\\:truncate > span {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    overflow: hidden;\n  }\n\n  .\\[\\&\\>span\\]\\:break-words > span {\n    overflow-wrap: break-word;\n  }\n\n  .\\[\\&\\>span\\]\\:whitespace-normal > span {\n    white-space: normal;\n  }\n\n  .\\[\\&\\>svg\\]\\:absolute > svg {\n    position: absolute;\n  }\n\n  .\\[\\&\\>svg\\]\\:top-4 > svg {\n    top: calc(var(--spacing) * 4);\n  }\n\n  .\\[\\&\\>svg\\]\\:left-4 > svg {\n    left: calc(var(--spacing) * 4);\n  }\n\n  .\\[\\&\\>svg\\]\\:text-destructive > svg {\n    color: var(--destructive);\n  }\n\n  .\\[\\&\\>svg\\]\\:text-foreground > svg {\n    color: var(--foreground);\n  }\n\n  .\\[\\&\\>svg\\+div\\]\\:translate-y-\\[-3px\\] > svg + div {\n    --tw-translate-y: -3px;\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .\\[\\&\\>svg\\~\\*\\]\\:pl-7 > svg ~ * {\n    padding-left: calc(var(--spacing) * 7);\n  }\n\n  .\\[\\&\\>tr\\]\\:last\\:border-b-0 > tr:last-child {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 0;\n  }\n}\n\n:root, :host {\n  --radius: .625rem;\n  --destructive-foreground: #fafafa;\n  --success: oklch(59.6% .145 163.225);\n  --warning: oklch(66.6% .179 58.318);\n  --background: oklch(100% 0 0);\n  --foreground: oklch(14.5% 0 0);\n  --card: oklch(100% 0 0);\n  --card-foreground: oklch(14.5% 0 0);\n  --popover: oklch(100% 0 0);\n  --popover-foreground: oklch(14.5% 0 0);\n  --primary: oklch(20.5% 0 0);\n  --primary-foreground: oklch(98.5% 0 0);\n  --secondary: oklch(97% 0 0);\n  --secondary-foreground: oklch(20.5% 0 0);\n  --muted: oklch(97% 0 0);\n  --muted-foreground: oklch(55.6% 0 0);\n  --accent: oklch(97% 0 0);\n  --accent-foreground: oklch(20.5% 0 0);\n  --destructive: oklch(57.7% .245 27.325);\n  --border: oklch(92.2% 0 0);\n  --input: oklch(92.2% 0 0);\n  --ring: oklch(70.8% 0 0);\n  --chart-1: oklch(64.6% .222 41.116);\n  --chart-2: oklch(60% .118 184.704);\n  --chart-3: oklch(39.8% .07 227.392);\n  --chart-4: oklch(82.8% .189 84.429);\n  --chart-5: oklch(76.9% .188 70.08);\n  --sidebar: oklch(98.5% 0 0);\n  --sidebar-foreground: oklch(14.5% 0 0);\n  --sidebar-primary: oklch(20.5% 0 0);\n  --sidebar-primary-foreground: oklch(98.5% 0 0);\n  --sidebar-accent: oklch(97% 0 0);\n  --sidebar-accent-foreground: oklch(20.5% 0 0);\n  --sidebar-border: oklch(92.2% 0 0);\n  --sidebar-ring: oklch(70.8% 0 0);\n}\n\n.dark, :host(.dark) {\n  --success: oklch(76.5% .177 163.223);\n  --warning: oklch(82.8% .189 84.429);\n  --background: oklch(14.5% 0 0);\n  --foreground: oklch(98.5% 0 0);\n  --card: oklch(20.5% 0 0);\n  --card-foreground: oklch(98.5% 0 0);\n  --popover: oklch(20.5% 0 0);\n  --popover-foreground: oklch(98.5% 0 0);\n  --primary: oklch(92.2% 0 0);\n  --primary-foreground: oklch(20.5% 0 0);\n  --secondary: oklch(26.9% 0 0);\n  --secondary-foreground: oklch(98.5% 0 0);\n  --muted: oklch(26.9% 0 0);\n  --muted-foreground: oklch(70.8% 0 0);\n  --accent: oklch(26.9% 0 0);\n  --accent-foreground: oklch(98.5% 0 0);\n  --destructive: oklch(70.4% .191 22.216);\n  --border: oklch(100% 0 0 / .2);\n  --input: oklch(100% 0 0 / .28);\n  --ring: oklch(55.6% 0 0);\n  --chart-1: oklch(48.8% .243 264.376);\n  --chart-2: oklch(69.6% .17 162.48);\n  --chart-3: oklch(76.9% .188 70.08);\n  --chart-4: oklch(62.7% .265 303.9);\n  --chart-5: oklch(64.5% .246 16.439);\n  --sidebar: oklch(20.5% 0 0);\n  --sidebar-foreground: oklch(98.5% 0 0);\n  --sidebar-primary: oklch(48.8% .243 264.376);\n  --sidebar-primary-foreground: oklch(98.5% 0 0);\n  --sidebar-accent: oklch(26.9% 0 0);\n  --sidebar-accent-foreground: oklch(98.5% 0 0);\n  --sidebar-border: oklch(100% 0 0 / .1);\n  --sidebar-ring: oklch(55.6% 0 0);\n}\n\n@media (prefers-color-scheme: dark) {\n  :host(:not(.light)) {\n    --success: oklch(76.5% .177 163.223);\n    --warning: oklch(82.8% .189 84.429);\n    --background: oklch(14.5% 0 0);\n    --foreground: oklch(98.5% 0 0);\n    --card: oklch(20.5% 0 0);\n    --card-foreground: oklch(98.5% 0 0);\n    --popover: oklch(20.5% 0 0);\n    --popover-foreground: oklch(98.5% 0 0);\n    --primary: oklch(92.2% 0 0);\n    --primary-foreground: oklch(20.5% 0 0);\n    --secondary: oklch(26.9% 0 0);\n    --secondary-foreground: oklch(98.5% 0 0);\n    --muted: oklch(26.9% 0 0);\n    --muted-foreground: oklch(70.8% 0 0);\n    --accent: oklch(26.9% 0 0);\n    --accent-foreground: oklch(98.5% 0 0);\n    --destructive: oklch(70.4% .191 22.216);\n    --border: oklch(100% 0 0 / .2);\n    --input: oklch(100% 0 0 / .28);\n    --ring: oklch(55.6% 0 0);\n    --chart-1: oklch(48.8% .243 264.376);\n    --chart-2: oklch(69.6% .17 162.48);\n    --chart-3: oklch(76.9% .188 70.08);\n    --chart-4: oklch(62.7% .265 303.9);\n    --chart-5: oklch(64.5% .246 16.439);\n    --sidebar: oklch(20.5% 0 0);\n    --sidebar-foreground: oklch(98.5% 0 0);\n    --sidebar-primary: oklch(48.8% .243 264.376);\n    --sidebar-primary-foreground: oklch(98.5% 0 0);\n    --sidebar-accent: oklch(26.9% 0 0);\n    --sidebar-accent-foreground: oklch(98.5% 0 0);\n    --sidebar-border: oklch(100% 0 0 / .1);\n    --sidebar-ring: oklch(55.6% 0 0);\n  }\n}\n\n.booster-archive-nav {\n  border-right: 1px solid var(--border);\n  background: var(--card);\n  overscroll-behavior: contain;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  padding: 12px;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-archive-nav-branch {\n  border-inline-start: 2px solid var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-nav-branch {\n    border-inline-start: 2px solid color-mix(in oklab, var(--primary) 35%, transparent);\n  }\n}\n\n.booster-reader-exchanges {\n  gap: 12px;\n  margin-top: 0;\n  display: grid;\n}\n\n.booster-exchange {\n  border-bottom: 1px solid var(--border);\n  min-width: 0;\n  max-width: 100%;\n  padding-bottom: 16px;\n}\n\n.booster-exchange-details {\n  border-left: 2px solid var(--border);\n  gap: 6px;\n  margin: 10px 0 10px 12px;\n  padding: 8px 0 8px 12px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-exchange-details {\n    border-left: 2px solid color-mix(in oklab, var(--border) 78%, var(--primary));\n  }\n}\n\n.booster-exchange-details-label {\n  color: var(--muted-foreground);\n  letter-spacing: .04em;\n  text-transform: uppercase;\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-message-target {\n  outline: 2px solid var(--primary);\n  outline-offset: 2px;\n  border-radius: 6px;\n}\n\n[data-archive-message] {\n  scroll-margin-block: 20px;\n}\n\n.booster-reader-exchanges, .booster-exchange-details {\n  min-width: 0;\n  max-width: 100%;\n}\n\n.booster-meta-trigger {\n  flex-shrink: 0;\n}\n\n.booster-meta-lines {\n  grid-template-columns: max-content minmax(0, 1fr);\n  gap: 3px 10px;\n  display: grid;\n}\n\n.booster-meta-label {\n  color: var(--muted-foreground);\n  font-size: 10px;\n  font-weight: 600;\n}\n\n.booster-floating-tooltip .booster-meta-label {\n  color: inherit;\n  opacity: .75;\n}\n\n.booster-meta-value {\n  overflow-wrap: anywhere;\n  min-width: 0;\n  color: inherit;\n  font-variant-numeric: tabular-nums;\n}\n\n.booster-json-viewer {\n  background: var(--background);\n  max-height: min(70vh, 620px);\n  margin: 0;\n  padding: 14px 16px 22px;\n  overflow: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-json-viewer {\n    background: color-mix(in oklab, var(--background) 86%, #0f172a);\n  }\n}\n\n.booster-json-viewer {\n  color: var(--foreground);\n  tab-size: 2;\n  white-space: pre;\n  font: 11px / 1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n}\n\n.booster-json-key {\n  color: #60a5fa;\n}\n\n.booster-json-string {\n  color: #86efac;\n}\n\n.booster-json-number {\n  color: #fbbf24;\n}\n\n.booster-json-boolean {\n  color: #c084fc;\n}\n\n.booster-json-null {\n  color: #94a3b8;\n}\n\n:host {\n  all: initial;\n  color: var(--foreground);\n  font-family: Inter, ui-sans-serif, system-ui, sans-serif;\n}\n\n* {\n  box-sizing: border-box;\n}\n\n.booster-shell {\n  z-index: 2147483647;\n  position: fixed;\n  bottom: 20px;\n  right: 20px;\n}\n\n.booster-panel {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 300px;\n  color: var(--card-foreground);\n  border-radius: 16px;\n  margin-bottom: 10px;\n  padding: 14px;\n  box-shadow: 0 18px 45px #0000003d;\n}\n\n.booster-panel h2 {\n  margin: 0 0 6px;\n  font-size: 15px;\n  font-weight: 700;\n}\n\n.booster-panel p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.45;\n}\n\n.booster-control-center {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(760px, 100vw - 32px);\n  min-width: 0;\n  color: var(--card-foreground);\n  border-radius: 18px;\n  margin-bottom: 10px;\n  overflow: hidden;\n  box-shadow: 0 22px 60px #00000047;\n}\n\n.booster-control-header, .booster-control-footer {\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  display: flex;\n}\n\n.booster-control-header {\n  border-bottom: 1px solid var(--border);\n  flex-wrap: wrap;\n  padding: 14px 14px 12px;\n}\n\n.booster-control-header strong {\n  overflow-wrap: anywhere;\n  font-size: 14px;\n}\n\n.booster-control-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-control-body {\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-loading {\n  color: var(--muted-foreground);\n  padding: 18px;\n  font-size: 12px;\n}\n\n.booster-section-label {\n  color: var(--muted-foreground);\n  letter-spacing: .08em;\n  text-transform: uppercase;\n  padding: 2px 2px 0;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-setting-card {\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 12px;\n  display: flex;\n}\n\n.booster-setting-disabled {\n  opacity: .55;\n}\n\n.booster-setting-copy {\n  gap: 5px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-setting-copy b {\n  font-size: 12px;\n}\n\n.booster-setting-copy > span {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.4;\n}\n\n.booster-info-card {\n  background: var(--muted);\n  color: var(--foreground);\n  border-radius: 12px;\n  padding: 11px 12px;\n  font-size: 11px;\n}\n\n.booster-info-card ul {\n  color: var(--muted-foreground);\n  gap: 4px;\n  margin: 8px 0 0 18px;\n  padding: 0;\n  line-height: 1.35;\n  display: grid;\n}\n\n.booster-control-footer {\n  padding-top: 2px;\n}\n\n.booster-save-state {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 5px;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-overlay-root {\n  pointer-events: none;\n}\n\n.booster-launcher {\n  z-index: 2147483647;\n  cursor: grab;\n  pointer-events: auto;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  border-radius: 15px;\n  justify-content: center;\n  align-items: center;\n  gap: 1px;\n  width: 44px;\n  height: 44px;\n  display: inline-flex;\n  position: fixed;\n}\n\n.booster-launcher-dragging {\n  cursor: grabbing;\n}\n\n.booster-launcher-icon {\n  flex-shrink: 0;\n  width: 20px;\n  height: 20px;\n}\n\n.booster-modal-backdrop {\n  z-index: 40;\n  pointer-events: auto;\n  place-items: center;\n  padding: 16px;\n  display: grid;\n  position: fixed;\n  inset: 0;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n  max-height: calc(100vh - 32px);\n  overflow: auto;\n}\n\n.booster-modal-surface .booster-control-center {\n  width: 100%;\n  box-shadow: none;\n  border: 0;\n  border-radius: 0;\n  margin: 0;\n}\n\n.booster-popup-host {\n  background: var(--background);\n  min-width: 360px;\n}\n\n.booster-stack-card {\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-stack-card label {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-counter-grid {\n  color: var(--muted-foreground);\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 6px 12px;\n  margin-top: 8px;\n  display: grid;\n}\n\n.booster-counter-grid span {\n  justify-content: space-between;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-counter-grid b {\n  color: var(--foreground);\n}\n\n.booster-header-copy {\n  min-width: 0;\n}\n\n.booster-header-actions {\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-header-toggle-label {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  font-weight: 600;\n}\n\n.booster-settings-layout {\n  grid-template-columns: minmax(0, 1fr);\n  min-height: 360px;\n  display: grid;\n}\n\n.booster-settings-content {\n  align-content: start;\n  gap: 10px;\n  min-width: 0;\n  min-height: 0;\n  padding: 14px;\n  display: grid;\n}\n\n.booster-setting-card-flat {\n  border: 0;\n  border-bottom: 1px solid var(--border);\n  border-radius: 0;\n  padding: 0 0 10px;\n}\n\n.booster-analytics-grid {\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 12px;\n  display: grid;\n}\n\n.booster-counter-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  padding: 12px;\n}\n\n.booster-counter-title {\n  margin-bottom: 8px;\n  font-size: 12px;\n  font-weight: 700;\n}\n\n.rotate-180 {\n  transform: rotate(180deg);\n}\n\n.booster-telemetry-body {\n  gap: 10px;\n  padding-top: 10px;\n  display: grid;\n}\n\n.booster-field {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-telemetry-test-row {\n  align-items: center;\n  gap: 10px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-test-success {\n  color: var(--success);\n  font-size: 11px;\n}\n\n.booster-test-error {\n  min-width: 0;\n  color: var(--destructive);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n}\n\n@media (max-width: 620px) {\n  .booster-control-center, .booster-modal-surface {\n    width: calc(100vw - 20px);\n  }\n\n  .booster-settings-layout, .booster-analytics-grid {\n    grid-template-columns: 1fr;\n  }\n}\n\n.booster-modal-surface.booster-modal-surface-wide {\n  width: min(1320px, 100vw - 32px);\n}\n\n.booster-modal-surface-wide > .booster-control-center {\n  width: 100%;\n}\n\n@media (max-width: 620px) {\n  .booster-modal-surface.booster-modal-surface-wide {\n    width: calc(100vw - 20px);\n  }\n}\n\n.booster-modal-backdrop.booster-modal-backdrop-floating {\n  -webkit-backdrop-filter: none;\n  backdrop-filter: none;\n  pointer-events: none;\n  background: none;\n  padding: 0;\n  display: block;\n}\n\n.booster-modal-surface.booster-modal-surface-wide.booster-dialog-floating {\n  pointer-events: auto;\n  flex-direction: column;\n  gap: 0;\n  min-width: 0;\n  max-width: calc(100dvw - 16px);\n  min-height: 0;\n  max-height: calc(100dvh - 16px);\n  padding: 0;\n  display: flex;\n  position: fixed;\n  overflow: hidden;\n  transform: translate3d(0, 0, 0);\n}\n\n.booster-dialog-floating > .booster-control-center {\n  min-width: 0;\n  min-height: 0;\n  box-shadow: none;\n  border: 0;\n  border-radius: 0;\n  flex-direction: column;\n  flex: auto;\n  margin: 0;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-floating-chrome {\n  border-bottom: 1px solid var(--border);\n  background: var(--muted);\n  cursor: move;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  flex: none;\n  align-items: center;\n  gap: 8px;\n  min-height: 38px;\n  padding: 4px 8px 4px 12px;\n  display: flex;\n}\n\n.booster-floating-chrome > span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  flex: auto;\n  min-width: 0;\n  font-size: 12px;\n  font-weight: 600;\n  overflow: hidden;\n}\n\n.booster-floating-chrome > button:not([role="switch"]) {\n  flex: none;\n  width: 30px;\n  height: 30px;\n}\n\n.booster-workspace-error {\n  color: var(--destructive);\n  flex: none;\n  margin: 0;\n  padding: 6px 12px;\n  font-size: 12px;\n}\n\n.booster-floating-resize {\n  cursor: nwse-resize;\n  touch-action: none;\n  width: 28px;\n  height: 28px;\n  position: absolute;\n  bottom: 0;\n  right: 0;\n}\n\n.booster-launcher-docked {\n  width: 44px;\n  height: 44px;\n}\n\n.booster-edge-toolkit {\n  z-index: 2147483647;\n  pointer-events: auto;\n  width: 44px;\n  height: 44px;\n  position: fixed;\n}\n\n.booster-edge-toolkit > .booster-launcher {\n  position: relative;\n  transform: none;\n}\n\n.booster-edge-toolkit.attached.right > .booster-launcher {\n  border-radius: 12px 0 0 12px;\n}\n\n.booster-edge-toolkit.attached.left > .booster-launcher {\n  border-radius: 0 12px 12px 0;\n}\n\n.booster-edge-shell {\n  width: var(--booster-dock-width, min(294px, 100vw));\n  position: absolute;\n  top: auto;\n  overflow: hidden;\n}\n\n.booster-edge-toolkit > .booster-edge-shell {\n  left: var(--booster-dock-offset-x, 0px);\n}\n\n.booster-edge-toolkit.free > .booster-edge-shell {\n  border-radius: 14px;\n}\n\n.booster-edge-toolkit.grow-up > .booster-edge-shell {\n  padding-bottom: 44px;\n  bottom: 0;\n}\n\n.booster-edge-toolkit.grow-down > .booster-edge-shell {\n  padding-top: 44px;\n  top: 0;\n}\n\n.booster-edge-toolkit.attached.right > .booster-edge-shell {\n  border-radius: 14px 0 0 14px;\n}\n\n.booster-edge-toolkit.attached.left > .booster-edge-shell {\n  border-radius: 0 14px 14px 0;\n}\n\n.booster-edge-toolkit > .booster-launcher.booster-edge-close-bar {\n  width: var(--booster-dock-width, min(294px, 100vw));\n  border: 1px solid var(--border);\n  background: var(--card);\n  height: 44px;\n  color: var(--card-foreground);\n  box-shadow: none;\n  justify-content: flex-start;\n  gap: 8px;\n  padding: 0 12px;\n  font-size: 12px;\n  font-weight: 600;\n  position: absolute;\n  top: 0;\n}\n\n.booster-edge-toolkit > .booster-launcher.booster-edge-close-bar:hover {\n  background: var(--accent);\n  color: var(--accent-foreground);\n}\n\n.booster-edge-toolkit > .booster-edge-close-bar {\n  left: var(--booster-dock-offset-x, 0px);\n}\n\n.booster-edge-toolkit.free.grow-up > .booster-edge-close-bar {\n  border-radius: 0 0 14px 14px;\n}\n\n.booster-edge-toolkit.free.grow-down > .booster-edge-close-bar {\n  border-radius: 14px 14px 0 0;\n}\n\n.booster-edge-toolkit.attached.right.grow-up > .booster-edge-close-bar {\n  border-radius: 0 0 0 14px;\n}\n\n.booster-edge-toolkit.attached.right.grow-down > .booster-edge-close-bar {\n  border-radius: 14px 0 0;\n}\n\n.booster-edge-toolkit.attached.left.grow-up > .booster-edge-close-bar {\n  border-radius: 0 0 14px;\n}\n\n.booster-edge-toolkit.attached.left.grow-down > .booster-edge-close-bar {\n  border-radius: 0 14px 0 0;\n}\n\n.booster-quick-menu {\n  background: var(--card);\n  width: 100%;\n  color: var(--card-foreground);\n  pointer-events: auto;\n  font: inherit;\n  border: 0;\n  border-radius: 0;\n  position: relative;\n  overflow: auto;\n}\n\n.booster-quick-header, .booster-quick-footer {\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  padding: 11px 12px;\n  display: flex;\n}\n\n.booster-quick-header {\n  border-bottom: 1px solid var(--border);\n}\n\n.booster-quick-header > [role="switch"] {\n  flex: none;\n}\n\n.booster-quick-identity {\n  gap: 5px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-quick-identity > strong {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 13px;\n  overflow: hidden;\n}\n\n.booster-quick-badges {\n  flex-wrap: wrap;\n  gap: 5px;\n  display: flex;\n}\n\n.booster-quick-actions {\n  padding: 4px 0;\n}\n\n.booster-quick-footer {\n  border-top: 1px solid var(--border);\n}\n\n.booster-quick-status {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.booster-quick-status.is-active {\n  color: var(--foreground);\n}\n\n.booster-quick-metrics {\n  border-bottom: 1px solid var(--border);\n  flex-wrap: wrap;\n  gap: 4px 12px;\n  padding: 6px 12px;\n  display: flex;\n}\n\n.booster-quick-metrics > div {\n  align-items: baseline;\n  gap: 6px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-quick-metrics span {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-quick-metrics b {\n  color: var(--foreground);\n  font-variant-numeric: tabular-nums;\n  font-size: 11px;\n  font-weight: 500;\n}\n\n.booster-quick-error {\n  background: var(--card);\n  color: var(--foreground);\n  pointer-events: none;\n  padding: 7px;\n  position: fixed;\n  bottom: 10px;\n  left: 10px;\n}\n\n* {\n  scrollbar-width: thin;\n  scrollbar-color: var(--border) transparent;\n}\n\n::-webkit-scrollbar {\n  width: 6px;\n  height: 6px;\n}\n\n::-webkit-scrollbar-track {\n  background: none;\n}\n\n::-webkit-scrollbar-thumb {\n  background: var(--border);\n  border-radius: 99px;\n}\n\n::-webkit-scrollbar-thumb:hover {\n  background: var(--muted-foreground);\n}\n\n.booster-modal-surface.booster-modal-surface-single {\n  width: min(820px, 100vw - 24px);\n  max-height: min(86dvh, 760px);\n  overflow: auto;\n}\n\n.booster-control-standalone {\n  width: 100%;\n  margin: 0;\n}\n\n.booster-control-standalone > .booster-settings-layout {\n  min-height: 0;\n  display: block;\n}\n\n.booster-control-standalone > .booster-settings-layout > .booster-settings-content {\n  width: 100%;\n  min-width: 0;\n}\n\n@media (max-width: 620px) {\n  .booster-control-standalone > .booster-control-header {\n    flex-direction: row;\n    align-items: center;\n    gap: 8px;\n    padding: 12px;\n  }\n\n  .booster-control-standalone > .booster-control-header > .booster-header-copy > div {\n    flex-wrap: nowrap;\n    gap: 6px;\n  }\n\n  .booster-control-standalone > .booster-control-header .booster-header-copy strong {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    min-width: 0;\n    overflow: hidden;\n  }\n\n  .booster-control-standalone > .booster-control-header > .booster-header-actions {\n    flex-wrap: nowrap;\n    justify-content: space-between;\n    gap: 8px;\n    display: flex;\n  }\n\n  .booster-control-standalone > .booster-control-header > .booster-header-actions > button:last-child {\n    margin-left: auto;\n  }\n\n  .booster-modal-surface.booster-modal-surface-single {\n    width: calc(100vw - 16px);\n    max-height: calc(100dvh - 16px);\n  }\n}\n\n@media (min-width: 1024px) {\n  .booster-control-embedded > .booster-settings-layout > .booster-settings-content[data-settings-section="modules"] {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n    align-items: start;\n  }\n}\n\n@media (min-width: 621px) and (max-width: 1023px) {\n  .booster-control-embedded > .booster-settings-layout > .booster-settings-content[data-settings-section="modules"] {\n    gap: 6px;\n    padding: 10px;\n  }\n\n  .booster-settings-content[data-settings-section="modules"] > .booster-setting-card {\n    border-radius: 8px;\n    gap: 10px;\n    padding: 9px 10px;\n  }\n}\n\n.booster-modal-backdrop.booster-modal-backdrop-fullscreen {\n  background: var(--background);\n  -webkit-backdrop-filter: none;\n  backdrop-filter: none;\n  padding: 0;\n}\n\n.booster-modal-surface.booster-modal-fullscreen {\n  width: 100dvw;\n  min-width: 0;\n  max-width: none;\n  height: 100dvh;\n  min-height: 0;\n  max-height: none;\n  box-shadow: none;\n  border: 0;\n  border-radius: 0;\n  flex-direction: column;\n  display: flex;\n  position: fixed;\n  inset: 0;\n  overflow: hidden;\n  transform: none;\n}\n\n.booster-modal-fullscreen > .booster-control-center {\n  width: 100%;\n  min-width: 0;\n  min-height: 0;\n  box-shadow: none;\n  border: 0;\n  border-radius: 0;\n  flex-direction: column;\n  flex: 1;\n  margin: 0;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-dialog-floating .booster-control-header {\n  justify-content: flex-end;\n  padding: 6px 12px;\n}\n\n.booster-modal-fullscreen > .booster-control-center > .booster-control-header {\n  padding-top: max(12px, env(safe-area-inset-top));\n  flex: none;\n}\n\n.booster-dialog-floating > .booster-control-center > .booster-control-header {\n  flex: none;\n}\n\n.booster-modal-fullscreen > .booster-control-center > .settings-catalog, .booster-dialog-floating > .booster-control-center > .settings-catalog {\n  overscroll-behavior: contain;\n  flex: 0 auto;\n  min-width: 0;\n  min-height: 0;\n  max-height: 50dvh;\n  overflow: hidden auto;\n}\n\n.booster-modal-fullscreen > .booster-control-center > .booster-settings-layout, .booster-dialog-floating > .booster-control-center > .booster-settings-layout {\n  flex: 1;\n  min-width: 0;\n  min-height: 0;\n  overflow: hidden;\n}\n\n.booster-modal-fullscreen > .booster-control-center > .booster-settings-layout > .booster-settings-content, .booster-dialog-floating > .booster-control-center > .booster-settings-layout > .booster-settings-content {\n  overscroll-behavior: contain;\n  width: 100%;\n  min-width: 0;\n  height: 100%;\n  min-height: 0;\n  padding-bottom: max(12px, env(safe-area-inset-bottom));\n  overflow: auto;\n}\n\n.booster-settings-content > * {\n  min-width: 0;\n  max-width: 100%;\n}\n\n.booster-control-center:has([data-panel-content-focus]) > .booster-settings-layout > .booster-settings-content {\n  flex-direction: column;\n  min-height: 0;\n  padding: 0;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-control-center:has([data-panel-content-focus]) > .booster-settings-layout > .booster-settings-content > :has([data-panel-content-focus]), .booster-control-center:has([data-panel-content-focus]) > .booster-settings-layout > .booster-settings-content > [data-panel-content-focus] {\n  flex: auto;\n  min-width: 0;\n  min-height: 0;\n}\n\n.booster-edge-toolkit > .booster-launcher.booster-launcher-floating:not(.booster-edge-close-bar) {\n  border-radius: 50% 50% 50% 18%;\n}\n\n.booster-shell-settings {\n  grid-template-columns: minmax(0, 1fr);\n  align-items: start;\n  gap: 16px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-settings-layout-catalog {\n  grid-template-columns: minmax(0, 1fr);\n}\n\n.booster-shell-settings-body {\n  gap: 12px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-shell-settings h2 {\n  margin: 0;\n  font-size: 15px;\n}\n\n.booster-shell-settings p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.5;\n}\n\n.booster-capability-group {\n  gap: 8px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-capability-row {\n  margin-left: 12px;\n}\n\n.booster-component-versions {\n  grid-template-columns: minmax(0, 1fr) auto;\n  gap: 10px 16px;\n  margin: 0;\n  font-size: 12px;\n  display: grid;\n}\n\n.booster-component-versions dt {\n  overflow-wrap: anywhere;\n}\n\n.booster-component-versions dd {\n  color: var(--muted-foreground);\n  margin: 0;\n}\n\n.booster-version {\n  color: var(--muted-foreground);\n  white-space: nowrap;\n  font-size: 11px;\n  font-weight: 400;\n}\n\n.booster-control-identity {\n  align-items: baseline;\n  gap: 8px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-control-header > .booster-header-copy {\n  flex: 1;\n  min-width: 0;\n}\n\n.booster-control-header > .booster-header-actions {\n  flex: none;\n}\n\n.booster-floating-identity {\n  flex: 1;\n  align-items: baseline;\n  gap: 8px;\n  min-width: 0;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-floating-identity .booster-version {\n  flex: none;\n}\n\n.booster-indicator-legend {\n  border-bottom: 1px solid var(--border);\n  gap: 4px;\n  margin: 0;\n  padding: 8px 12px;\n  list-style: none;\n  display: grid;\n}\n\n.booster-indicator-legend li {\n  align-items: flex-start;\n  gap: 6px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-indicator-copy {\n  overflow-wrap: anywhere;\n  flex: 1;\n  justify-content: space-between;\n  align-items: baseline;\n  gap: 8px;\n  min-width: 0;\n  font-size: 11px;\n  display: flex;\n}\n\n.booster-indicator-copy strong {\n  flex: none;\n  font-weight: 500;\n}\n\n.booster-indicator-copy > span {\n  color: var(--muted-foreground);\n  text-align: right;\n  font-size: 10px;\n}\n\n.booster-signal-dot {\n  background: var(--muted-foreground);\n  border-radius: 50%;\n  flex: none;\n  width: 6px;\n  height: 6px;\n  margin-top: 4px;\n}\n\n.booster-signal-dot[data-status="active"], .booster-signal-dot[data-status="connecting"] {\n  background: var(--chart-2);\n}\n\n.booster-signal-dot[data-status="success"] {\n  background: var(--success);\n}\n\n.booster-signal-dot[data-status="error"] {\n  background: var(--destructive);\n}\n\n.booster-signal-dot[data-status="warning"], .booster-signal-dot[data-status="offline"] {\n  background: var(--warning, var(--chart-5));\n}\n\n.booster-launcher-signals {\n  pointer-events: none;\n  justify-content: center;\n  gap: 3px;\n  display: flex;\n  position: absolute;\n  bottom: 4px;\n  left: 0;\n  right: 0;\n}\n\n.booster-launcher-signals .booster-signal-dot {\n  width: 4px;\n  height: 4px;\n  margin: 0;\n}\n\n.booster-launcher[data-indicator-tone]:not([data-indicator-tone="idle"]):after {\n  content: "";\n  border-radius: inherit;\n  pointer-events: none;\n  background: linear-gradient(135deg, var(--booster-signal-color), var(--booster-signal-end, var(--booster-signal-color)));\n  -webkit-mask-composite: xor;\n  -webkit-mask-source-type: auto, auto;\n  padding: 2px;\n  position: absolute;\n  inset: 1px;\n  -webkit-mask-image: linear-gradient(#fff 0 0), linear-gradient(#fff 0 0);\n  mask-image: linear-gradient(#fff 0 0), linear-gradient(#fff 0 0);\n  -webkit-mask-position: 0 0, 0 0;\n  mask-position: 0 0, 0 0;\n  -webkit-mask-size: auto, auto;\n  mask-size: auto, auto;\n  -webkit-mask-repeat: repeat, repeat;\n  mask-repeat: repeat, repeat;\n  -webkit-mask-clip: content-box, border-box;\n  mask-clip: content-box, border-box;\n  -webkit-mask-origin: content-box, border-box;\n  mask-origin: content-box, border-box;\n  -webkit-mask-composite: xor;\n  mask-composite: exclude;\n  -webkit-mask-source-type: auto, auto;\n  mask-mode: match-source, match-source;\n}\n\n.booster-launcher[data-indicator-tone="active"] {\n  --booster-signal-color: var(--chart-2);\n  --booster-signal-end: var(--chart-4);\n}\n\n.booster-launcher[data-indicator-tone="success"] {\n  --booster-signal-color: var(--success);\n}\n\n.booster-launcher[data-indicator-tone="warning"] {\n  --booster-signal-color: var(--warning, var(--chart-5));\n}\n\n.booster-launcher[data-indicator-tone="error"] {\n  --booster-signal-color: var(--destructive);\n}\n\n.booster-quick-identity {\n  flex-wrap: wrap;\n  align-items: baseline;\n  gap: 5px 8px;\n  display: flex;\n}\n\n.booster-quick-context {\n  width: 100%;\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n@media (max-width: 620px) {\n  .booster-shell-settings {\n    grid-template-columns: minmax(0, 1fr);\n    gap: 14px;\n  }\n\n  .booster-modal-fullscreen > .booster-control-center > .settings-catalog {\n    overflow: hidden;\n  }\n\n  .booster-header-copy > div {\n    flex-wrap: wrap;\n  }\n\n  .booster-header-actions {\n    gap: 6px;\n  }\n\n  .booster-capability-row {\n    margin-left: 0;\n  }\n\n  .booster-control-center:has([data-panel-content-focus="true"]) > .settings-catalog {\n    display: none;\n  }\n}\n\n@keyframes enter {\n  from {\n    opacity: var(--tw-enter-opacity, 1);\n    transform: translate3d(var(--tw-enter-translate-x, 0), var(--tw-enter-translate-y, 0), 0) scale3d(var(--tw-enter-scale, 1), var(--tw-enter-scale, 1), var(--tw-enter-scale, 1)) rotate(var(--tw-enter-rotate, 0));\n  }\n}\n\n@keyframes exit {\n  to {\n    opacity: var(--tw-exit-opacity, 1);\n    transform: translate3d(var(--tw-exit-translate-x, 0), var(--tw-exit-translate-y, 0), 0) scale3d(var(--tw-exit-scale, 1), var(--tw-exit-scale, 1), var(--tw-exit-scale, 1)) rotate(var(--tw-exit-rotate, 0));\n  }\n}\n\n@property --tw-translate-x {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-translate-y {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-translate-z {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-rotate-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-z {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-space-y-reverse {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-divide-y-reverse {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-border-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-leading {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-font-weight {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-tracking {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ordinal {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-slashed-zero {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-figure {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-spacing {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-fraction {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-inset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-ring-inset {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-offset-width {\n  syntax: "<length>";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-ring-offset-color {\n  syntax: "*";\n  inherits: false;\n  initial-value: #fff;\n}\n\n@property --tw-ring-offset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-outline-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-blur {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-brightness {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-contrast {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-grayscale {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-hue-rotate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-invert {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-opacity {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-saturate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-sepia {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-drop-shadow-size {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-duration {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-content {\n  syntax: "*";\n  inherits: false;\n  initial-value: "";\n}\n\n@keyframes spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n@keyframes pulse {\n  50% {\n    opacity: .5;\n  }\n}\n';
   function mountControlCenter(options) {
     document.getElementById(shellInstanceKey("koba-browser-tools-root"))?.remove();
     const host = document.createElement("div");
