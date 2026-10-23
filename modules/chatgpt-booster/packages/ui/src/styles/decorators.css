@@ -183,7 +183,7 @@
 }
 
 .booster-message-meta-header span {
-  color: #4ade80;
+  color: var(--success);
   font-size: 10px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
@@ -468,4 +468,21 @@
 
 .booster-request-status[data-phase="responding"] strong {
   color: #86efac;
+}
+
+/* Both metadata and tool previews share the registry's readable theme surface. */
+.booster-tool-preview {
+  display: grid;
+  gap: 12px;
+  min-width: min(280px, calc(100vw - 48px));
+  max-height: min(70dvh, calc(var(--reka-popover-content-available-height, 100dvh) - 24px));
+  overflow: auto;
+  color: var(--popover-foreground);
+}
+.booster-tool-preview .booster-tool-detail-popover {
+  color: var(--popover-foreground);
+}
+.booster-tool-inspect-trigger {
+  width: auto;
+  min-width: 28px;
 }

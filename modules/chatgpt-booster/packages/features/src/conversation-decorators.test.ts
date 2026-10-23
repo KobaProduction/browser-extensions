@@ -16,6 +16,7 @@ type Model = {
   tool?: core.ToolInvocationView
   sentAt?: number | null
   visibleText?: string
+  metadata?: { sentAt?: number | null; raw?: { id?: string } }
 }
 /** Run the actual module with neutral presentation ports, not a duplicate source-selection helper. */
 async function setup() {
@@ -368,7 +369,8 @@ test('legacy native summary placement retains the exact source action ID and rev
     [...f.mounted.entries()].some(
       ([element, value]) => value.kind === 'metadata' && row.contains(element),
     ),
-  ).toBe(true)
+  ).toBe(false)
+  expect(tools[0]?.[1].model.metadata?.sentAt).toBeDefined()
   label.textContent = 'Changed native summary'
   f.scan()
   expect([...f.mounted.values()].filter((value) => value.kind === 'tool')).toHaveLength(0)
@@ -383,10 +385,13 @@ test('thought summary keeps its own metadata identity and links an inspector onl
   label.textContent = 'Source thought summary'
   f.scan()
   expect([...f.mounted.values()].find((value) => value.kind === 'tool')?.model.id).toBe('source-call')
-  const metadataHost = [...f.mounted.entries()].find(
-    ([element, value]) => row.contains(element) && value.kind === 'metadata',
-  )?.[0]
-  expect(metadataHost?.dataset.sourceMessageId).toBe('source-summary')
+  const tool = [...f.mounted.values()].find((value) => value.kind === 'tool')
+  expect(tool?.model.metadata?.raw?.id).toBe('source-summary')
+  expect(
+    [...f.mounted.entries()].some(
+      ([element, value]) => row.contains(element) && value.kind === 'metadata',
+    ),
+  ).toBe(false)
 })
 
 test('an unlinked thought summary receives its date without borrowing a neighboring call', async () => {
@@ -403,4 +408,43 @@ test('an unlinked thought summary receives its date without borrowing a neighbor
       ([element, value]) => row.contains(element) && value.kind === 'metadata',
     ),
   ).toBe(true)
+})
+
+test('a linked summary keeps exactly one control through tool preference changes', async () => {
+  const f = await setup()
+  sourceRecords(f.state, 'source-call', 'One source summary')
+  const row = f.dom.document.querySelector<HTMLElement>('[class~="group/activity-header"]')
+  const label = row?.querySelector('span')
+  if (!row || !label) throw Error('Expected summary row')
+  label.textContent = 'One source summary'
+  const controls = () =>
+    [...f.mounted.entries()].filter(([element]) => row.contains(element)).map(([, value]) => value.kind)
+  f.scan()
+  expect(controls()).toEqual(['tool'])
+  f.update({ features: { toolInspector: false } })
+  expect(controls()).toEqual(['metadata'])
+  f.update({ features: { toolInspector: true } })
+  expect(controls()).toEqual(['tool'])
+})
+
+test('visibility ancestor caching is limited to one synchronous placement pass', async () => {
+  const f = await setup()
+  const root = f.dom.document.createElement('div'),
+    child = f.dom.document.createElement('span')
+  root.append(child)
+  f.dom.document.body.append(root)
+  const original = f.dom.getComputedStyle.bind(f.dom)
+  let calls = 0
+  f.dom.getComputedStyle = ((element) => {
+    calls++
+    return original(element)
+  }) as typeof f.dom.getComputedStyle
+  chatgpt.withChatGptPlacementVisibility(() => {
+    expect(chatgpt.isChatGptPlacementVisible(child as unknown as HTMLElement)).toBe(true)
+    const first = calls
+    expect(chatgpt.isChatGptPlacementVisible(child as unknown as HTMLElement)).toBe(true)
+    expect(calls).toBe(first)
+  })
+  root.hidden = true
+  expect(chatgpt.isChatGptPlacementVisible(child as unknown as HTMLElement)).toBe(false)
 })

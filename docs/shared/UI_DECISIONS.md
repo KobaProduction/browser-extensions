@@ -445,3 +445,21 @@ The zero-sized container has no second surface; it leaves the top layer when
 empty and releases its observer on disposal. All ChatGPT shadow-surface consumers
 share this helper. Laboratory UI verifies the real message metadata inside a
 transformed/clipped anchor beneath a higher warning, including Escape/focus return.
+
+
+## UI-71 — one readable tool preview (2026-10-23)
+
+The owner rejected separate clock and wrench menus beside the same native tool
+summary, and the tool Dialog inherited unreadable black text on a dark surface.
+A linked source summary now owns one wrench-and-duration trigger using the same
+registry FloatingInfoPopover as message metadata. Hover shows a brief preview;
+click pins it and reveals arguments, result and raw diagnostics in that surface.
+The original summary's metadata identity is retained even when its explicit
+source parent links it to a different tool call. Unlinked summaries retain their
+own clock, and disabling tool inspection restores metadata-only presentation.
+
+Popover foreground comes from semantic theme tokens, independent of native
+ancestor text colour. Available-height bounds and scrolling keep pinned previews
+inside the viewport. Finished metadata/tool timers no longer schedule reactive
+updates; tool results use an explicit-parent index instead of repeatedly scanning
+every conversation record. These changes do not infer lifecycle from the DOM.

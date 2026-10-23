@@ -1228,38 +1228,50 @@ export class FixedCanonicalDexieRepository {
     conversationId: string,
     messageId: string,
   ): Promise<FixedSnapshot | undefined> {
-    if (!nonEmpty(conversationId) || !nonEmpty(messageId)) throw Error('Invalid source identity')
+    return (await this.getSourceSnapshots(conversationId, [messageId]))[0]
+  }
+
+  /** One header read per bounded window; never clone a full graph per message. */
+  async getSourceSnapshots(
+    conversationId: string,
+    messageIds: readonly string[],
+  ): Promise<(FixedSnapshot | undefined)[]> {
     const account = this.scope.ownerId
-    if (!account) throw Error('Owner not verified')
-    const expectedKey = JSON.stringify([account, conversationId, messageId])
-    const snapshot = await this.db.snapshots.get(expectedKey)
-    if (!snapshot) return undefined
-    if (
-      snapshot.accountId !== account ||
-      snapshot.messageKey !== expectedKey ||
-      snapshot.raw.id !== messageId
-    )
-      throw Error('Canonical source identity mismatch')
-    const header = await this.getConversation(conversationId)
-    const projectId =
-      snapshot.projectId === undefined
-        ? header
-          ? originalConversationProject(header)
-          : null
-        : snapshot.projectId
-    const normalized = readChatGptArchiveMessage(
-      snapshot.raw,
-      {
-        ownerId: account,
-        conversationId,
-        projectId,
-        sourceKind: snapshot.sourceKind,
-        sourceVersion: snapshot.sourceVersion,
-        observedAtMs: snapshot.observedAtMs,
-      },
-      snapshot.normalized,
-    )
-    return { ...snapshot, projectId, normalized }
+    if (!account || !nonEmpty(conversationId) || messageIds.length > 240 || !messageIds.every(nonEmpty))
+      throw Error('Invalid source identity or window')
+    return this.db.transaction('r', this.db.conversations, this.db.snapshots, async () => {
+      const keys = messageIds.map((id) => JSON.stringify([account, conversationId, id]))
+      const snapshots = await this.db.snapshots.bulkGet(keys)
+      const header = await this.getConversation(conversationId)
+      return snapshots.map((snapshot, index) => {
+        if (!snapshot) return undefined
+        if (
+          snapshot.accountId !== account ||
+          snapshot.messageKey !== keys[index] ||
+          snapshot.raw.id !== messageIds[index]
+        )
+          throw Error('Canonical source identity mismatch')
+        const projectId =
+          snapshot.projectId === undefined
+            ? header
+              ? originalConversationProject(header)
+              : null
+            : snapshot.projectId
+        const normalized = readChatGptArchiveMessage(
+          snapshot.raw,
+          {
+            ownerId: account,
+            conversationId,
+            projectId,
+            sourceKind: snapshot.sourceKind,
+            sourceVersion: snapshot.sourceVersion,
+            observedAtMs: snapshot.observedAtMs,
+          },
+          snapshot.normalized,
+        )
+        return { ...snapshot, projectId, normalized }
+      })
+    })
   }
 
   async messageVersions(

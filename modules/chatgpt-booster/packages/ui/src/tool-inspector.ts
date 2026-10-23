@@ -1,12 +1,14 @@
 import type { ToolInvocationView } from '@chatgpt-booster/core'
 import { ensureSiteDecoration, UI_PORTAL_TARGET } from '@kobaproduction/browser-ui'
-import { type App, createApp, h, reactive } from 'vue'
+import { type App, createApp, h, shallowReactive } from 'vue'
 import type { SupportedLocale } from './i18n'
+import type { LiveMessageMetadataView } from './message-metadata'
 import { createBoosterShadowSurface } from './shadow-styles'
 import ToolInspector from './ToolInspector.vue'
 
 export interface ToolCallViewModel {
   id: string
+  metadata?: LiveMessageMetadataView
   tool: ToolInvocationView
   locale: SupportedLocale
   structuredPayloads: string[]
@@ -41,7 +43,7 @@ export function mountToolInspector(into: HTMLElement, model: ToolCallViewModel):
 
       const { mountPoint, portal, dispose } = createBoosterShadowSurface(host)
 
-      const state = reactive<{ model: ToolCallViewModel; now: number }>({ model, now: 0 })
+      const state = shallowReactive<{ model: ToolCallViewModel; now: number }>({ model, now: 0 })
       const app: App = createApp({
         render: () => h(ToolInspector, { model: state.model, now: state.now }),
       })
@@ -54,7 +56,7 @@ export function mountToolInspector(into: HTMLElement, model: ToolCallViewModel):
           state.model = next
         },
         tick(now) {
-          state.now = now
+          if (state.model.active) state.now = now
         },
         unmount() {
           app.unmount()

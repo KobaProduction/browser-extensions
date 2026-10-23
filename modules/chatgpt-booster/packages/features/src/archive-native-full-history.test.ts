@@ -407,3 +407,40 @@ test('a delayed full response cannot erase newer live relationships in the RAM R
     workspace.stop()
   }
 })
+
+test('a bounded source window reads its large conversation header once and preserves source order', async () => {
+  const repo = new FixedCanonicalDexieRepository(
+    {
+      productId: 'chatgpt-booster',
+      channel: 'dev',
+      installationId: crypto.randomUUID(),
+      ownerId: 'owner',
+    },
+    { indexedDB, IDBKeyRange },
+  )
+  try {
+    const source = page()
+    for (const raw of source.payload.messages as Record<string, unknown>[])
+      await repo.addObservation({
+        accountId: 'owner',
+        conversationId: 'synthetic-full',
+        sourceKind: 'native',
+        sourceVersion: 'synthetic',
+        observedAtMs: 20,
+        raw,
+      })
+    let reads = 0
+    const original = repo.getConversation.bind(repo)
+    repo.getConversation = async (id) => {
+      reads++
+      return original(id)
+    }
+    const sources = await repo.getSourceSnapshots('synthetic-full', ['m2', 'missing', 'm1'])
+    expect(reads).toBe(1)
+    expect(sources.map((row) => row?.raw.id)).toEqual(['m2', undefined, 'm1'])
+    await expect(repo.getSourceSnapshots('synthetic-full', Array(241).fill('m1'))).rejects.toThrow()
+    expect(reads).toBe(1)
+  } finally {
+    repo.close()
+  }
+})

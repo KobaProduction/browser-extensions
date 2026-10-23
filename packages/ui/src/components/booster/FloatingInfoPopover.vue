@@ -106,7 +106,7 @@ onBeforeUnmount(cancelHide)
     </PopoverTrigger>
     <PopoverContent
       :align="align" :side-offset="8" :collision-padding="8"
-      class="booster-floating-popover w-max max-w-[min(420px,calc(100vw-16px))] p-3 text-xs"
+      class="booster-floating-popover w-max max-w-[min(420px,calc(100vw-16px))] max-h-[var(--reka-popover-content-available-height)] overflow-y-auto p-3 text-xs"
       :class="{ 'is-interactive': pinned, 'is-open': open }"
       @pointerenter="cancelHide" @pointerleave="hoverLeave"
       @open-auto-focus="openAutoFocus" @close-auto-focus="restoreTriggerFocus"

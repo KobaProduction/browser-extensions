@@ -12,14 +12,7 @@ const consumers: Record<string, string[]> = {
   'ControlCenterPanel.vue': ['ModalSurface'],
   'RecordMetaBadges.vue': ['FloatingInfoPopover'],
   'ScopeArchiveControl.vue': ['FloatingInfoPopover'],
-  'ToolInspector.vue': [
-    'Dialog',
-    'DialogContent',
-    'DialogTitle',
-    'DialogTrigger',
-    'DialogClose',
-    'JsonViewer',
-  ],
+  'ToolInspector.vue': ['FloatingInfoPopover', 'JsonViewer', 'Collapsible'],
 }
 
 test('ChatGPT composes reusable modal, popover and JSON UI from the shared package', () => {

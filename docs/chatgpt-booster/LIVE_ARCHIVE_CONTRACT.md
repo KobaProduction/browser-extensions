@@ -856,3 +856,25 @@ Targeted synthetic regressions cover delayed reads, saved-checkpoint extension,
 empty heads, both backup round trips/corruption refusal and probe lifecycle. This
 iteration does not claim a fresh installed-product/browser acceptance or PROD
 publication for the refactored build.
+
+
+## Bounded decoration hydration correction (2026-10-23)
+
+CPU profiling of the installed DEV source in a real long ChatGPT conversation
+identified repeated IndexedDB result handling and visibility checks as major
+costs. Decoration placement previously launched up to sixteen overlapping saved
+windows at once. It now hydrates one bounded window, then rechecks missing source
+IDs before reading another. The canonical source reader bulk-loads a bounded
+window and reads its conversation header once, avoiding a full native-graph
+structured clone for every individual message. Owner, epoch, source identity,
+source-project mapping and revision fences remain in place. No native history is
+removed or fabricated to improve performance. The local CPU profiles contain
+private runtime evidence and are retained outside Git.
+
+
+Live comparison of the same 160-row saved window in the same browser/owner/DEV
+archive measured 6,952 ms before and 243 ms after the bounded source-reader
+change. This is one local window-read comparison, not a whole-application
+speed guarantee. CPU profiles remain outside Git. The native client later
+returned HTTP 429 for conversation loading; follow-up uses a one-minute wait
+and its ordinary retry control rather than bypassing the limit.

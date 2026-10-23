@@ -1,2 +1,2 @@
 /** Product source version; archive schema and DEV counters are independent. */
-export const VK_BASE_VERSION = '1.1.3'
+export const VK_BASE_VERSION = '1.1.4'

@@ -52,7 +52,7 @@ export function mountMessageMetadata(
           state.metadata = { ...state.metadata, activity }
         },
         tick(now) {
-          state.now = now
+          if (state.metadata.activity?.active) state.now = now
         },
         unmount() {
           app.unmount()

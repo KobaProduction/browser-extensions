@@ -1136,17 +1136,20 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
     const repo = this.repo(owner)
     const revision = fixedConversationStamp(await repo.getConversation(id))
     const rows = await repo.windowMessages(id, direction, cursorId)
-    const result = []
-    for (const row of rows) {
-      const snapshot = await repo.getSourceSnapshot(id, row.messageId)
-      if (!snapshot) throw Error('Missing immutable source snapshot')
-      result.push({
+    const snapshots = await repo.getSourceSnapshots(
+      id,
+      rows.map((row) => row.messageId),
+    )
+    const result = rows.map((row, index) => {
+      const snapshot = snapshots[index]
+      if (!snapshot) throw Error('Source evidence missing')
+      return {
         id: row.messageId,
         raw: snapshot.raw,
         normalized: snapshot.normalized,
         observedAtMs: snapshot.observedAtMs,
-      })
-    }
+      }
+    })
     if (fixedConversationStamp(await repo.getConversation(id)) !== revision)
       throw Error('archive.error.sourceChanged')
     if (this.state.accountEpoch() !== epoch || this.state.verifiedAccountId() !== owner)
@@ -1271,17 +1274,20 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
     const repo = this.repo(owner)
     const revision = fixedConversationStamp(await repo.getConversation(id))
     const rows = await repo.messageWindow(id, messageId)
-    const result = []
-    for (const row of rows) {
-      const snapshot = await repo.getSourceSnapshot(id, row.messageId)
+    const snapshots = await repo.getSourceSnapshots(
+      id,
+      rows.map((row) => row.messageId),
+    )
+    const result = rows.map((row, index) => {
+      const snapshot = snapshots[index]
       if (!snapshot) throw Error('Source evidence missing')
-      result.push({
+      return {
         id: row.messageId,
         raw: snapshot.raw,
         normalized: snapshot.normalized,
         observedAtMs: snapshot.observedAtMs,
-      })
-    }
+      }
+    })
     if (fixedConversationStamp(await repo.getConversation(id)) !== revision)
       throw Error('archive.error.sourceChanged')
     if (this.state.accountEpoch() !== epoch || this.state.verifiedAccountId() !== owner)

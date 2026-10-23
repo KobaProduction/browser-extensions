@@ -1,4 +1,5 @@
 import { mountMessageMetadata } from '../../../modules/chatgpt-booster/packages/ui/src/message-metadata'
+import { mountToolInspector } from '../../../modules/chatgpt-booster/packages/ui/src/tool-inspector'
 
 document.documentElement.style.cssText =
   'color-scheme:dark;background:#171717;color:#eee;font:14px system-ui'
@@ -24,3 +25,41 @@ const mounted = mountMessageMetadata(
   'ru',
 )
 window.addEventListener('pagehide', () => mounted.unmount(), { once: true })
+
+const toolAnchor = document.createElement('div')
+toolAnchor.style.cssText = 'padding:24px;background:#111;color:#000'
+main.append(toolAnchor)
+const tool = mountToolInspector(toolAnchor, {
+  id: 'synthetic-call',
+  locale: 'ru',
+  active: false,
+  structuredPayloads: [],
+  attributes: {},
+  visibleText: '',
+  score: 0,
+  signals: ['synthetic'],
+  metadata: {
+    sentAt: 1800000000,
+    editedAt: null,
+    edited: false,
+    model: 'Synthetic model',
+    thinking: 'Detailed',
+  },
+  tool: {
+    kind: 'mcp',
+    iconKey: null,
+    provider: 'functions',
+    action: 'exec',
+    label: 'functions.exec',
+    timestamp: 1800000000,
+    finishedAt: 1800000003,
+    durationMs: 3300,
+    recipient: 'functions.exec',
+    path: null,
+    link: null,
+    iconUrl: null,
+    payload: { command: 'Synthetic example' },
+    result: { status: 'ok' },
+  },
+})
+window.addEventListener('pagehide', () => tool.unmount(), { once: true })

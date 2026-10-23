@@ -98,19 +98,44 @@ function includeSelf(root: ParentNode, selector: string): HTMLElement[] {
 }
 
 /** Placement only: ChatGPT keeps inactive workspaces mounted with hidden ancestors. */
+let placementVisibilityPass: WeakMap<HTMLElement, boolean> | undefined
+/** Cache ancestors only during a synchronous presentation pass, never across mutations. */
+export function withChatGptPlacementVisibility<T>(read: () => T): T {
+  const previous = placementVisibilityPass
+  placementVisibilityPass ??= new WeakMap()
+  try {
+    return read()
+  } finally {
+    placementVisibilityPass = previous
+  }
+}
 export function isChatGptPlacementVisible(element: HTMLElement): boolean {
+  const path: HTMLElement[] = []
+  let visible = true
   for (let node: HTMLElement | null = element; node; node = node.parentElement) {
-    if (node.hidden || node.getAttribute('aria-hidden') === 'true') return false
+    const cached = placementVisibilityPass?.get(node)
+    if (cached !== undefined) {
+      visible = cached
+      break
+    }
+    path.push(node)
+    if (node.hidden || node.getAttribute('aria-hidden') === 'true') {
+      visible = false
+      break
+    }
     const style = node.ownerDocument.defaultView?.getComputedStyle(node)
     if (
       style?.display === 'none' ||
       style?.visibility === 'hidden' ||
       style?.visibility === 'collapse' ||
       style?.contentVisibility === 'hidden'
-    )
-      return false
+    ) {
+      visible = false
+      break
+    }
   }
-  return true
+  for (const node of path) placementVisibilityPass?.set(node, visible)
+  return visible
 }
 
 function uniqueElements(elements: Iterable<HTMLElement>): HTMLElement[] {

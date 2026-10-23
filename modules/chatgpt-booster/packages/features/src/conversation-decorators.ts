@@ -16,6 +16,7 @@ import {
   observeConversationActivity,
   observeConversationDecorations,
   toolInvocationFromRecord,
+  withChatGptPlacementVisibility,
 } from '@chatgpt-booster/chatgpt'
 import {
   type AgentActivitySnapshot,
@@ -103,6 +104,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
   #timingUnsubscribe: (() => void) | undefined
   #settings: BoosterSettings | undefined
   #records = new Map<string, ArchivedMessage>()
+  #toolResultsByParent = new Map<string, ArchivedMessage>()
   #turnRecords = new Map<string, ArchivedMessage[]>()
   #recordConversationId: string | null = null
   #messageMounts = new Map<HTMLElement, MountedMessageMetadata>()
@@ -181,6 +183,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
     this.#accountUnsubscribe = this.stateStore.subscribeAccount(() => {
       this.#records.clear()
       this.#turnRecords.clear()
+      this.#toolResultsByParent.clear()
       this.#recordConversationId = null
       this.#latestActivity = null
       this.#activitySnapshots.clear()
@@ -445,6 +448,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
     this.#timingUnsubscribe = undefined
     this.#records.clear()
     this.#turnRecords.clear()
+    this.#toolResultsByParent.clear()
     this.#recordConversationId = null
     this.#activitySnapshots.clear()
     this.#lastCleanupAt = 0
@@ -456,6 +460,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
     if (!conversationId || !this.stateStore.verifiedAccountId()) {
       this.#records.clear()
       this.#turnRecords.clear()
+      this.#toolResultsByParent.clear()
       this.#recordConversationId = null
       return
     }
@@ -464,7 +469,10 @@ export class ConversationDecoratorsModule implements BoosterModule {
       .filter((record) => asRecord(record.raw.metadata)?.booster_dom_snapshot !== true)
     this.#records = new Map(records.map((record) => [record.messageId, record]))
     this.#turnRecords.clear()
-    for (const record of records)
+    this.#toolResultsByParent.clear()
+    for (const record of records) {
+      if (record.role === 'tool' && record.parentId && !this.#toolResultsByParent.has(record.parentId))
+        this.#toolResultsByParent.set(record.parentId, record)
       for (const [kind, id] of [
         ['exchange', record.turnExchangeId],
         ['working', record.workingTurnId],
@@ -475,6 +483,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
         items.push(record)
         this.#turnRecords.set(key, items)
       }
+    }
     for (const items of this.#turnRecords.values())
       items.sort(
         (a, b) =>
@@ -721,10 +730,7 @@ export class ConversationDecoratorsModule implements BoosterModule {
       .map((call) => ({
         call,
         // Time/order is not a correlation key, even within one native turn.
-        result:
-          [...this.#records.values()].find(
-            (record) => record.role === 'tool' && record.parentId === call.messageId,
-          ) ?? null,
+        result: this.#toolResultsByParent.get(call.messageId) ?? null,
       }))
   }
 
@@ -770,25 +776,32 @@ export class ConversationDecoratorsModule implements BoosterModule {
       const missing = [...new Set(targets.map((target) => target.messageId))]
         .filter((id) => !this.#records.has(id))
         .slice(0, 16)
-      await Promise.all(
-        missing.map((id) => {
-          const key = JSON.stringify([epoch, current, id])
-          let pending = this.#savedWindows.get(key)
-          if (!pending) {
-            pending = this.stateStore
-              .hydrateSavedWindow(current, () => readAround(current, id))
-              .catch(() => {
-                this.#savedWindows.delete(key)
-              })
-            this.#savedWindows.set(key, pending)
-            if (this.#savedWindows.size > 128) {
-              const oldest = this.#savedWindows.keys().next().value
-              if (oldest !== undefined) this.#savedWindows.delete(oldest)
-            }
+      for (const id of missing) {
+        if (
+          !this.#settings?.enabled ||
+          current !== currentConversationId() ||
+          epoch !== this.stateStore.accountEpoch()
+        )
+          return
+        // Adjacent anchors share saved windows. Await one before deciding
+        // whether another read is needed, rather than launching 16 overlaps.
+        if (this.stateStore.getMessage(current, id)) continue
+        const key = JSON.stringify([epoch, current, id])
+        let pending = this.#savedWindows.get(key)
+        if (!pending) {
+          pending = this.stateStore
+            .hydrateSavedWindow(current, () => readAround(current, id))
+            .catch(() => {
+              this.#savedWindows.delete(key)
+            })
+          this.#savedWindows.set(key, pending)
+          if (this.#savedWindows.size > 128) {
+            const oldest = this.#savedWindows.keys().next().value
+            if (oldest !== undefined) this.#savedWindows.delete(oldest)
           }
-          return pending
-        }),
-      )
+        }
+        await pending
+      }
       if (
         !this.#settings?.enabled ||
         current !== currentConversationId() ||
@@ -799,6 +812,18 @@ export class ConversationDecoratorsModule implements BoosterModule {
     }
     const locale = resolveLocale(settings.language)
 
+    withChatGptPlacementVisibility(() =>
+      this.#renderDecorations(targets, root, settings, locale, current),
+    )
+  }
+
+  #renderDecorations(
+    targets: ConversationMessageTarget[],
+    root: ParentNode,
+    settings: BoosterSettings,
+    locale: ReturnType<typeof resolveLocale>,
+    current: string | null,
+  ) {
     for (const target of targets) {
       const record = this.#records.get(target.messageId)
       if (
@@ -871,6 +896,10 @@ export class ConversationDecoratorsModule implements BoosterModule {
             },
           ]
         })
+        const summaryMetadata = new Map<
+          HTMLElement,
+          ReturnType<typeof archiveRecordMetadata> & { raw: unknown; summaryIntervalMs: number | null }
+        >()
         for (const slot of summarySlots) {
           if (!settings.features.messageMetadata) continue
           const time = sourceTime(slot.source.createTime)
@@ -885,6 +914,16 @@ export class ConversationDecoratorsModule implements BoosterModule {
             ...archiveRecordMetadata(slot.source),
             raw: slot.source.raw,
             summaryIntervalMs: time !== null && previousTime !== null ? time - previousTime : null,
+          }
+          summaryMetadata.set(slot.element, view)
+          if (
+            settings.features.toolInspector &&
+            slot.sourceId &&
+            pairs.some((pair) => pair.call.messageId === slot.sourceId)
+          ) {
+            this.#summaryMounts.get(slot.element)?.unmount()
+            this.#summaryMounts.delete(slot.element)
+            continue
           }
           const metadata = this.#summaryMounts.get(slot.element)
           if (
@@ -902,8 +941,8 @@ export class ConversationDecoratorsModule implements BoosterModule {
         }
         const placed = new Set<string>()
         for (const slot of [
-          ...exactSlots.filter((candidate) => candidate.section === section),
           ...summarySlots,
+          ...exactSlots.filter((candidate) => candidate.section === section),
         ]) {
           // Neither a DOM label nor a neighboring call is a source identity.
           const pair = pairs.find(
@@ -914,6 +953,11 @@ export class ConversationDecoratorsModule implements BoosterModule {
           if (!pair || placed.has(pair.call.messageId)) continue
           const model = this.#toolModel(pair, section, locale)
           if (!model) continue
+          if (settings.features.messageMetadata)
+            model.metadata = summaryMetadata.get(slot.element) ?? {
+              ...archiveRecordMetadata(pair.call),
+              raw: pair.call.raw,
+            }
           placed.add(pair.call.messageId)
           if (!settings.features.toolInspector) continue
           retainedSlots.add(slot.element)
