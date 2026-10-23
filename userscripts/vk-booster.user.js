@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VK Booster [DEV]
 // @namespace    https://github.com/KobaProduction/browser-extensions/dev/vk-booster
-// @version      1.1.52
+// @version      1.1.53
 // @description  Koba Browser Tools / VK Booster
 // @homepageURL   https://github.com/KobaProduction/browser-extensions
 // @updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/vk-booster.user.js
@@ -8048,7 +8048,7 @@
     }
     return container;
   }
-  const VK_BASE_VERSION = "1.1.52";
+  const VK_BASE_VERSION = "1.1.53";
   var extendStatics = function(d, b) {
     extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d2, b2) {
       d2.__proto__ = b2;
@@ -14213,7 +14213,7 @@
   }
   DexiePromise.rejectionMapper = mapError;
   setDebug(debug);
-  var define_BOOSTER_APPLICATION_default = { id: "vk-booster", title: "VK Booster", version: "dev-1.1.52", components: [] };
+  var define_BOOSTER_APPLICATION_default = { id: "vk-booster", title: "VK Booster", version: "dev-1.1.53", components: [] };
   function isDevelopmentContextAllowed(_target, scope = instanceScope()) {
     return /^(vk-booster|chatgpt-booster|all-in-one):(dev|prod)$/.test(scope);
   }
@@ -16875,7 +16875,7 @@
     if (!gm)
       return unavailableTelemetry();
     const settings = gm?.settings ?? store;
-    const suppliedVersion = "1.1.52";
+    const suppliedVersion = "1.1.53";
     const version2 = /^\d+\.\d+\.\d+$/.test(suppliedVersion) ? suppliedVersion : "0.0.0";
     const listeners = /* @__PURE__ */ new Set();
     let enabled = false;
@@ -40010,6 +40010,9 @@ Defaulting to \`null\`.`);
         return;
       if (event.type === "pointermove" && !event.buttons) return;
       inputPending = true;
+      const viewport = options.viewport();
+      if (["wheel", "touchmove", "keydown"].includes(event.type) && viewport && viewport.scrollHeight <= viewport.clientHeight + 1)
+        return onScroll();
     }
     async function onScroll() {
       const requested = inputPending;
