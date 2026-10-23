@@ -6,11 +6,11 @@ cutover and publication remain separately gated acceptance levels.
 
 ## Current version matrix
 
-| Product | Version | Entry point | Tampermonkey | MV3 | Publication |
+| Product | Version authority | Entry point | Tampermonkey | MV3 | Publication |
 | --- | --- | --- | --- | --- | --- |
-| VK Booster | 1.1.4 | `modules/vk-booster` | Separate VK only | Separate VK only | Independently tagged |
-| ChatGPT Booster | 2.0.24 | `modules/chatgpt-booster` | Separate ChatGPT only | Separate ChatGPT observer, worker, popup | Independently tagged, manual approval |
-| All-in-one | 0.5.27 | `apps/userscript/src/all-in-one.ts`, `apps/extension/src/all-in-one-content.ts` | VK and ChatGPT by site | VK plus ChatGPT observer and worker | Own tag/channel, manual approval |
+| VK Booster | CI Git ledger | `modules/vk-booster` | Separate VK only | Separate VK only | Independently tagged |
+| ChatGPT Booster | CI Git ledger | `modules/chatgpt-booster` | Separate ChatGPT only | Separate ChatGPT observer, worker, popup | Independently tagged, manual approval |
+| All-in-one | CI Git ledger | `apps/userscript/src/all-in-one.ts`, `apps/extension/src/all-in-one-content.ts` | VK and ChatGPT by site | VK plus ChatGPT observer and worker | Own tag/channel, manual approval |
 
 `apps/all-in-one.json` declares dependencies on VK and ChatGPT. Its one
 Control Center and feature registry select the corresponding provider on the
@@ -30,39 +30,35 @@ compiled for different distribution targets.
 | Shared `packages/**` | Actual dependents, including VK | Disabled proxy target |
 | Documentation-only or CI-only | None | All product versions |
 
-Run `bun scripts/bump-versions.ts <changed implementation path>...` to plan
-and write product manifest **patch** bumps for affected products. Minor updates
-add functionality; major updates represent fundamental changes. Source versions
-advance independently of PROD publication. VK's
-DEV artifacts use an independent third numeric component (`dev-1.0.1`,
-then `dev-1.0.2`) while their manifest source semver remains unchanged.
-DEV titles begin with `dev-`, but only one fixed GitHub prerelease tag exists
-per product. Its monotonic counter derives from the installed DEV channel
-version, seeded by historical prerelease tags. See `DEV_PROD_CHANNELS.md`.
-Other affected private package metadata and Bun lockfile follow their owning
-product's version. Larger semver updates should be
-chosen deliberately; the first ChatGPT version-2 release is `2.0.1` and the
-aggregator feature release is `0.5.0`. PR CI executes
-`scripts/version-policy.ts` against the pull-request base SHA and refuses
-missing or unrelated product version increments.
+Published versions have one authority: `release-versions.json` on the `dev`
+distribution branch, written by serialized trusted CI. Source manifests have
+no product version field. Private workspace packages use fixed `0.0.0`
+metadata; it is not a product version and is never shipped as an update.
 
 ### One version step per commit
 
-Each commit that changes versioned implementation advances each affected
-product by exactly one appropriate semver step from its `HEAD` version. Choose
-major, minor or patch from the final combined scope, not the number of edits.
-One commit must never accumulate two or more successive bumps for one product.
+Agents do not run a version writer or maintain a numeric matrix. After source
+CI succeeds, `prepare-release-versions.ts` selects affected products, reads the
+Git ledger and assigns each product one version for the source SHA. Ordinary
+commits default to patch; scoped relevant `feat:` commits select minor;
+`type!:` or `BREAKING CHANGE:` select major. Combined changes take the largest
+one step, rather than adding increments for each edit. Documentation-only
+changes select no products. The consumer graph includes dependent aggregates.
 
-Before invoking `bump-versions.ts`, compare the product manifests with `HEAD`,
-including staged and unstaged changes. If a pending bump already exists, keep
-that version during review corrections, refactoring, tests and rebuilds. An
-amendment of the same commit also reuses its version. If the final scope changes
-the semver category, replace the pending target with one step from the original
-baseline rather than incrementing the already bumped version.
+The assignment is committed to `dev` before building. A failed build or
+publication retry for the same source reuses it, including a partially
+published multi-product release. Stale source runs cannot advance the channel.
+DEV userscripts, Chromium metadata, runtime UI and an approved PROD build all
+consume that assigned version without a second DEV counter. Channel identities,
+storage and approval gates remain separate. CI never writes a version commit
+back to `main` and never creates a build loop.
 
-Synchronize all dependent manifests, runtime constants and lockfile entries
-with that single target. Documentation-only and CI-only commits retain the
-existing exception: no unrelated product bumps.
+The first transition seeds from the installed DEV userscript versions and
+rolling tags, preserving update order. Subsequent runs use only the Git ledger.
+Local builds read the fetched ledger without allocating anything; a checkout
+without published refs exposes unassigned metadata and refuses packaging. CI fails closed if
+its version baseline is unavailable. Fetch `origin/dev` and tags to refresh a
+local checkout. A product version assignment is not proof of browser acceptance.
 
 A successful build produces three separate userscripts and Chromium ZIPs.
 `bun scripts/validate.ts --built` verifies their versions, independently

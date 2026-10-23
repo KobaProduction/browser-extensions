@@ -1,6 +1,5 @@
-import { readFile } from 'node:fs/promises'
 import { $ } from 'bun'
-import { impactedProductVersions } from './catalog'
+import { impactedProductVersions, manifest } from './catalog'
 
 /** A lockfile-only dependency update affects every consumer. But `bun install`
  * also rewrites workspace version labels when a single private Booster bumps.
@@ -66,8 +65,7 @@ export async function devChannelCandidates(
   }
   return await Promise.all(
     changed.map(async (id) => {
-      const file = id === 'all-in-one' ? 'apps/all-in-one.json' : `modules/${id}/module.json`
-      const module = JSON.parse(await readFile(file, 'utf8')) as { version: string; release: boolean }
+      const module = await manifest(id)
       // Even not-yet-promoted modules may be included in dev, never implicitly in prod.
       return { id, version: module.version }
     }),

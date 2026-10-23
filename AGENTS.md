@@ -43,15 +43,12 @@ Local checks and selective test commands live in [README](README.md#development-
 Direct push to unprotected `main` is allowed after checking live protection and
 rulesets; obey tool permissions and protected-branch requirements.
 
-## Version bumps per commit
+## CI-owned versions
 
-For each affected product, bump its version **exactly once per implementation
-commit**, relative to `HEAD`. Before bumping, inspect the current manifest diff:
-if that commit's bump is already present, reuse it through review fixes,
-refactoring, tests, rebuilds and commit amendments. Never increment the pending
-version again for another iteration of the same commit. Follow the owning
+Never bump product versions manually. Push source changes; CI assigns one
+version per affected product and source SHA in Git's `dev:release-versions.json`.
+Retries reuse that assignment. Follow the owning
 [version contract](docs/INDEPENDENT_RELEASES.md#one-version-step-per-commit).
-
 ## Refactoring tools and Serena MCP
 
 Prefer working code-navigation and refactoring tools built into the current

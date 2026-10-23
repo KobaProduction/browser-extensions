@@ -42,7 +42,7 @@ Requirements: Bun 1.4.2, Node.js 22, ZIP tooling.
 On Windows, ZIP packaging uses built-in PowerShell/.NET; no separate `zip`
 executable is needed. Use LF line endings (`git config --local core.autocrlf false`)
 to match the formatter. Build a local DEV installation with
-`bun scripts/build.ts --module all --channel=dev --build-number=46`, then load
+`bun scripts/build.ts --module all --channel=dev`, then load
 `dist/<product>/extension` as an unpacked extension in Chrome/Edge developer mode.
 Keep that directory for subsequent rebuilds and reload the extension after changes.
 For UI changes with live updates, use `bun run ui:lab` (synthetic data only).
@@ -75,7 +75,7 @@ runs independently and does not depend on a local Git hook.
 
 The [release/channel contract](docs/DEV_PROD_CHANNELS.md) defines continuous DEV
 prereleases and explicitly approved PROD publication. Different products can
-advance independently; source versions live in product manifests. Channel,
+advance independently; CI assigns product versions in the Git-backed release ledger; agents never bump them manually. Channel,
 schema and historic-installation compatibility belong to that contract.
 
 Installation and environment-specific instructions live in the corresponding

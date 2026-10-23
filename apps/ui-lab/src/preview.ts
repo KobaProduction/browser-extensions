@@ -10,7 +10,7 @@ import {
   shellInstanceKey,
 } from '@kobaproduction/browser-core'
 import { watch } from 'vue'
-import chatgptManifest from '../../../modules/chatgpt-booster/module.json'
+import chatgptDefinition from '../../../modules/chatgpt-booster/module.json'
 import ChatGptPanel from '../../../modules/chatgpt-booster/src/features/archive/ui/ChatGptPanel.vue'
 import {
   chatGptRequestedSection,
@@ -18,14 +18,14 @@ import {
   chatGptViewContext,
   setChatGptSafeView,
 } from '../../../modules/chatgpt-booster/src/index'
-import vkManifest from '../../../modules/vk-booster/module.json'
+import vkDefinition from '../../../modules/vk-booster/module.json'
 import {
   vkActiveView,
   vkRequestedView,
 } from '../../../modules/vk-booster/src/features/chat-export/model/ui-navigation'
 import ArchivePanel from '../../../modules/vk-booster/src/features/chat-export/ui/ArchivePanel.vue'
 import { mountControlCenter } from '../../../packages/shell/src/mount'
-import aggregateManifest from '../../all-in-one.json'
+import aggregateDefinition from '../../all-in-one.json'
 import { createLabAutomation } from './automation'
 import { createLabBackup } from './backup'
 import { mountDemoSite } from './demo-site'
@@ -42,6 +42,11 @@ import { readScenario } from './scenes'
 import { createLabTelemetry } from './telemetry'
 import './preview.css'
 
+// A synthetic Lab identity is not an allocated product release.
+const labVersion = '0.0.0-lab'
+const chatgptManifest = { ...chatgptDefinition, version: labVersion }
+const vkManifest = { ...vkDefinition, version: labVersion }
+const aggregateManifest = { ...aggregateDefinition, version: labVersion }
 const scene = readScenario(location.search)
 const matrixId = new URLSearchParams(location.search).get('matrix')
 const runInteractions = new URLSearchParams(location.search).get('probe') === '1'

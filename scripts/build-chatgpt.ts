@@ -28,7 +28,6 @@ export async function buildChatGptModule(
   version: string,
   bundle: Bundle,
   channel: ReleaseChannel,
-  run: number,
 ) {
   const id = 'chatgpt-booster'
   const dir = join(root, 'dist', id)
@@ -48,7 +47,7 @@ export async function buildChatGptModule(
       `// @name         ${userscriptChannelName('ChatGPT Booster', channel)}`,
       '// @namespace    https://github.com/KobaProduction/browser-extensions' +
         (channel === 'dev' ? '/dev/chatgpt-booster' : ''),
-      `// @version      ${channelVersion(version, channel, run)}`,
+      `// @version      ${channelVersion(version, channel)}`,
       '// @description  ChatGPT Booster — archive and browser tools',
       `// @updateURL    ${userscriptChannelUrl(id, channel)}`,
       `// @downloadURL  ${userscriptChannelUrl(id, channel)}`,
@@ -120,8 +119,8 @@ export async function buildChatGptModule(
       manifest_version: 3,
       ...(channel === 'dev' ? { incognito: 'split' } : {}),
       name: channelDisplayName('ChatGPT Booster', channel),
-      version: chromeVersion(version, channel, run),
-      version_name: devDisplayVersion(version, channel, run),
+      version: chromeVersion(version, channel),
+      version_name: devDisplayVersion(version, channel),
       ...(channel === 'dev' ? { key: devExtensionPublicKeys[id] } : {}),
       description: 'ChatGPT archive with shared browser tools shell',
       permissions: ['storage', 'scripting', 'alarms'],

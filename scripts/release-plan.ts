@@ -1,5 +1,6 @@
 import allInOne from '../apps/all-in-one.json' with { type: 'json' }
 import { manifest, scopeFor } from './catalog'
+import { gitText, publishedReleaseVersions } from './release-versions'
 export interface ReleaseCandidate {
   id: string
   version: string
@@ -25,6 +26,18 @@ export async function releasePlan(scope = 'all') {
   const result: ReleaseCandidate[] = []
   const includeExisting = process.argv.includes('--include-existing')
   for (const id of releaseTargets(scope)) {
+    if (process.env.CI) {
+      const entry =
+        publishedReleaseVersions()?.products[id as 'vk-booster' | 'chatgpt-booster' | 'all-in-one']
+      const script = gitText('show', `origin/dev:userscripts/${id}.user.js`)
+      const published = script?.match(/^\/\/ @version\s+(\S+)/m)?.[1]
+      const source = gitText('rev-parse', `refs/tags/rolling-dev/${id}^{commit}`)
+      const changes = entry
+        ? gitText('diff', '--name-only', entry.sourceSha, 'HEAD', '--', ...scopeFor(id))
+        : null
+      if (!entry || published !== entry.version || source !== entry.sourceSha || changes !== '')
+        throw Error(`PROD requires the successfully published DEV source/version: ${id}`)
+    }
     const m = await manifest(id),
       tag = `${id}/v${m.version}`
     if (!m.release) continue

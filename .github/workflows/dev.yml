@@ -18,7 +18,7 @@ on:
 permissions:
   contents: write
 concurrency:
-  group: browser-extension-dev-channel
+  group: browser-tools-distribution
   cancel-in-progress: false
 jobs:
   dev:
@@ -53,31 +53,36 @@ jobs:
         run: |
           set -euo pipefail
           git fetch --tags --force
+          git fetch origin dev
           # Command substitution propagates planner errors under set -e;
           # process substitution would silently mask them.
           if [[ "$PUBLISH_ALL_IN_ONE" == "true" ]]; then
             count="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs" --jq '[.check_runs[] | select(.name == "check" and .conclusion == "success")] | length')"
             test "$count" -gt 0 || { echo "Source commit has no passing CI check" >&2; exit 1; }
-            candidates="$(bun -e "console.log('all-in-one|' + require('./apps/all-in-one.json').version)")"
+            selection=(--all-in-one)
           else
-            candidates="$(bun scripts/channel-plan.ts "--base=${GITHUB_SHA}^" "--head=$GITHUB_SHA")"
+            selection=()
           fi
+          # One Git-backed assignment, shared by all targets and reused on retries.
+          git fetch origin main --quiet
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA" || { echo "Skipping stale source"; exit 0; }
+          candidates="$(bun scripts/prepare-release-versions.ts "${selection[@]}")"
+          test -n "$candidates" || exit 0
+          bash scripts/reserve-release-versions.sh
+          export RELEASE_VERSIONS_FILE="$PWD/.release-versions.json"
           while IFS='|' read -r id version; do
             test -n "$id" || continue
             # Do not let an older queued run downgrade the rolling DEV channel.
             git fetch origin main --quiet
             test "$(git rev-parse origin/main)" = "$GITHUB_SHA" || { echo "Validated source is no longer HEAD; skipping stale publication"; exit 0; }
             git fetch origin dev --quiet || true
-            # Use product-owned counters, continuing after legacy suffix tags.
-            release="$(bun scripts/dev-release.ts "$id" "$version")"
-            IFS='|' read -r build_number tag title reused <<< "$release"
-            bun scripts/build.ts --module="$id" --channel=dev --build-number="$build_number"
-            bun scripts/validate.ts --built --module "$id" --channel=dev --build-number="$build_number"
+            title="dev-$id v$version"
+            bun scripts/build.ts --module="$id" --channel=dev
+            bun scripts/validate.ts --built --module "$id" --channel=dev
             # Reject an older validated commit that lost the race during build.
             git fetch origin main --quiet
             test "$(git rev-parse origin/main)" = "$GITHUB_SHA" || { echo "Main advanced during build; refusing stale release" >&2; exit 1; }
-            # A rolling prerelease has one fixed tag per product. The numeric
-            # build counter is persisted in the dev update channel, not tags.
+            # One rolling prerelease per product; the assigned version lives in Git.
             rolling="rolling-dev/$id"
             if gh release view "$rolling" >/dev/null 2>&1; then
               gh release upload "$rolling" "dist/$id/$id.user.js" "dist/$id/$id-extension.zip" --clobber
@@ -95,7 +100,6 @@ jobs:
             if test -f scripts/prune-dev-releases.ts; then
               bun scripts/prune-dev-releases.ts --apply "--product=$id" "--keep-tag=$rolling"
             fi
-            # Include this tag before allocating another independent counter.
             git fetch --tags --force
           done <<< "$candidates"
       - name: Remove accumulated obsolete DEV publications

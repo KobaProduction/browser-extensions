@@ -1,4 +1,6 @@
-/** Distribution channels are independent of immutable source/product versions. */
+import { parseVersion } from './release-versions'
+
+/** Channels isolate installation data; they do not allocate competing versions. */
 export type ReleaseChannel = 'dev' | 'prod'
 
 export function releaseChannel(raw: string | undefined): ReleaseChannel {
@@ -10,21 +12,17 @@ export function releaseChannel(raw: string | undefined): ReleaseChannel {
 /** Machine-readable versions stay numeric in DEV and PROD.
  * Tampermonkey and Chrome require orderable versions, so the human-facing
  * DEV prefix has a separate representation. */
-export function channelVersion(version: string, channel: ReleaseChannel, run: number): string {
-  if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Invalid source semver')
-  if (channel === 'prod') return version
-  if (!Number.isSafeInteger(run) || run < 1 || run > 65535)
-    throw new Error('Development release counter must be between 1 and 65535')
-  const [major, minor] = version.split('.')
-  return `${major}.${minor}.${run}`
+export function channelVersion(version: string, _channel: ReleaseChannel): string {
+  parseVersion(version)
+  return version
 }
 
-export function chromeVersion(version: string, channel: ReleaseChannel, run: number): string {
-  return channelVersion(version, channel, run)
+export function chromeVersion(version: string, channel: ReleaseChannel): string {
+  return channelVersion(version, channel)
 }
 
-export function devDisplayVersion(version: string, channel: ReleaseChannel, run: number): string {
-  const numeric = channelVersion(version, channel, run)
+export function devDisplayVersion(version: string, channel: ReleaseChannel): string {
+  const numeric = channelVersion(version, channel)
   return channel === 'dev' ? `dev-${numeric}` : numeric
 }
 

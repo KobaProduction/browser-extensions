@@ -10,6 +10,9 @@ import {
   userscriptChannelUrl,
 } from './channels'
 import { devExtensionPublicKeys } from './extension-keys'
+import { validateVersionPolicy } from './version-policy'
+
+await validateVersionPolicy()
 
 const ids = ['vk-booster', 'chatgpt-booster', 'proxy-switcher', 'all-in-one'] as const
 const capabilities = [
@@ -22,11 +25,6 @@ const capabilities = [
 ]
 const names = new Set<string>()
 const channel = releaseChannel(process.argv.find((x) => x.startsWith('--channel='))?.split('=')[1])
-const run = Number(
-  process.argv.find((x) => x.startsWith('--build-number='))?.split('=')[1] ??
-    process.env.GITHUB_RUN_NUMBER ??
-    '1',
-)
 for (const id of ids) {
   const m = await manifest(id)
   if (m.id !== id || names.has(m.id) || !/^[a-z][a-z0-9-]+$/.test(m.id))
@@ -53,7 +51,7 @@ if (process.argv.includes('--built'))
     const user = await Bun.file(`${root}/${id}.user.js`).text()
     if (
       !user.startsWith('// ==UserScript==') ||
-      !user.includes(`// @version      ${channelVersion(m.version, channel, run)}`) ||
+      !user.includes(`// @version      ${channelVersion(m.version, channel)}`) ||
       !user.includes(`// @name         ${userscriptChannelName(m.name, channel)}`) ||
       !user.includes('GM_registerMenuCommand')
     )
@@ -79,8 +77,8 @@ if (process.argv.includes('--built'))
     const chrome = await Bun.file(`${root}/extension/manifest.json`).json()
     if (
       chrome.manifest_version !== 3 ||
-      chrome.version !== chromeVersion(m.version, channel, run) ||
-      chrome.version_name !== devDisplayVersion(m.version, channel, run) ||
+      chrome.version !== chromeVersion(m.version, channel) ||
+      chrome.version_name !== devDisplayVersion(m.version, channel) ||
       chrome.name !== channelDisplayName(m.name, channel) ||
       (channel === 'dev' && chrome.key !== devExtensionPublicKeys[id]) ||
       (channel === 'prod' && Boolean(chrome.key)) ||

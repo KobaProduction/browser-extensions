@@ -14,22 +14,18 @@ import {
   userscriptChannelUrl,
 } from './channels'
 
-test('development versions are distinct and Chromium-compatible', () => {
-  expect(channelVersion('2.3.8', 'dev', 412)).toBe('2.3.412')
-  expect(chromeVersion('2.3.8', 'dev', 412)).toBe('2.3.412')
-  expect(devDisplayVersion('2.3.8', 'dev', 412)).toBe('dev-2.3.412')
-  expect(devDisplayVersion('2.3.8', 'prod', 412)).toBe('2.3.8')
+test('channels use exactly the same CI-assigned numeric version', () => {
+  expect(channelVersion('2.3.8', 'dev')).toBe('2.3.8')
+  expect(chromeVersion('2.3.8', 'dev')).toBe('2.3.8')
+  expect(devDisplayVersion('2.3.8', 'dev')).toBe('dev-2.3.8')
+  expect(devDisplayVersion('2.3.8', 'prod')).toBe('2.3.8')
   expect(channelDisplayName('VK Booster', 'dev')).toBe('dev-VK Booster')
   expect(channelDisplayName('ChatGPT Booster', 'dev')).toBe('dev-ChatGPT Booster')
   expect(channelDisplayName('VK Booster', 'prod')).toBe('VK Booster')
   expect(userscriptChannelName('VK Booster', 'dev')).toBe('VK Booster [DEV]')
   expect(userscriptChannelName('ChatGPT Booster', 'dev')).toBe('ChatGPT Booster [DEV]')
   expect(userscriptChannelName('VK Booster', 'prod')).toBe('VK Booster')
-  expect(channelVersion('2.3.10', 'dev', 65535)).toBe('2.3.65535')
-  expect(() => channelVersion('2.3.10', 'dev', 65536)).toThrow()
-  expect(() => channelVersion('2.3.10', 'dev', 1.5)).toThrow()
-  expect(channelVersion('2.3.8', 'prod', 412)).toBe('2.3.8')
-  expect(() => channelVersion('2.3.8', 'dev', 0)).toThrow()
+  expect(channelVersion('2.3.8', 'prod')).toBe('2.3.8')
   expect(() => releaseChannel('qa')).toThrow()
 })
 test('each product/channel has unique build and update identity', () => {

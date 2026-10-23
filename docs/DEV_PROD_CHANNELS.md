@@ -10,9 +10,8 @@ promotion from inventing source history or causing endless build-on-push loops.
   The source diff from the first parent determines which products have changed.
   Each changed product is built, validated and published as a GitHub
   **prerelease** through one rolling prerelease with a fixed tag `rolling-dev/<product>` (one tag per product, not per build).
-  Counters advance independently per published product, including across
-  source patch changes. The published DEV userscript channel records the last
-  counter; historical suffix-form DEV tags seed the first rolling transition.
+  Versions are assigned once by CI in the Git-backed release ledger described
+  in [the version contract](INDEPENDENT_RELEASES.md#one-version-step-per-commit).
   Its `dev/userscripts/<product>.user.js` and
   `dev/extensions/<product>-extension.zip` are advanced. Untouched products
   keep their existing channel files and version.
@@ -27,20 +26,14 @@ promotion from inventing source history or causing endless build-on-push loops.
   builds/versions VK and aggregate, but not ChatGPT; ChatGPT-only changes
   affect ChatGPT and aggregate; common runtime, packaging and storage
   changes affect all real consumers. Docs-only changes release nothing.
-- Base product semver remains independent. VK source is now 1.1.0; its earlier
-  pre-PROD freeze is removed. Major means fundamental changes, minor means new
-  functionality, and patch means fixes. Schema 1 and PROD approval remain separate.
-  The build's DEV metadata
-  receives an independent, increasing **third** numeric component:
-  `X.Y.<counter>`. A `dev-` prefix appears in release titles, the fixed rolling GitHub tag
-  and the Chromium display name. No fourth component is used. The source/PROD
-  version remains `X.Y.Z`. The historical stable VK `2.3.8` tag exists: a
-  v1.1.0 first-release candidate is numerically lower and **must not** be
-  promoted over those installations without separate update/identity acceptance.
-  Tampermonkey `@version` and MV3 `version` stay
-  numeric so update comparison works; MV3 `version_name` shows
-  `dev-X.Y.<counter>`. Counter overflow fails closed. A new stable `X.Y.Z`
-  requires a separate authorized product version bump.
+- Product versions are assigned by CI, independently for actual affected
+  consumers. Major means fundamental changes, minor means features and patch
+  means fixes. DEV and PROD use the same assigned numeric `X.Y.Z`; channel
+  labels remain `dev-X.Y.Z` in display names. There is no independent DEV
+  patch counter or manual source semver. The Git ledger reserves a version
+  before build and source-SHA retries reuse it. Schema 1 and PROD acceptance
+  remain separate. Historical VK 2.3.8 installations still require explicit
+  downgrade/identity validation before any numerically lower PROD cutover.
 - Channel publication is serialized; neither workflow is authorized to
   commit to the reserved source branch.
 

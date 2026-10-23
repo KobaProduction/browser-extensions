@@ -1,5 +1,14 @@
 # Target architecture for Koba Browser Extensions
 
+## CI-owned release versions correction (2026-10-23)
+
+The owner replaces manual source bumps and independent DEV patch counters
+with one Git-backed CI version assignment per affected product/source SHA.
+Both delivery targets and approved PROD promotion consume it. Retry does not
+increment it. This supersedes historical version-authority paragraphs below;
+the [version contract](INDEPENDENT_RELEASES.md#one-version-step-per-commit)
+owns allocation, local builds and update compatibility.
+
 ## Window-independent startup correction (2026-10-17)
 
 The owner withdraws incognito-only DEV startup. Supported normal and private

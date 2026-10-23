@@ -65,8 +65,10 @@ jobs:
         run: |
           set -euo pipefail
           git fetch --tags --force
+          git fetch origin dev
           args=(--tsv --scope "$RELEASE_SCOPE")
           if [[ "$REPAIR_CHANNEL" == true ]]; then args+=(--include-existing); fi
+          plan="$(bun scripts/release-plan.ts "${args[@]}")"
           while IFS='|' read -r id version tag; do
             test -n "$tag" || continue
             bun scripts/build.ts --module "$id" --channel=prod
@@ -85,4 +87,4 @@ jobs:
                 --title "$id v$version" --generate-notes
             fi
             bash scripts/publish-channel.sh "$id" prod
-          done < <(bun scripts/release-plan.ts "${args[@]}")
+          done <<< "$plan"

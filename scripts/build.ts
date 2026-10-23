@@ -33,11 +33,6 @@ const requested =
   'all'
 const target = process.argv.find((a) => a.startsWith('--target='))?.split('=')[1] ?? 'both'
 const channel = releaseChannel(process.argv.find((a) => a.startsWith('--channel='))?.split('=')[1])
-const run = Number(
-  process.argv.find((a) => a.startsWith('--build-number='))?.split('=')[1] ??
-    process.env.GITHUB_RUN_NUMBER ??
-    '1',
-)
 let currentProduct: string | null = null
 const ids =
   requested === 'all'
@@ -82,13 +77,14 @@ async function viteBundle(
       'process.env.NODE_ENV': JSON.stringify('production'),
       'process.env': '{}',
       __BOOSTER_BUILD_VERSION__: JSON.stringify(productVersion ?? ''),
+      __VK_BUILD_VERSION__: JSON.stringify((await manifest('vk-booster')).version),
       __BOOSTER_APPLICATION_VERSION__: JSON.stringify(application?.version ?? ''),
       __BOOSTER_APPLICATION__: JSON.stringify(
         application
           ? {
               id: currentProduct,
               title: application.name,
-              version: devDisplayVersion(application.version, channel, run),
+              version: devDisplayVersion(application.version, channel),
               components,
             }
           : null,
@@ -194,9 +190,11 @@ if (requested === 'packages') {
 for (const id of ids) {
   currentProduct = id
   const info = await manifest(id)
+  if (info.version === '0.0.0')
+    throw Error('No assigned release version. Fetch origin dev and its rolling tags before packaging.')
   if (!info.release) throw Error(`Module ${id} is not releasable`)
   if (id === 'chatgpt-booster') {
-    await buildChatGptModule(root, target, info.version, viteBundle, channel, run)
+    await buildChatGptModule(root, target, info.version, viteBundle, channel)
     continue
   }
   const dir = join(root, 'dist', id)
@@ -221,7 +219,7 @@ for (const id of ids) {
       `// @name         ${userscriptChannelName(info.name, channel)}`,
       '// @namespace    https://github.com/KobaProduction/browser-extensions' +
         (channel === 'dev' ? `/dev/${id}` : ''),
-      `// @version      ${channelVersion(info.version, channel, run)}`,
+      `// @version      ${channelVersion(info.version, channel)}`,
       `// @description  Koba Browser Tools / ${info.name}`,
       '// @homepageURL   https://github.com/KobaProduction/browser-extensions',
       `// @updateURL    ${url}`,
@@ -267,8 +265,8 @@ for (const id of ids) {
     )
     await writeFile(join(ext, 'popup.js'), popup)
     const base = JSON.parse(await readFile('apps/extension/src/manifest.json', 'utf8'))
-    base.version = chromeVersion(info.version, channel, run)
-    base.version_name = devDisplayVersion(info.version, channel, run)
+    base.version = chromeVersion(info.version, channel)
+    base.version_name = devDisplayVersion(info.version, channel)
     if (channel === 'dev') base.key = devExtensionPublicKeys[id]
     base.name = channelDisplayName(info.name, channel)
     if (channel === 'dev') base.incognito = 'split'

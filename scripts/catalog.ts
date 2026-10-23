@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import allInOne from '../apps/all-in-one.json' with { type: 'json' }
+import { productReleaseVersion } from './release-versions'
 export interface ModuleManifest {
   id: string
   name: string
@@ -48,7 +49,10 @@ const PRODUCT_APP_SOURCES: Record<string, readonly string[]> = {
 }
 export async function manifest(id: string): Promise<ModuleManifest> {
   const path = id === 'all-in-one' ? 'apps/all-in-one.json' : `modules/${id}/module.json`
-  return JSON.parse(await readFile(new URL(`../${path}`, import.meta.url), 'utf8')) as ModuleManifest
+  const data = JSON.parse(
+    await readFile(new URL(`../${path}`, import.meta.url), 'utf8'),
+  ) as ModuleManifest
+  return { ...data, version: await productReleaseVersion(id) }
 }
 export function scopeFor(id: string): string[] {
   const shared = ['packages/', 'scripts/', 'package.json', 'bun.lock']

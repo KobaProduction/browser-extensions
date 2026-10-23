@@ -1,5 +1,14 @@
 # Current architecture and host permission model
 
+## CI-owned release versions (2026-10-23 source implementation)
+
+`scripts/release-versions.ts` reads the Git-backed product/SHA assignments;
+`prepare-release-versions.ts` and the serialized DEV workflow reserve them
+before building. Source manifests and private workspace versions no longer
+define published product versions. Runtime, userscript and MV3 builders read
+the same assignment. DEV/PROD identities and explicit production acceptance
+remain isolated. See the [version contract](INDEPENDENT_RELEASES.md).
+
 ## Normal/private window startup correction (2026-10-17)
 
 The validated installation-scope gate now accepts DEV and PROD in either window
