@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Koba Browser Tools [DEV]
 // @namespace    https://github.com/KobaProduction/browser-extensions/dev/all-in-one
-// @version      0.5.53
+// @version      0.5.54
 // @description  Koba Browser Tools / Koba Browser Tools
 // @homepageURL   https://github.com/KobaProduction/browser-extensions
 // @updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/all-in-one.user.js
@@ -2035,7 +2035,7 @@
     return Object.fromEntries(entries);
   }
   const BOOSTER_BASE_VERSION = "0.0.0-local";
-  const injectedVersion = "2.0.50".trim();
+  const injectedVersion = "2.0.51".trim();
   const BOOSTER_BUILD_VERSION = injectedVersion || BOOSTER_BASE_VERSION;
   const BOOSTER_VERSION = BOOSTER_BUILD_VERSION;
   // @__NO_SIDE_EFFECTS__
@@ -29420,6 +29420,9 @@ Defaulting to \`null\`.`);
         return;
       if (event.type === "pointermove" && !event.buttons) return;
       inputPending = true;
+      const viewport = options.viewport();
+      if (["wheel", "touchmove", "keydown"].includes(event.type) && viewport && viewport.scrollHeight <= viewport.clientHeight + 1)
+        return onScroll();
     }
     async function onScroll() {
       const requested = inputPending;
@@ -34850,88 +34853,89 @@ Defaulting to \`null\`.`);
     class: "booster-note"
   };
   const _hoisted_24$5 = { class: "booster-reader-summary" };
-  const _hoisted_25$5 = {
+  const _hoisted_25$5 = { key: 0 };
+  const _hoisted_26$5 = {
     key: 0,
     role: "alert",
     class: "booster-error"
   };
-  const _hoisted_26$5 = {
+  const _hoisted_27$5 = {
     key: 1,
     role: "alert",
     class: "booster-error"
   };
-  const _hoisted_27$5 = {
+  const _hoisted_28$4 = {
     key: 2,
     role: "alert",
     class: "booster-error"
   };
-  const _hoisted_28$4 = {
+  const _hoisted_29$4 = {
     key: 0,
     class: "booster-reader-older-loading",
     role: "status",
     "aria-live": "polite"
   };
-  const _hoisted_29$4 = {
+  const _hoisted_30$4 = {
     key: 0,
     class: "booster-note"
   };
-  const _hoisted_30$4 = ["aria-label"];
-  const _hoisted_31$4 = { class: "flex items-center justify-between gap-2" };
-  const _hoisted_32$4 = { class: "text-sm text-muted-foreground" };
-  const _hoisted_33$4 = {
+  const _hoisted_31$4 = ["aria-label"];
+  const _hoisted_32$4 = { class: "flex items-center justify-between gap-2" };
+  const _hoisted_33$4 = { class: "text-sm text-muted-foreground" };
+  const _hoisted_34$4 = {
     key: 2,
     class: "booster-reader-exchanges"
-  };
-  const _hoisted_34$4 = {
-    key: 0,
-    class: "booster-note"
   };
   const _hoisted_35$4 = {
     key: 0,
     class: "booster-note"
   };
   const _hoisted_36$4 = {
-    key: 1,
+    key: 0,
     class: "booster-note"
   };
   const _hoisted_37$4 = {
+    key: 1,
+    class: "booster-note"
+  };
+  const _hoisted_38$4 = {
     key: 3,
     class: "booster-note"
   };
-  const _hoisted_38$4 = ["aria-label"];
-  const _hoisted_39$4 = {
+  const _hoisted_39$4 = ["aria-label"];
+  const _hoisted_40$4 = {
     key: 0,
     class: "booster-reader-branch-navigation"
   };
-  const _hoisted_40$4 = {
+  const _hoisted_41$4 = {
     key: 0,
     class: "booster-note"
   };
-  const _hoisted_41$4 = {
-    key: 1,
-    class: "text-sm text-muted-foreground"
-  };
   const _hoisted_42$4 = {
-    key: 0,
+    key: 1,
     class: "text-sm text-muted-foreground"
   };
   const _hoisted_43$4 = {
+    key: 0,
+    class: "text-sm text-muted-foreground"
+  };
+  const _hoisted_44$4 = {
     key: 1,
     class: "text-sm text-muted-foreground"
   };
-  const _hoisted_44$4 = { class: "space-y-2" };
-  const _hoisted_45$4 = {
+  const _hoisted_45$4 = { class: "space-y-2" };
+  const _hoisted_46$4 = {
     key: 0,
     role: "status",
     class: "text-xs text-muted-foreground"
   };
-  const _hoisted_46$4 = {
+  const _hoisted_47$4 = {
     key: 1,
     role: "alert",
     class: "text-sm text-destructive"
   };
-  const _hoisted_47$4 = { class: "booster-note" };
-  const _hoisted_48$4 = {
+  const _hoisted_48$4 = { class: "booster-note" };
+  const _hoisted_49$1 = {
     key: 0,
     role: "alert",
     class: "booster-error"
@@ -35183,6 +35187,9 @@ Defaulting to \`null\`.`);
       const hasNewerStored = /* @__PURE__ */ ref(false);
       const usingIndexedWindows = /* @__PURE__ */ ref(false);
       const knownStoredCount = /* @__PURE__ */ ref(0);
+      const knownRecordCount = computed(
+        () => Math.max(knownStoredCount.value, coverage.value?.knownMessageCount ?? 0, thread.value.recordCount)
+      );
       const hasUnsequencedRecords = /* @__PURE__ */ ref(false);
       const readingScroll = /* @__PURE__ */ ref(null);
       const activeMessageKey = /* @__PURE__ */ ref(null);
@@ -36167,14 +36174,14 @@ Defaulting to \`null\`.`);
               class: "size-3 animate-spin"
             })) : createCommentVNode("v-if", true),
             createTextVNode(
-              " " + toDisplayString(workspaceState.value.failed ? __props.locale === "ru" ? "Не удалось догрузить сохранённые данные. Повторите открытие архива." : "Saved data could not be loaded. Reopen the archive to retry." : __props.locale === "ru" ? "Загрузка в workspace" : "Loading workspace") + " ",
+              " " + toDisplayString(workspaceState.value.failed ? __props.locale === "ru" ? "Не удалось догрузить сохранённые данные. Повторите открытие архива." : "Saved data could not be loaded. Reopen the archive to retry." : __props.locale === "ru" ? "Читаем сохранённый архив" : "Reading saved archive") + " ",
               1
               /* TEXT */
             ),
             workspaceState.value.loading ? (openBlock(), createElementBlock(
               "span",
               _hoisted_6$k,
-              "· " + toDisplayString(workspaceState.value.loaded) + " · " + toDisplayString(__props.locale === "ru" ? "Не найдено родителей" : "Missing parents") + ": " + toDisplayString(workspaceState.value.missingParents),
+              "· " + toDisplayString(workspaceState.value.loaded) + " · " + toDisplayString(__props.locale === "ru" ? "Уточняем связи" : "Checking relationships"),
               1
               /* TEXT */
             )) : createCommentVNode("v-if", true)
@@ -36720,21 +36727,28 @@ Defaulting to \`null\`.`);
                       createBaseVNode(
                         "span",
                         null,
-                        toDisplayString(t("dock.messages")) + ": " + toDisplayString(thread.value.messageCount),
+                        toDisplayString(__props.locale === "ru" ? "Всего записей" : "Total records") + ": " + toDisplayString(knownRecordCount.value),
                         1
                         /* TEXT */
                       ),
+                      usingIndexedWindows.value && thread.value.recordCount < knownRecordCount.value ? (openBlock(), createElementBlock(
+                        "span",
+                        _hoisted_25$5,
+                        toDisplayString(__props.locale === "ru" ? "В окне" : "In window") + ": " + toDisplayString(thread.value.recordCount),
+                        1
+                        /* TEXT */
+                      )) : createCommentVNode("v-if", true),
                       createVNode(unref(_sfc_main$b$1), {
                         integrity: coverage.value?.integrity,
                         complete: coverage.value?.completeAtLastRead,
                         "has-older-history": coverage.value?.hasOlderServerHistory,
-                        loading: coverageLoading.value,
+                        loading: coverageLoading.value || workspaceState.value.loading,
                         error: coverageError.value,
                         locale: __props.locale,
                         onDetails: _cache[25] || (_cache[25] = ($event) => integrityOpen.value = true)
                       }, null, 8, ["integrity", "complete", "has-older-history", "loading", "error", "locale"]),
                       selectedBranchTip.value ? (openBlock(), createBlock(unref(_sfc_main$17), {
-                        key: 0,
+                        key: 1,
                         variant: "ghost",
                         size: "sm",
                         class: "h-7 px-1 text-xs",
@@ -36756,7 +36770,7 @@ Defaulting to \`null\`.`);
                   /* STABLE_FRAGMENT */
                 )) : createCommentVNode("v-if", true)
               ]),
-              staleSavedWindow.value ? (openBlock(), createElementBlock("p", _hoisted_25$5, [
+              staleSavedWindow.value ? (openBlock(), createElementBlock("p", _hoisted_26$5, [
                 createTextVNode(
                   toDisplayString(t("reader.staleWindow")) + " ",
                   1
@@ -36781,14 +36795,14 @@ Defaulting to \`null\`.`);
               ])) : createCommentVNode("v-if", true),
               navigationError.value ? (openBlock(), createElementBlock(
                 "p",
-                _hoisted_26$5,
+                _hoisted_27$5,
                 toDisplayString(t(navigationError.value)),
                 1
                 /* TEXT */
               )) : createCommentVNode("v-if", true),
               error.value ? (openBlock(), createElementBlock(
                 "p",
-                _hoisted_27$5,
+                _hoisted_28$4,
                 toDisplayString(t("reader.error")),
                 1
                 /* TEXT */
@@ -36798,7 +36812,7 @@ Defaulting to \`null\`.`);
                 "timeline-visible": Boolean(historyOpen.value && selected.value && (timelineNodes.value.length || navigationNodes.value.length))
               }, {
                 status: withCtx(() => [
-                  loadingOlder.value ? (openBlock(), createElementBlock("div", _hoisted_28$4, [
+                  loadingOlder.value ? (openBlock(), createElementBlock("div", _hoisted_29$4, [
                     createVNode(unref(LoaderCircle), { class: "size-4 booster-reader-spinner" }),
                     createTextVNode(
                       toDisplayString(t(loadingDirection.value === "newer" ? "reader.loadingNewer" : "reader.loadingEarlier")) + " · " + toDisplayString(displayedTurns.value.length) + "/" + toDisplayString(filteredTurns.value.length),
@@ -36842,7 +36856,7 @@ Defaulting to \`null\`.`);
                     [
                       historyOpen.value && !timelineNodes.value.length && usingIndexedWindows.value && (hasOlderStored.value || hasNewerStored.value || knownStoredCount.value > thread.value.recordCount) ? (openBlock(), createElementBlock(
                         "p",
-                        _hoisted_29$4,
+                        _hoisted_30$4,
                         toDisplayString(t("reader.windowGraphOnly")),
                         1
                         /* TEXT */
@@ -36853,10 +36867,10 @@ Defaulting to \`null\`.`);
                         class: "space-y-4 p-4",
                         "aria-label": t("reader.loading")
                       }, [
-                        createBaseVNode("div", _hoisted_31$4, [
+                        createBaseVNode("div", _hoisted_32$4, [
                           createBaseVNode(
                             "span",
-                            _hoisted_32$4,
+                            _hoisted_33$4,
                             toDisplayString(t("reader.loading")),
                             1
                             /* TEXT */
@@ -36893,10 +36907,10 @@ Defaulting to \`null\`.`);
                           64
                           /* STABLE_FRAGMENT */
                         ))
-                      ], 8, _hoisted_30$4)) : selected.value ? (openBlock(), createElementBlock("div", _hoisted_33$4, [
+                      ], 8, _hoisted_31$4)) : selected.value ? (openBlock(), createElementBlock("div", _hoisted_34$4, [
                         !filteredTurns.value.length ? (openBlock(), createElementBlock(
                           "p",
-                          _hoisted_34$4,
+                          _hoisted_35$4,
                           toDisplayString(t("reader.noResults")),
                           1
                           /* TEXT */
@@ -36911,13 +36925,13 @@ Defaulting to \`null\`.`);
                             }, [
                               turn.association === "unassigned" ? (openBlock(), createElementBlock(
                                 "p",
-                                _hoisted_35$4,
+                                _hoisted_36$4,
                                 toDisplayString(t("reader.unassigned")),
                                 1
                                 /* TEXT */
                               )) : turn.association === "adjacency" ? (openBlock(), createElementBlock(
                                 "p",
-                                _hoisted_36$4,
+                                _hoisted_37$4,
                                 toDisplayString(t("reader.adjacency")),
                                 1
                                 /* TEXT */
@@ -37052,7 +37066,7 @@ Defaulting to \`null\`.`);
                         ))
                       ])) : !listLoading.value ? (openBlock(), createElementBlock(
                         "p",
-                        _hoisted_37$4,
+                        _hoisted_38$4,
                         toDisplayString(t("reader.missing")),
                         1
                         /* TEXT */
@@ -37168,8 +37182,8 @@ Defaulting to \`null\`.`);
                       _: 1
                       /* STABLE */
                     }, 8, ["disabled"])
-                  ], 8, _hoisted_38$4),
-                  coverage.value?.integrity && __props.archiveAdapter.getBranchPath && storedBranches.value.length ? (openBlock(), createElementBlock("div", _hoisted_39$4, [
+                  ], 8, _hoisted_39$4),
+                  coverage.value?.integrity && __props.archiveAdapter.getBranchPath && storedBranches.value.length ? (openBlock(), createElementBlock("div", _hoisted_40$4, [
                     createVNode(unref(_sfc_main$J), { class: "booster-reader-path-select" }, {
                       default: withCtx(() => [
                         createTextVNode(
@@ -37242,7 +37256,7 @@ Defaulting to \`null\`.`);
                     }),
                     !storedBranches.value.length && coverage.value.integrity.chain === "gaps" ? (openBlock(), createElementBlock(
                       "span",
-                      _hoisted_40$4,
+                      _hoisted_41$4,
                       toDisplayString(__props.locale === "ru" ? "Связи неполны: фрагменты не означают ветвление диалога." : "Incomplete links: fragments do not imply conversation branches."),
                       1
                       /* TEXT */
@@ -37250,7 +37264,7 @@ Defaulting to \`null\`.`);
                   ])) : createCommentVNode("v-if", true),
                   !storedBranches.value.length ? (openBlock(), createElementBlock(
                     "p",
-                    _hoisted_41$4,
+                    _hoisted_42$4,
                     toDisplayString(__props.locale === "ru" ? "В этом диалоге нет сохранённых веток." : "This conversation has no saved branches."),
                     1
                     /* TEXT */
@@ -37304,14 +37318,14 @@ Defaulting to \`null\`.`);
                   }),
                   coverage.value.exhaustedAt ? (openBlock(), createElementBlock(
                     "p",
-                    _hoisted_42$4,
+                    _hoisted_43$4,
                     toDisplayString(__props.locale === "ru" ? "Достигнут лимит чата. Отметка завершения сохранена и не заменяется при обновлении истории." : "Conversation limit reached. The terminal marker is retained across history refreshes."),
                     1
                     /* TEXT */
                   )) : createCommentVNode("v-if", true),
                   coverage.value.integrity.scope === "current-native-graph" ? (openBlock(), createElementBlock(
                     "p",
-                    _hoisted_43$4,
+                    _hoisted_44$4,
                     toDisplayString(__props.locale === "ru" ? `Проверен полный граф текущей беседы от ChatGPT. Исторических записей вне этого графа: ${coverage.value.integrity.retainedOutsideGraph ?? 0}. Они сохранены отдельно; их связи этим ответом не подтверждаются.` : `Verified the complete current conversation graph returned by ChatGPT. Historical records outside this graph: ${coverage.value.integrity.retainedOutsideGraph ?? 0}. They are retained; this response does not verify their relationships.`),
                     1
                     /* TEXT */
@@ -37328,7 +37342,7 @@ Defaulting to \`null\`.`);
                     selectedId.value === __props.archiveAdapter.currentConversationId() ? {
                       name: "actions",
                       fn: withCtx(() => [
-                        createBaseVNode("div", _hoisted_44$4, [
+                        createBaseVNode("div", _hoisted_45$4, [
                           createVNode(unref(_sfc_main$1$1), {
                             label: __props.locale === "ru" ? "Собрать историю" : "Collect history",
                             busy: unref(recovering),
@@ -37338,14 +37352,14 @@ Defaulting to \`null\`.`);
                           }, null, 8, ["label", "busy", "stop-label", "onStart", "onStop"]),
                           unref(recovering) ? (openBlock(), createElementBlock(
                             "p",
-                            _hoisted_45$4,
+                            _hoisted_46$4,
                             toDisplayString(__props.locale === "ru" ? "Читаем и сохраняем историю…" : "Reading and saving history…") + " " + toDisplayString(unref(recoveryState)?.pagesLoaded ?? 0),
                             1
                             /* TEXT */
                           )) : createCommentVNode("v-if", true),
                           unref(recoveryError) || unref(recoveryState)?.conversationId === selectedId.value && unref(recoveryState)?.phase === "error" ? (openBlock(), createElementBlock(
                             "p",
-                            _hoisted_46$4,
+                            _hoisted_47$4,
                             toDisplayString(__props.locale === "ru" ? "Не удалось завершить сбор. Сохранённые сообщения остаются в архиве." : "Collection could not finish. Saved messages remain in the archive."),
                             1
                             /* TEXT */
@@ -37460,14 +37474,14 @@ Defaulting to \`null\`.`);
                   }),
                   createBaseVNode(
                     "p",
-                    _hoisted_47$4,
+                    _hoisted_48$4,
                     toDisplayString(__props.locale === "ru" ? "Переключение меняет только локальный просмотр. Исходные варианты и данные ChatGPT сохраняются." : "Selection changes local inspection only. All source variants and native ChatGPT data remain preserved."),
                     1
                     /* TEXT */
                   ),
                   versionError.value ? (openBlock(), createElementBlock(
                     "p",
-                    _hoisted_48$4,
+                    _hoisted_49$1,
                     toDisplayString(__props.locale === "ru" ? "Не удалось открыть версии" : "Could not open versions"),
                     1
                     /* TEXT */
@@ -57476,18 +57490,20 @@ ${JSON.stringify(counts)}`);
       if (!settings.enabled) return;
       const remoteOnly = settings.automation.remote.enabled && settings.automation.remote.mode === "remote-only";
       const header2 = this.state.header(page.conversationId);
+      const store = remoteOnly ? null : this.repo(owner);
+      const savedHeader = !header2?.headReadId ? await store?.getConversation(page.conversationId) : void 0;
+      const projectId = header2?.headReadId ? header2.projectId : savedHeader?.projectId ?? header2?.projectId ?? null;
       const session = this.collectionSession?.current();
       const manual = Boolean(this.collectionSession?.permits(session, owner, page.conversationId));
       const rule = captureRuleForOperation(
         settings.archive,
         page.conversationId,
-        header2?.projectId ?? null,
+        projectId,
         manual || remoteOnly,
         settings.enabled
       );
       if (!rule.enabled || !Array.isArray(page.payload.messages)) return;
       const stillAuthorized = () => !this.stopped && this.state.accountEpoch() === epoch && this.state.verifiedAccountId() === owner && this.policyEpoch === policyEpoch && (!manual || Boolean(this.collectionSession?.permits(session, owner, page.conversationId)));
-      const store = remoteOnly ? null : this.repo(owner);
       if (store && header2 && page.isInitial === true && typeof page.readId === "string" && typeof page.readStartedAt === "number" && Object.hasOwn(page.payload, "gizmo_id") && header2.headReadId === page.readId && header2.headReadStartedAt === page.readStartedAt && normalizeConversationProjectId(page.payload) === header2.projectId) {
         const currentRead = () => {
           const current = this.state.header(page.conversationId);
@@ -57521,8 +57537,8 @@ ${JSON.stringify(counts)}`);
         const observation = {
           accountId: owner,
           conversationId: page.conversationId,
-          projectId: header2?.projectId ?? null,
-          conversationTitle: header2?.title ?? null,
+          projectId,
+          conversationTitle: header2?.title ?? savedHeader?.title ?? null,
           sourceKind: "native",
           sourceVersion: this.state.sourceGate.version,
           observedAtMs: page.timestamp,
@@ -57730,15 +57746,23 @@ ${JSON.stringify(counts)}`);
       });
       this.failure = void 0;
       this.collectionSession.requireCurrent(run);
-      for (const page of pages.filter((page2) => page2.readId === evidence.readId)) {
+      for (const page of pages) {
         if (this.collectionSession.permits(run, account, id2)) this.enqueuePage?.(page);
       }
     }
     enqueuePage;
+    async drainCollection(run) {
+      let pending;
+      do {
+        pending = this.pending;
+        await this.collectionSession.waitFor(run, pending);
+      } while (pending !== this.pending);
+    }
     /** Reuse a durable first-message proof only for an intact graph at the exact live head. */
     async completeSavedCollection(run) {
       this.collectionSession.requireCurrent(run);
-      await this.collectionSession.waitFor(run, this.pending);
+      await this.drainCollection(run);
+      if (this.failure) throw this.failure;
       const owner = this.state.verifiedAccountId(), epoch = this.state.accountEpoch(), policy2 = this.policyEpoch;
       const nativeRevision = this.state.header(run.conversationId)?.revision;
       if (!owner || owner !== run.accountId || this.stopped || this.currentConversationId() !== run.conversationId)
@@ -57777,7 +57801,7 @@ ${JSON.stringify(counts)}`);
       this.collectionSession.requireCurrent(run);
       this.state.sourceGate.assertCompatible(run.conversationId);
       this.collectionSession.update(run, { phase: "saving", hasOlderServerHistory: false });
-      await this.collectionSession.waitFor(run, this.pending);
+      await this.drainCollection(run);
       this.collectionSession.requireCurrent(run);
       this.state.sourceGate.assertCompatible(run.conversationId);
       if (this.failure) {
@@ -63021,7 +63045,7 @@ ${JSON.stringify(counts)}`);
     }
   }
   instanceKey("chatgpt-booster:manual-collection", "chatgpt-booster:prod");
-  var define_BOOSTER_APPLICATION_default = { id: "all-in-one", title: "Koba Browser Tools", version: "dev-0.5.53", components: [{ id: "vk-booster", title: "VK Booster", version: "1.1.52" }, { id: "chatgpt-booster", title: "ChatGPT Booster", version: "2.0.50" }] };
+  var define_BOOSTER_APPLICATION_default = { id: "all-in-one", title: "Koba Browser Tools", version: "dev-0.5.54", components: [{ id: "vk-booster", title: "VK Booster", version: "1.1.53" }, { id: "chatgpt-booster", title: "ChatGPT Booster", version: "2.0.51" }] };
   function isDevelopmentContextAllowed(_target, scope = instanceScope()) {
     return /^(vk-booster|chatgpt-booster|all-in-one):(dev|prod)$/.test(scope);
   }
@@ -65972,7 +65996,7 @@ ${JSON.stringify(counts)}`);
     if (!gm)
       return unavailableTelemetry();
     const settings = gm?.settings ?? store;
-    const suppliedVersion = "0.5.53";
+    const suppliedVersion = "0.5.54";
     const version2 = /^\d+\.\d+\.\d+$/.test(suppliedVersion) ? suppliedVersion : "0.0.0";
     const listeners = /* @__PURE__ */ new Set();
     let enabled = false;
@@ -69400,7 +69424,7 @@ ${JSON.stringify(counts)}`);
     }
   }
   function historyBackoffMs(status, errors) {
-    return status === 429 ? 12e3 : Math.min(8e3, 1e3 * 2 ** errors);
+    return status === 429 ? 6e4 : Math.min(8e3, 1e3 * 2 ** errors);
   }
   function abortableDelay(ms, signal) {
     return new Promise((resolve2, reject) => {
@@ -69534,6 +69558,19 @@ ${JSON.stringify(counts)}`);
         this.stateStore.sourceGate.assertCompatible(id2);
       };
       try {
+        if (this.nativeHistory?.hasPendingPages && this.nativeHistory.hasPendingPages(id2) !== false) {
+          requireCurrentCollection();
+          this.sessions.update(run, { phase: "waiting_for_load" });
+          await this.sessions.waitFor(
+            run,
+            this.nativeHistory.readOlder({
+              conversationId: id2,
+              sourceReadId: run.sourceReadId ?? null,
+              signal
+            })
+          );
+          requireCurrentCollection();
+        }
         if (await this.capture.completeSavedCollection?.(run)) return;
         while (true) {
           requireCurrentCollection();
@@ -70040,6 +70077,13 @@ ${JSON.stringify(counts)}`);
       }
     };
   }
+  function nativePaginationPending(scope, pagination, conversationId) {
+    if (!pagination) return null;
+    const page = scope.get(pagination.token, conversationId);
+    if (!page) return null;
+    if (page.complete === true || page.cursor === null) return false;
+    return true;
+  }
   function createNativeHistoryReader(state, scope, modules, current) {
     const owner = state.verifiedAccountId(), epoch = state.accountEpoch(), user = scope.get(modules.userToken);
     return {
@@ -70068,8 +70112,33 @@ ${JSON.stringify(counts)}`);
             if (next?.hasError) throw Error("archive.error.network");
             if (!next || next.cursor === page.cursor) throw Error("archive.error.noProgress");
           }
-        await modules.history(scope, context2.conversationId, { forceFull: true, signal: context2.signal });
+        const readStartedAt = Date.now();
+        const result = await modules.history(scope, context2.conversationId, {
+          forceFull: true,
+          signal: context2.signal
+        });
         guard();
+        if (result && typeof result === "object" && "mapping" in result) {
+          const coverage = state.nativeHistoryCoverage(context2.conversationId);
+          if (!coverage.fullRead || (coverage.readStartedAt ?? 0) < readStartedAt) {
+            const decoded = decodeNativeFullHistory(
+              result,
+              context2.conversationId
+            );
+            guard();
+            state.ingestPage({
+              kind: "conversation-page",
+              ...decoded,
+              conversationId: context2.conversationId,
+              accountId: owner,
+              readId: `native-${crypto.randomUUID()}`,
+              readStartedAt,
+              timestamp: Date.now(),
+              isInitial: true,
+              sourceUrl: `https://chatgpt.com/backend-api/conversation/${context2.conversationId}`
+            });
+          }
+        }
       }
     };
   }
@@ -70181,6 +70250,12 @@ ${JSON.stringify(counts)}`);
       this.disposeProbe = void 0;
       this.scope = void 0;
       this.modules = void 0;
+    }
+    hasPendingPages(conversationId) {
+      const owner = this.state.verifiedAccountId();
+      if (!this.active || !this.scope || !this.modules || !owner) return null;
+      if (this.scope.get(this.modules.accountToken) !== owner) return null;
+      return nativePaginationPending(this.scope, this.modules.pagination, conversationId);
     }
     async readOlder(context2) {
       const owner = this.state.verifiedAccountId(), epoch = this.state.accountEpoch(), generation = this.generation;
@@ -71306,6 +71381,7 @@ ${JSON.stringify(counts)}`);
       async function collect() {
         const adapter = context2.value?.archiveAdapter;
         if (!adapter || adapter.collectionInsideExportOnly || !adapter.currentConversationId()) return;
+        showArchive(adapter.currentConversationId());
         error.value = "";
         try {
           if (!collector) return;
@@ -71564,7 +71640,7 @@ ${JSON.stringify(counts)}`);
       };
     }
   });
-  const VK_BASE_VERSION = "1.1.52";
+  const VK_BASE_VERSION = "1.1.53";
   function defaultVkCapturePreferences() {
     return { mode: "recent", limit: 10, from: "", through: "", pageSize: 50, delay: 450, media: true };
   }
