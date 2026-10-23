@@ -14,6 +14,8 @@ export interface ArchiveIntegrityEvidence {
   readonly headId: string | null
 }
 export interface ArchiveConversationIntegrity {
+  readonly scope?: 'current-native-graph'
+  readonly retainedOutsideGraph?: number
   readonly start: 'verified' | 'unknown'
   readonly end: 'verified' | 'unknown' | 'missing'
   readonly chain: 'verified' | 'gaps' | 'unknown'

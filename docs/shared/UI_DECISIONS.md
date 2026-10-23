@@ -385,3 +385,63 @@ Source/browser evidence: общий механизм имеет 7 синтети
 В открытом авторизованном ChatGPT после загрузки DEV-сборки повторяющиеся
 метаданные и инспекторы заменены одиночными элементами в каждом месте внедрения.
 Это локальная проверка DEV, не публикация или PROD-приёмка.
+
+
+**UI-66 (2026-10-23)**: строка статуса перегружала страницу одновременно
+таймерами запроса, действия, размышления, сводок и точным временем обновления.
+Основная строка показывает запрос, релевантную текущую фазу и относительное
+время без изменений. Абсолютное время обновления убрано; интервалы сводок
+доступны в подсказке. Подтверждённый native FAILURE закрывает запрос, поэтому
+его активная строка исчезает; старая история не возобновляет таймер.
+
+
+**UI-67 (2026-10-23)**: общий индикатор полноты архива виден рядом со
+счётчиком сообщений, без открытия меню. Полное состояние требует покрытия
+источника, подтверждённых начала/конца и целой цепочки. Известная более ранняя
+история означает «Начало не сохранено»; отсутствие доказательства начала —
+«Начало не подтверждено». Число сообщений и отсутствие найденных разрывов
+сами по себе не означают полноту. Загрузка и ошибка проверки заменяют старую
+положительную отметку. Нажатие открывает существующие подробности целостности.
+
+
+## UI-68 — distinguish current native graph from retained history (2026-10-23)
+
+A verified full ChatGPT mapping displays "Текущая история сохранена" rather
+than declaring every historical observation complete. Details and accessible
+text disclose the count of retained records outside that graph. The previous
+missing-parent count treated message metadata parents as the actual native
+graph; live full-history source disproved that assumption. Source ownership
+and graph semantics belong to the ChatGPT live contract. No historical record
+is deleted to obtain a green status.
+
+The same details show a source-confirmed conversation-limit marker after its
+durable commit. It survives reload and later read/retry events. Generic copy
+must not contradict the disclosed graph scope by certifying all historic links.
+
+## UI-69 — actionable bounded integrity details (2026-10-23)
+
+The owner rejected thousands of repeated missing-parent cards. The shared
+integrity details now show boundary/link evidence and issue totals grouped by
+meaning, with no raw IDs in the ordinary view. Technical diagnostics are opt-in
+and render at most eight issues per page; every issue remains accessible.
+Current-chat details expose the real collection action and its running/error
+state. A shorter view must not hide unresolved data or manufacture completeness.
+The Laboratory UI fixture contains 1,222 synthetic missing parents and uses the
+actual shared component. Collection reads history independently of ChatGPT's
+generation lifecycle; an active or server-stuck stream must not block recovery.
+
+## UI-70 — native delivery failure and popup stacking (2026-10-23)
+
+The owner found active timers beside ChatGPT's delivery timeout and metadata
+hidden beneath its warning. Server `IS_STREAMING` alone did not describe the
+client's already-failed delivery; the exact native application error transition
+now stops local timing, independently of archive recovery. The live contract
+owns its source and correlation guards.
+
+An injected anchor's stacking/clipping context trapped its portal despite a
+maximum z-index. The common portal helper elevates active registry portals to
+the browser top layer, retaining Shadow DOM styles and registry focus/dismissal.
+The zero-sized container has no second surface; it leaves the top layer when
+empty and releases its observer on disposal. All ChatGPT shadow-surface consumers
+share this helper. Laboratory UI verifies the real message metadata inside a
+transformed/clipped anchor beneath a higher warning, including Escape/focus return.

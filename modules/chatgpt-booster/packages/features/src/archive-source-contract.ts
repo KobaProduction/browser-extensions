@@ -3,6 +3,7 @@ import {
   type ConversationArchiveEventDetail,
   type ConversationSubmissionSelection,
   SUBMISSION_SELECTION_SCHEMA,
+  validateNativeHistoryGraph,
 } from '@chatgpt-booster/observer'
 
 /**
@@ -22,7 +23,9 @@ export const NATIVE_HISTORY_CONTRACT_V6 = 'chatgpt-history-2026-10-v6'
 export const NATIVE_HISTORY_CONTRACT_V7 = 'chatgpt-history-2026-10-v7'
 export const NATIVE_HISTORY_CONTRACT_V8 = 'chatgpt-history-2026-10-v8'
 export const NATIVE_HISTORY_CONTRACT_V9 = 'chatgpt-history-2026-10-v9'
-export const NATIVE_HISTORY_CONTRACT_VERSION = NATIVE_HISTORY_CONTRACT_V9
+export const NATIVE_HISTORY_CONTRACT_V10 = 'chatgpt-history-2026-10-v10'
+export const NATIVE_HISTORY_CONTRACT_V11 = 'chatgpt-history-2026-10-v11'
+export const NATIVE_HISTORY_CONTRACT_VERSION = NATIVE_HISTORY_CONTRACT_V11
 
 /** Retain ambiguity even if a repeated message ID is submitted before its first capture. */
 export interface ArchiveSubmissionSnapshot {
@@ -231,6 +234,7 @@ const v2ContentKeys: Readonly<Record<string, ReadonlySet<string>>> = {
 
 interface NativeHistoryValidationProfile {
   version: string
+  fullGraph?: boolean
   metadata: Readonly<Record<string, MetadataFieldType>>
   content: Readonly<Record<string, ReadonlySet<string>>>
 }
@@ -299,11 +303,48 @@ const v9Profile: NativeHistoryValidationProfile = {
     summarization_headline: 'string',
   },
 }
-function validateUserContext(
+// Retrieval tool metadata observed in native older-history pages on 2026-10-23.
+const v10Profile: NativeHistoryValidationProfile = {
+  ...v9Profile,
+  version: NATIVE_HISTORY_CONTRACT_V10,
+  fullGraph: true,
+  metadata: {
+    ...v9Profile.metadata,
+    retrieval_turn_number: 'number',
+    retrieval_file_index: 'number',
+    retrieval_visible_content_line_count: 'number',
+    citation_metadata: 'object',
+    command: 'string',
+    status: 'string',
+  },
+  content: {
+    ...v9Profile.content,
+    tether_browsing_display: new Set(['content_type', 'result', 'summary', 'assets', 'tether_id']),
+  },
+}
+// Parallel-generation metadata observed in an older native page on 2026-10-23.
+// The object is opaque source evidence, not authority for graph relationships.
+const v11Profile: NativeHistoryValidationProfile = {
+  ...v10Profile,
+  version: NATIVE_HISTORY_CONTRACT_V11,
+  metadata: {
+    ...v10Profile.metadata,
+    paragen_variants_info: 'object',
+    paragen_variant_choice: 'string',
+  },
+}
+function validateSpecificContent(
   content: Record<string, unknown>,
   path: string,
   fail: (path: string, reason: ArchiveContractFailure['reason']) => never,
 ) {
+  if (content.content_type === 'tether_browsing_display') {
+    for (const field of ['result', 'summary'])
+      if (typeof content[field] !== 'string') fail(`${path}.${field}`, 'type')
+    for (const field of ['assets', 'tether_id'])
+      if (content[field] !== null) fail(`${path}.${field}`, 'type')
+    return
+  }
   if (content.content_type !== 'user_editable_context') return
   for (const field of ['user_profile', 'user_instructions'])
     if (typeof content[field] !== 'string') fail(`${path}.${field}`, 'type')
@@ -408,10 +449,13 @@ function assertHistoryPage(
       return null
     }
   })()
-  const route = url?.pathname.match(/^\/backend-api\/conversations\/([^/]+)(\/messages)?$/)
+  const route = url?.pathname.match(/^\/backend-api\/conversations?\/([^/]+)(\/messages)?$/)
   if (
     url?.origin !== 'https://chatgpt.com' ||
     !route ||
+    (url.pathname.startsWith('/backend-api/conversation/') && !detail.nativeGraph) ||
+    (detail.nativeGraph &&
+      (!detail.isInitial || !url.pathname.startsWith('/backend-api/conversation/'))) ||
     route[1] !== encodeURIComponent(detail.conversationId) ||
     (route[2] === '/messages') === (detail.isInitial === true)
   )
@@ -421,6 +465,29 @@ function assertHistoryPage(
   // as a validated ChatGPT native signature.
   if (detail.sourceUrl.includes('#chatgpt-booster-dom-snapshot')) {
     failure('sourceUrl', 'unsupported')
+  }
+  if (detail.nativeGraph) {
+    if (!profile.fullGraph) failure('nativeGraph', 'unsupported')
+    try {
+      validateNativeHistoryGraph(detail.nativeGraph, detail.conversationId)
+    } catch {
+      failure('nativeGraph', 'type')
+    }
+    const expected = new Set(
+      Object.values(detail.nativeGraph.nodes).flatMap((n) => (n.messageId ? [n.messageId] : [])),
+    )
+    const incoming = Array.isArray(detail.payload.messages)
+      ? (detail.payload.messages as Record<string, unknown>[])
+      : []
+    if (
+      incoming.length !== expected.size ||
+      incoming.some((m) => typeof m.id !== 'string' || !expected.delete(m.id)) ||
+      expected.size
+    )
+      failure('nativeGraph.messages', 'identity')
+    const { messages: _messages, page_info: _pageInfo, ...header } = detail.payload
+    if (JSON.stringify(header) !== JSON.stringify(detail.nativeGraph.header))
+      failure('nativeGraph.header', 'identity')
   }
   const payload = obj(detail.payload, 'payload')
   const initial = detail.isInitial === true
@@ -470,7 +537,7 @@ function assertHistoryPage(
     const schema = profile.content[type as string]
     if (!schema) failure(`${path}.content.content_type`, 'unsupported')
     keys(content, schema as ReadonlySet<string>, `${path}.content`)
-    validateUserContext(content, `${path}.content`, failure)
+    validateSpecificContent(content, `${path}.content`, failure)
     if (type === 'text' || type === 'multimodal_text') {
       if (!Array.isArray(required(content, 'parts', `${path}.content`)))
         failure(`${path}.content.parts`, 'type')
@@ -533,7 +600,7 @@ function assertStreamMessage(
   const contentShape = profile.content[content.content_type as string]
   if (!contentShape) fail('stream.message.content.content_type', 'unsupported')
   allowed(content, contentShape as ReadonlySet<string>, 'stream.message.content')
-  validateUserContext(content, 'stream.message.content', fail)
+  validateSpecificContent(content, 'stream.message.content', fail)
   if (
     (content.content_type === 'text' || content.content_type === 'multimodal_text') &&
     !Array.isArray(content.parts)
@@ -723,6 +790,26 @@ const nativeHistoryAdapters: Readonly<Record<string, NativeHistoryAdapter>> = Ob
       assertHistoryPage(detail, projected, v9Profile),
     assertStream: (id: string, incoming: Record<string, unknown>) =>
       assertStreamMessage(id, incoming, v9Profile),
+  }),
+  [NATIVE_HISTORY_CONTRACT_V10]: Object.freeze({
+    version: NATIVE_HISTORY_CONTRACT_V10,
+    evidenceDocument: 'docs/chatgpt-booster/LIVE_ARCHIVE_CONTRACT.md',
+    fixtureFile: 'tests/archive-source-contract.test.ts',
+    knownNullablePaths: Object.freeze([]),
+    assertPage: (detail: ConversationArchiveEventDetail, projected: boolean) =>
+      assertHistoryPage(detail, projected, v10Profile),
+    assertStream: (id: string, incoming: Record<string, unknown>) =>
+      assertStreamMessage(id, incoming, v10Profile),
+  }),
+  [NATIVE_HISTORY_CONTRACT_V11]: Object.freeze({
+    version: NATIVE_HISTORY_CONTRACT_V11,
+    evidenceDocument: 'docs/chatgpt-booster/LIVE_ARCHIVE_CONTRACT.md',
+    fixtureFile: 'tests/archive-source-contract.test.ts',
+    knownNullablePaths: Object.freeze([]),
+    assertPage: (detail: ConversationArchiveEventDetail, projected: boolean) =>
+      assertHistoryPage(detail, projected, v11Profile),
+    assertStream: (id: string, incoming: Record<string, unknown>) =>
+      assertStreamMessage(id, incoming, v11Profile),
   }),
 })
 

@@ -70,7 +70,13 @@ export default defineConfig({
     outDir: resolve(root, 'dist'),
     emptyOutDir: true,
     rollupOptions: {
-      input: { index: resolve(root, 'index.html'), preview: resolve(root, 'preview.html') },
+      input: {
+        index: resolve(root, 'index.html'),
+        preview: resolve(root, 'preview.html'),
+        archiveIntegrity: resolve(root, 'archive-integrity.html'),
+        nativeOverlays: resolve(root, 'native-overlays.html'),
+        requestStatus: resolve(root, 'request-status.html'),
+      },
     },
   },
   define: {

@@ -38,6 +38,7 @@ import {
   type ChatGptNativeBindingOptions,
   createChatGptNativeApplicationBinding,
 } from './native-binding'
+import { NativeHistoryBinding } from './native-history-binding'
 import { TransportObserverModule } from './transport-observer'
 
 /**
@@ -178,7 +179,9 @@ export function createBoosterPageRuntime(options: BoosterPageRuntimeOptions) {
     },
   }
 
+  const nativeHistory = target.nativeHistory ?? new NativeHistoryBinding(conversationState)
   const modules: BoosterModule[] = [
+    ...(nativeHistory instanceof NativeHistoryBinding ? [nativeHistory] : []),
     conversationState,
     {
       id: 'native-binding',
@@ -205,7 +208,7 @@ export function createBoosterPageRuntime(options: BoosterPageRuntimeOptions) {
       pageBridgeWindow,
       settings,
       false,
-      target.nativeHistory,
+      nativeHistory,
     ),
     new TransportObserverModule({
       settings,

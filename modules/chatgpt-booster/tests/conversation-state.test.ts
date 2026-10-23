@@ -813,3 +813,93 @@ describe('Work subagent runtime state', () => {
     expect(state.lifecycle(conversationId)).toMatchObject({ state: 'complete', completedAt: 6000 })
   })
 })
+
+describe('native stream failure after history recovery', () => {
+  function recovered() {
+    const state = new ConversationStateStore(fakeWindow, new ArchiveSourceGate(true))
+    const messages = [
+      message('failure-user', 'user', 10),
+      message('failure-thought', 'assistant', 11, { channel: 'analysis', status: 'in_progress' }),
+    ]
+    state.ingestPage(page('failure-chat', messages, 20_000, { async_status: 3 }))
+    return { state, messages }
+  }
+
+  test('fresh native FAILURE closes a recovered run and repeated active history cannot restart it', () => {
+    const { state, messages } = recovered()
+    state.ingestStreamStatus({
+      conversationId: 'failure-chat',
+      status: 'FAILURE',
+      httpStatus: 200,
+      observedAt: 21_000,
+    })
+    expect(state.lifecycle('failure-chat')).toMatchObject({
+      state: 'failed',
+      terminalCause: 'stream_failure',
+      completedAt: 21_000,
+      source: 'transport',
+    })
+    state.ingestPage(page('failure-chat', messages, 22_000, { async_status: 3 }))
+    expect(state.lifecycle('failure-chat')).toMatchObject({
+      state: 'failed',
+      terminalCause: 'stream_failure',
+      completedAt: 21_000,
+    })
+    expect(state.snapshot('failure-chat')?.records).toHaveLength(2)
+  })
+
+  test('old, unsuccessful and unrelated status polls cannot close a recovered run', () => {
+    const { state } = recovered()
+    for (const detail of [
+      { observedAt: 19_000, httpStatus: 200 },
+      { observedAt: 21_000, httpStatus: 500 },
+      { observedAt: 21_000, httpStatus: 200, requestId: 'unrelated' },
+    ])
+      state.ingestStreamStatus({ conversationId: 'failure-chat', status: 'FAILURE', ...detail })
+    expect(state.lifecycle('failure-chat')?.state).toBe('in_progress')
+    state.ingestStreamStatus({
+      conversationId: 'failure-chat',
+      status: 'UNAVAILABLE',
+      observedAt: 21_000,
+      httpStatus: 404,
+    })
+    expect(state.lifecycle('failure-chat')?.state).toBe('in_progress')
+  })
+
+  test('a fresh submit starts normally and is fenced from a prior uncorrelated failure poll', () => {
+    const { state } = recovered()
+    state.ingestStreamStatus({
+      conversationId: 'failure-chat',
+      status: 'FAILURE',
+      httpStatus: 200,
+      observedAt: 21_000,
+    })
+    state.ingestRequest({
+      conversationId: 'failure-chat',
+      requestId: 'new-run',
+      userMessageId: 'new-user',
+      startedAt: 23_000,
+      observedAt: 23_000,
+      source: 'transport_request',
+    })
+    state.ingestStreamStatus({
+      conversationId: 'failure-chat',
+      status: 'FAILURE',
+      httpStatus: 200,
+      observedAt: 24_000,
+    })
+    expect(state.lifecycle('failure-chat')).toMatchObject({ state: 'in_progress', terminalCause: null })
+    state.ingestStreamStatus({
+      conversationId: 'failure-chat',
+      requestId: 'new-run',
+      status: 'FAILURE',
+      httpStatus: 200,
+      observedAt: 25_000,
+    })
+    expect(state.lifecycle('failure-chat')).toMatchObject({
+      state: 'failed',
+      terminalCause: 'stream_failure',
+      completedAt: 25_000,
+    })
+  })
+})

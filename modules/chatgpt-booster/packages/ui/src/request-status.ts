@@ -94,33 +94,39 @@ export function mountRequestStatus(
 
       const render = () => {
         requestTimer.textContent = elapsed(snapshot.startedAt, snapshot.completedAt, currentNow)
-        reasoning.hidden = !snapshot.reasoningStartedAt
+        reasoning.hidden = snapshot.phase !== 'thinking' || !snapshot.reasoningStartedAt
         reasoningTimer.textContent = elapsed(
           snapshot.reasoningStartedAt,
           snapshot.completedAt,
           currentNow,
         )
         spinner.hidden = !snapshot.active
-        action.hidden = !snapshot.phaseStartedAt
+        action.hidden = snapshot.phase === 'thinking' || !snapshot.phaseStartedAt
         actionTimer.textContent = elapsed(snapshot.phaseStartedAt, snapshot.completedAt, currentNow)
         update.hidden = !snapshot.lastActivityAt
         updateTimer.textContent = snapshot.lastActivityAt
-          ? `${new Date(snapshot.lastActivityAt).toLocaleTimeString(locale)} · ${elapsed(snapshot.lastActivityAt, snapshot.completedAt, currentNow)} ${t('requestStatus.ago')}`
+          ? `${elapsed(snapshot.lastActivityAt, snapshot.completedAt, currentNow)} ${t('requestStatus.ago')}`
           : '—'
-        if (snapshot.lastActivityAt)
-          update.title = `${t('activity.lastActivityAt')}: ${new Date(snapshot.lastActivityAt).toLocaleTimeString(locale)}`
-        summary.hidden = !snapshot.lastSummaryAt
+        summary.hidden = true
         summaryTimer.textContent = elapsed(
           snapshot.lastSummaryAt ?? null,
           snapshot.completedAt,
           currentNow,
         )
-        interval.hidden = !snapshot.previousSummaryAt || !snapshot.lastSummaryAt
+        interval.hidden = true
         intervalTimer.textContent = elapsed(
           snapshot.previousSummaryAt ?? null,
           snapshot.lastSummaryAt ?? null,
           currentNow,
         )
+        bar.title = [
+          snapshot.lastSummaryAt ? `${t('requestStatus.sinceSummary')} ${summaryTimer.textContent}` : '',
+          snapshot.previousSummaryAt && snapshot.lastSummaryAt
+            ? `${t('requestStatus.summaryInterval')} ${intervalTimer.textContent}`
+            : '',
+        ]
+          .filter(Boolean)
+          .join(' · ')
         bar.dataset.phase = snapshot.phase
         bar.setAttribute(
           'aria-label',

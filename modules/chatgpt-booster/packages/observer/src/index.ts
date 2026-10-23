@@ -1,3 +1,11 @@
+import { decodeNativeFullHistory, type NativeHistoryGraph } from './native-full-history'
+
+export {
+  decodeNativeFullHistory,
+  type NativeHistoryGraph,
+  validateNativeHistoryGraph,
+} from './native-full-history'
+
 import { conversationRequestErrorCode } from './conversation-request-error'
 import { ConversationStreamDecoder } from './conversation-stream-decoder'
 import { registerNativeAccountConsumer } from './native-account-source'
@@ -1005,6 +1013,7 @@ export interface ArchiveAssetResolutionEventDetail {
 
 export interface ConversationArchiveEventDetail {
   kind: 'conversation-page'
+  nativeGraph?: NativeHistoryGraph | undefined
   readId?: string | undefined
   readStartedAt?: number | undefined
   accountId?: string | null | undefined
@@ -1178,7 +1187,7 @@ function conversationHistoryId(input: string): string | undefined {
   try {
     const url = new URL(input, location.href)
     if (url.origin !== 'https://chatgpt.com') return undefined
-    const match = url.pathname.match(/^\/backend-api\/conversations\/([^/]+)(?:\/messages)?$/)
+    const match = url.pathname.match(/^\/backend-api\/conversations?\/([^/]+)(?:\/messages)?$/)
     return match?.[1] ? decodeURIComponent(match[1]) : undefined
   } catch {
     return undefined
@@ -1358,6 +1367,24 @@ function observeConversationArchiveResponse(
     .json()
     .then((payload: unknown) => {
       if (!observerTarget || read.accountEpoch !== activeAccountEpoch()) return
+      let nativeGraph: NativeHistoryGraph | undefined
+      if (payload && typeof payload === 'object' && !Array.isArray(payload) && 'mapping' in payload) {
+        try {
+          const decoded = decodeNativeFullHistory(payload as Record<string, unknown>, conversationId)
+          nativeGraph = decoded.nativeGraph
+          payload = decoded.payload
+        } catch {
+          observerTarget.postMessage(
+            {
+              channel: TRANSPORT_CHANNEL,
+              type: ARCHIVE_CONTRACT_ERROR_EVENT,
+              detail: { conversationId, path: 'payload.mapping' },
+            },
+            observerTarget.location.origin,
+          )
+          return
+        }
+      }
       if (!isConversationHistoryPayload(payload)) {
         // Malformed history must not disappear silently: an archive-only gate takes over.
         // Keep message text and nested transport payload out of diagnostics.
@@ -1374,6 +1401,7 @@ function observeConversationArchiveResponse(
       }
       const detail = {
         kind: 'conversation-page',
+        ...(nativeGraph ? { nativeGraph } : {}),
         ...read,
         timestamp: Date.now(),
         sourceUrl,
@@ -1873,28 +1901,32 @@ export function installTransportObserver(
         try {
           const response = await callUpstream(input, init)
           if (!response.ok && (conversationRequest || resumeConversationId)) {
-            void response
-              .clone()
-              .json()
-              .catch(() => null)
-              .then((payload) => {
-                if (accountCheckEpoch !== accountEpoch || !observerActive) return
-                publishConversationStream({
-                  conversationId: conversationRequest?.conversationId ?? resumeConversationId,
-                  kind: 'error',
-                  errorCode: conversationRequestErrorCode(
-                    payload,
-                    response.status,
-                    resumeConversationId ? 'network_error' : 'request_rejected',
-                  ),
-                  errorReason: null,
-                  canRetry: response.status === 429 || response.status >= 500,
-                  observedAt: Date.now(),
-                  accountId: emittedAccountId,
-                  requestId: conversationRequest ? id : resumeRunAtRequest,
-                  userMessageId: conversationRequest?.userMessageId ?? null,
-                })
+            // Native error handling may abort the request as soon as fetch
+            // returns. Finish reading our clone first, or its 413 body can be
+            // aborted and downgraded to a generic rejection on first submit.
+            let payload: unknown = null
+            try {
+              payload = await response.clone().json()
+            } catch {
+              /* Preserve the native response on unreadable error bodies. */
+            }
+            if (accountCheckEpoch === accountEpoch && observerActive) {
+              publishConversationStream({
+                conversationId: conversationRequest?.conversationId ?? resumeConversationId,
+                kind: 'error',
+                errorCode: conversationRequestErrorCode(
+                  payload,
+                  response.status,
+                  resumeConversationId ? 'network_error' : 'request_rejected',
+                ),
+                errorReason: null,
+                canRetry: response.status === 429 || response.status >= 500,
+                observedAt: Date.now(),
+                accountId: emittedAccountId,
+                requestId: conversationRequest ? id : resumeRunAtRequest,
+                userMessageId: conversationRequest?.userMessageId ?? null,
               })
+            }
           }
           if (stopConversationId)
             publishConversationStop({

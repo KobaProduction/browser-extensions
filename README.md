@@ -23,8 +23,8 @@ not permission to silently merge or directly edit other products' storage.
 
 Start with the [documentation index](docs/README.md). In particular:
 
-- [Shared project rules](docs/shared/PROJECT_RULES.md) — binding documentation
-  layout, ownership, review and version/release rules.
+- [Agent map and AI Agent Workflow](AGENTS.md) — source ownership and links to
+  reusable engineering skills.
 - [Environment and data isolation](docs/shared/ENVIRONMENTS_AND_STORAGE.md) —
   strict DEV/PROD boundary, product identities, persistence choices, aggregate access.
 - [Backup and restore](docs/shared/BACKUP_AND_RESTORE.md) and
@@ -56,9 +56,11 @@ bun run build
 Run these gates for acceptance of a finished change. `bun run test` selects
 changed files and their linked tests; `bun run test:plan` previews the selection.
 Use `bun run test -- --files <source-or-test-paths>` for one atomic batch and
-`bun run test:all` only when full-suite acceptance is intended. The
-[testing contract](docs/shared/PROJECT_RULES.md#engineering-workflow) also applies
-to CI and the pre-push hook.
+`bun run test:all` only when full-suite acceptance is intended. CI supplies the push/PR base and
+head; local selection includes unpushed and
+uncommitted changes. Unlinked sources require relevant browser/build acceptance,
+not an automatic full-suite run. Repeat checks after relevant changes or failures.
+The pre-push hook runs the commands described below.
 
 After a fresh Git checkout, enable the tracked pre-push hook **locally**:
 
@@ -73,15 +75,8 @@ runs independently and does not depend on a local Git hook.
 
 The [release/channel contract](docs/DEV_PROD_CHANNELS.md) defines continuous DEV
 prereleases and explicitly approved PROD publication. Different products can
-advance independently. **VK Booster's current source version is 1.1.0,
-with archive schema 1**. The owner's 2026-10-17 correction removes source-version
-freezing. Minor versions add functionality, patches fix bugs,
-and major versions represent fundamental changes; schema changes and PROD
-publication require separate approval.
-DEV identifiers still use three numeric components, e.g. `dev-vk-booster v1.1.1`;
-there is no automatic stable promotion. Historical 2.3.x tags and old
-schema-2 archives remain untouched; update/downgrade compatibility needs
-installed-browser acceptance before PROD.
+advance independently; source versions live in product manifests. Channel,
+schema and historic-installation compatibility belong to that contract.
 
 Installation and environment-specific instructions live in the corresponding
 product README. Do not confuse a successful build or source review with

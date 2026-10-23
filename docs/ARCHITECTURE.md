@@ -519,3 +519,20 @@ source/identity/version checks reject inconsistent envelopes; unknown source
 content remains opaque. Per-message terminal evidence cannot establish an
 entire conversation's completeness. See the
 [message and export contract](shared/CONVERSATION_EXPORT.md).
+
+
+## Full native ChatGPT collection (2026-10-23 local source)
+
+The ChatGPT provider now binds the source-inspected native full-history use
+case through a real native AppScope hook result and an exact cached client
+runtime contract. Network observation validates and retains the full native
+mapping independently of message metadata parents. A graph checkpoint becomes
+durable only after its message rows; current-graph completeness and retained
+historical records outside that graph are distinct. Schema 1 is unchanged.
+See the [owning live contract](chatgpt-booster/LIVE_ARCHIVE_CONTRACT.md#full-native-collection-and-graph-authority-2026-10-23).
+
+The binding drains genuine native pagination before the graph read, retaining
+variants absent from the mapping. Provider conversation payloads also retain a
+first source-confirmed exhaustion marker independently of current graph heads.
+Native error-body observation completes before returning the error response,
+so native request cancellation cannot erase a coded length rejection.

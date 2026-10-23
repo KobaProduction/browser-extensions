@@ -3,6 +3,8 @@ export { default as ApplicationTelemetrySettings } from './ApplicationTelemetryS
 export { default as ArchiveConversationList } from './ArchiveConversationList.vue'
 export { default as ArchiveExportFormatFields } from './ArchiveExportFormatFields.vue'
 export { default as ArchiveExportScopeFields } from './ArchiveExportScopeFields.vue'
+export { default as ArchiveIntegrityDetails } from './ArchiveIntegrityDetails.vue'
+export { default as ArchiveIntegrityIndicator } from './ArchiveIntegrityIndicator.vue'
 export { default as ArchiveManager } from './ArchiveManager.vue'
 export { default as ArchiveMessageHeader } from './ArchiveMessageHeader.vue'
 export { default as ArchiveProgressBar } from './ArchiveProgressBar.vue'

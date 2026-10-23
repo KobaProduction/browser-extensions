@@ -59,6 +59,7 @@ export interface ArchiveMessageView {
 }
 
 export interface ArchiveCoverageView {
+  exhaustedAt?: number | null
   integrity?: import('@kobaproduction/browser-archive').ArchiveConversationIntegrity
   evidenceVersion?: number
   verifiedAt?: number | null
@@ -368,7 +369,7 @@ export function mountBoosterUi(options: BoosterUiOptions): MountedBoosterUi {
     'position:fixed!important;inset:0!important;width:0!important;height:0!important;z-index:2147483647!important;pointer-events:none!important;overflow:visible!important;'
   document.documentElement.append(host)
 
-  const { mountPoint, portal } = createIsolatedMount(host)
+  const { mountPoint, portal, dispose } = createIsolatedMount(host)
   const app: App = createApp(BoosterOverlay, { ...options })
   app.provide(UI_PORTAL_TARGET, portal)
   app.mount(mountPoint)
@@ -376,13 +377,14 @@ export function mountBoosterUi(options: BoosterUiOptions): MountedBoosterUi {
   return {
     unmount() {
       app.unmount()
+      dispose()
       host.remove()
     },
   }
 }
 
 export function mountControlCenter(host: HTMLElement, options: BoosterUiOptions): MountedBoosterUi {
-  const { mountPoint, portal } = createIsolatedMount(host)
+  const { mountPoint, portal, dispose } = createIsolatedMount(host)
   const app: App = createApp(ControlCenterPanel, {
     ...options,
     showClose: false,
@@ -393,6 +395,7 @@ export function mountControlCenter(host: HTMLElement, options: BoosterUiOptions)
   return {
     unmount() {
       app.unmount()
+      dispose()
       host.replaceChildren()
     },
   }

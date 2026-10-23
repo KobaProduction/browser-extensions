@@ -28,7 +28,7 @@ export function mountScopeArchiveControl(
   host: HTMLElement,
   initial: ScopeArchiveControlModel,
 ): MountedScopeArchiveControl {
-  const { shadow, mountPoint, portal } = createBoosterShadowSurface(host)
+  const { shadow, mountPoint, portal, dispose } = createBoosterShadowSurface(host)
   const model = reactive({ ...initial }) as ScopeArchiveControlModel
   const app = createApp(ScopeArchiveControl, { model })
   app.provide(UI_PORTAL_TARGET, portal)
@@ -39,6 +39,7 @@ export function mountScopeArchiveControl(
     },
     unmount() {
       app.unmount()
+      dispose()
       shadow.replaceChildren()
     },
   }

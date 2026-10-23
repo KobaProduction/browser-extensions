@@ -1,3 +1,4 @@
+import { attachPortalTopLayer } from '@kobaproduction/browser-ui'
 import styles from './styles.css?inline'
 
 let sharedSheet: CSSStyleSheet | undefined
@@ -43,5 +44,6 @@ export function createBoosterShadowSurface(host: HTMLElement, tag: 'div' | 'span
   portal.style.cssText =
     'position:fixed;inset:0;width:0;height:0;overflow:visible;z-index:2147483647;pointer-events:auto'
   shadow.append(mountPoint, portal)
-  return { shadow, mountPoint, portal }
+  const dispose = attachPortalTopLayer(portal)
+  return { shadow, mountPoint, portal, dispose }
 }

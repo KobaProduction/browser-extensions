@@ -170,6 +170,36 @@ export class ConversationObservationGateway {
       return entry ? [structuredClone(entry)] : []
     })
   }
+  hasFullRead(conversationId: string, readId: string | undefined) {
+    for (const entry of this.conversations.get(conversationId)?.values() ?? [])
+      if (
+        entry.source?.kind === 'page' &&
+        entry.source.detail.nativeGraph &&
+        entry.source.detail.readId === readId
+      )
+        return true
+    return false
+  }
+  latestFullGraph(conversationId: string) {
+    let selected: Extract<BufferedConversationSource, { kind: 'page' }> | undefined
+    for (const entry of this.conversations.get(conversationId)?.values() ?? []) {
+      const source = entry.source
+      if (
+        source?.kind === 'page' &&
+        source.detail.nativeGraph &&
+        (!selected || (source.detail.readStartedAt ?? 0) >= (selected.detail.readStartedAt ?? 0))
+      )
+        selected = source
+    }
+    return selected?.detail.nativeGraph
+      ? {
+          graph: structuredClone(selected.detail.nativeGraph),
+          readId: selected.detail.readId ?? '',
+          readStartedAt: selected.detail.readStartedAt ?? 0,
+          observedAt: selected.detail.timestamp,
+        }
+      : undefined
+  }
   sources(conversationId?: string): readonly ConversationObservationEntry[] {
     const entries = conversationId ? this.conversations.get(conversationId) : this.entries
     return [...(entries?.values() ?? [])]

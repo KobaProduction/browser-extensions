@@ -142,3 +142,12 @@ both standalone products and aggregate hosts: one common language preference,
 provider inheritance without a second language control, aggregate-only product
 management and direct automation navigation. Archive geometry checks separately
 measure the remaining height at desktop, tablet and phone sizes.
+
+
+### Focused ChatGPT regression fixtures
+
+`archive-integrity.html`, `native-overlays.html` and `request-status.html` use
+synthetic data and real shared/provider components. They are available through
+the local Lab server and included in its production build. The overlay fixture
+places the real metadata popup under a transformed, clipped anchor and a native
+warning sibling to exercise shared portal layering without private chat data.

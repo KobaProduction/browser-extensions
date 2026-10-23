@@ -1,4 +1,5 @@
 import { ARCHIVE_CANONICAL_MODEL_VERSION, projectNativeMessage } from '@chatgpt-booster/core'
+import { validateNativeHistoryGraph } from '@chatgpt-booster/observer'
 import { decodeArchiveClone, encodeArchiveClone } from '@kobaproduction/browser-archive'
 import {
   type PortableBackupReader,
@@ -20,6 +21,7 @@ import {
   sourceProjectBelongsToConversation,
   validateProjectAssociations,
 } from './archive-project-association'
+import { validateConversationStartEvidence } from './archive-start-evidence'
 
 export const FIXED_BACKUP_STORES = [
   'projects',
@@ -143,7 +145,44 @@ export function decodeFixedBackupRow(row: PortableBackupRow, owner: string): Fix
       throw Error('Invalid project recovery record')
   } else if (row.store === 'conversations') {
     const parts = tuple(2)
+    if (value.startEvidence !== undefined) validateConversationStartEvidence(value.startEvidence)
     if (value.pageCoverage !== undefined) validateHistoryCoverageCheckpoint(value.pageCoverage)
+    if (
+      value.streamHeadObservedAt !== undefined &&
+      (typeof value.streamHeadObservedAt !== 'number' ||
+        !Number.isFinite(value.streamHeadObservedAt) ||
+        value.streamHeadObservedAt < 0)
+    )
+      throw Error('Invalid live head receipt')
+    if (value.exhaustionEvidence !== undefined) {
+      const proof = value.exhaustionEvidence
+      if (
+        !object(proof) ||
+        proof.kind !== 'conversation_too_large' ||
+        !nonEmpty(proof.requestId) ||
+        (proof.userMessageId !== null && !nonEmpty(proof.userMessageId)) ||
+        (proof.savedHeadId !== null && !nonEmpty(proof.savedHeadId)) ||
+        typeof proof.observedAt !== 'number' ||
+        !Number.isFinite(proof.observedAt) ||
+        proof.observedAt < 0
+      )
+        throw Error('Invalid exhaustion evidence')
+    }
+    if (value.nativeGraph !== undefined) {
+      const graph = value.nativeGraph
+      if (
+        !object(graph) ||
+        !nonEmpty(graph.readId) ||
+        typeof graph.readStartedAt !== 'number' ||
+        !Number.isFinite(graph.readStartedAt) ||
+        graph.readStartedAt < 0 ||
+        typeof graph.observedAt !== 'number' ||
+        !Number.isFinite(graph.observedAt) ||
+        graph.observedAt < graph.readStartedAt
+      )
+        throw Error('Invalid native graph checkpoint')
+      validateNativeHistoryGraph(graph.graph, String(parts[1]))
+    }
     if (
       value.conversationId !== parts[1] ||
       (value.projectId !== null && !nonEmpty(value.projectId)) ||
@@ -266,6 +305,62 @@ export function decodeFixedBackupRow(row: PortableBackupRow, owner: string): Fix
   return value as unknown as FixedBackupModel
 }
 
+export async function validateFixedConversationRelations(
+  conversation: FixedConversation,
+  owner: string,
+  load: (store: FixedBackupStore, key: string) => Promise<FixedBackupModel>,
+) {
+  if (conversation.projectId) await load('projects', JSON.stringify([owner, conversation.projectId]))
+  if (conversation.nativeGraph)
+    for (const node of Object.values(conversation.nativeGraph.graph.nodes))
+      if (node.messageId) {
+        const key = JSON.stringify([owner, conversation.conversationId, node.messageId])
+        await load('messages', key)
+        await load('snapshots', key)
+      }
+  if (conversation.exhaustionEvidence?.savedHeadId)
+    await load(
+      'messages',
+      JSON.stringify([owner, conversation.conversationId, conversation.exhaustionEvidence.savedHeadId]),
+    )
+  if (conversation.exhaustionEvidence?.userMessageId) {
+    const message = (await load(
+      'messages',
+      JSON.stringify([
+        owner,
+        conversation.conversationId,
+        conversation.exhaustionEvidence.userMessageId,
+      ]),
+    )) as FixedMessage
+    if (message.projection.role !== 'user') throw Error('Invalid exhausted submission role')
+  }
+  for (const entry of conversation.projectAssociations ?? [])
+    for (const projectId of [entry.previousProjectId, entry.projectId])
+      if (projectId) await load('projects', JSON.stringify([owner, projectId]))
+  if (conversation.terminalHeadId) {
+    const source = (
+      (await load(
+        'snapshots',
+        JSON.stringify([owner, conversation.conversationId, conversation.terminalHeadId]),
+      )) as FixedSnapshot
+    ).raw
+    const author = object(source.author) ? source.author : null
+    if (
+      author?.role !== 'assistant' ||
+      source.end_turn !== true ||
+      source.status !== 'finished_successfully' ||
+      (source.recipient !== undefined && source.recipient !== null && source.recipient !== 'all') ||
+      (source.channel !== undefined && source.channel !== null && source.channel !== 'final')
+    )
+      throw Error('Saved terminal head disagrees with assistant source evidence')
+  }
+  if (conversation.startEvidence)
+    await load(
+      'messages',
+      JSON.stringify([owner, conversation.conversationId, conversation.startEvidence.firstMessageId]),
+    )
+}
+
 /** The sealed reader owns its indexes. No source-row map or full graph is kept
  * in RAM: each relation is checked in both directions through indexed get(). */
 export async function validateFixedStagedBackup(
@@ -303,28 +398,7 @@ export async function validateFixedStagedBackup(
     if (sourceFingerprint(await encodeArchiveClone(value)) !== sourceFingerprint(row.value))
       throw Error('Non-canonical structured-clone recovery row')
     if (row.store === 'conversations') {
-      const conversation = value as FixedConversation
-      if (conversation.projectId) await load('projects', JSON.stringify([owner, conversation.projectId]))
-      for (const entry of conversation.projectAssociations ?? [])
-        for (const projectId of [entry.previousProjectId, entry.projectId])
-          if (projectId) await load('projects', JSON.stringify([owner, projectId]))
-      if (conversation.terminalHeadId) {
-        const source = (
-          (await load(
-            'snapshots',
-            JSON.stringify([owner, conversation.conversationId, conversation.terminalHeadId]),
-          )) as FixedSnapshot
-        ).raw
-        const author = object(source.author) ? source.author : null
-        if (
-          author?.role !== 'assistant' ||
-          source.end_turn !== true ||
-          source.status !== 'finished_successfully' ||
-          (source.recipient !== undefined && source.recipient !== null && source.recipient !== 'all') ||
-          (source.channel !== undefined && source.channel !== null && source.channel !== 'final')
-        )
-          throw Error('Saved terminal head disagrees with assistant source evidence')
-      }
+      await validateFixedConversationRelations(value as FixedConversation, owner, load)
     } else if (row.store === 'messages') {
       const message = value as FixedMessage
       const header = (await load(

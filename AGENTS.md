@@ -1,81 +1,71 @@
 # Browser Extensions — agent entry map
 
-This file is a **router**, not the application's rulebook. Durable project
-rules reside in `docs/shared/`, product contracts under `docs/<product>/`;
-GitHub Issues track only current tasks/evidence, never the sole rule authority.
+Start with [README](README.md) and the [documentation map](docs/README.md).
+Load only the relevant system contract and source. Source owns implementation;
+compare [target](docs/TARGET_ARCHITECTURE.md) and [current architecture](docs/ARCHITECTURE.md)
+when changing system boundaries. Issues own current work and evidence.
 
-## Required navigation
+## AI Agent Workflow
 
-1. Read the short [system catalog](README.md) and
-   [documentation index](docs/README.md).
-2. Read the [project rules](docs/shared/PROJECT_RULES.md) relevant to the
-   current decision. **Environment isolation** and **backup ownership** are
-   binding for all product/channel storage work.
-3. For substantive architecture, implementation, target, permission, UI or
-   release changes, read [accepted target architecture](docs/TARGET_ARCHITECTURE.md)
-   completely and compare with [current architecture](docs/ARCHITECTURE.md).
-   A target is not proof of a working implementation.
-4. Load the relevant global AI workflow skill/role for the task; do not read
-   unrelated skills or account prompt templates.
-5. Select the product-specific README or shared contract below. Inspect
-   current Git/ref and source before technical decisions.
+Use the relevant skill from [AI Agent Workflow](https://github.com/ArthurKoba/ai-agent-workflow).
+Do not copy its general process here or preload every skill.
 
-## Ownership routes
+| Task | Workflow authority |
+| --- | --- |
+| Documentation and context | [Context Engineering](https://github.com/ArthurKoba/ai-agent-workflow/blob/main/skills/context-engineering.md) |
+| Git, Issues, commits and PRs | [Git Workflow](https://github.com/ArthurKoba/ai-agent-workflow/blob/main/skills/git-workflow.md) |
+| Toolchain, checks, hooks and CI | [Project Bootstrap](https://github.com/ArthurKoba/ai-agent-workflow/blob/main/skills/project-bootstrap.md) |
+| Domain/application implementation | [Software Engineering](https://github.com/ArthurKoba/ai-agent-workflow/blob/main/skills/software-engineering/README.md) |
+| Vue/TypeScript and frontend | [Frontend Engineering](https://github.com/ArthurKoba/ai-agent-workflow/blob/main/skills/frontend-engineering/README.md) |
+| UI layout and acceptance | [UI Layout](https://github.com/ArthurKoba/ai-agent-workflow/blob/main/skills/frontend-engineering/ui-layout.md), [Interface Review](https://github.com/ArthurKoba/ai-agent-workflow/blob/main/skills/interface-design-review.md) |
+| Browser, CDP and Playwright | [Remote Browser Session](https://github.com/ArthurKoba/ai-agent-workflow/blob/main/skills/remote-browser-session.md) |
+| Independent code review | [Code Review](https://github.com/ArthurKoba/ai-agent-workflow/blob/main/skills/code-review.md) |
 
-| Task | Mandatory local authority | Source |
+## System and source ownership
+
+| Responsibility | Source | System contract |
 | --- | --- | --- |
-| VK conversations/archive/export | [VK Booster](docs/vk-booster/README.md), [archive contract](docs/vk-booster/ARCHIVE.md) | `modules/vk-booster/` |
-| ChatGPT archive, account/owner and migration | [ChatGPT Booster](docs/chatgpt-booster/README.md) | `modules/chatgpt-booster/` |
-| All-in-one/provider connection | [All-in-one](docs/all-in-one/README.md), [integration](docs/shared/INTEGRATION_CONTRACT.md) | `apps/` |
-| Storage/Pinia/Dexie/identity/session | [Environment and storage](docs/shared/ENVIRONMENTS_AND_STORAGE.md) | `packages/storage/`, `packages/adapters/` |
-| Backup/import/restore | [Backup contract](docs/shared/BACKUP_AND_RESTORE.md) | Provider repository + shared ports |
-| Telemetry/metrics | [Telemetry contract](docs/shared/TELEMETRY.md) | `packages/core/` and provider adapter |
-| UI, responsive layouts and local acceptance | [UI acceptance](docs/shared/UI_ACCEPTANCE.md), [UI Lab](apps/ui-lab/README.md) | `packages/shell/`, provider UI, `apps/ui-lab/` |
-| Build, versions, release | [Project rules](docs/shared/PROJECT_RULES.md), [release channels](docs/DEV_PROD_CHANNELS.md) | `scripts/`, `.github/workflows/` |
-| Issue/PR creation | [Issue routing](docs/ISSUE_ROUTING.md) | Required `Target extension` |
+| VK capture, archive, media and export | `modules/vk-booster/` | [VK](docs/vk-booster/README.md), [archive](docs/vk-booster/ARCHIVE.md) |
+| ChatGPT source, archive and account identity | `modules/chatgpt-booster/` | [ChatGPT](docs/chatgpt-booster/README.md) |
+| Product/delivery composition and permissions | `apps/` | [All-in-one](docs/all-in-one/README.md), [integration](docs/shared/INTEGRATION_CONTRACT.md) |
+| Host-neutral lifecycle, ports and telemetry types | `packages/core/` | [Architecture](docs/ARCHITECTURE.md), [telemetry](docs/shared/TELEMETRY.md) |
+| Provider-neutral storage and browser adapters | `packages/storage/`, `packages/adapters/` | [Environments and storage](docs/shared/ENVIRONMENTS_AND_STORAGE.md) |
+| Source-neutral archive use cases | `packages/archive/` | [Conversation export](docs/shared/CONVERSATION_EXPORT.md) |
+| Shared primitives, widgets and Control Center | `packages/ui/`, `packages/widgets/`, `packages/shell/` | [UI acceptance](docs/shared/UI_ACCEPTANCE.md), [UI decisions](docs/shared/UI_DECISIONS.md) |
+| Backup/import/restore ports and provider repositories | Shared ports + provider | [Backup and restore](docs/shared/BACKUP_AND_RESTORE.md) |
+| Builds, independent versions and channels | `scripts/`, `.github/workflows/` | [Release channels](docs/DEV_PROD_CHANNELS.md), [versions](docs/INDEPENDENT_RELEASES.md) |
+| Issue target and consumer scope | Issue Forms | [Issue routing](docs/ISSUE_ROUTING.md) |
 
-## Non-negotiable immediate gates
+For UI work start in [Laboratory UI](apps/ui-lab/README.md), following the
+[Lab-first workflow](docs/shared/UI_ACCEPTANCE.md#lab-first-interface-workflow).
+The UI contract owns registry primitives, theme and browser acceptance.
+Local checks and selective test commands live in [README](README.md#development-and-releases).
+Direct push to unprotected `main` is allowed after checking live protection and
+rulesets; obey tool permissions and protected-branch requirements.
 
-- DEV and PROD **never** share writable data, settings, IndexedDB or events.
-  The aggregate may request access only to same-channel services, through
-  an explicit capability, valid owner identity and user consent.
-- VK Booster now targets **1.1.0**; source versions advance independently of
-  PROD approval: major for fundamental changes, minor for features, patch for
-  fixes. Dexie Archive **schema 1** remains fixed; schema changes need separate
-  approval. Historic schema-2 and state/pages archives are not migrated,
-  overwritten or deleted; release-update downgrade requires validation.
-- Protect ChatGPT v3/v4 existing PROD archives and existing VK v2 folders.
-- Never store credentials or personal conversations in Git, telemetry,
-  synthetic fixtures or CI logs.
-- Direct push to `main` is allowed when it is not protected. Verify current
-  GitHub branch protection and applicable rulesets before pushing; never bypass
-  protection. Run strict typecheck, Biome, tests and relevant output/build gates.
-  Protected branches retain their review/merge requirements. Distinguish
-  source/build from browser/data/prod acceptance.
-- Any new Issue names exactly one `Target extension` and contains **current
-  implementation scope and acceptance**, with links to documentation rules.
-  Do not paste persistent rules into Issues.
+## Version bumps per commit
 
-Changes to these decisions belong in the owning documentation contract; link
-to that contract rather than adding more copies to this router.
+For each affected product, bump its version **exactly once per implementation
+commit**, relative to `HEAD`. Before bumping, inspect the current manifest diff:
+if that commit's bump is already present, reuse it through review fixes,
+refactoring, tests, rebuilds and commit amendments. Never increment the pending
+version again for another iteration of the same commit. Follow the owning
+[version contract](docs/INDEPENDENT_RELEASES.md#one-version-step-per-commit).
 
-For UI work, apply the existing AI Agent Workflow
-[UI/layout skill](https://github.com/ArthurKoba/ai-agent-workflow/blob/main/skills/frontend-engineering/ui-layout.md)
-and [interface review skill](https://github.com/ArthurKoba/ai-agent-workflow/blob/main/skills/interface-design-review.md).
-Use the project's existing components and semantic theme tokens; the local
-UI acceptance contract owns this project's responsive and testing decisions.
-Start interface implementation/debugging in the local **Laboratory UI**
-(`bun run ui:lab`), open its localhost page in a real browser, and exercise
-the relevant fixtures and interactions. Inspect the actual rendering there
-directly or through authorized CDP/Playwright browser access. Follow the
-[Lab-first workflow](docs/shared/UI_ACCEPTANCE.md#lab-first-interface-workflow);
-authenticated installed-product checks remain a separate gate.
-The owner's latest directive requires real **shadcn-vue registry primitives only**
-for interactive UI, exported from the shared UI package. Do not create native
-or handwritten lookalikes, duplicate provider registries or competing sidebars.
-Read the relevant [owner UI decisions](docs/shared/UI_DECISIONS.md) before
-changing an interaction contract. Record the correction and why the prior
-behavior was wrong; generalize reusable lessons in the owning workflow skill.
-The owner's latest direction authorizes local synthetic tests, isolated browser
-validation and a loopback WebSocket fixture. This supersedes the earlier
-build/test deferral. Review, installed-browser and release gates remain separate.
+## Refactoring tools and Serena MCP
+
+Prefer working code-navigation and refactoring tools built into the current
+environment, including Codex, when they support the required operation. Check
+actual capabilities; do not assume that a text editor or patch tool provides
+semantic refactoring. Use Serena MCP only as a fallback when the needed built-in
+tools are absent, unavailable or fail to work.
+
+Do not start or initialize Serena while suitable built-in tools are working.
+When Serena is no longer needed, close this project's Serena instance and its
+owned child language servers. If fallback is necessary, reuse **one instance
+for the entire project**, including chats, agents and worktrees, and coordinate
+checkout activation between clients. Never launch a replacement merely because
+a new chat or agent starts. If a client configuration automatically launches
+separate STDIO servers, report that limitation rather than claiming a shared
+instance is enforced by this document. Clean up owned resources when fallback
+work finishes; never terminate other projects or unrelated processes by name.

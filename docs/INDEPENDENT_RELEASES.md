@@ -8,9 +8,9 @@ cutover and publication remain separately gated acceptance levels.
 
 | Product | Version | Entry point | Tampermonkey | MV3 | Publication |
 | --- | --- | --- | --- | --- | --- |
-| VK Booster | 1.1.0 | `modules/vk-booster` | Separate VK only | Separate VK only | Independently tagged |
-| ChatGPT Booster | 2.0.21 | `modules/chatgpt-booster` | Separate ChatGPT only | Separate ChatGPT observer, worker, popup | Independently tagged, manual approval |
-| All-in-one | 0.5.23 | `apps/userscript/src/all-in-one.ts`, `apps/extension/src/all-in-one-content.ts` | VK and ChatGPT by site | VK plus ChatGPT observer and worker | Own tag/channel, manual approval |
+| VK Booster | 1.1.3 | `modules/vk-booster` | Separate VK only | Separate VK only | Independently tagged |
+| ChatGPT Booster | 2.0.23 | `modules/chatgpt-booster` | Separate ChatGPT only | Separate ChatGPT observer, worker, popup | Independently tagged, manual approval |
+| All-in-one | 0.5.26 | `apps/userscript/src/all-in-one.ts`, `apps/extension/src/all-in-one-content.ts` | VK and ChatGPT by site | VK plus ChatGPT observer and worker | Own tag/channel, manual approval |
 
 `apps/all-in-one.json` declares dependencies on VK and ChatGPT. Its one
 Control Center and feature registry select the corresponding provider on the
@@ -45,6 +45,24 @@ chosen deliberately; the first ChatGPT version-2 release is `2.0.1` and the
 aggregator feature release is `0.5.0`. PR CI executes
 `scripts/version-policy.ts` against the pull-request base SHA and refuses
 missing or unrelated product version increments.
+
+### One version step per commit
+
+Each commit that changes versioned implementation advances each affected
+product by exactly one appropriate semver step from its `HEAD` version. Choose
+major, minor or patch from the final combined scope, not the number of edits.
+One commit must never accumulate two or more successive bumps for one product.
+
+Before invoking `bump-versions.ts`, compare the product manifests with `HEAD`,
+including staged and unstaged changes. If a pending bump already exists, keep
+that version during review corrections, refactoring, tests and rebuilds. An
+amendment of the same commit also reuses its version. If the final scope changes
+the semver category, replace the pending target with one step from the original
+baseline rather than incrementing the already bumped version.
+
+Synchronize all dependent manifests, runtime constants and lockfile entries
+with that single target. Documentation-only and CI-only commits retain the
+existing exception: no unrelated product bumps.
 
 A successful build produces three separate userscripts and Chromium ZIPs.
 `bun scripts/validate.ts --built` verifies their versions, independently

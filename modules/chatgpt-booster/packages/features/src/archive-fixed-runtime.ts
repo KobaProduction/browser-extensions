@@ -164,6 +164,7 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
   private unsubscribeSettings: (() => void) | undefined
   private unsubscribeRejected: (() => void) | undefined
   private unsubscribeCatalog: (() => void) | undefined
+  private unsubscribeLifecycle: (() => void) | undefined
   private readonly savedListeners = new Set<(conversationId: string | null) => void>()
   private readonly countListeners = new Set<() => void>()
   private readonly committedListeners = new Set<
@@ -358,6 +359,7 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
               detail.raw,
               canRecordHead,
               detail.restoreHead === true,
+              detail.observedAt,
             )
           if (stillAuthorized()) {
             this.saved(
@@ -379,7 +381,63 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
         })
     }
     this.unsubscribe = this.state.observations.subscribeSources((entry) => this.enqueueSource(entry))
+    this.unsubscribeLifecycle = this.state.subscribe?.((change) => {
+      if (change.reason === 'transport') this.enqueueExhaustion(change.conversationId)
+    })
     this.replayBuffered()
+  }
+  private enqueueExhaustion(id: string) {
+    const lifecycle = this.state.lifecycle?.(id),
+      owner = this.state.verifiedAccountId(),
+      epoch = this.state.accountEpoch()
+    if (
+      !owner ||
+      lifecycle?.source !== 'transport' ||
+      lifecycle.terminalCause !== 'conversation_too_large' ||
+      !lifecycle.requestId ||
+      lifecycle.completedAt === null
+    )
+      return
+    const evidence = {
+      kind: 'conversation_too_large' as const,
+      requestId: lifecycle.requestId,
+      userMessageId: lifecycle.userMessageId,
+      observedAt: lifecycle.completedAt,
+    }
+    this.pending = this.pending
+      .then(async () => {
+        const policy = this.policyEpoch,
+          settings = await this.settings.get()
+        const authorized = () =>
+          !this.stopped &&
+          this.policyEpoch === policy &&
+          this.state.verifiedAccountId() === owner &&
+          this.state.accountEpoch() === epoch
+        if (
+          !authorized() ||
+          !settings.enabled ||
+          (settings.automation.remote.enabled && settings.automation.remote.mode === 'remote-only')
+        )
+          return
+        const rule = captureRuleForOperation(
+          settings.archive,
+          id,
+          this.state.header(id)?.projectId ?? null,
+          this.collectionSession.permits(this.collectionSession.current(), owner, id),
+          settings.enabled,
+        )
+        if (!rule.enabled) return
+        await this.repo(owner).recordExhaustion(id, evidence, authorized)
+        if (authorized()) this.saved(id, false)
+      })
+      .catch((error) => {
+        if (
+          !this.stopped &&
+          this.state.verifiedAccountId() === owner &&
+          this.state.accountEpoch() === epoch
+        )
+          this.failure = error instanceof Error ? error : Error('Exhaustion evidence capture failed')
+      })
   }
   private enqueueStream?: (
     detail: Extract<BufferedConversationSource, { kind: 'message' }>['detail'] & {
@@ -412,6 +470,7 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
       const head = this.state.observations.head(id)
       if (head?.requestId && this.state.lifecycle(id)?.requestId === head.requestId)
         this.enqueueStream?.({ ...head, activeRun: true, restoreHead: true })
+      this.enqueueExhaustion(id)
     }
   }
   async waitForDistribution() {
@@ -595,7 +654,20 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
       },
       typeof page.payload.current_node === 'string' ? page.payload.current_node : null,
       stillAuthorized,
-      { projectId: header?.projectId ?? null, title: header?.title ?? null },
+      {
+        projectId: header?.projectId ?? null,
+        title: header?.title ?? null,
+        ...(page.nativeGraph && page.readId && typeof page.readStartedAt === 'number'
+          ? {
+              nativeGraph: {
+                graph: page.nativeGraph,
+                readId: page.readId,
+                readStartedAt: page.readStartedAt,
+                observedAt: page.timestamp,
+              },
+            }
+          : {}),
+      },
     )
     if (stillAuthorized()) this.saved(page.conversationId, countChanged)
   }
@@ -762,10 +834,12 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
       !settings.enabled ||
       hasConversationDraft() ||
       hasPendingComposerAttachments() ||
-      ['in_progress', 'stop_requested'].includes(this.state.lifecycle(id)?.state ?? '') ||
       (typeof document !== 'undefined' && document.hidden)
     )
       throw Error('Manual archive collection is currently blocked')
+    // Reading archive history is independent of generation state. In particular,
+    // a server-stuck streaming run must not prevent recovery of its saved history.
+    // Owner, source, policy and live-head fences still apply to every commit.
     const header = this.state.header(id)
     const pages = this.state.observations
       .sources(id)
@@ -825,6 +899,7 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
     if (
       typeof head !== 'string' ||
       saved.currentHeadId !== head ||
+      (saved.nativeGraph && saved.nativeGraph.graph.header.current_node !== head) ||
       (run.selectedTipId && run.selectedTipId !== head)
     )
       return false
@@ -846,7 +921,8 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
     if (
       integrity.chain !== 'verified' ||
       integrity.end !== 'verified' ||
-      integrity.firstMessageId !== saved.startEvidence.firstMessageId
+      (integrity.scope !== 'current-native-graph' &&
+        integrity.firstMessageId !== saved.startEvidence.firstMessageId)
     )
       return false
     this.collectionSession.update(run, {
@@ -898,9 +974,12 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
         this.state.accountEpoch() !== epoch ||
         this.state.verifiedAccountId() !== run.accountId ||
         !proof.verified ||
-        (run.sourceReadId
-          ? proof.readId !== run.sourceReadId || proof.readStartedAt !== run.sourceReadStartedAt
-          : (proof.readStartedAt ?? 0) < run.startedAt) ||
+        (!(
+          saved?.nativeGraph?.readId === proof.readId && saved.nativeGraph.readStartedAt >= run.startedAt
+        ) &&
+          (run.sourceReadId
+            ? proof.readId !== run.sourceReadId || proof.readStartedAt !== run.sourceReadStartedAt
+            : (proof.readStartedAt ?? 0) < run.startedAt)) ||
         saved?.pageCoverage?.initial.captureRun !== JSON.stringify([run.id, run.startedAt])
       )
         throw Error('archive.error.sourceChanged')
@@ -917,6 +996,24 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
       if (integrity.chain === 'gaps') throw Error('archive.error.incompleteSource')
     }
     this.collectionSession.complete(run)
+  }
+  async savedNativeGraphStatus(id: string) {
+    const owner = this.state.verifiedAccountId(),
+      epoch = this.state.accountEpoch()
+    if (!owner || this.stopped) throw Error('archive.error.auth')
+    const saved = (await this.repo(owner).getConversation(id))?.nativeGraph
+    if (this.state.verifiedAccountId() !== owner || this.state.accountEpoch() !== epoch)
+      throw Error('archive.error.sourceChanged')
+    return saved ? { readId: saved.readId, headId: saved.graph.header.current_node } : undefined
+  }
+  async savedExhaustion(id: string) {
+    const owner = this.state.verifiedAccountId(),
+      epoch = this.state.accountEpoch()
+    if (!owner || this.stopped) throw Error('archive.error.auth')
+    const value = (await this.repo(owner).getConversation(id))?.exhaustionEvidence
+    if (this.state.verifiedAccountId() !== owner || this.state.accountEpoch() !== epoch)
+      throw Error('archive.error.sourceChanged')
+    return value ? structuredClone(value) : undefined
   }
   async listSavedConversations() {
     const owner = this.state.verifiedAccountId()
@@ -1479,6 +1576,8 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
     this.unsubscribeRejected = undefined
     this.unsubscribeCatalog?.()
     this.unsubscribeCatalog = undefined
+    this.unsubscribeLifecycle?.()
+    this.unsubscribeLifecycle = undefined
     this.unsubscribeChanges?.()
     this.unsubscribeChanges = undefined
     this.changeFeed?.close()

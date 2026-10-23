@@ -20,3 +20,4 @@
 
 @source "./**/*.{vue,ts}";
 @source "../../../../../packages/ui/src/**/*.{vue,ts}";
+@source "../../../../../packages/widgets/src/**/*.{vue,ts}";

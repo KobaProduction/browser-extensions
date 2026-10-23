@@ -427,11 +427,6 @@
   display: none;
 }
 
-.booster-request-status > span + span::before {
-  content: "·";
-  color: var(--muted-foreground);
-}
-
 .booster-request-status-label {
   color: var(--muted-foreground);
   font-weight: 500;

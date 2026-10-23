@@ -696,6 +696,49 @@ test('incomplete collection without a verified native history method fails close
   expect(dom.scrollY).toBe(0)
 })
 
+test('collection stops after one native read when its source signature is rejected', async () => {
+  const { state, dom } = setup()
+  const sessions = new ArchiveCollectionSession()
+  let reads = 0
+  const driver = new HistoryLoaderModule(
+    state,
+    {
+      collectionSession: sessions,
+      async completeCollection() {
+        throw Error('Rejected source cannot complete')
+      },
+    },
+    dom as unknown as globalThis.Window,
+    undefined,
+    false,
+    {
+      async readOlder() {
+        reads++
+        state.sourceGate.reject({
+          conversationId: 'rejected-native-read',
+          version: state.sourceGate.version,
+          path: 'nativeGraph',
+          reason: 'unsupported',
+        })
+      },
+    },
+  )
+  cleanups.push(() => driver.stop())
+  driver.start()
+  sessions.begin({
+    accountId: 'owner-A',
+    conversationId: 'rejected-native-read',
+    projectId: null,
+    selectedTipId: null,
+  })
+  await settled()
+  expect(reads).toBe(1)
+  expect(sessions.snapshot()).toMatchObject({
+    phase: 'error',
+    message: 'archive.error.incompatibleSource',
+  })
+})
+
 test('late native receipts after abort cannot attribute unrelated observations to the cancelled command', async () => {
   const { state } = setup()
   let deliver:

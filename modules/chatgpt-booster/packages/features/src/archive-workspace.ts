@@ -7,6 +7,12 @@ import { checkpointHistoryCoverage } from './archive-coverage'
 import type { FixedConversation } from './archive-fixed-dexie'
 import type { FixedChatGptCapture } from './archive-fixed-runtime'
 import { chatGptArchiveRecord } from './archive-message-adapter'
+import {
+  nativeGraphIntegrity,
+  nativeGraphRelationship,
+  newestNativeGraph,
+  type SavedNativeGraph,
+} from './archive-native-graph'
 import { compareSourceObservation } from './archive-observation-policy'
 import type { ArchivedMessage } from './archive-store'
 import { normalizeConversationMessage } from './conversation-records'
@@ -26,7 +32,10 @@ interface WorkspaceConversation {
   dirty: boolean
   opened: boolean
   pending?: Promise<void>
+  nativeGraph?: SavedNativeGraph | undefined
   header?: FixedConversation
+  liveReceipts: Map<string, { parentId: string | null; observedAt: number }>
+  liveHeadObservedAt: number
   liveHead: string | null
   liveTerminal: string | null
   revision: number
@@ -62,6 +71,22 @@ export class ConversationArchiveWorkspace implements BoosterModule {
             title: header.title,
           }
         const source = entry.source
+        if (source?.kind === 'page' && source.detail.nativeGraph) {
+          const incoming = {
+            graph: source.detail.nativeGraph,
+            readId: source.detail.readId ?? '',
+            readStartedAt: source.detail.readStartedAt ?? 0,
+            observedAt: source.detail.timestamp,
+          }
+          conversation.nativeGraph = newestNativeGraph(conversation.nativeGraph, incoming)
+          if (
+            conversation.nativeGraph === incoming &&
+            incoming.readStartedAt >= conversation.liveHeadObservedAt
+          ) {
+            conversation.liveHead = null
+            conversation.liveTerminal = null
+          }
+        }
         const pageRecords =
           source?.kind === 'page' && Array.isArray(source.detail.payload.messages)
             ? source.detail.payload.messages
@@ -79,6 +104,12 @@ export class ConversationArchiveWorkspace implements BoosterModule {
           }
         }
         if (source?.kind === 'message' && source.detail.activeRun) {
+          const metadata = source.detail.raw.metadata as { parent_id?: string | null } | undefined
+          if (metadata && Object.hasOwn(metadata, 'parent_id'))
+            conversation.liveReceipts.set(String(source.detail.raw.id), {
+              parentId: metadata.parent_id ?? null,
+              observedAt: source.detail.observedAt,
+            })
           const record = this.memory.getMessage(entry.conversationId, String(source.detail.raw.id))
           if (
             record &&
@@ -87,6 +118,7 @@ export class ConversationArchiveWorkspace implements BoosterModule {
             (!record.channel || record.channel === 'final')
           ) {
             conversation.liveHead = record.messageId
+            conversation.liveHeadObservedAt = source.detail.observedAt
             conversation.liveTerminal =
               record.endTurn && record.status === 'finished_successfully' ? record.messageId : null
           }
@@ -152,9 +184,12 @@ export class ConversationArchiveWorkspace implements BoosterModule {
         failed: false,
         dirty: false,
         opened: false,
+        liveReceipts: new Map(),
+        liveHeadObservedAt: 0,
         liveHead: null,
         liveTerminal: null,
         revision: 0,
+        nativeGraph: this.memory.observations.latestFullGraph(id),
       }
       this.conversations.set(id, conversation)
       for (const record of this.memory.listMessages(id)) {
@@ -291,6 +326,11 @@ export class ConversationArchiveWorkspace implements BoosterModule {
               ? { ...base, ...chatGptArchiveRecord(row.raw, row.normalized) }
               : base
             this.merge(conversation, record)
+            if (row.liveObservedAt !== undefined)
+              conversation.liveReceipts.set(row.id, {
+                parentId: record.parentId,
+                observedAt: row.liveObservedAt,
+              })
           }
           first()
           this.notify(id)
@@ -333,8 +373,30 @@ export class ConversationArchiveWorkspace implements BoosterModule {
       failed: conversation?.failed ?? false,
     }
   }
+  nativeGraphRead(id: string) {
+    const c = this.conversation(id),
+      saved = c.header?.nativeGraph
+    return newestNativeGraph(c.nativeGraph, saved)
+  }
+  private recordView(id: string, record: ArchivedMessage) {
+    const c = this.conversation(id),
+      receipt = c.liveReceipts.get(record.messageId)
+    return {
+      ...record,
+      ...nativeGraphRelationship(
+        this.nativeGraphRead(id),
+        record.messageId,
+        {
+          parentId: record.parentId,
+          parentKnown: Object.hasOwn((record.raw.metadata ?? {}) as object, 'parent_id'),
+        },
+        receipt?.parentId === record.parentId ? receipt.observedAt : undefined,
+      ),
+    }
+  }
   getMessage(id: string, messageId: string) {
-    return this.conversation(id).records.get(messageId)
+    const record = this.conversation(id).records.get(messageId)
+    return record ? this.recordView(id, record) : undefined
   }
   catalog() {
     this.syncOwner()
@@ -370,7 +432,9 @@ export class ConversationArchiveWorkspace implements BoosterModule {
       if (!record) throw Error('archive.error.messageMissing')
       result.push(cursor)
       if (cursor === firstId) return result.reverse()
-      cursor = record.parentId
+      const viewed = this.recordView(id, record)
+      if (!viewed.parentKnown) throw Error('archive.error.incompleteSource')
+      cursor = viewed.parentId
     }
     throw Error('archive.error.incompleteSource')
   }
@@ -378,7 +442,7 @@ export class ConversationArchiveWorkspace implements BoosterModule {
     const c = this.conversation(id)
     return this.ordered(c).flatMap((key) => {
       const record = c.records.get(key)
-      return record ? [record] : []
+      return record ? [this.recordView(id, record)] : []
     })
   }
   window(
@@ -409,7 +473,7 @@ export class ConversationArchiveWorkspace implements BoosterModule {
     return {
       records: ids.slice(start, end).flatMap((key) => {
         const record = conversation.records.get(key)
-        return record ? [record] : []
+        return record ? [this.recordView(id, record)] : []
       }),
       hasOlder: start > 0,
       hasNewer: end < ids.length,
@@ -428,7 +492,9 @@ export class ConversationArchiveWorkspace implements BoosterModule {
       const record = conversation.records.get(cursor)
       if (!record) throw Error('archive.error.messageMissing')
       result.push(cursor)
-      cursor = record.parentId
+      const viewed = this.recordView(id, record)
+      if (!viewed.parentKnown) throw Error('archive.error.incompleteSource')
+      cursor = viewed.parentId
     }
     return result.reverse()
   }
@@ -454,11 +520,13 @@ export class ConversationArchiveWorkspace implements BoosterModule {
       currentStream.raw.id === head
     const page = checkpointHistoryCoverage(saved?.pageCoverage)
     const livePage = this.memory.nativeHistoryCoverage(id)
+    const fullGraph = this.nativeGraphRead(id)?.graph
+    if (fullGraph && (!head || fullGraph.header.current_node === head))
+      return nativeGraphIntegrity(fullGraph, new Set(conversation.records.keys()))
     return conversationIntegrityFromGraph(
       [...conversation.records.values()].map((record) => ({
         id: record.messageId,
-        parentId: record.parentId,
-        parentKnown: Object.hasOwn((record.raw.metadata ?? {}) as object, 'parent_id'),
+        ...this.recordView(id, record),
       })),
       {
         firstId: saved?.startEvidence?.firstMessageId ?? header?.startEvidence?.firstMessageId,

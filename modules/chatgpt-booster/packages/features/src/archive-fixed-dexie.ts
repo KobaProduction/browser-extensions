@@ -8,7 +8,6 @@ import {
   type ArchiveMessageV1,
   archiveSha256Hex,
   collectArchiveRange,
-  decodeArchiveClone,
   encodeArchiveClone,
 } from '@kobaproduction/browser-archive'
 import {
@@ -17,14 +16,12 @@ import {
   type PortableBackupReader,
   type PortableBackupRow,
   type ServiceScope,
-  serializedBackupRow,
 } from '@kobaproduction/browser-storage'
 import Dexie, { type DexieOptions, type Table, type Transaction } from 'dexie'
 import {
   advanceHistoryCoverage,
   type HistoryCoverageCheckpoint,
   type HistoryPageEvidence,
-  validateHistoryCoverageCheckpoint,
 } from './archive-coverage'
 import {
   assertFixedBackupAdmission,
@@ -33,6 +30,7 @@ import {
   detachedFixedBackupSnapshot,
   type FixedBackupCounts,
   type FixedBackupModel,
+  validateFixedConversationRelations,
   validateFixedStagedBackup,
 } from './archive-fixed-backup-validation'
 import { conversationIntegrity } from './archive-integrity'
@@ -41,6 +39,14 @@ import {
   readChatGptArchiveMessage,
   validateChatGptNormalizedSnapshot,
 } from './archive-message-adapter'
+import {
+  nativeGraphIntegrity,
+  nativeGraphParents,
+  nativeGraphRelationship,
+  nativeSnapshotLiveReceipt,
+  newestNativeGraph,
+  type SavedNativeGraph,
+} from './archive-native-graph'
 import {
   compareSourceObservation,
   type ObservationDecision,
@@ -67,6 +73,7 @@ export interface FixedProject {
   title: string | null
 }
 export interface FixedConversation {
+  nativeGraph?: SavedNativeGraph
   startEvidence?: import('./archive-start-evidence').ConversationStartEvidence
   key: string
   accountId: string
@@ -76,6 +83,15 @@ export interface FixedConversation {
   pageEvidence?: HistoryPageEvidence[]
   pageCoverage?: HistoryCoverageCheckpoint
   currentHeadId?: string | null
+  /** Receipt time of a live head; page snapshots cannot roll a newer live run back. */
+  streamHeadObservedAt?: number
+  exhaustionEvidence?: {
+    kind: 'conversation_too_large'
+    requestId: string
+    userMessageId: string | null
+    savedHeadId: string | null
+    observedAt: number
+  }
   terminalHeadId?: string | null
   pageHeadId?: string | null
   revision?: number
@@ -618,7 +634,7 @@ export class FixedCanonicalDexieRepository {
     page: HistoryPageEvidence,
     headId: string | null,
     stillAuthorized = () => true,
-    context?: { projectId: string | null; title: string | null },
+    context?: { projectId: string | null; title: string | null; nativeGraph?: SavedNativeGraph },
   ) {
     if (!nonEmpty(conversationId)) throw Error('Invalid page evidence conversation')
     const owner = this.scope.ownerId
@@ -703,8 +719,17 @@ export class FixedCanonicalDexieRepository {
                 observedAt: page.observedAt,
               }
             : undefined)
+        const graph = context?.nativeGraph
+        if (graph && newestNativeGraph(current.nativeGraph, graph) === graph) {
+          for (const node of Object.values(graph.graph.nodes))
+            if (node.messageId && !(await this.getMessage(conversationId, node.messageId)))
+              throw Error('archive.error.incompleteSource')
+        }
         const nextHeader = {
           ...current,
+          ...(graph && newestNativeGraph(current.nativeGraph, graph) === graph
+            ? { nativeGraph: structuredClone(graph) }
+            : {}),
           ...(startEvidence ? { startEvidence } : {}),
           pageEvidence: next.slice(-96),
           pageCoverage: structuredClone(pageCoverage),
@@ -712,7 +737,12 @@ export class FixedCanonicalDexieRepository {
           instanceId: current.instanceId ?? crypto.randomUUID(),
           pageHeadId: page.isInitial && newest && headId ? headId : current.pageHeadId,
           currentHeadId:
-            page.isInitial && newest && headId && !olderHead ? headId : current.currentHeadId,
+            page.isInitial &&
+            newest &&
+            headId &&
+            (graph ? (current.streamHeadObservedAt ?? 0) <= graph.readStartedAt : !olderHead)
+              ? headId
+              : current.currentHeadId,
         }
         await Dexie.waitFor(assertFixedBackupAdmission('conversations', key, nextHeader))
         await this.db.conversations.put(nextHeader)
@@ -720,11 +750,38 @@ export class FixedCanonicalDexieRepository {
       },
     )
   }
+  /** First source-confirmed rejection is permanent evidence, independent of later page heads. */
+  async recordExhaustion(
+    conversationId: string,
+    evidence: Omit<NonNullable<FixedConversation['exhaustionEvidence']>, 'savedHeadId'>,
+    stillAuthorized = () => true,
+  ) {
+    const key = JSON.stringify([this.scope.ownerId, conversationId])
+    await this.db.transaction('rw', this.db.conversations, this.db.messages, async () => {
+      if (!stillAuthorized()) throw Error('Exhaustion evidence authorization expired')
+      const header = await this.db.conversations.get(key)
+      const user = evidence.userMessageId
+        ? await this.getMessage(conversationId, evidence.userMessageId)
+        : undefined
+      if (!header || (evidence.userMessageId && user?.projection.role !== 'user'))
+        throw Error('Missing rejected submission original')
+      if (header.exhaustionEvidence) return
+      const next = {
+        ...header,
+        exhaustionEvidence: { ...structuredClone(evidence), savedHeadId: header.currentHeadId ?? null },
+        revision: (header.revision ?? 0) + 1,
+      }
+      await Dexie.waitFor(assertFixedBackupAdmission('conversations', key, next))
+      if (!stillAuthorized()) throw Error('Exhaustion evidence authorization expired')
+      await this.db.conversations.put(next)
+    })
+  }
   async recordStreamHead(
     conversationId: string,
     raw: Record<string, unknown>,
     stillAuthorized = () => true,
     currentRunProof = false,
+    observedAt = Date.now(),
   ) {
     const author = raw.author as Record<string, unknown> | undefined
     if (
@@ -753,10 +810,11 @@ export class FixedCanonicalDexieRepository {
       )
         return
       let nextHeader: FixedConversation | undefined
-      if (header && header.currentHeadId !== raw.id)
+      if (header && (header.currentHeadId !== raw.id || observedAt > (header.streamHeadObservedAt ?? 0)))
         nextHeader = {
           ...header,
           currentHeadId: raw.id as string,
+          streamHeadObservedAt: Math.max(header.streamHeadObservedAt ?? 0, observedAt),
           terminalHeadId: terminal ? (raw.id as string) : null,
           revision: (header?.revision ?? 0) + 1,
           instanceId: header?.instanceId ?? crypto.randomUUID(),
@@ -777,23 +835,18 @@ export class FixedCanonicalDexieRepository {
   }
   async integrity(conversationId: string) {
     const header = await this.getConversation(conversationId)
-    const projections: Pick<
-      CanonicalMessageProjection,
-      'messageId' | 'parentMessageId' | 'parentObserved'
-    >[] = []
-    let cursor: string | undefined
-    while (true) {
-      const page = await this.listMessages(conversationId, 500, cursor)
-      projections.push(
-        ...page.map(({ projection }) => ({
-          messageId: projection.messageId,
-          parentMessageId: projection.parentMessageId,
-          parentObserved: projection.parentObserved,
-        })),
-      )
-      if (page.length < 500) break
-      cursor = page.at(-1)?.messageId
-    }
+    const projections = (await this.timelineMessages(conversationId)).map((row) => ({
+      messageId: row.id,
+      parentMessageId: row.parentId,
+      parentObserved: row.parentKnown,
+    }))
+    if (
+      header?.nativeGraph &&
+      (!header.currentHeadId ||
+        header.nativeGraph.graph.header.current_node === header.currentHeadId ||
+        (header.streamHeadObservedAt ?? 0) <= header.nativeGraph.readStartedAt)
+    )
+      return nativeGraphIntegrity(header.nativeGraph.graph, new Set(projections.map((x) => x.messageId)))
     return conversationIntegrity(
       projections,
       header?.pageEvidence ?? [],
@@ -807,21 +860,32 @@ export class FixedCanonicalDexieRepository {
   async branchPath(conversationId: string, tipId: string): Promise<readonly string[]> {
     const ownerId = this.scope.ownerId
     if (!ownerId) throw Error('Verified owner required')
-    const parents = new Map<string, string | null>()
-    await this.db.messages
-      .where('[accountId+conversationId]')
-      .equals([ownerId, conversationId])
-      .each((row) => {
-        parents.set(row.messageId, row.projection.parentMessageId)
-      })
-    if (!parents.has(tipId)) throw Error('archive.error.messageMissing')
+    const checkpoint = (await this.getConversation(conversationId))?.nativeGraph
     const path: string[] = [],
       seen = new Set<string>()
     let id: string | null = tipId
-    while (id && parents.has(id) && !seen.has(id)) {
+    while (id) {
+      if (seen.has(id)) throw Error('archive.error.incompleteSource')
       seen.add(id)
+      const row = await this.getMessage(conversationId, id)
+      if (!row) throw Error('archive.error.messageMissing')
+      const original = {
+        parentId: row.projection.parentMessageId,
+        parentKnown: row.projection.parentObserved,
+      }
+      const source =
+        checkpoint && !nativeGraphParents(checkpoint.graph).has(id)
+          ? await this.getSourceSnapshot(conversationId, id)
+          : undefined
+      const relation = nativeGraphRelationship(
+        checkpoint,
+        id,
+        original,
+        nativeSnapshotLiveReceipt(source, original.parentId),
+      )
+      if (!relation.parentKnown) throw Error('archive.error.incompleteSource')
       path.push(id)
-      id = parents.get(id) ?? null
+      id = relation.parentId
     }
     return path.reverse()
   }
@@ -886,22 +950,42 @@ export class FixedCanonicalDexieRepository {
   async timelineMessages(conversationId: string): Promise<readonly FixedTimelineMessage[]> {
     if (!this.scope.ownerId || !nonEmpty(conversationId)) throw Error('Verified timeline required')
     const result: FixedTimelineMessage[] = []
-    await this.db.messages
-      .where('[accountId+conversationId]')
-      .equals([this.scope.ownerId, conversationId])
-      .each((row) => {
+    const checkpoint = (await this.getConversation(conversationId))?.nativeGraph
+    const parents = checkpoint ? nativeGraphParents(checkpoint.graph) : undefined
+    let cursor: string | undefined
+    while (true) {
+      const rows = await this.listMessages(conversationId, 160, cursor)
+      const outside = rows.filter((row) => parents && !parents.has(row.messageId))
+      const sources = await this.db.snapshots.bulkGet(outside.map((row) => row.key))
+      const receipts = new Map(
+        outside.map((row, index) => [
+          row.messageId,
+          nativeSnapshotLiveReceipt(sources[index], row.projection.parentMessageId),
+        ]),
+      )
+      for (const row of rows) {
         const projection = row.projection
         result.push({
           id: row.messageId,
-          parentId: projection.parentMessageId,
-          parentKnown: projection.parentObserved,
+          ...nativeGraphRelationship(
+            checkpoint,
+            row.messageId,
+            {
+              parentId: projection.parentMessageId,
+              parentKnown: projection.parentObserved,
+            },
+            receipts.get(row.messageId),
+          ),
           role: projection.role,
           channel: projection.channel,
           recipient: projection.recipient,
           preview: (projection.elements.find((element) => element.text)?.text ?? '').slice(0, 160),
           sourceCreateTime: projection.sourceCreateTime,
         })
-      })
+      }
+      if (rows.length < 160) break
+      cursor = rows.at(-1)?.messageId
+    }
     return result.sort(
       (a, b) =>
         (a.sourceCreateTime ?? Number.POSITIVE_INFINITY) -
@@ -987,6 +1071,7 @@ export class FixedCanonicalDexieRepository {
               raw: source.raw,
               normalized: source.normalized,
               observedAtMs: source.observedAtMs,
+              liveObservedAt: nativeSnapshotLiveReceipt(source, row.projection.parentMessageId),
             }
           }),
           cursor: rows.at(-1)?.messageId,
@@ -1540,179 +1625,27 @@ export class FixedCanonicalDexieRepository {
         elements: new Set(),
         snapshots: new Set(),
       }
-      const obj = (value: unknown): value is Record<string, unknown> =>
-        value !== null && typeof value === 'object' && !Array.isArray(value)
-      const tuple = (key: string, size: number): string[] => {
-        const parsed: unknown = JSON.parse(key)
-        if (
-          !Array.isArray(parsed) ||
-          parsed.length !== size ||
-          parsed[0] !== owner ||
-          !parsed.every((v) => nonEmpty(v as string))
-        )
-          throw Error('Invalid canonical key')
-        return parsed as string[]
-      }
       for (const row of rows) {
-        if (!stores.includes(row.store as (typeof stores)[number]))
-          throw Error('Unknown canonical recovery table')
+        const value = decodeFixedBackupRow(row, owner)
         const store = row.store as (typeof stores)[number]
-        // The retained array port observes the same wire/allocation admission
-        // as staged restoration and future capture.
-        serializedBackupRow({ key: JSON.stringify([store, row.key]), value: row.value })
-        assertFixedBackupCodecBudget(row.value)
-        const value: unknown = decodeArchiveClone(row.value)
-        if (!obj(value) || value.accountId !== owner || keys[store].has(row.key))
-          throw Error('Duplicate or wrong-owner canonical recovery row')
-        const keyField =
-          store === 'elements' ? 'elementId' : store === 'snapshots' ? 'messageKey' : 'key'
-        if (value[keyField] !== row.key || !row.key || row.key.length > 1024)
-          throw Error('Canonical primary key mismatch')
-        if (store === 'projects') {
-          const parts = tuple(row.key, 2)
-          if (value.projectId !== parts[1] || (value.title !== null && typeof value.title !== 'string'))
-            throw Error('Invalid project recovery record')
-        } else if (store === 'conversations') {
-          if (value.startEvidence !== undefined) validateConversationStartEvidence(value.startEvidence)
-          if (value.pageCoverage !== undefined) validateHistoryCoverageCheckpoint(value.pageCoverage)
-          const parts = tuple(row.key, 2)
-          if (
-            value.conversationId !== parts[1] ||
-            (value.projectId !== null && !nonEmpty(value.projectId as string)) ||
-            (value.title !== null && typeof value.title !== 'string')
-          )
-            throw Error('Invalid conversation recovery record')
-          validateProjectAssociations(value as unknown as FixedConversation)
-          if (
-            value.revision !== undefined &&
-            (!Number.isSafeInteger(value.revision) || (value.revision as number) < 0)
-          )
-            throw Error('Invalid conversation revision')
-          if (
-            value.instanceId !== undefined &&
-            (typeof value.instanceId !== 'string' ||
-              !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value.instanceId))
-          )
-            throw Error('Invalid conversation instance identity')
-          for (const field of ['currentHeadId', 'terminalHeadId', 'pageHeadId'] as const)
-            if (value[field] !== undefined && value[field] !== null && !nonEmpty(value[field] as string))
-              throw Error('Invalid saved head evidence')
-          if (value.pageEvidence !== undefined) {
-            if (!Array.isArray(value.pageEvidence)) throw Error('Invalid page evidence')
-            for (const page of value.pageEvidence) {
-              if (
-                !obj(page) ||
-                !Number.isFinite(page.observedAt) ||
-                (page.observedAt as number) < 0 ||
-                ![true, false, null].includes(page.hasPreviousPage as boolean | null) ||
-                ![true, false, null].includes(page.hasNextPage as boolean | null) ||
-                (page.startCursor !== null && typeof page.startCursor !== 'string') ||
-                (page.endCursor !== null && typeof page.endCursor !== 'string')
-              )
-                throw Error('Invalid page evidence record')
-            }
-          }
-        } else if (store === 'messages') {
-          const parts = tuple(row.key, 3)
-          const projection = value.projection
-          if (
-            value.conversationId !== parts[1] ||
-            value.messageId !== parts[2] ||
-            value.modelVersion !== ARCHIVE_CANONICAL_MODEL_VERSION ||
-            !obj(projection) ||
-            projection.accountId !== owner ||
-            projection.conversationId !== parts[1] ||
-            projection.messageId !== parts[2] ||
-            projection.messageKey !== row.key ||
-            projection.modelVersion !== ARCHIVE_CANONICAL_MODEL_VERSION ||
-            !Array.isArray(projection.elements)
-          )
-            throw Error('Invalid message recovery projection')
-        } else if (store === 'elements') {
-          if (
-            typeof value.messageKey !== 'string' ||
-            !Number.isSafeInteger(value.siblingOrder) ||
-            (value.siblingOrder as number) < 0 ||
-            !nonEmpty(value.kind as string) ||
-            !nonEmpty(value.visibility as string) ||
-            typeof value.sourcePath !== 'string'
-          )
-            throw Error('Invalid canonical element')
-        } else {
-          const parts = tuple(row.key, 3)
-          if (
-            !obj(value.raw) ||
-            value.raw.id !== parts[2] ||
-            !nonEmpty(value.sourceKind as string) ||
-            !nonEmpty(value.sourceVersion as string) ||
-            !Number.isSafeInteger(value.observedAtMs) ||
-            (value.observedAtMs as number) < 0
-          )
-            throw Error('Invalid source snapshot recovery record')
-          if (
-            value.sourceEvents !== undefined &&
-            (!Array.isArray(value.sourceEvents) || !value.sourceEvents.every(obj))
-          )
-            throw Error('Invalid source event evidence')
-          if (value.versions !== undefined) {
-            if (!Array.isArray(value.versions) || !value.versions.length)
-              throw Error('Invalid source versions')
-            for (const version of value.versions) {
-              if (
-                !obj(version) ||
-                !obj(version.raw) ||
-                version.raw.id !== parts[2] ||
-                !nonEmpty(version.sourceKind as string) ||
-                !nonEmpty(version.sourceVersion as string) ||
-                !Number.isSafeInteger(version.observedAtMs) ||
-                (version.observedAtMs as number) < 0 ||
-                !['initial', 'advance', 'identical', 'stale', 'conflict'].includes(
-                  String(version.decision),
-                )
-              )
-                throw Error('Invalid source version evidence')
-              if (
-                version.projectId !== undefined &&
-                version.projectId !== null &&
-                !nonEmpty(version.projectId as string)
-              )
-                throw Error('Invalid source version project context')
-              if (
-                version.sourceEvents !== undefined &&
-                (!Array.isArray(version.sourceEvents) || !version.sourceEvents.every(obj))
-              )
-                throw Error('Invalid source version event evidence')
-            }
-          }
-          if (
-            value.projectId !== undefined &&
-            value.projectId !== null &&
-            !nonEmpty(value.projectId as string)
-          )
-            throw Error('Invalid source project context')
-          const conversationId = parts[1]
-          if (!conversationId) throw Error('Missing canonical conversation identity')
-          validateChatGptNormalizedSnapshot(value as unknown as FixedSnapshot, conversationId)
-        }
+        if (keys[store].has(row.key)) throw Error('Duplicate canonical recovery row')
         keys[store].add(row.key)
-        buckets[store].push(value as unknown as Model)
+        buckets[store].push(value)
       }
-      const projects = keys.projects,
-        conversations = keys.conversations
+      const conversations = keys.conversations
       const messages = new Map((buckets.messages as FixedMessage[]).map((m) => [m.key, m]))
       const conversationHeaders = new Map(
         (buckets.conversations as FixedConversation[]).map((header) => [header.key, header]),
       )
       const snapshots = keys.snapshots,
         elements = keys.elements
-      for (const c of buckets.conversations as FixedConversation[]) {
-        if (c.projectId && !projects.has(JSON.stringify([owner, c.projectId])))
-          throw Error('Unresolved canonical recovery project')
-        for (const entry of c.projectAssociations ?? [])
-          for (const projectId of [entry.previousProjectId, entry.projectId])
-            if (projectId && !projects.has(JSON.stringify([owner, projectId])))
-              throw Error('Unresolved canonical historic project association')
-      }
+      const relationRows = new Map(rows.map((row) => [JSON.stringify([row.store, row.key]), row]))
+      for (const conversation of conversationHeaders.values())
+        await validateFixedConversationRelations(conversation, owner, async (store, key) => {
+          const row = relationRows.get(JSON.stringify([store, key]))
+          if (!row) throw Error('Missing canonical recovery relation')
+          return decodeFixedBackupRow(row, owner)
+        })
       for (const m of messages.values()) {
         if (!conversations.has(JSON.stringify([owner, m.conversationId])) || !snapshots.has(m.key))
           throw Error('Missing conversation/source snapshot in canonical recovery')
@@ -1720,15 +1653,6 @@ export class FixedCanonicalDexieRepository {
           if (!elements.has(element.elementId) || element.messageKey !== m.key)
             throw Error('Missing canonical content element')
         }
-      }
-      for (const header of conversationHeaders.values()) {
-        if (
-          header.startEvidence &&
-          !messages.has(
-            JSON.stringify([owner, header.conversationId, header.startEvidence.firstMessageId]),
-          )
-        )
-          throw Error('Conversation start original is missing')
       }
       for (const snap of buckets.snapshots as FixedSnapshot[]) {
         const message = messages.get(snap.messageKey)
@@ -1753,25 +1677,6 @@ export class FixedCanonicalDexieRepository {
         )
           throw Error('Normalized source project disagrees with conversation')
         validateChatGptNormalizedSnapshot(snap, message.conversationId, sourceProject)
-      }
-      const sourceByKey = new Map(
-        (buckets.snapshots as FixedSnapshot[]).map((snap) => [snap.messageKey, snap]),
-      )
-      for (const conversation of buckets.conversations as FixedConversation[]) {
-        if (!conversation.terminalHeadId) continue
-        const source = sourceByKey.get(
-          JSON.stringify([owner, conversation.conversationId, conversation.terminalHeadId]),
-        )?.raw
-        const author = source && obj(source.author) ? source.author : null
-        if (
-          !source ||
-          author?.role !== 'assistant' ||
-          source.end_turn !== true ||
-          source.status !== 'finished_successfully' ||
-          (source.recipient !== undefined && source.recipient !== null && source.recipient !== 'all') ||
-          (source.channel !== undefined && source.channel !== null && source.channel !== 'final')
-        )
-          throw Error('Saved terminal head disagrees with assistant source evidence')
       }
       let expectedElements = 0
       for (const m of messages.values()) expectedElements += m.projection.elements.length

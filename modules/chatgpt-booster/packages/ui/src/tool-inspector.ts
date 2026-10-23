@@ -39,7 +39,7 @@ export function mountToolInspector(into: HTMLElement, model: ToolCallViewModel):
         'display:inline-flex;flex:0 0 auto;align-items:center;pointer-events:auto;margin-inline-start:2px;'
       into.append(host)
 
-      const { mountPoint, portal } = createBoosterShadowSurface(host)
+      const { mountPoint, portal, dispose } = createBoosterShadowSurface(host)
 
       const state = reactive<{ model: ToolCallViewModel; now: number }>({ model, now: 0 })
       const app: App = createApp({
@@ -58,6 +58,7 @@ export function mountToolInspector(into: HTMLElement, model: ToolCallViewModel):
         },
         unmount() {
           app.unmount()
+          dispose()
           host.remove()
         },
       }

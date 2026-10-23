@@ -173,7 +173,7 @@ export function createFixedArchiveUiAdapter(
       const metadata = workspace.records(id).map((record) => ({
         id: record.messageId,
         parentId: record.parentId,
-        parentKnown: Object.hasOwn((record.raw.metadata ?? {}) as object, 'parent_id'),
+        parentKnown: record.parentKnown,
         timestampMs: record.createTime === null ? null : record.createTime * 1000,
         role: record.role,
         contentType: record.contentType,
@@ -507,15 +507,23 @@ export function createFixedArchiveUiAdapter(
       await workspace.open(id)
       const integrity = workspace.integrity(id),
         count = workspace.status(id).loaded
+      const savedGraph =
+        integrity.scope === 'current-native-graph' ? await capture.savedNativeGraphStatus(id) : undefined
+      const exhaustion = await capture.savedExhaustion?.(id)
       guard(owner, epoch)
       return {
         conversationId: id,
         knownMessageCount: count,
+        exhaustedAt: exhaustion?.observedAt ?? null,
         integrity,
         hasOlderServerHistory: integrity.start === 'verified' ? false : null,
         oldestKnownVisibleMessageId: integrity.firstMessageId ?? null,
         newestKnownVisibleMessageId: integrity.lastMessageId ?? null,
-        completeAtLastRead: integrity.chain === 'verified',
+        completeAtLastRead:
+          integrity.chain === 'verified' &&
+          (integrity.scope !== 'current-native-graph' ||
+            (savedGraph?.readId === workspace.nativeGraphRead(id)?.readId &&
+              savedGraph?.headId === integrity.lastMessageId)),
         lastFullReadAt: null,
         storedStartMatchesCurrent: false,
         storedLatestMatchesCurrent: integrity.end === 'verified',

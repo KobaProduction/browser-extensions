@@ -36,7 +36,7 @@ export function mountMessageMetadata(
       host.style.cssText =
         'display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;width:auto;min-width:0;height:28px;margin:0;'
       into.append(host)
-      const { mountPoint, portal } = createBoosterShadowSurface(host)
+      const { mountPoint, portal, dispose } = createBoosterShadowSurface(host)
       const state = shallowReactive({ metadata: initial, now: Date.now() })
       const app = createApp({
         render: () => h(MessageMetadata, { metadata: state.metadata, now: state.now, locale }),
@@ -56,6 +56,7 @@ export function mountMessageMetadata(
         },
         unmount() {
           app.unmount()
+          dispose()
           host.remove()
         },
       }

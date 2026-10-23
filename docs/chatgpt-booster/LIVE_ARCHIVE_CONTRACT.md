@@ -611,3 +611,248 @@ zero original hashes, source chronology hashes or projection hashes changed
 or disappeared. The rejected submission original was retained. Private source
 and hash checkpoints remain outside the repository. This does not establish
 production acceptance or physical speaker audibility.
+
+
+### Failed recovered streams
+
+A successful native `stream_status` response containing `FAILURE` is terminal
+failure evidence, separate from generic network interruption and from assistant
+completion. An exact current request ID may close that request. After reload,
+a fresh uncorrelated failure may close only an active history-recovered run
+without a local request ID; stale polls and polls spanning a new submit cannot
+close that submit. A repeated page retaining `async_status: 3` for the same run
+does not override this terminal evidence. A new user request starts a new run.
+No translated DOM warning, elapsed-time threshold or generic HTTP 404 proves
+failure. Stored originals and chronology remain independent of this lifecycle.
+
+Native delivery failure is a separate client-side terminal event. In the
+source-inspected client, cached `WB3F.m` commits `p0Ph.G = error` and `p0Ph.p`
+metadata with `errorCode = recovery_unconfirmed` when delivery recovery expires,
+even while server polls still say `IS_STREAMING`. The actual captured AppScope's
+`watch` API subscribes to those exact tokens. Native callers can use another
+scope object sharing the same store, so decorating one scope's `set` misses
+their writes; the store subscription observes them. Existing native error state
+is also reconciled after binding and native page ingestion. Account,
+epoch, exact native/error head and current local request correlation fence the
+event. It stops the local request as `native_delivery_failure`, without claiming
+server completion, changing originals or altering the archive graph. Replayed
+active history cannot restart that failed run; a genuine new submit remains live.
+DOM text, elapsed time and the voice/send button are not lifecycle authority.
+
+Authenticated local DEV acceptance: the client naturally reached its recovery
+timeout and exposed `error/recovery_unconfirmed` for the current head, while
+server polls had continued to report streaming. Attaching the compiled native
+watch binding to that real error immediately changed local lifecycle to failed
+and removed both active timer surfaces. No native status, error or timeout was
+fabricated. The real metadata popover was opened over that same warning and
+rendered above it; its displayed elapsed duration remained frozen. This was a
+live binding update, not a fresh-install or PROD acceptance claim.
+
+
+### Older-history retrieval metadata (2026-10-23)
+
+Source adapter v10 accepts the observed numeric `retrieval_turn_number`,
+`retrieval_file_index`, `retrieval_visible_content_line_count` and object
+`citation_metadata`, plus string `command`/`status` fields on native tool records.
+It also accepts observed `tether_browsing_display` content with string result and
+summary, and null assets/tether_id. V1-v9 remain strict.
+In the owner-authorized DEV chat, an older page containing these fields caused
+v9 to latch a conversation-wide structural rejection, leaving later pages in
+RAM without canonical commits. All fourteen retained native pages, including the explicit oldest page, pass v10;
+regressions use generated records only. This changes source compatibility,
+not Dexie schema 1, chronology, ownership or historical archive storage.
+
+Initial native responses may represent only a tail (`has_previous_page: true`).
+A stored tail is not a full archive. The History Loader requires a verified `nativeHistory.readOlder` capability.
+The native full-history binding described below now supplies it for the exact
+source-inspected client runtime; unsupported client revisions fail closed.
+Missing parent IDs in the received server page remain unresolved evidence;
+no adjacent-message links are fabricated to produce a complete status.
+
+
+Authenticated local DEV acceptance on 2026-10-23: ordinary native scrolling
+exposed 5,529 unique messages across fourteen retained pages and the explicit
+oldest-page boundary. After validating and replaying those same owner-scoped
+original observations with v10, the repository contained 5,574 records (including
+45 earlier retained records absent from the current server pages), up from 668.
+The formerly rejected pages contributed 1,276 records. All 716 pre-investigation
+rows across the scoped archive retained their original and projection SHA-256
+hashes; no row disappeared. Native payloads themselves reference 1,130 parent IDs
+absent from all received pages, so this is not proof of a complete source graph.
+Private snapshots and response bodies remain outside Git. At that intermediate checkpoint, automatic collection
+and full remote-graph recovery were still unaccepted; the later acceptance below supersedes it.
+
+
+### Full native collection and graph authority (2026-10-23)
+
+Source adapter v11 additionally accepts observed `paragen_variants_info` objects
+and string `paragen_variant_choice` metadata from an older conversation page.
+The variants object is retained as opaque source evidence; it does not create
+graph edges or prove completeness. V1-v10 remain unchanged. In the second old
+chat, v10 rejected a 2,612-record page on this field and latched out the later
+1,226-record oldest page, while 1,765 earlier records remained durable. Synthetic
+regressions cover both accepted outer types and incorrect types. This source
+correction changes no storage schema. HTTP 429 is handled during acceptance by
+waiting one minute and clicking the native retry button once, without alternate
+endpoints or forced requests.
+
+Second-chat local DEV acceptance: ordinary upward scrolling received all four
+pages (5,603 unique records), including the explicit oldest boundary. After
+validating the retained same-owner/epoch observations with the compiled v11
+gate and replaying them through capture without network delivery, all 5,603
+records were durable and the start was verified. An ordinary harmless message
+in a separate new chat received a response and saved 13 native records. Returning
+through the native sidebar retained the old chat's count and start proof.
+This was a local gate replacement/replay check, not fresh-install acceptance.
+The full collection remains unaccepted for this chat: the server repeatedly
+reported `IS_STREAMING` while its UI showed a delivery timeout, so the existing
+active-run guard blocked collection. No terminal state was fabricated from DOM
+text or elapsed time. The Reader correctly still reports 1,222 unresolved parent
+references; a full native mapping has not been received for this conversation.
+
+The full-history binding `chatgpt-native-history-2026-10-23-v1` inspects the
+already-loaded React Router manifest and the cached runtime export from the
+source-inspected runtime asset. It uses cached `hwXH.a`, `OWtl.a`, `OiCI.a`,
+`Cslg.i` and the actual `zd8w.useRef` result produced by the native AppScope
+hook. The reversible probe delegates the exact original hook call/return and
+removes itself after capturing that real scope. No React fiber traversal,
+arbitrary globals/module search, synthetic scope, composer clicks or private
+HTTP request construction are permitted. A native router revalidation may
+rerun native hooks when capture has not occurred. Stop revokes the binding and
+restores the owned probe. Owner/epoch, native account/user and cancellation
+are checked before and after the native read. Unrecognized runtime assets or
+missing cached capabilities report unsupported rather than trying other code.
+
+`hwXH.a(scope, conversationId, {forceFull:true, signal})` is the genuine native
+read use case. Its native code owns account/project headers, request integrity,
+backoff and `/backend-api/conversation/{id}` delivery. Only the subsequently
+observed successful native response can establish collection progress. The
+observer validates the returned `mapping` node identities, reciprocal edges,
+cycles and head before deriving a page envelope; message originals remain
+unchanged. The graph header and structural nodes accompany the derived page.
+The source gate separately validates that graph and exact message membership.
+
+Native `mapping[node].parent` is graph authority. On this client, a message's
+`metadata.parent_id` can differ from that parent and does not reconstruct the
+full current graph. A fixed-schema-1 conversation payload can carry a native
+graph checkpoint, committed only after every referenced message is durable.
+The explicit current graph drives integrity, branch paths and timeline edges;
+original canonical records and source variants are retained unchanged.
+
+A full current graph is a scoped claim, not proof about every historical
+observation ever captured. Old records absent from the latest full native
+response are retained. Integrity exposes `scope: current-native-graph` and
+`retainedOutsideGraph`; the UI says "Current history saved" and discloses those
+extra records in details. It never calls their old relationships verified.
+Missing current graph messages prevent a complete graph checkpoint. Capture
+completion waits for durable writes, a fresh read/run acknowledgement, stable
+owner/revision and graph validation. Existing saved graph proof is reusable
+only under the existing source/head fences. No schema migration or PROD data
+acceptance follows from this implementation.
+
+The same binding drains the actual native `FGJH.c` pagination cursor with cached
+`jfiJ.b(scope, id, flushSync)` and the native `v7qY.flushSync` before taking the
+full graph. Native pages may expose historical/variant originals absent from
+the full mapping, so a mapping response alone must not replace pagination.
+Only actual native state advances permit the next page; repeated cursors,
+errors, cancellation and owner changes prevent completion. The binding never
+sets native cursor state or constructs page requests. A saved graph cannot
+short-circuit collection when the current native head differs from its head.
+
+Manual collection is a history-read operation, independent of generation state.
+The owner requires it to remain available during active or server-stuck streams;
+the former `in_progress`/`stop_requested` preflight ban is removed. Collection
+neither stops nor completes the native generation. Owner, epoch, permission,
+source-validation and post-read live-head fences still protect every write and
+completion claim. A newer live head can invalidate an earlier graph checkpoint.
+Source compatibility is checked at every loader continuation. A latched source
+rejection stops the run immediately instead of causing repeated native reads.
+Full-graph support is an inherited profile capability: v11 retains v10's graph
+support while adding metadata fields; it must not reject a graph solely because
+the profile object differs from v10.
+
+Second-chat recovery acceptance later on 2026-10-23: collection started through
+the normal UI while native status remained `IS_STREAMING`. The native reader
+returned the full mapping (3,453 messages). A v11 profile capability regression
+initially rejected it; after the correction the retained owner/epoch-scoped
+responses were validated and replayed without additional network requests.
+The completed repository contains 5,605 records, verified start/latest boundaries
+and zero issues in the current native graph; 2,152 historical observations outside
+that graph remain retained. Comparing all 11,302 pre-recovery records across the
+scoped repository found zero missing records, zero missing original source values
+and zero changed canonical projections. This is local DEV acceptance; publication
+and PROD acceptance are separate. Private source/checksums remain outside Git.
+Reloading with the final built DEV userscript retained the verified current
+history and zero issues. Clicking the real collection action in the compact
+details completed with 5,605 known records and zero new pages, reusing the
+verified durable graph. Native lifecycle remained `in_progress`; collection
+did not manufacture a terminal signal or require generation to stop.
+
+A fresh full graph owns its server head even when a retained rejected submission
+has a later source timestamp. A live head received after the read began still
+prevents that rollback. Receipt time is separate from source chronology.
+This corrects the false missing-parent reports caused by treating a rejected
+submission as the current server mapping head. Source originals remain intact.
+
+A source-confirmed `conversation_too_large` cause additionally commits an
+owner-scoped `exhaustionEvidence` payload after its rejected user original.
+Its request identity, optional user-message identity, last durable head and receipt time are recorded once. A native retry can omit the user ID; exact source-confirmed exhaustion still persists, with that ID left null. Later pages,
+retries and reloads cannot replace this evidence. This is independent of the
+native graph's current head, normal assistant completion and immutable start
+proof. The Reader exposes the retained terminal mark in archive details.
+
+For non-OK native composer responses, fetch observation finishes reading its
+response clone before handing the untouched error response back to the native
+caller. Otherwise native error cleanup can abort that clone and turn a coded
+413 into a generic rejection. Successful SSE delivery retains its original
+streaming behavior. A synthetic cancellation regression covers this ordering.
+
+Authenticated local DEV acceptance later on 2026-10-23: the ordinary collection
+command traversed every available native pagination cursor to the explicit
+oldest boundary (5,529 unique paginated messages), then observed and committed
+the full native graph (3,600 messages / 3,601 structural nodes). The collection
+session reached complete. After four non-executing limit-check submissions,
+5,638 originals remained in this conversation, including 2,038 observations
+outside the current graph. The current graph has verified start/end, verified
+chain and zero gaps; outside-graph relationships are not falsely certified.
+All 716 pre-investigation originals and projections across the scoped archive
+retained their SHA-256 values, with zero missing records.
+
+A real native HTTP 413 established the permanent exhaustion marker. Reload
+preserved that exact marker, start proof and record count. A later ordinary
+submit, without a diagnostic fetch wrapper or a native retry, was immediately
+classified as conversation_too_large in the final build. It saved its original
+and left the first exhaustion marker and start proof unchanged. This verifies
+local authenticated DEV behavior, not a published release, PROD acceptance or
+physical sound audibility. Private source/hash checkpoints remain outside Git.
+
+
+## Precommit review corrections (2026-10-23)
+
+The provider's `archive-native-graph.ts` now owns checkpoint selection and
+relationship resolution for both repository and RAM Reader. Selection compares
+native read start first, then receipt time. A delayed page cannot clear a newer
+live head. Mapping membership owns its explicit edges; an outside message can
+extend those edges only with an explicit parent and a later native stream or
+submission receipt than the selected read start. Older outside observations stay
+retained and unconfirmed, rather than acquiring graph membership by timestamp.
+Persisted original/version receipts survive Reader hydration; no source metadata
+or canonical projection is rewritten to repair relationships.
+
+An empty full graph requires `current_node: null`. Missing, dangling or non-null
+empty heads fail decoding, source admission and backup validation. Both array
+and staged recovery use `decodeFixedBackupRow` and the same conversation relation
+validator for graph originals, start anchors, exhaustion roles and terminal heads.
+Schema 1 and historical databases remain unchanged.
+
+Native client capabilities, bounded AppScope probing, native pagination/full
+reads and delivery-error subscription have separate lifetime owners. The probe
+expires after 60 seconds, releases on capture, collection timeout/abort or stop,
+and ignores already queued callbacks after disposal. A later explicit collection
+can install a fresh probe. Reader collection state/actions live in the provider's
+`use-archive-collection.ts`; shared integrity widgets remain presentation-only.
+
+Targeted synthetic regressions cover delayed reads, saved-checkpoint extension,
+empty heads, both backup round trips/corruption refusal and probe lifecycle. This
+iteration does not claim a fresh installed-product/browser acceptance or PROD
+publication for the refactored build.

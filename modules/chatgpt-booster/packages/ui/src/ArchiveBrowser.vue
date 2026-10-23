@@ -30,8 +30,11 @@ import {
 } from '@kobaproduction/browser-ui'
 import {
   ArchiveConversationList,
+  ArchiveIntegrityDetails,
+  ArchiveIntegrityIndicator,
   ArchiveReadingSurface,
   ArchiveRecordList,
+  ConversationCollectionAction,
   createArchiveReadingScroll,
 } from '@kobaproduction/browser-widgets'
 import ArrowLeft from 'lucide-vue-next/dist/esm/icons/arrow-left.js'
@@ -70,6 +73,7 @@ import type {
   ArchiveThreadWindow,
   ArchiveWindowCursor,
 } from './mount'
+import { useArchiveCollection } from './use-archive-collection'
 
 const props = defineProps<{
   archiveAdapter: ArchiveDataAdapter
@@ -267,6 +271,10 @@ function releaseBranchFilter() {
 const versionsOpen = ref(false)
 const inspectedVersionMessageId = ref<string | null>(null)
 const integrityOpen = ref(false)
+const { recoveryState, recoveryError, recovering, recoverHistory, stopRecovery } = useArchiveCollection(
+  () => props.archiveAdapter,
+  selectedId,
+)
 const navigationOpen = ref(false)
 const showServiceRecords = ref(false)
 function revealReaderDetails(kind: 'integrity' | 'versions') {
@@ -1414,11 +1422,9 @@ onBeforeUnmount(() => {
               <Input v-model="textSearch" type="search" :placeholder="t('reader.searchMessages')" :aria-label="t('reader.searchMessages')"  />
               <p v-if="usingIndexedWindows && (hasOlderStored || hasNewerStored || knownStoredCount > thread.recordCount)" class="booster-note">{{ t('reader.windowSearchOnly') }}</p>
             </div>
-            <div v-if="coverageLoading" role="status" class="flex items-center gap-2 text-xs text-muted-foreground"><Skeleton class="h-4 w-24" />{{ locale === 'ru' ? 'Проверка начала, конца и разрывов…' : 'Checking first, last and gaps…' }}</div>
-            <p v-if="coverageError" role="alert" class="text-xs text-destructive">{{ locale === 'ru' ? 'Целостность не удалось проверить. Экспорт не будет отмечен полным.' : 'Integrity check failed. Export cannot be marked complete.' }}</p>
             <div class="booster-reader-summary">
               <span>{{ t('dock.messages') }}: {{ thread.messageCount }}</span>
-              <Button v-if="coverage?.integrity" variant="ghost" size="sm" class="h-7 px-1 text-xs text-muted-foreground" @click="integrityOpen = true"><Info class="size-3" />{{ coverage.completeAtLastRead ? (locale === 'ru' ? 'Архив подтверждён' : 'Archive verified') : (locale === 'ru' ? 'Проверка архива' : 'Archive details') }}</Button>
+              <ArchiveIntegrityIndicator :integrity="coverage?.integrity" :complete="coverage?.completeAtLastRead" :has-older-history="coverage?.hasOlderServerHistory" :loading="coverageLoading" :error="coverageError" :locale="locale" @details="integrityOpen = true" />
               <Button v-if="selectedBranchTip" variant="ghost" size="sm" class="h-7 px-1 text-xs" @click="releaseBranchFilter()">{{ locale === 'ru' ? 'Выбрана ветка · показать все' : 'Branch selected · show all' }}</Button>
             </div>
           </template>
@@ -1487,24 +1493,17 @@ onBeforeUnmount(() => {
       <p v-if="!storedBranches.length" class="text-sm text-muted-foreground">{{ locale === 'ru' ? 'В этом диалоге нет сохранённых веток.' : 'This conversation has no saved branches.' }}</p>
     </DialogContent></Dialog>
     <Dialog v-model:open="integrityOpen"><DialogContent @close-auto-focus="restoreToolsFocus" v-if="coverage?.integrity" class="w-[calc(100vw-24px)] max-h-[85dvh] overflow-y-auto"><DialogHeader><DialogTitle>{{ locale === 'ru' ? 'Проверка архива' : 'Archive details' }}</DialogTitle><DialogDescription>{{ locale === 'ru' ? 'Полнота сохранения, границы и связи сообщений.' : 'Saved coverage, boundaries and message relationships.' }}</DialogDescription></DialogHeader>
-            <div class="booster-reader-summary">
-              <span>{{ t('dock.messages') }}: <b>{{ thread.messageCount }}</b> · {{ t('dock.details') }}: {{ thread.detailCount }}<template v-if="usingIndexedWindows"> · {{ locale === 'ru' ? 'Загружено' : 'Loaded' }} {{ thread.recordCount }}/{{ knownStoredCount }}</template></span>
-              <span v-if="usingIndexedWindows && hasUnsequencedRecords" class="booster-reader-coverage">{{ locale === 'ru' ? 'Есть сообщения без подтверждённого времени' : 'Some messages have no confirmed chronology' }}</span>
-              <span v-if="coverage?.integrity" class="booster-reader-coverage">{{ locale === 'ru' ? 'Начало' : 'Start' }}: {{ evidenceLabel(coverage.integrity.start) }} · {{ locale === 'ru' ? 'Конец' : 'End' }}: {{ evidenceLabel(coverage.integrity.end) }}</span>
-              <span class="booster-reader-coverage" :title="t(archiveStatusKey)" :aria-label="t(archiveStatusKey)"><Info class="size-4" />{{ coverage?.completeAtLastRead ? (locale === 'ru' ? 'Цепочка подтверждена' : 'Path verified') : (locale === 'ru' ? 'Цепочка не подтверждена' : 'Path unverified') }}</span>
-              <span v-if="selectedBranchIds">{{ locale === 'ru' ? 'В выбранном пути' : 'Selected path' }}: {{ selectedBranchIds.size }}</span>
-            </div>
-              <p v-if="readSource === 'saved'" class="booster-note">{{ t('reader.savedInspection') }}</p>
-              <p v-if="unsequencedTarget" class="booster-note">{{ t('reader.targetUnsequenced') }}</p>
-              <p class="booster-note">{{ locale === 'ru' ? 'Неизвестная связь отличается от подтверждённого разрыва. Проверка охватывает все сохранённые сообщения. Содержимое загружается постепенно, таймлайн использует лёгкие метаданные.' : 'Unknown ancestry differs from a confirmed gap. Integrity covers all saved messages. Content loads progressively; the timeline uses lightweight metadata.' }}</p>
-              <div class="flex flex-wrap gap-2">
-                <Button v-if="coverage.integrity.firstMessageId" variant="outline" size="sm" @click="inspectMessage(coverage.integrity.firstMessageId)">{{ locale === 'ru' ? 'Первое сообщение' : 'First message' }} · {{ coverage.integrity.firstMessageId.slice(0, 12) }}</Button>
-                <Button v-if="coverage.integrity.lastMessageId" variant="outline" size="sm" @click="inspectMessage(coverage.integrity.lastMessageId)">{{ locale === 'ru' ? 'Последнее сообщение' : 'Last message' }} · {{ coverage.integrity.lastMessageId.slice(0, 12) }}</Button>
-              </div>
-              <div v-for="issue in coverage.integrity.issues" :key="issue.reason + issue.messageId" data-integrity-issue>
-                <Button variant="outline" type="button" class="h-auto whitespace-normal" @click="inspectMessage(issue.reason === 'missing-head' ? (coverage.integrity?.tips.at(-1) ?? issue.messageId) : issue.messageId)">{{ evidenceLabel(issue.reason) }} · {{ issue.reason === 'missing-head' ? (locale === 'ru' ? 'Открыть последнее сохранённое' : 'Open last saved message') : issue.messageId.slice(0, 12) }}</Button>
-                <small v-if="issue.parentId">{{ locale === 'ru' ? 'Не найден родитель' : 'Missing parent' }}: {{ issue.parentId }}</small>
-              </div>
+      <p v-if="coverage.exhaustedAt" class="text-sm text-muted-foreground">{{ locale === 'ru' ? 'Достигнут лимит чата. Отметка завершения сохранена и не заменяется при обновлении истории.' : 'Conversation limit reached. The terminal marker is retained across history refreshes.' }}</p>
+      <p v-if="coverage.integrity.scope === 'current-native-graph'" class="text-sm text-muted-foreground">{{ locale === 'ru' ? `Проверен полный граф текущей беседы от ChatGPT. Исторических записей вне этого графа: ${coverage.integrity.retainedOutsideGraph ?? 0}. Они сохранены отдельно; их связи этим ответом не подтверждаются.` : `Verified the complete current conversation graph returned by ChatGPT. Historical records outside this graph: ${coverage.integrity.retainedOutsideGraph ?? 0}. They are retained; this response does not verify their relationships.` }}</p>
+      <ArchiveIntegrityDetails :integrity="coverage.integrity" :complete="coverage.completeAtLastRead" :locale="locale" @inspect="inspectMessage">
+        <template v-if="selectedId === archiveAdapter.currentConversationId()" #actions>
+          <div class="space-y-2">
+            <ConversationCollectionAction :label="locale === 'ru' ? 'Собрать историю' : 'Collect history'" :busy="recovering" :stop-label="locale === 'ru' ? 'Остановить' : 'Stop'" @start="recoverHistory" @stop="stopRecovery" />
+            <p v-if="recovering" role="status" class="text-xs text-muted-foreground">{{ locale === 'ru' ? 'Читаем и сохраняем историю…' : 'Reading and saving history…' }} {{ recoveryState?.pagesLoaded ?? 0 }}</p>
+            <p v-if="recoveryError || (recoveryState?.conversationId === selectedId && recoveryState?.phase === 'error')" role="alert" class="text-sm text-destructive">{{ locale === 'ru' ? 'Не удалось завершить сбор. Сохранённые сообщения остаются в архиве.' : 'Collection could not finish. Saved messages remain in the archive.' }}</p>
+          </div>
+        </template>
+      </ArchiveIntegrityDetails>
     </DialogContent></Dialog>
             <Dialog v-model:open="versionsOpen"><DialogContent @close-auto-focus="restoreToolsFocus" v-if="versionMessageId" class="w-[calc(100vw-24px)] max-w-2xl max-h-[85dvh] overflow-y-auto" :data-version-message="versionMessageId"><DialogHeader><DialogTitle>{{ locale === 'ru' ? 'Версии сообщения' : 'Message versions' }}</DialogTitle><DialogDescription>{{ locale === 'ru' ? 'Сохранённые варианты исходной записи.' : 'Saved variants of the original record.' }}</DialogDescription></DialogHeader>
               <Label>{{ locale === 'ru' ? 'Сохранённая версия сообщения' : 'Saved message version' }}

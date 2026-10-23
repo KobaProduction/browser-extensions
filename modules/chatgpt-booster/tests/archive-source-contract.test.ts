@@ -11,6 +11,8 @@ import {
   NATIVE_HISTORY_CONTRACT_V7,
   NATIVE_HISTORY_CONTRACT_V8,
   NATIVE_HISTORY_CONTRACT_V9,
+  NATIVE_HISTORY_CONTRACT_V10,
+  NATIVE_HISTORY_CONTRACT_V11,
   NATIVE_HISTORY_CONTRACT_VERSION,
   registeredNativeHistoryAdapters,
 } from '../packages/features/src/archive-source-contract'
@@ -151,7 +153,7 @@ describe('ChatGPT native page source contract', () => {
     gate.inspect(earlier)
     expect(JSON.stringify(first.payload)).toBe(raw)
     expect(gate.get('conversation')).toBeUndefined()
-    expect(NATIVE_HISTORY_CONTRACT_VERSION).toBe(NATIVE_HISTORY_CONTRACT_V9)
+    expect(NATIVE_HISTORY_CONTRACT_VERSION).toBe(NATIVE_HISTORY_CONTRACT_V11)
   })
 
   test('accepts observed nullable native creation timestamps unchanged', () => {
@@ -290,6 +292,8 @@ describe('ChatGPT native page source contract', () => {
       NATIVE_HISTORY_CONTRACT_V7,
       NATIVE_HISTORY_CONTRACT_V8,
       NATIVE_HISTORY_CONTRACT_V9,
+      NATIVE_HISTORY_CONTRACT_V10,
+      NATIVE_HISTORY_CONTRACT_V11,
     ])
   })
 
@@ -704,4 +708,105 @@ test('v9 validates the observed asynchronous response metadata independently of 
   expect(() =>
     new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V8).inspect(page([incoming])),
   ).toThrow(ArchiveContractError)
+})
+
+test('v10 retains retrieval tool metadata in older pages without widening older adapters', () => {
+  const metadata = {
+    retrieval_turn_number: 2,
+    retrieval_file_index: 0,
+    retrieval_visible_content_line_count: 12,
+    citation_metadata: { synthetic: true },
+    command: 'synthetic command',
+    status: 'synthetic status',
+  }
+  const incoming = message('synthetic-retrieval', {
+    author: { role: 'tool', name: 'synthetic-retrieval', metadata: {} },
+    metadata,
+  })
+  const original = structuredClone(incoming)
+  new ArchiveSourceGate().inspect(page([incoming], false))
+  new ArchiveSourceGate().inspectStreamMessage('conversation', incoming)
+  expect(incoming).toEqual(original)
+  expect(() =>
+    new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V9).inspect(page([incoming], false)),
+  ).toThrow(ArchiveContractError)
+  for (const key of Object.keys(metadata)) {
+    const invalidValues =
+      typeof metadata[key as keyof typeof metadata] === 'string'
+        ? [null, 1, [], true]
+        : [null, 'invalid', [], true]
+    for (const invalid of invalidValues) {
+      expect(() =>
+        new ArchiveSourceGate().inspect(
+          page([{ ...incoming, metadata: { ...metadata, [key]: invalid } }], false),
+        ),
+      ).toThrow(ArchiveContractError)
+    }
+  }
+})
+
+test('v10 validates original tether browser results and preserves their opaque source', () => {
+  const content = {
+    content_type: 'tether_browsing_display',
+    result: 'Synthetic browser result',
+    summary: 'Synthetic summary',
+    assets: null,
+    tether_id: null,
+  }
+  const incoming = message('synthetic-browser', { content })
+  const original = structuredClone(incoming)
+  new ArchiveSourceGate().inspect(page([incoming], false))
+  new ArchiveSourceGate().inspectStreamMessage('conversation', incoming)
+  expect(incoming).toEqual(original)
+  expect(() =>
+    new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V9).inspect(page([incoming], false)),
+  ).toThrow(ArchiveContractError)
+  for (const [key, invalid] of Object.entries({
+    result: null,
+    summary: 1,
+    assets: [],
+    tether_id: 'unknown',
+  })) {
+    expect(() =>
+      new ArchiveSourceGate().inspect(
+        page([{ ...incoming, content: { ...content, [key]: invalid } }], false),
+      ),
+    ).toThrow(ArchiveContractError)
+  }
+})
+
+test('v11 retains parallel-generation source metadata without widening v10', () => {
+  const incoming = message('synthetic-parallel', {
+    metadata: {
+      paragen_variant_choice: 'synthetic-choice',
+      paragen_variants_info: {
+        conversation_id: 'synthetic-conversation',
+        type: 'synthetic-type',
+        display_treatment: 'synthetic-display',
+        paragen_ui_treatment: 'synthetic-ui',
+        num_variants_in_stream: 2,
+      },
+    },
+  })
+  const original = structuredClone(incoming)
+  new ArchiveSourceGate().inspect(page([incoming], false))
+  new ArchiveSourceGate().inspectStreamMessage('conversation', incoming)
+  expect(incoming).toEqual(original)
+  const old = new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V10)
+  expect(() => old.inspect(page([incoming], false))).toThrow(ArchiveContractError)
+  expect(old.get('conversation')?.path).toBe('payload.messages[0].metadata.paragen_variant_choice')
+  for (const invalid of [null, [], 'invalid', 2, false]) {
+    const record = { ...incoming, metadata: { paragen_variants_info: invalid } }
+    expect(() => new ArchiveSourceGate().inspect(page([record], false))).toThrow(ArchiveContractError)
+    expect(() => new ArchiveSourceGate().inspectStreamMessage('conversation', record)).toThrow(
+      ArchiveContractError,
+    )
+  }
+  for (const invalid of [null, [], {}, 2, false]) {
+    const record = { ...incoming, metadata: { paragen_variant_choice: invalid } }
+    expect(() => new ArchiveSourceGate().inspect(page([record], false))).toThrow(ArchiveContractError)
+    expect(() => new ArchiveSourceGate().inspectStreamMessage('conversation', record)).toThrow(
+      ArchiveContractError,
+    )
+  }
 })

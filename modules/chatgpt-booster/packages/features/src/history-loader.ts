@@ -7,7 +7,6 @@ import {
 } from '@chatgpt-booster/core'
 import { ARCHIVE_NETWORK_EVENT, TRANSPORT_CHANNEL } from '@chatgpt-booster/observer'
 import type { ArchiveCollectionRun, ArchiveCollectionSession } from './archive-collection-session'
-import type { historyCoverage } from './archive-coverage'
 import type { FixedChatGptCapture } from './archive-fixed-runtime'
 import type { ConversationStateStore } from './conversation-state'
 
@@ -64,7 +63,7 @@ export class HistoryLoaderModule implements BoosterModule {
         accountId: string
         conversationId: string
         revision: number
-        evidence: ReturnType<typeof historyCoverage>
+        evidence: ReturnType<ConversationStateStore['nativeHistoryCoverage']>
         visibleMessageCount: number
       }
     | undefined
@@ -123,8 +122,18 @@ export class HistoryLoaderModule implements BoosterModule {
 
   #onStateChange = (change: { conversationId: string; reason: string }) => {
     if (!this.#running || !this.sessions.owns(this.#running)) return
-    if (change.conversationId === this.#running.conversationId && change.reason === 'page')
+    if (change.conversationId === this.#running.conversationId && change.reason === 'page') {
       this.#network.pending = false
+      const { evidence, visibleMessageCount } = this.#memoryEvidence(
+        change.conversationId,
+        this.#running.accountId,
+      )
+      this.sessions.update(this.#running, {
+        knownMessageCount: visibleMessageCount,
+        pagesLoaded: evidence.pageCount,
+        hasOlderServerHistory: !evidence.startReached,
+      })
+    }
   }
   #onNetwork = (event: MessageEvent) => {
     if (!this.#running || !this.sessions.owns(this.#running)) return
@@ -174,6 +183,9 @@ export class HistoryLoaderModule implements BoosterModule {
       if (this.stateStore.verifiedAccountId() !== run.accountId)
         this.sessions.pause('account_changed', run)
       this.sessions.requireCurrent(run)
+      // A rejected source cannot improve through repeated reads of the same
+      // signature. Stop immediately rather than polling a blocked adapter.
+      this.stateStore.sourceGate.assertCompatible(id)
     }
     try {
       if (await this.capture.completeSavedCollection?.(run)) return
@@ -184,9 +196,11 @@ export class HistoryLoaderModule implements BoosterModule {
         requireCurrentCollection()
         // A selected already-loaded native read is reusable evidence, not a fresh
         // response. Without one, wait for an actual read started during this run.
-        const selectedRead = run.sourceReadId
-          ? evidence.readId === run.sourceReadId && evidence.readStartedAt === run.sourceReadStartedAt
-          : (evidence.readStartedAt ?? 0) >= startedAt
+        const selectedRead =
+          (evidence.fullRead && (evidence.readStartedAt ?? 0) >= startedAt) ||
+          (run.sourceReadId
+            ? evidence.readId === run.sourceReadId && evidence.readStartedAt === run.sourceReadStartedAt
+            : (evidence.readStartedAt ?? 0) >= startedAt)
         this.sessions.update(run, {
           knownMessageCount: visibleMessageCount,
           pagesLoaded: evidence.pageCount,
@@ -235,6 +249,7 @@ export class HistoryLoaderModule implements BoosterModule {
           if (!this.nativeHistory) throw Error('archive.error.nativeHistoryUnavailable')
           requestedRevision = revision
           requireCurrentCollection()
+          this.sessions.update(run, { phase: 'waiting_for_load' })
           await this.sessions.waitFor(
             run,
             this.nativeHistory.readOlder({

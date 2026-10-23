@@ -28,6 +28,15 @@ gates. A Pull Request must state target, affected products and source issues.
 A task's target can change, but update the issue-form heading so its target
 label is synchronized. Avoid duplicate active issues for one scope.
 
+## Concurrent work ownership
+
+Use the [Git Workflow](https://github.com/ArthurKoba/ai-agent-workflow/blob/main/skills/git-workflow.md)
+for branch/PR lifecycle. For concurrent ChatGPT/platform and VK work, keep one
+integration PR per active owner/workstream when PRs are required. Shared changes
+have one owner; coordinate overlapping paths on the existing task before editing
+and incorporate them through an explicit merge/rebase or reviewed patch. Do not
+create another integration PR or lose the other workstream's commits during consolidation.
+
 ## Legacy ChatGPT Booster tracking
 
 The former standalone repository `KobaProduction/chatgpt-booster` is

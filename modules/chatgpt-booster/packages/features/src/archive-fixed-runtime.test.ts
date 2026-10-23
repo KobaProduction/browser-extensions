@@ -288,6 +288,31 @@ test('manual capture pins the already loaded native read and persists every mess
   })
 })
 
+test('manual history recovery remains available during a source-confirmed active generation', async () => {
+  await nativeCollectionFixture(
+    'collect-active-generation',
+    async ({ state, capture, sessions, page }) => {
+      const incoming = page(0, true)
+      incoming.payload.async_status = 3
+      incoming.payload.messages[0] = {
+        ...incoming.payload.messages[0],
+        status: 'in_progress',
+        end_turn: false,
+      }
+      state.ingestPage(incoming)
+      capture.start()
+      expect(state.lifecycle('collect-active-generation')?.state).toBe('in_progress')
+      await capture.collectCurrent()
+      expect(sessions.current()).toBeDefined()
+      expect(await capture.savedCurrent()).toBe(1)
+      expect(state.lifecycle('collect-active-generation')?.state).toBe('in_progress')
+      expect((await capture.readConversation('collect-active-generation'))[0]?.raw).toEqual(
+        incoming.payload.messages[0],
+      )
+    },
+  )
+})
+
 test('manual streaming saves and proves more than 96 native pages without expanding the raw page buffer', async () => {
   await nativeCollectionFixture('manual-long-pages', async ({ state, capture, sessions, page }) => {
     state.ingestPage(page(0, false))
@@ -342,6 +367,92 @@ test('a source contract rejection after collection begins cannot publish complet
     expect(sessions.snapshot().phase).not.toBe('complete')
   })
 })
+test('source-confirmed exhaustion persists once after the submitted original and survives later pages', async () => {
+  await nativeCollectionFixture('saved-exhaustion', async ({ state, capture, page }) => {
+    const first = page(0, true)
+    state.ingestPage(first)
+    capture.start()
+    await capture.collectCurrent()
+    const original = {
+      ...(first.payload.messages[0] as Record<string, unknown>),
+      id: 'rejected-user',
+      author: { role: 'user', metadata: {} },
+      metadata: { parent_id: 'message-179' },
+      end_turn: false,
+    }
+    state.ingestRequest({
+      conversationId: 'saved-exhaustion',
+      requestId: 'synthetic-exhaustion-request',
+      accountId: 'synthetic-saved-exhaustion',
+      userMessageId: 'rejected-user',
+      startedAt: 1100,
+      observedAt: 1101,
+      source: 'transport_request',
+      submission: { message: original, parentMessageId: 'message-179' },
+    })
+    state.ingestStreamEvent({
+      conversationId: 'saved-exhaustion',
+      requestId: 'synthetic-exhaustion-request',
+      kind: 'error',
+      errorCode: 'conversation_too_large',
+      errorReason: null,
+      canRetry: false,
+      observedAt: 1200,
+    })
+    await capture.waitForDistribution()
+    const proof = await capture.savedExhaustion('saved-exhaustion')
+    expect(proof).toEqual({
+      kind: 'conversation_too_large',
+      requestId: 'synthetic-exhaustion-request',
+      userMessageId: 'rejected-user',
+      savedHeadId: 'message-179',
+      observedAt: 1200,
+    })
+    state.ingestPage({ ...first, timestamp: 1300 })
+    await capture.waitForDistribution()
+    expect(await capture.savedExhaustion('saved-exhaustion')).toEqual(proof)
+    expect(await capture.savedCurrent()).toBe(2)
+    expect(capture.captureFailed()).toBe(false)
+  })
+})
+
+test('native retry exhaustion keeps an unknown user ID and anchors the last durable head', async () => {
+  await nativeCollectionFixture('exhausted-native-retry', async ({ state, capture, page }) => {
+    const first = page(0, true)
+    state.ingestPage(first)
+    capture.start()
+    await capture.collectCurrent()
+    state.ingestRequest({
+      conversationId: 'exhausted-native-retry',
+      requestId: 'native-retry',
+      accountId: 'synthetic-exhausted-native-retry',
+      userMessageId: null,
+      startedAt: 1100,
+      observedAt: 1101,
+      source: 'transport_request',
+    })
+    state.ingestStreamEvent({
+      conversationId: 'exhausted-native-retry',
+      requestId: 'native-retry',
+      kind: 'error',
+      errorCode: 'conversation_too_large',
+      errorReason: null,
+      canRetry: false,
+      observedAt: 1200,
+    })
+    await capture.waitForDistribution()
+    expect(await capture.savedExhaustion('exhausted-native-retry')).toEqual({
+      kind: 'conversation_too_large',
+      requestId: 'native-retry',
+      userMessageId: null,
+      savedHeadId: 'message-179',
+      observedAt: 1200,
+    })
+    expect(await capture.savedCurrent()).toBe(1)
+    expect(capture.captureFailed()).toBe(false)
+  })
+})
+
 test('a valid empty native history still persists its acknowledged page proof and completes collection', async () => {
   await nativeCollectionFixture('manual-empty-history', async ({ state, capture, sessions, page }) => {
     const empty = page(0, true, [])

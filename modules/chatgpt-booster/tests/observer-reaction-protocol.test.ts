@@ -22,7 +22,12 @@ afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close()
 })
 const tick = () => new Promise((resolve) => setTimeout(resolve, 5))
-async function setup(source: string, pathname = '/c/network-chat', status = 200) {
+async function setup(
+  source: string,
+  pathname = '/c/network-chat',
+  status = 200,
+  responseFactory?: () => Response,
+) {
   const dom = new Window({ url: `https://chatgpt.com${pathname}` })
   const previous = { window: globalThis.window, location: globalThis.location }
   Object.assign(globalThis, { window: dom, location: dom.location })
@@ -50,10 +55,13 @@ async function setup(source: string, pathname = '/c/network-chat', status = 200)
       if (url.includes('/accounts/check'))
         return Response.json({ accounts: { 'owner-A': { account: { account_id: 'owner-A' } } } })
       if (url.includes('/conversations')) return Response.json({ items: [] })
-      return new Response(source, {
-        status,
-        headers: { 'content-type': status >= 400 ? 'application/json' : 'text/event-stream' },
-      })
+      return (
+        responseFactory?.() ??
+        new Response(source, {
+          status,
+          headers: { 'content-type': status >= 400 ? 'application/json' : 'text/event-stream' },
+        })
+      )
     },
     postMessage(value: { type: string; detail: unknown }) {
       packets.push(value)
@@ -319,6 +327,48 @@ test('uncorrelated WebSocket terminal packets and socket close cannot complete a
   expect(state.lifecycle('network-chat')).toMatchObject({
     state: 'in_progress',
     transportHealth: 'interrupted',
+  })
+})
+
+test('native abort after fetch returns cannot erase the first-submit 413 error body', async () => {
+  const payload = { detail: { code: 'conversation_length_exceeds_limit', message: 'Synthetic limit' } }
+  let delivered = false
+  const { target, state } = await setup('', '/c/network-chat', 413, () => {
+    const response = Response.json(payload, { status: 413 }),
+      clone = response.clone.bind(response)
+    response.clone = () => {
+      const copy = clone(),
+        json = copy.json.bind(copy)
+      copy.json = async () => {
+        await tick()
+        if (delivered) throw new DOMException('Native consumer cancelled', 'AbortError')
+        return json()
+      }
+      return copy
+    }
+    return response
+  })
+  const response = await target.fetch('https://chatgpt.com/backend-api/f/conversation', {
+    method: 'POST',
+    body: JSON.stringify({
+      action: 'next',
+      conversation_id: 'network-chat',
+      parent_message_id: 'synthetic-parent',
+      messages: [
+        {
+          id: 'first-rejected',
+          author: { role: 'user' },
+          content: { content_type: 'text', parts: ['Synthetic'] },
+        },
+      ],
+    }),
+  })
+  delivered = true
+  expect(response.status).toBe(413)
+  expect(await response.json()).toEqual(payload)
+  expect(state.lifecycle('network-chat')).toMatchObject({
+    state: 'complete',
+    terminalCause: 'conversation_too_large',
   })
 })
 

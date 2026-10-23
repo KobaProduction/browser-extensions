@@ -607,6 +607,7 @@ export class ConversationStateStore implements BoosterModule {
     const state = this.#states.get(conversationId)
     return {
       ...checkpointHistoryCoverage(state?.pageCoverage),
+      fullRead: this.observations.hasFullRead(conversationId, state?.pageCoverage?.initial.readId),
       replayComplete: !state?.pageReplayIncomplete,
     }
   }
@@ -1011,11 +1012,24 @@ export class ConversationStateStore implements BoosterModule {
 
   ingestStreamStatus(detail: ConversationStreamStatusEventDetail) {
     this.observations.receive(detail.conversationId, { kind: 'status', detail })
-    if (detail.status !== 'COMPLETE') return
+    if (detail.status !== 'COMPLETE' && detail.status !== 'FAILURE') return
+    if (detail.status === 'FAILURE' && detail.httpStatus !== 200) return
     const state = this.#states.get(detail.conversationId)
     if (!state) return
     const previous = state.lifecycle
-    if (!previous.requestId || detail.requestId !== previous.requestId) return
+    const exactRun = Boolean(previous.requestId && detail.requestId === previous.requestId)
+    // A reload has no local request ID. Only a fresh native failure may close
+    // that recovered run; an uncorrelated poll must never finish a new submit.
+    const recoveredFailure =
+      detail.status === 'FAILURE' &&
+      detail.httpStatus === 200 &&
+      !detail.requestId &&
+      !previous.requestId &&
+      previous.source === 'initial' &&
+      previous.state === 'in_progress' &&
+      detail.observedAt >= (state.headReadStartedAt ?? Infinity)
+    if (!exactRun && !recoveredFailure) return
+    if (detail.observedAt < (previous.requestObservedAt ?? previous.updatedAt)) return
     if (
       previous.state === 'stop_requested' ||
       previous.state === 'stopped' ||
@@ -1025,7 +1039,44 @@ export class ConversationStateStore implements BoosterModule {
       return
     state.lifecycle = {
       ...previous,
-      state: 'complete',
+      state: detail.status === 'FAILURE' ? 'failed' : 'complete',
+      terminalCause: detail.status === 'FAILURE' ? 'stream_failure' : previous.terminalCause,
+      completedAt: detail.observedAt,
+      updatedAt: detail.observedAt,
+      source: 'transport',
+    }
+    state.lastObservedAt = Math.max(state.lastObservedAt, detail.observedAt)
+    this.#touch(state, 'transport')
+  }
+
+  /** Exact native application error, distinct from a server stream-status poll. */
+  ingestNativeDeliveryFailure(detail: {
+    accountId: string
+    epoch: number
+    conversationId: string
+    expectedRequestId: string | null
+    headId: string
+    observedAt: number
+    errorCode: 'recovery_unconfirmed'
+  }) {
+    if (detail.accountId !== this.#verifiedAccountId || detail.epoch !== this.accountEpoch()) return
+    const state = this.#states.get(detail.conversationId)
+    if (!state || detail.errorCode !== 'recovery_unconfirmed') return
+    const previous = state.lifecycle
+    if (
+      (previous.requestId ?? null) !== detail.expectedRequestId ||
+      !['in_progress', 'stop_requested'].includes(previous.state) ||
+      detail.observedAt < (previous.requestObservedAt ?? state.headReadStartedAt ?? Infinity)
+    )
+      return
+    const live = this.observations.head(detail.conversationId)
+    if (previous.requestId && live?.requestId !== previous.requestId) return
+    const head = previous.requestId ? live?.raw.id : state.currentNodeId
+    if (head !== detail.headId) return
+    state.lifecycle = {
+      ...previous,
+      state: 'failed',
+      terminalCause: 'native_delivery_failure',
       completedAt: detail.observedAt,
       updatedAt: detail.observedAt,
       source: 'transport',
@@ -1534,6 +1585,14 @@ export class ConversationStateStore implements BoosterModule {
             }
           : {}),
       }
+
+    // Repeated history can retain async_status=3 after native FAILURE. It is
+    // not proof of a new run and must not resurrect this terminal result.
+    if (
+      !isNewRun &&
+      ['stream_failure', 'native_delivery_failure'].includes(state.lifecycle.terminalCause ?? '')
+    )
+      return
 
     // A history read is not fresh activity. Recover only native timestamps;
     // repeated reads/catalog polling must not reset the no-change counter.

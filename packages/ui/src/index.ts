@@ -39,6 +39,7 @@ export type {
 export { createDomFactObserver } from './dom-facts'
 export { useLocalizedText } from './localized-text'
 export { UI_PORTAL_TARGET, useUiPortalTarget } from './portal-target'
+export { attachPortalTopLayer } from './portal-top-layer'
 export type { SettingsCatalogEntry, SettingsCatalogGroup } from './settings-catalog'
 export type { SiteDecoration, SiteDecorationOptions } from './site-decoration'
 export { ensureSiteDecoration } from './site-decoration'
