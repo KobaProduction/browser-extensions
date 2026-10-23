@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Koba Browser Tools [DEV]
 // @namespace    https://github.com/KobaProduction/browser-extensions/dev/all-in-one
-// @version      0.5.52
+// @version      0.5.53
 // @description  Koba Browser Tools / Koba Browser Tools
 // @homepageURL   https://github.com/KobaProduction/browser-extensions
 // @updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/all-in-one.user.js
@@ -2034,8 +2034,8 @@
     }
     return Object.fromEntries(entries);
   }
-  const BOOSTER_BASE_VERSION = "2.0.24";
-  const injectedVersion = "2.0.24".trim();
+  const BOOSTER_BASE_VERSION = "0.0.0-local";
+  const injectedVersion = "2.0.50".trim();
   const BOOSTER_BUILD_VERSION = injectedVersion || BOOSTER_BASE_VERSION;
   const BOOSTER_VERSION = BOOSTER_BUILD_VERSION;
   // @__NO_SIDE_EFFECTS__
@@ -63021,7 +63021,7 @@ ${JSON.stringify(counts)}`);
     }
   }
   instanceKey("chatgpt-booster:manual-collection", "chatgpt-booster:prod");
-  var define_BOOSTER_APPLICATION_default = { id: "all-in-one", title: "Koba Browser Tools", version: "dev-0.5.52", components: [{ id: "vk-booster", title: "VK Booster", version: "1.1.4" }, { id: "chatgpt-booster", title: "ChatGPT Booster", version: "2.0.24" }] };
+  var define_BOOSTER_APPLICATION_default = { id: "all-in-one", title: "Koba Browser Tools", version: "dev-0.5.53", components: [{ id: "vk-booster", title: "VK Booster", version: "1.1.52" }, { id: "chatgpt-booster", title: "ChatGPT Booster", version: "2.0.50" }] };
   function isDevelopmentContextAllowed(_target, scope = instanceScope()) {
     return /^(vk-booster|chatgpt-booster|all-in-one):(dev|prod)$/.test(scope);
   }
@@ -65972,7 +65972,7 @@ ${JSON.stringify(counts)}`);
     if (!gm)
       return unavailableTelemetry();
     const settings = gm?.settings ?? store;
-    const suppliedVersion = "0.5.27";
+    const suppliedVersion = "0.5.53";
     const version2 = /^\d+\.\d+\.\d+$/.test(suppliedVersion) ? suppliedVersion : "0.0.0";
     const listeners = /* @__PURE__ */ new Set();
     let enabled = false;
@@ -71564,7 +71564,7 @@ ${JSON.stringify(counts)}`);
       };
     }
   });
-  const VK_BASE_VERSION = "1.1.4";
+  const VK_BASE_VERSION = "1.1.52";
   function defaultVkCapturePreferences() {
     return { mode: "recent", limit: 10, from: "", through: "", pageSize: 50, delay: 450, media: true };
   }
