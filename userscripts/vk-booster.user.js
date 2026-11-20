@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VK Booster [DEV]
 // @namespace    https://github.com/KobaProduction/browser-extensions/dev/vk-booster
-// @version      1.1.53
+// @version      1.1.54
 // @description  Koba Browser Tools / VK Booster
 // @homepageURL   https://github.com/KobaProduction/browser-extensions
 // @updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/vk-booster.user.js
@@ -216,8 +216,10 @@
   }
   class FeatureSettings {
     store;
-    constructor(store) {
+    providerPower;
+    constructor(store, providerPower = false) {
       this.store = store;
+      this.providerPower = providerPower;
     }
     async languagePreference() {
       const value = await this.store.getText?.("ui.language");
@@ -236,11 +238,18 @@
         await this.setLanguagePreference(value);
       return value;
     }
-    enabled(id2) {
-      return this.store.get(`features.${id2}.enabled`).then((value) => value !== false);
+    async enabled(id2) {
+      if (this.providerPower) {
+        const override2 = await this.store.get(`features.${id2}.power.enabled`);
+        if (override2 !== void 0)
+          return override2;
+        if (await this.store.get("installation.enabled") === false)
+          return false;
+      }
+      return await this.store.get(`features.${id2}.enabled`) !== false;
     }
     setEnabled(id2, enabled) {
-      return this.store.set(`features.${id2}.enabled`, enabled);
+      return this.store.set(this.providerPower ? `features.${id2}.power.enabled` : `features.${id2}.enabled`, enabled);
     }
     moduleEnabled(featureId, moduleId, defaultEnabled = true) {
       return this.store.get(`features.${featureId}.modules.${moduleId}.enabled`).then((value) => value ?? defaultEnabled);
@@ -249,6 +258,8 @@
       return this.store.set(`features.${featureId}.modules.${moduleId}.enabled`, enabled);
     }
     installationEnabled() {
+      if (this.providerPower)
+        return Promise.resolve(true);
       return this.store.get("installation.enabled").then((value) => value !== false);
     }
     setInstallationEnabled(enabled) {
@@ -593,6 +604,23 @@
     isRunning() {
       return this.running;
     }
+    pagePower() {
+      if (!this.context.settings.providerPower)
+        return { enabled: this.running, available: true };
+      const matches2 = this.features.filter((feature2) => feature2.match(this.context.url));
+      const feature = matches2.length === 1 ? matches2[0] : void 0;
+      return {
+        feature,
+        enabled: feature ? this.featureEnabled.get(feature.id) ?? false : false,
+        available: Boolean(feature && this.status.get(feature.id)?.state !== "unsupported")
+      };
+    }
+    setPagePower(enabled) {
+      if (!this.context.settings.providerPower)
+        return this.setRunning(enabled);
+      const { feature, available: available2 } = this.pagePower();
+      return feature && available2 ? this.setEnabled(feature.id, enabled) : Promise.reject(Error("No supported provider on this page"));
+    }
     shellPreferences() {
       return { ...this.shell };
     }
@@ -670,6 +698,8 @@
       await feature.open?.();
     }
     setRunning(enabled) {
+      if (this.context.settings.providerPower)
+        return this.setPagePower(enabled);
       return this.transition(async () => {
         await this.context.settings.setInstallationEnabled(enabled);
         this.running = enabled;
@@ -8048,7 +8078,7 @@
     }
     return container;
   }
-  const VK_BASE_VERSION = "1.1.53";
+  const VK_BASE_VERSION = "1.1.54";
   var extendStatics = function(d, b) {
     extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d2, b2) {
       d2.__proto__ = b2;
@@ -14213,7 +14243,7 @@
   }
   DexiePromise.rejectionMapper = mapError;
   setDebug(debug);
-  var define_BOOSTER_APPLICATION_default = { id: "vk-booster", title: "VK Booster", version: "dev-1.1.53", components: [] };
+  var define_BOOSTER_APPLICATION_default = { id: "vk-booster", title: "VK Booster", version: "dev-1.1.54", components: [] };
   function isDevelopmentContextAllowed(_target, scope = instanceScope()) {
     return /^(vk-booster|chatgpt-booster|all-in-one):(dev|prod)$/.test(scope);
   }
@@ -14291,7 +14321,7 @@
       "ui.metrics.enabled",
       "ui.language"
     ].map((key) => prefix + key);
-    const relevant = (key) => keys2.includes(key) || key.startsWith(prefix) && /^features\.[a-z0-9-]+(?:\.modules\.[a-z0-9-]+)?\.enabled$/.test(key.slice(prefix.length));
+    const relevant = (key) => keys2.includes(key) || key.startsWith(prefix) && /^features\.[a-z0-9-]+(?:\.power|\.modules\.[a-z0-9-]+)?\.enabled$/.test(key.slice(prefix.length));
     if (hasManagerStorage() && typeof GM_addValueChangeListener === "function" && typeof GM_removeValueChangeListener === "function") {
       const id = GM_addValueChangeListener(revisionKey(), (_key, _before, _after, remote) => {
         if (remote)
@@ -15849,6 +15879,7 @@
       "ui.language",
       ...runtime.features.flatMap((feature) => [
         `features.${feature.id}.enabled`,
+        ...runtime.context.settings.providerPower ? [`features.${feature.id}.power.enabled`] : [],
         ...(feature.modules ?? []).map((module) => `features.${feature.id}.modules.${module.id}.enabled`)
       ])
     ];
@@ -15885,10 +15916,17 @@
       },
       async restoreSettingsAtomically(input) {
         const value = validate2(input), before = await port.exportSettings();
+        const restoredValue = (key, next) => {
+          if (next[key] !== void 0)
+            return next[key];
+          if (key.endsWith(".power.enabled"))
+            return next["installation.enabled"] !== false && next[key.replace(".power.enabled", ".enabled")] !== false;
+          return defaults.get(key) ?? true;
+        };
         const write = async (next) => {
           {
             for (const key of keys2) {
-              const item = next[key] ?? defaults.get(key) ?? true;
+              const item = restoredValue(key, next);
               if (key === "ui.language")
                 await settings.setText?.(key, String(item));
               else
@@ -16875,7 +16913,7 @@
     if (!gm)
       return unavailableTelemetry();
     const settings = gm?.settings ?? store;
-    const suppliedVersion = "1.1.53";
+    const suppliedVersion = "1.1.54";
     const version2 = /^\d+\.\d+\.\d+$/.test(suppliedVersion) ? suppliedVersion : "0.0.0";
     const listeners = /* @__PURE__ */ new Set();
     let enabled = false;
@@ -24702,6 +24740,11 @@ ${line}`);
     ["path", { d: "M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8", key: "1s80jp" }],
     ["path", { d: "M10 12h4", key: "a56b0p" }]
   ]);
+  const ArrowDownToLine = createLucideIcon("arrow-down-to-line", [
+    ["path", { d: "M12 17V3", key: "1cwfxf" }],
+    ["path", { d: "m6 11 6 6 6-6", key: "12ii2o" }],
+    ["path", { d: "M19 21H5", key: "150jfl" }]
+  ]);
   const ArrowLeft = createLucideIcon("arrow-left", [
     ["path", { d: "m12 19-7-7 7-7", key: "1l729n" }],
     ["path", { d: "M19 12H5", key: "x3x0zl" }]
@@ -29989,7 +30032,7 @@ ${line}`);
       update
     };
   }
-  const _hoisted_1$b = ["dir"];
+  const _hoisted_1$d$1 = ["dir"];
   const PopperContentPropsDefaultValue = {
     side: "bottom",
     sideOffset: 0,
@@ -30282,7 +30325,7 @@ ${line}`);
           "data-align",
           "dir",
           "style"
-        ]))], 12, _hoisted_1$b);
+        ]))], 12, _hoisted_1$d$1);
       };
     }
   });
@@ -33817,7 +33860,7 @@ Defaulting to \`null\`.`);
   function shouldShowPlaceholder(value) {
     return value === void 0 || value === null || value === "" || Array.isArray(value) && value.length === 0;
   }
-  const _hoisted_1$a = ["value"];
+  const _hoisted_1$c$1 = ["value"];
   const [injectSelectRootContext, provideSelectRootContext] = /* @__PURE__ */ createContext("SelectRoot");
   var SelectRoot_vue_vue_type_script_setup_true_lang_default = /* @__PURE__ */ defineComponent({
     inheritAttrs: false,
@@ -33980,7 +34023,7 @@ Defaulting to \`null\`.`);
             default: withCtx(() => [unref(isNullish)(unref(modelValue)) ? (openBlock(), createElementBlock("option", {
               key: 0,
               value: __props.nullableValue
-            }, null, 8, _hoisted_1$a)) : createCommentVNode("v-if", true), (openBlock(true), createElementBlock(Fragment, null, renderList(Array.from(optionsSet.value), (option) => {
+            }, null, 8, _hoisted_1$c$1)) : createCommentVNode("v-if", true), (openBlock(true), createElementBlock(Fragment, null, renderList(Array.from(optionsSet.value), (option) => {
               return openBlock(), createElementBlock("option", mergeProps({ key: option.value ?? "" }, { ref_for: true }, option), null, 16);
             }), 128))]),
             _: 1
@@ -34650,7 +34693,7 @@ Defaulting to \`null\`.`);
     }
   });
   var SelectProvider_default = SelectProvider_vue_vue_type_script_setup_true_lang_default;
-  const _hoisted_1$9 = { key: 1 };
+  const _hoisted_1$b = { key: 1 };
   var SelectContent_vue_vue_type_script_setup_true_lang_default = /* @__PURE__ */ defineComponent({
     inheritAttrs: false,
     __name: "SelectContent",
@@ -34812,7 +34855,7 @@ Defaulting to \`null\`.`);
             _: 3
           }, 16)]),
           _: 3
-        }, 8, ["present"])) : fragment.value ? (openBlock(), createElementBlock("div", _hoisted_1$9, [(openBlock(), createBlock(Teleport, { to: fragment.value }, [createVNode(SelectProvider_default, { context: unref(rootContext) }, {
+        }, 8, ["present"])) : fragment.value ? (openBlock(), createElementBlock("div", _hoisted_1$b, [(openBlock(), createBlock(Teleport, { to: fragment.value }, [createVNode(SelectProvider_default, { context: unref(rootContext) }, {
           default: withCtx(() => [renderSlot(_ctx.$slots, "default")]),
           _: 3
         }, 8, ["context"])], 8, ["to"]))])) : createCommentVNode("v-if", true);
@@ -36751,7 +36794,7 @@ Defaulting to \`null\`.`);
   function cn(...inputs) {
     return twMerge(clsx(inputs));
   }
-  const _sfc_main$19 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$1d = /* @__PURE__ */ defineComponent({
     __name: "Progress",
     props: {
       modelValue: { default: 0 },
@@ -36784,12 +36827,12 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _hoisted_1$8$1 = ["aria-busy"];
-  const _hoisted_2$3$2 = {
+  const _hoisted_1$a = ["aria-busy"];
+  const _hoisted_2$4$1 = {
     key: 0,
     class: "flex items-center justify-between gap-2"
   };
-  const _hoisted_3$2$2 = {
+  const _hoisted_3$3$1 = {
     role: "status",
     "aria-live": "polite"
   };
@@ -36797,7 +36840,7 @@ Defaulting to \`null\`.`);
     key: 0,
     class: "tabular-nums"
   };
-  const _hoisted_5$7 = {
+  const _hoisted_5$5 = {
     key: 1,
     class: "text-xs text-muted-foreground"
   };
@@ -36806,7 +36849,7 @@ Defaulting to \`null\`.`);
     role: "alert",
     class: "text-sm text-destructive"
   };
-  const _sfc_main$18 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$1c = /* @__PURE__ */ defineComponent({
     __name: "ArchiveProgress",
     props: {
       label: {},
@@ -36830,10 +36873,10 @@ Defaulting to \`null\`.`);
           class: normalizeClass(__props.compact ? "w-full" : "booster-shared-archive-progress"),
           "aria-busy": __props.busy
         }, [
-          !__props.compact ? (openBlock(), createElementBlock("div", _hoisted_2$3$2, [
+          !__props.compact ? (openBlock(), createElementBlock("div", _hoisted_2$4$1, [
             createBaseVNode(
               "span",
-              _hoisted_3$2$2,
+              _hoisted_3$3$1,
               toDisplayString(__props.label),
               1
               /* TEXT */
@@ -36846,7 +36889,7 @@ Defaulting to \`null\`.`);
               /* TEXT */
             )) : createCommentVNode("v-if", true)
           ])) : createCommentVNode("v-if", true),
-          createVNode(unref(_sfc_main$19), {
+          createVNode(unref(_sfc_main$1d), {
             class: "w-full",
             "model-value": progress.value,
             max: 100,
@@ -36854,7 +36897,7 @@ Defaulting to \`null\`.`);
           }, null, 8, ["model-value", "aria-label"]),
           __props.detail ? (openBlock(), createElementBlock(
             "p",
-            _hoisted_5$7,
+            _hoisted_5$5,
             toDisplayString(__props.detail),
             1
             /* TEXT */
@@ -36867,7 +36910,7 @@ Defaulting to \`null\`.`);
             /* TEXT */
           )) : createCommentVNode("v-if", true),
           renderSlot(_ctx.$slots, "default")
-        ], 10, _hoisted_1$8$1);
+        ], 10, _hoisted_1$a);
       };
     }
   });
@@ -36911,7 +36954,7 @@ Defaulting to \`null\`.`);
     }, []);
     return cx(base, getVariantClassNames, getCompoundVariantClassNames, props2 === null || props2 === void 0 ? void 0 : props2.class, props2 === null || props2 === void 0 ? void 0 : props2.className);
   };
-  const _sfc_main$17 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$1b = /* @__PURE__ */ defineComponent({
     __name: "Button",
     props: {
       variant: {},
@@ -36965,7 +37008,7 @@ Defaulting to \`null\`.`);
       }
     }
   );
-  const _sfc_main$16 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$1a = /* @__PURE__ */ defineComponent({
     __name: "Popover",
     props: {
       defaultOpen: { type: Boolean },
@@ -36998,7 +37041,7 @@ Defaulting to \`null\`.`);
   function useUiPortalTarget() {
     return inject(UI_PORTAL_TARGET, void 0);
   }
-  const _sfc_main$15 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$19 = /* @__PURE__ */ defineComponent({
     ...{
       inheritAttrs: false
     },
@@ -37059,7 +37102,7 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _sfc_main$14 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$18 = /* @__PURE__ */ defineComponent({
     __name: "PopoverTrigger",
     props: {
       asChild: { type: Boolean },
@@ -37084,7 +37127,7 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _sfc_main$13 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$17 = /* @__PURE__ */ defineComponent({
     __name: "Tooltip",
     props: {
       defaultOpen: { type: Boolean },
@@ -37117,7 +37160,7 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _sfc_main$12 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$16 = /* @__PURE__ */ defineComponent({
     ...{
       inheritAttrs: false
     },
@@ -37167,7 +37210,7 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _sfc_main$11 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$15 = /* @__PURE__ */ defineComponent({
     __name: "TooltipProvider",
     props: {
       delayDuration: {},
@@ -37197,7 +37240,7 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _sfc_main$10 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$14 = /* @__PURE__ */ defineComponent({
     __name: "TooltipTrigger",
     props: {
       reference: {},
@@ -37223,7 +37266,51 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _sfc_main$$ = /* @__PURE__ */ defineComponent({
+  const _sfc_main$13 = /* @__PURE__ */ defineComponent({
+    __name: "TooltipHint",
+    props: {
+      label: {}
+    },
+    setup(__props) {
+      return (_ctx, _cache) => {
+        return openBlock(), createBlock(_sfc_main$15, { "delay-duration": 150 }, {
+          default: withCtx(() => [
+            createVNode(_sfc_main$17, null, {
+              default: withCtx(() => [
+                createVNode(_sfc_main$14, { "as-child": "" }, {
+                  default: withCtx(() => [
+                    renderSlot(_ctx.$slots, "default")
+                  ]),
+                  _: 3
+                  /* FORWARDED */
+                }),
+                createVNode(_sfc_main$16, {
+                  "side-offset": 8,
+                  "collision-padding": 8,
+                  class: "booster-floating-tooltip max-w-[min(320px,calc(100vw-16px))] whitespace-pre-line [overflow-wrap:anywhere]"
+                }, {
+                  default: withCtx(() => [
+                    createTextVNode(
+                      toDisplayString(__props.label),
+                      1
+                      /* TEXT */
+                    )
+                  ]),
+                  _: 1
+                  /* STABLE */
+                })
+              ]),
+              _: 3
+              /* FORWARDED */
+            })
+          ]),
+          _: 3
+          /* FORWARDED */
+        });
+      };
+    }
+  });
+  const _sfc_main$12 = /* @__PURE__ */ defineComponent({
     __name: "FloatingInfoPopover",
     props: {
       mode: { default: "hover" },
@@ -37283,19 +37370,19 @@ Defaulting to \`null\`.`);
       }
       onBeforeUnmount(cancelHide);
       return (_ctx, _cache) => {
-        return __props.mode === "hover" ? (openBlock(), createBlock(unref(_sfc_main$11), {
+        return __props.mode === "hover" ? (openBlock(), createBlock(unref(_sfc_main$15), {
           key: 0,
           "delay-duration": 150
         }, {
           default: withCtx(() => [
-            createVNode(unref(_sfc_main$13), {
+            createVNode(unref(_sfc_main$17), {
               open: open.value,
               "onUpdate:open": _cache[1] || (_cache[1] = ($event) => open.value = $event)
             }, {
               default: withCtx(() => [
-                createVNode(unref(_sfc_main$10), { "as-child": "" }, {
+                createVNode(unref(_sfc_main$14), { "as-child": "" }, {
                   default: withCtx(() => [
-                    createVNode(unref(_sfc_main$17), {
+                    createVNode(unref(_sfc_main$1b), {
                       type: "button",
                       variant: "ghost",
                       size: "icon-sm",
@@ -37314,7 +37401,7 @@ Defaulting to \`null\`.`);
                   _: 3
                   /* FORWARDED */
                 }),
-                createVNode(unref(_sfc_main$12), {
+                createVNode(unref(_sfc_main$16), {
                   align: __props.align,
                   "side-offset": 8,
                   "collision-padding": 8,
@@ -37336,15 +37423,15 @@ Defaulting to \`null\`.`);
           ]),
           _: 3
           /* FORWARDED */
-        })) : (openBlock(), createBlock(unref(_sfc_main$16), {
+        })) : (openBlock(), createBlock(unref(_sfc_main$1a), {
           key: 1,
           open: open.value,
           "onUpdate:open": updateOpen
         }, {
           default: withCtx(() => [
-            createVNode(unref(_sfc_main$14), { "as-child": "" }, {
+            createVNode(unref(_sfc_main$18), { "as-child": "" }, {
               default: withCtx(() => [
-                createVNode(unref(_sfc_main$17), {
+                createVNode(unref(_sfc_main$1b), {
                   type: "button",
                   variant: "ghost",
                   size: "icon-sm",
@@ -37368,7 +37455,7 @@ Defaulting to \`null\`.`);
               _: 3
               /* FORWARDED */
             }),
-            createVNode(unref(_sfc_main$15), {
+            createVNode(unref(_sfc_main$19), {
               align: __props.align,
               "side-offset": 8,
               "collision-padding": 8,
@@ -37394,8 +37481,8 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _hoisted_1$7$1 = ["innerHTML"];
-  const _sfc_main$_ = /* @__PURE__ */ defineComponent({
+  const _hoisted_1$9 = ["innerHTML"];
+  const _sfc_main$11 = /* @__PURE__ */ defineComponent({
     __name: "JsonViewer",
     props: {
       value: {}
@@ -37428,11 +37515,11 @@ Defaulting to \`null\`.`);
         return openBlock(), createElementBlock("pre", {
           class: "booster-json-viewer",
           innerHTML: html.value
-        }, null, 8, _hoisted_1$7$1);
+        }, null, 8, _hoisted_1$9);
       };
     }
   });
-  const _sfc_main$Z = /* @__PURE__ */ defineComponent({
+  const _sfc_main$10 = /* @__PURE__ */ defineComponent({
     __name: "Dialog",
     props: {
       open: { type: Boolean },
@@ -37462,7 +37549,7 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _sfc_main$X = /* @__PURE__ */ defineComponent({
+  const _sfc_main$_ = /* @__PURE__ */ defineComponent({
     ...{ inheritAttrs: false },
     __name: "DialogContent",
     props: {
@@ -37537,7 +37624,7 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _sfc_main$S = /* @__PURE__ */ defineComponent({
+  const _sfc_main$V = /* @__PURE__ */ defineComponent({
     __name: "DialogTitle",
     props: {
       asChild: { type: Boolean },
@@ -37564,7 +37651,7 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _sfc_main$Q = /* @__PURE__ */ defineComponent({
+  const _sfc_main$T = /* @__PURE__ */ defineComponent({
     __name: "ModalSurface",
     props: {
       label: {},
@@ -37584,13 +37671,13 @@ Defaulting to \`null\`.`);
         if (props2.floating || nestedDialog) event.preventDefault();
       }
       return (_ctx, _cache) => {
-        return openBlock(), createBlock(unref(_sfc_main$Z), {
+        return openBlock(), createBlock(unref(_sfc_main$10), {
           open: true,
           modal: !__props.floating,
           "onUpdate:open": _cache[1] || (_cache[1] = ($event) => !$event && emit2("close"))
         }, {
           default: withCtx(() => [
-            createVNode(unref(_sfc_main$X), {
+            createVNode(unref(_sfc_main$_), {
               "hide-close-button": true,
               "aria-label": __props.label,
               "aria-describedby": void 0,
@@ -37606,7 +37693,7 @@ Defaulting to \`null\`.`);
               onEscapeKeyDown: _cache[0] || (_cache[0] = ($event) => $event.stopPropagation())
             }, {
               default: withCtx(() => [
-                createVNode(unref(_sfc_main$S), { class: "sr-only" }, {
+                createVNode(unref(_sfc_main$V), { class: "sr-only" }, {
                   default: withCtx(() => [
                     createTextVNode(
                       toDisplayString(__props.label),
@@ -37631,7 +37718,7 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _sfc_main$P = /* @__PURE__ */ defineComponent({
+  const _sfc_main$S = /* @__PURE__ */ defineComponent({
     __name: "Card",
     props: {
       class: { type: [Boolean, null, String, Object, Array] }
@@ -37658,10 +37745,11 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _sfc_main$O = /* @__PURE__ */ defineComponent({
+  const _sfc_main$R = /* @__PURE__ */ defineComponent({
     __name: "CardContent",
     props: {
-      class: { type: [Boolean, null, String, Object, Array] }
+      class: { type: [Boolean, null, String, Object, Array] },
+      compact: { type: Boolean }
     },
     setup(__props) {
       const props2 = __props;
@@ -37669,7 +37757,7 @@ Defaulting to \`null\`.`);
         return openBlock(), createElementBlock(
           "div",
           {
-            class: normalizeClass(unref(cn)("p-6 pt-0", props2.class))
+            class: normalizeClass(unref(cn)(__props.compact ? "p-3 pt-0" : "p-6 pt-0", props2.class))
           },
           [
             renderSlot(_ctx.$slots, "default")
@@ -37680,7 +37768,7 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _sfc_main$N = /* @__PURE__ */ defineComponent({
+  const _sfc_main$Q = /* @__PURE__ */ defineComponent({
     __name: "CardDescription",
     props: {
       class: { type: [Boolean, null, String, Object, Array] }
@@ -37702,10 +37790,11 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _sfc_main$L = /* @__PURE__ */ defineComponent({
+  const _sfc_main$O = /* @__PURE__ */ defineComponent({
     __name: "CardHeader",
     props: {
-      class: { type: [Boolean, null, String, Object, Array] }
+      class: { type: [Boolean, null, String, Object, Array] },
+      compact: { type: Boolean }
     },
     setup(__props) {
       const props2 = __props;
@@ -37713,7 +37802,7 @@ Defaulting to \`null\`.`);
         return openBlock(), createElementBlock(
           "div",
           {
-            class: normalizeClass(unref(cn)("flex flex-col gap-y-1.5 p-6", props2.class))
+            class: normalizeClass(unref(cn)("flex flex-col gap-y-1.5", __props.compact ? "p-3" : "p-6", props2.class))
           },
           [
             renderSlot(_ctx.$slots, "default")
@@ -37724,7 +37813,7 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _sfc_main$K = /* @__PURE__ */ defineComponent({
+  const _sfc_main$N = /* @__PURE__ */ defineComponent({
     __name: "CardTitle",
     props: {
       class: { type: [Boolean, null, String, Object, Array] }
@@ -37748,7 +37837,7 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _sfc_main$J = /* @__PURE__ */ defineComponent({
+  const _sfc_main$M = /* @__PURE__ */ defineComponent({
     __name: "Label",
     props: {
       for: {},
@@ -37775,7 +37864,51 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _sfc_main$I = /* @__PURE__ */ defineComponent({
+  const _hoisted_1$8$1 = { class: "min-w-0 space-y-1" };
+  const _hoisted_2$3$2 = ["id"];
+  const _sfc_main$L = /* @__PURE__ */ defineComponent({
+    __name: "SettingField",
+    props: {
+      id: {},
+      title: {},
+      description: {}
+    },
+    setup(__props) {
+      return (_ctx, _cache) => {
+        return openBlock(), createBlock(unref(_sfc_main$S), { class: "grid min-w-0 gap-3 p-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr))] items-center" }, {
+          default: withCtx(() => [
+            createBaseVNode("div", _hoisted_1$8$1, [
+              createVNode(unref(_sfc_main$M), {
+                for: __props.id,
+                class: "block text-sm font-medium leading-5"
+              }, {
+                default: withCtx(() => [
+                  createTextVNode(
+                    toDisplayString(__props.title),
+                    1
+                    /* TEXT */
+                  )
+                ]),
+                _: 1
+                /* STABLE */
+              }, 8, ["for"]),
+              __props.description ? (openBlock(), createElementBlock("p", {
+                key: 0,
+                id: `${__props.id}-description`,
+                class: "text-xs leading-5 text-muted-foreground"
+              }, toDisplayString(__props.description), 9, _hoisted_2$3$2)) : createCommentVNode("v-if", true)
+            ]),
+            renderSlot(_ctx.$slots, "default", {
+              descriptionId: __props.description ? `${__props.id}-description` : void 0
+            })
+          ]),
+          _: 3
+          /* FORWARDED */
+        });
+      };
+    }
+  });
+  const _sfc_main$K = /* @__PURE__ */ defineComponent({
     __name: "Switch",
     props: {
       defaultValue: {},
@@ -37821,9 +37954,10 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _hoisted_1$6$2 = { class: "min-w-0 flex-1 space-y-1" };
+  const _hoisted_1$7$2 = { class: "min-w-0 flex-1 space-y-1" };
   const _hoisted_2$2$1 = ["id"];
-  const _sfc_main$H = /* @__PURE__ */ defineComponent({
+  const _hoisted_3$2$2 = { class: "flex shrink-0 flex-wrap items-center justify-end gap-2" };
+  const _sfc_main$J = /* @__PURE__ */ defineComponent({
     __name: "SettingRow",
     props: {
       id: {},
@@ -37839,12 +37973,12 @@ Defaulting to \`null\`.`);
       const props2 = __props;
       const emit2 = __emit;
       return (_ctx, _cache) => {
-        return openBlock(), createBlock(resolveDynamicComponent(__props.flat ? "div" : unref(_sfc_main$P)), {
+        return openBlock(), createBlock(resolveDynamicComponent(__props.flat ? "div" : unref(_sfc_main$S)), {
           class: normalizeClass(unref(cn)("flex min-w-0 items-start justify-between gap-3", __props.flat ? "border-t pt-3" : "p-3", props2.class))
         }, {
           default: withCtx(() => [
-            createBaseVNode("div", _hoisted_1$6$2, [
-              createVNode(unref(_sfc_main$J), {
+            createBaseVNode("div", _hoisted_1$7$2, [
+              createVNode(unref(_sfc_main$M), {
                 for: __props.id,
                 class: "block text-sm font-medium leading-5"
               }, {
@@ -37865,14 +37999,17 @@ Defaulting to \`null\`.`);
               }, toDisplayString(__props.description), 9, _hoisted_2$2$1)) : createCommentVNode("v-if", true),
               renderSlot(_ctx.$slots, "default")
             ]),
-            createVNode(unref(_sfc_main$I), {
-              id: __props.id,
-              class: "mt-0.5 shrink-0",
-              "model-value": __props.modelValue,
-              disabled: __props.disabled,
-              "aria-describedby": __props.description ? `${__props.id}-description` : void 0,
-              "onUpdate:modelValue": _cache[0] || (_cache[0] = ($event) => emit2("update:modelValue", $event))
-            }, null, 8, ["id", "model-value", "disabled", "aria-describedby"])
+            createBaseVNode("div", _hoisted_3$2$2, [
+              renderSlot(_ctx.$slots, "actions"),
+              createVNode(unref(_sfc_main$K), {
+                id: __props.id,
+                class: "mt-0.5 shrink-0",
+                "model-value": __props.modelValue,
+                disabled: __props.disabled,
+                "aria-describedby": __props.description ? `${__props.id}-description` : void 0,
+                "onUpdate:modelValue": _cache[0] || (_cache[0] = ($event) => emit2("update:modelValue", $event))
+              }, null, 8, ["id", "model-value", "disabled", "aria-describedby"])
+            ])
           ]),
           _: 3
           /* FORWARDED */
@@ -37896,7 +38033,7 @@ Defaulting to \`null\`.`);
       if (child) return child;
     }
   }
-  const _sfc_main$G = /* @__PURE__ */ defineComponent({
+  const _sfc_main$I = /* @__PURE__ */ defineComponent({
     __name: "Collapsible",
     props: {
       defaultOpen: { type: Boolean },
@@ -37928,7 +38065,7 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _sfc_main$F = /* @__PURE__ */ defineComponent({
+  const _sfc_main$H = /* @__PURE__ */ defineComponent({
     __name: "CollapsibleContent",
     props: {
       forceMount: { type: Boolean },
@@ -37954,7 +38091,7 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _sfc_main$E = /* @__PURE__ */ defineComponent({
+  const _sfc_main$G = /* @__PURE__ */ defineComponent({
     __name: "CollapsibleTrigger",
     props: {
       asChild: { type: Boolean },
@@ -37979,7 +38116,7 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _sfc_main$D = /* @__PURE__ */ defineComponent({
+  const _sfc_main$F = /* @__PURE__ */ defineComponent({
     __name: "Tabs",
     props: {
       defaultValue: {},
@@ -38013,7 +38150,7 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _sfc_main$C = /* @__PURE__ */ defineComponent({
+  const _sfc_main$E = /* @__PURE__ */ defineComponent({
     __name: "TabsContent",
     props: {
       value: {},
@@ -38038,7 +38175,7 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _sfc_main$B = /* @__PURE__ */ defineComponent({
+  const _sfc_main$D = /* @__PURE__ */ defineComponent({
     __name: "TabsList",
     props: {
       loop: { type: Boolean },
@@ -38065,8 +38202,8 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _hoisted_1$5$2 = { class: "truncate" };
-  const _sfc_main$A = /* @__PURE__ */ defineComponent({
+  const _hoisted_1$6$2 = { class: "truncate" };
+  const _sfc_main$C = /* @__PURE__ */ defineComponent({
     __name: "TabsTrigger",
     props: {
       value: {},
@@ -38087,7 +38224,7 @@ Defaulting to \`null\`.`);
           )
         }), {
           default: withCtx(() => [
-            createBaseVNode("span", _hoisted_1$5$2, [
+            createBaseVNode("span", _hoisted_1$6$2, [
               renderSlot(_ctx.$slots, "default")
             ])
           ]),
@@ -38097,14 +38234,14 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _hoisted_1$4$1 = ["aria-label"];
+  const _hoisted_1$5$2 = ["aria-label"];
   const _hoisted_2$1$2 = { class: "grid min-w-0 gap-0.5" };
   const _hoisted_3$1$1 = { class: "break-words" };
-  const _hoisted_4$6 = {
+  const _hoisted_4$8 = {
     key: 0,
     class: "font-normal text-muted-foreground"
   };
-  const _sfc_main$z = /* @__PURE__ */ defineComponent({
+  const _sfc_main$B = /* @__PURE__ */ defineComponent({
     __name: "SettingsCatalogLevels",
     props: {
       groups: {},
@@ -38125,25 +38262,26 @@ Defaulting to \`null\`.`);
         emit2("group", String(value));
       }
       return (_ctx, _cache) => {
-        return openBlock(), createBlock(unref(_sfc_main$D), {
+        return openBlock(), createBlock(unref(_sfc_main$F), {
           "model-value": __props.groupId,
           "activation-mode": "manual",
           class: "min-w-0",
           "onUpdate:modelValue": chooseGroup
         }, {
           default: withCtx(() => [
-            createVNode(unref(_sfc_main$B), {
+            createVNode(unref(_sfc_main$D), {
               class: normalizeClass(["flex h-auto w-full flex-wrap justify-start gap-1", __props.compact ? "bg-transparent p-0" : ""]),
-              "aria-label": text2("Группа настроек", "Settings group")
+              "aria-label": text2("Разделы", "Sections")
             }, {
               default: withCtx(() => [
                 (openBlock(true), createElementBlock(
                   Fragment,
                   null,
                   renderList(__props.groups, (group) => {
-                    return openBlock(), createBlock(unref(_sfc_main$A), {
+                    return openBlock(), createBlock(unref(_sfc_main$C), {
                       key: group.id,
                       value: group.id,
+                      disabled: group.disabled,
                       class: normalizeClass(["h-auto min-w-0 whitespace-normal text-center text-xs [&>span]:min-w-0 [&>span]:whitespace-normal [&>span]:break-words", __props.compact ? "min-h-7 flex-none px-2 py-1" : "min-h-9 flex-1 px-3 py-2 min-[900px]:flex-none"])
                     }, {
                       default: withCtx(() => [
@@ -38155,7 +38293,7 @@ Defaulting to \`null\`.`);
                       ]),
                       _: 2
                       /* DYNAMIC */
-                    }, 1032, ["value", "class"]);
+                    }, 1032, ["value", "disabled", "class"]);
                   }),
                   128
                   /* KEYED_FRAGMENT */
@@ -38164,7 +38302,7 @@ Defaulting to \`null\`.`);
               _: 1
               /* STABLE */
             }, 8, ["class", "aria-label"]),
-            activeGroup.value ? (openBlock(), createBlock(unref(_sfc_main$C), {
+            activeGroup.value ? (openBlock(), createBlock(unref(_sfc_main$E), {
               key: activeGroup.value.id,
               value: activeGroup.value.id,
               "data-settings-group": activeGroup.value.id,
@@ -38176,7 +38314,7 @@ Defaulting to \`null\`.`);
                   class: "flex min-w-0 flex-wrap items-center gap-1",
                   "aria-label": text2("Путь к разделу", "Section path")
                 }, [
-                  createVNode(unref(_sfc_main$17), {
+                  createVNode(unref(_sfc_main$1b), {
                     type: "button",
                     variant: "ghost",
                     size: "sm",
@@ -38194,7 +38332,7 @@ Defaulting to \`null\`.`);
                     _: 1
                     /* STABLE */
                   }),
-                  createVNode(unref(_sfc_main$17), {
+                  createVNode(unref(_sfc_main$1b), {
                     type: "button",
                     variant: "ghost",
                     size: "sm",
@@ -38222,7 +38360,7 @@ Defaulting to \`null\`.`);
                         },
                         [
                           createVNode(unref(ChevronRight), { class: "size-3 shrink-0 text-muted-foreground" }),
-                          createVNode(unref(_sfc_main$17), {
+                          createVNode(unref(_sfc_main$1b), {
                             type: "button",
                             variant: "ghost",
                             size: "sm",
@@ -38247,7 +38385,7 @@ Defaulting to \`null\`.`);
                     128
                     /* KEYED_FRAGMENT */
                   ))
-                ], 8, _hoisted_1$4$1)) : createCommentVNode("v-if", true),
+                ], 8, _hoisted_1$5$2)) : createCommentVNode("v-if", true),
                 __props.entries.length ? (openBlock(), createElementBlock(
                   "div",
                   {
@@ -38259,7 +38397,7 @@ Defaulting to \`null\`.`);
                       Fragment,
                       null,
                       renderList(__props.entries, (entry) => {
-                        return openBlock(), createBlock(unref(_sfc_main$17), {
+                        return openBlock(), createBlock(unref(_sfc_main$1b), {
                           key: entry.id,
                           type: "button",
                           variant: entry.id === __props.selected ? "secondary" : "ghost",
@@ -38279,7 +38417,7 @@ Defaulting to \`null\`.`);
                               ),
                               entry.children?.length && entry.description ? (openBlock(), createElementBlock(
                                 "small",
-                                _hoisted_4$6,
+                                _hoisted_4$8,
                                 toDisplayString(entry.description),
                                 1
                                 /* TEXT */
@@ -38313,10 +38451,10 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _hoisted_1$3$2 = ["aria-label"];
+  const _hoisted_1$4$1 = ["aria-label"];
   const _hoisted_2$7 = { class: "grid min-w-0 gap-0.5" };
-  const _hoisted_3$6 = { class: "break-words font-normal text-muted-foreground" };
-  const _sfc_main$y = /* @__PURE__ */ defineComponent({
+  const _hoisted_3$8 = { class: "break-words font-normal text-muted-foreground" };
+  const _sfc_main$A = /* @__PURE__ */ defineComponent({
     __name: "SettingsCatalog",
     props: {
       groups: {},
@@ -38373,7 +38511,12 @@ Defaulting to \`null\`.`);
       );
       function changeGroup(id) {
         const next = props2.groups.find((item) => item.id === id);
-        if (!next) return;
+        if (!next || next.disabled) return;
+        if (next.workspace) {
+          expanded.value = false;
+          emit2("select", next.id);
+          return;
+        }
         const first = firstSettingsCatalogLeaf(next.entries);
         if (first && first.id !== props2.selected) {
           emit2("select", first.id);
@@ -38400,16 +38543,16 @@ Defaulting to \`null\`.`);
           class: "settings-catalog min-w-0",
           "aria-label": __props.label || text2("Разделы и настройки", "Sections and settings")
         }, [
-          !__props.compact ? (openBlock(), createBlock(unref(_sfc_main$G), {
+          !__props.compact ? (openBlock(), createBlock(unref(_sfc_main$I), {
             key: 0,
             open: expanded.value,
             "onUpdate:open": _cache[0] || (_cache[0] = ($event) => expanded.value = $event),
             class: "flex max-h-[calc(50dvh-1.5rem)] min-h-0 min-w-0 flex-col min-[621px]:hidden"
           }, {
             default: withCtx(() => [
-              createVNode(unref(_sfc_main$E), { "as-child": "" }, {
+              createVNode(unref(_sfc_main$G), { "as-child": "" }, {
                 default: withCtx(() => [
-                  createVNode(unref(_sfc_main$17), {
+                  createVNode(unref(_sfc_main$1b), {
                     "data-settings-catalog-toggle": "",
                     type: "button",
                     variant: "outline",
@@ -38426,7 +38569,7 @@ Defaulting to \`null\`.`);
                         ),
                         createBaseVNode(
                           "small",
-                          _hoisted_3$6,
+                          _hoisted_3$8,
                           toDisplayString(selectedTitle.value),
                           1
                           /* TEXT */
@@ -38443,9 +38586,9 @@ Defaulting to \`null\`.`);
                 _: 1
                 /* STABLE */
               }),
-              createVNode(unref(_sfc_main$F), { class: "min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto pt-3" }, {
+              createVNode(unref(_sfc_main$H), { class: "min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto pt-3" }, {
                 default: withCtx(() => [
-                  createVNode(_sfc_main$z, {
+                  createVNode(_sfc_main$B, {
                     groups: __props.groups,
                     "group-id": groupId.value,
                     parents: branch.value.parents,
@@ -38463,7 +38606,7 @@ Defaulting to \`null\`.`);
             _: 1
             /* STABLE */
           }, 8, ["open"])) : createCommentVNode("v-if", true),
-          createVNode(_sfc_main$z, {
+          createVNode(_sfc_main$B, {
             class: normalizeClass(__props.compact ? "block" : "hidden min-[621px]:block"),
             compact: __props.compact,
             groups: __props.groups,
@@ -38475,7 +38618,41 @@ Defaulting to \`null\`.`);
             onEnter: enter,
             onBack: back
           }, null, 8, ["class", "compact", "groups", "group-id", "parents", "entries", "selected"])
-        ], 8, _hoisted_1$3$2);
+        ], 8, _hoisted_1$4$1);
+      };
+    }
+  });
+  const _export_sfc = (sfc, props2) => {
+    const target = sfc.__vccOpts || sfc;
+    for (const [key, val] of props2) {
+      target[key] = val;
+    }
+    return target;
+  };
+  const _sfc_main$z = {};
+  const _hoisted_1$3$2 = { class: "grid min-w-0 grid-cols-1 items-start gap-3 @3xl:grid-cols-2" };
+  function _sfc_render(_ctx, _cache) {
+    return openBlock(), createElementBlock("div", _hoisted_1$3$2, [
+      renderSlot(_ctx.$slots, "default")
+    ]);
+  }
+  const SettingsGrid = /* @__PURE__ */ _export_sfc(_sfc_main$z, [["render", _sfc_render]]);
+  const _sfc_main$y = /* @__PURE__ */ defineComponent({
+    __name: "SettingsPane",
+    props: {
+      embedded: { type: Boolean }
+    },
+    setup(__props) {
+      return (_ctx, _cache) => {
+        return openBlock(), createBlock(resolveDynamicComponent(__props.embedded ? "div" : "main"), {
+          class: normalizeClass(["booster-settings-content @container grid min-h-0 min-w-0 content-start gap-3", { "p-3": !__props.embedded }])
+        }, {
+          default: withCtx(() => [
+            renderSlot(_ctx.$slots, "default")
+          ]),
+          _: 3
+          /* FORWARDED */
+        }, 8, ["class"]);
       };
     }
   });
@@ -39146,13 +39323,14 @@ Defaulting to \`null\`.`);
       as: {},
       name: {},
       required: { type: Boolean },
-      class: { type: [Boolean, null, String, Object, Array] }
+      class: { type: [Boolean, null, String, Object, Array] },
+      hideRange: { type: Boolean }
     },
     emits: ["update:modelValue", "valueCommit"],
     setup(__props, { emit: __emit }) {
       const props2 = __props;
       const emits = __emit;
-      const delegatedProps = reactiveOmit$1(props2, "class");
+      const delegatedProps = reactiveOmit$1(props2, "class", "hideRange");
       const forwarded = useForwardPropsEmits(delegatedProps, emits);
       return (_ctx, _cache) => {
         return openBlock(), createBlock(unref(SliderRoot_default), mergeProps({
@@ -39164,7 +39342,10 @@ Defaulting to \`null\`.`);
           default: withCtx(() => [
             createVNode(unref(SliderTrack_default), { class: "relative h-1.5 w-full data-[orientation=vertical]:w-1.5 grow overflow-hidden rounded-full bg-primary/20" }, {
               default: withCtx(() => [
-                createVNode(unref(SliderRange_default), { class: "absolute h-full data-[orientation=vertical]:w-full bg-primary" })
+                !__props.hideRange ? (openBlock(), createBlock(unref(SliderRange_default), {
+                  key: 0,
+                  class: "absolute h-full data-[orientation=vertical]:w-full bg-primary"
+                })) : createCommentVNode("v-if", true)
               ]),
               _: 1
               /* STABLE */
@@ -39217,7 +39398,7 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _sfc_main$8$1 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$8$2 = /* @__PURE__ */ defineComponent({
     __name: "TableBody",
     props: {
       class: { type: [Boolean, null, String, Object, Array] }
@@ -39822,7 +40003,7 @@ Defaulting to \`null\`.`);
       }
       return (_ctx, _cache) => {
         return openBlock(), createElementBlock("div", _hoisted_1$d, [
-          createVNode(unref(_sfc_main$J), { class: "grid min-w-0 gap-2" }, {
+          createVNode(unref(_sfc_main$M), { class: "grid min-w-0 gap-2" }, {
             default: withCtx(() => [
               createTextVNode(
                 toDisplayString(__props.formatLabel) + " ",
@@ -39881,7 +40062,7 @@ Defaulting to \`null\`.`);
             _: 1
             /* STABLE */
           }),
-          createVNode(unref(_sfc_main$J), { class: "grid min-w-0 gap-2" }, {
+          createVNode(unref(_sfc_main$M), { class: "grid min-w-0 gap-2" }, {
             default: withCtx(() => [
               createTextVNode(
                 toDisplayString(__props.packagingLabel) + " ",
@@ -40045,7 +40226,7 @@ Defaulting to \`null\`.`);
     class: "grid min-w-0 gap-3",
     "data-archive-export-scope": ""
   };
-  const _hoisted_2$9 = { class: "m-0 text-sm font-medium" };
+  const _hoisted_2$8 = { class: "m-0 text-sm font-medium" };
   const _hoisted_3$7 = {
     key: 0,
     class: "grid grid-cols-1 gap-3 sm:grid-cols-2"
@@ -40055,8 +40236,8 @@ Defaulting to \`null\`.`);
     class: "grid gap-2"
   };
   const _hoisted_5$6 = { class: "flex flex-wrap gap-2" };
-  const _hoisted_6$5$1 = { class: "flex flex-wrap items-center gap-2" };
-  const _hoisted_7$4$1 = { class: "text-xs text-muted-foreground" };
+  const _hoisted_6$5 = { class: "flex flex-wrap items-center gap-2" };
+  const _hoisted_7$4 = { class: "text-xs text-muted-foreground" };
   const _hoisted_8$4 = { class: "grid gap-1 p-2" };
   const _hoisted_9$4 = ["data-archive-node"];
   const _hoisted_10$4 = { class: "min-w-0 text-sm" };
@@ -40092,6 +40273,7 @@ Defaulting to \`null\`.`);
       modelValue: {},
       messages: {},
       selectedIds: {},
+      allCount: {},
       disabled: { type: Boolean },
       loading: { type: Boolean }
     },
@@ -40116,7 +40298,10 @@ Defaulting to \`null\`.`);
       const result = computed(() => {
         try {
           const ids = archiveExportSelectionIds(props2.messages, props2.modelValue, props2.selectedIds);
-          return { count: ids?.length ?? props2.messages.length, error: "" };
+          return {
+            count: ids?.length ?? (props2.allCount === void 0 ? props2.messages.length : props2.allCount),
+            error: ""
+          };
         } catch (error) {
           return { count: 0, error: error instanceof Error ? error.message : "Некорректный диапазон" };
         }
@@ -40178,7 +40363,7 @@ Defaulting to \`null\`.`);
         return openBlock(), createElementBlock("section", _hoisted_1$c, [
           createBaseVNode(
             "p",
-            _hoisted_2$9,
+            _hoisted_2$8,
             toDisplayString(unref(text2)("Что экспортировать")),
             1
             /* TEXT */
@@ -40203,7 +40388,7 @@ Defaulting to \`null\`.`);
                       id: `${unref(groupId)}-${mode.id}`,
                       value: mode.id
                     }, null, 8, ["id", "value"]),
-                    createVNode(unref(_sfc_main$J), {
+                    createVNode(unref(_sfc_main$M), {
                       for: `${unref(groupId)}-${mode.id}`
                     }, {
                       default: withCtx(() => [
@@ -40226,7 +40411,7 @@ Defaulting to \`null\`.`);
             /* STABLE */
           }, 8, ["model-value", "disabled", "aria-label"]),
           __props.modelValue.mode === "dates" ? (openBlock(), createElementBlock("div", _hoisted_3$7, [
-            createVNode(unref(_sfc_main$J), { class: "grid gap-2" }, {
+            createVNode(unref(_sfc_main$M), { class: "grid gap-2" }, {
               default: withCtx(() => [
                 createTextVNode(
                   toDisplayString(unref(text2)("С даты")),
@@ -40244,7 +40429,7 @@ Defaulting to \`null\`.`);
               _: 1
               /* STABLE */
             }),
-            createVNode(unref(_sfc_main$J), { class: "grid gap-2" }, {
+            createVNode(unref(_sfc_main$M), { class: "grid gap-2" }, {
               default: withCtx(() => [
                 createTextVNode(
                   toDisplayString(unref(text2)("По дату включительно")),
@@ -40264,7 +40449,7 @@ Defaulting to \`null\`.`);
             })
           ])) : createCommentVNode("v-if", true),
           __props.modelValue.mode === "last" ? (openBlock(), createElementBlock("div", _hoisted_4$7, [
-            createVNode(unref(_sfc_main$J), { class: "grid gap-2" }, {
+            createVNode(unref(_sfc_main$M), { class: "grid gap-2" }, {
               default: withCtx(() => [
                 createTextVNode(
                   toDisplayString(unref(text2)("Количество последних сообщений")),
@@ -40289,7 +40474,7 @@ Defaulting to \`null\`.`);
                 Fragment,
                 null,
                 renderList([50, 100, 1e3], (count) => {
-                  return createVNode(unref(_sfc_main$17), {
+                  return createVNode(unref(_sfc_main$1b), {
                     key: count,
                     size: "sm",
                     variant: __props.modelValue.lastCount === count ? "secondary" : "outline",
@@ -40341,8 +40526,8 @@ Defaulting to \`null\`.`);
                 "aria-label": unref(text2)("Поиск сообщений"),
                 disabled: __props.disabled
               }, null, 8, ["modelValue", "placeholder", "aria-label", "disabled"]),
-              createBaseVNode("div", _hoisted_6$5$1, [
-                createVNode(unref(_sfc_main$17), {
+              createBaseVNode("div", _hoisted_6$5, [
+                createVNode(unref(_sfc_main$1b), {
                   size: "sm",
                   variant: "outline",
                   disabled: __props.disabled || !visible.value.length,
@@ -40358,7 +40543,7 @@ Defaulting to \`null\`.`);
                   _: 1
                   /* STABLE */
                 }, 8, ["disabled"]),
-                createVNode(unref(_sfc_main$17), {
+                createVNode(unref(_sfc_main$1b), {
                   size: "sm",
                   variant: "ghost",
                   disabled: __props.disabled || !__props.selectedIds.length,
@@ -40376,7 +40561,7 @@ Defaulting to \`null\`.`);
                 }, 8, ["disabled"]),
                 createBaseVNode(
                   "span",
-                  _hoisted_7$4$1,
+                  _hoisted_7$4,
                   toDisplayString(unref(text2)("Выбрано:")) + " " + toDisplayString(__props.selectedIds.length),
                   1
                   /* TEXT */
@@ -40457,13 +40642,13 @@ Defaulting to \`null\`.`);
             toDisplayString(unref(text2)(result.value.error)),
             1
             /* TEXT */
-          )) : (openBlock(), createElementBlock(
+          )) : result.value.count !== null ? (openBlock(), createElementBlock(
             "p",
             _hoisted_17$2,
             toDisplayString(unref(text2)("Сообщений в экспорте:")) + " " + toDisplayString(result.value.count),
             1
             /* TEXT */
-          )),
+          )) : createCommentVNode("v-if", true),
           (__props.modelValue.mode === "dates" || __props.modelValue.mode === "last") && __props.messages.some((message) => message.timestampMs === null) ? (openBlock(), createElementBlock(
             "p",
             _hoisted_18$2,
@@ -40486,7 +40671,7 @@ Defaulting to \`null\`.`);
     },
     setup(__props) {
       return (_ctx, _cache) => {
-        return openBlock(), createBlock(unref(_sfc_main$18), {
+        return openBlock(), createBlock(unref(_sfc_main$1c), {
           label: __props.label,
           completed: __props.percent,
           total: 100,
@@ -40497,10 +40682,10 @@ Defaulting to \`null\`.`);
     }
   });
   const _hoisted_1$8 = { class: "flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs" };
-  const _hoisted_2$6 = { class: "min-w-0 break-words text-foreground" };
+  const _hoisted_2$5$1 = { class: "min-w-0 break-words text-foreground" };
   const _hoisted_3$4$1 = ["datetime"];
   const _hoisted_4$4$1 = { class: "max-h-80 max-w-[min(380px,85vw)] overflow-auto p-2 text-xs" };
-  const _sfc_main$8 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$8$1 = /* @__PURE__ */ defineComponent({
     __name: "ArchiveMessageHeader",
     props: {
       author: {},
@@ -40533,7 +40718,7 @@ Defaulting to \`null\`.`);
         return openBlock(), createElementBlock("div", _hoisted_1$8, [
           createBaseVNode(
             "strong",
-            _hoisted_2$6,
+            _hoisted_2$5$1,
             toDisplayString(__props.author),
             1
             /* TEXT */
@@ -40543,7 +40728,7 @@ Defaulting to \`null\`.`);
             datetime: timestamp.value.toISOString(),
             class: "text-muted-foreground"
           }, toDisplayString(readable.value), 9, _hoisted_3$4$1)) : createCommentVNode("v-if", true),
-          __props.metadata !== void 0 ? (openBlock(), createBlock(unref(_sfc_main$$), {
+          __props.metadata !== void 0 ? (openBlock(), createBlock(unref(_sfc_main$12), {
             key: 1,
             mode: "hover-click",
             label: unref(text2)(__props.inspectLabel)
@@ -40556,7 +40741,7 @@ Defaulting to \`null\`.`);
             ]),
             default: withCtx(() => [
               createBaseVNode("div", _hoisted_4$4$1, [
-                createVNode(unref(_sfc_main$_), { value: __props.metadata }, null, 8, ["value"])
+                createVNode(unref(_sfc_main$11), { value: __props.metadata }, null, 8, ["value"])
               ])
             ]),
             _: 1
@@ -40566,78 +40751,97 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const _hoisted_1$7 = {
+  const _hoisted_1$7$1 = {
     class: "contents",
     "data-archive-reader-navigation": ""
   };
-  const _sfc_main$7 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$7$1 = /* @__PURE__ */ defineComponent({
     __name: "ArchiveReaderNavigation",
     props: {
       firstLabel: {},
       lastLabel: {},
+      firstHint: {},
+      lastHint: {},
       disabled: { type: Boolean },
-      compact: { type: Boolean, default: true }
+      compact: { type: Boolean, default: true },
+      vertical: { type: Boolean }
     },
     emits: ["first", "last"],
     setup(__props, { emit: __emit }) {
       const emit2 = __emit;
       return (_ctx, _cache) => {
-        return openBlock(), createElementBlock("div", _hoisted_1$7, [
-          createVNode(unref(_sfc_main$17), {
-            "data-archive-reader-edge": "first",
-            variant: __props.compact ? "ghost" : "outline",
-            size: __props.compact ? "icon-sm" : "sm",
-            "aria-label": __props.firstLabel,
-            title: __props.firstLabel,
-            disabled: __props.disabled,
-            onClick: _cache[0] || (_cache[0] = ($event) => emit2("first"))
+        return openBlock(), createElementBlock("div", _hoisted_1$7$1, [
+          createVNode(unref(_sfc_main$13), {
+            label: __props.firstHint || __props.firstLabel
           }, {
             default: withCtx(() => [
-              __props.compact ? (openBlock(), createBlock(unref(ChevronsLeft), {
-                key: 0,
-                class: "size-4"
-              })) : createCommentVNode("v-if", true),
-              createBaseVNode(
-                "span",
-                {
-                  class: normalizeClass(__props.compact ? "sr-only" : "")
-                },
-                toDisplayString(__props.firstLabel),
-                3
-                /* TEXT, CLASS */
-              )
+              createVNode(unref(_sfc_main$1b), {
+                "data-archive-reader-edge": "first",
+                variant: __props.compact ? "ghost" : "outline",
+                size: __props.compact ? "icon-sm" : "sm",
+                class: normalizeClass({ "size-7": __props.compact && __props.vertical }),
+                "aria-label": __props.firstLabel,
+                disabled: __props.disabled,
+                onClick: _cache[0] || (_cache[0] = ($event) => emit2("first"))
+              }, {
+                default: withCtx(() => [
+                  __props.compact ? (openBlock(), createBlock(resolveDynamicComponent(__props.vertical ? unref(ArrowUpToLine) : unref(ChevronsLeft)), {
+                    key: 0,
+                    class: "size-4"
+                  })) : createCommentVNode("v-if", true),
+                  createBaseVNode(
+                    "span",
+                    {
+                      class: normalizeClass(__props.compact ? "sr-only" : "")
+                    },
+                    toDisplayString(__props.firstLabel),
+                    3
+                    /* TEXT, CLASS */
+                  )
+                ]),
+                _: 1
+                /* STABLE */
+              }, 8, ["variant", "size", "class", "aria-label", "disabled"])
             ]),
             _: 1
             /* STABLE */
-          }, 8, ["variant", "size", "aria-label", "title", "disabled"]),
+          }, 8, ["label"]),
           renderSlot(_ctx.$slots, "default"),
-          createVNode(unref(_sfc_main$17), {
-            "data-archive-reader-edge": "last",
-            variant: __props.compact ? "ghost" : "outline",
-            size: __props.compact ? "icon-sm" : "sm",
-            "aria-label": __props.lastLabel,
-            title: __props.lastLabel,
-            disabled: __props.disabled,
-            onClick: _cache[1] || (_cache[1] = ($event) => emit2("last"))
+          createVNode(unref(_sfc_main$13), {
+            label: __props.lastHint || __props.lastLabel
           }, {
             default: withCtx(() => [
-              __props.compact ? (openBlock(), createBlock(unref(ChevronsRight), {
-                key: 0,
-                class: "size-4"
-              })) : createCommentVNode("v-if", true),
-              createBaseVNode(
-                "span",
-                {
-                  class: normalizeClass(__props.compact ? "sr-only" : "")
-                },
-                toDisplayString(__props.lastLabel),
-                3
-                /* TEXT, CLASS */
-              )
+              createVNode(unref(_sfc_main$1b), {
+                "data-archive-reader-edge": "last",
+                variant: __props.compact ? "ghost" : "outline",
+                size: __props.compact ? "icon-sm" : "sm",
+                class: normalizeClass({ "size-7": __props.compact && __props.vertical }),
+                "aria-label": __props.lastLabel,
+                disabled: __props.disabled,
+                onClick: _cache[1] || (_cache[1] = ($event) => emit2("last"))
+              }, {
+                default: withCtx(() => [
+                  __props.compact ? (openBlock(), createBlock(resolveDynamicComponent(__props.vertical ? unref(ArrowDownToLine) : unref(ChevronsRight)), {
+                    key: 0,
+                    class: "size-4"
+                  })) : createCommentVNode("v-if", true),
+                  createBaseVNode(
+                    "span",
+                    {
+                      class: normalizeClass(__props.compact ? "sr-only" : "")
+                    },
+                    toDisplayString(__props.lastLabel),
+                    3
+                    /* TEXT, CLASS */
+                  )
+                ]),
+                _: 1
+                /* STABLE */
+              }, 8, ["variant", "size", "class", "aria-label", "disabled"])
             ]),
             _: 1
             /* STABLE */
-          }, 8, ["variant", "size", "aria-label", "title", "disabled"])
+          }, 8, ["label"])
         ]);
       };
     }
@@ -40646,31 +40850,37 @@ Defaulting to \`null\`.`);
     class: "archive-reading-transcript h-full min-h-0 min-w-0 overflow-hidden",
     "data-archive-reading-transcript": ""
   };
-  const _hoisted_2$5$1 = {
-    key: 0,
-    class: "archive-reading-timeline min-h-0 min-w-0 overflow-hidden",
-    "data-archive-reading-timeline": ""
-  };
   const _sfc_main$6$1 = /* @__PURE__ */ defineComponent({
     __name: "ArchiveReadingSurface",
     props: {
-      timelineVisible: { type: Boolean }
+      timelineVisible: { type: Boolean },
+      compactTimeline: { type: Boolean }
     },
     setup(__props) {
       return (_ctx, _cache) => {
         return openBlock(), createElementBlock(
           "div",
           {
-            class: normalizeClass(["archive-reading-surface relative grid min-h-0 min-w-0 flex-1 grid-rows-[minmax(0,1fr)] overflow-hidden", __props.timelineVisible ? "grid-cols-[minmax(0,1fr)_80px] gap-2" : "grid-cols-1"]),
+            class: normalizeClass(["archive-reading-surface relative grid min-h-0 min-w-0 flex-1 grid-rows-[minmax(0,1fr)] overflow-hidden", __props.timelineVisible ? ["grid-cols-[minmax(0,1fr)_auto]", !__props.compactTimeline && "gap-2"] : "grid-cols-1"]),
             "data-archive-reading-surface": ""
           },
           [
             createBaseVNode("div", _hoisted_1$6$1, [
               renderSlot(_ctx.$slots, "default")
             ]),
-            __props.timelineVisible ? (openBlock(), createElementBlock("div", _hoisted_2$5$1, [
-              renderSlot(_ctx.$slots, "timeline")
-            ])) : createCommentVNode("v-if", true),
+            __props.timelineVisible ? (openBlock(), createElementBlock(
+              "div",
+              {
+                key: 0,
+                class: normalizeClass(["archive-reading-timeline min-h-0 min-w-0 overflow-hidden", __props.compactTimeline ? "w-16" : "w-20"]),
+                "data-archive-reading-timeline": ""
+              },
+              [
+                renderSlot(_ctx.$slots, "timeline")
+              ],
+              2
+              /* CLASS */
+            )) : createCommentVNode("v-if", true),
             renderSlot(_ctx.$slots, "status")
           ],
           2
@@ -40792,48 +41002,46 @@ Defaulting to \`null\`.`);
     return { points, edges, width, height: Math.max(rowHeight, nodes.length * rowHeight) };
   }
   const _hoisted_1$3$1 = ["aria-label", "aria-busy"];
-  const _hoisted_2$3$1 = { class: "shrink-0 space-y-1 px-1 py-2 text-center text-[10px] tabular-nums text-muted-foreground" };
-  const _hoisted_3$2$1 = ["datetime"];
-  const _hoisted_4$2$1 = { "aria-hidden": "true" };
-  const _hoisted_5$2$1 = { class: "flex min-h-0 flex-1 gap-1 px-1 pb-8" };
-  const _hoisted_6$2$1 = {
+  const _hoisted_2$3$1 = ["datetime"];
+  const _hoisted_3$2$1 = { "aria-hidden": "true" };
+  const _hoisted_4$2$1 = {
     class: "block text-sm leading-snug",
     "data-archive-timeline-author": ""
   };
-  const _hoisted_7$1$1 = {
+  const _hoisted_5$2$1 = {
     key: 0,
     class: "whitespace-pre-wrap text-sm leading-relaxed",
     "data-archive-timeline-text": ""
   };
-  const _hoisted_8$1$1 = { class: "flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-t border-border pt-2 text-xs text-muted-foreground" };
-  const _hoisted_9$1$1 = ["datetime"];
-  const _hoisted_10$1$1 = { key: 1 };
-  const _hoisted_11$1$1 = { class: "tabular-nums" };
-  const _hoisted_12$2 = {
+  const _hoisted_6$2$1 = { class: "flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground" };
+  const _hoisted_7$1$1 = ["datetime"];
+  const _hoisted_8$1$1 = { key: 1 };
+  const _hoisted_9$1$1 = { class: "tabular-nums" };
+  const _hoisted_10$1$1 = {
     key: 1,
     class: "text-xs text-muted-foreground"
   };
-  const _hoisted_13$2 = ["width", "height"];
-  const _hoisted_14$5 = ["d", "stroke-dasharray"];
-  const _hoisted_15$5 = ["cx", "cy", "r", "fill", "stroke-dasharray"];
-  const _hoisted_16$5 = {
+  const _hoisted_11$1 = ["width", "height"];
+  const _hoisted_12$1 = ["d", "stroke-dasharray"];
+  const _hoisted_13$1 = ["cx", "cy", "r", "fill", "stroke-dasharray"];
+  const _hoisted_14$1 = {
     class: "block text-sm leading-snug",
     "data-archive-timeline-author": ""
   };
-  const _hoisted_17$1 = {
+  const _hoisted_15$1 = {
     key: 0,
     class: "whitespace-pre-wrap text-sm leading-relaxed",
     "data-archive-timeline-text": ""
   };
-  const _hoisted_18$1 = { class: "flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-t border-border pt-2 text-xs text-muted-foreground" };
-  const _hoisted_19$1 = ["datetime"];
-  const _hoisted_20$1 = { key: 1 };
-  const _hoisted_21$1 = { class: "tabular-nums" };
-  const _hoisted_22$1 = {
+  const _hoisted_16$1 = { class: "flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground" };
+  const _hoisted_17$1 = ["datetime"];
+  const _hoisted_18$1 = { key: 1 };
+  const _hoisted_19$1 = { class: "tabular-nums" };
+  const _hoisted_20$1 = {
     key: 1,
     class: "text-xs text-muted-foreground"
   };
-  const _hoisted_23$1 = {
+  const _hoisted_21$1 = {
     key: 0,
     class: "flex shrink-0 justify-center gap-1 border-t border-border p-1"
   };
@@ -40848,7 +41056,9 @@ Defaulting to \`null\`.`);
       emptyLabel: {},
       uncertainLabel: {},
       disabled: { type: Boolean },
-      loading: { type: Boolean }
+      loading: { type: Boolean },
+      compact: { type: Boolean },
+      commitOnly: { type: Boolean }
     },
     emits: ["navigate"],
     setup(__props, { emit: __emit }) {
@@ -40947,6 +41157,7 @@ Defaulting to \`null\`.`);
         scrubbing.value = true;
         scrubIndex.value = boundedIndex(value[0] ?? 0);
         center(scrubIndex.value);
+        if (props2.commitOnly) return;
         queuedIndex = scrubIndex.value;
         if (navigationFrame !== void 0) return;
         navigationFrame = requestAnimationFrame(() => {
@@ -41058,7 +41269,7 @@ Defaulting to \`null\`.`);
         cancelQueuedNavigation();
       });
       return (_ctx, _cache) => {
-        return openBlock(), createBlock(unref(_sfc_main$11), {
+        return openBlock(), createBlock(unref(_sfc_main$15), {
           "delay-duration": 150,
           "skip-delay-duration": 80
         }, {
@@ -41069,292 +41280,309 @@ Defaulting to \`null\`.`);
               ref: root,
               role: "complementary",
               "data-archive-timeline-rail": "",
-              class: "flex h-full w-20 min-h-0 min-w-0 shrink-0 flex-col border-s border-border bg-background",
+              class: normalizeClass(["flex h-full min-h-0 min-w-0 shrink-0 flex-col border-s border-border bg-background", __props.compact ? "w-full" : "w-20"]),
               "aria-label": __props.label,
               "aria-busy": __props.loading || void 0
             }, [
-              createBaseVNode("div", _hoisted_2$3$1, [
-                nodeDate(__props.nodes[position.value]) ? (openBlock(), createElementBlock("time", {
-                  key: 0,
-                  datetime: nodeDate(__props.nodes[position.value])?.toISOString(),
-                  class: "block font-medium text-foreground",
-                  "data-archive-timeline-date": ""
-                }, toDisplayString(dateLabel(__props.nodes[position.value], true)), 9, _hoisted_3$2$1)) : createCommentVNode("v-if", true),
-                createBaseVNode(
-                  "span",
-                  _hoisted_4$2$1,
-                  toDisplayString(__props.nodes.length ? position.value + 1 : 0) + " / " + toDisplayString(__props.nodes.length),
-                  1
-                  /* TEXT */
-                )
-              ]),
-              createBaseVNode("div", _hoisted_5$2$1, [
-                __props.nodes.length > 1 ? (openBlock(), createBlock(unref(_sfc_main$13), {
-                  key: 0,
-                  open: !__props.disabled && Boolean(sliderPreview.value)
-                }, {
-                  default: withCtx(() => [
-                    createVNode(unref(_sfc_main$10), { "as-child": "" }, {
-                      default: withCtx(() => [
-                        createBaseVNode(
-                          "div",
-                          {
-                            class: "relative my-2 w-5 shrink-0",
-                            onPointerdown: beginPointer,
-                            onPointermove: previewSlider,
-                            onPointerleave: _cache[0] || (_cache[0] = ($event) => sliderHoverIndex.value = null),
-                            onPointerup: endPointer,
-                            onPointercancel: cancelPointer,
-                            onKeydown: beginKeyboard,
-                            onFocusin: _cache[1] || (_cache[1] = ($event) => sliderFocused.value = true),
-                            onFocusout: _cache[2] || (_cache[2] = ($event) => sliderFocused.value = false)
-                          },
-                          [
-                            createVNode(unref(_sfc_main$a$1), {
-                              orientation: "vertical",
-                              inverted: true,
-                              class: "mx-auto h-full shrink-0",
-                              "model-value": [position.value],
-                              min: 0,
-                              max: __props.nodes.length - 1,
-                              step: 1,
-                              disabled: __props.disabled,
-                              "aria-label": __props.label,
-                              "aria-valuetext": `${position.value + 1} / ${__props.nodes.length}: ${previewLabel(__props.nodes[position.value])}`,
-                              "onUpdate:modelValue": scrub,
-                              onValueCommit: selectIndex
-                            }, null, 8, ["model-value", "max", "disabled", "aria-label", "aria-valuetext"])
-                          ],
-                          32
-                          /* NEED_HYDRATION */
-                        )
-                      ]),
-                      _: 1
-                      /* STABLE */
-                    }),
-                    sliderPreview.value ? (openBlock(), createBlock(unref(_sfc_main$12), {
-                      key: 0,
-                      side: "left",
-                      "collision-padding": 12,
-                      "avoid-collisions": true,
-                      style: previewStyle,
-                      class: "w-72 space-y-2 border border-border bg-popover p-3 text-popover-foreground shadow-md whitespace-normal [overflow-wrap:anywhere]",
-                      "data-archive-timeline-preview": "",
-                      "data-archive-timeline-preview-id": sliderPreview.value.id
-                    }, {
-                      default: withCtx(() => [
-                        createBaseVNode(
-                          "strong",
-                          _hoisted_6$2$1,
-                          toDisplayString(sliderPreview.value.label),
-                          1
-                          /* TEXT */
-                        ),
-                        sliderPreview.value.preview ? (openBlock(), createElementBlock(
-                          "p",
-                          _hoisted_7$1$1,
-                          toDisplayString(sliderPreview.value.preview),
-                          1
-                          /* TEXT */
-                        )) : createCommentVNode("v-if", true),
-                        createBaseVNode("div", _hoisted_8$1$1, [
-                          nodeDate(sliderPreview.value) ? (openBlock(), createElementBlock("time", {
-                            key: 0,
-                            datetime: nodeDate(sliderPreview.value)?.toISOString(),
-                            "data-archive-timeline-sent-at": ""
-                          }, toDisplayString(dateLabel(sliderPreview.value)), 9, _hoisted_9$1$1)) : (openBlock(), createElementBlock(
-                            "span",
-                            _hoisted_10$1$1,
-                            toDisplayString(unref(text2)("Дата неизвестна")),
-                            1
-                            /* TEXT */
-                          )),
+              createBaseVNode(
+                "div",
+                {
+                  class: normalizeClass(["shrink-0 px-1 text-center text-[10px] tabular-nums text-muted-foreground", __props.compact ? "py-1 leading-tight" : "space-y-1 py-2"])
+                },
+                [
+                  nodeDate(__props.nodes[position.value]) ? (openBlock(), createElementBlock("time", {
+                    key: 0,
+                    datetime: nodeDate(__props.nodes[position.value])?.toISOString(),
+                    class: "block font-medium text-foreground",
+                    "data-archive-timeline-date": ""
+                  }, toDisplayString(dateLabel(__props.nodes[position.value], true)), 9, _hoisted_2$3$1)) : createCommentVNode("v-if", true),
+                  createBaseVNode(
+                    "span",
+                    _hoisted_3$2$1,
+                    toDisplayString(__props.nodes.length ? position.value + 1 : 0) + " / " + toDisplayString(__props.nodes.length),
+                    1
+                    /* TEXT */
+                  )
+                ],
+                2
+                /* CLASS */
+              ),
+              createBaseVNode(
+                "div",
+                {
+                  class: normalizeClass(["flex min-h-0 flex-1 px-1", __props.compact ? "gap-0 pb-1" : "gap-1 pb-8"])
+                },
+                [
+                  __props.nodes.length > 1 ? (openBlock(), createBlock(unref(_sfc_main$17), {
+                    key: 0,
+                    open: !__props.disabled && Boolean(sliderPreview.value)
+                  }, {
+                    default: withCtx(() => [
+                      createVNode(unref(_sfc_main$14), { "as-child": "" }, {
+                        default: withCtx(() => [
                           createBaseVNode(
-                            "span",
-                            _hoisted_11$1$1,
-                            toDisplayString((sliderPreviewIndex.value ?? 0) + 1) + " / " + toDisplayString(__props.nodes.length),
-                            1
-                            /* TEXT */
+                            "div",
+                            {
+                              class: normalizeClass(["relative my-2 shrink-0", __props.compact ? "w-4" : "w-5"]),
+                              onPointerdown: beginPointer,
+                              onPointermove: previewSlider,
+                              onPointerleave: _cache[0] || (_cache[0] = ($event) => sliderHoverIndex.value = null),
+                              onPointerup: endPointer,
+                              onPointercancel: cancelPointer,
+                              onKeydown: beginKeyboard,
+                              onFocusin: _cache[1] || (_cache[1] = ($event) => sliderFocused.value = true),
+                              onFocusout: _cache[2] || (_cache[2] = ($event) => sliderFocused.value = false)
+                            },
+                            [
+                              createVNode(unref(_sfc_main$a$1), {
+                                orientation: "vertical",
+                                inverted: true,
+                                "hide-range": __props.compact,
+                                class: "mx-auto h-full shrink-0",
+                                "model-value": [position.value],
+                                min: 0,
+                                max: __props.nodes.length - 1,
+                                step: 1,
+                                disabled: __props.disabled,
+                                "aria-label": __props.label,
+                                "aria-valuetext": `${position.value + 1} / ${__props.nodes.length}: ${previewLabel(__props.nodes[position.value])}`,
+                                "onUpdate:modelValue": scrub,
+                                onValueCommit: selectIndex
+                              }, null, 8, ["hide-range", "model-value", "max", "disabled", "aria-label", "aria-valuetext"])
+                            ],
+                            34
+                            /* CLASS, NEED_HYDRATION */
                           )
                         ]),
-                        sliderPreview.value.uncertain ? (openBlock(), createElementBlock(
-                          "p",
-                          _hoisted_12$2,
-                          toDisplayString(__props.uncertainLabel || "···"),
-                          1
-                          /* TEXT */
-                        )) : createCommentVNode("v-if", true)
-                      ]),
-                      _: 1
-                      /* STABLE */
-                    }, 8, ["data-archive-timeline-preview-id"])) : createCommentVNode("v-if", true)
-                  ]),
-                  _: 1
-                  /* STABLE */
-                }, 8, ["open"])) : createCommentVNode("v-if", true),
-                createVNode(unref(_sfc_main$o), { class: "h-full min-h-0 min-w-0 flex-1" }, {
-                  default: withCtx(() => [
-                    createBaseVNode(
-                      "div",
-                      {
-                        class: "relative min-w-0",
-                        style: normalizeStyle({ minHeight: `${layout.value.height}px` })
-                      },
-                      [
-                        (openBlock(), createElementBlock("svg", {
-                          class: "pointer-events-none absolute start-0 top-0 z-10 text-muted-foreground",
-                          width: layout.value.width,
-                          height: layout.value.height,
-                          "aria-hidden": "true"
-                        }, [
+                        _: 1
+                        /* STABLE */
+                      }),
+                      sliderPreview.value ? (openBlock(), createBlock(unref(_sfc_main$16), {
+                        key: 0,
+                        side: "left",
+                        "collision-padding": 12,
+                        "avoid-collisions": true,
+                        style: previewStyle,
+                        class: "w-72 space-y-2 border border-border bg-popover p-3 text-popover-foreground shadow-md whitespace-normal [overflow-wrap:anywhere]",
+                        "data-archive-timeline-preview": "",
+                        "data-archive-timeline-preview-id": sliderPreview.value.id
+                      }, {
+                        default: withCtx(() => [
+                          createBaseVNode(
+                            "strong",
+                            _hoisted_4$2$1,
+                            toDisplayString(sliderPreview.value.label),
+                            1
+                            /* TEXT */
+                          ),
+                          sliderPreview.value.preview ? (openBlock(), createElementBlock(
+                            "p",
+                            _hoisted_5$2$1,
+                            toDisplayString(sliderPreview.value.preview),
+                            1
+                            /* TEXT */
+                          )) : createCommentVNode("v-if", true),
+                          createBaseVNode("div", _hoisted_6$2$1, [
+                            nodeDate(sliderPreview.value) ? (openBlock(), createElementBlock("time", {
+                              key: 0,
+                              datetime: nodeDate(sliderPreview.value)?.toISOString(),
+                              "data-archive-timeline-sent-at": ""
+                            }, toDisplayString(dateLabel(sliderPreview.value)), 9, _hoisted_7$1$1)) : (openBlock(), createElementBlock(
+                              "span",
+                              _hoisted_8$1$1,
+                              toDisplayString(unref(text2)("Дата неизвестна")),
+                              1
+                              /* TEXT */
+                            )),
+                            createBaseVNode(
+                              "span",
+                              _hoisted_9$1$1,
+                              toDisplayString((sliderPreviewIndex.value ?? 0) + 1) + " / " + toDisplayString(__props.nodes.length),
+                              1
+                              /* TEXT */
+                            )
+                          ]),
+                          sliderPreview.value.uncertain ? (openBlock(), createElementBlock(
+                            "p",
+                            _hoisted_10$1$1,
+                            toDisplayString(__props.uncertainLabel || "···"),
+                            1
+                            /* TEXT */
+                          )) : createCommentVNode("v-if", true)
+                        ]),
+                        _: 1
+                        /* STABLE */
+                      }, 8, ["data-archive-timeline-preview-id"])) : createCommentVNode("v-if", true)
+                    ]),
+                    _: 1
+                    /* STABLE */
+                  }, 8, ["open"])) : createCommentVNode("v-if", true),
+                  createVNode(unref(_sfc_main$o), { class: "h-full min-h-0 min-w-0 flex-1" }, {
+                    default: withCtx(() => [
+                      createBaseVNode(
+                        "div",
+                        {
+                          class: "relative min-w-0",
+                          style: normalizeStyle({ minHeight: `${layout.value.height}px` })
+                        },
+                        [
+                          (openBlock(), createElementBlock("svg", {
+                            class: "pointer-events-none absolute start-0 top-0 z-10 text-muted-foreground",
+                            width: layout.value.width,
+                            height: layout.value.height,
+                            "aria-hidden": "true"
+                          }, [
+                            (openBlock(true), createElementBlock(
+                              Fragment,
+                              null,
+                              renderList(layout.value.edges, (edge) => {
+                                return openBlock(), createElementBlock("path", {
+                                  key: edge.childId,
+                                  d: edge.path,
+                                  fill: "none",
+                                  stroke: "currentColor",
+                                  "stroke-width": "1.5",
+                                  "stroke-dasharray": edge.uncertain ? "3 3" : void 0,
+                                  class: normalizeClass({ "text-primary": edge.childId === __props.activeId || edge.parentId === __props.activeId })
+                                }, null, 10, _hoisted_12$1);
+                              }),
+                              128
+                              /* KEYED_FRAGMENT */
+                            )),
+                            (openBlock(true), createElementBlock(
+                              Fragment,
+                              null,
+                              renderList(layout.value.points, (point) => {
+                                return openBlock(), createElementBlock("circle", {
+                                  key: point.id,
+                                  cx: point.x,
+                                  cy: point.y,
+                                  r: point.id === __props.activeId ? 5 : __props.selectedIds?.has(point.id) ? 4 : 3,
+                                  fill: uncertainIds.value.has(point.id) ? "var(--background)" : "currentColor",
+                                  stroke: "currentColor",
+                                  "stroke-dasharray": uncertainIds.value.has(point.id) ? "2 2" : void 0,
+                                  class: normalizeClass(point.id === __props.activeId || __props.selectedIds?.has(point.id) ? "text-primary" : "text-muted-foreground")
+                                }, null, 10, _hoisted_13$1);
+                              }),
+                              128
+                              /* KEYED_FRAGMENT */
+                            ))
+                          ], 8, _hoisted_11$1)),
                           (openBlock(true), createElementBlock(
                             Fragment,
                             null,
-                            renderList(layout.value.edges, (edge) => {
-                              return openBlock(), createElementBlock("path", {
-                                key: edge.childId,
-                                d: edge.path,
-                                fill: "none",
-                                stroke: "currentColor",
-                                "stroke-width": "1.5",
-                                "stroke-dasharray": edge.uncertain ? "3 3" : void 0,
-                                class: normalizeClass({ "text-primary": edge.childId === __props.activeId || edge.parentId === __props.activeId })
-                              }, null, 10, _hoisted_14$5);
-                            }),
-                            128
-                            /* KEYED_FRAGMENT */
-                          )),
-                          (openBlock(true), createElementBlock(
-                            Fragment,
-                            null,
-                            renderList(layout.value.points, (point) => {
-                              return openBlock(), createElementBlock("circle", {
-                                key: point.id,
-                                cx: point.x,
-                                cy: point.y,
-                                r: point.id === __props.activeId ? 5 : __props.selectedIds?.has(point.id) ? 4 : 3,
-                                fill: uncertainIds.value.has(point.id) ? "var(--background)" : "currentColor",
-                                stroke: "currentColor",
-                                "stroke-dasharray": uncertainIds.value.has(point.id) ? "2 2" : void 0,
-                                class: normalizeClass(point.id === __props.activeId || __props.selectedIds?.has(point.id) ? "text-primary" : "text-muted-foreground")
-                              }, null, 10, _hoisted_15$5);
+                            renderList(visibleNodes.value, (node, index) => {
+                              return openBlock(), createBlock(
+                                unref(_sfc_main$17),
+                                {
+                                  key: node.id
+                                },
+                                {
+                                  default: withCtx(() => [
+                                    createVNode(
+                                      unref(_sfc_main$14),
+                                      { "as-child": "" },
+                                      {
+                                        default: withCtx(() => [
+                                          createVNode(unref(_sfc_main$1b), {
+                                            "data-archive-timeline-id": node.id,
+                                            type: "button",
+                                            variant: node.id === __props.activeId ? "secondary" : __props.selectedIds?.has(node.id) ? "outline" : "ghost",
+                                            class: "flex w-full min-w-0 rounded-sm p-0",
+                                            style: normalizeStyle({ height: `${ROW_HEIGHT}px` }),
+                                            "data-selected": __props.selectedIds?.has(node.id) || void 0,
+                                            "aria-current": node.id === __props.activeId ? "true" : void 0,
+                                            "aria-label": `${previewLabel(node)}${node.uncertain && __props.uncertainLabel ? ` · ${__props.uncertainLabel}` : ""}`,
+                                            disabled: __props.disabled,
+                                            onClick: ($event) => selectPoint(windowStart.value + index)
+                                          }, null, 8, ["data-archive-timeline-id", "variant", "style", "data-selected", "aria-current", "aria-label", "disabled", "onClick"])
+                                        ]),
+                                        _: 2
+                                        /* DYNAMIC */
+                                      },
+                                      1024
+                                      /* DYNAMIC_SLOTS */
+                                    ),
+                                    createVNode(unref(_sfc_main$16), {
+                                      side: "left",
+                                      "collision-padding": 12,
+                                      "avoid-collisions": true,
+                                      style: previewStyle,
+                                      class: "w-72 space-y-2 border border-border bg-popover p-3 text-popover-foreground shadow-md whitespace-normal [overflow-wrap:anywhere]",
+                                      "data-archive-timeline-preview": "",
+                                      "data-archive-timeline-preview-id": node.id
+                                    }, {
+                                      default: withCtx(() => [
+                                        createBaseVNode(
+                                          "strong",
+                                          _hoisted_14$1,
+                                          toDisplayString(node.label),
+                                          1
+                                          /* TEXT */
+                                        ),
+                                        node.preview ? (openBlock(), createElementBlock(
+                                          "p",
+                                          _hoisted_15$1,
+                                          toDisplayString(node.preview),
+                                          1
+                                          /* TEXT */
+                                        )) : createCommentVNode("v-if", true),
+                                        createBaseVNode("div", _hoisted_16$1, [
+                                          nodeDate(node) ? (openBlock(), createElementBlock("time", {
+                                            key: 0,
+                                            datetime: nodeDate(node)?.toISOString(),
+                                            "data-archive-timeline-sent-at": ""
+                                          }, toDisplayString(dateLabel(node)), 9, _hoisted_17$1)) : (openBlock(), createElementBlock(
+                                            "span",
+                                            _hoisted_18$1,
+                                            toDisplayString(unref(text2)("Дата неизвестна")),
+                                            1
+                                            /* TEXT */
+                                          )),
+                                          createBaseVNode(
+                                            "span",
+                                            _hoisted_19$1,
+                                            toDisplayString(windowStart.value + index + 1) + " / " + toDisplayString(__props.nodes.length),
+                                            1
+                                            /* TEXT */
+                                          )
+                                        ]),
+                                        node.uncertain ? (openBlock(), createElementBlock(
+                                          "p",
+                                          _hoisted_20$1,
+                                          toDisplayString(__props.uncertainLabel || "···"),
+                                          1
+                                          /* TEXT */
+                                        )) : createCommentVNode("v-if", true)
+                                      ]),
+                                      _: 2
+                                      /* DYNAMIC */
+                                    }, 1032, ["data-archive-timeline-preview-id"])
+                                  ]),
+                                  _: 2
+                                  /* DYNAMIC */
+                                },
+                                1024
+                                /* DYNAMIC_SLOTS */
+                              );
                             }),
                             128
                             /* KEYED_FRAGMENT */
                           ))
-                        ], 8, _hoisted_13$2)),
-                        (openBlock(true), createElementBlock(
-                          Fragment,
-                          null,
-                          renderList(visibleNodes.value, (node, index) => {
-                            return openBlock(), createBlock(
-                              unref(_sfc_main$13),
-                              {
-                                key: node.id
-                              },
-                              {
-                                default: withCtx(() => [
-                                  createVNode(
-                                    unref(_sfc_main$10),
-                                    { "as-child": "" },
-                                    {
-                                      default: withCtx(() => [
-                                        createVNode(unref(_sfc_main$17), {
-                                          "data-archive-timeline-id": node.id,
-                                          type: "button",
-                                          variant: node.id === __props.activeId ? "secondary" : __props.selectedIds?.has(node.id) ? "outline" : "ghost",
-                                          class: "flex w-full min-w-0 rounded-sm p-0",
-                                          style: normalizeStyle({ height: `${ROW_HEIGHT}px` }),
-                                          "data-selected": __props.selectedIds?.has(node.id) || void 0,
-                                          "aria-current": node.id === __props.activeId ? "true" : void 0,
-                                          "aria-label": `${previewLabel(node)}${node.uncertain && __props.uncertainLabel ? ` · ${__props.uncertainLabel}` : ""}`,
-                                          disabled: __props.disabled,
-                                          onClick: ($event) => selectPoint(windowStart.value + index)
-                                        }, null, 8, ["data-archive-timeline-id", "variant", "style", "data-selected", "aria-current", "aria-label", "disabled", "onClick"])
-                                      ]),
-                                      _: 2
-                                      /* DYNAMIC */
-                                    },
-                                    1024
-                                    /* DYNAMIC_SLOTS */
-                                  ),
-                                  createVNode(unref(_sfc_main$12), {
-                                    side: "left",
-                                    "collision-padding": 12,
-                                    "avoid-collisions": true,
-                                    style: previewStyle,
-                                    class: "w-72 space-y-2 border border-border bg-popover p-3 text-popover-foreground shadow-md whitespace-normal [overflow-wrap:anywhere]",
-                                    "data-archive-timeline-preview": "",
-                                    "data-archive-timeline-preview-id": node.id
-                                  }, {
-                                    default: withCtx(() => [
-                                      createBaseVNode(
-                                        "strong",
-                                        _hoisted_16$5,
-                                        toDisplayString(node.label),
-                                        1
-                                        /* TEXT */
-                                      ),
-                                      node.preview ? (openBlock(), createElementBlock(
-                                        "p",
-                                        _hoisted_17$1,
-                                        toDisplayString(node.preview),
-                                        1
-                                        /* TEXT */
-                                      )) : createCommentVNode("v-if", true),
-                                      createBaseVNode("div", _hoisted_18$1, [
-                                        nodeDate(node) ? (openBlock(), createElementBlock("time", {
-                                          key: 0,
-                                          datetime: nodeDate(node)?.toISOString(),
-                                          "data-archive-timeline-sent-at": ""
-                                        }, toDisplayString(dateLabel(node)), 9, _hoisted_19$1)) : (openBlock(), createElementBlock(
-                                          "span",
-                                          _hoisted_20$1,
-                                          toDisplayString(unref(text2)("Дата неизвестна")),
-                                          1
-                                          /* TEXT */
-                                        )),
-                                        createBaseVNode(
-                                          "span",
-                                          _hoisted_21$1,
-                                          toDisplayString(windowStart.value + index + 1) + " / " + toDisplayString(__props.nodes.length),
-                                          1
-                                          /* TEXT */
-                                        )
-                                      ]),
-                                      node.uncertain ? (openBlock(), createElementBlock(
-                                        "p",
-                                        _hoisted_22$1,
-                                        toDisplayString(__props.uncertainLabel || "···"),
-                                        1
-                                        /* TEXT */
-                                      )) : createCommentVNode("v-if", true)
-                                    ]),
-                                    _: 2
-                                    /* DYNAMIC */
-                                  }, 1032, ["data-archive-timeline-preview-id"])
-                                ]),
-                                _: 2
-                                /* DYNAMIC */
-                              },
-                              1024
-                              /* DYNAMIC_SLOTS */
-                            );
-                          }),
-                          128
-                          /* KEYED_FRAGMENT */
-                        ))
-                      ],
-                      4
-                      /* STYLE */
-                    )
-                  ]),
-                  _: 1
-                  /* STABLE */
-                })
-              ]),
-              __props.nodes.length > unref(PAGE_SIZE) ? (openBlock(), createElementBlock("div", _hoisted_23$1, [
-                createVNode(unref(_sfc_main$17), {
+                        ],
+                        4
+                        /* STYLE */
+                      )
+                    ]),
+                    _: 1
+                    /* STABLE */
+                  })
+                ],
+                2
+                /* CLASS */
+              ),
+              __props.nodes.length > unref(PAGE_SIZE) ? (openBlock(), createElementBlock("div", _hoisted_21$1, [
+                createVNode(unref(_sfc_main$1b), {
                   variant: "ghost",
                   size: "icon-sm",
                   disabled: __props.disabled || windowStart.value === 0,
@@ -41371,7 +41599,7 @@ Defaulting to \`null\`.`);
                   _: 1
                   /* STABLE */
                 }, 8, ["disabled", "aria-label"]),
-                createVNode(unref(_sfc_main$17), {
+                createVNode(unref(_sfc_main$1b), {
                   variant: "ghost",
                   size: "icon-sm",
                   disabled: __props.disabled || windowStart.value + unref(PAGE_SIZE) >= __props.nodes.length,
@@ -41389,7 +41617,7 @@ Defaulting to \`null\`.`);
                   /* STABLE */
                 }, 8, ["disabled", "aria-label"])
               ])) : createCommentVNode("v-if", true)
-            ], 8, _hoisted_1$3$1)) : createCommentVNode("v-if", true)
+            ], 10, _hoisted_1$3$1)) : createCommentVNode("v-if", true)
           ]),
           _: 1
           /* STABLE */
@@ -41481,7 +41709,7 @@ Defaulting to \`null\`.`);
       const emit2 = __emit;
       return (_ctx, _cache) => {
         return openBlock(), createElementBlock("div", _hoisted_1$1$1, [
-          !__props.busy ? (openBlock(), createBlock(unref(_sfc_main$17), {
+          !__props.busy ? (openBlock(), createBlock(unref(_sfc_main$1b), {
             key: 0,
             type: "button",
             variant: __props.variant,
@@ -41502,7 +41730,7 @@ Defaulting to \`null\`.`);
             ]),
             _: 1
             /* STABLE */
-          }, 8, ["variant", "disabled"])) : (openBlock(), createBlock(unref(_sfc_main$17), {
+          }, 8, ["variant", "disabled"])) : (openBlock(), createBlock(unref(_sfc_main$1b), {
             key: 1,
             type: "button",
             variant: __props.variant,
@@ -41613,43 +41841,43 @@ Defaulting to \`null\`.`);
     };
   }
   const _hoisted_1 = ["aria-label", "data-provider-view", "data-panel-content-focus"];
-  const _hoisted_2$5 = {
+  const _hoisted_2$6 = {
     key: 0,
     class: "m-0 flex items-start gap-2 text-sm text-destructive",
     role: "alert"
   };
-  const _hoisted_3$5 = { class: "booster-setting-copy" };
-  const _hoisted_4$5 = ["aria-label"];
-  const _hoisted_5$5 = {
+  const _hoisted_3$6 = { class: "booster-setting-copy" };
+  const _hoisted_4$6 = ["aria-label"];
+  const _hoisted_5$4 = {
     key: 1,
     class: "text-xs text-muted-foreground"
   };
-  const _hoisted_6$5 = {
+  const _hoisted_6$4 = {
     key: 2,
     class: "text-sm text-muted-foreground"
   };
-  const _hoisted_7$4 = {
+  const _hoisted_7$3 = {
     key: 3,
     role: "status",
     class: "text-sm"
   };
   const _hoisted_8$2 = { key: 0 };
   const _hoisted_9$2 = { key: 1 };
-  const _hoisted_10$2 = {
+  const _hoisted_10$1 = {
     key: 4,
     role: "alert",
     class: "text-sm text-destructive"
   };
-  const _hoisted_11$1 = {
+  const _hoisted_11 = {
     key: 5,
     role: "alert",
     class: "text-sm text-destructive"
   };
-  const _hoisted_12$1 = { class: "booster-setting-copy" };
-  const _hoisted_13$1 = { key: 0 };
-  const _hoisted_14$1 = ["aria-label"];
-  const _hoisted_15$1 = ["aria-label"];
-  const _hoisted_16$1 = { class: "hidden sm:inline" };
+  const _hoisted_12 = { class: "booster-setting-copy" };
+  const _hoisted_13 = { key: 0 };
+  const _hoisted_14 = ["aria-label"];
+  const _hoisted_15 = ["aria-label"];
+  const _hoisted_16 = { class: "hidden sm:inline" };
   const _hoisted_17 = { key: 0 };
   const _hoisted_18 = {
     key: 0,
@@ -41667,9 +41895,9 @@ Defaulting to \`null\`.`);
   };
   const _hoisted_22 = { class: "text-sm font-medium" };
   const _hoisted_23 = { class: "text-xs text-muted-foreground" };
-  const _hoisted_24$1 = { class: "flex flex-wrap gap-2" };
-  const _hoisted_25$1 = { class: "text-muted-foreground" };
-  const _hoisted_26$1 = {
+  const _hoisted_24 = { class: "flex flex-wrap gap-2" };
+  const _hoisted_25 = { class: "text-muted-foreground" };
+  const _hoisted_26 = {
     key: 2,
     class: "text-sm text-muted-foreground",
     role: "status"
@@ -42515,7 +42743,7 @@ Defaulting to \`null\`.`);
           "data-provider-view": tab.value,
           "data-panel-content-focus": tab.value === "reader" ? "false" : void 0
         }, [
-          status.value?.blockedReason ? (openBlock(), createElementBlock("p", _hoisted_2$5, [
+          status.value?.blockedReason ? (openBlock(), createElementBlock("p", _hoisted_2$6, [
             createVNode(unref(ShieldAlert), {
               class: "size-4 shrink-0",
               "aria-hidden": "true"
@@ -42526,13 +42754,13 @@ Defaulting to \`null\`.`);
               /* TEXT */
             )
           ])) : createCommentVNode("v-if", true),
-          createVNode(unref(_sfc_main$D), {
+          createVNode(unref(_sfc_main$F), {
             "model-value": tab.value,
             class: normalizeClass(["min-h-0 min-w-0", { "flex flex-1 flex-col": tab.value === "reader" }]),
             "onUpdate:modelValue": chooseTab
           }, {
             default: withCtx(() => [
-              __props.showCatalog !== false ? (openBlock(), createBlock(unref(_sfc_main$B), {
+              __props.showCatalog !== false ? (openBlock(), createBlock(unref(_sfc_main$D), {
                 key: 0,
                 "aria-label": unref(text2)("Разделы VK Booster"),
                 class: "flex h-auto w-full shrink-0 flex-wrap justify-start gap-1"
@@ -42542,7 +42770,7 @@ Defaulting to \`null\`.`);
                     Fragment,
                     null,
                     renderList(visibleTabs.value, (item) => {
-                      return openBlock(), createBlock(unref(_sfc_main$A), {
+                      return openBlock(), createBlock(unref(_sfc_main$C), {
                         key: item.id,
                         value: item.id,
                         class: "gap-2"
@@ -42570,17 +42798,17 @@ Defaulting to \`null\`.`);
                 /* STABLE */
               }, 8, ["aria-label"])) : createCommentVNode("v-if", true),
               createCommentVNode(" Capture and reader share the fixed owner-scoped Dexie repository. "),
-              createVNode(unref(_sfc_main$C), {
+              createVNode(unref(_sfc_main$E), {
                 value: "capture",
                 class: "flex min-w-0 flex-col gap-3"
               }, {
                 default: withCtx(() => [
-                  createVNode(unref(_sfc_main$P), {
+                  createVNode(unref(_sfc_main$S), {
                     class: "grid gap-3 p-4",
                     "aria-label": unref(text2)("Сбор истории VK")
                   }, {
                     default: withCtx(() => [
-                      createBaseVNode("div", _hoisted_3$5, [
+                      createBaseVNode("div", _hoisted_3$6, [
                         createBaseVNode(
                           "b",
                           null,
@@ -42601,7 +42829,7 @@ Defaulting to \`null\`.`);
                         role: "group",
                         "aria-label": unref(text2)("Объём выгрузки")
                       }, [
-                        createVNode(unref(_sfc_main$17), {
+                        createVNode(unref(_sfc_main$1b), {
                           type: "button",
                           size: "sm",
                           variant: captureRange.value === "all" ? "default" : "outline",
@@ -42619,7 +42847,7 @@ Defaulting to \`null\`.`);
                           _: 1
                           /* STABLE */
                         }, 8, ["variant", "aria-pressed", "disabled"]),
-                        createVNode(unref(_sfc_main$17), {
+                        createVNode(unref(_sfc_main$1b), {
                           type: "button",
                           size: "sm",
                           variant: captureRange.value === "recent" ? "default" : "outline",
@@ -42637,8 +42865,8 @@ Defaulting to \`null\`.`);
                           _: 1
                           /* STABLE */
                         }, 8, ["variant", "aria-pressed", "disabled"])
-                      ], 8, _hoisted_4$5),
-                      captureRange.value === "recent" ? (openBlock(), createBlock(unref(_sfc_main$J), {
+                      ], 8, _hoisted_4$6),
+                      captureRange.value === "recent" ? (openBlock(), createBlock(unref(_sfc_main$M), {
                         key: 0,
                         class: "booster-field"
                       }, {
@@ -42662,20 +42890,20 @@ Defaulting to \`null\`.`);
                         /* STABLE */
                       })) : (openBlock(), createElementBlock(
                         "p",
-                        _hoisted_5$5,
+                        _hoisted_5$4,
                         toDisplayString(unref(text2)("Без искусственного ограничения в 3000 сообщений. VK может ограничивать частоту API-запросов; при необходимости автоматически делаются паузы.")),
                         1
                         /* TEXT */
                       )),
-                      createVNode(unref(_sfc_main$G), {
+                      createVNode(unref(_sfc_main$I), {
                         open: speedOpen.value,
                         "onUpdate:open": _cache[5] || (_cache[5] = ($event) => speedOpen.value = $event),
                         class: "grid gap-3"
                       }, {
                         default: withCtx(() => [
-                          createVNode(unref(_sfc_main$E), { "as-child": "" }, {
+                          createVNode(unref(_sfc_main$G), { "as-child": "" }, {
                             default: withCtx(() => [
-                              createVNode(unref(_sfc_main$17), {
+                              createVNode(unref(_sfc_main$1b), {
                                 variant: "outline",
                                 class: "justify-between whitespace-normal text-left"
                               }, {
@@ -42696,9 +42924,9 @@ Defaulting to \`null\`.`);
                             _: 1
                             /* STABLE */
                           }),
-                          createVNode(unref(_sfc_main$F), { class: "grid gap-3" }, {
+                          createVNode(unref(_sfc_main$H), { class: "grid gap-3" }, {
                             default: withCtx(() => [
-                              createVNode(unref(_sfc_main$J), { class: "booster-field" }, {
+                              createVNode(unref(_sfc_main$M), { class: "booster-field" }, {
                                 default: withCtx(() => [
                                   createTextVNode(
                                     toDisplayString(unref(text2)("Сообщений за запрос ")),
@@ -42726,7 +42954,7 @@ Defaulting to \`null\`.`);
                                 _: 1
                                 /* STABLE */
                               }),
-                              createVNode(unref(_sfc_main$J), { class: "booster-field" }, {
+                              createVNode(unref(_sfc_main$M), { class: "booster-field" }, {
                                 default: withCtx(() => [
                                   createTextVNode(
                                     toDisplayString(unref(text2)("Пауза между запросами ")),
@@ -42782,12 +43010,12 @@ Defaulting to \`null\`.`);
                       }, null, 8, ["label", "busy", "disabled", "processed", "total", "reused", "saved"]),
                       !hasVerifiedPeer.value ? (openBlock(), createElementBlock(
                         "p",
-                        _hoisted_6$5,
+                        _hoisted_6$4,
                         toDisplayString(unref(text2)("Открой конкретную VK-переписку — на остальных страницах сайта доступны настройки и меню.")),
                         1
                         /* TEXT */
                       )) : createCommentVNode("v-if", true),
-                      fixedSaved.value !== null ? (openBlock(), createElementBlock("p", _hoisted_7$4, [
+                      fixedSaved.value !== null ? (openBlock(), createElementBlock("p", _hoisted_7$3, [
                         createTextVNode(
                           toDisplayString(unref(text2)(" Сохранено новых: ")) + toDisplayString(fixedSaved.value) + toDisplayString(unref(text2)(". Прочитано из VK: ")) + toDisplayString(collectionState.value.processed) + toDisplayString(reportedTotal.value !== null ? `${unref(text2)(". Всего в истории: ")}${reportedTotal.value}` : "") + ". " + toDisplayString(captureComplete.value ? unref(text2)("Вся доступная история сохранена.") : unref(text2)("Обход частичный: можно продолжить повторным сбором.")) + " ",
                           1
@@ -42810,14 +43038,14 @@ Defaulting to \`null\`.`);
                       ])) : createCommentVNode("v-if", true),
                       fixedError.value ? (openBlock(), createElementBlock(
                         "p",
-                        _hoisted_10$2,
+                        _hoisted_10$1,
                         toDisplayString(unref(text2)(fixedError.value)),
                         1
                         /* TEXT */
                       )) : createCommentVNode("v-if", true),
                       durableSettingsError.value ? (openBlock(), createElementBlock(
                         "p",
-                        _hoisted_11$1,
+                        _hoisted_11,
                         toDisplayString(unref(text2)(durableSettingsError.value)),
                         1
                         /* TEXT */
@@ -42826,12 +43054,12 @@ Defaulting to \`null\`.`);
                     _: 1
                     /* STABLE */
                   }, 8, ["aria-label"]),
-                  createVNode(unref(_sfc_main$P), {
+                  createVNode(unref(_sfc_main$S), {
                     class: "grid gap-3 p-4",
                     "aria-label": unref(text2)("Догрузка вложений")
                   }, {
                     default: withCtx(() => [
-                      createBaseVNode("div", _hoisted_12$1, [
+                      createBaseVNode("div", _hoisted_12, [
                         createBaseVNode(
                           "b",
                           null,
@@ -42848,7 +43076,7 @@ Defaulting to \`null\`.`);
                         ),
                         attachmentReferences.value !== null ? (openBlock(), createElementBlock(
                           "small",
-                          _hoisted_13$1,
+                          _hoisted_13,
                           toDisplayString(unref(text2)("Ссылок на вложения верхнего уровня в обработанной истории: ")) + toDisplayString(attachmentReferences.value) + toDisplayString(unref(text2)(". Файлов доступно для экспорта в этом окне: ")) + toDisplayString(Object.keys(attachments.value).length) + ".",
                           1
                           /* TEXT */
@@ -42862,7 +43090,7 @@ Defaulting to \`null\`.`);
                 _: 1
                 /* STABLE */
               }),
-              createVNode(unref(_sfc_main$C), {
+              createVNode(unref(_sfc_main$E), {
                 value: "reader",
                 class: "vk-reader flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden"
               }, {
@@ -42876,7 +43104,7 @@ Defaulting to \`null\`.`);
                       role: "toolbar",
                       "aria-label": unref(text2)("Действия с архивом VK")
                     }, [
-                      timelineNodes.value.length ? (openBlock(), createBlock(unref(_sfc_main$17), {
+                      timelineNodes.value.length ? (openBlock(), createBlock(unref(_sfc_main$1b), {
                         key: 0,
                         variant: "outline",
                         size: "sm",
@@ -42890,7 +43118,7 @@ Defaulting to \`null\`.`);
                           createVNode(unref(History), { class: "size-4" }),
                           createBaseVNode(
                             "span",
-                            _hoisted_16$1,
+                            _hoisted_16,
                             toDisplayString(timelineOpen.value ? unref(text2)("Скрыть историю") : unref(text2)("Показать историю")),
                             1
                             /* TEXT */
@@ -42899,7 +43127,7 @@ Defaulting to \`null\`.`);
                         _: 1
                         /* STABLE */
                       }, 8, ["aria-pressed", "aria-expanded", "aria-controls", "aria-label"])) : createCommentVNode("v-if", true),
-                      createVNode(unref(_sfc_main$17), {
+                      createVNode(unref(_sfc_main$1b), {
                         variant: "outline",
                         size: "sm",
                         disabled: fixedBusy.value || !hasVerifiedPeer.value,
@@ -42916,7 +43144,7 @@ Defaulting to \`null\`.`);
                         _: 1
                         /* STABLE */
                       }, 8, ["disabled"]),
-                      createVNode(unref(_sfc_main$17), {
+                      createVNode(unref(_sfc_main$1b), {
                         variant: "outline",
                         size: "sm",
                         "aria-pressed": selectionEnabled.value,
@@ -42940,7 +43168,7 @@ Defaulting to \`null\`.`);
                         _: 1
                         /* STABLE */
                       }, 8, ["aria-pressed", "disabled"]),
-                      createVNode(unref(_sfc_main$7), {
+                      createVNode(unref(_sfc_main$7$1), {
                         "first-label": unref(text2)("К началу"),
                         "last-label": unref(text2)("К концу"),
                         compact: false,
@@ -42948,9 +43176,9 @@ Defaulting to \`null\`.`);
                         onFirst: _cache[9] || (_cache[9] = ($event) => navigateTimeline(String(timelineEntries.value[0]?.id))),
                         onLast: _cache[10] || (_cache[10] = ($event) => navigateTimeline(String(timelineEntries.value.at(-1)?.id)))
                       }, null, 8, ["first-label", "last-label", "disabled"])
-                    ], 8, _hoisted_15$1),
+                    ], 8, _hoisted_15),
                     selectionEnabled.value ? (openBlock(), createElementBlock("div", _hoisted_18, [
-                      createVNode(unref(_sfc_main$17), {
+                      createVNode(unref(_sfc_main$1b), {
                         variant: "outline",
                         size: "sm",
                         disabled: fixedBusy.value || !fixedPreview.value.length,
@@ -42966,7 +43194,7 @@ Defaulting to \`null\`.`);
                         _: 1
                         /* STABLE */
                       }, 8, ["disabled"]),
-                      createVNode(unref(_sfc_main$17), {
+                      createVNode(unref(_sfc_main$1b), {
                         variant: "ghost",
                         size: "sm",
                         disabled: fixedBusy.value || !selectedMessageIds.value.size,
@@ -42989,7 +43217,7 @@ Defaulting to \`null\`.`);
                         1
                         /* TEXT */
                       ),
-                      createVNode(unref(_sfc_main$17), {
+                      createVNode(unref(_sfc_main$1b), {
                         variant: "outline",
                         size: "sm",
                         disabled: fixedBusy.value || rangeBusy.value || !activeMessageId.value,
@@ -43005,7 +43233,7 @@ Defaulting to \`null\`.`);
                         _: 1
                         /* STABLE */
                       }, 8, ["disabled"]),
-                      createVNode(unref(_sfc_main$17), {
+                      createVNode(unref(_sfc_main$1b), {
                         variant: "outline",
                         size: "sm",
                         disabled: fixedBusy.value || rangeBusy.value || !activeMessageId.value,
@@ -43040,7 +43268,7 @@ Defaulting to \`null\`.`);
                         /* TEXT */
                       )) : createCommentVNode("v-if", true)
                     ])) : createCommentVNode("v-if", true),
-                    coverage.value ? (openBlock(), createBlock(unref(_sfc_main$G), {
+                    coverage.value ? (openBlock(), createBlock(unref(_sfc_main$I), {
                       key: 1,
                       open: coverageOpen.value,
                       "onUpdate:open": _cache[16] || (_cache[16] = ($event) => coverageOpen.value = $event),
@@ -43048,9 +43276,9 @@ Defaulting to \`null\`.`);
                       "data-vk-reader-summary": ""
                     }, {
                       default: withCtx(() => [
-                        createVNode(unref(_sfc_main$E), { "as-child": "" }, {
+                        createVNode(unref(_sfc_main$G), { "as-child": "" }, {
                           default: withCtx(() => [
-                            createVNode(unref(_sfc_main$17), {
+                            createVNode(unref(_sfc_main$1b), {
                               variant: "ghost",
                               size: "sm",
                               class: "w-full justify-between gap-2 whitespace-normal text-left"
@@ -43072,7 +43300,7 @@ Defaulting to \`null\`.`);
                           _: 1
                           /* STABLE */
                         }),
-                        createVNode(unref(_sfc_main$F), {
+                        createVNode(unref(_sfc_main$H), {
                           class: "grid max-h-48 gap-2 overflow-y-auto px-3 py-2",
                           "aria-label": unref(text2)("Проверка полноты истории")
                         }, {
@@ -43091,8 +43319,8 @@ Defaulting to \`null\`.`);
                               1
                               /* TEXT */
                             ),
-                            createBaseVNode("div", _hoisted_24$1, [
-                              coverage.value.first ? (openBlock(), createBlock(unref(_sfc_main$17), {
+                            createBaseVNode("div", _hoisted_24, [
+                              coverage.value.first ? (openBlock(), createBlock(unref(_sfc_main$1b), {
                                 key: 0,
                                 variant: "outline",
                                 size: "sm",
@@ -43108,7 +43336,7 @@ Defaulting to \`null\`.`);
                                 _: 1
                                 /* STABLE */
                               })) : createCommentVNode("v-if", true),
-                              coverage.value.last ? (openBlock(), createBlock(unref(_sfc_main$17), {
+                              coverage.value.last ? (openBlock(), createBlock(unref(_sfc_main$1b), {
                                 key: 1,
                                 variant: "outline",
                                 size: "sm",
@@ -43124,7 +43352,7 @@ Defaulting to \`null\`.`);
                                 _: 1
                                 /* STABLE */
                               })) : createCommentVNode("v-if", true),
-                              createVNode(unref(_sfc_main$17), {
+                              createVNode(unref(_sfc_main$1b), {
                                 variant: "ghost",
                                 size: "sm",
                                 onClick: _cache[15] || (_cache[15] = ($event) => {
@@ -43145,7 +43373,7 @@ Defaulting to \`null\`.`);
                             ]),
                             createBaseVNode(
                               "small",
-                              _hoisted_25$1,
+                              _hoisted_25,
                               toDisplayString(coverage.value.observedAtMs ? `${unref(text2)("Проверка текущего сеанса: ")}${new Date(coverage.value.observedAtMs).toLocaleString(unref(locale))}${unref(text2)(". Это наблюдаемый обход API, не неизменяемый снимок сервера.")}` : unref(text2)("После перезапуска прежние границы остаются непроверенными. Сохранённые оригиналы не меняются.")),
                               1
                               /* TEXT */
@@ -43160,7 +43388,7 @@ Defaulting to \`null\`.`);
                     }, 8, ["open"])) : createCommentVNode("v-if", true),
                     !fixedReading.value && !fixedPreview.value.length && !fixedError.value ? (openBlock(), createElementBlock(
                       "p",
-                      _hoisted_26$1,
+                      _hoisted_26,
                       toDisplayString(unref(text2)(" В этой переписке ещё нет сохранённых сообщений. ")),
                       1
                       /* TEXT */
@@ -43237,11 +43465,11 @@ Defaulting to \`null\`.`);
                                   class: normalizeClass(["flex min-w-0", message.out === 1 || message.out === true ? "justify-end" : "justify-start"])
                                 },
                                 [
-                                  createVNode(unref(_sfc_main$P), {
+                                  createVNode(unref(_sfc_main$S), {
                                     class: normalizeClass(["min-w-0 max-w-[88%] p-3 shadow-none", [message.out === 1 || message.out === true ? "bg-primary/10" : "bg-muted/45", { "booster-message-target": String(message.id) === activeMessageId.value }]])
                                   }, {
                                     default: withCtx(() => [
-                                      createVNode(unref(_sfc_main$8), {
+                                      createVNode(unref(_sfc_main$8$1), {
                                         author: senderName(message),
                                         "sent-at": message.date,
                                         metadata: message,
@@ -43285,7 +43513,7 @@ Defaulting to \`null\`.`);
                                               /* TEXT */
                                             ),
                                             asset.external ? (openBlock(), createBlock(
-                                              unref(_sfc_main$17),
+                                              unref(_sfc_main$1b),
                                               {
                                                 key: 1,
                                                 "as-child": "",
@@ -43307,7 +43535,7 @@ Defaulting to \`null\`.`);
                                               1024
                                               /* DYNAMIC_SLOTS */
                                             )) : createCommentVNode("v-if", true),
-                                            asset.choices.length && !attachments.value[asset.key] ? (openBlock(), createBlock(unref(_sfc_main$17), {
+                                            asset.choices.length && !attachments.value[asset.key] ? (openBlock(), createBlock(unref(_sfc_main$1b), {
                                               key: 2,
                                               size: "sm",
                                               variant: "outline",
@@ -43329,7 +43557,7 @@ Defaulting to \`null\`.`);
                                               _: 2
                                               /* DYNAMIC */
                                             }, 1032, ["disabled", "onClick"])) : attachments.value[asset.key] ? (openBlock(), createBlock(
-                                              unref(_sfc_main$17),
+                                              unref(_sfc_main$1b),
                                               {
                                                 key: 3,
                                                 "as-child": "",
@@ -43386,17 +43614,17 @@ Defaulting to \`null\`.`);
                       1
                       /* TEXT */
                     )) : createCommentVNode("v-if", true)
-                  ], 8, _hoisted_14$1)
+                  ], 8, _hoisted_14)
                 ]),
                 _: 1
                 /* STABLE */
               }),
-              createVNode(unref(_sfc_main$C), {
+              createVNode(unref(_sfc_main$E), {
                 value: "settings",
                 class: "flex min-w-0 flex-col gap-3"
               }, {
                 default: withCtx(() => [
-                  createVNode(unref(_sfc_main$P), {
+                  createVNode(unref(_sfc_main$S), {
                     class: "grid gap-3 p-4",
                     "aria-label": unref(text2)("Постоянные параметры VK")
                   }, {
@@ -43417,7 +43645,7 @@ Defaulting to \`null\`.`);
                           /* TEXT */
                         )
                       ]),
-                      createVNode(unref(_sfc_main$J), { class: "booster-field" }, {
+                      createVNode(unref(_sfc_main$M), { class: "booster-field" }, {
                         default: withCtx(() => [
                           createTextVNode(
                             toDisplayString(unref(text2)("Последние N сообщений ")),
@@ -43437,7 +43665,7 @@ Defaulting to \`null\`.`);
                         _: 1
                         /* STABLE */
                       }),
-                      createVNode(unref(_sfc_main$J), { class: "booster-field" }, {
+                      createVNode(unref(_sfc_main$M), { class: "booster-field" }, {
                         default: withCtx(() => [
                           createTextVNode(
                             toDisplayString(unref(text2)("Размер запроса VK: ")) + toDisplayString(requestPageSize.value) + " ",
@@ -43458,7 +43686,7 @@ Defaulting to \`null\`.`);
                         _: 1
                         /* STABLE */
                       }),
-                      createVNode(unref(_sfc_main$J), { class: "booster-field" }, {
+                      createVNode(unref(_sfc_main$M), { class: "booster-field" }, {
                         default: withCtx(() => [
                           createTextVNode(
                             toDisplayString(unref(text2)("Пауза между страницами: ")) + toDisplayString(requestDelay.value) + toDisplayString(unref(text2)(" мс ")),
@@ -43480,7 +43708,7 @@ Defaulting to \`null\`.`);
                         /* STABLE */
                       }),
                       createBaseVNode("div", _hoisted_41$1, [
-                        createVNode(unref(_sfc_main$17), {
+                        createVNode(unref(_sfc_main$1b), {
                           variant: "outline",
                           size: "sm",
                           disabled: fixedBusy.value,
@@ -43523,7 +43751,7 @@ Defaulting to \`null\`.`);
             _: 1
             /* STABLE */
           }, 8, ["model-value", "class"]),
-          exportOpen.value ? (openBlock(), createBlock(unref(_sfc_main$Q), {
+          exportOpen.value ? (openBlock(), createBlock(unref(_sfc_main$T), {
             key: 1,
             label: unref(text2)("Экспорт сохранённых сообщений VK"),
             onClose: _cache[34] || (_cache[34] = ($event) => !fixedBusy.value && (exportOpen.value = false))
@@ -43569,15 +43797,15 @@ Defaulting to \`null\`.`);
                   "onUpdate:format": _cache[27] || (_cache[27] = ($event) => exportFormat.value = $event === "markdown" || $event === "text" ? $event : "json"),
                   "onUpdate:packaging": _cache[28] || (_cache[28] = ($event) => exportPackaging.value = $event === "none" ? "none" : "zip")
                 }, null, 8, ["format", "packaging", "formats", "packages", "format-label", "packaging-label", "disabled"]),
-                createVNode(unref(_sfc_main$G), {
+                createVNode(unref(_sfc_main$I), {
                   open: exportAdvanced.value,
                   "onUpdate:open": _cache[32] || (_cache[32] = ($event) => exportAdvanced.value = $event),
                   class: "grid gap-3"
                 }, {
                   default: withCtx(() => [
-                    createVNode(unref(_sfc_main$E), { "as-child": "" }, {
+                    createVNode(unref(_sfc_main$G), { "as-child": "" }, {
                       default: withCtx(() => [
-                        createVNode(unref(_sfc_main$17), {
+                        createVNode(unref(_sfc_main$1b), {
                           variant: "ghost",
                           size: "sm",
                           class: "justify-between"
@@ -43599,9 +43827,9 @@ Defaulting to \`null\`.`);
                       _: 1
                       /* STABLE */
                     }),
-                    createVNode(unref(_sfc_main$F), { class: "grid gap-3" }, {
+                    createVNode(unref(_sfc_main$H), { class: "grid gap-3" }, {
                       default: withCtx(() => [
-                        exportPackaging.value === "zip" ? (openBlock(), createBlock(unref(_sfc_main$J), {
+                        exportPackaging.value === "zip" ? (openBlock(), createBlock(unref(_sfc_main$M), {
                           key: 0,
                           class: "booster-field"
                         }, {
@@ -43662,7 +43890,7 @@ Defaulting to \`null\`.`);
                           _: 1
                           /* STABLE */
                         })) : createCommentVNode("v-if", true),
-                        exportPackaging.value === "none" && exportFormat.value !== "json" ? (openBlock(), createBlock(unref(_sfc_main$J), {
+                        exportPackaging.value === "none" && exportFormat.value !== "json" ? (openBlock(), createBlock(unref(_sfc_main$M), {
                           key: 1,
                           class: "flex items-center justify-between gap-3 text-sm"
                         }, {
@@ -43672,7 +43900,7 @@ Defaulting to \`null\`.`);
                               1
                               /* TEXT */
                             ),
-                            createVNode(unref(_sfc_main$I), {
+                            createVNode(unref(_sfc_main$K), {
                               "model-value": exportIncludeOriginal.value,
                               disabled: fixedBusy.value,
                               "aria-label": unref(text2)("Добавить исходный JSON"),
@@ -43682,7 +43910,7 @@ Defaulting to \`null\`.`);
                           _: 1
                           /* STABLE */
                         })) : createCommentVNode("v-if", true),
-                        exportPackaging.value === "zip" ? (openBlock(), createBlock(unref(_sfc_main$J), {
+                        exportPackaging.value === "zip" ? (openBlock(), createBlock(unref(_sfc_main$M), {
                           key: 2,
                           class: "flex items-center justify-between gap-3 text-sm"
                         }, {
@@ -43692,7 +43920,7 @@ Defaulting to \`null\`.`);
                               1
                               /* TEXT */
                             ),
-                            createVNode(unref(_sfc_main$I), {
+                            createVNode(unref(_sfc_main$K), {
                               "model-value": exportIncludeMedia.value,
                               disabled: fixedBusy.value,
                               "aria-label": unref(text2)("Включить файлы вложений в ZIP"),
@@ -43702,7 +43930,7 @@ Defaulting to \`null\`.`);
                           _: 1
                           /* STABLE */
                         })) : createCommentVNode("v-if", true),
-                        exportPackaging.value === "zip" ? (openBlock(), createBlock(unref(_sfc_main$J), {
+                        exportPackaging.value === "zip" ? (openBlock(), createBlock(unref(_sfc_main$M), {
                           key: 3,
                           class: "flex items-center gap-2 text-sm"
                         }, {
@@ -43733,7 +43961,7 @@ Defaulting to \`null\`.`);
                   /* STABLE */
                 }, 8, ["open"]),
                 createBaseVNode("div", _hoisted_46$1, [
-                  createVNode(unref(_sfc_main$17), {
+                  createVNode(unref(_sfc_main$1b), {
                     disabled: fixedBusy.value || rangeBusy.value || !hasVerifiedPeer.value || exportScopeEmpty.value || exportScopeStale.value,
                     onClick: prepareUserExport
                   }, {
@@ -43752,7 +43980,7 @@ Defaulting to \`null\`.`);
                     _: 1
                     /* STABLE */
                   }, 8, ["disabled"]),
-                  exportPrepared.value ? (openBlock(), createBlock(unref(_sfc_main$17), {
+                  exportPrepared.value ? (openBlock(), createBlock(unref(_sfc_main$1b), {
                     key: 0,
                     variant: "outline",
                     disabled: fixedBusy.value,
@@ -43768,7 +43996,7 @@ Defaulting to \`null\`.`);
                     _: 1
                     /* STABLE */
                   }, 8, ["disabled"])) : createCommentVNode("v-if", true),
-                  createVNode(unref(_sfc_main$17), {
+                  createVNode(unref(_sfc_main$1b), {
                     size: "sm",
                     variant: "ghost",
                     disabled: fixedBusy.value,
@@ -43814,6 +44042,16 @@ Defaulting to \`null\`.`);
       };
     }
   });
+  function resolveApplicationIdentity(runtime, title, application) {
+    if (application) return application;
+    const feature = runtime.features.length === 1 ? runtime.features[0] : void 0;
+    return {
+      id: feature?.id ?? "browser-tools",
+      title: feature?.title ?? title,
+      version: feature?.presentation?.version,
+      installation: feature?.presentation?.installation
+    };
+  }
   const WIDGET_UI_MESSAGES = {
     "Сообщений в экспорте:": "Messages to export:",
     Вы: "You",
@@ -43999,7 +44237,7 @@ Defaulting to \`null\`.`);
     "Очистить журнал": "Clear journal"
   };
   const _hoisted_1$g = ["aria-label"];
-  const _hoisted_2$c = { class: "space-y-1" };
+  const _hoisted_2$b = { class: "space-y-1" };
   const _hoisted_3$a = { class: "text-lg font-semibold" };
   const _hoisted_4$a = { class: "text-sm text-muted-foreground" };
   const _hoisted_5$9 = { class: "text-sm font-medium" };
@@ -44034,11 +44272,11 @@ Defaulting to \`null\`.`);
     key: 1,
     class: "flex flex-wrap items-center gap-3"
   };
-  const _hoisted_22$3 = {
+  const _hoisted_22$2 = {
     role: "status",
     class: "text-sm text-muted-foreground"
   };
-  const _hoisted_23$3 = { class: "text-xs text-muted-foreground" };
+  const _hoisted_23$2 = { class: "text-xs text-muted-foreground" };
   const _sfc_main$h = /* @__PURE__ */ defineComponent({
     __name: "ApplicationBackupSettings",
     setup(__props) {
@@ -44178,7 +44416,7 @@ Defaulting to \`null\`.`);
           class: "space-y-4",
           "aria-label": unref(text2)("Резервные копии")
         }, [
-          createBaseVNode("div", _hoisted_2$c, [
+          createBaseVNode("div", _hoisted_2$b, [
             createBaseVNode(
               "h2",
               _hoisted_3$a,
@@ -44214,11 +44452,11 @@ Defaulting to \`null\`.`);
             Fragment,
             { key: 1 },
             [
-              recoveries.value.length ? (openBlock(), createBlock(unref(_sfc_main$P), { key: 0 }, {
+              recoveries.value.length ? (openBlock(), createBlock(unref(_sfc_main$S), { key: 0 }, {
                 default: withCtx(() => [
-                  createVNode(unref(_sfc_main$L), null, {
+                  createVNode(unref(_sfc_main$O), null, {
                     default: withCtx(() => [
-                      createVNode(unref(_sfc_main$K), { class: "text-base" }, {
+                      createVNode(unref(_sfc_main$N), { class: "text-base" }, {
                         default: withCtx(() => [
                           createTextVNode(
                             toDisplayString(unref(text2)("Незавершённые операции")),
@@ -44229,7 +44467,7 @@ Defaulting to \`null\`.`);
                         _: 1
                         /* STABLE */
                       }),
-                      createVNode(unref(_sfc_main$N), null, {
+                      createVNode(unref(_sfc_main$Q), null, {
                         default: withCtx(() => [
                           createTextVNode(
                             toDisplayString(unref(text2)("Временные копии сохранены. Выберите действие для каждой операции.")),
@@ -44244,7 +44482,7 @@ Defaulting to \`null\`.`);
                     _: 1
                     /* STABLE */
                   }),
-                  createVNode(unref(_sfc_main$O), { class: "space-y-5" }, {
+                  createVNode(unref(_sfc_main$R), { class: "space-y-5" }, {
                     default: withCtx(() => [
                       (openBlock(true), createElementBlock(
                         Fragment,
@@ -44288,7 +44526,7 @@ Defaulting to \`null\`.`);
                                     disabled: busy.value || job.sections.some((section) => !section.available),
                                     "onUpdate:modelValue": ($event) => rollbackConfirmed.value = $event === true ? job.id : ""
                                   }, null, 8, ["id", "model-value", "disabled", "onUpdate:modelValue"]),
-                                  createVNode(unref(_sfc_main$J), {
+                                  createVNode(unref(_sfc_main$M), {
                                     for: `${unref(fieldId)}-rollback-${index}`
                                   }, {
                                     default: withCtx(() => [
@@ -44309,7 +44547,7 @@ Defaulting to \`null\`.`);
                                   1
                                   /* TEXT */
                                 )) : createCommentVNode("v-if", true),
-                                createVNode(unref(_sfc_main$17), {
+                                createVNode(unref(_sfc_main$1b), {
                                   disabled: busy.value || rollbackConfirmed.value !== job.id || job.sections.some((section) => !section.available),
                                   onClick: ($event) => retryRollback2(job)
                                 }, {
@@ -44352,7 +44590,7 @@ Defaulting to \`null\`.`);
                                               /* TEXT */
                                             ),
                                             createBaseVNode("div", _hoisted_10$6, [
-                                              createVNode(unref(_sfc_main$17), {
+                                              createVNode(unref(_sfc_main$1b), {
                                                 variant: "destructive",
                                                 disabled: busy.value,
                                                 onClick: ($event) => discardRecovery(job)
@@ -44367,7 +44605,7 @@ Defaulting to \`null\`.`);
                                                 _: 1
                                                 /* STABLE */
                                               }, 8, ["disabled", "onClick"]),
-                                              createVNode(unref(_sfc_main$17), {
+                                              createVNode(unref(_sfc_main$1b), {
                                                 variant: "outline",
                                                 disabled: busy.value,
                                                 onClick: _cache[0] || (_cache[0] = ($event) => discardConfirmed.value = "")
@@ -44396,7 +44634,7 @@ Defaulting to \`null\`.`);
                                   },
                                   1024
                                   /* DYNAMIC_SLOTS */
-                                )) : (openBlock(), createBlock(unref(_sfc_main$17), {
+                                )) : (openBlock(), createBlock(unref(_sfc_main$1b), {
                                   key: 1,
                                   variant: "outline",
                                   disabled: busy.value,
@@ -44429,11 +44667,11 @@ Defaulting to \`null\`.`);
                 _: 1
                 /* STABLE */
               })) : createCommentVNode("v-if", true),
-              createVNode(unref(_sfc_main$P), null, {
+              createVNode(unref(_sfc_main$S), null, {
                 default: withCtx(() => [
-                  createVNode(unref(_sfc_main$L), null, {
+                  createVNode(unref(_sfc_main$O), null, {
                     default: withCtx(() => [
-                      createVNode(unref(_sfc_main$K), { class: "text-base" }, {
+                      createVNode(unref(_sfc_main$N), { class: "text-base" }, {
                         default: withCtx(() => [
                           createTextVNode(
                             toDisplayString(unref(text2)("Создать копию")),
@@ -44444,7 +44682,7 @@ Defaulting to \`null\`.`);
                         _: 1
                         /* STABLE */
                       }),
-                      createVNode(unref(_sfc_main$N), null, {
+                      createVNode(unref(_sfc_main$Q), null, {
                         default: withCtx(() => [
                           createTextVNode(
                             toDisplayString(unref(text2)("Выберите нужные разделы.")),
@@ -44459,7 +44697,7 @@ Defaulting to \`null\`.`);
                     _: 1
                     /* STABLE */
                   }),
-                  createVNode(unref(_sfc_main$O), { class: "space-y-4" }, {
+                  createVNode(unref(_sfc_main$R), { class: "space-y-4" }, {
                     default: withCtx(() => [
                       createBaseVNode("div", _hoisted_11$6, [
                         (openBlock(true), createElementBlock(
@@ -44478,7 +44716,7 @@ Defaulting to \`null\`.`);
                                 "onUpdate:modelValue": ($event) => selectSection("save", source.id, $event)
                               }, null, 8, ["id", "model-value", "disabled", "onUpdate:modelValue"]),
                               createBaseVNode("div", _hoisted_12$5, [
-                                createVNode(unref(_sfc_main$J), {
+                                createVNode(unref(_sfc_main$M), {
                                   for: `${unref(fieldId)}-save-${source.id}`
                                 }, {
                                   default: withCtx(() => [
@@ -44505,7 +44743,7 @@ Defaulting to \`null\`.`);
                           /* KEYED_FRAGMENT */
                         ))
                       ]),
-                      createVNode(unref(_sfc_main$17), {
+                      createVNode(unref(_sfc_main$1b), {
                         disabled: busy.value || !selected.value.length,
                         onClick: save
                       }, {
@@ -44527,11 +44765,11 @@ Defaulting to \`null\`.`);
                 _: 1
                 /* STABLE */
               }),
-              createVNode(unref(_sfc_main$P), null, {
+              createVNode(unref(_sfc_main$S), null, {
                 default: withCtx(() => [
-                  createVNode(unref(_sfc_main$L), null, {
+                  createVNode(unref(_sfc_main$O), null, {
                     default: withCtx(() => [
-                      createVNode(unref(_sfc_main$K), { class: "text-base" }, {
+                      createVNode(unref(_sfc_main$N), { class: "text-base" }, {
                         default: withCtx(() => [
                           createTextVNode(
                             toDisplayString(unref(text2)("Восстановить из файла")),
@@ -44542,7 +44780,7 @@ Defaulting to \`null\`.`);
                         _: 1
                         /* STABLE */
                       }),
-                      createVNode(unref(_sfc_main$N), null, {
+                      createVNode(unref(_sfc_main$Q), null, {
                         default: withCtx(() => [
                           createTextVNode(
                             toDisplayString(unref(text2)("Сначала проверим файл и покажем его состав.")),
@@ -44557,10 +44795,10 @@ Defaulting to \`null\`.`);
                     _: 1
                     /* STABLE */
                   }),
-                  createVNode(unref(_sfc_main$O), { class: "space-y-4" }, {
+                  createVNode(unref(_sfc_main$R), { class: "space-y-4" }, {
                     default: withCtx(() => [
                       createBaseVNode("div", _hoisted_14$4, [
-                        createVNode(unref(_sfc_main$J), {
+                        createVNode(unref(_sfc_main$M), {
                           for: `${unref(fieldId)}-file`
                         }, {
                           default: withCtx(() => [
@@ -44611,7 +44849,7 @@ Defaulting to \`null\`.`);
                                     "onUpdate:modelValue": ($event) => selectSection("restore", section.id, $event)
                                   }, null, 8, ["id", "model-value", "disabled", "onUpdate:modelValue"]),
                                   createBaseVNode("div", _hoisted_17$4, [
-                                    createVNode(unref(_sfc_main$J), {
+                                    createVNode(unref(_sfc_main$M), {
                                       for: `${unref(fieldId)}-restore-${section.id}`
                                     }, {
                                       default: withCtx(() => [
@@ -44654,7 +44892,7 @@ Defaulting to \`null\`.`);
                               disabled: busy.value,
                               "onUpdate:modelValue": _cache[1] || (_cache[1] = ($event) => confirmed.value = $event === true)
                             }, null, 8, ["id", "model-value", "disabled"]),
-                            createVNode(unref(_sfc_main$J), {
+                            createVNode(unref(_sfc_main$M), {
                               for: `${unref(fieldId)}-confirm`
                             }, {
                               default: withCtx(() => [
@@ -44668,7 +44906,7 @@ Defaulting to \`null\`.`);
                               /* STABLE */
                             }, 8, ["for"])
                           ]),
-                          createVNode(unref(_sfc_main$17), {
+                          createVNode(unref(_sfc_main$1b), {
                             disabled: busy.value || !confirmed.value || !restoring.value.length,
                             onClick: restore
                           }, {
@@ -44697,12 +44935,12 @@ Defaulting to \`null\`.`);
               busy.value ? (openBlock(), createElementBlock("div", _hoisted_21$3, [
                 createBaseVNode(
                   "p",
-                  _hoisted_22$3,
+                  _hoisted_22$2,
                   toDisplayString(unref(text2)("Обрабатываем выбранные разделы…")),
                   1
                   /* TEXT */
                 ),
-                unref(controller).cancel ? (openBlock(), createBlock(unref(_sfc_main$17), {
+                unref(controller).cancel ? (openBlock(), createBlock(unref(_sfc_main$1b), {
                   key: 0,
                   variant: "outline",
                   onClick: cancel
@@ -44757,7 +44995,7 @@ Defaulting to \`null\`.`);
               })) : createCommentVNode("v-if", true),
               createBaseVNode(
                 "p",
-                _hoisted_23$3,
+                _hoisted_23$2,
                 toDisplayString(unref(text2)("Пароли и токены не включаются. Доступна база проверенного аккаунта текущего сайта. Внешние вложения сохраняются отдельно. Большие копии сохраняются прямо в выбранный файл, если браузер поддерживает этот способ; скачивание через память ограничено 128 МиБ сжатых данных. Для проверки и восстановления нужно свободное место под временные данные и копию для отката.")),
                 1
                 /* TEXT */
@@ -44771,7 +45009,7 @@ Defaulting to \`null\`.`);
     }
   });
   const _hoisted_1$f = ["aria-label", "aria-busy"];
-  const _hoisted_2$b = { class: "space-y-1" };
+  const _hoisted_2$a = { class: "space-y-1" };
   const _hoisted_3$9 = { class: "text-base font-semibold" };
   const _hoisted_4$9 = { class: "text-sm text-muted-foreground" };
   const _hoisted_5$8 = {
@@ -44794,11 +45032,11 @@ Defaulting to \`null\`.`);
   const _hoisted_19$2 = { class: "grid content-start gap-2" };
   const _hoisted_20$2 = { class: "grid content-start gap-2" };
   const _hoisted_21$2 = { class: "grid content-start gap-2" };
-  const _hoisted_22$2 = { class: "text-xs text-muted-foreground" };
-  const _hoisted_23$2 = { class: "grid min-w-0 gap-2" };
-  const _hoisted_24 = ["id"];
-  const _hoisted_25 = { class: "flex flex-wrap gap-2" };
-  const _hoisted_26 = { class: "flex items-start justify-between gap-4 border-t pt-4" };
+  const _hoisted_22$1 = { class: "text-xs text-muted-foreground" };
+  const _hoisted_23$1 = { class: "grid min-w-0 gap-2" };
+  const _hoisted_24$1 = ["id"];
+  const _hoisted_25$1 = { class: "flex flex-wrap gap-2" };
+  const _hoisted_26$1 = { class: "flex items-start justify-between gap-4 border-t pt-4" };
   const _hoisted_27 = { class: "min-w-0 space-y-1.5" };
   const _hoisted_28 = { class: "break-words text-xs text-muted-foreground" };
   const _hoisted_29 = {
@@ -45091,7 +45329,7 @@ Defaulting to \`null\`.`);
           "aria-label": unref(text2)("Телеметрия приложения"),
           "aria-busy": busy.value
         }, [
-          createBaseVNode("div", _hoisted_2$b, [
+          createBaseVNode("div", _hoisted_2$a, [
             createBaseVNode(
               "h3",
               _hoisted_3$9,
@@ -45121,19 +45359,19 @@ Defaulting to \`null\`.`);
           }, [
             createVNode(unref(_sfc_main$b), { class: "h-9 w-full" }),
             createVNode(unref(_sfc_main$b), { class: "h-32 w-full" })
-          ], 8, _hoisted_6$7)) : (openBlock(), createBlock(unref(_sfc_main$D), {
+          ], 8, _hoisted_6$7)) : (openBlock(), createBlock(unref(_sfc_main$F), {
             key: 2,
             "model-value": view2.value,
             class: "min-w-0",
             "onUpdate:modelValue": selectView
           }, {
             default: withCtx(() => [
-              createVNode(unref(_sfc_main$B), {
+              createVNode(unref(_sfc_main$D), {
                 class: "grid w-full min-w-0 grid-cols-3",
                 "aria-label": unref(text2)("Разделы телеметрии")
               }, {
                 default: withCtx(() => [
-                  createVNode(unref(_sfc_main$A), {
+                  createVNode(unref(_sfc_main$C), {
                     value: "local",
                     disabled: busy.value,
                     class: "min-w-0"
@@ -45148,7 +45386,7 @@ Defaulting to \`null\`.`);
                     _: 1
                     /* STABLE */
                   }, 8, ["disabled"]),
-                  createVNode(unref(_sfc_main$A), {
+                  createVNode(unref(_sfc_main$C), {
                     value: "external",
                     disabled: busy.value,
                     class: "min-w-0"
@@ -45163,7 +45401,7 @@ Defaulting to \`null\`.`);
                     _: 1
                     /* STABLE */
                   }, 8, ["disabled"]),
-                  createVNode(unref(_sfc_main$A), {
+                  createVNode(unref(_sfc_main$C), {
                     value: "journal",
                     disabled: busy.value,
                     class: "min-w-0"
@@ -45182,18 +45420,18 @@ Defaulting to \`null\`.`);
                 _: 1
                 /* STABLE */
               }, 8, ["aria-label"]),
-              createVNode(unref(_sfc_main$C), {
+              createVNode(unref(_sfc_main$E), {
                 value: "local",
                 class: "space-y-4"
               }, {
                 default: withCtx(() => [
-                  createVNode(unref(_sfc_main$P), null, {
+                  createVNode(unref(_sfc_main$S), null, {
                     default: withCtx(() => [
-                      createVNode(unref(_sfc_main$L), { class: "p-4" }, {
+                      createVNode(unref(_sfc_main$O), { class: "p-4" }, {
                         default: withCtx(() => [
                           createBaseVNode("div", _hoisted_7$6, [
                             createBaseVNode("div", _hoisted_8$6, [
-                              createVNode(unref(_sfc_main$J), {
+                              createVNode(unref(_sfc_main$M), {
                                 for: `${unref(fieldId)}-local`,
                                 class: "text-base font-semibold"
                               }, {
@@ -45207,7 +45445,7 @@ Defaulting to \`null\`.`);
                                 _: 1
                                 /* STABLE */
                               }, 8, ["for"]),
-                              createVNode(unref(_sfc_main$N), null, {
+                              createVNode(unref(_sfc_main$Q), null, {
                                 default: withCtx(() => [
                                   createTextVNode(
                                     toDisplayString(unref(text2)("По умолчанию выключено. Отключение останавливает сбор и отправку, сохранённый журнал остаётся доступен.")),
@@ -45219,7 +45457,7 @@ Defaulting to \`null\`.`);
                                 /* STABLE */
                               })
                             ]),
-                            createVNode(unref(_sfc_main$I), {
+                            createVNode(unref(_sfc_main$K), {
                               id: `${unref(fieldId)}-local`,
                               "model-value": state.value?.localEnabled ?? false,
                               disabled: busy.value || !state.value,
@@ -45230,7 +45468,7 @@ Defaulting to \`null\`.`);
                         _: 1
                         /* STABLE */
                       }),
-                      createVNode(unref(_sfc_main$O), { class: "p-4 pt-0" }, {
+                      createVNode(unref(_sfc_main$R), { class: "p-4 pt-0" }, {
                         default: withCtx(() => [
                           createBaseVNode("dl", _hoisted_9$6, [
                             createBaseVNode("div", null, [
@@ -45306,11 +45544,11 @@ Defaulting to \`null\`.`);
                     _: 1
                     /* STABLE */
                   }),
-                  draft.value ? (openBlock(), createBlock(unref(_sfc_main$P), { key: 0 }, {
+                  draft.value ? (openBlock(), createBlock(unref(_sfc_main$S), { key: 0 }, {
                     default: withCtx(() => [
-                      createVNode(unref(_sfc_main$L), { class: "p-4" }, {
+                      createVNode(unref(_sfc_main$O), { class: "p-4" }, {
                         default: withCtx(() => [
-                          createVNode(unref(_sfc_main$K), { class: "text-base" }, {
+                          createVNode(unref(_sfc_main$N), { class: "text-base" }, {
                             default: withCtx(() => [
                               createTextVNode(
                                 toDisplayString(unref(text2)("Хранение и ротация")),
@@ -45321,7 +45559,7 @@ Defaulting to \`null\`.`);
                             _: 1
                             /* STABLE */
                           }),
-                          createVNode(unref(_sfc_main$N), null, {
+                          createVNode(unref(_sfc_main$Q), null, {
                             default: withCtx(() => [
                               createTextVNode(
                                 toDisplayString(unref(text2)("Старые записи удаляются одним пакетом по расписанию.")),
@@ -45336,7 +45574,7 @@ Defaulting to \`null\`.`);
                         _: 1
                         /* STABLE */
                       }),
-                      createVNode(unref(_sfc_main$O), { class: "p-4 pt-0" }, {
+                      createVNode(unref(_sfc_main$R), { class: "p-4 pt-0" }, {
                         default: withCtx(() => [
                           createBaseVNode(
                             "form",
@@ -45347,7 +45585,7 @@ Defaulting to \`null\`.`);
                             [
                               createBaseVNode("div", _hoisted_18$3, [
                                 createBaseVNode("div", _hoisted_19$2, [
-                                  createVNode(unref(_sfc_main$J), {
+                                  createVNode(unref(_sfc_main$M), {
                                     for: `${unref(fieldId)}-limit`
                                   }, {
                                     default: withCtx(() => [
@@ -45373,7 +45611,7 @@ Defaulting to \`null\`.`);
                                   }, null, 8, ["id", "model-value", "disabled"])
                                 ]),
                                 createBaseVNode("div", _hoisted_20$2, [
-                                  createVNode(unref(_sfc_main$J), {
+                                  createVNode(unref(_sfc_main$M), {
                                     for: `${unref(fieldId)}-age`
                                   }, {
                                     default: withCtx(() => [
@@ -45399,7 +45637,7 @@ Defaulting to \`null\`.`);
                                   }, null, 8, ["id", "model-value", "disabled"])
                                 ]),
                                 createBaseVNode("div", _hoisted_21$2, [
-                                  createVNode(unref(_sfc_main$J), {
+                                  createVNode(unref(_sfc_main$M), {
                                     for: `${unref(fieldId)}-rotation`
                                   }, {
                                     default: withCtx(() => [
@@ -45427,12 +45665,12 @@ Defaulting to \`null\`.`);
                               ]),
                               createBaseVNode(
                                 "p",
-                                _hoisted_22$2,
+                                _hoisted_22$1,
                                 toDisplayString(unref(text2)("Между ротациями журнал может временно превышать выбранный лимит; при 10 000 записей новые события не принимаются до ротации. Последняя ротация: ")) + toDisplayString(date(state.value?.lastRotationAt)) + ".",
                                 1
                                 /* TEXT */
                               ),
-                              createVNode(unref(_sfc_main$17), {
+                              createVNode(unref(_sfc_main$1b), {
                                 type: "submit",
                                 variant: "outline",
                                 size: "sm",
@@ -45465,16 +45703,16 @@ Defaulting to \`null\`.`);
                 _: 1
                 /* STABLE */
               }),
-              createVNode(unref(_sfc_main$C), {
+              createVNode(unref(_sfc_main$E), {
                 value: "external",
                 class: "space-y-4"
               }, {
                 default: withCtx(() => [
-                  createVNode(unref(_sfc_main$P), null, {
+                  createVNode(unref(_sfc_main$S), null, {
                     default: withCtx(() => [
-                      createVNode(unref(_sfc_main$L), { class: "p-4" }, {
+                      createVNode(unref(_sfc_main$O), { class: "p-4" }, {
                         default: withCtx(() => [
-                          createVNode(unref(_sfc_main$K), { class: "text-base" }, {
+                          createVNode(unref(_sfc_main$N), { class: "text-base" }, {
                             default: withCtx(() => [
                               createTextVNode(
                                 toDisplayString(unref(text2)("Внешняя отправка")),
@@ -45485,7 +45723,7 @@ Defaulting to \`null\`.`);
                             _: 1
                             /* STABLE */
                           }),
-                          createVNode(unref(_sfc_main$N), null, {
+                          createVNode(unref(_sfc_main$Q), null, {
                             default: withCtx(() => [
                               createTextVNode(
                                 toDisplayString(unref(text2)("Отдельное согласие на отправку технических событий. Временная недоступность оставляет очередь на устройстве для повторной отправки в пределах срока хранения. Постоянный отказ требует исправления подключения.")),
@@ -45500,7 +45738,7 @@ Defaulting to \`null\`.`);
                         _: 1
                         /* STABLE */
                       }),
-                      createVNode(unref(_sfc_main$O), { class: "grid min-w-0 gap-4 p-4 pt-0" }, {
+                      createVNode(unref(_sfc_main$R), { class: "grid min-w-0 gap-4 p-4 pt-0" }, {
                         default: withCtx(() => [
                           draft.value ? (openBlock(), createElementBlock(
                             "form",
@@ -45510,8 +45748,8 @@ Defaulting to \`null\`.`);
                               onSubmit: withModifiers(save, ["prevent"])
                             },
                             [
-                              createBaseVNode("div", _hoisted_23$2, [
-                                createVNode(unref(_sfc_main$J), {
+                              createBaseVNode("div", _hoisted_23$1, [
+                                createVNode(unref(_sfc_main$M), {
                                   for: `${unref(fieldId)}-endpoint`
                                 }, {
                                   default: withCtx(() => [..._cache[7] || (_cache[7] = [
@@ -45538,10 +45776,10 @@ Defaulting to \`null\`.`);
                                 createBaseVNode("p", {
                                   id: `${unref(fieldId)}-endpoint-help`,
                                   class: "text-xs text-muted-foreground"
-                                }, toDisplayString(unref(text2)("Адрес без логина, пароля, query и fragment. Сохранение адреса не включает отправку; его изменение отзывает прежнее согласие.")), 9, _hoisted_24)
+                                }, toDisplayString(unref(text2)("Адрес без логина, пароля, query и fragment. Сохранение адреса не включает отправку; его изменение отзывает прежнее согласие.")), 9, _hoisted_24$1)
                               ]),
-                              createBaseVNode("div", _hoisted_25, [
-                                createVNode(unref(_sfc_main$17), {
+                              createBaseVNode("div", _hoisted_25$1, [
+                                createVNode(unref(_sfc_main$1b), {
                                   type: "button",
                                   variant: "outline",
                                   size: "sm",
@@ -45558,7 +45796,7 @@ Defaulting to \`null\`.`);
                                   _: 1
                                   /* STABLE */
                                 }, 8, ["disabled"]),
-                                createVNode(unref(_sfc_main$17), {
+                                createVNode(unref(_sfc_main$1b), {
                                   type: "submit",
                                   size: "sm",
                                   disabled: !canSaveEndpoint.value
@@ -45573,7 +45811,7 @@ Defaulting to \`null\`.`);
                                   _: 1
                                   /* STABLE */
                                 }, 8, ["disabled"]),
-                                configuration.value?.endpoint ? (openBlock(), createBlock(unref(_sfc_main$17), {
+                                configuration.value?.endpoint ? (openBlock(), createBlock(unref(_sfc_main$1b), {
                                   key: 0,
                                   type: "button",
                                   variant: "ghost",
@@ -45596,9 +45834,9 @@ Defaulting to \`null\`.`);
                             32
                             /* NEED_HYDRATION */
                           )) : createCommentVNode("v-if", true),
-                          createBaseVNode("div", _hoisted_26, [
+                          createBaseVNode("div", _hoisted_26$1, [
                             createBaseVNode("div", _hoisted_27, [
-                              createVNode(unref(_sfc_main$J), {
+                              createVNode(unref(_sfc_main$M), {
                                 for: `${unref(fieldId)}-remote`
                               }, {
                                 default: withCtx(() => [
@@ -45619,7 +45857,7 @@ Defaulting to \`null\`.`);
                                 /* TEXT */
                               )
                             ]),
-                            createVNode(unref(_sfc_main$I), {
+                            createVNode(unref(_sfc_main$K), {
                               id: `${unref(fieldId)}-remote`,
                               "model-value": state.value?.remoteEnabled ?? false,
                               disabled: busy.value || !state.value || !state.value.remoteEnabled && (!state.value.localEnabled || !state.value.remoteAvailable || !configuration.value?.endpoint || dirty.value),
@@ -45655,7 +45893,7 @@ Defaulting to \`null\`.`);
                               /* TEXT */
                             )
                           ]),
-                          createVNode(unref(_sfc_main$17), {
+                          createVNode(unref(_sfc_main$1b), {
                             type: "button",
                             variant: "outline",
                             size: "sm",
@@ -45685,14 +45923,14 @@ Defaulting to \`null\`.`);
                 _: 1
                 /* STABLE */
               }),
-              createVNode(unref(_sfc_main$C), {
+              createVNode(unref(_sfc_main$E), {
                 value: "journal",
                 class: "space-y-4"
               }, {
                 default: withCtx(() => [
                   createBaseVNode("div", _hoisted_33, [
                     createBaseVNode("div", _hoisted_34, [
-                      createVNode(unref(_sfc_main$J), {
+                      createVNode(unref(_sfc_main$M), {
                         for: `${unref(fieldId)}-provider`
                       }, {
                         default: withCtx(() => [
@@ -45765,7 +46003,7 @@ Defaulting to \`null\`.`);
                         /* STABLE */
                       }, 8, ["model-value", "disabled"])
                     ]),
-                    createVNode(unref(_sfc_main$17), {
+                    createVNode(unref(_sfc_main$1b), {
                       type: "button",
                       variant: "outline",
                       size: "sm",
@@ -45782,7 +46020,7 @@ Defaulting to \`null\`.`);
                       _: 1
                       /* STABLE */
                     }, 8, ["disabled"]),
-                    createVNode(unref(_sfc_main$17), {
+                    createVNode(unref(_sfc_main$1b), {
                       type: "button",
                       variant: "outline",
                       size: "sm",
@@ -45846,7 +46084,7 @@ Defaulting to \`null\`.`);
                         _: 1
                         /* STABLE */
                       }),
-                      createVNode(unref(_sfc_main$8$1), null, {
+                      createVNode(unref(_sfc_main$8$2), null, {
                         default: withCtx(() => [
                           (openBlock(true), createElementBlock(
                             Fragment,
@@ -45972,7 +46210,7 @@ Defaulting to \`null\`.`);
                     _: 1
                     /* STABLE */
                   }, 8, ["aria-label"])),
-                  more.value ? (openBlock(), createBlock(unref(_sfc_main$17), {
+                  more.value ? (openBlock(), createBlock(unref(_sfc_main$1b), {
                     key: 2,
                     type: "button",
                     variant: "outline",
@@ -46023,7 +46261,7 @@ Defaulting to \`null\`.`);
                             /* TEXT */
                           ),
                           createBaseVNode("div", _hoisted_46, [
-                            createVNode(unref(_sfc_main$17), {
+                            createVNode(unref(_sfc_main$1b), {
                               type: "button",
                               variant: "destructive",
                               size: "sm",
@@ -46040,7 +46278,7 @@ Defaulting to \`null\`.`);
                               _: 1
                               /* STABLE */
                             }, 8, ["disabled"]),
-                            createVNode(unref(_sfc_main$17), {
+                            createVNode(unref(_sfc_main$1b), {
                               type: "button",
                               variant: "outline",
                               size: "sm",
@@ -46065,7 +46303,7 @@ Defaulting to \`null\`.`);
                     ]),
                     _: 1
                     /* STABLE */
-                  })) : (openBlock(), createBlock(unref(_sfc_main$17), {
+                  })) : (openBlock(), createBlock(unref(_sfc_main$1b), {
                     key: 5,
                     type: "button",
                     variant: "ghost",
@@ -46149,16 +46387,6 @@ Defaulting to \`null\`.`);
       heightRatio: value.height / Math.max(1, viewport.height)
     };
   }
-  function resolveApplicationIdentity(runtime, title, application) {
-    if (application) return application;
-    const feature = runtime.features.length === 1 ? runtime.features[0] : void 0;
-    return {
-      id: feature?.id ?? "browser-tools",
-      title: feature?.title ?? title,
-      version: feature?.presentation?.version,
-      installation: feature?.presentation?.installation
-    };
-  }
   const COMMON_SETTINGS_CATEGORIES = [
     "interface",
     "modules",
@@ -46226,29 +46454,35 @@ Defaulting to \`null\`.`);
       }
     ];
   }
-  const _hoisted_1$6 = ["data-shell-category"];
-  const _hoisted_2$4 = { class: "booster-shell-settings-body" };
-  const _hoisted_3$4 = {
+  const _hoisted_1$7 = ["data-shell-category"];
+  const _hoisted_2$5 = { class: "booster-shell-settings-body" };
+  const _hoisted_3$5 = {
     key: 0,
     role: "alert"
   };
-  const _hoisted_4$4 = { class: "min-w-0 space-y-1" };
-  const _hoisted_5$4 = ["id"];
-  const _hoisted_6$4 = { class: "grid min-w-0 gap-3 min-[1024px]:grid-cols-2" };
-  const _hoisted_7$3 = {
+  const _hoisted_4$5 = {
     key: 0,
     role: "status"
   };
-  const _hoisted_8$1 = { class: "booster-setting-copy" };
+  const _hoisted_5$3 = {
+    key: 0,
+    class: "block text-xs text-muted-foreground"
+  };
+  const _hoisted_6$3 = {
+    key: 0,
+    class: "block text-xs text-muted-foreground"
+  };
+  const _hoisted_7$2 = {
+    key: 1,
+    class: "block text-xs text-muted-foreground"
+  };
+  const _hoisted_8$1 = {
+    key: 2,
+    class: "block text-xs text-muted-foreground"
+  };
   const _hoisted_9$1 = { key: 0 };
-  const _hoisted_10$1 = { class: "booster-setting-copy" };
-  const _hoisted_11 = { key: 0 };
-  const _hoisted_12 = { key: 1 };
-  const _hoisted_13 = { key: 2 };
-  const _hoisted_14 = { class: "booster-header-actions" };
-  const _hoisted_15 = { key: 0 };
-  const _hoisted_16 = { class: "booster-component-versions" };
-  const _sfc_main$6 = /* @__PURE__ */ defineComponent({
+  const _hoisted_10 = { class: "booster-component-versions" };
+  const _sfc_main$8 = /* @__PURE__ */ defineComponent({
     __name: "ShellSettings",
     props: {
       runtime: {},
@@ -46319,10 +46553,10 @@ Defaulting to \`null\`.`);
           "data-shell-settings": "",
           "data-shell-category": category.value
         }, [
-          createBaseVNode("div", _hoisted_2$4, [
+          createBaseVNode("div", _hoisted_2$5, [
             error.value ? (openBlock(), createElementBlock(
               "p",
-              _hoisted_3$4,
+              _hoisted_3$5,
               toDisplayString(error.value),
               1
               /* TEXT */
@@ -46338,27 +46572,12 @@ Defaulting to \`null\`.`);
                   1
                   /* TEXT */
                 ),
-                createVNode(unref(_sfc_main$P), { class: "grid min-w-0 gap-3 p-3 min-[621px]:grid-cols-[minmax(0,1fr)_minmax(180px,280px)] min-[621px]:items-center" }, {
-                  default: withCtx(() => [
-                    createBaseVNode("div", _hoisted_4$4, [
-                      createVNode(unref(_sfc_main$J), {
-                        for: `${unref(id)}-language`
-                      }, {
-                        default: withCtx(() => [
-                          createTextVNode(
-                            toDisplayString(text2("Язык приложения", "Application language")),
-                            1
-                            /* TEXT */
-                          )
-                        ]),
-                        _: 1
-                        /* STABLE */
-                      }, 8, ["for"]),
-                      createBaseVNode("p", {
-                        id: `${unref(id)}-language-description`,
-                        class: "text-xs text-muted-foreground"
-                      }, toDisplayString(text2("Один выбор языка для всего приложения.", "One language preference for the entire application.")), 9, _hoisted_5$4)
-                    ]),
+                createVNode(unref(_sfc_main$L), {
+                  id: `${unref(id)}-language`,
+                  title: text2("Язык приложения", "Application language"),
+                  description: text2("Один выбор языка для всего приложения.", "One language preference for the entire application.")
+                }, {
+                  default: withCtx(({ descriptionId }) => [
                     createVNode(unref(_sfc_main$n), {
                       "model-value": preferences.value.language,
                       disabled: busy.value,
@@ -46367,7 +46586,8 @@ Defaulting to \`null\`.`);
                       default: withCtx(() => [
                         createVNode(unref(_sfc_main$e$1), {
                           id: `${unref(id)}-language`,
-                          "aria-describedby": `${unref(id)}-language-description`
+                          class: "w-full",
+                          "aria-describedby": descriptionId
                         }, {
                           default: withCtx(() => [
                             createVNode(unref(_sfc_main$d$1))
@@ -46415,50 +46635,54 @@ Defaulting to \`null\`.`);
                           /* STABLE */
                         })
                       ]),
-                      _: 1
-                      /* STABLE */
-                    }, 8, ["model-value", "disabled"])
+                      _: 2
+                      /* DYNAMIC */
+                    }, 1032, ["model-value", "disabled"])
+                  ]),
+                  _: 1
+                  /* STABLE */
+                }, 8, ["id", "title", "description"]),
+                createVNode(unref(SettingsGrid), null, {
+                  default: withCtx(() => [
+                    createVNode(unref(_sfc_main$J), {
+                      id: `${unref(id)}-launcher`,
+                      title: text2("Показывать каплю", "Show launcher"),
+                      description: text2("Оторвите от края, переместите и прикрепите снова.", "Detach from the edge, move and dock it again."),
+                      "model-value": preferences.value.launcher,
+                      disabled: busy.value,
+                      "onUpdate:modelValue": _cache[0] || (_cache[0] = ($event) => change("launcher", $event))
+                    }, null, 8, ["id", "title", "description", "model-value", "disabled"]),
+                    createVNode(unref(_sfc_main$J), {
+                      id: `${unref(id)}-quick`,
+                      title: text2("Быстрое меню", "Quick menu"),
+                      description: text2("По нажатию капли. Если выключено, сразу открываются настройки.", "Opened by the launcher. When disabled, the launcher opens settings."),
+                      "model-value": preferences.value.quickMenu,
+                      disabled: busy.value,
+                      "onUpdate:modelValue": _cache[1] || (_cache[1] = ($event) => change("quickMenu", $event))
+                    }, null, 8, ["id", "title", "description", "model-value", "disabled"]),
+                    createVNode(unref(_sfc_main$J), {
+                      id: `${unref(id)}-metrics`,
+                      title: text2("Сводка в меню", "Menu summary"),
+                      description: text2("Счётчики текущего контекста, если их предоставляет модуль.", "Current-context counters supplied by the feature."),
+                      "model-value": preferences.value.metrics,
+                      disabled: busy.value,
+                      "onUpdate:modelValue": _cache[2] || (_cache[2] = ($event) => change("metrics", $event))
+                    }, null, 8, ["id", "title", "description", "model-value", "disabled"]),
+                    createVNode(unref(_sfc_main$J), {
+                      id: `${unref(id)}-site`,
+                      title: text2("Browser Tools на сайте", "Browser Tools on the site"),
+                      description: text2("Вход в меню и настройки из шапки сайта.", "Open the menu and settings from the site header."),
+                      "model-value": preferences.value.siteEntry,
+                      disabled: busy.value,
+                      "onUpdate:modelValue": _cache[3] || (_cache[3] = ($event) => change("siteEntry", $event))
+                    }, null, 8, ["id", "title", "description", "model-value", "disabled"])
                   ]),
                   _: 1
                   /* STABLE */
                 }),
-                createBaseVNode("div", _hoisted_6$4, [
-                  createVNode(unref(_sfc_main$H), {
-                    id: `${unref(id)}-launcher`,
-                    title: text2("Показывать каплю", "Show launcher"),
-                    description: text2("Оторвите от края, переместите и прикрепите снова.", "Detach from the edge, move and dock it again."),
-                    "model-value": preferences.value.launcher,
-                    disabled: busy.value,
-                    "onUpdate:modelValue": _cache[0] || (_cache[0] = ($event) => change("launcher", $event))
-                  }, null, 8, ["id", "title", "description", "model-value", "disabled"]),
-                  createVNode(unref(_sfc_main$H), {
-                    id: `${unref(id)}-quick`,
-                    title: text2("Быстрое меню", "Quick menu"),
-                    description: text2("По нажатию капли. Если выключено, сразу открываются настройки.", "Opened by the launcher. When disabled, the launcher opens settings."),
-                    "model-value": preferences.value.quickMenu,
-                    disabled: busy.value,
-                    "onUpdate:modelValue": _cache[1] || (_cache[1] = ($event) => change("quickMenu", $event))
-                  }, null, 8, ["id", "title", "description", "model-value", "disabled"]),
-                  createVNode(unref(_sfc_main$H), {
-                    id: `${unref(id)}-metrics`,
-                    title: text2("Сводка в меню", "Menu summary"),
-                    description: text2("Счётчики текущего контекста, если их предоставляет модуль.", "Current-context counters supplied by the feature."),
-                    "model-value": preferences.value.metrics,
-                    disabled: busy.value,
-                    "onUpdate:modelValue": _cache[2] || (_cache[2] = ($event) => change("metrics", $event))
-                  }, null, 8, ["id", "title", "description", "model-value", "disabled"]),
-                  createVNode(unref(_sfc_main$H), {
-                    id: `${unref(id)}-site`,
-                    title: text2("Browser Tools на сайте", "Browser Tools on the site"),
-                    description: text2("Вход в меню и настройки из шапки сайта.", "Open the menu and settings from the site header."),
-                    "model-value": preferences.value.siteEntry,
-                    disabled: busy.value,
-                    "onUpdate:modelValue": _cache[3] || (_cache[3] = ($event) => change("siteEntry", $event))
-                  }, null, 8, ["id", "title", "description", "model-value", "disabled"])
-                ]),
                 preferences.value.siteEntry && !__props.siteEntryAvailable ? (openBlock(), createElementBlock(
                   "p",
-                  _hoisted_7$3,
+                  _hoisted_4$5,
                   toDisplayString(text2("Шапка сайта пока недоступна. Меню и настройки можно открыть через расширение браузера или Tampermonkey.", "The site header is unavailable. Open the menu and settings through the extension or Tampermonkey.")),
                   1
                   /* TEXT */
@@ -46499,147 +46723,125 @@ Defaulting to \`null\`.`);
                       key: feature.id,
                       class: "booster-capability-group"
                     }, [
-                      createVNode(
-                        unref(_sfc_main$P),
-                        { class: "flex flex-row items-center justify-between gap-4 p-3" },
+                      createVNode(unref(_sfc_main$J), {
+                        id: `${unref(id)}-feature-${feature.id}`,
+                        title: unref(locale) === "en" ? feature.titleEn ?? feature.title : feature.title,
+                        description: unref(locale) === "en" ? feature.descriptionEn ?? feature.description : feature.description,
+                        "model-value": feature.state === "active",
+                        disabled: busy.value || !__props.runtime.isRunning() || feature.state === "unsupported",
+                        "onUpdate:modelValue": ($event) => toggleFeature(feature.id, $event)
+                      }, createSlots({
+                        default: withCtx(() => [
+                          feature.state === "unsupported" ? (openBlock(), createElementBlock(
+                            "small",
+                            _hoisted_5$3,
+                            toDisplayString(text2("Недоступно на этой странице", "Unavailable on this page")),
+                            1
+                            /* TEXT */
+                          )) : createCommentVNode("v-if", true)
+                        ]),
+                        _: 2
+                        /* DYNAMIC */
+                      }, [
+                        feature.state !== "unsupported" ? {
+                          name: "actions",
+                          fn: withCtx(() => [
+                            createVNode(unref(_sfc_main$1b), {
+                              type: "button",
+                              variant: "outline",
+                              size: "sm",
+                              onClick: ($event) => emit2("providerSettings", feature.id)
+                            }, {
+                              default: withCtx(() => [
+                                createTextVNode(
+                                  toDisplayString(text2("Настройки", "Settings")),
+                                  1
+                                  /* TEXT */
+                                )
+                              ]),
+                              _: 1
+                              /* STABLE */
+                            }, 8, ["onClick"])
+                          ]),
+                          key: "0"
+                        } : void 0
+                      ]), 1032, ["id", "title", "description", "model-value", "disabled", "onUpdate:modelValue"]),
+                      capabilities.value.some((item) => item.featureId === feature.id) ? (openBlock(), createBlock(
+                        unref(SettingsGrid),
+                        { key: 0 },
                         {
                           default: withCtx(() => [
-                            createBaseVNode("span", _hoisted_8$1, [
-                              createBaseVNode(
-                                "b",
-                                null,
-                                toDisplayString(unref(locale) === "en" ? feature.titleEn ?? feature.title : feature.title),
-                                1
-                                /* TEXT */
-                              ),
-                              createBaseVNode(
-                                "span",
-                                null,
-                                toDisplayString(unref(locale) === "en" ? feature.descriptionEn ?? feature.description : feature.description),
-                                1
-                                /* TEXT */
-                              ),
-                              feature.state === "unsupported" ? (openBlock(), createElementBlock(
-                                "small",
-                                _hoisted_9$1,
-                                toDisplayString(text2("Недоступно на этой странице", "Unavailable on this page")),
-                                1
-                                /* TEXT */
-                              )) : createCommentVNode("v-if", true)
-                            ]),
-                            createVNode(unref(_sfc_main$I), {
-                              "model-value": feature.state === "active",
-                              disabled: busy.value || !__props.runtime.isRunning() || feature.state === "unsupported",
-                              "aria-label": `${text2("Включить", "Enable")} ${unref(locale) === "en" ? feature.titleEn ?? feature.title : feature.title}`,
-                              "onUpdate:modelValue": ($event) => toggleFeature(feature.id, $event)
-                            }, null, 8, ["model-value", "disabled", "aria-label", "onUpdate:modelValue"])
+                            (openBlock(true), createElementBlock(
+                              Fragment,
+                              null,
+                              renderList(capabilities.value.filter((item) => item.featureId === feature.id), (module) => {
+                                return openBlock(), createBlock(unref(_sfc_main$J), {
+                                  key: module.id,
+                                  id: `${unref(id)}-feature-${feature.id}-${module.id}`,
+                                  title: unref(locale) === "en" ? module.titleEn ?? module.title : module.title,
+                                  description: unref(locale) === "en" ? module.descriptionEn ?? module.description : module.description,
+                                  "model-value": module.enabled,
+                                  disabled: busy.value,
+                                  "onUpdate:modelValue": ($event) => toggleCapability(feature.id, module.id, $event)
+                                }, createSlots({
+                                  default: withCtx(() => [
+                                    module.state === "unsupported" ? (openBlock(), createElementBlock(
+                                      "small",
+                                      _hoisted_6$3,
+                                      toDisplayString(text2("В этом контексте недоступно", "Unavailable in this context")),
+                                      1
+                                      /* TEXT */
+                                    )) : module.state === "failed" ? (openBlock(), createElementBlock(
+                                      "small",
+                                      _hoisted_7$2,
+                                      toDisplayString(text2("Не удалось запустить. Можно выключить и включить повторно.", "Could not start. Disable and enable to retry.")),
+                                      1
+                                      /* TEXT */
+                                    )) : module.enabled && feature.state !== "active" ? (openBlock(), createElementBlock(
+                                      "small",
+                                      _hoisted_8$1,
+                                      toDisplayString(text2("Запустится после включения продукта", "Starts when the product is enabled")),
+                                      1
+                                      /* TEXT */
+                                    )) : createCommentVNode("v-if", true)
+                                  ]),
+                                  _: 2
+                                  /* DYNAMIC */
+                                }, [
+                                  module.settingsCategory ? {
+                                    name: "actions",
+                                    fn: withCtx(() => [
+                                      createVNode(unref(_sfc_main$1b), {
+                                        type: "button",
+                                        variant: "outline",
+                                        size: "sm",
+                                        onClick: ($event) => emit2("providerSettings", feature.id, module.settingsCategory)
+                                      }, {
+                                        default: withCtx(() => [
+                                          createTextVNode(
+                                            toDisplayString(text2("Настроить", "Configure")),
+                                            1
+                                            /* TEXT */
+                                          )
+                                        ]),
+                                        _: 1
+                                        /* STABLE */
+                                      }, 8, ["onClick"])
+                                    ]),
+                                    key: "0"
+                                  } : void 0
+                                ]), 1032, ["id", "title", "description", "model-value", "disabled", "onUpdate:modelValue"]);
+                              }),
+                              128
+                              /* KEYED_FRAGMENT */
+                            ))
                           ]),
                           _: 2
                           /* DYNAMIC */
                         },
                         1024
                         /* DYNAMIC_SLOTS */
-                      ),
-                      (openBlock(true), createElementBlock(
-                        Fragment,
-                        null,
-                        renderList(capabilities.value.filter((item) => item.featureId === feature.id), (module) => {
-                          return openBlock(), createBlock(
-                            unref(_sfc_main$P),
-                            {
-                              key: module.id,
-                              class: "booster-capability-row flex flex-row items-center justify-between gap-4 p-3"
-                            },
-                            {
-                              default: withCtx(() => [
-                                createBaseVNode("span", _hoisted_10$1, [
-                                  createBaseVNode(
-                                    "b",
-                                    null,
-                                    toDisplayString(unref(locale) === "en" ? module.titleEn ?? module.title : module.title),
-                                    1
-                                    /* TEXT */
-                                  ),
-                                  createBaseVNode(
-                                    "span",
-                                    null,
-                                    toDisplayString(unref(locale) === "en" ? module.descriptionEn ?? module.description : module.description),
-                                    1
-                                    /* TEXT */
-                                  ),
-                                  module.state === "unsupported" ? (openBlock(), createElementBlock(
-                                    "small",
-                                    _hoisted_11,
-                                    toDisplayString(text2("В этом контексте недоступно", "Unavailable in this context")),
-                                    1
-                                    /* TEXT */
-                                  )) : module.state === "failed" ? (openBlock(), createElementBlock(
-                                    "small",
-                                    _hoisted_12,
-                                    toDisplayString(text2("Не удалось запустить. Можно выключить и включить повторно.", "Could not start. Disable and enable to retry.")),
-                                    1
-                                    /* TEXT */
-                                  )) : module.enabled && feature.state !== "active" ? (openBlock(), createElementBlock(
-                                    "small",
-                                    _hoisted_13,
-                                    toDisplayString(text2("Запустится после включения продукта", "Starts when the product is enabled")),
-                                    1
-                                    /* TEXT */
-                                  )) : createCommentVNode("v-if", true)
-                                ]),
-                                createBaseVNode("div", _hoisted_14, [
-                                  module.settingsCategory ? (openBlock(), createBlock(unref(_sfc_main$17), {
-                                    key: 0,
-                                    type: "button",
-                                    variant: "outline",
-                                    size: "sm",
-                                    onClick: ($event) => emit2("providerSettings", feature.id, module.settingsCategory)
-                                  }, {
-                                    default: withCtx(() => [
-                                      createTextVNode(
-                                        toDisplayString(text2("Настроить", "Configure")),
-                                        1
-                                        /* TEXT */
-                                      )
-                                    ]),
-                                    _: 1
-                                    /* STABLE */
-                                  }, 8, ["onClick"])) : createCommentVNode("v-if", true),
-                                  createVNode(unref(_sfc_main$I), {
-                                    "model-value": module.enabled,
-                                    disabled: busy.value,
-                                    "aria-label": `${text2("Включить", "Enable")} ${unref(locale) === "en" ? module.titleEn ?? module.title : module.title}`,
-                                    "onUpdate:modelValue": ($event) => toggleCapability(feature.id, module.id, $event)
-                                  }, null, 8, ["model-value", "disabled", "aria-label", "onUpdate:modelValue"])
-                                ])
-                              ]),
-                              _: 2
-                              /* DYNAMIC */
-                            },
-                            1024
-                            /* DYNAMIC_SLOTS */
-                          );
-                        }),
-                        128
-                        /* KEYED_FRAGMENT */
-                      )),
-                      feature.state !== "unsupported" ? (openBlock(), createBlock(unref(_sfc_main$17), {
-                        key: 0,
-                        type: "button",
-                        variant: "outline",
-                        size: "sm",
-                        onClick: ($event) => emit2("providerSettings", feature.id)
-                      }, {
-                        default: withCtx(() => [
-                          createTextVNode(
-                            toDisplayString(text2("Настройки", "Settings")) + " " + toDisplayString(unref(locale) === "en" ? feature.titleEn ?? feature.title : feature.title),
-                            1
-                            /* TEXT */
-                          )
-                        ]),
-                        _: 2
-                        /* DYNAMIC */
-                      }, 1032, ["onClick"])) : createCommentVNode("v-if", true)
+                      )) : createCommentVNode("v-if", true)
                     ]);
                   }),
                   128
@@ -46661,12 +46863,12 @@ Defaulting to \`null\`.`);
                 ),
                 __props.application.installation ? (openBlock(), createElementBlock(
                   "p",
-                  _hoisted_15,
+                  _hoisted_9$1,
                   toDisplayString(text2("Способ установки:", "Installation method:")) + " " + toDisplayString(__props.application.installation),
                   1
                   /* TEXT */
                 )) : createCommentVNode("v-if", true),
-                createBaseVNode("dl", _hoisted_16, [
+                createBaseVNode("dl", _hoisted_10, [
                   (openBlock(true), createElementBlock(
                     Fragment,
                     null,
@@ -46705,7 +46907,7 @@ Defaulting to \`null\`.`);
               /* STABLE_FRAGMENT */
             )) : createCommentVNode("v-if", true)
           ])
-        ], 8, _hoisted_1$6);
+        ], 8, _hoisted_1$7);
       };
     }
   });
@@ -46714,12 +46916,15 @@ Defaulting to \`null\`.`);
     "Откройте поддерживаемый сайт. Если расширение ещё не загрузилось, обновите вкладку.": "Open a supported site. Reload the tab if the extension has not loaded yet.",
     "Открыть настройки": "Open settings",
     "Показать меню": "Show menu",
+    Включить: "Enable",
+    Отключить: "Disable",
     "Включить функции расширения": "Enable extension features",
     "Отключить функции расширения": "Disable extension features",
     Закрыть: "Close",
     "Модульные инструменты браузера": "Modular browser tools",
-    "Не удалось изменить состояние установки": "Could not change the installation state",
+    "Не удалось переключить функции": "Could not toggle features",
     "Не удалось открыть настройки продукта": "Could not open product settings",
+    "Не удалось открыть действие": "Could not open the action",
     активен: "active",
     "Состояние подключения и операций": "Connection and operation status",
     "Настройки Browser Tools": "Browser Tools settings",
@@ -46731,29 +46936,34 @@ Defaulting to \`null\`.`);
     "Нет соединения": "Offline",
     Подключение: "Connecting"
   };
-  const _hoisted_1$5 = ["lang", "data-settings-category"];
-  const _hoisted_2$3 = {
+  function pagePowerLabel({ enabled, feature }, locale) {
+    const key = feature ? enabled ? "Отключить" : "Включить" : enabled ? "Отключить функции расширения" : "Включить функции расширения";
+    const label = locale === "en" ? SHELL_UI_MESSAGES[key] ?? key : key;
+    if (!feature) return label;
+    return `${label} ${locale === "en" ? feature.titleEn ?? feature.title : feature.title}`;
+  }
+  const _hoisted_1$6 = ["lang", "data-settings-category"];
+  const _hoisted_2$4 = {
     key: 0,
     class: "booster-control-header"
   };
-  const _hoisted_3$3 = {
+  const _hoisted_3$4 = {
     key: 0,
     class: "booster-header-copy"
   };
-  const _hoisted_4$3 = { class: "booster-control-identity" };
-  const _hoisted_5$3 = {
+  const _hoisted_4$4 = { class: "booster-control-identity" };
+  const _hoisted_5$2 = {
     key: 0,
     class: "booster-version"
   };
-  const _hoisted_6$3 = { key: 0 };
-  const _hoisted_7$2 = { class: "booster-header-actions" };
+  const _hoisted_6$2 = { key: 0 };
+  const _hoisted_7$1 = { class: "booster-header-actions" };
   const _hoisted_8 = { class: "booster-settings-layout booster-settings-layout-catalog" };
-  const _hoisted_9 = { class: "booster-settings-content" };
-  const _hoisted_10 = {
+  const _hoisted_9 = {
     key: 0,
     role: "alert"
   };
-  const _sfc_main$5 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$7 = /* @__PURE__ */ defineComponent({
     __name: "ControlCenterPanel",
     props: {
       runtime: {},
@@ -46836,20 +47046,21 @@ Defaulting to \`null\`.`);
         void revision.value;
         return props2.runtime.list();
       });
-      const installationActive = computed(() => {
+      const pagePower = computed(() => {
         void revision.value;
-        return props2.runtime.isRunning();
+        return props2.runtime.pagePower();
       });
+      const powerLabel = computed(() => pagePowerLabel(pagePower.value, locale.value));
       const changing = /* @__PURE__ */ ref(false);
       const changeError = /* @__PURE__ */ ref("");
-      async function toggleInstallation() {
-        if (changing.value) return;
+      async function setPagePower(enabled) {
+        if (changing.value || !pagePower.value.available) return;
         changing.value = true;
         changeError.value = "";
         try {
-          await props2.runtime.setRunning(!installationActive.value);
+          await props2.runtime.setPagePower(enabled);
         } catch {
-          changeError.value = "Не удалось изменить состояние установки";
+          changeError.value = "Не удалось переключить функции";
         } finally {
           changing.value = false;
         }
@@ -46867,12 +47078,7 @@ Defaulting to \`null\`.`);
         const candidate = section.value === "modules" ? "modules" : section.value === "analytics" ? "telemetry" : props2.settingsCategory;
         return commonSettingsCategories(props2.runtime, props2.application).some((id) => id === candidate) ? candidate ?? "interface" : "interface";
       });
-      const catalogGroups = computed(() => {
-        void revision.value;
-        return settingsCatalogGroups(props2.runtime, props2.application);
-      });
       const selectedProviderCategory = /* @__PURE__ */ ref(null);
-      const catalogActiveGroup = computed(() => currentView.value ? section.value : "application");
       const catalogSelected = computed(() => {
         void revision.value;
         if (!currentView.value) return commonCategory.value;
@@ -46883,6 +47089,50 @@ Defaulting to \`null\`.`);
         const selected = selectedProviderCategory.value ?? props2.settingsCategory;
         return selected && providerSettingsCategory(props2.runtime, selected)?.feature.id === section.value ? selected : "";
       });
+      const workspaceTabs = computed(() => {
+        void revision.value;
+        return matchingFeatures.value.flatMap(
+          (feature) => (feature.quickActions ?? []).flatMap((action) => {
+            const tab = action.workspaceTab;
+            if (!props2.views[feature.id] || !tab || action.visible?.() === false) return [];
+            const available2 = action.moduleId ? props2.runtime.moduleList().some(
+              (item) => item.featureId === feature.id && item.id === action.moduleId && item.state === "active"
+            ) : activeFeatures.value.some((item) => item.id === feature.id);
+            return [
+              {
+                featureId: feature.id,
+                action,
+                tab,
+                group: {
+                  id: `workspace:${feature.id}:${action.id}`,
+                  title: locale.value === "en" ? tab.titleEn ?? tab.title : tab.title,
+                  entries: [],
+                  workspace: true,
+                  disabled: !available2 && !action.availableWhenDisabled || action.enabled?.() === false
+                }
+              }
+            ];
+          })
+        );
+      });
+      const catalogGroups = computed(() => [
+        ...workspaceTabs.value.map(({ group }) => group),
+        ...settingsCatalogGroups(props2.runtime, props2.application)
+      ]);
+      const catalogActiveGroup = computed(() => {
+        if (!currentView.value) return "application";
+        return workspaceTabs.value.find((entry) => entry.featureId === section.value && entry.tab.isActive())?.group.id ?? section.value;
+      });
+      async function openWorkspace(entry) {
+        if (entry.group.disabled) return;
+        const generation = ++navigationRevision;
+        changeError.value = "";
+        try {
+          await entry.action.run();
+        } catch {
+          if (generation === navigationRevision) changeError.value = "Не удалось открыть действие";
+        }
+      }
       watch(
         catalogSelected,
         (id) => {
@@ -46897,6 +47147,11 @@ Defaulting to \`null\`.`);
         emit2("select", id);
       }
       function selectCategory(id) {
+        const workspace = workspaceTabs.value.find((entry) => entry.group.id === id);
+        if (workspace) {
+          void openWorkspace(workspace);
+          return;
+        }
         if (id.startsWith("provider:")) {
           const provider = providerSettingsCategory(props2.runtime, id);
           if (provider) void openProviderSettings(provider.feature.id, provider.categoryId);
@@ -46949,9 +47204,9 @@ Defaulting to \`null\`.`);
           lang: unref(locale),
           "data-settings-category": catalogSelected.value
         }, [
-          !__props.floating ? (openBlock(), createElementBlock("header", _hoisted_2$3, [
-            !__props.floating ? (openBlock(), createElementBlock("div", _hoisted_3$3, [
-              createBaseVNode("div", _hoisted_4$3, [
+          !__props.floating ? (openBlock(), createElementBlock("header", _hoisted_2$4, [
+            !__props.floating ? (openBlock(), createElementBlock("div", _hoisted_3$4, [
+              createBaseVNode("div", _hoisted_4$4, [
                 createBaseVNode(
                   "strong",
                   null,
@@ -46961,7 +47216,7 @@ Defaulting to \`null\`.`);
                 ),
                 __props.application.version ? (openBlock(), createElementBlock(
                   "span",
-                  _hoisted_5$3,
+                  _hoisted_5$2,
                   toDisplayString(__props.application.version),
                   1
                   /* TEXT */
@@ -46983,19 +47238,25 @@ Defaulting to \`null\`.`);
               ]),
               !standalone.value ? (openBlock(), createElementBlock(
                 "p",
-                _hoisted_6$3,
+                _hoisted_6$2,
                 toDisplayString(unref(text2)("Модульные инструменты браузера")),
                 1
                 /* TEXT */
               )) : createCommentVNode("v-if", true)
             ])) : createCommentVNode("v-if", true),
-            createBaseVNode("div", _hoisted_7$2, [
-              createVNode(unref(_sfc_main$I), {
-                "model-value": installationActive.value,
-                disabled: changing.value,
-                "aria-label": installationActive.value ? unref(text2)("Отключить функции расширения") : unref(text2)("Включить функции расширения"),
-                "onUpdate:modelValue": toggleInstallation
-              }, null, 8, ["model-value", "disabled", "aria-label"]),
+            createBaseVNode("div", _hoisted_7$1, [
+              createVNode(unref(_sfc_main$13), { label: powerLabel.value }, {
+                default: withCtx(() => [
+                  createVNode(unref(_sfc_main$K), {
+                    "model-value": pagePower.value.enabled,
+                    disabled: changing.value || !pagePower.value.available,
+                    "aria-label": powerLabel.value,
+                    "onUpdate:modelValue": setPagePower
+                  }, null, 8, ["model-value", "disabled", "aria-label"])
+                ]),
+                _: 1
+                /* STABLE */
+              }, 8, ["label"]),
               !standalone.value ? (openBlock(), createBlock(unref(_sfc_main$u), {
                 key: 0,
                 variant: "secondary"
@@ -47010,7 +47271,7 @@ Defaulting to \`null\`.`);
                 _: 1
                 /* STABLE */
               })) : createCommentVNode("v-if", true),
-              !__props.floating ? (openBlock(), createBlock(unref(_sfc_main$17), {
+              !__props.floating ? (openBlock(), createBlock(unref(_sfc_main$1b), {
                 key: 1,
                 variant: "ghost",
                 size: "icon",
@@ -47026,7 +47287,7 @@ Defaulting to \`null\`.`);
               }, 8, ["title"])) : createCommentVNode("v-if", true)
             ])
           ])) : createCommentVNode("v-if", true),
-          createVNode(unref(_sfc_main$y), {
+          createVNode(unref(_sfc_main$A), {
             compact: "",
             class: "border-b px-2 py-1.5",
             groups: catalogGroups.value,
@@ -47035,32 +47296,146 @@ Defaulting to \`null\`.`);
             onSelect: selectCategory
           }, null, 8, ["groups", "selected", "active-group"]),
           createBaseVNode("div", _hoisted_8, [
-            createBaseVNode("main", _hoisted_9, [
-              changeError.value ? (openBlock(), createElementBlock(
-                "p",
-                _hoisted_10,
-                toDisplayString(unref(text2)(changeError.value)),
-                1
-                /* TEXT */
-              )) : createCommentVNode("v-if", true),
-              currentView.value ? (openBlock(), createBlock(resolveDynamicComponent(currentView.value), {
-                key: currentViewKey.value,
-                installation: singleFeature.value?.presentation?.installation,
-                version: singleFeature.value?.presentation?.version,
-                "show-catalog": false,
-                "show-identity": false
-              }, null, 8, ["installation", "version"])) : (openBlock(), createBlock(_sfc_main$6, {
-                key: 2,
-                runtime: __props.runtime,
-                application: __props.application,
-                "selected-category": commonCategory.value,
-                "site-entry-available": __props.siteEntryAvailable ?? false,
-                onCategory: selectCategory,
-                onProviderSettings: openProviderSettings
-              }, null, 8, ["runtime", "application", "selected-category", "site-entry-available"]))
-            ])
+            createVNode(unref(_sfc_main$y), null, {
+              default: withCtx(() => [
+                changeError.value ? (openBlock(), createElementBlock(
+                  "p",
+                  _hoisted_9,
+                  toDisplayString(unref(text2)(changeError.value)),
+                  1
+                  /* TEXT */
+                )) : createCommentVNode("v-if", true),
+                currentView.value ? (openBlock(), createBlock(resolveDynamicComponent(currentView.value), {
+                  key: currentViewKey.value,
+                  installation: singleFeature.value?.presentation?.installation,
+                  version: singleFeature.value?.presentation?.version,
+                  "show-catalog": false,
+                  "show-identity": false
+                }, null, 8, ["installation", "version"])) : (openBlock(), createBlock(_sfc_main$8, {
+                  key: 2,
+                  runtime: __props.runtime,
+                  application: __props.application,
+                  "selected-category": commonCategory.value,
+                  "site-entry-available": __props.siteEntryAvailable ?? false,
+                  onCategory: selectCategory,
+                  onProviderSettings: openProviderSettings
+                }, null, 8, ["runtime", "application", "selected-category", "site-entry-available"]))
+              ]),
+              _: 1
+              /* STABLE */
+            })
           ])
-        ], 10, _hoisted_1$5);
+        ], 10, _hoisted_1$6);
+      };
+    }
+  });
+  const _hoisted_1$5 = ["aria-label"];
+  const _hoisted_2$3 = { class: "booster-floating-identity flex min-w-0 flex-1 items-baseline gap-2 text-xs font-semibold" };
+  const _hoisted_3$3 = { class: "truncate" };
+  const _hoisted_4$3 = {
+    key: 0,
+    class: "booster-version shrink-0"
+  };
+  const _sfc_main$6 = /* @__PURE__ */ defineComponent({
+    __name: "FloatingWorkspaceChrome",
+    props: {
+      title: {},
+      version: {},
+      enabled: { type: Boolean },
+      powerDisabled: { type: Boolean },
+      powerLabel: {},
+      canMinimize: { type: Boolean }
+    },
+    emits: ["begin", "power", "minimize", "close"],
+    setup(__props, { emit: __emit }) {
+      const emit2 = __emit;
+      const locale = useApplicationLocale();
+      const text2 = (ru, en) => locale.value === "ru" ? ru : en;
+      function beginMove(event) {
+        if (event.target instanceof Element && event.target.closest("button")) return;
+        emit2("begin", event, "move");
+      }
+      return (_ctx, _cache) => {
+        return openBlock(), createElementBlock("div", {
+          class: "booster-floating-chrome flex shrink-0 cursor-move touch-none select-none items-center gap-2 border-b bg-muted py-1 ps-3 pe-2",
+          "aria-label": text2("Переместить рабочее окно", "Move workspace"),
+          onPointerdown: beginMove
+        }, [
+          renderSlot(_ctx.$slots, "default"),
+          createBaseVNode("span", _hoisted_2$3, [
+            createBaseVNode(
+              "span",
+              _hoisted_3$3,
+              toDisplayString(__props.title),
+              1
+              /* TEXT */
+            ),
+            __props.version ? (openBlock(), createElementBlock(
+              "small",
+              _hoisted_4$3,
+              toDisplayString(__props.version),
+              1
+              /* TEXT */
+            )) : createCommentVNode("v-if", true)
+          ]),
+          createVNode(unref(_sfc_main$13), { label: __props.powerLabel }, {
+            default: withCtx(() => [
+              createVNode(unref(_sfc_main$K), {
+                "model-value": __props.enabled,
+                disabled: __props.powerDisabled,
+                "aria-label": __props.powerLabel,
+                "onUpdate:modelValue": _cache[0] || (_cache[0] = ($event) => emit2("power", $event))
+              }, null, 8, ["model-value", "disabled", "aria-label"])
+            ]),
+            _: 1
+            /* STABLE */
+          }, 8, ["label"]),
+          __props.canMinimize ? (openBlock(), createBlock(unref(_sfc_main$13), {
+            key: 0,
+            label: text2("Свернуть окно", "Minimize window")
+          }, {
+            default: withCtx(() => [
+              createVNode(unref(_sfc_main$1b), {
+                type: "button",
+                variant: "ghost",
+                size: "icon",
+                class: "size-7.5 shrink-0",
+                "aria-label": text2("Свернуть окно", "Minimize window"),
+                onClick: _cache[1] || (_cache[1] = ($event) => emit2("minimize"))
+              }, {
+                default: withCtx(() => [
+                  createVNode(unref(Minus), { class: "size-4" })
+                ]),
+                _: 1
+                /* STABLE */
+              }, 8, ["aria-label"])
+            ]),
+            _: 1
+            /* STABLE */
+          }, 8, ["label"])) : createCommentVNode("v-if", true),
+          createVNode(unref(_sfc_main$13), {
+            label: text2("Закрыть окно", "Close window")
+          }, {
+            default: withCtx(() => [
+              createVNode(unref(_sfc_main$1b), {
+                type: "button",
+                variant: "ghost",
+                size: "icon",
+                class: "size-7.5 shrink-0",
+                "aria-label": text2("Закрыть окно", "Close window"),
+                onClick: _cache[2] || (_cache[2] = ($event) => emit2("close"))
+              }, {
+                default: withCtx(() => [
+                  createVNode(unref(X), { class: "size-4" })
+                ]),
+                _: 1
+                /* STABLE */
+              }, 8, ["aria-label"])
+            ]),
+            _: 1
+            /* STABLE */
+          }, 8, ["label"])
+        ], 40, _hoisted_1$5);
       };
     }
   });
@@ -47094,9 +47469,9 @@ Defaulting to \`null\`.`);
   const _hoisted_2$2 = ["data-status"];
   const _hoisted_3$2 = ["aria-label"];
   const _hoisted_4$2 = ["title", "aria-label"];
-  const _hoisted_5$2 = ["data-status"];
-  const _hoisted_6$2 = { class: "booster-indicator-copy" };
-  const _sfc_main$4 = /* @__PURE__ */ defineComponent({
+  const _hoisted_5$1 = ["data-status"];
+  const _hoisted_6$1 = { class: "booster-indicator-copy" };
+  const _sfc_main$5 = /* @__PURE__ */ defineComponent({
     __name: "LauncherIndicators",
     props: {
       indicators: {},
@@ -47139,8 +47514,8 @@ Defaulting to \`null\`.`);
                   class: "booster-signal-dot",
                   "data-status": indicator.status,
                   "aria-hidden": "true"
-                }, null, 8, _hoisted_5$2),
-                createBaseVNode("span", _hoisted_6$2, [
+                }, null, 8, _hoisted_5$1),
+                createBaseVNode("span", _hoisted_6$1, [
                   createBaseVNode(
                     "strong",
                     null,
@@ -47201,13 +47576,13 @@ Defaulting to \`null\`.`);
     key: 0,
     class: "booster-version"
   };
-  const _hoisted_5$1 = {
+  const _hoisted_5 = {
     key: 1,
     class: "booster-quick-context"
   };
-  const _hoisted_6$1 = ["aria-label"];
-  const _hoisted_7$1 = { class: "booster-quick-actions" };
-  const _sfc_main$3 = /* @__PURE__ */ defineComponent({
+  const _hoisted_6 = ["aria-label"];
+  const _hoisted_7 = { class: "booster-quick-actions" };
+  const _sfc_main$4 = /* @__PURE__ */ defineComponent({
     __name: "QuickMenu",
     props: {
       title: {},
@@ -47215,6 +47590,8 @@ Defaulting to \`null\`.`);
       contextTitle: {},
       active: { type: Boolean },
       enabled: { type: Boolean },
+      powerLabel: {},
+      powerAvailable: { type: Boolean },
       busy: { type: Boolean },
       actions: {},
       metrics: {},
@@ -47253,21 +47630,28 @@ Defaulting to \`null\`.`);
               )) : createCommentVNode("v-if", true),
               __props.contextTitle && __props.contextTitle !== __props.title ? (openBlock(), createElementBlock(
                 "span",
-                _hoisted_5$1,
+                _hoisted_5,
                 toDisplayString(__props.contextTitle),
                 1
                 /* TEXT */
               )) : createCommentVNode("v-if", true)
             ]),
-            createVNode(unref(_sfc_main$I), {
-              "model-value": __props.enabled,
-              "aria-label": `${__props.enabled ? text2("Выключить", "Disable") : text2("Включить", "Enable")} ${__props.title}`,
-              title: __props.active ? text2("Работает", "Running") : __props.enabled ? text2("Включено, модуль недоступен на этой странице", "Enabled; unavailable on this page") : text2("Выключено", "Disabled"),
-              disabled: __props.busy,
-              "onUpdate:modelValue": _cache[0] || (_cache[0] = ($event) => emit2("toggle"))
-            }, null, 8, ["model-value", "aria-label", "title", "disabled"])
+            createVNode(unref(_sfc_main$13), {
+              label: __props.powerLabel ?? (__props.active ? text2("Работает", "Running") : __props.enabled ? text2("Включено, модуль недоступен на этой странице", "Enabled; unavailable on this page") : text2("Выключено", "Disabled"))
+            }, {
+              default: withCtx(() => [
+                createVNode(unref(_sfc_main$K), {
+                  "model-value": __props.enabled,
+                  "aria-label": __props.powerLabel ?? `${__props.enabled ? text2("Выключить", "Disable") : text2("Включить", "Enable")} ${__props.title}`,
+                  disabled: __props.busy || !__props.powerAvailable,
+                  "onUpdate:modelValue": _cache[0] || (_cache[0] = ($event) => emit2("toggle", $event))
+                }, null, 8, ["model-value", "aria-label", "disabled"])
+              ]),
+              _: 1
+              /* STABLE */
+            }, 8, ["label"])
           ]),
-          __props.indicators?.length ? (openBlock(), createBlock(_sfc_main$4, {
+          __props.indicators?.length ? (openBlock(), createBlock(_sfc_main$5, {
             key: 0,
             indicators: __props.indicators
           }, null, 8, ["indicators"])) : createCommentVNode("v-if", true),
@@ -47302,13 +47686,13 @@ Defaulting to \`null\`.`);
               128
               /* KEYED_FRAGMENT */
             ))
-          ], 8, _hoisted_6$1)) : createCommentVNode("v-if", true),
-          createBaseVNode("div", _hoisted_7$1, [
+          ], 8, _hoisted_6)) : createCommentVNode("v-if", true),
+          createBaseVNode("div", _hoisted_7, [
             (openBlock(true), createElementBlock(
               Fragment,
               null,
               renderList(__props.actions, (action) => {
-                return openBlock(), createBlock(unref(_sfc_main$17), {
+                return openBlock(), createBlock(unref(_sfc_main$1b), {
                   key: action.id,
                   type: "button",
                   variant: "ghost",
@@ -47347,7 +47731,7 @@ Defaulting to \`null\`.`);
     "aria-label": "Browser Tools",
     class: "ml-auto flex items-center gap-1 p-1"
   };
-  const _sfc_main$2 = /* @__PURE__ */ defineComponent({
+  const _sfc_main$3 = /* @__PURE__ */ defineComponent({
     __name: "SiteToolsEntry",
     emits: ["settings", "menu", "available"],
     setup(__props, { emit: __emit }) {
@@ -47393,7 +47777,7 @@ Defaulting to \`null\`.`);
           to: host.value
         }, [
           createBaseVNode("nav", _hoisted_1$2, [
-            createVNode(unref(_sfc_main$17), {
+            createVNode(unref(_sfc_main$1b), {
               type: "button",
               variant: "outline",
               size: "sm",
@@ -47409,7 +47793,7 @@ Defaulting to \`null\`.`);
               _: 1
               /* STABLE */
             }),
-            createVNode(unref(_sfc_main$17), {
+            createVNode(unref(_sfc_main$1b), {
               type: "button",
               variant: "ghost",
               size: "sm",
@@ -47430,27 +47814,182 @@ Defaulting to \`null\`.`);
       };
     }
   });
+  function useFloatingWorkspace(viewport) {
+    const workspace = /* @__PURE__ */ ref({ x: 0, y: 0, width: 720, height: 640 });
+    let lastViewport = { width: 1024, height: 768 };
+    const DEFAULT_WORKSPACE = {
+      xRatio: 0.08,
+      yRatio: 0.08,
+      widthRatio: 0.72,
+      heightRatio: 0.82
+    };
+    const WORKSPACE_KEY = "koba-browser:floating-workspace";
+    let workspaceDrag;
+    function restoreWorkspace(side) {
+      lastViewport = viewport();
+      let ratios = {
+        ...DEFAULT_WORKSPACE,
+        xRatio: side === "left" ? 0 : 1
+      };
+      try {
+        const saved = JSON.parse(localStorage.getItem(shellInstanceKey(WORKSPACE_KEY)) || "null");
+        if (saved && typeof saved === "object" && ["xRatio", "yRatio", "widthRatio", "heightRatio"].every((key) => {
+          const value = saved[key];
+          return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
+        })) {
+          ratios = saved;
+        }
+      } catch {
+      }
+      workspace.value = workspaceRect(ratios, lastViewport);
+    }
+    function saveWorkspace() {
+      try {
+        localStorage.setItem(
+          shellInstanceKey(WORKSPACE_KEY),
+          JSON.stringify(workspaceRatios(workspace.value, viewport()))
+        );
+      } catch {
+      }
+    }
+    function updateWorkspaceRect(next) {
+      workspace.value = workspaceRect(workspaceRatios(next, viewport()), viewport());
+    }
+    function onWorkspaceDown(event, kind) {
+      if (event.button !== 0) return;
+      updateWorkspaceRect(workspace.value);
+      workspaceDrag = {
+        pointerId: event.pointerId,
+        kind,
+        startX: event.clientX,
+        startY: event.clientY,
+        rect: { ...workspace.value }
+      };
+      try {
+        ;
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+      }
+      event.preventDefault();
+    }
+    function onWorkspaceMove(event) {
+      const drag = workspaceDrag;
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      const dx = event.clientX - drag.startX, dy = event.clientY - drag.startY;
+      updateWorkspaceRect(
+        drag.kind === "move" ? { ...drag.rect, x: drag.rect.x + dx, y: drag.rect.y + dy } : { ...drag.rect, width: drag.rect.width + dx, height: drag.rect.height + dy }
+      );
+    }
+    function onWorkspaceUp(event) {
+      if (!workspaceDrag || event.pointerId !== workspaceDrag.pointerId) return;
+      workspaceDrag = void 0;
+      saveWorkspace();
+    }
+    function onWorkspaceKey(event, kind) {
+      const movement = {
+        ArrowLeft: [-1, 0],
+        ArrowRight: [1, 0],
+        ArrowUp: [0, -1],
+        ArrowDown: [0, 1]
+      };
+      const step = movement[event.key];
+      if (!step) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const delta = event.shiftKey ? 48 : 16;
+      const [dx, dy] = step;
+      const rect = workspace.value;
+      updateWorkspaceRect(
+        kind === "move" ? { ...rect, x: rect.x + dx * delta, y: rect.y + dy * delta } : { ...rect, width: rect.width + dx * delta, height: rect.height + dy * delta }
+      );
+      saveWorkspace();
+    }
+    const workspaceStyle = computed(() => {
+      const { width, height, x, y } = workspace.value;
+      return { left: `${x}px`, top: `${y}px`, width: `${width}px`, height: `${height}px` };
+    });
+    function cancelWorkspaceDrag() {
+      workspaceDrag = void 0;
+    }
+    function normalizeWorkspace() {
+      updateWorkspaceRect(workspace.value);
+    }
+    function rebaseWorkspace() {
+      cancelWorkspaceDrag();
+      const next = viewport();
+      workspace.value = workspaceRect(workspaceRatios(workspace.value, lastViewport), next);
+      lastViewport = next;
+    }
+    return {
+      workspaceStyle,
+      restoreWorkspace,
+      cancelWorkspaceDrag,
+      normalizeWorkspace,
+      rebaseWorkspace,
+      onWorkspaceDown,
+      onWorkspaceMove,
+      onWorkspaceUp,
+      onWorkspaceKey
+    };
+  }
+  const _sfc_main$2 = /* @__PURE__ */ defineComponent({
+    __name: "WorkspaceHandle",
+    props: {
+      kind: {}
+    },
+    emits: ["begin", "move", "end", "adjust"],
+    setup(__props, { emit: __emit }) {
+      const props2 = __props;
+      const emit2 = __emit;
+      const locale = useApplicationLocale();
+      const label = computed(
+        () => props2.kind === "move" ? locale.value === "ru" ? "Переместить окно — используйте стрелки" : "Move window using arrow keys" : locale.value === "ru" ? "Изменить размер окна — используйте стрелки" : "Resize window using arrow keys"
+      );
+      return (_ctx, _cache) => {
+        return openBlock(), createBlock(unref(_sfc_main$13), { label: label.value }, {
+          default: withCtx(() => [
+            createVNode(unref(_sfc_main$1b), {
+              type: "button",
+              variant: "ghost",
+              size: "icon",
+              "aria-label": label.value,
+              class: normalizeClass(__props.kind === "move" ? "booster-floating-handle size-7.5 shrink-0" : "booster-floating-resize absolute end-0 bottom-0 size-7 cursor-nwse-resize touch-none"),
+              onPointerdown: _cache[0] || (_cache[0] = withModifiers(($event) => emit2("begin", $event, __props.kind), ["stop"])),
+              onPointermove: _cache[1] || (_cache[1] = ($event) => emit2("move", $event)),
+              onPointerup: _cache[2] || (_cache[2] = ($event) => emit2("end", $event)),
+              onPointercancel: _cache[3] || (_cache[3] = ($event) => emit2("end", $event)),
+              onKeydown: _cache[4] || (_cache[4] = ($event) => emit2("adjust", $event, __props.kind))
+            }, {
+              default: withCtx(() => [
+                (openBlock(), createBlock(resolveDynamicComponent(__props.kind === "move" ? unref(GripVertical) : unref(Grip)), {
+                  class: "size-4",
+                  "aria-hidden": "true"
+                }))
+              ]),
+              _: 1
+              /* STABLE */
+            }, 8, ["aria-label", "class"])
+          ]),
+          _: 1
+          /* STABLE */
+        }, 8, ["label"]);
+      };
+    }
+  });
   const _hoisted_1$1 = { class: "booster-overlay-root" };
-  const _hoisted_2 = ["aria-label"];
-  const _hoisted_3 = { class: "booster-floating-identity" };
-  const _hoisted_4 = {
-    key: 0,
-    class: "booster-version"
-  };
-  const _hoisted_5 = {
+  const _hoisted_2 = {
     key: 0,
     class: "booster-workspace-error",
     role: "alert"
   };
-  const _hoisted_6 = {
+  const _hoisted_3 = {
     key: 1,
     class: "booster-quick-error",
     role: "alert"
   };
-  const _hoisted_7 = { key: 2 };
+  const _hoisted_4 = { key: 2 };
   const edgeKey = "koba-browser:edge-launcher";
   const SESSION_KEY = "koba-browser:session-ui";
-  const WORKSPACE_KEY = "koba-browser:floating-workspace";
   const BUTTON_SIZE = 44, DRAG_THRESHOLD = 4;
   const _sfc_main$1 = /* @__PURE__ */ defineComponent({
     __name: "Overlay",
@@ -47467,7 +48006,8 @@ Defaulting to \`null\`.`);
       const text2 = (ru, en) => locale.value === "ru" ? ru : en;
       const caption = useLocalizedText(SHELL_UI_MESSAGES);
       const open = /* @__PURE__ */ ref(false);
-      const mobile = /* @__PURE__ */ ref(window.innerWidth <= 620);
+      const compactViewport = window.matchMedia("(max-width: 620px)");
+      const mobile = /* @__PURE__ */ ref(compactViewport.matches);
       const quickOpen = /* @__PURE__ */ ref(false);
       let quickDismissedOutside = false;
       watch(
@@ -47496,10 +48036,11 @@ Defaulting to \`null\`.`);
       );
       let unsubscribeRuntime;
       let unsubscribeQuickContext;
-      const installationEnabled = computed(() => {
+      const pagePower = computed(() => {
         void runtimeRevision.value;
-        return props2.runtime.isRunning();
+        return props2.runtime.pagePower();
       });
+      const powerLabel = computed(() => pagePowerLabel(pagePower.value, locale.value));
       const featureActive = computed(() => {
         void runtimeRevision.value;
         return props2.runtime.list().find((x) => x.id === singleFeature.value?.id)?.state === "active";
@@ -47631,15 +48172,17 @@ Defaulting to \`null\`.`);
       const position = /* @__PURE__ */ ref({ x: 0, y: 0 });
       const dragging = /* @__PURE__ */ ref(false);
       const minimized = /* @__PURE__ */ ref(false);
-      const workspace = /* @__PURE__ */ ref({ x: 0, y: 0, width: 720, height: 640 });
-      let lastViewport = { width: 1024, height: 768 };
-      const DEFAULT_WORKSPACE = {
-        xRatio: 0.08,
-        yRatio: 0.08,
-        widthRatio: 0.72,
-        heightRatio: 0.82
-      };
-      let workspaceDrag;
+      const {
+        workspaceStyle,
+        restoreWorkspace,
+        cancelWorkspaceDrag,
+        normalizeWorkspace,
+        rebaseWorkspace,
+        onWorkspaceDown,
+        onWorkspaceMove,
+        onWorkspaceUp,
+        onWorkspaceKey
+      } = useFloatingWorkspace(viewport);
       let dragStart;
       function dockPosition() {
         const margin = 0;
@@ -47742,89 +48285,8 @@ Defaulting to \`null\`.`);
       function viewport() {
         return { width: window.innerWidth, height: window.innerHeight };
       }
-      function restoreWorkspace() {
-        lastViewport = viewport();
-        let ratios = {
-          ...DEFAULT_WORKSPACE,
-          xRatio: dockSide.value === "left" ? 0 : 1
-        };
-        try {
-          const saved = JSON.parse(localStorage.getItem(shellInstanceKey(WORKSPACE_KEY)) || "null");
-          if (saved && typeof saved === "object" && ["xRatio", "yRatio", "widthRatio", "heightRatio"].every((key) => {
-            const value = saved[key];
-            return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
-          })) {
-            ratios = saved;
-          }
-        } catch {
-        }
-        workspace.value = workspaceRect(ratios, lastViewport);
-      }
-      function saveWorkspace() {
-        try {
-          localStorage.setItem(
-            shellInstanceKey(WORKSPACE_KEY),
-            JSON.stringify(workspaceRatios(workspace.value, viewport()))
-          );
-        } catch {
-        }
-      }
-      function updateWorkspaceRect(next) {
-        workspace.value = workspaceRect(workspaceRatios(next, viewport()), viewport());
-      }
-      function onWorkspaceDown(event, kind) {
-        if (event.button !== 0) return;
-        if (kind === "move" && event.target.closest("button:not(.booster-floating-handle)"))
-          return;
-        updateWorkspaceRect(workspace.value);
-        workspaceDrag = {
-          pointerId: event.pointerId,
-          kind,
-          startX: event.clientX,
-          startY: event.clientY,
-          rect: { ...workspace.value }
-        };
-        try {
-          ;
-          event.currentTarget.setPointerCapture(event.pointerId);
-        } catch {
-        }
-        event.preventDefault();
-      }
-      function onWorkspaceMove(event) {
-        const drag = workspaceDrag;
-        if (!drag || event.pointerId !== drag.pointerId) return;
-        const dx = event.clientX - drag.startX, dy = event.clientY - drag.startY;
-        updateWorkspaceRect(
-          drag.kind === "move" ? { ...drag.rect, x: drag.rect.x + dx, y: drag.rect.y + dy } : { ...drag.rect, width: drag.rect.width + dx, height: drag.rect.height + dy }
-        );
-      }
-      function onWorkspaceUp(event) {
-        if (!workspaceDrag || event.pointerId !== workspaceDrag.pointerId) return;
-        workspaceDrag = void 0;
-        saveWorkspace();
-      }
-      function onWorkspaceKey(event, kind) {
-        const movement = {
-          ArrowLeft: [-1, 0],
-          ArrowRight: [1, 0],
-          ArrowUp: [0, -1],
-          ArrowDown: [0, 1]
-        };
-        const step = movement[event.key];
-        if (!step) return;
-        event.preventDefault();
-        event.stopPropagation();
-        const delta = event.shiftKey ? 48 : 16;
-        const [dx, dy] = step;
-        const rect = workspace.value;
-        updateWorkspaceRect(
-          kind === "move" ? { ...rect, x: rect.x + dx * delta, y: rect.y + dy * delta } : { ...rect, width: rect.width + dx * delta, height: rect.height + dy * delta }
-        );
-        saveWorkspace();
-      }
       function minimizeWorkspace() {
-        workspaceDrag = void 0;
+        cancelWorkspaceDrag();
         minimized.value = true;
         open.value = false;
       }
@@ -47896,7 +48358,7 @@ Defaulting to \`null\`.`);
           return;
         }
         const action = menuActions.value.find((item) => item.id === id);
-        if (!action || quickBusy.value || !props2.runtime.isRunning() && !action.availableWhenDisabled || action.enabled?.() === false)
+        if (!action || quickBusy.value || !pagePower.value.enabled && !action.availableWhenDisabled || action.enabled?.() === false)
           return;
         quickBusy.value = true;
         quickError.value = "";
@@ -47910,30 +48372,24 @@ Defaulting to \`null\`.`);
           quickBusy.value = false;
         }
       }
-      async function toggleQuickInstallation() {
-        if (quickBusy.value) return;
+      async function setPagePower(enabled) {
+        if (quickBusy.value || !pagePower.value.available) return;
         quickBusy.value = true;
         quickError.value = "";
         try {
-          await props2.runtime.setRunning(!props2.runtime.isRunning());
+          await props2.runtime.setPagePower(enabled);
         } catch {
-          quickError.value = text2(
-            "Не удалось изменить состояние установки",
-            "Could not change the installation state"
-          );
+          quickError.value = text2("Не удалось переключить функции", "Could not toggle features");
         } finally {
           quickBusy.value = false;
         }
       }
       function onResize() {
-        workspaceDrag = void 0;
-        mobile.value = window.innerWidth <= 620;
+        mobile.value = compactViewport.matches;
         viewportHeight.value = window.innerHeight;
         if (attached.value) dockPosition();
         else position.value = clampLauncher(position.value, viewport());
-        const nextViewport = viewport();
-        workspace.value = workspaceRect(workspaceRatios(workspace.value, lastViewport), nextViewport);
-        lastViewport = nextViewport;
+        rebaseWorkspace();
       }
       function quickInteractOutside(event) {
         if (event.detail.originalEvent.composedPath().includes(launcherButton.value)) {
@@ -47980,21 +48436,17 @@ Defaulting to \`null\`.`);
         () => indicators.value.map((indicator) => indicatorDescription(indicator, caption, locale.value === "en")).join("; ")
       );
       const indicatorTone = computed(() => launcherIndicatorTone(indicators.value));
-      const workspaceStyle = computed(() => {
-        const { width, height, x, y } = workspace.value;
-        return { left: `${x}px`, top: `${y}px`, width: `${width}px`, height: `${height}px` };
-      });
       const floatingPanel = computed(
         () => !mobile.value && (Boolean(singleFeature.value) || props2.runtime.features.some(
           (feature) => feature.id === selectedSection.value && feature.presentation?.panel === "wide"
         ))
       );
       watch(floatingPanel, (floating) => {
-        if (!floating) workspaceDrag = void 0;
+        if (!floating) cancelWorkspaceDrag();
       });
       function openPanel() {
-        workspaceDrag = void 0;
-        updateWorkspaceRect(workspace.value);
+        cancelWorkspaceDrag();
+        normalizeWorkspace();
         quickOpen.value = false;
         open.value = true;
         minimized.value = false;
@@ -48031,7 +48483,7 @@ Defaulting to \`null\`.`);
         void refreshQuickMetrics();
       }
       function closePanel() {
-        workspaceDrag = void 0;
+        cancelWorkspaceDrag();
         quickOpen.value = false;
         ++metricsRevision;
         open.value = false;
@@ -48041,7 +48493,7 @@ Defaulting to \`null\`.`);
         const detail = event.detail;
         if (detail?.layout === true) {
           restore();
-          restoreWorkspace();
+          restoreWorkspace(dockSide.value);
         }
         if (detail?.session === true) restoreSession();
       }
@@ -48052,7 +48504,7 @@ Defaulting to \`null\`.`);
           rebindQuickContext();
         });
         restore();
-        restoreWorkspace();
+        restoreWorkspace(dockSide.value);
         restoreSession();
         sessionReady = true;
         window.addEventListener("resize", onResize);
@@ -48073,7 +48525,7 @@ Defaulting to \`null\`.`);
             stop();
           } catch {
           }
-        workspaceDrag = void 0;
+        cancelWorkspaceDrag();
         window.removeEventListener("resize", onResize);
         window.removeEventListener(SHELL_OPEN_FEATURE_EVENT, onModuleOpen);
         window.removeEventListener(SHELL_CLOSE_EVENT, closePanel);
@@ -48081,30 +48533,30 @@ Defaulting to \`null\`.`);
       });
       return (_ctx, _cache) => {
         return openBlock(), createElementBlock("div", _hoisted_1$1, [
-          shellPreferences.value.siteEntry ? (openBlock(), createBlock(_sfc_main$2, {
+          shellPreferences.value.siteEntry ? (openBlock(), createBlock(_sfc_main$3, {
             key: 0,
             onSettings: openSettings,
             onMenu: openMenu,
             onAvailable: _cache[0] || (_cache[0] = ($event) => siteEntryAvailable.value = $event)
           })) : createCommentVNode("v-if", true),
-          open.value ? (openBlock(), createBlock(unref(_sfc_main$Q), {
+          open.value ? (openBlock(), createBlock(unref(_sfc_main$T), {
             key: 1,
             label: applicationIdentity.value.title,
             fullscreen: mobile.value,
             floating: floatingPanel.value,
-            "surface-style": mobile.value ? mobileSurfaceStyle : floatingPanel.value ? workspaceStyle.value : void 0,
+            "surface-style": mobile.value ? mobileSurfaceStyle : floatingPanel.value ? unref(workspaceStyle) : void 0,
             "surface-class": mobile.value ? "booster-modal-surface booster-modal-fullscreen" : floatingPanel.value ? "booster-modal-surface booster-modal-surface-wide" : "booster-modal-surface",
             onClose: closePanel
           }, createSlots({
             default: withCtx(() => [
               quickError.value ? (openBlock(), createElementBlock(
                 "p",
-                _hoisted_5,
+                _hoisted_2,
                 toDisplayString(quickError.value),
                 1
                 /* TEXT */
               )) : createCommentVNode("v-if", true),
-              createVNode(_sfc_main$5, {
+              createVNode(_sfc_main$7, {
                 runtime: __props.runtime,
                 views: __props.views,
                 title: applicationIdentity.value.title,
@@ -48113,8 +48565,8 @@ Defaulting to \`null\`.`);
                 "settings-category": settingsCategory.value,
                 floating: floatingPanel.value,
                 "site-entry-available": siteEntryAvailable.value,
-                onCategory: _cache[4] || (_cache[4] = ($event) => settingsCategory.value = $event),
-                onSelect: _cache[5] || (_cache[5] = ($event) => selectedSection.value = $event),
+                onCategory: _cache[1] || (_cache[1] = ($event) => settingsCategory.value = $event),
+                onSelect: _cache[2] || (_cache[2] = ($event) => selectedSection.value = $event),
                 onClose: closePanel
               }, null, 8, ["runtime", "views", "title", "application", "selected-section", "settings-category", "floating", "site-entry-available"])
             ]),
@@ -48124,110 +48576,46 @@ Defaulting to \`null\`.`);
             floatingPanel.value ? {
               name: "chrome",
               fn: withCtx(() => [
-                createBaseVNode("div", {
-                  class: "booster-floating-chrome",
-                  "aria-label": text2("Переместить рабочее окно", "Move workspace"),
-                  onPointerdown: _cache[3] || (_cache[3] = ($event) => onWorkspaceDown($event, "move")),
-                  onPointermove: onWorkspaceMove,
-                  onPointerup: onWorkspaceUp,
-                  onPointercancel: onWorkspaceUp
-                }, [
-                  createVNode(unref(_sfc_main$17), {
-                    type: "button",
-                    variant: "ghost",
-                    size: "icon",
-                    class: "booster-floating-handle",
-                    title: text2("Переместить окно — стрелки", "Move window with arrow keys"),
-                    "aria-label": text2("Переместить окно — используйте стрелки", "Move window using arrow keys"),
-                    onPointerdown: _cache[1] || (_cache[1] = withModifiers(($event) => onWorkspaceDown($event, "move"), ["stop"])),
-                    onPointermove: onWorkspaceMove,
-                    onPointerup: onWorkspaceUp,
-                    onPointercancel: onWorkspaceUp,
-                    onKeydown: _cache[2] || (_cache[2] = ($event) => onWorkspaceKey($event, "move"))
-                  }, {
-                    default: withCtx(() => [
-                      createVNode(unref(GripVertical), {
-                        class: "size-4",
-                        "aria-hidden": "true"
-                      })
-                    ]),
-                    _: 1
-                    /* STABLE */
-                  }, 8, ["title", "aria-label"]),
-                  createBaseVNode("span", _hoisted_3, [
-                    createTextVNode(
-                      toDisplayString(applicationIdentity.value.title),
-                      1
-                      /* TEXT */
-                    ),
-                    applicationIdentity.value.version ? (openBlock(), createElementBlock(
-                      "small",
-                      _hoisted_4,
-                      toDisplayString(applicationIdentity.value.version),
-                      1
-                      /* TEXT */
-                    )) : createCommentVNode("v-if", true)
+                createVNode(_sfc_main$6, {
+                  title: applicationIdentity.value.title,
+                  version: applicationIdentity.value.version,
+                  enabled: pagePower.value.enabled,
+                  "power-disabled": quickBusy.value || !pagePower.value.available,
+                  "power-label": powerLabel.value,
+                  "can-minimize": launcherVisible.value,
+                  onPower: setPagePower,
+                  onMinimize: minimizeWorkspace,
+                  onClose: closePanel,
+                  onBegin: unref(onWorkspaceDown),
+                  onPointermove: unref(onWorkspaceMove),
+                  onPointerup: unref(onWorkspaceUp),
+                  onPointercancel: unref(onWorkspaceUp)
+                }, {
+                  default: withCtx(() => [
+                    createVNode(_sfc_main$2, {
+                      kind: "move",
+                      onBegin: unref(onWorkspaceDown),
+                      onMove: unref(onWorkspaceMove),
+                      onEnd: unref(onWorkspaceUp),
+                      onAdjust: unref(onWorkspaceKey)
+                    }, null, 8, ["onBegin", "onMove", "onEnd", "onAdjust"])
                   ]),
-                  createVNode(unref(_sfc_main$I), {
-                    "model-value": installationEnabled.value,
-                    disabled: quickBusy.value,
-                    "aria-label": installationEnabled.value ? text2("Отключить функции расширения", "Disable extension features") : text2("Включить функции расширения", "Enable extension features"),
-                    "onUpdate:modelValue": toggleQuickInstallation
-                  }, null, 8, ["model-value", "disabled", "aria-label"]),
-                  launcherVisible.value ? (openBlock(), createBlock(unref(_sfc_main$17), {
-                    key: 0,
-                    type: "button",
-                    variant: "ghost",
-                    size: "icon",
-                    title: text2("Свернуть окно", "Minimize window"),
-                    "aria-label": text2("Свернуть окно", "Minimize window"),
-                    onClick: minimizeWorkspace
-                  }, {
-                    default: withCtx(() => [
-                      createVNode(unref(Minus), { class: "size-4" })
-                    ]),
-                    _: 1
-                    /* STABLE */
-                  }, 8, ["title", "aria-label"])) : createCommentVNode("v-if", true),
-                  createVNode(unref(_sfc_main$17), {
-                    type: "button",
-                    variant: "ghost",
-                    size: "icon",
-                    title: text2("Закрыть окно", "Close window"),
-                    "aria-label": text2("Закрыть окно", "Close window"),
-                    onClick: closePanel
-                  }, {
-                    default: withCtx(() => [
-                      createVNode(unref(X), { class: "size-4" })
-                    ]),
-                    _: 1
-                    /* STABLE */
-                  }, 8, ["title", "aria-label"])
-                ], 40, _hoisted_2)
+                  _: 1
+                  /* STABLE */
+                }, 8, ["title", "version", "enabled", "power-disabled", "power-label", "can-minimize", "onBegin", "onPointermove", "onPointerup", "onPointercancel"])
               ]),
               key: "0"
             } : void 0,
             floatingPanel.value ? {
               name: "handles",
               fn: withCtx(() => [
-                createVNode(unref(_sfc_main$17), {
-                  type: "button",
-                  variant: "ghost",
-                  size: "icon",
-                  class: "booster-floating-resize",
-                  "aria-label": text2("Изменить размер окна — используйте стрелки", "Resize window using arrow keys"),
-                  onPointerdown: _cache[6] || (_cache[6] = ($event) => onWorkspaceDown($event, "resize")),
-                  onPointermove: onWorkspaceMove,
-                  onPointerup: onWorkspaceUp,
-                  onPointercancel: onWorkspaceUp,
-                  onKeydown: _cache[7] || (_cache[7] = ($event) => onWorkspaceKey($event, "resize"))
-                }, {
-                  default: withCtx(() => [
-                    createVNode(unref(Grip), { class: "size-4" })
-                  ]),
-                  _: 1
-                  /* STABLE */
-                }, 8, ["aria-label"])
+                createVNode(_sfc_main$2, {
+                  kind: "resize",
+                  onBegin: unref(onWorkspaceDown),
+                  onMove: unref(onWorkspaceMove),
+                  onEnd: unref(onWorkspaceUp),
+                  onAdjust: unref(onWorkspaceKey)
+                }, null, 8, ["onBegin", "onMove", "onEnd", "onAdjust"])
               ]),
               key: "1"
             } : void 0
@@ -48240,14 +48628,14 @@ Defaulting to \`null\`.`);
               style: normalizeStyle(launcherStyle.value)
             },
             [
-              standalone.value && singleFeature.value ? (openBlock(), createBlock(unref(_sfc_main$Z), {
+              standalone.value && singleFeature.value ? (openBlock(), createBlock(unref(_sfc_main$10), {
                 key: 0,
                 open: quickOpen.value,
-                "onUpdate:open": _cache[8] || (_cache[8] = ($event) => quickOpen.value = $event),
+                "onUpdate:open": _cache[3] || (_cache[3] = ($event) => quickOpen.value = $event),
                 modal: false
               }, {
                 default: withCtx(() => [
-                  !dragging.value ? (openBlock(), createBlock(unref(_sfc_main$X), {
+                  !dragging.value ? (openBlock(), createBlock(unref(_sfc_main$_), {
                     key: 0,
                     "portal-disabled": "",
                     "hide-overlay": "",
@@ -48259,7 +48647,7 @@ Defaulting to \`null\`.`);
                     onCloseAutoFocus: quickCloseAutoFocus
                   }, {
                     default: withCtx(() => [
-                      createVNode(unref(_sfc_main$S), { class: "sr-only" }, {
+                      createVNode(unref(_sfc_main$V), { class: "sr-only" }, {
                         default: withCtx(() => [
                           createTextVNode(
                             toDisplayString(applicationIdentity.value.title) + ": " + toDisplayString(text2("инструменты", "tools")),
@@ -48270,19 +48658,21 @@ Defaulting to \`null\`.`);
                         _: 1
                         /* STABLE */
                       }),
-                      createVNode(_sfc_main$3, {
+                      createVNode(_sfc_main$4, {
                         style: normalizeStyle(quickMenuStyle.value),
                         title: applicationIdentity.value.title,
                         version: applicationIdentity.value.version,
                         indicators: indicators.value,
-                        enabled: installationEnabled.value,
+                        enabled: pagePower.value.enabled,
                         active: featureActive.value,
+                        "power-label": pagePower.value.feature ? powerLabel.value : void 0,
+                        "power-available": pagePower.value.available,
                         busy: quickBusy.value,
                         actions: menuActions.value,
                         metrics: shellPreferences.value.metrics ? quickMetrics.value : [],
                         onSelect: selectQuick,
-                        onToggle: toggleQuickInstallation
-                      }, null, 8, ["style", "title", "version", "indicators", "enabled", "active", "busy", "actions", "metrics"])
+                        onToggle: setPagePower
+                      }, null, 8, ["style", "title", "version", "indicators", "enabled", "active", "power-label", "power-available", "busy", "actions", "metrics"])
                     ]),
                     _: 1
                     /* STABLE */
@@ -48293,56 +48683,63 @@ Defaulting to \`null\`.`);
               }, 8, ["open"])) : createCommentVNode("v-if", true),
               quickOpen.value && quickError.value ? (openBlock(), createElementBlock(
                 "p",
-                _hoisted_6,
+                _hoisted_3,
                 toDisplayString(quickError.value),
                 1
                 /* TEXT */
               )) : createCommentVNode("v-if", true),
-              createVNode(unref(_sfc_main$17), {
-                ref: setLauncherButton,
-                variant: quickOpen.value ? "ghost" : "default",
-                class: normalizeClass(["booster-launcher p-0", { "booster-launcher-dragging": dragging.value, "booster-launcher-docked": attached.value, "booster-launcher-floating": !attached.value || dragging.value, "booster-edge-close-bar": quickOpen.value && !dragging.value }]),
-                "data-indicator-tone": quickOpen.value ? "idle" : indicatorTone.value,
-                type: "button",
-                title: indicatorLabel.value || `${text2("Открыть", "Open")} ${applicationIdentity.value.title}`,
-                "aria-haspopup": "dialog",
-                "aria-expanded": standalone.value ? quickOpen.value : open.value,
-                "aria-label": `${minimized.value ? text2("Восстановить окно", "Restore window") : !shellPreferences.value.quickMenu ? text2("Открыть настройки", "Open settings") : quickOpen.value ? text2("Закрыть быстрое меню", "Close quick menu") : text2("Открыть быстрое меню", "Open quick menu")}${indicatorLabel.value ? ". " + indicatorLabel.value : ""}`,
-                onClick: onLauncherClick,
-                onPointerdown: onPointerDown,
-                onPointermove: onPointerMove,
-                onPointerup: onPointerUp,
-                onPointercancel: _cache[9] || (_cache[9] = ($event) => {
-                  /* @__PURE__ */ isRef(dragStart) ? dragStart.value = void 0 : dragStart = void 0;
-                  dragging.value = false;
-                })
+              createVNode(unref(_sfc_main$13), {
+                label: indicatorLabel.value || `${text2("Открыть", "Open")} ${applicationIdentity.value.title}`
               }, {
                 default: withCtx(() => [
-                  (standalone.value ? quickOpen.value : open.value) ? (openBlock(), createBlock(unref(X), {
-                    key: 0,
-                    class: "booster-launcher-icon",
-                    "aria-hidden": "true"
-                  })) : (openBlock(), createBlock(unref(Layers), {
-                    key: 1,
-                    class: "booster-launcher-icon",
-                    "aria-hidden": "true"
-                  })),
-                  quickOpen.value && !dragging.value ? (openBlock(), createElementBlock(
-                    "span",
-                    _hoisted_7,
-                    toDisplayString(text2("Свернуть", "Collapse")),
-                    1
-                    /* TEXT */
-                  )) : createCommentVNode("v-if", true),
-                  !quickOpen.value && indicators.value.length ? (openBlock(), createBlock(_sfc_main$4, {
-                    key: 3,
-                    indicators: indicators.value,
-                    compact: ""
-                  }, null, 8, ["indicators"])) : createCommentVNode("v-if", true)
+                  createVNode(unref(_sfc_main$1b), {
+                    ref: setLauncherButton,
+                    variant: quickOpen.value ? "ghost" : "default",
+                    class: normalizeClass(["booster-launcher p-0", { "booster-launcher-dragging": dragging.value, "booster-launcher-docked": attached.value, "booster-launcher-floating": !attached.value || dragging.value, "booster-edge-close-bar": quickOpen.value && !dragging.value }]),
+                    "data-indicator-tone": quickOpen.value ? "idle" : indicatorTone.value,
+                    type: "button",
+                    "aria-haspopup": "dialog",
+                    "aria-expanded": standalone.value ? quickOpen.value : open.value,
+                    "aria-label": `${minimized.value ? text2("Восстановить окно", "Restore window") : !shellPreferences.value.quickMenu ? text2("Открыть настройки", "Open settings") : quickOpen.value ? text2("Закрыть быстрое меню", "Close quick menu") : text2("Открыть быстрое меню", "Open quick menu")}${indicatorLabel.value ? ". " + indicatorLabel.value : ""}`,
+                    onClick: onLauncherClick,
+                    onPointerdown: onPointerDown,
+                    onPointermove: onPointerMove,
+                    onPointerup: onPointerUp,
+                    onPointercancel: _cache[4] || (_cache[4] = ($event) => {
+                      /* @__PURE__ */ isRef(dragStart) ? dragStart.value = void 0 : dragStart = void 0;
+                      dragging.value = false;
+                    })
+                  }, {
+                    default: withCtx(() => [
+                      (standalone.value ? quickOpen.value : open.value) ? (openBlock(), createBlock(unref(X), {
+                        key: 0,
+                        class: "booster-launcher-icon",
+                        "aria-hidden": "true"
+                      })) : (openBlock(), createBlock(unref(Layers), {
+                        key: 1,
+                        class: "booster-launcher-icon",
+                        "aria-hidden": "true"
+                      })),
+                      quickOpen.value && !dragging.value ? (openBlock(), createElementBlock(
+                        "span",
+                        _hoisted_4,
+                        toDisplayString(text2("Свернуть", "Collapse")),
+                        1
+                        /* TEXT */
+                      )) : createCommentVNode("v-if", true),
+                      !quickOpen.value && indicators.value.length ? (openBlock(), createBlock(_sfc_main$5, {
+                        key: 3,
+                        indicators: indicators.value,
+                        compact: ""
+                      }, null, 8, ["indicators"])) : createCommentVNode("v-if", true)
+                    ]),
+                    _: 1
+                    /* STABLE */
+                  }, 8, ["variant", "data-indicator-tone", "class", "aria-expanded", "aria-label"])
                 ]),
                 _: 1
                 /* STABLE */
-              }, 8, ["variant", "data-indicator-tone", "class", "title", "aria-expanded", "aria-label"])
+              }, 8, ["label"])
             ],
             6
             /* CLASS, STYLE */
@@ -48351,7 +48748,7 @@ Defaulting to \`null\`.`);
       };
     }
   });
-  const styles$1 = '/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */\n@layer properties {\n  @supports (((-webkit-hyphens: none)) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color: rgb(from red r g b)))) {\n    *, :before, :after, ::backdrop {\n      --tw-translate-x: 0;\n      --tw-translate-y: 0;\n      --tw-translate-z: 0;\n      --tw-rotate-x: initial;\n      --tw-rotate-y: initial;\n      --tw-rotate-z: initial;\n      --tw-skew-x: initial;\n      --tw-skew-y: initial;\n      --tw-space-y-reverse: 0;\n      --tw-divide-y-reverse: 0;\n      --tw-border-style: solid;\n      --tw-leading: initial;\n      --tw-font-weight: initial;\n      --tw-tracking: initial;\n      --tw-ordinal: initial;\n      --tw-slashed-zero: initial;\n      --tw-numeric-figure: initial;\n      --tw-numeric-spacing: initial;\n      --tw-numeric-fraction: initial;\n      --tw-shadow: 0 0 #0000;\n      --tw-shadow-color: initial;\n      --tw-shadow-alpha: 100%;\n      --tw-inset-shadow: 0 0 #0000;\n      --tw-inset-shadow-color: initial;\n      --tw-inset-shadow-alpha: 100%;\n      --tw-ring-color: initial;\n      --tw-ring-shadow: 0 0 #0000;\n      --tw-inset-ring-color: initial;\n      --tw-inset-ring-shadow: 0 0 #0000;\n      --tw-ring-inset: initial;\n      --tw-ring-offset-width: 0px;\n      --tw-ring-offset-color: #fff;\n      --tw-ring-offset-shadow: 0 0 #0000;\n      --tw-outline-style: solid;\n      --tw-blur: initial;\n      --tw-brightness: initial;\n      --tw-contrast: initial;\n      --tw-grayscale: initial;\n      --tw-hue-rotate: initial;\n      --tw-invert: initial;\n      --tw-opacity: initial;\n      --tw-saturate: initial;\n      --tw-sepia: initial;\n      --tw-drop-shadow: initial;\n      --tw-drop-shadow-color: initial;\n      --tw-drop-shadow-alpha: 100%;\n      --tw-drop-shadow-size: initial;\n      --tw-duration: initial;\n      --tw-content: "";\n    }\n  }\n}\n\n@layer theme {\n  :root, :host {\n    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",\n      "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",\n      "Segoe UI Symbol", "Noto Color Emoji";\n    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",\n      "Courier New", monospace;\n    --color-black: #000;\n    --spacing: .25rem;\n    --container-lg: 32rem;\n    --container-2xl: 42rem;\n    --text-xs: .75rem;\n    --text-xs--line-height: calc(1 / .75);\n    --text-sm: .875rem;\n    --text-sm--line-height: calc(1.25 / .875);\n    --text-base: 1rem;\n    --text-base--line-height: calc(1.5 / 1);\n    --text-lg: 1.125rem;\n    --text-lg--line-height: calc(1.75 / 1.125);\n    --text-xl: 1.25rem;\n    --text-xl--line-height: calc(1.75 / 1.25);\n    --font-weight-normal: 400;\n    --font-weight-medium: 500;\n    --font-weight-semibold: 600;\n    --tracking-tight: -.025em;\n    --leading-snug: 1.375;\n    --leading-relaxed: 1.625;\n    --animate-spin: spin 1s linear infinite;\n    --animate-pulse: pulse 2s cubic-bezier(.4, 0, .6, 1) infinite;\n    --default-transition-duration: .15s;\n    --default-transition-timing-function: cubic-bezier(.4, 0, .2, 1);\n    --default-font-family: var(--font-sans);\n    --default-mono-font-family: var(--font-mono);\n  }\n}\n\n@layer base {\n  *, :after, :before, ::backdrop {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  ::file-selector-button {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  html, :host {\n    -webkit-text-size-adjust: 100%;\n    tab-size: 4;\n    line-height: 1.5;\n    font-family: var(--default-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");\n    font-feature-settings: var(--default-font-feature-settings, normal);\n    font-variation-settings: var(--default-font-variation-settings, normal);\n    -webkit-tap-highlight-color: transparent;\n  }\n\n  hr {\n    height: 0;\n    color: inherit;\n    border-top-width: 1px;\n  }\n\n  abbr:where([title]) {\n    -webkit-text-decoration: underline dotted;\n    text-decoration: underline dotted;\n  }\n\n  h1, h2, h3, h4, h5, h6 {\n    font-size: inherit;\n    font-weight: inherit;\n  }\n\n  a {\n    color: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    text-decoration: inherit;\n  }\n\n  b, strong {\n    font-weight: bolder;\n  }\n\n  code, kbd, samp, pre {\n    font-family: var(--default-mono-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);\n    font-feature-settings: var(--default-mono-font-feature-settings, normal);\n    font-variation-settings: var(--default-mono-font-variation-settings, normal);\n    font-size: 1em;\n  }\n\n  small {\n    font-size: 80%;\n  }\n\n  sub, sup {\n    vertical-align: baseline;\n    font-size: 75%;\n    line-height: 0;\n    position: relative;\n  }\n\n  sub {\n    bottom: -.25em;\n  }\n\n  sup {\n    top: -.5em;\n  }\n\n  table {\n    text-indent: 0;\n    border-color: inherit;\n    border-collapse: collapse;\n  }\n\n  :-moz-focusring:where(:not(iframe)) {\n    outline: auto;\n  }\n\n  progress {\n    vertical-align: baseline;\n  }\n\n  summary {\n    display: list-item;\n  }\n\n  ol, ul, menu {\n    list-style: none;\n  }\n\n  img, svg, video, canvas, audio, iframe, embed, object {\n    vertical-align: middle;\n    display: block;\n  }\n\n  img, video {\n    max-width: 100%;\n    height: auto;\n  }\n\n  button, input, select, optgroup, textarea {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  ::file-selector-button {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  :where(select:is([multiple], [size])) optgroup {\n    font-weight: bolder;\n  }\n\n  :where(select:is([multiple], [size])) optgroup option {\n    padding-inline-start: 20px;\n  }\n\n  ::file-selector-button {\n    margin-inline-end: 4px;\n  }\n\n  ::placeholder {\n    opacity: 1;\n  }\n\n  @supports (not ((-webkit-appearance: -apple-pay-button))) or (contain-intrinsic-size: 1px) {\n    ::placeholder {\n      color: currentColor;\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      ::placeholder {\n        color: color-mix(in oklab, currentcolor 50%, transparent);\n      }\n    }\n  }\n\n  textarea {\n    resize: vertical;\n  }\n\n  ::-webkit-search-decoration {\n    -webkit-appearance: none;\n  }\n\n  ::-webkit-date-and-time-value {\n    min-height: 1lh;\n    text-align: inherit;\n  }\n\n  ::-webkit-datetime-edit {\n    display: inline-flex;\n  }\n\n  ::-webkit-datetime-edit-fields-wrapper {\n    padding: 0;\n  }\n\n  ::-webkit-datetime-edit {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-year-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-month-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-day-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-hour-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-minute-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-second-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-millisecond-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-meridiem-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-calendar-picker-indicator {\n    line-height: 1;\n  }\n\n  :-moz-ui-invalid {\n    box-shadow: none;\n  }\n\n  button, input:where([type="button"], [type="reset"], [type="submit"]) {\n    appearance: button;\n  }\n\n  ::file-selector-button {\n    appearance: button;\n  }\n\n  ::-webkit-inner-spin-button {\n    height: auto;\n  }\n\n  ::-webkit-outer-spin-button {\n    height: auto;\n  }\n\n  [hidden]:where(:not([hidden="until-found"])) {\n    display: none !important;\n  }\n\n  *, :before, :after {\n    --tw-border-style: solid;\n    --tw-translate-x: 0;\n    --tw-translate-y: 0;\n    --tw-translate-z: 0;\n    --tw-space-y-reverse: 0;\n    --tw-space-x-reverse: 0;\n    --tw-shadow: 0 0 #0000;\n    --tw-inset-shadow: 0 0 #0000;\n    --tw-ring-shadow: 0 0 #0000;\n    --tw-inset-ring-shadow: 0 0 #0000;\n    --tw-ring-offset-shadow: 0 0 #0000;\n    --tw-ring-offset-width: 0px;\n    --tw-ring-offset-color: #fff;\n    --tw-ring-inset: initial;\n    border-color: var(--border);\n    outline-color: var(--ring);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    *, :before, :after {\n      outline-color: color-mix(in oklab, var(--ring) 50%, transparent);\n    }\n  }\n\n  body {\n    background-color: var(--background);\n    color: var(--foreground);\n  }\n}\n\n@layer components;\n\n@layer utilities {\n  .pointer-events-none {\n    pointer-events: none;\n  }\n\n  .collapse {\n    visibility: collapse;\n  }\n\n  .invisible {\n    visibility: hidden;\n  }\n\n  .visible {\n    visibility: visible;\n  }\n\n  .sr-only {\n    clip-path: inset(50%);\n    white-space: nowrap;\n    border-width: 0;\n    width: 1px;\n    height: 1px;\n    margin: -1px;\n    padding: 0;\n    position: absolute;\n    overflow: hidden;\n  }\n\n  .absolute {\n    position: absolute;\n  }\n\n  .fixed {\n    position: fixed;\n  }\n\n  .relative {\n    position: relative;\n  }\n\n  .static {\n    position: static;\n  }\n\n  .sticky {\n    position: sticky;\n  }\n\n  .inset-0 {\n    inset: 0;\n  }\n\n  .inset-x-2 {\n    inset-inline: calc(var(--spacing) * 2);\n  }\n\n  .start-0 {\n    inset-inline-start: calc(var(--spacing) * 0);\n  }\n\n  .top-0 {\n    top: 0;\n  }\n\n  .top-1 {\n    top: var(--spacing);\n  }\n\n  .top-1\\/2 {\n    top: 50%;\n  }\n\n  .top-4 {\n    top: calc(var(--spacing) * 4);\n  }\n\n  .right-2 {\n    right: calc(var(--spacing) * 2);\n  }\n\n  .right-4 {\n    right: calc(var(--spacing) * 4);\n  }\n\n  .left-1\\/2 {\n    left: 50%;\n  }\n\n  .isolate {\n    isolation: isolate;\n  }\n\n  .z-10 {\n    z-index: 10;\n  }\n\n  .z-50 {\n    z-index: 50;\n  }\n\n  .z-auto {\n    z-index: auto;\n  }\n\n  .container {\n    width: 100%;\n  }\n\n  @media (min-width: 40rem) {\n    .container {\n      max-width: 40rem;\n    }\n  }\n\n  @media (min-width: 48rem) {\n    .container {\n      max-width: 48rem;\n    }\n  }\n\n  @media (min-width: 64rem) {\n    .container {\n      max-width: 64rem;\n    }\n  }\n\n  @media (min-width: 80rem) {\n    .container {\n      max-width: 80rem;\n    }\n  }\n\n  @media (min-width: 96rem) {\n    .container {\n      max-width: 96rem;\n    }\n  }\n\n  .m-0 {\n    margin: 0;\n  }\n\n  .m-1 {\n    margin: var(--spacing);\n  }\n\n  .m-9 {\n    margin: calc(var(--spacing) * 9);\n  }\n\n  .m-39 {\n    margin: calc(var(--spacing) * 39);\n  }\n\n  .m-80 {\n    margin: calc(var(--spacing) * 80);\n  }\n\n  .m-319 {\n    margin: calc(var(--spacing) * 319);\n  }\n\n  .m-399 {\n    margin: calc(var(--spacing) * 399);\n  }\n\n  .-mx-1 {\n    margin-inline: calc(var(--spacing) * -1);\n  }\n\n  .mx-auto {\n    margin-inline: auto;\n  }\n\n  .my-1 {\n    margin-block: var(--spacing);\n  }\n\n  .my-2 {\n    margin-block: calc(var(--spacing) * 2);\n  }\n\n  .my-8 {\n    margin-block: calc(var(--spacing) * 8);\n  }\n\n  .ms-auto {\n    margin-inline-start: auto;\n  }\n\n  .mt-0 {\n    margin-top: 0;\n  }\n\n  .mt-0\\.5 {\n    margin-top: calc(var(--spacing) * .5);\n  }\n\n  .mt-1 {\n    margin-top: var(--spacing);\n  }\n\n  .mt-2 {\n    margin-top: calc(var(--spacing) * 2);\n  }\n\n  .mt-3 {\n    margin-top: calc(var(--spacing) * 3);\n  }\n\n  .mt-4 {\n    margin-top: calc(var(--spacing) * 4);\n  }\n\n  .mr-1 {\n    margin-right: var(--spacing);\n  }\n\n  .mb-1 {\n    margin-bottom: var(--spacing);\n  }\n\n  .mb-2 {\n    margin-bottom: calc(var(--spacing) * 2);\n  }\n\n  .ml-auto {\n    margin-left: auto;\n  }\n\n  .block {\n    display: block;\n  }\n\n  .contents {\n    display: contents;\n  }\n\n  .flex {\n    display: flex;\n  }\n\n  .grid {\n    display: grid;\n  }\n\n  .hidden {\n    display: none;\n  }\n\n  .inline {\n    display: inline;\n  }\n\n  .inline-flex {\n    display: inline-flex;\n  }\n\n  .table {\n    display: table;\n  }\n\n  .aspect-square {\n    aspect-ratio: 1;\n  }\n\n  .size-3 {\n    width: calc(var(--spacing) * 3);\n    height: calc(var(--spacing) * 3);\n  }\n\n  .size-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n    height: calc(var(--spacing) * 3.5);\n  }\n\n  .size-4 {\n    width: calc(var(--spacing) * 4);\n    height: calc(var(--spacing) * 4);\n  }\n\n  .size-5 {\n    width: calc(var(--spacing) * 5);\n    height: calc(var(--spacing) * 5);\n  }\n\n  .size-6 {\n    width: calc(var(--spacing) * 6);\n    height: calc(var(--spacing) * 6);\n  }\n\n  .size-7 {\n    width: calc(var(--spacing) * 7);\n    height: calc(var(--spacing) * 7);\n  }\n\n  .size-8 {\n    width: calc(var(--spacing) * 8);\n    height: calc(var(--spacing) * 8);\n  }\n\n  .size-10 {\n    width: calc(var(--spacing) * 10);\n    height: calc(var(--spacing) * 10);\n  }\n\n  .h-1\\.5 {\n    height: calc(var(--spacing) * 1.5);\n  }\n\n  .h-2 {\n    height: calc(var(--spacing) * 2);\n  }\n\n  .h-2\\.5 {\n    height: calc(var(--spacing) * 2.5);\n  }\n\n  .h-3\\.5 {\n    height: calc(var(--spacing) * 3.5);\n  }\n\n  .h-4 {\n    height: calc(var(--spacing) * 4);\n  }\n\n  .h-5 {\n    height: calc(var(--spacing) * 5);\n  }\n\n  .h-7 {\n    height: calc(var(--spacing) * 7);\n  }\n\n  .h-8 {\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-9 {\n    height: calc(var(--spacing) * 9);\n  }\n\n  .h-10 {\n    height: calc(var(--spacing) * 10);\n  }\n\n  .h-20 {\n    height: calc(var(--spacing) * 20);\n  }\n\n  .h-24 {\n    height: calc(var(--spacing) * 24);\n  }\n\n  .h-32 {\n    height: calc(var(--spacing) * 32);\n  }\n\n  .h-64 {\n    height: calc(var(--spacing) * 64);\n  }\n\n  .h-auto {\n    height: auto;\n  }\n\n  .h-dvh {\n    height: 100dvh;\n  }\n\n  .h-full {\n    height: 100%;\n  }\n\n  .h-px {\n    height: 1px;\n  }\n\n  .max-h-48 {\n    max-height: calc(var(--spacing) * 48);\n  }\n\n  .max-h-64 {\n    max-height: calc(var(--spacing) * 64);\n  }\n\n  .max-h-80 {\n    max-height: calc(var(--spacing) * 80);\n  }\n\n  .max-h-\\[85dvh\\] {\n    max-height: 85dvh;\n  }\n\n  .max-h-\\[420px\\] {\n    max-height: 420px;\n  }\n\n  .max-h-\\[calc\\(50dvh-1\\.5rem\\)\\] {\n    max-height: calc(50dvh - 1.5rem);\n  }\n\n  .max-h-\\[min\\(24rem\\,calc\\(100dvh_-_20px\\)\\)\\] {\n    max-height: min(24rem, 100dvh - 20px);\n  }\n\n  .max-h-\\[min\\(24rem\\,max\\(0px\\,var\\(--reka-select-content-available-height\\)\\)\\)\\] {\n    max-height: min(24rem, max(0px, var(--reka-select-content-available-height)));\n  }\n\n  .max-h-\\[var\\(--reka-popover-content-available-height\\)\\] {\n    max-height: var(--reka-popover-content-available-height);\n  }\n\n  .min-h-0 {\n    min-height: 0;\n  }\n\n  .min-h-6 {\n    min-height: calc(var(--spacing) * 6);\n  }\n\n  .min-h-7 {\n    min-height: calc(var(--spacing) * 7);\n  }\n\n  .min-h-8 {\n    min-height: calc(var(--spacing) * 8);\n  }\n\n  .min-h-9 {\n    min-height: calc(var(--spacing) * 9);\n  }\n\n  .min-h-10 {\n    min-height: calc(var(--spacing) * 10);\n  }\n\n  .min-h-11 {\n    min-height: calc(var(--spacing) * 11);\n  }\n\n  .min-h-24 {\n    min-height: calc(var(--spacing) * 24);\n  }\n\n  .min-h-\\[60px\\] {\n    min-height: 60px;\n  }\n\n  .min-h-\\[130px\\] {\n    min-height: 130px;\n  }\n\n  .w-1\\/3 {\n    width: 33.3333%;\n  }\n\n  .w-2\\.5 {\n    width: calc(var(--spacing) * 2.5);\n  }\n\n  .w-2\\/3 {\n    width: 66.6667%;\n  }\n\n  .w-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n  }\n\n  .w-3\\/5 {\n    width: 60%;\n  }\n\n  .w-4 {\n    width: calc(var(--spacing) * 4);\n  }\n\n  .w-5 {\n    width: calc(var(--spacing) * 5);\n  }\n\n  .w-9 {\n    width: calc(var(--spacing) * 9);\n  }\n\n  .w-20 {\n    width: calc(var(--spacing) * 20);\n  }\n\n  .w-72 {\n    width: calc(var(--spacing) * 72);\n  }\n\n  .w-80 {\n    width: calc(var(--spacing) * 80);\n  }\n\n  .w-\\[calc\\(100vw-24px\\)\\] {\n    width: calc(100vw - 24px);\n  }\n\n  .w-auto {\n    width: auto;\n  }\n\n  .w-dvw {\n    width: 100dvw;\n  }\n\n  .w-full {\n    width: 100%;\n  }\n\n  .w-max {\n    width: max-content;\n  }\n\n  .w-px {\n    width: 1px;\n  }\n\n  .max-w-2xl {\n    max-width: var(--container-2xl);\n  }\n\n  .max-w-36 {\n    max-width: calc(var(--spacing) * 36);\n  }\n\n  .max-w-\\[88\\%\\] {\n    max-width: 88%;\n  }\n\n  .max-w-\\[calc\\(100vw_-_20px\\)\\] {\n    max-width: calc(100vw - 20px);\n  }\n\n  .max-w-\\[max\\(0px\\,var\\(--reka-select-content-available-width\\)\\)\\] {\n    max-width: max(0px, var(--reka-select-content-available-width));\n  }\n\n  .max-w-\\[min\\(380px\\,85vw\\)\\] {\n    max-width: min(380px, 85vw);\n  }\n\n  .max-w-\\[min\\(420px\\,calc\\(100vw-16px\\)\\)\\] {\n    max-width: min(420px, 100vw - 16px);\n  }\n\n  .max-w-full {\n    max-width: 100%;\n  }\n\n  .max-w-lg {\n    max-width: var(--container-lg);\n  }\n\n  .max-w-none {\n    max-width: none;\n  }\n\n  .min-w-0 {\n    min-width: 0;\n  }\n\n  .min-w-\\[min\\(8rem\\,calc\\(100vw_-_20px\\)\\)\\] {\n    min-width: min(8rem, 100vw - 20px);\n  }\n\n  .min-w-\\[min\\(8rem\\,max\\(0px\\,var\\(--reka-select-content-available-width\\)\\)\\)\\] {\n    min-width: min(8rem, max(0px, var(--reka-select-content-available-width)));\n  }\n\n  .min-w-\\[min\\(var\\(--reka-select-trigger-width\\)\\,max\\(0px\\,var\\(--reka-select-content-available-width\\)\\)\\)\\] {\n    min-width: min(var(--reka-select-trigger-width), max(0px, var(--reka-select-content-available-width)));\n  }\n\n  .flex-1 {\n    flex: 1;\n  }\n\n  .flex-none {\n    flex: none;\n  }\n\n  .shrink-0 {\n    flex-shrink: 0;\n  }\n\n  .grow {\n    flex-grow: 1;\n  }\n\n  .basis-32 {\n    flex-basis: calc(var(--spacing) * 32);\n  }\n\n  .basis-48 {\n    flex-basis: calc(var(--spacing) * 48);\n  }\n\n  .table-fixed {\n    table-layout: fixed;\n  }\n\n  .caption-bottom {\n    caption-side: bottom;\n  }\n\n  .-translate-x-1\\/2 {\n    --tw-translate-x: calc(calc(1 / 2 * 100%) * -1);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .translate-x-0 {\n    --tw-translate-x: 0px;\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .-translate-y-1\\/2 {\n    --tw-translate-y: calc(calc(1 / 2 * 100%) * -1);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .translate-y-0 {\n    --tw-translate-y: 0px;\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .rotate-90 {\n    rotate: 90deg;\n  }\n\n  .rotate-180 {\n    rotate: 180deg;\n  }\n\n  .transform {\n    transform: var(--tw-rotate-x, ) var(--tw-rotate-y, ) var(--tw-rotate-z, ) var(--tw-skew-x, ) var(--tw-skew-y, );\n  }\n\n  .animate-pulse {\n    animation: var(--animate-pulse);\n  }\n\n  .animate-spin {\n    animation: var(--animate-spin);\n  }\n\n  .cursor-default {\n    cursor: default;\n  }\n\n  .cursor-pointer {\n    cursor: pointer;\n  }\n\n  .touch-none {\n    touch-action: none;\n  }\n\n  .resize {\n    resize: both;\n  }\n\n  .resize-y {\n    resize: vertical;\n  }\n\n  .grid-cols-1 {\n    grid-template-columns: repeat(1, minmax(0, 1fr));\n  }\n\n  .grid-cols-2 {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }\n\n  .grid-cols-3 {\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n\n  .grid-cols-\\[18px_minmax\\(0\\,1fr\\)\\] {\n    grid-template-columns: 18px minmax(0, 1fr);\n  }\n\n  .grid-cols-\\[minmax\\(0\\,1fr\\)_80px\\] {\n    grid-template-columns: minmax(0, 1fr) 80px;\n  }\n\n  .grid-cols-\\[minmax\\(0\\,1fr\\)_auto\\] {\n    grid-template-columns: minmax(0, 1fr) auto;\n  }\n\n  .grid-rows-\\[minmax\\(0\\,1fr\\)\\] {\n    grid-template-rows: minmax(0, 1fr);\n  }\n\n  .flex-col {\n    flex-direction: column;\n  }\n\n  .flex-col-reverse {\n    flex-direction: column-reverse;\n  }\n\n  .flex-row {\n    flex-direction: row;\n  }\n\n  .flex-wrap {\n    flex-wrap: wrap;\n  }\n\n  .place-content-center {\n    place-content: center;\n  }\n\n  .place-items-center {\n    place-items: center;\n  }\n\n  .content-start {\n    align-content: flex-start;\n  }\n\n  .items-baseline {\n    align-items: baseline;\n  }\n\n  .items-center {\n    align-items: center;\n  }\n\n  .items-end {\n    align-items: flex-end;\n  }\n\n  .items-start {\n    align-items: flex-start;\n  }\n\n  .justify-between {\n    justify-content: space-between;\n  }\n\n  .justify-center {\n    justify-content: center;\n  }\n\n  .justify-end {\n    justify-content: flex-end;\n  }\n\n  .justify-start {\n    justify-content: flex-start;\n  }\n\n  .justify-items-start {\n    justify-items: start;\n  }\n\n  .gap-0 {\n    gap: 0;\n  }\n\n  .gap-0\\.5 {\n    gap: calc(var(--spacing) * .5);\n  }\n\n  .gap-1 {\n    gap: var(--spacing);\n  }\n\n  .gap-1\\.5 {\n    gap: calc(var(--spacing) * 1.5);\n  }\n\n  .gap-2 {\n    gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-2\\.5 {\n    gap: calc(var(--spacing) * 2.5);\n  }\n\n  .gap-3 {\n    gap: calc(var(--spacing) * 3);\n  }\n\n  .gap-4 {\n    gap: calc(var(--spacing) * 4);\n  }\n\n  :where(.space-y-1 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(var(--spacing) * var(--tw-space-y-reverse));\n    margin-block-end: calc(var(--spacing) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-1\\.5 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 1.5) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 1.5) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-2 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 2) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 2) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-3 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 3) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 3) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-4 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 4) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 4) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-5 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 5) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 5) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  .gap-x-2 {\n    column-gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-x-3 {\n    column-gap: calc(var(--spacing) * 3);\n  }\n\n  .gap-x-4 {\n    column-gap: calc(var(--spacing) * 4);\n  }\n\n  .gap-y-1 {\n    row-gap: var(--spacing);\n  }\n\n  .gap-y-1\\.5 {\n    row-gap: calc(var(--spacing) * 1.5);\n  }\n\n  .gap-y-2 {\n    row-gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-y-3 {\n    row-gap: calc(var(--spacing) * 3);\n  }\n\n  :where(.divide-y > :not(:last-child)) {\n    --tw-divide-y-reverse: 0;\n    border-bottom-style: var(--tw-border-style);\n    border-top-style: var(--tw-border-style);\n    border-top-width: calc(1px * var(--tw-divide-y-reverse));\n    border-bottom-width: calc(1px * calc(1 - var(--tw-divide-y-reverse)));\n  }\n\n  .self-start {\n    align-self: flex-start;\n  }\n\n  .justify-self-start {\n    justify-self: flex-start;\n  }\n\n  .truncate {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    overflow: hidden;\n  }\n\n  .overflow-auto {\n    overflow: auto;\n  }\n\n  .overflow-hidden {\n    overflow: hidden;\n  }\n\n  .overflow-x-hidden {\n    overflow-x: hidden;\n  }\n\n  .overflow-y-auto {\n    overflow-y: auto;\n  }\n\n  .overscroll-contain {\n    overscroll-behavior: contain;\n  }\n\n  .rounded {\n    border-radius: .25rem;\n  }\n\n  .rounded-\\[inherit\\] {\n    border-radius: inherit;\n  }\n\n  .rounded-full {\n    border-radius: 3.40282e38px;\n  }\n\n  .rounded-lg {\n    border-radius: var(--radius);\n  }\n\n  .rounded-md {\n    border-radius: calc(var(--radius) - 2px);\n  }\n\n  .rounded-none {\n    border-radius: 0;\n  }\n\n  .rounded-sm {\n    border-radius: calc(var(--radius) - 4px);\n  }\n\n  .rounded-xl {\n    border-radius: calc(var(--radius) + 4px);\n  }\n\n  .border {\n    border-style: var(--tw-border-style);\n    border-width: 1px;\n  }\n\n  .border-0 {\n    border-style: var(--tw-border-style);\n    border-width: 0;\n  }\n\n  .border-2 {\n    border-style: var(--tw-border-style);\n    border-width: 2px;\n  }\n\n  .border-y {\n    border-block-style: var(--tw-border-style);\n    border-block-width: 1px;\n  }\n\n  .border-s {\n    border-inline-start-style: var(--tw-border-style);\n    border-inline-start-width: 1px;\n  }\n\n  .border-t {\n    border-top-style: var(--tw-border-style);\n    border-top-width: 1px;\n  }\n\n  .border-b {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 1px;\n  }\n\n  .border-l {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 1px;\n  }\n\n  .border-l-2 {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 2px;\n  }\n\n  .border-border {\n    border-color: var(--border);\n  }\n\n  .border-destructive\\/50 {\n    border-color: var(--destructive);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .border-destructive\\/50 {\n      border-color: color-mix(in oklab, var(--destructive) 50%, transparent);\n    }\n  }\n\n  .border-input {\n    border-color: var(--input);\n  }\n\n  .border-primary {\n    border-color: var(--primary);\n  }\n\n  .border-transparent {\n    border-color: #0000;\n  }\n\n  .border-t-transparent {\n    border-top-color: #0000;\n  }\n\n  .border-l-transparent {\n    border-left-color: #0000;\n  }\n\n  .bg-background {\n    background-color: var(--background);\n  }\n\n  .bg-black\\/80 {\n    background-color: #000c;\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-black\\/80 {\n      background-color: color-mix(in oklab, var(--color-black) 80%, transparent);\n    }\n  }\n\n  .bg-border {\n    background-color: var(--border);\n  }\n\n  .bg-card {\n    background-color: var(--card);\n  }\n\n  .bg-destructive {\n    background-color: var(--destructive);\n  }\n\n  .bg-muted, .bg-muted\\/40 {\n    background-color: var(--muted);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-muted\\/40 {\n      background-color: color-mix(in oklab, var(--muted) 40%, transparent);\n    }\n  }\n\n  .bg-muted\\/45 {\n    background-color: var(--muted);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-muted\\/45 {\n      background-color: color-mix(in oklab, var(--muted) 45%, transparent);\n    }\n  }\n\n  .bg-muted\\/50 {\n    background-color: var(--muted);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-muted\\/50 {\n      background-color: color-mix(in oklab, var(--muted) 50%, transparent);\n    }\n  }\n\n  .bg-popover {\n    background-color: var(--popover);\n  }\n\n  .bg-primary, .bg-primary\\/10 {\n    background-color: var(--primary);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-primary\\/10 {\n      background-color: color-mix(in oklab, var(--primary) 10%, transparent);\n    }\n  }\n\n  .bg-primary\\/20 {\n    background-color: var(--primary);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-primary\\/20 {\n      background-color: color-mix(in oklab, var(--primary) 20%, transparent);\n    }\n  }\n\n  .bg-secondary {\n    background-color: var(--secondary);\n  }\n\n  .bg-transparent {\n    background-color: #0000;\n  }\n\n  .object-contain {\n    object-fit: contain;\n  }\n\n  .p-0 {\n    padding: 0;\n  }\n\n  .p-0\\.5 {\n    padding: calc(var(--spacing) * .5);\n  }\n\n  .p-1 {\n    padding: var(--spacing);\n  }\n\n  .p-2 {\n    padding: calc(var(--spacing) * 2);\n  }\n\n  .p-3 {\n    padding: calc(var(--spacing) * 3);\n  }\n\n  .p-4 {\n    padding: calc(var(--spacing) * 4);\n  }\n\n  .p-6 {\n    padding: calc(var(--spacing) * 6);\n  }\n\n  .p-px {\n    padding: 1px;\n  }\n\n  .px-0 {\n    padding-inline: 0;\n  }\n\n  .px-1 {\n    padding-inline: var(--spacing);\n  }\n\n  .px-1\\.5 {\n    padding-inline: calc(var(--spacing) * 1.5);\n  }\n\n  .px-2 {\n    padding-inline: calc(var(--spacing) * 2);\n  }\n\n  .px-2\\.5 {\n    padding-inline: calc(var(--spacing) * 2.5);\n  }\n\n  .px-3 {\n    padding-inline: calc(var(--spacing) * 3);\n  }\n\n  .px-4 {\n    padding-inline: calc(var(--spacing) * 4);\n  }\n\n  .px-8 {\n    padding-inline: calc(var(--spacing) * 8);\n  }\n\n  .py-0 {\n    padding-block: 0;\n  }\n\n  .py-0\\.5 {\n    padding-block: calc(var(--spacing) * .5);\n  }\n\n  .py-1 {\n    padding-block: var(--spacing);\n  }\n\n  .py-1\\.5 {\n    padding-block: calc(var(--spacing) * 1.5);\n  }\n\n  .py-2 {\n    padding-block: calc(var(--spacing) * 2);\n  }\n\n  .py-3 {\n    padding-block: calc(var(--spacing) * 3);\n  }\n\n  .py-4 {\n    padding-block: calc(var(--spacing) * 4);\n  }\n\n  .py-10 {\n    padding-block: calc(var(--spacing) * 10);\n  }\n\n  .pe-3 {\n    padding-inline-end: calc(var(--spacing) * 3);\n  }\n\n  .pt-0 {\n    padding-top: 0;\n  }\n\n  .pt-1 {\n    padding-top: var(--spacing);\n  }\n\n  .pt-2 {\n    padding-top: calc(var(--spacing) * 2);\n  }\n\n  .pt-3 {\n    padding-top: calc(var(--spacing) * 3);\n  }\n\n  .pt-4 {\n    padding-top: calc(var(--spacing) * 4);\n  }\n\n  .pr-8 {\n    padding-right: calc(var(--spacing) * 8);\n  }\n\n  .pb-2 {\n    padding-bottom: calc(var(--spacing) * 2);\n  }\n\n  .pb-3 {\n    padding-bottom: calc(var(--spacing) * 3);\n  }\n\n  .pb-4 {\n    padding-bottom: calc(var(--spacing) * 4);\n  }\n\n  .pb-8 {\n    padding-bottom: calc(var(--spacing) * 8);\n  }\n\n  .pl-2 {\n    padding-left: calc(var(--spacing) * 2);\n  }\n\n  .text-center {\n    text-align: center;\n  }\n\n  .text-left {\n    text-align: left;\n  }\n\n  .text-right {\n    text-align: right;\n  }\n\n  .text-start {\n    text-align: start;\n  }\n\n  .align-middle {\n    vertical-align: middle;\n  }\n\n  .align-top {\n    vertical-align: top;\n  }\n\n  .font-mono {\n    font-family: var(--font-mono);\n  }\n\n  .text-base {\n    font-size: var(--text-base);\n    line-height: var(--tw-leading, var(--text-base--line-height));\n  }\n\n  .text-lg {\n    font-size: var(--text-lg);\n    line-height: var(--tw-leading, var(--text-lg--line-height));\n  }\n\n  .text-sm {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n\n  .text-xl {\n    font-size: var(--text-xl);\n    line-height: var(--tw-leading, var(--text-xl--line-height));\n  }\n\n  .text-xs {\n    font-size: var(--text-xs);\n    line-height: var(--tw-leading, var(--text-xs--line-height));\n  }\n\n  .text-\\[10px\\] {\n    font-size: 10px;\n  }\n\n  .text-\\[11px\\] {\n    font-size: 11px;\n  }\n\n  .leading-4 {\n    --tw-leading: calc(var(--spacing) * 4);\n    line-height: calc(var(--spacing) * 4);\n  }\n\n  .leading-5 {\n    --tw-leading: calc(var(--spacing) * 5);\n    line-height: calc(var(--spacing) * 5);\n  }\n\n  .leading-none {\n    --tw-leading: 1;\n    line-height: 1;\n  }\n\n  .leading-relaxed {\n    --tw-leading: var(--leading-relaxed);\n    line-height: var(--leading-relaxed);\n  }\n\n  .leading-snug {\n    --tw-leading: var(--leading-snug);\n    line-height: var(--leading-snug);\n  }\n\n  .font-medium {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n\n  .font-normal {\n    --tw-font-weight: var(--font-weight-normal);\n    font-weight: var(--font-weight-normal);\n  }\n\n  .font-semibold {\n    --tw-font-weight: var(--font-weight-semibold);\n    font-weight: var(--font-weight-semibold);\n  }\n\n  .tracking-tight {\n    --tw-tracking: var(--tracking-tight);\n    letter-spacing: var(--tracking-tight);\n  }\n\n  .\\[overflow-wrap\\:anywhere\\] {\n    overflow-wrap: anywhere;\n  }\n\n  .break-words {\n    overflow-wrap: break-word;\n  }\n\n  .break-all {\n    word-break: break-all;\n  }\n\n  .whitespace-normal {\n    white-space: normal;\n  }\n\n  .whitespace-nowrap {\n    white-space: nowrap;\n  }\n\n  .whitespace-pre-wrap {\n    white-space: pre-wrap;\n  }\n\n  .text-card-foreground {\n    color: var(--card-foreground);\n  }\n\n  .text-current {\n    color: currentColor;\n  }\n\n  .text-destructive {\n    color: var(--destructive);\n  }\n\n  .text-destructive-foreground {\n    color: var(--destructive-foreground);\n  }\n\n  .text-foreground {\n    color: var(--foreground);\n  }\n\n  .text-muted-foreground {\n    color: var(--muted-foreground);\n  }\n\n  .text-popover-foreground {\n    color: var(--popover-foreground);\n  }\n\n  .text-primary {\n    color: var(--primary);\n  }\n\n  .text-primary-foreground {\n    color: var(--primary-foreground);\n  }\n\n  .text-secondary-foreground {\n    color: var(--secondary-foreground);\n  }\n\n  .text-success {\n    color: var(--success);\n  }\n\n  .lowercase {\n    text-transform: lowercase;\n  }\n\n  .ordinal {\n    --tw-ordinal: ordinal;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .tabular-nums {\n    --tw-numeric-spacing: tabular-nums;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .underline-offset-4 {\n    text-underline-offset: 4px;\n  }\n\n  .opacity-0 {\n    opacity: 0;\n  }\n\n  .opacity-50 {\n    opacity: .5;\n  }\n\n  .opacity-70 {\n    opacity: .7;\n  }\n\n  .shadow {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .shadow-lg {\n    --tw-shadow: 0 10px 15px -3px var(--tw-shadow-color, #0000001a), 0 4px 6px -4px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .shadow-md {\n    --tw-shadow: 0 4px 6px -1px var(--tw-shadow-color, #0000001a), 0 2px 4px -2px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .shadow-none {\n    --tw-shadow: 0 0 #0000;\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .shadow-sm {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .ring-0 {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(0px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .ring-offset-background {\n    --tw-ring-offset-color: var(--background);\n  }\n\n  .outline {\n    outline-style: var(--tw-outline-style);\n    outline-width: 1px;\n  }\n\n  .blur {\n    --tw-blur: blur(8px);\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .filter {\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .transition {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-all {\n    transition-property: all;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-colors {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-opacity {\n    transition-property: opacity;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-transform {\n    transition-property: transform, translate, scale, rotate;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .duration-200 {\n    --tw-duration: .2s;\n    transition-duration: .2s;\n  }\n\n  .animate-in {\n    --tw-enter-opacity: initial;\n    --tw-enter-scale: initial;\n    --tw-enter-rotate: initial;\n    --tw-enter-translate-x: initial;\n    --tw-enter-translate-y: initial;\n    animation-name: enter;\n    animation-duration: .15s;\n  }\n\n  .outline-none {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  .select-none {\n    -webkit-user-select: none;\n    user-select: none;\n  }\n\n  .\\!running {\n    animation-play-state: running !important;\n  }\n\n  .duration-200 {\n    animation-duration: .2s;\n  }\n\n  .fade-in-0 {\n    --tw-enter-opacity: 0;\n  }\n\n  .paused {\n    animation-play-state: paused;\n  }\n\n  .running {\n    animation-play-state: running;\n  }\n\n  .zoom-in-95 {\n    --tw-enter-scale: .95;\n  }\n\n  .group-data-\\[state\\=open\\]\\:rotate-180:is(:where(.group)[data-state="open"] *) {\n    rotate: 180deg;\n  }\n\n  .peer-disabled\\:cursor-not-allowed:is(:where(.peer):disabled ~ *) {\n    cursor: not-allowed;\n  }\n\n  .peer-disabled\\:opacity-70:is(:where(.peer):disabled ~ *) {\n    opacity: .7;\n  }\n\n  .file\\:border-0::file-selector-button {\n    border-style: var(--tw-border-style);\n    border-width: 0;\n  }\n\n  .file\\:bg-transparent::file-selector-button {\n    background-color: #0000;\n  }\n\n  .file\\:text-sm::file-selector-button {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n\n  .file\\:font-medium::file-selector-button {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n\n  .placeholder\\:text-muted-foreground::placeholder {\n    color: var(--muted-foreground);\n  }\n\n  .after\\:absolute:after {\n    content: var(--tw-content);\n    position: absolute;\n  }\n\n  .after\\:inset-0:after {\n    content: var(--tw-content);\n    inset: 0;\n  }\n\n  .after\\:rounded-xl:after {\n    content: var(--tw-content);\n    border-radius: calc(var(--radius) + 4px);\n  }\n\n  .first\\:border-t-0:first-child {\n    border-top-style: var(--tw-border-style);\n    border-top-width: 0;\n  }\n\n  .first\\:pt-0:first-child {\n    padding-top: 0;\n  }\n\n  @media (hover: hover) {\n    .hover\\:bg-accent:hover {\n      background-color: var(--accent);\n    }\n\n    .hover\\:bg-destructive\\/80:hover {\n      background-color: var(--destructive);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-destructive\\/80:hover {\n        background-color: color-mix(in oklab, var(--destructive) 80%, transparent);\n      }\n    }\n\n    .hover\\:bg-destructive\\/90:hover {\n      background-color: var(--destructive);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-destructive\\/90:hover {\n        background-color: color-mix(in oklab, var(--destructive) 90%, transparent);\n      }\n    }\n\n    .hover\\:bg-muted\\/50:hover {\n      background-color: var(--muted);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-muted\\/50:hover {\n        background-color: color-mix(in oklab, var(--muted) 50%, transparent);\n      }\n    }\n\n    .hover\\:bg-primary\\/80:hover {\n      background-color: var(--primary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-primary\\/80:hover {\n        background-color: color-mix(in oklab, var(--primary) 80%, transparent);\n      }\n    }\n\n    .hover\\:bg-primary\\/90:hover {\n      background-color: var(--primary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-primary\\/90:hover {\n        background-color: color-mix(in oklab, var(--primary) 90%, transparent);\n      }\n    }\n\n    .hover\\:bg-secondary:hover, .hover\\:bg-secondary\\/80:hover {\n      background-color: var(--secondary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-secondary\\/80:hover {\n        background-color: color-mix(in oklab, var(--secondary) 80%, transparent);\n      }\n    }\n\n    .hover\\:text-accent-foreground:hover {\n      color: var(--accent-foreground);\n    }\n\n    .hover\\:underline:hover {\n      text-decoration-line: underline;\n    }\n\n    .hover\\:opacity-100:hover {\n      opacity: 1;\n    }\n  }\n\n  .focus\\:bg-accent:focus {\n    background-color: var(--accent);\n  }\n\n  .focus\\:text-accent-foreground:focus {\n    color: var(--accent-foreground);\n  }\n\n  .focus\\:ring-1:focus {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus\\:ring-2:focus {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus\\:ring-ring:focus {\n    --tw-ring-color: var(--ring);\n  }\n\n  .focus\\:ring-offset-2:focus {\n    --tw-ring-offset-width: 2px;\n    --tw-ring-offset-shadow: var(--tw-ring-inset, ) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);\n  }\n\n  .focus\\:outline-none:focus {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  .focus-visible\\:ring-1:focus-visible {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus-visible\\:ring-2:focus-visible {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus-visible\\:ring-ring:focus-visible {\n    --tw-ring-color: var(--ring);\n  }\n\n  .focus-visible\\:ring-offset-2:focus-visible {\n    --tw-ring-offset-width: 2px;\n    --tw-ring-offset-shadow: var(--tw-ring-inset, ) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);\n  }\n\n  .focus-visible\\:ring-offset-background:focus-visible {\n    --tw-ring-offset-color: var(--background);\n  }\n\n  .focus-visible\\:outline-none:focus-visible {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  .disabled\\:pointer-events-none:disabled {\n    pointer-events: none;\n  }\n\n  .disabled\\:cursor-not-allowed:disabled {\n    cursor: not-allowed;\n  }\n\n  .disabled\\:opacity-50:disabled {\n    opacity: .5;\n  }\n\n  .data-\\[disabled\\]\\:pointer-events-none[data-disabled] {\n    pointer-events: none;\n  }\n\n  .data-\\[disabled\\]\\:opacity-50[data-disabled] {\n    opacity: .5;\n  }\n\n  .data-\\[orientation\\=vertical\\]\\:h-full[data-orientation="vertical"] {\n    height: 100%;\n  }\n\n  .data-\\[orientation\\=vertical\\]\\:w-1\\.5[data-orientation="vertical"] {\n    width: calc(var(--spacing) * 1.5);\n  }\n\n  .data-\\[orientation\\=vertical\\]\\:w-full[data-orientation="vertical"] {\n    width: 100%;\n  }\n\n  .data-\\[orientation\\=vertical\\]\\:flex-col[data-orientation="vertical"] {\n    flex-direction: column;\n  }\n\n  .data-\\[placeholder\\]\\:text-muted-foreground[data-placeholder] {\n    color: var(--muted-foreground);\n  }\n\n  .data-\\[side\\=bottom\\]\\:translate-y-1[data-side="bottom"] {\n    --tw-translate-y: var(--spacing);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[side\\=bottom\\]\\:slide-in-from-top-2[data-side="bottom"] {\n    --tw-enter-translate-y: -.5rem;\n  }\n\n  .data-\\[side\\=left\\]\\:-translate-x-1[data-side="left"] {\n    --tw-translate-x: calc(var(--spacing) * -1);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[side\\=left\\]\\:slide-in-from-right-2[data-side="left"] {\n    --tw-enter-translate-x: .5rem;\n  }\n\n  .data-\\[side\\=right\\]\\:translate-x-1[data-side="right"] {\n    --tw-translate-x: var(--spacing);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[side\\=right\\]\\:slide-in-from-left-2[data-side="right"] {\n    --tw-enter-translate-x: -.5rem;\n  }\n\n  .data-\\[side\\=top\\]\\:-translate-y-1[data-side="top"] {\n    --tw-translate-y: calc(var(--spacing) * -1);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[side\\=top\\]\\:slide-in-from-bottom-2[data-side="top"] {\n    --tw-enter-translate-y: .5rem;\n  }\n\n  .data-\\[state\\=active\\]\\:bg-background[data-state="active"] {\n    background-color: var(--background);\n  }\n\n  .data-\\[state\\=active\\]\\:text-foreground[data-state="active"] {\n    color: var(--foreground);\n  }\n\n  .data-\\[state\\=active\\]\\:shadow[data-state="active"] {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .data-\\[state\\=checked\\]\\:translate-x-4[data-state="checked"] {\n    --tw-translate-x: calc(var(--spacing) * 4);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[state\\=checked\\]\\:bg-primary[data-state="checked"] {\n    background-color: var(--primary);\n  }\n\n  .data-\\[state\\=checked\\]\\:text-primary-foreground[data-state="checked"] {\n    color: var(--primary-foreground);\n  }\n\n  .data-\\[state\\=closed\\]\\:animate-none[data-state="closed"] {\n    animation: none;\n  }\n\n  .data-\\[state\\=closed\\]\\:animate-out[data-state="closed"] {\n    --tw-exit-opacity: initial;\n    --tw-exit-scale: initial;\n    --tw-exit-rotate: initial;\n    --tw-exit-translate-x: initial;\n    --tw-exit-translate-y: initial;\n    animation-name: exit;\n    animation-duration: .15s;\n  }\n\n  .data-\\[state\\=closed\\]\\:fade-out-0[data-state="closed"] {\n    --tw-exit-opacity: 0;\n  }\n\n  .data-\\[state\\=closed\\]\\:slide-out-to-left-1\\/2[data-state="closed"] {\n    --tw-exit-translate-x: -50%;\n  }\n\n  .data-\\[state\\=closed\\]\\:slide-out-to-top-\\[48\\%\\][data-state="closed"] {\n    --tw-exit-translate-y: -48%;\n  }\n\n  .data-\\[state\\=closed\\]\\:zoom-out-95[data-state="closed"] {\n    --tw-exit-scale: .95;\n  }\n\n  .data-\\[state\\=open\\]\\:animate-none[data-state="open"] {\n    animation: none;\n  }\n\n  .data-\\[state\\=open\\]\\:bg-accent[data-state="open"] {\n    background-color: var(--accent);\n  }\n\n  .data-\\[state\\=open\\]\\:text-muted-foreground[data-state="open"] {\n    color: var(--muted-foreground);\n  }\n\n  .data-\\[state\\=open\\]\\:animate-in[data-state="open"] {\n    --tw-enter-opacity: initial;\n    --tw-enter-scale: initial;\n    --tw-enter-rotate: initial;\n    --tw-enter-translate-x: initial;\n    --tw-enter-translate-y: initial;\n    animation-name: enter;\n    animation-duration: .15s;\n  }\n\n  .data-\\[state\\=open\\]\\:fade-in-0[data-state="open"] {\n    --tw-enter-opacity: 0;\n  }\n\n  .data-\\[state\\=open\\]\\:slide-in-from-left-1\\/2[data-state="open"] {\n    --tw-enter-translate-x: -50%;\n  }\n\n  .data-\\[state\\=open\\]\\:slide-in-from-top-\\[48\\%\\][data-state="open"] {\n    --tw-enter-translate-y: -48%;\n  }\n\n  .data-\\[state\\=open\\]\\:zoom-in-95[data-state="open"] {\n    --tw-enter-scale: .95;\n  }\n\n  .data-\\[state\\=selected\\]\\:bg-muted[data-state="selected"] {\n    background-color: var(--muted);\n  }\n\n  .data-\\[state\\=unchecked\\]\\:translate-x-0[data-state="unchecked"] {\n    --tw-translate-x: 0px;\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[state\\=unchecked\\]\\:bg-input[data-state="unchecked"] {\n    background-color: var(--input);\n  }\n\n  @media (prefers-reduced-motion: reduce) {\n    .motion-reduce\\:animate-none {\n      animation: none;\n    }\n\n    .motion-reduce\\:transition-none {\n      transition-property: none;\n    }\n  }\n\n  @media not all and (min-width: 620px) {\n    .max-\\[620px\\]\\:px-1\\.5 {\n      padding-inline: calc(var(--spacing) * 1.5);\n    }\n  }\n\n  @media (min-width: 621px) {\n    .min-\\[621px\\]\\:col-span-2 {\n      grid-column: span 2 / span 2;\n    }\n\n    .min-\\[621px\\]\\:block {\n      display: block;\n    }\n\n    .min-\\[621px\\]\\:flex {\n      display: flex;\n    }\n\n    .min-\\[621px\\]\\:hidden {\n      display: none;\n    }\n\n    .min-\\[621px\\]\\:min-h-9 {\n      min-height: calc(var(--spacing) * 9);\n    }\n\n    .min-\\[621px\\]\\:grid-cols-2 {\n      grid-template-columns: repeat(2, minmax(0, 1fr));\n    }\n\n    .min-\\[621px\\]\\:grid-cols-\\[minmax\\(0\\,1fr\\)_minmax\\(180px\\,280px\\)\\] {\n      grid-template-columns: minmax(0, 1fr) minmax(180px, 280px);\n    }\n\n    .min-\\[621px\\]\\:flex-wrap {\n      flex-wrap: wrap;\n    }\n\n    .min-\\[621px\\]\\:items-center {\n      align-items: center;\n    }\n  }\n\n  @media (min-width: 900px) {\n    .min-\\[900px\\]\\:flex-none {\n      flex: none;\n    }\n\n    .min-\\[900px\\]\\:grid-cols-4 {\n      grid-template-columns: repeat(4, minmax(0, 1fr));\n    }\n  }\n\n  @media (min-width: 1024px) {\n    .min-\\[1024px\\]\\:grid-cols-2 {\n      grid-template-columns: repeat(2, minmax(0, 1fr));\n    }\n  }\n\n  @media (min-width: 40rem) {\n    .sm\\:inline {\n      display: inline;\n    }\n\n    .sm\\:grid-cols-2 {\n      grid-template-columns: repeat(2, minmax(0, 1fr));\n    }\n\n    .sm\\:grid-cols-3 {\n      grid-template-columns: repeat(3, minmax(0, 1fr));\n    }\n\n    .sm\\:flex-row {\n      flex-direction: row;\n    }\n\n    .sm\\:justify-end {\n      justify-content: flex-end;\n    }\n\n    .sm\\:gap-x-2 {\n      column-gap: calc(var(--spacing) * 2);\n    }\n\n    .sm\\:rounded-lg {\n      border-radius: var(--radius);\n    }\n\n    .sm\\:text-left {\n      text-align: left;\n    }\n  }\n\n  @media (min-width: 48rem) {\n    .md\\:w-full {\n      width: 100%;\n    }\n  }\n\n  .dark\\:border-destructive:is(.dark *, :host(.dark) *) {\n    border-color: var(--destructive);\n  }\n\n  .\\[\\&_p\\]\\:leading-relaxed p {\n    --tw-leading: var(--leading-relaxed);\n    line-height: var(--leading-relaxed);\n  }\n\n  .\\[\\&_svg\\]\\:pointer-events-none svg {\n    pointer-events: none;\n  }\n\n  .\\[\\&_svg\\]\\:size-4 svg {\n    width: calc(var(--spacing) * 4);\n    height: calc(var(--spacing) * 4);\n  }\n\n  .\\[\\&_svg\\]\\:shrink-0 svg {\n    flex-shrink: 0;\n  }\n\n  .\\[\\&_tr\\]\\:border-b tr {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 1px;\n  }\n\n  .\\[\\&_tr\\:last-child\\]\\:border-0 tr:last-child {\n    border-style: var(--tw-border-style);\n    border-width: 0;\n  }\n\n  .\\[\\&\\:has\\(\\[role\\=checkbox\\]\\)\\]\\:pr-0:has([role="checkbox"]) {\n    padding-right: 0;\n  }\n\n  .\\[\\&\\>\\[role\\=checkbox\\]\\]\\:translate-y-0\\.5 > [role="checkbox"] {\n    --tw-translate-y: calc(var(--spacing) * .5);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .\\[\\&\\>span\\]\\:min-w-0 > span {\n    min-width: 0;\n  }\n\n  .\\[\\&\\>span\\]\\:truncate > span {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    overflow: hidden;\n  }\n\n  .\\[\\&\\>span\\]\\:break-words > span {\n    overflow-wrap: break-word;\n  }\n\n  .\\[\\&\\>span\\]\\:whitespace-normal > span {\n    white-space: normal;\n  }\n\n  .\\[\\&\\>svg\\]\\:absolute > svg {\n    position: absolute;\n  }\n\n  .\\[\\&\\>svg\\]\\:top-4 > svg {\n    top: calc(var(--spacing) * 4);\n  }\n\n  .\\[\\&\\>svg\\]\\:left-4 > svg {\n    left: calc(var(--spacing) * 4);\n  }\n\n  .\\[\\&\\>svg\\]\\:text-destructive > svg {\n    color: var(--destructive);\n  }\n\n  .\\[\\&\\>svg\\]\\:text-foreground > svg {\n    color: var(--foreground);\n  }\n\n  .\\[\\&\\>svg\\+div\\]\\:translate-y-\\[-3px\\] > svg + div {\n    --tw-translate-y: -3px;\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .\\[\\&\\>svg\\~\\*\\]\\:pl-7 > svg ~ * {\n    padding-left: calc(var(--spacing) * 7);\n  }\n\n  .\\[\\&\\>tr\\]\\:last\\:border-b-0 > tr:last-child {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 0;\n  }\n}\n\n:root, :host {\n  --radius: .625rem;\n  --destructive-foreground: #fafafa;\n  --success: oklch(59.6% .145 163.225);\n  --warning: oklch(66.6% .179 58.318);\n  --background: oklch(100% 0 0);\n  --foreground: oklch(14.5% 0 0);\n  --card: oklch(100% 0 0);\n  --card-foreground: oklch(14.5% 0 0);\n  --popover: oklch(100% 0 0);\n  --popover-foreground: oklch(14.5% 0 0);\n  --primary: oklch(20.5% 0 0);\n  --primary-foreground: oklch(98.5% 0 0);\n  --secondary: oklch(97% 0 0);\n  --secondary-foreground: oklch(20.5% 0 0);\n  --muted: oklch(97% 0 0);\n  --muted-foreground: oklch(55.6% 0 0);\n  --accent: oklch(97% 0 0);\n  --accent-foreground: oklch(20.5% 0 0);\n  --destructive: oklch(57.7% .245 27.325);\n  --border: oklch(92.2% 0 0);\n  --input: oklch(92.2% 0 0);\n  --ring: oklch(70.8% 0 0);\n  --chart-1: oklch(64.6% .222 41.116);\n  --chart-2: oklch(60% .118 184.704);\n  --chart-3: oklch(39.8% .07 227.392);\n  --chart-4: oklch(82.8% .189 84.429);\n  --chart-5: oklch(76.9% .188 70.08);\n  --sidebar: oklch(98.5% 0 0);\n  --sidebar-foreground: oklch(14.5% 0 0);\n  --sidebar-primary: oklch(20.5% 0 0);\n  --sidebar-primary-foreground: oklch(98.5% 0 0);\n  --sidebar-accent: oklch(97% 0 0);\n  --sidebar-accent-foreground: oklch(20.5% 0 0);\n  --sidebar-border: oklch(92.2% 0 0);\n  --sidebar-ring: oklch(70.8% 0 0);\n}\n\n.dark, :host(.dark) {\n  --success: oklch(76.5% .177 163.223);\n  --warning: oklch(82.8% .189 84.429);\n  --background: oklch(14.5% 0 0);\n  --foreground: oklch(98.5% 0 0);\n  --card: oklch(20.5% 0 0);\n  --card-foreground: oklch(98.5% 0 0);\n  --popover: oklch(20.5% 0 0);\n  --popover-foreground: oklch(98.5% 0 0);\n  --primary: oklch(92.2% 0 0);\n  --primary-foreground: oklch(20.5% 0 0);\n  --secondary: oklch(26.9% 0 0);\n  --secondary-foreground: oklch(98.5% 0 0);\n  --muted: oklch(26.9% 0 0);\n  --muted-foreground: oklch(70.8% 0 0);\n  --accent: oklch(26.9% 0 0);\n  --accent-foreground: oklch(98.5% 0 0);\n  --destructive: oklch(70.4% .191 22.216);\n  --border: oklch(100% 0 0 / .2);\n  --input: oklch(100% 0 0 / .28);\n  --ring: oklch(55.6% 0 0);\n  --chart-1: oklch(48.8% .243 264.376);\n  --chart-2: oklch(69.6% .17 162.48);\n  --chart-3: oklch(76.9% .188 70.08);\n  --chart-4: oklch(62.7% .265 303.9);\n  --chart-5: oklch(64.5% .246 16.439);\n  --sidebar: oklch(20.5% 0 0);\n  --sidebar-foreground: oklch(98.5% 0 0);\n  --sidebar-primary: oklch(48.8% .243 264.376);\n  --sidebar-primary-foreground: oklch(98.5% 0 0);\n  --sidebar-accent: oklch(26.9% 0 0);\n  --sidebar-accent-foreground: oklch(98.5% 0 0);\n  --sidebar-border: oklch(100% 0 0 / .1);\n  --sidebar-ring: oklch(55.6% 0 0);\n}\n\n@media (prefers-color-scheme: dark) {\n  :host(:not(.light)) {\n    --success: oklch(76.5% .177 163.223);\n    --warning: oklch(82.8% .189 84.429);\n    --background: oklch(14.5% 0 0);\n    --foreground: oklch(98.5% 0 0);\n    --card: oklch(20.5% 0 0);\n    --card-foreground: oklch(98.5% 0 0);\n    --popover: oklch(20.5% 0 0);\n    --popover-foreground: oklch(98.5% 0 0);\n    --primary: oklch(92.2% 0 0);\n    --primary-foreground: oklch(20.5% 0 0);\n    --secondary: oklch(26.9% 0 0);\n    --secondary-foreground: oklch(98.5% 0 0);\n    --muted: oklch(26.9% 0 0);\n    --muted-foreground: oklch(70.8% 0 0);\n    --accent: oklch(26.9% 0 0);\n    --accent-foreground: oklch(98.5% 0 0);\n    --destructive: oklch(70.4% .191 22.216);\n    --border: oklch(100% 0 0 / .2);\n    --input: oklch(100% 0 0 / .28);\n    --ring: oklch(55.6% 0 0);\n    --chart-1: oklch(48.8% .243 264.376);\n    --chart-2: oklch(69.6% .17 162.48);\n    --chart-3: oklch(76.9% .188 70.08);\n    --chart-4: oklch(62.7% .265 303.9);\n    --chart-5: oklch(64.5% .246 16.439);\n    --sidebar: oklch(20.5% 0 0);\n    --sidebar-foreground: oklch(98.5% 0 0);\n    --sidebar-primary: oklch(48.8% .243 264.376);\n    --sidebar-primary-foreground: oklch(98.5% 0 0);\n    --sidebar-accent: oklch(26.9% 0 0);\n    --sidebar-accent-foreground: oklch(98.5% 0 0);\n    --sidebar-border: oklch(100% 0 0 / .1);\n    --sidebar-ring: oklch(55.6% 0 0);\n  }\n}\n\n.booster-archive-nav {\n  border-right: 1px solid var(--border);\n  background: var(--card);\n  overscroll-behavior: contain;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  padding: 12px;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-archive-nav-branch {\n  border-inline-start: 2px solid var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-nav-branch {\n    border-inline-start: 2px solid color-mix(in oklab, var(--primary) 35%, transparent);\n  }\n}\n\n.booster-reader-exchanges {\n  gap: 12px;\n  margin-top: 0;\n  display: grid;\n}\n\n.booster-exchange {\n  border-bottom: 1px solid var(--border);\n  min-width: 0;\n  max-width: 100%;\n  padding-bottom: 16px;\n}\n\n.booster-exchange-details {\n  border-left: 2px solid var(--border);\n  gap: 6px;\n  margin: 10px 0 10px 12px;\n  padding: 8px 0 8px 12px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-exchange-details {\n    border-left: 2px solid color-mix(in oklab, var(--border) 78%, var(--primary));\n  }\n}\n\n.booster-exchange-details-label {\n  color: var(--muted-foreground);\n  letter-spacing: .04em;\n  text-transform: uppercase;\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-message-target {\n  outline: 2px solid var(--primary);\n  outline-offset: 2px;\n  border-radius: 6px;\n}\n\n[data-archive-message] {\n  scroll-margin-block: 20px;\n}\n\n.booster-reader-exchanges, .booster-exchange-details {\n  min-width: 0;\n  max-width: 100%;\n}\n\n.booster-meta-trigger {\n  flex-shrink: 0;\n}\n\n.booster-meta-lines {\n  grid-template-columns: max-content minmax(0, 1fr);\n  gap: 3px 10px;\n  display: grid;\n}\n\n.booster-meta-label {\n  color: var(--muted-foreground);\n  font-size: 10px;\n  font-weight: 600;\n}\n\n.booster-floating-tooltip .booster-meta-label {\n  color: inherit;\n  opacity: .75;\n}\n\n.booster-meta-value {\n  overflow-wrap: anywhere;\n  min-width: 0;\n  color: inherit;\n  font-variant-numeric: tabular-nums;\n}\n\n.booster-json-viewer {\n  background: var(--background);\n  max-height: min(70vh, 620px);\n  margin: 0;\n  padding: 14px 16px 22px;\n  overflow: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-json-viewer {\n    background: color-mix(in oklab, var(--background) 86%, #0f172a);\n  }\n}\n\n.booster-json-viewer {\n  color: var(--foreground);\n  tab-size: 2;\n  white-space: pre;\n  font: 11px / 1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n}\n\n.booster-json-key {\n  color: #60a5fa;\n}\n\n.booster-json-string {\n  color: #86efac;\n}\n\n.booster-json-number {\n  color: #fbbf24;\n}\n\n.booster-json-boolean {\n  color: #c084fc;\n}\n\n.booster-json-null {\n  color: #94a3b8;\n}\n\n:host {\n  all: initial;\n  color: var(--foreground);\n  font-family: Inter, ui-sans-serif, system-ui, sans-serif;\n}\n\n* {\n  box-sizing: border-box;\n}\n\n.booster-shell {\n  z-index: 2147483647;\n  position: fixed;\n  bottom: 20px;\n  right: 20px;\n}\n\n.booster-panel {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 300px;\n  color: var(--card-foreground);\n  border-radius: 16px;\n  margin-bottom: 10px;\n  padding: 14px;\n  box-shadow: 0 18px 45px #0000003d;\n}\n\n.booster-panel h2 {\n  margin: 0 0 6px;\n  font-size: 15px;\n  font-weight: 700;\n}\n\n.booster-panel p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.45;\n}\n\n.booster-control-center {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(760px, 100vw - 32px);\n  min-width: 0;\n  color: var(--card-foreground);\n  border-radius: 18px;\n  margin-bottom: 10px;\n  overflow: hidden;\n  box-shadow: 0 22px 60px #00000047;\n}\n\n.booster-control-header, .booster-control-footer {\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  display: flex;\n}\n\n.booster-control-header {\n  border-bottom: 1px solid var(--border);\n  flex-wrap: wrap;\n  padding: 14px 14px 12px;\n}\n\n.booster-control-header strong {\n  overflow-wrap: anywhere;\n  font-size: 14px;\n}\n\n.booster-control-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-control-body {\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-loading {\n  color: var(--muted-foreground);\n  padding: 18px;\n  font-size: 12px;\n}\n\n.booster-section-label {\n  color: var(--muted-foreground);\n  letter-spacing: .08em;\n  text-transform: uppercase;\n  padding: 2px 2px 0;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-setting-card {\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 12px;\n  display: flex;\n}\n\n.booster-setting-disabled {\n  opacity: .55;\n}\n\n.booster-setting-copy {\n  gap: 5px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-setting-copy b {\n  font-size: 12px;\n}\n\n.booster-setting-copy > span {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.4;\n}\n\n.booster-info-card {\n  background: var(--muted);\n  color: var(--foreground);\n  border-radius: 12px;\n  padding: 11px 12px;\n  font-size: 11px;\n}\n\n.booster-info-card ul {\n  color: var(--muted-foreground);\n  gap: 4px;\n  margin: 8px 0 0 18px;\n  padding: 0;\n  line-height: 1.35;\n  display: grid;\n}\n\n.booster-control-footer {\n  padding-top: 2px;\n}\n\n.booster-save-state {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 5px;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-overlay-root {\n  pointer-events: none;\n}\n\n.booster-launcher {\n  z-index: 2147483647;\n  cursor: grab;\n  pointer-events: auto;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  border-radius: 15px;\n  justify-content: center;\n  align-items: center;\n  gap: 1px;\n  width: 44px;\n  height: 44px;\n  display: inline-flex;\n  position: fixed;\n}\n\n.booster-launcher-dragging {\n  cursor: grabbing;\n}\n\n.booster-launcher-icon {\n  flex-shrink: 0;\n  width: 20px;\n  height: 20px;\n}\n\n.booster-modal-backdrop {\n  z-index: 40;\n  pointer-events: auto;\n  place-items: center;\n  padding: 16px;\n  display: grid;\n  position: fixed;\n  inset: 0;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n  max-height: calc(100vh - 32px);\n  overflow: auto;\n}\n\n.booster-modal-surface .booster-control-center {\n  width: 100%;\n  box-shadow: none;\n  border: 0;\n  border-radius: 0;\n  margin: 0;\n}\n\n.booster-popup-host {\n  background: var(--background);\n  min-width: 360px;\n}\n\n.booster-stack-card {\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-stack-card label {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-counter-grid {\n  color: var(--muted-foreground);\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 6px 12px;\n  margin-top: 8px;\n  display: grid;\n}\n\n.booster-counter-grid span {\n  justify-content: space-between;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-counter-grid b {\n  color: var(--foreground);\n}\n\n.booster-header-copy {\n  min-width: 0;\n}\n\n.booster-header-actions {\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-header-toggle-label {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  font-weight: 600;\n}\n\n.booster-settings-layout {\n  grid-template-columns: minmax(0, 1fr);\n  min-height: 360px;\n  display: grid;\n}\n\n.booster-settings-content {\n  align-content: start;\n  gap: 10px;\n  min-width: 0;\n  min-height: 0;\n  padding: 14px;\n  display: grid;\n}\n\n.booster-setting-card-flat {\n  border: 0;\n  border-bottom: 1px solid var(--border);\n  border-radius: 0;\n  padding: 0 0 10px;\n}\n\n.booster-analytics-grid {\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 12px;\n  display: grid;\n}\n\n.booster-counter-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  padding: 12px;\n}\n\n.booster-counter-title {\n  margin-bottom: 8px;\n  font-size: 12px;\n  font-weight: 700;\n}\n\n.rotate-180 {\n  transform: rotate(180deg);\n}\n\n.booster-telemetry-body {\n  gap: 10px;\n  padding-top: 10px;\n  display: grid;\n}\n\n.booster-field {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-telemetry-test-row {\n  align-items: center;\n  gap: 10px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-test-success {\n  color: var(--success);\n  font-size: 11px;\n}\n\n.booster-test-error {\n  min-width: 0;\n  color: var(--destructive);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n}\n\n@media (max-width: 620px) {\n  .booster-control-center, .booster-modal-surface {\n    width: calc(100vw - 20px);\n  }\n\n  .booster-settings-layout, .booster-analytics-grid {\n    grid-template-columns: 1fr;\n  }\n}\n\n.booster-modal-surface.booster-modal-surface-wide {\n  width: min(1320px, 100vw - 32px);\n}\n\n.booster-modal-surface-wide > .booster-control-center {\n  width: 100%;\n}\n\n@media (max-width: 620px) {\n  .booster-modal-surface.booster-modal-surface-wide {\n    width: calc(100vw - 20px);\n  }\n}\n\n.booster-modal-backdrop.booster-modal-backdrop-floating {\n  -webkit-backdrop-filter: none;\n  backdrop-filter: none;\n  pointer-events: none;\n  background: none;\n  padding: 0;\n  display: block;\n}\n\n.booster-modal-surface.booster-modal-surface-wide.booster-dialog-floating {\n  pointer-events: auto;\n  flex-direction: column;\n  gap: 0;\n  min-width: 0;\n  max-width: calc(100dvw - 16px);\n  min-height: 0;\n  max-height: calc(100dvh - 16px);\n  padding: 0;\n  display: flex;\n  position: fixed;\n  overflow: hidden;\n  transform: translate3d(0, 0, 0);\n}\n\n.booster-dialog-floating > .booster-control-center {\n  min-width: 0;\n  min-height: 0;\n  box-shadow: none;\n  border: 0;\n  border-radius: 0;\n  flex-direction: column;\n  flex: auto;\n  margin: 0;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-floating-chrome {\n  border-bottom: 1px solid var(--border);\n  background: var(--muted);\n  cursor: move;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  flex: none;\n  align-items: center;\n  gap: 8px;\n  min-height: 38px;\n  padding: 4px 8px 4px 12px;\n  display: flex;\n}\n\n.booster-floating-chrome > span {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  flex: auto;\n  min-width: 0;\n  font-size: 12px;\n  font-weight: 600;\n  overflow: hidden;\n}\n\n.booster-floating-chrome > button:not([role="switch"]) {\n  flex: none;\n  width: 30px;\n  height: 30px;\n}\n\n.booster-workspace-error {\n  color: var(--destructive);\n  flex: none;\n  margin: 0;\n  padding: 6px 12px;\n  font-size: 12px;\n}\n\n.booster-floating-resize {\n  cursor: nwse-resize;\n  touch-action: none;\n  width: 28px;\n  height: 28px;\n  position: absolute;\n  bottom: 0;\n  right: 0;\n}\n\n.booster-launcher-docked {\n  width: 44px;\n  height: 44px;\n}\n\n.booster-edge-toolkit {\n  z-index: 2147483647;\n  pointer-events: auto;\n  width: 44px;\n  height: 44px;\n  position: fixed;\n}\n\n.booster-edge-toolkit > .booster-launcher {\n  position: relative;\n  transform: none;\n}\n\n.booster-edge-toolkit.attached.right > .booster-launcher {\n  border-radius: 12px 0 0 12px;\n}\n\n.booster-edge-toolkit.attached.left > .booster-launcher {\n  border-radius: 0 12px 12px 0;\n}\n\n.booster-edge-shell {\n  width: var(--booster-dock-width, min(294px, 100vw));\n  position: absolute;\n  top: auto;\n  overflow: hidden;\n}\n\n.booster-edge-toolkit > .booster-edge-shell {\n  left: var(--booster-dock-offset-x, 0px);\n}\n\n.booster-edge-toolkit.free > .booster-edge-shell {\n  border-radius: 14px;\n}\n\n.booster-edge-toolkit.grow-up > .booster-edge-shell {\n  padding-bottom: 44px;\n  bottom: 0;\n}\n\n.booster-edge-toolkit.grow-down > .booster-edge-shell {\n  padding-top: 44px;\n  top: 0;\n}\n\n.booster-edge-toolkit.attached.right > .booster-edge-shell {\n  border-radius: 14px 0 0 14px;\n}\n\n.booster-edge-toolkit.attached.left > .booster-edge-shell {\n  border-radius: 0 14px 14px 0;\n}\n\n.booster-edge-toolkit > .booster-launcher.booster-edge-close-bar {\n  width: var(--booster-dock-width, min(294px, 100vw));\n  border: 1px solid var(--border);\n  background: var(--card);\n  height: 44px;\n  color: var(--card-foreground);\n  box-shadow: none;\n  justify-content: flex-start;\n  gap: 8px;\n  padding: 0 12px;\n  font-size: 12px;\n  font-weight: 600;\n  position: absolute;\n  top: 0;\n}\n\n.booster-edge-toolkit > .booster-launcher.booster-edge-close-bar:hover {\n  background: var(--accent);\n  color: var(--accent-foreground);\n}\n\n.booster-edge-toolkit > .booster-edge-close-bar {\n  left: var(--booster-dock-offset-x, 0px);\n}\n\n.booster-edge-toolkit.free.grow-up > .booster-edge-close-bar {\n  border-radius: 0 0 14px 14px;\n}\n\n.booster-edge-toolkit.free.grow-down > .booster-edge-close-bar {\n  border-radius: 14px 14px 0 0;\n}\n\n.booster-edge-toolkit.attached.right.grow-up > .booster-edge-close-bar {\n  border-radius: 0 0 0 14px;\n}\n\n.booster-edge-toolkit.attached.right.grow-down > .booster-edge-close-bar {\n  border-radius: 14px 0 0;\n}\n\n.booster-edge-toolkit.attached.left.grow-up > .booster-edge-close-bar {\n  border-radius: 0 0 14px;\n}\n\n.booster-edge-toolkit.attached.left.grow-down > .booster-edge-close-bar {\n  border-radius: 0 14px 0 0;\n}\n\n.booster-quick-menu {\n  background: var(--card);\n  width: 100%;\n  color: var(--card-foreground);\n  pointer-events: auto;\n  font: inherit;\n  border: 0;\n  border-radius: 0;\n  position: relative;\n  overflow: auto;\n}\n\n.booster-quick-header, .booster-quick-footer {\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  padding: 11px 12px;\n  display: flex;\n}\n\n.booster-quick-header {\n  border-bottom: 1px solid var(--border);\n}\n\n.booster-quick-header > [role="switch"] {\n  flex: none;\n}\n\n.booster-quick-identity {\n  gap: 5px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-quick-identity > strong {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 13px;\n  overflow: hidden;\n}\n\n.booster-quick-badges {\n  flex-wrap: wrap;\n  gap: 5px;\n  display: flex;\n}\n\n.booster-quick-actions {\n  padding: 4px 0;\n}\n\n.booster-quick-footer {\n  border-top: 1px solid var(--border);\n}\n\n.booster-quick-status {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.booster-quick-status.is-active {\n  color: var(--foreground);\n}\n\n.booster-quick-metrics {\n  border-bottom: 1px solid var(--border);\n  flex-wrap: wrap;\n  gap: 4px 12px;\n  padding: 6px 12px;\n  display: flex;\n}\n\n.booster-quick-metrics > div {\n  align-items: baseline;\n  gap: 6px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-quick-metrics span {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-quick-metrics b {\n  color: var(--foreground);\n  font-variant-numeric: tabular-nums;\n  font-size: 11px;\n  font-weight: 500;\n}\n\n.booster-quick-error {\n  background: var(--card);\n  color: var(--foreground);\n  pointer-events: none;\n  padding: 7px;\n  position: fixed;\n  bottom: 10px;\n  left: 10px;\n}\n\n* {\n  scrollbar-width: thin;\n  scrollbar-color: var(--border) transparent;\n}\n\n::-webkit-scrollbar {\n  width: 6px;\n  height: 6px;\n}\n\n::-webkit-scrollbar-track {\n  background: none;\n}\n\n::-webkit-scrollbar-thumb {\n  background: var(--border);\n  border-radius: 99px;\n}\n\n::-webkit-scrollbar-thumb:hover {\n  background: var(--muted-foreground);\n}\n\n.booster-modal-surface.booster-modal-surface-single {\n  width: min(820px, 100vw - 24px);\n  max-height: min(86dvh, 760px);\n  overflow: auto;\n}\n\n.booster-control-standalone {\n  width: 100%;\n  margin: 0;\n}\n\n.booster-control-standalone > .booster-settings-layout {\n  min-height: 0;\n  display: block;\n}\n\n.booster-control-standalone > .booster-settings-layout > .booster-settings-content {\n  width: 100%;\n  min-width: 0;\n}\n\n@media (max-width: 620px) {\n  .booster-control-standalone > .booster-control-header {\n    flex-direction: row;\n    align-items: center;\n    gap: 8px;\n    padding: 12px;\n  }\n\n  .booster-control-standalone > .booster-control-header > .booster-header-copy > div {\n    flex-wrap: nowrap;\n    gap: 6px;\n  }\n\n  .booster-control-standalone > .booster-control-header .booster-header-copy strong {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    min-width: 0;\n    overflow: hidden;\n  }\n\n  .booster-control-standalone > .booster-control-header > .booster-header-actions {\n    flex-wrap: nowrap;\n    justify-content: space-between;\n    gap: 8px;\n    display: flex;\n  }\n\n  .booster-control-standalone > .booster-control-header > .booster-header-actions > button:last-child {\n    margin-left: auto;\n  }\n\n  .booster-modal-surface.booster-modal-surface-single {\n    width: calc(100vw - 16px);\n    max-height: calc(100dvh - 16px);\n  }\n}\n\n@media (min-width: 1024px) {\n  .booster-control-embedded > .booster-settings-layout > .booster-settings-content[data-settings-section="modules"] {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n    align-items: start;\n  }\n}\n\n@media (min-width: 621px) and (max-width: 1023px) {\n  .booster-control-embedded > .booster-settings-layout > .booster-settings-content[data-settings-section="modules"] {\n    gap: 6px;\n    padding: 10px;\n  }\n\n  .booster-settings-content[data-settings-section="modules"] > .booster-setting-card {\n    border-radius: 8px;\n    gap: 10px;\n    padding: 9px 10px;\n  }\n}\n\n.booster-modal-backdrop.booster-modal-backdrop-fullscreen {\n  background: var(--background);\n  -webkit-backdrop-filter: none;\n  backdrop-filter: none;\n  padding: 0;\n}\n\n.booster-modal-surface.booster-modal-fullscreen {\n  width: 100dvw;\n  min-width: 0;\n  max-width: none;\n  height: 100dvh;\n  min-height: 0;\n  max-height: none;\n  box-shadow: none;\n  border: 0;\n  border-radius: 0;\n  flex-direction: column;\n  display: flex;\n  position: fixed;\n  inset: 0;\n  overflow: hidden;\n  transform: none;\n}\n\n.booster-modal-fullscreen > .booster-control-center {\n  width: 100%;\n  min-width: 0;\n  min-height: 0;\n  box-shadow: none;\n  border: 0;\n  border-radius: 0;\n  flex-direction: column;\n  flex: 1;\n  margin: 0;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-dialog-floating .booster-control-header {\n  justify-content: flex-end;\n  padding: 6px 12px;\n}\n\n.booster-modal-fullscreen > .booster-control-center > .booster-control-header {\n  padding-top: max(12px, env(safe-area-inset-top));\n  flex: none;\n}\n\n.booster-dialog-floating > .booster-control-center > .booster-control-header {\n  flex: none;\n}\n\n.booster-modal-fullscreen > .booster-control-center > .settings-catalog, .booster-dialog-floating > .booster-control-center > .settings-catalog {\n  overscroll-behavior: contain;\n  flex: 0 auto;\n  min-width: 0;\n  min-height: 0;\n  max-height: 50dvh;\n  overflow: hidden auto;\n}\n\n.booster-modal-fullscreen > .booster-control-center > .booster-settings-layout, .booster-dialog-floating > .booster-control-center > .booster-settings-layout {\n  flex: 1;\n  min-width: 0;\n  min-height: 0;\n  overflow: hidden;\n}\n\n.booster-modal-fullscreen > .booster-control-center > .booster-settings-layout > .booster-settings-content, .booster-dialog-floating > .booster-control-center > .booster-settings-layout > .booster-settings-content {\n  overscroll-behavior: contain;\n  width: 100%;\n  min-width: 0;\n  height: 100%;\n  min-height: 0;\n  padding-bottom: max(12px, env(safe-area-inset-bottom));\n  overflow: auto;\n}\n\n.booster-settings-content > * {\n  min-width: 0;\n  max-width: 100%;\n}\n\n.booster-control-center:has([data-panel-content-focus]) > .booster-settings-layout > .booster-settings-content {\n  flex-direction: column;\n  min-height: 0;\n  padding: 0;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-control-center:has([data-panel-content-focus]) > .booster-settings-layout > .booster-settings-content > :has([data-panel-content-focus]), .booster-control-center:has([data-panel-content-focus]) > .booster-settings-layout > .booster-settings-content > [data-panel-content-focus] {\n  flex: auto;\n  min-width: 0;\n  min-height: 0;\n}\n\n.booster-edge-toolkit > .booster-launcher.booster-launcher-floating:not(.booster-edge-close-bar) {\n  border-radius: 50% 50% 50% 18%;\n}\n\n.booster-shell-settings {\n  grid-template-columns: minmax(0, 1fr);\n  align-items: start;\n  gap: 16px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-settings-layout-catalog {\n  grid-template-columns: minmax(0, 1fr);\n}\n\n.booster-shell-settings-body {\n  gap: 12px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-shell-settings h2 {\n  margin: 0;\n  font-size: 15px;\n}\n\n.booster-shell-settings p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.5;\n}\n\n.booster-capability-group {\n  gap: 8px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-capability-row {\n  margin-left: 12px;\n}\n\n.booster-component-versions {\n  grid-template-columns: minmax(0, 1fr) auto;\n  gap: 10px 16px;\n  margin: 0;\n  font-size: 12px;\n  display: grid;\n}\n\n.booster-component-versions dt {\n  overflow-wrap: anywhere;\n}\n\n.booster-component-versions dd {\n  color: var(--muted-foreground);\n  margin: 0;\n}\n\n.booster-version {\n  color: var(--muted-foreground);\n  white-space: nowrap;\n  font-size: 11px;\n  font-weight: 400;\n}\n\n.booster-control-identity {\n  align-items: baseline;\n  gap: 8px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-control-header > .booster-header-copy {\n  flex: 1;\n  min-width: 0;\n}\n\n.booster-control-header > .booster-header-actions {\n  flex: none;\n}\n\n.booster-floating-identity {\n  flex: 1;\n  align-items: baseline;\n  gap: 8px;\n  min-width: 0;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-floating-identity .booster-version {\n  flex: none;\n}\n\n.booster-indicator-legend {\n  border-bottom: 1px solid var(--border);\n  gap: 4px;\n  margin: 0;\n  padding: 8px 12px;\n  list-style: none;\n  display: grid;\n}\n\n.booster-indicator-legend li {\n  align-items: flex-start;\n  gap: 6px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-indicator-copy {\n  overflow-wrap: anywhere;\n  flex: 1;\n  justify-content: space-between;\n  align-items: baseline;\n  gap: 8px;\n  min-width: 0;\n  font-size: 11px;\n  display: flex;\n}\n\n.booster-indicator-copy strong {\n  flex: none;\n  font-weight: 500;\n}\n\n.booster-indicator-copy > span {\n  color: var(--muted-foreground);\n  text-align: right;\n  font-size: 10px;\n}\n\n.booster-signal-dot {\n  background: var(--muted-foreground);\n  border-radius: 50%;\n  flex: none;\n  width: 6px;\n  height: 6px;\n  margin-top: 4px;\n}\n\n.booster-signal-dot[data-status="active"], .booster-signal-dot[data-status="connecting"] {\n  background: var(--chart-2);\n}\n\n.booster-signal-dot[data-status="success"] {\n  background: var(--success);\n}\n\n.booster-signal-dot[data-status="error"] {\n  background: var(--destructive);\n}\n\n.booster-signal-dot[data-status="warning"], .booster-signal-dot[data-status="offline"] {\n  background: var(--warning, var(--chart-5));\n}\n\n.booster-launcher-signals {\n  pointer-events: none;\n  justify-content: center;\n  gap: 3px;\n  display: flex;\n  position: absolute;\n  bottom: 4px;\n  left: 0;\n  right: 0;\n}\n\n.booster-launcher-signals .booster-signal-dot {\n  width: 4px;\n  height: 4px;\n  margin: 0;\n}\n\n.booster-launcher[data-indicator-tone]:not([data-indicator-tone="idle"]):after {\n  content: "";\n  border-radius: inherit;\n  pointer-events: none;\n  background: linear-gradient(135deg, var(--booster-signal-color), var(--booster-signal-end, var(--booster-signal-color)));\n  -webkit-mask-composite: xor;\n  -webkit-mask-source-type: auto, auto;\n  padding: 2px;\n  position: absolute;\n  inset: 1px;\n  -webkit-mask-image: linear-gradient(#fff 0 0), linear-gradient(#fff 0 0);\n  mask-image: linear-gradient(#fff 0 0), linear-gradient(#fff 0 0);\n  -webkit-mask-position: 0 0, 0 0;\n  mask-position: 0 0, 0 0;\n  -webkit-mask-size: auto, auto;\n  mask-size: auto, auto;\n  -webkit-mask-repeat: repeat, repeat;\n  mask-repeat: repeat, repeat;\n  -webkit-mask-clip: content-box, border-box;\n  mask-clip: content-box, border-box;\n  -webkit-mask-origin: content-box, border-box;\n  mask-origin: content-box, border-box;\n  -webkit-mask-composite: xor;\n  mask-composite: exclude;\n  -webkit-mask-source-type: auto, auto;\n  mask-mode: match-source, match-source;\n}\n\n.booster-launcher[data-indicator-tone="active"] {\n  --booster-signal-color: var(--chart-2);\n  --booster-signal-end: var(--chart-4);\n}\n\n.booster-launcher[data-indicator-tone="success"] {\n  --booster-signal-color: var(--success);\n}\n\n.booster-launcher[data-indicator-tone="warning"] {\n  --booster-signal-color: var(--warning, var(--chart-5));\n}\n\n.booster-launcher[data-indicator-tone="error"] {\n  --booster-signal-color: var(--destructive);\n}\n\n.booster-quick-identity {\n  flex-wrap: wrap;\n  align-items: baseline;\n  gap: 5px 8px;\n  display: flex;\n}\n\n.booster-quick-context {\n  width: 100%;\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n@media (max-width: 620px) {\n  .booster-shell-settings {\n    grid-template-columns: minmax(0, 1fr);\n    gap: 14px;\n  }\n\n  .booster-modal-fullscreen > .booster-control-center > .settings-catalog {\n    overflow: hidden;\n  }\n\n  .booster-header-copy > div {\n    flex-wrap: wrap;\n  }\n\n  .booster-header-actions {\n    gap: 6px;\n  }\n\n  .booster-capability-row {\n    margin-left: 0;\n  }\n\n  .booster-control-center:has([data-panel-content-focus="true"]) > .settings-catalog {\n    display: none;\n  }\n}\n\n@keyframes enter {\n  from {\n    opacity: var(--tw-enter-opacity, 1);\n    transform: translate3d(var(--tw-enter-translate-x, 0), var(--tw-enter-translate-y, 0), 0) scale3d(var(--tw-enter-scale, 1), var(--tw-enter-scale, 1), var(--tw-enter-scale, 1)) rotate(var(--tw-enter-rotate, 0));\n  }\n}\n\n@keyframes exit {\n  to {\n    opacity: var(--tw-exit-opacity, 1);\n    transform: translate3d(var(--tw-exit-translate-x, 0), var(--tw-exit-translate-y, 0), 0) scale3d(var(--tw-exit-scale, 1), var(--tw-exit-scale, 1), var(--tw-exit-scale, 1)) rotate(var(--tw-exit-rotate, 0));\n  }\n}\n\n@property --tw-translate-x {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-translate-y {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-translate-z {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-rotate-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-z {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-space-y-reverse {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-divide-y-reverse {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-border-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-leading {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-font-weight {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-tracking {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ordinal {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-slashed-zero {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-figure {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-spacing {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-fraction {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-inset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-ring-inset {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-offset-width {\n  syntax: "<length>";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-ring-offset-color {\n  syntax: "*";\n  inherits: false;\n  initial-value: #fff;\n}\n\n@property --tw-ring-offset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-outline-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-blur {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-brightness {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-contrast {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-grayscale {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-hue-rotate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-invert {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-opacity {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-saturate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-sepia {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-drop-shadow-size {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-duration {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-content {\n  syntax: "*";\n  inherits: false;\n  initial-value: "";\n}\n\n@keyframes spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n@keyframes pulse {\n  50% {\n    opacity: .5;\n  }\n}\n';
+  const styles$1 = '/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */\n@layer properties {\n  @supports (((-webkit-hyphens: none)) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color: rgb(from red r g b)))) {\n    *, :before, :after, ::backdrop {\n      --tw-translate-x: 0;\n      --tw-translate-y: 0;\n      --tw-translate-z: 0;\n      --tw-rotate-x: initial;\n      --tw-rotate-y: initial;\n      --tw-rotate-z: initial;\n      --tw-skew-x: initial;\n      --tw-skew-y: initial;\n      --tw-space-y-reverse: 0;\n      --tw-divide-y-reverse: 0;\n      --tw-border-style: solid;\n      --tw-leading: initial;\n      --tw-font-weight: initial;\n      --tw-tracking: initial;\n      --tw-ordinal: initial;\n      --tw-slashed-zero: initial;\n      --tw-numeric-figure: initial;\n      --tw-numeric-spacing: initial;\n      --tw-numeric-fraction: initial;\n      --tw-shadow: 0 0 #0000;\n      --tw-shadow-color: initial;\n      --tw-shadow-alpha: 100%;\n      --tw-inset-shadow: 0 0 #0000;\n      --tw-inset-shadow-color: initial;\n      --tw-inset-shadow-alpha: 100%;\n      --tw-ring-color: initial;\n      --tw-ring-shadow: 0 0 #0000;\n      --tw-inset-ring-color: initial;\n      --tw-inset-ring-shadow: 0 0 #0000;\n      --tw-ring-inset: initial;\n      --tw-ring-offset-width: 0px;\n      --tw-ring-offset-color: #fff;\n      --tw-ring-offset-shadow: 0 0 #0000;\n      --tw-outline-style: solid;\n      --tw-blur: initial;\n      --tw-brightness: initial;\n      --tw-contrast: initial;\n      --tw-grayscale: initial;\n      --tw-hue-rotate: initial;\n      --tw-invert: initial;\n      --tw-opacity: initial;\n      --tw-saturate: initial;\n      --tw-sepia: initial;\n      --tw-drop-shadow: initial;\n      --tw-drop-shadow-color: initial;\n      --tw-drop-shadow-alpha: 100%;\n      --tw-drop-shadow-size: initial;\n      --tw-duration: initial;\n      --tw-content: "";\n    }\n  }\n}\n\n@layer theme {\n  :root, :host {\n    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",\n      "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",\n      "Segoe UI Symbol", "Noto Color Emoji";\n    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",\n      "Courier New", monospace;\n    --color-black: #000;\n    --spacing: .25rem;\n    --container-lg: 32rem;\n    --container-2xl: 42rem;\n    --text-xs: .75rem;\n    --text-xs--line-height: calc(1 / .75);\n    --text-sm: .875rem;\n    --text-sm--line-height: calc(1.25 / .875);\n    --text-base: 1rem;\n    --text-base--line-height: calc(1.5 / 1);\n    --text-lg: 1.125rem;\n    --text-lg--line-height: calc(1.75 / 1.125);\n    --text-xl: 1.25rem;\n    --text-xl--line-height: calc(1.75 / 1.25);\n    --font-weight-normal: 400;\n    --font-weight-medium: 500;\n    --font-weight-semibold: 600;\n    --tracking-tight: -.025em;\n    --leading-tight: 1.25;\n    --leading-snug: 1.375;\n    --leading-relaxed: 1.625;\n    --animate-spin: spin 1s linear infinite;\n    --animate-pulse: pulse 2s cubic-bezier(.4, 0, .6, 1) infinite;\n    --default-transition-duration: .15s;\n    --default-transition-timing-function: cubic-bezier(.4, 0, .2, 1);\n    --default-font-family: var(--font-sans);\n    --default-mono-font-family: var(--font-mono);\n  }\n}\n\n@layer base {\n  *, :after, :before, ::backdrop {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  ::file-selector-button {\n    box-sizing: border-box;\n    border: 0 solid;\n    margin: 0;\n    padding: 0;\n  }\n\n  html, :host {\n    -webkit-text-size-adjust: 100%;\n    tab-size: 4;\n    line-height: 1.5;\n    font-family: var(--default-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");\n    font-feature-settings: var(--default-font-feature-settings, normal);\n    font-variation-settings: var(--default-font-variation-settings, normal);\n    -webkit-tap-highlight-color: transparent;\n  }\n\n  hr {\n    height: 0;\n    color: inherit;\n    border-top-width: 1px;\n  }\n\n  abbr:where([title]) {\n    -webkit-text-decoration: underline dotted;\n    text-decoration: underline dotted;\n  }\n\n  h1, h2, h3, h4, h5, h6 {\n    font-size: inherit;\n    font-weight: inherit;\n  }\n\n  a {\n    color: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    -webkit-text-decoration: inherit;\n    text-decoration: inherit;\n  }\n\n  b, strong {\n    font-weight: bolder;\n  }\n\n  code, kbd, samp, pre {\n    font-family: var(--default-mono-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);\n    font-feature-settings: var(--default-mono-font-feature-settings, normal);\n    font-variation-settings: var(--default-mono-font-variation-settings, normal);\n    font-size: 1em;\n  }\n\n  small {\n    font-size: 80%;\n  }\n\n  sub, sup {\n    vertical-align: baseline;\n    font-size: 75%;\n    line-height: 0;\n    position: relative;\n  }\n\n  sub {\n    bottom: -.25em;\n  }\n\n  sup {\n    top: -.5em;\n  }\n\n  table {\n    text-indent: 0;\n    border-color: inherit;\n    border-collapse: collapse;\n  }\n\n  :-moz-focusring:where(:not(iframe)) {\n    outline: auto;\n  }\n\n  progress {\n    vertical-align: baseline;\n  }\n\n  summary {\n    display: list-item;\n  }\n\n  ol, ul, menu {\n    list-style: none;\n  }\n\n  img, svg, video, canvas, audio, iframe, embed, object {\n    vertical-align: middle;\n    display: block;\n  }\n\n  img, video {\n    max-width: 100%;\n    height: auto;\n  }\n\n  button, input, select, optgroup, textarea {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  ::file-selector-button {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    opacity: 1;\n    background-color: #0000;\n    border-radius: 0;\n  }\n\n  :where(select:is([multiple], [size])) optgroup {\n    font-weight: bolder;\n  }\n\n  :where(select:is([multiple], [size])) optgroup option {\n    padding-inline-start: 20px;\n  }\n\n  ::file-selector-button {\n    margin-inline-end: 4px;\n  }\n\n  ::placeholder {\n    opacity: 1;\n  }\n\n  @supports (not ((-webkit-appearance: -apple-pay-button))) or (contain-intrinsic-size: 1px) {\n    ::placeholder {\n      color: currentColor;\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      ::placeholder {\n        color: color-mix(in oklab, currentcolor 50%, transparent);\n      }\n    }\n  }\n\n  textarea {\n    resize: vertical;\n  }\n\n  ::-webkit-search-decoration {\n    -webkit-appearance: none;\n  }\n\n  ::-webkit-date-and-time-value {\n    min-height: 1lh;\n    text-align: inherit;\n  }\n\n  ::-webkit-datetime-edit {\n    display: inline-flex;\n  }\n\n  ::-webkit-datetime-edit-fields-wrapper {\n    padding: 0;\n  }\n\n  ::-webkit-datetime-edit {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-year-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-month-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-day-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-hour-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-minute-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-second-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-millisecond-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-datetime-edit-meridiem-field {\n    padding-block: 0;\n  }\n\n  ::-webkit-calendar-picker-indicator {\n    line-height: 1;\n  }\n\n  :-moz-ui-invalid {\n    box-shadow: none;\n  }\n\n  button, input:where([type="button"], [type="reset"], [type="submit"]) {\n    appearance: button;\n  }\n\n  ::file-selector-button {\n    appearance: button;\n  }\n\n  ::-webkit-inner-spin-button {\n    height: auto;\n  }\n\n  ::-webkit-outer-spin-button {\n    height: auto;\n  }\n\n  [hidden]:where(:not([hidden="until-found"])) {\n    display: none !important;\n  }\n\n  *, :before, :after {\n    --tw-border-style: solid;\n    --tw-translate-x: 0;\n    --tw-translate-y: 0;\n    --tw-translate-z: 0;\n    --tw-space-y-reverse: 0;\n    --tw-space-x-reverse: 0;\n    --tw-shadow: 0 0 #0000;\n    --tw-inset-shadow: 0 0 #0000;\n    --tw-ring-shadow: 0 0 #0000;\n    --tw-inset-ring-shadow: 0 0 #0000;\n    --tw-ring-offset-shadow: 0 0 #0000;\n    --tw-ring-offset-width: 0px;\n    --tw-ring-offset-color: #fff;\n    --tw-ring-inset: initial;\n    border-color: var(--border);\n    outline-color: var(--ring);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    *, :before, :after {\n      outline-color: color-mix(in oklab, var(--ring) 50%, transparent);\n    }\n  }\n\n  body {\n    background-color: var(--background);\n    color: var(--foreground);\n  }\n}\n\n@layer components;\n\n@layer utilities {\n  .\\@container {\n    container-type: inline-size;\n  }\n\n  .pointer-events-none {\n    pointer-events: none;\n  }\n\n  .collapse {\n    visibility: collapse;\n  }\n\n  .invisible {\n    visibility: hidden;\n  }\n\n  .visible {\n    visibility: visible;\n  }\n\n  .sr-only {\n    clip-path: inset(50%);\n    white-space: nowrap;\n    border-width: 0;\n    width: 1px;\n    height: 1px;\n    margin: -1px;\n    padding: 0;\n    position: absolute;\n    overflow: hidden;\n  }\n\n  .absolute {\n    position: absolute;\n  }\n\n  .fixed {\n    position: fixed;\n  }\n\n  .relative {\n    position: relative;\n  }\n\n  .static {\n    position: static;\n  }\n\n  .sticky {\n    position: sticky;\n  }\n\n  .inset-0 {\n    inset: 0;\n  }\n\n  .inset-x-2 {\n    inset-inline: calc(var(--spacing) * 2);\n  }\n\n  .start-0 {\n    inset-inline-start: calc(var(--spacing) * 0);\n  }\n\n  .end-0 {\n    inset-inline-end: calc(var(--spacing) * 0);\n  }\n\n  .top-0 {\n    top: 0;\n  }\n\n  .top-1 {\n    top: var(--spacing);\n  }\n\n  .top-1\\/2 {\n    top: 50%;\n  }\n\n  .top-4 {\n    top: calc(var(--spacing) * 4);\n  }\n\n  .right-2 {\n    right: calc(var(--spacing) * 2);\n  }\n\n  .right-4 {\n    right: calc(var(--spacing) * 4);\n  }\n\n  .bottom-0 {\n    bottom: 0;\n  }\n\n  .left-1\\/2 {\n    left: 50%;\n  }\n\n  .isolate {\n    isolation: isolate;\n  }\n\n  .z-10 {\n    z-index: 10;\n  }\n\n  .z-50 {\n    z-index: 50;\n  }\n\n  .z-auto {\n    z-index: auto;\n  }\n\n  .container {\n    width: 100%;\n  }\n\n  @media (min-width: 40rem) {\n    .container {\n      max-width: 40rem;\n    }\n  }\n\n  @media (min-width: 48rem) {\n    .container {\n      max-width: 48rem;\n    }\n  }\n\n  @media (min-width: 64rem) {\n    .container {\n      max-width: 64rem;\n    }\n  }\n\n  @media (min-width: 80rem) {\n    .container {\n      max-width: 80rem;\n    }\n  }\n\n  @media (min-width: 96rem) {\n    .container {\n      max-width: 96rem;\n    }\n  }\n\n  .m-0 {\n    margin: 0;\n  }\n\n  .m-1 {\n    margin: var(--spacing);\n  }\n\n  .m-9 {\n    margin: calc(var(--spacing) * 9);\n  }\n\n  .m-39 {\n    margin: calc(var(--spacing) * 39);\n  }\n\n  .m-80 {\n    margin: calc(var(--spacing) * 80);\n  }\n\n  .m-319 {\n    margin: calc(var(--spacing) * 319);\n  }\n\n  .m-399 {\n    margin: calc(var(--spacing) * 399);\n  }\n\n  .-mx-1 {\n    margin-inline: calc(var(--spacing) * -1);\n  }\n\n  .mx-auto {\n    margin-inline: auto;\n  }\n\n  .my-1 {\n    margin-block: var(--spacing);\n  }\n\n  .my-2 {\n    margin-block: calc(var(--spacing) * 2);\n  }\n\n  .my-8 {\n    margin-block: calc(var(--spacing) * 8);\n  }\n\n  .ms-auto {\n    margin-inline-start: auto;\n  }\n\n  .mt-0 {\n    margin-top: 0;\n  }\n\n  .mt-0\\.5 {\n    margin-top: calc(var(--spacing) * .5);\n  }\n\n  .mt-1 {\n    margin-top: var(--spacing);\n  }\n\n  .mt-2 {\n    margin-top: calc(var(--spacing) * 2);\n  }\n\n  .mt-3 {\n    margin-top: calc(var(--spacing) * 3);\n  }\n\n  .mt-4 {\n    margin-top: calc(var(--spacing) * 4);\n  }\n\n  .mr-1 {\n    margin-right: var(--spacing);\n  }\n\n  .mb-1 {\n    margin-bottom: var(--spacing);\n  }\n\n  .mb-2 {\n    margin-bottom: calc(var(--spacing) * 2);\n  }\n\n  .ml-auto {\n    margin-left: auto;\n  }\n\n  .block {\n    display: block;\n  }\n\n  .contents {\n    display: contents;\n  }\n\n  .flex {\n    display: flex;\n  }\n\n  .grid {\n    display: grid;\n  }\n\n  .hidden {\n    display: none;\n  }\n\n  .inline {\n    display: inline;\n  }\n\n  .inline-flex {\n    display: inline-flex;\n  }\n\n  .table {\n    display: table;\n  }\n\n  .aspect-square {\n    aspect-ratio: 1;\n  }\n\n  .size-3 {\n    width: calc(var(--spacing) * 3);\n    height: calc(var(--spacing) * 3);\n  }\n\n  .size-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n    height: calc(var(--spacing) * 3.5);\n  }\n\n  .size-4 {\n    width: calc(var(--spacing) * 4);\n    height: calc(var(--spacing) * 4);\n  }\n\n  .size-5 {\n    width: calc(var(--spacing) * 5);\n    height: calc(var(--spacing) * 5);\n  }\n\n  .size-6 {\n    width: calc(var(--spacing) * 6);\n    height: calc(var(--spacing) * 6);\n  }\n\n  .size-7 {\n    width: calc(var(--spacing) * 7);\n    height: calc(var(--spacing) * 7);\n  }\n\n  .size-7\\.5 {\n    width: calc(var(--spacing) * 7.5);\n    height: calc(var(--spacing) * 7.5);\n  }\n\n  .size-8 {\n    width: calc(var(--spacing) * 8);\n    height: calc(var(--spacing) * 8);\n  }\n\n  .size-10 {\n    width: calc(var(--spacing) * 10);\n    height: calc(var(--spacing) * 10);\n  }\n\n  .h-1\\.5 {\n    height: calc(var(--spacing) * 1.5);\n  }\n\n  .h-2 {\n    height: calc(var(--spacing) * 2);\n  }\n\n  .h-2\\.5 {\n    height: calc(var(--spacing) * 2.5);\n  }\n\n  .h-3\\.5 {\n    height: calc(var(--spacing) * 3.5);\n  }\n\n  .h-4 {\n    height: calc(var(--spacing) * 4);\n  }\n\n  .h-5 {\n    height: calc(var(--spacing) * 5);\n  }\n\n  .h-7 {\n    height: calc(var(--spacing) * 7);\n  }\n\n  .h-8 {\n    height: calc(var(--spacing) * 8);\n  }\n\n  .h-9 {\n    height: calc(var(--spacing) * 9);\n  }\n\n  .h-10 {\n    height: calc(var(--spacing) * 10);\n  }\n\n  .h-20 {\n    height: calc(var(--spacing) * 20);\n  }\n\n  .h-24 {\n    height: calc(var(--spacing) * 24);\n  }\n\n  .h-32 {\n    height: calc(var(--spacing) * 32);\n  }\n\n  .h-64 {\n    height: calc(var(--spacing) * 64);\n  }\n\n  .h-auto {\n    height: auto;\n  }\n\n  .h-dvh {\n    height: 100dvh;\n  }\n\n  .h-full {\n    height: 100%;\n  }\n\n  .h-px {\n    height: 1px;\n  }\n\n  .max-h-48 {\n    max-height: calc(var(--spacing) * 48);\n  }\n\n  .max-h-64 {\n    max-height: calc(var(--spacing) * 64);\n  }\n\n  .max-h-80 {\n    max-height: calc(var(--spacing) * 80);\n  }\n\n  .max-h-\\[85dvh\\] {\n    max-height: 85dvh;\n  }\n\n  .max-h-\\[420px\\] {\n    max-height: 420px;\n  }\n\n  .max-h-\\[calc\\(50dvh-1\\.5rem\\)\\] {\n    max-height: calc(50dvh - 1.5rem);\n  }\n\n  .max-h-\\[min\\(24rem\\,calc\\(100dvh_-_20px\\)\\)\\] {\n    max-height: min(24rem, 100dvh - 20px);\n  }\n\n  .max-h-\\[min\\(24rem\\,max\\(0px\\,var\\(--reka-select-content-available-height\\)\\)\\)\\] {\n    max-height: min(24rem, max(0px, var(--reka-select-content-available-height)));\n  }\n\n  .max-h-\\[var\\(--reka-popover-content-available-height\\)\\] {\n    max-height: var(--reka-popover-content-available-height);\n  }\n\n  .min-h-0 {\n    min-height: 0;\n  }\n\n  .min-h-6 {\n    min-height: calc(var(--spacing) * 6);\n  }\n\n  .min-h-7 {\n    min-height: calc(var(--spacing) * 7);\n  }\n\n  .min-h-8 {\n    min-height: calc(var(--spacing) * 8);\n  }\n\n  .min-h-9 {\n    min-height: calc(var(--spacing) * 9);\n  }\n\n  .min-h-10 {\n    min-height: calc(var(--spacing) * 10);\n  }\n\n  .min-h-11 {\n    min-height: calc(var(--spacing) * 11);\n  }\n\n  .min-h-24 {\n    min-height: calc(var(--spacing) * 24);\n  }\n\n  .min-h-\\[60px\\] {\n    min-height: 60px;\n  }\n\n  .min-h-\\[130px\\] {\n    min-height: 130px;\n  }\n\n  .w-1\\/3 {\n    width: 33.3333%;\n  }\n\n  .w-2\\.5 {\n    width: calc(var(--spacing) * 2.5);\n  }\n\n  .w-2\\/3 {\n    width: 66.6667%;\n  }\n\n  .w-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n  }\n\n  .w-3\\/5 {\n    width: 60%;\n  }\n\n  .w-4 {\n    width: calc(var(--spacing) * 4);\n  }\n\n  .w-5 {\n    width: calc(var(--spacing) * 5);\n  }\n\n  .w-9 {\n    width: calc(var(--spacing) * 9);\n  }\n\n  .w-16 {\n    width: calc(var(--spacing) * 16);\n  }\n\n  .w-20 {\n    width: calc(var(--spacing) * 20);\n  }\n\n  .w-72 {\n    width: calc(var(--spacing) * 72);\n  }\n\n  .w-80 {\n    width: calc(var(--spacing) * 80);\n  }\n\n  .w-\\[calc\\(100vw-1\\.5rem\\)\\] {\n    width: calc(100vw - 1.5rem);\n  }\n\n  .w-auto {\n    width: auto;\n  }\n\n  .w-dvw {\n    width: 100dvw;\n  }\n\n  .w-full {\n    width: 100%;\n  }\n\n  .w-max {\n    width: max-content;\n  }\n\n  .w-px {\n    width: 1px;\n  }\n\n  .max-w-2xl {\n    max-width: var(--container-2xl);\n  }\n\n  .max-w-36 {\n    max-width: calc(var(--spacing) * 36);\n  }\n\n  .max-w-\\[88\\%\\] {\n    max-width: 88%;\n  }\n\n  .max-w-\\[calc\\(100vw_-_20px\\)\\] {\n    max-width: calc(100vw - 20px);\n  }\n\n  .max-w-\\[max\\(0px\\,var\\(--reka-select-content-available-width\\)\\)\\] {\n    max-width: max(0px, var(--reka-select-content-available-width));\n  }\n\n  .max-w-\\[min\\(320px\\,calc\\(100vw-16px\\)\\)\\] {\n    max-width: min(320px, 100vw - 16px);\n  }\n\n  .max-w-\\[min\\(380px\\,85vw\\)\\] {\n    max-width: min(380px, 85vw);\n  }\n\n  .max-w-\\[min\\(420px\\,calc\\(100vw-16px\\)\\)\\] {\n    max-width: min(420px, 100vw - 16px);\n  }\n\n  .max-w-full {\n    max-width: 100%;\n  }\n\n  .max-w-lg {\n    max-width: var(--container-lg);\n  }\n\n  .max-w-none {\n    max-width: none;\n  }\n\n  .min-w-0 {\n    min-width: 0;\n  }\n\n  .min-w-\\[min\\(8rem\\,calc\\(100vw_-_20px\\)\\)\\] {\n    min-width: min(8rem, 100vw - 20px);\n  }\n\n  .min-w-\\[min\\(8rem\\,max\\(0px\\,var\\(--reka-select-content-available-width\\)\\)\\)\\] {\n    min-width: min(8rem, max(0px, var(--reka-select-content-available-width)));\n  }\n\n  .min-w-\\[min\\(var\\(--reka-select-trigger-width\\)\\,max\\(0px\\,var\\(--reka-select-content-available-width\\)\\)\\)\\] {\n    min-width: min(var(--reka-select-trigger-width), max(0px, var(--reka-select-content-available-width)));\n  }\n\n  .flex-1 {\n    flex: 1;\n  }\n\n  .flex-none {\n    flex: none;\n  }\n\n  .shrink-0 {\n    flex-shrink: 0;\n  }\n\n  .grow {\n    flex-grow: 1;\n  }\n\n  .basis-32 {\n    flex-basis: calc(var(--spacing) * 32);\n  }\n\n  .basis-48 {\n    flex-basis: calc(var(--spacing) * 48);\n  }\n\n  .table-fixed {\n    table-layout: fixed;\n  }\n\n  .caption-bottom {\n    caption-side: bottom;\n  }\n\n  .-translate-x-1\\/2 {\n    --tw-translate-x: calc(calc(1 / 2 * 100%) * -1);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .translate-x-0 {\n    --tw-translate-x: 0px;\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .-translate-y-1\\/2 {\n    --tw-translate-y: calc(calc(1 / 2 * 100%) * -1);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .translate-y-0 {\n    --tw-translate-y: 0px;\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .rotate-90 {\n    rotate: 90deg;\n  }\n\n  .rotate-180 {\n    rotate: 180deg;\n  }\n\n  .transform {\n    transform: var(--tw-rotate-x, ) var(--tw-rotate-y, ) var(--tw-rotate-z, ) var(--tw-skew-x, ) var(--tw-skew-y, );\n  }\n\n  .animate-pulse {\n    animation: var(--animate-pulse);\n  }\n\n  .animate-spin {\n    animation: var(--animate-spin);\n  }\n\n  .cursor-default {\n    cursor: default;\n  }\n\n  .cursor-move {\n    cursor: move;\n  }\n\n  .cursor-nwse-resize {\n    cursor: nwse-resize;\n  }\n\n  .cursor-pointer {\n    cursor: pointer;\n  }\n\n  .touch-none {\n    touch-action: none;\n  }\n\n  .resize {\n    resize: both;\n  }\n\n  .resize-y {\n    resize: vertical;\n  }\n\n  .list-none {\n    list-style-type: none;\n  }\n\n  .\\[grid-template-columns\\:repeat\\(auto-fit\\,minmax\\(min\\(100\\%\\,16rem\\)\\,1fr\\)\\)\\] {\n    grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));\n  }\n\n  .grid-cols-1 {\n    grid-template-columns: repeat(1, minmax(0, 1fr));\n  }\n\n  .grid-cols-2 {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }\n\n  .grid-cols-3 {\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n  }\n\n  .grid-cols-\\[18px_minmax\\(0\\,1fr\\)\\] {\n    grid-template-columns: 18px minmax(0, 1fr);\n  }\n\n  .grid-cols-\\[minmax\\(0\\,1fr\\)_auto\\] {\n    grid-template-columns: minmax(0, 1fr) auto;\n  }\n\n  .grid-cols-\\[minmax\\(0\\,1fr\\)_minmax\\(0\\,1fr\\)_auto\\] {\n    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;\n  }\n\n  .grid-rows-\\[minmax\\(0\\,1fr\\)\\] {\n    grid-template-rows: minmax(0, 1fr);\n  }\n\n  .flex-col {\n    flex-direction: column;\n  }\n\n  .flex-col-reverse {\n    flex-direction: column-reverse;\n  }\n\n  .flex-row {\n    flex-direction: row;\n  }\n\n  .flex-wrap {\n    flex-wrap: wrap;\n  }\n\n  .place-content-center {\n    place-content: center;\n  }\n\n  .place-items-center {\n    place-items: center;\n  }\n\n  .content-start {\n    align-content: flex-start;\n  }\n\n  .items-baseline {\n    align-items: baseline;\n  }\n\n  .items-center {\n    align-items: center;\n  }\n\n  .items-end {\n    align-items: flex-end;\n  }\n\n  .items-start {\n    align-items: flex-start;\n  }\n\n  .justify-between {\n    justify-content: space-between;\n  }\n\n  .justify-center {\n    justify-content: center;\n  }\n\n  .justify-end {\n    justify-content: flex-end;\n  }\n\n  .justify-start {\n    justify-content: flex-start;\n  }\n\n  .justify-items-start {\n    justify-items: start;\n  }\n\n  .gap-0 {\n    gap: 0;\n  }\n\n  .gap-0\\.5 {\n    gap: calc(var(--spacing) * .5);\n  }\n\n  .gap-1 {\n    gap: var(--spacing);\n  }\n\n  .gap-1\\.5 {\n    gap: calc(var(--spacing) * 1.5);\n  }\n\n  .gap-2 {\n    gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-2\\.5 {\n    gap: calc(var(--spacing) * 2.5);\n  }\n\n  .gap-3 {\n    gap: calc(var(--spacing) * 3);\n  }\n\n  .gap-4 {\n    gap: calc(var(--spacing) * 4);\n  }\n\n  :where(.space-y-1 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(var(--spacing) * var(--tw-space-y-reverse));\n    margin-block-end: calc(var(--spacing) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-1\\.5 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 1.5) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 1.5) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-2 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 2) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 2) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-3 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 3) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 3) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-4 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 4) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 4) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  :where(.space-y-5 > :not(:last-child)) {\n    --tw-space-y-reverse: 0;\n    margin-block-start: calc(calc(var(--spacing) * 5) * var(--tw-space-y-reverse));\n    margin-block-end: calc(calc(var(--spacing) * 5) * calc(1 - var(--tw-space-y-reverse)));\n  }\n\n  .gap-x-2 {\n    column-gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-x-3 {\n    column-gap: calc(var(--spacing) * 3);\n  }\n\n  .gap-x-4 {\n    column-gap: calc(var(--spacing) * 4);\n  }\n\n  .gap-y-1 {\n    row-gap: var(--spacing);\n  }\n\n  .gap-y-1\\.5 {\n    row-gap: calc(var(--spacing) * 1.5);\n  }\n\n  .gap-y-2 {\n    row-gap: calc(var(--spacing) * 2);\n  }\n\n  .gap-y-3 {\n    row-gap: calc(var(--spacing) * 3);\n  }\n\n  :where(.divide-y > :not(:last-child)) {\n    --tw-divide-y-reverse: 0;\n    border-bottom-style: var(--tw-border-style);\n    border-top-style: var(--tw-border-style);\n    border-top-width: calc(1px * var(--tw-divide-y-reverse));\n    border-bottom-width: calc(1px * calc(1 - var(--tw-divide-y-reverse)));\n  }\n\n  .self-start {\n    align-self: flex-start;\n  }\n\n  .justify-self-start {\n    justify-self: flex-start;\n  }\n\n  .truncate {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    overflow: hidden;\n  }\n\n  .overflow-auto {\n    overflow: auto;\n  }\n\n  .overflow-hidden {\n    overflow: hidden;\n  }\n\n  .overflow-x-hidden {\n    overflow-x: hidden;\n  }\n\n  .overflow-y-auto {\n    overflow-y: auto;\n  }\n\n  .overscroll-contain {\n    overscroll-behavior: contain;\n  }\n\n  .rounded {\n    border-radius: .25rem;\n  }\n\n  .rounded-\\[inherit\\] {\n    border-radius: inherit;\n  }\n\n  .rounded-full {\n    border-radius: 3.40282e38px;\n  }\n\n  .rounded-lg {\n    border-radius: var(--radius);\n  }\n\n  .rounded-md {\n    border-radius: calc(var(--radius) - 2px);\n  }\n\n  .rounded-none {\n    border-radius: 0;\n  }\n\n  .rounded-sm {\n    border-radius: calc(var(--radius) - 4px);\n  }\n\n  .rounded-xl {\n    border-radius: calc(var(--radius) + 4px);\n  }\n\n  .border {\n    border-style: var(--tw-border-style);\n    border-width: 1px;\n  }\n\n  .border-0 {\n    border-style: var(--tw-border-style);\n    border-width: 0;\n  }\n\n  .border-2 {\n    border-style: var(--tw-border-style);\n    border-width: 2px;\n  }\n\n  .border-y {\n    border-block-style: var(--tw-border-style);\n    border-block-width: 1px;\n  }\n\n  .border-s {\n    border-inline-start-style: var(--tw-border-style);\n    border-inline-start-width: 1px;\n  }\n\n  .border-t {\n    border-top-style: var(--tw-border-style);\n    border-top-width: 1px;\n  }\n\n  .border-b {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 1px;\n  }\n\n  .border-l {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 1px;\n  }\n\n  .border-l-2 {\n    border-left-style: var(--tw-border-style);\n    border-left-width: 2px;\n  }\n\n  .border-border {\n    border-color: var(--border);\n  }\n\n  .border-destructive\\/40 {\n    border-color: var(--destructive);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .border-destructive\\/40 {\n      border-color: color-mix(in oklab, var(--destructive) 40%, transparent);\n    }\n  }\n\n  .border-destructive\\/50 {\n    border-color: var(--destructive);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .border-destructive\\/50 {\n      border-color: color-mix(in oklab, var(--destructive) 50%, transparent);\n    }\n  }\n\n  .border-input {\n    border-color: var(--input);\n  }\n\n  .border-primary {\n    border-color: var(--primary);\n  }\n\n  .border-transparent {\n    border-color: #0000;\n  }\n\n  .border-t-transparent {\n    border-top-color: #0000;\n  }\n\n  .border-l-transparent {\n    border-left-color: #0000;\n  }\n\n  .bg-background {\n    background-color: var(--background);\n  }\n\n  .bg-black\\/80 {\n    background-color: #000c;\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-black\\/80 {\n      background-color: color-mix(in oklab, var(--color-black) 80%, transparent);\n    }\n  }\n\n  .bg-border {\n    background-color: var(--border);\n  }\n\n  .bg-card {\n    background-color: var(--card);\n  }\n\n  .bg-destructive {\n    background-color: var(--destructive);\n  }\n\n  .bg-muted, .bg-muted\\/40 {\n    background-color: var(--muted);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-muted\\/40 {\n      background-color: color-mix(in oklab, var(--muted) 40%, transparent);\n    }\n  }\n\n  .bg-muted\\/45 {\n    background-color: var(--muted);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-muted\\/45 {\n      background-color: color-mix(in oklab, var(--muted) 45%, transparent);\n    }\n  }\n\n  .bg-muted\\/50 {\n    background-color: var(--muted);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-muted\\/50 {\n      background-color: color-mix(in oklab, var(--muted) 50%, transparent);\n    }\n  }\n\n  .bg-popover {\n    background-color: var(--popover);\n  }\n\n  .bg-primary, .bg-primary\\/10 {\n    background-color: var(--primary);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-primary\\/10 {\n      background-color: color-mix(in oklab, var(--primary) 10%, transparent);\n    }\n  }\n\n  .bg-primary\\/20 {\n    background-color: var(--primary);\n  }\n\n  @supports (color: color-mix(in lab, red, red)) {\n    .bg-primary\\/20 {\n      background-color: color-mix(in oklab, var(--primary) 20%, transparent);\n    }\n  }\n\n  .bg-secondary {\n    background-color: var(--secondary);\n  }\n\n  .bg-transparent {\n    background-color: #0000;\n  }\n\n  .object-contain {\n    object-fit: contain;\n  }\n\n  .p-0 {\n    padding: 0;\n  }\n\n  .p-0\\.5 {\n    padding: calc(var(--spacing) * .5);\n  }\n\n  .p-1 {\n    padding: var(--spacing);\n  }\n\n  .p-2 {\n    padding: calc(var(--spacing) * 2);\n  }\n\n  .p-3 {\n    padding: calc(var(--spacing) * 3);\n  }\n\n  .p-4 {\n    padding: calc(var(--spacing) * 4);\n  }\n\n  .p-6 {\n    padding: calc(var(--spacing) * 6);\n  }\n\n  .p-px {\n    padding: 1px;\n  }\n\n  .px-0 {\n    padding-inline: 0;\n  }\n\n  .px-1 {\n    padding-inline: var(--spacing);\n  }\n\n  .px-1\\.5 {\n    padding-inline: calc(var(--spacing) * 1.5);\n  }\n\n  .px-2 {\n    padding-inline: calc(var(--spacing) * 2);\n  }\n\n  .px-2\\.5 {\n    padding-inline: calc(var(--spacing) * 2.5);\n  }\n\n  .px-3 {\n    padding-inline: calc(var(--spacing) * 3);\n  }\n\n  .px-4 {\n    padding-inline: calc(var(--spacing) * 4);\n  }\n\n  .px-8 {\n    padding-inline: calc(var(--spacing) * 8);\n  }\n\n  .py-0 {\n    padding-block: 0;\n  }\n\n  .py-0\\.5 {\n    padding-block: calc(var(--spacing) * .5);\n  }\n\n  .py-1 {\n    padding-block: var(--spacing);\n  }\n\n  .py-1\\.5 {\n    padding-block: calc(var(--spacing) * 1.5);\n  }\n\n  .py-2 {\n    padding-block: calc(var(--spacing) * 2);\n  }\n\n  .py-3 {\n    padding-block: calc(var(--spacing) * 3);\n  }\n\n  .py-4 {\n    padding-block: calc(var(--spacing) * 4);\n  }\n\n  .py-10 {\n    padding-block: calc(var(--spacing) * 10);\n  }\n\n  .ps-3 {\n    padding-inline-start: calc(var(--spacing) * 3);\n  }\n\n  .pe-2 {\n    padding-inline-end: calc(var(--spacing) * 2);\n  }\n\n  .pe-3 {\n    padding-inline-end: calc(var(--spacing) * 3);\n  }\n\n  .pt-0 {\n    padding-top: 0;\n  }\n\n  .pt-1 {\n    padding-top: var(--spacing);\n  }\n\n  .pt-2 {\n    padding-top: calc(var(--spacing) * 2);\n  }\n\n  .pt-3 {\n    padding-top: calc(var(--spacing) * 3);\n  }\n\n  .pt-4 {\n    padding-top: calc(var(--spacing) * 4);\n  }\n\n  .pr-8 {\n    padding-right: calc(var(--spacing) * 8);\n  }\n\n  .pb-1 {\n    padding-bottom: var(--spacing);\n  }\n\n  .pb-2 {\n    padding-bottom: calc(var(--spacing) * 2);\n  }\n\n  .pb-3 {\n    padding-bottom: calc(var(--spacing) * 3);\n  }\n\n  .pb-4 {\n    padding-bottom: calc(var(--spacing) * 4);\n  }\n\n  .pb-8 {\n    padding-bottom: calc(var(--spacing) * 8);\n  }\n\n  .pl-2 {\n    padding-left: calc(var(--spacing) * 2);\n  }\n\n  .text-center {\n    text-align: center;\n  }\n\n  .text-left {\n    text-align: left;\n  }\n\n  .text-right {\n    text-align: right;\n  }\n\n  .text-start {\n    text-align: start;\n  }\n\n  .align-middle {\n    vertical-align: middle;\n  }\n\n  .align-top {\n    vertical-align: top;\n  }\n\n  .font-mono {\n    font-family: var(--font-mono);\n  }\n\n  .text-base {\n    font-size: var(--text-base);\n    line-height: var(--tw-leading, var(--text-base--line-height));\n  }\n\n  .text-lg {\n    font-size: var(--text-lg);\n    line-height: var(--tw-leading, var(--text-lg--line-height));\n  }\n\n  .text-sm {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n\n  .text-xl {\n    font-size: var(--text-xl);\n    line-height: var(--tw-leading, var(--text-xl--line-height));\n  }\n\n  .text-xs {\n    font-size: var(--text-xs);\n    line-height: var(--tw-leading, var(--text-xs--line-height));\n  }\n\n  .text-\\[10px\\] {\n    font-size: 10px;\n  }\n\n  .text-\\[11px\\] {\n    font-size: 11px;\n  }\n\n  .leading-4 {\n    --tw-leading: calc(var(--spacing) * 4);\n    line-height: calc(var(--spacing) * 4);\n  }\n\n  .leading-5 {\n    --tw-leading: calc(var(--spacing) * 5);\n    line-height: calc(var(--spacing) * 5);\n  }\n\n  .leading-none {\n    --tw-leading: 1;\n    line-height: 1;\n  }\n\n  .leading-relaxed {\n    --tw-leading: var(--leading-relaxed);\n    line-height: var(--leading-relaxed);\n  }\n\n  .leading-snug {\n    --tw-leading: var(--leading-snug);\n    line-height: var(--leading-snug);\n  }\n\n  .leading-tight {\n    --tw-leading: var(--leading-tight);\n    line-height: var(--leading-tight);\n  }\n\n  .font-medium {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n\n  .font-normal {\n    --tw-font-weight: var(--font-weight-normal);\n    font-weight: var(--font-weight-normal);\n  }\n\n  .font-semibold {\n    --tw-font-weight: var(--font-weight-semibold);\n    font-weight: var(--font-weight-semibold);\n  }\n\n  .tracking-tight {\n    --tw-tracking: var(--tracking-tight);\n    letter-spacing: var(--tracking-tight);\n  }\n\n  .\\[overflow-wrap\\:anywhere\\] {\n    overflow-wrap: anywhere;\n  }\n\n  .break-words {\n    overflow-wrap: break-word;\n  }\n\n  .break-all {\n    word-break: break-all;\n  }\n\n  .whitespace-normal {\n    white-space: normal;\n  }\n\n  .whitespace-nowrap {\n    white-space: nowrap;\n  }\n\n  .whitespace-pre-line {\n    white-space: pre-line;\n  }\n\n  .whitespace-pre-wrap {\n    white-space: pre-wrap;\n  }\n\n  .text-card-foreground {\n    color: var(--card-foreground);\n  }\n\n  .text-current {\n    color: currentColor;\n  }\n\n  .text-destructive {\n    color: var(--destructive);\n  }\n\n  .text-destructive-foreground {\n    color: var(--destructive-foreground);\n  }\n\n  .text-foreground {\n    color: var(--foreground);\n  }\n\n  .text-muted-foreground {\n    color: var(--muted-foreground);\n  }\n\n  .text-popover-foreground {\n    color: var(--popover-foreground);\n  }\n\n  .text-primary {\n    color: var(--primary);\n  }\n\n  .text-primary-foreground {\n    color: var(--primary-foreground);\n  }\n\n  .text-secondary-foreground {\n    color: var(--secondary-foreground);\n  }\n\n  .text-success {\n    color: var(--success);\n  }\n\n  .lowercase {\n    text-transform: lowercase;\n  }\n\n  .ordinal {\n    --tw-ordinal: ordinal;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .tabular-nums {\n    --tw-numeric-spacing: tabular-nums;\n    font-variant-numeric: var(--tw-ordinal, ) var(--tw-slashed-zero, ) var(--tw-numeric-figure, ) var(--tw-numeric-spacing, ) var(--tw-numeric-fraction, );\n  }\n\n  .underline-offset-4 {\n    text-underline-offset: 4px;\n  }\n\n  .opacity-0 {\n    opacity: 0;\n  }\n\n  .opacity-50 {\n    opacity: .5;\n  }\n\n  .opacity-70 {\n    opacity: .7;\n  }\n\n  .shadow {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .shadow-lg {\n    --tw-shadow: 0 10px 15px -3px var(--tw-shadow-color, #0000001a), 0 4px 6px -4px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .shadow-md {\n    --tw-shadow: 0 4px 6px -1px var(--tw-shadow-color, #0000001a), 0 2px 4px -2px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .shadow-none {\n    --tw-shadow: 0 0 #0000;\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .shadow-sm {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .ring-0 {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(0px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .ring-offset-background {\n    --tw-ring-offset-color: var(--background);\n  }\n\n  .outline {\n    outline-style: var(--tw-outline-style);\n    outline-width: 1px;\n  }\n\n  .blur {\n    --tw-blur: blur(8px);\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .filter {\n    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );\n  }\n\n  .transition {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-all {\n    transition-property: all;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-colors {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-opacity {\n    transition-property: opacity;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .transition-transform {\n    transition-property: transform, translate, scale, rotate;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n\n  .duration-200 {\n    --tw-duration: .2s;\n    transition-duration: .2s;\n  }\n\n  .animate-in {\n    --tw-enter-opacity: initial;\n    --tw-enter-scale: initial;\n    --tw-enter-rotate: initial;\n    --tw-enter-translate-x: initial;\n    --tw-enter-translate-y: initial;\n    animation-name: enter;\n    animation-duration: .15s;\n  }\n\n  .outline-none {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  .select-none {\n    -webkit-user-select: none;\n    user-select: none;\n  }\n\n  .select-text {\n    -webkit-user-select: text;\n    user-select: text;\n  }\n\n  .\\!running {\n    animation-play-state: running !important;\n  }\n\n  .duration-200 {\n    animation-duration: .2s;\n  }\n\n  .fade-in-0 {\n    --tw-enter-opacity: 0;\n  }\n\n  .paused {\n    animation-play-state: paused;\n  }\n\n  .running {\n    animation-play-state: running;\n  }\n\n  .zoom-in-95 {\n    --tw-enter-scale: .95;\n  }\n\n  .group-data-\\[state\\=open\\]\\:rotate-180:is(:where(.group)[data-state="open"] *) {\n    rotate: 180deg;\n  }\n\n  .peer-disabled\\:cursor-not-allowed:is(:where(.peer):disabled ~ *) {\n    cursor: not-allowed;\n  }\n\n  .peer-disabled\\:opacity-70:is(:where(.peer):disabled ~ *) {\n    opacity: .7;\n  }\n\n  .file\\:border-0::file-selector-button {\n    border-style: var(--tw-border-style);\n    border-width: 0;\n  }\n\n  .file\\:bg-transparent::file-selector-button {\n    background-color: #0000;\n  }\n\n  .file\\:text-sm::file-selector-button {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n\n  .file\\:font-medium::file-selector-button {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n\n  .placeholder\\:text-muted-foreground::placeholder {\n    color: var(--muted-foreground);\n  }\n\n  .after\\:absolute:after {\n    content: var(--tw-content);\n    position: absolute;\n  }\n\n  .after\\:inset-0:after {\n    content: var(--tw-content);\n    inset: 0;\n  }\n\n  .after\\:rounded-xl:after {\n    content: var(--tw-content);\n    border-radius: calc(var(--radius) + 4px);\n  }\n\n  .first\\:border-t-0:first-child {\n    border-top-style: var(--tw-border-style);\n    border-top-width: 0;\n  }\n\n  .first\\:pt-0:first-child {\n    padding-top: 0;\n  }\n\n  @media (hover: hover) {\n    .hover\\:bg-accent:hover {\n      background-color: var(--accent);\n    }\n\n    .hover\\:bg-destructive\\/80:hover {\n      background-color: var(--destructive);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-destructive\\/80:hover {\n        background-color: color-mix(in oklab, var(--destructive) 80%, transparent);\n      }\n    }\n\n    .hover\\:bg-destructive\\/90:hover {\n      background-color: var(--destructive);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-destructive\\/90:hover {\n        background-color: color-mix(in oklab, var(--destructive) 90%, transparent);\n      }\n    }\n\n    .hover\\:bg-muted\\/50:hover {\n      background-color: var(--muted);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-muted\\/50:hover {\n        background-color: color-mix(in oklab, var(--muted) 50%, transparent);\n      }\n    }\n\n    .hover\\:bg-primary\\/80:hover {\n      background-color: var(--primary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-primary\\/80:hover {\n        background-color: color-mix(in oklab, var(--primary) 80%, transparent);\n      }\n    }\n\n    .hover\\:bg-primary\\/90:hover {\n      background-color: var(--primary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-primary\\/90:hover {\n        background-color: color-mix(in oklab, var(--primary) 90%, transparent);\n      }\n    }\n\n    .hover\\:bg-secondary:hover, .hover\\:bg-secondary\\/80:hover {\n      background-color: var(--secondary);\n    }\n\n    @supports (color: color-mix(in lab, red, red)) {\n      .hover\\:bg-secondary\\/80:hover {\n        background-color: color-mix(in oklab, var(--secondary) 80%, transparent);\n      }\n    }\n\n    .hover\\:text-accent-foreground:hover {\n      color: var(--accent-foreground);\n    }\n\n    .hover\\:underline:hover {\n      text-decoration-line: underline;\n    }\n\n    .hover\\:opacity-100:hover {\n      opacity: 1;\n    }\n  }\n\n  .focus\\:bg-accent:focus {\n    background-color: var(--accent);\n  }\n\n  .focus\\:text-accent-foreground:focus {\n    color: var(--accent-foreground);\n  }\n\n  .focus\\:ring-1:focus {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus\\:ring-2:focus {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus\\:ring-ring:focus {\n    --tw-ring-color: var(--ring);\n  }\n\n  .focus\\:ring-offset-2:focus {\n    --tw-ring-offset-width: 2px;\n    --tw-ring-offset-shadow: var(--tw-ring-inset, ) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);\n  }\n\n  .focus\\:outline-none:focus {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  .focus-visible\\:ring-1:focus-visible {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus-visible\\:ring-2:focus-visible {\n    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .focus-visible\\:ring-ring:focus-visible {\n    --tw-ring-color: var(--ring);\n  }\n\n  .focus-visible\\:ring-offset-2:focus-visible {\n    --tw-ring-offset-width: 2px;\n    --tw-ring-offset-shadow: var(--tw-ring-inset, ) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);\n  }\n\n  .focus-visible\\:ring-offset-background:focus-visible {\n    --tw-ring-offset-color: var(--background);\n  }\n\n  .focus-visible\\:outline-none:focus-visible {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n\n  .disabled\\:pointer-events-none:disabled {\n    pointer-events: none;\n  }\n\n  .disabled\\:cursor-not-allowed:disabled {\n    cursor: not-allowed;\n  }\n\n  .disabled\\:opacity-50:disabled {\n    opacity: .5;\n  }\n\n  .data-\\[disabled\\]\\:pointer-events-none[data-disabled] {\n    pointer-events: none;\n  }\n\n  .data-\\[disabled\\]\\:opacity-50[data-disabled] {\n    opacity: .5;\n  }\n\n  .data-\\[orientation\\=vertical\\]\\:h-full[data-orientation="vertical"] {\n    height: 100%;\n  }\n\n  .data-\\[orientation\\=vertical\\]\\:w-1\\.5[data-orientation="vertical"] {\n    width: calc(var(--spacing) * 1.5);\n  }\n\n  .data-\\[orientation\\=vertical\\]\\:w-full[data-orientation="vertical"] {\n    width: 100%;\n  }\n\n  .data-\\[orientation\\=vertical\\]\\:flex-col[data-orientation="vertical"] {\n    flex-direction: column;\n  }\n\n  .data-\\[placeholder\\]\\:text-muted-foreground[data-placeholder] {\n    color: var(--muted-foreground);\n  }\n\n  .data-\\[side\\=bottom\\]\\:translate-y-1[data-side="bottom"] {\n    --tw-translate-y: var(--spacing);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[side\\=bottom\\]\\:slide-in-from-top-2[data-side="bottom"] {\n    --tw-enter-translate-y: -.5rem;\n  }\n\n  .data-\\[side\\=left\\]\\:-translate-x-1[data-side="left"] {\n    --tw-translate-x: calc(var(--spacing) * -1);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[side\\=left\\]\\:slide-in-from-right-2[data-side="left"] {\n    --tw-enter-translate-x: .5rem;\n  }\n\n  .data-\\[side\\=right\\]\\:translate-x-1[data-side="right"] {\n    --tw-translate-x: var(--spacing);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[side\\=right\\]\\:slide-in-from-left-2[data-side="right"] {\n    --tw-enter-translate-x: -.5rem;\n  }\n\n  .data-\\[side\\=top\\]\\:-translate-y-1[data-side="top"] {\n    --tw-translate-y: calc(var(--spacing) * -1);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[side\\=top\\]\\:slide-in-from-bottom-2[data-side="top"] {\n    --tw-enter-translate-y: .5rem;\n  }\n\n  .data-\\[state\\=active\\]\\:bg-background[data-state="active"] {\n    background-color: var(--background);\n  }\n\n  .data-\\[state\\=active\\]\\:text-foreground[data-state="active"] {\n    color: var(--foreground);\n  }\n\n  .data-\\[state\\=active\\]\\:shadow[data-state="active"] {\n    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, #0000001a), 0 1px 2px -1px var(--tw-shadow-color, #0000001a);\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n\n  .data-\\[state\\=checked\\]\\:translate-x-4[data-state="checked"] {\n    --tw-translate-x: calc(var(--spacing) * 4);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[state\\=checked\\]\\:bg-primary[data-state="checked"] {\n    background-color: var(--primary);\n  }\n\n  .data-\\[state\\=checked\\]\\:text-primary-foreground[data-state="checked"] {\n    color: var(--primary-foreground);\n  }\n\n  .data-\\[state\\=closed\\]\\:animate-none[data-state="closed"] {\n    animation: none;\n  }\n\n  .data-\\[state\\=closed\\]\\:animate-out[data-state="closed"] {\n    --tw-exit-opacity: initial;\n    --tw-exit-scale: initial;\n    --tw-exit-rotate: initial;\n    --tw-exit-translate-x: initial;\n    --tw-exit-translate-y: initial;\n    animation-name: exit;\n    animation-duration: .15s;\n  }\n\n  .data-\\[state\\=closed\\]\\:fade-out-0[data-state="closed"] {\n    --tw-exit-opacity: 0;\n  }\n\n  .data-\\[state\\=closed\\]\\:slide-out-to-left-1\\/2[data-state="closed"] {\n    --tw-exit-translate-x: -50%;\n  }\n\n  .data-\\[state\\=closed\\]\\:slide-out-to-top-\\[48\\%\\][data-state="closed"] {\n    --tw-exit-translate-y: -48%;\n  }\n\n  .data-\\[state\\=closed\\]\\:zoom-out-95[data-state="closed"] {\n    --tw-exit-scale: .95;\n  }\n\n  .data-\\[state\\=open\\]\\:animate-none[data-state="open"] {\n    animation: none;\n  }\n\n  .data-\\[state\\=open\\]\\:bg-accent[data-state="open"] {\n    background-color: var(--accent);\n  }\n\n  .data-\\[state\\=open\\]\\:text-muted-foreground[data-state="open"] {\n    color: var(--muted-foreground);\n  }\n\n  .data-\\[state\\=open\\]\\:animate-in[data-state="open"] {\n    --tw-enter-opacity: initial;\n    --tw-enter-scale: initial;\n    --tw-enter-rotate: initial;\n    --tw-enter-translate-x: initial;\n    --tw-enter-translate-y: initial;\n    animation-name: enter;\n    animation-duration: .15s;\n  }\n\n  .data-\\[state\\=open\\]\\:fade-in-0[data-state="open"] {\n    --tw-enter-opacity: 0;\n  }\n\n  .data-\\[state\\=open\\]\\:slide-in-from-left-1\\/2[data-state="open"] {\n    --tw-enter-translate-x: -50%;\n  }\n\n  .data-\\[state\\=open\\]\\:slide-in-from-top-\\[48\\%\\][data-state="open"] {\n    --tw-enter-translate-y: -48%;\n  }\n\n  .data-\\[state\\=open\\]\\:zoom-in-95[data-state="open"] {\n    --tw-enter-scale: .95;\n  }\n\n  .data-\\[state\\=selected\\]\\:bg-muted[data-state="selected"] {\n    background-color: var(--muted);\n  }\n\n  .data-\\[state\\=unchecked\\]\\:translate-x-0[data-state="unchecked"] {\n    --tw-translate-x: 0px;\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .data-\\[state\\=unchecked\\]\\:bg-input[data-state="unchecked"] {\n    background-color: var(--input);\n  }\n\n  @media (prefers-reduced-motion: reduce) {\n    .motion-reduce\\:animate-none {\n      animation: none;\n    }\n\n    .motion-reduce\\:transition-none {\n      transition-property: none;\n    }\n  }\n\n  @media not all and (min-width: 620px) {\n    .max-\\[620px\\]\\:px-1\\.5 {\n      padding-inline: calc(var(--spacing) * 1.5);\n    }\n  }\n\n  @media (min-width: 621px) {\n    .min-\\[621px\\]\\:col-span-2 {\n      grid-column: span 2 / span 2;\n    }\n\n    .min-\\[621px\\]\\:block {\n      display: block;\n    }\n\n    .min-\\[621px\\]\\:flex {\n      display: flex;\n    }\n\n    .min-\\[621px\\]\\:hidden {\n      display: none;\n    }\n\n    .min-\\[621px\\]\\:min-h-9 {\n      min-height: calc(var(--spacing) * 9);\n    }\n\n    .min-\\[621px\\]\\:grid-cols-2 {\n      grid-template-columns: repeat(2, minmax(0, 1fr));\n    }\n\n    .min-\\[621px\\]\\:flex-wrap {\n      flex-wrap: wrap;\n    }\n  }\n\n  @media (min-width: 900px) {\n    .min-\\[900px\\]\\:flex-none {\n      flex: none;\n    }\n\n    .min-\\[900px\\]\\:grid-cols-4 {\n      grid-template-columns: repeat(4, minmax(0, 1fr));\n    }\n  }\n\n  @media (min-width: 1024px) {\n    .min-\\[1024px\\]\\:grid-cols-2 {\n      grid-template-columns: repeat(2, minmax(0, 1fr));\n    }\n  }\n\n  @media (min-width: 40rem) {\n    .sm\\:inline {\n      display: inline;\n    }\n\n    .sm\\:grid-cols-2 {\n      grid-template-columns: repeat(2, minmax(0, 1fr));\n    }\n\n    .sm\\:grid-cols-3 {\n      grid-template-columns: repeat(3, minmax(0, 1fr));\n    }\n\n    .sm\\:flex-row {\n      flex-direction: row;\n    }\n\n    .sm\\:justify-end {\n      justify-content: flex-end;\n    }\n\n    .sm\\:gap-x-2 {\n      column-gap: calc(var(--spacing) * 2);\n    }\n\n    .sm\\:rounded-lg {\n      border-radius: var(--radius);\n    }\n\n    .sm\\:text-left {\n      text-align: left;\n    }\n  }\n\n  @media (min-width: 48rem) {\n    .md\\:w-full {\n      width: 100%;\n    }\n  }\n\n  @container (min-width: 24rem) {\n    .\\@sm\\:grid-cols-3 {\n      grid-template-columns: repeat(3, minmax(0, 1fr));\n    }\n  }\n\n  @container (min-width: 48rem) {\n    .\\@3xl\\:grid-cols-2 {\n      grid-template-columns: repeat(2, minmax(0, 1fr));\n    }\n  }\n\n  .dark\\:border-destructive:is(.dark *, :host(.dark) *) {\n    border-color: var(--destructive);\n  }\n\n  .\\[\\&_p\\]\\:leading-relaxed p {\n    --tw-leading: var(--leading-relaxed);\n    line-height: var(--leading-relaxed);\n  }\n\n  .\\[\\&_svg\\]\\:pointer-events-none svg {\n    pointer-events: none;\n  }\n\n  .\\[\\&_svg\\]\\:size-4 svg {\n    width: calc(var(--spacing) * 4);\n    height: calc(var(--spacing) * 4);\n  }\n\n  .\\[\\&_svg\\]\\:shrink-0 svg {\n    flex-shrink: 0;\n  }\n\n  .\\[\\&_tr\\]\\:border-b tr {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 1px;\n  }\n\n  .\\[\\&_tr\\:last-child\\]\\:border-0 tr:last-child {\n    border-style: var(--tw-border-style);\n    border-width: 0;\n  }\n\n  .\\[\\&\\:has\\(\\[role\\=checkbox\\]\\)\\]\\:pr-0:has([role="checkbox"]) {\n    padding-right: 0;\n  }\n\n  .\\[\\&\\>\\[role\\=checkbox\\]\\]\\:translate-y-0\\.5 > [role="checkbox"] {\n    --tw-translate-y: calc(var(--spacing) * .5);\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .\\[\\&\\>span\\]\\:min-w-0 > span {\n    min-width: 0;\n  }\n\n  .\\[\\&\\>span\\]\\:truncate > span {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    overflow: hidden;\n  }\n\n  .\\[\\&\\>span\\]\\:break-words > span {\n    overflow-wrap: break-word;\n  }\n\n  .\\[\\&\\>span\\]\\:whitespace-normal > span {\n    white-space: normal;\n  }\n\n  .\\[\\&\\>svg\\]\\:absolute > svg {\n    position: absolute;\n  }\n\n  .\\[\\&\\>svg\\]\\:top-4 > svg {\n    top: calc(var(--spacing) * 4);\n  }\n\n  .\\[\\&\\>svg\\]\\:left-4 > svg {\n    left: calc(var(--spacing) * 4);\n  }\n\n  .\\[\\&\\>svg\\]\\:text-destructive > svg {\n    color: var(--destructive);\n  }\n\n  .\\[\\&\\>svg\\]\\:text-foreground > svg {\n    color: var(--foreground);\n  }\n\n  .\\[\\&\\>svg\\+div\\]\\:translate-y-\\[-3px\\] > svg + div {\n    --tw-translate-y: -3px;\n    translate: var(--tw-translate-x) var(--tw-translate-y);\n  }\n\n  .\\[\\&\\>svg\\~\\*\\]\\:pl-7 > svg ~ * {\n    padding-left: calc(var(--spacing) * 7);\n  }\n\n  .\\[\\&\\>tr\\]\\:last\\:border-b-0 > tr:last-child {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 0;\n  }\n}\n\n:root, :host {\n  --radius: .625rem;\n  --destructive-foreground: #fafafa;\n  --success: oklch(59.6% .145 163.225);\n  --warning: oklch(66.6% .179 58.318);\n  --background: oklch(100% 0 0);\n  --foreground: oklch(14.5% 0 0);\n  --card: oklch(100% 0 0);\n  --card-foreground: oklch(14.5% 0 0);\n  --popover: oklch(100% 0 0);\n  --popover-foreground: oklch(14.5% 0 0);\n  --primary: oklch(20.5% 0 0);\n  --primary-foreground: oklch(98.5% 0 0);\n  --secondary: oklch(97% 0 0);\n  --secondary-foreground: oklch(20.5% 0 0);\n  --muted: oklch(97% 0 0);\n  --muted-foreground: oklch(55.6% 0 0);\n  --accent: oklch(97% 0 0);\n  --accent-foreground: oklch(20.5% 0 0);\n  --destructive: oklch(57.7% .245 27.325);\n  --border: oklch(92.2% 0 0);\n  --input: oklch(92.2% 0 0);\n  --ring: oklch(70.8% 0 0);\n  --chart-1: oklch(64.6% .222 41.116);\n  --chart-2: oklch(60% .118 184.704);\n  --chart-3: oklch(39.8% .07 227.392);\n  --chart-4: oklch(82.8% .189 84.429);\n  --chart-5: oklch(76.9% .188 70.08);\n  --sidebar: oklch(98.5% 0 0);\n  --sidebar-foreground: oklch(14.5% 0 0);\n  --sidebar-primary: oklch(20.5% 0 0);\n  --sidebar-primary-foreground: oklch(98.5% 0 0);\n  --sidebar-accent: oklch(97% 0 0);\n  --sidebar-accent-foreground: oklch(20.5% 0 0);\n  --sidebar-border: oklch(92.2% 0 0);\n  --sidebar-ring: oklch(70.8% 0 0);\n}\n\n.dark, :host(.dark) {\n  --success: oklch(76.5% .177 163.223);\n  --warning: oklch(82.8% .189 84.429);\n  --background: oklch(14.5% 0 0);\n  --foreground: oklch(98.5% 0 0);\n  --card: oklch(20.5% 0 0);\n  --card-foreground: oklch(98.5% 0 0);\n  --popover: oklch(20.5% 0 0);\n  --popover-foreground: oklch(98.5% 0 0);\n  --primary: oklch(92.2% 0 0);\n  --primary-foreground: oklch(20.5% 0 0);\n  --secondary: oklch(26.9% 0 0);\n  --secondary-foreground: oklch(98.5% 0 0);\n  --muted: oklch(26.9% 0 0);\n  --muted-foreground: oklch(70.8% 0 0);\n  --accent: oklch(26.9% 0 0);\n  --accent-foreground: oklch(98.5% 0 0);\n  --destructive: oklch(70.4% .191 22.216);\n  --border: oklch(100% 0 0 / .2);\n  --input: oklch(100% 0 0 / .28);\n  --ring: oklch(55.6% 0 0);\n  --chart-1: oklch(48.8% .243 264.376);\n  --chart-2: oklch(69.6% .17 162.48);\n  --chart-3: oklch(76.9% .188 70.08);\n  --chart-4: oklch(62.7% .265 303.9);\n  --chart-5: oklch(64.5% .246 16.439);\n  --sidebar: oklch(20.5% 0 0);\n  --sidebar-foreground: oklch(98.5% 0 0);\n  --sidebar-primary: oklch(48.8% .243 264.376);\n  --sidebar-primary-foreground: oklch(98.5% 0 0);\n  --sidebar-accent: oklch(26.9% 0 0);\n  --sidebar-accent-foreground: oklch(98.5% 0 0);\n  --sidebar-border: oklch(100% 0 0 / .1);\n  --sidebar-ring: oklch(55.6% 0 0);\n}\n\n@media (prefers-color-scheme: dark) {\n  :host(:not(.light)) {\n    --success: oklch(76.5% .177 163.223);\n    --warning: oklch(82.8% .189 84.429);\n    --background: oklch(14.5% 0 0);\n    --foreground: oklch(98.5% 0 0);\n    --card: oklch(20.5% 0 0);\n    --card-foreground: oklch(98.5% 0 0);\n    --popover: oklch(20.5% 0 0);\n    --popover-foreground: oklch(98.5% 0 0);\n    --primary: oklch(92.2% 0 0);\n    --primary-foreground: oklch(20.5% 0 0);\n    --secondary: oklch(26.9% 0 0);\n    --secondary-foreground: oklch(98.5% 0 0);\n    --muted: oklch(26.9% 0 0);\n    --muted-foreground: oklch(70.8% 0 0);\n    --accent: oklch(26.9% 0 0);\n    --accent-foreground: oklch(98.5% 0 0);\n    --destructive: oklch(70.4% .191 22.216);\n    --border: oklch(100% 0 0 / .2);\n    --input: oklch(100% 0 0 / .28);\n    --ring: oklch(55.6% 0 0);\n    --chart-1: oklch(48.8% .243 264.376);\n    --chart-2: oklch(69.6% .17 162.48);\n    --chart-3: oklch(76.9% .188 70.08);\n    --chart-4: oklch(62.7% .265 303.9);\n    --chart-5: oklch(64.5% .246 16.439);\n    --sidebar: oklch(20.5% 0 0);\n    --sidebar-foreground: oklch(98.5% 0 0);\n    --sidebar-primary: oklch(48.8% .243 264.376);\n    --sidebar-primary-foreground: oklch(98.5% 0 0);\n    --sidebar-accent: oklch(26.9% 0 0);\n    --sidebar-accent-foreground: oklch(98.5% 0 0);\n    --sidebar-border: oklch(100% 0 0 / .1);\n    --sidebar-ring: oklch(55.6% 0 0);\n  }\n}\n\n.booster-archive-nav {\n  border-right: 1px solid var(--border);\n  background: var(--card);\n  overscroll-behavior: contain;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  padding: 12px;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-archive-nav-branch {\n  border-inline-start: 2px solid var(--primary);\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-archive-nav-branch {\n    border-inline-start: 2px solid color-mix(in oklab, var(--primary) 35%, transparent);\n  }\n}\n\n.booster-reader-exchanges {\n  gap: 12px;\n  margin-top: 0;\n  display: grid;\n}\n\n.booster-exchange {\n  border-bottom: 1px solid var(--border);\n  min-width: 0;\n  max-width: 100%;\n  padding-bottom: 16px;\n}\n\n.booster-exchange-details {\n  border-left: 2px solid var(--border);\n  gap: 6px;\n  margin: 10px 0 10px 12px;\n  padding: 8px 0 8px 12px;\n  display: grid;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-exchange-details {\n    border-left: 2px solid color-mix(in oklab, var(--border) 78%, var(--primary));\n  }\n}\n\n.booster-exchange-details-label {\n  color: var(--muted-foreground);\n  letter-spacing: .04em;\n  text-transform: uppercase;\n  font-size: 10px;\n  font-weight: 650;\n}\n\n.booster-message-target {\n  outline: 2px solid var(--primary);\n  outline-offset: 2px;\n  border-radius: 6px;\n}\n\n[data-archive-message] {\n  scroll-margin-block: 20px;\n}\n\n.booster-reader-exchanges, .booster-exchange-details {\n  min-width: 0;\n  max-width: 100%;\n}\n\n.booster-meta-trigger {\n  flex-shrink: 0;\n}\n\n.booster-meta-lines {\n  grid-template-columns: max-content minmax(0, 1fr);\n  gap: 3px 10px;\n  display: grid;\n}\n\n.booster-meta-label {\n  color: var(--muted-foreground);\n  font-size: 10px;\n  font-weight: 600;\n}\n\n.booster-floating-tooltip .booster-meta-label {\n  color: inherit;\n  opacity: .75;\n}\n\n.booster-meta-value {\n  overflow-wrap: anywhere;\n  min-width: 0;\n  color: inherit;\n  font-variant-numeric: tabular-nums;\n}\n\n.booster-json-viewer {\n  background: var(--background);\n  max-height: min(70vh, 620px);\n  margin: 0;\n  padding: 14px 16px 22px;\n  overflow: auto;\n}\n\n@supports (color: color-mix(in lab, red, red)) {\n  .booster-json-viewer {\n    background: color-mix(in oklab, var(--background) 86%, #0f172a);\n  }\n}\n\n.booster-json-viewer {\n  color: var(--foreground);\n  tab-size: 2;\n  white-space: pre;\n  font: 11px / 1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n}\n\n.booster-json-key {\n  color: #60a5fa;\n}\n\n.booster-json-string {\n  color: #86efac;\n}\n\n.booster-json-number {\n  color: #fbbf24;\n}\n\n.booster-json-boolean {\n  color: #c084fc;\n}\n\n.booster-json-null {\n  color: #94a3b8;\n}\n\n:host {\n  all: initial;\n  color: var(--foreground);\n  font-family: Inter, ui-sans-serif, system-ui, sans-serif;\n}\n\n* {\n  box-sizing: border-box;\n}\n\n.booster-shell {\n  z-index: 2147483647;\n  position: fixed;\n  bottom: 20px;\n  right: 20px;\n}\n\n.booster-panel {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: 300px;\n  color: var(--card-foreground);\n  border-radius: 16px;\n  margin-bottom: 10px;\n  padding: 14px;\n  box-shadow: 0 18px 45px #0000003d;\n}\n\n.booster-panel h2 {\n  margin: 0 0 6px;\n  font-size: 15px;\n  font-weight: 700;\n}\n\n.booster-panel p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.45;\n}\n\n.booster-control-center {\n  border: 1px solid var(--border);\n  background: var(--card);\n  width: min(760px, 100vw - 32px);\n  min-width: 0;\n  color: var(--card-foreground);\n  border-radius: 18px;\n  margin-bottom: 10px;\n  overflow: hidden;\n  box-shadow: 0 22px 60px #00000047;\n}\n\n.booster-control-header, .booster-control-footer {\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  display: flex;\n}\n\n.booster-control-header {\n  border-bottom: 1px solid var(--border);\n  flex-wrap: wrap;\n  padding: 14px 14px 12px;\n}\n\n.booster-control-header strong {\n  overflow-wrap: anywhere;\n  font-size: 14px;\n}\n\n.booster-control-header p {\n  color: var(--muted-foreground);\n  margin: 3px 0 0;\n  font-size: 11px;\n}\n\n.booster-control-body {\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-loading {\n  color: var(--muted-foreground);\n  padding: 18px;\n  font-size: 12px;\n}\n\n.booster-section-label {\n  color: var(--muted-foreground);\n  letter-spacing: .08em;\n  text-transform: uppercase;\n  padding: 2px 2px 0;\n  font-size: 10px;\n  font-weight: 700;\n}\n\n.booster-setting-card {\n  justify-content: space-between;\n  align-items: center;\n  gap: 16px;\n  padding: 12px;\n  display: flex;\n}\n\n.booster-setting-disabled {\n  opacity: .55;\n}\n\n.booster-setting-copy {\n  gap: 5px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-setting-copy b {\n  font-size: 12px;\n}\n\n.booster-setting-copy > span {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  line-height: 1.4;\n}\n\n.booster-info-card {\n  background: var(--muted);\n  color: var(--foreground);\n  border-radius: 12px;\n  padding: 11px 12px;\n  font-size: 11px;\n}\n\n.booster-info-card ul {\n  color: var(--muted-foreground);\n  gap: 4px;\n  margin: 8px 0 0 18px;\n  padding: 0;\n  line-height: 1.35;\n  display: grid;\n}\n\n.booster-control-footer {\n  padding-top: 2px;\n}\n\n.booster-save-state {\n  color: var(--muted-foreground);\n  align-items: center;\n  gap: 5px;\n  font-size: 10px;\n  display: inline-flex;\n}\n\n.booster-overlay-root {\n  pointer-events: none;\n}\n\n.booster-launcher {\n  z-index: 2147483647;\n  cursor: grab;\n  pointer-events: auto;\n  touch-action: none;\n  -webkit-user-select: none;\n  user-select: none;\n  border-radius: 15px;\n  justify-content: center;\n  align-items: center;\n  gap: 1px;\n  width: 44px;\n  height: 44px;\n  display: inline-flex;\n  position: fixed;\n}\n\n.booster-launcher-dragging {\n  cursor: grabbing;\n}\n\n.booster-launcher-icon {\n  flex-shrink: 0;\n  width: 20px;\n  height: 20px;\n}\n\n.booster-modal-backdrop {\n  z-index: 40;\n  pointer-events: auto;\n  place-items: center;\n  padding: 16px;\n  display: grid;\n  position: fixed;\n  inset: 0;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n  max-height: calc(100vh - 32px);\n  overflow: auto;\n}\n\n.booster-modal-surface .booster-control-center {\n  width: 100%;\n  box-shadow: none;\n  border: 0;\n  border-radius: 0;\n  margin: 0;\n}\n\n.booster-popup-host {\n  background: var(--background);\n  min-width: 360px;\n}\n\n.booster-stack-card {\n  gap: 10px;\n  padding: 12px;\n  display: grid;\n}\n\n.booster-stack-card label {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-counter-grid {\n  color: var(--muted-foreground);\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 6px 12px;\n  margin-top: 8px;\n  display: grid;\n}\n\n.booster-counter-grid span {\n  justify-content: space-between;\n  gap: 8px;\n  display: flex;\n}\n\n.booster-counter-grid b {\n  color: var(--foreground);\n}\n\n.booster-header-copy {\n  min-width: 0;\n}\n\n.booster-header-actions {\n  align-items: center;\n  gap: 10px;\n  display: flex;\n}\n\n.booster-header-toggle-label {\n  color: var(--muted-foreground);\n  font-size: 11px;\n  font-weight: 600;\n}\n\n.booster-settings-layout {\n  grid-template-columns: minmax(0, 1fr);\n  min-height: 360px;\n  display: grid;\n}\n\n.booster-setting-card-flat {\n  border: 0;\n  border-bottom: 1px solid var(--border);\n  border-radius: 0;\n  padding: 0 0 10px;\n}\n\n.booster-analytics-grid {\n  grid-template-columns: repeat(2, minmax(0, 1fr));\n  gap: 12px;\n  display: grid;\n}\n\n.booster-counter-card {\n  border: 1px solid var(--border);\n  background: var(--background);\n  border-radius: 12px;\n  padding: 12px;\n}\n\n.booster-counter-title {\n  margin-bottom: 8px;\n  font-size: 12px;\n  font-weight: 700;\n}\n\n.rotate-180 {\n  transform: rotate(180deg);\n}\n\n.booster-telemetry-body {\n  gap: 10px;\n  padding-top: 10px;\n  display: grid;\n}\n\n.booster-field {\n  color: var(--muted-foreground);\n  gap: 6px;\n  font-size: 11px;\n  display: grid;\n}\n\n.booster-telemetry-test-row {\n  align-items: center;\n  gap: 10px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-test-success {\n  color: var(--success);\n  font-size: 11px;\n}\n\n.booster-test-error {\n  min-width: 0;\n  color: var(--destructive);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 11px;\n  overflow: hidden;\n}\n\n.booster-modal-surface {\n  width: min(760px, 100vw - 32px);\n}\n\n@media (max-width: 620px) {\n  .booster-control-center, .booster-modal-surface {\n    width: calc(100vw - 20px);\n  }\n\n  .booster-settings-layout, .booster-analytics-grid {\n    grid-template-columns: 1fr;\n  }\n}\n\n.booster-modal-surface.booster-modal-surface-wide {\n  width: min(1320px, 100vw - 32px);\n}\n\n.booster-modal-surface-wide > .booster-control-center {\n  width: 100%;\n}\n\n@media (max-width: 620px) {\n  .booster-modal-surface.booster-modal-surface-wide {\n    width: calc(100vw - 20px);\n  }\n}\n\n.booster-modal-backdrop.booster-modal-backdrop-floating {\n  -webkit-backdrop-filter: none;\n  backdrop-filter: none;\n  pointer-events: none;\n  background: none;\n  padding: 0;\n  display: block;\n}\n\n.booster-modal-surface.booster-modal-surface-wide.booster-dialog-floating {\n  pointer-events: auto;\n  flex-direction: column;\n  gap: 0;\n  min-width: 0;\n  max-width: calc(100dvw - 16px);\n  min-height: 0;\n  max-height: calc(100dvh - 16px);\n  padding: 0;\n  display: flex;\n  position: fixed;\n  overflow: hidden;\n  transform: translate3d(0, 0, 0);\n}\n\n.booster-dialog-floating > .booster-control-center {\n  min-width: 0;\n  min-height: 0;\n  box-shadow: none;\n  border: 0;\n  border-radius: 0;\n  flex-direction: column;\n  flex: auto;\n  margin: 0;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-workspace-error {\n  color: var(--destructive);\n  flex: none;\n  margin: 0;\n  padding: 6px 12px;\n  font-size: 12px;\n}\n\n.booster-launcher-docked {\n  width: 44px;\n  height: 44px;\n}\n\n.booster-edge-toolkit {\n  z-index: 2147483647;\n  pointer-events: auto;\n  width: 44px;\n  height: 44px;\n  position: fixed;\n}\n\n.booster-edge-toolkit > .booster-launcher {\n  position: relative;\n  transform: none;\n}\n\n.booster-edge-toolkit.attached.right > .booster-launcher {\n  border-radius: 12px 0 0 12px;\n}\n\n.booster-edge-toolkit.attached.left > .booster-launcher {\n  border-radius: 0 12px 12px 0;\n}\n\n.booster-edge-shell {\n  width: var(--booster-dock-width, min(294px, 100vw));\n  position: absolute;\n  top: auto;\n  overflow: hidden;\n}\n\n.booster-edge-toolkit > .booster-edge-shell {\n  left: var(--booster-dock-offset-x, 0px);\n}\n\n.booster-edge-toolkit.free > .booster-edge-shell {\n  border-radius: 14px;\n}\n\n.booster-edge-toolkit.grow-up > .booster-edge-shell {\n  padding-bottom: 44px;\n  bottom: 0;\n}\n\n.booster-edge-toolkit.grow-down > .booster-edge-shell {\n  padding-top: 44px;\n  top: 0;\n}\n\n.booster-edge-toolkit.attached.right > .booster-edge-shell {\n  border-radius: 14px 0 0 14px;\n}\n\n.booster-edge-toolkit.attached.left > .booster-edge-shell {\n  border-radius: 0 14px 14px 0;\n}\n\n.booster-edge-toolkit > .booster-launcher.booster-edge-close-bar {\n  width: var(--booster-dock-width, min(294px, 100vw));\n  border: 1px solid var(--border);\n  background: var(--card);\n  height: 44px;\n  color: var(--card-foreground);\n  box-shadow: none;\n  justify-content: flex-start;\n  gap: 8px;\n  padding: 0 12px;\n  font-size: 12px;\n  font-weight: 600;\n  position: absolute;\n  top: 0;\n}\n\n.booster-edge-toolkit > .booster-launcher.booster-edge-close-bar:hover {\n  background: var(--accent);\n  color: var(--accent-foreground);\n}\n\n.booster-edge-toolkit > .booster-edge-close-bar {\n  left: var(--booster-dock-offset-x, 0px);\n}\n\n.booster-edge-toolkit.free.grow-up > .booster-edge-close-bar {\n  border-radius: 0 0 14px 14px;\n}\n\n.booster-edge-toolkit.free.grow-down > .booster-edge-close-bar {\n  border-radius: 14px 14px 0 0;\n}\n\n.booster-edge-toolkit.attached.right.grow-up > .booster-edge-close-bar {\n  border-radius: 0 0 0 14px;\n}\n\n.booster-edge-toolkit.attached.right.grow-down > .booster-edge-close-bar {\n  border-radius: 14px 0 0;\n}\n\n.booster-edge-toolkit.attached.left.grow-up > .booster-edge-close-bar {\n  border-radius: 0 0 14px;\n}\n\n.booster-edge-toolkit.attached.left.grow-down > .booster-edge-close-bar {\n  border-radius: 0 14px 0 0;\n}\n\n.booster-quick-menu {\n  background: var(--card);\n  width: 100%;\n  color: var(--card-foreground);\n  pointer-events: auto;\n  font: inherit;\n  border: 0;\n  border-radius: 0;\n  position: relative;\n  overflow: auto;\n}\n\n.booster-quick-header, .booster-quick-footer {\n  justify-content: space-between;\n  align-items: center;\n  gap: 12px;\n  padding: 11px 12px;\n  display: flex;\n}\n\n.booster-quick-header {\n  border-bottom: 1px solid var(--border);\n}\n\n.booster-quick-header > [role="switch"] {\n  flex: none;\n}\n\n.booster-quick-identity {\n  gap: 5px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-quick-identity > strong {\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  font-size: 13px;\n  overflow: hidden;\n}\n\n.booster-quick-badges {\n  flex-wrap: wrap;\n  gap: 5px;\n  display: flex;\n}\n\n.booster-quick-actions {\n  padding: 4px 0;\n}\n\n.booster-quick-footer {\n  border-top: 1px solid var(--border);\n}\n\n.booster-quick-status {\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n.booster-quick-status.is-active {\n  color: var(--foreground);\n}\n\n.booster-quick-metrics {\n  border-bottom: 1px solid var(--border);\n  flex-wrap: wrap;\n  gap: 4px 12px;\n  padding: 6px 12px;\n  display: flex;\n}\n\n.booster-quick-metrics > div {\n  align-items: baseline;\n  gap: 6px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-quick-metrics span {\n  color: var(--muted-foreground);\n  font-size: 10px;\n}\n\n.booster-quick-metrics b {\n  color: var(--foreground);\n  font-variant-numeric: tabular-nums;\n  font-size: 11px;\n  font-weight: 500;\n}\n\n.booster-quick-error {\n  background: var(--card);\n  color: var(--foreground);\n  pointer-events: none;\n  padding: 7px;\n  position: fixed;\n  bottom: 10px;\n  left: 10px;\n}\n\n* {\n  scrollbar-width: thin;\n  scrollbar-color: var(--border) transparent;\n}\n\n::-webkit-scrollbar {\n  width: 6px;\n  height: 6px;\n}\n\n::-webkit-scrollbar-track {\n  background: none;\n}\n\n::-webkit-scrollbar-thumb {\n  background: var(--border);\n  border-radius: 99px;\n}\n\n::-webkit-scrollbar-thumb:hover {\n  background: var(--muted-foreground);\n}\n\n.booster-modal-surface.booster-modal-surface-single {\n  width: min(820px, 100vw - 24px);\n  max-height: min(86dvh, 760px);\n  overflow: auto;\n}\n\n.booster-control-standalone {\n  width: 100%;\n  margin: 0;\n}\n\n.booster-control-standalone > .booster-settings-layout {\n  min-height: 0;\n  display: block;\n}\n\n.booster-control-standalone > .booster-settings-layout > .booster-settings-content {\n  width: 100%;\n  min-width: 0;\n}\n\n@media (max-width: 620px) {\n  .booster-control-standalone > .booster-control-header {\n    flex-direction: row;\n    align-items: center;\n    gap: 8px;\n    padding: 12px;\n  }\n\n  .booster-control-standalone > .booster-control-header > .booster-header-copy > div {\n    flex-wrap: nowrap;\n    gap: 6px;\n  }\n\n  .booster-control-standalone > .booster-control-header .booster-header-copy strong {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    min-width: 0;\n    overflow: hidden;\n  }\n\n  .booster-control-standalone > .booster-control-header > .booster-header-actions {\n    flex-wrap: nowrap;\n    justify-content: space-between;\n    gap: 8px;\n    display: flex;\n  }\n\n  .booster-control-standalone > .booster-control-header > .booster-header-actions > button:last-child {\n    margin-left: auto;\n  }\n\n  .booster-modal-surface.booster-modal-surface-single {\n    width: calc(100vw - 16px);\n    max-height: calc(100dvh - 16px);\n  }\n}\n\n.booster-modal-backdrop.booster-modal-backdrop-fullscreen {\n  background: var(--background);\n  -webkit-backdrop-filter: none;\n  backdrop-filter: none;\n  padding: 0;\n}\n\n.booster-modal-surface.booster-modal-fullscreen {\n  width: 100dvw;\n  min-width: 0;\n  max-width: none;\n  height: 100dvh;\n  min-height: 0;\n  max-height: none;\n  box-shadow: none;\n  border: 0;\n  border-radius: 0;\n  flex-direction: column;\n  display: flex;\n  position: fixed;\n  inset: 0;\n  overflow: hidden;\n  transform: none;\n}\n\n.booster-modal-fullscreen > .booster-control-center {\n  width: 100%;\n  min-width: 0;\n  min-height: 0;\n  box-shadow: none;\n  border: 0;\n  border-radius: 0;\n  flex-direction: column;\n  flex: 1;\n  margin: 0;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-dialog-floating .booster-control-header {\n  justify-content: flex-end;\n  padding: 6px 12px;\n}\n\n.booster-modal-fullscreen > .booster-control-center > .booster-control-header {\n  padding-top: max(12px, env(safe-area-inset-top));\n  flex: none;\n}\n\n.booster-dialog-floating > .booster-control-center > .booster-control-header {\n  flex: none;\n}\n\n.booster-modal-fullscreen > .booster-control-center > .settings-catalog, .booster-dialog-floating > .booster-control-center > .settings-catalog {\n  overscroll-behavior: contain;\n  flex: 0 auto;\n  min-width: 0;\n  min-height: 0;\n  max-height: 50dvh;\n  overflow: hidden auto;\n}\n\n.booster-modal-fullscreen > .booster-control-center > .booster-settings-layout, .booster-dialog-floating > .booster-control-center > .booster-settings-layout {\n  flex: 1;\n  min-width: 0;\n  min-height: 0;\n  overflow: hidden;\n}\n\n.booster-modal-fullscreen > .booster-control-center > .booster-settings-layout > .booster-settings-content, .booster-dialog-floating > .booster-control-center > .booster-settings-layout > .booster-settings-content {\n  overscroll-behavior: contain;\n  width: 100%;\n  min-width: 0;\n  height: 100%;\n  min-height: 0;\n  padding-bottom: max(12px, env(safe-area-inset-bottom));\n  overflow: auto;\n}\n\n.booster-settings-content > * {\n  min-width: 0;\n  max-width: 100%;\n}\n\n.booster-control-center:has([data-panel-content-focus]) > .booster-settings-layout > .booster-settings-content {\n  flex-direction: column;\n  min-height: 0;\n  padding: 0;\n  display: flex;\n  overflow: hidden;\n}\n\n.booster-control-center:has([data-panel-content-focus]) > .booster-settings-layout > .booster-settings-content > :has([data-panel-content-focus]), .booster-control-center:has([data-panel-content-focus]) > .booster-settings-layout > .booster-settings-content > [data-panel-content-focus] {\n  flex: auto;\n  min-width: 0;\n  min-height: 0;\n}\n\n.booster-edge-toolkit > .booster-launcher.booster-launcher-floating:not(.booster-edge-close-bar) {\n  border-radius: 50% 50% 50% 18%;\n}\n\n.booster-shell-settings {\n  grid-template-columns: minmax(0, 1fr);\n  align-items: start;\n  gap: 16px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-settings-layout-catalog {\n  grid-template-columns: minmax(0, 1fr);\n}\n\n.booster-shell-settings-body {\n  gap: 12px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-shell-settings-body > h2 {\n  margin: 0;\n  font-size: 15px;\n}\n\n.booster-shell-settings-body > p {\n  color: var(--muted-foreground);\n  margin: 0;\n  font-size: 12px;\n  line-height: 1.5;\n}\n\n.booster-capability-group {\n  gap: 8px;\n  min-width: 0;\n  display: grid;\n}\n\n.booster-component-versions {\n  grid-template-columns: minmax(0, 1fr) auto;\n  gap: 10px 16px;\n  margin: 0;\n  font-size: 12px;\n  display: grid;\n}\n\n.booster-component-versions dt {\n  overflow-wrap: anywhere;\n}\n\n.booster-component-versions dd {\n  color: var(--muted-foreground);\n  margin: 0;\n}\n\n.booster-version {\n  color: var(--muted-foreground);\n  white-space: nowrap;\n  font-size: 11px;\n  font-weight: 400;\n}\n\n.booster-control-identity {\n  align-items: baseline;\n  gap: 8px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-control-header > .booster-header-copy {\n  flex: 1;\n  min-width: 0;\n}\n\n.booster-control-header > .booster-header-actions {\n  flex: none;\n}\n\n.booster-indicator-legend {\n  border-bottom: 1px solid var(--border);\n  gap: 4px;\n  margin: 0;\n  padding: 8px 12px;\n  list-style: none;\n  display: grid;\n}\n\n.booster-indicator-legend li {\n  align-items: flex-start;\n  gap: 6px;\n  min-width: 0;\n  display: flex;\n}\n\n.booster-indicator-copy {\n  overflow-wrap: anywhere;\n  flex: 1;\n  justify-content: space-between;\n  align-items: baseline;\n  gap: 8px;\n  min-width: 0;\n  font-size: 11px;\n  display: flex;\n}\n\n.booster-indicator-copy strong {\n  flex: none;\n  font-weight: 500;\n}\n\n.booster-indicator-copy > span {\n  color: var(--muted-foreground);\n  text-align: right;\n  font-size: 10px;\n}\n\n.booster-signal-dot {\n  background: var(--muted-foreground);\n  border-radius: 50%;\n  flex: none;\n  width: 6px;\n  height: 6px;\n  margin-top: 4px;\n}\n\n.booster-signal-dot[data-status="active"], .booster-signal-dot[data-status="connecting"] {\n  background: var(--chart-2);\n}\n\n.booster-signal-dot[data-status="success"] {\n  background: var(--success);\n}\n\n.booster-signal-dot[data-status="error"] {\n  background: var(--destructive);\n}\n\n.booster-signal-dot[data-status="warning"], .booster-signal-dot[data-status="offline"] {\n  background: var(--warning, var(--chart-5));\n}\n\n.booster-launcher-signals {\n  pointer-events: none;\n  justify-content: center;\n  gap: 3px;\n  display: flex;\n  position: absolute;\n  bottom: 4px;\n  left: 0;\n  right: 0;\n}\n\n.booster-launcher-signals .booster-signal-dot {\n  width: 4px;\n  height: 4px;\n  margin: 0;\n}\n\n.booster-launcher[data-indicator-tone]:not([data-indicator-tone="idle"]):after {\n  content: "";\n  border-radius: inherit;\n  pointer-events: none;\n  background: linear-gradient(135deg, var(--booster-signal-color), var(--booster-signal-end, var(--booster-signal-color)));\n  -webkit-mask-composite: xor;\n  -webkit-mask-source-type: auto, auto;\n  padding: 2px;\n  position: absolute;\n  inset: 1px;\n  -webkit-mask-image: linear-gradient(#fff 0 0), linear-gradient(#fff 0 0);\n  mask-image: linear-gradient(#fff 0 0), linear-gradient(#fff 0 0);\n  -webkit-mask-position: 0 0, 0 0;\n  mask-position: 0 0, 0 0;\n  -webkit-mask-size: auto, auto;\n  mask-size: auto, auto;\n  -webkit-mask-repeat: repeat, repeat;\n  mask-repeat: repeat, repeat;\n  -webkit-mask-clip: content-box, border-box;\n  mask-clip: content-box, border-box;\n  -webkit-mask-origin: content-box, border-box;\n  mask-origin: content-box, border-box;\n  -webkit-mask-composite: xor;\n  mask-composite: exclude;\n  -webkit-mask-source-type: auto, auto;\n  mask-mode: match-source, match-source;\n}\n\n.booster-launcher[data-indicator-tone="active"] {\n  --booster-signal-color: var(--chart-2);\n  --booster-signal-end: var(--chart-4);\n}\n\n.booster-launcher[data-indicator-tone="success"] {\n  --booster-signal-color: var(--success);\n}\n\n.booster-launcher[data-indicator-tone="warning"] {\n  --booster-signal-color: var(--warning, var(--chart-5));\n}\n\n.booster-launcher[data-indicator-tone="error"] {\n  --booster-signal-color: var(--destructive);\n}\n\n.booster-quick-identity {\n  flex-wrap: wrap;\n  align-items: baseline;\n  gap: 5px 8px;\n  display: flex;\n}\n\n.booster-quick-context {\n  width: 100%;\n  color: var(--muted-foreground);\n  font-size: 11px;\n}\n\n@media (max-width: 620px) {\n  .booster-shell-settings {\n    grid-template-columns: minmax(0, 1fr);\n    gap: 14px;\n  }\n\n  .booster-modal-fullscreen > .booster-control-center > .settings-catalog {\n    overflow: hidden;\n  }\n\n  .booster-header-copy > div {\n    flex-wrap: wrap;\n  }\n\n  .booster-header-actions {\n    gap: 6px;\n  }\n\n  .booster-control-center:has([data-panel-content-focus="true"]) > .settings-catalog {\n    display: none;\n  }\n}\n\n@keyframes enter {\n  from {\n    opacity: var(--tw-enter-opacity, 1);\n    transform: translate3d(var(--tw-enter-translate-x, 0), var(--tw-enter-translate-y, 0), 0) scale3d(var(--tw-enter-scale, 1), var(--tw-enter-scale, 1), var(--tw-enter-scale, 1)) rotate(var(--tw-enter-rotate, 0));\n  }\n}\n\n@keyframes exit {\n  to {\n    opacity: var(--tw-exit-opacity, 1);\n    transform: translate3d(var(--tw-exit-translate-x, 0), var(--tw-exit-translate-y, 0), 0) scale3d(var(--tw-exit-scale, 1), var(--tw-exit-scale, 1), var(--tw-exit-scale, 1)) rotate(var(--tw-exit-rotate, 0));\n  }\n}\n\n@property --tw-translate-x {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-translate-y {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-translate-z {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-rotate-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-rotate-z {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-x {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-skew-y {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-space-y-reverse {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-divide-y-reverse {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-border-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-leading {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-font-weight {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-tracking {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ordinal {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-slashed-zero {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-figure {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-spacing {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-numeric-fraction {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-inset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-inset-ring-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-inset-ring-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-ring-inset {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-ring-offset-width {\n  syntax: "<length>";\n  inherits: false;\n  initial-value: 0;\n}\n\n@property --tw-ring-offset-color {\n  syntax: "*";\n  inherits: false;\n  initial-value: #fff;\n}\n\n@property --tw-ring-offset-shadow {\n  syntax: "*";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n\n@property --tw-outline-style {\n  syntax: "*";\n  inherits: false;\n  initial-value: solid;\n}\n\n@property --tw-blur {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-brightness {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-contrast {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-grayscale {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-hue-rotate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-invert {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-opacity {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-saturate {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-sepia {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-color {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-drop-shadow-alpha {\n  syntax: "<percentage>";\n  inherits: false;\n  initial-value: 100%;\n}\n\n@property --tw-drop-shadow-size {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-duration {\n  syntax: "*";\n  inherits: false\n}\n\n@property --tw-content {\n  syntax: "*";\n  inherits: false;\n  initial-value: "";\n}\n\n@keyframes spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n@keyframes pulse {\n  50% {\n    opacity: .5;\n  }\n}\n';
   function mountControlCenter(options) {
     document.getElementById(shellInstanceKey("koba-browser-tools-root"))?.remove();
     const host = document.createElement("div");
@@ -48409,6 +48806,7 @@ Defaulting to \`null\`.`);
   }
   function bootstrapUserscript(features, title = "Koba Browser Tools", views = {}) {
     if (!isDevelopmentContextAllowed()) return;
+    const application = getApplicationIdentity();
     const telemetry = createApplicationTelemetry("userscript", createSettingsStore());
     const runtime = new FeatureRuntime(
       typeof features === "function" ? features(telemetry) : features,
@@ -48416,7 +48814,7 @@ Defaulting to \`null\`.`);
         target: "userscript",
         url: new URL(location.href),
         capabilities: defaultCapabilities(),
-        settings: new FeatureSettings(createSettingsStore())
+        settings: new FeatureSettings(createSettingsStore(), application.id === "all-in-one")
       },
       createRuntimeTelemetry(telemetry)
     );
@@ -48449,7 +48847,7 @@ Defaulting to \`null\`.`);
           [async () => [await createTelemetryBackupSource(telemetry, "userscript")]],
           telemetry
         ),
-        application: getApplicationIdentity()
+        application
       });
       openSettings = ui.openSettings;
       openMenu = ui.openMenu;
