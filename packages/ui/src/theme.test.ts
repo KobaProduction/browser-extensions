@@ -27,6 +27,10 @@ test('archive progress is a single host-neutral widget reused by VK and ChatGPT'
     new URL('../../../modules/chatgpt-booster/packages/ui/src/ArchiveExportDialog.vue', import.meta.url),
     'utf8',
   )
+  const exportHeader = await readFile(
+    new URL('../../../modules/chatgpt-booster/packages/ui/src/ArchiveExportHeader.vue', import.meta.url),
+    'utf8',
+  )
   expect(shared).toContain('aria-live="polite"')
   expect(shared).not.toContain('vk-booster')
   expect(shared).not.toContain('chatgpt-booster')
@@ -37,7 +41,8 @@ test('archive progress is a single host-neutral widget reused by VK and ChatGPT'
   )
   expect(collection).toContain('<ArchiveProgressBar')
   expect(vk).not.toContain('<ArchiveManager')
-  expect(chatgpt).toContain('<ArchiveProgress')
+  expect(chatgpt).toContain('<ArchiveExportHeader')
+  expect(exportHeader).toContain('<ArchiveProgress')
 })
 
 test('VK and ChatGPT use the same provider-neutral progress presentation', async () => {

@@ -74,7 +74,7 @@ export class HistoryLoaderModule implements BoosterModule {
   constructor(
     private readonly stateStore: ConversationStateStore,
     private readonly capture: Pick<FixedChatGptCapture, 'collectionSession' | 'completeCollection'> &
-      Partial<Pick<FixedChatGptCapture, 'completeSavedCollection'>>,
+      Partial<Pick<FixedChatGptCapture, 'completeSavedCollection' | 'drainCollection'>>,
     private readonly messageSource: Window = window,
     _settingsAdapter?: SettingsAdapter,
     private readonly openArchiveOnComplete = true,
@@ -236,7 +236,9 @@ export class HistoryLoaderModule implements BoosterModule {
             finished.phase === 'complete' &&
             this.stateStore.verifiedAccountId() === run.accountId
           )
-            window.dispatchEvent(new CustomEvent(OPEN_ARCHIVE_EVENT, { detail: { conversationId: id } }))
+            window.dispatchEvent(
+              new CustomEvent(OPEN_ARCHIVE_EVENT, { detail: { scope: 'conversation', id } }),
+            )
           return
         }
 
@@ -293,6 +295,9 @@ export class HistoryLoaderModule implements BoosterModule {
         await abortableDelay(100, signal)
       }
     } catch (cause) {
+      // Keep manual capture permission alive until already-accepted pages finish
+      // writing. A failed history request cannot revoke those queued writes.
+      if (this.sessions.owns(run)) await this.capture.drainCollection?.(run).catch(() => undefined)
       if (this.sessions.owns(run))
         this.sessions.fail(run, cause instanceof Error ? cause.message : 'archive.error.unknown')
     } finally {

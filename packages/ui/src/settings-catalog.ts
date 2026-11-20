@@ -34,4 +34,7 @@ export interface SettingsCatalogGroup {
   readonly id: string
   readonly title: string
   readonly entries: readonly SettingsCatalogEntry[]
+  /** A top-level destination without settings categories. */
+  readonly workspace?: boolean
+  readonly disabled?: boolean
 }

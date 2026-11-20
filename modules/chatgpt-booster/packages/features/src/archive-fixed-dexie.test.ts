@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { PortableBackupReader } from '@kobaproduction/browser-storage'
+import Dexie from 'dexie'
 import { IDBKeyRange, indexedDB } from 'fake-indexeddb'
 import { FixedCanonicalDexieRepository, fixedArchiveDatabaseName } from './archive-fixed-dexie'
 
@@ -27,6 +28,29 @@ const source = (accountId: string, conversationId: string, id: string) => ({
     private_future_metadata: { opaque: true },
   },
 })
+
+async function physicalMessageRows(name: string, key: string) {
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(name)
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+  try {
+    const tx = db.transaction(['messages', 'snapshots', 'elements'], 'readonly')
+    const read = <T>(request: IDBRequest<T>) =>
+      new Promise<T>((resolve, reject) => {
+        request.onsuccess = () => resolve(request.result)
+        request.onerror = () => reject(request.error)
+      })
+    return await Promise.all([
+      read(tx.objectStore('messages').get(key)),
+      read(tx.objectStore('snapshots').get(key)),
+      read(tx.objectStore('elements').index('messageKey').count(key)),
+    ] as const)
+  } finally {
+    db.close()
+  }
+}
 
 test('first-message evidence survives reopening and recovery with its original, rejecting detached anchors', async () => {
   const identity = scope('dev', 'synthetic-start-recovery', 'synthetic-start-owner')
@@ -103,6 +127,115 @@ test('Dexie canonical v1 is fixed, keeps opaque unknown input and never changes 
   db.close()
 })
 
+test('capture and recovery preserve originals and cache compatibility with earlier clients', async () => {
+  const identity = scope('dev', 'originals-only', 'account-a')
+  let db = new FixedCanonicalDexieRepository(identity, driver)
+  try {
+    const first = source('account-a', 'chat', 'message')
+    const key = await db.addObservation(first)
+    const later = structuredClone(first)
+    later.observedAtMs++
+    later.raw.content.parts = ['changed text', { unknown_future_part: 8 }]
+    await db.addObservation(later)
+    const rows = []
+    for await (const row of db.backupPort().readRows(10)) rows.push(row)
+    expect(rows.some((row) => row.store === 'elements')).toBe(true)
+    for (const phase of ['capture', 'restore']) {
+      if (phase === 'restore') await db.backupPort().restoreAtomically(rows)
+      db.close()
+      db = new FixedCanonicalDexieRepository(identity, driver)
+      const [index, snapshot, elements] = await physicalMessageRows(db.databaseName, key)
+      expect(index.projection.elements).toHaveLength(3)
+      expect(snapshot).not.toHaveProperty('normalized')
+      expect(snapshot.versions).toHaveLength(2)
+      for (const version of snapshot.versions) expect(version).not.toHaveProperty('normalized')
+      expect(elements).toBe(3)
+      expect((await db.messageVersions('chat', 'message')).map((version) => version.raw)).toEqual([
+        first.raw,
+        later.raw,
+      ])
+      const preferred = await db.getSourceSnapshot('chat', 'message')
+      expect(preferred?.normalized).toBeDefined()
+      expect((await db.windowMessages('chat', 'first'))[0]?.projection.elements).toHaveLength(3)
+    }
+    const legacy = await db.getSourceSnapshot('chat', 'message')
+    if (!legacy?.normalized) throw Error('Test source projection is missing')
+    const archive = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open(db.databaseName)
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    try {
+      const transaction = archive.transaction('snapshots', 'readwrite')
+      transaction.objectStore('snapshots').put({
+        ...legacy,
+        normalized: {
+          ...legacy.normalized,
+          context: { ...legacy.normalized.context, projectId: 'wrong' },
+        },
+      })
+      await new Promise<void>((resolve, reject) => {
+        transaction.oncomplete = () => resolve()
+        transaction.onabort = () => reject(transaction.error)
+      })
+    } finally {
+      archive.close()
+    }
+    await expect(db.workspaceChunk('chat')).rejects.toThrow('disagrees with source evidence')
+    await expect(
+      db.readExportSnapshot(
+        'chat',
+        null,
+        () => {},
+        () => {},
+      ),
+    ).rejects.toThrow('disagrees with source evidence')
+  } finally {
+    db.close()
+  }
+})
+
+test('upgrading an existing compact archive restores rows for an old Dexie client', async () => {
+  const identity = scope('dev', 'compact-v1-upgrade', 'owner')
+  const legacy = new Dexie(fixedArchiveDatabaseName(identity), driver)
+  legacy.version(1).stores({
+    projects: '&key,accountId,[accountId+projectId]',
+    conversations: '&key,accountId,[accountId+conversationId],[accountId+projectId]',
+    messages: '&key,accountId,[accountId+conversationId],[accountId+conversationId+messageId],messageId',
+    elements: '&elementId,accountId,messageKey,[messageKey+siblingOrder]',
+    snapshots: '&messageKey,accountId',
+  })
+  const repo = new FixedCanonicalDexieRepository(identity, driver)
+  const input = source('owner', 'chat', 'message')
+  const key = JSON.stringify(['owner', 'chat', 'message'])
+  try {
+    await legacy.table('messages').add({
+      key,
+      accountId: 'owner',
+      conversationId: 'chat',
+      messageId: 'message',
+      facts: {},
+    })
+    await legacy.table('snapshots').add({
+      messageKey: key,
+      accountId: 'owner',
+      sourceKind: input.sourceKind,
+      sourceVersion: input.sourceVersion,
+      observedAtMs: input.observedAtMs,
+      raw: input.raw,
+    })
+    await repo.countConversation('chat')
+    expect(legacy.isOpen()).toBe(false)
+    await legacy.open()
+    expect((await legacy.table('messages').get(key)).projection.elements).toHaveLength(3)
+    expect(await legacy.table('elements').where('messageKey').equals(key).count()).toBe(3)
+    expect((await legacy.table('snapshots').get(key)).raw).toEqual(input.raw)
+  } finally {
+    legacy.close()
+    repo.close()
+  }
+})
+
 test('saved stats distinguish messages from tool and internal content without inferring remote completeness', async () => {
   const db = new FixedCanonicalDexieRepository(scope('dev', 'tm-fixed-stats', 'owner-a'), driver)
   try {
@@ -146,13 +279,16 @@ test('an observation exceeding the recovery row budget rejects atomically while 
   )
   try {
     const input = source('synthetic-owner', 'synthetic-budget-chat', 'large-message')
-    input.raw.content = { content_type: 'text', parts: ['x'.repeat(6 * 1024 * 1024)] }
+    input.raw.content = { content_type: 'text', parts: ['initial text'] }
     await db.addObservation(input)
     const before = await db.counts()
     const revision = (await db.getConversation('synthetic-budget-chat'))?.revision
     const next = structuredClone(input)
     next.observedAtMs++
-    next.raw.content.parts = [`${input.raw.content.parts[0]}z`]
+    // Original-only rows no longer hit the cap at 6 MiB of message text.
+    // This variant fits alone, but exceeds the wire budget alongside its
+    // detached preferred copy in the legacy backup representation.
+    next.raw.content.parts = [`initial text${'z'.repeat(18 * 1024 * 1024)}`]
     await expect(db.addObservation(next)).rejects.toThrow('64 MiB')
     expect(await db.counts()).toEqual(before)
     expect((await db.getConversation('synthetic-budget-chat'))?.revision).toBe(revision)

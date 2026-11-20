@@ -31,6 +31,7 @@ import { ConversationSoundsModule } from './conversation-sounds'
 import { ConversationStateStore } from './conversation-state'
 import { type ChatGptNativeHistoryPort, HistoryLoaderModule } from './history-loader'
 import {
+  CHATGPT_NATIVE_ACCOUNT_CONTRACT,
   type ChatGptNativeAccountBindingOptions,
   createChatGptNativeAccountSource,
 } from './native-account-binding'
@@ -38,7 +39,9 @@ import {
   type ChatGptNativeBindingOptions,
   createChatGptNativeApplicationBinding,
 } from './native-binding'
+import type { NativeDeliveryScope } from './native-delivery-binding'
 import { NativeHistoryBinding } from './native-history-binding'
+import { nativeHistoryRouter } from './native-history-capabilities'
 import { TransportObserverModule } from './transport-observer'
 
 /**
@@ -179,7 +182,85 @@ export function createBoosterPageRuntime(options: BoosterPageRuntimeOptions) {
     },
   }
 
-  const nativeHistory = target.nativeHistory ?? new NativeHistoryBinding(conversationState)
+  const nativeHistory =
+    target.nativeHistory ??
+    new NativeHistoryBinding(
+      conversationState,
+      undefined,
+      undefined,
+      target.label === 'Tampermonkey'
+        ? (candidate, { refreshAccount, accountToken, userToken }) => {
+            const scope = candidate as unknown as NativeDeliveryScope
+            const router = nativeHistoryRouter()
+            if (!refreshAccount || !router || typeof scope.watch !== 'function') return
+            const readCatalog = () =>
+              router.state?.loaderData?.['authenticated-layout.route']?.sidebarHistory?.accountId
+            const source = createChatGptNativeAccountSource({
+              contractVersion: CHATGPT_NATIVE_ACCOUNT_CONTRACT,
+              scope,
+              modules: { Iet: { c: refreshAccount }, g2: { n: accountToken }, Cs: { i: userToken } },
+              readHydratedCatalogAccount: readCatalog,
+            })
+            let binding: ReturnType<typeof bindNativeAccountSource>
+            try {
+              binding = bindNativeAccountSource(pageBridgeWindow, source)
+            } catch {
+              return
+            }
+            let identity: readonly unknown[] = []
+            let retry: ReturnType<typeof setTimeout> | undefined
+            const reconcile = (account: unknown, user: unknown) => {
+              const catalog = readCatalog()
+              const next = [account, user, catalog]
+              if (identity.length && next.every((value, index) => value === identity[index])) return
+              clearTimeout(retry)
+              identity = next
+              binding.invalidateHydratedCatalog()
+              if (
+                typeof account !== 'string' ||
+                account !== catalog ||
+                typeof user !== 'string' ||
+                !user
+              )
+                return
+              const refresh = async (remainingRetries: number) => {
+                try {
+                  await binding.refresh()
+                } catch {
+                  // A failed request must not suppress verification for this identity.
+                }
+                if (
+                  identity !== next ||
+                  !remainingRetries ||
+                  conversationState.verifiedAccountId() === account
+                )
+                  return
+                // Respect native rate limits and avoid overlapping reads for one account.
+                retry = setTimeout(() => void refresh(remainingRetries - 1), 60_000)
+              }
+              void refresh(2)
+            }
+            const check = () => reconcile(scope.get(accountToken), scope.get(userToken))
+            let releaseRouter: (() => void) | undefined
+            let releaseScope: (() => void) | undefined
+            const dispose = () => {
+              identity = []
+              clearTimeout(retry)
+              releaseRouter?.()
+              releaseScope?.()
+              binding.dispose()
+            }
+            try {
+              releaseRouter = router.subscribe(check)
+              releaseScope = scope.watch(({ get }) => reconcile(get(accountToken), get(userToken)))
+              check()
+              return dispose
+            } catch {
+              dispose()
+            }
+          }
+        : undefined,
+    )
   const modules: BoosterModule[] = [
     ...(nativeHistory instanceof NativeHistoryBinding ? [nativeHistory] : []),
     conversationState,

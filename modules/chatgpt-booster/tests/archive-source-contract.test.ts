@@ -13,6 +13,9 @@ import {
   NATIVE_HISTORY_CONTRACT_V9,
   NATIVE_HISTORY_CONTRACT_V10,
   NATIVE_HISTORY_CONTRACT_V11,
+  NATIVE_HISTORY_CONTRACT_V12,
+  NATIVE_HISTORY_CONTRACT_V13,
+  NATIVE_HISTORY_CONTRACT_V14,
   NATIVE_HISTORY_CONTRACT_VERSION,
   registeredNativeHistoryAdapters,
 } from '../packages/features/src/archive-source-contract'
@@ -153,7 +156,7 @@ describe('ChatGPT native page source contract', () => {
     gate.inspect(earlier)
     expect(JSON.stringify(first.payload)).toBe(raw)
     expect(gate.get('conversation')).toBeUndefined()
-    expect(NATIVE_HISTORY_CONTRACT_VERSION).toBe(NATIVE_HISTORY_CONTRACT_V11)
+    expect(NATIVE_HISTORY_CONTRACT_VERSION).toBe(NATIVE_HISTORY_CONTRACT_V14)
   })
 
   test('accepts observed nullable native creation timestamps unchanged', () => {
@@ -294,7 +297,21 @@ describe('ChatGPT native page source contract', () => {
       NATIVE_HISTORY_CONTRACT_V9,
       NATIVE_HISTORY_CONTRACT_V10,
       NATIVE_HISTORY_CONTRACT_V11,
+      NATIVE_HISTORY_CONTRACT_V12,
+      NATIVE_HISTORY_CONTRACT_V13,
+      NATIVE_HISTORY_CONTRACT_V14,
     ])
+  })
+
+  test('v14 accepts the native requested model slug without loosening the metadata schema', () => {
+    const incoming = message('requested-model', { metadata: { requested_model_slug: 'gpt-6' } })
+    const detail = page([incoming], false)
+    expect(() => new ArchiveSourceGate().inspect(detail)).not.toThrow()
+    expect(() => new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V13).inspect(detail)).toThrow(
+      ArchiveContractError,
+    )
+    const invalid = message('requested-model', { metadata: { requested_model_slug: [] } })
+    expect(() => new ArchiveSourceGate().inspect(page([invalid], false))).toThrow(ArchiveContractError)
   })
 
   test('v4 rejects empty/incorrect streaming IDs, noninteger/nullable revisions and unknown metadata', () => {
@@ -773,6 +790,50 @@ test('v10 validates original tether browser results and preserves their opaque s
       ),
     ).toThrow(ArchiveContractError)
   }
+})
+
+test('the current source accepts observed JIT plugin metadata without changing the original', () => {
+  for (const jit_plugin_data of [
+    { from_client: { remember_answer: false, target_message_id: 'earlier-message', type: 'example' } },
+    { from_server: { type: 'example', body: { value: 1 } } },
+  ]) {
+    const incoming = message('jit-message', { metadata: { jit_plugin_data } })
+    const original = structuredClone(incoming)
+    new ArchiveSourceGate().inspect(page([incoming], false))
+    expect(incoming).toEqual(original)
+    expect(() =>
+      new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V12).inspect(page([incoming], false)),
+    ).toThrow(ArchiveContractError)
+  }
+  const bad = message('jit-bad', {
+    metadata: { jit_plugin_data: { from_server: { type: 'example', body: [] } } },
+  })
+  expect(() => new ArchiveSourceGate().inspect(page([bad], false))).toThrow(ArchiveContractError)
+})
+
+test('v12 accepts the native turn identifier without weakening earlier signatures', () => {
+  const incoming = message('turn-message', {
+    metadata: {
+      turn_id: 'turn-example',
+      skill_id: 'skill-example',
+      skill_name: 'example',
+      skill_plugin_id: 'plugin-example',
+      serialization_metadata: { render_format: 'example' },
+    },
+  })
+  new ArchiveSourceGate().inspect(page([incoming], false))
+  expect(() =>
+    new ArchiveSourceGate(false, NATIVE_HISTORY_CONTRACT_V11).inspect(page([incoming], false)),
+  ).toThrow(ArchiveContractError)
+  expect(() =>
+    new ArchiveSourceGate().inspect(page([{ ...incoming, metadata: { turn_id: 12 } }], false)),
+  ).toThrow(ArchiveContractError)
+  for (const serialization_metadata of [{ render_format: 0 }, { render_format: 'example', extra: 1 }])
+    expect(() =>
+      new ArchiveSourceGate().inspect(
+        page([{ ...incoming, metadata: { serialization_metadata } }], false),
+      ),
+    ).toThrow(ArchiveContractError)
 })
 
 test('v11 retains parallel-generation source metadata without widening v10', () => {

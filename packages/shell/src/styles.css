@@ -275,15 +275,6 @@
   min-height: 360px;
 }
 
-.booster-settings-content {
-  display: grid;
-  align-content: start;
-  gap: 10px;
-  min-width: 0;
-  min-height: 0;
-  padding: 14px;
-}
-
 .booster-setting-card-flat {
   padding: 0 0 10px;
   border: 0;
@@ -415,48 +406,12 @@
   border-radius: 0;
   box-shadow: none;
 }
-.booster-floating-chrome {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 38px;
-  padding: 4px 8px 4px 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--muted);
-  cursor: move;
-  touch-action: none;
-  user-select: none;
-}
-.booster-floating-chrome > span {
-  min-width: 0;
-  flex: 1 1 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  font-weight: 600;
-}
-.booster-floating-chrome > button:not([role="switch"]) {
-  width: 30px;
-  height: 30px;
-  flex: 0 0 auto;
-}
 .booster-workspace-error {
   flex: 0 0 auto;
   margin: 0;
   padding: 6px 12px;
   color: var(--destructive);
   font-size: 12px;
-}
-.booster-floating-resize {
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  width: 28px;
-  height: 28px;
-  cursor: nwse-resize;
-  touch-action: none;
 }
 
 /* Compact side-docked quick menu shared by single-product Boosters. */
@@ -706,29 +661,6 @@
   }
 }
 
-/* A broad desktop can compare modules; tablets keep compact rows. */
-@media (min-width: 1024px) {
-  .booster-control-embedded
-    > .booster-settings-layout
-    > .booster-settings-content[data-settings-section="modules"] {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: start;
-  }
-}
-@media (min-width: 621px) and (max-width: 1023px) {
-  .booster-control-embedded
-    > .booster-settings-layout
-    > .booster-settings-content[data-settings-section="modules"] {
-    gap: 6px;
-    padding: 10px;
-  }
-  .booster-settings-content[data-settings-section="modules"] > .booster-setting-card {
-    padding: 9px 10px;
-    gap: 10px;
-    border-radius: 8px;
-  }
-}
-
 /* Phones use one full-screen surface with no desktop window furniture. */
 .booster-modal-backdrop.booster-modal-backdrop-fullscreen {
   padding: 0;
@@ -856,11 +788,11 @@
   gap: 12px;
   min-width: 0;
 }
-.booster-shell-settings h2 {
+.booster-shell-settings-body > h2 {
   margin: 0;
   font-size: 15px;
 }
-.booster-shell-settings p {
+.booster-shell-settings-body > p {
   margin: 0;
   color: var(--muted-foreground);
   font-size: 12px;
@@ -870,9 +802,6 @@
   display: grid;
   gap: 8px;
   min-width: 0;
-}
-.booster-capability-row {
-  margin-left: 12px;
 }
 .booster-component-versions {
   display: grid;
@@ -905,17 +834,6 @@
   flex: 1;
 }
 .booster-control-header > .booster-header-actions {
-  flex: 0 0 auto;
-}
-.booster-floating-identity {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-  min-width: 0;
-  flex: 1;
-  overflow: hidden;
-}
-.booster-floating-identity .booster-version {
   flex: 0 0 auto;
 }
 .booster-indicator-legend {
@@ -1043,9 +961,6 @@
   }
   .booster-header-actions {
     gap: 6px;
-  }
-  .booster-capability-row {
-    margin-left: 0;
   }
   .booster-control-center:has([data-panel-content-focus="true"]) > .settings-catalog {
     display: none;

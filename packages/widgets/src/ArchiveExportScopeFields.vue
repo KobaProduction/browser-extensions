@@ -25,6 +25,7 @@ const props = defineProps<{
   modelValue: ArchiveExportSelection
   messages: readonly ArchiveExportMessageSummary[]
   selectedIds: readonly string[]
+  allCount?: number | null
   disabled?: boolean
   loading?: boolean
 }>()
@@ -54,7 +55,10 @@ function choose(mode: unknown) {
 const result = computed(() => {
   try {
     const ids = archiveExportSelectionIds(props.messages, props.modelValue, props.selectedIds)
-    return { count: ids?.length ?? props.messages.length, error: '' }
+    return {
+      count: ids?.length ?? (props.allCount === undefined ? props.messages.length : props.allCount),
+      error: '',
+    }
   } catch (error) {
     return { count: 0, error: error instanceof Error ? error.message : 'Некорректный диапазон' }
   }
@@ -148,7 +152,7 @@ function author(message: ArchiveExportMessageSummary) {
     </div>
     <p v-if="loading" role="status" class="text-xs text-muted-foreground">{{ text('Загружаем список сообщений…') }}</p>
     <p v-else-if="result.error" role="alert" class="text-xs text-destructive">{{ text(result.error) }}</p>
-    <p v-else role="status" class="text-xs text-muted-foreground">{{ text('Сообщений в экспорте:') }} {{ result.count }}</p>
+    <p v-else-if="result.count !== null" role="status" class="text-xs text-muted-foreground">{{ text('Сообщений в экспорте:') }} {{ result.count }}</p>
     <p v-if="(modelValue.mode==='dates'||modelValue.mode==='last')&&messages.some(message=>message.timestampMs===null)" class="text-xs text-muted-foreground">{{ text('Без даты, исключены из фильтра:') }} {{ messages.filter(message=>message.timestampMs===null).length }}</p>
   </section>
 </template>

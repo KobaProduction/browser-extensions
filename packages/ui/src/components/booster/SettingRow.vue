@@ -24,8 +24,11 @@ const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
       <p v-if="description" :id="`${id}-description`" class="text-xs leading-5 text-muted-foreground">{{ description }}</p>
       <slot />
     </div>
-    <Switch :id="id" class="mt-0.5 shrink-0" :model-value="modelValue" :disabled="disabled"
-      :aria-describedby="description ? `${id}-description` : undefined"
-      @update:model-value="emit('update:modelValue', $event)" />
+    <div class="flex shrink-0 flex-wrap items-center justify-end gap-2">
+      <slot name="actions" />
+      <Switch :id="id" class="mt-0.5 shrink-0" :model-value="modelValue" :disabled="disabled"
+        :aria-describedby="description ? `${id}-description` : undefined"
+        @update:model-value="emit('update:modelValue', $event)" />
+    </div>
   </component>
 </template>

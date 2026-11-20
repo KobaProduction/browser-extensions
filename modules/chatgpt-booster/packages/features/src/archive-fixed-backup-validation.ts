@@ -219,6 +219,7 @@ export function decodeFixedBackupRow(row: PortableBackupRow, owner: string): Fix
           (page.readStartedAt !== undefined &&
             (!Number.isFinite(page.readStartedAt) || (page.readStartedAt as number) < 0)) ||
           (page.isInitial !== undefined && typeof page.isInitial !== 'boolean') ||
+          (page.empty !== undefined && typeof page.empty !== 'boolean') ||
           (page.requestedBefore !== undefined &&
             page.requestedBefore !== null &&
             typeof page.requestedBefore !== 'string')

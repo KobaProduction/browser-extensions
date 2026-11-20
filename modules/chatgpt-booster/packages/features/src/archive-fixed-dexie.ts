@@ -22,6 +22,9 @@ import {
   advanceHistoryCoverage,
   type HistoryCoverageCheckpoint,
   type HistoryPageEvidence,
+  nativeOldestBoundary,
+  nativeStartEvidencePage,
+  retainProvenStart,
 } from './archive-coverage'
 import {
   assertFixedBackupAdmission,
@@ -107,6 +110,41 @@ export interface FixedMessage {
   modelVersion: typeof ARCHIVE_CANONICAL_MODEL_VERSION
   projection: CanonicalMessageProjection
 }
+type MessageFacts = Pick<
+  CanonicalMessageProjection,
+  'sourceCreateTime' | 'sourceUpdateTime' | 'parentMessageId' | 'parentObserved' | 'role'
+> & { elementCount: number; internalElements: number; toolCalls: number; reasoning: number }
+type StoredMessage = Omit<FixedMessage, 'projection'> &
+  (
+    | { facts: MessageFacts; projection?: never }
+    | { facts?: never; projection: CanonicalMessageProjection }
+  )
+function indexFacts(p: CanonicalMessageProjection): MessageFacts {
+  return {
+    sourceCreateTime: p.sourceCreateTime,
+    sourceUpdateTime: p.sourceUpdateTime,
+    parentMessageId: p.parentMessageId,
+    parentObserved: p.parentObserved,
+    role: p.role,
+    elementCount: p.elements.length,
+    internalElements: p.elements.filter((e) => e.visibility === 'internal').length,
+    toolCalls: p.elements.filter((e) => e.kind === 'tool_call').length,
+    reasoning: p.elements.filter((e) => e.kind === 'reasoning').length,
+  }
+}
+function compatibilityElements({ accountId, projection }: FixedMessage): FixedElement[] {
+  return projection.elements.map((element) => ({ ...element, accountId }))
+}
+const messageTime = (row: StoredMessage) => {
+  const facts = row.facts ?? row.projection
+  return facts.sourceUpdateTime ?? facts.sourceCreateTime ?? 0
+}
+function stripSnapshotView(snapshot: FixedSnapshot): FixedSnapshot {
+  const { normalized: _normalized, versions, ...source } = snapshot
+  return versions
+    ? { ...source, versions: versions.map(({ normalized: _view, ...version }) => version) }
+    : source
+}
 export interface FixedSnapshot {
   accountId: string
   messageKey: string
@@ -121,6 +159,7 @@ export interface FixedSnapshot {
   versions?: FixedSourceVersion[]
   sourceEvents?: readonly Record<string, unknown>[]
 }
+type ReadFixedSnapshot = FixedSnapshot & { normalized: ArchiveMessageV1 }
 export interface FixedSourceVersion {
   sourceKind: string
   sourceVersion: string
@@ -190,7 +229,7 @@ export function fixedArchiveDatabaseName(scope: ServiceScope): string {
 class FixedArchiveDatabase extends Dexie {
   projects!: Table<FixedProject, string>
   conversations!: Table<FixedConversation, string>
-  messages!: Table<FixedMessage, string>
+  messages!: Table<StoredMessage, string>
   elements!: Table<FixedElement, string>
   snapshots!: Table<FixedSnapshot, string>
 
@@ -204,6 +243,39 @@ class FixedArchiveDatabase extends Dexie {
       elements: '&elementId,accountId,messageKey,[messageKey+siblingOrder]',
       snapshots: '&messageKey,accountId',
     })
+    // Earlier local builds could write compact rows into version 1. Restore
+    // the caches that older clients need when they reopen this archive.
+    this.version(2)
+      .stores({})
+      .upgrade(async (tx) => {
+        const messages = tx.table<StoredMessage, string>('messages')
+        const snapshots = tx.table<FixedSnapshot, string>('snapshots')
+        const elements = tx.table<FixedElement, string>('elements')
+        let cursor: string | undefined
+        while (true) {
+          const page = await (cursor ? messages.where(':id').above(cursor) : messages.orderBy(':id'))
+            .limit(160)
+            .toArray()
+          const compact = page.filter((row) => !row.projection)
+          const originals = await snapshots.bulkGet(compact.map(({ key }) => key))
+          for (const [index, row] of compact.entries()) {
+            const snapshot = originals[index]
+            if (
+              snapshot?.accountId !== row.accountId ||
+              snapshot.messageKey !== row.key ||
+              snapshot.raw.id !== row.messageId
+            )
+              throw Error('Canonical source identity mismatch')
+            const { facts: _facts, ...identity } = row
+            const record = { ...identity, projection: projectNativeMessage(snapshot.raw, row) }
+            await elements.where('messageKey').equals(row.key).delete()
+            await elements.bulkAdd(compatibilityElements(record))
+            await messages.put(record)
+          }
+          if (page.length < 160) break
+          cursor = page.at(-1)?.key
+        }
+      })
   }
 }
 function nonEmpty(value: string): boolean {
@@ -300,14 +372,6 @@ export class FixedCanonicalDexieRepository {
       observedAtMs: observation.observedAtMs,
       raw: original,
       projectId,
-      normalized: projectChatGptArchiveMessage(original, {
-        ownerId: accountId,
-        conversationId,
-        projectId,
-        sourceKind: observation.sourceKind,
-        sourceVersion: observation.sourceVersion,
-        observedAtMs: observation.observedAtMs,
-      }),
       ...(observation.sourceEvents ? { sourceEvents: structuredClone(observation.sourceEvents) } : {}),
     }
     await assertFixedBackupAdmission('messages', messageKey, record)
@@ -315,7 +379,19 @@ export class FixedCanonicalDexieRepository {
     const originalFingerprint = await sourceCloneDigest(original)
     const observationFingerprint = await observationDigest(originalFingerprint, source.sourceEvents)
     if (!stillAuthorized()) throw Error('Fixed archive capture authorization expired')
-    let committedNormalized: ArchiveMessageV1 | undefined
+    // Only the live commit notification needs this transient view; it never
+    // becomes part of the stored snapshot. Build it before the write can commit.
+    const commitView = (variantIndex?: number) =>
+      projectChatGptArchiveMessage(original, {
+        ownerId: accountId,
+        conversationId,
+        projectId,
+        sourceKind: observation.sourceKind,
+        sourceVersion: observation.sourceVersion,
+        observedAtMs: observation.observedAtMs,
+        ...(variantIndex !== undefined ? { variantIndex } : {}),
+      })
+    let committedView: ArchiveMessageV1 | undefined
     let committedDigests: ObservationDigests | undefined
     await this.db.transaction(
       'rw',
@@ -329,8 +405,7 @@ export class FixedCanonicalDexieRepository {
         if (!transaction) throw Error('Canonical capture transaction unavailable')
         const projects = transaction.table<FixedProject, string>('projects')
         const conversations = transaction.table<FixedConversation, string>('conversations')
-        const messages = transaction.table<FixedMessage, string>('messages')
-        const elements = transaction.table<FixedElement, string>('elements')
+        const messages = transaction.table<StoredMessage, string>('messages')
         const snapshots = transaction.table<FixedSnapshot, string>('snapshots')
         if (!stillAuthorized()) throw Error('Fixed archive capture authorization expired')
         const prior = await snapshots.get(messageKey)
@@ -385,7 +460,7 @@ export class FixedCanonicalDexieRepository {
                 ? originalConversationProject(existingConversation)
                 : null
               : prior.projectId
-          const versions = prior.versions?.map((version) => ({
+          const versions = stripSnapshotView(prior).versions?.map((version) => ({
             ...version,
             projectId: version.projectId === undefined ? priorProject : version.projectId,
           })) ?? [
@@ -401,20 +476,6 @@ export class FixedCanonicalDexieRepository {
                     ? originalConversationProject(existingConversation)
                     : null
                   : prior.projectId,
-              normalized: projectChatGptArchiveMessage(prior.raw, {
-                ownerId: accountId,
-                conversationId,
-                projectId:
-                  prior.projectId === undefined
-                    ? existingConversation
-                      ? originalConversationProject(existingConversation)
-                      : null
-                    : prior.projectId,
-                sourceKind: prior.sourceKind,
-                sourceVersion: prior.sourceVersion,
-                observedAtMs: prior.observedAtMs,
-                variantIndex: 0,
-              }),
               ...(prior.sourceEvents ? { sourceEvents: prior.sourceEvents } : {}),
             },
           ]
@@ -426,18 +487,12 @@ export class FixedCanonicalDexieRepository {
             }
           if (seen.has(observationFingerprint)) return
           seen.add(observationFingerprint)
-          if (!source.normalized) throw Error('Normalized source unavailable')
-          const versionNormalized = structuredClone(source.normalized)
           const history = [
             ...versions,
             {
               sourceKind: source.sourceKind,
               sourceVersion: source.sourceVersion,
               observedAtMs: source.observedAtMs,
-              normalized: {
-                ...versionNormalized,
-                source: { ...versionNormalized.source, variantIndex: versions.length },
-              },
               decision,
               raw: original,
               projectId,
@@ -445,7 +500,9 @@ export class FixedCanonicalDexieRepository {
             },
           ]
           const nextSnapshot =
-            decision === 'advance' ? { ...source, versions: history } : { ...prior, versions: history }
+            decision === 'advance'
+              ? { ...source, versions: history }
+              : { ...stripSnapshotView(prior), versions: history }
           await Dexie.waitFor(
             assertFixedBackupAdmission(
               'snapshots',
@@ -453,12 +510,12 @@ export class FixedCanonicalDexieRepository {
               detachedFixedBackupSnapshot(nextSnapshot),
             ),
           )
+          committedView = commitView(versions.length)
           await snapshots.put(nextSnapshot)
-          committedNormalized = history.at(-1)?.normalized
           if (decision === 'advance') {
-            await elements.where('messageKey').equals(messageKey).delete()
+            await this.db.elements.where('messageKey').equals(messageKey).delete()
+            await this.db.elements.bulkAdd(compatibilityElements(record))
             await messages.put(record)
-            await elements.bulkAdd(projection.elements.map((element) => ({ ...element, accountId })))
           }
           const conversation = await conversations.get(conversationKey)
           if (conversation) {
@@ -510,10 +567,10 @@ export class FixedCanonicalDexieRepository {
               : {}),
           })
         }
+        committedView = commitView()
         await messages.add(record)
-        await elements.bulkAdd(projection.elements.map((element) => ({ ...element, accountId })))
+        await this.db.elements.bulkAdd(compatibilityElements(record))
         await snapshots.add(source)
-        committedNormalized = source.normalized
         const createdHeader = await conversations.get(conversationKey)
         if (!createdHeader) throw Error('Canonical conversation missing')
         const nextHeader = { ...createdHeader, revision: (existing?.revision ?? 0) + 1, instanceId }
@@ -536,7 +593,7 @@ export class FixedCanonicalDexieRepository {
         if (first !== undefined) this.observationDigests.delete(first)
       }
     }
-    return { key: messageKey, ...(committedNormalized ? { normalized: committedNormalized } : {}) }
+    return { key: messageKey, ...(committedView ? { normalized: committedView } : {}) }
   }
 
   async listProjects(): Promise<FixedProject[]> {
@@ -690,43 +747,39 @@ export class FixedCanonicalDexieRepository {
             (item.readStartedAt ?? item.observedAt) > (page.readStartedAt ?? page.observedAt),
         )
         const priorHead = current.currentHeadId
-          ? await this.getMessage(conversationId, current.currentHeadId)
+          ? await this.getIndex(conversationId, current.currentHeadId)
           : undefined
-        const incomingHead = headId ? await this.getMessage(conversationId, headId) : undefined
+        const incomingHead = headId ? await this.getIndex(conversationId, headId) : undefined
         const olderHead = Boolean(
-          priorHead &&
-            incomingHead &&
-            (priorHead.projection.sourceUpdateTime ?? priorHead.projection.sourceCreateTime ?? 0) >
-              (incomingHead.projection.sourceUpdateTime ??
-                incomingHead.projection.sourceCreateTime ??
-                0),
+          priorHead && incomingHead && messageTime(priorHead) > messageTime(incomingHead),
         )
         let pageCoverage = advanceHistoryCoverage(current.pageCoverage, page)
         if (page.isInitial)
           for (const retained of next)
             if (!retained.isInitial) pageCoverage = advanceHistoryCoverage(pageCoverage, retained)
+        const boundaryPage = nativeStartEvidencePage(page, pageCoverage)
+        const boundary = boundaryPage && nativeOldestBoundary(boundaryPage)
         const startMessage =
-          page.hasPreviousPage === false && page.startCursor && nonEmpty(page.startCursor)
-            ? await this.getMessage(conversationId, page.startCursor)
-            : undefined
+          boundary && nonEmpty(boundary) ? await this.getIndex(conversationId, boundary) : undefined
+        const { startEvidence: priorStartEvidence, ...headerWithoutStart } = current
         const startEvidence =
-          current.startEvidence ??
-          (startMessage && page.readId
+          retainProvenStart(priorStartEvidence, current.pageCoverage, pageCoverage) ??
+          (startMessage && boundaryPage?.readId
             ? {
                 kind: 'native-page' as const,
                 firstMessageId: startMessage.messageId,
-                sourceId: page.readId,
-                observedAt: page.observedAt,
+                sourceId: boundaryPage.readId,
+                observedAt: boundaryPage.observedAt,
               }
             : undefined)
         const graph = context?.nativeGraph
         if (graph && newestNativeGraph(current.nativeGraph, graph) === graph) {
           for (const node of Object.values(graph.graph.nodes))
-            if (node.messageId && !(await this.getMessage(conversationId, node.messageId)))
+            if (node.messageId && !(await this.getIndex(conversationId, node.messageId)))
               throw Error('archive.error.incompleteSource')
         }
         const nextHeader = {
-          ...current,
+          ...headerWithoutStart,
           ...(graph && newestNativeGraph(current.nativeGraph, graph) === graph
             ? { nativeGraph: structuredClone(graph) }
             : {}),
@@ -761,9 +814,9 @@ export class FixedCanonicalDexieRepository {
       if (!stillAuthorized()) throw Error('Exhaustion evidence authorization expired')
       const header = await this.db.conversations.get(key)
       const user = evidence.userMessageId
-        ? await this.getMessage(conversationId, evidence.userMessageId)
+        ? await this.getIndex(conversationId, evidence.userMessageId)
         : undefined
-      if (!header || (evidence.userMessageId && user?.projection.role !== 'user'))
+      if (!header || (evidence.userMessageId && (user?.facts ?? user?.projection)?.role !== 'user'))
         throw Error('Missing rejected submission original')
       if (header.exhaustionEvidence) return
       const next = {
@@ -797,17 +850,11 @@ export class FixedCanonicalDexieRepository {
     await this.db.transaction('rw', this.db.conversations, this.db.messages, async () => {
       if (!stillAuthorized()) throw Error('Stream head authorization expired')
       const header = await this.db.conversations.get(key)
-      const incoming = await this.getMessage(conversationId, raw.id as string)
+      const incoming = await this.getIndex(conversationId, raw.id as string)
       const previous = header?.currentHeadId
-        ? await this.getMessage(conversationId, header.currentHeadId)
+        ? await this.getIndex(conversationId, header.currentHeadId)
         : undefined
-      if (
-        !currentRunProof &&
-        previous &&
-        incoming &&
-        (previous.projection.sourceUpdateTime ?? previous.projection.sourceCreateTime ?? 0) >
-          (incoming.projection.sourceUpdateTime ?? incoming.projection.sourceCreateTime ?? 0)
-      )
+      if (!currentRunProof && previous && incoming && messageTime(previous) > messageTime(incoming))
         return
       let nextHeader: FixedConversation | undefined
       if (header && (header.currentHeadId !== raw.id || observedAt > (header.streamHeadObservedAt ?? 0)))
@@ -833,20 +880,46 @@ export class FixedCanonicalDexieRepository {
       if (!stillAuthorized()) throw Error('Stream head authorization expired')
     })
   }
-  async integrity(conversationId: string) {
+  async integrity(conversationId: string, check: () => void = () => undefined) {
     const header = await this.getConversation(conversationId)
-    const projections = (await this.timelineMessages(conversationId)).map((row) => ({
-      messageId: row.id,
-      parentMessageId: row.parentId,
-      parentObserved: row.parentKnown,
-    }))
-    if (
+    const graphMatchesHead =
       header?.nativeGraph &&
       (!header.currentHeadId ||
         header.nativeGraph.graph.header.current_node === header.currentHeadId ||
         (header.streamHeadObservedAt ?? 0) <= header.nativeGraph.readStartedAt)
-    )
-      return nativeGraphIntegrity(header.nativeGraph.graph, new Set(projections.map((x) => x.messageId)))
+    const checkpoint = header?.nativeGraph
+    const parents = checkpoint && nativeGraphParents(checkpoint.graph)
+    const ids = new Set<string>()
+    const projections: Parameters<typeof conversationIntegrity>[0][number][] = []
+    let cursor: string | undefined
+    while (true) {
+      check()
+      const rows = await this.listIndex(conversationId, 160, cursor)
+      if (graphMatchesHead) {
+        for (const row of rows) ids.add(row.messageId)
+      } else {
+        const outside = rows.filter((row) => parents && !parents.has(row.messageId))
+        const snapshots = await this.db.snapshots.bulkGet(outside.map((row) => row.key))
+        const sources = new Map(outside.map((row, index) => [row.key, snapshots[index]]))
+        for (const row of rows) {
+          const facts = row.facts ?? row.projection
+          const relation = nativeGraphRelationship(
+            checkpoint,
+            row.messageId,
+            { parentId: facts.parentMessageId, parentKnown: facts.parentObserved },
+            nativeSnapshotLiveReceipt(sources.get(row.key), facts.parentMessageId),
+          )
+          projections.push({
+            messageId: row.messageId,
+            parentMessageId: relation.parentId,
+            parentObserved: relation.parentKnown,
+          })
+        }
+      }
+      if (rows.length < 160) break
+      cursor = rows.at(-1)?.messageId
+    }
+    if (graphMatchesHead && checkpoint) return nativeGraphIntegrity(checkpoint.graph, ids)
     return conversationIntegrity(
       projections,
       header?.pageEvidence ?? [],
@@ -867,15 +940,16 @@ export class FixedCanonicalDexieRepository {
     while (id) {
       if (seen.has(id)) throw Error('archive.error.incompleteSource')
       seen.add(id)
-      const row = await this.getMessage(conversationId, id)
+      const row = await this.getIndex(conversationId, id)
       if (!row) throw Error('archive.error.messageMissing')
+      const facts = row.facts ?? row.projection
       const original = {
-        parentId: row.projection.parentMessageId,
-        parentKnown: row.projection.parentObserved,
+        parentId: facts.parentMessageId,
+        parentKnown: facts.parentObserved,
       }
       const source =
         checkpoint && !nativeGraphParents(checkpoint.graph).has(id)
-          ? await this.getSourceSnapshot(conversationId, id)
+          ? await this.db.snapshots.get(row.key)
           : undefined
       const relation = nativeGraphRelationship(
         checkpoint,
@@ -1004,11 +1078,40 @@ export class FixedCanonicalDexieRepository {
     throw Error('Clear of canonical data is disabled; export and verified backup required')
   }
   async getMessage(conversationId: string, messageId: string): Promise<FixedMessage | undefined> {
+    return this.db.transaction('r', this.db.messages, this.db.snapshots, async () => {
+      const row = await this.getIndex(conversationId, messageId)
+      return row ? (await this.projectRows([row]))[0] : undefined
+    })
+  }
+  private getIndex(conversationId: string, messageId: string) {
     if (!nonEmpty(conversationId) || !nonEmpty(messageId))
       throw Error('Invalid canonical message identity')
     const account = this.scope.ownerId
     if (!account) throw Error('Owner not verified')
     return this.db.messages.get(JSON.stringify([account, conversationId, messageId]))
+  }
+
+  private projectRow(row: StoredMessage, snapshot: FixedSnapshot | undefined): FixedMessage {
+    if (
+      row.accountId !== this.scope.ownerId ||
+      snapshot?.accountId !== row.accountId ||
+      snapshot.messageKey !== row.key ||
+      snapshot.raw.id !== row.messageId
+    )
+      throw Error('Canonical source identity mismatch')
+    const { facts: _facts, ...identity } = row
+    return {
+      ...identity,
+      projection: projectNativeMessage(snapshot.raw, {
+        accountId: row.accountId,
+        conversationId: row.conversationId,
+      }),
+    }
+  }
+
+  private async projectRows(rows: StoredMessage[]): Promise<FixedMessage[]> {
+    const snapshots = await this.db.snapshots.bulkGet(rows.map((row) => row.key))
+    return rows.map((row, index) => this.projectRow(row, snapshots[index]))
   }
 
   /** Cursor is a source message ID, not an invented chronology timestamp. */
@@ -1017,6 +1120,11 @@ export class FixedCanonicalDexieRepository {
     limit = 100,
     afterMessageId?: string,
   ): Promise<FixedMessage[]> {
+    return this.db.transaction('r', this.db.messages, this.db.snapshots, async () =>
+      this.projectRows(await this.listIndex(conversationId, limit, afterMessageId)),
+    )
+  }
+  private async listIndex(conversationId: string, limit: number, afterMessageId?: string) {
     if (
       !nonEmpty(conversationId) ||
       !Number.isSafeInteger(limit) ||
@@ -1049,29 +1157,30 @@ export class FixedCanonicalDexieRepository {
         const header = await this.db.conversations.get(
           JSON.stringify([this.scope.ownerId, conversationId]),
         )
-        const candidates = await this.listMessages(conversationId, limit + 1, afterId)
+        const candidates = await this.listIndex(conversationId, limit + 1, afterId)
         const rows = candidates.slice(0, limit)
         const snapshots = await this.db.snapshots.bulkGet(rows.map((row) => row.key))
         return {
           header,
           rows: rows.map((row, index) => {
             const source = snapshots[index]
-            if (!source) throw Error('Workspace source missing')
-            validateChatGptNormalizedSnapshot(
-              source,
-              conversationId,
-              source.projectId === undefined
-                ? header
-                  ? originalConversationProject(header)
-                  : null
-                : source.projectId,
+            if (
+              !source ||
+              source.accountId !== row.accountId ||
+              source.messageKey !== row.key ||
+              source.raw.id !== row.messageId
             )
+              throw Error('Workspace source identity mismatch')
+            const { normalized } = this.readSnapshot(source, conversationId, header)
             return {
               id: row.messageId,
               raw: source.raw,
-              normalized: source.normalized,
+              normalized,
               observedAtMs: source.observedAtMs,
-              liveObservedAt: nativeSnapshotLiveReceipt(source, row.projection.parentMessageId),
+              liveObservedAt: nativeSnapshotLiveReceipt(
+                source,
+                (row.facts ?? row.projection).parentMessageId,
+              ),
             }
           }),
           cursor: rows.at(-1)?.messageId,
@@ -1124,15 +1233,21 @@ export class FixedCanonicalDexieRepository {
     end: number,
   ) {
     const owner = this.scope.ownerId
-    return this.db.transaction('r', this.db.conversations, this.db.messages, async () => {
-      const header = await this.db.conversations.get(JSON.stringify([owner, conversationId]))
-      if (fixedConversationStamp(header) !== plan.stamp) throw Error('archive.error.sourceChanged')
-      const rows = await this.db.messages.bulkGet(
-        plan.ids.slice(start, end).map((id) => JSON.stringify([owner, conversationId, id])),
-      )
-      if (rows.some((row) => !row)) throw Error('archive.error.sourceChanged')
-      return rows as FixedMessage[]
-    })
+    return this.db.transaction(
+      'r',
+      this.db.conversations,
+      this.db.messages,
+      this.db.snapshots,
+      async () => {
+        const header = await this.db.conversations.get(JSON.stringify([owner, conversationId]))
+        if (fixedConversationStamp(header) !== plan.stamp) throw Error('archive.error.sourceChanged')
+        const rows = await this.db.messages.bulkGet(
+          plan.ids.slice(start, end).map((id) => JSON.stringify([owner, conversationId, id])),
+        )
+        if (rows.some((row) => !row)) throw Error('archive.error.sourceChanged')
+        return this.projectRows(rows as StoredMessage[])
+      },
+    )
   }
 
   /** Schema-v1 has no timestamp index. Scan only lightweight order facts and
@@ -1158,7 +1273,7 @@ export class FixedCanonicalDexieRepository {
         .where('[accountId+conversationId]')
         .equals([ownerId, conversationId])
         .each((row) => {
-          facts.push({ id: row.messageId, time: row.projection.sourceCreateTime })
+          facts.push({ id: row.messageId, time: (row.facts ?? row.projection).sourceCreateTime })
         })
       facts.sort(
         (a, b) =>
@@ -1207,11 +1322,10 @@ export class FixedCanonicalDexieRepository {
       .equals([owner, conversationId])
       .each((row) => {
         result.messages++
-        for (const element of row.projection.elements) {
-          if (element.visibility === 'internal') result.internalElements++
-          if (element.kind === 'tool_call') result.toolCalls++
-          if (element.kind === 'reasoning') result.reasoning++
-        }
+        const facts = row.facts ?? indexFacts(row.projection)
+        result.internalElements += facts.internalElements
+        result.toolCalls += facts.toolCalls
+        result.reasoning += facts.reasoning
       })
     return result
   }
@@ -1231,46 +1345,120 @@ export class FixedCanonicalDexieRepository {
     return (await this.getSourceSnapshots(conversationId, [messageId]))[0]
   }
 
+  async readExportSnapshot(
+    conversationId: string,
+    selected: ReadonlySet<string> | null,
+    check: () => void,
+    onPage: (scanned: number, total: number) => void,
+  ) {
+    return this.db.transaction(
+      'r',
+      this.db.conversations,
+      this.db.messages,
+      this.db.snapshots,
+      async () => {
+        check()
+        const header = await this.getConversation(conversationId)
+        if (!header) throw Error('Saved conversation missing')
+        const [integrity, count] = await Promise.all([
+          this.integrity(conversationId, check),
+          this.countConversation(conversationId),
+        ])
+        const snapshots: ReadFixedSnapshot[] = []
+        let cursor: string | undefined
+        let scanned = 0
+        while (true) {
+          check()
+          const rows = await this.listIndex(conversationId, 160, cursor)
+          const ids = rows.flatMap(({ messageId }) =>
+            !selected || selected.has(messageId) ? [messageId] : [],
+          )
+          if (ids.length)
+            for (const snapshot of await this.readSourceSnapshots(
+              conversationId,
+              header.accountId,
+              ids,
+              header,
+            )) {
+              if (!snapshot) throw Error('Source snapshot missing')
+              snapshots.push(snapshot)
+            }
+          scanned += rows.length
+          onPage(scanned, count)
+          check()
+          if (rows.length < 160) break
+          const next = rows.at(-1)?.messageId
+          if (!next || next === cursor) throw Error('Export cursor did not advance')
+          cursor = next
+        }
+        if (scanned !== count || (selected && snapshots.length !== selected.size))
+          throw Error('Selected saved message is missing')
+        return { header, integrity, count, snapshots }
+      },
+    )
+  }
+
+  private readSnapshot(
+    snapshot: FixedSnapshot,
+    conversationId: string,
+    header: FixedConversation | undefined,
+  ): ReadFixedSnapshot {
+    const projectId =
+      snapshot.projectId === undefined
+        ? header
+          ? originalConversationProject(header)
+          : null
+        : snapshot.projectId
+    const normalized = readChatGptArchiveMessage(
+      snapshot.raw,
+      {
+        ownerId: snapshot.accountId,
+        conversationId,
+        projectId,
+        sourceKind: snapshot.sourceKind,
+        sourceVersion: snapshot.sourceVersion,
+        observedAtMs: snapshot.observedAtMs,
+      },
+      snapshot.normalized,
+    )
+    return { ...snapshot, projectId, normalized }
+  }
+
   /** One header read per bounded window; never clone a full graph per message. */
   async getSourceSnapshots(
     conversationId: string,
     messageIds: readonly string[],
-  ): Promise<(FixedSnapshot | undefined)[]> {
+  ): Promise<(ReadFixedSnapshot | undefined)[]> {
     const account = this.scope.ownerId
     if (!account || !nonEmpty(conversationId) || messageIds.length > 240 || !messageIds.every(nonEmpty))
       throw Error('Invalid source identity or window')
-    return this.db.transaction('r', this.db.conversations, this.db.snapshots, async () => {
-      const keys = messageIds.map((id) => JSON.stringify([account, conversationId, id]))
-      const snapshots = await this.db.snapshots.bulkGet(keys)
-      const header = await this.getConversation(conversationId)
-      return snapshots.map((snapshot, index) => {
-        if (!snapshot) return undefined
-        if (
-          snapshot.accountId !== account ||
-          snapshot.messageKey !== keys[index] ||
-          snapshot.raw.id !== messageIds[index]
-        )
-          throw Error('Canonical source identity mismatch')
-        const projectId =
-          snapshot.projectId === undefined
-            ? header
-              ? originalConversationProject(header)
-              : null
-            : snapshot.projectId
-        const normalized = readChatGptArchiveMessage(
-          snapshot.raw,
-          {
-            ownerId: account,
-            conversationId,
-            projectId,
-            sourceKind: snapshot.sourceKind,
-            sourceVersion: snapshot.sourceVersion,
-            observedAtMs: snapshot.observedAtMs,
-          },
-          snapshot.normalized,
-        )
-        return { ...snapshot, projectId, normalized }
-      })
+    return this.db.transaction('r', this.db.conversations, this.db.snapshots, async () =>
+      this.readSourceSnapshots(
+        conversationId,
+        account,
+        messageIds,
+        await this.getConversation(conversationId),
+      ),
+    )
+  }
+
+  private async readSourceSnapshots(
+    conversationId: string,
+    account: string,
+    messageIds: readonly string[],
+    header: FixedConversation | undefined,
+  ) {
+    const keys = messageIds.map((id) => JSON.stringify([account, conversationId, id]))
+    const snapshots = await this.db.snapshots.bulkGet(keys)
+    return snapshots.map((snapshot, index) => {
+      if (!snapshot) return undefined
+      if (
+        snapshot.accountId !== account ||
+        snapshot.messageKey !== keys[index] ||
+        snapshot.raw.id !== messageIds[index]
+      )
+        throw Error('Canonical source identity mismatch')
+      return this.readSnapshot(snapshot, conversationId, header)
     })
   }
 
@@ -1278,20 +1466,22 @@ export class FixedCanonicalDexieRepository {
     conversationId: string,
     messageId: string,
   ): Promise<readonly FixedSourceVersion[]> {
-    const ownerId = this.scope.ownerId
-    if (!ownerId) throw Error('Verified owner required')
     const snapshot = await this.getSourceSnapshot(conversationId, messageId)
-    const versions = snapshot
-      ? (snapshot.versions ?? [
-          {
-            sourceKind: snapshot.sourceKind,
-            sourceVersion: snapshot.sourceVersion,
-            observedAtMs: snapshot.observedAtMs,
-            decision: 'initial' as const,
-            raw: snapshot.raw,
-          },
-        ])
-      : []
+    return snapshot ? this.sourceVersions(conversationId, snapshot) : []
+  }
+
+  sourceVersions(conversationId: string, snapshot: FixedSnapshot): readonly FixedSourceVersion[] {
+    const ownerId = this.scope.ownerId
+    if (!ownerId || snapshot.accountId !== ownerId) throw Error('Verified owner required')
+    const versions = snapshot.versions ?? [
+      {
+        sourceKind: snapshot.sourceKind,
+        sourceVersion: snapshot.sourceVersion,
+        observedAtMs: snapshot.observedAtMs,
+        decision: 'initial' as const,
+        raw: snapshot.raw,
+      },
+    ]
     return versions.map((version, index) => ({
       ...version,
       normalized: readChatGptArchiveMessage(
@@ -1319,14 +1509,31 @@ export class FixedCanonicalDexieRepository {
   }> {
     const account = this.scope.ownerId
     if (!account) throw Error('Owner not verified')
-    const [projects, conversations, messages, elements, snapshots] = await Promise.all([
-      this.db.projects.where('accountId').equals(account).count(),
-      this.db.conversations.where('accountId').equals(account).count(),
-      this.db.messages.where('accountId').equals(account).count(),
-      this.db.elements.where('accountId').equals(account).count(),
-      this.db.snapshots.where('accountId').equals(account).count(),
-    ])
-    return { projects, conversations, messages, elements, snapshots }
+    return this.db.transaction(
+      'r',
+      this.db.projects,
+      this.db.conversations,
+      this.db.messages,
+      this.db.snapshots,
+      async () => {
+        const projects = await this.db.projects.where('accountId').equals(account).count()
+        const conversations = await this.db.conversations.where('accountId').equals(account).count()
+        const messages = await this.db.messages.where('accountId').equals(account).count()
+        const snapshots = await this.db.snapshots.where('accountId').equals(account).count()
+        const elements = await this.countProjectedElements(this.db.messages, account)
+        return { projects, conversations, messages, elements, snapshots }
+      },
+    )
+  }
+  private async countProjectedElements(table: Table<StoredMessage, string>, account: string) {
+    let elements = 0
+    await table
+      .where('accountId')
+      .equals(account)
+      .each((row) => {
+        elements += row.facts?.elementCount ?? row.projection?.elements.length ?? 0
+      })
+    return elements
   }
 
   /** Internal recovery port. Never reads or upgrades historical native v3/v4 stores. */
@@ -1355,7 +1562,12 @@ export class FixedCanonicalDexieRepository {
             async ({ name, table }) =>
               [
                 name,
-                await (transaction?.table(name) ?? table).where('accountId').equals(owner).count(),
+                name === 'elements'
+                  ? await self.countProjectedElements(
+                      transaction?.table<StoredMessage, string>('messages') ?? self.db.messages,
+                      owner,
+                    )
+                  : await (transaction?.table(name) ?? table).where('accountId').equals(owner).count(),
               ] as const,
           ),
         ),
@@ -1575,7 +1787,11 @@ export class FixedCanonicalDexieRepository {
                           )
                         }
                       }
-                      await (table as Table<FixedBackupModel, string>).bulkPut(decoded)
+                      const stored =
+                        name === 'snapshots'
+                          ? (decoded as FixedSnapshot[]).map(stripSnapshotView)
+                          : decoded
+                      await (table as Table<FixedBackupModel | StoredMessage, string>).bulkPut(stored)
                       actual[name] += decoded.length
                       if (actual[name] > validation.counts[name])
                         throw Error('Staged activation count changed')
@@ -1741,6 +1957,26 @@ export class FixedCanonicalDexieRepository {
           snapshots: 0,
         }
         for (const { name, table } of tables) {
+          if (name === 'elements') {
+            // Keep the established backup wire format. These rows are a view
+            // of the originals, including for archives written by older builds.
+            for await (const keys of ownedKeyPages('messages', Math.min(pageSize, 256))) {
+              for (const key of keys) {
+                authorize()
+                const indexed = await self.db.messages.get(key)
+                if (!indexed) throw Error('Canonical source row disappeared during recovery export')
+                const row = self.projectRow(indexed, await self.db.snapshots.get(key))
+                for (const element of row.projection.elements) {
+                  authorize()
+                  const value = await encodeArchiveClone({ ...element, accountId: owner })
+                  assertFixedBackupCodecBudget(value)
+                  emitted.elements++
+                  yield { store: name, key: element.elementId, value }
+                }
+              }
+            }
+            continue
+          }
           for await (const keys of ownedKeyPages(name, Math.min(pageSize, 256))) {
             for (const key of keys) {
               authorize()
@@ -1752,9 +1988,13 @@ export class FixedCanonicalDexieRepository {
               if (!key || key.length > 1024) throw Error('Invalid ChatGPT backup primary key')
               if (data.accountId !== owner)
                 throw Error('Canonical source row owner disagrees with its key')
-              const encoded = await encodeArchiveClone(
-                name === 'snapshots' ? detachedFixedBackupSnapshot(value as FixedSnapshot) : value,
-              )
+              const backupValue =
+                name === 'messages'
+                  ? self.projectRow(value as StoredMessage, await self.db.snapshots.get(key))
+                  : name === 'snapshots'
+                    ? detachedFixedBackupSnapshot(stripSnapshotView(value as FixedSnapshot))
+                    : value
+              const encoded = await encodeArchiveClone(backupValue)
               assertFixedBackupCodecBudget(encoded)
               emitted[name]++
               yield { store: name, key, value: encoded }
@@ -1823,7 +2063,9 @@ export class FixedCanonicalDexieRepository {
             if (buckets.elements.length)
               await self.db.elements.bulkAdd(buckets.elements as FixedElement[])
             if (buckets.snapshots.length)
-              await self.db.snapshots.bulkAdd(buckets.snapshots as FixedSnapshot[])
+              await self.db.snapshots.bulkAdd(
+                (buckets.snapshots as FixedSnapshot[]).map(stripSnapshotView),
+              )
             await beforeCommit()
           },
         )

@@ -23,14 +23,11 @@ if ((chatgpt || vkBoosterFeature.match(url)) && isDevelopmentContextAllowed('chr
   const telemetry = createApplicationTelemetry('chromium', createSettingsStore('chromium'))
   const chatFeature = chatgpt ? createChatGptChromeFeature(telemetry) : null
   const feature = chatFeature?.feature ?? vkBoosterFeature
+  const settings = new FeatureSettings(createSettingsStore('chromium'), true)
   if (chatFeature) {
-    void new FeatureSettings(createSettingsStore('chromium'))
+    void settings
       .enabled('chatgpt-booster')
-      .then(async (enabled) =>
-        enabled && (await new FeatureSettings(createSettingsStore('chromium')).installationEnabled())
-          ? chatFeature.startEarly()
-          : undefined,
-      )
+      .then((enabled) => (enabled ? chatFeature.startEarly() : undefined))
       .catch((error) =>
         console.warn(
           '[ChatGPT Booster] Early capture failed',
@@ -44,7 +41,7 @@ if ((chatgpt || vkBoosterFeature.match(url)) && isDevelopmentContextAllowed('chr
       target: 'chromium',
       url,
       capabilities: new Set<Capability>(['page-dom', 'origin-storage', 'local-files']),
-      settings: new FeatureSettings(createSettingsStore('chromium')),
+      settings,
     },
     createRuntimeTelemetry(telemetry),
   )

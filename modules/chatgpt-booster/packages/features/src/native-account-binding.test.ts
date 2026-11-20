@@ -143,6 +143,23 @@ test('native registry refresh drives actual runtime owner proof only after indep
   expect(page.automation.status().verifiedOwner).toBe(false)
 })
 
+test('hydrated catalog must match the native registry and loses ownership when invalidated', async () => {
+  const f = nativeFixture()
+  const { page } = await setup()
+  let catalog = 'owner-B'
+  const binding = page.bindNativeAccounts({ ...f.options, readHydratedCatalogAccount: () => catalog })
+  await binding.refresh()
+  await tick()
+  expect(page.automation.status().verifiedOwner).toBe(false)
+  catalog = 'owner-A'
+  await binding.refresh()
+  await tick()
+  expect(page.automation.status().verifiedOwner).toBe(true)
+  binding.invalidateHydratedCatalog()
+  await tick()
+  expect(page.automation.status().verifiedOwner).toBe(false)
+})
+
 test('native source rejects stale identity, mismatched default and inaccessible membership without owner evidence', async () => {
   const f = nativeFixture(),
     source = createChatGptNativeAccountSource(f.options)

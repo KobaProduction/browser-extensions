@@ -23,6 +23,7 @@ export function bootstrapUserscript(
   views: Record<string, Component> = {},
 ) {
   if (!isDevelopmentContextAllowed('userscript')) return
+  const application = getApplicationIdentity('userscript')
   const telemetry = createApplicationTelemetry('userscript', createSettingsStore('userscript'))
   const runtime = new FeatureRuntime(
     typeof features === 'function' ? features(telemetry) : features,
@@ -30,7 +31,7 @@ export function bootstrapUserscript(
       target: 'userscript',
       url: new URL(location.href),
       capabilities: defaultCapabilities('userscript'),
-      settings: new FeatureSettings(createSettingsStore('userscript')),
+      settings: new FeatureSettings(createSettingsStore('userscript'), application.id === 'all-in-one'),
     },
     createRuntimeTelemetry(telemetry),
   )
@@ -61,7 +62,7 @@ export function bootstrapUserscript(
         [async () => [await createTelemetryBackupSource(telemetry, 'userscript')]],
         telemetry,
       ),
-      application: getApplicationIdentity('userscript'),
+      application,
     })
     openSettings = ui.openSettings
     openMenu = ui.openMenu

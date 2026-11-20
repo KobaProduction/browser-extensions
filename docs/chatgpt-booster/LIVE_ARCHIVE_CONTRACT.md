@@ -184,7 +184,7 @@ control; settings actions recheck their owner/epoch/target before writing.
 
 The registered message-source adapter `chatgpt-history-2026-10-v4` extends the
 published v1-v3 signatures, which remain immutable and explicitly selectable;
-source-adapter versions are independent of physical Dexie schema 1 and the
+source-adapter versions are independent of the physical Dexie version and the
 historical database generations. On 2026-10-15, seven structural shapes from
 an own synthetic native stream showed assistant recap/final metadata
 `streaming_parent_id:string` and `streaming_parent_revision:number`. The
@@ -290,8 +290,8 @@ unverified until the owner's deferred acceptance gates resume.
 
 ## Non-destructive observations
 
-The canonical projection remains model v1, physical Dexie version 1 and the
-same five tables/indexes. Source snapshots additionally retain distinct
+The canonical projection remains model v1 with the same five tables and indexes.
+Source snapshots additionally retain distinct
 observation versions and their original stream-event evidence. A newer local
 observation time alone cannot make an older server snapshot authoritative.
 
@@ -316,6 +316,10 @@ read/policy authorization. The header retains a validated association history;
 message originals and observation versions keep their original project context.
 Stale replay and absent/unknown project fields cannot move a saved conversation.
 Both staged and array recovery validate this provenance and its project links.
+After capture commits, the archive-updated event refreshes both conversations
+and project names without reopening the current Reader. For saved chats, the
+catalog uses the committed project association, including an explicit removal
+from a project, even if another tab still retains an older native header.
 
 ## Integrity, branches and Reader
 
@@ -488,8 +492,8 @@ tests are a separate, narrower source gate.
 `chatgpt-source-context.v1` is an optional computed export/transport sidecar for
 already observed request, turn, model, author, content and terminal facts. Missing
 facts stay null; unknown source fields stay in the original snapshot and source
-versions. This adds useful normalized context without changing primary model v1,
-physical DB version 1, record keys, legacy databases or stored projections.
+versions. The sidecar leaves the primary model v1, record keys and stored
+projections intact.
 
 Full ordinary JSON exports keep an already lossless JSON source in its familiar
 shape. A source containing native clone values instead sets
@@ -533,9 +537,11 @@ Native account inputs may bypass fetch in the host application. An explicit
 native-account source therefore calls the genuine account-refresh use case,
 validates its normalized membership/default/order and checks native account/user
 identity before and after await. Observer-owned source registration is private,
-reversible and fenced by activation/replacement lifetime. A successful observed
-conversation-catalog request with the same selected account is still required
-before publishing ownership. Cross-world compositions without that explicit
+reversible and fenced by activation/replacement lifetime. Before publishing
+ownership, the observer requires a matching successful conversation-catalog
+request or the inspected native client's hydrated sidebar catalog. A change in
+the native selection, user or hydrated catalog revokes hydration-based proof.
+Cross-world compositions without that explicit
 capability remain unsupported; direct state assignment is not owner proof.
 
 SSE delta encoding v1 inherits omitted path, operation and channel globally,
@@ -684,6 +690,23 @@ and full remote-graph recovery were still unaccepted; the later acceptance below
 
 
 ### Full native collection and graph authority (2026-10-23)
+
+Source adapter v12 accepts the string metadata fields `turn_id`, `skill_id`,
+`skill_name` and `skill_plugin_id` observed in ChatGPT history on 2026-11-17.
+It also accepts a serialization-metadata object containing only a string
+`render_format` from the full native graph.
+The native client can turn an initial page into a temporary
+linear mapping with a pagination cursor. That mapping cannot certify a full
+history. The capture pipeline retains source pages admitted by the validator
+even when a later request fails.
+
+Source adapter v13 accepts the observed client and server variants of
+`metadata.jit_plugin_data` in the full history graph. The object is preserved
+with the original message and does not establish message ancestry.
+
+Source adapter v14 accepts string `metadata.requested_model_slug` from the full
+history graph. The field is retained with the original message. V1–v13 keep
+their original signatures.
 
 Source adapter v11 additionally accepts observed `paragen_variants_info` objects
 and string `paragen_variant_choice` metadata from an older conversation page.
@@ -909,3 +932,18 @@ when the transport observer has not observed that read. A native client can keep
 a fetch reference from before observer installation, so successful full reading
 must not depend solely on a later network interception. The binding retains
 owner, user, epoch, current-session and abort checks around the actual method.
+
+## Original-first local storage
+
+New snapshots keep original ChatGPT payloads, their source evidence and distinct
+versions. Reader, version and export views are derived when requested. New
+snapshots omit the normalized message DTO. The message projection and element
+indexes remain compatibility caches for clients that can reopen the same
+database. Dexie version 2 restores those caches from originals for any compact
+rows written by older local builds. The database name, tables, indexes and
+portable schema remain the same.
+
+Portable recovery retains its previous wire schema. The exporter derives the
+message and element rows expected by existing backups from the original source.
+Restore still validates the complete backup and owner relationships before
+writing compact indexes and originals in one transaction.

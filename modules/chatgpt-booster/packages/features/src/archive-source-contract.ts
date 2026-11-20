@@ -25,7 +25,10 @@ export const NATIVE_HISTORY_CONTRACT_V8 = 'chatgpt-history-2026-10-v8'
 export const NATIVE_HISTORY_CONTRACT_V9 = 'chatgpt-history-2026-10-v9'
 export const NATIVE_HISTORY_CONTRACT_V10 = 'chatgpt-history-2026-10-v10'
 export const NATIVE_HISTORY_CONTRACT_V11 = 'chatgpt-history-2026-10-v11'
-export const NATIVE_HISTORY_CONTRACT_VERSION = NATIVE_HISTORY_CONTRACT_V11
+export const NATIVE_HISTORY_CONTRACT_V12 = 'chatgpt-history-2026-11-v12'
+export const NATIVE_HISTORY_CONTRACT_V13 = 'chatgpt-history-2026-11-v13'
+export const NATIVE_HISTORY_CONTRACT_V14 = 'chatgpt-history-2026-11-v14'
+export const NATIVE_HISTORY_CONTRACT_VERSION = NATIVE_HISTORY_CONTRACT_V14
 
 /** Retain ambiguity even if a repeated message ID is submitted before its first capture. */
 export interface ArchiveSubmissionSnapshot {
@@ -235,6 +238,7 @@ const v2ContentKeys: Readonly<Record<string, ReadonlySet<string>>> = {
 interface NativeHistoryValidationProfile {
   version: string
   fullGraph?: boolean
+  acceptsRenderFormat?: boolean
   metadata: Readonly<Record<string, MetadataFieldType>>
   content: Readonly<Record<string, ReadonlySet<string>>>
 }
@@ -333,6 +337,28 @@ const v11Profile: NativeHistoryValidationProfile = {
     paragen_variant_choice: 'string',
   },
 }
+const v12Profile: NativeHistoryValidationProfile = {
+  ...v11Profile,
+  version: NATIVE_HISTORY_CONTRACT_V12,
+  acceptsRenderFormat: true,
+  metadata: {
+    ...v11Profile.metadata,
+    turn_id: 'string',
+    skill_id: 'string',
+    skill_name: 'string',
+    skill_plugin_id: 'string',
+  },
+}
+const v13Profile: NativeHistoryValidationProfile = {
+  ...v12Profile,
+  version: NATIVE_HISTORY_CONTRACT_V13,
+  metadata: { ...v12Profile.metadata, jit_plugin_data: 'object' },
+}
+const v14Profile: NativeHistoryValidationProfile = {
+  ...v13Profile,
+  version: NATIVE_HISTORY_CONTRACT_V14,
+  metadata: { ...v13Profile.metadata, requested_model_slug: 'string' },
+}
 function validateSpecificContent(
   content: Record<string, unknown>,
   path: string,
@@ -370,9 +396,14 @@ function validateSerializationMetadata(
   value: unknown,
   path: string,
   fail: (path: string, reason: ArchiveContractFailure['reason']) => never,
+  acceptsRenderFormat: boolean,
 ) {
   const entry = asObject(value)
   if (!entry) fail(path, 'type')
+  if (acceptsRenderFormat && Object.keys(entry).length === 1 && Object.hasOwn(entry, 'render_format')) {
+    if (typeof entry.render_format !== 'string') fail(`${path}.render_format`, 'type')
+    return
+  }
   for (const name of Object.keys(entry))
     if (name !== 'custom_symbol_offsets') fail(`${path}.${name}`, 'unexpected')
   if (!Array.isArray(entry.custom_symbol_offsets)) fail(`${path}.custom_symbol_offsets`, 'type')
@@ -407,7 +438,25 @@ function validateMetadata(
     if (!expected) fail(fieldPath, 'unexpected')
     if (!metadataTypeMatches(expected, value)) fail(fieldPath, 'type')
     if (profile !== v1Profile && name === 'serialization_metadata')
-      validateSerializationMetadata(value, fieldPath, fail)
+      validateSerializationMetadata(value, fieldPath, fail, profile.acceptsRenderFormat === true)
+    if (name === 'jit_plugin_data') {
+      const envelope = asObject(value)
+      const side = envelope && Object.keys(envelope).length === 1 ? Object.keys(envelope)[0] : null
+      const entry = side && envelope ? asObject(envelope[side]) : null
+      const fields: Record<string, MetadataFieldType> | null =
+        side === 'from_client'
+          ? { remember_answer: 'boolean', target_message_id: 'string', type: 'string' }
+          : side === 'from_server'
+            ? { type: 'string', body: 'object' }
+            : null
+      if (
+        !entry ||
+        !fields ||
+        Object.keys(entry).length !== Object.keys(fields).length ||
+        Object.entries(fields).some(([key, type]) => !metadataTypeMatches(type, entry[key]))
+      )
+        fail(fieldPath, 'type')
+    }
     if (name === 'notification_trigger_checkpoint')
       validateNotificationCheckpoint(value, fieldPath, fail)
   }
@@ -810,6 +859,36 @@ const nativeHistoryAdapters: Readonly<Record<string, NativeHistoryAdapter>> = Ob
       assertHistoryPage(detail, projected, v11Profile),
     assertStream: (id: string, incoming: Record<string, unknown>) =>
       assertStreamMessage(id, incoming, v11Profile),
+  }),
+  [NATIVE_HISTORY_CONTRACT_V12]: Object.freeze({
+    version: NATIVE_HISTORY_CONTRACT_V12,
+    evidenceDocument: 'docs/chatgpt-booster/LIVE_ARCHIVE_CONTRACT.md',
+    fixtureFile: 'tests/archive-source-contract.test.ts',
+    knownNullablePaths: Object.freeze([]),
+    assertPage: (detail: ConversationArchiveEventDetail, projected: boolean) =>
+      assertHistoryPage(detail, projected, v12Profile),
+    assertStream: (id: string, incoming: Record<string, unknown>) =>
+      assertStreamMessage(id, incoming, v12Profile),
+  }),
+  [NATIVE_HISTORY_CONTRACT_V13]: Object.freeze({
+    version: NATIVE_HISTORY_CONTRACT_V13,
+    evidenceDocument: 'docs/chatgpt-booster/LIVE_ARCHIVE_CONTRACT.md',
+    fixtureFile: 'tests/archive-source-contract.test.ts',
+    knownNullablePaths: Object.freeze([]),
+    assertPage: (detail: ConversationArchiveEventDetail, projected: boolean) =>
+      assertHistoryPage(detail, projected, v13Profile),
+    assertStream: (id: string, incoming: Record<string, unknown>) =>
+      assertStreamMessage(id, incoming, v13Profile),
+  }),
+  [NATIVE_HISTORY_CONTRACT_V14]: Object.freeze({
+    version: NATIVE_HISTORY_CONTRACT_V14,
+    evidenceDocument: 'docs/chatgpt-booster/LIVE_ARCHIVE_CONTRACT.md',
+    fixtureFile: 'tests/archive-source-contract.test.ts',
+    knownNullablePaths: Object.freeze([]),
+    assertPage: (detail: ConversationArchiveEventDetail, projected: boolean) =>
+      assertHistoryPage(detail, projected, v14Profile),
+    assertStream: (id: string, incoming: Record<string, unknown>) =>
+      assertStreamMessage(id, incoming, v14Profile),
   }),
 })
 

@@ -145,6 +145,12 @@ export interface FeatureQuickAction {
   readonly label: string
   readonly labelEn?: string
   readonly icon?: 'archive' | 'collect' | 'export' | 'settings' | 'capture' | 'open'
+  /** An optional workspace destination in the shell's top-level navigation. */
+  readonly workspaceTab?: {
+    readonly title: string
+    readonly titleEn?: string
+    readonly isActive: () => boolean
+  }
   /** Default: the action owns navigation; never unconditionally open the panel. */
   readonly after?: 'close-menu' | 'keep-menu' | 'open-panel'
   /** Override for recovery/settings actions that can run while the feature is off. */
@@ -217,7 +223,10 @@ export interface SettingsStore {
   setText?(key: string, value: string): Promise<void>
 }
 export class FeatureSettings {
-  constructor(private readonly store: SettingsStore) {}
+  constructor(
+    private readonly store: SettingsStore,
+    readonly providerPower = false,
+  ) {}
   async languagePreference(): Promise<ApplicationLanguagePreference | undefined> {
     const value = await this.store.getText?.('ui.language')
     return isApplicationLanguage(value) ? value : undefined
@@ -235,11 +244,20 @@ export class FeatureSettings {
     if (this.store.setText) await this.setLanguagePreference(value)
     return value
   }
-  enabled(id: string) {
-    return this.store.get(`features.${id}.enabled`).then((value) => value !== false)
+  async enabled(id: string) {
+    if (this.providerPower) {
+      const override = await this.store.get(`features.${id}.power.enabled`)
+      if (override !== undefined) return override
+      // Preserve an old installation-wide pause until this provider is explicitly changed.
+      if ((await this.store.get('installation.enabled')) === false) return false
+    }
+    return (await this.store.get(`features.${id}.enabled`)) !== false
   }
   setEnabled(id: string, enabled: boolean) {
-    return this.store.set(`features.${id}.enabled`, enabled)
+    return this.store.set(
+      this.providerPower ? `features.${id}.power.enabled` : `features.${id}.enabled`,
+      enabled,
+    )
   }
   moduleEnabled(featureId: string, moduleId: string, defaultEnabled = true) {
     return this.store
@@ -250,6 +268,7 @@ export class FeatureSettings {
     return this.store.set(`features.${featureId}.modules.${moduleId}.enabled`, enabled)
   }
   installationEnabled() {
+    if (this.providerPower) return Promise.resolve(true)
     return this.store.get('installation.enabled').then((value) => value !== false)
   }
   setInstallationEnabled(enabled: boolean) {
@@ -611,6 +630,23 @@ export class FeatureRuntime {
   isRunning(): boolean {
     return this.running
   }
+  pagePower() {
+    if (!this.context.settings.providerPower) return { enabled: this.running, available: true }
+    const matches = this.features.filter((feature) => feature.match(this.context.url))
+    const feature = matches.length === 1 ? matches[0] : undefined
+    return {
+      feature,
+      enabled: feature ? (this.featureEnabled.get(feature.id) ?? false) : false,
+      available: Boolean(feature && this.status.get(feature.id)?.state !== 'unsupported'),
+    }
+  }
+  setPagePower(enabled: boolean): Promise<void> {
+    if (!this.context.settings.providerPower) return this.setRunning(enabled)
+    const { feature, available } = this.pagePower()
+    return feature && available
+      ? this.setEnabled(feature.id, enabled)
+      : Promise.reject(Error('No supported provider on this page'))
+  }
   shellPreferences(): ShellPreferences {
     return { ...this.shell }
   }
@@ -698,6 +734,7 @@ export class FeatureRuntime {
   /** Completely detach provider hooks, observers and mounts, but retain the
    * shared launcher/control panel so the installation can be re-enabled. */
   setRunning(enabled: boolean): Promise<void> {
+    if (this.context.settings.providerPower) return this.setPagePower(enabled)
     return this.transition(async () => {
       await this.context.settings.setInstallationEnabled(enabled)
       this.running = enabled

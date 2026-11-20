@@ -220,11 +220,11 @@ async function save() {
 </script>
 <template>
   <Card class="booster-capture-settings min-w-0" data-capture-settings>
-    <CardHeader class="gap-2 p-4 pb-3">
+    <CardHeader compact class="gap-2">
       <CardTitle class="text-base">{{ t('capture.title') }}</CardTitle>
       <CardDescription class="text-xs leading-5">{{ t('capture.explanation') }}</CardDescription>
     </CardHeader>
-    <CardContent v-if="settings" class="grid min-w-0 gap-4 p-4 pt-0">
+    <CardContent v-if="settings" compact class="grid min-w-0 gap-3">
       <Alert v-if="contextsLoadError"><AlertDescription role="status">{{ t('capture.contextsUnavailable') }}</AlertDescription></Alert>
       <div class="grid min-w-0 gap-2">
         <Label :for="`${fieldId}-scope`">{{ t('capture.scope') }}</Label>
@@ -249,6 +249,6 @@ async function save() {
       <Alert v-if="saveError" variant="destructive"><AlertDescription role="alert">{{ t('common.saveError') }}</AlertDescription></Alert>
       <p v-if="saved" role="status" class="m-0 text-xs leading-5">{{ t('capture.saved') }}</p>
     </CardContent>
-    <CardContent v-else class="p-4 pt-0"><p class="m-0 text-xs leading-5 text-muted-foreground" :role="settingsLoadError ? 'alert' : 'status'">{{ t(settingsLoadError ? 'capture.settingsUnavailable' : 'control.loading') }}</p></CardContent>
+    <CardContent v-else compact><p class="m-0 text-xs leading-5 text-muted-foreground" :role="settingsLoadError ? 'alert' : 'status'">{{ t(settingsLoadError ? 'capture.settingsUnavailable' : 'control.loading') }}</p></CardContent>
   </Card>
 </template>

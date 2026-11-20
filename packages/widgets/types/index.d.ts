@@ -47,14 +47,20 @@ export declare const ArchiveExportFormatFields: DefineComponent<{
   'onUpdate:format'?: (value: string) => void
   'onUpdate:packaging'?: (value: string) => void
 }>
-export declare const ArchiveReadingSurface: DefineComponent<{ timelineVisible: boolean }> & {
+export declare const ArchiveReadingSurface: DefineComponent<{
+  timelineVisible: boolean
+  compactTimeline?: boolean
+}> & {
   new (): { $slots: { default(): unknown; timeline(): unknown; status(): unknown } }
 }
 export declare const ArchiveReaderNavigation: DefineComponent<{
   firstLabel: string
   lastLabel: string
+  firstHint?: string
+  lastHint?: string
   disabled?: boolean
   compact?: boolean
+  vertical?: boolean
   onFirst?: () => void
   onLast?: () => void
 }>

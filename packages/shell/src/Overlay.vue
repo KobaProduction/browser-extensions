@@ -17,21 +17,16 @@ import {
   DialogContent,
   DialogTitle,
   ModalSurface,
-  Switch,
+  TooltipHint,
   useApplicationLocale,
   useLocalizedText,
 } from '@kobaproduction/browser-ui'
-import {
-  type Viewport,
-  type WorkspaceRatios,
-  type WorkspaceRect,
-  workspaceRatios,
-  workspaceRect,
-} from '@kobaproduction/browser-widgets'
-import { Grip, GripVertical, Layers3, Minus, X } from 'lucide-vue-next'
+import type { Viewport } from '@kobaproduction/browser-widgets'
+import { Layers3, X } from 'lucide-vue-next'
 import { type Component, computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { type ApplicationIdentity, resolveApplicationIdentity } from './application'
 import ControlCenterPanel from './ControlCenterPanel.vue'
+import FloatingWorkspaceChrome from './FloatingWorkspaceChrome.vue'
 import LauncherIndicators from './LauncherIndicators.vue'
 import { clampLauncher, dropLauncher, launcherMenuGeometry } from './launcher-geometry'
 import { indicatorDescription, launcherIndicatorTone } from './launcher-indicators'
@@ -42,7 +37,9 @@ import {
   providerSettingsCategory,
   validSettingsCatalogId,
 } from './settings-catalog'
-import { SHELL_UI_MESSAGES } from './ui-messages'
+import { pagePowerLabel, SHELL_UI_MESSAGES } from './ui-messages'
+import { useFloatingWorkspace } from './use-floating-workspace'
+import WorkspaceHandle from './WorkspaceHandle.vue'
 
 const props = defineProps<{
   runtime: FeatureRuntime
@@ -55,7 +52,8 @@ const locale = useApplicationLocale()
 const text = (ru: string, en: string) => (locale.value === 'ru' ? ru : en)
 const caption = useLocalizedText(SHELL_UI_MESSAGES)
 const open = ref(false)
-const mobile = ref(window.innerWidth <= 620)
+const compactViewport = window.matchMedia('(max-width: 620px)')
+const mobile = ref(compactViewport.matches)
 const quickOpen = ref(false)
 let quickDismissedOutside = false
 watch(
@@ -84,10 +82,11 @@ const applicationIdentity = computed(() =>
 )
 let unsubscribeRuntime: (() => void) | undefined
 let unsubscribeQuickContext: (() => void) | undefined
-const installationEnabled = computed(() => {
+const pagePower = computed(() => {
   void runtimeRevision.value
-  return props.runtime.isRunning()
+  return props.runtime.pagePower()
 })
+const powerLabel = computed(() => pagePowerLabel(pagePower.value, locale.value))
 const featureActive = computed(() => {
   void runtimeRevision.value
   return props.runtime.list().find((x) => x.id === singleFeature.value?.id)?.state === 'active'
@@ -245,18 +244,17 @@ watch([open, quickOpen, selectedSection, settingsCategory], () => {
 const position = ref({ x: 0, y: 0 })
 const dragging = ref(false)
 const minimized = ref(false)
-const workspace = ref<WorkspaceRect>({ x: 0, y: 0, width: 720, height: 640 })
-let lastViewport: Viewport = { width: 1024, height: 768 }
-const DEFAULT_WORKSPACE: WorkspaceRatios = {
-  xRatio: 0.08,
-  yRatio: 0.08,
-  widthRatio: 0.72,
-  heightRatio: 0.82,
-}
-const WORKSPACE_KEY = 'koba-browser:floating-workspace'
-let workspaceDrag:
-  | { pointerId: number; kind: 'move' | 'resize'; startX: number; startY: number; rect: WorkspaceRect }
-  | undefined
+const {
+  workspaceStyle,
+  restoreWorkspace,
+  cancelWorkspaceDrag,
+  normalizeWorkspace,
+  rebaseWorkspace,
+  onWorkspaceDown,
+  onWorkspaceMove,
+  onWorkspaceUp,
+  onWorkspaceKey,
+} = useFloatingWorkspace(viewport)
 const BUTTON_SIZE = 44,
   DRAG_THRESHOLD = 4
 let dragStart:
@@ -387,100 +385,8 @@ function onLauncherClick(event: MouseEvent) {
 function viewport(): Viewport {
   return { width: window.innerWidth, height: window.innerHeight }
 }
-function restoreWorkspace() {
-  lastViewport = viewport()
-  // First opening follows the user's persisted launcher edge.
-  let ratios: WorkspaceRatios = {
-    ...DEFAULT_WORKSPACE,
-    xRatio: dockSide.value === 'left' ? 0 : 1,
-  }
-  try {
-    const saved: unknown = JSON.parse(localStorage.getItem(shellInstanceKey(WORKSPACE_KEY)) || 'null')
-    if (
-      saved &&
-      typeof saved === 'object' &&
-      ['xRatio', 'yRatio', 'widthRatio', 'heightRatio'].every((key) => {
-        const value: unknown = (saved as Record<string, unknown>)[key]
-        return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1
-      })
-    ) {
-      ratios = saved as WorkspaceRatios
-    }
-  } catch {
-    /* storage or saved geometry unavailable */
-  }
-  workspace.value = workspaceRect(ratios, lastViewport)
-}
-function saveWorkspace() {
-  try {
-    localStorage.setItem(
-      shellInstanceKey(WORKSPACE_KEY),
-      JSON.stringify(workspaceRatios(workspace.value, viewport())),
-    )
-  } catch {
-    /* ephemeral geometry is still usable */
-  }
-}
-function updateWorkspaceRect(next: WorkspaceRect) {
-  workspace.value = workspaceRect(workspaceRatios(next, viewport()), viewport())
-}
-function onWorkspaceDown(event: PointerEvent, kind: 'move' | 'resize') {
-  if (event.button !== 0) return
-  // The chrome has real buttons; their clicks must not initiate a drag.
-  if (kind === 'move' && (event.target as HTMLElement).closest('button:not(.booster-floating-handle)'))
-    return
-  updateWorkspaceRect(workspace.value)
-  workspaceDrag = {
-    pointerId: event.pointerId,
-    kind,
-    startX: event.clientX,
-    startY: event.clientY,
-    rect: { ...workspace.value },
-  }
-  try {
-    ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
-  } catch {}
-  event.preventDefault()
-}
-function onWorkspaceMove(event: PointerEvent) {
-  const drag = workspaceDrag
-  if (!drag || event.pointerId !== drag.pointerId) return
-  const dx = event.clientX - drag.startX,
-    dy = event.clientY - drag.startY
-  updateWorkspaceRect(
-    drag.kind === 'move'
-      ? { ...drag.rect, x: drag.rect.x + dx, y: drag.rect.y + dy }
-      : { ...drag.rect, width: drag.rect.width + dx, height: drag.rect.height + dy },
-  )
-}
-function onWorkspaceUp(event: PointerEvent) {
-  if (!workspaceDrag || event.pointerId !== workspaceDrag.pointerId) return
-  workspaceDrag = undefined
-  saveWorkspace()
-}
-function onWorkspaceKey(event: KeyboardEvent, kind: 'move' | 'resize') {
-  const movement: Record<string, [number, number]> = {
-    ArrowLeft: [-1, 0],
-    ArrowRight: [1, 0],
-    ArrowUp: [0, -1],
-    ArrowDown: [0, 1],
-  }
-  const step = movement[event.key]
-  if (!step) return
-  event.preventDefault()
-  event.stopPropagation()
-  const delta = event.shiftKey ? 48 : 16
-  const [dx, dy] = step
-  const rect = workspace.value
-  updateWorkspaceRect(
-    kind === 'move'
-      ? { ...rect, x: rect.x + dx * delta, y: rect.y + dy * delta }
-      : { ...rect, width: rect.width + dx * delta, height: rect.height + dy * delta },
-  )
-  saveWorkspace()
-}
 function minimizeWorkspace() {
-  workspaceDrag = undefined
+  cancelWorkspaceDrag()
   minimized.value = true
   open.value = false
 }
@@ -563,7 +469,7 @@ async function selectQuick(id: string) {
   if (
     !action ||
     quickBusy.value ||
-    (!props.runtime.isRunning() && !action.availableWhenDisabled) ||
+    (!pagePower.value.enabled && !action.availableWhenDisabled) ||
     action.enabled?.() === false
   )
     return
@@ -579,32 +485,24 @@ async function selectQuick(id: string) {
     quickBusy.value = false
   }
 }
-async function toggleQuickInstallation() {
-  if (quickBusy.value) return
+async function setPagePower(enabled: boolean) {
+  if (quickBusy.value || !pagePower.value.available) return
   quickBusy.value = true
   quickError.value = ''
   try {
-    await props.runtime.setRunning(!props.runtime.isRunning())
+    await props.runtime.setPagePower(enabled)
   } catch {
-    quickError.value = text(
-      'Не удалось изменить состояние установки',
-      'Could not change the installation state',
-    )
+    quickError.value = text('Не удалось переключить функции', 'Could not toggle features')
   } finally {
     quickBusy.value = false
   }
 }
 function onResize() {
-  // A viewport change invalidates the pointer's starting rectangle. Cancel the
-  // gesture before rebasing both rendered and persisted geometry together.
-  workspaceDrag = undefined
-  mobile.value = window.innerWidth <= 620
+  mobile.value = compactViewport.matches
   viewportHeight.value = window.innerHeight
   if (attached.value) dockPosition()
   else position.value = clampLauncher(position.value, viewport())
-  const nextViewport = viewport()
-  workspace.value = workspaceRect(workspaceRatios(workspace.value, lastViewport), nextViewport)
-  lastViewport = nextViewport
+  rebaseWorkspace()
 }
 function quickInteractOutside(event: CustomEvent<{ originalEvent: Event }>) {
   // Launcher activation/drag owns its toggle. Reka owns all other dismissal.
@@ -657,11 +555,6 @@ const indicatorLabel = computed(() =>
     .join('; '),
 )
 const indicatorTone = computed(() => launcherIndicatorTone(indicators.value))
-const workspaceStyle = computed(() => {
-  // Rendering and pointer motion consume the same normalized rectangle.
-  const { width, height, x, y } = workspace.value
-  return { left: `${x}px`, top: `${y}px`, width: `${width}px`, height: `${height}px` }
-})
 // Single-host installations also own a real floating workspace; a provider
 // with one visible feature must not silently fall back to a centered modal.
 const floatingPanel = computed(
@@ -673,11 +566,11 @@ const floatingPanel = computed(
       )),
 )
 watch(floatingPanel, (floating) => {
-  if (!floating) workspaceDrag = undefined
+  if (!floating) cancelWorkspaceDrag()
 })
 function openPanel() {
-  workspaceDrag = undefined
-  updateWorkspaceRect(workspace.value)
+  cancelWorkspaceDrag()
+  normalizeWorkspace()
   quickOpen.value = false
   open.value = true
   minimized.value = false
@@ -719,7 +612,7 @@ function openMenu() {
   void refreshQuickMetrics()
 }
 function closePanel() {
-  workspaceDrag = undefined
+  cancelWorkspaceDrag()
   quickOpen.value = false
   ++metricsRevision
   open.value = false
@@ -729,7 +622,7 @@ function onRestoreUi(event: Event) {
   const detail = (event as CustomEvent<{ layout?: boolean; session?: boolean }>).detail
   if (detail?.layout === true) {
     restore()
-    restoreWorkspace()
+    restoreWorkspace(dockSide.value)
   }
   if (detail?.session === true) restoreSession()
 }
@@ -740,7 +633,7 @@ onMounted(() => {
     rebindQuickContext()
   })
   restore()
-  restoreWorkspace()
+  restoreWorkspace(dockSide.value)
   restoreSession()
   sessionReady = true
   window.addEventListener('resize', onResize)
@@ -759,7 +652,7 @@ onBeforeUnmount(() => {
     try {
       stop()
     } catch {}
-  workspaceDrag = undefined
+  cancelWorkspaceDrag()
   window.removeEventListener('resize', onResize)
   window.removeEventListener(SHELL_OPEN_FEATURE_EVENT, onModuleOpen)
   window.removeEventListener(SHELL_CLOSE_EVENT, closePanel)
@@ -775,29 +668,19 @@ onBeforeUnmount(() => {
       :floating="floatingPanel" :surface-style="mobile ? mobileSurfaceStyle : floatingPanel ? workspaceStyle : undefined"
       :surface-class="mobile ? 'booster-modal-surface booster-modal-fullscreen' : floatingPanel ? 'booster-modal-surface booster-modal-surface-wide' : 'booster-modal-surface'" @close="closePanel">
       <template v-if="floatingPanel" #chrome>
-        <div class="booster-floating-chrome" :aria-label="text('Переместить рабочее окно', 'Move workspace')"
-          @pointerdown="onWorkspaceDown($event, 'move')" @pointermove="onWorkspaceMove"
-          @pointerup="onWorkspaceUp" @pointercancel="onWorkspaceUp">
-          <Button type="button" variant="ghost" size="icon" class="booster-floating-handle"
-            :title="text('Переместить окно — стрелки', 'Move window with arrow keys')" :aria-label="text('Переместить окно — используйте стрелки', 'Move window using arrow keys')"
-            @pointerdown.stop="onWorkspaceDown($event, 'move')"
-            @pointermove="onWorkspaceMove" @pointerup="onWorkspaceUp" @pointercancel="onWorkspaceUp"
-            @keydown="onWorkspaceKey($event, 'move')"><GripVertical class="size-4" aria-hidden="true" /></Button>
-          <span class="booster-floating-identity">{{ applicationIdentity.title }}<small v-if="applicationIdentity.version" class="booster-version">{{ applicationIdentity.version }}</small></span>
-          <Switch :model-value="installationEnabled" :disabled="quickBusy" :aria-label="installationEnabled ? text('Отключить функции расширения', 'Disable extension features') : text('Включить функции расширения', 'Enable extension features')" @update:model-value="toggleQuickInstallation" />
-          <Button v-if="launcherVisible" type="button" variant="ghost" size="icon" :title="text('Свернуть окно', 'Minimize window')" :aria-label="text('Свернуть окно', 'Minimize window')"
-            @click="minimizeWorkspace"><Minus class="size-4" /></Button>
-          <Button type="button" variant="ghost" size="icon" :title="text('Закрыть окно', 'Close window')" :aria-label="text('Закрыть окно', 'Close window')"
-            @click="closePanel"><X class="size-4" /></Button>
-        </div>
+        <FloatingWorkspaceChrome :title="applicationIdentity.title" :version="applicationIdentity.version"
+          :enabled="pagePower.enabled" :power-disabled="quickBusy || !pagePower.available" :power-label="powerLabel"
+          :can-minimize="launcherVisible" @power="setPagePower" @minimize="minimizeWorkspace" @close="closePanel"
+          @begin="onWorkspaceDown" @pointermove="onWorkspaceMove" @pointerup="onWorkspaceUp" @pointercancel="onWorkspaceUp">
+          <WorkspaceHandle kind="move" @begin="onWorkspaceDown" @move="onWorkspaceMove"
+            @end="onWorkspaceUp" @adjust="onWorkspaceKey" />
+        </FloatingWorkspaceChrome>
       </template>
       <p v-if="quickError" class="booster-workspace-error" role="alert">{{quickError}}</p>
       <ControlCenterPanel :runtime="runtime" :views="views" :title="applicationIdentity.title" :application="applicationIdentity" :selected-section="selectedSection" :settings-category="settingsCategory" :floating="floatingPanel" :site-entry-available="siteEntryAvailable" @category="settingsCategory = $event" @select="selectedSection = $event" @close="closePanel" />
       <template v-if="floatingPanel" #handles>
-        <Button type="button" variant="ghost" size="icon" class="booster-floating-resize" :aria-label="text('Изменить размер окна — используйте стрелки', 'Resize window using arrow keys')"
-          @pointerdown="onWorkspaceDown($event, 'resize')" @pointermove="onWorkspaceMove"
-          @pointerup="onWorkspaceUp" @pointercancel="onWorkspaceUp"
-          @keydown="onWorkspaceKey($event, 'resize')"><Grip class="size-4" /></Button>
+        <WorkspaceHandle kind="resize" @begin="onWorkspaceDown" @move="onWorkspaceMove"
+          @end="onWorkspaceUp" @adjust="onWorkspaceKey" />
       </template>
     </ModalSurface>
     <div v-if="(launcherVisible || quickOpen || dragging) && (!standalone || !open)" class="booster-edge-toolkit"
@@ -809,20 +692,20 @@ onBeforeUnmount(() => {
         @interact-outside="quickInteractOutside" @close-auto-focus="quickCloseAutoFocus">
         <DialogTitle class="sr-only">{{ applicationIdentity.title }}: {{ text('инструменты', 'tools') }}</DialogTitle>
         <QuickMenu :style="quickMenuStyle" :title="applicationIdentity.title" :version="applicationIdentity.version" :indicators="indicators"
-          :enabled="installationEnabled" :active="featureActive"
+          :enabled="pagePower.enabled" :active="featureActive"
+          :power-label="pagePower.feature ? powerLabel : undefined" :power-available="pagePower.available"
           :busy="quickBusy" :actions="menuActions" :metrics="shellPreferences.metrics ? quickMetrics : []"
-          @select="selectQuick" @toggle="toggleQuickInstallation" />
+          @select="selectQuick" @toggle="setPagePower" />
       </DialogContent>
       </Dialog>
     <p v-if="quickOpen && quickError" class="booster-quick-error" role="alert">{{ quickError }}</p>
-    <Button
+    <TooltipHint :label="indicatorLabel || `${text('Открыть', 'Open')} ${applicationIdentity.title}`"><Button
       :ref="setLauncherButton"
       :variant="quickOpen ? 'ghost' : 'default'"
       class="booster-launcher p-0"
       :data-indicator-tone="quickOpen ? 'idle' : indicatorTone"
       :class="{ 'booster-launcher-dragging': dragging, 'booster-launcher-docked': attached, 'booster-launcher-floating': !attached || dragging, 'booster-edge-close-bar': quickOpen && !dragging }"
       type="button"
-      :title="indicatorLabel || `${text('Открыть', 'Open')} ${applicationIdentity.title}`"
       aria-haspopup="dialog"
 :aria-expanded="standalone ? quickOpen : open"
       :aria-label="`${minimized ? text('Восстановить окно', 'Restore window') : !shellPreferences.quickMenu ? text('Открыть настройки', 'Open settings') : quickOpen ? text('Закрыть быстрое меню', 'Close quick menu') : text('Открыть быстрое меню', 'Open quick menu')}${indicatorLabel ? '. ' + indicatorLabel : ''}`"
@@ -836,7 +719,7 @@ onBeforeUnmount(() => {
       <Layers3 v-else class="booster-launcher-icon" aria-hidden="true" />
       <span v-if="quickOpen && !dragging">{{ text('Свернуть', 'Collapse') }}</span>
       <LauncherIndicators v-if="!quickOpen && indicators.length" :indicators="indicators" compact />
-    </Button>
+    </Button></TooltipHint>
     </div>
   </div>
 </template>

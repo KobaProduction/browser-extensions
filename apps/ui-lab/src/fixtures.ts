@@ -137,6 +137,13 @@ export function createMockChatGptArchive(scene: LabScene) {
     metadata: {
       parent_id: index === 0 ? null : idAt(index === 8 ? 5 : index - 1),
       model_slug: 'synthetic-model',
+      ...(index === 0 && scene === 'saved'
+        ? {
+            attachments: [
+              { id: 'file_demo_notes', name: 'План проекта.pdf', mime_type: 'application/pdf' },
+            ],
+          }
+        : {}),
     },
     content: {
       content_type: 'text',

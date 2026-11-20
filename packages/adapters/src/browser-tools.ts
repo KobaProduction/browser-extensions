@@ -27,7 +27,7 @@ export function bindBrowserToolsMessages(
     }
     if (message?.type === 'koba:installation-status' || message?.type === 'koba:list') {
       respond({
-        enabled: runtime.isRunning(),
+        enabled: runtime.pagePower().enabled,
         features: runtime.list(),
         shell: runtime.shellPreferences(),
       })
@@ -39,7 +39,7 @@ export function bindBrowserToolsMessages(
         return
       }
       void runtime
-        .setRunning(message.enabled)
+        .setPagePower(message.enabled)
         .then(() => respond({ ok: true }))
         .catch(() => respond({ ok: false }))
       return true

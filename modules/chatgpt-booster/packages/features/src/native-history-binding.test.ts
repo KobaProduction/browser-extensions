@@ -74,6 +74,29 @@ test('full collection calls the real bound native use case with exact scope, tar
   expect(f.calls()).toBe(1)
 })
 
+test('the initial native page is admitted before a rate-limited full graph read', async () => {
+  const f = fixture()
+  const pages: ReturnType<ConversationStateStore['pages']> = []
+  f.state.pages = () => pages
+  f.state.ingestPage = (page) => {
+    pages.push(page)
+  }
+  const payload = { conversation_id: f.input.conversationId, messages: [], page_info: {} }
+  const modules = {
+    ...f.modules,
+    initialHistory: async () => payload,
+    history: async () => {
+      throw Object.assign(Error('Rate limited'), { responseStatus: 429 })
+    },
+  }
+  await expect(
+    createNativeHistoryReader(f.state, f.scope, modules, f.current).readOlder(f.input),
+  ).rejects.toThrow('archive.error.rateLimited')
+  expect(pages).toHaveLength(1)
+  expect(pages[0]?.payload).toBe(payload)
+  expect(pages[0]?.nativeGraph).toBeUndefined()
+})
+
 test('collection drains native pagination, including variants, before taking the full graph checkpoint', async () => {
   const f = fixture(),
     token = {},

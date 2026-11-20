@@ -19,13 +19,22 @@ export async function checkExportScopeUi(context) {
   for (const product of ['vk', 'all-in-one-vk', 'chatgpt', 'all-in-one'])
     for (const width of [1365, 390]) {
       await h.navigate({ product, width, height: 1000, scene: 'long', view: 'archive' })
-      await waitFor(`Boolean(${button('Экспорт')})`, 'Reader export action absent')
-      await clickAt(button('Экспорт'))
+      if (!product.endsWith('vk')) await h.openSavedConversation()
+      const exportAction = product.endsWith('vk')
+        ? button('Экспорт')
+        : `(${root}).querySelector('.booster-reader-export')`
+      await waitFor(`Boolean(${exportAction})`, `${product}/${width}: reader export action absent`)
+      await clickAt(exportAction)
       await waitFor(
         `Boolean(${scope})&&!(${scope}).textContent.includes('Загружаем список')`,
         'Shared export scope absent/loading',
       )
-      await count(3000)
+      if (product.endsWith('vk')) await count(3000)
+      else
+        await waitFor(
+          `(${form}).textContent.includes('Сохранённых исходных записей: 3000')`,
+          'ChatGPT saved archive size differs from the long fixture',
+        )
       await clickAt(radio('last'))
       for (const value of [50, 100, 1000]) {
         await clickAt(button(String(value), scope))

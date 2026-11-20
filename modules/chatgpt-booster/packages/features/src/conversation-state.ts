@@ -24,7 +24,10 @@ import {
   advanceHistoryCoverage,
   checkpointHistoryCoverage,
   type HistoryCoverageCheckpoint,
+  nativeOldestBoundary,
   nativePageEvidence,
+  nativeStartEvidencePage,
+  retainProvenStart,
 } from './archive-coverage'
 import { compareSourceObservation } from './archive-observation-policy'
 import {
@@ -545,6 +548,12 @@ export class ConversationStateStore implements BoosterModule {
       : undefined
   }
 
+  listHeaders() {
+    return Array.from(this.#states.keys(), (id) => this.header(id)).filter(
+      (header) => header !== undefined,
+    )
+  }
+
   snapshot(conversationId: string): ConversationMemorySnapshot | undefined {
     const state = this.#states.get(conversationId)
     if (!state) return undefined
@@ -690,25 +699,27 @@ export class ConversationStateStore implements BoosterModule {
       state.recordReads.set(raw.id, { readId: detail.readId ?? '', startedAt: readStartedAt })
     }
     const id = pageKey(detail)
-    const pageInfo = asRecord(payload.page_info)
-    if (
-      !state.startEvidence &&
-      pageInfo?.has_previous_page === false &&
-      typeof pageInfo.start_cursor === 'string' &&
-      typeof detail.readId === 'string' &&
-      state.records.has(pageInfo.start_cursor)
-    )
-      state.startEvidence = {
-        kind: 'native-page',
-        firstMessageId: pageInfo.start_cursor,
-        sourceId: detail.readId,
-        observedAt: detail.timestamp,
-      }
-    state.pageCoverage = advanceHistoryCoverage(state.pageCoverage, nativePageEvidence(detail))
+    const evidence = nativePageEvidence(detail)
+    const previousCoverage = state.pageCoverage
+    state.pageCoverage = advanceHistoryCoverage(state.pageCoverage, evidence)
     if (detail.isInitial)
       for (const retained of state.pages.values())
         if (!retained.isInitial)
           state.pageCoverage = advanceHistoryCoverage(state.pageCoverage, nativePageEvidence(retained))
+    const boundaryPage = nativeStartEvidencePage(evidence, state.pageCoverage)
+    const boundary = boundaryPage && nativeOldestBoundary(boundaryPage)
+    if (
+      state.startEvidence &&
+      !retainProvenStart(state.startEvidence, previousCoverage, state.pageCoverage)
+    )
+      delete state.startEvidence
+    if (!state.startEvidence && boundary && boundaryPage?.readId && state.records.has(boundary))
+      state.startEvidence = {
+        kind: 'native-page',
+        firstMessageId: boundary,
+        sourceId: boundaryPage.readId,
+        observedAt: boundaryPage.observedAt,
+      }
     const oldPage = state.pages.get(id)
     if (!oldPage || oldPage.timestamp <= observedAt) state.pages.set(id, detail)
     while (state.pages.size > MAX_PAGES_PER_CONVERSATION) {

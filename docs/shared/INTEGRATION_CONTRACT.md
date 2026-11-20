@@ -4,6 +4,13 @@ All-in-one composes VK and ChatGPT modules for different hosts in one
 installer. Its **default databases and persistent settings belong to
 all-in-one itself**; they must not collide with a standalone extension.
 
+The main switch applies to the provider on the current site. VK shares one
+preference across its supported domains; ChatGPT has its own. Disabling one
+provider stops its lifecycle and keeps the shared Shell available to re-enable
+it. The legacy installation-wide pause remains the default until each
+provider is explicitly switched; it never causes a silent reactivation on
+upgrade. Standalone products keep their installation-wide switch.
+
 ## Connection hierarchy
 
 ```text

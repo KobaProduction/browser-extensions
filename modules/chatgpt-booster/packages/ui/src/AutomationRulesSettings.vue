@@ -150,11 +150,11 @@ function toggle(rule: AutomationRule, value: boolean) {
       <SettingRow :id="`${id}-enabled`" :title="text('Включить триггеры')" :description="text('Условия запускают действия по сетевым событиям ChatGPT.')" :model-value="settings.automation.enabled" @update:model-value="saveSettings({ automation: { enabled: $event } })" />
     </div>
     <Card>
-      <CardHeader class="gap-2 p-4 pb-3">
+      <CardHeader compact class="gap-2">
         <div class="flex min-w-0 flex-wrap items-center justify-between gap-2"><CardTitle class="text-base">{{ text('Правила ') }}<span class="font-normal text-muted-foreground">{{ rules.length }} / 64</span></CardTitle><Badge :variant="unsaved ? 'outline' : 'secondary'">{{ unsaved ? text('Есть изменения в памяти') : text('Все правила сохранены') }}</Badge></div>
         <CardDescription>{{ text('Применение меняет правила в памяти. Сохраните их отдельно, чтобы оставить после перезапуска.') }}</CardDescription>
       </CardHeader>
-      <CardContent class="space-y-3 p-4 pt-0" :aria-busy="busy">
+      <CardContent compact class="space-y-3" :aria-busy="busy">
         <div v-if="unsaved" class="flex flex-wrap items-center gap-2"><Button size="sm" :disabled="busy || editorOpen" @click="saveDraft">{{ text('Сохранить изменения') }}</Button><Button variant="outline" size="sm" :disabled="busy" @click="discardDraft">{{ text('Отменить изменения') }}</Button><span v-if="editorOpen" class="text-xs text-muted-foreground">{{ text('Сначала примените или отмените редактирование.') }}</span></div>
         <p v-if="!rules.length && !editorOpen" class="text-sm text-muted-foreground">{{ text('Добавьте первое правило: выберите событие, условие и действие.') }}</p>
         <div v-if="rules.length" class="divide-y">

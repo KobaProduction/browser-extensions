@@ -2,6 +2,7 @@
 export interface ChatGptNativeAccountRegistry {
   selectedAccountId: string
   accountIds: readonly string[]
+  hydratedCatalogAccountId?: string
 }
 export interface ChatGptNativeAccountSource {
   read(signal: AbortSignal): Promise<ChatGptNativeAccountRegistry>
@@ -9,6 +10,7 @@ export interface ChatGptNativeAccountSource {
 interface NativeAccountConsumer {
   begin(): unknown
   accept(registry: ChatGptNativeAccountRegistry, ticket: unknown): void
+  invalidateHydratedCatalog(): void
 }
 const consumers = new WeakMap<object, NativeAccountConsumer>()
 const bindings = new WeakMap<object, { controller: AbortController }>()
@@ -33,6 +35,10 @@ export function bindNativeAccountSource(target: object, source: ChatGptNativeAcc
   bindings.set(target, registration)
   let revision = 0
   let activeRead: AbortController | undefined
+  const invalidateHydratedCatalog = () => {
+    activeRead?.abort()
+    if (bindings.get(target) === registration) consumer.invalidateHydratedCatalog()
+  }
   return {
     async refresh(signal?: AbortSignal) {
       activeRead?.abort()
@@ -87,7 +93,9 @@ export function bindNativeAccountSource(target: object, source: ChatGptNativeAcc
         throw Error('automation.nativeMethodUnavailable')
       consumer.accept(registry, ticket)
     },
+    invalidateHydratedCatalog,
     dispose() {
+      invalidateHydratedCatalog()
       registration.controller.abort()
       if (bindings.get(target) === registration) bindings.delete(target)
     },

@@ -52,7 +52,7 @@ test('fixed saved Reader facade reads, windows, counts and exports without acces
     listMessages: () => [],
     getMessage: () => undefined,
     nativeHistoryCoverage: () => ({ startReached: false }),
-    listSnapshots: () => [],
+    listHeaders: () => [],
     listProjects: () => [],
     project: () => undefined,
     subscribe: () => () => undefined,
@@ -161,14 +161,14 @@ test('fixed saved Reader facade reads, windows, counts and exports without acces
     Object.assign(globalThis, { location: previousLocation, window: previousWindow })
   }
 })
-test('a large catalog uses only known cached branch context and never scans per-conversation originals', async () => {
+test('a large catalog keeps committed project moves and uses only cached branch context', async () => {
   let sourceReads = 0,
     cacheReads = 0
   const capture = {
     async listSavedConversations() {
       return Array.from({ length: 1000 }, (_, index) => ({
         conversationId: `catalog-${index}`,
-        projectId: null,
+        projectId: index === 1 ? 'g-p-new' : null,
         title: `Synthetic ${index}`,
       }))
     },
@@ -186,16 +186,22 @@ test('a large catalog uses only known cached branch context and never scans per-
   const memory = {
     verifiedAccountId: () => 'synthetic-catalog-owner',
     accountEpoch: () => 1,
-    listSnapshots: () => [],
+    listHeaders: () => [
+      { conversationId: 'catalog-1', projectId: 'g-p-old', title: 'Live title' },
+      { conversationId: 'catalog-2', projectId: 'g-p-old', title: 'Detached chat' },
+    ],
   } as unknown as ConversationStateStore
   const rows = await createFixedArchiveUiAdapter(capture, memory).listConversations()
   expect(rows).toHaveLength(1000)
   expect(sourceReads).toBe(0)
   expect(cacheReads).toBe(1000)
   expect(rows[1]).toMatchObject({
+    projectId: 'g-p-new',
+    title: 'Live title',
     branchSourceConversationId: 'known-parent',
     branchSourceTitle: 'Known cached title',
   })
+  expect(rows[2]?.projectId).toBeNull()
   expect(rows[999]?.branchSourceConversationId).toBeNull()
 })
 

@@ -3,7 +3,7 @@
 .booster-archive-flow-graph {
   min-width: 0;
   min-height: 0;
-  width: 80px;
+  width: 100%;
   height: 100%;
 }
 
@@ -40,7 +40,8 @@
   gap: 4px;
   flex-wrap: nowrap;
 }
-.booster-reader-chat-actions > button {
+.booster-reader-chat-actions > button,
+.booster-reader-tools-anchor > button {
   height: 32px;
   padding-inline: 10px;
   font-size: 12px;
@@ -88,7 +89,8 @@
     white-space: nowrap;
     font-size: 14px;
   }
-  .booster-reader-chat-actions > button {
+  .booster-reader-chat-actions > button,
+  .booster-reader-tools-anchor > button {
     padding-inline: 6px;
   }
   .booster-reader-chat-identity .booster-identity {
@@ -220,6 +222,15 @@
 .booster-reader-summary {
   margin-top: 4px;
   align-items: center;
+  gap: 4px 10px;
+}
+.booster-reader-position-actions {
+  display: inline-flex;
+  gap: 2px;
+  margin-inline-start: auto;
+}
+.archive-reading-surface:has([data-archive-reading-timeline]) .booster-reader-scroll {
+  padding-inline-end: --spacing(1);
 }
 
 .booster-reader-coverage {

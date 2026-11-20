@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Button, FloatingInfoPopover } from '@kobaproduction/browser-ui'
+import { Button, FloatingInfoPopover, TooltipHint } from '@kobaproduction/browser-ui'
 import Archive from 'lucide-vue-next/dist/esm/icons/archive.js'
 import Settings2 from 'lucide-vue-next/dist/esm/icons/settings-2.js'
 import { translate } from './i18n'
@@ -15,13 +15,11 @@ const label = () =>
 </script>
 
 <template>
-  <span
-    v-if="model.context.scope === 'conversation'"
+  <TooltipHint v-if="model.context.scope === 'conversation'" :label="label()"><span
     class="booster-chat-save-marker"
     :class="{ 'is-enabled': model.effectiveEnabled, 'is-work': model.workConversation }"
-    :title="label()"
     aria-hidden="true"
-  />
+  /></TooltipHint>
 
   <FloatingInfoPopover v-else mode="click" :label="label()">
     <template #trigger>

@@ -81,6 +81,6 @@ const selectedKeys = computed(
 
 <template>
   <div class="booster-archive-flow-graph" @keydown.esc.stop="emit('close')">
-    <ArchiveTimeline :nodes="nodes" :active-id="activeKey" :selected-ids="selectedKeys" :disabled="disabled" :loading="loading" :label="locale === 'ru' ? 'Сообщение на таймлайне' : 'Message on timeline'" :empty-label="locale === 'ru' ? 'Нет сообщений' : 'No messages'" :uncertain-label="locale === 'ru' ? 'Неподтверждённая связь' : 'Unverified relationship'" @navigate="emit('navigate', $event)" />
+    <ArchiveTimeline compact commit-only :nodes="nodes" :active-id="activeKey" :selected-ids="selectedKeys" :disabled="disabled" :loading="loading" :label="locale === 'ru' ? 'Сообщение на таймлайне' : 'Message on timeline'" :empty-label="locale === 'ru' ? 'Нет сообщений' : 'No messages'" :uncertain-label="locale === 'ru' ? 'Неподтверждённая связь' : 'Unverified relationship'" @navigate="emit('navigate', $event)" />
   </div>
 </template>

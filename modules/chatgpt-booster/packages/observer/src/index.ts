@@ -64,6 +64,7 @@ interface ArchiveReadContext {
   accountEpoch: number
 }
 const archiveReads = new Map<string, { readId: string; readStartedAt: number }>()
+const archiveCursorReads = new Map<string, { readId: string; readStartedAt: number }>()
 const bufferedInitialPages = new Map<string, ConversationArchiveEventDetail>()
 
 function pageConversationId(pathname = location.pathname): string | undefined {
@@ -107,8 +108,13 @@ function beginArchiveRequest(
     typeof location === 'undefined' ? 'https://chatgpt.com/' : location.href,
   )
   const isInitial = !url.pathname.endsWith('/messages')
+  const requestedBefore = url.searchParams.get('before')
   if (isInitial) archiveReads.set(id, { readId: requestId, readStartedAt: Date.now() })
-  const read = archiveReads.get(id) ?? { readId: requestId, readStartedAt: Date.now() }
+  const cursorRead =
+    requestedBefore && !isInitial
+      ? archiveCursorReads.get(JSON.stringify([id, requestedBefore]))
+      : undefined
+  const read = cursorRead ?? archiveReads.get(id) ?? { readId: requestId, readStartedAt: Date.now() }
   if (archiveReads.size > 128) {
     const oldest = archiveReads.keys().next().value
     if (oldest) {
@@ -119,7 +125,7 @@ function beginArchiveRequest(
   return {
     ...read,
     isInitial,
-    requestedBefore: url.searchParams.get('before'),
+    requestedBefore,
     accountId,
     accountEpoch,
   }
@@ -834,10 +840,7 @@ function observeConversationCatalogResponse(
 }
 
 function isArchiveObservedUrl(sourceUrl: string) {
-  return (
-    sourceUrl.includes('/backend-api/conversations/') ||
-    sourceUrl.includes('/backend-api/files/download/')
-  )
+  return conversationHistoryId(sourceUrl) !== undefined || archiveFileResolverId(sourceUrl) !== undefined
 }
 
 function archiveNetwork(id: string, sourceUrl: string, phase: string, status?: number) {
@@ -1408,6 +1411,19 @@ function observeConversationArchiveResponse(
         conversationId,
         payload,
       } satisfies ConversationArchiveEventDetail
+      const pageInfo = requestPayload(payload.page_info)
+      if (pageInfo?.has_previous_page === true && typeof pageInfo.start_cursor === 'string') {
+        const key = JSON.stringify([conversationId, pageInfo.start_cursor])
+        const prior = archiveCursorReads.get(key)
+        if (!prior || prior.readStartedAt <= read.readStartedAt) {
+          archiveCursorReads.delete(key)
+          archiveCursorReads.set(key, { readId: read.readId, readStartedAt: read.readStartedAt })
+          if (archiveCursorReads.size > 512) {
+            const oldest = archiveCursorReads.keys().next().value
+            if (oldest) archiveCursorReads.delete(oldest)
+          }
+        }
+      }
       // Keep a small per-chat initial-page buffer. ChatGPT can resolve a prefetched initial
       // request just before SPA navigation commits the new /c/{id} URL. We still publish only
       // when that conversation is actually current, so sidebar/background prefetches stay inert.
@@ -1545,6 +1561,7 @@ export function installTransportObserver(
   let nativeRegistrySelectedId: string | null = null
   let selectedAccountId: string | null = null
   let confirmedCatalogAccountId: string | null = null
+  let hydratedCatalog = false
   let emittedAccountId: string | null = null
   let accountEpoch = 0
   const activeRuns = new Map<string, { id: string; at: number }>()
@@ -1560,6 +1577,7 @@ export function installTransportObserver(
     // Cached request pages from a prior account must never be replayed as
     // belonging to the new selected account.
     archiveReads.clear()
+    archiveCursorReads.clear()
     activeRuns.clear()
     nativeStreamRuns.clear()
     archiveProjects.clear()
@@ -1632,6 +1650,7 @@ export function installTransportObserver(
     if (method.toUpperCase() !== 'GET' || !isConversationCatalogUrl(sourceUrl)) return
     if ((headerValue?.trim() || null) !== selectedAccountId) return
     confirmedCatalogAccountId = selectedAccountId
+    hydratedCatalog = false
     const confirmed =
       selectedAccountId &&
       verifiedAccountIds.has(selectedAccountId) &&
@@ -1643,6 +1662,14 @@ export function installTransportObserver(
 
   const unregisterNativeAccount = registerNativeAccountConsumer(target, {
     begin: () => ({ selected: selectedAccountId, serial: accountSelectionSerial }),
+    invalidateHydratedCatalog() {
+      if (!hydratedCatalog) return
+      hydratedCatalog = false
+      selectedAccountId = confirmedCatalogAccountId = nativeRegistrySelectedId = null
+      verifiedAccountIds.clear()
+      accountSelectionSerial++
+      publishAccount(null, Date.now())
+    },
     accept(registry, ticket) {
       if (!observerActive) return
       const started = ticket as { selected: string | null; serial: number }
@@ -1656,6 +1683,14 @@ export function installTransportObserver(
       if (selectedAccountId !== null && selectedAccountId !== registry.selectedAccountId) return
       verifiedAccountIds = new Set(registry.accountIds)
       nativeRegistrySelectedId = registry.selectedAccountId
+      if (
+        confirmedCatalogAccountId === null &&
+        registry.hydratedCatalogAccountId === registry.selectedAccountId
+      ) {
+        hydratedCatalog = true
+        if (selectedAccountId === null) accountSelectionSerial++
+        selectedAccountId = confirmedCatalogAccountId = registry.selectedAccountId
+      }
       publishAccount(
         confirmedCatalogAccountId === registry.selectedAccountId &&
           selectedAccountId === registry.selectedAccountId &&
@@ -1846,6 +1881,7 @@ export function installTransportObserver(
             selectedAccountId = candidate
             accountSelectionSerial++
             confirmedCatalogAccountId = null
+            hydratedCatalog = false
             if (emittedAccountId === null) accountEpoch += 1
             publishAccount(null, requestBoundaryAt)
           }

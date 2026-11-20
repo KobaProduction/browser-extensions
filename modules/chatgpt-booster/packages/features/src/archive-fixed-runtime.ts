@@ -646,19 +646,10 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
       return
     }
     if (!store) return
-    const info = page.payload.page_info as Record<string, unknown> | undefined
     await store.recordPageEvidence(
       page.conversationId,
       {
-        readId: page.readId,
-        readStartedAt: page.readStartedAt,
-        isInitial: page.isInitial,
-        requestedBefore: page.requestedBefore,
-        startCursor: typeof info?.start_cursor === 'string' ? info.start_cursor : null,
-        endCursor: typeof info?.end_cursor === 'string' ? info.end_cursor : null,
-        hasPreviousPage: typeof info?.has_previous_page === 'boolean' ? info.has_previous_page : null,
-        hasNextPage: typeof info?.has_next_page === 'boolean' ? info.has_next_page : null,
-        observedAt: page.timestamp,
+        ...nativePageEvidence(page),
         captureRun: manual && session ? JSON.stringify([session.id, session.startedAt]) : undefined,
       },
       typeof page.payload.current_node === 'string' ? page.payload.current_node : null,
@@ -877,7 +868,7 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
     }
   }
   private enqueuePage?: (page: ConversationArchiveEventDetail) => void
-  private async drainCollection(run: ArchiveCollectionRun) {
+  async drainCollection(run: ArchiveCollectionRun) {
     let pending: Promise<void>
     do {
       pending = this.pending
@@ -1509,7 +1500,6 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
     signal?: AbortSignal,
     progress?: ArchiveExportProgressListener,
   ) {
-    await this.pending
     const owner = this.state.verifiedAccountId(),
       epoch = this.state.accountEpoch()
     if (!owner) throw Error('Verified owner required')

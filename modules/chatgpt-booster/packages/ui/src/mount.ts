@@ -5,7 +5,6 @@ import type {
   ArchiveExportOutcome,
   ArchiveExportProgressListener,
   ArchiveExportReadiness,
-  ArchiveMessageLocation,
   ArchiveThreadView,
   ArchiveWindowRequest,
   DiagnosticsAdapter,
@@ -61,6 +60,8 @@ export interface ArchiveMessageView {
 export interface ArchiveCoverageView {
   exhaustedAt?: number | null
   integrity?: import('@kobaproduction/browser-archive').ArchiveConversationIntegrity
+  readerIntegrity?: import('@kobaproduction/browser-archive').ArchiveConversationIntegrity
+  serviceIssues?: import('@kobaproduction/browser-archive').ArchiveConversationIntegrity['issues']
   evidenceVersion?: number
   verifiedAt?: number | null
   historyPageCount?: number
@@ -101,25 +102,6 @@ export interface ArchiveThreadWindow {
   unsequencedTarget?: boolean
 }
 
-/** Lightweight source facts. Neither endpoint is automatically a verified branch root. */
-export interface ArchiveExportPreviewMessage {
-  location?: ArchiveMessageLocation
-  messageId: string
-  role: string | null
-  text: string
-}
-export interface ArchiveExportPreview {
-  earliest: ArchiveExportPreviewMessage[]
-  latest: ArchiveExportPreviewMessage[]
-  hiddenKnownCount: number
-  knownCount: number
-  hasUnsequencedMessages: boolean
-  selectedTipId: string | null
-  sourcePageContinuity: 'verified' | 'partial' | 'unknown'
-  captureCoverage: 'complete' | 'omitted' | 'unknown'
-  latestHeadMatches: boolean | null
-}
-
 /** Read-only source evidence; original ChatGPT owner identifiers are not returned. */
 export interface ArchiveSkippedOwnerEntry {
   conversationId: string
@@ -153,6 +135,7 @@ export interface ArchiveDataAdapter {
   liveSavedUpdates?: boolean
   getCurrentContext(): Promise<ArchiveCurrentContext>
   currentConversationId(): string | null
+  currentConversationDisplay?(): { id: string; title: string | null } | null
   currentProjectId(): string | null
   currentAccountId?(): string | null
   hasIncompatibleSource?(conversationId: string): boolean
@@ -315,7 +298,6 @@ export interface ArchiveDataAdapter {
     conversationId: string,
     request?: ArchiveWindowRequest,
   ): Promise<ArchiveCoverageView | undefined>
-  getExportPreview?(conversationId: string): Promise<ArchiveExportPreview>
   /** Passive saved-copy diagnostics; selected ancestry is still verified at Prepare. */
   getExportReadiness?(
     conversationId: string,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Button } from '@kobaproduction/browser-ui'
+import { Button, TooltipHint } from '@kobaproduction/browser-ui'
 import Check from 'lucide-vue-next/dist/esm/icons/check.js'
 import Copy from 'lucide-vue-next/dist/esm/icons/copy.js'
 import { onBeforeUnmount, ref } from 'vue'
@@ -40,10 +40,10 @@ onBeforeUnmount(() => clearTimeout(timer))
 </script>
 <template>
   <span class="booster-identity">
-    <span class="booster-identity-label" :title="label">{{ label }}</span>
-    <Button v-if="identifier" variant="ghost" size="icon" type="button" class="size-6 shrink-0" :aria-label="translate(locale, `identity.${state}`)" :title="translate(locale, `identity.${state}`)" @click.stop.prevent="copy">
+    <TooltipHint v-if="label" :label="label"><span class="booster-identity-label">{{ label }}</span></TooltipHint>
+    <TooltipHint v-if="identifier" :label="translate(locale, `identity.${state}`)"><Button variant="ghost" size="icon" type="button" class="size-6 shrink-0" :aria-label="translate(locale, `identity.${state}`)" @click.stop.prevent="copy">
       <Check v-if="state === 'copied'" class="size-3" /><Copy v-else class="size-3" />
-    </Button>
+    </Button></TooltipHint>
     <span v-if="state !== 'copy'" class="booster-sr-only" role="status">{{ translate(locale, `identity.${state}`) }}</span>
   </span>
 </template>

@@ -132,7 +132,7 @@ async function run(kind: 'reconnect' | 'retry') {
 </script>
 
 <template>
-  <Card class="min-w-0"><CardHeader class="p-4 pb-3"><CardTitle class="text-base">{{ text('Доставка') }}</CardTitle><CardDescription>{{ text('Получение пакетов подтверждает сервер. Локальный архив хранится по своим настройкам.') }}</CardDescription></CardHeader><CardContent class="space-y-3 p-4 pt-0" :aria-busy="operation !== null">
+  <Card class="min-w-0"><CardHeader compact><CardTitle class="text-base">{{ text('Доставка') }}</CardTitle><CardDescription>{{ text('Получение пакетов подтверждает сервер. Локальный архив хранится по своим настройкам.') }}</CardDescription></CardHeader><CardContent compact class="space-y-3" :aria-busy="operation !== null">
     <Alert v-if="configuration.enabled && configuration.mode === 'remote-only'"><AlertDescription>{{ text('Новые сообщения не сохраняются локально. Очередь остаётся в памяти страницы и теряется при её закрытии.') }}</AlertDescription></Alert>
     <p v-else-if="configuration.enabled && configuration.mode === 'local-and-remote'" class="text-xs leading-5 text-muted-foreground">{{ text('Неотправленные пакеты остаются локально до подтверждения сервера.') }}</p>
     <p v-else class="text-xs leading-5 text-muted-foreground">{{ text('Внешняя доставка выключена.') }}</p>

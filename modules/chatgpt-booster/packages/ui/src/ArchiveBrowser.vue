@@ -11,11 +11,6 @@ import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
   Input,
   Label,
   Popover,
@@ -27,31 +22,34 @@ import {
   SelectTrigger,
   SelectValue,
   Skeleton,
+  TooltipHint,
 } from '@kobaproduction/browser-ui'
 import {
   ArchiveConversationList,
   ArchiveIntegrityDetails,
   ArchiveIntegrityIndicator,
+  ArchiveReaderNavigation,
   ArchiveReadingSurface,
   ArchiveRecordList,
   ConversationCollectionAction,
   createArchiveReadingScroll,
 } from '@kobaproduction/browser-widgets'
 import ArrowLeft from 'lucide-vue-next/dist/esm/icons/arrow-left.js'
-import Brain from 'lucide-vue-next/dist/esm/icons/brain.js'
 import Database from 'lucide-vue-next/dist/esm/icons/database.js'
 import Download from 'lucide-vue-next/dist/esm/icons/download.js'
 import MoreHorizontal from 'lucide-vue-next/dist/esm/icons/ellipsis.js'
-import GitBranch from 'lucide-vue-next/dist/esm/icons/git-branch.js'
 import GripHorizontal from 'lucide-vue-next/dist/esm/icons/grip-horizontal.js'
 import Info from 'lucide-vue-next/dist/esm/icons/info.js'
+import ListTree from 'lucide-vue-next/dist/esm/icons/list-tree.js'
 import LoaderCircle from 'lucide-vue-next/dist/esm/icons/loader-circle.js'
 import Minus from 'lucide-vue-next/dist/esm/icons/minus.js'
 import RefreshCw from 'lucide-vue-next/dist/esm/icons/refresh-cw.js'
 import Search from 'lucide-vue-next/dist/esm/icons/search.js'
 import X from 'lucide-vue-next/dist/esm/icons/x.js'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import ArchiveFlowGraph from './ArchiveFlowGraph.vue'
+import type ArchiveReaderActions from './ArchiveReaderActions.vue'
+import ArchiveReaderDialog from './ArchiveReaderDialog.vue'
 import ArchiveRecord from './ArchiveRecord.vue'
 import {
   ARCHIVE_INITIAL_TURNS,
@@ -99,6 +97,7 @@ const conversations = ref<ArchiveConversationView[]>([])
 const accountPending = ref(!props.archiveAdapter.currentAccountId?.())
 const projects = ref<ArchiveProjectView[]>([])
 const selectedId = ref<string | null>(props.initialConversationId ?? null)
+const siteDisplay = shallowRef(props.archiveAdapter.currentConversationDisplay?.())
 const thread = ref<ArchiveThreadView>({ turns: [], messageCount: 0, recordCount: 0, detailCount: 0 })
 const coverage = ref<ArchiveCoverageView>()
 const coverageLoading = ref(false)
@@ -109,8 +108,6 @@ const error = ref(false)
 const staleSavedWindow = ref(false)
 const navigationError = ref<TranslationKey | null>(null)
 const requestedMessageId = ref<string | null>(null)
-const messageLookup = ref('')
-const messageLookupOpen = ref(false)
 const readSource = ref<'auto' | 'live' | 'saved'>('auto')
 const readAccountId = ref<string | null>(null)
 const readRevision = ref<number | null>(null)
@@ -120,28 +117,20 @@ const requestedLocation = ref<ArchiveMessageLocation | null>(null)
 let windowController: AbortController | undefined
 let sourceUnsubscribe: (() => void) | undefined
 let interruptedLoad = false
-const mobileList = ref(!props.initialConversationId)
+const showingList = computed(() => selectedId.value === null)
 const search = ref('')
 const textSearch = ref('')
 const visibleCount = ref(ARCHIVE_INITIAL_TURNS)
 const readingOrder = ref<ArchiveReadingOrder>('chronological')
 const searchOpen = ref(false)
 const toolsOpen = ref(false)
-const toolsPage = ref<'main' | 'display' | 'advanced'>('main')
-watch(toolsOpen, (open) => {
-  if (open) toolsPage.value = 'main'
-})
-function openToolsPage(page: 'main' | 'display' | 'advanced', event: Event) {
-  const panel = (event.currentTarget as HTMLElement).closest('.booster-reader-action-menu')
-  toolsPage.value = page
-  void nextTick(() => panel?.querySelector<HTMLButtonElement>('button')?.focus())
-}
 const historyOpen = ref(false)
-const historyToggle = ref<{ $el: HTMLElement } | null>(null)
+const readerActions = ref<InstanceType<typeof ArchiveReaderActions> | null>(null)
+const timelineToggle = ref<{ $el: HTMLElement } | null>(null)
 function closeHistory() {
   historyOpen.value = false
   void nextTick(() => {
-    const button = historyToggle.value?.$el
+    const button = timelineToggle.value?.$el
     if (button instanceof HTMLElement) button.focus({ preventScroll: true })
   })
 }
@@ -178,6 +167,7 @@ watch(
     selectedBranchIds.value = null
     inspectedVersionMessageId.value = null
     versionsOpen.value = false
+    integrityOpen.value = false
     branchRevision++
     branchLoading.value = false
     toolsOpen.value = false
@@ -277,8 +267,13 @@ const { recoveryState, recoveryError, recovering, recoverHistory, stopRecovery }
 )
 const navigationOpen = ref(false)
 const showServiceRecords = ref(false)
+let integrityTrigger: HTMLElement | undefined
+function showIntegrityFromIndicator(event: MouseEvent) {
+  integrityTrigger = event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined
+  integrityOpen.value = true
+}
 function revealReaderDetails(kind: 'integrity' | 'versions') {
-  toolsOpen.value = false
+  integrityTrigger = undefined
   integrityOpen.value = kind === 'integrity'
   const openingVersions = kind === 'versions' && !versionsOpen.value
   inspectedVersionMessageId.value = openingVersions ? focusedMessageId.value : null
@@ -292,10 +287,14 @@ function inspectMessage(id: string) {
 }
 function restoreToolsFocus(event: Event) {
   event.preventDefault()
-  void nextTick(() => {
-    const element = historyToggle.value?.$el
-    if (element instanceof HTMLElement) element.focus({ preventScroll: true })
-  })
+  void nextTick(() => readerActions.value?.focus())
+}
+function restoreIntegrityFocus(event: Event) {
+  const trigger = integrityTrigger
+  integrityTrigger = undefined
+  if (!trigger?.isConnected) return restoreToolsFocus(event)
+  event.preventDefault()
+  void nextTick(() => trigger.focus({ preventScroll: true }))
 }
 const sourceVersions = ref<Awaited<ReturnType<NonNullable<ArchiveDataAdapter['getMessageVersions']>>>>(
   [],
@@ -308,6 +307,24 @@ const workspaceState = ref({ loading: false, loaded: 0, missingParents: 0, faile
 const liveRefresh = createArchiveRefreshQueue(async () => {
   const id = selectedId.value
   if (id) await refreshLiveSaved(id)
+})
+const coverageRefresh = createArchiveRefreshQueue(async () => {
+  const id = selectedId.value
+  if (!alive || !id || props.suspended) return
+  const revision = threadRevision
+  const owner = props.archiveAdapter.currentAccountId?.()
+  try {
+    const next = await props.archiveAdapter.getCoverage(id)
+    if (
+      alive &&
+      selectedId.value === id &&
+      revision === threadRevision &&
+      owner === props.archiveAdapter.currentAccountId?.()
+    )
+      coverage.value = next
+  } catch {
+    // A later source update retries the coverage read independently of the window.
+  }
 })
 const timelineRefresh = createArchiveRefreshQueue(async () => {
   const id = selectedId.value
@@ -346,7 +363,6 @@ const hasUnsequencedRecords = ref(false)
 const readingScroll = ref<HTMLElement | null>(null)
 const activeMessageKey = ref<string | null>(null)
 const expanded = ref(new Set<string>())
-const reasoningExpanded = ref(false)
 let alive = true
 let listRevision = 0
 let threadRevision = 0
@@ -361,19 +377,19 @@ let contextUnsubscribe: (() => void) | undefined
 let contextFallbackTimer: ReturnType<typeof setInterval> | undefined
 
 const NONE = '__outside_projects__'
-const selected = computed(
-  () =>
-    conversations.value.find((conversation) => conversation.conversationId === selectedId.value) ??
-    (selectedId.value
-      ? {
-          conversationId: selectedId.value,
-          projectId: null,
-          title: null,
-          branchSourceConversationId: null,
-          branchSourceTitle: null,
-        }
-      : undefined),
-)
+const selected = computed(() => {
+  const id = selectedId.value
+  if (!id) return undefined
+  const saved = conversations.value.find((conversation) => conversation.conversationId === id)
+  const siteTitle = siteDisplay.value?.id === id ? siteDisplay.value.title : null
+  return {
+    conversationId: id,
+    projectId: saved?.projectId ?? null,
+    branchSourceConversationId: saved?.branchSourceConversationId ?? null,
+    branchSourceTitle: saved?.branchSourceTitle ?? null,
+    title: siteTitle || saved?.title?.trim() || null,
+  }
+})
 const projectLabel = (id: string | null) =>
   id
     ? projects.value.find((project) => project.projectId === id)?.title || t('identity.unknownProject')
@@ -384,7 +400,12 @@ const groups = computed(() => {
   for (const conversation of conversations.value) {
     const key = conversation.projectId ?? NONE
     const group = byProject.get(key) ?? []
-    group.push(conversation)
+    const site = siteDisplay.value
+    group.push(
+      site?.id === conversation.conversationId && site.title
+        ? { ...conversation, title: site.title }
+        : conversation,
+    )
     byProject.set(key, group)
   }
   return [...byProject].flatMap(([id, items]) => {
@@ -642,6 +663,7 @@ function bindSourceChanges(id: string) {
     updateWorkspaceState(id)
     if (props.archiveAdapter.liveSavedUpdates && selectedId.value === id) {
       variantsSourceRevision.value++
+      coverageRefresh.request()
       liveRefresh.request()
       timelineRefresh.request()
       return
@@ -688,9 +710,6 @@ async function refreshLiveSaved(id: string) {
       return
     if ('thread' in result) acceptWindow(result)
     else thread.value = result
-    const stats = await props.archiveAdapter.getCoverage(id)
-    if (!alive || selectedId.value !== id || revision !== threadRevision) return
-    coverage.value = stats
     staleSavedWindow.value = false
     await nextTick()
     if (scroller) {
@@ -741,9 +760,7 @@ async function openMessage(
   const id = location?.conversationId ?? selectedId.value
   if (!id || !messageId.trim()) return
   selectedId.value = id
-  mobileList.value = false
   requestedMessageId.value = messageId.trim()
-  messageLookup.value = messageId.trim()
   if (location) {
     requestedLocation.value = location
     readAccountId.value = location.accountId
@@ -759,9 +776,6 @@ async function openMessage(
     }
   }
   await loadThread(id, loadedEdge.value, messageId.trim())
-}
-function lookupMessage() {
-  void openMessage(messageLookup.value)
 }
 function cancelNavigation() {
   cancelWindowWork()
@@ -797,6 +811,7 @@ watch(
         void openMessage(requestedMessageId.value, requestedLocation.value ?? undefined)
       else void loadThread(selectedId.value)
     } else if (selectedId.value && props.archiveAdapter.liveSavedUpdates) {
+      coverageRefresh.request()
       liveRefresh.request()
     }
   },
@@ -1056,7 +1071,6 @@ watch(
     readInstanceId.value = null
     selectedId.value = next
     textSearch.value = ''
-    mobileList.value = false
     void loadThread(next)
   },
 )
@@ -1164,14 +1178,6 @@ function returnToFirstKnown() {
   readInstanceId.value = null
   void loadThread(selectedId.value, 'first')
 }
-function returnToMiddle() {
-  if (!selectedId.value || !props.archiveAdapter.getPositionWindow) return
-  textSearch.value = ''
-  requestedLocation.value = null
-  readRevision.value = null
-  readInstanceId.value = null
-  void loadThread(selectedId.value, 'middle')
-}
 function select(id: string) {
   requestedLocation.value = null
   readSource.value = 'auto'
@@ -1180,9 +1186,23 @@ function select(id: string) {
   readInstanceId.value = null
   ++windowShiftRevision
   selectedId.value = id
-  mobileList.value = false
   textSearch.value = ''
   void loadThread(id)
+}
+function showConversationList() {
+  selectedId.value = null
+  requestedLocation.value = null
+  readSource.value = 'auto'
+  readAccountId.value = null
+  readRevision.value = null
+  readInstanceId.value = null
+  textSearch.value = ''
+  versionsOpen.value = false
+  inspectedVersionMessageId.value = null
+  threadLoading.value = false
+  sourceUnsubscribe?.()
+  sourceUnsubscribe = undefined
+  void loadThread(null)
 }
 async function refresh() {
   const revision = ++listRevision
@@ -1209,10 +1229,7 @@ async function refresh() {
         seededFromRam = true
       }
     }
-    const [cs, ps] = await Promise.all([
-      props.archiveAdapter.listConversations(),
-      props.archiveAdapter.listProjects(),
-    ])
+    const [cs, ps] = await readCatalog()
     if (!alive || revision !== listRevision) return
     if (props.archiveAdapter.currentAccountId?.() !== owner) return
     accountPending.value = false
@@ -1223,11 +1240,12 @@ async function refresh() {
         selectedId.value = props.navigationTarget.conversationId
         requestedLocation.value = props.navigationTarget
       }
-      if (!selectedId.value)
-        selectedId.value =
-          (props.initialProjectId
-            ? cs.find((chat) => chat.projectId === props.initialProjectId)?.conversationId
-            : cs[0]?.conversationId) ?? null
+      if (
+        !selectedId.value &&
+        props.initialConversationId &&
+        cs.some((chat) => chat.conversationId === props.initialConversationId)
+      )
+        selectedId.value = props.initialConversationId
       const projectId =
         props.initialProjectId ??
         cs.find((c) => c.conversationId === selectedId.value)?.projectId ??
@@ -1244,27 +1262,32 @@ async function refresh() {
     if (alive && revision === listRevision) listLoading.value = false
   }
 }
-async function refreshConversationTitles() {
-  const owner = props.archiveAdapter.currentAccountId?.()
-  const revision = listRevision
-  try {
-    const items = await props.archiveAdapter.listConversations()
-    if (alive && revision === listRevision && props.archiveAdapter.currentAccountId?.() === owner)
-      conversations.value = items
-  } catch {
-    // The current reader stays usable when catalog refresh fails.
-  }
+function readCatalog() {
+  return Promise.all([props.archiveAdapter.listConversations(), props.archiveAdapter.listProjects()])
 }
+const catalogRefresh = createArchiveRefreshQueue(async () => {
+  const owner = props.archiveAdapter.currentAccountId?.()
+  if (!owner) return
+  const revision = listRevision
+  const [items, namedProjects] = await readCatalog()
+  if (!alive || revision !== listRevision || props.archiveAdapter.currentAccountId?.() !== owner) return
+  conversations.value = items
+  projects.value = namedProjects
+})
 onMounted(async () => {
   // Capture the live context before the asynchronous archive read. Navigation
   // during the initial read must not silently become the observer baseline.
-  let current = props.archiveAdapter.currentConversationId()
-  const initialWorkspace = props.initialConversationId ?? current
+  const initialWorkspace = props.navigationTarget?.conversationId ?? props.initialConversationId
   let owner = props.archiveAdapter.currentAccountId?.() ?? null
+  let siteConversation = props.archiveAdapter.currentConversationId()
   if (initialWorkspace && owner) props.archiveAdapter.retryWorkspace?.(initialWorkspace)
   const syncContext = () => {
-    const next = props.archiveAdapter.currentConversationId()
     const nextOwner = props.archiveAdapter.currentAccountId?.() ?? null
+    const previousSiteConversation = siteConversation
+    siteConversation = props.archiveAdapter.currentConversationId()
+    const display = props.archiveAdapter.currentConversationDisplay?.()
+    if (display?.id !== siteDisplay.value?.id || display?.title !== siteDisplay.value?.title)
+      siteDisplay.value = display
     if (nextOwner !== owner) {
       owner = nextOwner
       listRevision++
@@ -1282,22 +1305,22 @@ onMounted(async () => {
       accountPending.value = nextOwner === null
       selectedId.value = null
       initialized = false
-      current = next
       if (nextOwner) void refresh().catch(() => undefined)
       return
     }
-    if (next === current) return
-    current = next
-    inspectedVersionMessageId.value = null
-    versionsOpen.value = false
-    if (!next || readSource.value === 'saved') return
-    const conversation = conversations.value.find((item) => item.conversationId === next)
-    selectedId.value = next
-    if (conversation) expanded.value = new Set([conversation.projectId ?? NONE])
-    textSearch.value = ''
-    void loadThread(next)
+    // A reader on the live chat follows navigation. An explicitly opened
+    // archive of another conversation or the archive catalog stays in place.
+    if (
+      nextOwner &&
+      previousSiteConversation &&
+      siteConversation !== previousSiteConversation &&
+      selectedId.value === previousSiteConversation
+    ) {
+      if (siteConversation) select(siteConversation)
+      else showConversationList()
+    }
   }
-  window.addEventListener(ARCHIVE_UPDATED_EVENT, refreshConversationTitles)
+  window.addEventListener(ARCHIVE_UPDATED_EVENT, catalogRefresh.request)
   // Subscribe BEFORE the initial asynchronous Reader request. Native ChatGPT
   // may confirm the account while that request is still pending.
   if (props.archiveAdapter.subscribeContextChange)
@@ -1313,6 +1336,8 @@ onBeforeUnmount(() => {
   cancelWindowWork()
   sourceUnsubscribe?.()
   liveRefresh.stop()
+  catalogRefresh.stop()
+  coverageRefresh.stop()
   timelineRefresh.stop()
   timelineRevision++
   versionRevision++
@@ -1321,30 +1346,30 @@ onBeforeUnmount(() => {
   scrollRevision++
   windowShiftRevision++
   contextUnsubscribe?.()
-  window.removeEventListener(ARCHIVE_UPDATED_EVENT, refreshConversationTitles)
+  window.removeEventListener(ARCHIVE_UPDATED_EVENT, catalogRefresh.request)
   if (readFocusFrame !== null) cancelAnimationFrame(readFocusFrame)
   if (contextFallbackTimer) clearInterval(contextFallbackTimer)
 })
 </script>
 
 <template>
-  <div class="booster-reader" :lang="locale" :class="{ 'booster-reader-list-mode': mobileList }" :data-panel-content-focus="!mobileList" :aria-busy="threadLoading || branchLoading">
-    <header v-if="windowed || mobileList || !selected" class="booster-section-header" :data-archive-drag-handle="windowed ? '' : undefined">
+  <div class="booster-reader" :lang="locale" :class="{ 'booster-reader-list-mode': showingList }" :data-panel-content-focus="!showingList" :aria-busy="threadLoading || branchLoading">
+    <header v-if="windowed || showingList || !selected" class="booster-section-header" :data-archive-drag-handle="windowed ? '' : undefined">
       <div class="booster-reader-heading">
         <GripHorizontal v-if="windowed" class="booster-archive-grip size-4" />
         <Database class="size-5" />
         <div><strong>{{ t('reader.title') }}</strong><p>{{ t('reader.readonly') }}</p></div>
       </div>
-      <Button v-if="!mobileList" variant="ghost" class="booster-mobile-back" type="button" @click="mobileList = true"><ArrowLeft class="size-4" />{{ t('reader.back') }}</Button>
+      <Button v-if="windowed && !showingList" variant="ghost" size="sm" type="button" @click="showConversationList"><ArrowLeft class="size-4" />{{ t('reader.back') }}</Button>
       <div class="booster-header-actions">
         <Popover v-if="!selected && $slots['collection-actions']">
-          <PopoverTrigger as-child><Button variant="ghost" size="icon-sm" :aria-label="locale === 'ru' ? 'Сбор и сохранение' : 'Collection and saving'"><MoreHorizontal class="size-4" /></Button></PopoverTrigger>
+          <PopoverTrigger as-child><Button variant="ghost" size="icon-sm" data-archive-collection-menu :aria-label="locale === 'ru' ? 'Сбор и сохранение' : 'Collection and saving'"><MoreHorizontal class="size-4" /></Button></PopoverTrigger>
           <PopoverContent class="booster-reader-action-menu"><slot name="collection-actions" /></PopoverContent>
         </Popover>
         <Button variant="outline" v-if="canReturnToExport" type="button" class="booster-action-secondary" @click="emit('returnExport')"><ArrowLeft class="size-4" />{{ t('reader.returnExport') }}</Button>
-        <Button variant="ghost" size="icon-sm" type="button" class="booster-icon-button" :disabled="listLoading" :title="t('reader.refresh')" :aria-label="t('reader.refresh')" @click="retryLocation"><RefreshCw class="size-4" /></Button>
-        <Button variant="ghost" size="icon-sm" v-if="windowed" type="button" class="booster-icon-button" :title="t('reader.minimize')" :aria-label="t('reader.minimize')" @click="emit('minimize')"><Minus class="size-4" /></Button>
-        <Button variant="ghost" size="icon-sm" type="button" class="booster-icon-button" :aria-label="t('reader.close')" @click="emit('close')"><X class="size-4" /></Button>
+        <TooltipHint :label="t('reader.refresh')"><Button variant="ghost" size="icon-sm" type="button" class="booster-icon-button" :disabled="listLoading" :aria-label="t('reader.refresh')" @click="retryLocation"><RefreshCw class="size-4" /></Button></TooltipHint>
+        <TooltipHint v-if="windowed" :label="t('reader.minimize')"><Button variant="ghost" size="icon-sm" type="button" class="booster-icon-button" :aria-label="t('reader.minimize')" @click="emit('minimize')"><Minus class="size-4" /></Button></TooltipHint>
+        <TooltipHint :label="t('reader.close')"><Button variant="ghost" size="icon-sm" type="button" class="booster-icon-button" :aria-label="t('reader.close')" @click="emit('close')"><X class="size-4" /></Button></TooltipHint>
       </div>
     </header>
     <p v-if="workspaceState.loading || workspaceState.failed" role="status" class="flex items-center gap-2 px-3 py-1 text-xs text-muted-foreground">
@@ -1357,7 +1382,7 @@ onBeforeUnmount(() => {
       ? 'Ожидание подтверждения аккаунта ChatGPT…'
       : 'Waiting for ChatGPT account verification…' }}</p>
     <div class="booster-reader-layout">
-      <ArchiveConversationList v-model:search="search" :groups="groups" :selected-id="selectedId"
+      <ArchiveConversationList v-show="showingList" v-model:search="search" :groups="groups" :selected-id="selectedId"
         :expanded-ids="expanded" :conversation-count="conversations.length" :loading="listLoading"
         :copy="{ search: t('reader.search'), loading: t('reader.loading'), empty: emptyArchiveMessage,
           noResults: t('reader.noResults'), untitled: t('identity.untitled'), missingBranch: t('reader.branchMissing') }"
@@ -1365,62 +1390,34 @@ onBeforeUnmount(() => {
         <template #group-action="{ group }"><CopyIdentity v-if="group.id !== NONE" label="" :identifier="group.id" :locale="locale" /></template>
       </ArchiveConversationList>
 
-      <main class="booster-reader-main">
+      <main v-show="!showingList" class="booster-reader-main">
         <div class="booster-reader-pinned">
           <template v-if="selected">
             <header class="booster-reader-chat-header">
               <div class="booster-reader-chat-identity">
-                <Button v-if="!mobileList" variant="ghost" size="icon-sm" class="booster-mobile-back" :aria-label="t('reader.back')" @click="mobileList = true"><ArrowLeft class="size-4" /></Button>
+                <Button v-if="!windowed" variant="ghost" size="icon-sm" :aria-label="t('reader.back')" @click="showConversationList"><ArrowLeft class="size-4" /></Button>
                 <h2><span v-if="selected.projectId" class="booster-reader-project-label">{{ projectLabel(selected.projectId) }} / </span><CopyIdentity :label="selected.title || t('identity.untitled')" :identifier="selected.conversationId" :locale="locale" /></h2>
                 <p v-if="selected.branchSourceConversationId" class="booster-note">
                   <CopyIdentity :label="t('reader.branch') + ': ' + (selected.branchSourceTitle || t('identity.untitled'))" :identifier="selected.branchSourceConversationId" :locale="locale" />
                 </p>
               </div>
             <div class="booster-reader-chat-actions">
-              <Button variant="ghost" size="icon-sm" :aria-label="t('reader.searchMessages')" :title="t('reader.searchMessages')" :aria-pressed="searchOpen" @click="searchOpen = !searchOpen"><Search class="size-4" /></Button>
-              <Button variant="outline" class="booster-action-secondary booster-reader-export" type="button" @click="emit('export', selected.conversationId, selected.title, selectedMessages.size ? [...selectedMessages] : selectedBranchIds ? [...selectedBranchIds] : undefined)"><Download class="size-4" />{{ selectedMessages.size ? t('reader.export') + ' · ' + selectedMessages.size : selectedBranchTip ? (locale === 'ru' ? 'Экспорт ветки' : 'Export branch') : t('reader.export') }}</Button>
+              <TooltipHint :label="t('reader.searchMessages')"><Button variant="ghost" size="icon-sm" :aria-label="t('reader.searchMessages')" :aria-pressed="searchOpen" @click="searchOpen = !searchOpen"><Search class="size-4" /></Button></TooltipHint>
+              <Button variant="outline" class="booster-action-secondary booster-reader-export" type="button" :disabled="threadLoading || knownRecordCount === 0" @click="emit('export', selected.conversationId, selected.title, selectedMessages.size ? [...selectedMessages] : selectedBranchIds ? [...selectedBranchIds] : undefined)"><Download class="size-4" />{{ selectedMessages.size ? t('reader.export') + ' · ' + selectedMessages.size : selectedBranchTip ? (locale === 'ru' ? 'Экспорт ветки' : 'Export branch') : t('reader.export') }}</Button>
 
-              <Popover v-model:open="toolsOpen">
-                <PopoverTrigger as-child><Button ref="historyToggle" variant="ghost" size="icon-sm" type="button" class="booster-reader-tools-toggle" :aria-label="locale === 'ru' ? 'Действия с архивом' : 'Archive actions'"><MoreHorizontal class="size-4" /></Button></PopoverTrigger>
-                <PopoverContent align="end" class="booster-reader-action-menu p-1" :aria-label="locale === 'ru' ? 'Действия с архивом' : 'Archive actions'">
-                  <template v-if="toolsPage === 'main'">
-                    <Button variant="ghost" size="sm" @click="navigationOpen = true; toolsOpen = false"><GitBranch class="size-4" />{{ locale === 'ru' ? 'Ветки и переходы' : 'Branches and navigation' }}</Button>
-                    <Button variant="ghost" size="sm" :aria-pressed="selectionEnabled" @click="selectionEnabled = !selectionEnabled; toolsOpen = false"><GripHorizontal class="size-4" />{{ selectionEnabled ? (locale === 'ru' ? 'Завершить выбор' : 'Finish selecting') : (locale === 'ru' ? 'Выбрать сообщения' : 'Select messages') }}</Button>
-                    <template v-if="selectionEnabled">
-                      <Button v-if="archiveAdapter.getRangeMessageIds && focusedMessageId" variant="ghost" size="sm" :disabled="rangeLoading" @click="rangeStart = focusedMessageId; rangeEnd = null; toolsOpen = false">{{ locale === 'ru' ? 'Начать диапазон здесь' : 'Start range here' }}</Button>
-                      <Button v-if="rangeStart" variant="ghost" size="sm" :disabled="rangeLoading || !focusedMessageId" @click="endRange(); toolsOpen = false">{{ locale === 'ru' ? 'Закончить диапазон здесь' : 'End range here' }}</Button>
-                    </template>
-                    <div v-if="$slots['collection-actions']" class="booster-reader-menu-group"><slot name="collection-actions" /></div>
-                    <div class="booster-reader-menu-group">
-                      <Button variant="ghost" size="sm" @click="openToolsPage('display', $event)"><Brain class="size-4" />{{ locale === 'ru' ? 'Отображение' : 'Display' }}<span class="ms-auto" aria-hidden="true">›</span></Button>
-                      <Button variant="ghost" size="sm" @click="openToolsPage('advanced', $event)"><Info class="size-4" />{{ locale === 'ru' ? 'Диагностика' : 'Diagnostics' }}<span class="ms-auto" aria-hidden="true">›</span></Button>
-                    </div>
-                  </template>
-                  <template v-else>
-                    <Button variant="ghost" size="sm" @click="openToolsPage('main', $event)"><ArrowLeft class="size-4" />{{ locale === 'ru' ? 'Назад' : 'Back' }}</Button>
-                    <p class="px-2 py-1 text-xs text-muted-foreground">{{ toolsPage === 'display' ? (locale === 'ru' ? 'Отображение' : 'Display') : (locale === 'ru' ? 'Диагностика' : 'Diagnostics') }}</p>
-                    <template v-if="toolsPage === 'display'">
-                      <Button v-if="timelineNodes.length || navigationNodes.length" variant="ghost" size="sm" :aria-pressed="historyOpen" @click="historyOpen = !historyOpen; toolsOpen = false"><GitBranch class="size-4" />{{ historyOpen ? (locale === 'ru' ? 'Скрыть таймлайн' : 'Hide timeline') : (locale === 'ru' ? 'Показать таймлайн' : 'Show timeline') }}</Button>
-                      <Button variant="ghost" size="sm" @click="reasoningExpanded = !reasoningExpanded; toolsOpen = false"><Brain class="size-4" />{{ t(reasoningExpanded ? 'reader.collapseReasoning' : 'reader.expandReasoning') }}</Button>
-                      <Button variant="ghost" size="sm" :aria-pressed="showServiceRecords" @click="showServiceRecords = !showServiceRecords; toolsOpen = false"><Database class="size-4" />{{ showServiceRecords ? (locale === 'ru' ? 'Скрыть служебные записи' : 'Hide service records') : (locale === 'ru' ? 'Показать служебные записи' : 'Show service records') }}</Button>
-                    </template>
-                    <template v-else>
-                      <Button v-if="coverage?.integrity" variant="ghost" size="sm" @click="revealReaderDetails('integrity')"><Info class="size-4" />{{ locale === 'ru' ? 'Проверить целостность' : 'Check integrity' }}</Button>
-                      <Button v-if="archiveAdapter.getMessageVersions && versionMessageId" variant="ghost" size="sm" @click="revealReaderDetails('versions')"><GitBranch class="size-4" />{{ locale === 'ru' ? 'Версии сообщения' : 'Message versions' }} · {{ sourceVersions.length }}</Button>
-                      <Button v-if="archiveAdapter.getMessageWindow" variant="ghost" size="sm" @click="messageLookupOpen = !messageLookupOpen; toolsOpen = false"><Search class="size-4" />{{ t('reader.jumpMessage') }}</Button>
-                    </template>
-                  </template>
-                </PopoverContent>
-              </Popover>
+              <ArchiveReaderActions ref="readerActions" v-model:open="toolsOpen" v-model:service-records="showServiceRecords"
+                :locale="locale" :has-branches="Boolean(storedBranches.length)"
+                :selection-enabled="selectionEnabled" :can-start-range="Boolean(archiveAdapter.getRangeMessageIds && focusedMessageId)"
+                :has-range-start="Boolean(rangeStart)" :can-end-range="Boolean(focusedMessageId)" :range-loading="rangeLoading"
+                :has-integrity="Boolean(coverage?.integrity)" :version-count="archiveAdapter.getMessageVersions && versionMessageId ? sourceVersions.length : null"
+                @branches="navigationOpen = true" @toggle-selection="selectionEnabled = !selectionEnabled"
+                @start-range="rangeStart = focusedMessageId; rangeEnd = null" @end-range="endRange"
+                @details="revealReaderDetails">
+                <template v-if="$slots['collection-actions']" #default><slot name="collection-actions" /></template>
+              </ArchiveReaderActions>
             </div>
             </header>
             <p v-if="rangeStart" class="text-xs text-muted-foreground">{{ locale === 'ru' ? 'Диапазон сохранённых записей' : 'Saved record range' }}: {{ rangeStart.slice(0, 12) }} → {{ rangeEnd?.slice(0, 12) || '…' }}<span v-if="rangeEnd"> · {{ selectedMessages.size }}</span></p>
-            <div v-if="archiveAdapter.getMessageWindow && messageLookupOpen" class="booster-reader-message-jump">
-              <form @submit.prevent="showServiceRecords = true; lookupMessage()">
-                <Input v-model="messageLookup" type="text" maxlength="1024" :aria-label="t('reader.messageId')" :placeholder="t('reader.messageId')"  />
-                <Button variant="outline" type="submit" class="booster-action-secondary" :disabled="threadLoading || !messageLookup.trim()">{{ t('reader.openMessage') }}</Button>
-              </form>
-            </div>
             <div v-if="searchOpen" class="booster-reader-find">
               <Input v-model="textSearch" type="search" :placeholder="t('reader.searchMessages')" :aria-label="t('reader.searchMessages')"  />
               <p v-if="usingIndexedWindows && (hasOlderStored || hasNewerStored || knownStoredCount > thread.recordCount)" class="booster-note">{{ t('reader.windowSearchOnly') }}</p>
@@ -1428,8 +1425,19 @@ onBeforeUnmount(() => {
             <div class="booster-reader-summary">
               <span>{{ locale === 'ru' ? 'Всего записей' : 'Total records' }}: {{ knownRecordCount }}</span>
               <span v-if="usingIndexedWindows && thread.recordCount < knownRecordCount">{{ locale === 'ru' ? 'В окне' : 'In window' }}: {{ thread.recordCount }}</span>
-              <ArchiveIntegrityIndicator :integrity="coverage?.integrity" :complete="coverage?.completeAtLastRead" :has-older-history="coverage?.hasOlderServerHistory" :loading="coverageLoading || workspaceState.loading" :error="coverageError" :locale="locale" @details="integrityOpen = true" />
+              <ArchiveIntegrityIndicator :integrity="coverage?.readerIntegrity ?? coverage?.integrity" :complete="coverage?.completeAtLastRead" :has-older-history="coverage?.hasOlderServerHistory" :loading="coverageLoading || workspaceState.loading" :error="coverageError" :locale="locale" @details="showIntegrityFromIndicator" />
               <Button v-if="selectedBranchTip" variant="ghost" size="sm" class="h-7 px-1 text-xs" @click="releaseBranchFilter()">{{ locale === 'ru' ? 'Выбрана ветка · показать все' : 'Branch selected · show all' }}</Button>
+              <div class="booster-reader-position-actions" role="group" :aria-label="locale === 'ru' ? 'Навигация по архиву' : 'Archive navigation'">
+                <ArchiveReaderNavigation vertical
+                  :first-label="locale === 'ru' ? 'К началу' : 'First'"
+                  :last-label="locale === 'ru' ? 'К концу' : 'Latest'"
+                  :first-hint="locale === 'ru' ? 'К первому сохранённому сообщению' : 'First saved message'"
+                  :last-hint="locale === 'ru' ? 'К последнему сохранённому сообщению' : 'Last saved message'"
+                  :disabled="threadLoading || loadingOlder" @first="returnToFirstKnown" @last="returnToLatest" />
+                <TooltipHint v-if="timelineNodes.length || navigationNodes.length" :label="historyOpen ? (locale === 'ru' ? 'Скрыть таймлайн' : 'Hide timeline') : (locale === 'ru' ? 'Показать таймлайн' : 'Show timeline')">
+                  <Button ref="timelineToggle" type="button" :variant="historyOpen ? 'secondary' : 'ghost'" size="icon-sm" class="size-7" :aria-label="locale === 'ru' ? 'Таймлайн' : 'Timeline'" :aria-pressed="historyOpen" @click="historyOpen = !historyOpen"><ListTree class="size-4" /></Button>
+                </TooltipHint>
+              </div>
             </div>
           </template>
         </div>
@@ -1440,7 +1448,7 @@ onBeforeUnmount(() => {
         </p>
         <p v-if="navigationError" role="alert" class="booster-error">{{ t(navigationError) }}</p>
         <p v-if="error" role="alert" class="booster-error">{{ t('reader.error') }}</p>
-        <ArchiveReadingSurface class="booster-reader-reading-surface" :class="{ 'booster-reader-timeline-open': historyOpen }" :timeline-visible="Boolean(historyOpen && selected && (timelineNodes.length || navigationNodes.length))">
+        <ArchiveReadingSurface compact-timeline :timeline-visible="Boolean(historyOpen && selected && (timelineNodes.length || navigationNodes.length))">
           <template #status><div v-if="loadingOlder" class="booster-reader-older-loading" role="status" aria-live="polite"><LoaderCircle class="size-4 booster-reader-spinner" />{{ t(loadingDirection === 'newer' ? 'reader.loadingNewer' : 'reader.loadingEarlier') }} · {{ displayedTurns.length }}/{{ filteredTurns.length }}</div></template>
           <template #timeline><ArchiveFlowGraph v-if="selected"
             :key="selectedId ?? ''" :thread="thread" :locale="locale" :active-key="activeMessageKey"
@@ -1451,24 +1459,24 @@ onBeforeUnmount(() => {
             <div v-if="threadLoading" role="status" class="space-y-4 p-4" :aria-label="t('reader.loading')"><div class="flex items-center justify-between gap-2"><span class="text-sm text-muted-foreground">{{ t('reader.loading') }}</span><Button variant="outline" type="button" @click="cancelNavigation">{{ t('reader.cancelNavigation') }}</Button></div><div v-for="index in 3" :key="index" class="space-y-2"><Skeleton class="h-4 w-1/3" /><Skeleton class="h-24 w-full" /><Skeleton class="h-4 w-2/3" /></div></div>
             <template v-else-if="selected">
               <div class="booster-reader-exchanges">
-                <p v-if="!filteredTurns.length" class="booster-note">{{ t('reader.noResults') }}</p>
+                <p v-if="!filteredTurns.length && !error && !navigationError" class="booster-note">{{ t(textSearch.trim() ? 'reader.noResults' : thread.recordCount ? 'reader.noVisibleRecords' : 'reader.emptyConversation') }}</p>
                 <article v-for="turn in displayedTurns" :key="turn.id" class="booster-exchange">
                   <p v-if="turn.association === 'unassigned'" class="booster-note">{{ t('reader.unassigned') }}</p>
                   <p v-else-if="turn.association === 'adjacency'" class="booster-note">{{ t('reader.adjacency') }}</p>
                   <ArchiveRecordList :records="turn.messages.filter(i => i.kind === 'user')" :record-key="itemKey" :message-id="itemMessageId" :target-message-id="requestedMessageId"
                     :selectable="selectionEnabled" :selected-ids="selectedMessages" :selection-label="itemSelectionLabel" @select="selectMessage">
-                    <template #record="{ record }"><ArchiveRecord :item="record" :locale="locale" :expand-reasoning="reasoningExpanded" :focused="requestedMessageId === record.record.messageId" /></template>
+                    <template #record="{ record }"><ArchiveRecord :item="record" :locale="locale" :focused="requestedMessageId === record.record.messageId" /></template>
                   </ArchiveRecordList>
                   <Collapsible v-if="turn.details.length" class="booster-exchange-details">
                     <CollapsibleTrigger as-child><Button variant="ghost" size="sm" class="text-xs text-muted-foreground">{{ showServiceRecords ? t('reader.details') : (locale === 'ru' ? 'Действия ассистента' : 'Assistant activity') }} · {{ turn.details.length }}</Button></CollapsibleTrigger><CollapsibleContent>
                     <ArchiveRecordList :records="turn.details" :record-key="itemKey" :message-id="itemMessageId" :target-message-id="requestedMessageId"
                     :selectable="selectionEnabled" :selected-ids="selectedMessages" :selection-label="itemSelectionLabel" @select="selectMessage">
-                    <template #record="{ record }"><ArchiveRecord :item="record" :locale="locale" :expand-reasoning="reasoningExpanded" :focused="requestedMessageId === record.record.messageId" /></template>
+                    <template #record="{ record }"><ArchiveRecord :item="record" :locale="locale" :focused="requestedMessageId === record.record.messageId" /></template>
                   </ArchiveRecordList>
                   </CollapsibleContent></Collapsible>
                   <ArchiveRecordList :records="turn.messages.filter(i => i.kind !== 'user')" :record-key="itemKey" :message-id="itemMessageId" :target-message-id="requestedMessageId"
                     :selectable="selectionEnabled" :selected-ids="selectedMessages" :selection-label="itemSelectionLabel" @select="selectMessage">
-                    <template #record="{ record }"><ArchiveRecord :item="record" :locale="locale" :expand-reasoning="reasoningExpanded" :focused="requestedMessageId === record.record.messageId" /></template>
+                    <template #record="{ record }"><ArchiveRecord :item="record" :locale="locale" :focused="requestedMessageId === record.record.messageId" /></template>
                   </ArchiveRecordList>
                 </article>
               </div>
@@ -1479,27 +1487,21 @@ onBeforeUnmount(() => {
       </main>
     </div>
 
-    <Dialog v-model:open="navigationOpen"><DialogContent @close-auto-focus="restoreToolsFocus" class="w-[calc(100vw-24px)] max-h-[85dvh] overflow-y-auto"><DialogHeader><DialogTitle>{{ locale === 'ru' ? 'Ветки и переходы' : 'Branches and navigation' }}</DialogTitle><DialogDescription>{{ locale === 'ru' ? 'Переходите по сохранённой переписке или выберите другую ветку.' : 'Navigate saved messages or choose another branch.' }}</DialogDescription></DialogHeader>
-      <div class="flex flex-wrap gap-2" role="toolbar" :aria-label="locale === 'ru' ? 'Навигация по сохранённому архиву' : 'Saved archive navigation'">
-        <Button variant="outline" size="sm" :disabled="threadLoading || loadingOlder" @click="returnToFirstKnown(); navigationOpen = false">{{ locale === 'ru' ? 'К началу' : 'First' }}</Button>
-        <Button v-if="archiveAdapter.getPositionWindow" variant="outline" size="sm" :disabled="threadLoading || loadingOlder" @click="returnToMiddle(); navigationOpen = false">{{ locale === 'ru' ? 'К середине' : 'Middle' }}</Button>
-        <Button variant="outline" size="sm" :disabled="threadLoading || loadingOlder" @click="returnToLatest(); navigationOpen = false">{{ locale === 'ru' ? 'К концу' : 'Latest' }}</Button>
-      </div>
+    <ArchiveReaderDialog v-model:open="navigationOpen" :title="t('reader.branchesTitle')" :description="t('reader.branchesDescription')" @close-auto-focus="restoreToolsFocus">
             <div v-if="coverage?.integrity && archiveAdapter.getBranchPath && storedBranches.length" class="booster-reader-branch-navigation">
               <Label class="booster-reader-path-select">{{ locale === 'ru' ? 'Ветка диалога' : 'Conversation branch' }}
                 <Select :model-value="selectedBranchTip ?? '__all__'" :disabled="branchLoading || threadLoading" @update:model-value="chooseBranch(String($event) === '__all__' ? '' : String($event)); navigationOpen = false"><SelectTrigger class="w-full min-w-0"><SelectValue /></SelectTrigger><SelectContent>
                   <SelectItem value="__all__">{{ locale === 'ru' ? 'Весь диалог' : 'Entire conversation' }}</SelectItem>
-                  <SelectItem v-for="(tipId, index) in coverage.integrity.tips" :key="tipId" :value="tipId">{{ storedBranches.length ? (locale === 'ru' ? 'Ветка' : 'Branch') : coverage.integrity.chain === 'gaps' ? (locale === 'ru' ? 'Фрагмент' : 'Fragment') : (locale === 'ru' ? 'Путь' : 'Path') }} {{ index + 1 }} {{ locale === 'ru' ? 'из' : 'of' }} {{ coverage.integrity.tips.length }} · {{ branchPreview(tipId) }}</SelectItem>
+                  <SelectItem v-for="(tipId, index) in coverage.integrity.tips" :key="tipId" :value="tipId">{{ locale === 'ru' ? 'Ветка' : 'Branch' }} {{ index + 1 }} {{ locale === 'ru' ? 'из' : 'of' }} {{ coverage.integrity.tips.length }} · {{ branchPreview(tipId) }}</SelectItem>
                 </SelectContent></Select>
               </Label>
-              <span v-if="!storedBranches.length && coverage.integrity.chain === 'gaps'" class="booster-note">{{ locale === 'ru' ? 'Связи неполны: фрагменты не означают ветвление диалога.' : 'Incomplete links: fragments do not imply conversation branches.' }}</span>
             </div>
       <p v-if="!storedBranches.length" class="text-sm text-muted-foreground">{{ locale === 'ru' ? 'В этом диалоге нет сохранённых веток.' : 'This conversation has no saved branches.' }}</p>
-    </DialogContent></Dialog>
-    <Dialog v-model:open="integrityOpen"><DialogContent @close-auto-focus="restoreToolsFocus" v-if="coverage?.integrity" class="w-[calc(100vw-24px)] max-h-[85dvh] overflow-y-auto"><DialogHeader><DialogTitle>{{ locale === 'ru' ? 'Проверка архива' : 'Archive details' }}</DialogTitle><DialogDescription>{{ locale === 'ru' ? 'Полнота сохранения, границы и связи сообщений.' : 'Saved coverage, boundaries and message relationships.' }}</DialogDescription></DialogHeader>
+    </ArchiveReaderDialog>
+    <ArchiveReaderDialog v-if="coverage?.integrity" v-model:open="integrityOpen" :title="t('reader.integrityTitle')" :description="t('reader.integrityDescription')" @close-auto-focus="restoreIntegrityFocus">
       <p v-if="coverage.exhaustedAt" class="text-sm text-muted-foreground">{{ locale === 'ru' ? 'Достигнут лимит чата. Отметка завершения сохранена и не заменяется при обновлении истории.' : 'Conversation limit reached. The terminal marker is retained across history refreshes.' }}</p>
       <p v-if="coverage.integrity.scope === 'current-native-graph'" class="text-sm text-muted-foreground">{{ locale === 'ru' ? `Проверен полный граф текущей беседы от ChatGPT. Исторических записей вне этого графа: ${coverage.integrity.retainedOutsideGraph ?? 0}. Они сохранены отдельно; их связи этим ответом не подтверждаются.` : `Verified the complete current conversation graph returned by ChatGPT. Historical records outside this graph: ${coverage.integrity.retainedOutsideGraph ?? 0}. They are retained; this response does not verify their relationships.` }}</p>
-      <ArchiveIntegrityDetails :integrity="coverage.integrity" :complete="coverage.completeAtLastRead" :locale="locale" @inspect="inspectMessage">
+      <ArchiveIntegrityDetails :integrity="coverage.readerIntegrity ?? coverage.integrity" :service-issues="coverage.serviceIssues" :complete="coverage.completeAtLastRead" :locale="locale" @inspect="inspectMessage">
         <template v-if="selectedId === archiveAdapter.currentConversationId()" #actions>
           <div class="space-y-2">
             <ConversationCollectionAction :label="locale === 'ru' ? 'Собрать историю' : 'Collect history'" :busy="recovering" :stop-label="locale === 'ru' ? 'Остановить' : 'Stop'" @start="recoverHistory" @stop="stopRecovery" />
@@ -1508,8 +1510,8 @@ onBeforeUnmount(() => {
           </div>
         </template>
       </ArchiveIntegrityDetails>
-    </DialogContent></Dialog>
-            <Dialog v-model:open="versionsOpen"><DialogContent @close-auto-focus="restoreToolsFocus" v-if="versionMessageId" class="w-[calc(100vw-24px)] max-w-2xl max-h-[85dvh] overflow-y-auto" :data-version-message="versionMessageId"><DialogHeader><DialogTitle>{{ locale === 'ru' ? 'Версии сообщения' : 'Message versions' }}</DialogTitle><DialogDescription>{{ locale === 'ru' ? 'Сохранённые варианты исходной записи.' : 'Saved variants of the original record.' }}</DialogDescription></DialogHeader>
+    </ArchiveReaderDialog>
+    <ArchiveReaderDialog v-if="versionMessageId" v-model:open="versionsOpen" :title="t('reader.versionsTitle')" :description="t('reader.versionsDescription')" :data-version-message="versionMessageId" wide @close-auto-focus="restoreToolsFocus">
               <Label>{{ locale === 'ru' ? 'Сохранённая версия сообщения' : 'Saved message version' }}
                 <Select :model-value="String(selectedVersion)" @update:model-value="selectedVersion = Number($event)"><SelectTrigger class="w-full"><SelectValue /></SelectTrigger><SelectContent>
                   <SelectItem v-for="(version, index) in sourceVersions" :key="index" :value="String(index)">{{ index + 1 }} · {{ new Date(version.observedAtMs).toLocaleString(locale) }} · {{ evidenceLabel(version.decision) }}</SelectItem>
@@ -1518,7 +1520,7 @@ onBeforeUnmount(() => {
               <p v-if="versionError" role="alert" class="booster-error">{{ locale === 'ru' ? 'Не удалось открыть версии' : 'Could not open versions' }}</p>
               <Skeleton v-if="versionsLoading" class="h-20 w-full" />
               <ArchiveRecord v-for="item in versionItems" :key="item.record.messageKey + ':' + selectedVersion" :item="item" :locale="locale" :expand-reasoning="true" :focused="true" />
-            </DialogContent></Dialog>
+    </ArchiveReaderDialog>
 
   </div>
 </template>

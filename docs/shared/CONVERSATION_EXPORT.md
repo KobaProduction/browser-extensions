@@ -40,14 +40,14 @@ endpoints reject resolution. An explicit missing selected record rejects
 export rather than silently shrinking the requested set. A deliberate subset
 remains partial even when the saved conversation has verified whole-chain proof.
 
-ChatGPT pins its header revision before initial graph/count inspection and
-checks it again after extraction and packaging. It validates scanned count,
-ascending source-ID pages and the preferred snapshot's message ID. Owner and
-cancellation checks run after asynchronous final inspection and before release
-of the prepared file. VK checks owner/peer/snapshot identity, ascending pages,
-count and its session archive revision; its outer service re-verifies the
-authenticated owner before returning. A concurrent source change rejects output.
-These checks do not create a cross-tab database lock or immutable remote snapshot.
+ChatGPT reads the header, integrity and selected records in one local read
+transaction. It validates scanned count, ascending source-ID pages and the
+preferred snapshot's message ID. The prepared file represents that saved copy
+at preparation time. Later appends or variants become available on the next
+preparation. Owner, conversation incarnation and cancellation are checked
+before release. VK checks owner/peer/snapshot identity, ascending pages, count
+and its session archive revision. Its outer service re-verifies the authenticated
+owner before returning and rejects concurrent source changes.
 
 Completeness and attachment availability remain distinct. ChatGPT's result
 requires verified chain, full saved selection and no missing requested assets;
@@ -57,8 +57,9 @@ Neither label promises a full offline archive when binary bytes were excluded.
 
 ## Source, versions and normalized context
 
-ChatGPT's primary canonical model remains version 1 and its five-table Dexie
-schema stays 1. `chatgpt-source-context.v1` is a computed sidecar for observed
+ChatGPT's primary canonical model remains version 1. The five IndexedDB tables
+and portable schema are described in the [ChatGPT archive contract](../chatgpt-booster/LIVE_ARCHIVE_CONTRACT.md#original-first-local-storage).
+`chatgpt-source-context.v1` is a computed sidecar for observed
 request/turn/model/status fields, not a storage migration. Full ordinary JSON
 preserves preferred original messages, branches and source variants. Original
 JSON stays in its familiar shape when lossless; native clone values use the
@@ -85,12 +86,12 @@ Hierarchy validation is iterative and rejects duplicate/missing/cyclic parents.
 The shared format imposes no narrower native identity-length admission limit;
 physical provider/query/backup limits remain the owning port's responsibility.
 
-New schema-1 snapshots persist this DTO in the additive `normalized` field;
-ChatGPT versions also persist their own DTO. It is the authority for local
-Reader presentation, ordinary JSON exports and normalized remote messages.
-Earlier provider projections/index rows remain compatibility caches. Raw native
-messages/events remain separate lossless companions; no full raw copy is put
-inside the DTO. `source.snapshotKey` references the existing provider snapshot,
+The DTO is the common view for Reader presentation, ordinary JSON exports and
+normalized remote messages. VK schema-1 snapshots persist it in the additive
+`normalized` field. [ChatGPT original-first storage](../chatgpt-booster/LIVE_ARCHIVE_CONTRACT.md#original-first-local-storage)
+derives the DTO from native snapshots on read and retains existing stored DTOs
+for compatibility checks. Raw native messages/events remain separate lossless
+companions. `source.snapshotKey` references the existing provider snapshot,
 and `variantIndex` is null for the preferred slot or an index in its version
 list. That reference does not itself assert whole-conversation completeness.
 
@@ -102,10 +103,9 @@ header lookup rather than guessed metadata. Malformed or unsupported DTOs
 fail explicitly while the underlying raw rows remain intact. Recovery preflight
 performs the same optional-envelope checks; legacy absence remains valid.
 
-ChatGPT capture publishes the exact stored DTO after an actual append/variant
-commit. A deduplicated observation emits no new commit DTO. Remote-only uses the
-same adapter in RAM, and normalized archive resend consumes the stored DTO or
-the same guarded legacy adapter. Raw companions require their separate local
+ChatGPT capture publishes the projection of the committed original after an
+actual append/variant commit. A deduplicated observation emits no new commit DTO.
+Remote-only and normalized archive resend use the same guarded adapter. Raw companions require their separate local
 and server consent; they are not telemetry. Full ChatGPT JSON records and
 versions, and VK source JSON chunks, carry this common normalized model beside
 their explicitly selected original representation.

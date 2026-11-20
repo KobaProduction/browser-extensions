@@ -27,6 +27,7 @@ function derived(name: string, coverage?: ArchiveCoverageView) {
     computed,
     props: { archiveAdapter: {} },
     coverage: ref(coverage),
+    options: ref({ level: 'conversation' }),
     readiness: ref(undefined),
     readinessLoading: ref(false),
     readinessDirty: ref(false),
@@ -77,8 +78,14 @@ test('unknown coverage does not become an empty or proven incomplete saved copy'
 
 test('proven gaps, verified chains and explicit older-history evidence retain distinct summaries', () => {
   expect(derived('statusKey', saved({ integrity: { ...integrity, chain: 'gaps' } }))).toBe(
-    'export.statusGaps',
+    'export.statusLinksUnknown',
   )
+  expect(
+    derived(
+      'statusKey',
+      saved({ integrity: { ...integrity, chain: 'gaps', scope: 'current-native-graph' } }),
+    ),
+  ).toBe('export.statusGaps')
   expect(derived('statusKey', saved({ integrity: { ...integrity, chain: 'verified' } }))).toBe(
     'export.statusSaved',
   )

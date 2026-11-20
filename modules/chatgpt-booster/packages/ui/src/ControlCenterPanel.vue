@@ -3,14 +3,14 @@ import type { ChatGptAutomationControl } from '@chatgpt-booster/core'
 import {
   type ArchiveCaptureContext,
   BOOSTER_VERSION,
+  CHATGPT_SETTINGS_CATEGORIES,
+  chatGptSettingsCategory,
   type DiagnosticsAdapter,
-  EMPTY_TRANSPORT_COUNTERS,
   type PersistentDiagnosticsAdapter,
   type SecretAdapter,
   type SettingsAdapter,
   type SettingsSection,
   type TelemetryControlAdapter,
-  type TransportCounters,
 } from '@chatgpt-booster/core'
 import {
   Alert,
@@ -25,28 +25,25 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SettingField,
+  SettingRow,
   SettingsCatalog,
+  SettingsGrid,
+  SettingsPane,
   Slider,
   Switch,
   useApplicationLocale,
 } from '@kobaproduction/browser-ui'
-import Activity from 'lucide-vue-next/dist/esm/icons/activity.js'
-import ArrowDownLeft from 'lucide-vue-next/dist/esm/icons/arrow-down-left.js'
-import ArrowUpRight from 'lucide-vue-next/dist/esm/icons/arrow-up-right.js'
-import BarChart3 from 'lucide-vue-next/dist/esm/icons/chart-column.js'
 import Check from 'lucide-vue-next/dist/esm/icons/check.js'
-import Clock3 from 'lucide-vue-next/dist/esm/icons/clock-3.js'
-import RefreshCcw from 'lucide-vue-next/dist/esm/icons/refresh-ccw.js'
-import ShieldCheck from 'lucide-vue-next/dist/esm/icons/shield-check.js'
 import AlertTriangle from 'lucide-vue-next/dist/esm/icons/triangle-alert.js'
-import Wrench from 'lucide-vue-next/dist/esm/icons/wrench.js'
 import X from 'lucide-vue-next/dist/esm/icons/x.js'
-import { computed, onBeforeUnmount, onMounted, ref, useId } from 'vue'
+import { computed, onMounted, ref, useId } from 'vue'
 import AutomationSettings from './AutomationSettings.vue'
 import CaptureSettings from './CaptureSettings.vue'
 import { translate } from './i18n'
 import type { ArchiveDataAdapter } from './mount'
 import SoundSettings from './SoundSettings.vue'
+import TransportAnalytics from './TransportAnalytics.vue'
 import { usePersistedSettings } from './use-persisted-settings'
 
 const props = withDefaults(
@@ -69,96 +66,40 @@ const props = withDefaults(
 
 const emit = defineEmits<{ close: [] }>()
 const fieldId = useId()
+const displayFeatures = [
+  'messageMetadata',
+  'activityIndicator',
+  'requestTimer',
+  'toolInspector',
+] as const
 const { settings, loading, loadFailed, saving, saved, saveFailed, load, applyPatch, retrySave } =
   usePersistedSettings(props.settingsAdapter)
-const diagnosticsFailed = ref(false)
 const archiveResetOpen = ref(false)
 const archiveResetting = ref(false)
 const archiveResetError = ref('')
-const counters = ref<TransportCounters>({ ...EMPTY_TRANSPORT_COUNTERS })
-const lifetimeCounters = ref<TransportCounters>({ ...EMPTY_TRANSPORT_COUNTERS })
-let unsubscribeDiagnostics: (() => void) | undefined
-let unsubscribeLifetimeDiagnostics: (() => void) | undefined
 
 const locale = useApplicationLocale(() => settings.value?.language ?? 'auto')
 const t = (key: Parameters<typeof translate>[1]) => translate(locale.value, key)
-const activeSection = computed(() =>
-  settings.value?.ui.activeSection === 'other'
-    ? 'modules'
-    : (settings.value?.ui.activeSection ?? 'modules'),
+const activeSection = computed(
+  () => chatGptSettingsCategory(settings.value?.ui.activeSection ?? '') ?? 'modules',
 )
 const settingsCatalog = computed(() => [
   {
     id: 'chatgpt',
     title: 'ChatGPT Booster',
-    entries: [
-      { id: 'archive', title: t('capture.title') },
-      { id: 'modules', title: t('control.modules') },
-      { id: 'sounds', title: locale.value === 'ru' ? 'Звуки' : 'Sounds' },
-      { id: 'triggers', title: locale.value === 'ru' ? 'Триггеры' : 'Triggers' },
-      { id: 'remote', title: locale.value === 'ru' ? 'Сервер и синхронизация' : 'Server and sync' },
-      { id: 'analytics', title: t('control.analytics') },
-    ],
+    entries: CHATGPT_SETTINGS_CATEGORIES.map(({ id, title, titleEn, description, descriptionEn }) => ({
+      id,
+      title: locale.value === 'en' ? titleEn : title,
+      description: locale.value === 'en' ? descriptionEn : description,
+    })),
   },
 ])
 function selectCategory(id: string) {
-  if (['archive', 'modules', 'sounds', 'analytics', 'other', 'triggers', 'remote'].includes(id))
-    void setSection((id === 'other' ? 'modules' : id) as SettingsSection)
+  const category = chatGptSettingsCategory(id)
+  if (category) void setSection(category)
 }
 
-const currentRequestTotal = computed(
-  () => counters.value.requestsSent + counters.value.responsesReceived,
-)
-const lifetimeRequestTotal = computed(
-  () => lifetimeCounters.value.requestsSent + lifetimeCounters.value.responsesReceived,
-)
-const currentMessageTotal = computed(() => counters.value.messagesSent + counters.value.messagesReceived)
-const lifetimeMessageTotal = computed(
-  () => lifetimeCounters.value.messagesSent + lifetimeCounters.value.messagesReceived,
-)
-function bar(value: number, total: number) {
-  return `${total > 0 ? Math.max(3, Math.round((value / total) * 100)) : 0}%`
-}
-function activityTime(value: number | null) {
-  return value
-    ? new Date(value).toLocaleTimeString(locale.value, {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-      })
-    : t('control.noActivity')
-}
-function resetCurrentAnalytics() {
-  props.diagnosticsAdapter?.resetTransport()
-}
-
-onMounted(async () => {
-  void load()
-  try {
-    if (props.diagnosticsAdapter) {
-      counters.value = props.diagnosticsAdapter.getTransportCounters()
-      unsubscribeDiagnostics = props.diagnosticsAdapter.subscribeTransport((next) => {
-        counters.value = next
-      })
-    }
-
-    if (props.persistentDiagnosticsAdapter) {
-      lifetimeCounters.value = await props.persistentDiagnosticsAdapter.getLifetimeTransportCounters()
-      unsubscribeLifetimeDiagnostics = props.persistentDiagnosticsAdapter.subscribeLifetimeTransport(
-        (next) => {
-          lifetimeCounters.value = next
-        },
-      )
-    }
-  } catch {
-    diagnosticsFailed.value = true
-  }
-})
-
-onBeforeUnmount(() => {
-  unsubscribeDiagnostics?.()
-  unsubscribeLifetimeDiagnostics?.()
-})
+onMounted(load)
 
 async function setSection(section: SettingsSection) {
   await applyPatch({ ui: { activeSection: section } })
@@ -225,21 +166,19 @@ async function clearArchive() {
       <SettingsCatalog v-if="showCatalog" class="booster-settings-nav" :groups="settingsCatalog" :selected="activeSection"
         :label="locale === 'ru' ? 'Категории настроек ChatGPT' : 'ChatGPT settings categories'" @select="selectCategory" />
 
-      <main class="booster-settings-content" :data-settings-section="activeSection">
+      <SettingsPane :embedded="embedded" :data-settings-section="activeSection">
         <Alert v-if="saveFailed" variant="destructive"><AlertDescription>{{ locale === 'ru' ? 'Не удалось сохранить настройки. Восстановлены последние сохранённые значения.' : 'Could not save settings. The last saved values have been restored.' }} <Button variant="outline" size="sm" :disabled="saving" @click="retrySave">{{ locale === 'ru' ? 'Повторить сохранение' : 'Retry saving' }}</Button></AlertDescription></Alert>
-        <Alert v-if="diagnosticsFailed"><AlertDescription>{{ locale === 'ru' ? 'Счётчики диагностики недоступны. Настройки доступны.' : 'Diagnostic counters are unavailable. Settings are available.' }}</AlertDescription></Alert>
         <template v-if="activeSection === 'archive'">
-          <Card class="booster-setting-card">
-            <div class="booster-setting-copy">
-              <b>{{ locale === 'ru' ? 'Открывать архив' : 'Open archive at' }}</b>
-              <span>{{ locale === 'ru' ? 'С начала или с конца сохранённых сообщений' : 'Choose the saved history endpoint' }}</span>
-            </div>
+          <SettingField :id="`${fieldId}-archive-start`"
+            :title="locale === 'ru' ? 'Открывать архив' : 'Open archive at'"
+            :description="locale === 'ru' ? 'С начала или с конца сохранённых сообщений' : 'Choose the saved history endpoint'"
+            v-slot="{ descriptionId }">
             <Select :model-value="settings.ui.archiveStart"
-              @update:model-value="applyPatch({ ui: { archiveStart: String($event) === 'first' ? 'first' : 'latest' } })"><SelectTrigger class="w-full"><SelectValue /></SelectTrigger><SelectContent>
+              @update:model-value="applyPatch({ ui: { archiveStart: String($event) === 'first' ? 'first' : 'latest' } })"><SelectTrigger :id="`${fieldId}-archive-start`" :aria-describedby="descriptionId" class="w-full"><SelectValue /></SelectTrigger><SelectContent>
               <SelectItem value="latest">{{ locale === 'ru' ? 'Конец истории' : 'Latest messages' }}</SelectItem>
               <SelectItem value="first">{{ locale === 'ru' ? 'Начало сохранённой истории' : 'First saved messages' }}</SelectItem>
             </SelectContent></Select>
-          </Card>
+          </SettingField>
           <CaptureSettings :settings-adapter="settingsAdapter" :archive-adapter="archiveAdapter" :context="captureContext" :locale="locale" />
           <section v-if="archiveAdapter" class="booster-danger-zone">
             <div class="booster-setting-copy">
@@ -252,150 +191,35 @@ async function clearArchive() {
           </section>
         </template>
         <template v-else-if="activeSection === 'modules'">
-          <Card class="booster-setting-card">
-            <div class="booster-setting-copy">
-              <div class="flex items-center gap-2">
-                <Clock3 class="size-4" />
-                <b>{{ t('control.messageMetadata') }}</b>
-                <Badge :variant="settings.features.messageMetadata && settings.enabled ? 'default' : 'secondary'">
-                  {{ settings.features.messageMetadata && settings.enabled ? t('common.on') : t('common.off') }}
-                </Badge>
-              </div>
-              <span>{{ t('control.messageMetadataDescription') }}</span>
-            </div>
-            <Switch :model-value="settings.features.messageMetadata"
-              :disabled="!settings.enabled"
-              :aria-label="t('control.messageMetadata')"
-              @update:model-value="applyPatch({ features: { messageMetadata: $event } })"
-             />
-          </Card>
-
-          <Card class="booster-setting-card" :class="{ 'booster-setting-disabled': !settings.enabled }">
-            <div class="booster-setting-copy">
-              <div class="flex items-center gap-2">
-                <Activity class="size-4" />
-                <b>{{ t('control.activityIndicator') }}</b>
-                <Badge :variant="settings.features.activityIndicator && settings.enabled ? 'default' : 'secondary'">
-                  {{ settings.features.activityIndicator && settings.enabled ? t('common.on') : t('common.off') }}
-                </Badge>
-              </div>
-              <span>{{ t('control.activityIndicatorDescription') }}</span>
-            </div>
-            <Switch :model-value="settings.features.activityIndicator"
-              :aria-label="t('control.activityIndicator')"
-              :disabled="!settings.enabled"
-              @update:model-value="applyPatch({ features: { activityIndicator: $event } })"
-             />
-          </Card>
-
-          <Card class="booster-setting-card booster-setting-card-stack" :class="{ 'booster-setting-disabled': !settings.enabled }">
-            <div class="booster-setting-copy">
-              <div class="flex items-center gap-2">
-                <Clock3 class="size-4" />
-                <b>{{ t('control.requestTimer') }}</b>
-                <Badge :variant="settings.features.requestTimer && settings.enabled ? 'default' : 'secondary'">
-                  {{ settings.features.requestTimer && settings.enabled ? t('common.on') : t('common.off') }}
-                </Badge>
-              </div>
-              <span>{{ t('control.requestTimerDescription') }}</span>
-            </div>
-            <div class="booster-alert-setting-actions">
-              <Switch :model-value="settings.features.requestTimer"
-                :aria-label="t('control.requestTimer')"
-                :disabled="!settings.enabled"
-                @update:model-value="applyPatch({ features: { requestTimer: $event } })"
-               />
-              <Label :id="`${fieldId}-timer-interval`" class="booster-alert-threshold">
-                <span>{{ t('control.monitoringInterval') }} <b>{{ Math.round(settings.monitoring.intervalMs) }} ms</b></span>
-                <Slider
-                  :aria-labelledby="`${fieldId}-timer-interval`"
-                  :min="100"
-                  :max="2000"
-                  :step="100"
-                  :model-value="[settings.monitoring.intervalMs]"
-                  :disabled="!settings.enabled"
-                  @value-commit="setMonitoringInterval"
-                 />
+          <SettingsGrid>
+            <SettingRow v-for="feature in displayFeatures" :key="feature"
+              :id="`${fieldId}-${feature}`"
+              :title="t(`control.${feature}`)"
+              :description="t(`control.${feature}Description`)"
+              :model-value="settings.features[feature]" :disabled="!settings.enabled"
+              @update:model-value="applyPatch({ features: { [feature]: $event } })" />
+            <Card class="grid min-w-0 gap-2 p-3">
+              <Label :id="`${fieldId}-monitoring`" class="flex flex-wrap justify-between gap-1 text-sm leading-5">
+                <span>{{ t('control.monitoringInterval') }}</span>
+                <span>{{ monitoringIntervalLabel(settings.monitoring.intervalMs) }}</span>
               </Label>
-            </div>
-          </Card>
-
-          <Card class="booster-setting-card" :class="{ 'booster-setting-disabled': !settings.enabled }">
-            <div class="booster-setting-copy">
-              <div class="flex items-center gap-2">
-                <Wrench class="size-4" />
-                <b>{{ t('control.toolInspector') }}</b>
-                <Badge :variant="settings.features.toolInspector && settings.enabled ? 'default' : 'secondary'">
-                  {{ settings.features.toolInspector && settings.enabled ? t('common.on') : t('common.off') }}
-                </Badge>
-              </div>
-              <span>{{ t('control.toolInspectorDescription') }}</span>
-            </div>
-            <Switch :model-value="settings.features.toolInspector"
-              :aria-label="t('control.toolInspector')"
-              :disabled="!settings.enabled"
-              @update:model-value="applyPatch({ features: { toolInspector: $event } })"
-             />
-          </Card>
-
-          <Card class="booster-setting-card booster-setting-card-stack" :class="{ 'booster-setting-disabled': !settings.enabled }">
-            <div class="booster-setting-copy">
-              <div class="flex items-center gap-2">
-                <RefreshCcw class="size-4" />
-                <b>{{ t('control.monitoringInterval') }}</b>
-              </div>
-              <span>{{ t('control.monitoringIntervalDescription') }}</span>
-            </div>
-            <div class="booster-range-grid">
-              <Label :id="`${fieldId}-monitoring`">
-                <span>{{ t('control.monitoringInterval') }} <b>{{ monitoringIntervalLabel(settings.monitoring.intervalMs) }}</b></span>
-                <Slider
-                  :aria-labelledby="`${fieldId}-monitoring`"
-                  :min="100"
-                  :max="10000"
-                  :step="100"
-                  :model-value="[settings.monitoring.intervalMs]"
-                  :disabled="!settings.enabled"
-                  @value-commit="setMonitoringInterval"
-                 />
-              </Label>
-            </div>
-          </Card>
-
-
-
-          <Card class="booster-setting-card" :class="{ 'booster-setting-disabled': !settings.enabled }">
-            <div class="booster-setting-copy">
-              <div class="flex items-center gap-2">
-                <Activity class="size-4" />
-                <b>{{ t('control.observer') }}</b>
-                <Badge :variant="settings.observer.enabled && settings.enabled ? 'default' : 'secondary'">
-                  {{ settings.observer.enabled && settings.enabled ? t('common.on') : t('common.off') }}
-                </Badge>
-              </div>
-              <span>{{ t('control.observerDescription') }}</span>
-            </div>
-            <Switch :model-value="settings.observer.enabled"
-              :aria-label="t('control.observer')"
-              :disabled="!settings.enabled"
-              @update:model-value="applyPatch({ observer: { enabled: $event } })"
-             />
-          </Card>
-
-          <Card class="booster-setting-card" :class="{ 'booster-setting-disabled': !settings.observer.enabled }">
-            <div class="booster-setting-copy">
-              <div class="flex items-center gap-2">
-                <ShieldCheck class="size-4" />
-                <b>{{ t('control.captureBodies') }}</b>
-              </div>
-              <span>{{ t('control.captureBodiesDescription') }}</span>
-            </div>
-            <Switch :model-value="settings.observer.captureBodies"
-              :aria-label="t('control.captureBodies')"
-              :disabled="!settings.observer.enabled"
-              @update:model-value="applyPatch({ observer: { captureBodies: $event } })"
-             />
-          </Card>
+              <p :id="`${fieldId}-monitoring-description`" class="text-xs leading-5 text-muted-foreground">{{ t('control.monitoringIntervalDescription') }}</p>
+              <Slider
+                :aria-labelledby="`${fieldId}-monitoring`"
+                :aria-describedby="`${fieldId}-monitoring-description`"
+                :min="100" :max="10000" :step="100"
+                :model-value="[settings.monitoring.intervalMs]" :disabled="!settings.enabled"
+                @value-commit="setMonitoringInterval" />
+            </Card>
+            <SettingRow :id="`${fieldId}-observer`" :title="t('control.observer')"
+              :description="t('control.observerDescription')"
+              :model-value="settings.observer.enabled" :disabled="!settings.enabled"
+              @update:model-value="applyPatch({ observer: { enabled: $event } })" />
+            <SettingRow :id="`${fieldId}-capture-bodies`" :title="t('control.captureBodies')"
+              :description="t('control.captureBodiesDescription')"
+              :model-value="settings.observer.captureBodies" :disabled="!settings.observer.enabled"
+              @update:model-value="applyPatch({ observer: { captureBodies: $event } })" />
+          </SettingsGrid>
         </template>
 
         <template v-else-if="activeSection === 'sounds'">
@@ -404,38 +228,8 @@ async function clearArchive() {
         <template v-else-if="activeSection === 'triggers' || activeSection === 'remote'">
           <AutomationSettings :settings="settings" :section="activeSection" :secrets="secretAdapter" :control="automationControl" :save-settings="applyPatch" />
         </template>
-        <template v-else-if="activeSection === 'analytics'">
-          <section class="booster-analytics-dashboard">
-            <header class="booster-analytics-header">
-              <div><strong>{{ t('control.analyticsOverview') }}</strong><span>{{ t('control.analyticsDescription') }}</span></div>
-              <Button variant="outline" v-if="diagnosticsAdapter" type="button" class="booster-action-secondary booster-analytics-reset" @click="resetCurrentAnalytics"><RefreshCcw class="size-3.5" />{{ t('control.resetCurrent') }}</Button>
-            </header>
-
-            <div class="booster-analytics-metrics">
-              <article><span>{{ t('control.requestTraffic') }}</span><strong>{{ currentRequestTotal }}</strong><small>{{ lifetimeRequestTotal }} · {{ t('control.allTime').toLocaleLowerCase() }}</small></article>
-              <article><span>{{ t('control.messageTraffic') }}</span><strong>{{ currentMessageTotal }}</strong><small>{{ lifetimeMessageTotal }} · {{ t('control.allTime').toLocaleLowerCase() }}</small></article>
-              <article :class="{ warning: counters.errors > 0 }"><span>{{ t('control.errors') }}</span><strong>{{ counters.errors }}</strong><small>{{ lifetimeCounters.errors }} · {{ t('control.allTime').toLocaleLowerCase() }}</small></article>
-            </div>
-
-            <div class="booster-analytics-flow-grid">
-              <article class="booster-analytics-flow-card">
-                <header><span><ArrowUpRight class="size-4" />{{ t('control.outbound') }}</span><b>{{ counters.requestsSent + counters.messagesSent }}</b></header>
-                <div class="booster-analytics-flow-row"><span>{{ t('control.requestsSent') }}</span><div><i :style="{ width: bar(counters.requestsSent, counters.requestsSent + counters.messagesSent) }" /></div><b>{{ counters.requestsSent }}</b></div>
-                <div class="booster-analytics-flow-row"><span>{{ t('control.messagesSent') }}</span><div><i :style="{ width: bar(counters.messagesSent, counters.requestsSent + counters.messagesSent) }" /></div><b>{{ counters.messagesSent }}</b></div>
-              </article>
-              <article class="booster-analytics-flow-card">
-                <header><span><ArrowDownLeft class="size-4" />{{ t('control.inbound') }}</span><b>{{ counters.responsesReceived + counters.messagesReceived }}</b></header>
-                <div class="booster-analytics-flow-row"><span>{{ t('control.responsesReceived') }}</span><div><i :style="{ width: bar(counters.responsesReceived, counters.responsesReceived + counters.messagesReceived) }" /></div><b>{{ counters.responsesReceived }}</b></div>
-                <div class="booster-analytics-flow-row"><span>{{ t('control.messagesReceived') }}</span><div><i :style="{ width: bar(counters.messagesReceived, counters.responsesReceived + counters.messagesReceived) }" /></div><b>{{ counters.messagesReceived }}</b></div>
-              </article>
-            </div>
-
-            <footer class="booster-analytics-footer">
-              <span><Activity class="size-4" />{{ t('control.lastActivity') }} <b>{{ activityTime(counters.lastEventAt) }}</b></span>
-              <span :class="{ warning: counters.errors > 0 }"><AlertTriangle class="size-4" />{{ t('control.errors') }} <b>{{ counters.errors }}</b></span>
-            </footer>
-          </section>
-        </template>
+        <TransportAnalytics v-else-if="activeSection === 'analytics'" :locale="locale"
+          :diagnostics="diagnosticsAdapter" :persistent-diagnostics="persistentDiagnosticsAdapter" />
 
         <template v-else>
           <p class="booster-note">{{ locale === 'ru' ? 'Телеметрия и резервные копии настраиваются в общих настройках приложения.' : 'Telemetry and backups are configured in application settings.' }}</p>
@@ -447,7 +241,7 @@ async function clearArchive() {
             {{ saving ? t('control.saving') : saved ? t('control.saved') : t('control.live') }}
           </span>
         </footer>
-      </main>
+      </SettingsPane>
     </div>
 
     <ModalSurface v-if="archiveResetOpen" :label="t('archiveReset.confirmTitle')" @close="!archiveResetting && (archiveResetOpen = false)">

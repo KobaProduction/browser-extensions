@@ -1,7 +1,7 @@
 import { createDiagnosticsStore, isChatGptPage } from '@chatgpt-booster/core'
 import { installTransportObserver } from '@chatgpt-booster/observer'
 import { userscriptAnalytics, userscriptSettings } from '@chatgpt-booster/userscript/services'
-import { createSettingsStore } from '@kobaproduction/browser-adapters'
+import { createSettingsStore, getApplicationIdentity } from '@kobaproduction/browser-adapters'
 import { type ApplicationTelemetryController, FeatureSettings } from '@kobaproduction/browser-core'
 import { createChatGptBoosterFeature } from '@kobaproduction/module-chatgpt-booster'
 
@@ -27,14 +27,14 @@ export function createChatGptUserscriptFeature(applicationTelemetry?: Applicatio
   )
   // Respect the shared module switch before enabling any native history capture.
   // The active feature's start() also invokes startEarly() after a later enable.
-  void new FeatureSettings(createSettingsStore('userscript'))
+  const settings = new FeatureSettings(
+    createSettingsStore('userscript'),
+    getApplicationIdentity('userscript').id === 'all-in-one',
+  )
+  void settings
     .enabled('chatgpt-booster')
     .then(async (enabled) => {
-      if (
-        !enabled ||
-        !(await new FeatureSettings(createSettingsStore('userscript')).installationEnabled())
-      )
-        return
+      if (!enabled || !(await settings.installationEnabled())) return
       return startEarly()
     })
     .catch((error) =>

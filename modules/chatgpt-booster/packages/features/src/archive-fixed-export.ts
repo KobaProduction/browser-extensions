@@ -7,8 +7,8 @@ import type {
 import { createGzipFromChunks, createStoredZipFromBlobs } from '@kobaproduction/browser-archive'
 import { DEFAULT_ARCHIVE_EXPORT_PIPELINE, exportIncludes } from './archive-export'
 import { type PreparedArchiveOriginal, prepareArchiveOriginal } from './archive-export-source'
-import { type FixedCanonicalDexieRepository, fixedConversationStamp } from './archive-fixed-dexie'
-import { chatGptArchiveRecord, projectChatGptArchiveMessage } from './archive-message-adapter'
+import type { FixedCanonicalDexieRepository } from './archive-fixed-dexie'
+import { chatGptArchiveRecord } from './archive-message-adapter'
 import { detachSourceSnapshot } from './archive-source-snapshot'
 
 /** Ordinary selective export reuses the provider serializer and shared packaging. */
@@ -30,17 +30,6 @@ export async function exportFixedConversation(
   }
   check()
   progress?.({ phase: 'checking', unit: null, completed: null, total: null })
-  // Pin the revision before starting independent graph/count reads. A header
-  // read in parallel could otherwise adopt a newer revision than the graph.
-  const header = await repository.getConversation(id)
-  if (!header) throw Error('Saved conversation missing')
-  const [integrity, count] = await Promise.all([
-    repository.integrity(id),
-    repository.countConversation(id),
-  ])
-  check()
-  if (fixedConversationStamp(await repository.getConversation(id)) !== fixedConversationStamp(header))
-    throw Error('archive.error.sourceChanged')
   const records = [],
     versions: Record<string, unknown> = Object.create(null),
     versionsEncoding: Record<string, 'archive-clone-v1'> = Object.create(null)
@@ -52,61 +41,40 @@ export async function exportFixedConversation(
       [...selected].some((value) => typeof value !== 'string' || !value || value.length > 256))
   )
     throw Error('Invalid selected messages')
-  const found = new Set<string>()
-  let scanned = 0
-  let cursor: string | undefined
-  while (true) {
+  const { header, integrity, count, snapshots } = await repository.readExportSnapshot(
+    id,
+    selected,
+    check,
+    (completed, total) => progress?.({ phase: 'reading', unit: 'records', completed, total }),
+  )
+  for (const [index, source] of snapshots.entries()) {
     check()
-    const rows = await repository.listMessages(id, 128, cursor)
-    let previous = cursor ?? ''
-    for (const row of rows) {
-      check()
-      if (row.messageId <= previous) throw Error('archive.error.sourceChanged')
-      previous = row.messageId
-      scanned++
-      if (selected && !selected.has(row.messageId)) continue
-      found.add(row.messageId)
-      const source = await repository.getSourceSnapshot(id, row.messageId)
-      if (!source) throw Error('Source snapshot missing')
-      const record = chatGptArchiveRecord(
-        source.raw,
-        source.normalized ??
-          projectChatGptArchiveMessage(source.raw, {
-            ownerId: source.accountId,
-            conversationId: id,
-            projectId: header.projectId,
-            sourceKind: source.sourceKind,
-            sourceVersion: source.sourceVersion,
-            observedAtMs: source.observedAtMs,
-          }),
-      )
-      if (!record || record.messageId !== row.messageId) throw Error('Source message cannot be decoded')
-      records.push(record)
-      if (options.level === 'full')
-        originals.set(row.messageId, await prepareArchiveOriginal(source.raw))
-      if (options.sourceRevisions || options.level === 'full') {
-        const detached = detachSourceSnapshot({
-          ...source,
-          versions: [...(await repository.messageVersions(id, row.messageId))],
-        })
-        const prepared = await prepareArchiveOriginal(detached.versions ?? [detached])
-        versions[row.messageId] = prepared.value
-        if (prepared.encoding) versionsEncoding[row.messageId] = prepared.encoding
-      }
+    const messageId = typeof source.raw.id === 'string' ? source.raw.id : null
+    const record = chatGptArchiveRecord(source.raw, source.normalized)
+    if (!record || !messageId || record.messageId !== messageId)
+      throw Error('Source message cannot be decoded')
+    records.push(record)
+    if (options.level === 'full') originals.set(messageId, await prepareArchiveOriginal(source.raw))
+    if ((options.level === 'custom' && options.sourceRevisions) || options.level === 'full') {
+      const detached = detachSourceSnapshot({
+        ...source,
+        versions: [...repository.sourceVersions(id, source)],
+      })
+      const prepared = await prepareArchiveOriginal(detached.versions ?? [detached])
+      versions[messageId] = prepared.value
+      if (prepared.encoding) versionsEncoding[messageId] = prepared.encoding
+    }
+    if ((index + 1) % 64 === 0 || index + 1 === snapshots.length) {
       progress?.({
         phase: 'serializing',
         unit: 'records',
         completed: records.length,
-        total: selected?.size ?? count,
+        total: snapshots.length,
       })
+      if (index + 1 < snapshots.length) await new Promise((resolve) => setTimeout(resolve, 0))
     }
-    if (rows.length < 128) break
-    cursor = rows.at(-1)?.messageId
   }
   check()
-  if (scanned !== count) throw Error('archive.error.sourceChanged')
-  if (selected && [...selected].some((id) => !found.has(id)))
-    throw Error('Selected saved message is missing')
   const thread = buildArchiveThread(records),
     attachments = new Map<string, unknown>()
   for (const turn of thread.turns)
@@ -134,8 +102,6 @@ export async function exportFixedConversation(
     evidence,
     originals,
   )
-  if (fixedConversationStamp(await repository.getConversation(id)) !== fixedConversationStamp(header))
-    throw Error('archive.error.sourceChanged')
   check()
   const encoder = new TextEncoder()
   async function* chunks(): AsyncGenerator<string> {
@@ -200,8 +166,8 @@ export async function exportFixedConversation(
     extension = 'zip'
   }
   check()
-  if (fixedConversationStamp(await repository.getConversation(id)) !== fixedConversationStamp(header))
-    throw Error('archive.error.sourceChanged')
+  const current = await repository.getConversation(id)
+  if (!current || current.instanceId !== header.instanceId) throw Error('archive.error.sourceChanged')
   check()
   progress?.({ phase: 'ready', unit: 'bytes', completed: blob.size, total: blob.size })
   check()

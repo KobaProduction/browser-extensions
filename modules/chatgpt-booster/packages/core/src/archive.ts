@@ -32,6 +32,7 @@ export interface ArchiveRecordView {
 }
 export interface ArchiveAttachmentView {
   assetId: string
+  libraryFileId?: string
   fileName: string | null
   mimeType: string | null
   sizeBytes: number | null
@@ -181,6 +182,7 @@ export class ArchiveExportBlockedError extends Error {
 export type ArchiveExportProgress =
   | { phase: 'checking' | 'verifying'; unit: null; completed: null; total: null }
   | { phase: 'tracing'; unit: 'records'; completed: number; total: null }
+  | { phase: 'reading'; unit: 'records'; completed: number; total: number }
   | { phase: 'serializing'; unit: 'records'; completed: number; total: number }
   | { phase: 'packaging' | 'ready'; unit: 'bytes'; completed: number; total: number }
 

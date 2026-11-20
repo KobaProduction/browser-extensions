@@ -228,12 +228,21 @@ export function currentProjectTitle(projectId: string, root: ParentNode = docume
 }
 
 export function currentConversationTitle(root: Document = document): string | undefined {
+  const id = currentConversationId()
+  if (id)
+    for (const link of root.querySelectorAll<HTMLAnchorElement>(
+      'nav a[href*="/c/"], aside a[href*="/c/"]',
+    )) {
+      if (currentConversationId(link.href) !== id) continue
+      const label = link.getAttribute('aria-label')?.trim() || link.textContent?.trim()
+      if (label) return label
+    }
   let title = root.title.trim()
   const projectId = currentProjectId()
   const project = projectId ? currentProjectTitle(projectId, root) : undefined
   if (project && title.startsWith(`${project} - `)) title = title.slice(project.length + 3)
   title = title.replace(/ - ChatGPT$/, '').trim()
-  return title && title !== 'ChatGPT' ? title : undefined
+  return title && !/^(?:ChatGPT|New chat|Новый чат)$/i.test(title) ? title : undefined
 }
 export function isConversationGenerating(root: ParentNode = document): boolean {
   return !!root.querySelector('[data-testid="stop-button"], [data-testid="stop-generation"]')

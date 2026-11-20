@@ -4,7 +4,7 @@ import type {
   FeatureQuickAction,
   FeatureQuickMetric,
 } from '@kobaproduction/browser-core'
-import { Button, Switch, useApplicationLocale } from '@kobaproduction/browser-ui'
+import { Button, Switch, TooltipHint, useApplicationLocale } from '@kobaproduction/browser-ui'
 import { Archive, ArrowUpToLine, Download, FolderOpen, Settings2, ShieldCheck } from 'lucide-vue-next'
 import LauncherIndicators from './LauncherIndicators.vue'
 
@@ -14,12 +14,14 @@ const props = defineProps<{
   contextTitle?: string
   active: boolean
   enabled: boolean
+  powerLabel?: string
+  powerAvailable: boolean
   busy: boolean
   actions: readonly FeatureQuickAction[]
   metrics?: readonly FeatureQuickMetric[]
   indicators?: readonly FeatureIndicator[]
 }>()
-const emit = defineEmits<{ select: [id: string]; toggle: [] }>()
+const emit = defineEmits<{ select: [id: string]; toggle: [enabled: boolean] }>()
 const locale = useApplicationLocale()
 const text = (ru: string, en: string) => (locale.value === 'ru' ? ru : en)
 const icons = {
@@ -40,10 +42,9 @@ const icons = {
         <span v-if="version" class="booster-version">{{ version }}</span>
         <span v-if="contextTitle && contextTitle !== title" class="booster-quick-context">{{ contextTitle }}</span>
       </div>
-      <Switch :model-value="enabled"
-        :aria-label="`${enabled ? text('Выключить', 'Disable') : text('Включить', 'Enable')} ${title}`"
-        :title="active ? text('Работает', 'Running') : enabled ? text('Включено, модуль недоступен на этой странице', 'Enabled; unavailable on this page') : text('Выключено', 'Disabled')"
-        :disabled="busy" @update:model-value="emit('toggle')" />
+      <TooltipHint :label="powerLabel ?? (active ? text('Работает', 'Running') : enabled ? text('Включено, модуль недоступен на этой странице', 'Enabled; unavailable on this page') : text('Выключено', 'Disabled'))"><Switch :model-value="enabled"
+        :aria-label="powerLabel ?? `${enabled ? text('Выключить', 'Disable') : text('Включить', 'Enable')} ${title}`"
+        :disabled="busy || !powerAvailable" @update:model-value="emit('toggle', $event)" /></TooltipHint>
     </header>
     <LauncherIndicators v-if="indicators?.length" :indicators="indicators" />
     <div v-if="metrics?.length" class="booster-quick-metrics" :aria-label="text('Сводка модуля', 'Module summary')">

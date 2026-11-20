@@ -71,7 +71,12 @@ const selectedTitle = computed(() =>
 )
 function changeGroup(id: string) {
   const next = props.groups.find((item) => item.id === id)
-  if (!next) return
+  if (!next || next.disabled) return
+  if (next.workspace) {
+    expanded.value = false
+    emit('select', next.id)
+    return
+  }
   const first = firstSettingsCatalogLeaf(next.entries)
   // The selected route is authoritative. A slow provider transition must not
   // highlight its group while another group's parameters are still displayed.

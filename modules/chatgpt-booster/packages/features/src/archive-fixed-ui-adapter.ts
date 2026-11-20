@@ -1,4 +1,10 @@
-import { buildArchiveThread, currentConversationId, currentProjectId } from '@chatgpt-booster/chatgpt'
+import {
+  buildArchiveThread,
+  currentConversationId,
+  currentConversationTitle,
+  currentProjectId,
+  observeChatGptNavigation,
+} from '@chatgpt-booster/chatgpt'
 import type { ArchiveDataAdapter, ArchiveMessageView, ArchiveThreadWindow } from '@chatgpt-booster/ui'
 import {
   type ArchiveExportMessageSummary,
@@ -35,6 +41,15 @@ export function createFixedArchiveUiAdapter(
     return id
   }
   const current = () => currentConversationId() ?? null
+  const currentConversationDisplay = () => {
+    const id = current()
+    if (!id || typeof document === 'undefined') return null
+    const title = currentConversationTitle() ?? memory.header(id)?.title ?? null
+    return { id, title }
+  }
+  const displayTitle = (id: string, ...titles: (string | null | undefined)[]) =>
+    titles.find((title) => title?.trim()) ??
+    (id === current() ? (currentConversationDisplay()?.title ?? null) : null)
   const guard = (owner: string, epoch: number) => {
     if (memory.verifiedAccountId() !== owner || memory.accountEpoch() !== epoch)
       throw Error('Owner changed during saved archive read')
@@ -145,7 +160,11 @@ export function createFixedArchiveUiAdapter(
       const id = current(),
         header = id ? memory.header(id) : undefined
       if (id && header)
-        byId.set(id, { conversationId: id, projectId: header.projectId, title: header.title })
+        byId.set(id, {
+          conversationId: id,
+          projectId: header.projectId,
+          title: displayTitle(id, header.title, byId.get(id)?.title),
+        })
       return [...byId.values()].map((item) => ({
         ...item,
         updatedAt: null,
@@ -338,17 +357,30 @@ export function createFixedArchiveUiAdapter(
       const projectId = context.scope === 'project' ? context.id : (context.projectId ?? null)
       return {
         conversationId: context.scope === 'conversation' ? context.id : null,
-        conversationTitle: context.scope === 'conversation' ? context.title : null,
+        conversationTitle:
+          context.scope === 'conversation'
+            ? displayTitle(context.id, context.title, source.savedConversation(context.id)?.title)
+            : null,
         projectId,
         projectTitle: projects.find((value) => value.projectId === projectId)?.title ?? null,
       }
     },
+    currentConversationDisplay,
     subscribeContextChange: (handler) => {
       const state = memory.subscribe(() => handler()),
-        saved = capture.subscribeSaved(() => handler())
+        account = memory.subscribeAccount(handler),
+        saved = capture.subscribeSaved(() => handler()),
+        navigation = observeChatGptNavigation(handler)
+      const title = typeof document === 'undefined' ? null : document.querySelector('title')
+      const observer =
+        title && typeof MutationObserver !== 'undefined' ? new MutationObserver(handler) : null
+      if (title) observer?.observe(title, { childList: true, characterData: true, subtree: true })
       return () => {
         state()
+        account()
         saved()
+        navigation()
+        observer?.disconnect()
       }
     },
     getCollectionState: () => capture.collectionSession.snapshot(),
@@ -359,8 +391,10 @@ export function createFixedArchiveUiAdapter(
       const owner = account(),
         epoch = memory.accountEpoch()
       const live = memory.header(id) ?? workspace.context(id)
-      const source =
-        live ?? (await capture.listSavedConversations()).find((x) => x.conversationId === id)
+      const saved = live?.title
+        ? undefined
+        : (await capture.listSavedConversations()).find((x) => x.conversationId === id)
+      const source = live ?? saved
       const origin = live
         ? capture.cachedSavedBranchOrigin(id)
         : source
@@ -370,6 +404,7 @@ export function createFixedArchiveUiAdapter(
       return source
         ? {
             ...source,
+            title: displayTitle(id, source.title, saved?.title),
             updatedAt: null,
             lastSeenAt: 0,
             archiveState: 'partial',
@@ -383,20 +418,24 @@ export function createFixedArchiveUiAdapter(
       const owner = account(),
         epoch = memory.accountEpoch()
       const source = await capture.listSavedConversations()
-      const byId = new Map(source.map((item) => [item.conversationId, item]))
-      for (const item of workspace.catalog()) byId.set(item.conversationId, item)
-      for (const snapshot of memory.listSnapshots())
-        byId.set(snapshot.conversationId, {
-          conversationId: snapshot.conversationId,
-          projectId: snapshot.projectId,
-          title: snapshot.title,
+      const savedById = new Map(source.map((item) => [item.conversationId, item]))
+      const byId = new Map(savedById)
+      for (const item of [...workspace.catalog(), ...memory.listHeaders()]) {
+        const saved = savedById.get(item.conversationId)
+        byId.set(item.conversationId, {
+          conversationId: item.conversationId,
+          // Another tab can retain an older native header after a verified move.
+          projectId: saved ? saved.projectId : item.projectId,
+          title: displayTitle(item.conversationId, item.title, byId.get(item.conversationId)?.title),
         })
+      }
       guard(owner, epoch)
       const result = []
       for (const item of byId.values()) {
         const origin = capture.cachedSavedBranchOrigin(item.conversationId)
         result.push({
           ...item,
+          title: displayTitle(item.conversationId, item.title),
           updatedAt: null,
           lastSeenAt: 0,
           archiveState: 'partial' as const,
@@ -516,6 +555,7 @@ export function createFixedArchiveUiAdapter(
         knownMessageCount: count,
         exhaustedAt: exhaustion?.observedAt ?? null,
         integrity,
+        ...workspace.readerIntegrity(id, integrity),
         hasOlderServerHistory: integrity.start === 'verified' ? false : null,
         oldestKnownVisibleMessageId: integrity.firstMessageId ?? null,
         newestKnownVisibleMessageId: integrity.lastMessageId ?? null,

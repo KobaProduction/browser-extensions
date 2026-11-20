@@ -42,6 +42,7 @@ function shellSettingsSource(target: DeliveryTarget, runtime: FeatureRuntime): A
     'ui.language',
     ...runtime.features.flatMap((feature) => [
       `features.${feature.id}.enabled`,
+      ...(runtime.context.settings.providerPower ? [`features.${feature.id}.power.enabled`] : []),
       ...(feature.modules ?? []).map((module) => `features.${feature.id}.modules.${module.id}.enabled`),
     ]),
   ]
@@ -98,17 +99,25 @@ function shellSettingsSource(target: DeliveryTarget, runtime: FeatureRuntime): A
     async restoreSettingsAtomically(input) {
       const value = validate(input),
         before = await port.exportSettings()
+      const restoredValue = (key: string, next: ApplicationSettings) => {
+        if (next[key] !== undefined) return next[key]
+        // Older backups have no provider override; preserve their effective pause.
+        if (key.endsWith('.power.enabled'))
+          return (
+            next['installation.enabled'] !== false &&
+            next[key.replace('.power.enabled', '.enabled')] !== false
+          )
+        return defaults.get(key) ?? true
+      }
       const write = async (next: ApplicationSettings) => {
         if (target === 'chromium') {
           // Storage changes are one area batch; removed defaults remain explicit defaults.
           await chrome.storage.local.set(
-            Object.fromEntries(
-              keys.map((key) => [`${prefix}${key}`, next[key] ?? defaults.get(key) ?? true]),
-            ),
+            Object.fromEntries(keys.map((key) => [`${prefix}${key}`, restoredValue(key, next)])),
           )
         } else {
           for (const key of keys) {
-            const item = next[key] ?? defaults.get(key) ?? true
+            const item = restoredValue(key, next)
             if (key === 'ui.language') await settings.setText?.(key, String(item))
             else await settings.set(key, item as boolean)
           }

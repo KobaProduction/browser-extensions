@@ -111,7 +111,7 @@ export function onInstallationStateChange(target: DeliveryTarget, listener: () =
   const relevant = (key: string) =>
     keys.includes(key) ||
     (key.startsWith(prefix) &&
-      /^features\.[a-z0-9-]+(?:\.modules\.[a-z0-9-]+)?\.enabled$/.test(key.slice(prefix.length)))
+      /^features\.[a-z0-9-]+(?:\.power|\.modules\.[a-z0-9-]+)?\.enabled$/.test(key.slice(prefix.length)))
   if (target === 'chromium') {
     const changed = (items: Record<string, chrome.storage.StorageChange>, area: string) => {
       if (area === 'local' && Object.keys(items).some(relevant)) listener()

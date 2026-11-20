@@ -2,7 +2,7 @@ import type { BoosterModule } from '@chatgpt-booster/core'
 import type { ConversationStateStore } from './conversation-state'
 import type { ChatGptNativeHistoryPort } from './history-loader'
 import { bindNativeDeliveryFailure, type NativeDeliveryScope } from './native-delivery-binding'
-import { loadNativeHistoryCapabilities } from './native-history-capabilities'
+import { loadNativeHistoryCapabilities, nativeHistoryRouter } from './native-history-capabilities'
 import {
   createNativeHistoryReader,
   type NativeHistoryScope,
@@ -24,10 +24,15 @@ export class NativeHistoryBinding implements BoosterModule, ChatGptNativeHistory
   private timer?: ReturnType<typeof setTimeout>
   private disposeProbe?: () => void
   private disposeDelivery?: () => void
+  private disposeAccount?: () => void
   constructor(
     private state: ConversationStateStore,
     private loadCapabilities = loadNativeHistoryCapabilities,
     private waitMs = 10_000,
+    private bindAccount?: (
+      scope: NativeHistoryScope,
+      modules: NativeModules,
+    ) => (() => void) | undefined,
   ) {}
   start() {
     if (this.active) return
@@ -42,6 +47,9 @@ export class NativeHistoryBinding implements BoosterModule, ChatGptNativeHistory
         if (!this.active || generation !== this.generation) return
         this.modules = modules
         this.installProbe(generation)
+        const router = this.bindAccount && modules.refreshAccount && nativeHistoryRouter()
+        if (router && !this.state.verifiedAccountId())
+          void Promise.resolve(router.revalidate()).catch(() => undefined)
       } catch {
         if (this.active && generation === this.generation && Date.now() < until)
           this.timer = setTimeout(() => {
@@ -61,6 +69,7 @@ export class NativeHistoryBinding implements BoosterModule, ChatGptNativeHistory
         this.disposeProbe = undefined
         if (!this.active || generation !== this.generation) return
         this.scope = candidate
+        this.disposeAccount = this.bindAccount?.(candidate, modules)
         this.disposeDelivery?.()
         this.disposeDelivery = undefined
         if (
@@ -91,6 +100,8 @@ export class NativeHistoryBinding implements BoosterModule, ChatGptNativeHistory
     this.generation++
     clearTimeout(this.timer)
     this.disposeProbe?.()
+    this.disposeAccount?.()
+    this.disposeAccount = undefined
     this.disposeDelivery?.()
     this.disposeDelivery = undefined
     this.disposeProbe = undefined
@@ -137,9 +148,7 @@ export class NativeHistoryBinding implements BoosterModule, ChatGptNativeHistory
       }
       if (!this.scope && this.modules) {
         this.installProbe(generation)
-        const router = (
-          window as unknown as { __reactRouterDataRouter?: { revalidate(): Promise<void> | void } }
-        ).__reactRouterDataRouter
+        const router = nativeHistoryRouter()
         // A genuine native router refresh reruns native hooks without changing routes,
         // synthesizing a private request or using a DOM-click fallback.
         if (typeof router?.revalidate === 'function')

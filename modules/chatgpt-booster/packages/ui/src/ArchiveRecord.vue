@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { archiveRecordAttachments } from '@chatgpt-booster/chatgpt'
 import type { ArchiveItemView } from '@chatgpt-booster/core'
 import {
   Button,
@@ -8,6 +9,7 @@ import {
   FloatingInfoPopover,
   JsonViewer,
   ModalSurface,
+  TooltipHint,
 } from '@kobaproduction/browser-ui'
 import { ArchiveMessageHeader } from '@kobaproduction/browser-widgets'
 import Brain from 'lucide-vue-next/dist/esm/icons/brain.js'
@@ -25,6 +27,7 @@ import TerminalSquare from 'lucide-vue-next/dist/esm/icons/square-terminal.js'
 import Wrench from 'lucide-vue-next/dist/esm/icons/wrench.js'
 import X from 'lucide-vue-next/dist/esm/icons/x.js'
 import { computed, ref, watch } from 'vue'
+import ArchiveRecordAttachments from './ArchiveRecordAttachments.vue'
 import { omitRepeatedRecordHeading, parseArchiveStructuredText } from './archive-presentation'
 import { type SupportedLocale, type TranslationKey, translate } from './i18n'
 import MarkdownContent from './MarkdownContent.vue'
@@ -49,6 +52,11 @@ watch(
   { immediate: true },
 )
 const t = (key: TranslationKey) => translate(props.locale, key)
+const attachments = computed(() =>
+  props.item.kind === 'user' || props.item.kind === 'answer'
+    ? archiveRecordAttachments(props.item.record)
+    : [],
+)
 
 const tool = computed(() => props.item.tool)
 const toolName = computed(() => tool.value?.label ?? t(`reader.${props.item.kind}` as TranslationKey))
@@ -116,16 +124,16 @@ const reasoningInfo = computed(() =>
             :locale="locale"
             :show-model="item.kind === 'answer'"
           />
-          <Button variant="ghost" size="icon-sm"
+          <TooltipHint :label="t('reader.raw')"><Button variant="ghost" size="icon-sm"
             class="booster-record-icon-button"
             type="button"
-            :title="t('reader.raw')"
             :aria-label="t('reader.raw')"
             @click="rawOpen = true"
-          ><FileJson2 class="size-3.5" /></Button>
+          ><FileJson2 class="size-3.5" /></Button></TooltipHint>
         </span>
       </header>
-      <MarkdownContent :text="item.text || t('reader.noText')" />
+      <ArchiveRecordAttachments v-if="attachments.length" :files="attachments" :conversation-id="item.record.conversationId" :locale="locale" />
+      <MarkdownContent v-if="item.text || !attachments.length" :text="item.text || t('reader.noText')" />
     </template>
 
     <template v-else-if="item.kind === 'reasoning'">
@@ -150,13 +158,12 @@ const reasoningInfo = computed(() =>
           <strong>{{ t('reader.reasoning') }}</strong>
         </span>
         <span class="booster-record-header-tools">
-          <Button variant="ghost" size="icon-sm"
+          <TooltipHint :label="t('reader.raw')"><Button variant="ghost" size="icon-sm"
             class="booster-record-icon-button"
             type="button"
-            :title="t('reader.raw')"
             :aria-label="t('reader.raw')"
             @click="rawOpen = true"
-          ><FileJson2 class="size-3.5" /></Button>
+          ><FileJson2 class="size-3.5" /></Button></TooltipHint>
           <Button variant="outline"
             v-if="hasText"
             class="booster-record-expand"
@@ -191,7 +198,7 @@ const reasoningInfo = computed(() =>
           <component :is="toolGlyph" class="size-4" />
         </span>
         <div class="booster-tool-copy">
-          <strong :title="toolName">{{ toolName }}</strong>
+          <strong>{{ toolName }}</strong>
           <span>
             {{ t(('reader.' + item.kind) as TranslationKey) }}
             <template v-if="toolRecipient && toolRecipient !== 'all' && toolRecipient !== 'functions.exec'">
@@ -202,24 +209,24 @@ const reasoningInfo = computed(() =>
         </div>
         <div class="booster-tool-actions" @click.stop>
           <RecordMetaBadges :metadata="item.metadata" :locale="locale" />
-          <Button v-if="toolLink" variant="ghost" size="icon-sm" as-child><a
+          <TooltipHint v-if="toolLink" :label="t('reader.openTool')"><Button variant="ghost" size="icon-sm" as-child><a
             class="booster-tool-action"
             :href="toolLink"
             target="_blank"
             rel="noreferrer noopener"
-            :title="t('reader.openTool') + ': ' + toolLink"
-          ><ExternalLink class="size-3.5" /></a></Button>
-          <CollapsibleTrigger v-if="hasToolDetails" as-child><Button variant="ghost" size="icon-sm"
+            :aria-label="t('reader.openTool')"
+          ><ExternalLink class="size-3.5" /></a></Button></TooltipHint>
+          <TooltipHint v-if="hasToolDetails" :label="t(expanded ? 'reader.hide' : 'reader.show')"><CollapsibleTrigger as-child><Button variant="ghost" size="icon-sm"
             type="button"
             class="booster-tool-action"
-            :title="t(expanded ? 'reader.hide' : 'reader.show')"
-          ><Code2 class="size-3.5" /></Button></CollapsibleTrigger>
-          <Button variant="ghost" size="icon-sm"
+            :aria-label="t(expanded ? 'reader.hide' : 'reader.show')"
+          ><Code2 class="size-3.5" /></Button></CollapsibleTrigger></TooltipHint>
+          <TooltipHint :label="t('reader.raw')"><Button variant="ghost" size="icon-sm"
             type="button"
             class="booster-tool-action"
-            :title="t('reader.raw')"
+            :aria-label="t('reader.raw')"
             @click="rawOpen = true"
-          ><FileJson2 class="size-3.5" /></Button>
+          ><FileJson2 class="size-3.5" /></Button></TooltipHint>
         </div>
       </div>
       <CollapsibleContent v-if="hasToolDetails" class="booster-tool-expanded">
@@ -247,13 +254,12 @@ const reasoningInfo = computed(() =>
       <div v-if="expanded && hasText" class="booster-tool-expanded">
         <MarkdownContent :text="displayText" />
       </div>
-      <Button variant="ghost" size="icon-sm"
+      <TooltipHint :label="t('reader.raw')"><Button variant="ghost" size="icon-sm"
         class="booster-record-icon-button booster-record-raw-corner"
         type="button"
-        :title="t('reader.raw')"
         :aria-label="t('reader.raw')"
         @click="rawOpen = true"
-      ><FileJson2 class="size-3.5" /></Button>
+      ><FileJson2 class="size-3.5" /></Button></TooltipHint>
     </template>
 
     <ModalSurface v-if="rawOpen" :label="t('reader.raw')" wide @close="rawOpen = false">

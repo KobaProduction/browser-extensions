@@ -1,3 +1,5 @@
+import type { ConversationStartEvidence } from './archive-start-evidence'
+
 export interface HistoryPageEvidence {
   readId?: string | undefined
   readStartedAt?: number | undefined
@@ -8,6 +10,7 @@ export interface HistoryPageEvidence {
   hasPreviousPage: boolean | null
   hasNextPage: boolean | null
   observedAt: number
+  empty?: boolean | undefined
   /** Local manual-run acknowledgement; never a replacement for the native read identity. */
   captureRun?: string | undefined
 }
@@ -40,7 +43,49 @@ export function nativePageEvidence(page: {
     hasPreviousPage: typeof info?.has_previous_page === 'boolean' ? info.has_previous_page : null,
     hasNextPage: typeof info?.has_next_page === 'boolean' ? info.has_next_page : null,
     observedAt: page.timestamp,
+    ...(Array.isArray(page.payload.messages) ? { empty: page.payload.messages.length === 0 } : {}),
   }
+}
+/** An empty terminal page confirms the existing before-cursor as the boundary. */
+export function nativeOldestBoundary(page: HistoryPageEvidence) {
+  if (page.hasPreviousPage !== false) return null
+  return (
+    page.startCursor ??
+    (page.isInitial === false && page.empty === true && page.endCursor === null
+      ? (page.requestedBefore ?? null)
+      : null)
+  )
+}
+function reachedHistoryStart(page: HistoryPageEvidence) {
+  return page.hasPreviousPage === false && (page.isInitial !== false || !!nativeOldestBoundary(page))
+}
+
+export function nativeStartEvidencePage(
+  page: HistoryPageEvidence,
+  checkpoint: HistoryCoverageCheckpoint | undefined,
+) {
+  if (page.startCursor && nativeOldestBoundary(page)) return page
+  if (!checkpoint?.blocked && checkpoint?.frontier && nativeOldestBoundary(checkpoint.frontier))
+    return checkpoint.frontier
+}
+
+/** A later read can preserve a durable start. A correction to the read that
+ * inferred it must still prove the same connected empty cursor. */
+export function retainProvenStart(
+  evidence: ConversationStartEvidence | undefined,
+  previous: HistoryCoverageCheckpoint | undefined,
+  current: HistoryCoverageCheckpoint | undefined,
+) {
+  if (
+    evidence?.kind === 'native-page' &&
+    previous?.initial.readId === evidence.sourceId &&
+    current?.initial.readId === evidence.sourceId &&
+    previous.frontier.startCursor === null &&
+    previous.frontier.requestedBefore === evidence.firstMessageId &&
+    (current.blocked || nativeOldestBoundary(current.frontier) !== evidence.firstMessageId)
+  )
+    return undefined
+  return evidence
 }
 export function advanceHistoryCoverage(
   previous: HistoryCoverageCheckpoint | undefined,
@@ -144,14 +189,14 @@ export function checkpointHistoryCoverage(checkpoint: HistoryCoverageCheckpoint 
   if (!checkpoint) return historyCoverage([])
   const { initial, frontier, blocked } = checkpoint
   return {
-    verified: !blocked && initial.hasNextPage === false && frontier.hasPreviousPage === false,
-    startReached: !blocked && frontier.hasPreviousPage === false,
+    verified: !blocked && initial.hasNextPage === false && reachedHistoryStart(frontier),
+    startReached: !blocked && reachedHistoryStart(frontier),
     endReached: !blocked && initial.hasNextPage === false,
     pageCount: checkpoint.pageCount,
     readId: initial.readId ?? null,
     readStartedAt: initial.readStartedAt ?? null,
     observedAt: Math.max(initial.observedAt, frontier.observedAt),
-    oldestCursor: frontier.startCursor,
+    oldestCursor: nativeOldestBoundary(frontier) ?? frontier.startCursor,
   }
 }
 export function validateHistoryCoverageCheckpoint(
@@ -174,6 +219,7 @@ export function validateHistoryCoverageCheckpoint(
     )
       return false
     if (item.isInitial !== undefined && typeof item.isInitial !== 'boolean') return false
+    if (item.empty !== undefined && typeof item.empty !== 'boolean') return false
     if (
       item.captureRun !== undefined &&
       (typeof item.captureRun !== 'string' || !item.captureRun || item.captureRun.length > 256)
@@ -282,13 +328,13 @@ export function historyCoverage(pages: HistoryPageEvidence[]) {
     count++
   }
   return {
-    verified: initial.hasNextPage === false && page.hasPreviousPage === false,
-    startReached: page.hasPreviousPage === false,
+    verified: initial.hasNextPage === false && reachedHistoryStart(page),
+    startReached: reachedHistoryStart(page),
     endReached: initial.hasNextPage === false,
     pageCount: count,
     readId: initial.readId ?? null,
     readStartedAt: initial.readStartedAt ?? null,
     observedAt: Math.max(initial.observedAt, page.observedAt),
-    oldestCursor: page.startCursor,
+    oldestCursor: nativeOldestBoundary(page) ?? page.startCursor,
   }
 }

@@ -484,3 +484,18 @@ scope and historical records outside that graph remain inspectable.
 The quick-menu collection command opens the current archive before starting,
 so progress and failures remain visible even when Settings was the previous view.
 Previously the collection ran behind Settings with its error hidden.
+
+## Provider power in All-in-one (2026-11-17)
+
+The quick menu and Control Center switches name and control the current
+provider. The previous installation-wide switch stopped both services when the
+user only meant to stop the service on the open site. Both surfaces use the
+same runtime command, including when a provider is disabled.
+
+## ChatGPT archive opens at the conversation list
+
+The ordinary archive entry shows the searchable conversation catalog and does
+not load a reader until a conversation is selected. Back returns to that list.
+The native site navigation must not change the selection. Explicit conversation
+and message links still open their destination; project links open the list
+with that project's conversations expanded.

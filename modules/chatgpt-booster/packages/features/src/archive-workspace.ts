@@ -1,6 +1,8 @@
+import { archiveRecordKind } from '@chatgpt-booster/chatgpt'
 import type { BoosterModule } from '@chatgpt-booster/core'
 import {
   ARCHIVE_READER_PAGE_SIZE,
+  type ArchiveConversationIntegrity,
   conversationIntegrityFromGraph,
 } from '@kobaproduction/browser-archive'
 import { checkpointHistoryCoverage } from './archive-coverage'
@@ -541,10 +543,39 @@ export class ConversationArchiveWorkspace implements BoosterModule {
           (streamTerminal ||
             conversation.liveTerminal === head ||
             saved?.terminalHeadId === head ||
-            (page.endReached && saved?.pageHeadId === head)),
+            (page.endReached && saved?.pageHeadId === head) ||
+            (livePage.endReached &&
+              livePage.readId === header?.headReadId &&
+              header?.currentNodeId === head)),
         headId: head,
       },
     )
+  }
+  readerIntegrity(id: string, integrity: ArchiveConversationIntegrity) {
+    if (integrity.scope === 'current-native-graph' || !integrity.issues.length) return {}
+    const records = this.conversation(id).records
+    const messageIssues: ArchiveConversationIntegrity['issues'][number][] = []
+    const serviceIssues: ArchiveConversationIntegrity['issues'][number][] = []
+    for (const issue of integrity.issues) {
+      const record = records.get(issue.messageId)
+      if (record && (issue.reason === 'missing-parent' || issue.reason === 'unverified-root')) {
+        const kind = archiveRecordKind(record)
+        if (kind !== 'user' && kind !== 'answer') {
+          serviceIssues.push(issue)
+          continue
+        }
+      }
+      messageIssues.push(issue)
+    }
+    if (!serviceIssues.length) return {}
+    return {
+      readerIntegrity: {
+        ...integrity,
+        chain: messageIssues.some((issue) => issue.reason !== 'unverified-root') ? 'gaps' : 'unknown',
+        issues: messageIssues,
+      } satisfies ArchiveConversationIntegrity,
+      serviceIssues,
+    }
   }
   subscribe(listener: (id: string | null) => void) {
     this.listeners.add(listener)

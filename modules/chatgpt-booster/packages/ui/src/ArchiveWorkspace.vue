@@ -5,7 +5,7 @@ import type {
   SettingsAdapter,
 } from '@chatgpt-booster/core'
 import { OPEN_ARCHIVE_EVENT } from '@chatgpt-booster/core'
-import { Button } from '@kobaproduction/browser-ui'
+import { Button, TooltipHint } from '@kobaproduction/browser-ui'
 import Archive from 'lucide-vue-next/dist/esm/icons/archive.js'
 import Maximize2 from 'lucide-vue-next/dist/esm/icons/maximize-2.js'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -259,20 +259,19 @@ onBeforeUnmount(() => {
 
 <template>
   <div v-if="ready" class="booster-archive-workspace-root">
-    <Button
-      v-if="minimized"
+    <TooltipHint v-if="minimized" :label="locale === 'ru' ? 'Развернуть архив' : 'Restore archive'"><Button
       class="booster-archive-dock-button"
       variant="outline"
       size="icon"
       type="button"
       :style="iconStyle"
-      :title="locale === 'ru' ? 'Развернуть архив' : 'Restore archive'"
+      :aria-label="locale === 'ru' ? 'Развернуть архив' : 'Restore archive'"
       @click="restoreFromDock"
       @pointerdown="iconPointerDown"
       @pointermove="pointerMove"
       @pointerup="pointerUp"
       @pointercancel="cancelPointer"
-    ><Archive class="size-5" /><Maximize2 class="booster-archive-dock-corner" /></Button>
+    ><Archive class="size-5" /><Maximize2 class="booster-archive-dock-corner" /></Button></TooltipHint>
 
     <section
       v-show="!minimized"

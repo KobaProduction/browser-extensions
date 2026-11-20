@@ -4,7 +4,9 @@ import {
   Badge,
   Button,
   SettingsCatalog,
+  SettingsPane,
   Switch,
+  TooltipHint,
   useApplicationLocale,
   useLocalizedText,
 } from '@kobaproduction/browser-ui'
@@ -17,7 +19,7 @@ import {
   providerSettingsCategory,
   settingsCatalogGroups,
 } from './settings-catalog'
-import { SHELL_UI_MESSAGES } from './ui-messages'
+import { pagePowerLabel, SHELL_UI_MESSAGES } from './ui-messages'
 
 const text = useLocalizedText(SHELL_UI_MESSAGES)
 
@@ -98,20 +100,21 @@ const statuses = computed(() => {
   void revision.value
   return props.runtime.list()
 })
-const installationActive = computed(() => {
+const pagePower = computed(() => {
   void revision.value
-  return props.runtime.isRunning()
+  return props.runtime.pagePower()
 })
+const powerLabel = computed(() => pagePowerLabel(pagePower.value, locale.value))
 const changing = ref(false)
 const changeError = ref('')
-async function toggleInstallation() {
-  if (changing.value) return
+async function setPagePower(enabled: boolean) {
+  if (changing.value || !pagePower.value.available) return
   changing.value = true
   changeError.value = ''
   try {
-    await props.runtime.setRunning(!installationActive.value)
+    await props.runtime.setPagePower(enabled)
   } catch {
-    changeError.value = 'Не удалось изменить состояние установки'
+    changeError.value = 'Не удалось переключить функции'
   } finally {
     changing.value = false
   }
@@ -138,12 +141,7 @@ const commonCategory = computed(() => {
     ? (candidate ?? 'interface')
     : 'interface'
 })
-const catalogGroups = computed(() => {
-  void revision.value
-  return settingsCatalogGroups(props.runtime, props.application)
-})
 const selectedProviderCategory = ref<string | null>(null)
-const catalogActiveGroup = computed(() => (currentView.value ? section.value : 'application'))
 const catalogSelected = computed(() => {
   void revision.value
   if (!currentView.value) return commonCategory.value
@@ -159,6 +157,58 @@ const catalogSelected = computed(() => {
     ? selected
     : ''
 })
+const workspaceTabs = computed(() => {
+  void revision.value
+  return matchingFeatures.value.flatMap((feature) =>
+    (feature.quickActions ?? []).flatMap((action) => {
+      const tab = action.workspaceTab
+      if (!props.views[feature.id] || !tab || action.visible?.() === false) return []
+      const available = action.moduleId
+        ? props.runtime
+            .moduleList()
+            .some(
+              (item) =>
+                item.featureId === feature.id && item.id === action.moduleId && item.state === 'active',
+            )
+        : activeFeatures.value.some((item) => item.id === feature.id)
+      return [
+        {
+          featureId: feature.id,
+          action,
+          tab,
+          group: {
+            id: `workspace:${feature.id}:${action.id}`,
+            title: locale.value === 'en' ? (tab.titleEn ?? tab.title) : tab.title,
+            entries: [],
+            workspace: true,
+            disabled: (!available && !action.availableWhenDisabled) || action.enabled?.() === false,
+          },
+        },
+      ]
+    }),
+  )
+})
+const catalogGroups = computed(() => [
+  ...workspaceTabs.value.map(({ group }) => group),
+  ...settingsCatalogGroups(props.runtime, props.application),
+])
+const catalogActiveGroup = computed(() => {
+  if (!currentView.value) return 'application'
+  return (
+    workspaceTabs.value.find((entry) => entry.featureId === section.value && entry.tab.isActive())?.group
+      .id ?? section.value
+  )
+})
+async function openWorkspace(entry: (typeof workspaceTabs.value)[number]) {
+  if (entry.group.disabled) return
+  const generation = ++navigationRevision
+  changeError.value = ''
+  try {
+    await entry.action.run()
+  } catch {
+    if (generation === navigationRevision) changeError.value = 'Не удалось открыть действие'
+  }
+}
 watch(
   catalogSelected,
   (id) => {
@@ -173,6 +223,11 @@ function selectSection(id: string) {
   emit('select', id)
 }
 function selectCategory(id: string) {
+  const workspace = workspaceTabs.value.find((entry) => entry.group.id === id)
+  if (workspace) {
+    void openWorkspace(workspace)
+    return
+  }
   if (id.startsWith('provider:')) {
     const provider = providerSettingsCategory(props.runtime, id)
     if (provider) void openProviderSettings(provider.feature.id, provider.categoryId)
@@ -234,21 +289,22 @@ function openProviderSettings(featureId: string, categoryId?: string): Promise<v
         <p v-if="!standalone">{{ text('Модульные инструменты браузера') }}</p>
       </div>
       <div class="booster-header-actions">
-        <Switch :model-value="installationActive" :disabled="changing"
-          :aria-label="installationActive ? text('Отключить функции расширения') : text('Включить функции расширения')"
-          @update:model-value="toggleInstallation" />
+        <TooltipHint :label="powerLabel">
+          <Switch :model-value="pagePower.enabled" :disabled="changing || !pagePower.available"
+            :aria-label="powerLabel" @update:model-value="setPagePower" />
+        </TooltipHint>
         <Badge v-if="!standalone" variant="secondary">{{activeFeatures.length}}{{ text(' активен') }}</Badge>
         <Button v-if="!floating" variant="ghost" size="icon" class="size-8" :title="text('Закрыть')" @click="emit('close')"><X class="size-4"/></Button>
       </div>
     </header>
     <SettingsCatalog compact class="border-b px-2 py-1.5" :groups="catalogGroups" :selected="catalogSelected" :active-group="catalogActiveGroup" @select="selectCategory" />
     <div class="booster-settings-layout booster-settings-layout-catalog">
-      <main class="booster-settings-content">
+      <SettingsPane>
         <p v-if="changeError" role="alert">{{ text(changeError) }}</p>
         <component :is="currentView" v-if="currentView" :key="currentViewKey"
           :installation="singleFeature?.presentation?.installation" :version="singleFeature?.presentation?.version" :show-catalog="false" :show-identity="false" />
         <ShellSettings v-else :runtime="runtime" :application="application" :selected-category="commonCategory" :site-entry-available="siteEntryAvailable ?? false" @category="selectCategory" @provider-settings="openProviderSettings" />
-      </main>
+      </SettingsPane>
     </div>
   </section>
 </template>

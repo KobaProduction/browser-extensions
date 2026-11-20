@@ -7,6 +7,7 @@ import {
   CollapsibleTrigger,
   Input,
   ScrollArea,
+  TooltipHint,
 } from '@kobaproduction/browser-ui'
 import { ChevronDown, ChevronRight, GitBranch } from 'lucide-vue-next'
 import type { ArchiveConversationGroup, ArchiveConversationListCopy } from './archive-list'
@@ -58,22 +59,21 @@ function toggleGroup(groupId: string, open: boolean) {
           </div>
           <CollapsibleContent>
             <div class="grid min-w-0 gap-1 pt-1">
+              <TooltipHint v-for="entry in group.rows" :key="entry.id" :label="entry.sourceMissing ? copy.missingBranch : entry.title || copy.untitled">
               <Button
-                v-for="entry in group.rows"
-                :key="entry.id"
                 type="button"
                 size="sm"
+                :data-archive-conversation="entry.id"
                 :variant="selectedId === entry.id ? 'secondary' : 'ghost'"
                 class="h-auto min-h-9 w-full min-w-0 justify-start overflow-hidden py-2 text-start"
                 :class="{ 'booster-archive-nav-branch': entry.branched }"
                 :style="{ paddingInlineStart: `min(${10 + Math.max(0, Math.min(entry.depth, 12)) * 14}px, 35%)` }"
                 :aria-current="selectedId === entry.id ? 'true' : undefined"
-                :title="entry.sourceMissing ? copy.missingBranch : entry.title || copy.untitled"
                 @click="emit('select', entry.id)"
               >
                 <GitBranch v-if="entry.branched" class="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
                 <span class="min-w-0 truncate">{{ entry.title || copy.untitled }}</span>
-              </Button>
+              </Button></TooltipHint>
             </div>
           </CollapsibleContent>
         </Collapsible>

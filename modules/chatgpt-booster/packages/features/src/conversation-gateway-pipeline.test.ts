@@ -35,7 +35,7 @@ function record(id: string, parent: string | null = null, text = id) {
     metadata: { parent_id: parent },
   }
 }
-function fixture(id: string) {
+function fixture(id: string, strictSource = false) {
   const dom = new Window({ url: `https://chatgpt.com/c/${id}` })
   const previous = {
     window: globalThis.window,
@@ -55,7 +55,7 @@ function fixture(id: string) {
   })
   const state = new ConversationStateStore(
     dom as unknown as globalThis.Window,
-    new ArchiveSourceGate(true),
+    new ArchiveSourceGate(!strictSource),
   )
   state.start()
   state.ingestAccount({ accountId: 'synthetic-owner', observedAt: 1 })
@@ -96,12 +96,19 @@ function fixture(id: string) {
     accountId: 'synthetic-owner',
     conversationId: id,
     timestamp: 1800000000000,
-    sourceUrl: 'fixture://gateway',
+    sourceUrl: strictSource
+      ? `https://chatgpt.com/backend-api/conversations/${id}${before ? `/messages?before=${before}` : ''}`
+      : 'fixture://gateway',
     readId: 'synthetic-read',
     readStartedAt: 1800000000000,
     isInitial: before === null,
     requestedBefore: before,
-    payload: { conversation_id: id, current_node: records.at(-1)?.id ?? null, messages: records },
+    payload: {
+      ...(!strictSource || before === null
+        ? { conversation_id: id, current_node: records.at(-1)?.id ?? null }
+        : {}),
+      messages: records,
+    },
   })
   return {
     state,
@@ -364,6 +371,165 @@ test('a confirmed history start remains durable when a later latest-window read 
     start: 'verified',
     firstMessageId: 'oldest',
   })
+})
+
+test('mock history pages repair message gaps without counting missing tool ancestry as a chat gap', async () => {
+  const user = {
+    ...record('first-user', null, 'Найди документацию по Skills'),
+    author: { role: 'user' },
+  }
+  const call = {
+    ...record('tool-call', 'first-user', '{"search_query":[{"q":"Skills documentation"}]}'),
+    recipient: 'web.run',
+    channel: 'commentary',
+  }
+  const result = {
+    ...record('tool-result', 'tool-call', 'Skills documentation'),
+    author: { role: 'tool' },
+  }
+  const answer = record('answer', 'tool-result', 'Документация описывает структуру навыка.')
+  const followup = {
+    ...record('followup', 'answer', 'Приведи пример.'),
+    author: { role: 'user' },
+  }
+  const head = record('head', 'followup', 'Навык начинается с файла SKILL.md.')
+  const load = (
+    f: ReturnType<typeof fixture>,
+    records: ReturnType<typeof record>[],
+    before: string | null = null,
+  ) => {
+    const page = f.page(records, before)
+    page.payload.page_info = {
+      start_cursor: records[0]?.id ?? null,
+      end_cursor: records.at(-1)?.id ?? null,
+      has_previous_page: before === null && records[0]?.id !== user.id,
+      has_next_page: before !== null,
+    }
+    f.state.ingestPage(page)
+  }
+  const fullId = 'gateway-reader-complete'
+  const full = fixture(fullId, true)
+  await full.settings.update({ archive: { defaultRule: { enabled: true } } })
+  full.workspace.start()
+  load(full, [user, call, result, answer, followup, head])
+  await full.capture.waitForDistribution()
+  const complete = await full.adapter.getCoverage(fullId)
+  expect((complete?.readerIntegrity ?? complete?.integrity)?.issues).toEqual([])
+  expect(complete?.integrity).toMatchObject({ start: 'verified', end: 'verified', chain: 'verified' })
+  expect(complete?.completeAtLastRead).toBe(true)
+
+  const id = 'gateway-reader-clipped'
+  const f = fixture(id, true)
+  f.workspace.start()
+  load(f, [result, followup, head])
+  const first = await f.adapter.getCoverage(id)
+  expect((first?.readerIntegrity ?? first?.integrity)?.issues).toEqual([
+    { messageId: 'followup', parentId: 'answer', reason: 'missing-parent' },
+  ])
+  expect(first?.serviceIssues).toEqual([
+    { messageId: 'tool-result', parentId: 'tool-call', reason: 'missing-parent' },
+  ])
+
+  load(f, [user, answer], 'tool-result')
+  const after = await f.adapter.getCoverage(id)
+  expect(after?.readerIntegrity).toMatchObject({ start: 'verified', chain: 'unknown', issues: [] })
+  expect(after?.serviceIssues).toEqual(first?.serviceIssues)
+  expect(after?.integrity?.issues).toEqual(first?.serviceIssues)
+  expect(after?.completeAtLastRead).toBe(false)
+})
+
+test('reader follows native route notifications and uses each current chat title before its history arrives', () => {
+  const f = fixture('route-first')
+  document.title = 'Первый диалог'
+  const displays: ReturnType<NonNullable<typeof f.adapter.currentConversationDisplay>>[] = []
+  const unsubscribe = f.adapter.subscribeContextChange?.(() => {
+    displays.push(f.adapter.currentConversationDisplay?.() ?? null)
+  })
+  cleanup.push(() => unsubscribe?.())
+  expect(f.adapter.currentConversationDisplay?.()).toEqual({ id: 'route-first', title: 'Первый диалог' })
+
+  document.title = 'Второй диалог'
+  window.history.pushState({}, '', '/c/route-second')
+  const navigation = (window as Window & { navigation?: EventTarget }).navigation
+  if (navigation) navigation.dispatchEvent(new window.Event('currententrychange'))
+  else window.dispatchEvent(new window.PopStateEvent('popstate'))
+  expect(displays.at(-1)).toEqual({ id: 'route-second', title: 'Второй диалог' })
+  unsubscribe?.()
+  const count = displays.length
+  window.history.pushState({}, '', '/c/route-third')
+  window.dispatchEvent(new window.PopStateEvent('popstate'))
+  expect(displays).toHaveLength(count)
+})
+
+test('an unnamed native page does not overwrite the saved dialog label in the reader', async () => {
+  const id = 'route-saved'
+  const f = fixture(id)
+  await f.settings.update({ archive: { defaultRule: { enabled: true } } })
+  const saved = f.page([record('saved-root')])
+  saved.payload.title = 'Сохранённое название'
+  f.state.ingestPage(saved)
+  await f.capture.waitForDistribution()
+  f.state.ingestAccount({ accountId: null, observedAt: 2 })
+  f.state.ingestAccount({ accountId: 'synthetic-owner', observedAt: 3 })
+  f.state.ingestPage(f.page([record('live-head')]))
+  expect((await f.adapter.listConversations()).find((row) => row.conversationId === id)?.title).toBe(
+    'Сохранённое название',
+  )
+  expect((await f.adapter.getConversation(id))?.title).toBe('Сохранённое название')
+})
+
+test('ordinary older-page observations close a gap and persist an empty terminal boundary', async () => {
+  const id = 'gateway-scroll-boundary'
+  const f = fixture(id)
+  await f.settings.update({ archive: { defaultRule: { enabled: true } } })
+  f.workspace.start()
+  const head = f.page([record('head', 'oldest')])
+  head.payload.page_info = {
+    start_cursor: 'head',
+    end_cursor: 'head',
+    has_previous_page: true,
+    has_next_page: false,
+  }
+  f.state.ingestPage(head)
+  await f.workspace.open(id)
+  expect(f.workspace.integrity(id).issues.some((issue) => issue.reason === 'missing-parent')).toBe(true)
+
+  const older = f.page([record('oldest')], 'head')
+  older.payload.page_info = {
+    start_cursor: 'oldest',
+    end_cursor: 'oldest',
+    has_previous_page: true,
+    has_next_page: true,
+  }
+  f.state.ingestPage(older)
+  expect(f.workspace.integrity(id).issues.some((issue) => issue.reason === 'missing-parent')).toBe(false)
+
+  const terminal = f.page([], 'oldest')
+  terminal.payload.page_info = {
+    start_cursor: null,
+    end_cursor: null,
+    has_previous_page: false,
+    has_next_page: true,
+  }
+  f.state.ingestPage({ ...terminal, readId: 'unconnected-read' })
+  expect(f.state.header(id)?.startEvidence).toBeUndefined()
+  f.state.ingestPage({
+    ...terminal,
+    payload: { ...terminal.payload, messages: [record('oldest')] },
+  })
+  expect(f.state.header(id)?.startEvidence).toBeUndefined()
+  f.state.ingestPage(terminal)
+  expect(f.workspace.integrity(id)).toMatchObject({ start: 'verified', firstMessageId: 'oldest' })
+  await f.capture.waitForDistribution()
+  expect((await f.capture.workspaceChunk(id)).header?.startEvidence?.firstMessageId).toBe('oldest')
+  f.state.ingestPage({
+    ...terminal,
+    timestamp: terminal.timestamp + 1,
+    payload: { ...terminal.payload, messages: [record('oldest')] },
+  })
+  expect(f.state.header(id)?.startEvidence).toBeUndefined()
+  await f.capture.waitForDistribution()
+  expect((await f.capture.workspaceChunk(id)).header?.startEvidence).toBeUndefined()
 })
 
 test('archive off retains pages, stream variants and terminal events; enable replays to DB without replaying lifecycle', async () => {

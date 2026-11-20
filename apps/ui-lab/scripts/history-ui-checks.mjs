@@ -11,18 +11,12 @@ export async function checkHistoryUi(context) {
   const slider = `(${rail})?.querySelector('[role=slider]')`
   const preview = `(${root}).querySelector('[data-archive-timeline-preview][data-state=delayed-open], [data-archive-timeline-preview][data-state=instant-open]')`
   const surface = `(${root}).querySelector('[data-archive-reading-surface]')`
-  const historyToggle = `([...(${root}).querySelectorAll('button[aria-label]')].find(el=>/^(Показать|Скрыть) историю/.test(el.getAttribute('aria-label'))))`
+  const historyToggle = `([...(${root}).querySelectorAll('button[aria-label]')].find(el=>/^(Таймлайн$|(Показать|Скрыть) историю)/.test(el.getAttribute('aria-label'))))`
   const reports = []
   async function open(product, width, height, scene = 'saved') {
     await navigate({ product, width, height, scene, view: 'archive' })
-    if (!product.endsWith('vk') && width <= 640 && scene !== 'empty') {
-      const conversation = `(${root}).querySelector('.booster-reader-sidebar button[aria-current=true]')`
-      const alreadyReading = await evaluate(`Boolean((${surface})?.getBoundingClientRect().height>0)`)
-      if (!alreadyReading) {
-        await waitFor(`Boolean(${conversation})`, 'Saved phone conversation is absent')
-        await clickAt(conversation)
-      }
-    }
+    if (!product.endsWith('vk') && scene !== 'empty') await h.openSavedConversation()
+    if (scene !== 'empty' && !(await evaluate(`Boolean(${rail})`))) await clickAt(historyToggle)
     if (scene !== 'empty')
       await waitFor(
         `Boolean(${slider})&&Boolean((${root}).querySelector('[data-archive-message]'))`,
@@ -79,8 +73,11 @@ export async function checkHistoryUi(context) {
       const metrics = await evaluate(
         `(() => {const pane=${surface},r=${rail},transcript=pane.querySelector('[data-archive-reading-transcript]'),measure=el=>{const b=el.getBoundingClientRect();return {x:b.x,right:b.right,y:b.y,bottom:b.bottom,width:b.width,height:b.height,client:el.clientWidth,scroll:el.scrollWidth}};return {surface:measure(pane),rail:measure(r),transcript:measure(transcript),points:r.querySelectorAll('[data-archive-timeline-id]').length,duplicatedText:[...r.querySelectorAll('[data-archive-timeline-id]')].some(el=>el.textContent.trim()),label:(${slider}).getAttribute('aria-label')}})()`,
       )
+      const railWidth =
+        (product.endsWith('vk') ? 5 : 4) *
+        (await evaluate(`parseFloat(getComputedStyle(document.documentElement).fontSize)`))
       if (
-        Math.abs(metrics.rail.width - 80) > 1 ||
+        Math.abs(metrics.rail.width - railWidth) > 1 ||
         metrics.rail.x < metrics.transcript.right ||
         Math.abs(metrics.rail.y - metrics.transcript.y) > 1 ||
         metrics.transcript.height < 150 ||
@@ -92,7 +89,7 @@ export async function checkHistoryUi(context) {
       )
         throw Error(`${product}/${name}: shared reading layout differs: ${JSON.stringify(metrics)}`)
       const hover = await evaluate(
-        `(() => {const p=(${rail}).querySelector('[data-archive-timeline-id][aria-current=true]')||(${rail}).querySelector('[data-archive-timeline-id]'),b=p.getBoundingClientRect();return {x:b.x+b.width/2,y:b.y+b.height/2,id:p.dataset.archiveTimelineId}})()`,
+        `(() => {const root=${root};for(const point of (${rail}).querySelectorAll('[data-archive-timeline-id]')){const b=point.getBoundingClientRect(),x=b.x+b.width/2,y=b.y+b.height/2;const hit=root.elementFromPoint(x,y);if(hit===point||point.contains(hit))return {x,y,id:point.dataset.archiveTimelineId};}throw Error('Timeline has no visible hover target');})()`,
       )
       await command('Input.dispatchMouseEvent', { type: 'mouseMoved', x: hover.x, y: hover.y })
       const hovered = await visiblePreview(
@@ -178,7 +175,7 @@ export async function checkHistoryUi(context) {
       const expanded = await evaluate(
         `(${surface}).querySelector('[data-archive-reading-transcript]').getBoundingClientRect().width`,
       )
-      if (expanded < metrics.transcript.width + 79)
+      if (expanded < metrics.transcript.width + metrics.rail.width - 1)
         throw Error(`${product}: hidden history did not return space to transcript`)
       await clickAt(toggle)
       await waitFor(`Boolean(${rail})`, `${product}: history cannot be restored`)

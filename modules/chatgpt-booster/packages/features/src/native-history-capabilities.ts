@@ -1,13 +1,28 @@
 import type { NativeModules } from './native-history-reader'
 
-const runtimePath = '/cdn/assets/633146.1c1c050e67.js'
+const accountRuntimePaths = ['/cdn/assets/633146.48b57020d2.js', '/cdn/assets/633146.4955a63526.js']
+const runtimePaths = [...accountRuntimePaths, '/cdn/assets/633146.1c1c050e67.js']
 type CachedRuntime = { c: Record<string, { exports: Record<string, unknown> } | undefined> }
+
+export function nativeHistoryRouter() {
+  return (
+    window as unknown as {
+      __reactRouterDataRouter?: {
+        state?: { loaderData?: Record<string, { sidebarHistory?: { accountId?: unknown } }> }
+        revalidate(): Promise<void> | void
+        subscribe(callback: () => void): () => void
+      }
+    }
+  ).__reactRouterDataRouter
+}
 
 /** Only the already-loaded, source-inspected client may supply capabilities. */
 export async function loadNativeHistoryCapabilities(): Promise<NativeModules> {
   const manifest = (window as unknown as { __reactRouterManifest?: { entry?: { imports?: string[] } } })
     .__reactRouterManifest
-  if (!manifest?.entry?.imports?.includes(runtimePath)) throw Error('Unsupported native history runtime')
+  const runtimePath = runtimePaths.find((path) => manifest?.entry?.imports?.includes(path))
+  if (!runtimePath) throw Error('Unsupported native history runtime')
+  const supportsAccount = accountRuntimePaths.includes(runtimePath)
   // This URL is an already-loaded, source-inspected runtime, not a private API request.
   const moduleUrl = new URL(runtimePath, location.origin).href
   const runtime = (await import(/* @vite-ignore */ moduleUrl)).__webpack_require__ as CachedRuntime
@@ -28,7 +43,16 @@ export async function loadNativeHistoryCapabilities(): Promise<NativeModules> {
     typeof flush !== 'function'
   )
     throw Error('Native history not ready')
+  const refreshAccount = cached('Ietk')?.c
+  const userToken = cached('Cslg')?.[supportsAccount ? 'j' : 'i']
+  if (!userToken) throw Error('Native history not ready')
   return {
+    ...(supportsAccount
+      ? { initialHistory: history as NonNullable<NativeModules['initialHistory']> }
+      : {}),
+    ...(supportsAccount && typeof refreshAccount === 'function'
+      ? { refreshAccount: refreshAccount as NativeModules['refreshAccount'] }
+      : {}),
     ...(cached('p0Ph')
       ? {
           delivery: {
@@ -42,7 +66,7 @@ export async function loadNativeHistoryCapabilities(): Promise<NativeModules> {
     history: history as NativeModules['history'],
     appToken: cached('OWtl')?.a,
     accountToken: cached('OiCI')?.a,
-    userToken: cached('Cslg')?.i,
+    userToken,
     pagination: {
       token: paginationToken,
       readPage: readPage as NonNullable<NativeModules['pagination']>['readPage'],

@@ -20,12 +20,6 @@ import {
   type SettingsAdapter,
 } from '@chatgpt-booster/core'
 import {
-  type ArchiveExportMessageSummary,
-  archiveExportSelectionIds,
-  defaultArchiveExportSelection,
-} from '@kobaproduction/browser-archive'
-import {
-  ArchiveProgress,
   Button,
   Checkbox,
   Collapsible,
@@ -48,11 +42,12 @@ import ArrowUpToLine from 'lucide-vue-next/dist/esm/icons/arrow-up-to-line.js'
 import CheckCircle2 from 'lucide-vue-next/dist/esm/icons/circle-check.js'
 import Download from 'lucide-vue-next/dist/esm/icons/download.js'
 import Info from 'lucide-vue-next/dist/esm/icons/info.js'
-import X from 'lucide-vue-next/dist/esm/icons/x.js'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import ArchiveExportHeader from './ArchiveExportHeader.vue'
 import { type ArchiveExportPreset, archiveExportPresetOptions } from './archive-export-presets'
 import { type SupportedLocale, type TranslationKey, translate } from './i18n'
-import type { ArchiveCoverageView, ArchiveDataAdapter, ArchiveExportPreview } from './mount'
+import type { ArchiveCoverageView, ArchiveDataAdapter } from './mount'
+import { useArchiveExportSelection } from './use-archive-export-selection'
 
 const appTelemetry = useApplicationTelemetry('chatgpt-booster')
 const props = defineProps<{
@@ -71,57 +66,17 @@ const emit = defineEmits<{
   'open-backups': []
 }>()
 const options = ref<ArchiveExportOptions>({ ...DEFAULT_EXPORT_OPTIONS })
-const exportSelection = ref({
-  ...defaultArchiveExportSelection(),
-  mode: props.selectedMessageIds?.length ? ('selected' as const) : ('all' as const),
+const {
+  exportSelection,
+  selectedIds,
+  selectionMessages,
+  selectionLoading,
+  selectionIds,
+  loadSelectionMessages,
+} = useArchiveExportSelection(props, () => {
+  error.value = 'archive.error.sourceChanged'
 })
-const selectedIds = ref<readonly string[]>(props.selectedMessageIds ? [...props.selectedMessageIds] : [])
-const selectionMessages = ref<readonly ArchiveExportMessageSummary[]>([])
-const selectionLoading = ref(false)
-let selectionController: AbortController | undefined
-let selectionGeneration = 0
-const selectionIds = computed(() => {
-  try {
-    return archiveExportSelectionIds(selectionMessages.value, exportSelection.value, selectedIds.value)
-  } catch {
-    return []
-  }
-})
-async function loadSelectionMessages() {
-  selectionController?.abort()
-  const controller = new AbortController(),
-    generation = ++selectionGeneration
-  selectionController = controller
-  selectionLoading.value = true
-  const owner = props.archiveAdapter.currentAccountId?.()
-  try {
-    const messages = await props.archiveAdapter.getExportMessages?.(
-      props.conversationId,
-      controller.signal,
-    )
-    if (
-      !controller.signal.aborted &&
-      generation === selectionGeneration &&
-      props.archiveAdapter.currentAccountId?.() === owner
-    )
-      selectionMessages.value = messages ?? []
-  } catch {
-    if (!controller.signal.aborted && generation === selectionGeneration) {
-      selectionMessages.value = []
-      error.value = 'archive.error.sourceChanged'
-    }
-  } finally {
-    if (generation === selectionGeneration) selectionLoading.value = false
-  }
-}
-onMounted(loadSelectionMessages)
-onBeforeUnmount(() => selectionController?.abort())
-watch(
-  () => props.selectedMessageIds,
-  (ids) => {
-    selectedIds.value = ids ? [...ids] : []
-  },
-)
+
 type ExportPreferenceScope = 'global' | 'project' | 'conversation'
 const preferenceScope = ref<ExportPreferenceScope>('global')
 const preferenceSource = ref<ExportPreferenceScope>('global')
@@ -231,17 +186,6 @@ async function downloadRecovered(format: 'json' | 'markdown' | 'json-gzip') {
     if (active) recoveredBusy.value = false
   }
 }
-const previewOpen = ref(false)
-const previewLoading = ref(false)
-const preview = ref<ArchiveExportPreview>()
-const previewError = ref(false)
-let previewRevision = 0
-const previewTail = computed(
-  () =>
-    preview.value?.latest.filter(
-      (item) => !preview.value?.earliest.some((first) => first.messageId === item.messageId),
-    ) ?? [],
-)
 const t = (key: TranslationKey) => translate(props.locale, key)
 const collectionStopKeys: Record<HistoryCollectionStopReason, TranslationKey> = {
   user: 'export.collectionStoppedUser',
@@ -265,35 +209,6 @@ const collectionPauseLabel = computed(() => {
     : t('export.collectionStoppedUser')
 })
 
-const exportPhaseKeys: Record<ArchiveExportProgress['phase'], TranslationKey> = {
-  checking: 'export.phaseChecking',
-  tracing: 'export.phaseTracing',
-  serializing: 'export.phaseSerializing',
-  packaging: 'export.phasePackaging',
-  verifying: 'export.phaseVerifying',
-  ready: 'export.phaseReady',
-}
-const exportPhaseLabel = computed(() =>
-  exportProgress.value ? t(exportPhaseKeys[exportProgress.value.phase]) : t('export.working'),
-)
-function formatExportBytes(value: number): string {
-  const scale = value >= 1024 * 1024 ? 1024 * 1024 : value >= 1024 ? 1024 : 1
-  const label = scale === 1 ? t('export.progressBytes') : scale === 1024 ? 'KiB' : 'MiB'
-  const number = new Intl.NumberFormat(props.locale, { maximumFractionDigits: scale === 1 ? 0 : 1 })
-  return `${number.format(value / scale)} ${label}`
-}
-const exportCounter = computed(() => {
-  const progress = exportProgress.value
-  if (!progress || progress.completed === null) return ''
-  if (progress.unit === 'bytes')
-    return `${formatExportBytes(progress.completed)} / ${formatExportBytes(progress.total)}`
-  const number = new Intl.NumberFormat(props.locale)
-  const count =
-    progress.total === null
-      ? number.format(progress.completed)
-      : `${number.format(progress.completed)} / ${number.format(progress.total)}`
-  return `${count} ${t('export.progressRecords')}`
-})
 const contextRevision = ref(0)
 const isCurrent = computed(() => {
   void contextRevision.value
@@ -456,9 +371,15 @@ const statusKey = computed<TranslationKey>(() => {
   if (!coverage.value) return 'export.statusUnknown'
   if (coverage.value.knownMessageCount === 0) return 'export.statusMissing'
   // Unknown boundaries are not evidence of a missing parent or a newer native message.
-  const integrity = coverage.value.integrity
+  const integrity =
+    options.value.level === 'conversation'
+      ? (coverage.value.readerIntegrity ?? coverage.value.integrity)
+      : coverage.value.integrity
   if (integrity) {
-    if (integrity.chain === 'gaps') return 'export.statusGaps'
+    if (integrity.chain === 'gaps')
+      return integrity.scope === 'current-native-graph'
+        ? 'export.statusGaps'
+        : 'export.statusLinksUnknown'
     return integrity.chain === 'verified' ? 'export.statusSaved' : 'export.statusExtentUnknown'
   }
   if (!coverage.value.completeAtLastRead)
@@ -473,6 +394,24 @@ let queue: Promise<unknown> = Promise.resolve(),
   active = true
 let exportController: AbortController | undefined
 let unsubscribeContext: (() => void) | undefined
+let coverageRevision = 0
+async function refreshCoverage() {
+  const revision = ++coverageRevision
+  const id = props.conversationId
+  const owner = props.archiveAdapter.currentAccountId?.()
+  try {
+    const next = await props.archiveAdapter.getCoverage(id)
+    if (
+      active &&
+      revision === coverageRevision &&
+      id === props.conversationId &&
+      owner === props.archiveAdapter.currentAccountId?.()
+    )
+      coverage.value = next
+  } catch {
+    // A failed refresh leaves the last known saved-copy status visible.
+  }
+}
 async function refreshReadiness(resetFailure = false) {
   if (!props.archiveAdapter.getExportReadiness || !ready.value || props.suspended || !active) return
   if (resetFailure) failedBlocker.value = null
@@ -500,8 +439,6 @@ async function refreshReadiness(resetFailure = false) {
     }
     readiness.value = result
     readinessDirty.value = false
-    if (previewOpen.value && !preview.value && !previewLoading.value && !collecting.value && !busy.value)
-      void loadPreview()
   } catch (cause) {
     if (!active || controller.signal.aborted || revision !== readinessRevision) return
     readinessFailed.value = true
@@ -520,17 +457,17 @@ function scheduleReadiness() {
   if (!active || !ready.value || props.suspended || busy.value) return
   // Coalesce committed pages/settings events; this is not a simulated progress delay.
   readinessTimer = setTimeout(() => {
-    void refreshReadiness()
+    if (props.archiveAdapter.getExportReadiness) void refreshReadiness()
+    else void refreshCoverage()
   }, 180)
 }
-function invalidateExportSource() {
+function invalidateExportSource(preserveActiveExport = false) {
   void loadSelectionMessages()
-  cancelExport()
-  clearPrepared()
+  if (!preserveActiveExport) {
+    cancelExport()
+    clearPrepared()
+  }
   failedBlocker.value = null
-  ++previewRevision
-  preview.value = undefined
-  previewLoading.value = false
   scheduleReadiness()
 }
 async function recheckExport() {
@@ -567,7 +504,8 @@ watch(
 )
 
 function stopCollection(reason: HistoryCollectionStopReason = 'user') {
-  if (!props.archiveAdapter.collectionInsideExportOnly || !collecting.value) return
+  if (!collecting.value || (!props.archiveAdapter.collectionInsideExportOnly && reason !== 'user'))
+    return
   const request: HistoryLoaderStopRequest = {
     conversationId: props.conversationId,
     reason,
@@ -596,7 +534,6 @@ watch(
       clearTimeout(readinessTimer)
     } else {
       scheduleReadiness()
-      if (previewOpen.value) void loadPreview()
       if (!preferenceContext.value && ready.value) void changePreferenceScope()
     }
   },
@@ -605,12 +542,7 @@ function collectionStateChanged(event: Event) {
   applyCollectionState((event as CustomEvent<HistoryLoaderState>).detail)
 }
 function applyCollectionState(status: Readonly<HistoryLoaderState> | undefined) {
-  if (
-    !props.archiveAdapter.collectionInsideExportOnly ||
-    !status ||
-    status.conversationId !== props.conversationId
-  )
-    return
+  if (!status || status.conversationId !== props.conversationId) return
   if (
     collectionSessionId.value !== undefined &&
     status.sessionId !== undefined &&
@@ -631,16 +563,8 @@ function applyCollectionState(status: Readonly<HistoryLoaderState> | undefined) 
     refreshing.value = false
     collectionPaused.value = status.phase !== 'complete'
     if (status.phase === 'error') error.value = status.message ?? 'archive.error.unknown'
-    preview.value = undefined
     failedBlocker.value = null
     scheduleReadiness()
-    if (previewOpen.value && !props.suspended) void loadPreview()
-    void props.archiveAdapter
-      .getCoverage(props.conversationId)
-      .then((next) => {
-        if (active) coverage.value = next
-      })
-      .catch(() => undefined)
   }
 }
 function onVisibilityChange() {
@@ -653,42 +577,11 @@ function closeDialog() {
   clearPrepared()
   emit('close')
 }
-async function togglePreview() {
-  if (!props.archiveAdapter.getExportPreview) return
-  previewOpen.value = !previewOpen.value
-  if (!previewOpen.value || preview.value) return
-  await loadPreview()
-}
-async function loadPreview() {
-  if (!props.archiveAdapter.getExportPreview) return
-  const ticket = ++previewRevision
-  previewLoading.value = true
-  previewError.value = false
-  try {
-    const result = await props.archiveAdapter.getExportPreview(props.conversationId)
-    if (active && ticket === previewRevision) preview.value = result
-  } catch {
-    if (active && ticket === previewRevision) previewError.value = true
-  } finally {
-    if (active && ticket === previewRevision) previewLoading.value = false
-  }
-}
 function openFullArchive() {
   stopCollection('export_suspended')
   cancelExport()
   emit('open-archive', props.conversationId)
 }
-function inspectPreviewMessage(location: ArchiveMessageLocation | undefined) {
-  if (!location || busy.value || previewLoading.value || !props.archiveAdapter.getMessageWindow) return
-  if (props.archiveAdapter.currentAccountId?.() !== location.accountId) {
-    error.value = 'archive.error.auth'
-    return
-  }
-  stopCollection('export_suspended')
-  cancelExport()
-  emit('open-archive', props.conversationId, { ...location })
-}
-
 function onSourceIncompatible(event: Event) {
   const conversationId = (event as CustomEvent<{ conversationId?: string }>).detail?.conversationId
   if (conversationId !== props.conversationId) return
@@ -705,7 +598,16 @@ onMounted(async () => {
   window.addEventListener(HISTORY_LOADER_STATE_EVENT, collectionStateChanged)
   applyCollectionState(props.archiveAdapter.getCollectionState?.())
   document.addEventListener('visibilitychange', onVisibilityChange)
+  const exportContext = () => [
+    props.archiveAdapter.currentAccountId?.(),
+    props.archiveAdapter.currentConversationId(),
+    props.archiveAdapter.currentProjectId(),
+  ]
+  let previousContext = exportContext()
   unsubscribeContext = props.archiveAdapter.subscribeContextChange?.(() => {
+    const next = exportContext()
+    if (next.every((value, index) => value === previousContext[index])) return
+    previousContext = next
     contextRevision.value += 1
     preferenceRevision += 1
     preferenceContext.value = undefined
@@ -716,7 +618,9 @@ onMounted(async () => {
   })
   unsubscribeExport = props.archiveAdapter.subscribeExportChanges?.(
     props.conversationId,
-    invalidateExportSource,
+    // Fixed exports use one saved snapshot. Workspace updates refresh readiness
+    // without replacing the snapshot attached to an already prepared file.
+    () => invalidateExportSource(props.archiveAdapter.liveSavedUpdates === true),
   )
   try {
     const [settings, nextCoverage, scoped] = await Promise.all([
@@ -766,7 +670,6 @@ onMounted(async () => {
 })
 onBeforeUnmount(() => {
   ++recoveredRevision
-  ++previewRevision
   ++preferenceRevision
   stopCollection('export_closed')
   window.removeEventListener(ARCHIVE_SOURCE_INCOMPATIBLE_EVENT, onSourceIncompatible)
@@ -1061,8 +964,14 @@ function cancelExport() {
 }
 </script>
 <template>
-  <section class="booster-export-dialog" :lang="locale">
-    <header class="booster-section-header"><div><strong>{{ t('export.title') }}</strong><p>{{ title || t('identity.untitled') }}</p></div><Button variant="ghost" type="button" class="booster-icon-button" :aria-label="t('common.close')" @click="closeDialog"><X class="size-4" /></Button></header>
+  <section class="booster-export-dialog" data-panel-content-focus="true" :lang="locale">
+    <ArchiveExportHeader :locale="locale" :title="title" :ready="ready" :busy="busy"
+      :show-prepare="!recoveredAvailable || !prepareBlocked" :prepare-blocked="prepareBlocked"
+      :prepare-disabled="incompatible || collecting || refreshing || preferenceLoading || preferenceSaving || prepareBlocked"
+      :prepared-url="preparedUrl" :prepared-name="preparedName" :prepared-bytes="preparedBytes"
+      :export-progress="exportProgress" :export-cancelled="exportCancelled"
+      :error-label="error && !incompatible ? t(error as TranslationKey) : ''" :complete="complete" :incomplete="incomplete"
+      @back="closeDialog" @cancel="cancelExport" @prepare="download" />
     <section v-if="recoveredAvailable" class="booster-export-readiness">
       <header><strong>{{ locale === 'ru' ? 'Скачать сохранённые сообщения' : 'Download saved messages' }}</strong></header>
       <p class="booster-note">{{ locale === 'ru'
@@ -1117,49 +1026,7 @@ function cancelExport() {
         </template>
       </section>
       </CollapsibleContent></Collapsible>
-      <section v-if="archiveAdapter.getExportPreview" class="booster-export-preview">
-        <Button variant="outline" type="button" class="booster-action-secondary" :disabled="busy" :aria-expanded="previewOpen" @click="togglePreview">
-          {{ locale === 'ru' ? (previewOpen ? 'Скрыть предпросмотр' : 'Предпросмотр начала и конца') : (previewOpen ? 'Hide preview' : 'Preview first and last messages') }}
-        </Button>
-        <div v-if="previewOpen" class="booster-export-preview-content">
-          <div v-if="previewLoading" class="booster-export-preview-skeleton" role="status">
-            <p class="booster-note">{{ t('reader.loading') }}</p>
-            <span aria-hidden="true" /><span aria-hidden="true" /><span aria-hidden="true" />
-          </div>
-          <p v-else-if="previewError" role="alert" class="booster-error">{{ t('reader.error') }}</p>
-          <template v-else-if="preview">
-            <p class="booster-note">{{ locale === 'ru' ? 'Известные границы (не доказанные корень/конец версии)' : 'Known endpoints (not verified version root/tip)' }} · {{ preview.knownCount }}</p>
-            <p class="booster-note">
-              {{ locale === 'ru' ? 'Непрерывность страниц' : 'Page continuity' }}: {{ preview.sourcePageContinuity }} ·
-              {{ locale === 'ru' ? 'Полнота захвата' : 'Capture coverage' }}: {{ preview.captureCoverage }}
-            </p>
-            <p v-if="preview.hasUnsequencedMessages" class="booster-note">
-              {{ locale === 'ru' ? 'Есть сообщения без подтверждённого времени; они не вошли в хронологический предпросмотр.' : 'Some messages lack verified timestamps and are not in the chronological preview.' }}
-            </p>
-            <p v-if="preview.latestHeadMatches === false" class="booster-note">
-              {{ locale === 'ru' ? 'Текущая версия не совпадает с сохранённой вершиной.' : 'Current version does not match the saved tip.' }}
-            </p>
-            <p v-if="!preview.selectedTipId" class="booster-note">
-              {{ locale === 'ru' ? 'Выбранная версия пока не подтверждена.' : 'Selected version is not confirmed.' }}
-            </p>
-            <p class="booster-note">{{ locale === 'ru' ? 'Первые известные' : 'Earliest known' }}</p>
-            <div v-for="message in preview.earliest" :key="'early-'+message.messageId" class="booster-note booster-export-preview-record">
-              <span><strong>{{ message.role ?? 'unknown' }}</strong> — {{ message.text || (locale === 'ru' ? 'Нет текстового содержимого' : 'No text') }}</span>
-              <Button variant="outline" v-if="message.location && archiveAdapter.getMessageWindow" type="button" class="booster-action-secondary" :disabled="busy || collecting || previewLoading" @click="inspectPreviewMessage(message.location)">{{ t('export.inspectMessage') }}</Button>
-            </div>
-            <p v-if="preview.hiddenKnownCount" class="booster-note">… {{ preview.hiddenKnownCount }} {{ locale === 'ru' ? 'промежуточных записей скрыто' : 'middle records hidden' }} …</p>
-            <p v-if="previewTail.length" class="booster-note">{{ locale === 'ru' ? 'Последние известные' : 'Latest known' }}</p>
-            <div v-for="message in previewTail" :key="'last-'+message.messageId" class="booster-note booster-export-preview-record">
-              <span><strong>{{ message.role ?? 'unknown' }}</strong> — {{ message.text || (locale === 'ru' ? 'Нет текстового содержимого' : 'No text') }}</span>
-              <Button variant="outline" v-if="message.location && archiveAdapter.getMessageWindow" type="button" class="booster-action-secondary" :disabled="busy || collecting || previewLoading" @click="inspectPreviewMessage(message.location)">{{ t('export.inspectMessage') }}</Button>
-            </div>
-            <Button variant="outline" type="button" class="booster-action-secondary" @click="openFullArchive">
-              {{ locale === 'ru' ? 'Полный архив' : 'Full archive' }}
-            </Button>
-          </template>
-        </div>
-      </section>
-      <ArchiveExportScopeFields v-model="exportSelection" v-model:selected-ids="selectedIds" :messages="selectionMessages" :loading="selectionLoading" :disabled="busy" :locale="locale" />
+      <ArchiveExportScopeFields v-model="exportSelection" v-model:selected-ids="selectedIds" :messages="selectionMessages" :all-count="null" :loading="selectionLoading" :disabled="busy" :locale="locale" />
       <ArchiveExportFormatFields v-model:format="options.format" :packaging="options.packaging ?? 'none'" :formats="formats" :packages="exportPackages"
         :format-label="t('export.format')" :packaging-label="locale === 'ru' ? 'Упаковка результата' : 'Output packaging'" :disabled="busy || preferenceLoading"
         @update:format="remember" @update:packaging="chooseOutputPackaging" />
@@ -1223,7 +1090,10 @@ function cancelExport() {
       </p>
       <p v-if="options.packaging === 'gzip'" class="booster-note">{{ locale === 'ru' ? 'GZIP без потерь уменьшает размер файла; распаковывается стандартными архиваторами.' : 'Lossless GZIP reduces output size and can be opened by standard archive tools.' }}</p>
       </CollapsibleContent></Collapsible>
-      <Label>{{ t('export.level') }}<Select v-model="options.level" :disabled="busy || preferenceLoading" @update:model-value="remember"><SelectTrigger class="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="conversation">{{ t('export.conversation') }}</SelectItem><SelectItem value="custom">{{ t('export.custom') }}</SelectItem><SelectItem value="full">{{ t('export.full') }}</SelectItem></SelectContent></Select></Label>
+      <div class="booster-export-fields">
+        <Label>{{ t('export.level') }}<Select v-model="options.level" :disabled="busy || preferenceLoading" @update:model-value="remember"><SelectTrigger class="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="conversation">{{ t('export.conversation') }}</SelectItem><SelectItem value="custom">{{ t('export.custom') }}</SelectItem><SelectItem value="full">{{ t('export.full') }}</SelectItem></SelectContent></Select></Label>
+        <Label>{{ locale === 'ru' ? 'Имя файла' : 'Filename' }} <Input v-model="filename" type="text" :disabled="busy" maxlength="100" /></Label>
+      </div>
       <p class="booster-note">{{ t(options.level === 'full' ? 'export.profileFull' : options.level === 'custom' ? 'export.profileCustom' : 'export.profileConversation') }}</p>
       <p v-if="archiveAdapter.archiveGeneration === 4 && options.level !== 'full' && (options.format === 'json' || options.format === 'json-compact')" class="booster-note">{{ t('export.timebaseHint') }}</p>
       <fieldset v-if="options.level === 'custom'" :disabled="busy" class="booster-checkboxes">
@@ -1258,16 +1128,6 @@ function cancelExport() {
       <p v-if="incompatible" role="alert" class="booster-error">{{ t("archive.error.incompatibleSource") }}</p>
       <p v-if="wantsAssets" class="booster-note">{{ t('export.metadata') }}</p>
       <p v-if="wantsAssets" class="booster-notice">{{ t('export.binaryUnavailable') }}</p>
-      <p class="booster-note">{{ t('export.remember') }}</p>
-      <p v-if="error && !incompatible" role="alert" class="booster-error">{{ t(error as TranslationKey) }}</p><p v-if="complete" role="status">{{ t(incomplete ? 'export.savedPartial' : 'export.saved') }}</p>
-      <Label>{{ locale === 'ru' ? 'Имя файла' : 'Filename' }} <Input v-model="filename" type="text" :disabled="busy" maxlength="100"  /></Label>
-      <ArchiveProgress v-if="busy && exportProgress" :label="exportPhaseLabel" :busy="busy"
-        :completed="exportProgress.completed" :total="exportProgress.total" :detail="exportCounter" />
-      <p v-if="exportCancelled" class="booster-note" role="status">{{ t('export.cancelled') }}</p>
-      <p v-if="preparedUrl && preparedBytes !== null" class="booster-note">{{ t('export.preparedSize') }}: {{ formatExportBytes(preparedBytes) }}</p>
-      <Button v-if="preparedUrl" as-child variant="default" class="booster-export-ready" :disabled="prepareBlocked"><a :href="prepareBlocked ? undefined : preparedUrl" :aria-disabled="prepareBlocked" :tabindex="prepareBlocked ? -1 : undefined" :download="preparedName" @click="prepareBlocked && $event.preventDefault()"><Download class="size-4" />{{ t('export.readyDownload') }}</a></Button>
-      <Button variant="default" v-else-if="!recoveredAvailable || !prepareBlocked" class="booster-action-primary" type="button" :disabled="busy || incompatible || collecting || refreshing || preferenceLoading || preferenceSaving || prepareBlocked" @click="download"><Download class="size-4" />{{ t(busy ? 'export.working' : 'export.prepare') }}</Button>
-      <Button variant="outline" v-if="busy" class="booster-action-secondary" type="button" @click="cancelExport">{{ t('common.cancel') }}</Button>
     </div><p v-else class="booster-note">{{ t(error ? 'common.saveError' : 'control.loading') }}</p>
   </section>
 </template>

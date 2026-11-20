@@ -244,8 +244,8 @@ async function saveOption(patch: Partial<RemoteSessionConfig>) {
 
 <template>
   <Card class="min-w-0">
-    <CardHeader class="p-4 pb-3"><CardTitle class="text-base">{{ text('Подключение к серверу') }}</CardTitle><CardDescription>{{ text('Проверьте адрес и доступ, сохраните параметры, затем включите обмен.') }}</CardDescription></CardHeader>
-    <CardContent class="space-y-3 p-4 pt-0" :aria-busy="busy || tokenLoading">
+    <CardHeader compact><CardTitle class="text-base">{{ text('Подключение к серверу') }}</CardTitle><CardDescription>{{ text('Проверьте адрес и доступ, сохраните параметры, затем включите обмен.') }}</CardDescription></CardHeader>
+    <CardContent compact class="space-y-3" :aria-busy="busy || tokenLoading">
       <div class="grid min-w-0 gap-3 min-[1024px]:grid-cols-2">
         <div class="grid min-w-0 content-start gap-2">
           <Label :for="`${id}-endpoint`">{{ text('Адрес WebSocket') }}</Label>

@@ -24,8 +24,8 @@ function chooseGroup(value: string | number) {
 </script>
 <template>
   <Tabs :model-value="groupId" activation-mode="manual" class="min-w-0" @update:model-value="chooseGroup">
-    <TabsList class="flex h-auto w-full flex-wrap justify-start gap-1" :class="compact ? 'bg-transparent p-0' : ''" :aria-label="text('Группа настроек','Settings group')">
-      <TabsTrigger v-for="group in groups" :key="group.id" :value="group.id" class="h-auto min-w-0 whitespace-normal text-center text-xs [&>span]:min-w-0 [&>span]:whitespace-normal [&>span]:break-words" :class="compact ? 'min-h-7 flex-none px-2 py-1' : 'min-h-9 flex-1 px-3 py-2 min-[900px]:flex-none'">{{ group.title }}</TabsTrigger>
+    <TabsList class="flex h-auto w-full flex-wrap justify-start gap-1" :class="compact ? 'bg-transparent p-0' : ''" :aria-label="text('Разделы','Sections')">
+      <TabsTrigger v-for="group in groups" :key="group.id" :value="group.id" :disabled="group.disabled" class="h-auto min-w-0 whitespace-normal text-center text-xs [&>span]:min-w-0 [&>span]:whitespace-normal [&>span]:break-words" :class="compact ? 'min-h-7 flex-none px-2 py-1' : 'min-h-9 flex-1 px-3 py-2 min-[900px]:flex-none'">{{ group.title }}</TabsTrigger>
     </TabsList>
     <TabsContent v-if="activeGroup" :key="activeGroup.id" :value="activeGroup.id" :data-settings-group="activeGroup.id" class="min-w-0 space-y-2" :class="{ 'mt-0': !entries.length }">
       <div v-if="parents.length" class="flex min-w-0 flex-wrap items-center gap-1" :aria-label="text('Путь к разделу','Section path')">

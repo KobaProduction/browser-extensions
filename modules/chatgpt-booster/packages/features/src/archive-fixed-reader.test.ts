@@ -95,9 +95,9 @@ test('ordinary export rejects a peer delete/recreate even when its numeric revis
     b = repository('synthetic-export-peer-aba')
   try {
     await a.addObservation(observation('same-message', null, 0))
-    const original = a.integrity.bind(a)
-    a.integrity = async (id) => {
-      const result = await original(id)
+    const original = a.readExportSnapshot.bind(a)
+    a.readExportSnapshot = async (...args) => {
+      const result = await original(...args)
       await b.backupPort().restoreAtomically([])
       await b.addObservation(
         observation('same-message', null, 0, {
@@ -376,23 +376,27 @@ test('stored native cross-conversation origins project known metadata and keep a
   }
 })
 
-test('an archive mutation during initial export inspection cannot adopt a newer header as its source pin', async () => {
+test('a concurrent capture does not change the source snapshot already selected for export', async () => {
   const db = repository('synthetic-reader-export-fence')
   try {
     await db.addObservation(observation('root', null, 0))
-    const count = db.countConversation.bind(db)
-    db.countConversation = async (conversationId) => {
-      await db.addObservation(observation('late', 'root', 1))
-      return count(conversationId)
-    }
-    await expect(
-      exportFixedConversation(
-        db,
-        'synthetic-reader',
-        { ...DEFAULT_EXPORT_OPTIONS, format: 'json', packaging: 'none' },
-        () => {},
-      ),
-    ).rejects.toThrow('sourceChanged')
+    let write: Promise<unknown> | undefined
+    const result = await exportFixedConversation(
+      db,
+      'synthetic-reader',
+      { ...DEFAULT_EXPORT_OPTIONS, format: 'json', packaging: 'none' },
+      () => {},
+      undefined,
+      ({ phase }) => {
+        if (phase === 'serializing' && !write) write = db.addObservation(observation('late', 'root', 1))
+      },
+    )
+    await write
+    expect(await db.countConversation('synthetic-reader')).toBe(2)
+    const document = JSON.parse(await result.blob.text())
+    expect(document.turns.flatMap((turn: { messages: { id: string }[] }) => turn.messages)).toHaveLength(
+      1,
+    )
   } finally {
     db.close()
   }
@@ -440,18 +444,11 @@ test('full ordinary exports preserve native source values through an explicit co
   }
 })
 
-test('owner change during the final persisted export check cannot release a prepared download', async () => {
+test('owner change during packaging cannot release a prepared download', async () => {
   const db = repository('synthetic-reader-final-owner')
-  let ownerValid = true,
-    packaging = false
+  let ownerValid = true
   try {
     await db.addObservation(observation('root', null, 0))
-    const read = db.getConversation.bind(db)
-    db.getConversation = async (id) => {
-      const header = await read(id)
-      if (packaging) ownerValid = false
-      return header
-    }
     await expect(
       exportFixedConversation(
         db,
@@ -462,7 +459,7 @@ test('owner change during the final persisted export check cannot release a prep
         },
         undefined,
         (progress) => {
-          if (progress.phase === 'packaging') packaging = true
+          if (progress.phase === 'packaging') ownerValid = false
         },
       ),
     ).rejects.toThrow('Owner changed')

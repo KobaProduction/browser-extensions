@@ -1,5 +1,10 @@
 /** Browser-only isolated synthetic preview; imports the actual Shell and provider Vue views. */
 
+import {
+  CHATGPT_SETTINGS_CATEGORIES,
+  chatGptArchiveAction,
+  chatGptSettingsCategory,
+} from '@chatgpt-booster/core'
 import { createRuntimeTelemetry } from '@kobaproduction/browser-adapters'
 import {
   type Feature,
@@ -136,19 +141,10 @@ const chatgpt: Feature = {
   },
   launcher: { mode: 'quick-menu' },
   settings: {
-    categories: [
-      { id: 'archive', title: 'Сохранение', titleEn: 'Capture' },
-      { id: 'modules', title: 'Модули', titleEn: 'Modules' },
-      { id: 'sounds', title: 'Звуки', titleEn: 'Sounds' },
-      { id: 'triggers', title: 'Триггеры', titleEn: 'Triggers' },
-      { id: 'remote', title: 'Сервер и синхронизация', titleEn: 'Server and sync' },
-      { id: 'analytics', title: 'Аналитика', titleEn: 'Analytics' },
-    ],
+    categories: CHATGPT_SETTINGS_CATEGORIES,
     currentCategory() {
       return chatGptSafeView.value === 'settings'
-        ? currentSettingsSection === 'other'
-          ? 'modules'
-          : currentSettingsSection
+        ? (chatGptSettingsCategory(currentSettingsSection) ?? '')
         : ''
     },
     subscribe(listener) {
@@ -163,16 +159,16 @@ const chatgpt: Feature = {
       }
     },
     async restoreCategory(id) {
-      if (!['archive', 'modules', 'sounds', 'analytics', 'other', 'triggers', 'remote'].includes(id))
-        return
+      const category = chatGptSettingsCategory(id)
+      if (!category) return
       setChatGptSafeView('settings')
-      currentSettingsSection = (id === 'other' ? 'modules' : id) as typeof settingsSection
+      currentSettingsSection = category
       await settingsAdapter.update({ ui: { activeSection: currentSettingsSection } })
     },
     async open(id) {
-      if (!['archive', 'modules', 'sounds', 'analytics', 'other', 'triggers', 'remote'].includes(id))
-        return
-      currentSettingsSection = (id === 'other' ? 'modules' : id) as typeof settingsSection
+      const category = chatGptSettingsCategory(id)
+      if (!category) return
+      currentSettingsSection = category
       await settingsAdapter.update({ ui: { activeSection: currentSettingsSection } })
       reveal('chatgpt-booster', 'settings')
     },
@@ -186,13 +182,10 @@ const chatgpt: Feature = {
       availableWhenDisabled: true,
       run: () => reveal('chatgpt-booster', 'settings'),
     },
-    {
-      id: 'archive',
-      label: 'Открыть архив',
-      labelEn: 'Open archive',
-      icon: 'archive',
-      run: () => reveal('chatgpt-booster', 'archive'),
-    },
+    chatGptArchiveAction(
+      () => reveal('chatgpt-booster', 'archive'),
+      () => chatGptSafeView.value !== 'settings',
+    ),
     {
       id: 'collect',
       label: 'Собрать историю',
@@ -355,7 +348,7 @@ const runtime = new FeatureRuntime(
     target,
     url: hostUrl,
     capabilities: new Set(['page-dom', 'origin-storage', 'local-files']),
-    settings: new FeatureSettings(settingsStore),
+    settings: new FeatureSettings(settingsStore, productId === 'all-in-one'),
   },
   createRuntimeTelemetry(telemetry),
 )
@@ -581,7 +574,14 @@ async function checkInteractions(): Promise<string[]> {
       } else if (!nav?.querySelector('[role="tab"]')) warnings.push('Shared settings catalog is missing')
     }
   } else if (scene.view === 'archive' && scene.scene === 'saved') {
+    const collectionMenu = query('[data-archive-collection-menu]') as HTMLButtonElement | null
+    if (collectionMenu) {
+      collectionMenu.click()
+      await sleep(80)
+    }
     const capture = query('.booster-conversation-collection button') as HTMLButtonElement | null
+    if (!vkHost && (!capture || capture.disabled))
+      warnings.push('Archive collection action is unavailable')
     if (capture && !capture.disabled) {
       capture.click()
       await sleep(490)

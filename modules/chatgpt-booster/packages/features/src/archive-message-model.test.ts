@@ -69,7 +69,7 @@ async function snapshotRow(
     connection.close()
   }
 }
-test('both providers persist the same normalized model and legacy reads adapt without rewriting schema-1 rows', async () => {
+test('both providers read the same model without rewriting original snapshots', async () => {
   const chat = new FixedCanonicalDexieRepository(scope('chatgpt-booster', 'model-legacy-chat'), driver)
   const vk = new FixedVkDexieRepository(scope('vk-booster', 'model-legacy-vk'), driver)
   try {
@@ -84,16 +84,12 @@ test('both providers persist the same normalized model and legacy reads adapt wi
       reply_message: { id: 3, date: 1690000000 },
     }
     const vkKey = await vk.addOriginal(42, vkRaw, 'v1', 1234)
-    expect((await snapshotRow(chat.databaseName, chatKey)).normalized).toMatchObject({
-      schema: 'koba.message',
-      modelVersion: 1,
-    })
+    expect((await snapshotRow(chat.databaseName, chatKey)).normalized).toBeUndefined()
     expect((await snapshotRow(vk.databaseName, vkKey)).normalized).toMatchObject({
       schema: 'koba.message',
       modelVersion: 1,
     })
     await snapshotRow(chat.databaseName, chatKey, (row) => {
-      delete row.normalized
       delete row.projectId
     })
     await snapshotRow(vk.databaseName, vkKey, (row) => {
@@ -121,7 +117,7 @@ test('both providers persist the same normalized model and legacy reads adapt wi
     vk.close()
   }
 })
-test('preferred/variant DTOs and ordinary export share the stored authority; dedup emits no new commit DTO', async () => {
+test('preferred and variant reads and ordinary export derive the same model; dedup emits no new commit DTO', async () => {
   const chat = new FixedCanonicalDexieRepository(scope('chatgpt-booster', 'model-versions'), driver)
   try {
     const input = observation(),
@@ -137,7 +133,7 @@ test('preferred/variant DTOs and ordinary export share the stored authority; ded
     expect(committed.normalized?.source.variantIndex).toBe(1)
     const preferred = await chat.getSourceSnapshot('conversation', 'message'),
       versions = await chat.messageVersions('conversation', 'message')
-    if (!preferred?.normalized) throw Error('Expected persisted normalized message')
+    if (!preferred?.normalized) throw Error('Expected normalized message on read')
     expect(archiveMessageText(preferred.normalized)).toBe('Synthetic answer')
     expect(versions.map((version) => version.normalized?.source.variantIndex)).toEqual([0, 1])
     const output = await exportFixedConversation(
@@ -183,9 +179,13 @@ test('unknown signatures retain opaque references and lossless companions, while
     for await (const row of port.readRows(128)) rows.push(row)
     const row = rows.find((row) => row.store === 'snapshots')
     if (!row) throw Error('Expected source row')
-    const snapshot = decodeArchiveClone(row.value) as { normalized: { author: { role: string } } }
-    snapshot.normalized.author.role = 'fabricated'
-    rows[rows.indexOf(row)] = { ...row, value: await encodeArchiveClone(snapshot) }
+    const snapshot = decodeArchiveClone(row.value) as Record<string, unknown>
+    expect(snapshot.normalized).toBeUndefined()
+    const normalized = {
+      ...source.normalized,
+      author: { ...source.normalized.author, role: 'fabricated' },
+    }
+    rows[rows.indexOf(row)] = { ...row, value: await encodeArchiveClone({ ...snapshot, normalized }) }
     await expect(port.validateRows(rows)).rejects.toThrow('source evidence')
     expect((await chat.getSourceSnapshot('conversation', 'message'))?.raw).toEqual(input.raw)
   } finally {

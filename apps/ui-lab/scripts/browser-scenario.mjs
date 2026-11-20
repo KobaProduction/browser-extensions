@@ -36,7 +36,7 @@ export function browserScenario({ command, evaluate, baseUrl, output }) {
   async function clickAt(expression) {
     await waitFor(
       `(() => {const el=${expression};if(!el||el.disabled)return false;const r=el.getBoundingClientRect();return r.width>0&&r.height>0})()`,
-      'Pointer target did not become visible and enabled',
+      `Pointer target did not become visible and enabled: ${expression}`,
     )
     await evaluate(
       `(${expression}).scrollIntoView({block:'nearest',inline:'nearest',behavior:'instant'})`,
@@ -150,9 +150,16 @@ export function browserScenario({ command, evaluate, baseUrl, output }) {
     await writeFile(join(output, `${name}.png`), bytes)
     return actual
   }
-  async function geometry(name, width, height, scope = '[data-settings-section]') {
+  async function openSavedConversation() {
+    const catalog = `(${root})?.querySelector('.booster-reader-list-mode')`
+    if (!(await evaluate(`Boolean(${catalog})`))) return
+    const row = `([...(${catalog})?.querySelectorAll('[data-archive-conversation]')||[]].find(el=>el.getBoundingClientRect().height>0))`
+    await clickAt(row)
+    await waitFor(`!(${catalog})`, 'Opening a saved conversation did not leave the catalog')
+  }
+  async function geometry(name, width, height, scope = '[data-settings-section]', hitTarget) {
     const result = await evaluate(
-      `(() => { const r=${root}; const panel=r.querySelector('.booster-modal-surface'),p=panel.getBoundingClientRect(); const section=r.querySelector(${JSON.stringify(scope)}); if(!section)throw Error('Scenario surface missing'); const visible=el=>{const b=el.getBoundingClientRect();return b.width>0&&b.height>0}; const controls=[...section.querySelectorAll('input,textarea,[role=combobox],[role=switch],[role=checkbox]')].filter(visible); const overflow=controls.filter(el=>{const b=el.getBoundingClientRect();return b.x<p.x-1||b.right>p.right+1}).map(el=>el.tagName); const unlabelled=controls.filter(el=>{if(el.getAttribute('aria-label')||el.getAttribute('aria-labelledby')||el.closest('label')?.control===el)return false;return !el.id||![...r.querySelectorAll('label')].some(label=>label.htmlFor===el.id)}).map(el=>el.tagName); return {panel:{x:p.x,y:p.y,width:p.width,height:p.height},overflow,unlabelled,panelPainted:panel.contains(r.elementFromPoint(innerWidth/2,Math.min(150,innerHeight/2))),warnings:window.__uiLabPreviewReport?.warnings||[]}; })()`,
+      `(() => { const r=${root}; const panel=r.querySelector('.booster-modal-surface'),p=panel.getBoundingClientRect(); const section=r.querySelector(${JSON.stringify(scope)}); if(!section)throw Error('Scenario surface missing'); const visible=el=>{const b=el.getBoundingClientRect();return b.width>0&&b.height>0}; const controls=[...section.querySelectorAll('input,textarea,[role=combobox],[role=switch],[role=checkbox]')].filter(visible); const overflow=controls.filter(el=>{const b=el.getBoundingClientRect();return b.x<p.x-1||b.right>p.right+1}).map(el=>el.tagName); const unlabelled=controls.filter(el=>{if(el.getAttribute('aria-label')||el.getAttribute('aria-labelledby')||el.closest('label')?.control===el)return false;return !el.id||![...r.querySelectorAll('label')].some(label=>label.htmlFor===el.id)}).map(el=>el.tagName); const selector=${JSON.stringify(hitTarget ?? null)}; const target=selector&&section.querySelector(selector); const bounds=target?.getBoundingClientRect(); const hit=bounds?r.elementFromPoint(bounds.x+bounds.width/2,bounds.y+bounds.height/2):r.elementFromPoint(innerWidth/2,Math.min(150,innerHeight/2)); return {panel:{x:p.x,y:p.y,width:p.width,height:p.height},overflow,unlabelled,panelPainted:selector?Boolean(target?.contains(hit)):panel.contains(hit),warnings:window.__uiLabPreviewReport?.warnings||[]}; })()`,
     )
     if (
       !result.panelPainted ||
@@ -169,5 +176,17 @@ export function browserScenario({ command, evaluate, baseUrl, output }) {
     await screenshot(name, width, height)
     return { name, width, height, ...result }
   }
-  return { root, waitFor, button, labelled, setValue, click, clickAt, navigate, screenshot, geometry }
+  return {
+    root,
+    waitFor,
+    button,
+    labelled,
+    setValue,
+    click,
+    clickAt,
+    navigate,
+    openSavedConversation,
+    screenshot,
+    geometry,
+  }
 }

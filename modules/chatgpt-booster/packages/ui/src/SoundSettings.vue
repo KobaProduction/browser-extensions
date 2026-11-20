@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
   SettingRow,
+  SettingsGrid,
 } from '@kobaproduction/browser-ui'
 import { ref, useId, watch } from 'vue'
 
@@ -64,14 +65,14 @@ function saveThreshold(event?: Event) {
 <template>
   <section class="min-w-0 space-y-3" :aria-label="locale === 'ru' ? 'Звуковые уведомления' : 'Sound notifications'">
     <SettingRow :id="`${id}-enabled`" :title="locale === 'ru' ? 'Звуковые уведомления' : 'Sound notifications'" :description="locale === 'ru' ? 'Звуки событий ChatGPT и действий триггеров. Выключение сразу останавливает все сигналы. Исчерпание контекста подтверждается событием сервера.' : 'Sounds for ChatGPT events and trigger actions. Turning this off stops all sounds immediately. Context exhaustion requires a server event.'" :model-value="settings.alerts.enabled" @update:model-value="emit('patch', { alerts: { enabled: $event } })" />
-    <div class="grid min-w-0 gap-3 min-[1024px]:grid-cols-2">
+    <SettingsGrid>
       <SettingRow v-for="channel in channels" :key="channel.enabled" :id="`${id}-${channel.enabled}`" :title="locale === 'ru' ? channel.ru : channel.en" :model-value="settings.alerts[channel.enabled]" :disabled="!settings.alerts.enabled" @update:model-value="emit('patch', { alerts: { [channel.enabled]: $event } })">
         <div class="grid min-w-0 gap-2 pt-2"><Label :for="`${id}-${channel.tone}`" class="text-xs text-muted-foreground">{{ locale === 'ru' ? 'Мелодия' : 'Tone' }}</Label><Select :model-value="settings.alerts[channel.tone]" :disabled="!settings.alerts.enabled || !settings.alerts[channel.enabled]" @update:model-value="setTone(channel.tone, $event)"><SelectTrigger :id="`${id}-${channel.tone}`" class="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="soft">{{ locale === 'ru' ? 'Мягкий' : 'Soft' }}</SelectItem><SelectItem value="chime">{{ locale === 'ru' ? 'Колокольчик' : 'Chime' }}</SelectItem><SelectItem value="pulse">{{ locale === 'ru' ? 'Завершающий' : 'Ending' }}</SelectItem></SelectContent></Select></div>
       </SettingRow>
       <SettingRow :id="`${id}-long-running`" :title="locale === 'ru' ? 'Сигнал долгого запроса' : 'Long request notification'" :model-value="settings.alerts.longRunningSound" :disabled="!settings.alerts.enabled" @update:model-value="emit('patch', { alerts: { longRunningSound: $event } })">
         <div class="grid min-w-0 gap-2 pt-2"><Label :for="`${id}-threshold`" class="text-xs text-muted-foreground">{{ locale === 'ru' ? 'Порог, секунд' : 'Threshold, seconds' }}</Label><Input :id="`${id}-threshold`" v-model="threshold" type="number" min="15" max="1800" step="1" :disabled="!settings.alerts.enabled || !settings.alerts.longRunningSound" :aria-invalid="Boolean(error)" :aria-describedby="error ? `${id}-threshold-error` : undefined" @change="saveThreshold" /></div>
       </SettingRow>
-    </div>
+    </SettingsGrid>
     <Alert v-if="error" variant="destructive"><AlertDescription :id="`${id}-threshold-error`">{{ error }}</AlertDescription></Alert>
   </section>
 </template>

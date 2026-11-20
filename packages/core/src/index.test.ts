@@ -144,6 +144,71 @@ test('entire installation can stop and reattach without reload and without chang
   await prod.runtime.stop()
 })
 
+test('aggregate page power stops only the current provider across tabs and survives restart', async () => {
+  const values = new Map<string, boolean>()
+  const settings = new FeatureSettings(
+    {
+      async get(key) {
+        return values.get(key)
+      },
+      async set(key, value) {
+        values.set(key, value)
+      },
+    },
+    true,
+  )
+  const stops: string[] = []
+  const tab = (url: string, provider: string) =>
+    new FeatureRuntime(
+      [
+        {
+          id: provider,
+          title: provider,
+          description: provider,
+          targets: ['chromium'],
+          requiredCapabilities: [],
+          match: () => true,
+          start() {},
+          stop() {
+            stops.push(url)
+          },
+        },
+      ],
+      { target: 'chromium', url: new URL(url), capabilities: new Set(), settings },
+    )
+  const vk = tab('https://vk.com', 'vk-booster')
+  const mirror = tab('https://vk.ru', 'vk-booster')
+  const chat = tab('https://chatgpt.com', 'chatgpt-booster')
+  await Promise.all([vk.start(), mirror.start(), chat.start()])
+  await vk.setPagePower(false)
+  await Promise.all([mirror.refreshFromSettings(), chat.refreshFromSettings()])
+  expect(stops).toEqual(['https://vk.com', 'https://vk.ru'])
+  expect(chat.list()[0]?.state).toBe('active')
+  expect(values.has('installation.enabled')).toBe(false)
+  await vk.stop()
+  await vk.start()
+  expect(vk.pagePower().enabled).toBe(false)
+  await chat.setPagePower(false)
+  await vk.setPagePower(true)
+  await mirror.refreshFromSettings()
+  expect(mirror.list()[0]?.state).toBe('active')
+  expect(chat.list()[0]?.state).toBe('disabled')
+
+  // A legacy pause must not silently start either provider on upgrade.
+  values.clear()
+  values.set('installation.enabled', false)
+  values.set('features.chatgpt-booster.enabled', true)
+  await Promise.all([vk.refreshFromSettings(), chat.refreshFromSettings()])
+  expect(vk.pagePower().enabled).toBe(false)
+  expect(chat.pagePower().enabled).toBe(false)
+  await vk.setPagePower(true)
+  await chat.refreshFromSettings()
+  expect(vk.pagePower().enabled).toBe(true)
+  expect(chat.pagePower().enabled).toBe(false)
+  expect(values.get('installation.enabled')).toBe(false)
+  await Promise.all([vk.stop(), mirror.stop(), chat.stop()])
+})
+
 test('feature operations are serialized and cannot activate after a later off request', async () => {
   const storage = new Map<string, boolean>()
   const settings = new FeatureSettings({

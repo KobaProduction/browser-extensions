@@ -9,6 +9,9 @@ import type {
 } from '@chatgpt-booster/core'
 import {
   BOOSTER_VERSION,
+  CHATGPT_SETTINGS_CATEGORIES,
+  chatGptArchiveAction,
+  chatGptSettingsCategory,
   OPEN_ARCHIVE_EVENT,
   OPEN_CAPTURE_SETTINGS_EVENT,
   OPEN_SETTINGS_EVENT,
@@ -68,23 +71,14 @@ export function createChatGptBoosterFeature(
   const page = createBoosterPageRuntime({ target, mountUi: false, externalSounds: true })
   let indicatorSettings: import('@chatgpt-booster/core').BoosterSettings | undefined
   let currentCategory: import('@chatgpt-booster/core').SettingsSection = 'modules'
-  const categoryIds = [
-    'archive',
-    'modules',
-    'sounds',
-    'analytics',
-    'other',
-    'triggers',
-    'remote',
-  ] as const
   const restoreCategory = async (categoryId: string) => {
-    if (!(categoryIds as readonly string[]).includes(categoryId)) return
-    const selected = categoryId === 'other' ? 'modules' : categoryId
+    const selected = chatGptSettingsCategory(categoryId)
+    if (!selected) return
     // The caller owns Shell routing. Only this synchronous presentation change
     // precedes persistence; a late storage completion cannot navigate anywhere.
     setChatGptSafeView('settings')
     const updated = await page.settings.update({
-      ui: { activeSection: selected as typeof currentCategory },
+      ui: { activeSection: selected },
     })
     currentCategory = updated.ui.activeSection
   }
@@ -213,11 +207,7 @@ export function createChatGptBoosterFeature(
     ],
     settings: {
       currentCategory: () =>
-        chatGptSafeView.value === 'settings'
-          ? currentCategory === 'other'
-            ? 'modules'
-            : currentCategory
-          : '',
+        chatGptSafeView.value === 'settings' ? (chatGptSettingsCategory(currentCategory) ?? '') : '',
       restoreCategory,
       subscribe(listener) {
         let active = true,
@@ -248,52 +238,9 @@ export function createChatGptBoosterFeature(
           unwatchView()
         }
       },
-      categories: [
-        {
-          id: 'archive',
-          title: 'Архив и сохранение',
-          titleEn: 'Archive and capture',
-          description: 'Политика захвата, история и чтение',
-          descriptionEn: 'Capture policy, history and reading',
-        },
-        {
-          id: 'modules',
-          title: 'Модули ChatGPT',
-          titleEn: 'ChatGPT modules',
-          description: 'Метаданные, активность, таймер и инструменты',
-          descriptionEn: 'Metadata, activity, timer and tools',
-        },
-        {
-          id: 'sounds',
-          title: 'Звуки',
-          titleEn: 'Sounds',
-          description: 'Отправка, завершение ответа и конец контекста',
-          descriptionEn: 'Sending, response completion and context limits',
-        },
-        {
-          id: 'triggers',
-          title: 'Триггеры',
-          titleEn: 'Triggers',
-          description: 'События, условия и действия',
-          descriptionEn: 'Events, conditions and actions',
-        },
-        {
-          id: 'remote',
-          title: 'Сервер и синхронизация',
-          titleEn: 'Server and sync',
-          description: 'WebSocket, очередь и удалённые команды',
-          descriptionEn: 'WebSocket, queue and remote commands',
-        },
-        {
-          id: 'analytics',
-          title: 'Сетевая активность',
-          titleEn: 'Network activity',
-          description: 'Локальные технические счётчики',
-          descriptionEn: 'Local technical counters',
-        },
-      ],
+      categories: CHATGPT_SETTINGS_CATEGORIES,
       async open(categoryId) {
-        if (!(categoryIds as readonly string[]).includes(categoryId)) return
+        if (!chatGptSettingsCategory(categoryId)) return
         reveal('settings')
         await restoreCategory(categoryId)
       },
@@ -397,13 +344,10 @@ export function createChatGptBoosterFeature(
         availableWhenDisabled: true,
         run: () => reveal('settings'),
       },
-      {
-        id: 'archive',
-        label: 'Открыть архив',
-        labelEn: 'Open archive',
-        icon: 'archive',
-        run: () => reveal('archive'),
-      },
+      chatGptArchiveAction(
+        () => reveal('archive'),
+        () => chatGptSafeView.value !== 'settings',
+      ),
       {
         id: 'collect',
         label: 'Собрать историю',

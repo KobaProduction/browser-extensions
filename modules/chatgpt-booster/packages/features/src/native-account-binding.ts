@@ -5,6 +5,7 @@ export const CHATGPT_NATIVE_ACCOUNT_CONTRACT = 'chatgpt-native-accounts-2026-10-
 export interface ChatGptNativeAccountBindingOptions {
   contractVersion: typeof CHATGPT_NATIVE_ACCOUNT_CONTRACT
   scope: ChatGptNativeApplicationScope
+  readHydratedCatalogAccount?: () => unknown
   /** Source-inspected cached Iet.c: genuine native account refresh, including appServices inputs. */
   modules: {
     Iet: {
@@ -28,6 +29,7 @@ export function createChatGptNativeAccountSource(
     async read(signal) {
       const accountId = scope.get(modules.g2.n),
         userId = scope.get(modules.Cs.i)
+      const catalogAccountId = options.readHydratedCatalogAccount?.()
       const assertIdentity = () => {
         if (signal.aborted) throw Error('automation.commandCancelled')
         if (
@@ -73,7 +75,15 @@ export function createChatGptNativeAccountSource(
       }
       if (!accountIds.includes(accountId as string) || !registry.account_ordering.includes(accountId))
         throw Error('automation.nativeMethodUnavailable')
-      return { selectedAccountId: accountId as string, accountIds: [...new Set(accountIds)] }
+      return {
+        selectedAccountId: accountId as string,
+        accountIds: [...new Set(accountIds)],
+        ...(typeof catalogAccountId === 'string' &&
+        catalogAccountId === accountId &&
+        options.readHydratedCatalogAccount?.() === catalogAccountId
+          ? { hydratedCatalogAccountId: catalogAccountId }
+          : {}),
+      }
     },
   }
 }

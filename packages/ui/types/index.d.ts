@@ -87,6 +87,7 @@ export declare const DialogTitle: typeof import('reka-ui')['DialogTitle']
 export declare const DialogTrigger: typeof import('reka-ui')['DialogTrigger']
 export declare const Tooltip: typeof import('reka-ui')['TooltipRoot']
 export declare const TooltipContent: typeof import('reka-ui')['TooltipContent']
+export declare const TooltipHint: DefineComponent<{ label: string }>
 export declare const TooltipProvider: typeof import('reka-ui')['TooltipProvider']
 export declare const TooltipTrigger: typeof import('reka-ui')['TooltipTrigger']
 export declare const Popover: typeof import('reka-ui')['PopoverRoot']
@@ -95,10 +96,10 @@ export declare const PopoverTrigger: typeof import('reka-ui')['PopoverTrigger']
 export declare const PopoverAnchor: typeof import('reka-ui')['PopoverAnchor']
 type Surface = DefineComponent<{ class?: HTMLAttributes['class'] }>
 export declare const Card: Surface
-export declare const CardHeader: Surface
+export declare const CardHeader: DefineComponent<{ class?: HTMLAttributes['class']; compact?: boolean }>
 export declare const CardTitle: Surface
 export declare const CardDescription: Surface
-export declare const CardContent: Surface
+export declare const CardContent: DefineComponent<{ class?: HTMLAttributes['class']; compact?: boolean }>
 export declare const CardFooter: Surface
 export declare const DialogHeader: Surface
 export declare const DialogFooter: Surface
@@ -121,6 +122,9 @@ export declare const Alert: DefineComponent<AlertVariants & { class?: HTMLAttrib
 export declare const AlertTitle: Surface
 export declare const AlertDescription: Surface
 export declare const Skeleton: Surface
+export declare const SettingsPane: DefineComponent<{ embedded?: boolean }>
+export declare const SettingsGrid: DefineComponent
+export declare const SettingField: DefineComponent<{ id: string; title: string; description?: string }>
 export declare const SettingRow: DefineComponent<{
   id: string
   title: string

@@ -1,5 +1,10 @@
 import { expect, test } from 'bun:test'
-import { DEFAULT_CAPTURE_RULE, normalizeSettings, type SettingsAdapter } from '@chatgpt-booster/core'
+import {
+  ARCHIVE_UPDATED_EVENT,
+  DEFAULT_CAPTURE_RULE,
+  normalizeSettings,
+  type SettingsAdapter,
+} from '@chatgpt-booster/core'
 import type { ConversationArchiveEventDetail } from '@chatgpt-booster/observer'
 import { decodeArchiveClone } from '@kobaproduction/browser-archive'
 import { IDBKeyRange, indexedDB } from 'fake-indexeddb'
@@ -227,8 +232,17 @@ test('capture reassociates only a fresh correlated initial native page and ignor
     moved.readStartedAt = 20
     moved.timestamp = 21
     moved.payload.gizmo_id = 'g-p-two'
+    const notifications: (string | null)[] = []
+    let archiveUpdates = 0
+    const unsubscribe = capture.subscribeSaved((id) => notifications.push(id))
+    window.addEventListener(ARCHIVE_UPDATED_EVENT, () => {
+      archiveUpdates++
+    })
     state.ingestPage(moved)
     expect(await capture.savedCurrent()).toBe(1)
+    unsubscribe()
+    expect(notifications).toEqual(['verified-project-move'])
+    expect(archiveUpdates).toBe(1)
     expect(await capture.readSavedProjectId('verified-project-move')).toBe('g-p-two')
     expect(
       (await capture.readConversation('verified-project-move'))[0]?.normalized?.context.projectId,

@@ -116,8 +116,13 @@ export function archiveRecordAttachments(record: ArchiveRecordView): ArchiveAtta
           : null
     const contentType = typeof item.content_type === 'string' ? item.content_type : ''
     const previous = merged.get(assetId)
+    const libraryFileId =
+      typeof item.library_file_id === 'string' && /^libfile_[A-Za-z0-9_-]+$/.test(item.library_file_id)
+        ? item.library_file_id
+        : previous?.libraryFileId
     merged.set(assetId, {
       assetId,
+      ...(libraryFileId ? { libraryFileId } : {}),
       fileName:
         (typeof item.name === 'string' && item.name) ||
         (typeof item.filename === 'string' && item.filename) ||

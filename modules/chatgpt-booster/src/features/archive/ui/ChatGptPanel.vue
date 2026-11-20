@@ -19,7 +19,7 @@ import {
   createChatCollectionController,
 } from '@kobaproduction/browser-archive'
 import { SHELL_CLOSE_EVENT, shellInstanceKey } from '@kobaproduction/browser-core'
-import { Button, useApplicationLocale } from '@kobaproduction/browser-ui'
+import { Button, TooltipHint, useApplicationLocale } from '@kobaproduction/browser-ui'
 import { ConversationCollectionAction } from '@kobaproduction/browser-widgets'
 import { ShieldCheck } from 'lucide-vue-next'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -93,6 +93,7 @@ const selectedChat = ref<{ id: string; title: string | null; messageIds?: readon
 const captureContext = ref<ArchiveCaptureContext>()
 const exportCapture = ref(false)
 const archiveInitial = ref<string | null>(null)
+const archiveEntry = ref(0)
 const archiveProjectInitial = ref<string | null>(null)
 const navigationTarget = ref<ArchiveMessageLocation | null>(null)
 const returnToExport = ref(false)
@@ -136,7 +137,11 @@ const captureTarget = computed<ArchiveCaptureContext | undefined>(() => {
 })
 const tr = (ru: string, en: string) => (locale.value === 'ru' ? ru : en)
 function collectionErrorMessage(code?: string) {
-  if (code === 'archive.error.freshReadRequired' || code === 'archive.error.incompleteSource')
+  if (
+    code === 'archive.error.freshReadRequired' ||
+    code === 'archive.error.incompleteSource' ||
+    code === 'archive.error.rateLimited'
+  )
     return translate(locale.value, code)
   return tr(
     'Сбор истории не выполнен. Исходные данные сохранены.',
@@ -171,7 +176,11 @@ async function refreshContext() {
       (adapter.currentAccountId?.() ?? null) !== accountId
     )
       return
-    current.value = info
+    const site = adapter.currentConversationDisplay?.()
+    current.value =
+      !info.conversationId && accountId && site && site.id === conversationId
+        ? { ...info, conversationId, conversationTitle: site.title }
+        : info
     error.value =
       conversationId && adapter.hasIncompatibleSource?.(conversationId)
         ? tr(
@@ -219,18 +228,9 @@ function showArchive(
   scope?: ArchiveCaptureContext | null,
 ) {
   archiveProjectInitial.value = scope?.scope === 'project' ? scope.id : null
-  archiveInitial.value =
-    scope?.scope === 'conversation'
-      ? scope.id
-      : scope?.scope === 'project'
-        ? current.value.projectId === scope.id
-          ? current.value.conversationId
-          : null
-        : (id ??
-          context.value?.archiveAdapter.currentConversationId() ??
-          current.value.conversationId ??
-          null)
+  archiveInitial.value = scope?.scope === 'conversation' ? scope.id : (id ?? null)
   navigationTarget.value = location ?? null
+  archiveEntry.value++
   tab.value = 'archive'
 }
 async function currentExport() {
@@ -265,9 +265,12 @@ function openExport(
 ) {
   selectedChat.value = { id, title, ...(messageIds ? { messageIds } : {}) }
   returnToExport.value = fromArchive
-  archiveInitial.value = id
   error.value = ''
   tab.value = 'export'
+}
+function returnFromExport() {
+  if (returnToExport.value) tab.value = 'archive'
+  else showArchive(selectedChat.value?.id)
 }
 function openCapture(scope?: ArchiveCaptureContext, fromExport = false) {
   captureContext.value = scope ?? captureTarget.value
@@ -437,8 +440,10 @@ onBeforeUnmount(() => {
     <div v-if="!context" role="status">{{ tr('Архив запускается…', 'Loading archive…') }}</div>
     <template v-else>
       <ArchiveBrowser
-        :key="archiveProjectInitial ?? 'all-projects'"
-        v-if="tab==='archive'"
+        :key="archiveEntry"
+        v-if="tab==='archive' || (tab==='export' && returnToExport)"
+        v-show="tab==='archive'"
+        :suspended="tab !== 'archive'"
         :archive-adapter="context.archiveAdapter"
         :initial-conversation-id="archiveInitial"
         :initial-project-id="archiveProjectInitial"
@@ -450,9 +455,9 @@ onBeforeUnmount(() => {
         @export="(id, title, ids) => openExport(id, title, true, ids)"
         @close="closePanel"
       >    <template #collection-actions>
-      <Button variant="ghost" size="sm" type="button"
-        :title="captureActive ? tr('Автосохранение включено', 'Capture enabled') : tr('Настроить автосохранение', 'Configure capture')"
-        @click="openCapture()"><ShieldCheck class="size-4" />{{ tr('Настройки автосохранения', 'Auto-save settings') }}</Button>
+      <TooltipHint :label="captureActive ? tr('Автосохранение включено', 'Capture enabled') : tr('Настроить автосохранение', 'Configure capture')">
+        <Button variant="ghost" size="sm" type="button" @click="openCapture()"><ShieldCheck class="size-4" />{{ tr('Настройки автосохранения', 'Auto-save settings') }}</Button>
+      </TooltipHint>
       <ConversationCollectionAction
         variant="ghost"
         :data-active="active" :label="tr('Собрать историю', 'Collect history')" :busy="active"
@@ -462,11 +467,11 @@ onBeforeUnmount(() => {
         @start="collect" @stop="stopCollection" />
     </template>
       </ArchiveBrowser>
-      <ArchiveExportDialog v-else-if="tab==='export' && selectedChat"
+      <ArchiveExportDialog v-if="tab==='export' && selectedChat"
         :archive-adapter="context.archiveAdapter" :settings-adapter="context.settingsAdapter"
         :conversation-id="selectedChat.id" :title="selectedChat.title" :locale="locale"
         :selected-message-ids="selectedChat.messageIds"
-        @close="showArchive(selectedChat.id)" @open-archive="showArchive"
+        @close="returnFromExport" @open-archive="showArchive"
         @open-capture="value => { captureContext = value; tab = 'capture' }" />
       <CaptureSettingsSurface
         v-else-if="tab==='capture'"

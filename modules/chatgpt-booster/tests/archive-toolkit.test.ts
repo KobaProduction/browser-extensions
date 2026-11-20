@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  archiveRecordAttachments,
   archiveRecordKind,
   archiveRecordMetadata,
   buildArchiveThread,
@@ -606,10 +607,20 @@ describe('conversation vs nested records', () => {
             'caption',
           ],
         },
-        metadata: { attachments: [{ id: 'file_fixture', name: 'fixture.png' }] },
+        metadata: {
+          attachments: [{ id: 'file_fixture', name: 'fixture.png', library_file_id: 'libfile_fixture' }],
+        },
       },
     })
     const thread = buildArchiveThread([attachment])
+    expect(archiveRecordAttachments(attachment)).toMatchObject([
+      {
+        assetId: 'file_fixture',
+        libraryFileId: 'libfile_fixture',
+        fileName: 'fixture.png',
+        kind: 'image',
+      },
+    ])
     const full = { ...DEFAULT_EXPORT_OPTIONS, level: 'full' as const }
     const transcript = serializeArchiveExport(
       { conversationId: 'chat', title: 'Test', projectId: null },

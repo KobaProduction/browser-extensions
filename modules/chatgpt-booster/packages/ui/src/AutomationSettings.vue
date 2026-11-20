@@ -100,7 +100,7 @@ onBeforeUnmount(() => {
         <RemoteDeliverySettings :configuration="settings.automation.remote" :status="status" :control="control" :disabled="remoteBusy" @busy="operations.delivery = $event" @refresh="refresh" @patch="saveRemote" />
         <RemoteArchiveSyncSettings v-if="control" :configuration="settings.automation.remote" :status="status" :control="control" :disabled="remoteBusy" @busy="operations.sync = $event" @refresh="refresh" />
       </div>
-      <Card><CardHeader class="p-4 pb-3"><CardTitle class="text-base">{{ text('Удалённые команды') }}</CardTitle><CardDescription>{{ text('Разрешите нужные действия по группам. По умолчанию сервер не может управлять чатом.') }}</CardDescription></CardHeader><CardContent class="p-4 pt-0"><RemoteCommandPermissions :allowed="settings.automation.remote.allowedCommands" :disabled="remoteBusy" @change="saveRemote({ allowedCommands: $event })" /></CardContent></Card>
+      <Card><CardHeader compact><CardTitle class="text-base">{{ text('Удалённые команды') }}</CardTitle><CardDescription>{{ text('Разрешите нужные действия по группам. По умолчанию сервер не может управлять чатом.') }}</CardDescription></CardHeader><CardContent compact><RemoteCommandPermissions :allowed="settings.automation.remote.allowedCommands" :disabled="remoteBusy" @change="saveRemote({ allowedCommands: $event })" /></CardContent></Card>
     </template>
   </section>
 </template>

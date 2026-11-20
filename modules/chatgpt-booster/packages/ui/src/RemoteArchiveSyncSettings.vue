@@ -103,7 +103,7 @@ function cancel() {
 </script>
 
 <template>
-  <Card class="min-w-0"><CardHeader class="p-4 pb-3"><CardTitle class="text-base">{{ text('Сохранённый архив') }}</CardTitle><CardDescription>{{ text('Отправка записей этого аккаунта из локального архива. История с сайта не загружается.') }}</CardDescription></CardHeader><CardContent class="space-y-3 p-4 pt-0" :aria-busy="active">
+  <Card class="min-w-0"><CardHeader compact><CardTitle class="text-base">{{ text('Сохранённый архив') }}</CardTitle><CardDescription>{{ text('Отправка записей этого аккаунта из локального архива. История с сайта не загружается.') }}</CardDescription></CardHeader><CardContent compact class="space-y-3" :aria-busy="active">
     <div class="min-h-10 space-y-1" role="status"><p class="text-sm font-medium">{{ text(label) }}</p><p v-if="sync && sync.state !== 'idle'" class="text-sm tabular-nums">{{ text('Добавлено в очередь ') }}{{ sync.queuedRows }}{{ text(' записей') }}<span v-if="sync.totalRows !== null">{{ text(' из ') }}{{ sync.totalRows }}</span>.</p></div>
     <Skeleton v-if="sync?.state === 'preparing'" class="h-2 w-full" :aria-label="text('Подготавливаем архив')" />
     <Progress v-else-if="active && progress !== null" :model-value="progress" class="h-2" :aria-label="text('Записи, добавленные в очередь')" />

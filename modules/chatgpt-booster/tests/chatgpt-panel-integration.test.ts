@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { compileTemplate, parse } from 'vue/compiler-sfc'
+import { chatGptArchiveAction } from '../packages/core/src/settings-navigation'
 
 const panel = readFileSync(
   new URL('../src/features/archive/ui/ChatGptPanel.vue', import.meta.url),
@@ -105,7 +106,13 @@ test('new ChatGPT Dexie Reader/export lives inside the existing shared panel', (
 
 test('legacy-style quick menu commands open correct views without a second launcher', () => {
   expect(feature).toContain("id: 'settings'")
-  expect(feature).toContain("id: 'archive'")
+  expect(feature).toContain('chatGptArchiveAction(')
+  expect(
+    chatGptArchiveAction(
+      () => {},
+      () => false,
+    ),
+  ).toMatchObject({ id: 'archive', icon: 'archive' })
   expect(feature).toContain("id: 'collect'")
   expect(feature).toContain("id: 'export'")
   expect(feature).toContain('installation: target.label')

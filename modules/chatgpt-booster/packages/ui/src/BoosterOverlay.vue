@@ -57,6 +57,7 @@ const captureContext = ref<ArchiveCaptureContext>()
 const exportCaptureOpen = ref(false)
 const archiveCoveredByExport = ref(false)
 const archiveInitial = ref<string | null>(null)
+const archiveEntry = ref(0)
 const archiveNavigation = ref<ArchiveMessageLocation | null>(null)
 const exportTarget = ref<{ id: string; title: string | null; backToArchive: boolean }>()
 const error = ref<TranslationKey | null>(null)
@@ -271,11 +272,12 @@ function resize() {
   viewport.value = { width: window.innerWidth, height: window.innerHeight }
   cancelPointer()
 }
-function openArchive(id = context.value.conversationId) {
+function openArchive(id: string | null = null) {
   archiveNavigation.value = null
   archiveCoveredByExport.value = false
   if (archiveOpen.value) window.dispatchEvent(new Event('chatgpt-booster:restore-archive'))
   archiveInitial.value = id
+  archiveEntry.value++
   archiveOpen.value = true
   expanded.value = false
 }
@@ -377,8 +379,8 @@ function onArchive() {
   archiveRefresh.request()
 }
 function onOpenArchive(event: Event) {
-  const id = (event as CustomEvent<{ conversationId?: string }>).detail?.conversationId
-  openArchive(id ?? context.value.conversationId)
+  const scope = (event as CustomEvent<ArchiveCaptureContext | undefined>).detail
+  openArchive(scope?.scope === 'conversation' ? scope.id : null)
 }
 function onOpenCapture(event: Event) {
   const scope = (event as CustomEvent<ArchiveCaptureContext>).detail
@@ -454,7 +456,7 @@ onBeforeUnmount(() => {
 </script>
 <template>
   <div class="booster-overlay-root" :lang="locale">
-    <ArchiveWorkspace v-if="archiveOpen && archiveAdapter" v-show="!archiveCoveredByExport" :settings-adapter="settingsAdapter" :archive-adapter="archiveAdapter" :initial-conversation-id="archiveInitial" :navigation-target="archiveNavigation" :suspended="archiveCoveredByExport" :can-return-to-export="view === 'export' && !!exportTarget" :locale="locale" @return-export="returnToExport" @close="archiveOpen = false" @export="(id, title) => openExport(id, title, true)" />
+    <ArchiveWorkspace v-if="archiveOpen && archiveAdapter" :key="archiveEntry" v-show="!archiveCoveredByExport" :settings-adapter="settingsAdapter" :archive-adapter="archiveAdapter" :initial-conversation-id="archiveInitial" :navigation-target="archiveNavigation" :suspended="archiveCoveredByExport" :can-return-to-export="view === 'export' && !!exportTarget" :locale="locale" @return-export="returnToExport" @close="archiveOpen = false" @export="(id, title) => openExport(id, title, true)" />
     <ModalSurface v-if="view === 'settings'" :label="t('dock.settings')" @close="view = null"><ControlCenterPanel v-bind="props" show-close @close="view = null" /></ModalSurface>
     <ModalSurface v-if="view === 'capture'" :label="t('capture.title')" @close="view = null"><CaptureSettingsSurface :settings-adapter="settingsAdapter" :archive-adapter="archiveAdapter" :context="captureContext" :locale="locale" @close="view = null" /></ModalSurface>
     <ModalSurface v-if="view === 'export' && archiveAdapter && exportTarget" v-show="(!archiveOpen || archiveCoveredByExport) && !exportCaptureOpen" :label="t('export.title')" @close="closeView"><ArchiveExportDialog :key="exportTarget.id" :archive-adapter="archiveAdapter" :settings-adapter="settingsAdapter" :conversation-id="exportTarget.id" :title="exportTarget.title" :locale="locale" :suspended="(archiveOpen && !archiveCoveredByExport) || exportCaptureOpen" @close="closeView" @open-archive="openArchiveFromExport" @open-capture="openCaptureFromExport" /></ModalSurface>

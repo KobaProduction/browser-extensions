@@ -30,6 +30,8 @@ const props = defineProps<{
   uncertainLabel?: string
   disabled?: boolean
   loading?: boolean
+  compact?: boolean
+  commitOnly?: boolean
 }>()
 const emit = defineEmits<{ navigate: [id: string] }>()
 const locale = useApplicationLocale()
@@ -136,6 +138,7 @@ function scrub(value: number[] | undefined) {
   scrubbing.value = true
   scrubIndex.value = boundedIndex(value[0] ?? 0)
   center(scrubIndex.value)
+  if (props.commitOnly) return
   queuedIndex = scrubIndex.value
   if (navigationFrame !== undefined) return
   navigationFrame = requestAnimationFrame(() => {
@@ -260,22 +263,22 @@ onBeforeUnmount(() => {
 
 <template>
   <TooltipProvider :delay-duration="150" :skip-delay-duration="80">
-    <div v-if="nodes.length" ref="root" role="complementary" data-archive-timeline-rail class="flex h-full w-20 min-h-0 min-w-0 shrink-0 flex-col border-s border-border bg-background" :aria-label="label" :aria-busy="loading || undefined">
-      <div class="shrink-0 space-y-1 px-1 py-2 text-center text-[10px] tabular-nums text-muted-foreground">
+    <div v-if="nodes.length" ref="root" role="complementary" data-archive-timeline-rail class="flex h-full min-h-0 min-w-0 shrink-0 flex-col border-s border-border bg-background" :class="compact ? 'w-full' : 'w-20'" :aria-label="label" :aria-busy="loading || undefined">
+      <div class="shrink-0 px-1 text-center text-[10px] tabular-nums text-muted-foreground" :class="compact ? 'py-1 leading-tight' : 'space-y-1 py-2'">
         <time v-if="nodeDate(nodes[position])" :datetime="nodeDate(nodes[position])?.toISOString()" class="block font-medium text-foreground" data-archive-timeline-date>{{ dateLabel(nodes[position], true) }}</time>
         <span aria-hidden="true">{{ nodes.length ? position + 1 : 0 }} / {{ nodes.length }}</span>
       </div>
-      <div class="flex min-h-0 flex-1 gap-1 px-1 pb-8">
+      <div class="flex min-h-0 flex-1 px-1" :class="compact ? 'gap-0 pb-1' : 'gap-1 pb-8'">
         <Tooltip v-if="nodes.length > 1" :open="!disabled && Boolean(sliderPreview)">
           <TooltipTrigger as-child>
-            <div class="relative my-2 w-5 shrink-0" @pointerdown="beginPointer" @pointermove="previewSlider" @pointerleave="sliderHoverIndex = null" @pointerup="endPointer" @pointercancel="cancelPointer" @keydown="beginKeyboard" @focusin="sliderFocused = true" @focusout="sliderFocused = false">
-              <Slider orientation="vertical" :inverted="true" class="mx-auto h-full shrink-0" :model-value="[position]" :min="0" :max="nodes.length - 1" :step="1" :disabled="disabled" :aria-label="label" :aria-valuetext="`${position + 1} / ${nodes.length}: ${previewLabel(nodes[position])}`" @update:model-value="scrub" @value-commit="selectIndex" />
+            <div class="relative my-2 shrink-0" :class="compact ? 'w-4' : 'w-5'" @pointerdown="beginPointer" @pointermove="previewSlider" @pointerleave="sliderHoverIndex = null" @pointerup="endPointer" @pointercancel="cancelPointer" @keydown="beginKeyboard" @focusin="sliderFocused = true" @focusout="sliderFocused = false">
+              <Slider orientation="vertical" :inverted="true" :hide-range="compact" class="mx-auto h-full shrink-0" :model-value="[position]" :min="0" :max="nodes.length - 1" :step="1" :disabled="disabled" :aria-label="label" :aria-valuetext="`${position + 1} / ${nodes.length}: ${previewLabel(nodes[position])}`" @update:model-value="scrub" @value-commit="selectIndex" />
             </div>
           </TooltipTrigger>
           <TooltipContent v-if="sliderPreview" side="left" :collision-padding="12" :avoid-collisions="true" :style="previewStyle" class="w-72 space-y-2 border border-border bg-popover p-3 text-popover-foreground shadow-md whitespace-normal [overflow-wrap:anywhere]" data-archive-timeline-preview :data-archive-timeline-preview-id="sliderPreview.id">
             <strong class="block text-sm leading-snug" data-archive-timeline-author>{{ sliderPreview.label }}</strong>
             <p v-if="sliderPreview.preview" class="whitespace-pre-wrap text-sm leading-relaxed" data-archive-timeline-text>{{ sliderPreview.preview }}</p>
-            <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-t border-border pt-2 text-xs text-muted-foreground">
+            <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground">
               <time v-if="nodeDate(sliderPreview)" :datetime="nodeDate(sliderPreview)?.toISOString()" data-archive-timeline-sent-at>{{ dateLabel(sliderPreview) }}</time>
               <span v-else>{{ text('Дата неизвестна') }}</span>
               <span class="tabular-nums">{{ (sliderPreviewIndex ?? 0) + 1 }} / {{ nodes.length }}</span>
@@ -296,7 +299,7 @@ onBeforeUnmount(() => {
               <TooltipContent side="left" :collision-padding="12" :avoid-collisions="true" :style="previewStyle" class="w-72 space-y-2 border border-border bg-popover p-3 text-popover-foreground shadow-md whitespace-normal [overflow-wrap:anywhere]" data-archive-timeline-preview :data-archive-timeline-preview-id="node.id">
                 <strong class="block text-sm leading-snug" data-archive-timeline-author>{{ node.label }}</strong>
                 <p v-if="node.preview" class="whitespace-pre-wrap text-sm leading-relaxed" data-archive-timeline-text>{{ node.preview }}</p>
-                <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-t border-border pt-2 text-xs text-muted-foreground">
+                <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground">
                   <time v-if="nodeDate(node)" :datetime="nodeDate(node)?.toISOString()" data-archive-timeline-sent-at>{{ dateLabel(node) }}</time>
                   <span v-else>{{ text('Дата неизвестна') }}</span>
                   <span class="tabular-nums">{{ windowStart + index + 1 }} / {{ nodes.length }}</span>
