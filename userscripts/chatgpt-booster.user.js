@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT Booster [DEV]
 // @namespace    https://github.com/KobaProduction/browser-extensions/dev/chatgpt-booster
-// @version      2.0.52
+// @version      2.0.53
 // @description  ChatGPT Booster — archive and browser tools
 // @updateURL    https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/chatgpt-booster.user.js
 // @downloadURL  https://raw.githubusercontent.com/KobaProduction/browser-extensions/dev/userscripts/chatgpt-booster.user.js
@@ -2120,7 +2120,7 @@
     };
   }
   const BOOSTER_BASE_VERSION = "0.0.0-local";
-  const injectedVersion = "2.0.52".trim();
+  const injectedVersion = "2.0.53".trim();
   const BOOSTER_BUILD_VERSION = injectedVersion || BOOSTER_BASE_VERSION;
   const BOOSTER_VERSION = BOOSTER_BUILD_VERSION;
   // @__NO_SIDE_EFFECTS__
@@ -35799,7 +35799,6 @@ Defaulting to \`null\`.`);
       }
       const timelineNodes = /* @__PURE__ */ ref([]);
       let timelineRevision = 0;
-      let timelineConversationId = null;
       const selectionEnabled = /* @__PURE__ */ ref(false);
       const selectedMessages = /* @__PURE__ */ ref(/* @__PURE__ */ new Set());
       const rangeStart = /* @__PURE__ */ ref(null);
@@ -35834,7 +35833,6 @@ Defaulting to \`null\`.`);
           branchLoading.value = false;
           toolsOpen.value = false;
           timelineNodes.value = [];
-          timelineConversationId = null;
           timelineRevision++;
         },
         { flush: "sync" }
@@ -35846,7 +35844,6 @@ Defaulting to \`null\`.`);
           const nodes = await props2.archiveAdapter.getTimeline(id2);
           if (alive && ticket === timelineRevision && selectedId.value === id2 && owner === props2.archiveAdapter.currentAccountId?.()) {
             timelineNodes.value = nodes;
-            timelineConversationId = id2;
           }
         } catch {
         }
@@ -35957,7 +35954,7 @@ Defaulting to \`null\`.`);
       });
       const coverageRefresh = createArchiveRefreshQueue(async () => {
         const id2 = selectedId.value;
-        if (!alive || !id2 || props2.suspended) return;
+        if (!alive || !id2 || props2.suspended || workspaceState.value.loading) return;
         const revision = threadRevision;
         const owner = props2.archiveAdapter.currentAccountId?.();
         try {
@@ -35969,10 +35966,14 @@ Defaulting to \`null\`.`);
       });
       const timelineRefresh = createArchiveRefreshQueue(async () => {
         const id2 = selectedId.value;
-        if (id2) await loadTimeline(id2);
+        if (id2 && historyOpen.value && !props2.suspended && !workspaceState.value.loading)
+          await loadTimeline(id2);
+      });
+      watch([historyOpen, selectedId], ([open, id2]) => {
+        if (open && id2) timelineRefresh.request();
       });
       function updateWorkspaceState(id2) {
-        workspaceState.value = props2.archiveAdapter.workspaceStatus?.(id2) ?? {
+        workspaceState.value = (id2 ? props2.archiveAdapter.workspaceStatus?.(id2) : void 0) ?? {
           loading: false,
           loaded: 0,
           missingParents: 0,
@@ -36375,6 +36376,7 @@ Defaulting to \`null\`.`);
           } else if (selectedId.value && props2.archiveAdapter.liveSavedUpdates) {
             coverageRefresh.request();
             liveRefresh.request();
+            timelineRefresh.request();
           }
         }
       );
@@ -36620,8 +36622,10 @@ Defaulting to \`null\`.`);
         unsequencedTarget.value = false;
         coverageLoading.value = false;
         coverageError.value = false;
-        if (!id2) return;
-        if (timelineConversationId !== id2) void loadTimeline(id2);
+        if (!id2) {
+          updateWorkspaceState(null);
+          return;
+        }
         bindSourceChanges(id2);
         threadLoading.value = true;
         loadedEdge.value = edge;
@@ -36649,7 +36653,7 @@ Defaulting to \`null\`.`);
             if (middle) await focusMessage(middle.record.messageId);
             else await resetReadingPosition(edge);
           }
-          if (!owns()) return;
+          if (!owns() || workspaceState.value.loading) return;
           coverageLoading.value = true;
           void props2.archiveAdapter.getCoverage(id2, windowRequest(controller)).then((value) => {
             if (owns()) coverage.value = value;
@@ -36749,7 +36753,7 @@ Defaulting to \`null\`.`);
           }
           const target = requestedLocation.value;
           if (target && target.conversationId === selectedId.value) await openMessage(target.messageId, target);
-          else await loadThread(selectedId.value);
+          else if (!seededFromRam) await loadThread(selectedId.value);
         } catch (cause) {
           if (alive && revision === listRevision && !seededFromRam) describeReadFailure(cause);
         } finally {
@@ -36769,10 +36773,8 @@ Defaulting to \`null\`.`);
         projects.value = namedProjects;
       });
       onMounted(async () => {
-        const initialWorkspace = props2.navigationTarget?.conversationId ?? props2.initialConversationId;
         let owner = props2.archiveAdapter.currentAccountId?.() ?? null;
         let siteConversation = props2.archiveAdapter.currentConversationId();
-        if (initialWorkspace && owner) props2.archiveAdapter.retryWorkspace?.(initialWorkspace);
         const syncContext = () => {
           const nextOwner = props2.archiveAdapter.currentAccountId?.() ?? null;
           const previousSiteConversation = siteConversation;
@@ -37011,14 +37013,14 @@ Defaulting to \`null\`.`);
               class: "size-3 animate-spin"
             })) : createCommentVNode("v-if", true),
             createTextVNode(
-              " " + toDisplayString(workspaceState.value.failed ? __props.locale === "ru" ? "Не удалось догрузить сохранённые данные. Повторите открытие архива." : "Saved data could not be loaded. Reopen the archive to retry." : __props.locale === "ru" ? "Читаем сохранённый архив" : "Reading saved archive") + " ",
+              " " + toDisplayString(workspaceState.value.failed ? __props.locale === "ru" ? "Не удалось догрузить архив. Нажмите «Обновить»." : "Could not finish loading the archive. Select Refresh to retry." : __props.locale === "ru" ? "Загружаем историю" : "Loading history") + " ",
               1
               /* TEXT */
             ),
             workspaceState.value.loading ? (openBlock(), createElementBlock(
               "span",
               _hoisted_6$k,
-              "· " + toDisplayString(workspaceState.value.loaded) + " · " + toDisplayString(__props.locale === "ru" ? "Уточняем связи" : "Checking relationships"),
+              "· " + toDisplayString(__props.locale === "ru" ? "Загружено" : "Loaded") + " " + toDisplayString(workspaceState.value.loaded),
               1
               /* TEXT */
             )) : createCommentVNode("v-if", true)
@@ -54930,8 +54932,8 @@ Defaulting to \`null\`.`);
       reasoning: p2.elements.filter((e) => e.kind === "reasoning").length
     };
   }
-  function compatibilityElements({ accountId, projection }) {
-    return projection.elements.map((element) => ({ ...element, accountId }));
+  function messageIndexRow({ projection, ...identity }) {
+    return { ...identity, facts: indexFacts(projection) };
   }
   const messageTime = (row) => {
     const facts = row.facts ?? row.projection;
@@ -54957,7 +54959,6 @@ Defaulting to \`null\`.`);
     projects;
     conversations;
     messages;
-    elements;
     snapshots;
     constructor(name, options) {
       super(name, options);
@@ -54965,31 +54966,7 @@ Defaulting to \`null\`.`);
         projects: "&key,accountId,[accountId+projectId]",
         conversations: "&key,accountId,[accountId+conversationId],[accountId+projectId]",
         messages: "&key,accountId,[accountId+conversationId],[accountId+conversationId+messageId],messageId",
-        elements: "&elementId,accountId,messageKey,[messageKey+siblingOrder]",
         snapshots: "&messageKey,accountId"
-      });
-      this.version(2).stores({}).upgrade(async (tx) => {
-        const messages2 = tx.table("messages");
-        const snapshots = tx.table("snapshots");
-        const elements = tx.table("elements");
-        let cursor;
-        while (true) {
-          const page = await (cursor ? messages2.where(":id").above(cursor) : messages2.orderBy(":id")).limit(160).toArray();
-          const compact = page.filter((row) => !row.projection);
-          const originals = await snapshots.bulkGet(compact.map(({ key }) => key));
-          for (const [index, row] of compact.entries()) {
-            const snapshot = originals[index];
-            if (snapshot?.accountId !== row.accountId || snapshot.messageKey !== row.key || snapshot.raw.id !== row.messageId)
-              throw Error("Canonical source identity mismatch");
-            const { facts: _facts, ...identity } = row;
-            const record2 = { ...identity, projection: projectNativeMessage(snapshot.raw, row) };
-            await elements.where("messageKey").equals(row.key).delete();
-            await elements.bulkAdd(compatibilityElements(record2));
-            await messages2.put(record2);
-          }
-          if (page.length < 160) break;
-          cursor = page.at(-1)?.key;
-        }
       });
     }
   }
@@ -55017,13 +54994,14 @@ Defaulting to \`null\`.`);
     /** Small LRU of lightweight ID/order facts, never source snapshots. */
     orderPlans = /* @__PURE__ */ new Map();
     observationDigests = /* @__PURE__ */ new Map();
+    exportCache;
     constructor(scope, options) {
       this.databaseName = fixedArchiveDatabaseName(scope);
       this.scope = Object.freeze({ ...scope });
       this.db = new FixedArchiveDatabase(this.databaseName, options);
     }
     /**
-     * One original message + all canonical v1 rows are an indivisible transaction.
+     * Write the original and its lookup index atomically.
      * Every original observation is retained. Only monotonic enrichment may
      * become the preferred projection; contradictory/reduced reloads stay variants.
      */
@@ -55054,6 +55032,7 @@ Defaulting to \`null\`.`);
         modelVersion: ARCHIVE_CANONICAL_MODEL_VERSION,
         projection
       };
+      const indexed = messageIndexRow(record2);
       const source = {
         messageKey,
         accountId,
@@ -55085,7 +55064,6 @@ Defaulting to \`null\`.`);
         this.db.projects,
         this.db.conversations,
         this.db.messages,
-        this.db.elements,
         this.db.snapshots,
         async () => {
           const transaction = Dexie$1.currentTransaction;
@@ -55115,11 +55093,8 @@ Defaulting to \`null\`.`);
             throw Error("Conversation project changed; a verified explicit action is required");
           if (priorMessage && !prior) throw Error("Canonical source snapshot missing");
           if (prior) {
-            validateChatGptNormalizedSnapshot(
-              prior,
-              conversationId,
-              prior.projectId === void 0 ? existingConversation ? originalConversationProject(existingConversation) : null : prior.projectId
-            );
+            if (prior.accountId !== accountId || prior.messageKey !== messageKey || prior.raw.id !== projection.messageId)
+              throw Error("Canonical source identity mismatch");
             const cached = this.observationDigests.get(messageKey);
             const memo = cached?.stamp === fixedConversationStamp(existingConversation) ? cached : void 0;
             const priorFingerprint = memo?.preferred ?? await Dexie$1.waitFor(sourceCloneDigest(prior.raw));
@@ -55176,11 +55151,7 @@ Defaulting to \`null\`.`);
             );
             committedView = commitView(versions.length);
             await snapshots.put(nextSnapshot);
-            if (decision === "advance") {
-              await this.db.elements.where("messageKey").equals(messageKey).delete();
-              await this.db.elements.bulkAdd(compatibilityElements(record2));
-              await messages2.put(record2);
-            }
+            if (decision === "advance") await messages2.put(indexed);
             const conversation = await conversations.get(conversationKey);
             if (conversation) {
               const nextHeader2 = {
@@ -55226,8 +55197,7 @@ Defaulting to \`null\`.`);
             });
           }
           committedView = commitView();
-          await messages2.add(record2);
-          await this.db.elements.bulkAdd(compatibilityElements(record2));
+          await messages2.add(indexed);
           await snapshots.add(source);
           const createdHeader = await conversations.get(conversationKey);
           if (!createdHeader) throw Error("Canonical conversation missing");
@@ -55474,7 +55444,7 @@ Defaulting to \`null\`.`);
         if (!stillAuthorized()) throw Error("Stream head authorization expired");
       });
     }
-    async integrity(conversationId, check2 = () => void 0) {
+    async integrity(conversationId, check2 = () => void 0, cachedSources) {
       const header2 = await this.getConversation(conversationId);
       const graphMatchesHead = header2?.nativeGraph && (!header2.currentHeadId || header2.nativeGraph.graph.header.current_node === header2.currentHeadId || (header2.streamHeadObservedAt ?? 0) <= header2.nativeGraph.readStartedAt);
       const checkpoint = header2?.nativeGraph;
@@ -55489,15 +55459,15 @@ Defaulting to \`null\`.`);
           for (const row of rows) ids.add(row.messageId);
         } else {
           const outside = rows.filter((row) => parents && !parents.has(row.messageId));
-          const snapshots = await this.db.snapshots.bulkGet(outside.map((row) => row.key));
-          const sources = new Map(outside.map((row, index) => [row.key, snapshots[index]]));
+          const snapshots = cachedSources ? outside.map((row) => cachedSources.get(row.messageId)) : await this.db.snapshots.bulkGet(outside.map((row) => row.key));
+          const sources = new Map(outside.map((row, index) => [row.messageId, snapshots[index]]));
           for (const row of rows) {
             const facts = row.facts ?? row.projection;
             const relation = nativeGraphRelationship(
               checkpoint,
               row.messageId,
               { parentId: facts.parentMessageId, parentKnown: facts.parentObserved },
-              nativeSnapshotLiveReceipt(sources.get(row.key), facts.parentMessageId)
+              nativeSnapshotLiveReceipt(sources.get(row.messageId), facts.parentMessageId)
             );
             projections.push({
               messageId: row.messageId,
@@ -55713,17 +55683,17 @@ Defaulting to \`null\`.`);
           const candidates = await this.listIndex(conversationId, limit + 1, afterId);
           const rows = candidates.slice(0, limit);
           const snapshots = await this.db.snapshots.bulkGet(rows.map((row) => row.key));
-          return {
+          const page = {
             header: header2,
             rows: rows.map((row, index) => {
               const source = snapshots[index];
               if (!source || source.accountId !== row.accountId || source.messageKey !== row.key || source.raw.id !== row.messageId)
                 throw Error("Workspace source identity mismatch");
-              const { normalized } = this.readSnapshot(source, conversationId, header2);
+              const sourceContext = this.snapshotContext(source, conversationId, header2);
               return {
                 id: row.messageId,
                 raw: source.raw,
-                normalized,
+                sourceContext,
                 observedAtMs: source.observedAtMs,
                 liveObservedAt: nativeSnapshotLiveReceipt(
                   source,
@@ -55734,6 +55704,22 @@ Defaulting to \`null\`.`);
             cursor: rows.at(-1)?.messageId,
             hasMore: candidates.length > limit
           };
+          const stamp = fixedConversationStamp(header2);
+          if (!afterId)
+            this.exportCache = header2 ? { conversationId, stamp, cursor: void 0, complete: false, snapshots: /* @__PURE__ */ new Map() } : void 0;
+          const cache2 = this.exportCache;
+          if (cache2?.conversationId === conversationId && !cache2.complete && cache2.cursor === afterId) {
+            if (cache2.stamp !== stamp) this.exportCache = void 0;
+            else {
+              for (const [index, row] of rows.entries()) {
+                const source = snapshots[index];
+                if (source) cache2.snapshots.set(row.messageId, source);
+              }
+              cache2.cursor = page.cursor;
+              cache2.complete = !page.hasMore;
+            }
+          }
+          return page;
         }
       );
     }
@@ -55852,10 +55838,19 @@ Defaulting to \`null\`.`);
           check2();
           const header2 = await this.getConversation(conversationId);
           if (!header2) throw Error("Saved conversation missing");
-          const [integrity, count] = await Promise.all([
-            this.integrity(conversationId, check2),
-            this.countConversation(conversationId)
-          ]);
+          const count = await this.countConversation(conversationId);
+          const cache2 = this.exportCache;
+          const cachedSources = cache2?.conversationId === conversationId && cache2.complete && cache2.stamp === fixedConversationStamp(header2) && cache2.snapshots.size === count ? cache2.snapshots : void 0;
+          const integrity = await this.integrity(conversationId, check2, cachedSources);
+          if (cachedSources) {
+            const snapshots2 = selected ? [...selected].map((id2) => {
+              const source = cachedSources.get(id2);
+              if (!source) throw Error("Selected saved message is missing");
+              return source;
+            }) : [...cachedSources.values()];
+            check2();
+            return { header: header2, integrity, count, snapshots: snapshots2 };
+          }
           const snapshots = [];
           let cursor;
           let scanned = 0;
@@ -55866,11 +55861,10 @@ Defaulting to \`null\`.`);
               ({ messageId }) => !selected || selected.has(messageId) ? [messageId] : []
             );
             if (ids.length)
-              for (const snapshot of await this.readSourceSnapshots(
+              for (const snapshot of await this.readRawSourceSnapshots(
                 conversationId,
                 header2.accountId,
-                ids,
-                header2
+                ids
               )) {
                 if (!snapshot) throw Error("Source snapshot missing");
                 snapshots.push(snapshot);
@@ -55889,47 +55883,42 @@ Defaulting to \`null\`.`);
         }
       );
     }
-    readSnapshot(snapshot, conversationId, header2) {
+    snapshotContext(snapshot, conversationId, header2) {
       const projectId = snapshot.projectId === void 0 ? header2 ? originalConversationProject(header2) : null : snapshot.projectId;
-      const normalized = readChatGptArchiveMessage(
-        snapshot.raw,
-        {
-          ownerId: snapshot.accountId,
-          conversationId,
-          projectId,
-          sourceKind: snapshot.sourceKind,
-          sourceVersion: snapshot.sourceVersion,
-          observedAtMs: snapshot.observedAtMs
-        },
-        snapshot.normalized
-      );
-      return { ...snapshot, projectId, normalized };
+      return {
+        ownerId: snapshot.accountId,
+        conversationId,
+        projectId,
+        sourceKind: snapshot.sourceKind,
+        sourceVersion: snapshot.sourceVersion,
+        observedAtMs: snapshot.observedAtMs
+      };
+    }
+    presentSourceSnapshot(snapshot, conversationId, header2) {
+      const context2 = this.snapshotContext(snapshot, conversationId, header2);
+      const normalized = projectChatGptArchiveMessage(snapshot.raw, context2);
+      return { ...snapshot, projectId: context2.projectId ?? null, normalized };
     }
     /** One header read per bounded window; never clone a full graph per message. */
     async getSourceSnapshots(conversationId, messageIds) {
       const account = this.scope.ownerId;
       if (!account || !nonEmpty(conversationId) || messageIds.length > 240 || !messageIds.every(nonEmpty))
         throw Error("Invalid source identity or window");
-      return this.db.transaction(
-        "r",
-        this.db.conversations,
-        this.db.snapshots,
-        async () => this.readSourceSnapshots(
-          conversationId,
-          account,
-          messageIds,
-          await this.getConversation(conversationId)
-        )
-      );
+      return this.db.transaction("r", this.db.conversations, this.db.snapshots, async () => {
+        const header2 = await this.getConversation(conversationId);
+        return (await this.readRawSourceSnapshots(conversationId, account, messageIds)).map(
+          (snapshot) => snapshot && this.presentSourceSnapshot(snapshot, conversationId, header2)
+        );
+      });
     }
-    async readSourceSnapshots(conversationId, account, messageIds, header2) {
+    async readRawSourceSnapshots(conversationId, account, messageIds) {
       const keys2 = messageIds.map((id2) => JSON.stringify([account, conversationId, id2]));
       const snapshots = await this.db.snapshots.bulkGet(keys2);
       return snapshots.map((snapshot, index) => {
         if (!snapshot) return void 0;
         if (snapshot.accountId !== account || snapshot.messageKey !== keys2[index] || snapshot.raw.id !== messageIds[index])
           throw Error("Canonical source identity mismatch");
-        return this.readSnapshot(snapshot, conversationId, header2);
+        return snapshot;
       });
     }
     async messageVersions(conversationId, messageId) {
@@ -55950,19 +55939,15 @@ Defaulting to \`null\`.`);
       ];
       return versions.map((version2, index) => ({
         ...version2,
-        normalized: readChatGptArchiveMessage(
-          version2.raw,
-          {
-            ownerId,
-            conversationId,
-            projectId: version2.projectId === void 0 ? snapshot?.projectId ?? null : version2.projectId,
-            sourceKind: version2.sourceKind,
-            sourceVersion: version2.sourceVersion,
-            observedAtMs: version2.observedAtMs,
-            variantIndex: index
-          },
-          version2.normalized
-        )
+        normalized: projectChatGptArchiveMessage(version2.raw, {
+          ownerId,
+          conversationId,
+          projectId: version2.projectId === void 0 ? snapshot?.projectId ?? null : version2.projectId,
+          sourceKind: version2.sourceKind,
+          sourceVersion: version2.sourceVersion,
+          observedAtMs: version2.observedAtMs,
+          variantIndex: index
+        })
       }));
     }
     async counts() {
@@ -55997,41 +55982,35 @@ Defaulting to \`null\`.`);
       const owner = this.scope.ownerId;
       if (!owner) throw Error("Verified ChatGPT owner required for recovery");
       const stores = ["projects", "conversations", "messages", "elements", "snapshots"];
-      const tables = stores.map((name) => ({ name, table: self2.db[name] }));
-      const schema = Object.fromEntries(
-        tables.map(({ name, table: table2 }) => [
-          name,
-          {
-            primaryKey: table2.schema.primKey.src,
-            indexes: table2.schema.indexes.map((index) => index.src)
-          }
-        ])
-      );
+      const tables = stores.filter((name) => name !== "elements").map((name) => ({ name, table: self2.db[name] }));
+      const schema = {
+        ...Object.fromEntries(
+          tables.map(({ name, table: table2 }) => [
+            name,
+            {
+              primaryKey: table2.schema.primKey.src,
+              indexes: table2.schema.indexes.map((index) => index.src)
+            }
+          ])
+        ),
+        elements: {
+          primaryKey: "elementId",
+          indexes: ["accountId", "messageKey", "[messageKey+siblingOrder]"]
+        }
+      };
       const countRows = async (transaction) => Object.fromEntries(
         await Promise.all(
-          tables.map(
-            async ({ name, table: table2 }) => [
+          stores.map(
+            async (name) => [
               name,
               name === "elements" ? await self2.countProjectedElements(
                 transaction?.table("messages") ?? self2.db.messages,
                 owner
-              ) : await (transaction?.table(name) ?? table2).where("accountId").equals(owner).count()
+              ) : await (transaction?.table(name) ?? self2.db[name]).where("accountId").equals(owner).count()
             ]
           )
         )
       );
-      const keyOwner = (name, key) => {
-        try {
-          const parts = JSON.parse(key);
-          if (!Array.isArray(parts)) return null;
-          if (name !== "elements") return parts[0];
-          if (typeof parts[0] !== "string") return null;
-          const message = JSON.parse(parts[0]);
-          return Array.isArray(message) ? message[0] : null;
-        } catch {
-          return null;
-        }
-      };
       const ownedKeyPages = async function* (name, limit, transaction) {
         const table2 = transaction?.table(name) ?? self2.db[name], keyField = table2.schema.primKey.name;
         if (!keyField) throw Error("Missing canonical primary key");
@@ -56043,7 +56022,11 @@ Defaulting to \`null\`.`);
           for (const key of keys2) {
             if (typeof key !== "string") throw Error("Invalid canonical primary key type");
             cursor = key;
-            if (keyOwner(name, key) === owner) owned.push(key);
+            try {
+              const parts = JSON.parse(key);
+              if (Array.isArray(parts) && parts[0] === owner) owned.push(key);
+            } catch {
+            }
           }
           if (owned.length) yield owned;
           if (keys2.length < limit) break;
@@ -56126,12 +56109,11 @@ ${JSON.stringify(counts)}`);
           self2.db.projects,
           self2.db.conversations,
           self2.db.messages,
-          self2.db.elements,
           self2.db.snapshots,
           async () => {
             const transaction = Dexie$1.currentTransaction;
             if (!transaction) throw Error("Missing canonical recovery transaction");
-            const transactionalTables = stores.map((name) => ({
+            const transactionalTables = tables.map(({ name }) => ({
               name,
               table: transaction.table(name)
             }));
@@ -56162,7 +56144,7 @@ ${JSON.stringify(counts)}`);
                   projects: 0,
                   conversations: 0,
                   messages: 0,
-                  elements: 0,
+                  elements: validation.counts.elements,
                   snapshots: 0
                 };
                 for (const { name, table: table2 } of transactionalTables) {
@@ -56203,7 +56185,7 @@ ${JSON.stringify(counts)}`);
                             );
                           }
                         }
-                        const stored = name === "snapshots" ? decoded.map(stripSnapshotView) : decoded;
+                        const stored = name === "snapshots" ? decoded.map(stripSnapshotView) : name === "messages" ? decoded.map(messageIndexRow) : decoded;
                         await table2.bulkPut(stored);
                         actual[name] += decoded.length;
                         if (actual[name] > validation.counts[name])
@@ -56345,7 +56327,7 @@ ${JSON.stringify(counts)}`);
             elements: 0,
             snapshots: 0
           };
-          for (const { name, table: table2 } of tables) {
+          for (const name of stores) {
             if (name === "elements") {
               for await (const keys2 of ownedKeyPages("messages", Math.min(pageSize2, 256))) {
                 for (const key of keys2) {
@@ -56364,6 +56346,7 @@ ${JSON.stringify(counts)}`);
               }
               continue;
             }
+            const table2 = self2.db[name];
             for await (const keys2 of ownedKeyPages(name, Math.min(pageSize2, 256))) {
               for (const key of keys2) {
                 authorize();
@@ -56406,7 +56389,6 @@ ${JSON.stringify(counts)}`);
             self2.db.projects,
             self2.db.conversations,
             self2.db.messages,
-            self2.db.elements,
             self2.db.snapshots,
             async () => {
               authorize();
@@ -56434,9 +56416,7 @@ ${JSON.stringify(counts)}`);
                 await self2.db.conversations.bulkAdd(headers);
               }
               if (buckets.messages.length)
-                await self2.db.messages.bulkAdd(buckets.messages);
-              if (buckets.elements.length)
-                await self2.db.elements.bulkAdd(buckets.elements);
+                await self2.db.messages.bulkAdd(buckets.messages.map(messageIndexRow));
               if (buckets.snapshots.length)
                 await self2.db.snapshots.bulkAdd(
                   buckets.snapshots.map(stripSnapshotView)
@@ -56450,6 +56430,7 @@ ${JSON.stringify(counts)}`);
       };
     }
     close() {
+      this.exportCache = void 0;
       this.orderPlans.clear();
       this.observationDigests.clear();
       this.db.close();
@@ -56704,8 +56685,9 @@ ${JSON.stringify(counts)}`);
       check2,
       (completed, total) => progress?.({ phase: "reading", unit: "records", completed, total })
     );
-    for (const [index, source] of snapshots.entries()) {
+    for (const [index, snapshot] of snapshots.entries()) {
       check2();
+      const source = repository.presentSourceSnapshot(snapshot, id2, header2);
       const messageId = typeof source.raw.id === "string" ? source.raw.id : null;
       const record2 = chatGptArchiveRecord(source.raw, source.normalized);
       if (!record2 || !messageId || record2.messageId !== messageId)
@@ -57488,11 +57470,21 @@ ${JSON.stringify(counts)}`);
         throw Error("Account changed during conversation read");
       return items.map(({ conversationId, projectId, title }) => ({ conversationId, projectId, title }));
     }
-    async listSavedProjects() {
+    async getSavedConversation(id2) {
+      const owner = this.state.verifiedAccountId(), epoch = this.state.accountEpoch();
+      if (!owner) throw Error("Unverified owner");
+      const header2 = await this.repo(owner).getConversation(id2);
+      if (this.state.accountEpoch() !== epoch || this.state.verifiedAccountId() !== owner)
+        throw Error("Account changed during conversation read");
+      if (!header2) return void 0;
+      const { conversationId, projectId, title } = header2;
+      return { conversationId, projectId, title };
+    }
+    async listSavedProjects(waitForCapture = true) {
       const owner = this.state.verifiedAccountId();
       const epoch = this.state.accountEpoch();
       if (!owner) throw Error("Unverified owner");
-      await this.pending;
+      if (waitForCapture) await this.pending;
       const items = await this.repo(owner).listProjects();
       if (this.state.accountEpoch() !== epoch || this.state.verifiedAccountId() !== owner)
         throw Error("Account changed during project read");
@@ -58008,6 +58000,8 @@ ${JSON.stringify(counts)}`);
     capture;
     id = "archive-workspace";
     conversations = /* @__PURE__ */ new Map();
+    sourceContexts = /* @__PURE__ */ new WeakMap();
+    presentations = /* @__PURE__ */ new WeakMap();
     listeners = /* @__PURE__ */ new Set();
     cleanup = [];
     owner = null;
@@ -58245,14 +58239,17 @@ ${JSON.stringify(counts)}`);
               };
             for (const row of chunk.rows) {
               savedIds.add(row.id);
-              const base = normalizeConversationMessage(
+              const record2 = normalizeConversationMessage(
                 row.raw,
                 id2,
                 chunk.header?.projectId ?? null,
                 row.observedAtMs
               );
-              if (!base) throw Error("Workspace source cannot be decoded");
-              const record2 = row.normalized ? { ...base, ...chatGptArchiveRecord(row.raw, row.normalized) } : base;
+              if (!record2) throw Error("Workspace source cannot be decoded");
+              if (row.sourceContext) {
+                if (record2.createTime !== null) record2.createTime = serverTimeMs(record2.createTime) / 1e3;
+                this.sourceContexts.set(record2, row.sourceContext);
+              }
               this.merge(conversation, record2);
               if (row.liveObservedAt !== void 0)
                 conversation.liveReceipts.set(row.id, {
@@ -58304,19 +58301,29 @@ ${JSON.stringify(counts)}`);
       const c = this.conversation(id2), saved = c.header?.nativeGraph;
       return newestNativeGraph(c.nativeGraph, saved);
     }
-    recordView(id2, record2) {
+    recordLinks(id2, record2) {
       const c = this.conversation(id2), receipt = c.liveReceipts.get(record2.messageId);
+      return nativeGraphRelationship(
+        this.nativeGraphRead(id2),
+        record2.messageId,
+        {
+          parentId: record2.parentId,
+          parentKnown: Object.hasOwn(record2.raw.metadata ?? {}, "parent_id")
+        },
+        receipt?.parentId === record2.parentId ? receipt.observedAt : void 0
+      );
+    }
+    recordView(id2, record2, present = true) {
+      const source = present ? this.sourceContexts.get(record2) : void 0;
+      let view2 = this.presentations.get(record2);
+      if (source && !view2) {
+        view2 = chatGptArchiveRecord(record2.raw, projectChatGptArchiveMessage(record2.raw, source));
+        this.presentations.set(record2, view2);
+      }
       return {
         ...record2,
-        ...nativeGraphRelationship(
-          this.nativeGraphRead(id2),
-          record2.messageId,
-          {
-            parentId: record2.parentId,
-            parentKnown: Object.hasOwn(record2.raw.metadata ?? {}, "parent_id")
-          },
-          receipt?.parentId === record2.parentId ? receipt.observedAt : void 0
-        )
+        ...present ? view2 : void 0,
+        ...this.recordLinks(id2, record2)
       };
     }
     getMessage(id2, messageId) {
@@ -58355,17 +58362,17 @@ ${JSON.stringify(counts)}`);
         if (!record2) throw Error("archive.error.messageMissing");
         result.push(cursor);
         if (cursor === firstId) return result.reverse();
-        const viewed = this.recordView(id2, record2);
+        const viewed = this.recordLinks(id2, record2);
         if (!viewed.parentKnown) throw Error("archive.error.incompleteSource");
         cursor = viewed.parentId;
       }
       throw Error("archive.error.incompleteSource");
     }
-    records(id2) {
+    records(id2, present = true) {
       const c = this.conversation(id2);
       return this.ordered(c).flatMap((key) => {
         const record2 = c.records.get(key);
-        return record2 ? [this.recordView(id2, record2)] : [];
+        return record2 ? [this.recordView(id2, record2, present)] : [];
       });
     }
     window(id2, direction, cursorId, around = false) {
@@ -58394,7 +58401,7 @@ ${JSON.stringify(counts)}`);
         const record2 = conversation.records.get(cursor);
         if (!record2) throw Error("archive.error.messageMissing");
         result.push(cursor);
-        const viewed = this.recordView(id2, record2);
+        const viewed = this.recordLinks(id2, record2);
         if (!viewed.parentKnown) throw Error("archive.error.incompleteSource");
         cursor = viewed.parentId;
       }
@@ -58415,7 +58422,7 @@ ${JSON.stringify(counts)}`);
       return conversationIntegrityFromGraph(
         [...conversation.records.values()].map((record2) => ({
           id: record2.messageId,
-          ...this.recordView(id2, record2)
+          ...this.recordLinks(id2, record2)
         })),
         {
           firstId: saved?.startEvidence?.firstMessageId ?? header2?.startEvidence?.firstMessageId,
@@ -58486,7 +58493,7 @@ ${JSON.stringify(counts)}`);
     };
     const listProjects = async () => {
       const owner = account(), epoch = memory.accountEpoch();
-      const saved = await capture.listSavedProjects();
+      const saved = await capture.listSavedProjects(false);
       guard(owner, epoch);
       const projects = new Map(saved.map((project2) => [project2.projectId, project2]));
       for (const project2 of memory.listProjects())
@@ -58597,7 +58604,7 @@ ${JSON.stringify(counts)}`);
         const owner = account(), epoch = memory.accountEpoch();
         await workspace.open(id2);
         const confirmedStarts = workspace.confirmedStartIds(id2);
-        const metadata = workspace.records(id2).map((record2) => ({
+        const metadata = workspace.records(id2, false).map((record2) => ({
           id: record2.messageId,
           parentId: record2.parentId,
           parentKnown: record2.parentKnown,
@@ -58717,15 +58724,15 @@ ${JSON.stringify(counts)}`);
         };
         if (!owner) return empty;
         const id2 = current(), routeProject = currentProjectId();
-        const [conversations, projects] = await Promise.all([
-          capture.listSavedConversations(),
+        const [saved, projects] = await Promise.all([
+          id2 ? capture.getSavedConversation(id2) : void 0,
           listProjects()
         ]);
         guard(owner, epoch);
         const source = {
           ownerId: owner,
           nativeConversation: (candidate) => memory.header(candidate),
-          savedConversation: (candidate) => conversations.find((value) => value.conversationId === candidate),
+          savedConversation: (candidate) => saved?.conversationId === candidate ? saved : void 0,
           savedProject: (candidate) => projects.find((value) => value.projectId === candidate),
           currentNativeProjectId: id2 ? memory.header(id2)?.projectId ?? null : null
         };
@@ -58760,7 +58767,7 @@ ${JSON.stringify(counts)}`);
       getConversation: async (id2) => {
         const owner = account(), epoch = memory.accountEpoch();
         const live = memory.header(id2) ?? workspace.context(id2);
-        const saved = live?.title ? void 0 : (await capture.listSavedConversations()).find((x) => x.conversationId === id2);
+        const saved = live?.title ? void 0 : await capture.getSavedConversation(id2);
         const source = live ?? saved;
         const origin = live ? capture.cachedSavedBranchOrigin(id2) : source ? await capture.savedBranchOrigin(id2) : null;
         guard(owner, epoch);
@@ -62802,7 +62809,7 @@ ${JSON.stringify(counts)}`);
     }
   }
   instanceKey("chatgpt-booster:manual-collection", "chatgpt-booster:prod");
-  var define_BOOSTER_APPLICATION_default = { id: "chatgpt-booster", title: "ChatGPT Booster", version: "dev-2.0.52", components: [] };
+  var define_BOOSTER_APPLICATION_default = { id: "chatgpt-booster", title: "ChatGPT Booster", version: "dev-2.0.53", components: [] };
   function isDevelopmentContextAllowed(_target, scope = instanceScope()) {
     return /^(vk-booster|chatgpt-booster|all-in-one):(dev|prod)$/.test(scope);
   }
@@ -65761,7 +65768,7 @@ ${JSON.stringify(counts)}`);
     if (!gm)
       return unavailableTelemetry();
     const settings = gm?.settings ?? store;
-    const suppliedVersion = "2.0.52";
+    const suppliedVersion = "2.0.53";
     const version2 = /^\d+\.\d+\.\d+$/.test(suppliedVersion) ? suppliedVersion : "0.0.0";
     const listeners = /* @__PURE__ */ new Set();
     let enabled = false;
