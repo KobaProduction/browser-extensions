@@ -936,14 +936,21 @@ owner, user, epoch, current-session and abort checks around the actual method.
 ## Original-first local storage
 
 New snapshots keep original ChatGPT payloads, their source evidence and distinct
-versions. Reader, version and export views are derived when requested. New
-snapshots omit the normalized message DTO. The message projection and element
-indexes remain compatibility caches for clients that can reopen the same
-database. Dexie version 2 restores those caches from originals for any compact
-rows written by older local builds. The database name, tables, indexes and
-portable schema remain the same.
+versions. Reader, version and export views are derived from those originals.
+Capture and restore write the original payload and a compact message lookup
+index. The index carries identity, order, ancestry and counts. No full
+projection, normalized DTO or element rows are written to the local archive.
+The reader opens the installed database in place without migration or rewrites.
+The old element table is outside the active schema. New databases do not
+create it, and existing databases leave it untouched on disk.
 
-Portable recovery retains its previous wire schema. The exporter derives the
-message and element rows expected by existing backups from the original source.
-Restore still validates the complete backup and owner relationships before
-writing compact indexes and originals in one transaction.
+The Reader displays the first loaded window while the rest of the conversation
+loads into memory in bounded batches. It derives message presentation on demand.
+Integrity settles after hydration and the full timeline is computed when opened.
+Export reuses the last fully hydrated conversation's originals when its saved
+revision and record count still match. A cold or changed archive is read once
+from IndexedDB. Formatting and compression run after the read transaction.
+
+Portable recovery derives the message and element rows required by its wire
+schema. Restore validates them before atomically replacing the owner's
+originals and compact indexes.

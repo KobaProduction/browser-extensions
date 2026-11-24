@@ -57,7 +57,7 @@ export function createFixedArchiveUiAdapter(
   const listProjects = async () => {
     const owner = account(),
       epoch = memory.accountEpoch()
-    const saved = await capture.listSavedProjects()
+    const saved = await capture.listSavedProjects(false)
     guard(owner, epoch)
     const projects = new Map(saved.map((project) => [project.projectId, project]))
     for (const project of memory.listProjects())
@@ -189,7 +189,7 @@ export function createFixedArchiveUiAdapter(
         epoch = memory.accountEpoch()
       await workspace.open(id)
       const confirmedStarts = workspace.confirmedStartIds(id)
-      const metadata = workspace.records(id).map((record) => ({
+      const metadata = workspace.records(id, false).map((record) => ({
         id: record.messageId,
         parentId: record.parentId,
         parentKnown: record.parentKnown,
@@ -335,8 +335,8 @@ export function createFixedArchiveUiAdapter(
       if (!owner) return empty
       const id = current(),
         routeProject = currentProjectId()
-      const [conversations, projects] = await Promise.all([
-        capture.listSavedConversations(),
+      const [saved, projects] = await Promise.all([
+        id ? capture.getSavedConversation(id) : undefined,
         listProjects(),
       ])
       guard(owner, epoch)
@@ -344,7 +344,7 @@ export function createFixedArchiveUiAdapter(
         ownerId: owner,
         nativeConversation: (candidate: string) => memory.header(candidate),
         savedConversation: (candidate: string) =>
-          conversations.find((value) => value.conversationId === candidate),
+          saved?.conversationId === candidate ? saved : undefined,
         savedProject: (candidate: string) => projects.find((value) => value.projectId === candidate),
         currentNativeProjectId: id ? (memory.header(id)?.projectId ?? null) : null,
       }
@@ -391,9 +391,7 @@ export function createFixedArchiveUiAdapter(
       const owner = account(),
         epoch = memory.accountEpoch()
       const live = memory.header(id) ?? workspace.context(id)
-      const saved = live?.title
-        ? undefined
-        : (await capture.listSavedConversations()).find((x) => x.conversationId === id)
+      const saved = live?.title ? undefined : await capture.getSavedConversation(id)
       const source = live ?? saved
       const origin = live
         ? capture.cachedSavedBranchOrigin(id)

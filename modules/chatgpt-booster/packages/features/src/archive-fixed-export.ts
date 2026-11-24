@@ -47,8 +47,9 @@ export async function exportFixedConversation(
     check,
     (completed, total) => progress?.({ phase: 'reading', unit: 'records', completed, total }),
   )
-  for (const [index, source] of snapshots.entries()) {
+  for (const [index, snapshot] of snapshots.entries()) {
     check()
+    const source = repository.presentSourceSnapshot(snapshot, id, header)
     const messageId = typeof source.raw.id === 'string' ? source.raw.id : null
     const record = chatGptArchiveRecord(source.raw, source.normalized)
     if (!record || !messageId || record.messageId !== messageId)

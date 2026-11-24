@@ -1035,11 +1035,22 @@ export class FixedChatGptCapture implements BoosterModule, FixedChatGptView {
       throw Error('Account changed during conversation read')
     return items.map(({ conversationId, projectId, title }) => ({ conversationId, projectId, title }))
   }
-  async listSavedProjects() {
+  async getSavedConversation(id: string) {
+    const owner = this.state.verifiedAccountId(),
+      epoch = this.state.accountEpoch()
+    if (!owner) throw Error('Unverified owner')
+    const header = await this.repo(owner).getConversation(id)
+    if (this.state.accountEpoch() !== epoch || this.state.verifiedAccountId() !== owner)
+      throw Error('Account changed during conversation read')
+    if (!header) return undefined
+    const { conversationId, projectId, title } = header
+    return { conversationId, projectId, title }
+  }
+  async listSavedProjects(waitForCapture = true) {
     const owner = this.state.verifiedAccountId()
     const epoch = this.state.accountEpoch()
     if (!owner) throw Error('Unverified owner')
-    await this.pending
+    if (waitForCapture) await this.pending
     const items = await this.repo(owner).listProjects()
     if (this.state.accountEpoch() !== epoch || this.state.verifiedAccountId() !== owner)
       throw Error('Account changed during project read')

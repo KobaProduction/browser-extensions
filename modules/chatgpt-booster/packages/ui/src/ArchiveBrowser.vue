@@ -136,7 +136,6 @@ function closeHistory() {
 }
 const timelineNodes = ref<Awaited<ReturnType<NonNullable<ArchiveDataAdapter['getTimeline']>>>>([])
 let timelineRevision = 0
-let timelineConversationId: string | null = null
 const selectionEnabled = ref(false)
 const selectedMessages = ref(new Set<string>())
 const rangeStart = ref<string | null>(null)
@@ -172,7 +171,6 @@ watch(
     branchLoading.value = false
     toolsOpen.value = false
     timelineNodes.value = []
-    timelineConversationId = null
     timelineRevision++
   },
   { flush: 'sync' },
@@ -190,7 +188,6 @@ async function loadTimeline(id: string) {
       owner === props.archiveAdapter.currentAccountId?.()
     ) {
       timelineNodes.value = nodes
-      timelineConversationId = id
     }
   } catch {
     /* Keep previously verified metadata, never substitute fake links. */
@@ -310,7 +307,7 @@ const liveRefresh = createArchiveRefreshQueue(async () => {
 })
 const coverageRefresh = createArchiveRefreshQueue(async () => {
   const id = selectedId.value
-  if (!alive || !id || props.suspended) return
+  if (!alive || !id || props.suspended || workspaceState.value.loading) return
   const revision = threadRevision
   const owner = props.archiveAdapter.currentAccountId?.()
   try {
@@ -328,10 +325,14 @@ const coverageRefresh = createArchiveRefreshQueue(async () => {
 })
 const timelineRefresh = createArchiveRefreshQueue(async () => {
   const id = selectedId.value
-  if (id) await loadTimeline(id)
+  if (id && historyOpen.value && !props.suspended && !workspaceState.value.loading)
+    await loadTimeline(id)
 })
-function updateWorkspaceState(id: string) {
-  workspaceState.value = props.archiveAdapter.workspaceStatus?.(id) ?? {
+watch([historyOpen, selectedId], ([open, id]) => {
+  if (open && id) timelineRefresh.request()
+})
+function updateWorkspaceState(id: string | null) {
+  workspaceState.value = (id ? props.archiveAdapter.workspaceStatus?.(id) : undefined) ?? {
     loading: false,
     loaded: 0,
     missingParents: 0,
@@ -813,6 +814,7 @@ watch(
     } else if (selectedId.value && props.archiveAdapter.liveSavedUpdates) {
       coverageRefresh.request()
       liveRefresh.request()
+      timelineRefresh.request()
     }
   },
 )
@@ -1101,8 +1103,10 @@ async function loadThread(
   unsequencedTarget.value = false
   coverageLoading.value = false
   coverageError.value = false
-  if (!id) return
-  if (timelineConversationId !== id) void loadTimeline(id)
+  if (!id) {
+    updateWorkspaceState(null)
+    return
+  }
   bindSourceChanges(id)
   threadLoading.value = true
   loadedEdge.value = edge
@@ -1141,7 +1145,7 @@ async function loadThread(
       if (middle) await focusMessage(middle.record.messageId)
       else await resetReadingPosition(edge)
     }
-    if (!owns()) return
+    if (!owns() || workspaceState.value.loading) return
     // Coverage/header refresh may lag; it never gates displaying the bounded records.
     coverageLoading.value = true
     void props.archiveAdapter
@@ -1255,7 +1259,7 @@ async function refresh() {
     }
     const target = requestedLocation.value
     if (target && target.conversationId === selectedId.value) await openMessage(target.messageId, target)
-    else await loadThread(selectedId.value)
+    else if (!seededFromRam) await loadThread(selectedId.value)
   } catch (cause) {
     if (alive && revision === listRevision && !seededFromRam) describeReadFailure(cause)
   } finally {
@@ -1277,10 +1281,8 @@ const catalogRefresh = createArchiveRefreshQueue(async () => {
 onMounted(async () => {
   // Capture the live context before the asynchronous archive read. Navigation
   // during the initial read must not silently become the observer baseline.
-  const initialWorkspace = props.navigationTarget?.conversationId ?? props.initialConversationId
   let owner = props.archiveAdapter.currentAccountId?.() ?? null
   let siteConversation = props.archiveAdapter.currentConversationId()
-  if (initialWorkspace && owner) props.archiveAdapter.retryWorkspace?.(initialWorkspace)
   const syncContext = () => {
     const nextOwner = props.archiveAdapter.currentAccountId?.() ?? null
     const previousSiteConversation = siteConversation
@@ -1374,8 +1376,8 @@ onBeforeUnmount(() => {
     </header>
     <p v-if="workspaceState.loading || workspaceState.failed" role="status" class="flex items-center gap-2 px-3 py-1 text-xs text-muted-foreground">
       <LoaderCircle v-if="workspaceState.loading" class="size-3 animate-spin" />
-      {{ workspaceState.failed ? (locale === 'ru' ? 'Не удалось догрузить сохранённые данные. Повторите открытие архива.' : 'Saved data could not be loaded. Reopen the archive to retry.') : (locale === 'ru' ? 'Читаем сохранённый архив' : 'Reading saved archive') }}
-      <span v-if="workspaceState.loading">· {{ workspaceState.loaded }} · {{ locale === 'ru' ? 'Уточняем связи' : 'Checking relationships' }}</span>
+      {{ workspaceState.failed ? (locale === 'ru' ? 'Не удалось догрузить архив. Нажмите «Обновить».' : 'Could not finish loading the archive. Select Refresh to retry.') : (locale === 'ru' ? 'Загружаем историю' : 'Loading history') }}
+      <span v-if="workspaceState.loading">· {{ locale === 'ru' ? 'Загружено' : 'Loaded' }} {{ workspaceState.loaded }}</span>
     </p>
 
     <p v-if="accountPending" role="status" class="booster-note">{{ locale === 'ru'

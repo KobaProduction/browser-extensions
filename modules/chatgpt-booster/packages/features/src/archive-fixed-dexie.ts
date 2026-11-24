@@ -5,6 +5,7 @@ import {
   projectNativeMessage,
 } from '@chatgpt-booster/core'
 import {
+  type ArchiveMessageSourceContext,
   type ArchiveMessageV1,
   archiveSha256Hex,
   collectArchiveRange,
@@ -39,7 +40,6 @@ import {
 import { conversationIntegrity } from './archive-integrity'
 import {
   projectChatGptArchiveMessage,
-  readChatGptArchiveMessage,
   validateChatGptNormalizedSnapshot,
 } from './archive-message-adapter'
 import {
@@ -114,6 +114,7 @@ type MessageFacts = Pick<
   CanonicalMessageProjection,
   'sourceCreateTime' | 'sourceUpdateTime' | 'parentMessageId' | 'parentObserved' | 'role'
 > & { elementCount: number; internalElements: number; toolCalls: number; reasoning: number }
+type MessageIndexRow = Omit<FixedMessage, 'projection'> & { facts: MessageFacts }
 type StoredMessage = Omit<FixedMessage, 'projection'> &
   (
     | { facts: MessageFacts; projection?: never }
@@ -132,8 +133,8 @@ function indexFacts(p: CanonicalMessageProjection): MessageFacts {
     reasoning: p.elements.filter((e) => e.kind === 'reasoning').length,
   }
 }
-function compatibilityElements({ accountId, projection }: FixedMessage): FixedElement[] {
-  return projection.elements.map((element) => ({ ...element, accountId }))
+function messageIndexRow({ projection, ...identity }: FixedMessage): MessageIndexRow {
+  return { ...identity, facts: indexFacts(projection) }
 }
 const messageTime = (row: StoredMessage) => {
   const facts = row.facts ?? row.projection
@@ -152,7 +153,7 @@ export interface FixedSnapshot {
   sourceVersion: string
   observedAtMs: number
   raw: Record<string, unknown>
-  /** Additive payload metadata in schema 1; historical rows adapt on read only. */
+  /** Read only by portable backup validation. The local reader uses raw. */
   normalized?: ArchiveMessageV1
   projectId?: string | null
   /** All distinct original observations survive, including stale reloads and contradictions. */
@@ -160,6 +161,14 @@ export interface FixedSnapshot {
   sourceEvents?: readonly Record<string, unknown>[]
 }
 type ReadFixedSnapshot = FixedSnapshot & { normalized: ArchiveMessageV1 }
+
+interface WorkspaceSourceRow {
+  id: string
+  raw: Record<string, unknown>
+  sourceContext?: ArchiveMessageSourceContext
+  observedAtMs: number
+  liveObservedAt?: number | undefined
+}
 export interface FixedSourceVersion {
   sourceKind: string
   sourceVersion: string
@@ -230,7 +239,6 @@ class FixedArchiveDatabase extends Dexie {
   projects!: Table<FixedProject, string>
   conversations!: Table<FixedConversation, string>
   messages!: Table<StoredMessage, string>
-  elements!: Table<FixedElement, string>
   snapshots!: Table<FixedSnapshot, string>
 
   constructor(name: string, options?: DexieOptions) {
@@ -240,42 +248,9 @@ class FixedArchiveDatabase extends Dexie {
       conversations: '&key,accountId,[accountId+conversationId],[accountId+projectId]',
       messages:
         '&key,accountId,[accountId+conversationId],[accountId+conversationId+messageId],messageId',
-      elements: '&elementId,accountId,messageKey,[messageKey+siblingOrder]',
       snapshots: '&messageKey,accountId',
     })
-    // Earlier local builds could write compact rows into version 1. Restore
-    // the caches that older clients need when they reopen this archive.
-    this.version(2)
-      .stores({})
-      .upgrade(async (tx) => {
-        const messages = tx.table<StoredMessage, string>('messages')
-        const snapshots = tx.table<FixedSnapshot, string>('snapshots')
-        const elements = tx.table<FixedElement, string>('elements')
-        let cursor: string | undefined
-        while (true) {
-          const page = await (cursor ? messages.where(':id').above(cursor) : messages.orderBy(':id'))
-            .limit(160)
-            .toArray()
-          const compact = page.filter((row) => !row.projection)
-          const originals = await snapshots.bulkGet(compact.map(({ key }) => key))
-          for (const [index, row] of compact.entries()) {
-            const snapshot = originals[index]
-            if (
-              snapshot?.accountId !== row.accountId ||
-              snapshot.messageKey !== row.key ||
-              snapshot.raw.id !== row.messageId
-            )
-              throw Error('Canonical source identity mismatch')
-            const { facts: _facts, ...identity } = row
-            const record = { ...identity, projection: projectNativeMessage(snapshot.raw, row) }
-            await elements.where('messageKey').equals(row.key).delete()
-            await elements.bulkAdd(compatibilityElements(record))
-            await messages.put(record)
-          }
-          if (page.length < 160) break
-          cursor = page.at(-1)?.key
-        }
-      })
+    // Open installed versions in place. IndexedDB leaves obsolete stores alone.
   }
 }
 function nonEmpty(value: string): boolean {
@@ -315,6 +290,15 @@ export class FixedCanonicalDexieRepository {
   /** Small LRU of lightweight ID/order facts, never source snapshots. */
   private readonly orderPlans = new Map<string, { stamp: string; pending: Promise<ChronologyPlan> }>()
   private readonly observationDigests = new Map<string, ObservationDigests>()
+  private exportCache?:
+    | {
+        conversationId: string
+        stamp: string
+        cursor: string | undefined
+        complete: boolean
+        snapshots: Map<string, FixedSnapshot>
+      }
+    | undefined
 
   constructor(scope: ServiceScope, options?: DexieOptions) {
     this.databaseName = fixedArchiveDatabaseName(scope)
@@ -323,7 +307,7 @@ export class FixedCanonicalDexieRepository {
   }
 
   /**
-   * One original message + all canonical v1 rows are an indivisible transaction.
+   * Write the original and its lookup index atomically.
    * Every original observation is retained. Only monotonic enrichment may
    * become the preferred projection; contradictory/reduced reloads stay variants.
    */
@@ -364,6 +348,7 @@ export class FixedCanonicalDexieRepository {
       modelVersion: ARCHIVE_CANONICAL_MODEL_VERSION,
       projection,
     }
+    const indexed = messageIndexRow(record)
     const source: FixedSnapshot = {
       messageKey,
       accountId,
@@ -398,7 +383,6 @@ export class FixedCanonicalDexieRepository {
       this.db.projects,
       this.db.conversations,
       this.db.messages,
-      this.db.elements,
       this.db.snapshots,
       async () => {
         const transaction = Dexie.currentTransaction
@@ -428,15 +412,12 @@ export class FixedCanonicalDexieRepository {
           throw Error('Conversation project changed; a verified explicit action is required')
         if (priorMessage && !prior) throw Error('Canonical source snapshot missing')
         if (prior) {
-          validateChatGptNormalizedSnapshot(
-            prior,
-            conversationId,
-            prior.projectId === undefined
-              ? existingConversation
-                ? originalConversationProject(existingConversation)
-                : null
-              : prior.projectId,
+          if (
+            prior.accountId !== accountId ||
+            prior.messageKey !== messageKey ||
+            prior.raw.id !== projection.messageId
           )
+            throw Error('Canonical source identity mismatch')
           const cached = this.observationDigests.get(messageKey)
           const memo =
             cached?.stamp === fixedConversationStamp(existingConversation) ? cached : undefined
@@ -512,11 +493,7 @@ export class FixedCanonicalDexieRepository {
           )
           committedView = commitView(versions.length)
           await snapshots.put(nextSnapshot)
-          if (decision === 'advance') {
-            await this.db.elements.where('messageKey').equals(messageKey).delete()
-            await this.db.elements.bulkAdd(compatibilityElements(record))
-            await messages.put(record)
-          }
+          if (decision === 'advance') await messages.put(indexed)
           const conversation = await conversations.get(conversationKey)
           if (conversation) {
             const nextHeader = {
@@ -568,8 +545,7 @@ export class FixedCanonicalDexieRepository {
           })
         }
         committedView = commitView()
-        await messages.add(record)
-        await this.db.elements.bulkAdd(compatibilityElements(record))
+        await messages.add(indexed)
         await snapshots.add(source)
         const createdHeader = await conversations.get(conversationKey)
         if (!createdHeader) throw Error('Canonical conversation missing')
@@ -880,7 +856,11 @@ export class FixedCanonicalDexieRepository {
       if (!stillAuthorized()) throw Error('Stream head authorization expired')
     })
   }
-  async integrity(conversationId: string, check: () => void = () => undefined) {
+  async integrity(
+    conversationId: string,
+    check: () => void = () => undefined,
+    cachedSources?: ReadonlyMap<string, FixedSnapshot>,
+  ) {
     const header = await this.getConversation(conversationId)
     const graphMatchesHead =
       header?.nativeGraph &&
@@ -899,15 +879,17 @@ export class FixedCanonicalDexieRepository {
         for (const row of rows) ids.add(row.messageId)
       } else {
         const outside = rows.filter((row) => parents && !parents.has(row.messageId))
-        const snapshots = await this.db.snapshots.bulkGet(outside.map((row) => row.key))
-        const sources = new Map(outside.map((row, index) => [row.key, snapshots[index]]))
+        const snapshots = cachedSources
+          ? outside.map((row) => cachedSources.get(row.messageId))
+          : await this.db.snapshots.bulkGet(outside.map((row) => row.key))
+        const sources = new Map(outside.map((row, index) => [row.messageId, snapshots[index]]))
         for (const row of rows) {
           const facts = row.facts ?? row.projection
           const relation = nativeGraphRelationship(
             checkpoint,
             row.messageId,
             { parentId: facts.parentMessageId, parentKnown: facts.parentObserved },
-            nativeSnapshotLiveReceipt(sources.get(row.key), facts.parentMessageId),
+            nativeSnapshotLiveReceipt(sources.get(row.messageId), facts.parentMessageId),
           )
           projections.push({
             messageId: row.messageId,
@@ -1160,9 +1142,9 @@ export class FixedCanonicalDexieRepository {
         const candidates = await this.listIndex(conversationId, limit + 1, afterId)
         const rows = candidates.slice(0, limit)
         const snapshots = await this.db.snapshots.bulkGet(rows.map((row) => row.key))
-        return {
+        const page = {
           header,
-          rows: rows.map((row, index) => {
+          rows: rows.map((row, index): WorkspaceSourceRow => {
             const source = snapshots[index]
             if (
               !source ||
@@ -1171,11 +1153,11 @@ export class FixedCanonicalDexieRepository {
               source.raw.id !== row.messageId
             )
               throw Error('Workspace source identity mismatch')
-            const { normalized } = this.readSnapshot(source, conversationId, header)
+            const sourceContext = this.snapshotContext(source, conversationId, header)
             return {
               id: row.messageId,
               raw: source.raw,
-              normalized,
+              sourceContext,
               observedAtMs: source.observedAtMs,
               liveObservedAt: nativeSnapshotLiveReceipt(
                 source,
@@ -1186,6 +1168,24 @@ export class FixedCanonicalDexieRepository {
           cursor: rows.at(-1)?.messageId,
           hasMore: candidates.length > limit,
         }
+        const stamp = fixedConversationStamp(header)
+        if (!afterId)
+          this.exportCache = header
+            ? { conversationId, stamp, cursor: undefined, complete: false, snapshots: new Map() }
+            : undefined
+        const cache = this.exportCache
+        if (cache?.conversationId === conversationId && !cache.complete && cache.cursor === afterId) {
+          if (cache.stamp !== stamp) this.exportCache = undefined
+          else {
+            for (const [index, row] of rows.entries()) {
+              const source = snapshots[index]
+              if (source) cache.snapshots.set(row.messageId, source)
+            }
+            cache.cursor = page.cursor
+            cache.complete = !page.hasMore
+          }
+        }
+        return page
       },
     )
   }
@@ -1360,11 +1360,28 @@ export class FixedCanonicalDexieRepository {
         check()
         const header = await this.getConversation(conversationId)
         if (!header) throw Error('Saved conversation missing')
-        const [integrity, count] = await Promise.all([
-          this.integrity(conversationId, check),
-          this.countConversation(conversationId),
-        ])
-        const snapshots: ReadFixedSnapshot[] = []
+        const count = await this.countConversation(conversationId)
+        const cache = this.exportCache
+        const cachedSources =
+          cache?.conversationId === conversationId &&
+          cache.complete &&
+          cache.stamp === fixedConversationStamp(header) &&
+          cache.snapshots.size === count
+            ? cache.snapshots
+            : undefined
+        const integrity = await this.integrity(conversationId, check, cachedSources)
+        if (cachedSources) {
+          const snapshots = selected
+            ? [...selected].map((id) => {
+                const source = cachedSources.get(id)
+                if (!source) throw Error('Selected saved message is missing')
+                return source
+              })
+            : [...cachedSources.values()]
+          check()
+          return { header, integrity, count, snapshots }
+        }
+        const snapshots: FixedSnapshot[] = []
         let cursor: string | undefined
         let scanned = 0
         while (true) {
@@ -1374,11 +1391,10 @@ export class FixedCanonicalDexieRepository {
             !selected || selected.has(messageId) ? [messageId] : [],
           )
           if (ids.length)
-            for (const snapshot of await this.readSourceSnapshots(
+            for (const snapshot of await this.readRawSourceSnapshots(
               conversationId,
               header.accountId,
               ids,
-              header,
             )) {
               if (!snapshot) throw Error('Source snapshot missing')
               snapshots.push(snapshot)
@@ -1398,30 +1414,35 @@ export class FixedCanonicalDexieRepository {
     )
   }
 
-  private readSnapshot(
+  private snapshotContext(
     snapshot: FixedSnapshot,
     conversationId: string,
     header: FixedConversation | undefined,
-  ): ReadFixedSnapshot {
+  ): ArchiveMessageSourceContext {
     const projectId =
       snapshot.projectId === undefined
         ? header
           ? originalConversationProject(header)
           : null
         : snapshot.projectId
-    const normalized = readChatGptArchiveMessage(
-      snapshot.raw,
-      {
-        ownerId: snapshot.accountId,
-        conversationId,
-        projectId,
-        sourceKind: snapshot.sourceKind,
-        sourceVersion: snapshot.sourceVersion,
-        observedAtMs: snapshot.observedAtMs,
-      },
-      snapshot.normalized,
-    )
-    return { ...snapshot, projectId, normalized }
+    return {
+      ownerId: snapshot.accountId,
+      conversationId,
+      projectId,
+      sourceKind: snapshot.sourceKind,
+      sourceVersion: snapshot.sourceVersion,
+      observedAtMs: snapshot.observedAtMs,
+    }
+  }
+
+  presentSourceSnapshot(
+    snapshot: FixedSnapshot,
+    conversationId: string,
+    header: FixedConversation | undefined,
+  ): ReadFixedSnapshot {
+    const context = this.snapshotContext(snapshot, conversationId, header)
+    const normalized = projectChatGptArchiveMessage(snapshot.raw, context)
+    return { ...snapshot, projectId: context.projectId ?? null, normalized }
   }
 
   /** One header read per bounded window; never clone a full graph per message. */
@@ -1432,21 +1453,18 @@ export class FixedCanonicalDexieRepository {
     const account = this.scope.ownerId
     if (!account || !nonEmpty(conversationId) || messageIds.length > 240 || !messageIds.every(nonEmpty))
       throw Error('Invalid source identity or window')
-    return this.db.transaction('r', this.db.conversations, this.db.snapshots, async () =>
-      this.readSourceSnapshots(
-        conversationId,
-        account,
-        messageIds,
-        await this.getConversation(conversationId),
-      ),
-    )
+    return this.db.transaction('r', this.db.conversations, this.db.snapshots, async () => {
+      const header = await this.getConversation(conversationId)
+      return (await this.readRawSourceSnapshots(conversationId, account, messageIds)).map(
+        (snapshot) => snapshot && this.presentSourceSnapshot(snapshot, conversationId, header),
+      )
+    })
   }
 
-  private async readSourceSnapshots(
+  private async readRawSourceSnapshots(
     conversationId: string,
     account: string,
     messageIds: readonly string[],
-    header: FixedConversation | undefined,
   ) {
     const keys = messageIds.map((id) => JSON.stringify([account, conversationId, id]))
     const snapshots = await this.db.snapshots.bulkGet(keys)
@@ -1458,7 +1476,7 @@ export class FixedCanonicalDexieRepository {
         snapshot.raw.id !== messageIds[index]
       )
         throw Error('Canonical source identity mismatch')
-      return this.readSnapshot(snapshot, conversationId, header)
+      return snapshot
     })
   }
 
@@ -1484,19 +1502,15 @@ export class FixedCanonicalDexieRepository {
     ]
     return versions.map((version, index) => ({
       ...version,
-      normalized: readChatGptArchiveMessage(
-        version.raw,
-        {
-          ownerId,
-          conversationId,
-          projectId: version.projectId === undefined ? (snapshot?.projectId ?? null) : version.projectId,
-          sourceKind: version.sourceKind,
-          sourceVersion: version.sourceVersion,
-          observedAtMs: version.observedAtMs,
-          variantIndex: index,
-        },
-        version.normalized,
-      ),
+      normalized: projectChatGptArchiveMessage(version.raw, {
+        ownerId,
+        conversationId,
+        projectId: version.projectId === undefined ? (snapshot?.projectId ?? null) : version.projectId,
+        sourceKind: version.sourceKind,
+        sourceVersion: version.sourceVersion,
+        observedAtMs: version.observedAtMs,
+        variantIndex: index,
+      }),
     }))
   }
 
@@ -1545,21 +1559,29 @@ export class FixedCanonicalDexieRepository {
     const owner = this.scope.ownerId
     if (!owner) throw Error('Verified ChatGPT owner required for recovery')
     const stores = ['projects', 'conversations', 'messages', 'elements', 'snapshots'] as const
-    const tables = stores.map((name) => ({ name, table: self.db[name] }))
-    const schema = Object.fromEntries(
-      tables.map(({ name, table }) => [
-        name,
-        {
-          primaryKey: table.schema.primKey.src,
-          indexes: table.schema.indexes.map((index) => index.src),
-        },
-      ]),
-    )
+    const tables = stores
+      .filter((name) => name !== 'elements')
+      .map((name) => ({ name, table: self.db[name] }))
+    const schema = {
+      ...Object.fromEntries(
+        tables.map(({ name, table }) => [
+          name,
+          {
+            primaryKey: table.schema.primKey.src,
+            indexes: table.schema.indexes.map((index) => index.src),
+          },
+        ]),
+      ),
+      elements: {
+        primaryKey: 'elementId',
+        indexes: ['accountId', 'messageKey', '[messageKey+siblingOrder]'],
+      },
+    }
     const countRows = async (transaction?: Transaction) =>
       Object.fromEntries(
         await Promise.all(
-          tables.map(
-            async ({ name, table }) =>
+          stores.map(
+            async (name) =>
               [
                 name,
                 name === 'elements'
@@ -1567,25 +1589,16 @@ export class FixedCanonicalDexieRepository {
                       transaction?.table<StoredMessage, string>('messages') ?? self.db.messages,
                       owner,
                     )
-                  : await (transaction?.table(name) ?? table).where('accountId').equals(owner).count(),
+                  : await (transaction?.table(name) ?? self.db[name])
+                      .where('accountId')
+                      .equals(owner)
+                      .count(),
               ] as const,
           ),
         ),
       )
-    const keyOwner = (name: (typeof stores)[number], key: string): unknown => {
-      try {
-        const parts: unknown = JSON.parse(key)
-        if (!Array.isArray(parts)) return null
-        if (name !== 'elements') return parts[0]
-        if (typeof parts[0] !== 'string') return null
-        const message: unknown = JSON.parse(parts[0])
-        return Array.isArray(message) ? message[0] : null
-      } catch {
-        return null
-      }
-    }
     const ownedKeyPages = async function* (
-      name: (typeof stores)[number],
+      name: (typeof tables)[number]['name'],
       limit: number,
       transaction?: Transaction,
     ) {
@@ -1604,7 +1617,12 @@ export class FixedCanonicalDexieRepository {
           if (typeof key !== 'string') throw Error('Invalid canonical primary key type')
           cursor = key
           // Inspect only canonical keys of sibling owners, never their values.
-          if (keyOwner(name, key) === owner) owned.push(key)
+          try {
+            const parts: unknown = JSON.parse(key)
+            if (Array.isArray(parts) && parts[0] === owner) owned.push(key)
+          } catch {
+            // A malformed key cannot belong to the verified owner.
+          }
         }
         if (owned.length) yield owned
         if (keys.length < limit) break
@@ -1695,12 +1713,11 @@ export class FixedCanonicalDexieRepository {
         self.db.projects,
         self.db.conversations,
         self.db.messages,
-        self.db.elements,
         self.db.snapshots,
         async () => {
           const transaction = Dexie.currentTransaction
           if (!transaction) throw Error('Missing canonical recovery transaction')
-          const transactionalTables = stores.map((name) => ({
+          const transactionalTables = tables.map(({ name }) => ({
             name,
             table: transaction.table<FixedBackupModel, string>(name),
           }))
@@ -1739,7 +1756,7 @@ export class FixedCanonicalDexieRepository {
                 projects: 0,
                 conversations: 0,
                 messages: 0,
-                elements: 0,
+                elements: validation.counts.elements,
                 snapshots: 0,
               }
               for (const { name, table } of transactionalTables) {
@@ -1790,7 +1807,9 @@ export class FixedCanonicalDexieRepository {
                       const stored =
                         name === 'snapshots'
                           ? (decoded as FixedSnapshot[]).map(stripSnapshotView)
-                          : decoded
+                          : name === 'messages'
+                            ? (decoded as FixedMessage[]).map(messageIndexRow)
+                            : decoded
                       await (table as Table<FixedBackupModel | StoredMessage, string>).bulkPut(stored)
                       actual[name] += decoded.length
                       if (actual[name] > validation.counts[name])
@@ -1956,7 +1975,7 @@ export class FixedCanonicalDexieRepository {
           elements: 0,
           snapshots: 0,
         }
-        for (const { name, table } of tables) {
+        for (const name of stores) {
           if (name === 'elements') {
             // Keep the established backup wire format. These rows are a view
             // of the originals, including for archives written by older builds.
@@ -1977,6 +1996,7 @@ export class FixedCanonicalDexieRepository {
             }
             continue
           }
+          const table = self.db[name]
           for await (const keys of ownedKeyPages(name, Math.min(pageSize, 256))) {
             for (const key of keys) {
               authorize()
@@ -2031,7 +2051,6 @@ export class FixedCanonicalDexieRepository {
           self.db.projects,
           self.db.conversations,
           self.db.messages,
-          self.db.elements,
           self.db.snapshots,
           async () => {
             authorize()
@@ -2059,9 +2078,7 @@ export class FixedCanonicalDexieRepository {
               await self.db.conversations.bulkAdd(headers)
             }
             if (buckets.messages.length)
-              await self.db.messages.bulkAdd(buckets.messages as FixedMessage[])
-            if (buckets.elements.length)
-              await self.db.elements.bulkAdd(buckets.elements as FixedElement[])
+              await self.db.messages.bulkAdd((buckets.messages as FixedMessage[]).map(messageIndexRow))
             if (buckets.snapshots.length)
               await self.db.snapshots.bulkAdd(
                 (buckets.snapshots as FixedSnapshot[]).map(stripSnapshotView),
@@ -2076,6 +2093,7 @@ export class FixedCanonicalDexieRepository {
   }
 
   close(): void {
+    this.exportCache = undefined
     this.orderPlans.clear()
     this.observationDigests.clear()
     this.db.close()

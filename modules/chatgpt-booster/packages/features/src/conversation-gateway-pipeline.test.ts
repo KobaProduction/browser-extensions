@@ -645,7 +645,6 @@ test('a new DB incarnation replaces hydrated rows while retaining independent na
       {
         id: incarnation === 'A' ? 'old-parent' : 'new-parent',
         raw: record(incarnation === 'A' ? 'old-parent' : 'new-parent'),
-        normalized: undefined,
         observedAtMs: 1800000000000,
       },
     ],
@@ -728,7 +727,6 @@ test('RAM workspace is usable while DB hydration is blocked, fills chunks and re
         {
           id: 'parent-uuid',
           raw: record('parent-uuid'),
-          normalized: undefined,
           observedAtMs: 1800000000000,
         },
       ],
@@ -822,7 +820,6 @@ test('workspace indexes 3000 UUID records, fills 19 bounded chunks and follows a
     .map((id, index) => ({
       id,
       raw: { ...record(id, ids[index - 1] ?? null), create_time: 1800000000 + index },
-      normalized: undefined,
       observedAtMs: 1800000000000 + index,
     }))
     .reverse()
@@ -841,7 +838,8 @@ test('workspace indexes 3000 UUID records, fills 19 bounded chunks and follows a
       hasMore: start + chunk.length < rows.length,
     }
   }
-  await f.workspace.open('gateway-large-workspace')
+  const initial = await f.adapter.getThreadWindow?.('gateway-large-workspace')
+  expect(initial?.loadedRecordCount).toBe(160)
   expect(f.workspace.status('gateway-large-workspace')).toMatchObject({
     loading: true,
     loaded: 160,
@@ -861,6 +859,9 @@ test('workspace indexes 3000 UUID records, fills 19 bounded chunks and follows a
   })
   expect(chunks).toBe(19)
   expect(largest).toBe(160)
+  const hydrated = await f.adapter.getThreadWindow?.('gateway-large-workspace')
+  expect(hydrated?.totalKnownRecordCount).toBe(3000)
+  expect(hydrated?.hasOlderStored).toBe(true)
   const target = ids[2000]
   if (!target) throw Error('Synthetic UUID missing')
   expect(f.workspace.getMessage('gateway-large-workspace', target)?.parentId).toBe(ids[1999])

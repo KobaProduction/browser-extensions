@@ -178,17 +178,18 @@ async function refreshContext() {
   }
   loading.value = !coverage.value
   refreshAt = Date.now()
+  const showDockCoverage = expanded.value && !view.value
   try {
     const [next, nextCoverage, stored] = await Promise.all([
       adapter.getCurrentContext(),
-      currentId ? adapter.getCoverage(currentId) : undefined,
+      currentId && showDockCoverage ? adapter.getCoverage(currentId) : undefined,
       // V4's Export wizard owns collection of a not-yet-saved chat. A header
       // lookup must not decide whether that wizard can be opened at all.
       currentId && !adapter.collectionInsideExportOnly ? adapter.getConversation(currentId) : undefined,
     ])
     if (!alive || request !== revision || adapter.currentConversationId() !== currentId) return
     context.value = next
-    coverage.value = nextCoverage
+    if (showDockCoverage) coverage.value = nextCoverage
     savedChat.value = !!stored
     if (currentId && adapter.hasIncompatibleSource?.(currentId))
       error.value = 'archive.error.incompatibleSource'

@@ -1,14 +1,15 @@
 import { archiveRecordKind } from '@chatgpt-booster/chatgpt'
-import type { BoosterModule } from '@chatgpt-booster/core'
+import { type ArchiveRecordView, type BoosterModule, serverTimeMs } from '@chatgpt-booster/core'
 import {
   ARCHIVE_READER_PAGE_SIZE,
   type ArchiveConversationIntegrity,
+  type ArchiveMessageSourceContext,
   conversationIntegrityFromGraph,
 } from '@kobaproduction/browser-archive'
 import { checkpointHistoryCoverage } from './archive-coverage'
 import type { FixedConversation } from './archive-fixed-dexie'
 import type { FixedChatGptCapture } from './archive-fixed-runtime'
-import { chatGptArchiveRecord } from './archive-message-adapter'
+import { chatGptArchiveRecord, projectChatGptArchiveMessage } from './archive-message-adapter'
 import {
   nativeGraphIntegrity,
   nativeGraphRelationship,
@@ -48,6 +49,8 @@ interface WorkspaceConversation {
 export class ConversationArchiveWorkspace implements BoosterModule {
   readonly id = 'archive-workspace'
   private conversations = new Map<string, WorkspaceConversation>()
+  private sourceContexts = new WeakMap<ArchivedMessage, ArchiveMessageSourceContext>()
+  private presentations = new WeakMap<ArchivedMessage, ArchiveRecordView>()
   private listeners = new Set<(id: string | null) => void>()
   private cleanup: (() => void)[] = []
   private owner: string | null = null
@@ -317,16 +320,17 @@ export class ConversationArchiveWorkspace implements BoosterModule {
             }
           for (const row of chunk.rows) {
             savedIds.add(row.id)
-            const base = normalizeConversationMessage(
+            const record = normalizeConversationMessage(
               row.raw,
               id,
               chunk.header?.projectId ?? null,
               row.observedAtMs,
             )
-            if (!base) throw Error('Workspace source cannot be decoded')
-            const record = row.normalized
-              ? { ...base, ...chatGptArchiveRecord(row.raw, row.normalized) }
-              : base
+            if (!record) throw Error('Workspace source cannot be decoded')
+            if (row.sourceContext) {
+              if (record.createTime !== null) record.createTime = serverTimeMs(record.createTime) / 1000
+              this.sourceContexts.set(record, row.sourceContext)
+            }
             this.merge(conversation, record)
             if (row.liveObservedAt !== undefined)
               conversation.liveReceipts.set(row.id, {
@@ -380,20 +384,30 @@ export class ConversationArchiveWorkspace implements BoosterModule {
       saved = c.header?.nativeGraph
     return newestNativeGraph(c.nativeGraph, saved)
   }
-  private recordView(id: string, record: ArchivedMessage) {
+  private recordLinks(id: string, record: ArchivedMessage) {
     const c = this.conversation(id),
       receipt = c.liveReceipts.get(record.messageId)
+    return nativeGraphRelationship(
+      this.nativeGraphRead(id),
+      record.messageId,
+      {
+        parentId: record.parentId,
+        parentKnown: Object.hasOwn((record.raw.metadata ?? {}) as object, 'parent_id'),
+      },
+      receipt?.parentId === record.parentId ? receipt.observedAt : undefined,
+    )
+  }
+  private recordView(id: string, record: ArchivedMessage, present = true) {
+    const source = present ? this.sourceContexts.get(record) : undefined
+    let view = this.presentations.get(record)
+    if (source && !view) {
+      view = chatGptArchiveRecord(record.raw, projectChatGptArchiveMessage(record.raw, source))
+      this.presentations.set(record, view)
+    }
     return {
       ...record,
-      ...nativeGraphRelationship(
-        this.nativeGraphRead(id),
-        record.messageId,
-        {
-          parentId: record.parentId,
-          parentKnown: Object.hasOwn((record.raw.metadata ?? {}) as object, 'parent_id'),
-        },
-        receipt?.parentId === record.parentId ? receipt.observedAt : undefined,
-      ),
+      ...(present ? view : undefined),
+      ...this.recordLinks(id, record),
     }
   }
   getMessage(id: string, messageId: string) {
@@ -434,17 +448,17 @@ export class ConversationArchiveWorkspace implements BoosterModule {
       if (!record) throw Error('archive.error.messageMissing')
       result.push(cursor)
       if (cursor === firstId) return result.reverse()
-      const viewed = this.recordView(id, record)
+      const viewed = this.recordLinks(id, record)
       if (!viewed.parentKnown) throw Error('archive.error.incompleteSource')
       cursor = viewed.parentId
     }
     throw Error('archive.error.incompleteSource')
   }
-  records(id: string) {
+  records(id: string, present = true) {
     const c = this.conversation(id)
     return this.ordered(c).flatMap((key) => {
       const record = c.records.get(key)
-      return record ? [this.recordView(id, record)] : []
+      return record ? [this.recordView(id, record, present)] : []
     })
   }
   window(
@@ -494,7 +508,7 @@ export class ConversationArchiveWorkspace implements BoosterModule {
       const record = conversation.records.get(cursor)
       if (!record) throw Error('archive.error.messageMissing')
       result.push(cursor)
-      const viewed = this.recordView(id, record)
+      const viewed = this.recordLinks(id, record)
       if (!viewed.parentKnown) throw Error('archive.error.incompleteSource')
       cursor = viewed.parentId
     }
@@ -528,7 +542,7 @@ export class ConversationArchiveWorkspace implements BoosterModule {
     return conversationIntegrityFromGraph(
       [...conversation.records.values()].map((record) => ({
         id: record.messageId,
-        ...this.recordView(id, record),
+        ...this.recordLinks(id, record),
       })),
       {
         firstId: saved?.startEvidence?.firstMessageId ?? header?.startEvidence?.firstMessageId,

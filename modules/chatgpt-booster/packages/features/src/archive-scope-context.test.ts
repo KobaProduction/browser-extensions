@@ -94,7 +94,7 @@ test('capture settings current context uses owner-verified native metadata inste
       },
     })
     const capture = {
-      listSavedConversations: async () => [],
+      getSavedConversation: async () => undefined,
       listSavedProjects: async () => [
         { projectId: projectA, title: 'Native project A' },
         { projectId: projectB, title: 'Native project B' },

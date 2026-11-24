@@ -376,6 +376,47 @@ test('stored native cross-conversation origins project known metadata and keep a
   }
 })
 
+test('export reuses hydrated originals until the saved revision changes', async () => {
+  const db = repository('synthetic-reader-export-from-ram')
+  const id = 'synthetic-reader'
+  try {
+    await db.addObservation(observation('root', null, 0))
+    await db.addObservation(observation('answer', 'root', 1))
+    const page = await db.workspaceChunk(id, undefined, 1)
+    await db.workspaceChunk(id, page.cursor, 1)
+    let reads = 0
+    const internals = db as unknown as {
+      db: { snapshots: { hook(name: 'reading', listener: (row: unknown) => unknown): void } }
+    }
+    internals.db.snapshots.hook('reading', (row) => {
+      reads++
+      return row
+    })
+    const prepare = (messageIds?: string[]) =>
+      exportFixedConversation(
+        db,
+        id,
+        {
+          ...DEFAULT_EXPORT_OPTIONS,
+          format: 'json',
+          level: 'full',
+          ...(messageIds ? { messageIds } : {}),
+        },
+        () => {},
+      )
+    expect((await prepare()).blob.size).toBeGreaterThan(0)
+    expect((await prepare(['answer'])).blob.size).toBeGreaterThan(0)
+    expect(reads).toBe(0)
+    await db.addObservation(observation('latest', 'answer', 2))
+    reads = 0
+    const exported = await prepare(['latest'])
+    expect(await exported.blob.text()).toContain('Synthetic message 2')
+    expect(reads).toBe(1)
+  } finally {
+    db.close()
+  }
+})
+
 test('a concurrent capture does not change the source snapshot already selected for export', async () => {
   const db = repository('synthetic-reader-export-fence')
   try {
