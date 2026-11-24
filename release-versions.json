@@ -6,12 +6,12 @@
       "sourceSha": "972885977dc76da0df091b9982448ef546340253"
     },
     "chatgpt-booster": {
-      "version": "2.0.52",
-      "sourceSha": "972885977dc76da0df091b9982448ef546340253"
+      "version": "2.0.53",
+      "sourceSha": "82a6029ebde27f21c4e0ed4935c9bcc32bc3f32a"
     },
     "all-in-one": {
-      "version": "0.5.55",
-      "sourceSha": "972885977dc76da0df091b9982448ef546340253"
+      "version": "0.5.56",
+      "sourceSha": "82a6029ebde27f21c4e0ed4935c9bcc32bc3f32a"
     }
   }
 }
